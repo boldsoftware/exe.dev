@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
@@ -26,9 +28,60 @@ import (
 	"github.com/stripe/stripe-go/v76/paymentmethod"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
+	_ "modernc.org/sqlite"
 )
 
-// EmailVerification represents a pending email verification
+//go:embed exe_schema.sql
+var schemaSQL string
+
+// User represents an individual user
+type User struct {
+	PublicKeyFingerprint string
+	Email                string
+	CreatedAt            time.Time
+}
+
+// Team represents a team with billing information
+type Team struct {
+	Name             string
+	CreatedAt        time.Time
+	StripeCustomerID string
+	BillingEmail     string
+}
+
+// TeamMember represents membership in a team
+type TeamMember struct {
+	UserFingerprint string
+	TeamName        string
+	IsAdmin         bool
+	JoinedAt        time.Time
+}
+
+// Machine represents a container/VM
+type Machine struct {
+	ID                   int
+	TeamName             string
+	Name                 string
+	Status               string
+	Image                string
+	CreatedByFingerprint string
+	CreatedAt            time.Time
+	LastStartedAt        *time.Time
+}
+
+// Invite represents a team invitation
+type Invite struct {
+	Code                 string
+	TeamName             string
+	CreatedByFingerprint string
+	Email                string // optional
+	MaxUses              int
+	UsedCount            int
+	ExpiresAt            time.Time
+	CreatedAt            time.Time
+}
+
+// EmailVerification represents a pending email verification (in-memory)
 type EmailVerification struct {
 	PublicKeyFingerprint string
 	Email                string
@@ -37,21 +90,12 @@ type EmailVerification struct {
 	CreatedAt            time.Time
 }
 
-// BillingVerification represents a pending billing verification
+// BillingVerification represents a pending billing verification (in-memory)
 type BillingVerification struct {
 	PublicKeyFingerprint string
-	Email                string
+	TeamName             string
 	CompleteChan         chan struct{}
 	CreatedAt            time.Time
-}
-
-// User represents a fully registered user
-type User struct {
-	PublicKeyFingerprint string
-	Email                string
-	TeamName             string
-	StripeCustomerID     string
-	RegisteredAt         time.Time
 }
 
 // Server implements both HTTP and SSH server functionality for exe.dev
@@ -66,11 +110,10 @@ type Server struct {
 	sshConfig   *ssh.ServerConfig
 	certManager *autocert.Manager
 	
-	// In-memory databases
-	usersMu                 sync.RWMutex
-	users                   map[string]*User // fingerprint -> user
-	teamNamesMu             sync.RWMutex
-	teamNames               map[string]bool // team name -> taken
+	// Database
+	db *sql.DB
+	
+	// In-memory state for active sessions (these don't need persistence)
 	emailVerificationsMu    sync.RWMutex
 	emailVerifications      map[string]*EmailVerification // token -> email verification
 	billingVerificationsMu  sync.RWMutex
@@ -84,8 +127,20 @@ type Server struct {
 	stopping bool
 }
 
-// NewServer creates a new Server instance
-func NewServer(httpAddr, httpsAddr, sshAddr string) *Server {
+// NewServer creates a new Server instance with database
+func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string) (*Server, error) {
+	// Initialize database
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	
+	// Execute schema
+	if _, err := db.Exec(schemaSQL); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+	
 	// Initialize Postmark client
 	postmarkAPIKey := os.Getenv("POSTMARK_API_KEY")
 	var postmarkClient *postmark.Client
@@ -124,8 +179,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr string) *Server {
 		httpsAddr:            httpsAddr,
 		sshAddr:              sshAddr,
 		BaseURL:              baseURL,
-		users:                make(map[string]*User),
-		teamNames:            make(map[string]bool),
+		db:                   db,
 		emailVerifications:   make(map[string]*EmailVerification),
 		billingVerifications: make(map[string]*BillingVerification),
 		postmarkClient:       postmarkClient,
@@ -136,7 +190,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr string) *Server {
 	s.setupHTTPSServer()
 	s.setupSSHServer()
 	
-	return s
+	return s, nil
 }
 
 // setupHTTPServer configures the HTTP server
@@ -224,22 +278,39 @@ func (s *Server) generateRegistrationToken() string {
 func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 	fingerprint := s.getPublicKeyFingerprint(key)
 	
-	s.usersMu.RLock()
-	user, exists := s.users[fingerprint]
-	s.usersMu.RUnlock()
-	
-	if exists {
-		// User is fully registered, allow authentication
+	// Check if user exists in database
+	user, err := s.getUserByFingerprint(fingerprint)
+	if err != nil {
+		log.Printf("Database error checking user %s: %v", fingerprint, err)
+		// Allow connection but mark as not registered
 		return &ssh.Permissions{
 			Extensions: map[string]string{
 				"fingerprint": fingerprint,
-				"registered":  "true",
-				"email":       user.Email,
+				"registered":  "false",
 			},
 		}, nil
 	}
 	
-	// User is not registered, allow connection but mark as needing registration
+	if user != nil {
+		// Check if user has team memberships
+		teams, err := s.getUserTeams(fingerprint)
+		if err != nil {
+			log.Printf("Database error getting teams for user %s: %v", fingerprint, err)
+		}
+		
+		if len(teams) > 0 {
+			// User is fully registered with team membership
+			return &ssh.Permissions{
+				Extensions: map[string]string{
+					"fingerprint": fingerprint,
+					"registered":  "true",
+					"email":       user.Email,
+				},
+			}, nil
+		}
+	}
+	
+	// User is not registered or has no team, allow connection but mark as needing registration
 	return &ssh.Permissions{
 		Extensions: map[string]string{
 			"fingerprint": fingerprint,
@@ -731,14 +802,193 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 
 // startTeamNameCreation handles team name creation after email verification
 func (s *Server) startTeamNameCreation(channel ssh.Channel, fingerprint, email string) {
-	teamName, err := s.createTeamName(channel)
+	// Check if user's email has been invited to any teams
+	invites, err := s.getInvitesByEmail(email)
 	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nError creating team: %v\r\n", err)))
+		channel.Write([]byte(fmt.Sprintf("\r\nError checking invites: %v\r\n", err)))
 		return
 	}
 	
-	// Now start billing verification with the team name
-	s.startBillingVerification(channel, fingerprint, email, teamName)
+	// Filter valid (non-expired, not fully used) invites
+	var validInvites []Invite
+	now := time.Now()
+	for _, invite := range invites {
+		if now.Before(invite.ExpiresAt) && invite.UsedCount < invite.MaxUses {
+			validInvites = append(validInvites, invite)
+		}
+	}
+	
+	if len(validInvites) > 0 {
+		// User has pending invites, show them and let them choose
+		s.handlePendingInvites(channel, fingerprint, email, validInvites)
+	} else {
+		// No pending invites, proceed with team creation
+		teamName, err := s.createTeamName(channel)
+		if err != nil {
+			channel.Write([]byte(fmt.Sprintf("\r\nError creating team: %v\r\n", err)))
+			return
+		}
+		s.startBillingVerification(channel, fingerprint, email, teamName)
+	}
+}
+
+// handlePendingInvites shows pending invites and lets user choose
+func (s *Server) handlePendingInvites(channel ssh.Channel, fingerprint, email string, invites []Invite) {
+	channel.Write([]byte("\r\n\033[1;36m" +
+		"╭─────────────────────────────────────────────────╮\r\n" +
+		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
+		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n" +
+		"\033[1mYou have pending team invitations!\033[0m\r\n\r\n"))
+	
+	// Show available invites
+	for i, invite := range invites {
+		channel.Write([]byte(fmt.Sprintf("\033[1;32m%d.\033[0m Join team \033[1;36m%s\033[0m\r\n", i+1, invite.TeamName)))
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1;32m%d.\033[0m Create a new team instead\r\n\r\n", len(invites)+1)))
+	channel.Write([]byte("Enter your choice: "))
+	
+	for {
+		choice, err := s.readLineFromChannel(channel)
+		if err != nil {
+			channel.Write([]byte(fmt.Sprintf("\r\nError reading choice: %v\r\n", err)))
+			return
+		}
+		
+		choice = strings.TrimSpace(choice)
+		choiceNum := 0
+		fmt.Sscanf(choice, "%d", &choiceNum)
+		
+		if choiceNum >= 1 && choiceNum <= len(invites) {
+			// Join selected team
+			invite := invites[choiceNum-1]
+			
+			// Create user and add to team
+			if err := s.createUser(fingerprint, email); err != nil {
+				channel.Write([]byte(fmt.Sprintf("\r\nFailed to create user: %v\r\n", err)))
+				return
+			}
+			
+			if err := s.addTeamMember(fingerprint, invite.TeamName, false); err != nil {
+				channel.Write([]byte(fmt.Sprintf("\r\nFailed to add to team: %v\r\n", err)))
+				return
+			}
+			
+			// Use the invite
+			if err := s.useInvite(invite.Code); err != nil {
+				channel.Write([]byte(fmt.Sprintf("\r\nFailed to mark invite as used: %v\r\n", err)))
+				return
+			}
+			
+			channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mSuccessfully joined team: %s\033[0m\r\n\r\n", invite.TeamName)))
+			s.completeRegistration(channel, fingerprint, email, invite.TeamName)
+			return
+		} else if choiceNum == len(invites)+1 {
+			// Create new team
+			teamName, err := s.createTeamName(channel)
+			if err != nil {
+				channel.Write([]byte(fmt.Sprintf("\r\nError creating team: %v\r\n", err)))
+				return
+			}
+			s.startBillingVerification(channel, fingerprint, email, teamName)
+			return
+		} else {
+			channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mPlease enter a number between 1 and %d\033[0m\r\n\r\nEnter your choice: ", len(invites)+1)))
+		}
+	}
+}
+
+// joinTeamViaInvite handles joining an existing team via invite code
+func (s *Server) joinTeamViaInvite(channel ssh.Channel, fingerprint, email string) (string, error) {
+	channel.Write([]byte("\r\n\033[1mPlease enter your invite code:\033[0m "))
+	
+	for {
+		inviteCode, err := s.readLineFromChannel(channel)
+		if err != nil {
+			return "", err
+		}
+		
+		inviteCode = strings.TrimSpace(inviteCode)
+		if inviteCode == "" {
+			channel.Write([]byte("\r\n\033[1;31mInvite code cannot be empty\033[0m\r\n\r\nInvite code: "))
+			continue
+		}
+		
+		// Get invite from database
+		invite, err := s.getInviteByCode(inviteCode)
+		if err != nil {
+			channel.Write([]byte("\r\n\033[1;31mInvalid invite code\033[0m\r\n\r\nInvite code: "))
+			continue
+		}
+		
+		// Check if invite is still valid
+		if time.Now().After(invite.ExpiresAt) {
+			channel.Write([]byte("\r\n\033[1;31mInvite code has expired\033[0m\r\n\r\nInvite code: "))
+			continue
+		}
+		
+		// Check if invite has remaining uses
+		if invite.UsedCount >= invite.MaxUses {
+			channel.Write([]byte("\r\n\033[1;31mInvite code has been fully used\033[0m\r\n\r\nInvite code: "))
+			continue
+		}
+		
+		// Check if invite is email-specific and matches
+		if invite.Email != "" && invite.Email != email {
+			channel.Write([]byte("\r\n\033[1;31mThis invite is for a different email address\033[0m\r\n\r\nInvite code: "))
+			continue
+		}
+		
+		// Create user and add to team
+		if err := s.createUser(fingerprint, email); err != nil {
+			return "", fmt.Errorf("failed to create user: %w", err)
+		}
+		
+		if err := s.addTeamMember(fingerprint, invite.TeamName, false); err != nil {
+			return "", fmt.Errorf("failed to add to team: %w", err)
+		}
+		
+		// Use the invite
+		if err := s.useInvite(inviteCode); err != nil {
+			return "", fmt.Errorf("failed to mark invite as used: %w", err)
+		}
+		
+		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mSuccessfully joined team: %s\033[0m\r\n\r\n", invite.TeamName)))
+		return invite.TeamName, nil
+	}
+}
+
+// completeRegistration finishes the registration process without billing
+func (s *Server) completeRegistration(channel ssh.Channel, fingerprint, email, teamName string) {
+	// Clean up verification states
+	s.billingVerificationsMu.Lock()
+	delete(s.billingVerifications, fingerprint)
+	s.billingVerificationsMu.Unlock()
+	
+	// Show success message
+	channel.Write([]byte("\r\n\033[1;32m"))
+	celebrationFrames := []string{
+		"    🎉 Registration Complete! 🎉    ",
+		"    ✨ Registration Complete! ✨    ",
+		"    🌟 Registration Complete! 🌟    ",
+		"    🎊 Registration Complete! 🎊    ",
+	}
+	for i, frame := range celebrationFrames {
+		if i > 0 {
+			channel.Write([]byte("\r"))
+		}
+		channel.Write([]byte(frame))
+		time.Sleep(300 * time.Millisecond)
+	}
+	channel.Write([]byte("\033[0m\r\n\r\n"))
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1mWelcome to team \033[1;32m%s\033[0m!\033[0m\r\n\r\n", teamName)))
+	channel.Write([]byte("You now have access to:\r\n"))
+	channel.Write([]byte(fmt.Sprintf("  • Team containers at \033[1;36m<name>.%s.exe.dev\033[0m\r\n", teamName)))
+	channel.Write([]byte("  • Shared team resources and collaboration\r\n\r\n"))
+	
+	// Continue with normal shell flow
+	s.runMainShell(channel)
 }
 
 // startBillingVerification initiates the billing verification process
@@ -746,7 +996,7 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 	// Store billing verification state
 	billing := &BillingVerification{
 		PublicKeyFingerprint: fingerprint,
-		Email:                email,
+		TeamName:             teamName,
 		CompleteChan:         make(chan struct{}),
 		CreatedAt:            time.Now(),
 	}
@@ -785,18 +1035,19 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 	
 	channel.Write([]byte("\r\n\033[1;32mPayment method verified successfully!\033[0m\r\n\r\n"))
 	
-	// Create user account
-	user := &User{
-		PublicKeyFingerprint: fingerprint,
-		Email:                email,
-		TeamName:             teamName,
-		StripeCustomerID:     "", // TODO: Create actual Stripe customer
-		RegisteredAt:         time.Now(),
+	// Create user and team in database
+	if err := s.createUser(fingerprint, email); err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\nFailed to create user: %v\r\n", err)))
+		return
 	}
-	
-	s.usersMu.Lock()
-	s.users[fingerprint] = user
-	s.usersMu.Unlock()
+	if err := s.createTeam(teamName, email); err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\nFailed to create team: %v\r\n", err)))
+		return
+	}
+	if err := s.addTeamMember(fingerprint, teamName, true); err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\nFailed to add to team: %v\r\n", err)))
+		return
+	}
 	
 	// Clean up verification states
 	s.billingVerificationsMu.Lock()
@@ -892,20 +1143,17 @@ func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
 		}
 		
 		// Check if team name is available
-		s.teamNamesMu.RLock()
-		taken := s.teamNames[teamName]
-		s.teamNamesMu.RUnlock()
+		taken, err := s.isTeamNameTaken(teamName)
+		if err != nil {
+			channel.Write([]byte(fmt.Sprintf("\r\nError checking team name: %v\r\n", err)))
+			continue
+		}
 		
 		if taken {
 			channel.Write([]byte("\r\n\033[1;31mTeam name already taken\033[0m\r\n"))
 			channel.Write([]byte("\033[2;37m   Please try a different name\033[0m\r\n\r\n"))
 			continue
 		}
-		
-		// Team name is valid and available
-		s.teamNamesMu.Lock()
-		s.teamNames[teamName] = true
-		s.teamNamesMu.Unlock()
 		
 		channel.Write([]byte("\r\n\033[1;32mPerfect! Team name is available!\033[0m\r\n"))
 		channel.Write([]byte(fmt.Sprintf("\033[2;37m   Your containers: \033[1;32m<name>.%s.exe.dev\033[0m\r\n\r\n", teamName)))
@@ -996,6 +1244,140 @@ func (s *Server) Start() error {
 	return s.Stop()
 }
 
+// Database helper methods
+
+// getUserByFingerprint retrieves a user by their SSH key fingerprint
+func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
+	var user User
+	err := s.db.QueryRow(`
+		SELECT public_key_fingerprint, email, created_at 
+		FROM users 
+		WHERE public_key_fingerprint = ?`,
+		fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
+	
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &user, err
+}
+
+// getUserTeams returns all teams a user belongs to
+func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
+	rows, err := s.db.Query(`
+		SELECT user_fingerprint, team_name, is_admin, joined_at 
+		FROM team_members 
+		WHERE user_fingerprint = ?`,
+		fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var teams []TeamMember
+	for rows.Next() {
+		var tm TeamMember
+		if err := rows.Scan(&tm.UserFingerprint, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
+			return nil, err
+		}
+		teams = append(teams, tm)
+	}
+	return teams, rows.Err()
+}
+
+// createUser creates a new user
+func (s *Server) createUser(fingerprint, email string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO users (public_key_fingerprint, email) 
+		VALUES (?, ?)`,
+		fingerprint, email)
+	return err
+}
+
+// createTeam creates a new team
+func (s *Server) createTeam(name, billingEmail string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO teams (name, billing_email) 
+		VALUES (?, ?)`,
+		name, billingEmail)
+	return err
+}
+
+// addTeamMember adds a user to a team
+func (s *Server) addTeamMember(fingerprint, teamName string, isAdmin bool) error {
+	_, err := s.db.Exec(`
+		INSERT INTO team_members (user_fingerprint, team_name, is_admin) 
+		VALUES (?, ?, ?)`,
+		fingerprint, teamName, isAdmin)
+	return err
+}
+
+// isTeamNameTaken checks if a team name is already taken
+func (s *Server) isTeamNameTaken(teamName string) (bool, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE name = ?`, teamName).Scan(&count)
+	return count > 0, err
+}
+
+// createInvite creates a new team invitation
+func (s *Server) createInvite(teamName, createdByFingerprint, email string, maxUses int, expiresAt time.Time) (string, error) {
+	code := s.generateInviteCode()
+	_, err := s.db.Exec(`
+		INSERT INTO invites (code, team_name, created_by_fingerprint, email, max_uses, expires_at) 
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, code, teamName, createdByFingerprint, email, maxUses, expiresAt)
+	return code, err
+}
+
+// getInviteByCode retrieves an invite by its code
+func (s *Server) getInviteByCode(code string) (*Invite, error) {
+	var invite Invite
+	err := s.db.QueryRow(`
+		SELECT code, team_name, created_by_fingerprint, email, max_uses, used_count, expires_at, created_at
+		FROM invites WHERE code = ?
+	`, code).Scan(&invite.Code, &invite.TeamName, &invite.CreatedByFingerprint, 
+		&invite.Email, &invite.MaxUses, &invite.UsedCount, &invite.ExpiresAt, &invite.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &invite, nil
+}
+
+// useInvite increments the used count of an invite
+func (s *Server) useInvite(code string) error {
+	_, err := s.db.Exec("UPDATE invites SET used_count = used_count + 1 WHERE code = ?", code)
+	return err
+}
+
+// generateInviteCode generates a random invite code
+func (s *Server) generateInviteCode() string {
+	return s.generateRegistrationToken()[:8] // Use first 8 chars for invite codes
+}
+
+// getInvitesByEmail retrieves all invites for a specific email
+func (s *Server) getInvitesByEmail(email string) ([]Invite, error) {
+	rows, err := s.db.Query(`
+		SELECT code, team_name, created_by_fingerprint, email, max_uses, used_count, expires_at, created_at
+		FROM invites WHERE email = ?
+	`, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var invites []Invite
+	for rows.Next() {
+		var invite Invite
+		err := rows.Scan(&invite.Code, &invite.TeamName, &invite.CreatedByFingerprint,
+			&invite.Email, &invite.MaxUses, &invite.UsedCount, &invite.ExpiresAt, &invite.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		invites = append(invites, invite)
+	}
+	
+	return invites, rows.Err()
+}
+
 // Stop gracefully shuts down all servers
 func (s *Server) Stop() error {
 	s.mu.Lock()
@@ -1015,6 +1397,11 @@ func (s *Server) Stop() error {
 		if err := s.httpsServer.Shutdown(ctx); err != nil {
 			log.Printf("HTTPS server shutdown error: %v", err)
 		}
+	}
+	
+	// Close database connection
+	if s.db != nil {
+		s.db.Close()
 	}
 	
 	log.Println("Servers stopped")

@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -12,7 +13,19 @@ import (
 )
 
 func TestPublicKeyAuthentication(t *testing.T) {
-	server := NewServer(":18080", "", ":12222")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
 	
 	// Generate a test key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -41,18 +54,16 @@ func TestPublicKeyAuthentication(t *testing.T) {
 		t.Errorf("Expected fingerprint %s, got %s", fingerprint, permissions.Extensions["fingerprint"])
 	}
 	
-	// Register the user
-	user := &User{
-		PublicKeyFingerprint: fingerprint,
-		Email:                "test@example.com",
-		TeamName:             "testteam",
-		StripeCustomerID:     "cus_test123",
-		RegisteredAt:         time.Now(),
+	// Register the user and team in the database
+	if err := server.createUser(fingerprint, "test@example.com"); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
 	}
-	
-	server.usersMu.Lock()
-	server.users[fingerprint] = user
-	server.usersMu.Unlock()
+	if err := server.createTeam("testteam", "test@example.com"); err != nil {
+		t.Fatalf("Failed to create team: %v", err)
+	}
+	if err := server.addTeamMember(fingerprint, "testteam", true); err != nil {
+		t.Fatalf("Failed to add team member: %v", err)
+	}
 	
 	// Test authentication with registered key
 	permissions2, err := server.authenticatePublicKey(nil, signer.PublicKey())
@@ -70,7 +81,18 @@ func TestPublicKeyAuthentication(t *testing.T) {
 }
 
 func TestServerStartStop(t *testing.T) {
-	server := NewServer(":18081", "", ":12223")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
+	server, err := NewServer(":18081", "", ":12223", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 	
 	// Start server in a goroutine
 	errChan := make(chan error, 1)
@@ -103,7 +125,18 @@ func TestServerStartStop(t *testing.T) {
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	server := NewServer(":18082", "", ":12224")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
+	server, err := NewServer(":18082", "", ":12224", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 	
 	// Start server
 	go server.Start()
@@ -124,7 +157,18 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestEmailVerificationHTTP(t *testing.T) {
-	server := NewServer(":18083", "", ":12225")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
+	server, err := NewServer(":18083", "", ":12225", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 	
 	// Start server
 	go server.Start()
@@ -195,7 +239,19 @@ func TestBaseURLGeneration(t *testing.T) {
 	}
 	
 	for _, tt := range tests {
-		server := NewServer(tt.httpAddr, tt.httpsAddr, ":2222")
+		// Create temporary database file
+		tmpDB, err := os.CreateTemp("", "test_*.db")
+		if err != nil {
+			t.Fatalf("Failed to create temp db: %v", err)
+		}
+		defer os.Remove(tmpDB.Name())
+		tmpDB.Close()
+		
+		server, err := NewServer(tt.httpAddr, tt.httpsAddr, ":2222", tmpDB.Name())
+		if err != nil {
+			t.Fatalf("Failed to create server: %v", err)
+		}
+		defer server.Stop()
 		if server.BaseURL != tt.expected {
 			t.Errorf("BaseURL for http=%s https=%s: expected %s, got %s", 
 				tt.httpAddr, tt.httpsAddr, tt.expected, server.BaseURL)
@@ -204,15 +260,39 @@ func TestBaseURLGeneration(t *testing.T) {
 }
 
 func TestPostmarkClientInitialization(t *testing.T) {
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
 	// Test without API key (should be nil since POSTMARK_API_KEY is not set)
-	server1 := NewServer(":8080", "", ":2222")
+	server1, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server1.Stop()
 	if server1.postmarkClient != nil {
 		t.Log("Warning: Postmark client was initialized, POSTMARK_API_KEY might be set in environment")
 	}
 }
 
 func TestTokenGeneration(t *testing.T) {
-	server := NewServer(":8080", "", ":2222")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
 	
 	token1 := server.generateRegistrationToken()
 	token2 := server.generateRegistrationToken()
@@ -227,7 +307,19 @@ func TestTokenGeneration(t *testing.T) {
 }
 
 func TestEmailValidation(t *testing.T) {
-	server := NewServer(":8080", "", ":2222")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
 	
 	tests := []struct {
 		email string
@@ -251,7 +343,19 @@ func TestEmailValidation(t *testing.T) {
 }
 
 func TestTeamNameValidation(t *testing.T) {
-	server := NewServer(":8080", "", ":2222")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
 	
 	tests := []struct {
 		teamName string
@@ -282,27 +386,39 @@ func TestTeamNameValidation(t *testing.T) {
 }
 
 func TestTeamNameAvailability(t *testing.T) {
-	server := NewServer(":8080", "", ":2222")
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
 	
-	// Mark a team name as taken
-	server.teamNamesMu.Lock()
-	server.teamNames["taken"] = true
-	server.teamNamesMu.Unlock()
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
+	
+	// Create a team to mark the name as taken
+	if err := server.createTeam("taken", "test@example.com"); err != nil {
+		t.Fatalf("Failed to create team: %v", err)
+	}
 	
 	// Check that it's marked as taken
-	server.teamNamesMu.RLock()
-	isTaken := server.teamNames["taken"]
-	server.teamNamesMu.RUnlock()
-	
+	isTaken, err := server.isTeamNameTaken("taken")
+	if err != nil {
+		t.Fatalf("Failed to check if team name is taken: %v", err)
+	}
 	if !isTaken {
 		t.Error("Team name 'taken' should be marked as taken")
 	}
 	
 	// Check that a new name is available
-	server.teamNamesMu.RLock()
-	isAvailable := server.teamNames["available"]
-	server.teamNamesMu.RUnlock()
-	
+	isAvailable, err := server.isTeamNameTaken("available")
+	if err != nil {
+		t.Fatalf("Failed to check if team name is taken: %v", err)
+	}
 	if isAvailable {
 		t.Error("Team name 'available' should not be taken")
 	}

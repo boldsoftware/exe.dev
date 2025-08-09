@@ -456,9 +456,21 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 	}
 	defer term.Close()
 	
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
 	// Create a mock SSH channel using our terminal
 	mockChannel := &MockSSHChannel{term: term}
-	server := &Server{} // Empty server for method call
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
 	
 	t.Log("=== Testing readLineFromChannel behavior ===")
 	
@@ -580,8 +592,19 @@ func TestRealSSHIntegration(t *testing.T) {
 		t.Skip("Skipping SSH integration test in short mode")
 	}
 	
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+	
 	// Start our SSH server on a specific port
-	server := NewServer(":18099", "", ":12346")
+	server, err := NewServer(":18099", "", ":12346", tmpDB.Name())
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
 	
 	go func() {
 		if err := server.Start(); err != nil {
@@ -631,7 +654,7 @@ fi
 	
 	// Write the script to a temporary file
 	scriptFile := "/tmp/ssh_test_script.sh"
-	err := os.WriteFile(scriptFile, []byte(script), 0755)
+	err = os.WriteFile(scriptFile, []byte(script), 0755)
 	if err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}
