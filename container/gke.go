@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 // GKEManager implements the Manager interface using Google Kubernetes Engine
@@ -27,13 +28,20 @@ func NewGKEManager(ctx context.Context, config *Config, opts ...option.ClientOpt
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	// Create Kubernetes client using in-cluster config or default credentials
+	// Create Kubernetes client configuration
+	// First try in-cluster config (for when running in GKE)
 	k8sConfig, err := rest.InClusterConfig()
 	if err != nil {
-		// Fallback to default credentials for local development
-		k8sConfig = &rest.Config{
-			Host: fmt.Sprintf("https://container.googleapis.com/v1/projects/%s/locations/%s/clusters/%s", 
-				config.ProjectID, config.ClusterLocation, config.ClusterName),
+		// We're running outside the cluster, use kubeconfig
+		// This uses the default kubeconfig location (~/.kube/config)
+		// and the credentials from `gcloud container clusters get-credentials`
+		k8sConfig, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			clientcmd.NewDefaultClientConfigLoadingRules(),
+			&clientcmd.ConfigOverrides{},
+		).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load kubeconfig (run 'gcloud container clusters get-credentials %s --location %s --project %s'): %w", 
+				config.ClusterName, config.ClusterLocation, config.ProjectID, err)
 		}
 	}
 

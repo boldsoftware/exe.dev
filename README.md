@@ -62,47 +62,50 @@ gcloud services enable storage.googleapis.com
 ### Step 3: Create GKE Autopilot Cluster
 ```bash
 # Create the cluster (takes ~5 minutes)
-gcloud container clusters create-auto exe-autopilot \
-    --location=us-central1
+gcloud container clusters create-auto exe-autopilot --location=us-west2
 ```
 
-### Step 4: Create Service Account for Testing
+### Step 4: Authenticate and Set Permissions
 ```bash
-# Create service account
-gcloud iam service-accounts create exe-test \
-    --display-name="exe.dev Test Account"
+# Authenticate with your user account (opens browser)
+gcloud auth application-default login
 
-# Grant the 3 permissions we need
+# Grant yourself the needed permissions
 gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="serviceAccount:exe-test@PROJECT_ID.iam.gserviceaccount.com" \
+    --member="user:$(gcloud config get-value account)" \
     --role="roles/container.developer"
 
 gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="serviceAccount:exe-test@PROJECT_ID.iam.gserviceaccount.com" \
+    --member="user:$(gcloud config get-value account)" \
     --role="roles/cloudbuild.builds.editor"
 
 gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="serviceAccount:exe-test@PROJECT_ID.iam.gserviceaccount.com" \
+    --member="user:$(gcloud config get-value account)" \
     --role="roles/storage.objectAdmin"
 ```
 
-### Step 5: Create and Download Service Account Key
+### Step 5: Install GKE Auth Plugin
 ```bash
-# Create key file (this is what you'll set as env var)
-gcloud iam service-accounts keys create exe-test-key.json \
-    --iam-account=exe-test@PROJECT_ID.iam.gserviceaccount.com
-
-# This creates exe-test-key.json in your current directory
+# Install the GKE authentication plugin (required for kubectl access)
+gcloud components install gke-gcloud-auth-plugin
 ```
 
-### Step 6: Set Environment Variables
+### Step 6: Get Cluster Credentials
 ```bash
-# Set these environment variables 
-export GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
-export GOOGLE_APPLICATION_CREDENTIALS="/full/path/to/exe-test-key.json"
+# Get credentials for kubectl access (needed for tests)
+gcloud container clusters get-credentials exe-autopilot \
+    --location=us-west2 \
+    --project=PROJECT_ID
 ```
 
-### Step 7: Test It Works
+### Step 7: Set Environment Variables
+```bash
+# Set the project ID (replace with your actual project ID)
+export GOOGLE_CLOUD_PROJECT="PROJECT_ID"
+# e.g. export GOOGLE_CLOUD_PROJECT="exe-dev-468515"
+```
+
+### Step 8: Test It Works
 ```bash
 # Run the integration tests
 go test ./container/... -v
@@ -198,8 +201,8 @@ WORKDIR /home/appuser
 go test ./...
 
 # Integration tests (requires GCP setup)
+gcloud auth application-default login  # if not already done
 export GOOGLE_CLOUD_PROJECT="your-project-id"
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/key.json"
 go test ./container/... -v
 ```
 
@@ -233,11 +236,12 @@ go test ./container/... -v
 
 **Required:**
 - `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key
+
+**Authentication:** Uses Application Default Credentials via `gcloud auth application-default login`
 
 **Optional:**
 - `EXE_GKE_CLUSTER_NAME` - Cluster name (default: "exe-autopilot")  
-- `EXE_GKE_LOCATION` - Cluster location (default: "us-central1")
+- `EXE_GKE_LOCATION` - Cluster location (default: "us-west2")
 - `EXE_CONTAINER_REGISTRY` - Container registry (default: "gcr.io")
 - `EXE_NAMESPACE_PREFIX` - Namespace prefix (default: "exe-")
 
