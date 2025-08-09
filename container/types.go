@@ -1,0 +1,73 @@
+// Package container provides Google Cloud-based container management for exe.dev
+package container
+
+import (
+	"time"
+)
+
+// ContainerStatus represents the current state of a container
+type ContainerStatus string
+
+const (
+	StatusPending   ContainerStatus = "pending"
+	StatusRunning   ContainerStatus = "running"
+	StatusStopped   ContainerStatus = "stopped"
+	StatusFailed    ContainerStatus = "failed"
+	StatusBuilding  ContainerStatus = "building"
+	StatusUnknown   ContainerStatus = "unknown"
+)
+
+// Container represents a user's container instance
+type Container struct {
+	ID          string          `json:"id"`
+	UserID      string          `json:"user_id"`
+	Name        string          `json:"name"`
+	Image       string          `json:"image"`
+	Status      ContainerStatus `json:"status"`
+	CreatedAt   time.Time       `json:"created_at"`
+	StartedAt   *time.Time      `json:"started_at,omitempty"`
+	StoppedAt   *time.Time      `json:"stopped_at,omitempty"`
+	
+	// GKE-specific fields
+	Namespace   string `json:"namespace"`
+	PodName     string `json:"pod_name"`
+	PVCName     string `json:"pvc_name"`
+	
+	// Configuration
+	CPURequest    string `json:"cpu_request"`
+	MemoryRequest string `json:"memory_request"`
+	StorageSize   string `json:"storage_size"`
+	
+	// Custom build information
+	HasCustomImage bool   `json:"has_custom_image"`
+	BuildID        string `json:"build_id,omitempty"`
+}
+
+// CreateContainerRequest represents the parameters for creating a new container
+type CreateContainerRequest struct {
+	UserID      string `json:"user_id"`
+	Name        string `json:"name"`
+	Image       string `json:"image,omitempty"` // Optional, defaults to "ubuntu"
+	Dockerfile  string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
+	
+	// Resource requests (optional, will use defaults)
+	CPURequest    string `json:"cpu_request,omitempty"`
+	MemoryRequest string `json:"memory_request,omitempty"`
+	StorageSize   string `json:"storage_size,omitempty"`
+}
+
+// BuildRequest represents a request to build a custom Docker image
+type BuildRequest struct {
+	UserID     string `json:"user_id"`
+	Dockerfile string `json:"dockerfile"`
+	BuildID    string `json:"build_id"`
+}
+
+// BuildResult contains the result of a Docker image build
+type BuildResult struct {
+	BuildID   string `json:"build_id"`
+	ImageName string `json:"image_name"`
+	Status    string `json:"status"`
+	LogsURL   string `json:"logs_url,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
