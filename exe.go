@@ -475,13 +475,28 @@ func (s *Server) handleSSHShell(channel ssh.Channel, fingerprint string, registe
 
 // runMainShell runs the main container management shell
 func (s *Server) runMainShell(channel ssh.Channel) {
-	welcome := "Welcome to exe.dev!\r\n\r\nContainer Management Console\r\n============================\r\n\r\nAvailable commands:\r\n  list      - List your containers\r\n  create    - Create a new container\r\n  start     - Start a container\r\n  stop      - Stop a container\r\n  delete    - Delete a container\r\n  logs      - View container logs\r\n  help      - Show this help\r\n  exit      - Exit\r\n\r\n"
+	welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
+		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
+		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
+		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
+		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
+		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
+		"\033[1;33mContainer Management Console\033[0m\r\n\r\n" +
+		"\033[1mAvailable commands:\033[0m\r\n\r\n" +
+		"\033[1mlist\033[0m      - List your containers\r\n" +
+		"\033[1mcreate\033[0m    - Create a new container\r\n" +
+		"\033[1mstart\033[0m     - Start a container\r\n" +
+		"\033[1mstop\033[0m      - Stop a container\r\n" +
+		"\033[1mdelete\033[0m    - Delete a container\r\n" +
+		"\033[1mlogs\033[0m      - View container logs\r\n" +
+		"\033[1mhelp\033[0m      - Show this help\r\n" +
+		"\033[1mexit\033[0m      - Exit\r\n\r\n"
 	
 	channel.Write([]byte(welcome))
 	
 	// Command loop using proper line reading
 	for {
-		channel.Write([]byte("> "))
+		channel.Write([]byte("\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "))
 		command, err := s.readLineFromChannel(channel)
 		if err != nil {
 			if err.Error() == "interrupted" || err.Error() == "EOF" {
@@ -508,7 +523,19 @@ func (s *Server) runMainShell(channel ssh.Channel) {
 
 // handleRegistration manages the user registration process with email verification and billing
 func (s *Server) handleRegistration(channel ssh.Channel, fingerprint string) {
-	welcome := "Welcome to exe.dev!\r\n\r\nTo get started, we need to verify your email address.\r\n\r\nPlease enter your email address: "
+	welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
+		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
+		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
+		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
+		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
+		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
+		"\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +
+		"Let's get you set up in just a few steps:\r\n\r\n" +
+		"\033[2;37m1. Email Verification\r\n" +
+		"2. Team Setup\r\n" +
+		"3. Payment Setup\033[0m\r\n\r\n" +
+		"\033[1mTo get started, please enter your email address:\033[0m\r\n" +
+		""
 	
 	channel.Write([]byte(welcome))
 	
@@ -529,11 +556,21 @@ func (s *Server) handleRegistration(channel ssh.Channel, fingerprint string) {
 		return
 	}
 	
-	channel.Write([]byte(fmt.Sprintf("\r\nEmail: %s\r\n", email)))
+	channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mEmail confirmed:\033[0m %s\r\n", email)))
 	
 	// Start email verification flow
 	if err := s.startEmailVerification(channel, fingerprint, email); err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nError sending verification email: %v\r\n", err)))
+		// Log the error for debugging
+		log.Printf("Email verification failed for %s (fingerprint: %s): %v", email, fingerprint, err)
+		
+		// Show user-friendly error message
+		if err.Error() == "email service not configured" {
+			channel.Write([]byte("\r\nError: Email service not configured. Please contact support.\r\n"))
+		} else if strings.Contains(err.Error(), "marked as inactive") {
+			channel.Write([]byte("\r\nError: This email address cannot receive emails (blocked by email provider).\r\nPlease try a different email address.\r\n"))
+		} else {
+			channel.Write([]byte(fmt.Sprintf("\r\nError sending verification email: %v\r\n", err)))
+		}
 		return
 	}
 }
@@ -629,16 +666,22 @@ func (s *Server) startEmailVerification(channel ssh.Channel, fingerprint, email 
 		return err
 	}
 	
-	channel.Write([]byte("\r\nVerification email sent! Please check your email and click the verification link.\r\n"))
-	channel.Write([]byte("Waiting for email verification...\r\n\r\n"))
+	channel.Write([]byte("\r\n\033[1;33mVerification email sent!\033[0m Please check your email and click the verification link.\r\n"))
+	channel.Write([]byte("\r\n\033[2;37mWaiting for email verification"))
+	// Add animated dots
+	for i := 0; i < 3; i++ {
+		time.Sleep(500 * time.Millisecond)
+		channel.Write([]byte("."))
+	}
+	channel.Write([]byte("\033[0m\r\n\r\n"))
 	
 	// Wait for email verification or timeout
 	select {
 	case <-verification.CompleteChan:
-		channel.Write([]byte("\r\n✅ Email verified!\r\n\r\n"))
+		channel.Write([]byte("\r\n\033[1;32mEmail verified successfully!\033[0m\r\n\r\n"))
 		
-		// Start billing verification
-		s.startBillingVerification(channel, fingerprint, email)
+		// Start team name creation first
+		s.startTeamNameCreation(channel, fingerprint, email)
 		
 	case <-time.After(10 * time.Minute):
 		channel.Write([]byte("\r\nEmail verification timeout. Please try connecting again.\r\n"))
@@ -686,8 +729,20 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 	return err
 }
 
+// startTeamNameCreation handles team name creation after email verification
+func (s *Server) startTeamNameCreation(channel ssh.Channel, fingerprint, email string) {
+	teamName, err := s.createTeamName(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\nError creating team: %v\r\n", err)))
+		return
+	}
+	
+	// Now start billing verification with the team name
+	s.startBillingVerification(channel, fingerprint, email, teamName)
+}
+
 // startBillingVerification initiates the billing verification process
-func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, email string) {
+func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, email, teamName string) {
 	// Store billing verification state
 	billing := &BillingVerification{
 		PublicKeyFingerprint: fingerprint,
@@ -700,7 +755,14 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 	s.billingVerifications[fingerprint] = billing
 	s.billingVerificationsMu.Unlock()
 	
-	message := "Now we need to verify your billing information.\r\n\r\nPlease enter a test credit card number to verify your payment method.\r\nYou can use: 4242424242424242 (Visa test card)\r\n\r\nCredit card number: "
+	message := "\r\n\033[1;36m" +
+		"╭─────────────────────────────────────────────────╮\r\n" +
+		"│  \033[1;33mStep 3: Payment Setup\033[1;36m                      │\r\n" +
+		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n" +
+		"\033[1mLet's verify your payment method.\033[0m\r\n\r\n" +
+		"\033[2;37mFor testing, please enter the Stripe test card:\033[0m\r\n" +
+		"\033[1;33m4242424242424242\033[0m \033[2;37m(Visa test card)\033[0m\r\n\r\n" +
+		"\033[1mCredit card number:\033[0m "
 	
 	channel.Write([]byte(message))
 	
@@ -721,14 +783,7 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		return
 	}
 	
-	channel.Write([]byte("\r\n✅ Payment method verified!\r\n\r\n"))
-	
-	// Start team name creation
-	teamName, err := s.createTeamName(channel)
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nError creating team: %v\r\n", err)))
-		return
-	}
+	channel.Write([]byte("\r\n\033[1;32mPayment method verified successfully!\033[0m\r\n\r\n"))
 	
 	// Create user account
 	user := &User{
@@ -748,13 +803,40 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 	delete(s.billingVerifications, fingerprint)
 	s.billingVerificationsMu.Unlock()
 	
-	channel.Write([]byte("🎉 Registration completed! Welcome to exe.dev!\r\n\r\n"))
+	// Create celebration animation
+	channel.Write([]byte("\r\n\033[1;32m"))
+	celebrationFrames := []string{
+		"   Registration completed!   ",
+		"  * Registration completed! *  ",
+		" *** Registration completed! *** ",
+	}
+	
+	for i := 0; i < 2; i++ {
+		for _, frame := range celebrationFrames {
+			channel.Write([]byte("\r" + frame))
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+	
+	channel.Write([]byte("\033[0m\r\n\r\n"))
+	channel.Write([]byte("\033[1;36m" +
+		"╔══════════════════════════════════════════════════════════════╗\r\n" +
+		"║                                                              ║\r\n" +
+		"║               \033[1;32mWelcome to exe.dev!\033[1;36m                     ║\r\n" +
+		"║                                                              ║\r\n" +
+		"║  \033[1;37mYour account is now ready! You can:\033[1;36m                     ║\r\n" +
+		"║                                                              ║\r\n" +
+		"║  \033[37m• Create and manage containers\033[1;36m                          ║\r\n" +
+		"║  \033[37m• Deploy applications with persistent storage\033[1;36m           ║\r\n" +
+		"║  \033[37m• Access your containers anytime via SSH\033[1;36m               ║\r\n" +
+		"║                                                              ║\r\n" +
+		"╚══════════════════════════════════════════════════════════════╝\033[0m\r\n\r\n"))
 	
 	// Continue with normal shell flow
 	s.runMainShell(channel)
 }
 
-// verifyPaymentMethod verifies a payment method with Stripe
+// verifyPaymentMethod verifies a payment method with Stripe using test tokens
 func (s *Server) verifyPaymentMethod(cardNumber string) error {
 	// Remove spaces from card number
 	cardNumber = strings.ReplaceAll(cardNumber, " ", "")
@@ -764,32 +846,34 @@ func (s *Server) verifyPaymentMethod(cardNumber string) error {
 		return fmt.Errorf("invalid card number. Please use the test card: 4242424242424242")
 	}
 	
-	// Create a payment method with Stripe (simplified)
-	params := &stripe.PaymentMethodParams{
-		Type: stripe.String(string(stripe.PaymentMethodTypeCard)),
-		Card: &stripe.PaymentMethodCardParams{
-			Number:   stripe.String(cardNumber),
-			ExpMonth: stripe.Int64(12),
-			ExpYear:  stripe.Int64(2025),
-			CVC:      stripe.String("123"),
-		},
+	// Use a test payment method token instead of raw card data
+	// This is a pre-created test payment method token from Stripe
+	testPaymentMethodToken := "pm_card_visa" // Stripe test token for Visa
+	
+	// Try to retrieve the test payment method to verify it exists
+	pm, err := paymentmethod.Get(testPaymentMethodToken, nil)
+	if err != nil {
+		return fmt.Errorf("payment method verification failed: %w", err)
 	}
 	
-	_, err := paymentmethod.New(params)
-	if err != nil {
-		return fmt.Errorf("payment method creation failed: %w", err)
-	}
+	// Log successful verification (but don't expose sensitive details)
+	log.Printf("Payment method verified successfully: type=%s, last4=%s", pm.Type, pm.Card.Last4)
 	
 	return nil
 }
 
 // createTeamName handles team name creation with simple validation
 func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
-	channel.Write([]byte("Now let's create your team name.\r\n\r\n"))
-	channel.Write([]byte("By default, containers will start as <name>.<team>.exe.dev\r\n\r\n"))
+	channel.Write([]byte("\r\n\033[1;36m" +
+		"╭─────────────────────────────────────────────────╮\r\n" +
+		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
+		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n"))
+	
+	channel.Write([]byte("\033[1mNow let's create your team name.\033[0m\r\n\r\n"))
+	channel.Write([]byte("\033[2;37mYour containers will be available at: \033[1;32m<name>.<team>.exe.dev\033[0m\r\n\r\n"))
 	
 	for {
-		channel.Write([]byte("Team name: "))
+		channel.Write([]byte("\033[1mTeam name:\033[0m "))
 		
 		teamName, err := s.readLineFromChannel(channel)
 		if err != nil {
@@ -802,7 +886,8 @@ func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
 		
 		// Validate team name
 		if !s.isValidTeamName(teamName) {
-			channel.Write([]byte("❌ Invalid team name (must be 3-20 lowercase letters/numbers/hyphens)\r\n\r\n"))
+			channel.Write([]byte("\r\n\033[1;31mInvalid team name\033[0m\r\n"))
+			channel.Write([]byte("\033[2;37m   Requirements: 3-20 characters, lowercase letters/numbers/hyphens only\033[0m\r\n\r\n"))
 			continue
 		}
 		
@@ -812,7 +897,8 @@ func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
 		s.teamNamesMu.RUnlock()
 		
 		if taken {
-			channel.Write([]byte("❌ Team name already taken\r\n\r\n"))
+			channel.Write([]byte("\r\n\033[1;31mTeam name already taken\033[0m\r\n"))
+			channel.Write([]byte("\033[2;37m   Please try a different name\033[0m\r\n\r\n"))
 			continue
 		}
 		
@@ -821,8 +907,8 @@ func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
 		s.teamNames[teamName] = true
 		s.teamNamesMu.Unlock()
 		
-		channel.Write([]byte("✅ Team name available!\r\n"))
-		channel.Write([]byte(fmt.Sprintf("Your containers will be available at: <name>.%s.exe.dev\r\n\r\n", teamName)))
+		channel.Write([]byte("\r\n\033[1;32mPerfect! Team name is available!\033[0m\r\n"))
+		channel.Write([]byte(fmt.Sprintf("\033[2;37m   Your containers: \033[1;32m<name>.%s.exe.dev\033[0m\r\n\r\n", teamName)))
 		
 		return teamName, nil
 	}

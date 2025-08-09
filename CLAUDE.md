@@ -1,3 +1,4 @@
+- when changing code, always run `go test ./...` and fix any errors
 - this git repository implements the exe.dev service
 - exe.dev is a service users can use to start containers with persistent disks
 - containers are spun up on GKE autopilot + PVC
