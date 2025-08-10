@@ -454,8 +454,22 @@ func (m *GKEManager) StartContainer(ctx context.Context, userID, containerID str
 }
 
 func (m *GKEManager) StopContainer(ctx context.Context, userID, containerID string) error {
-	// TODO: Implement stopping a running container
-	return fmt.Errorf("not implemented yet")
+	container, err := m.GetContainer(ctx, userID, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to get container: %w", err)
+	}
+	
+	if container.Status != StatusRunning {
+		return fmt.Errorf("container is not running (status: %s)", container.Status)
+	}
+	
+	// Delete the pod to stop the container
+	err = m.k8sClient.CoreV1().Pods(container.Namespace).Delete(ctx, container.PodName, metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to delete pod: %w", err)
+	}
+	
+	return nil
 }
 
 func (m *GKEManager) DeleteContainer(ctx context.Context, userID, containerID string) error {
