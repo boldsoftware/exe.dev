@@ -135,7 +135,7 @@ func TestSignupFlowAuthentication(t *testing.T) {
 		}
 
 		// Should contain success message
-		if !strings.Contains(output, "created successfully") {
+		if !strings.Contains(output, "is ready!") {
 			t.Error("Create command should succeed after registration")
 		}
 

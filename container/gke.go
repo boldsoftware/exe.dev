@@ -184,9 +184,10 @@ func (m *GKEManager) createPVC(ctx context.Context, container *Container) error 
 			Name:      container.PVCName,
 			Namespace: container.Namespace,
 			Labels: map[string]string{
-				"app":         "exe-container",
-				"container-id": m.shortenForLabel(container.ID),
-				"user-id":     m.shortenForLabel(container.UserID),
+				"app":            "exe-container",
+				"container-id":   m.shortenForLabel(container.ID),
+				"user-id":        m.shortenForLabel(container.UserID),
+				"container-name": container.Name,
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -216,9 +217,10 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container) error 
 			Name:      container.PodName,
 			Namespace: container.Namespace,
 			Labels: map[string]string{
-				"app":         "exe-container",
-				"container-id": m.shortenForLabel(container.ID),
-				"user-id":     m.shortenForLabel(container.UserID),
+				"app":            "exe-container",
+				"container-id":   m.shortenForLabel(container.ID),
+				"user-id":        m.shortenForLabel(container.UserID),
+				"container-name": container.Name,
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -276,12 +278,18 @@ func (m *GKEManager) getUserNamespace(userID string) string {
 	return m.config.NamespacePrefix + hash
 }
 
-// generateContainerID creates a unique container ID
+// generateContainerID creates a unique container ID (shortened for Kubernetes)
 func generateContainerID(userID, name string) string {
-	// Simple implementation - in production you might want UUIDs
+	// Create a short hash of userID to keep it under Kubernetes limits
+	hasher := sha256.New()
+	hasher.Write([]byte(userID))
+	userHash := fmt.Sprintf("%x", hasher.Sum(nil))[:8] // First 8 chars of hash
+	
 	sanitized := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 	timestamp := time.Now().Unix()
-	return fmt.Sprintf("%s-%s-%d", userID, sanitized, timestamp)
+	
+	// Format: userhash-name-timestamp (should be under 63 chars)
+	return fmt.Sprintf("%s-%s-%d", userHash, sanitized, timestamp)
 }
 
 // extractContainerNameFromID extracts the container name from a container ID
@@ -418,7 +426,7 @@ func (m *GKEManager) ListContainers(ctx context.Context, userID string) ([]*Cont
 		container := &Container{
 			ID:        containerID,
 			UserID:    userID,
-			Name:      extractContainerNameFromID(containerID), // Extract name from ID
+			Name:      pod.Labels["container-name"], // Get name from label
 			Image:     pod.Spec.Containers[0].Image,
 			Status:    status,
 			Namespace: namespace,
@@ -551,4 +559,77 @@ func (m *GKEManager) ExecuteInContainer(ctx context.Context, userID, containerID
 		Stderr: stderr,
 		Tty:    true,
 	})
+}
+
+// GetContainerDiagnostics returns diagnostic information for a stuck container
+func (m *GKEManager) GetContainerDiagnostics(ctx context.Context, userID, containerName string) (string, error) {
+	namespace := m.getUserNamespace(userID)
+	
+	var diagnostics []string
+	diagnostics = append(diagnostics, fmt.Sprintf("=== Diagnostics for container '%s' ===", containerName))
+	
+	// Get pods with the container-name label
+	podList, err := m.k8sClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("container-name=%s", containerName),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to list pods: %w", err)
+	}
+	
+	if len(podList.Items) == 0 {
+		diagnostics = append(diagnostics, "No pods found for this container")
+		return strings.Join(diagnostics, "\n"), nil
+	}
+	
+	for _, pod := range podList.Items {
+		diagnostics = append(diagnostics, fmt.Sprintf("\nPod: %s", pod.Name))
+		diagnostics = append(diagnostics, fmt.Sprintf("Status: %s", pod.Status.Phase))
+		
+		// Get pod events
+		events, err := m.k8sClient.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s", pod.Name),
+		})
+		if err == nil && len(events.Items) > 0 {
+			diagnostics = append(diagnostics, "\nRecent Events:")
+			for _, event := range events.Items {
+				if event.Type == "Warning" {
+					diagnostics = append(diagnostics, fmt.Sprintf("  WARNING: %s - %s", event.Reason, event.Message))
+				}
+			}
+		}
+		
+		// Check PVC if pod is stuck
+		if pod.Status.Phase == "Pending" {
+			for _, volume := range pod.Spec.Volumes {
+				if volume.PersistentVolumeClaim != nil {
+					pvcName := volume.PersistentVolumeClaim.ClaimName
+					pvc, err := m.k8sClient.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvcName, metav1.GetOptions{})
+					if err == nil {
+						diagnostics = append(diagnostics, fmt.Sprintf("\nPVC: %s", pvcName))
+						diagnostics = append(diagnostics, fmt.Sprintf("PVC Status: %s", pvc.Status.Phase))
+						
+						// Get PVC events
+						pvcEvents, err := m.k8sClient.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+							FieldSelector: fmt.Sprintf("involvedObject.name=%s", pvcName),
+						})
+						if err == nil && len(pvcEvents.Items) > 0 {
+							diagnostics = append(diagnostics, "PVC Events:")
+							// Only show the most recent warning of each type to avoid spam
+							seenReasons := make(map[string]bool)
+							// Process events in reverse order to get most recent first
+							for i := len(pvcEvents.Items) - 1; i >= 0; i-- {
+								event := pvcEvents.Items[i]
+								if event.Type == "Warning" && !seenReasons[event.Reason] {
+									diagnostics = append(diagnostics, fmt.Sprintf("  WARNING: %s - %s", event.Reason, event.Message))
+									seenReasons[event.Reason] = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	return strings.Join(diagnostics, "\n"), nil
 }

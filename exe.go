@@ -932,7 +932,73 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte(fmt.Sprintf("\033[1;33mWarning: Failed to store container info: %v\033[0m\r\n", err)))
 	}
 	
-	channel.Write([]byte(fmt.Sprintf("\033[1;32mContainer \033[1m%s\033[0;32m created successfully!\033[0m\r\n", containerName)))
+	// Wait for container to be running
+	channel.Write([]byte("Waiting for container to start"))
+	
+	maxWaitTime := 3 * time.Minute
+	checkInterval := 2 * time.Second
+	startTime := time.Now()
+	
+	for time.Since(startTime) < maxWaitTime {
+		// Check container status
+		containers, err := s.containerManager.ListContainers(context.Background(), fingerprint)
+		if err != nil {
+			channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mError checking container status: %v\033[0m\r\n", err)))
+			return
+		}
+		
+		// Find our container
+		var containerStatus container.ContainerStatus
+		var containerFound bool
+		for _, c := range containers {
+			if c.Name == containerName {
+				containerStatus = c.Status
+				containerFound = true
+				break
+			}
+		}
+		
+		if containerFound && containerStatus == container.StatusRunning {
+			channel.Write([]byte("\r\n"))
+			break
+		} else if containerFound && containerStatus == container.StatusFailed {
+			channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mContainer failed to start (status: %s)\033[0m\r\n", containerStatus)))
+			return
+		}
+		
+		// If container is stuck pending for too long, get diagnostics
+		if containerFound && containerStatus == container.StatusPending && time.Since(startTime) > 30*time.Second {
+			// Only check diagnostics every 30 seconds to avoid spam
+			if int(time.Since(startTime).Seconds())%30 == 0 {
+				if diagnostics, err := s.containerManager.GetContainerDiagnostics(context.Background(), fingerprint, containerName); err == nil {
+					// Log the full diagnostics for ops
+					log.Printf("CONTAINER_STUCK: %s", diagnostics)
+					
+					// Check for specific quota errors
+					if strings.Contains(diagnostics, "QUOTA_EXCEEDED") {
+						channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mContainer creation failed: GCP disk quota exceeded\033[0m\r\n")))
+						channel.Write([]byte("Please contact support or try again later.\r\n"))
+						return
+					} else if strings.Contains(diagnostics, "Insufficient memory") {
+						channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mContainer creation failed: Insufficient cluster memory\033[0m\r\n")))
+						channel.Write([]byte("Please try again later when resources are available.\r\n"))
+						return
+					}
+				}
+			}
+		}
+		
+		// Show progress
+		channel.Write([]byte("."))
+		time.Sleep(checkInterval)
+	}
+	
+	// Check if we timed out
+	if time.Since(startTime) >= maxWaitTime {
+		channel.Write([]byte("\r\n\033[1;33mContainer creation timed out, but it may still be starting in the background.\033[0m\r\n"))
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1;32mContainer \033[1m%s\033[0;32m is ready!\033[0m\r\n", containerName)))
 	channel.Write([]byte(fmt.Sprintf("Access it with: \033[1mssh %s\033[0m\r\n", containerName)))
 	channel.Write([]byte(fmt.Sprintf("External access: \033[1mssh %s@%s\033[0m\r\n", containerName, "exe.dev")))
 }

@@ -27,6 +27,9 @@ type Manager interface {
 	
 	// Cleanup and maintenance
 	Close() error
+	
+	// Diagnostics
+	GetContainerDiagnostics(ctx context.Context, userID, containerName string) (string, error)
 }
 
 // Config holds the configuration for the container manager
@@ -53,13 +56,13 @@ type Config struct {
 func DefaultConfig(projectID string) *Config {
 	return &Config{
 		ProjectID:            projectID,
-		Region:               "us-central1",
-		ClusterName:          "exe-autopilot",
-		ClusterLocation:      "us-central1",
+		Region:               "us-west2",
+		ClusterName:          "exe-autopilot-v2",
+		ClusterLocation:      "us-west2",
 		RegistryHost:         "gcr.io",
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi", 
-		DefaultStorageSize:   "10Gi",
+		DefaultStorageSize:   "1Gi",
 		NamespacePrefix:      "exe-",
 	}
 }

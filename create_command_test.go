@@ -71,7 +71,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			name:         "valid container name", 
 			args:         []string{"mycontainer"},
 			expectError:  false,
-			expectOutput: []string{"Creating container", "mycontainer", "created successfully", "Access it with: ssh mycontainer"},
+			expectOutput: []string{"Creating container", "mycontainer", "is ready!", "Access it with: ssh mycontainer"},
 		},
 		{
 			name:         "duplicate container name",
@@ -321,7 +321,7 @@ func TestCreateCommandIntegration(t *testing.T) {
 	// Verify success message in output
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "created successfully") {
+	if !strings.Contains(output, "is ready!") {
 		t.Errorf("Expected success message in output, got: %s", output)
 	}
 
