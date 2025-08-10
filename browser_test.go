@@ -91,7 +91,7 @@ func TestBrowserScenario(t *testing.T) {
 
 	// Start HTTP server in background
 	go func() {
-		server.ServeHTTP(nil, nil) // This starts the HTTP server
+		server.Start() // This starts all servers (HTTP, HTTPS, SSH)
 	}()
 
 	// Give server time to start
