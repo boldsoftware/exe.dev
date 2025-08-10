@@ -75,7 +75,13 @@ func (fs *ContainerFS) resolvePath(sftpPath string) (string, error) {
 			containerPath = sftpPath
 		} else {
 			// Strip leading slash and jail to rootDir
-			containerPath = filepath.Join(fs.rootDir, strings.TrimPrefix(sftpPath, "/"))
+			stripped := strings.TrimPrefix(sftpPath, "/")
+			if stripped == "" {
+				// Special case: "/" path should be treated like "~"
+				containerPath = fs.rootDir
+			} else {
+				containerPath = filepath.Join(fs.rootDir, stripped)
+			}
 		}
 	}
 
@@ -311,6 +317,14 @@ func (fs *ContainerFS) Filewrite(req *sftp.Request) (io.WriterAt, error) {
 	containerPath, err := fs.resolvePath(req.Filepath)
 	if err != nil {
 		return nil, err
+	}
+	
+	// Modern OpenSSH scp with SFTP has a bug: when uploading to "~", 
+	// it sends "/" as the path instead of the full filename.
+	// We reject this as it's incorrect - the client should send the full path.
+	if containerPath == fs.rootDir {
+		// Return a proper SFTP error that scp will understand
+		return nil, os.ErrInvalid
 	}
 
 	// Create atomic temp file for writes

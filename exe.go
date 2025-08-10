@@ -2227,11 +2227,9 @@ func (s *Server) handleSCPTargetMode(channel ssh.Channel, args []string, machine
 	stderrStr := stderrBuf.String()
 	
 	// If we see the mock's "Executed:" output, scp command isn't available
-	if strings.Contains(stdoutStr, "Executed:") {
-		// Container doesn't have scp - send proper SCP protocol error to stderr
-		channel.Stderr().Write([]byte("scp: /usr/bin/scp: No such file or directory\n"))
-		channel.Stderr().Write([]byte("Install openssh-client: apt-get install openssh-client\n"))
-		return 1 // Return error status as SCP failed
+	if strings.Contains(stdoutStr, "Executed:") || (err != nil && strings.Contains(err.Error(), "not found")) {
+		// Container doesn't have scp - fall back to native SCP implementation
+		return s.handleNativeSCPTarget(channel, args, machine)
 	}
 	
 	if err != nil {
@@ -2249,6 +2247,193 @@ func (s *Server) handleSCPTargetMode(channel ssh.Channel, args []string, machine
 	}
 	
 	return 0
+}
+
+// handleNativeSCPTarget implements native SCP target mode (upload) using our SFTP filesystem
+func (s *Server) handleNativeSCPTarget(channel ssh.Channel, args []string, machine *Machine) int {
+	if machine.ContainerID == nil {
+		channel.Stderr().Write([]byte("scp: machine not running\n"))
+		return 1
+	}
+
+	if len(args) == 0 {
+		channel.Stderr().Write([]byte("scp: missing destination\n"))
+		return 1
+	}
+
+	// Parse destination path - SCP uses the last argument as destination
+	destPath := args[len(args)-1]
+	
+	// Resolve destination path (handle ~ for home directory)
+	if destPath == "~" || destPath == "" {
+		destPath = "/workspace"
+	} else if strings.HasPrefix(destPath, "~/") {
+		destPath = "/workspace" + strings.TrimPrefix(destPath, "~")
+	} else if !strings.HasPrefix(destPath, "/") {
+		destPath = "/workspace/" + destPath
+	}
+
+	// Create container filesystem interface
+	containerFS := NewContainerFS(
+		s.containerManager,
+		machine.CreatedByFingerprint,
+		*machine.ContainerID,
+		"/workspace",
+	)
+
+	// Implement SCP target protocol
+	// SCP protocol: client sends files, server acknowledges
+	
+	// Send OK to start protocol
+	_, err := channel.Write([]byte{0}) // 0 = OK
+	if err != nil {
+		return 1
+	}
+
+	// Read SCP protocol messages from client
+	buffer := make([]byte, 4096)
+	for {
+		n, err := channel.Read(buffer)
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			return 1
+		}
+
+		if n == 0 {
+			continue
+		}
+
+		message := string(buffer[:n])
+		
+		// Parse SCP protocol message
+		if strings.HasPrefix(message, "C") {
+			// File copy message: C<mode> <length> <filename>\n<data>
+			err = s.handleSCPFileTransfer(channel, message, destPath, containerFS)
+			if err != nil {
+				channel.Stderr().Write([]byte(fmt.Sprintf("scp: %v\n", err)))
+				return 1
+			}
+		} else if strings.HasPrefix(message, "D") {
+			// Directory message: D<mode> <length> <dirname>\n
+			err = s.handleSCPDirectoryTransfer(channel, message, destPath, containerFS)
+			if err != nil {
+				channel.Stderr().Write([]byte(fmt.Sprintf("scp: %v\n", err)))
+				return 1
+			}
+		} else if strings.HasPrefix(message, "E") {
+			// End directory
+			channel.Write([]byte{0}) // OK
+		} else {
+			// Unknown message
+			channel.Write([]byte{1}) // Error
+			return 1
+		}
+	}
+
+	return 0
+}
+
+// handleSCPFileTransfer handles a single file transfer in SCP protocol
+func (s *Server) handleSCPFileTransfer(channel ssh.Channel, message, destPath string, containerFS *ContainerFS) error {
+	// Parse: C0644 <length> <filename>\n
+	parts := strings.SplitN(message, " ", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid SCP file message")
+	}
+
+	// Extract filename from the message (after second space, before newline)
+	filenameAndData := parts[2]
+	newlinePos := strings.Index(filenameAndData, "\n")
+	if newlinePos == -1 {
+		return fmt.Errorf("invalid SCP file message format")
+	}
+	
+	filename := filenameAndData[:newlinePos]
+	fileData := filenameAndData[newlinePos+1:]
+
+	// Create target file path
+	var targetPath string
+	if strings.HasSuffix(destPath, "/") || destPath == "/workspace" {
+		targetPath = destPath + "/" + filename
+	} else {
+		targetPath = destPath
+	}
+
+	// Clean path
+	targetPath = strings.ReplaceAll(targetPath, "//", "/")
+
+	// Convert to SFTP path (remove /workspace prefix for SFTP)
+	sftpPath := strings.TrimPrefix(targetPath, "/workspace")
+	if sftpPath == "" || sftpPath[0] != '/' {
+		sftpPath = "/" + sftpPath
+	}
+
+	// Create file using SFTP filesystem
+	writer, err := containerFS.Filewrite(&sftp.Request{
+		Method:   "Put",
+		Filepath: sftpPath,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create file: %v", err)
+	}
+
+	// Write file data
+	_, err = writer.WriteAt([]byte(fileData), 0)
+	if err != nil {
+		return fmt.Errorf("failed to write file data: %v", err)
+	}
+
+	// Close file (this triggers the atomic commit)
+	if closer, ok := writer.(io.Closer); ok {
+		err = closer.Close()
+		if err != nil {
+			return fmt.Errorf("failed to close file: %v", err)
+		}
+	}
+
+	// Send OK response
+	channel.Write([]byte{0})
+	return nil
+}
+
+// handleSCPDirectoryTransfer handles directory creation in SCP protocol  
+func (s *Server) handleSCPDirectoryTransfer(channel ssh.Channel, message, destPath string, containerFS *ContainerFS) error {
+	// Parse: D0755 <length> <dirname>\n
+	parts := strings.SplitN(message, " ", 3)
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid SCP directory message")
+	}
+
+	dirname := strings.TrimSpace(parts[2])
+	if newlinePos := strings.Index(dirname, "\n"); newlinePos != -1 {
+		dirname = dirname[:newlinePos]
+	}
+
+	// Create target directory path
+	var targetPath string
+	if strings.HasSuffix(destPath, "/") {
+		targetPath = destPath + dirname
+	} else {
+		targetPath = destPath + "/" + dirname
+	}
+
+	// Convert to SFTP path
+	sftpPath := strings.TrimPrefix(targetPath, "/workspace")
+	if sftpPath == "" || sftpPath[0] != '/' {
+		sftpPath = "/" + sftpPath
+	}
+
+	// Create directory
+	err := containerFS.Mkdir(sftpPath, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create directory: %v", err)
+	}
+
+	// Send OK response
+	channel.Write([]byte{0})
+	return nil
 }
 
 // handleSCPSourceMode handles 'scp -f' (sending files from the container)
