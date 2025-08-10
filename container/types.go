@@ -71,3 +71,10 @@ type BuildResult struct {
 	LogsURL   string `json:"logs_url,omitempty"`
 	Error     string `json:"error,omitempty"`
 }
+
+// ContainerConnection represents an active connection to a container
+type ContainerConnection struct {
+	Container  *Container `json:"container"`
+	LocalPort  int        `json:"local_port"`
+	StopFunc   func()     `json:"-"` // Function to stop the port-forward
+}

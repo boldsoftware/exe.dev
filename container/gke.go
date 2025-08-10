@@ -2,7 +2,10 @@ package container
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -12,14 +15,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 // GKEManager implements the Manager interface using Google Kubernetes Engine
 type GKEManager struct {
 	config    *Config
 	k8sClient kubernetes.Interface
+	k8sConfig *rest.Config
 }
 
 // NewGKEManager creates a new GKE-based container manager
@@ -53,6 +59,7 @@ func NewGKEManager(ctx context.Context, config *Config, opts ...option.ClientOpt
 	return &GKEManager{
 		config:    config,
 		k8sClient: k8sClient,
+		k8sConfig: k8sConfig,
 	}, nil
 }
 
@@ -260,9 +267,13 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container) error 
 
 // getUserNamespace returns the Kubernetes namespace for a user
 func (m *GKEManager) getUserNamespace(userID string) string {
-	// Sanitize user ID for Kubernetes namespace naming
-	sanitized := strings.ToLower(strings.ReplaceAll(userID, ".", "-"))
-	return m.config.NamespacePrefix + sanitized
+	// Create a short hash of the userID to stay within Kubernetes 63-character limit
+	// NamespacePrefix is "exe-" (4 chars) + hash (16 chars) = 20 chars total, well within limit
+	hasher := sha256.New()
+	hasher.Write([]byte(userID))
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))[:16] // Take first 16 chars of hex
+	
+	return m.config.NamespacePrefix + hash
 }
 
 // generateContainerID creates a unique container ID
@@ -355,4 +366,74 @@ func (m *GKEManager) DeleteContainer(ctx context.Context, userID, containerID st
 func (m *GKEManager) GetContainerLogs(ctx context.Context, userID, containerID string, lines int) ([]string, error) {
 	// TODO: Implement getting container logs
 	return nil, fmt.Errorf("not implemented yet")
+}
+
+// ConnectToContainer establishes a port-forward connection to a container for SSH access
+func (m *GKEManager) ConnectToContainer(ctx context.Context, userID, containerID string) (*ContainerConnection, error) {
+	// Get the container first to verify it exists and is running
+	container, err := m.GetContainer(ctx, userID, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get container: %w", err)
+	}
+	
+	if container.Status != StatusRunning {
+		return nil, fmt.Errorf("container is not running (status: %s)", container.Status)
+	}
+	
+	// For now, return a basic connection that indicates SSH should be done via kubectl exec
+	// In a full implementation, we'd set up port-forwarding to port 22 in the container
+	// but since our containers don't necessarily have SSH servers, we'll use kubectl exec instead
+	conn := &ContainerConnection{
+		Container: container,
+		LocalPort: 0, // Not using port-forwarding for kubectl exec
+		StopFunc:  func() {}, // No cleanup needed for exec
+	}
+	
+	return conn, nil
+}
+
+// ExecuteInContainer executes a command inside a running container
+func (m *GKEManager) ExecuteInContainer(ctx context.Context, userID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	container, err := m.GetContainer(ctx, userID, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to get container: %w", err)
+	}
+	
+	if container.Status != StatusRunning {
+		return fmt.Errorf("container is not running (status: %s)", container.Status)
+	}
+	
+	// Create the exec request
+	req := m.k8sClient.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(container.PodName).
+		Namespace(container.Namespace).
+		SubResource("exec")
+	
+	option := &corev1.PodExecOptions{
+		Command: cmd,
+		Stdin:   stdin != nil,
+		Stdout:  stdout != nil,
+		Stderr:  stderr != nil,
+		TTY:     true,
+	}
+	
+	req.VersionedParams(
+		option,
+		scheme.ParameterCodec,
+	)
+	
+	// Create the remote command executor
+	exec, err := remotecommand.NewSPDYExecutor(m.k8sConfig, http.MethodPost, req.URL())
+	if err != nil {
+		return fmt.Errorf("failed to create executor: %w", err)
+	}
+	
+	// Execute the command with streaming
+	return exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+		Stdin:  stdin,
+		Stdout: stdout,
+		Stderr: stderr,
+		Tty:    true,
+	})
 }

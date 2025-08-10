@@ -21,7 +21,7 @@ func TestPublicKeyAuthentication(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name())
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestServerStartStop(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":18081", "", ":12223", tmpDB.Name())
+	server, err := NewServer(":18081", "", ":12223", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestHealthEndpoint(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":18082", "", ":12224", tmpDB.Name())
+	server, err := NewServer(":18082", "", ":12224", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":18083", "", ":12225", tmpDB.Name())
+	server, err := NewServer(":18083", "", ":12225", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestBaseURLGeneration(t *testing.T) {
 		defer os.Remove(tmpDB.Name())
 		tmpDB.Close()
 		
-		server, err := NewServer(tt.httpAddr, tt.httpsAddr, ":2222", tmpDB.Name())
+		server, err := NewServer(tt.httpAddr, tt.httpsAddr, ":2222", tmpDB.Name(), true, "")
 		if err != nil {
 			t.Fatalf("Failed to create server: %v", err)
 		}
@@ -269,7 +269,7 @@ func TestPostmarkClientInitialization(t *testing.T) {
 	tmpDB.Close()
 	
 	// Test without API key (should be nil since POSTMARK_API_KEY is not set)
-	server1, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	server1, err := NewServer(":8080", "", ":2222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestTokenGeneration(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestEmailValidation(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestTeamNameValidation(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestTeamNameAvailability(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 	
-	server, err := NewServer(":8080", "", ":2222", tmpDB.Name())
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

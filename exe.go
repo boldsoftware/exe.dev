@@ -29,6 +29,8 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
+	
+	"exe.dev/container"
 )
 
 //go:embed exe_schema.sql
@@ -64,8 +66,10 @@ type Machine struct {
 	Name                 string
 	Status               string
 	Image                string
+	ContainerID          *string
 	CreatedByFingerprint string
 	CreatedAt            time.Time
+	UpdatedAt            time.Time
 	LastStartedAt        *time.Time
 }
 
@@ -98,6 +102,15 @@ type BillingVerification struct {
 	CreatedAt            time.Time
 }
 
+// UserSession represents an active SSH user session
+type UserSession struct {
+	Fingerprint string
+	Email       string
+	TeamName    string
+	IsAdmin     bool
+	CreatedAt   time.Time
+}
+
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
 	httpAddr  string
@@ -113,22 +126,30 @@ type Server struct {
 	// Database
 	db *sql.DB
 	
+	// Container management
+	containerManager container.Manager
+	
 	// In-memory state for active sessions (these don't need persistence)
 	emailVerificationsMu    sync.RWMutex
 	emailVerifications      map[string]*EmailVerification // token -> email verification
 	billingVerificationsMu  sync.RWMutex
 	billingVerifications    map[string]*BillingVerification // fingerprint -> billing verification
 	
+	// User sessions for tracking authenticated users
+	sessionsMu              sync.RWMutex
+	sessions                map[ssh.Channel]*UserSession // channel -> user session
+	
 	// Email and billing services
 	postmarkClient *postmark.Client
 	stripeKey      string
+	devMode        bool // Development mode - log instead of sending emails
 	
 	mu       sync.RWMutex
 	stopping bool
 }
 
-// NewServer creates a new Server instance with database
-func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string) (*Server, error) {
+// NewServer creates a new Server instance with database and container management
+func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpProjectID string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -174,16 +195,33 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string) (*Server, error) {
 		}
 	}
 	
+	// Initialize container manager if GCP project is provided
+	var containerManager container.Manager
+	if gcpProjectID != "" {
+		config := container.DefaultConfig(gcpProjectID)
+		containerManager, err = container.NewGKEManager(context.Background(), config)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize container manager: %v", err)
+			log.Printf("Container functionality will be disabled")
+			containerManager = nil
+		} else {
+			log.Printf("Container management enabled for GCP project: %s", gcpProjectID)
+		}
+	}
+	
 	s := &Server{
 		httpAddr:             httpAddr,
 		httpsAddr:            httpsAddr,
 		sshAddr:              sshAddr,
 		BaseURL:              baseURL,
 		db:                   db,
+		containerManager:     containerManager,
 		emailVerifications:   make(map[string]*EmailVerification),
 		billingVerifications: make(map[string]*BillingVerification),
+		sessions:             make(map[ssh.Channel]*UserSession),
 		postmarkClient:       postmarkClient,
 		stripeKey:            stripeKey,
+		devMode:              devMode,
 	}
 	
 	s.setupHTTPServer()
@@ -541,6 +579,26 @@ func (s *Server) handleSSHShell(channel ssh.Channel, fingerprint string, registe
 		return
 	}
 	
+	// Create user session for registered users
+	user, err := s.getUserByFingerprint(fingerprint)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("Error retrieving user info: %v\r\n", err)))
+		return
+	}
+	
+	teams, err := s.getUserTeams(fingerprint)
+	if err != nil || len(teams) == 0 {
+		channel.Write([]byte("Error: User not associated with any team\r\n"))
+		return
+	}
+	
+	// Use the first team (users can be members of multiple teams)
+	team := teams[0]
+	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+	
+	// Clean up session when connection closes
+	defer s.removeUserSession(channel)
+	
 	s.runMainShell(channel)
 }
 
@@ -554,14 +612,15 @@ func (s *Server) runMainShell(channel ssh.Channel) {
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
 		"\033[1;33mContainer Management Console\033[0m\r\n\r\n" +
 		"\033[1mAvailable commands:\033[0m\r\n\r\n" +
-		"\033[1mlist\033[0m      - List your containers\r\n" +
-		"\033[1mcreate\033[0m    - Create a new container\r\n" +
-		"\033[1mstart\033[0m     - Start a container\r\n" +
-		"\033[1mstop\033[0m      - Stop a container\r\n" +
-		"\033[1mdelete\033[0m    - Delete a container\r\n" +
-		"\033[1mlogs\033[0m      - View container logs\r\n" +
-		"\033[1mhelp\033[0m      - Show this help\r\n" +
-		"\033[1mexit\033[0m      - Exit\r\n\r\n"
+		"\033[1mlist\033[0m           - List your containers\r\n" +
+		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
+		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
+		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
+		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
+		"\033[1mdelete <name>\033[0m  - Delete a container\r\n" +
+		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
+		"\033[1mhelp\033[0m           - Show this help\r\n" +
+		"\033[1mexit\033[0m           - Exit\r\n\r\n"
 	
 	channel.Write([]byte(welcome))
 	
@@ -576,20 +635,336 @@ func (s *Server) runMainShell(channel ssh.Channel) {
 			return
 		}
 		
-		switch strings.TrimSpace(command) {
+		parts := strings.Fields(strings.TrimSpace(command))
+		if len(parts) == 0 {
+			continue // Empty command, just continue
+		}
+		
+		cmd := parts[0]
+		args := parts[1:]
+		
+		switch cmd {
 		case "exit":
 			channel.Write([]byte("Goodbye!\r\n"))
 			return
 		case "help":
 			channel.Write([]byte(welcome))
 		case "list":
-			channel.Write([]byte("No containers found.\r\n"))
-		case "":
-			// Empty command, just continue
+			s.handleListCommand(channel)
+		case "create":
+			s.handleCreateCommand(channel, args)
+		case "ssh":
+			s.handleSSHCommand(channel, args)
+		case "start":
+			s.handleStartCommand(channel, args)
+		case "stop":
+			s.handleStopCommand(channel, args)
+		case "delete":
+			s.handleDeleteCommand(channel, args)
+		case "logs":
+			s.handleLogsCommand(channel, args)
 		default:
 			channel.Write([]byte("Unknown command. Type 'help' for available commands.\r\n"))
 		}
 	}
+}
+
+// getUserFromChannel gets user information from SSH channel session
+func (s *Server) getUserFromChannel(channel ssh.Channel) (fingerprint, teamName string, err error) {
+	s.sessionsMu.RLock()
+	session, exists := s.sessions[channel]
+	s.sessionsMu.RUnlock()
+	
+	if !exists {
+		return "", "", fmt.Errorf("user not authenticated")
+	}
+	
+	return session.Fingerprint, session.TeamName, nil
+}
+
+// createUserSession creates a new user session for a channel
+func (s *Server) createUserSession(channel ssh.Channel, fingerprint, email, teamName string, isAdmin bool) {
+	session := &UserSession{
+		Fingerprint: fingerprint,
+		Email:       email,
+		TeamName:    teamName,
+		IsAdmin:     isAdmin,
+		CreatedAt:   time.Now(),
+	}
+	
+	s.sessionsMu.Lock()
+	s.sessions[channel] = session
+	s.sessionsMu.Unlock()
+}
+
+// removeUserSession removes a user session for a channel
+func (s *Server) removeUserSession(channel ssh.Channel) {
+	s.sessionsMu.Lock()
+	delete(s.sessions, channel)
+	s.sessionsMu.Unlock()
+}
+
+// handleListCommand lists user's containers
+func (s *Server) handleListCommand(channel ssh.Channel) {
+	if s.containerManager == nil {
+		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
+		return
+	}
+	
+	fingerprint, teamName, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	containers, err := s.containerManager.ListContainers(context.Background(), fingerprint)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError listing containers: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	if len(containers) == 0 {
+		channel.Write([]byte(fmt.Sprintf("No containers found for team %s.\r\n", teamName)))
+		channel.Write([]byte("Use \033[1mcreate <name>\033[0m to create your first container.\r\n"))
+		return
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1mContainers for team %s:\033[0m\r\n\r\n", teamName)))
+	for _, container := range containers {
+		statusColor := "37" // default gray
+		switch container.Status {
+		case "running":
+			statusColor = "32" // green
+		case "stopped":
+			statusColor = "31" // red
+		case "pending", "building":
+			statusColor = "33" // yellow
+		}
+		
+		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m - \033[%sm%s\033[0m\r\n", 
+			container.Name, statusColor, container.Status)))
+	}
+	channel.Write([]byte("\r\n"))
+}
+
+// handleCreateCommand creates a new container
+func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
+	if s.containerManager == nil {
+		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
+		return
+	}
+	
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mUsage: create <name>\033[0m\r\n"))
+		return
+	}
+	
+	containerName := args[0]
+	if !s.isValidContainerName(containerName) {
+		channel.Write([]byte("\033[1;31mInvalid container name. Use 3-20 lowercase letters, numbers, and hyphens only.\033[0m\r\n"))
+		return
+	}
+	
+	fingerprint, teamName, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Check if container name already exists in this team
+	_, err = s.getMachineByName(teamName, containerName)
+	if err == nil {
+		// Machine already exists
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mContainer name '%s' already exists in team '%s'\033[0m\r\n", containerName, teamName)))
+		return
+	} else if err.Error() != "sql: no rows in result set" {
+		// Some other database error
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError checking container name: %v\033[0m\r\n", err)))
+		return
+	}
+	// err == sql.ErrNoRows means the name is available, continue
+	
+	channel.Write([]byte(fmt.Sprintf("Creating container \033[1m%s\033[0m for team \033[1;36m%s\033[0m...\r\n", containerName, teamName)))
+	
+	// Create container request
+	req := &container.CreateContainerRequest{
+		UserID: fingerprint,
+		Name:   containerName,
+		Image:  "ubuntu:22.04", // Default to Ubuntu
+	}
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	
+	createdContainer, err := s.containerManager.CreateContainer(ctx, req)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mFailed to create container: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Store container info in database
+	if err := s.createMachine(fingerprint, teamName, containerName, createdContainer.ID, "ubuntu:22.04"); err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;33mWarning: Failed to store container info: %v\033[0m\r\n", err)))
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1;32mContainer \033[1m%s\033[0;32m created successfully!\033[0m\r\n", containerName)))
+	channel.Write([]byte(fmt.Sprintf("Access it with: \033[1mssh %s\033[0m\r\n", containerName)))
+	channel.Write([]byte(fmt.Sprintf("External access: \033[1mssh %s@%s\033[0m\r\n", containerName, "exe.dev")))
+}
+
+// handleSSHCommand connects to a container via SSH
+func (s *Server) handleSSHCommand(channel ssh.Channel, args []string) {
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mUsage: ssh <name>\033[0m\r\n"))
+		return
+	}
+	
+	containerName := args[0]
+	
+	fingerprint, teamName, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	if s.containerManager == nil {
+		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
+		return
+	}
+	
+	// Look up the machine in database
+	machine, err := s.getMachineByName(teamName, containerName)
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mContainer '%s' not found\033[0m\r\n", containerName)))
+		} else {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mError finding container: %v\033[0m\r\n", err)))
+		}
+		return
+	}
+	
+	// Check if container exists and is running
+	if machine.ContainerID == nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mContainer '%s' not yet created\033[0m\r\n", containerName)))
+		return
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("Connecting to container \033[1m%s\033[0m...\r\n", containerName)))
+	
+	// Use kubectl exec to connect to the container
+	ctx := context.Background()
+	
+	// Execute /bin/bash in the container with TTY
+	err = s.containerManager.ExecuteInContainer(
+		ctx,
+		fingerprint, // Using fingerprint as userID
+		*machine.ContainerID,
+		[]string{"/bin/bash"},
+		channel, // stdin
+		channel, // stdout
+		channel, // stderr
+	)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Connection ended normally
+	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
+}
+
+// handleStartCommand starts a container
+func (s *Server) handleStartCommand(channel ssh.Channel, args []string) {
+	if s.containerManager == nil {
+		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
+		return
+	}
+	
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mUsage: start <name>\033[0m\r\n"))
+		return
+	}
+	
+	containerName := args[0]
+	
+	_, _, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// TODO: Get container ID from database by name
+	channel.Write([]byte(fmt.Sprintf("Starting container \033[1m%s\033[0m...\r\n", containerName)))
+	channel.Write([]byte("\033[1;33mStart command not yet fully implemented\033[0m\r\n"))
+}
+
+// handleStopCommand stops a container
+func (s *Server) handleStopCommand(channel ssh.Channel, args []string) {
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mUsage: stop <name>\033[0m\r\n"))
+		return
+	}
+	
+	containerName := args[0]
+	channel.Write([]byte(fmt.Sprintf("Stopping container \033[1m%s\033[0m...\r\n", containerName)))
+	channel.Write([]byte("\033[1;33mStop command not yet implemented\033[0m\r\n"))
+}
+
+// handleDeleteCommand deletes a container
+func (s *Server) handleDeleteCommand(channel ssh.Channel, args []string) {
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mUsage: delete <name>\033[0m\r\n"))
+		return
+	}
+	
+	containerName := args[0]
+	channel.Write([]byte(fmt.Sprintf("Deleting container \033[1m%s\033[0m...\r\n", containerName)))
+	channel.Write([]byte("\033[1;33mDelete command not yet implemented\033[0m\r\n"))
+}
+
+// handleLogsCommand shows container logs
+func (s *Server) handleLogsCommand(channel ssh.Channel, args []string) {
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mUsage: logs <name>\033[0m\r\n"))
+		return
+	}
+	
+	containerName := args[0]
+	channel.Write([]byte(fmt.Sprintf("Showing logs for container \033[1m%s\033[0m...\r\n", containerName)))
+	channel.Write([]byte("\033[1;33mLogs command not yet implemented\033[0m\r\n"))
+}
+
+// isValidContainerName validates container names using same rules as team names
+func (s *Server) isValidContainerName(name string) bool {
+	return s.isValidTeamName(name) // Reuse team name validation
+}
+
+// createMachine stores machine info in database
+func (s *Server) createMachine(userFingerprint, teamName, name, containerID, image string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint) 
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, teamName, name, "pending", image, containerID, userFingerprint)
+	return err
+}
+
+// getMachineByName retrieves a machine by name and team
+func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
+	var machine Machine
+	err := s.db.QueryRow(`
+		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at
+		FROM machines 
+		WHERE team_name = ? AND name = ?
+	`, teamName, name).Scan(
+		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
+		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
+		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &machine, nil
 }
 
 // handleRegistration manages the user registration process with email verification and billing
@@ -768,11 +1143,17 @@ func (s *Server) startEmailVerification(channel ssh.Channel, fingerprint, email 
 
 // sendVerificationEmail sends a verification email using Postmark
 func (s *Server) sendVerificationEmail(email, token string) error {
+	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", s.BaseURL, token)
+	
+	// In dev mode, just log the URL instead of sending email
+	if s.devMode {
+		log.Printf("🔧 DEV MODE: Would send verification email to %s with URL: %s", email, verificationURL)
+		return nil
+	}
+	
 	if s.postmarkClient == nil {
 		return fmt.Errorf("email service not configured")
 	}
-	
-	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", s.BaseURL, token)
 	
 	emailBody := fmt.Sprintf(`
 <html>
@@ -987,6 +1368,10 @@ func (s *Server) completeRegistration(channel ssh.Channel, fingerprint, email, t
 	channel.Write([]byte(fmt.Sprintf("  • Team containers at \033[1;36m<name>.%s.exe.dev\033[0m\r\n", teamName)))
 	channel.Write([]byte("  • Shared team resources and collaboration\r\n\r\n"))
 	
+	// Create user session before continuing to main shell
+	s.createUserSession(channel, fingerprint, email, teamName, true) // Admin since they created the team
+	defer s.removeUserSession(channel)
+	
 	// Continue with normal shell flow
 	s.runMainShell(channel)
 }
@@ -1082,6 +1467,23 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		"║  \033[37m• Access your containers anytime via SSH\033[1;36m               ║\r\n" +
 		"║                                                              ║\r\n" +
 		"╚══════════════════════════════════════════════════════════════╝\033[0m\r\n\r\n"))
+	
+	// Get user's team membership to determine admin status
+	teams, err := s.getUserTeams(fingerprint)
+	isAdmin := true // Default to admin
+	if err == nil && len(teams) > 0 {
+		// Find the team membership to get correct admin status
+		for _, team := range teams {
+			if team.TeamName == teamName {
+				isAdmin = team.IsAdmin
+				break
+			}
+		}
+	}
+	
+	// Create user session before continuing to main shell
+	s.createUserSession(channel, fingerprint, email, teamName, isAdmin)
+	defer s.removeUserSession(channel)
 	
 	// Continue with normal shell flow
 	s.runMainShell(channel)

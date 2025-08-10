@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"io"
 )
 
 // Manager provides container lifecycle management operations
@@ -21,6 +22,8 @@ type Manager interface {
 	
 	// Container access
 	GetContainerLogs(ctx context.Context, userID, containerID string, lines int) ([]string, error)
+	ConnectToContainer(ctx context.Context, userID, containerID string) (*ContainerConnection, error)
+	ExecuteInContainer(ctx context.Context, userID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error
 	
 	// Cleanup and maintenance
 	Close() error
