@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -516,12 +517,12 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 	go ssh.DiscardRequests(reqs)
 	
 	for newChannel := range chans {
-		go s.handleSSHChannel(newChannel, fingerprint, registered)
+		go s.handleSSHChannel(newChannel, sshConn.User(), fingerprint, registered)
 	}
 }
 
 // handleSSHChannel handles SSH channels
-func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, fingerprint string, registered bool) {
+func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerprint string, registered bool) {
 	if newChannel.ChannelType() != "session" {
 		newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		return
@@ -555,7 +556,7 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, fingerprint string,
 				req.Reply(true, nil)
 			}
 			// Handle shell directly, not in a goroutine
-			s.handleSSHShell(channel, fingerprint, registered)
+			s.handleSSHShell(channel, username, fingerprint, registered)
 			return // Exit after handling shell
 		case "exec":
 			if req.WantReply {
@@ -572,7 +573,7 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, fingerprint string,
 }
 
 // handleSSHShell provides the guided console management tool
-func (s *Server) handleSSHShell(channel ssh.Channel, fingerprint string, registered bool) {
+func (s *Server) handleSSHShell(channel ssh.Channel, username, fingerprint string, registered bool) {
 	if !registered {
 		// Handle registration flow
 		s.handleRegistration(channel, fingerprint)
@@ -594,16 +595,88 @@ func (s *Server) handleSSHShell(channel ssh.Channel, fingerprint string, registe
 	
 	// Use the first team (users can be members of multiple teams)
 	team := teams[0]
+	
+	// Check if username is a container name for direct access (ssh container-name@exe.dev)
+	if username != "" && s.containerManager != nil {
+		// Look for a container with the given name
+		if container := s.findContainerByName(fingerprint, username); container != nil {
+			s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+			defer s.removeUserSession(channel)
+			
+			// Connect directly to the container
+			s.connectToContainer(channel, container.ID)
+			return
+		}
+	}
+	
 	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
 	
 	// Clean up session when connection closes
 	defer s.removeUserSession(channel)
 	
-	s.runMainShell(channel)
+	s.runMainShell(channel, false) // Returning users - no welcome
+}
+
+// findContainerByName finds a container by name for a user
+func (s *Server) findContainerByName(userID, containerName string) *container.Container {
+	if s.containerManager == nil {
+		return nil
+	}
+	
+	containers, err := s.containerManager.ListContainers(context.Background(), userID)
+	if err != nil {
+		return nil
+	}
+	
+	for _, c := range containers {
+		if c.Name == containerName {
+			return c
+		}
+	}
+	
+	return nil
+}
+
+// connectToContainer connects directly to a container for external SSH access
+func (s *Server) connectToContainer(channel ssh.Channel, containerID string) {
+	if s.containerManager == nil {
+		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
+		return
+	}
+	
+	fingerprint, _, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("Connecting to container \033[1m%s\033[0m...\r\n", containerID)))
+	
+	// Use kubectl exec to connect to the container
+	ctx := context.Background()
+	
+	// Execute /bin/bash in the container with TTY
+	err = s.containerManager.ExecuteInContainer(
+		ctx,
+		fingerprint, // Using fingerprint as userID
+		containerID,
+		[]string{"/bin/bash"},
+		channel, // stdin
+		channel, // stdout
+		channel, // stderr
+	)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Connection ended normally
+	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
 }
 
 // runMainShell runs the main container management shell
-func (s *Server) runMainShell(channel ssh.Channel) {
+func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 	welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
 		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
 		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
@@ -619,10 +692,12 @@ func (s *Server) runMainShell(channel ssh.Channel) {
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
 		"\033[1mdelete <name>\033[0m  - Delete a container\r\n" +
 		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
-		"\033[1mhelp\033[0m           - Show this help\r\n" +
+		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
 	
-	channel.Write([]byte(welcome))
+	if showWelcome {
+		channel.Write([]byte(welcome))
+	}
 	
 	// Command loop using proper line reading
 	for {
@@ -647,7 +722,7 @@ func (s *Server) runMainShell(channel ssh.Channel) {
 		case "exit":
 			channel.Write([]byte("Goodbye!\r\n"))
 			return
-		case "help":
+		case "help", "?":
 			channel.Write([]byte(welcome))
 		case "list":
 			s.handleListCommand(channel)
@@ -901,14 +976,52 @@ func (s *Server) handleStartCommand(channel ssh.Channel, args []string) {
 
 // handleStopCommand stops a container
 func (s *Server) handleStopCommand(channel ssh.Channel, args []string) {
+	if s.containerManager == nil {
+		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
+		return
+	}
+	
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mUsage: stop <name>\033[0m\r\n"))
 		return
 	}
 	
 	containerName := args[0]
+	
+	fingerprint, teamName, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Look up the machine in database
+	machine, err := s.getMachineByName(teamName, containerName)
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mContainer '%s' not found\033[0m\r\n", containerName)))
+		} else {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mError finding container: %v\033[0m\r\n", err)))
+		}
+		return
+	}
+	
+	// Check if container exists and has a container ID
+	if machine.ContainerID == nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mContainer '%s' not yet created\033[0m\r\n", containerName)))
+		return
+	}
+	
 	channel.Write([]byte(fmt.Sprintf("Stopping container \033[1m%s\033[0m...\r\n", containerName)))
-	channel.Write([]byte("\033[1;33mStop command not yet implemented\033[0m\r\n"))
+	
+	// Stop the container
+	ctx := context.Background()
+	err = s.containerManager.StopContainer(ctx, fingerprint, *machine.ContainerID)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mFailed to stop container: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1;32mContainer '%s' stopped successfully\033[0m\r\n", containerName)))
 }
 
 // handleDeleteCommand deletes a container
@@ -968,22 +1081,154 @@ func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 }
 
 // handleRegistration manages the user registration process with email verification and billing
+// showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
+func (s *Server) showAnimatedWelcome(channel ssh.Channel) {
+	// More compact ASCII art that fits better in terminals
+	asciiArt := []string{
+		"███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗",
+		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║",
+		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║",
+		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝",
+		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ ",
+		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  ",
+	}
+	
+	// Query terminal for its actual width
+	terminalWidth := s.getTerminalWidth(channel)
+	
+	// Calculate art width (longest line)
+	artWidth := len(asciiArt[0])
+	leftPadding := (terminalWidth - artWidth) / 2
+	if leftPadding < 0 {
+		leftPadding = 0 // Handle edge case of very narrow terminals
+	}
+	
+	// Debug: show what we calculated (remove this after testing)
+	debugMsg := fmt.Sprintf("Terminal: %d chars, Art: %d chars, Padding: %d\r\n", 
+		terminalWidth, artWidth, leftPadding)
+	channel.Write([]byte(debugMsg))
+	
+	// Clear screen and move cursor to top
+	channel.Write([]byte("\033[2J\033[H"))
+	
+	// Add some vertical padding to center vertically
+	channel.Write([]byte("\r\n\r\n\r\n\r\n\r\n"))
+	
+	// Beautiful fade effect for dark terminals: bright green -> dark green -> black
+	// Each step gets progressively darker until it fades to black
+	fadeSteps := []struct {
+		color string
+		delay time.Duration
+	}{
+		{"\033[1;32m", 500 * time.Millisecond},  // Bright green - the signature color
+		{"\033[0;32m", 200 * time.Millisecond},  // Normal green
+		{"\033[2;32m", 150 * time.Millisecond},  // Dim green
+		{"\033[38;5;28m", 150 * time.Millisecond}, // Dark green (256-color)
+		{"\033[38;5;22m", 150 * time.Millisecond}, // Darker green
+		{"\033[38;5;16m", 100 * time.Millisecond}, // Very dark (almost black)
+		{"\033[30m", 100 * time.Millisecond},     // Black (invisible on dark bg)
+	}
+	
+	// Show the art with fade animation
+	for _, step := range fadeSteps {
+		// Clear the previous art area
+		channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
+		
+		// Draw the art with current color
+		for _, line := range asciiArt {
+			padding := strings.Repeat(" ", leftPadding)
+			channel.Write([]byte(fmt.Sprintf("\r%s%s%s\033[0m\r\n", padding, step.color, line)))
+		}
+		
+		// Wait before next step
+		time.Sleep(step.delay)
+	}
+	
+	// Move cursor back up and clear the art area completely
+	channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
+	for i := 0; i < len(asciiArt); i++ {
+		channel.Write([]byte("\033[2K\r\n")) // Clear entire line and move to next
+	}
+	
+	// Move cursor back to where the art was
+	channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
+}
+
+// getTerminalWidth attempts to determine the terminal width through multiple methods
+func (s *Server) getTerminalWidth(channel ssh.Channel) int {
+	// Method 1: Try to get from environment (SSH often sets this)
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		if width, err := strconv.Atoi(cols); err == nil && width > 20 {
+			return width
+		}
+	}
+	
+	// Method 2: Send a simple query for terminal size
+	// This uses a different approach - send many spaces and see where the cursor ends up
+	channel.Write([]byte("\033[s"))  // Save cursor position
+	channel.Write([]byte("\033[1;1H"))  // Go to top-left corner
+	
+	// Send cursor position query
+	channel.Write([]byte("\033[6n"))
+	
+	// Small delay to ensure the query is sent
+	time.Sleep(10 * time.Millisecond)
+	
+	// Try the width detection with a simple method
+	// Move to column 999 (way off screen) and ask where we are
+	channel.Write([]byte("\033[1;999H\033[6n"))
+	
+	// Read response with short timeout
+	response := make([]byte, 32)
+	done := make(chan struct{})
+	var n int
+	var err error
+	
+	go func() {
+		n, err = channel.Read(response)
+		close(done)
+	}()
+	
+	select {
+	case <-done:
+		if err == nil && n > 0 {
+			responseStr := string(response[:n])
+			// Look for pattern like \033[1;123R where 123 is the column
+			if strings.Contains(responseStr, ";") && strings.Contains(responseStr, "R") {
+				parts := strings.Split(responseStr, ";")
+				if len(parts) >= 2 {
+					colPart := strings.TrimSuffix(parts[1], "R")
+					if width, err := strconv.Atoi(strings.TrimSpace(colPart)); err == nil && width > 20 {
+						channel.Write([]byte("\033[u")) // Restore cursor
+						return width
+					}
+				}
+			}
+		}
+	case <-time.After(50 * time.Millisecond):
+		// Timeout - fallback to default
+	}
+	
+	channel.Write([]byte("\033[u")) // Restore cursor position
+	
+	// Method 3: Fallback to reasonable defaults based on modern terminals
+	// Most modern terminals are at least 120-150 characters wide
+	return 140
+}
+
 func (s *Server) handleRegistration(channel ssh.Channel, fingerprint string) {
-	welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
-		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
-		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
-		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
-		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
-		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
-		"\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +
+	// Show the animated welcome
+	s.showAnimatedWelcome(channel)
+	
+	// Now show the signup content after the animation
+	signupContent := "\r\n\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +
 		"Let's get you set up in just a few steps:\r\n\r\n" +
 		"\033[2;37m1. Email Verification\r\n" +
 		"2. Team Setup\r\n" +
 		"3. Payment Setup\033[0m\r\n\r\n" +
-		"\033[1mTo get started, please enter your email address:\033[0m\r\n" +
-		""
+		"\033[1mTo get started, please enter your email address:\033[0m\r\n"
 	
-	channel.Write([]byte(welcome))
+	channel.Write([]byte(signupContent))
 	
 	// Read email address from user
 	email, err := s.readLineFromChannel(channel)
@@ -1387,7 +1632,7 @@ func (s *Server) completeRegistration(channel ssh.Channel, fingerprint, email, t
 	defer s.removeUserSession(channel)
 	
 	// Continue with normal shell flow
-	s.runMainShell(channel)
+	s.runMainShell(channel, true) // New users - show welcome
 }
 
 // startBillingVerification initiates the billing verification process
@@ -1500,7 +1745,7 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 	defer s.removeUserSession(channel)
 	
 	// Continue with normal shell flow
-	s.runMainShell(channel)
+	s.runMainShell(channel, true) // New team members - show welcome
 }
 
 // verifyPaymentMethod verifies a payment method with Stripe using test tokens

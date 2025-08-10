@@ -195,7 +195,10 @@ func TestEmailVerificationInDevMode(t *testing.T) {
 		t.Errorf("sendVerificationEmail should not fail in dev mode: %v", err)
 	}
 
-	// Verification should be completed
+	// Wait for the async dev mode cleanup to complete (it has a 100ms delay)
+	time.Sleep(150 * time.Millisecond)
+
+	// Verification should be completed and cleaned up
 	server.emailVerificationsMu.RLock()
 	_, exists := server.emailVerifications[fingerprint]
 	server.emailVerificationsMu.RUnlock()
