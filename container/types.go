@@ -22,6 +22,7 @@ type Container struct {
 	ID          string          `json:"id"`
 	UserID      string          `json:"user_id"`
 	Name        string          `json:"name"`
+	TeamName    string          `json:"team_name,omitempty"`
 	Image       string          `json:"image"`
 	Status      ContainerStatus `json:"status"`
 	CreatedAt   time.Time       `json:"created_at"`
@@ -47,6 +48,7 @@ type Container struct {
 type CreateContainerRequest struct {
 	UserID      string `json:"user_id"`
 	Name        string `json:"name"`
+	TeamName    string `json:"team_name,omitempty"` // Team name for hostname configuration
 	Image       string `json:"image,omitempty"` // Optional, defaults to "ubuntu"
 	Dockerfile  string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
 	

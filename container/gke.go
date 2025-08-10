@@ -95,6 +95,7 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 		ID:            containerID,
 		UserID:        req.UserID,
 		Name:          req.Name,
+		TeamName:      req.TeamName,
 		Image:         image,
 		Status:        StatusPending,
 		CreatedAt:     time.Now(),
@@ -212,6 +213,14 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container) error 
 	cpuQuantity := resource.MustParse(container.CPURequest)
 	memoryQuantity := resource.MustParse(container.MemoryRequest)
 
+	// For Kubernetes hostname field, use a version without dots (k8s limitation)
+	var k8sHostname string
+	if container.TeamName != "" {
+		k8sHostname = fmt.Sprintf("%s-%s-exe-dev", container.Name, container.TeamName)
+	} else {
+		k8sHostname = fmt.Sprintf("%s-exe-dev", container.Name)
+	}
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      container.PodName,
@@ -221,9 +230,11 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container) error 
 				"container-id":   m.shortenForLabel(container.ID),
 				"user-id":        m.shortenForLabel(container.UserID),
 				"container-name": container.Name,
+				"team-name":      container.TeamName,
 			},
 		},
 		Spec: corev1.PodSpec{
+			Hostname: k8sHostname,
 			Containers: []corev1.Container{
 				{
 					Name:  "main",
@@ -552,11 +563,12 @@ func (m *GKEManager) ExecuteInContainer(ctx context.Context, userID, containerID
 		SubResource("exec")
 	
 	option := &corev1.PodExecOptions{
-		Command: cmd,
-		Stdin:   stdin != nil,
-		Stdout:  stdout != nil,
-		Stderr:  stderr != nil,
-		TTY:     true,
+		Container: "main", // Specify which container in the pod to exec into
+		Command:   cmd,
+		Stdin:     stdin != nil,
+		Stdout:    stdout != nil,
+		Stderr:    stderr != nil,
+		TTY:       true,
 	}
 	
 	req.VersionedParams(

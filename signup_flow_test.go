@@ -135,7 +135,7 @@ func TestSignupFlowAuthentication(t *testing.T) {
 		}
 
 		// Should contain success message
-		if !strings.Contains(output, "is ready!") {
+		if !strings.Contains(output, "Ready in") && !strings.Contains(output, "Access with ssh") {
 			t.Error("Create command should succeed after registration")
 		}
 

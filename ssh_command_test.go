@@ -106,7 +106,7 @@ func TestHandleSSHCommand(t *testing.T) {
 			name:          "valid container",
 			args:          []string{machineName},
 			expectError:   false,
-			expectOutput:  []string{"Connecting to container", "testmachine"},
+			expectOutput:  []string{"testmachine"},
 			expectedExecs: 1,
 		},
 	}

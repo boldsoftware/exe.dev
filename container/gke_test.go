@@ -70,8 +70,9 @@ func testCreateContainer(t *testing.T, ctx context.Context, manager *GKEManager,
 	containerName := "test-container"
 
 	req := &CreateContainerRequest{
-		UserID: userID,
-		Name:   containerName,
+		UserID:   userID,
+		Name:     containerName,
+		TeamName: "test-team",
 	}
 
 	if dockerfile != "" {

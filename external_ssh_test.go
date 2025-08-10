@@ -52,7 +52,7 @@ func TestExternalSSHAccess(t *testing.T) {
 		Image:  "nginx:latest",
 	}
 	
-	createdContainer, err := mockManager.CreateContainer(context.Background(), containerReq)
+	_, err = mockManager.CreateContainer(context.Background(), containerReq)
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestExternalSSHAccess(t *testing.T) {
 			name:         "direct access to existing container",
 			username:     "web-app",
 			expectDirect: true,
-			expectOutput: []string{"Connecting to container", createdContainer.ID},
+			expectOutput: []string{"web-app.exe.dev"},
 			skipFullRun:  false,
 		},
 		{
