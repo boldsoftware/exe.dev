@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
 	mathrand "math/rand"
 	"net"
@@ -522,6 +523,102 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 	}
 }
 
+// handleSSHExec handles SSH exec commands (e.g., ssh exe.dev create foo)
+func (s *Server) handleSSHExec(channel ssh.Channel, payload []byte, username, fingerprint string, registered bool) {
+	defer channel.Close()
+	
+	// Parse the command from the payload
+	if len(payload) < 4 {
+		channel.Write([]byte("Invalid exec request\r\n"))
+		return
+	}
+	
+	// Extract command string from SSH wire format
+	cmdLen := int(payload[0])<<24 | int(payload[1])<<16 | int(payload[2])<<8 | int(payload[3])
+	if len(payload) < 4+cmdLen {
+		channel.Write([]byte("Invalid exec request\r\n"))
+		return
+	}
+	
+	command := string(payload[4 : 4+cmdLen])
+	
+	// Parse the command arguments
+	args := strings.Fields(command)
+	if len(args) == 0 {
+		channel.Write([]byte("No command specified\r\n"))
+		return
+	}
+	
+	// Check if user is registered for command execution
+	if !registered {
+		channel.Write([]byte("Please complete registration by running: ssh exe.dev\r\n"))
+		return
+	}
+	
+	// Create user session for command execution
+	user, err := s.getUserByFingerprint(fingerprint)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("Authentication error: %v\r\n", err)))
+		return
+	}
+	
+	teams, err := s.getUserTeams(fingerprint)
+	if err != nil || len(teams) == 0 {
+		channel.Write([]byte("Error: User not associated with any team\r\n"))
+		return
+	}
+	
+	// Use the first team (users can be members of multiple teams)
+	team := teams[0]
+	
+	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+	defer s.removeUserSession(channel)
+	
+	// Handle the command
+	cmd := args[0]
+	cmdArgs := args[1:]
+	
+	switch cmd {
+	case "create":
+		s.handleCreateCommandWithStdin(channel, cmdArgs, channel) // Pass channel as stdin reader
+	case "list":
+		s.handleListCommand(channel)
+	case "ssh":
+		s.handleSSHCommand(channel, cmdArgs)
+	case "start":
+		s.handleStartCommand(channel, cmdArgs)
+	case "stop":
+		s.handleStopCommand(channel, cmdArgs)
+	case "delete":
+		s.handleDeleteCommand(channel, cmdArgs)
+	case "logs":
+		s.handleLogsCommand(channel, cmdArgs)
+	case "diag", "diagnostics":
+		s.handleDiagCommand(channel, cmdArgs)
+	case "help", "?":
+		s.showHelpText(channel)
+	default:
+		channel.Write([]byte(fmt.Sprintf("Unknown command: %s\r\nRun 'ssh exe.dev help' for available commands.\r\n", cmd)))
+	}
+}
+
+// showHelpText displays the help text for available commands
+func (s *Server) showHelpText(channel ssh.Channel) {
+	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
+		"\033[1mlist\033[0m                    - List your containers\r\n" +
+		"\033[1mcreate [image] [name]\033[0m   - Create a new container (defaults: ubuntu, auto-generated name)\r\n" +
+		"\033[1mcat Dockerfile | create\033[0m - Create container from custom Dockerfile\r\n" +
+		"\033[1mssh <name>\033[0m              - SSH into a container\r\n" +
+		"\033[1mstart <name>\033[0m            - Start a container\r\n" +
+		"\033[1mstop <name>\033[0m             - Stop a container\r\n" +
+		"\033[1mdelete <name>\033[0m           - Delete a container\r\n" +
+		"\033[1mlogs <name>\033[0m             - View container logs\r\n" +
+		"\033[1mdiag <name>\033[0m             - Get container startup diagnostics\r\n" +
+		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n\r\n"
+	
+	channel.Write([]byte(helpText))
+}
+
 // handleSSHChannel handles SSH channels
 func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerprint string, registered bool) {
 	if newChannel.ChannelType() != "session" {
@@ -569,8 +666,8 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 			if req.WantReply {
 				req.Reply(true, nil)
 			}
-			// TODO: Handle exec commands
-			channel.Write([]byte("exec commands not yet implemented\r\n"))
+			// Handle exec commands (e.g., ssh exe.dev create foo)
+			go s.handleSSHExec(channel, req.Payload, username, fingerprint, registered)
 		default:
 			if req.WantReply {
 				req.Reply(false, nil)
@@ -746,15 +843,15 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
 	
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-		"\033[1mlist\033[0m           - List your containers\r\n" +
-		"\033[1mcreate [name]\033[0m  - Create a new container (auto-generates name if not specified)\r\n" +
-		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
-		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
-		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
-		"\033[1mdelete <name>\033[0m  - Delete a container\r\n" +
-		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
-		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
-		"\033[1mexit\033[0m           - Exit\r\n\r\n"
+		"\033[1mlist\033[0m                    - List your containers\r\n" +
+		"\033[1mcreate [image] [name]\033[0m   - Create a new container (defaults: ubuntu, auto-generated name)\r\n" +
+		"\033[1mssh <name>\033[0m              - SSH into a container\r\n" +
+		"\033[1mstart <name>\033[0m            - Start a container\r\n" +
+		"\033[1mstop <name>\033[0m             - Stop a container\r\n" +
+		"\033[1mdelete <name>\033[0m           - Delete a container\r\n" +
+		"\033[1mlogs <name>\033[0m             - View container logs\r\n" +
+		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n" +
+		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
 	
 	if showWelcome {
 		channel.Write([]byte(welcome))
@@ -904,8 +1001,8 @@ func generateRandomContainerName() string {
 	return word1 + "-" + word2
 }
 
-// handleCreateCommand creates a new container
-func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
+// handleCreateCommandWithStdin creates a new container with support for stdin Dockerfile and image parameters
+func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string, stdin io.Reader) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
 		return
@@ -918,8 +1015,86 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 	}
 	
 	var containerName string
-	if len(args) == 0 {
-		// No name provided, generate a random one
+	var image string = "ubuntu:22.04" // Default image
+	var dockerfile string
+	
+	// Try to read from stdin using a goroutine with timeout to detect piped data
+	stdinData := make(chan []byte, 1)
+	stdinErr := make(chan error, 1)
+	
+	go func() {
+		defer func() { 
+			if r := recover(); r != nil {
+				stdinErr <- fmt.Errorf("stdin read panicked: %v", r)
+			}
+		}()
+		
+		// Try to read all available stdin data
+		var allData []byte
+		buffer := make([]byte, 4096)
+		
+		for {
+			n, err := stdin.Read(buffer)
+			if n > 0 {
+				allData = append(allData, buffer[:n]...)
+			}
+			if err != nil {
+				break
+			}
+		}
+		
+		if len(allData) > 0 {
+			stdinData <- allData
+		} else {
+			stdinErr <- fmt.Errorf("no data")
+		}
+	}()
+	
+	// Wait up to 100ms for stdin data
+	select {
+	case data := <-stdinData:
+		dockerfile = strings.TrimSpace(string(data))
+		// When using Dockerfile from stdin, we only support the name as an argument  
+		if len(args) > 1 {
+			channel.Write([]byte("\033[1;31mWhen using Dockerfile from stdin, only container name can be specified as argument\033[0m\r\n"))
+			return
+		}
+		if len(args) == 1 {
+			containerName = args[0]
+		}
+	case <-stdinErr:
+		// No stdin data available
+	case <-time.After(100 * time.Millisecond):
+		// Timeout - assume no piped data
+	}
+	
+	// If no dockerfile from stdin, parse command line arguments
+	if dockerfile == "" {
+		// No stdin data, parse command line arguments
+		// Supports: create, create [name], create [image], create [image] [name]
+		switch len(args) {
+		case 0:
+			// create - use defaults
+		case 1:
+			// create [name] or create [image]
+			// If it looks like an image (contains : or /), treat as image
+			if strings.Contains(args[0], ":") || strings.Contains(args[0], "/") {
+				image = args[0]
+			} else {
+				containerName = args[0]
+			}
+		case 2:
+			// create [image] [name]
+			image = args[0]
+			containerName = args[1]
+		default:
+			channel.Write([]byte("\033[1;31mUsage: create [image] [name] or cat Dockerfile | ssh exe.dev create [name]\033[0m\r\n"))
+			return
+		}
+	}
+	
+	// Generate container name if not provided
+	if containerName == "" {
 		// Generate a unique name by trying until we find one that doesn't exist
 		maxAttempts := 10
 		for attempts := 0; attempts < maxAttempts; attempts++ {
@@ -938,14 +1113,9 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 			channel.Write([]byte("\033[1;31mFailed to generate a unique container name. Please specify a name manually.\033[0m\r\n"))
 			return
 		}
-		
-		// Don't show "Generated container name" - it will be shown in the Creating line
-	} else {
-		containerName = args[0]
-		if !s.isValidContainerName(containerName) {
-			channel.Write([]byte("\033[1;31mInvalid container name. Use 3-20 lowercase letters, numbers, and hyphens only.\033[0m\r\n"))
-			return
-		}
+	} else if !s.isValidContainerName(containerName) {
+		channel.Write([]byte("\033[1;31mInvalid container name. Use 3-20 lowercase letters, numbers, and hyphens only.\033[0m\r\n"))
+		return
 	}
 	
 	// Check if container name already exists in this team
@@ -961,14 +1131,20 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 	}
 	// err == sql.ErrNoRows means the name is available, continue
 	
-	channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m for team \033[1;36m%s\033[0m...\r\n", containerName, teamName)))
+	if dockerfile != "" {
+		channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m for team \033[1;36m%s\033[0m with custom Dockerfile...\r\n", containerName, teamName)))
+	} else {
+		displayImage := container.GetDisplayImageName(image)
+		channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m for team \033[1;36m%s\033[0m using image \033[1m%s\033[0m...\r\n", containerName, teamName, displayImage)))
+	}
 	
 	// Create container request
 	req := &container.CreateContainerRequest{
-		UserID:   fingerprint,
-		Name:     containerName,
-		TeamName: teamName,
-		Image:    "ubuntu:22.04", // Default to Ubuntu
+		UserID:     fingerprint,
+		Name:       containerName,
+		TeamName:   teamName,
+		Image:      image,
+		Dockerfile: dockerfile,
 	}
 	
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -981,7 +1157,11 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 	}
 	
 	// Store container info in database
-	if err := s.createMachine(fingerprint, teamName, containerName, createdContainer.ID, "ubuntu:22.04"); err != nil {
+	imageToStore := container.GetDisplayImageName(image)
+	if dockerfile != "" {
+		imageToStore = "custom"
+	}
+	if err := s.createMachine(fingerprint, teamName, containerName, createdContainer.ID, imageToStore); err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;33mWarning: Failed to store container info: %v\033[0m\r\n", err)))
 	}
 	
@@ -1005,17 +1185,15 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 			
 			containers, err := s.containerManager.ListContainers(context.Background(), fingerprint)
 			if err != nil {
-				channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;31mError checking container status: %v\033[0m\r\n", err)))
-				return
+				continue // Skip this check, try again later
 			}
 			
-			// Find our container
-			var containerStatus container.ContainerStatus
 			var containerFound bool
+			var containerStatus container.ContainerStatus
 			for _, c := range containers {
 				if c.Name == containerName {
-					containerStatus = c.Status
 					containerFound = true
+					containerStatus = c.Status
 					break
 				}
 			}
@@ -1024,46 +1202,31 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 				totalTime := time.Since(startTime)
 				channel.Write([]byte(fmt.Sprintf("\r\033[KReady in %.1fs! Access with \033[1mssh %s@exe.dev\033[0m\r\n", totalTime.Seconds(), containerName)))
 				
-				// Automatically SSH into the new container
+				// Log slow startup for debugging
+				if totalTime.Seconds() > 60 {
+					displayImage := container.GetDisplayImageName(image)
+					log.Printf("SLOW_STARTUP: Container %s took %.1fs to start (team: %s, image: %s)", 
+						containerName, totalTime.Seconds(), teamName, displayImage)
+				}
+				
+				// Auto-SSH into the container
+				time.Sleep(500 * time.Millisecond) // Brief pause for visual effect
 				s.handleSSHCommand(channel, []string{containerName})
 				return
-			} else if containerFound && containerStatus == container.StatusFailed {
-				channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;31mContainer failed to start (status: %s)\033[0m\r\n", containerStatus)))
-				return
-			}
-			
-			// If container is stuck pending for too long, get diagnostics
-			if containerFound && containerStatus == container.StatusPending && time.Since(startTime) > 30*time.Second {
-				// Only check diagnostics every 30 seconds to avoid spam
-				if int(time.Since(startTime).Seconds())%30 == 0 {
-					if diagnostics, err := s.containerManager.GetContainerDiagnostics(context.Background(), fingerprint, containerName); err == nil {
-						// Log the full diagnostics for ops
-						log.Printf("CONTAINER_STUCK: %s", diagnostics)
-						
-						// Check for specific quota errors
-						if strings.Contains(diagnostics, "QUOTA_EXCEEDED") {
-							channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;31mContainer creation failed: GCP disk quota exceeded\033[0m\r\n")))
-							channel.Write([]byte("Please contact support or try again later.\r\n"))
-							return
-						} else if strings.Contains(diagnostics, "Insufficient memory") {
-							channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;31mContainer creation failed: Insufficient cluster memory\033[0m\r\n")))
-							channel.Write([]byte("Please try again later when resources are available.\r\n"))
-							return
-						}
-					}
-				}
 			}
 		}
 		
-		// Sleep for timer update interval (100ms)
 		time.Sleep(timerUpdateInterval)
 	}
 	
-	// Check if we timed out
-	if time.Since(startTime) >= maxWaitTime {
-		channel.Write([]byte("\r\033[K\033[1;33mContainer creation timed out, but it may still be starting in the background.\033[0m\r\n"))
-		return
-	}
+	// Timed out
+	channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;33mContainer creation timed out after %.0f seconds. Use 'ssh %s@exe.dev' to connect when ready.\033[0m\r\n", maxWaitTime.Seconds(), containerName)))
+}
+
+// handleCreateCommand creates a new container (wrapper for interactive use)
+func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
+	// For interactive use, we don't have meaningful stdin, so pass nil reader
+	s.handleCreateCommandWithStdin(channel, args, strings.NewReader(""))
 }
 
 // handleSSHCommand connects to a container via SSH
@@ -1225,6 +1388,39 @@ func (s *Server) handleLogsCommand(channel ssh.Channel, args []string) {
 	containerName := args[0]
 	channel.Write([]byte(fmt.Sprintf("Showing logs for container \033[1m%s\033[0m...\r\n", containerName)))
 	channel.Write([]byte("\033[1;33mLogs command not yet implemented\033[0m\r\n"))
+}
+
+func (s *Server) handleDiagCommand(channel ssh.Channel, args []string) {
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mUsage: diag <name>\033[0m\r\n"))
+		return
+	}
+	
+	fingerprint, _, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+
+	containerName := args[0]
+	channel.Write([]byte(fmt.Sprintf("Running diagnostics for container \033[1m%s\033[0m...\r\n", containerName)))
+
+	// Use the container manager's diagnostic function
+	if gkeManager, ok := s.containerManager.(*container.GKEManager); ok {
+		diagnostics, err := gkeManager.GetContainerDiagnostics(context.Background(), fingerprint, containerName)
+		if err != nil {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mFailed to get diagnostics: %s\033[0m\r\n", err)))
+			return
+		}
+		
+		// Format and display the diagnostics
+		lines := strings.Split(diagnostics, "\n")
+		for _, line := range lines {
+			channel.Write([]byte(line + "\r\n"))
+		}
+	} else {
+		channel.Write([]byte("\033[1;33mDiagnostics not available for this container manager type\033[0m\r\n"))
+	}
 }
 
 // isValidContainerName validates container names using same rules as team names

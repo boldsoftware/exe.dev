@@ -72,8 +72,11 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 	// Set defaults
 	image := req.Image
 	if image == "" {
-		image = "ubuntu:latest"
+		image = "ubuntu:22.04"
 	}
+	
+	// Map common images to Google's mirror for better performance
+	image = m.getMirrorImage(image)
 	
 	cpuRequest := req.CPURequest
 	if cpuRequest == "" {
@@ -358,6 +361,67 @@ func (m *GKEManager) shortenForLabel(value string) string {
 // stringPtr returns a pointer to a string
 func stringPtr(s string) *string {
 	return &s
+}
+
+// getMirrorImage maps common Docker Hub images to Google's mirror for better performance
+func (m *GKEManager) getMirrorImage(image string) string {
+	// Map of common images to their mirror.gcr.io equivalents
+	mirrorMap := map[string]string{
+		"ubuntu:20.04":     "mirror.gcr.io/library/ubuntu:20.04",
+		"ubuntu:22.04":     "mirror.gcr.io/library/ubuntu:22.04",
+		"ubuntu:24.04":     "mirror.gcr.io/library/ubuntu:24.04",
+		"ubuntu:latest":    "mirror.gcr.io/library/ubuntu:latest",
+		"python:3.9":       "mirror.gcr.io/library/python:3.9",
+		"python:3.10":      "mirror.gcr.io/library/python:3.10",
+		"python:3.11":      "mirror.gcr.io/library/python:3.11",
+		"python:3.12":      "mirror.gcr.io/library/python:3.12",
+		"python:latest":    "mirror.gcr.io/library/python:latest",
+		"python:3.9-slim":  "mirror.gcr.io/library/python:3.9-slim",
+		"python:3.10-slim": "mirror.gcr.io/library/python:3.10-slim",
+		"python:3.11-slim": "mirror.gcr.io/library/python:3.11-slim",
+		"python:3.12-slim": "mirror.gcr.io/library/python:3.12-slim",
+		"node:16":          "mirror.gcr.io/library/node:16",
+		"node:18":          "mirror.gcr.io/library/node:18",
+		"node:20":          "mirror.gcr.io/library/node:20",
+		"node:22":          "mirror.gcr.io/library/node:22",
+		"node:latest":      "mirror.gcr.io/library/node:latest",
+		"node:16-alpine":   "mirror.gcr.io/library/node:16-alpine",
+		"node:18-alpine":   "mirror.gcr.io/library/node:18-alpine",
+		"node:20-alpine":   "mirror.gcr.io/library/node:20-alpine",
+		"nginx:alpine":     "mirror.gcr.io/library/nginx:alpine",
+		"nginx:latest":     "mirror.gcr.io/library/nginx:latest",
+		"alpine:latest":    "mirror.gcr.io/library/alpine:latest",
+		"alpine:3.18":      "mirror.gcr.io/library/alpine:3.18",
+		"alpine:3.19":      "mirror.gcr.io/library/alpine:3.19",
+		"alpine:3.20":      "mirror.gcr.io/library/alpine:3.20",
+		"debian:bullseye":  "mirror.gcr.io/library/debian:bullseye",
+		"debian:bookworm":  "mirror.gcr.io/library/debian:bookworm",
+		"debian:latest":    "mirror.gcr.io/library/debian:latest",
+		"redis:alpine":     "mirror.gcr.io/library/redis:alpine",
+		"redis:latest":     "mirror.gcr.io/library/redis:latest",
+		"postgres:13":      "mirror.gcr.io/library/postgres:13",
+		"postgres:14":      "mirror.gcr.io/library/postgres:14",
+		"postgres:15":      "mirror.gcr.io/library/postgres:15",
+		"postgres:16":      "mirror.gcr.io/library/postgres:16",
+		"postgres:latest":  "mirror.gcr.io/library/postgres:latest",
+	}
+	
+	if mirrorImage, exists := mirrorMap[image]; exists {
+		return mirrorImage
+	}
+	
+	// Return original image if no mirror mapping exists
+	return image
+}
+
+// GetDisplayImageName returns a user-friendly image name for UI display
+func GetDisplayImageName(actualImage string) string {
+	// Strip mirror.gcr.io prefix for display
+	if strings.HasPrefix(actualImage, "mirror.gcr.io/library/") {
+		return strings.TrimPrefix(actualImage, "mirror.gcr.io/library/")
+	}
+	
+	return actualImage
 }
 
 // GetContainer retrieves a container by ID
