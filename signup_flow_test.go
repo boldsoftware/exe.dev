@@ -121,7 +121,7 @@ func TestSignupFlowAuthentication(t *testing.T) {
 		t.Log("=== Testing create command with registered user session ===")
 
 		// The session should be created, so the create command should work
-		server.handleCreateCommand(mockChannel, []string{"testcontainer"})
+		server.handleCreateCommand(mockChannel, []string{"--name=testcontainer"})
 
 		rawOutput := outputBuf.String()
 		output := stripANSI(rawOutput)

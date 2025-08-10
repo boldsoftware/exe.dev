@@ -53,19 +53,19 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 	}{
 		{
 			name:     "create with custom image and name",
-			args:     []string{"python:3.9", "myapp"},
+			args:     []string{"--image=python:3.9", "--name=myapp"},
 			stdin:    "",
 			expected: []string{"Creating myapp", "python:3.9"},
 		},
 		{
 			name:     "create with just custom image",
-			args:     []string{"node:18"},
+			args:     []string{"--image=node:18"},
 			stdin:    "",
 			expected: []string{"Creating", "node:18"}, // Name will be auto-generated
 		},
 		{
 			name:     "create with Dockerfile",
-			args:     []string{"custom-service"},
+			args:     []string{"--name=custom-service"},
 			stdin:    "FROM nginx:alpine\nCOPY index.html /usr/share/nginx/html/",
 			expected: []string{"Creating custom-service", "custom Dockerfile"},
 		},
@@ -136,10 +136,17 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 						if lastContainer.Image != "ubuntu:22.04" {
 							t.Errorf("Expected default image ubuntu:22.04 for Dockerfile build, got: %s", lastContainer.Image)
 						}
-					} else if len(tt.args) >= 1 && (strings.Contains(tt.args[0], ":") || strings.Contains(tt.args[0], "/")) {
-						// Custom image specified
-						if lastContainer.Image != tt.args[0] {
-							t.Errorf("Expected image %s, got: %s", tt.args[0], lastContainer.Image)
+					} else {
+						// Check if --image flag was used
+						expectedImage := "ubuntu:22.04" // default
+						for _, arg := range tt.args {
+							if strings.HasPrefix(arg, "--image=") {
+								expectedImage = strings.TrimPrefix(arg, "--image=")
+								break
+							}
+						}
+						if lastContainer.Image != expectedImage {
+							t.Errorf("Expected image %s, got: %s", expectedImage, lastContainer.Image)
 						}
 					}
 				}

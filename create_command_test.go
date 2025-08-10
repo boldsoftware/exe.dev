@@ -62,22 +62,52 @@ func TestHandleCreateCommand(t *testing.T) {
 			expectOutput: []string{"Creating", "for team testteam", "Ready in", "Access with ssh", "exe.dev"},
 		},
 		{
+			name:         "help flag",
+			args:         []string{"--help"},
+			expectError:  false,
+			expectOutput: []string{"Usage: create", "Options:", "--name", "--image", "Examples:"},
+		},
+		{
 			name:         "invalid container name",
-			args:         []string{"AB"}, // too short and uppercase
+			args:         []string{"--name=AB"}, // too short and uppercase
 			expectError:  true,
 			expectOutput: []string{"Invalid container name"},
 		},
 		{
 			name:         "valid container name", 
-			args:         []string{"mycontainer"},
+			args:         []string{"--name=mycontainer"},
 			expectError:  false,
 			expectOutput: []string{"Creating", "mycontainer", "for team testteam", "Ready in", "Access with ssh mycontainer@exe.dev"},
 		},
 		{
 			name:         "duplicate container name",
-			args:         []string{"mycontainer"}, // same as above
+			args:         []string{"--name=mycontainer"}, // same as above
 			expectError:  true,
 			expectOutput: []string{"Container name 'mycontainer' already exists"},
+		},
+		{
+			name:         "custom image",
+			args:         []string{"--image=python:3.11"},
+			expectError:  false,
+			expectOutput: []string{"Creating", "for team testteam", "using image python:3.11"},
+		},
+		{
+			name:         "both name and image",
+			args:         []string{"--name=webapp", "--image=nginx:latest"},
+			expectError:  false,
+			expectOutput: []string{"Creating", "webapp", "for team testteam", "using image nginx:latest"},
+		},
+		{
+			name:         "unexpected positional argument",
+			args:         []string{"somearg"},
+			expectError:  true,
+			expectOutput: []string{"Error: unexpected argument", "Usage: create"},
+		},
+		{
+			name:         "invalid flag",
+			args:         []string{"--invalid=flag"},
+			expectError:  true,
+			expectOutput: []string{"Error:", "Usage: create"},
 		},
 	}
 
@@ -276,7 +306,7 @@ func TestCreateCommandIntegration(t *testing.T) {
 	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
 
 	// Call handleCreateCommand
-	server.handleCreateCommand(mockChannel, []string{containerName})
+	server.handleCreateCommand(mockChannel, []string{"--name=" + containerName})
 
 	// Verify container was created in database
 	machine, err := server.getMachineByName(teamName, containerName)

@@ -2,6 +2,7 @@
 package exe
 
 import (
+	"bytes"
 	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
@@ -13,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -38,6 +40,7 @@ import (
 	_ "modernc.org/sqlite"
 	
 	"exe.dev/container"
+	"exe.dev/sshproxy"
 )
 
 //go:embed exe_schema.sql
@@ -1998,16 +2001,12 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				req.Reply(true, nil)
 			}
 			
-			// Handle SCP commands specially
+			// Handle SCP commands - we only support modern SCP via SFTP
 			if len(args) > 0 && args[0] == "scp" {
-				exitStatus := s.handleSCPCommand(channel, args, machine)
-				
-				// Send exit status
+				// Modern OpenSSH scp uses SFTP subsystem, not exec
+				channel.Stderr().Write([]byte("This server requires modern SCP (OpenSSH 8.0+) which uses SFTP protocol\n"))
 				statusPayload := make([]byte, 4)
-				statusPayload[0] = byte(exitStatus >> 24)
-				statusPayload[1] = byte(exitStatus >> 16)
-				statusPayload[2] = byte(exitStatus >> 8)
-				statusPayload[3] = byte(exitStatus)
+				statusPayload[3] = 1 // exit status 1
 				channel.SendRequest("exit-status", false, statusPayload)
 				return
 			}
@@ -2085,8 +2084,24 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 					req.Reply(true, nil)
 				}
 				
-				// Start native Go SFTP server that operates directly on container filesystem
-				s.handleNativeSFTP(channel, machine, fingerprint)
+				// Use the new sshproxy package for SFTP
+				gkeFS := sshproxy.NewGKEContainerFS(
+					s.containerManager,
+					machine.CreatedByFingerprint,
+					*machine.ContainerID,
+					"/workspace",
+				)
+				handler := sshproxy.NewSFTPHandler(context.Background(), gkeFS, "/workspace")
+				handlers := sftp.Handlers{
+					FileGet:  handler,
+					FilePut:  handler,
+					FileCmd:  handler,
+					FileList: handler,
+				}
+				server := sftp.NewRequestServer(channel, handlers)
+				if err := server.Serve(); err != nil && err != io.EOF {
+					fmt.Fprintf(os.Stderr, "SFTP server error: %v\n", err)
+				}
 				return
 			} else {
 				if req.WantReply {
@@ -2176,320 +2191,6 @@ func (s *Server) handleCancelTCPIPForward(req *ssh.Request) {
 	}
 }
 
-// handleSCPCommand handles SCP protocol commands
-func (s *Server) handleSCPCommand(channel ssh.Channel, args []string, machine *Machine) int {
-	if len(args) < 2 {
-		channel.Write([]byte("scp: missing operand\n"))
-		return 1
-	}
-	
-	// Check SCP mode
-	if args[1] == "-t" {
-		// SCP target mode (receiving files)
-		return s.handleSCPTargetMode(channel, args[2:], machine)
-	} else if args[1] == "-f" {
-		// SCP source mode (sending files) 
-		return s.handleSCPSourceMode(channel, args[2:], machine)
-	} else {
-		// Unknown SCP mode
-		channel.Write([]byte("scp: unsupported mode\n"))
-		return 1
-	}
-}
-
-// handleSCPTargetMode handles 'scp -t' (receiving files to the container)
-func (s *Server) handleSCPTargetMode(channel ssh.Channel, args []string, machine *Machine) int {
-	if len(args) == 0 {
-		channel.Stderr().Write([]byte("scp: missing destination\n"))
-		return 1
-	}
-	
-	// First try to execute the real scp command in the container
-	// If scp is available (openssh-client installed), this will work normally
-	scpArgs := append([]string{"scp", "-t"}, args...)
-	
-	// CRITICAL: We must capture stdout/stderr to avoid protocol violations
-	// The SCP protocol is binary and any unexpected text output breaks it
-	var stdoutBuf, stderrBuf strings.Builder
-	
-	err := s.containerManager.ExecuteInContainer(
-		context.Background(),
-		machine.CreatedByFingerprint,
-		*machine.ContainerID,
-		scpArgs,
-		channel, // stdin - for SCP protocol data from client
-		&stdoutBuf, // capture stdout - don't send directly to client
-		&stderrBuf, // capture stderr - don't send directly to client
-	)
-	
-	// Check what the container produced
-	stdoutStr := stdoutBuf.String()
-	stderrStr := stderrBuf.String()
-	
-	// If we see the mock's "Executed:" output, scp command isn't available
-	if strings.Contains(stdoutStr, "Executed:") || (err != nil && strings.Contains(err.Error(), "not found")) {
-		// Container doesn't have scp - fall back to native SCP implementation
-		return s.handleNativeSCPTarget(channel, args, machine)
-	}
-	
-	if err != nil {
-		// Some other error occurred - send to stderr
-		channel.Stderr().Write([]byte(fmt.Sprintf("scp: %v\n", err)))
-		return 1
-	}
-	
-	// Success case - pass through the actual SCP protocol output
-	if stdoutBuf.Len() > 0 {
-		channel.Write([]byte(stdoutStr))
-	}
-	if stderrBuf.Len() > 0 {
-		channel.Stderr().Write([]byte(stderrStr))
-	}
-	
-	return 0
-}
-
-// handleNativeSCPTarget implements native SCP target mode (upload) using our SFTP filesystem
-func (s *Server) handleNativeSCPTarget(channel ssh.Channel, args []string, machine *Machine) int {
-	if machine.ContainerID == nil {
-		channel.Stderr().Write([]byte("scp: machine not running\n"))
-		return 1
-	}
-
-	if len(args) == 0 {
-		channel.Stderr().Write([]byte("scp: missing destination\n"))
-		return 1
-	}
-
-	// Parse destination path - SCP uses the last argument as destination
-	destPath := args[len(args)-1]
-	
-	// Resolve destination path (handle ~ for home directory)
-	if destPath == "~" || destPath == "" {
-		destPath = "/workspace"
-	} else if strings.HasPrefix(destPath, "~/") {
-		destPath = "/workspace" + strings.TrimPrefix(destPath, "~")
-	} else if !strings.HasPrefix(destPath, "/") {
-		destPath = "/workspace/" + destPath
-	}
-
-	// Create container filesystem interface
-	containerFS := NewContainerFS(
-		s.containerManager,
-		machine.CreatedByFingerprint,
-		*machine.ContainerID,
-		"/workspace",
-	)
-
-	// Implement SCP target protocol
-	// SCP protocol: client sends files, server acknowledges
-	
-	// Send OK to start protocol
-	_, err := channel.Write([]byte{0}) // 0 = OK
-	if err != nil {
-		return 1
-	}
-
-	// Read SCP protocol messages from client
-	buffer := make([]byte, 4096)
-	for {
-		n, err := channel.Read(buffer)
-		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
-			return 1
-		}
-
-		if n == 0 {
-			continue
-		}
-
-		message := string(buffer[:n])
-		
-		// Parse SCP protocol message
-		if strings.HasPrefix(message, "C") {
-			// File copy message: C<mode> <length> <filename>\n<data>
-			err = s.handleSCPFileTransfer(channel, message, destPath, containerFS)
-			if err != nil {
-				channel.Stderr().Write([]byte(fmt.Sprintf("scp: %v\n", err)))
-				return 1
-			}
-		} else if strings.HasPrefix(message, "D") {
-			// Directory message: D<mode> <length> <dirname>\n
-			err = s.handleSCPDirectoryTransfer(channel, message, destPath, containerFS)
-			if err != nil {
-				channel.Stderr().Write([]byte(fmt.Sprintf("scp: %v\n", err)))
-				return 1
-			}
-		} else if strings.HasPrefix(message, "E") {
-			// End directory
-			channel.Write([]byte{0}) // OK
-		} else {
-			// Unknown message
-			channel.Write([]byte{1}) // Error
-			return 1
-		}
-	}
-
-	return 0
-}
-
-// handleSCPFileTransfer handles a single file transfer in SCP protocol
-func (s *Server) handleSCPFileTransfer(channel ssh.Channel, message, destPath string, containerFS *ContainerFS) error {
-	// Parse: C0644 <length> <filename>\n
-	parts := strings.SplitN(message, " ", 3)
-	if len(parts) != 3 {
-		return fmt.Errorf("invalid SCP file message")
-	}
-
-	// Extract filename from the message (after second space, before newline)
-	filenameAndData := parts[2]
-	newlinePos := strings.Index(filenameAndData, "\n")
-	if newlinePos == -1 {
-		return fmt.Errorf("invalid SCP file message format")
-	}
-	
-	filename := filenameAndData[:newlinePos]
-	fileData := filenameAndData[newlinePos+1:]
-
-	// Create target file path
-	var targetPath string
-	if strings.HasSuffix(destPath, "/") || destPath == "/workspace" {
-		targetPath = destPath + "/" + filename
-	} else {
-		targetPath = destPath
-	}
-
-	// Clean path
-	targetPath = strings.ReplaceAll(targetPath, "//", "/")
-
-	// Convert to SFTP path (remove /workspace prefix for SFTP)
-	sftpPath := strings.TrimPrefix(targetPath, "/workspace")
-	if sftpPath == "" || sftpPath[0] != '/' {
-		sftpPath = "/" + sftpPath
-	}
-
-	// Create file using SFTP filesystem
-	writer, err := containerFS.Filewrite(&sftp.Request{
-		Method:   "Put",
-		Filepath: sftpPath,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create file: %v", err)
-	}
-
-	// Write file data
-	_, err = writer.WriteAt([]byte(fileData), 0)
-	if err != nil {
-		return fmt.Errorf("failed to write file data: %v", err)
-	}
-
-	// Close file (this triggers the atomic commit)
-	if closer, ok := writer.(io.Closer); ok {
-		err = closer.Close()
-		if err != nil {
-			return fmt.Errorf("failed to close file: %v", err)
-		}
-	}
-
-	// Send OK response
-	channel.Write([]byte{0})
-	return nil
-}
-
-// handleSCPDirectoryTransfer handles directory creation in SCP protocol  
-func (s *Server) handleSCPDirectoryTransfer(channel ssh.Channel, message, destPath string, containerFS *ContainerFS) error {
-	// Parse: D0755 <length> <dirname>\n
-	parts := strings.SplitN(message, " ", 3)
-	if len(parts) != 3 {
-		return fmt.Errorf("invalid SCP directory message")
-	}
-
-	dirname := strings.TrimSpace(parts[2])
-	if newlinePos := strings.Index(dirname, "\n"); newlinePos != -1 {
-		dirname = dirname[:newlinePos]
-	}
-
-	// Create target directory path
-	var targetPath string
-	if strings.HasSuffix(destPath, "/") {
-		targetPath = destPath + dirname
-	} else {
-		targetPath = destPath + "/" + dirname
-	}
-
-	// Convert to SFTP path
-	sftpPath := strings.TrimPrefix(targetPath, "/workspace")
-	if sftpPath == "" || sftpPath[0] != '/' {
-		sftpPath = "/" + sftpPath
-	}
-
-	// Create directory
-	err := containerFS.Mkdir(sftpPath, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	// Send OK response
-	channel.Write([]byte{0})
-	return nil
-}
-
-// handleSCPSourceMode handles 'scp -f' (sending files from the container)
-func (s *Server) handleSCPSourceMode(channel ssh.Channel, args []string, machine *Machine) int {
-	if len(args) == 0 {
-		channel.Stderr().Write([]byte("scp: missing source\n"))
-		return 1
-	}
-	
-	// First try to execute the real scp command in the container
-	// If scp is available (openssh-client installed), this will work normally
-	scpArgs := append([]string{"scp", "-f"}, args...)
-	
-	// CRITICAL: We must capture stdout/stderr to avoid protocol violations
-	// The SCP protocol is binary and any unexpected text output breaks it
-	var stdoutBuf, stderrBuf strings.Builder
-	
-	err := s.containerManager.ExecuteInContainer(
-		context.Background(),
-		machine.CreatedByFingerprint,
-		*machine.ContainerID,
-		scpArgs,
-		channel, // stdin - for SCP protocol data from client
-		&stdoutBuf, // capture stdout - don't send directly to client
-		&stderrBuf, // capture stderr - don't send directly to client
-	)
-	
-	// Check what the container produced
-	stdoutStr := stdoutBuf.String()
-	stderrStr := stderrBuf.String()
-	
-	// If we see the mock's "Executed:" output, scp command isn't available
-	if strings.Contains(stdoutStr, "Executed:") {
-		// Container doesn't have scp - send proper SCP protocol error to stderr
-		channel.Stderr().Write([]byte("scp: /usr/bin/scp: No such file or directory\n"))
-		channel.Stderr().Write([]byte("Install openssh-client: apt-get install openssh-client\n"))
-		return 1 // Return error status as SCP failed
-	}
-	
-	if err != nil {
-		// Some other error occurred - send to stderr
-		channel.Stderr().Write([]byte(fmt.Sprintf("scp: %v\n", err)))
-		return 1
-	}
-	
-	// Success case - pass through the actual SCP protocol output
-	if stdoutBuf.Len() > 0 {
-		channel.Write([]byte(stdoutStr))
-	}
-	if stderrBuf.Len() > 0 {
-		channel.Stderr().Write([]byte(stderrStr))
-	}
-	
-	return 0
-}
-
 // connectToContainer connects directly to a container for external SSH access
 func (s *Server) connectToContainer(channel ssh.Channel, containerID string) {
 	if s.containerManager == nil {
@@ -2514,6 +2215,42 @@ func (s *Server) connectToContainer(channel ssh.Channel, containerID string) {
 		fingerprint, // Using fingerprint as userID
 		containerID,
 		[]string{"/bin/bash"},
+		channel, // stdin
+		channel, // stdout
+		channel, // stderr
+	)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Connection ended normally
+	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
+}
+
+// connectToContainerInteractive connects to a container with proper interactive shell handling
+func (s *Server) connectToContainerInteractive(channel ssh.Channel, containerID string) {
+	if s.containerManager == nil {
+		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
+		return
+	}
+	
+	fingerprint, _, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Use kubectl exec to connect to the container with proper PTY handling
+	ctx := context.Background()
+	
+	// Execute /bin/bash with interactive and login flags for proper shell behavior
+	err = s.containerManager.ExecuteInContainer(
+		ctx,
+		fingerprint, // Using fingerprint as userID
+		containerID,
+		[]string{"/bin/bash", "-i", "-l"}, // Interactive login shell
 		channel, // stdin
 		channel, // stdout
 		channel, // stderr
@@ -2706,7 +2443,7 @@ func generateRandomContainerName() string {
 	return word1 + "-" + word2
 }
 
-// handleCreateCommandWithStdin creates a new container with support for stdin Dockerfile and image parameters
+// handleCreateCommandWithStdin creates a new container with support for stdin Dockerfile and flag-based parameters
 func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string, stdin io.Reader) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mContainer management is not available\033[0m\r\n"))
@@ -2719,8 +2456,65 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		return
 	}
 	
+	// Create a custom flag set for the create command
+	flags := flag.NewFlagSet("create", flag.ContinueOnError)
+	
+	// Define flags
 	var containerName string
-	var image string = "ubuntu:22.04" // Default image
+	var image string
+	var showHelp bool
+	
+	flags.StringVar(&containerName, "name", "", "Container name (auto-generated if not specified)")
+	flags.StringVar(&image, "image", "ubuntu:22.04", "Docker image to use")
+	flags.BoolVar(&showHelp, "help", false, "Show help message")
+	
+	// Buffer to capture and discard default flag output
+	var discardBuffer bytes.Buffer
+	flags.SetOutput(&discardBuffer)
+	
+	// Custom usage function that we control completely
+	showUsage := func() {
+		channel.Write([]byte("Usage: create [OPTIONS]\r\n"))
+		channel.Write([]byte("\r\nCreate a new container\r\n\r\n"))
+		channel.Write([]byte("Options:\r\n"))
+		// Get flag defaults in a controlled way
+		var flagBuffer bytes.Buffer
+		flags.SetOutput(&flagBuffer)
+		flags.PrintDefaults()
+		channel.Write(flagBuffer.Bytes())
+		flags.SetOutput(&discardBuffer) // Reset to discard buffer
+		channel.Write([]byte("\r\nExamples:\r\n"))
+		channel.Write([]byte("  create                                    # Create with defaults\r\n"))
+		channel.Write([]byte("  create --name=myapp                      # Create with specific name\r\n"))
+		channel.Write([]byte("  create --image=python:3.11               # Create with specific image\r\n"))
+		channel.Write([]byte("  create --name=web --image=nginx:latest   # Specify both name and image\r\n"))
+		channel.Write([]byte("  cat Dockerfile | ssh exe.dev create --name=custom  # Create from Dockerfile\r\n"))
+	}
+	
+	// Parse flags - any automatic output goes to discardBuffer
+	parseErr := flags.Parse(args)
+	if parseErr != nil {
+		// If parsing fails, show the error and our custom usage (ignore default output)
+		if parseErr != flag.ErrHelp {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n\r\n", parseErr)))
+		}
+		showUsage()
+		return
+	}
+	
+	// Check for help flag
+	if showHelp {
+		showUsage()
+		return
+	}
+	
+	// Check for unexpected positional arguments
+	if flags.NArg() > 0 {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: unexpected argument(s): %v\033[0m\r\n\r\n", flags.Args())))
+		showUsage()
+		return
+	}
+	
 	var dockerfile string
 	
 	// Try to read from stdin using a goroutine with timeout to detect piped data
@@ -2759,43 +2553,10 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 	select {
 	case data := <-stdinData:
 		dockerfile = strings.TrimSpace(string(data))
-		// When using Dockerfile from stdin, we only support the name as an argument  
-		if len(args) > 1 {
-			channel.Write([]byte("\033[1;31mWhen using Dockerfile from stdin, only container name can be specified as argument\033[0m\r\n"))
-			return
-		}
-		if len(args) == 1 {
-			containerName = args[0]
-		}
 	case <-stdinErr:
 		// No stdin data available
 	case <-time.After(100 * time.Millisecond):
 		// Timeout - assume no piped data
-	}
-	
-	// If no dockerfile from stdin, parse command line arguments
-	if dockerfile == "" {
-		// No stdin data, parse command line arguments
-		// Supports: create, create [name], create [image], create [image] [name]
-		switch len(args) {
-		case 0:
-			// create - use defaults
-		case 1:
-			// create [name] or create [image]
-			// If it looks like an image (contains : or /), treat as image
-			if strings.Contains(args[0], ":") || strings.Contains(args[0], "/") {
-				image = args[0]
-			} else {
-				containerName = args[0]
-			}
-		case 2:
-			// create [image] [name]
-			image = args[0]
-			containerName = args[1]
-		default:
-			channel.Write([]byte("\033[1;31mUsage: create [image] [name] or cat Dockerfile | ssh exe.dev create [name]\033[0m\r\n"))
-			return
-		}
 	}
 	
 	// Generate container name if not provided
@@ -2914,9 +2675,23 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 						containerName, totalTime.Seconds(), teamName, displayImage)
 				}
 				
-				// Auto-SSH into the container
+				// Auto-SSH into the container with proper interactive shell
 				time.Sleep(500 * time.Millisecond) // Brief pause for visual effect
-				s.handleSSHCommand(channel, []string{containerName})
+				
+				// Get the machine details for proper SSH proxying
+				machine, err := s.getMachineByName(teamName, containerName)
+				if err != nil {
+					channel.Write([]byte(fmt.Sprintf("\033[1;31mError connecting to container: %v\033[0m\r\n", err)))
+					return
+				}
+				
+				if machine.ContainerID == nil {
+					channel.Write([]byte("\033[1;31mContainer ID not found\033[0m\r\n"))
+					return
+				}
+				
+				// Use the proper interactive shell connection
+				s.connectToContainerInteractive(channel, *machine.ContainerID)
 				return
 			}
 		}
@@ -2943,7 +2718,7 @@ func (s *Server) handleSSHCommand(channel ssh.Channel, args []string) {
 	
 	containerName := args[0]
 	
-	fingerprint, teamName, err := s.getUserFromChannel(channel)
+	_, teamName, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
@@ -2971,29 +2746,8 @@ func (s *Server) handleSSHCommand(channel ssh.Channel, args []string) {
 		return
 	}
 	
-	// Connect directly without showing "Connecting..." message
-	
-	// Use kubectl exec to connect to the container
-	ctx := context.Background()
-	
-	// Execute /bin/bash in the container with TTY
-	err = s.containerManager.ExecuteInContainer(
-		ctx,
-		fingerprint, // Using fingerprint as userID
-		*machine.ContainerID,
-		[]string{"/bin/bash"},
-		channel, // stdin
-		channel, // stdout
-		channel, // stderr
-	)
-	
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
-		return
-	}
-	
-	// Connection ended normally
-	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
+	// Connect using the improved interactive shell handling
+	s.connectToContainerInteractive(channel, *machine.ContainerID)
 }
 
 // handleStartCommand starts a container
@@ -4122,37 +3876,3 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-// handleNativeSFTP starts a native Go SFTP server that operates directly on container filesystem
-func (s *Server) handleNativeSFTP(channel ssh.Channel, machine *Machine, fingerprint string) {
-	if machine.ContainerID == nil {
-		channel.Stderr().Write([]byte("Machine is not running\n"))
-		return
-	}
-
-	// Create container filesystem interface
-	containerFS := NewContainerFS(
-		s.containerManager,
-		machine.CreatedByFingerprint,
-		*machine.ContainerID,
-		"/workspace", // Default jail directory
-	)
-
-	// Create SFTP request server with our custom filesystem backend
-	handlers := sftp.Handlers{
-		FileGet:  containerFS, // Implements FileReader
-		FilePut:  containerFS, // Implements FileWriter  
-		FileCmd:  containerFS, // Implements FileCmder
-		FileList: containerFS, // Implements FileLister
-	}
-
-	server := sftp.NewRequestServer(channel, handlers)
-
-	// Serve SFTP requests
-	// This will block until the client disconnects
-	serveErr := server.Serve()
-	if serveErr != nil && serveErr != io.EOF {
-		// Log error but don't send to channel (would break protocol)
-		// In production, you'd log this to your logging system
-		fmt.Fprintf(os.Stderr, "SFTP server error: %v\n", serveErr)
-	}
-}
