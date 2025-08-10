@@ -1145,9 +1145,23 @@ func (s *Server) startEmailVerification(channel ssh.Channel, fingerprint, email 
 func (s *Server) sendVerificationEmail(email, token string) error {
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", s.BaseURL, token)
 	
-	// In dev mode, just log the URL instead of sending email
+	// In dev mode, just log the URL instead of sending email and auto-complete verification
 	if s.devMode {
 		log.Printf("🔧 DEV MODE: Would send verification email to %s with URL: %s", email, verificationURL)
+		
+		// Auto-complete email verification in dev mode
+		go func() {
+			time.Sleep(100 * time.Millisecond) // Brief delay to simulate async behavior
+			s.emailVerificationsMu.Lock()
+			verification, exists := s.emailVerifications[token]
+			if exists {
+				close(verification.CompleteChan)
+				delete(s.emailVerifications, token)
+				log.Printf("🔧 DEV MODE: Auto-completed email verification for %s", email)
+			}
+			s.emailVerificationsMu.Unlock()
+		}()
+		
 		return nil
 	}
 	

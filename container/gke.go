@@ -185,8 +185,8 @@ func (m *GKEManager) createPVC(ctx context.Context, container *Container) error 
 			Namespace: container.Namespace,
 			Labels: map[string]string{
 				"app":         "exe-container",
-				"container-id": container.ID,
-				"user-id":     container.UserID,
+				"container-id": m.shortenForLabel(container.ID),
+				"user-id":     m.shortenForLabel(container.UserID),
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -217,8 +217,8 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container) error 
 			Namespace: container.Namespace,
 			Labels: map[string]string{
 				"app":         "exe-container",
-				"container-id": container.ID,
-				"user-id":     container.UserID,
+				"container-id": m.shortenForLabel(container.ID),
+				"user-id":     m.shortenForLabel(container.UserID),
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -282,6 +282,27 @@ func generateContainerID(userID, name string) string {
 	sanitized := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 	timestamp := time.Now().Unix()
 	return fmt.Sprintf("%s-%s-%d", userID, sanitized, timestamp)
+}
+
+// shortenForLabel creates a short hash suitable for Kubernetes labels (max 63 chars)
+func (m *GKEManager) shortenForLabel(value string) string {
+	if len(value) <= 63 {
+		return value
+	}
+	
+	// Create a short hash of the value to stay within Kubernetes 63-character limit for labels
+	hasher := sha256.New()
+	hasher.Write([]byte(value))
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))[:16] // Take first 16 chars of hex
+	
+	// Keep a short prefix for readability if possible
+	maxPrefix := 63 - 17 // Reserve 16 chars for hash + 1 for separator
+	prefix := value
+	if len(prefix) > maxPrefix {
+		prefix = prefix[:maxPrefix]
+	}
+	
+	return fmt.Sprintf("%s-%s", prefix, hash)
 }
 
 // stringPtr returns a pointer to a string
