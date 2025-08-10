@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>exe.dev - just use ssh</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #ffffdd;
+            font-family: Georgia, 'Times New Roman', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+        
+        .stop-overbuilding {
+            font-size: 14px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 400;
+        }
+        
+        .just-use-ssh {
+            font-size: clamp(70px, 14vw, 160px);
+            line-height: 0.9;
+            color: #000;
+            margin-bottom: 40px;
+            font-weight: normal;
+            letter-spacing: -0.02em;
+        }
+        
+        .content-section {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            margin: 40px auto 50px;
+            flex-wrap: wrap;
+        }
+        
+        .blowfish-logo {
+            width: 200px;
+            height: auto;
+        }
+        
+        .description {
+            font-size: 18px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #444;
+            line-height: 1.8;
+            max-width: 420px;
+            font-weight: 400;
+            text-align: left;
+        }
+        
+        .description strong {
+            font-weight: bold;
+        }
+        
+        .command-block {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: clamp(20px, 3.5vw, 28px);
+            color: #000;
+            background: rgba(255, 255, 255, 0.3);
+            padding: 20px 40px;
+            border-radius: 12px;
+            display: inline-block;
+            margin-top: 20px;
+            letter-spacing: 0.05em;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            white-space: nowrap;
+            text-align: left;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 10px;
+            }
+            
+            .stop-overbuilding {
+                font-size: 12px;
+                letter-spacing: 0.2em;
+            }
+            
+            .just-use-ssh {
+                margin-left: -10px;
+                margin-right: -10px;
+            }
+            
+            .content-section {
+                flex-direction: column;
+            }
+            
+            .description {
+                font-size: 15px;
+                letter-spacing: 0.1em;
+                text-align: center;
+            }
+            
+            .blowfish-logo {
+                width: 150px;
+            }
+            
+            .command-block {
+                padding: 15px 25px;
+                white-space: normal;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="stop-overbuilding">No More Castles in the Cloud</div>
+        
+        <h1 class="just-use-ssh">just use ssh</h1>
+        
+        <div class="content-section">
+            <p class="description">
+                <strong>exe.dev</strong> admits what servers are, unix over ssh. it is a good ui and api, so let's do ssh first, and do it well.
+            </p>
+            
+            <img src="exe.dev.jpg" alt="exe.dev blowfish logo" class="blowfish-logo">
+        </div>
+
+        <div class="content-section">
+            <div class="command-block">
+                ssh exe.dev create --name=bip<br>
+                ssh bip@exe.dev
+            </div>
+            <p class="description">
+                make a new machine with persistent disk.
+                connect to it.
+            </p>
+        </div>
+
+        <div class="content-section">
+            <div class="command-block">https://bip.yourteam.exe.dev</div>
+            <p class="description">
+                automatic <strong>HTTPS</strong> proxying<br>
+                use <code>&lt;name>-&lt;port></code> to reach any port on your machine
+            </p>
+        </div>
+        
+        <div class="content-section">
+            <div class="command-block">ssh exe.dev</div>
+            <p class="description">
+                <strong>sign up</strong> now, in your terminal
+            </p>
+        </div>
+    </div>
+</body>
+</html>
