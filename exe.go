@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log"
+	mathrand "math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -735,7 +736,7 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
 		"\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
-		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
+		"\033[1mcreate [name]\033[0m  - Create a new container (auto-generates name if not specified)\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
 		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
@@ -746,7 +747,7 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 	
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
-		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
+		"\033[1mcreate [name]\033[0m  - Create a new container (auto-generates name if not specified)\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
 		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
@@ -882,6 +883,27 @@ func (s *Server) handleListCommand(channel ssh.Channel) {
 	channel.Write([]byte("\r\n"))
 }
 
+// generateRandomContainerName generates a random container name using two safe words
+func generateRandomContainerName() string {
+	words := []string{
+		"alpha", "beta", "gamma", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet",
+		"kilo", "lima", "mike", "nova", "oscar", "papa", "quebec", "romeo", "sierra", "tango",
+		"uniform", "victor", "whiskey", "xray", "yankee", "zulu", "able", "baker", "charlie",
+		"dog", "easy", "fox", "george", "how", "item", "jig", "king", "love", "neon",
+		"ocean", "pine", "river", "stone", "tree", "wind", "fire", "earth", "moon", "star",
+	}
+	
+	word1 := words[mathrand.Intn(len(words))]
+	word2 := words[mathrand.Intn(len(words))]
+	
+	// Ensure we don't get the same word twice
+	for word1 == word2 {
+		word2 = words[mathrand.Intn(len(words))]
+	}
+	
+	return word1 + "-" + word2
+}
+
 // handleCreateCommand creates a new container
 func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 	if s.containerManager == nil {
@@ -889,21 +911,41 @@ func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
 		return
 	}
 	
-	if len(args) == 0 {
-		channel.Write([]byte("\033[1;31mUsage: create <name>\033[0m\r\n"))
-		return
-	}
-	
-	containerName := args[0]
-	if !s.isValidContainerName(containerName) {
-		channel.Write([]byte("\033[1;31mInvalid container name. Use 3-20 lowercase letters, numbers, and hyphens only.\033[0m\r\n"))
-		return
-	}
-	
 	fingerprint, teamName, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
+	}
+	
+	var containerName string
+	if len(args) == 0 {
+		// No name provided, generate a random one
+		// Generate a unique name by trying until we find one that doesn't exist
+		maxAttempts := 10
+		for attempts := 0; attempts < maxAttempts; attempts++ {
+			candidateName := generateRandomContainerName()
+			
+			// Check if this name is already taken
+			_, err = s.getMachineByName(teamName, candidateName)
+			if err != nil && err.Error() == "sql: no rows in result set" {
+				// Name is available
+				containerName = candidateName
+				break
+			}
+		}
+		
+		if containerName == "" {
+			channel.Write([]byte("\033[1;31mFailed to generate a unique container name. Please specify a name manually.\033[0m\r\n"))
+			return
+		}
+		
+		channel.Write([]byte(fmt.Sprintf("Generated container name: \033[1m%s\033[0m\r\n", containerName)))
+	} else {
+		containerName = args[0]
+		if !s.isValidContainerName(containerName) {
+			channel.Write([]byte("\033[1;31mInvalid container name. Use 3-20 lowercase letters, numbers, and hyphens only.\033[0m\r\n"))
+			return
+		}
 	}
 	
 	// Check if container name already exists in this team

@@ -18,7 +18,7 @@ func TestRunMainShellWelcomeBehavior(t *testing.T) {
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
 		"\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
-		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
+		"\033[1mcreate [name]\033[0m  - Create a new container (auto-generates name if not specified)\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
 		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
@@ -37,8 +37,8 @@ func TestRunMainShellWelcomeBehavior(t *testing.T) {
 	if !strings.Contains(welcome, "commands:") {
 		t.Error("Welcome message should contain 'commands:'")
 	}
-	if !strings.Contains(welcome, "create <name>") {
-		t.Error("Welcome message should contain 'create <name>'")
+	if !strings.Contains(welcome, "create [name]") {
+		t.Error("Welcome message should contain 'create [name]'")
 	}
 	
 	// The main test is whether the conditional logic works
@@ -58,7 +58,7 @@ func TestHelpCommandStillWorks(t *testing.T) {
 	// This test verifies that the help command string is correctly defined
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
-		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
+		"\033[1mcreate [name]\033[0m  - Create a new container (auto-generates name if not specified)\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
 		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
@@ -73,7 +73,7 @@ func TestHelpCommandStillWorks(t *testing.T) {
 	if !strings.Contains(helpText, "commands:") {
 		t.Error("Help command should show 'commands:'")
 	}
-	if !strings.Contains(helpText, "create <name>") {
+	if !strings.Contains(helpText, "create [name]") {
 		t.Error("Help command should show create command help")
 	}
 	if strings.Contains(helpText, "███") {

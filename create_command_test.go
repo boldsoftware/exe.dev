@@ -58,8 +58,8 @@ func TestHandleCreateCommand(t *testing.T) {
 		{
 			name:         "no arguments",
 			args:         []string{},
-			expectError:  true,
-			expectOutput: []string{"Usage: create <name>"},
+			expectError:  false,
+			expectOutput: []string{"Generated container name:", "Creating container", "is ready!", "Access it with: ssh"},
 		},
 		{
 			name:         "invalid container name",
