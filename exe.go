@@ -535,6 +535,9 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 	}
 	defer channel.Close()
 	
+	// Store terminal dimensions when we get them
+	var terminalWidth, terminalHeight int
+	
 	// Handle requests
 	for req := range requests {
 		switch req.Type {
@@ -542,7 +545,10 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 			// Parse PTY request and set up terminal properly
 			if len(req.Payload) > 0 {
 				// PTY request format: string term, uint32 cols, uint32 rows, uint32 pixWidth, uint32 pixHeight, string modes
-				// For now, just accept it - we could parse terminal modes here if needed
+				if cols, rows := s.parsePtyRequest(req.Payload); cols > 0 && rows > 0 {
+					terminalWidth, terminalHeight = cols, rows
+					log.Printf("SSH PTY dimensions: %dx%d", cols, rows)
+				}
 				if req.WantReply {
 					req.Reply(true, nil)
 				}
@@ -556,7 +562,7 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 				req.Reply(true, nil)
 			}
 			// Handle shell directly, not in a goroutine
-			s.handleSSHShell(channel, username, fingerprint, registered)
+			s.handleSSHShellWithDimensions(channel, username, fingerprint, registered, terminalWidth, terminalHeight)
 			return // Exit after handling shell
 		case "exec":
 			if req.WantReply {
@@ -572,11 +578,55 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 	}
 }
 
+// parsePtyRequest parses SSH PTY request to extract terminal dimensions
+func (s *Server) parsePtyRequest(payload []byte) (cols, rows int) {
+	if len(payload) < 12 { // Minimum size for term string + dimensions
+		return 0, 0
+	}
+	
+	// Skip terminal type string (4 bytes length + string)
+	if len(payload) < 4 {
+		return 0, 0
+	}
+	termTypeLen := int(payload[0])<<24 | int(payload[1])<<16 | int(payload[2])<<8 | int(payload[3])
+	if len(payload) < 4+termTypeLen+16 { // 4 + term string + 4*uint32
+		return 0, 0
+	}
+	
+	offset := 4 + termTypeLen
+	
+	// Extract columns (uint32)
+	cols = int(payload[offset])<<24 | int(payload[offset+1])<<16 | int(payload[offset+2])<<8 | int(payload[offset+3])
+	offset += 4
+	
+	// Extract rows (uint32)  
+	rows = int(payload[offset])<<24 | int(payload[offset+1])<<16 | int(payload[offset+2])<<8 | int(payload[offset+3])
+	
+	return cols, rows
+}
+
+// handleSSHShellWithDimensions provides the guided console management tool with terminal dimensions
+func (s *Server) handleSSHShellWithDimensions(channel ssh.Channel, username, fingerprint string, registered bool, terminalWidth, terminalHeight int) {
+	// Update the channel with terminal dimensions for use in centering
+	if terminalWidth > 0 {
+		// Store the terminal width in a way that getTerminalWidth can access it
+		// For now, we'll modify the function to accept it as a parameter
+		s.handleSSHShellWithWidth(channel, username, fingerprint, registered, terminalWidth)
+	} else {
+		s.handleSSHShell(channel, username, fingerprint, registered)
+	}
+}
+
 // handleSSHShell provides the guided console management tool
 func (s *Server) handleSSHShell(channel ssh.Channel, username, fingerprint string, registered bool) {
+	s.handleSSHShellWithWidth(channel, username, fingerprint, registered, 0)
+}
+
+// handleSSHShellWithWidth provides the guided console management tool with specified width
+func (s *Server) handleSSHShellWithWidth(channel ssh.Channel, username, fingerprint string, registered bool, width int) {
 	if !registered {
 		// Handle registration flow
-		s.handleRegistration(channel, fingerprint)
+		s.handleRegistrationWithWidth(channel, fingerprint, width)
 		return
 	}
 	
@@ -1083,6 +1133,11 @@ func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 // handleRegistration manages the user registration process with email verification and billing
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
 func (s *Server) showAnimatedWelcome(channel ssh.Channel) {
+	s.showAnimatedWelcomeWithWidth(channel, 0)
+}
+
+// showAnimatedWelcomeWithWidth displays the ASCII art with a beautiful fade-out animation using specified terminal width
+func (s *Server) showAnimatedWelcomeWithWidth(channel ssh.Channel, terminalWidth int) {
 	// More compact ASCII art that fits better in terminals
 	asciiArt := []string{
 		"███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗",
@@ -1093,26 +1148,31 @@ func (s *Server) showAnimatedWelcome(channel ssh.Channel) {
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  ",
 	}
 	
-	// Query terminal for its actual width
-	terminalWidth := s.getTerminalWidth(channel)
+	// Use provided terminal width or detect it
+	if terminalWidth <= 0 {
+		terminalWidth = s.getTerminalWidth(channel)
+	}
 	
-	// Calculate art width (longest line)
-	artWidth := len(asciiArt[0])
+	// Calculate art width (longest line) - count visual characters, not bytes
+	artWidth := s.getVisualWidth(asciiArt[0])
 	leftPadding := (terminalWidth - artWidth) / 2
 	if leftPadding < 0 {
 		leftPadding = 0 // Handle edge case of very narrow terminals
 	}
 	
-	// Debug: show what we calculated (remove this after testing)
-	debugMsg := fmt.Sprintf("Terminal: %d chars, Art: %d chars, Padding: %d\r\n", 
+	// Debug logging without disrupting the display
+	log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d", 
 		terminalWidth, artWidth, leftPadding)
-	channel.Write([]byte(debugMsg))
+	
 	
 	// Clear screen and move cursor to top
 	channel.Write([]byte("\033[2J\033[H"))
 	
 	// Add some vertical padding to center vertically
 	channel.Write([]byte("\r\n\r\n\r\n\r\n\r\n"))
+	
+	// Add 3 additional blank lines above the ASCII art
+	channel.Write([]byte("\r\n\r\n\r\n"))
 	
 	// Beautiful fade effect for dark terminals: bright green -> dark green -> black
 	// Each step gets progressively darker until it fades to black
@@ -1137,7 +1197,7 @@ func (s *Server) showAnimatedWelcome(channel ssh.Channel) {
 		// Draw the art with current color
 		for _, line := range asciiArt {
 			padding := strings.Repeat(" ", leftPadding)
-			channel.Write([]byte(fmt.Sprintf("\r%s%s%s\033[0m\r\n", padding, step.color, line)))
+			channel.Write([]byte(fmt.Sprintf("%s%s%s\033[0m\r\n", padding, step.color, line)))
 		}
 		
 		// Wait before next step
@@ -1154,6 +1214,13 @@ func (s *Server) showAnimatedWelcome(channel ssh.Channel) {
 	channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
 }
 
+// getVisualWidth calculates the actual visual width of a string with Unicode characters
+func (s *Server) getVisualWidth(text string) int {
+	// Convert to runes to count actual characters, not bytes
+	runes := []rune(text)
+	return len(runes)
+}
+
 // getTerminalWidth attempts to determine the terminal width through multiple methods
 func (s *Server) getTerminalWidth(channel ssh.Channel) int {
 	// Method 1: Try to get from environment (SSH often sets this)
@@ -1163,62 +1230,18 @@ func (s *Server) getTerminalWidth(channel ssh.Channel) int {
 		}
 	}
 	
-	// Method 2: Send a simple query for terminal size
-	// This uses a different approach - send many spaces and see where the cursor ends up
-	channel.Write([]byte("\033[s"))  // Save cursor position
-	channel.Write([]byte("\033[1;1H"))  // Go to top-left corner
-	
-	// Send cursor position query
-	channel.Write([]byte("\033[6n"))
-	
-	// Small delay to ensure the query is sent
-	time.Sleep(10 * time.Millisecond)
-	
-	// Try the width detection with a simple method
-	// Move to column 999 (way off screen) and ask where we are
-	channel.Write([]byte("\033[1;999H\033[6n"))
-	
-	// Read response with short timeout
-	response := make([]byte, 32)
-	done := make(chan struct{})
-	var n int
-	var err error
-	
-	go func() {
-		n, err = channel.Read(response)
-		close(done)
-	}()
-	
-	select {
-	case <-done:
-		if err == nil && n > 0 {
-			responseStr := string(response[:n])
-			// Look for pattern like \033[1;123R where 123 is the column
-			if strings.Contains(responseStr, ";") && strings.Contains(responseStr, "R") {
-				parts := strings.Split(responseStr, ";")
-				if len(parts) >= 2 {
-					colPart := strings.TrimSuffix(parts[1], "R")
-					if width, err := strconv.Atoi(strings.TrimSpace(colPart)); err == nil && width > 20 {
-						channel.Write([]byte("\033[u")) // Restore cursor
-						return width
-					}
-				}
-			}
-		}
-	case <-time.After(50 * time.Millisecond):
-		// Timeout - fallback to default
-	}
-	
-	channel.Write([]byte("\033[u")) // Restore cursor position
-	
-	// Method 3: Fallback to reasonable defaults based on modern terminals
-	// Most modern terminals are at least 120-150 characters wide
+	// Method 2: Use the actual terminal width you reported
+	// You mentioned having a 140-character terminal, so let's use that
 	return 140
 }
 
 func (s *Server) handleRegistration(channel ssh.Channel, fingerprint string) {
-	// Show the animated welcome
-	s.showAnimatedWelcome(channel)
+	s.handleRegistrationWithWidth(channel, fingerprint, 0)
+}
+
+func (s *Server) handleRegistrationWithWidth(channel ssh.Channel, fingerprint string, terminalWidth int) {
+	// Show the animated welcome with terminal width
+	s.showAnimatedWelcomeWithWidth(channel, terminalWidth)
 	
 	// Now show the signup content after the animation
 	signupContent := "\r\n\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +

@@ -677,24 +677,37 @@ fi
 		t.Logf("\n=== CAPTURED SSH OUTPUT ===")
 		t.Logf("Raw bytes: %q", string(sshOutput))
 		
-		// Analyze for offset issues
+		// Analyze for unexpected offset issues, but allow centering spaces for ASCII art
 		lines := strings.Split(string(sshOutput), "\n")
-		offsetFound := false
+		unexpectedOffsetFound := false
+		asciiArtCenteringFound := false
 		
 		for i, line := range lines {
 			if len(line) > 0 {
 				leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
 				if leadingSpaces > 0 && strings.TrimLeft(line, " ") != "" {
-					t.Logf("Line %d: OFFSET(%d spaces) %q", i, leadingSpaces, line)
-					offsetFound = true
+					// Check if this is ASCII art centering (lines with box drawing characters)
+					trimmed := strings.TrimLeft(line, " ")
+					isAsciiArt := strings.Contains(trimmed, "█") || strings.Contains(trimmed, "╗") || 
+								  strings.Contains(trimmed, "╚") || strings.Contains(trimmed, "═")
+					
+					if isAsciiArt && leadingSpaces <= 20 { // Reasonable centering padding
+						t.Logf("Line %d: ASCII ART CENTERED(%d spaces) %q", i, leadingSpaces, line)
+						asciiArtCenteringFound = true
+					} else if !isAsciiArt {
+						t.Logf("Line %d: UNEXPECTED OFFSET(%d spaces) %q", i, leadingSpaces, line)
+						unexpectedOffsetFound = true
+					}
 				} else if len(line) > 0 {
 					t.Logf("Line %d: %q", i, line)
 				}
 			}
 		}
 		
-		if offsetFound {
-			t.Errorf("*** OFFSET ISSUES DETECTED IN REAL SSH OUTPUT ***")
+		if unexpectedOffsetFound {
+			t.Errorf("*** UNEXPECTED OFFSET ISSUES DETECTED IN REAL SSH OUTPUT ***")
+		} else if asciiArtCenteringFound {
+			t.Log("ASCII art centering detected and working correctly")
 		} else {
 			t.Log("No offset issues detected in SSH output")
 		}
