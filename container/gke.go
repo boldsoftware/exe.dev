@@ -284,6 +284,37 @@ func generateContainerID(userID, name string) string {
 	return fmt.Sprintf("%s-%s-%d", userID, sanitized, timestamp)
 }
 
+// extractContainerNameFromID extracts the container name from a container ID
+// Container IDs have format: {userID}-{name}-{timestamp}
+func extractContainerNameFromID(containerID string) string {
+	parts := strings.Split(containerID, "-")
+	if len(parts) < 3 {
+		return containerID // Fallback if format is unexpected
+	}
+	
+	// Remove the userID (first 64 chars typically) and timestamp (last part)
+	// Everything in between is the container name
+	lastPart := parts[len(parts)-1]
+	
+	// Find where the timestamp starts (should be all digits)
+	isTimestamp := true
+	for _, char := range lastPart {
+		if char < '0' || char > '9' {
+			isTimestamp = false
+			break
+		}
+	}
+	
+	if !isTimestamp {
+		// If last part isn't a timestamp, just return as-is
+		return strings.Join(parts[1:], "-")
+	}
+	
+	// Remove userID part and timestamp part
+	nameParts := parts[1 : len(parts)-1]
+	return strings.Join(nameParts, "-")
+}
+
 // shortenForLabel creates a short hash suitable for Kubernetes labels (max 63 chars)
 func (m *GKEManager) shortenForLabel(value string) string {
 	if len(value) <= 63 {
@@ -362,10 +393,59 @@ func (m *GKEManager) Close() error {
 	return nil
 }
 
-// Placeholder implementations for remaining interface methods
+// ListContainers returns all containers for a user
 func (m *GKEManager) ListContainers(ctx context.Context, userID string) ([]*Container, error) {
-	// TODO: Implement listing containers for a user
-	return nil, fmt.Errorf("not implemented yet")
+	namespace := m.getUserNamespace(userID)
+	
+	// List all pods in the user's namespace with our app label
+	pods, err := m.k8sClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app=exe-container",
+	})
+	if err != nil {
+		// If namespace doesn't exist, return empty list instead of error
+		if strings.Contains(err.Error(), "not found") {
+			return []*Container{}, nil
+		}
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+	
+	var containers []*Container
+	for _, pod := range pods.Items {
+		// Extract container information from pod
+		containerID := pod.Name // Pod name is the container ID
+		status := m.podStatusToContainerStatus(pod.Status.Phase)
+		
+		container := &Container{
+			ID:        containerID,
+			UserID:    userID,
+			Name:      extractContainerNameFromID(containerID), // Extract name from ID
+			Image:     pod.Spec.Containers[0].Image,
+			Status:    status,
+			Namespace: namespace,
+			PodName:   pod.Name,
+			PVCName:   containerID + "-storage",
+			CreatedAt: pod.CreationTimestamp.Time,
+		}
+		
+		if pod.Status.StartTime != nil {
+			container.StartedAt = &pod.Status.StartTime.Time
+		}
+		
+		// Extract resource requests
+		if len(pod.Spec.Containers) > 0 {
+			resources := pod.Spec.Containers[0].Resources.Requests
+			if cpu, ok := resources[corev1.ResourceCPU]; ok {
+				container.CPURequest = cpu.String()
+			}
+			if memory, ok := resources[corev1.ResourceMemory]; ok {
+				container.MemoryRequest = memory.String()
+			}
+		}
+		
+		containers = append(containers, container)
+	}
+	
+	return containers, nil
 }
 
 func (m *GKEManager) StartContainer(ctx context.Context, userID, containerID string) error {
