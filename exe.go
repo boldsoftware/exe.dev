@@ -733,8 +733,18 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
 		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
-		"\033[1;33mContainer Management Console\033[0m\r\n\r\n" +
-		"\033[1mAvailable commands:\033[0m\r\n\r\n" +
+		"\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
+		"\033[1mlist\033[0m           - List your containers\r\n" +
+		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
+		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
+		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
+		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
+		"\033[1mdelete <name>\033[0m  - Delete a container\r\n" +
+		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
+		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
+		"\033[1mexit\033[0m           - Exit\r\n\r\n"
+	
+	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
 		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
@@ -773,7 +783,7 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 			channel.Write([]byte("Goodbye!\r\n"))
 			return
 		case "help", "?":
-			channel.Write([]byte(welcome))
+			channel.Write([]byte(helpText))
 		case "list":
 			s.handleListCommand(channel)
 		case "create":

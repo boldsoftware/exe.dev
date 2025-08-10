@@ -477,7 +477,25 @@ func (m *GKEManager) StopContainer(ctx context.Context, userID, containerID stri
 		return fmt.Errorf("failed to delete pod: %w", err)
 	}
 	
-	return nil
+	// Wait for the pod to be fully terminated
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for container to stop")
+		case <-time.After(1 * time.Second):
+			// Check if pod still exists
+			_, err := m.k8sClient.CoreV1().Pods(container.Namespace).Get(ctx, container.PodName, metav1.GetOptions{})
+			if err != nil {
+				// Pod no longer exists, it's stopped
+				if strings.Contains(err.Error(), "not found") {
+					return nil
+				}
+				// Some other error occurred
+				return fmt.Errorf("error checking pod status: %w", err)
+			}
+			// Pod still exists, continue waiting
+		}
+	}
 }
 
 func (m *GKEManager) DeleteContainer(ctx context.Context, userID, containerID string) error {

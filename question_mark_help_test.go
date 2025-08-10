@@ -6,15 +6,8 @@ import (
 )
 
 func TestQuestionMarkHelp(t *testing.T) {
-	// Test that the help text includes the "?" alias
-	welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
-		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
-		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
-		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
-		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
-		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
-		"\033[1;33mContainer Management Console\033[0m\r\n\r\n" +
-		"\033[1mAvailable commands:\033[0m\r\n\r\n" +
+	// Test that the help text (without ASCII art) includes the "?" alias
+	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
 		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
@@ -26,15 +19,19 @@ func TestQuestionMarkHelp(t *testing.T) {
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
 	
 	// Verify that the help text mentions both "help" and "?"
-	if !strings.Contains(welcome, "help") {
+	if !strings.Contains(helpText, "help") {
 		t.Error("Help text should contain 'help' command")
 	}
-	if !strings.Contains(welcome, "?") {
+	if !strings.Contains(helpText, "?") {
 		t.Error("Help text should contain '?' command")
 	}
 	// Check for the pattern with ANSI codes
-	if !strings.Contains(welcome, "or") || !strings.Contains(welcome, "help") || !strings.Contains(welcome, "?") {
+	if !strings.Contains(helpText, "or") || !strings.Contains(helpText, "help") || !strings.Contains(helpText, "?") {
 		t.Error("Help text should show 'help' and '?' as alternatives connected by 'or'")
+	}
+	// Verify no ASCII art in help text
+	if strings.Contains(helpText, "███") {
+		t.Error("Help text should NOT contain ASCII art")
 	}
 	
 	t.Log("Question mark help alias verified in help text")

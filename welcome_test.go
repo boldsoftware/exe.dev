@@ -16,8 +16,7 @@ func TestRunMainShellWelcomeBehavior(t *testing.T) {
 		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
 		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
-		"\033[1;33mContainer Management Console\033[0m\r\n\r\n" +
-		"\033[1mAvailable commands:\033[0m\r\n\r\n" +
+		"\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
 		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
@@ -25,15 +24,18 @@ func TestRunMainShellWelcomeBehavior(t *testing.T) {
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
 		"\033[1mdelete <name>\033[0m  - Delete a container\r\n" +
 		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
-		"\033[1mhelp\033[0m           - Show this help\r\n" +
+		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
 	
 	// Verify the welcome message contains expected elements
 	if !strings.Contains(welcome, "███") {
 		t.Error("Welcome message should contain ASCII art")
 	}
-	if !strings.Contains(welcome, "Available commands") {
-		t.Error("Welcome message should contain 'Available commands'")
+	if !strings.Contains(welcome, "EXE.DEV") {
+		t.Error("Welcome message should contain 'EXE.DEV'")
+	}
+	if !strings.Contains(welcome, "commands:") {
+		t.Error("Welcome message should contain 'commands:'")
 	}
 	if !strings.Contains(welcome, "create <name>") {
 		t.Error("Welcome message should contain 'create <name>'")
@@ -47,21 +49,14 @@ func TestRunMainShellWelcomeBehavior(t *testing.T) {
 }
 
 func TestHelpCommandStillWorks(t *testing.T) {
-	// The help command logic in the switch statement still calls:
-	// channel.Write([]byte(welcome))
+	// The help command logic in the switch statement now calls:
+	// channel.Write([]byte(helpText))
 	// 
-	// This means the help command will always show the full welcome message
-	// regardless of the showWelcome parameter, which is the correct behavior.
+	// This means the help command will show the help text without ASCII art,
+	// while the initial welcome still shows the full ASCII art.
 	// 
 	// This test verifies that the help command string is correctly defined
-	welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
-		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
-		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
-		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
-		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
-		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
-		"\033[1;33mContainer Management Console\033[0m\r\n\r\n" +
-		"\033[1mAvailable commands:\033[0m\r\n\r\n" +
+	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
 		"\033[1mcreate <name>\033[0m  - Create a new container\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
@@ -69,15 +64,21 @@ func TestHelpCommandStillWorks(t *testing.T) {
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
 		"\033[1mdelete <name>\033[0m  - Delete a container\r\n" +
 		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
-		"\033[1mhelp\033[0m           - Show this help\r\n" +
+		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
 	
-	if !strings.Contains(welcome, "Available commands") {
-		t.Error("Help command should show available commands")
+	if !strings.Contains(helpText, "EXE.DEV") {
+		t.Error("Help command should show 'EXE.DEV'")
 	}
-	if !strings.Contains(welcome, "create <name>") {
+	if !strings.Contains(helpText, "commands:") {
+		t.Error("Help command should show 'commands:'")
+	}
+	if !strings.Contains(helpText, "create <name>") {
 		t.Error("Help command should show create command help")
 	}
+	if strings.Contains(helpText, "███") {
+		t.Error("Help command should NOT show ASCII art")
+	}
 	
-	t.Log("Help command content verified")
+	t.Log("Help command content verified - no ASCII art in help")
 }
