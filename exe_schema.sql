@@ -87,6 +87,28 @@ CREATE TABLE IF NOT EXISTS billing_verifications (
     FOREIGN KEY (team_name) REFERENCES teams(name) ON DELETE CASCADE
 );
 
+-- Auth cookies: HTTP authentication cookies for web access
+CREATE TABLE IF NOT EXISTS auth_cookies (
+    cookie_value TEXT PRIMARY KEY,
+    user_fingerprint TEXT NOT NULL,
+    domain TEXT NOT NULL, -- exe.dev or localhost
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_fingerprint) REFERENCES users(public_key_fingerprint) ON DELETE CASCADE
+);
+
+-- Auth tokens: temporary tokens for magic link authentication
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    token TEXT PRIMARY KEY,
+    user_fingerprint TEXT NOT NULL,
+    subdomain TEXT, -- container.team for subdomain access (optional)
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME, -- NULL if not used yet
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_fingerprint) REFERENCES users(public_key_fingerprint) ON DELETE CASCADE
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_name);
 CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_fingerprint);
@@ -95,3 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_machines_status ON machines(status);
 CREATE INDEX IF NOT EXISTS idx_invites_team ON invites(team_name);
 CREATE INDEX IF NOT EXISTS idx_invites_expires ON invites(expires_at);
 CREATE INDEX IF NOT EXISTS idx_email_verifications_expires ON email_verifications(expires_at);
+CREATE INDEX IF NOT EXISTS idx_auth_cookies_user ON auth_cookies(user_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_auth_cookies_expires ON auth_cookies(expires_at);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires ON auth_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_subdomain ON auth_tokens(subdomain);
