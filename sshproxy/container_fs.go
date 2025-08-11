@@ -115,7 +115,7 @@ func (fs *UnixContainerFS) Mkdir(ctx context.Context, path string, mode os.FileM
 	var stderr bytes.Buffer
 	cmd := []string{"mkdir", "-p", path}
 	
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("mkdir failed: %v, stderr: %s", err, stderr.String())
 	}
@@ -123,7 +123,7 @@ func (fs *UnixContainerFS) Mkdir(ctx context.Context, path string, mode os.FileM
 	// Set permissions if not default
 	if mode != 0755 {
 		cmd = []string{"chmod", fmt.Sprintf("%o", mode), path}
-		err = fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+		err = fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 		if err != nil {
 			return fmt.Errorf("chmod failed: %v, stderr: %s", err, stderr.String())
 		}
@@ -137,11 +137,11 @@ func (fs *UnixContainerFS) Remove(ctx context.Context, path string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"rm", "-f", path}
 	
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		// Try rmdir if rm fails (might be a directory)
 		cmd = []string{"rmdir", path}
-		err = fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+		err = fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 		if err != nil {
 			return fmt.Errorf("remove failed: %v, stderr: %s", err, stderr.String())
 		}
@@ -155,7 +155,7 @@ func (fs *UnixContainerFS) RemoveAll(ctx context.Context, path string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"rm", "-rf", path}
 	
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("removeall failed: %v, stderr: %s", err, stderr.String())
 	}
@@ -168,7 +168,7 @@ func (fs *UnixContainerFS) Rename(ctx context.Context, oldPath, newPath string) 
 	var stderr bytes.Buffer
 	cmd := []string{"mv", oldPath, newPath}
 	
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("rename failed: %v, stderr: %s", err, stderr.String())
 	}
@@ -209,7 +209,7 @@ func (fs *UnixContainerFS) Chmod(ctx context.Context, path string, mode os.FileM
 	var stderr bytes.Buffer
 	cmd := []string{"chmod", fmt.Sprintf("%o", mode), path}
 	
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("chmod failed: %v, stderr: %s", err, stderr.String())
 	}
@@ -222,7 +222,7 @@ func (fs *UnixContainerFS) Chown(ctx context.Context, path string, uid, gid int)
 	var stderr bytes.Buffer
 	cmd := []string{"chown", fmt.Sprintf("%d:%d", uid, gid), path}
 	
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	// Ignore errors as containers may not support chown
 	_ = err
 	return nil
@@ -237,7 +237,7 @@ func (fs *UnixContainerFS) Chtimes(ctx context.Context, path string, atime, mtim
 	
 	// Set access time
 	cmd := []string{"touch", "-a", "-t", atimeStr, path}
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("setting atime failed: %v, stderr: %s", err, stderr.String())
 	}
@@ -365,19 +365,22 @@ func (f *unixFile) Close() error {
 		encoded := base64.StdEncoding.EncodeToString(f.writeBuffer)
 		
 		// Ensure parent directory exists and write to file using base64 decoding
-		var stderr bytes.Buffer
+		var stdout, stderr bytes.Buffer
 		parentDir := filepath.Dir(f.path)
 		cmd := []string{"sh", "-c", fmt.Sprintf("mkdir -p '%s' && echo '%s' | base64 -d > '%s'", parentDir, encoded, f.path)}
 		
-		err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, nil, &stderr)
+		err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, &stdout, &stderr)
 		if err != nil {
-			return fmt.Errorf("write failed: %v, stderr: %s", err, stderr.String())
+			// Log the actual error for debugging
+			actualErr := fmt.Errorf("write failed: %v, stderr: %s", err, stderr.String())
+			fmt.Fprintf(os.Stderr, "DEBUG: unixFile.Close() error: %v\n", actualErr)
+			return actualErr
 		}
 		
 		// Set file mode if creating
 		if f.flags&os.O_CREATE != 0 && f.mode != 0 {
 			cmd = []string{"chmod", fmt.Sprintf("%o", f.mode), f.path}
-			f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, nil, nil)
+			f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, io.Discard, io.Discard)
 		}
 	}
 	
@@ -401,7 +404,7 @@ func (f *unixFile) flushLargeBuffer() error {
 	// Set file mode if creating
 	if f.flags&os.O_CREATE != 0 && f.mode != 0 {
 		cmd = []string{"chmod", fmt.Sprintf("%o", f.mode), f.path}
-		f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, nil, nil)
+		f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, io.Discard, io.Discard)
 	}
 	
 	return nil
