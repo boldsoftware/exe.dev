@@ -12,8 +12,10 @@ import (
 	"google.golang.org/api/option"
 	
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -131,7 +133,7 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 		// Image will be updated when build completes
 	} else {
 		// Create Kubernetes resources immediately for pre-built images
-		if err := m.createKubernetesResources(ctx, container, req.Ephemeral); err != nil {
+		if err := m.createKubernetesResources(ctx, container, req.Ephemeral, req.DisableSandbox); err != nil {
 			return nil, fmt.Errorf("failed to create Kubernetes resources: %w", err)
 		}
 	}
@@ -140,7 +142,7 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 }
 
 // createKubernetesResources creates the namespace, PVC, and pod for a container
-func (m *GKEManager) createKubernetesResources(ctx context.Context, container *Container, ephemeral bool) error {
+func (m *GKEManager) createKubernetesResources(ctx context.Context, container *Container, ephemeral bool, disableSandbox bool) error {
 	// Ensure namespace exists
 	if err := m.ensureNamespace(ctx, container.Namespace); err != nil {
 		return fmt.Errorf("failed to ensure namespace: %w", err)
@@ -154,14 +156,14 @@ func (m *GKEManager) createKubernetesResources(ctx context.Context, container *C
 	}
 
 	// Create Pod (with either PVC or emptyDir volume)
-	if err := m.createPod(ctx, container, ephemeral); err != nil {
+	if err := m.createPod(ctx, container, ephemeral, disableSandbox); err != nil {
 		return fmt.Errorf("failed to create pod: %w", err)
 	}
 
 	return nil
 }
 
-// ensureNamespace creates a namespace if it doesn't exist
+// ensureNamespace creates a namespace if it doesn't exist and applies network policies
 func (m *GKEManager) ensureNamespace(ctx context.Context, namespace string) error {
 	_, err := m.k8sClient.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
 	if err == nil {
@@ -174,12 +176,26 @@ func (m *GKEManager) ensureNamespace(ctx context.Context, namespace string) erro
 			Name: namespace,
 			Labels: map[string]string{
 				"managed-by": "exe.dev",
+				"name": namespace, // For network policy selectors
 			},
 		},
 	}
 
 	_, err = m.k8sClient.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Apply network policies for isolation if sandbox is enabled
+	if m.config.EnableSandbox {
+		if err := m.applyNetworkPolicies(ctx, namespace); err != nil {
+			// Log error but don't fail namespace creation
+			// Network policies are best-effort for defense in depth
+			fmt.Printf("Warning: Failed to apply network policies to namespace %s: %v\n", namespace, err)
+		}
+	}
+
+	return nil
 }
 
 // createPVC creates a persistent volume claim for the container
@@ -206,7 +222,7 @@ func (m *GKEManager) createPVC(ctx context.Context, container *Container) error 
 					corev1.ResourceStorage: storageQuantity,
 				},
 			},
-			StorageClassName: stringPtr("standard-rwo"), // GKE Autopilot default
+			StorageClassName: stringPtr(m.config.StorageClassName), // Use configured storage class
 		},
 	}
 
@@ -215,7 +231,7 @@ func (m *GKEManager) createPVC(ctx context.Context, container *Container) error 
 }
 
 // createPod creates a Kubernetes pod for the container
-func (m *GKEManager) createPod(ctx context.Context, container *Container, ephemeral bool) error {
+func (m *GKEManager) createPod(ctx context.Context, container *Container, ephemeral bool, disableSandbox bool) error {
 	cpuQuantity := resource.MustParse(container.CPURequest)
 	memoryQuantity := resource.MustParse(container.MemoryRequest)
 
@@ -275,6 +291,29 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container, epheme
 			},
 			RestartPolicy: corev1.RestartPolicyAlways,
 		},
+	}
+	
+	// Add sandbox configuration if enabled globally and not disabled for this container
+	if m.config.EnableSandbox && !disableSandbox {
+		// Use gVisor runtime class for sandbox isolation
+		runtimeClassName := "gvisor"
+		pod.Spec.RuntimeClassName = &runtimeClassName
+		
+		// Add node selector for sandbox-enabled nodes if using GKE Standard
+		// GKE automatically adds sandbox nodes when gVisor is enabled
+		pod.Spec.NodeSelector = map[string]string{
+			"sandbox.gke.io/runtime": "gvisor",
+		}
+		
+		// Add tolerations for sandbox nodes
+		pod.Spec.Tolerations = []corev1.Toleration{
+			{
+				Key:      "sandbox.gke.io/runtime",
+				Operator: corev1.TolerationOpEqual,
+				Value:    "gvisor",
+				Effect:   corev1.TaintEffectNoSchedule,
+			},
+		}
 	}
 	
 	// Configure volumes based on ephemeral flag
@@ -754,4 +793,152 @@ func (m *GKEManager) GetContainerDiagnostics(ctx context.Context, userID, contai
 	}
 	
 	return strings.Join(diagnostics, "\n"), nil
+}
+
+// applyNetworkPolicies applies network policies to isolate the namespace
+func (m *GKEManager) applyNetworkPolicies(ctx context.Context, namespace string) error {
+	// Policy 1: Deny all ingress and egress by default
+	denyAll := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "deny-all-traffic",
+			Namespace: namespace,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+		},
+	}
+	
+	// Policy 2: Allow DNS
+	allowDNS := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-dns",
+			Namespace: namespace,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeEgress,
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{
+					To: []networkingv1.NetworkPolicyPeer{
+						{
+							NamespaceSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{
+									"name": "kube-system",
+								},
+							},
+							PodSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{
+									"k8s-app": "kube-dns",
+								},
+							},
+						},
+					},
+					Ports: []networkingv1.NetworkPolicyPort{
+						{
+							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 53},
+						},
+						{
+							Protocol: &[]corev1.Protocol{corev1.ProtocolUDP}[0],
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 53},
+						},
+					},
+				},
+			},
+		},
+	}
+	
+	// Policy 3: Allow same namespace communication
+	allowSameNamespace := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-same-namespace",
+			Namespace: namespace,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{
+					From: []networkingv1.NetworkPolicyPeer{
+						{
+							PodSelector: &metav1.LabelSelector{},
+						},
+					},
+				},
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{
+					To: []networkingv1.NetworkPolicyPeer{
+						{
+							PodSelector: &metav1.LabelSelector{},
+						},
+					},
+				},
+			},
+		},
+	}
+	
+	// Policy 4: Allow internet egress (for package downloads, etc.)
+	allowInternet := &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "allow-internet-egress",
+			Namespace: namespace,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeEgress,
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{
+					// Allow all egress except to other namespaces in the cluster
+					// This effectively allows internet but blocks cross-namespace communication
+					Ports: []networkingv1.NetworkPolicyPort{
+						{
+							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 443},
+						},
+						{
+							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 80},
+						},
+						{
+							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 22},
+						},
+						{
+							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 9418},
+						},
+					},
+				},
+			},
+		},
+	}
+	
+	// Apply all policies
+	policies := []*networkingv1.NetworkPolicy{
+		denyAll,
+		allowDNS,
+		allowSameNamespace,
+		allowInternet,
+	}
+	
+	for _, policy := range policies {
+		_, err := m.k8sClient.NetworkingV1().NetworkPolicies(namespace).Create(ctx, policy, metav1.CreateOptions{})
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("failed to create network policy %s: %w", policy.Name, err)
+		}
+	}
+	
+	return nil
 }

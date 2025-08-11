@@ -1,15 +1,16 @@
-# exe.dev - Container Service with Persistent Storage
+# exe.dev - Multi-tenant Container Service with gVisor Sandbox
 
-exe.dev is a service that provides users with containers on GKE Autopilot with persistent disks. Users can SSH to exe.dev and get a guided console management tool to create and manage their containers.
+exe.dev is a secure multi-tenant container service that provides users with sandboxed containers on GKE with persistent storage. Users can SSH to exe.dev and get a guided console management tool to create and manage their containers.
 
 ## Features
 
 - 🚀 **SSH-based Container Management** - Connect via SSH for an interactive console
 - 🔐 **Public Key Authentication** - Secure SSH access with automatic registration
-- ☁️ **GKE Autopilot Backend** - Containers run on Google Kubernetes Engine
+- ☁️ **GKE Standard with gVisor** - Containers run in sandboxed environment for multi-tenant isolation
 - 💾 **Persistent Storage** - Each container gets its own persistent volume
 - 🐳 **Custom Docker Images** - Build secure custom images from Dockerfiles
-- 🔒 **Multi-tenant Security** - Isolated namespaces and resource limits
+- 🔒 **Enhanced Multi-tenant Security** - gVisor sandbox, network policies, and isolated namespaces
+- 🛡️ **Wildcard TLS Certificates** - Automatic HTTPS for all subdomains via DNS challenge
 
 ## Quick Start
 
@@ -59,10 +60,62 @@ gcloud services enable cloudbuild.googleapis.com
 gcloud services enable storage.googleapis.com
 ```
 
-### Step 3: Create GKE Autopilot Cluster
+### Step 3: Create GKE Standard Cluster with Enhanced Security
 ```bash
-# Create the cluster (takes ~5 minutes)
-gcloud container clusters create-auto exe-autopilot --location=us-west2
+# Set variables
+export PROJECT_ID="exe-dev-468515"
+export CLUSTER_NAME="exe-cluster"
+export REGION="us-west2"
+export ZONE="us-west2-a"
+
+# Create cluster with security hardening (takes ~5 minutes)
+gcloud container clusters create $CLUSTER_NAME \
+  --project=$PROJECT_ID \
+  --zone=$ZONE \
+  --cluster-version=latest \
+  --enable-ip-alias \
+  --enable-autoscaling \
+  --min-nodes=1 \
+  --max-nodes=10 \
+  --machine-type=n2-standard-4 \
+  --disk-size=100 \
+  --disk-type=pd-standard \
+  --enable-autorepair \
+  --enable-autoupgrade \
+  --enable-shielded-nodes \
+  --shielded-secure-boot \
+  --shielded-integrity-monitoring \
+  --enable-network-policy \
+  --enable-intra-node-visibility \
+  --enable-private-nodes \
+  --master-ipv4-cidr=172.16.0.0/28 \
+  --maintenance-window-start=2024-01-01T00:00:00Z \
+  --maintenance-window-end=2024-01-01T04:00:00Z \
+  --maintenance-window-recurrence="FREQ=WEEKLY;BYDAY=SU" \
+  --workload-pool=${PROJECT_ID}.svc.id.goog \
+  --addons=GcePersistentDiskCsiDriver,GcpFilestoreCsiDriver \
+  --logging=SYSTEM,WORKLOAD \
+  --monitoring=SYSTEM,WORKLOAD,POD
+
+# Create sandbox node pool with gVisor
+gcloud container node-pools create sandbox-pool \
+  --cluster=$CLUSTER_NAME \
+  --zone=$ZONE \
+  --project=$PROJECT_ID \
+  --machine-type=n2-standard-4 \
+  --disk-size=100 \
+  --disk-type=pd-standard \
+  --enable-autoscaling \
+  --min-nodes=2 \
+  --max-nodes=20 \
+  --node-taints=sandbox.gke.io/runtime=gvisor:NoSchedule \
+  --node-labels=sandbox.gke.io/runtime=gvisor \
+  --sandbox type=gvisor \
+  --shielded-secure-boot \
+  --shielded-integrity-monitoring \
+  --metadata disable-legacy-endpoints=true \
+  --workload-metadata=GKE_METADATA \
+  --max-pods-per-node=32
 ```
 
 ### Step 4: Authenticate and Set Permissions
@@ -93,19 +146,55 @@ gcloud components install gke-gcloud-auth-plugin
 ### Step 6: Get Cluster Credentials
 ```bash
 # Get credentials for kubectl access (needed for tests)
-gcloud container clusters get-credentials exe-autopilot \
-    --location=us-west2 \
-    --project=PROJECT_ID
+gcloud container clusters get-credentials $CLUSTER_NAME \
+    --zone=$ZONE \
+    --project=$PROJECT_ID
 ```
 
-### Step 7: Set Environment Variables
+### Step 7: Apply Network Policies for Isolation
 ```bash
-# Set the project ID (replace with your actual project ID)
-export GOOGLE_CLOUD_PROJECT="PROJECT_ID"
-# e.g. export GOOGLE_CLOUD_PROJECT="exe-dev-468515"
+# Create network policy for namespace isolation
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  - to:
+    - podSelector: {}
+EOF
+
+# This will be applied per-namespace for user isolation
 ```
 
-### Step 8: Test It Works
+### Step 8: Set Environment Variables
+```bash
+# Set environment variables for the application
+export GOOGLE_CLOUD_PROJECT="exe-dev-468515"
+export GKE_CLUSTER_NAME="exe-cluster"
+export GKE_CLUSTER_LOCATION="us-west2-a"
+export ENABLE_SANDBOX="true"
+export STORAGE_CLASS_NAME="standard-rwo"
+
+# For wildcard TLS (if you have Porkbun API keys)
+# export PORKBUN_API_KEY="your-api-key"
+# export PORKBUN_SECRET_API_KEY="your-secret-key"
+```
+
+### Step 9: Test It Works
 ```bash
 # Run the integration tests
 go test ./container/... -v
@@ -174,8 +263,8 @@ WORKDIR /home/appuser
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   SSH Client    │───▶│   exed Server   │───▶│  GKE Autopilot  │
-│                 │    │                 │    │                 │
+│   SSH Client    │───▶│   exed Server   │───▶│  GKE Standard   │
+│                 │    │                 │    │  with gVisor    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │                       │
                                 │               ┌─────────────────┐
@@ -186,8 +275,13 @@ WORKDIR /home/appuser
 
 ### Security Features
 
+- **gVisor Sandbox**: Userspace kernel providing syscall filtering and isolation
 - **SSH Public Key Auth**: Automatic registration workflow
-- **Namespace Isolation**: Each user gets their own Kubernetes namespace  
+- **Namespace Isolation**: Each user gets their own Kubernetes namespace
+- **Network Policies**: Inter-namespace communication blocked by default
+- **Shielded Nodes**: Secure boot and integrity monitoring
+- **Private Cluster**: Private node IPs with controlled master access
+- **Workload Identity**: Pod-level GCP authentication without keys
 - **Resource Limits**: CPU and memory limits prevent resource exhaustion
 - **Secure Building**: Custom images built in isolated Cloud Build environments
 - **Dockerfile Validation**: Blocks privileged containers and dangerous operations
@@ -210,9 +304,12 @@ go test ./container/... -v
 ```
 ├── cmd/exed/           # Main server binary
 ├── container/          # Container management package
-│   ├── gke.go         # GKE Autopilot implementation
+│   ├── gke.go         # GKE implementation with sandbox support
 │   ├── build.go       # Secure Docker building
-│   └── README.md      # Detailed container docs
+│   └── manager.go     # Container manager interface
+├── porkbun/           # DNS provider for wildcard TLS
+│   ├── dns.go         # DNS challenge implementation
+│   └── wildcard_cert.go # Wildcard certificate manager
 ├── exe.go             # Core SSH/HTTP server
 └── exe_test.go        # SSH integration tests
 ```
@@ -220,15 +317,16 @@ go test ./container/... -v
 ## Cost Estimates
 
 **Google Cloud costs for testing/development:**
-- **GKE Autopilot**: ~$0.10/hour when idle
+- **GKE Standard (2x n2-standard-4)**: ~$0.40/hour for minimum nodes
 - **Cloud Build**: Free tier covers typical testing
 - **Storage**: <$1/month for build artifacts
-- **Total**: ~$75/month for 24/7 development cluster
+- **Total**: ~$300/month for 24/7 sandbox cluster with 2 nodes
 
 **Production scaling:**
-- Autopilot scales to zero when unused
-- Pay only for active container resources
-- No cluster management overhead
+- Autoscaling from 2-20 nodes based on demand
+- Pay for node resources (not per-pod like Autopilot)
+- gVisor overhead: ~10-20% performance impact
+- Better for multi-tenant workloads requiring strong isolation
 
 ## Deployment
 
@@ -236,14 +334,18 @@ go test ./container/... -v
 
 **Required:**
 - `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
+- `GKE_CLUSTER_NAME` - Cluster name (default: "exe-cluster")
+- `GKE_CLUSTER_LOCATION` - Cluster location (default: "us-west2-a")
+
+**Security Settings:**
+- `ENABLE_SANDBOX` - Enable gVisor sandbox (default: "true")
+- `STORAGE_CLASS_NAME` - Storage class name (default: "standard-rwo")
+
+**Optional TLS (for wildcard certificates):**
+- `PORKBUN_API_KEY` - Porkbun API key for DNS challenge
+- `PORKBUN_SECRET_API_KEY` - Porkbun secret API key
 
 **Authentication:** Uses Application Default Credentials via `gcloud auth application-default login`
-
-**Optional:**
-- `EXE_GKE_CLUSTER_NAME` - Cluster name (default: "exe-autopilot")  
-- `EXE_GKE_LOCATION` - Cluster location (default: "us-west2")
-- `EXE_CONTAINER_REGISTRY` - Container registry (default: "gcr.io")
-- `EXE_NAMESPACE_PREFIX` - Namespace prefix (default: "exe-")
 
 ### Production Considerations
 

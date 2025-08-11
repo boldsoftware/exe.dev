@@ -114,6 +114,9 @@ type CreateContainerRequest struct {
 	
 	// Ephemeral flag - if true, no PVC is created
 	Ephemeral   bool   `json:"ephemeral,omitempty"`
+	
+	// Sandbox configuration - allow opting out of sandbox for specific containers
+	DisableSandbox bool `json:"disable_sandbox,omitempty"`
 }
 
 // BuildRequest represents a request to build a custom Docker image

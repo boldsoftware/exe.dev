@@ -50,6 +50,10 @@ type Config struct {
 	
 	// Namespace configuration
 	NamespacePrefix string `json:"namespace_prefix"` // e.g., "exe-"
+	
+	// Sandbox configuration
+	EnableSandbox    bool   `json:"enable_sandbox"`     // Enable gVisor sandbox for multi-tenant isolation
+	StorageClassName string `json:"storage_class_name"` // Storage class to use (e.g., "standard-rwo" for GKE Standard)
 }
 
 // DefaultConfig returns a sensible default configuration
@@ -57,13 +61,15 @@ func DefaultConfig(projectID string) *Config {
 	return &Config{
 		ProjectID:            projectID,
 		Region:               "us-west2",
-		ClusterName:          "exe-autopilot-v2",
+		ClusterName:          "exe-cluster",
 		ClusterLocation:      "us-west2",
 		RegistryHost:         "gcr.io",
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi", 
 		DefaultStorageSize:   "1Gi",
 		NamespacePrefix:      "exe-",
+		EnableSandbox:        true,
+		StorageClassName:     "standard-rwo",
 	}
 }
 
