@@ -19,17 +19,18 @@ type ContainerManager interface {
 	ExecuteInContainer(ctx context.Context, userID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error
 }
 
-// GKEContainerFS implements ContainerFS for GKE containers
-type GKEContainerFS struct {
+// UnixContainerFS implements ContainerFS using standard Unix commands
+// This implementation works with any container that provides standard Unix utilities
+type UnixContainerFS struct {
 	manager     ContainerManager
 	userID      string
 	containerID string
 	homeDir     string // Home directory in container (e.g., "/workspace")
 }
 
-// NewGKEContainerFS creates a new GKE container filesystem
-func NewGKEContainerFS(manager ContainerManager, userID, containerID, homeDir string) *GKEContainerFS {
-	return &GKEContainerFS{
+// NewUnixContainerFS creates a new Unix-based container filesystem
+func NewUnixContainerFS(manager ContainerManager, userID, containerID, homeDir string) *UnixContainerFS {
+	return &UnixContainerFS{
 		manager:     manager,
 		userID:      userID,
 		containerID: containerID,
@@ -38,7 +39,7 @@ func NewGKEContainerFS(manager ContainerManager, userID, containerID, homeDir st
 }
 
 // Stat returns file info for a path
-func (fs *GKEContainerFS) Stat(ctx context.Context, path string) (os.FileInfo, error) {
+func (fs *UnixContainerFS) Stat(ctx context.Context, path string) (os.FileInfo, error) {
 	// Use stat command to get file info
 	var stdout, stderr bytes.Buffer
 	cmd := []string{"stat", "-c", "%n|%s|%Y|%f|%u|%g", path}
@@ -55,32 +56,32 @@ func (fs *GKEContainerFS) Stat(ctx context.Context, path string) (os.FileInfo, e
 }
 
 // ReadDir lists directory contents
-func (fs *GKEContainerFS) ReadDir(ctx context.Context, path string) ([]os.FileInfo, error) {
+func (fs *UnixContainerFS) ReadDir(ctx context.Context, path string) ([]os.FileInfo, error) {
 	var stdout, stderr bytes.Buffer
-	// Use find with maxdepth 1 for reliable directory listing
-	cmd := []string{"find", path, "-maxdepth", "1", "-printf", "%P|%s|%T@|%m|%y\\n"}
+	// Use ls with detailed output for compatibility with BusyBox
+	cmd := []string{"ls", "-la", path}
 	
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
 		return nil, fmt.Errorf("readdir failed: %v, stderr: %s", err, stderr.String())
 	}
 	
-	return parseFindOutput(stdout.String())
+	return parseLsOutput(stdout.String())
 }
 
 // Open opens a file for reading
-func (fs *GKEContainerFS) Open(ctx context.Context, path string) (io.ReadCloser, error) {
+func (fs *UnixContainerFS) Open(ctx context.Context, path string) (io.ReadCloser, error) {
 	return fs.OpenFile(ctx, path, os.O_RDONLY, 0)
 }
 
 // Create creates or truncates a file for writing
-func (fs *GKEContainerFS) Create(ctx context.Context, path string) (io.WriteCloser, error) {
+func (fs *UnixContainerFS) Create(ctx context.Context, path string) (io.WriteCloser, error) {
 	return fs.OpenFile(ctx, path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 }
 
 // OpenFile opens a file with specific flags and mode
-func (fs *GKEContainerFS) OpenFile(ctx context.Context, path string, flags int, mode os.FileMode) (File, error) {
-	return &gkeFile{
+func (fs *UnixContainerFS) OpenFile(ctx context.Context, path string, flags int, mode os.FileMode) (File, error) {
+	return &unixFile{
 		fs:    fs,
 		path:  path,
 		flags: flags,
@@ -90,7 +91,7 @@ func (fs *GKEContainerFS) OpenFile(ctx context.Context, path string, flags int, 
 }
 
 // Mkdir creates a directory
-func (fs *GKEContainerFS) Mkdir(ctx context.Context, path string, mode os.FileMode) error {
+func (fs *UnixContainerFS) Mkdir(ctx context.Context, path string, mode os.FileMode) error {
 	var stderr bytes.Buffer
 	cmd := []string{"mkdir", "-p", path}
 	
@@ -112,7 +113,7 @@ func (fs *GKEContainerFS) Mkdir(ctx context.Context, path string, mode os.FileMo
 }
 
 // Remove removes a file or empty directory
-func (fs *GKEContainerFS) Remove(ctx context.Context, path string) error {
+func (fs *UnixContainerFS) Remove(ctx context.Context, path string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"rm", "-f", path}
 	
@@ -130,7 +131,7 @@ func (fs *GKEContainerFS) Remove(ctx context.Context, path string) error {
 }
 
 // RemoveAll removes a path and any children
-func (fs *GKEContainerFS) RemoveAll(ctx context.Context, path string) error {
+func (fs *UnixContainerFS) RemoveAll(ctx context.Context, path string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"rm", "-rf", path}
 	
@@ -143,7 +144,7 @@ func (fs *GKEContainerFS) RemoveAll(ctx context.Context, path string) error {
 }
 
 // Rename renames/moves a file or directory
-func (fs *GKEContainerFS) Rename(ctx context.Context, oldPath, newPath string) error {
+func (fs *UnixContainerFS) Rename(ctx context.Context, oldPath, newPath string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"mv", oldPath, newPath}
 	
@@ -156,9 +157,10 @@ func (fs *GKEContainerFS) Rename(ctx context.Context, oldPath, newPath string) e
 }
 
 // Symlink creates a symbolic link
-func (fs *GKEContainerFS) Symlink(ctx context.Context, target, link string) error {
+func (fs *UnixContainerFS) Symlink(ctx context.Context, target, link string) error {
 	var stderr bytes.Buffer
-	cmd := []string{"ln", "-sf", target, link}
+	// ln -s target link (creates 'link' pointing to 'target')
+	cmd := []string{"ln", "-s", target, link}
 	
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
 	if err != nil {
@@ -169,7 +171,7 @@ func (fs *GKEContainerFS) Symlink(ctx context.Context, target, link string) erro
 }
 
 // Readlink reads a symbolic link
-func (fs *GKEContainerFS) Readlink(ctx context.Context, path string) (string, error) {
+func (fs *UnixContainerFS) Readlink(ctx context.Context, path string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := []string{"readlink", path}
 	
@@ -182,7 +184,7 @@ func (fs *GKEContainerFS) Readlink(ctx context.Context, path string) (string, er
 }
 
 // Chmod changes file mode
-func (fs *GKEContainerFS) Chmod(ctx context.Context, path string, mode os.FileMode) error {
+func (fs *UnixContainerFS) Chmod(ctx context.Context, path string, mode os.FileMode) error {
 	var stderr bytes.Buffer
 	cmd := []string{"chmod", fmt.Sprintf("%o", mode), path}
 	
@@ -195,7 +197,7 @@ func (fs *GKEContainerFS) Chmod(ctx context.Context, path string, mode os.FileMo
 }
 
 // Chown changes file ownership
-func (fs *GKEContainerFS) Chown(ctx context.Context, path string, uid, gid int) error {
+func (fs *UnixContainerFS) Chown(ctx context.Context, path string, uid, gid int) error {
 	var stderr bytes.Buffer
 	cmd := []string{"chown", fmt.Sprintf("%d:%d", uid, gid), path}
 	
@@ -206,7 +208,7 @@ func (fs *GKEContainerFS) Chown(ctx context.Context, path string, uid, gid int) 
 }
 
 // Chtimes changes file access and modification times
-func (fs *GKEContainerFS) Chtimes(ctx context.Context, path string, atime, mtime int64) error {
+func (fs *UnixContainerFS) Chtimes(ctx context.Context, path string, atime, mtime int64) error {
 	var stderr bytes.Buffer
 	// Use touch command with specific times
 	atimeStr := time.Unix(atime, 0).Format("200601021504.05")
@@ -229,9 +231,9 @@ func (fs *GKEContainerFS) Chtimes(ctx context.Context, path string, atime, mtime
 	return nil
 }
 
-// gkeFile implements the File interface for GKE containers
-type gkeFile struct {
-	fs     *GKEContainerFS
+// unixFile implements the File interface for Unix-based containers
+type unixFile struct {
+	fs     *UnixContainerFS
 	path   string
 	flags  int
 	mode   os.FileMode
@@ -244,12 +246,12 @@ type gkeFile struct {
 }
 
 // Read reads from the file
-func (f *gkeFile) Read(p []byte) (int, error) {
+func (f *unixFile) Read(p []byte) (int, error) {
 	return f.ReadAt(p, 0)
 }
 
 // ReadAt reads from the file at a specific offset
-func (f *gkeFile) ReadAt(p []byte, offset int64) (int, error) {
+func (f *unixFile) ReadAt(p []byte, offset int64) (int, error) {
 	if f.closed {
 		return 0, fmt.Errorf("file is closed")
 	}
@@ -281,7 +283,7 @@ func (f *gkeFile) ReadAt(p []byte, offset int64) (int, error) {
 }
 
 // Write writes to the file
-func (f *gkeFile) Write(p []byte) (int, error) {
+func (f *unixFile) Write(p []byte) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	
@@ -294,7 +296,7 @@ func (f *gkeFile) Write(p []byte) (int, error) {
 }
 
 // WriteAt writes to the file at a specific offset
-func (f *gkeFile) WriteAt(p []byte, offset int64) (int, error) {
+func (f *unixFile) WriteAt(p []byte, offset int64) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	
@@ -316,14 +318,14 @@ func (f *gkeFile) WriteAt(p []byte, offset int64) (int, error) {
 }
 
 // Seek changes the file position
-func (f *gkeFile) Seek(offset int64, whence int) (int64, error) {
+func (f *unixFile) Seek(offset int64, whence int) (int64, error) {
 	// For simplicity, we don't maintain a position
 	// Each read/write operation specifies its own offset
 	return 0, fmt.Errorf("seek not implemented")
 }
 
 // Close closes the file and flushes any buffered writes
-func (f *gkeFile) Close() error {
+func (f *unixFile) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	
@@ -357,18 +359,18 @@ func (f *gkeFile) Close() error {
 }
 
 // Stat returns file info
-func (f *gkeFile) Stat() (os.FileInfo, error) {
+func (f *unixFile) Stat() (os.FileInfo, error) {
 	return f.fs.Stat(f.ctx, f.path)
 }
 
 // Sync commits the file contents to stable storage
-func (f *gkeFile) Sync() error {
+func (f *unixFile) Sync() error {
 	// In container context, Close handles the write
 	return nil
 }
 
 // Truncate changes the size of the file
-func (f *gkeFile) Truncate(size int64) error {
+func (f *unixFile) Truncate(size int64) error {
 	var stderr bytes.Buffer
 	cmd := []string{"truncate", "-s", strconv.FormatInt(size, 10), f.path}
 	
@@ -400,37 +402,37 @@ func parseStatOutput(output, name string) (os.FileInfo, error) {
 	}, nil
 }
 
-func parseFindOutput(output string) ([]os.FileInfo, error) {
+func parseLsOutput(output string) ([]os.FileInfo, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var entries []os.FileInfo
 	
 	for _, line := range lines {
-		if line == "" {
+		if line == "" || strings.HasPrefix(line, "total") {
 			continue
 		}
 		
-		parts := strings.Split(line, "|")
-		if len(parts) < 5 {
+		// Parse ls -la output format:
+		// -rw-r--r-- 1 user group size date time name
+		fields := strings.Fields(line)
+		if len(fields) < 9 {
 			continue
 		}
 		
-		name := parts[0]
-		if name == "" {
-			continue // Skip the directory itself
+		// Skip . and .. entries
+		name := strings.Join(fields[8:], " ")
+		if name == "." || name == ".." {
+			continue
 		}
 		
-		size, _ := strconv.ParseInt(parts[1], 10, 64)
-		mtimeFloat, _ := strconv.ParseFloat(parts[2], 64)
-		mtime := time.Unix(int64(mtimeFloat), 0)
-		modeOctal, _ := strconv.ParseUint(parts[3], 8, 32)
-		fileType := parts[4]
+		// Parse permissions
+		perms := fields[0]
+		mode := parseFileMode(perms)
 		
-		mode := os.FileMode(modeOctal)
-		if fileType == "d" {
-			mode |= os.ModeDir
-		} else if fileType == "l" {
-			mode |= os.ModeSymlink
-		}
+		// Parse size
+		size, _ := strconv.ParseInt(fields[4], 10, 64)
+		
+		// For now, use current time as mtime (ls output varies)
+		mtime := time.Now()
 		
 		entries = append(entries, &fileInfo{
 			name:  name,
@@ -441,6 +443,50 @@ func parseFindOutput(output string) ([]os.FileInfo, error) {
 	}
 	
 	return entries, nil
+}
+
+func parseFileMode(perms string) os.FileMode {
+	if len(perms) < 10 {
+		return 0755
+	}
+	
+	var mode os.FileMode
+	
+	// File type
+	switch perms[0] {
+	case 'd':
+		mode |= os.ModeDir
+	case 'l':
+		mode |= os.ModeSymlink
+	case 'p':
+		mode |= os.ModeNamedPipe
+	case 's':
+		mode |= os.ModeSocket
+	case 'c':
+		mode |= os.ModeCharDevice
+	case 'b':
+		mode |= os.ModeDevice
+	}
+	
+	// Parse rwx permissions more simply
+	var perm os.FileMode
+	
+	// Owner permissions (positions 1-3)
+	if perms[1] == 'r' { perm |= 0400 }
+	if perms[2] == 'w' { perm |= 0200 }
+	if perms[3] == 'x' || perms[3] == 's' { perm |= 0100 }
+	
+	// Group permissions (positions 4-6)
+	if perms[4] == 'r' { perm |= 0040 }
+	if perms[5] == 'w' { perm |= 0020 }
+	if perms[6] == 'x' || perms[6] == 's' { perm |= 0010 }
+	
+	// Other permissions (positions 7-9)
+	if perms[7] == 'r' { perm |= 0004 }
+	if perms[8] == 'w' { perm |= 0002 }
+	if perms[9] == 'x' || perms[9] == 't' { perm |= 0001 }
+	
+	return mode | perm
 }
 
 // fileInfo implements os.FileInfo
