@@ -9,8 +9,11 @@ import (
 // ContainerFS defines the interface for container filesystem operations
 // This abstracts away the underlying container implementation (GKE, Docker, etc.)
 type ContainerFS interface {
-	// Stat returns file info for a path
+	// Stat returns file info for a path (follows symlinks)
 	Stat(ctx context.Context, path string) (os.FileInfo, error)
+	
+	// Lstat returns file info for a path (does not follow symlinks)
+	Lstat(ctx context.Context, path string) (os.FileInfo, error)
 	
 	// ReadDir lists directory contents
 	ReadDir(ctx context.Context, path string) ([]os.FileInfo, error)

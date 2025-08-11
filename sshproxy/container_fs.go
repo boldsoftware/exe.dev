@@ -38,7 +38,7 @@ func NewUnixContainerFS(manager ContainerManager, userID, containerID, homeDir s
 	}
 }
 
-// Stat returns file info for a path
+// Stat returns file info for a path (follows symlinks)
 func (fs *UnixContainerFS) Stat(ctx context.Context, path string) (os.FileInfo, error) {
 	// Use stat command to get file info
 	var stdout, stderr bytes.Buffer
@@ -53,6 +53,26 @@ func (fs *UnixContainerFS) Stat(ctx context.Context, path string) (os.FileInfo, 
 	}
 	
 	return parseStatOutput(stdout.String(), filepath.Base(path))
+}
+
+// Lstat returns file info for a path (does not follow symlinks)
+func (fs *UnixContainerFS) Lstat(ctx context.Context, path string) (os.FileInfo, error) {
+	// Use lstat to not follow symlinks - we can use ls -ld for this
+	var stdout, stderr bytes.Buffer
+	cmd := []string{"ls", "-ld", path}
+	
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
+	if err != nil {
+		if strings.Contains(stderr.String(), "No such file") || strings.Contains(stderr.String(), "cannot access") {
+			return nil, os.ErrNotExist
+		}
+		return nil, fmt.Errorf("lstat failed: %v, stderr: %s", err, stderr.String())
+	}
+	
+	output := stdout.String()
+	
+	// Parse ls -ld output for a single file
+	return parseLsStatOutput(output, filepath.Base(path))
 }
 
 // ReadDir lists directory contents
@@ -158,13 +178,14 @@ func (fs *UnixContainerFS) Rename(ctx context.Context, oldPath, newPath string) 
 
 // Symlink creates a symbolic link
 func (fs *UnixContainerFS) Symlink(ctx context.Context, target, link string) error {
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	// ln -s target link (creates 'link' pointing to 'target')
+	// Debug: let's see what we're actually executing
 	cmd := []string{"ln", "-s", target, link}
 	
-	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
+	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
-		return fmt.Errorf("symlink failed: %v, stderr: %s", err, stderr.String())
+		return fmt.Errorf("symlink failed (target=%q, link=%q): %v, stderr: %s", target, link, err, stderr.String())
 	}
 	
 	return nil
@@ -335,12 +356,18 @@ func (f *unixFile) Close() error {
 	
 	// If we have buffered writes, flush them
 	if len(f.writeBuffer) > 0 {
+		// For large files, use a different approach to avoid command line limits
+		if len(f.writeBuffer) > 1024*1024 { // 1MB threshold
+			return f.flushLargeBuffer()
+		}
+		
 		// Encode data as base64 for safe transfer
 		encoded := base64.StdEncoding.EncodeToString(f.writeBuffer)
 		
-		// Write to file using base64 decoding
+		// Ensure parent directory exists and write to file using base64 decoding
 		var stderr bytes.Buffer
-		cmd := []string{"sh", "-c", fmt.Sprintf("echo '%s' | base64 -d > '%s'", encoded, f.path)}
+		parentDir := filepath.Dir(f.path)
+		cmd := []string{"sh", "-c", fmt.Sprintf("mkdir -p '%s' && echo '%s' | base64 -d > '%s'", parentDir, encoded, f.path)}
 		
 		err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, nil, &stderr)
 		if err != nil {
@@ -355,6 +382,28 @@ func (f *unixFile) Close() error {
 	}
 	
 	f.closed = true
+	return nil
+}
+
+// flushLargeBuffer handles writing large buffers by streaming through stdin
+func (f *unixFile) flushLargeBuffer() error {
+	// Ensure parent directory exists and use cat to write from stdin to the file
+	var stderr bytes.Buffer
+	parentDir := filepath.Dir(f.path)
+	cmd := []string{"sh", "-c", fmt.Sprintf("mkdir -p '%s' && cat > '%s'", parentDir, f.path)}
+	
+	err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, 
+		bytes.NewReader(f.writeBuffer), nil, &stderr)
+	if err != nil {
+		return fmt.Errorf("write failed: %v, stderr: %s", err, stderr.String())
+	}
+	
+	// Set file mode if creating
+	if f.flags&os.O_CREATE != 0 && f.mode != 0 {
+		cmd = []string{"chmod", fmt.Sprintf("%o", f.mode), f.path}
+		f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, nil, nil)
+	}
+	
 	return nil
 }
 
@@ -394,10 +443,25 @@ func parseStatOutput(output, name string) (os.FileInfo, error) {
 	mtime, _ := strconv.ParseInt(parts[2], 10, 64)
 	modeHex, _ := strconv.ParseUint(parts[3], 16, 32)
 	
+	// Convert the hex mode to os.FileMode
+	// The stat %f format gives us the raw mode bits in hex
+	var mode os.FileMode = os.FileMode(modeHex & 0777) // Permission bits
+	
+	// Check file type bits
+	if modeHex&0x4000 != 0 { // S_IFDIR
+		mode |= os.ModeDir
+	}
+	if modeHex&0xA000 == 0xA000 { // S_IFLNK
+		mode |= os.ModeSymlink
+	}
+	if modeHex&0x8000 == 0x8000 && modeHex&0x4000 == 0 { // S_IFREG (regular file)
+		// Regular file - no special mode bit needed
+	}
+	
 	return &fileInfo{
 		name:  name,
 		size:  size,
-		mode:  os.FileMode(modeHex),
+		mode:  mode,
 		mtime: time.Unix(mtime, 0),
 	}, nil
 }
@@ -443,6 +507,40 @@ func parseLsOutput(output string) ([]os.FileInfo, error) {
 	}
 	
 	return entries, nil
+}
+
+func parseLsStatOutput(output, name string) (os.FileInfo, error) {
+	// Parse single line ls -ld output
+	trimmed := strings.TrimSpace(output)
+	fields := strings.Fields(trimmed)
+	if len(fields) < 9 {
+		return nil, fmt.Errorf("invalid ls output: %q", trimmed)
+	}
+	
+	// Parse permissions
+	perms := fields[0]
+	mode := parseFileMode(perms)
+	
+	// Parse size
+	size, _ := strconv.ParseInt(fields[4], 10, 64)
+	
+	// For now, use current time as mtime
+	mtime := time.Now()
+	
+	// Debug: log what we're parsing
+	if strings.HasPrefix(perms, "l") {
+		// It's a symlink, ensure mode has symlink bit
+		if mode&os.ModeSymlink == 0 {
+			return nil, fmt.Errorf("failed to parse symlink mode from perms=%q, got mode=%o", perms, mode)
+		}
+	}
+	
+	return &fileInfo{
+		name:  name,
+		size:  size,
+		mode:  mode,
+		mtime: mtime,
+	}, nil
 }
 
 func parseFileMode(perms string) os.FileMode {

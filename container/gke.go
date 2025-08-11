@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -36,11 +37,15 @@ func NewGKEManager(ctx context.Context, config *Config, opts ...option.ClientOpt
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
+	log.Printf("Initializing GKE Manager for cluster %s in %s (project: %s)", 
+		config.ClusterName, config.ClusterLocation, config.ProjectID)
+
 	// Create Kubernetes client configuration
 	// First try in-cluster config (for when running in GKE)
 	k8sConfig, err := rest.InClusterConfig()
 	if err != nil {
 		// We're running outside the cluster, use kubeconfig
+		log.Printf("Not running in-cluster, loading kubeconfig...")
 		// This uses the default kubeconfig location (~/.kube/config)
 		// and the credentials from `gcloud container clusters get-credentials`
 		k8sConfig, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
@@ -51,11 +56,23 @@ func NewGKEManager(ctx context.Context, config *Config, opts ...option.ClientOpt
 			return nil, fmt.Errorf("failed to load kubeconfig (run 'gcloud container clusters get-credentials %s --location %s --project %s'): %w", 
 				config.ClusterName, config.ClusterLocation, config.ProjectID, err)
 		}
+		log.Printf("Loaded kubeconfig, API server: %s", k8sConfig.Host)
+	} else {
+		log.Printf("Running in-cluster, using in-cluster config")
 	}
 
 	k8sClient, err := kubernetes.NewForConfig(k8sConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	// Test connectivity with a quick API call
+	_, err = k8sClient.ServerVersion()
+	if err != nil {
+		log.Printf("Warning: Cannot connect to Kubernetes API server: %v", err)
+		log.Printf("This may be due to private cluster configuration. Cluster endpoint: %s", k8sConfig.Host)
+	} else {
+		log.Printf("Successfully connected to Kubernetes cluster")
 	}
 
 	return &GKEManager{
@@ -555,6 +572,12 @@ func (m *GKEManager) ListContainers(ctx context.Context, userID string) ([]*Cont
 		// If namespace doesn't exist, return empty list instead of error
 		if strings.Contains(err.Error(), "not found") {
 			return []*Container{}, nil
+		}
+		// Log detailed error for debugging
+		log.Printf("Failed to list pods in namespace %s: %v", namespace, err)
+		if strings.Contains(err.Error(), "timeout") {
+			log.Printf("Kubernetes API timeout - check cluster connectivity. Cluster: %s, Location: %s", 
+				m.config.ClusterName, m.config.ClusterLocation)
 		}
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}

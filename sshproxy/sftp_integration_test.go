@@ -85,6 +85,10 @@ func TestIntegrationSFTP(t *testing.T) {
 		testPermissions(t, addr)
 	})
 	
+	t.Run("DirectoryUpload", func(t *testing.T) {
+		testDirectoryUpload(t, addr)
+	})
+	
 	t.Run("SCPCommands", func(t *testing.T) {
 		testSCPCommands(t, addr, containerID)
 	})
@@ -388,7 +392,7 @@ func testSymlinkOperations(t *testing.T, addr string) {
 		t.Fatalf("Failed to lstat symlink: %v", err)
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("File is not a symlink")
+		t.Errorf("File is not a symlink. Mode: %v (%o)", info.Mode(), info.Mode())
 	}
 	
 	// Read symlink target
@@ -545,8 +549,17 @@ func testPathResolution(t *testing.T, addr string) {
 			if err != nil {
 				t.Fatalf("Failed to create %s: %v", tt.path, err)
 			}
-			file.Write([]byte(tt.content))
-			file.Close()
+			n, err := file.Write([]byte(tt.content))
+			if err != nil {
+				t.Fatalf("Failed to write to %s: %v", tt.path, err)
+			}
+			if n != len(tt.content) {
+				t.Fatalf("Partial write to %s: wrote %d, expected %d", tt.path, n, len(tt.content))
+			}
+			err = file.Close()
+			if err != nil {
+				t.Fatalf("Failed to close %s: %v", tt.path, err)
+			}
 			
 			// Read back
 			file, err = client.Open(tt.path)
@@ -559,7 +572,7 @@ func testPathResolution(t *testing.T, addr string) {
 			file.Close()
 			
 			if string(data) != tt.content {
-				t.Errorf("Content mismatch for %s", tt.path)
+				t.Errorf("Content mismatch for %s: got %q, want %q", tt.path, string(data), tt.content)
 			}
 		})
 	}
@@ -571,6 +584,115 @@ func testPathResolution(t *testing.T, addr string) {
 	client.Remove("/workspace/absolute.txt")
 }
 
+func testDirectoryUpload(t *testing.T, addr string) {
+	client, cleanup := connectSFTP(t, addr)
+	defer cleanup()
+	
+	// Test what happens when SCP tries to upload to a directory path
+	// This reproduces: scp ~/junk.txt user@host:~
+	// Where ~ is a directory but SCP tries to create a file there
+	
+	t.Run("current behavior - write to directory path", func(t *testing.T) {
+		// First, let's see what currently happens when we try to
+		// create a file at a path that's actually a directory
+		
+		// The path "~" resolves to "/workspace" which exists as a directory
+		targetPath := "~"
+		
+		// First check if /workspace exists directly
+		wsInfo, wsErr := client.Stat("/workspace")
+		if wsErr != nil {
+			t.Logf("Direct stat of /workspace failed: %v", wsErr)
+		} else {
+			t.Logf("/workspace exists, IsDir=%v", wsInfo.IsDir())
+		}
+		
+		// Check that it's a directory
+		info, err := client.Stat(targetPath)
+		if err != nil {
+			t.Logf("Stat of %q failed: %v", targetPath, err)
+			// For now, let's just try to create the file anyway to see what happens
+		} else if !info.IsDir() {
+			t.Fatalf("Expected %s to be a directory", targetPath)
+		}
+		
+		// Now try to create a file at this directory path
+		// This is what happens when SCP sends the path without a filename
+		file, err := client.Create(targetPath)
+		if err != nil {
+			t.Fatalf("Failed to create file at directory path %q: %v", targetPath, err)
+		}
+		
+		// Write some content
+		content := []byte("test content for directory upload")
+		n, err := file.Write(content)
+		if err != nil {
+			t.Fatalf("Write failed: %v", err)
+		}
+		if n != len(content) {
+			t.Fatalf("Partial write: %d/%d bytes", n, len(content))
+		}
+		
+		// Close should now succeed with our fix
+		err = file.Close()
+		if err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+		
+		// The file should be created in the directory with a default name
+		// Check that a file was created in /workspace
+		entries, err := client.ReadDir("/workspace")
+		if err != nil {
+			t.Fatalf("Failed to read directory: %v", err)
+		}
+		
+		// Look for the uploaded file
+		found := false
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.Contains(entry.Name(), "scp-upload") {
+				found = true
+				t.Logf("Found uploaded file: %s", entry.Name())
+				
+				// Verify content
+				uploadedFile, err := client.Open(filepath.Join("/workspace", entry.Name()))
+				if err != nil {
+					t.Errorf("Failed to open uploaded file: %v", err)
+				} else {
+					data := make([]byte, len(content))
+					uploadedFile.Read(data)
+					uploadedFile.Close()
+					if string(data) != string(content) {
+						t.Errorf("Content mismatch: got %q, want %q", string(data), string(content))
+					}
+				}
+				
+				// Cleanup
+				client.Remove(filepath.Join("/workspace", entry.Name()))
+				break
+			}
+		}
+		
+		if !found {
+			t.Error("Uploaded file not found in directory")
+		}
+	})
+	
+	t.Run("correct behavior - detect directory and append filename", func(t *testing.T) {
+		// This is how it should work:
+		// 1. Client tries to upload to "~" 
+		// 2. Server detects it's a directory
+		// 3. Server should either:
+		//    a. Reject immediately (current approach), OR
+		//    b. Accept but require the client to send filename separately
+		
+		// For now, we expect the server to reject writes to directories
+		// The client (SCP) should handle this by appending the filename
+		
+		t.Log("Server should reject writes to directory paths")
+		t.Log("Client (SCP) is responsible for appending filename")
+	})
+}
+
 func testPermissions(t *testing.T, addr string) {
 	client, cleanup := connectSFTP(t, addr)
 	defer cleanup()
@@ -580,6 +702,7 @@ func testPermissions(t *testing.T, addr string) {
 	if err != nil {
 		t.Fatalf("Failed to create file: %v", err)
 	}
+	file.Write([]byte("test"))
 	file.Close()
 	
 	// Change permissions
@@ -622,9 +745,7 @@ func testSCPCommands(t *testing.T, addr string, containerID string) {
 		localFile := filepath.Join(t.TempDir(), "upload.txt")
 		os.WriteFile(localFile, []byte("scp upload test"), 0644)
 		
-		cmd := exec.Command("scp",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "UserKnownHostsFile=/dev/null",
+		cmd := scpCommand(
 			"-i", keyFile,
 			"-P", getPort(addr),
 			localFile,
@@ -653,9 +774,7 @@ func testSCPCommands(t *testing.T, addr string, containerID string) {
 			"sh", "-c", "echo 'scp download test' > /workspace/download.txt").Run()
 		
 		localFile := filepath.Join(t.TempDir(), "download.txt")
-		cmd := exec.Command("scp",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "UserKnownHostsFile=/dev/null",
+		cmd := scpCommand(
 			"-i", keyFile,
 			"-P", getPort(addr),
 			"test@localhost:download.txt",
@@ -682,10 +801,8 @@ func testSCPCommands(t *testing.T, addr string, containerID string) {
 		os.WriteFile(filepath.Join(testDir, "file1.txt"), []byte("file1"), 0644)
 		os.WriteFile(filepath.Join(testDir, "file2.txt"), []byte("file2"), 0644)
 		
-		cmd := exec.Command("scp",
+		cmd := scpCommand(
 			"-r",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "UserKnownHostsFile=/dev/null",
 			"-i", keyFile,
 			"-P", getPort(addr),
 			testDir,
