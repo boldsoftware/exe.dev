@@ -54,9 +54,30 @@ func (h *SFTPHandler) resolvePath(sftpPath string) string {
 		return filepath.Join(h.homeDir, sftpPath[2:])
 	}
 	
-	// Handle absolute paths
+	// CRITICAL FIX: When SCP resolves ~ to /, it sends paths like /filename
+	// We need to treat root-level file paths as relative to home
+	// This handles the case: scp file.txt host:~ → SFTP receives /file.txt
+	// BUT we need to preserve actual system paths like /tmp, /etc, /usr, etc.
+	if filepath.IsAbs(sftpPath) && !strings.HasPrefix(sftpPath, h.homeDir) {
+		// Check if this looks like a system path (has a known system directory)
+		systemDirs := []string{"/tmp", "/etc", "/usr", "/var", "/opt", "/bin", "/sbin", "/lib", "/proc", "/sys", "/dev"}
+		isSystemPath := false
+		for _, dir := range systemDirs {
+			if strings.HasPrefix(sftpPath, dir+"/") || sftpPath == dir {
+				isSystemPath = true
+				break
+			}
+		}
+		
+		// If it's not a system path, treat it as relative to home
+		// This fixes the SCP ~ bug where /file.txt should go to /workspace/file.txt
+		if !isSystemPath {
+			return filepath.Join(h.homeDir, sftpPath)
+		}
+	}
+	
+	// Handle paths that are already correctly absolute
 	if filepath.IsAbs(sftpPath) {
-		// If path is already absolute, clean it
 		return filepath.Clean(sftpPath)
 	}
 	
