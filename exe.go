@@ -331,24 +331,91 @@ func (s *Server) generateRegistrationToken() string {
 	return hex.EncodeToString(bytes)
 }
 
+// generateToken is an alias for generateRegistrationToken
+func (s *Server) generateToken() string {
+	return s.generateRegistrationToken()
+}
+
+// getBaseURL returns the base URL for the server
+func (s *Server) getBaseURL() string {
+	if s.devMode {
+		// Extract port from httpAddr (e.g., ":8080" -> "8080")
+		port := s.httpAddr
+		if strings.HasPrefix(port, ":") {
+			port = port[1:]
+		}
+		return fmt.Sprintf("http://localhost:%s", port)
+	}
+	return "https://exe.dev"
+}
+
+// sendEmail sends an email using the configured email service
+func (s *Server) sendEmail(to, subject, body string) error {
+	// Check if email service is configured
+	if s.postmarkClient == nil {
+		if s.devMode {
+			// In dev mode, just log the email
+			log.Printf("📧 DEV MODE: Would send email to %s\nSubject: %s\nBody:\n%s", to, subject, body)
+			return nil
+		}
+		return fmt.Errorf("email service not configured")
+	}
+	
+	// Use the existing sendVerificationEmail logic
+	email := postmark.Email{
+		From:     "noreply@exe.dev",
+		To:       to,
+		Subject:  subject,
+		TextBody: body,
+	}
+	
+	_, err := s.postmarkClient.SendEmail(email)
+	return err
+}
+
 // authenticatePublicKey handles SSH public key authentication
 func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 	fingerprint := s.getPublicKeyFingerprint(key)
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(key))
 	
-	// Check if user exists in database
+	// First check if this key is already registered in ssh_keys table
+	email, verified, err := s.getEmailBySSHKey(fingerprint)
+	if err != nil {
+		log.Printf("Database error checking SSH key %s: %v", fingerprint, err)
+	}
+	
+	if email != "" && verified {
+		// This is a verified key, check if user has team memberships
+		teams, err := s.getUserTeamsByEmail(email)
+		if err != nil {
+			log.Printf("Database error getting teams for user %s: %v", email, err)
+		}
+		
+		if len(teams) > 0 {
+			// User is fully registered with team membership
+			return &ssh.Permissions{
+				Extensions: map[string]string{
+					"fingerprint": fingerprint,
+					"registered":  "true",
+					"email":       email,
+					"public_key":  publicKeyStr,
+				},
+			}, nil
+		}
+	}
+	
+	// Check legacy users table for backward compatibility
 	user, err := s.getUserByFingerprint(fingerprint)
 	if err != nil {
-		log.Printf("Database error checking user %s: %v", fingerprint, err)
-		// Allow connection but mark as not registered
-		return &ssh.Permissions{
-			Extensions: map[string]string{
-				"fingerprint": fingerprint,
-				"registered":  "false",
-			},
-		}, nil
+		log.Printf("Database error checking legacy user %s: %v", fingerprint, err)
 	}
 	
 	if user != nil {
+		// Migrate this user to the new ssh_keys table
+		if err := s.migrateLegacyUserKey(user.Email, fingerprint, publicKeyStr); err != nil {
+			log.Printf("Failed to migrate legacy user key: %v", err)
+		}
+		
 		// Check if user has team memberships
 		teams, err := s.getUserTeams(fingerprint)
 		if err != nil {
@@ -362,9 +429,24 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 					"fingerprint": fingerprint,
 					"registered":  "true",
 					"email":       user.Email,
+					"public_key":  publicKeyStr,
 				},
 			}, nil
 		}
+	}
+	
+	// Check if there's an email associated with any SSH key and if this is a new key for that user
+	if email != "" && !verified {
+		// This key belongs to a user but isn't verified yet - treat as new device login attempt
+		return &ssh.Permissions{
+			Extensions: map[string]string{
+				"fingerprint":     fingerprint,
+				"registered":      "new_device",
+				"email":          email,
+				"public_key":     publicKeyStr,
+				"needs_verification": "true",
+			},
+		}, nil
 	}
 	
 	// User is not registered or has no team, allow connection but mark as needing registration
@@ -372,6 +454,7 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		Extensions: map[string]string{
 			"fingerprint": fingerprint,
 			"registered":  "false",
+			"public_key":  publicKeyStr,
 		},
 	}, nil
 }
@@ -409,6 +492,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleContainers(w, r)
 	case "/verify-email":
 		s.handleEmailVerificationHTTP(w, r)
+	case "/verify-device":
+		s.handleDeviceVerificationHTTP(w, r)
 	case "/auth":
 		s.handleAuth(w, r)
 	default:
@@ -452,6 +537,109 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	// TODO: Implement container listing/management
 	fmt.Fprintf(w, `{"containers":[],"message":"Machine management not yet implemented"}`)
+}
+
+// handleDeviceVerificationHTTP handles web-based device verification
+func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Missing token parameter", http.StatusBadRequest)
+		return
+	}
+	
+	// Look up the pending SSH key
+	var fingerprint, publicKey, email string
+	var expires time.Time
+	err := s.db.QueryRow(`
+		SELECT fingerprint, public_key, user_email, expires_at
+		FROM pending_ssh_keys
+		WHERE token = ?`,
+		token).Scan(&fingerprint, &publicKey, &email, &expires)
+	
+	if err == sql.ErrNoRows {
+		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		log.Printf("Database error during device verification: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	
+	// Check if token has expired
+	if time.Now().After(expires) {
+		// Clean up expired token
+		s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+		http.Error(w, "Verification token has expired", http.StatusBadRequest)
+		return
+	}
+	
+	// Add the SSH key to the verified keys
+	_, err = s.db.Exec(`
+		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
+		VALUES (?, ?, ?, 1, 'New Device')
+		ON CONFLICT(fingerprint) DO UPDATE SET verified = 1`,
+		fingerprint, email, publicKey)
+	
+	if err != nil {
+		log.Printf("Failed to add SSH key: %v", err)
+		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
+		return
+	}
+	
+	// Clean up the pending key
+	s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+	
+	// Send success response
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+    <title>Device Verified - exe.dev</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+        }
+        h1 { color: #2d3748; margin-bottom: 20px; }
+        p { color: #4a5568; line-height: 1.6; }
+        .success { color: #48bb78; font-size: 48px; margin-bottom: 20px; }
+        .command {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin: 20px 0;
+            border: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success">✓</div>
+        <h1>Device Verified!</h1>
+        <p>Your new device has been successfully authorized.</p>
+        <p>You can now reconnect to exe.dev from your terminal:</p>
+        <div class="command">ssh exe.dev</div>
+        <p style="font-size: 14px; color: #718096; margin-top: 30px;">
+            Device fingerprint: %s...
+        </p>
+    </div>
+</body>
+</html>`, fingerprint[:16])
 }
 
 // handleEmailVerificationHTTP handles web-based email verification
@@ -1643,10 +1831,15 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 	defer sshConn.Close()
 	
 	fingerprint := sshConn.Permissions.Extensions["fingerprint"]
-	registered := sshConn.Permissions.Extensions["registered"] == "true"
+	registeredStatus := sshConn.Permissions.Extensions["registered"]
+	email := sshConn.Permissions.Extensions["email"]
+	publicKey := sshConn.Permissions.Extensions["public_key"]
 	
-	log.Printf("SSH connection established for user: %s, fingerprint: %s, registered: %t", 
-		sshConn.User(), fingerprint, registered)
+	registered := registeredStatus == "true"
+	isNewDevice := registeredStatus == "new_device"
+	
+	log.Printf("SSH connection established for user: %s, fingerprint: %s, registered: %s", 
+		sshConn.User(), fingerprint, registeredStatus)
 	
 	// Check if this is a machine connection
 	username := sshConn.User()
@@ -1664,7 +1857,7 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 	}
 	
 	for newChannel := range chans {
-		go s.handleSSHChannel(newChannel, sshConn.User(), fingerprint, registered)
+		go s.handleSSHChannel(newChannel, sshConn.User(), fingerprint, registered, isNewDevice, email, publicKey)
 	}
 }
 
@@ -1765,7 +1958,7 @@ func (s *Server) showHelpText(channel ssh.Channel) {
 }
 
 // handleSSHChannel handles SSH channels
-func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerprint string, registered bool) {
+func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerprint string, registered bool, isNewDevice bool, email, publicKey string) {
 	if newChannel.ChannelType() != "session" {
 		newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		return
@@ -1815,7 +2008,12 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 				req.Reply(true, nil)
 			}
 			// Handle shell directly, not in a goroutine
-			s.handleSSHShellWithDimensions(channel, username, fingerprint, registered, terminalWidth, terminalHeight)
+			if isNewDevice {
+				// Handle new device authentication flow
+				s.handleNewDeviceAuth(channel, fingerprint, email, publicKey, terminalWidth)
+			} else {
+				s.handleSSHShellWithDimensions(channel, username, fingerprint, registered, terminalWidth, terminalHeight)
+			}
 			return // Exit after handling shell
 		case "exec":
 			if req.WantReply {
@@ -2461,6 +2659,35 @@ func generateRandomContainerName() string {
 	return word1 + "-" + word2
 }
 
+// isValidStorageSize validates a Kubernetes storage size string (e.g., "10Gi", "100Gi")
+func isValidStorageSize(size string) bool {
+	// Check if it matches pattern: number + unit (Ki, Mi, Gi, Ti)
+	if len(size) < 2 {
+		return false
+	}
+	
+	// Extract numeric part
+	i := 0
+	for i < len(size) && (size[i] >= '0' && size[i] <= '9') {
+		i++
+	}
+	
+	if i == 0 {
+		return false // No numeric part
+	}
+	
+	// Check unit suffix
+	unit := size[i:]
+	validUnits := []string{"Ki", "Mi", "Gi", "Ti"}
+	for _, valid := range validUnits {
+		if unit == valid {
+			return true
+		}
+	}
+	
+	return false
+}
+
 // handleCreateCommandWithStdin creates a new machine with support for stdin Dockerfile and flag-based parameters
 func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string, stdin io.Reader) {
 	if s.containerManager == nil {
@@ -2480,10 +2707,16 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 	// Define flags
 	var containerName string
 	var image string
+	var size string
+	var disk string
+	var temp bool
 	var showHelp bool
 	
 	flags.StringVar(&containerName, "name", "", "Machine name (auto-generated if not specified)")
 	flags.StringVar(&image, "image", "ubuntu:22.04", "Docker image to use")
+	flags.StringVar(&size, "size", "small", "Machine size: micro, small, medium, large, xlarge")
+	flags.StringVar(&disk, "disk", "", "Override disk size (e.g., 30Gi, 100Gi)")
+	flags.BoolVar(&temp, "temp", false, "Create ephemeral machine (no persistent disk)")
 	flags.BoolVar(&showHelp, "help", false, "Show help message")
 	
 	// Buffer to capture and discard default flag output
@@ -2495,17 +2728,24 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		channel.Write([]byte("Usage: create [OPTIONS]\r\n"))
 		channel.Write([]byte("\r\nCreate a new machine\r\n\r\n"))
 		channel.Write([]byte("Options:\r\n"))
-		// Get flag defaults in a controlled way
-		var flagBuffer bytes.Buffer
-		flags.SetOutput(&flagBuffer)
-		flags.PrintDefaults()
-		channel.Write(flagBuffer.Bytes())
-		flags.SetOutput(&discardBuffer) // Reset to discard buffer
+		channel.Write([]byte("  --name string     Machine name (auto-generated if not specified)\r\n"))
+		channel.Write([]byte("  --image string    Docker image to use (default \"ubuntu:22.04\")\r\n"))
+		channel.Write([]byte("  --size string     Machine size: micro, small, medium, large, xlarge (default \"small\")\r\n"))
+		channel.Write([]byte("  --disk string     Override disk size (e.g., 30Gi, 100Gi)\r\n"))
+		channel.Write([]byte("  --temp            Create ephemeral machine (no persistent disk)\r\n"))
+		channel.Write([]byte("  --help            Show help message\r\n"))
+		channel.Write([]byte("\r\nSize Presets:\r\n"))
+		channel.Write([]byte("  micro:  0.25 CPU, 512MB RAM, 5GB disk\r\n"))
+		channel.Write([]byte("  small:  0.5 CPU, 2GB RAM, 10GB disk\r\n"))
+		channel.Write([]byte("  medium: 1 CPU, 4GB RAM, 20GB disk\r\n"))
+		channel.Write([]byte("  large:  2 CPU, 8GB RAM, 50GB disk\r\n"))
+		channel.Write([]byte("  xlarge: 4 CPU, 16GB RAM, 100GB disk\r\n"))
 		channel.Write([]byte("\r\nExamples:\r\n"))
-		channel.Write([]byte("  create                                    # Create with defaults\r\n"))
-		channel.Write([]byte("  create --name=myapp                      # Create with specific name\r\n"))
-		channel.Write([]byte("  create --image=python:3.11               # Create with specific image\r\n"))
-		channel.Write([]byte("  create --name=web --image=nginx:latest   # Specify both name and image\r\n"))
+		channel.Write([]byte("  create                                    # Create small machine with defaults\r\n"))
+		channel.Write([]byte("  create --name=myapp --size=medium        # Create medium-sized machine\r\n"))
+		channel.Write([]byte("  create --size=large --disk=200Gi         # Large machine with 200GB disk\r\n"))
+		channel.Write([]byte("  create --temp                            # Create ephemeral machine\r\n"))
+		channel.Write([]byte("  create --image=python:3.11 --size=micro  # Micro Python machine\r\n"))
 		channel.Write([]byte("  cat Dockerfile | ssh exe.dev create --name=custom  # Create from Dockerfile\r\n"))
 	}
 	
@@ -2615,20 +2855,56 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 	}
 	// err == sql.ErrNoRows means the name is available, continue
 	
+	// Show creation message with size info
 	if dockerfile != "" {
-		channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m for team \033[1;36m%s\033[0m with custom Dockerfile...\r\n", containerName, teamName)))
+		if temp {
+			channel.Write([]byte(fmt.Sprintf("Creating ephemeral \033[1m%s\033[0m (%s) for team \033[1;36m%s\033[0m with custom Dockerfile...\r\n", containerName, size, teamName)))
+		} else {
+			channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m (%s) for team \033[1;36m%s\033[0m with custom Dockerfile...\r\n", containerName, size, teamName)))
+		}
 	} else {
 		displayImage := container.GetDisplayImageName(image)
-		channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m for team \033[1;36m%s\033[0m using image \033[1m%s\033[0m...\r\n", containerName, teamName, displayImage)))
+		if temp {
+			channel.Write([]byte(fmt.Sprintf("Creating ephemeral \033[1m%s\033[0m (%s) for team \033[1;36m%s\033[0m using image \033[1m%s\033[0m...\r\n", containerName, size, teamName, displayImage)))
+		} else {
+			channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m (%s) for team \033[1;36m%s\033[0m using image \033[1m%s\033[0m...\r\n", containerName, size, teamName, displayImage)))
+		}
+	}
+	
+	// Validate size parameter
+	sizePreset, exists := container.ContainerSizes[size]
+	if !exists {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: Invalid size '%s'. Valid sizes: micro, small, medium, large, xlarge\033[0m\r\n", size)))
+		return
+	}
+	
+	// Apply size presets
+	cpuRequest := sizePreset.CPURequest
+	memoryRequest := sizePreset.MemoryRequest
+	storageSize := sizePreset.StorageSize
+	
+	// Override disk size if specified
+	if disk != "" {
+		// Validate disk size format (e.g., "10Gi", "100Gi")
+		if !isValidStorageSize(disk) {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mError: Invalid disk size '%s'. Use format like '10Gi' or '100Gi'\033[0m\r\n", disk)))
+			return
+		}
+		storageSize = disk
 	}
 	
 	// Create container request
 	req := &container.CreateContainerRequest{
-		UserID:     fingerprint,
-		Name:       containerName,
-		TeamName:   teamName,
-		Image:      image,
-		Dockerfile: dockerfile,
+		UserID:        fingerprint,
+		Name:          containerName,
+		TeamName:      teamName,
+		Image:         image,
+		Dockerfile:    dockerfile,
+		Size:          size,
+		CPURequest:    cpuRequest,
+		MemoryRequest: memoryRequest,
+		StorageSize:   storageSize,
+		Ephemeral:     temp,
 	}
 	
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -3159,6 +3435,60 @@ func (s *Server) isValidEmail(email string) bool {
 
 // startEmailVerification initiates the email verification process
 func (s *Server) startEmailVerification(channel ssh.Channel, fingerprint, email string) error {
+	// First check if this email already exists
+	var existingFingerprint string
+	err := s.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", email).Scan(&existingFingerprint)
+	
+	if err == nil {
+		// Email already exists - this is a new device for an existing user
+		publicKey := "" // We don't have the public key in this context yet
+		
+		// Store this key as unverified in ssh_keys table
+		_, err = s.db.Exec(`
+			INSERT OR REPLACE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
+			VALUES (?, ?, ?, 0, 'Pending Verification')`,
+			fingerprint, email, publicKey)
+		
+		if err != nil {
+			return fmt.Errorf("failed to store pending key: %v", err)
+		}
+		
+		// Generate token for new device verification
+		token := s.generateToken()
+		expires := time.Now().Add(15 * time.Minute)
+		
+		_, err = s.db.Exec(`
+			INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
+			VALUES (?, ?, ?, ?, ?)`,
+			token, fingerprint, publicKey, email, expires)
+		
+		if err != nil {
+			return fmt.Errorf("failed to create verification token: %v", err)
+		}
+		
+		// Send new device verification email
+		subject := "New Device Login - exe.dev"
+		body := fmt.Sprintf(`Hello,
+
+A new device is trying to register with your exe.dev account email.
+
+If this was you, please click the link below to authorize this device:
+
+%s/verify-device?token=%s
+
+Device fingerprint: %s
+
+If you did not attempt to register from a new device, please ignore this email.
+
+This link will expire in 15 minutes.
+
+Best regards,
+The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
+
+		return s.sendEmail(email, subject, body)
+	}
+	
+	// New user registration flow
 	// Generate verification token
 	token := s.generateRegistrationToken()
 	
@@ -3733,6 +4063,137 @@ func (s *Server) Start() error {
 }
 
 // Database helper methods
+
+// getEmailBySSHKey checks if an SSH key is registered and returns the associated email
+func (s *Server) getEmailBySSHKey(fingerprint string) (email string, verified bool, err error) {
+	err = s.db.QueryRow(`
+		SELECT user_email, verified 
+		FROM ssh_keys 
+		WHERE fingerprint = ?`,
+		fingerprint).Scan(&email, &verified)
+	
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	return email, verified, err
+}
+
+// getUserTeamsByEmail retrieves teams for a user by email
+func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
+	rows, err := s.db.Query(`
+		SELECT tm.user_fingerprint, tm.team_name, tm.is_admin, tm.joined_at
+		FROM team_members tm
+		JOIN users u ON tm.user_fingerprint = u.public_key_fingerprint
+		WHERE u.email = ?`,
+		email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var teams []TeamMember
+	for rows.Next() {
+		var tm TeamMember
+		if err := rows.Scan(&tm.UserFingerprint, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
+			return nil, err
+		}
+		teams = append(teams, tm)
+	}
+	
+	return teams, rows.Err()
+}
+
+// migrateLegacyUserKey migrates a key from the old users table to the new ssh_keys table
+func (s *Server) migrateLegacyUserKey(email, fingerprint, publicKey string) error {
+	_, err := s.db.Exec(`
+		INSERT OR IGNORE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
+		VALUES (?, ?, ?, 1, 'Original Device')`,
+		fingerprint, email, publicKey)
+	return err
+}
+
+// handleNewDeviceAuth handles authentication for a user logging in from a new device
+func (s *Server) handleNewDeviceAuth(channel ssh.Channel, fingerprint, email, publicKey string, terminalWidth int) {
+	// Show a message explaining the situation
+	channel.Write([]byte("\033[2J\033[H")) // Clear screen and move to top
+	channel.Write([]byte(fmt.Sprintf(`
+╔══════════════════════════════════════════════════════════════╗
+║                    NEW DEVICE DETECTED                       ║
+╚══════════════════════════════════════════════════════════════╝
+
+Hello! We see you're trying to log in from a new device.
+
+Your account email: %s
+
+For security reasons, we need to verify this new SSH key 
+before granting access to your account.
+
+We'll send a verification email to confirm this is really you.
+
+Press ENTER to send verification email, or Ctrl+C to cancel...
+`, email)))
+
+	// Wait for user to press enter
+	buf := make([]byte, 1)
+	for {
+		n, err := channel.Read(buf)
+		if err != nil || n == 0 {
+			channel.Write([]byte("\r\nCancelled.\r\n"))
+			return
+		}
+		if buf[0] == '\r' || buf[0] == '\n' {
+			break
+		}
+		if buf[0] == 3 { // Ctrl+C
+			channel.Write([]byte("\r\nCancelled.\r\n"))
+			return
+		}
+	}
+	
+	// Generate verification token
+	token := s.generateToken()
+	
+	// Store pending SSH key
+	expires := time.Now().Add(15 * time.Minute)
+	_, err := s.db.Exec(`
+		INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		token, fingerprint, publicKey, email, expires)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\nError storing verification request: %v\r\n", err)))
+		return
+	}
+	
+	// Send verification email
+	subject := "New Device Login - exe.dev"
+	body := fmt.Sprintf(`Hello,
+
+Someone is trying to log into your exe.dev account from a new device.
+
+If this was you, please click the link below to authorize this device:
+
+%s/verify-device?token=%s
+
+Device fingerprint: %s
+
+If you did not attempt to log in from a new device, please ignore this email.
+
+This link will expire in 15 minutes.
+
+Best regards,
+The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
+
+	if err := s.sendEmail(email, subject, body); err != nil {
+		channel.Write([]byte(fmt.Sprintf("\r\nError sending verification email: %v\r\n", err)))
+		return
+	}
+	
+	channel.Write([]byte("\r\n\033[1;32mVerification email sent!\033[0m\r\n\r\n"))
+	channel.Write([]byte("Please check your email and click the verification link.\r\n"))
+	channel.Write([]byte("Once verified, you can reconnect and access your account.\r\n\r\n"))
+	channel.Write([]byte("This session will now close. Please reconnect after verifying.\r\n"))
+}
 
 // getUserByFingerprint retrieves a user by their SSH key fingerprint
 func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {

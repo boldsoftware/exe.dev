@@ -78,6 +78,7 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 	// Map common images to Google's mirror for better performance
 	image = m.getMirrorImage(image)
 	
+	// Use provided resource settings or defaults
 	cpuRequest := req.CPURequest
 	if cpuRequest == "" {
 		cpuRequest = m.config.DefaultCPURequest
@@ -130,7 +131,7 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 		// Image will be updated when build completes
 	} else {
 		// Create Kubernetes resources immediately for pre-built images
-		if err := m.createKubernetesResources(ctx, container); err != nil {
+		if err := m.createKubernetesResources(ctx, container, req.Ephemeral); err != nil {
 			return nil, fmt.Errorf("failed to create Kubernetes resources: %w", err)
 		}
 	}
@@ -139,19 +140,21 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 }
 
 // createKubernetesResources creates the namespace, PVC, and pod for a container
-func (m *GKEManager) createKubernetesResources(ctx context.Context, container *Container) error {
+func (m *GKEManager) createKubernetesResources(ctx context.Context, container *Container, ephemeral bool) error {
 	// Ensure namespace exists
 	if err := m.ensureNamespace(ctx, container.Namespace); err != nil {
 		return fmt.Errorf("failed to ensure namespace: %w", err)
 	}
 
-	// Create PVC
-	if err := m.createPVC(ctx, container); err != nil {
-		return fmt.Errorf("failed to create PVC: %w", err)
+	// Create PVC only for persistent containers
+	if !ephemeral {
+		if err := m.createPVC(ctx, container); err != nil {
+			return fmt.Errorf("failed to create PVC: %w", err)
+		}
 	}
 
-	// Create Pod
-	if err := m.createPod(ctx, container); err != nil {
+	// Create Pod (with either PVC or emptyDir volume)
+	if err := m.createPod(ctx, container, ephemeral); err != nil {
 		return fmt.Errorf("failed to create pod: %w", err)
 	}
 
@@ -212,7 +215,7 @@ func (m *GKEManager) createPVC(ctx context.Context, container *Container) error 
 }
 
 // createPod creates a Kubernetes pod for the container
-func (m *GKEManager) createPod(ctx context.Context, container *Container) error {
+func (m *GKEManager) createPod(ctx context.Context, container *Container, ephemeral bool) error {
 	cpuQuantity := resource.MustParse(container.CPURequest)
 	memoryQuantity := resource.MustParse(container.MemoryRequest)
 
@@ -224,17 +227,24 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container) error 
 		k8sHostname = fmt.Sprintf("%s-exe-dev", container.Name)
 	}
 
+	labels := map[string]string{
+		"app":            "exe-container",
+		"container-id":   m.shortenForLabel(container.ID),
+		"user-id":        m.shortenForLabel(container.UserID),
+		"container-name": container.Name,
+		"team-name":      container.TeamName,
+	}
+	
+	// Add ephemeral label if applicable
+	if ephemeral {
+		labels["ephemeral"] = "true"
+	}
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      container.PodName,
 			Namespace: container.Namespace,
-			Labels: map[string]string{
-				"app":            "exe-container",
-				"container-id":   m.shortenForLabel(container.ID),
-				"user-id":        m.shortenForLabel(container.UserID),
-				"container-name": container.Name,
-				"team-name":      container.TeamName,
-			},
+			Labels:    labels,
 		},
 		Spec: corev1.PodSpec{
 			Hostname: k8sHostname,
@@ -263,18 +273,36 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container) error 
 					WorkingDir: "/workspace",
 				},
 			},
-			Volumes: []corev1.Volume{
-				{
-					Name: "storage",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: container.PVCName,
-						},
+			RestartPolicy: corev1.RestartPolicyAlways,
+		},
+	}
+	
+	// Configure volumes based on ephemeral flag
+	if ephemeral {
+		// Use emptyDir for ephemeral storage
+		storageQuantity := resource.MustParse(container.StorageSize)
+		pod.Spec.Volumes = []corev1.Volume{
+			{
+				Name: "storage",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{
+						SizeLimit: &storageQuantity,
 					},
 				},
 			},
-			RestartPolicy: corev1.RestartPolicyAlways,
-		},
+		}
+	} else {
+		// Use PVC for persistent storage
+		pod.Spec.Volumes = []corev1.Volume{
+			{
+				Name: "storage",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: container.PVCName,
+					},
+				},
+			},
+		}
 	}
 
 	_, err := m.k8sClient.CoreV1().Pods(container.Namespace).Create(ctx, pod, metav1.CreateOptions{})

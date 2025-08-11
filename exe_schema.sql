@@ -109,6 +109,27 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     FOREIGN KEY (user_fingerprint) REFERENCES users(public_key_fingerprint) ON DELETE CASCADE
 );
 
+-- SSH keys table: supports multiple SSH keys per user
+CREATE TABLE IF NOT EXISTS ssh_keys (
+    fingerprint TEXT PRIMARY KEY,
+    user_email TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    device_name TEXT, -- Optional: friendly name for the key
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME,
+    verified BOOLEAN DEFAULT FALSE -- Whether this key has been verified via email
+);
+
+-- Table for pending SSH key additions (when logging in from new device)
+CREATE TABLE IF NOT EXISTS pending_ssh_keys (
+    token TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_name);
 CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_fingerprint);
@@ -121,3 +142,6 @@ CREATE INDEX IF NOT EXISTS idx_auth_cookies_user ON auth_cookies(user_fingerprin
 CREATE INDEX IF NOT EXISTS idx_auth_cookies_expires ON auth_cookies(expires_at);
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires ON auth_tokens(expires_at);
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_subdomain ON auth_tokens(subdomain);
+CREATE INDEX IF NOT EXISTS idx_ssh_keys_email ON ssh_keys(user_email);
+CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_pending_ssh_keys_expires ON pending_ssh_keys(expires_at);
