@@ -1933,6 +1933,8 @@ func (s *Server) handleSSHExec(channel ssh.Channel, payload []byte, username, fi
 		s.handleLogsCommand(channel, cmdArgs)
 	case "diag", "diagnostics":
 		s.handleDiagCommand(channel, cmdArgs)
+	case "team":
+		s.handleTeamCommand(channel, cmdArgs)
 	case "help", "?":
 		s.showHelpText(channel)
 	default:
@@ -1943,6 +1945,7 @@ func (s *Server) handleSSHExec(channel ssh.Channel, payload []byte, username, fi
 // showHelpText displays the help text for available commands
 func (s *Server) showHelpText(channel ssh.Channel) {
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
+		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
 		"\033[1mcreate [image] [name]\033[0m   - Create a new machine (defaults: ubuntu, auto-generated name)\r\n" +
 		"\033[1mcat Dockerfile | create\033[0m - Create machine from custom Dockerfile\r\n" +
@@ -1951,7 +1954,12 @@ func (s *Server) showHelpText(channel ssh.Channel) {
 		"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
 		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
 		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
-		"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
+		"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n\r\n" +
+		"\033[1;36mTeam Management:\033[0m\r\n" +
+		"\033[1mteam\033[0m                    - List team members\r\n" +
+		"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
+		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n" +
+		"\033[1mteam remove <email>\033[0m     - Remove a team member (admin only)\r\n\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n\r\n"
 	
 	channel.Write([]byte(helpText))
@@ -2501,13 +2509,18 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
 	
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
+		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
 		"\033[1mcreate [image] [name]\033[0m   - Create a new machine (defaults: ubuntu, auto-generated name)\r\n" +
 		"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
 		"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
 		"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
 		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
-		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
+		"\033[1mlogs <name>\033[0m             - View machine logs\r\n\r\n" +
+		"\033[1;36mTeam Management:\033[0m\r\n" +
+		"\033[1mteam\033[0m                    - List team members\r\n" +
+		"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
+		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n" +
 		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
 	
@@ -2554,10 +2567,406 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 			s.handleDeleteCommand(channel, args)
 		case "logs":
 			s.handleLogsCommand(channel, args)
+		case "team":
+			s.handleTeamCommand(channel, args)
 		default:
 			channel.Write([]byte("Unknown command. Type 'help' for available commands.\r\n"))
 		}
 	}
+}
+
+// handleTeamCommand handles team management commands
+func (s *Server) handleTeamCommand(channel ssh.Channel, args []string) {
+	fingerprint, teamName, err := s.getUserFromChannel(channel)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Check if user is authenticated
+	if teamName == "" {
+		channel.Write([]byte("\033[1;31mError: You must be part of a team to use team commands\033[0m\r\n"))
+		return
+	}
+	
+	// Parse subcommand
+	if len(args) == 0 {
+		// No subcommand - list team members
+		s.handleTeamList(channel, fingerprint, teamName)
+		return
+	}
+	
+	subCmd := args[0]
+	subArgs := args[1:]
+	
+	switch subCmd {
+	case "list", "ls":
+		s.handleTeamList(channel, fingerprint, teamName)
+	case "invite":
+		s.handleTeamInvite(channel, fingerprint, teamName, subArgs)
+	case "join":
+		s.handleTeamJoin(channel, fingerprint, subArgs)
+	case "remove":
+		s.handleTeamRemove(channel, fingerprint, teamName, subArgs)
+	default:
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mUnknown team command: %s\033[0m\r\n", subCmd)))
+		channel.Write([]byte("Available team commands:\r\n"))
+		channel.Write([]byte("  team              - List team members\r\n"))
+		channel.Write([]byte("  team invite <email>   - Invite someone to join your team\r\n"))
+		channel.Write([]byte("  team join <code>      - Join a team using an invite code\r\n"))
+		channel.Write([]byte("  team remove <email>   - Remove someone from your team (admin only)\r\n"))
+	}
+}
+
+// handleTeamList lists all members of the team
+func (s *Server) handleTeamList(channel ssh.Channel, fingerprint, teamName string) {
+	// Get all team members
+	rows, err := s.db.Query(`
+		SELECT u.email, tm.is_admin, tm.joined_at, u.created_at
+		FROM team_members tm
+		JOIN users u ON tm.user_fingerprint = u.public_key_fingerprint
+		WHERE tm.team_name = ?
+		ORDER BY tm.joined_at ASC`,
+		teamName)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving team members: %v\033[0m\r\n", err)))
+		return
+	}
+	defer rows.Close()
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1;36mTeam: %s\033[0m\r\n", teamName)))
+	channel.Write([]byte("─────────────────────────────────────────────────────────────\r\n"))
+	
+	memberCount := 0
+	for rows.Next() {
+		var email string
+		var isAdmin bool
+		var joinedAt, createdAt time.Time
+		
+		if err := rows.Scan(&email, &isAdmin, &joinedAt, &createdAt); err != nil {
+			continue
+		}
+		
+		memberCount++
+		
+		// Format member info
+		role := "Member"
+		if isAdmin {
+			role = "\033[1;33mAdmin\033[0m"
+		}
+		
+		joinedStr := joinedAt.Format("Jan 2, 2006")
+		channel.Write([]byte(fmt.Sprintf("  • \033[1m%s\033[0m - %s (joined %s)\r\n", email, role, joinedStr)))
+	}
+	
+	if memberCount == 0 {
+		channel.Write([]byte("  No team members found.\r\n"))
+	} else {
+		channel.Write([]byte(fmt.Sprintf("\r\nTotal members: %d\r\n", memberCount)))
+	}
+	
+	// Check if current user is admin
+	var isAdmin bool
+	err = s.db.QueryRow(`
+		SELECT is_admin FROM team_members 
+		WHERE user_fingerprint = ? AND team_name = ?`,
+		fingerprint, teamName).Scan(&isAdmin)
+	
+	if err == nil && isAdmin {
+		channel.Write([]byte("\r\n\033[2mYou are a team admin. Use 'team invite <email>' to add members.\033[0m\r\n"))
+	}
+}
+
+// handleTeamInvite handles inviting a new member to the team
+func (s *Server) handleTeamInvite(channel ssh.Channel, fingerprint, teamName string, args []string) {
+	// Check if user is admin
+	var isAdmin bool
+	err := s.db.QueryRow(`
+		SELECT is_admin FROM team_members 
+		WHERE user_fingerprint = ? AND team_name = ?`,
+		fingerprint, teamName).Scan(&isAdmin)
+	
+	if err != nil || !isAdmin {
+		channel.Write([]byte("\033[1;31mError: Only team admins can invite new members\033[0m\r\n"))
+		return
+	}
+	
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mError: Please specify an email address\033[0m\r\n"))
+		channel.Write([]byte("Usage: team invite <email>\r\n"))
+		return
+	}
+	
+	inviteEmail := args[0]
+	
+	// Validate email format
+	if !s.isValidEmail(inviteEmail) {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: Invalid email address: %s\033[0m\r\n", inviteEmail)))
+		return
+	}
+	
+	// Check if user already exists and is in the team
+	var existingMember int
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM team_members tm
+		JOIN users u ON tm.user_fingerprint = u.public_key_fingerprint
+		WHERE u.email = ? AND tm.team_name = ?`,
+		inviteEmail, teamName).Scan(&existingMember)
+	
+	if err == nil && existingMember > 0 {
+		channel.Write([]byte(fmt.Sprintf("\033[1;33m%s is already a member of team %s\033[0m\r\n", inviteEmail, teamName)))
+		return
+	}
+	
+	// Generate invite code
+	inviteCode := s.generateToken()[:8] // Use first 8 chars for easier typing
+	expires := time.Now().Add(7 * 24 * time.Hour) // 7 days expiry
+	
+	// Store invite in database
+	_, err = s.db.Exec(`
+		INSERT INTO invites (code, team_name, created_by_fingerprint, email, expires_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		inviteCode, teamName, fingerprint, inviteEmail, expires)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError creating invite: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Check if the email belongs to an existing user
+	var existingUserFingerprint string
+	err = s.db.QueryRow(`
+		SELECT public_key_fingerprint FROM users WHERE email = ?`,
+		inviteEmail).Scan(&existingUserFingerprint)
+	
+	if err == nil {
+		// User exists - send team invite email
+		subject := fmt.Sprintf("Team Invitation - %s on exe.dev", teamName)
+		body := fmt.Sprintf(`Hello,
+
+You've been invited to join the team "%s" on exe.dev!
+
+To accept this invitation, SSH into exe.dev and use the following invite code:
+
+    ssh exe.dev
+    
+Then enter the invite code when prompted: %s
+
+Or you can directly use:
+    
+    ssh exe.dev team join %s
+
+This invitation will expire in 7 days.
+
+Best regards,
+The exe.dev team`, teamName, inviteCode, inviteCode)
+		
+		if err := s.sendEmail(inviteEmail, subject, body); err != nil {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mError sending invite email: %v\033[0m\r\n", err)))
+			return
+		}
+		
+		channel.Write([]byte(fmt.Sprintf("\033[1;32mInvitation sent to existing user %s!\033[0m\r\n", inviteEmail)))
+		channel.Write([]byte(fmt.Sprintf("Invite code: \033[1m%s\033[0m (expires in 7 days)\r\n", inviteCode)))
+	} else {
+		// New user - send signup + team invite email
+		subject := fmt.Sprintf("You're invited to join %s on exe.dev!", teamName)
+		body := fmt.Sprintf(`Hello,
+
+You've been invited to join the team "%s" on exe.dev!
+
+exe.dev provides instant SSH-accessible development machines in the cloud.
+
+To get started:
+
+1. First, sign up for exe.dev:
+   
+   ssh exe.dev
+
+2. Complete the registration process with this email address
+
+3. Once registered, use this invite code to join the team:
+   
+   %s
+
+You can also directly join after registration with:
+   
+   ssh exe.dev team join %s
+
+This invitation will expire in 7 days.
+
+Learn more at https://exe.dev
+
+Best regards,
+The exe.dev team`, teamName, inviteCode, inviteCode)
+		
+		if err := s.sendEmail(inviteEmail, subject, body); err != nil {
+			channel.Write([]byte(fmt.Sprintf("\033[1;31mError sending invite email: %v\033[0m\r\n", err)))
+			return
+		}
+		
+		channel.Write([]byte(fmt.Sprintf("\033[1;32mInvitation sent to %s!\033[0m\r\n", inviteEmail)))
+		channel.Write([]byte("They'll need to sign up first, then use this invite code:\r\n"))
+		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m (expires in 7 days)\r\n", inviteCode)))
+	}
+}
+
+// handleTeamJoin handles joining a team with an invite code
+func (s *Server) handleTeamJoin(channel ssh.Channel, fingerprint string, args []string) {
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mError: Please specify an invite code\033[0m\r\n"))
+		channel.Write([]byte("Usage: team join <invite-code>\r\n"))
+		return
+	}
+	
+	inviteCode := args[0]
+	
+	// Look up the invite
+	var inviteTeam, inviteEmail string
+	var expires time.Time
+	var usedCount, maxUses int
+	err := s.db.QueryRow(`
+		SELECT team_name, email, expires_at, used_count, max_uses
+		FROM invites
+		WHERE code = ?`,
+		inviteCode).Scan(&inviteTeam, &inviteEmail, &expires, &usedCount, &maxUses)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: Invalid invite code: %s\033[0m\r\n", inviteCode)))
+		return
+	}
+	
+	// Check if expired
+	if time.Now().After(expires) {
+		channel.Write([]byte("\033[1;31mError: This invite code has expired\033[0m\r\n"))
+		// Clean up expired invite
+		s.db.Exec("DELETE FROM invites WHERE code = ?", inviteCode)
+		return
+	}
+	
+	// Check if already used up
+	if maxUses > 0 && usedCount >= maxUses {
+		channel.Write([]byte("\033[1;31mError: This invite code has already been used\033[0m\r\n"))
+		return
+	}
+	
+	// Get user's email
+	var userEmail string
+	err = s.db.QueryRow(`
+		SELECT email FROM users WHERE public_key_fingerprint = ?`,
+		fingerprint).Scan(&userEmail)
+	
+	if err != nil {
+		channel.Write([]byte("\033[1;31mError: Could not find your user account\033[0m\r\n"))
+		return
+	}
+	
+	// Check if invite is for specific email
+	if inviteEmail != "" && inviteEmail != userEmail {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: This invite is for %s, not %s\033[0m\r\n", inviteEmail, userEmail)))
+		return
+	}
+	
+	// Check if already a member
+	var existingMember int
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM team_members
+		WHERE user_fingerprint = ? AND team_name = ?`,
+		fingerprint, inviteTeam).Scan(&existingMember)
+	
+	if err == nil && existingMember > 0 {
+		channel.Write([]byte(fmt.Sprintf("\033[1;33mYou are already a member of team %s\033[0m\r\n", inviteTeam)))
+		return
+	}
+	
+	// Add user to team
+	_, err = s.db.Exec(`
+		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+		VALUES (?, ?, 0)`,
+		fingerprint, inviteTeam)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError joining team: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	// Update invite usage count
+	s.db.Exec(`
+		UPDATE invites SET used_count = used_count + 1
+		WHERE code = ?`,
+		inviteCode)
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1;32mSuccessfully joined team %s!\033[0m\r\n", inviteTeam)))
+	channel.Write([]byte("\r\nYou can now:\r\n"))
+	channel.Write([]byte("  • Create machines for your team with 'create'\r\n"))
+	channel.Write([]byte("  • List team members with 'team'\r\n"))
+	channel.Write([]byte("  • Access team machines with 'list' and 'ssh <machine>'\r\n"))
+	
+	// Update the user's session with new team
+	s.sessionsMu.Lock()
+	if session, exists := s.sessions[channel]; exists {
+		session.TeamName = inviteTeam
+	}
+	s.sessionsMu.Unlock()
+}
+
+// handleTeamRemove handles removing a member from the team
+func (s *Server) handleTeamRemove(channel ssh.Channel, fingerprint, teamName string, args []string) {
+	// Check if user is admin
+	var isAdmin bool
+	err := s.db.QueryRow(`
+		SELECT is_admin FROM team_members 
+		WHERE user_fingerprint = ? AND team_name = ?`,
+		fingerprint, teamName).Scan(&isAdmin)
+	
+	if err != nil || !isAdmin {
+		channel.Write([]byte("\033[1;31mError: Only team admins can remove members\033[0m\r\n"))
+		return
+	}
+	
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mError: Please specify an email address\033[0m\r\n"))
+		channel.Write([]byte("Usage: team remove <email>\r\n"))
+		return
+	}
+	
+	removeEmail := args[0]
+	
+	// Get the fingerprint of the user to remove
+	var removeFingerprint string
+	err = s.db.QueryRow(`
+		SELECT public_key_fingerprint FROM users WHERE email = ?`,
+		removeEmail).Scan(&removeFingerprint)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: User %s not found\033[0m\r\n", removeEmail)))
+		return
+	}
+	
+	// Don't allow removing yourself
+	if removeFingerprint == fingerprint {
+		channel.Write([]byte("\033[1;31mError: You cannot remove yourself from the team\033[0m\r\n"))
+		return
+	}
+	
+	// Remove from team
+	result, err := s.db.Exec(`
+		DELETE FROM team_members 
+		WHERE user_fingerprint = ? AND team_name = ?`,
+		removeFingerprint, teamName)
+	
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError removing member: %v\033[0m\r\n", err)))
+		return
+	}
+	
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		channel.Write([]byte(fmt.Sprintf("\033[1;33m%s is not a member of team %s\033[0m\r\n", removeEmail, teamName)))
+		return
+	}
+	
+	channel.Write([]byte(fmt.Sprintf("\033[1;32mSuccessfully removed %s from team %s\033[0m\r\n", removeEmail, teamName)))
 }
 
 // getUserFromChannel gets user information from SSH channel session
