@@ -40,6 +40,7 @@ import (
 	_ "modernc.org/sqlite"
 	
 	"exe.dev/container"
+	"exe.dev/porkbun"
 	"exe.dev/sshproxy"
 )
 
@@ -141,6 +142,7 @@ type Server struct {
 	httpsServer *http.Server
 	sshConfig   *ssh.ServerConfig
 	certManager *autocert.Manager
+	wildcardCertManager *porkbun.WildcardCertManager
 	
 	// Database
 	db *sql.DB
@@ -264,19 +266,44 @@ func (s *Server) setupHTTPSServer() {
 		return
 	}
 	
-	// Set up autocert manager for Let's Encrypt
-	s.certManager = &autocert.Manager{
-		Cache:      autocert.DirCache("certs"),
-		Prompt:     autocert.AcceptTOS,
-		HostPolicy: autocert.HostWhitelist("exe.dev"),
-	}
+	// Check if Porkbun API credentials are available for wildcard cert
+	porkbunAPIKey := os.Getenv("PORKBUN_API_KEY")
+	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
 	
-	s.httpsServer = &http.Server{
-		Addr:    s.httpsAddr,
-		Handler: s,
-		TLSConfig: &tls.Config{
-			GetCertificate: s.certManager.GetCertificate,
-		},
+	if porkbunAPIKey != "" && porkbunSecretKey != "" {
+		// Use Porkbun for wildcard certificates with DNS challenge
+		log.Printf("Using Porkbun DNS provider for wildcard TLS certificates")
+		s.wildcardCertManager = porkbun.NewWildcardCertManager(
+			"exe.dev",
+			"support@exe.dev",
+			porkbunAPIKey,
+			porkbunSecretKey,
+			autocert.DirCache("certs"),
+		)
+		
+		s.httpsServer = &http.Server{
+			Addr:    s.httpsAddr,
+			Handler: s,
+			TLSConfig: &tls.Config{
+				GetCertificate: s.wildcardCertManager.GetCertificate,
+			},
+		}
+	} else {
+		// Fall back to regular autocert for non-wildcard certificates
+		log.Printf("Using standard autocert (no wildcard support). Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates.")
+		s.certManager = &autocert.Manager{
+			Cache:      autocert.DirCache("certs"),
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist("exe.dev"),
+		}
+		
+		s.httpsServer = &http.Server{
+			Addr:    s.httpsAddr,
+			Handler: s,
+			TLSConfig: &tls.Config{
+				GetCertificate: s.certManager.GetCertificate,
+			},
+		}
 	}
 }
 
@@ -2346,7 +2373,7 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				}
 				
 				// Use the new sshproxy package for SFTP
-				gkeFS := sshproxy.NewGKEContainerFS(
+				gkeFS := sshproxy.NewUnixContainerFS(
 					s.containerManager,
 					machine.CreatedByFingerprint,
 					*machine.ContainerID,
@@ -4481,7 +4508,8 @@ func (s *Server) Start() error {
 			}
 		}()
 		
-		// Start autocert HTTP handler for ACME challenges on port 80
+		// Start autocert HTTP handler for ACME challenges on port 80 (only for regular autocert)
+		// Note: DNS challenge for wildcard certs doesn't need HTTP-01 challenge handler
 		if s.certManager != nil {
 			go func() {
 				log.Printf("Starting autocert HTTP server on :80 for ACME challenges")
