@@ -46,6 +46,15 @@ import (
 //go:embed exe_schema.sql
 var schemaSQL string
 
+//go:embed welcome.html
+var welcomeHTML []byte
+
+//go:embed exe.dev.png
+var exeDevPNG []byte
+
+//go:embed browser-woodcut.png
+var browserWoodcutPNG []byte
+
 // User represents an individual user
 type User struct {
 	PublicKeyFingerprint string
@@ -390,6 +399,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/":
 		s.handleRoot(w, r)
+	case "/exe.dev.png":
+		s.handleExeDevPNG(w, r)
+	case "/browser-woodcut.png":
+		s.handleBrowserWoodcutPNG(w, r)
 	case "/health":
 		s.handleHealth(w, r)
 	case "/containers":
@@ -409,18 +422,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // handleRoot handles requests to the root path
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>exe.dev</title>
-</head>
-<body>
-    <h1>exe.dev</h1>
-    <p>Container service with persistent disks</p>
-    <p>SSH to exe.dev for console management</p>
-</body>
-</html>`)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(welcomeHTML)
+}
+
+// handleExeDevPNG handles exe.dev.png requests
+func (s *Server) handleExeDevPNG(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(exeDevPNG)
+}
+
+// handleBrowserWoodcutPNG handles browser-woodcut.png requests
+func (s *Server) handleBrowserWoodcutPNG(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(browserWoodcutPNG)
 }
 
 // handleHealth handles health check requests
