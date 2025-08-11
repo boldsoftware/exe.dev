@@ -73,7 +73,7 @@ func TestHandleStopCommand(t *testing.T) {
 		{
 			name:         "stop running container successfully",
 			args:         []string{machineName},
-			expectOutput: []string{"Stopping container", "stopped successfully"},
+			expectOutput: []string{"Stopping machine", "Machine 'test-machine' stopped"},
 			expectError:  false,
 			setupFunc: func() {
 				// Ensure container is running
@@ -100,7 +100,7 @@ func TestHandleStopCommand(t *testing.T) {
 		{
 			name:         "container not found",
 			args:         []string{"nonexistent"},
-			expectOutput: []string{"Container 'nonexistent' not found"},
+			expectOutput: []string{"Machine 'nonexistent' not found"},
 			expectError:  true,
 			setupFunc:    func() {},
 		},
@@ -204,8 +204,8 @@ func TestHandleStopCommandWithoutContainerManager(t *testing.T) {
 	// Check that it reports container management not available
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "Container management is not available") {
-		t.Errorf("Expected 'Container management is not available' in output, got: %s", output)
+	if !strings.Contains(output, "Machine management is not available") {
+		t.Errorf("Expected 'Machine management is not available' in output, got: %s", output)
 	}
 
 	server.removeUserSession(mockChannel)
@@ -278,8 +278,8 @@ func TestHandleStopCommandContainerNotCreated(t *testing.T) {
 	// Check that it reports container not yet created
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "Container 'testmachine' not yet created") {
-		t.Errorf("Expected 'Container not yet created' in output, got: %s", output)
+	if !strings.Contains(output, "Machine 'testmachine' not running") {
+		t.Errorf("Expected 'Machine not running' in output, got: %s", output)
 	}
 }
 

@@ -71,7 +71,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			name:         "invalid container name",
 			args:         []string{"--name=AB"}, // too short and uppercase
 			expectError:  true,
-			expectOutput: []string{"Invalid container name"},
+			expectOutput: []string{"Invalid machine name"},
 		},
 		{
 			name:         "valid container name", 
@@ -83,7 +83,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			name:         "duplicate container name",
 			args:         []string{"--name=mycontainer"}, // same as above
 			expectError:  true,
-			expectOutput: []string{"Container name 'mycontainer' already exists"},
+			expectOutput: []string{"Machine name 'mycontainer' already exists"},
 		},
 		{
 			name:         "custom image",
@@ -204,8 +204,8 @@ func TestHandleCreateCommandWithoutContainerManager(t *testing.T) {
 	// Check that it reports container management not available
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "Container management is not available") {
-		t.Errorf("Expected 'Container management is not available' in output, got: %s", output)
+	if !strings.Contains(output, "Machine management is not available") {
+		t.Errorf("Expected 'Machine management is not available' in output, got: %s", output)
 	}
 
 	server.removeUserSession(mockChannel)

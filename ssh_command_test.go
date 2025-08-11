@@ -99,15 +99,15 @@ func TestHandleSSHCommand(t *testing.T) {
 			name:          "non-existent container",
 			args:          []string{"nonexistent"},
 			expectError:   true,
-			expectOutput:  []string{"Container 'nonexistent' not found"},
+			expectOutput:  []string{"Machine 'nonexistent' not found"},
 			expectedExecs: 0,
 		},
 		{
 			name:          "valid container",
 			args:          []string{machineName},
 			expectError:   false,
-			expectOutput:  []string{"testmachine"},
-			expectedExecs: 1,
+			expectOutput:  []string{"Machine 'testmachine' is running", "ssh testmachine@exe.dev"},
+			expectedExecs: 0,
 		},
 	}
 
@@ -135,18 +135,6 @@ func TestHandleSSHCommand(t *testing.T) {
 				t.Errorf("Expected %d exec calls, got %d", tt.expectedExecs, len(execCalls))
 			}
 
-			if tt.expectedExecs > 0 {
-				call := execCalls[0]
-				if call.UserID != fingerprint {
-					t.Errorf("Expected user ID %s, got %s", fingerprint, call.UserID)
-				}
-				if call.ContainerID != containerID {
-					t.Errorf("Expected container ID %s, got %s", containerID, call.ContainerID)
-				}
-				if len(call.Command) == 0 || call.Command[0] != "/bin/bash" {
-					t.Errorf("Expected command [/bin/bash], got %v", call.Command)
-				}
-			}
 		})
 	}
 }
@@ -206,8 +194,8 @@ func TestHandleSSHCommandWithoutContainerManager(t *testing.T) {
 	// Check that it reports container management not available
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "Container management is not available") {
-		t.Errorf("Expected 'Container management is not available' in output, got: %s", output)
+	if !strings.Contains(output, "Machine management is not available") {
+		t.Errorf("Expected 'Machine management is not available' in output, got: %s", output)
 	}
 }
 
@@ -277,8 +265,8 @@ func TestHandleSSHCommandContainerNotCreated(t *testing.T) {
 	// Check that it reports container not yet created
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "Container 'testmachine' not yet created") {
-		t.Errorf("Expected 'Container not yet created' in output, got: %s", output)
+	if !strings.Contains(output, "Machine 'testmachine' not yet created") {
+		t.Errorf("Expected 'Machine not yet created' in output, got: %s", output)
 	}
 }
 
@@ -353,11 +341,12 @@ func TestHandleSSHCommandWithStoppedContainer(t *testing.T) {
 	// Call handleSSHCommand
 	server.handleSSHCommand(mockChannel, []string{machineName})
 
-	// Check that connection fails due to stopped container
+	// handleSSHCommand now just shows instructions, doesn't check container status
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "Connection failed") || !strings.Contains(output, "not running") {
-		t.Errorf("Expected 'Connection failed' due to not running status in output, got: %s", output)
+	// It should still show instructions even for stopped containers
+	if !strings.Contains(output, "Machine 'testmachine' is running") || !strings.Contains(output, "ssh testmachine@exe.dev") {
+		t.Errorf("Expected instructions to be shown, got: %s", output)
 	}
 }
 

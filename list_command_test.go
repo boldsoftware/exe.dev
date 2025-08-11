@@ -72,7 +72,7 @@ func TestHandleListCommand(t *testing.T) {
 			setupContainers: func() {
 				// No setup - no containers
 			},
-			expectedOutput: []string{"No containers found", "create <name>"},
+			expectedOutput: []string{"No machines found", "create <name>"},
 			expectError: false,
 		},
 		{
@@ -85,7 +85,7 @@ func TestHandleListCommand(t *testing.T) {
 					Image:  "ubuntu:22.04",
 				})
 			},
-			expectedOutput: []string{"Containers for team", "test-container"},
+			expectedOutput: []string{"Machines for team", "test-container"},
 			expectError: false,
 		},
 		{
@@ -103,7 +103,7 @@ func TestHandleListCommand(t *testing.T) {
 					Image:  "python:3.9",
 				})
 			},
-			expectedOutput: []string{"Containers for team", "container1", "container2"},
+			expectedOutput: []string{"Machines for team", "container1", "container2"},
 			expectError: false,
 		},
 	}
@@ -192,8 +192,8 @@ func TestHandleListCommandWithoutContainerManager(t *testing.T) {
 	// Check that it reports container management not available
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
-	if !strings.Contains(output, "Container management is not available") {
-		t.Errorf("Expected 'Container management is not available' in output, got: %s", output)
+	if !strings.Contains(output, "Machine management is not available") {
+		t.Errorf("Expected 'Machine management is not available' in output, got: %s", output)
 	}
 
 	server.removeUserSession(mockChannel)
