@@ -12,7 +12,16 @@
         }
         
         body {
-            background-color: #ffffdd;
+            background-color: #fffff8;
+            background-image: 
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(0,0,0,0.035) 0px,
+                    rgba(0,0,0,0.035) 2px,
+                    transparent 2px,
+                    transparent 4px
+                );
+            background-size: 4px 4px;
             font-family: Georgia, 'Times New Roman', serif;
             display: flex;
             flex-direction: column;
@@ -77,7 +86,7 @@
             left: 50%;
             transform: translate(-50%, -50%);
             font-size: 24px;
-            background: #ffffdd;
+            background: #fffff8;
             padding: 0 10px;
             color: #333;
         }
@@ -116,6 +125,33 @@
             height: auto;
         }
         
+        .woodcut-icon {
+            width: 120px;
+            height: auto;
+            margin-bottom: 20px;
+        }
+        
+        .https-section {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+            justify-content: center;
+            margin: 30px auto;
+        }
+        
+        .woodcut-icon-side {
+            width: 180px;
+            height: auto;
+            flex-shrink: 0;
+        }
+        
+        .https-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
         .description {
             font-size: 18px;
             letter-spacing: 0.15em;
@@ -136,7 +172,7 @@
             font-family: 'Courier New', Courier, monospace;
             font-size: clamp(20px, 3.5vw, 28px);
             color: #000;
-            background: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 248, 0.95);
             padding: 20px 40px;
             border-radius: 12px;
             display: inline-block;
@@ -185,6 +221,19 @@
                 width: 150px;
             }
             
+            .woodcut-icon {
+                width: 100px;
+            }
+            
+            .https-section {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .woodcut-icon-side {
+                width: 130px;
+            }
+            
             .command-block {
                 padding: 15px 25px;
                 white-space: normal;
@@ -200,10 +249,18 @@
         
         <div class="content-section">
             <p class="description">
-                <strong>exe.dev</strong> admits what servers are, unix over ssh. it is a good ui and api, so let's do ssh first, and do it well.
+                <strong>exe.dev</strong> gives you machines over ssh. no cloud cruft.
             </p>
             
-            <img src="exe.dev.jpg" alt="exe.dev blowfish logo" class="blowfish-logo">
+            <img src="exe.dev.png" alt="exe.dev blowfish logo" class="blowfish-logo">
+        </div>
+
+        <div class="content-section https-section">
+            <img src="browser-woodcut.png" alt="HTTPS browser security" class="woodcut-icon-side">
+            <p class="description">
+                <strong>HTTPS</strong> done for you<br>
+                auth proxy <strong>by default</strong><br>
+            </p>
         </div>
 
         <div class="divider"></div>
@@ -214,18 +271,34 @@
                 ssh bip@exe.dev
             </div>
             <p class="description">
-                make a new machine with persistent disk.
-                connect to it.
+                make a new machine with <strong>persistent</strong> disk<br>
+                your ssh key is your passport
             </p>
         </div>
 
-        <div class="content-section command-row">
-            <div class="command-block">https://bip.yourteam.exe.dev</div>
-            <p class="description">
-                automatic <strong>HTTPS</strong> proxying<br>
-                use <code>&lt;name>-&lt;port></code> to reach any port on your machine
-            </p>
+        <div class="divider"></div>
+
+        <div class="content-section https-section">
+            <div class="https-content">
+                <div class="command-block">
+                    ssh bip@exe.dev py -m http.server 80 &<br>
+                    curl <strong>https</strong>://bip.yourteam.exe.dev
+                </div>
+                <p class="description">
+                    <strong>HTTPS</strong> done for you<br>
+                    <code>&lt;name>-&lt;port>.</code> to <strong>anything</strong>
+                </p>
+                <div class="command-block">
+                    ssh exe.dev route bip:/dropbox public<br>
+                </div>
+                <p class="description">
+                    share what you want
+                </p>
+
+            </div>
         </div>
+
+        <div class="divider"></div>
         
         <div class="content-section command-row">
             <div class="command-block">ssh exe.dev</div>
