@@ -286,35 +286,72 @@ func (s *Server) setupSSHServer() {
 		PublicKeyCallback: s.authenticatePublicKey,
 	}
 	
-	// Generate a temporary host key for now
-	// TODO: Use persistent host keys
+	// Load or generate persistent host keys
 	if err := s.generateHostKey(); err != nil {
 		log.Printf("Failed to generate host key: %v", err)
 	}
 }
 
-// generateHostKey generates a temporary RSA host key
+// generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
 func (s *Server) generateHostKey() error {
-	// Generate RSA private key
-	privateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
-	if err != nil {
-		return fmt.Errorf("failed to generate RSA key: %w", err)
+	// Try to load existing host key from database
+	var privateKeyPEM, publicKeyPEM string
+	err := s.db.QueryRow(`SELECT private_key, public_key FROM ssh_host_key WHERE id = 1`).Scan(&privateKeyPEM, &publicKeyPEM)
+	
+	if err == sql.ErrNoRows {
+		// No existing key, generate a new one
+		privateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
+		if err != nil {
+			return fmt.Errorf("failed to generate RSA key: %w", err)
+		}
+		
+		// Convert private key to PEM format
+		privateKeyDER := x509.MarshalPKCS1PrivateKey(privateKey)
+		privateKeyPEMBytes := pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: privateKeyDER,
+		})
+		privateKeyPEM = string(privateKeyPEMBytes)
+		
+		// Parse as SSH private key to get public key
+		signer, err := ssh.ParsePrivateKey(privateKeyPEMBytes)
+		if err != nil {
+			return fmt.Errorf("failed to parse private key: %w", err)
+		}
+		
+		// Get public key in authorized_keys format
+		publicKeyPEM = string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
+		
+		// Calculate fingerprint
+		fingerprint := s.getPublicKeyFingerprint(signer.PublicKey())
+		
+		// Store in database
+		_, err = s.db.Exec(`
+			INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint, created_at, updated_at)
+			VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+			privateKeyPEM, publicKeyPEM, fingerprint)
+		if err != nil {
+			return fmt.Errorf("failed to store host key: %w", err)
+		}
+		
+		log.Printf("Generated and stored new SSH host key with fingerprint: %s", fingerprint)
+		s.sshConfig.AddHostKey(signer)
+		
+	} else if err != nil {
+		return fmt.Errorf("failed to query host key: %w", err)
+		
+	} else {
+		// Load existing key
+		signer, err := ssh.ParsePrivateKey([]byte(privateKeyPEM))
+		if err != nil {
+			return fmt.Errorf("failed to parse stored private key: %w", err)
+		}
+		
+		fingerprint := s.getPublicKeyFingerprint(signer.PublicKey())
+		log.Printf("Loaded existing SSH host key with fingerprint: %s", fingerprint)
+		s.sshConfig.AddHostKey(signer)
 	}
 	
-	// Convert to PEM format
-	privateKeyDER := x509.MarshalPKCS1PrivateKey(privateKey)
-	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: privateKeyDER,
-	})
-	
-	// Parse as SSH private key
-	signer, err := ssh.ParsePrivateKey(privateKeyPEM)
-	if err != nil {
-		return fmt.Errorf("failed to parse private key: %w", err)
-	}
-	
-	s.sshConfig.AddHostKey(signer)
 	return nil
 }
 

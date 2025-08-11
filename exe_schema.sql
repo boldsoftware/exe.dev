@@ -130,6 +130,16 @@ CREATE TABLE IF NOT EXISTS pending_ssh_keys (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- SSH host key storage: ensures consistent host key across restarts
+CREATE TABLE IF NOT EXISTS ssh_host_key (
+    id INTEGER PRIMARY KEY CHECK (id = 1), -- Ensure only one row
+    private_key TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_name);
 CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_fingerprint);
