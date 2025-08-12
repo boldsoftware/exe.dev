@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/keighl/postmark"
@@ -164,6 +165,7 @@ type Server struct {
 	postmarkClient *postmark.Client
 	stripeKey      string
 	devMode        bool // Development mode - log instead of sending emails
+	quietMode      bool // Quiet mode - suppress log output (for tests)
 
 	mu       sync.RWMutex
 	stopping bool
@@ -183,12 +185,15 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
+	// Detect if we're running in test mode
+	quietMode := testing.Testing()
+
 	// Initialize Postmark client
 	postmarkAPIKey := os.Getenv("POSTMARK_API_KEY")
 	var postmarkClient *postmark.Client
 	if postmarkAPIKey != "" {
 		postmarkClient = postmark.NewClient(postmarkAPIKey, "")
-	} else {
+	} else if !quietMode {
 		log.Printf("Warning: POSTMARK_API_KEY not set, email verification will not work")
 	}
 
@@ -196,7 +201,9 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 	stripeKey := os.Getenv("STRIPE_API_KEY")
 	if stripeKey == "" {
 		stripeKey = "sk_test_51QxIgSGWIXq1kJnoiKwEcehJeO68QFsueLGymU9zR5jsJtMup5arFZZlHYaOzG3Bsw2GfnIG9H3Jv8Be10vqK1nW001hUxrS2g"
-		log.Printf("Using default Stripe test key")
+		if !quietMode {
+			log.Printf("Using default Stripe test key")
+		}
 	}
 	stripe.Key = stripeKey
 	var baseURL string
@@ -225,11 +232,15 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 		containerManager, err = container.NewGKEManager(ctx, config)
 		cancel() // Clean up the context
 		if err != nil {
-			log.Printf("Warning: Failed to initialize container manager: %v", err)
-			log.Printf("Container functionality will be disabled")
+			if !quietMode {
+				log.Printf("Warning: Failed to initialize container manager: %v", err)
+				log.Printf("Container functionality will be disabled")
+			}
 			containerManager = nil
 		} else {
-			log.Printf("Machine management enabled for GCP project: %s", gcpProjectID)
+			if !quietMode {
+				log.Printf("Machine management enabled for GCP project: %s", gcpProjectID)
+			}
 		}
 	}
 
@@ -246,6 +257,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 		postmarkClient:       postmarkClient,
 		stripeKey:            stripeKey,
 		devMode:              devMode,
+		quietMode:            quietMode,
 	}
 
 	s.setupHTTPServer()
@@ -293,7 +305,9 @@ func (s *Server) setupHTTPSServer() {
 		}
 	} else {
 		// Fall back to regular autocert for non-wildcard certificates
-		log.Printf("Using standard autocert (no wildcard support). Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates.")
+		if !s.quietMode {
+			log.Printf("Using standard autocert (no wildcard support). Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates.")
+		}
 		s.certManager = &autocert.Manager{
 			Cache:      autocert.DirCache("certs"),
 			Prompt:     autocert.AcceptTOS,
@@ -364,7 +378,9 @@ func (s *Server) generateHostKey() error {
 			return fmt.Errorf("failed to store host key: %w", err)
 		}
 
-		log.Printf("Generated and stored new SSH host key with fingerprint: %s", fingerprint)
+		if !s.quietMode {
+			log.Printf("Generated and stored new SSH host key with fingerprint: %s", fingerprint)
+		}
 		s.sshConfig.AddHostKey(signer)
 
 	} else if err != nil {
@@ -378,7 +394,9 @@ func (s *Server) generateHostKey() error {
 		}
 
 		fingerprint := s.getPublicKeyFingerprint(signer.PublicKey())
-		log.Printf("Loaded existing SSH host key with fingerprint: %s", fingerprint)
+		if !s.quietMode {
+			log.Printf("Loaded existing SSH host key with fingerprint: %s", fingerprint)
+		}
 		s.sshConfig.AddHostKey(signer)
 	}
 
@@ -422,7 +440,9 @@ func (s *Server) sendEmail(to, subject, body string) error {
 	if s.postmarkClient == nil {
 		if s.devMode {
 			// In dev mode, just log the email
-			log.Printf("📧 DEV MODE: Would send email to %s\nSubject: %s\nBody:\n%s", to, subject, body)
+			if !s.quietMode {
+				log.Printf("📧 DEV MODE: Would send email to %s\nSubject: %s\nBody:\n%s", to, subject, body)
+			}
 			return nil
 		}
 		return fmt.Errorf("email service not configured")
@@ -544,7 +564,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Wake up containers on HTTP request
-	log.Printf("HTTP request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+	if !s.quietMode {
+		log.Printf("HTTP request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+	}
 
 	switch r.URL.Path {
 	case "/":
@@ -1167,7 +1189,9 @@ func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, co
 		return
 	}
 
-	log.Printf("Container proxy request: %s.%s:%s %s", containerName, teamName, port, r.URL.Path)
+	if !s.quietMode {
+		log.Printf("Container proxy request: %s.%s:%s %s", containerName, teamName, port, r.URL.Path)
+	}
 
 	// Check for authentication cookie
 	cookieName := "exe-auth-" + teamName
@@ -2146,7 +2170,9 @@ func (s *Server) serveSSH() error {
 	}
 	defer listener.Close()
 
-	log.Printf("SSH server listening on %s", s.sshAddr)
+	if !s.quietMode {
+		log.Printf("SSH server listening on %s", s.sshAddr)
+	}
 
 	for {
 		s.mu.RLock()
@@ -2175,7 +2201,9 @@ func (s *Server) serveSSH() error {
 func (s *Server) handleSSHConnection(conn net.Conn) {
 	defer conn.Close()
 
-	log.Printf("SSH connection from %s", conn.RemoteAddr())
+	if !s.quietMode {
+		log.Printf("SSH connection from %s", conn.RemoteAddr())
+	}
 
 	// TODO: Wake up containers on SSH connection
 
@@ -2194,8 +2222,10 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 	registered := registeredStatus == "true"
 	isNewDevice := registeredStatus == "new_device"
 
-	log.Printf("SSH connection established for user: %s, fingerprint: %s, registered: %s",
-		sshConn.User(), fingerprint, registeredStatus)
+	if !s.quietMode {
+		log.Printf("SSH connection established for user: %s, fingerprint: %s, registered: %s",
+			sshConn.User(), fingerprint, registeredStatus)
+	}
 
 	// Check if this is a machine connection
 	username := sshConn.User()
@@ -2372,7 +2402,9 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 				// PTY request format: string term, uint32 cols, uint32 rows, uint32 pixWidth, uint32 pixHeight, string modes
 				if cols, rows := s.parsePtyRequest(req.Payload); cols > 0 && rows > 0 {
 					terminalWidth, terminalHeight = cols, rows
-					log.Printf("SSH PTY dimensions: %dx%d", cols, rows)
+					if !s.quietMode {
+						log.Printf("SSH PTY dimensions: %dx%d", cols, rows)
+					}
 				}
 				if req.WantReply {
 					req.Reply(true, nil)
@@ -4202,8 +4234,10 @@ func (s *Server) showAnimatedWelcomeWithWidth(channel ssh.Channel, terminalWidth
 	}
 
 	// Debug logging without disrupting the display
-	log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d",
-		terminalWidth, artWidth, leftPadding)
+	if !s.quietMode {
+		log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d",
+			terminalWidth, artWidth, leftPadding)
+	}
 
 	// Clear screen and move cursor to top
 	channel.Write([]byte("\033[2J\033[H"))
@@ -4475,7 +4509,7 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 	}
 
 	channel.Write([]byte("\r\n\033[1;33mVerification email sent!\033[0m Please check your email and click the verification link.\r\n"))
-	channel.Write([]byte("\r\n\033[2;37mWaiting for email verification"))
+	channel.Write([]byte("\r\n\033[2;37mWaiting for email verification (Press Ctrl+C to cancel)"))
 	// Add animated dots
 	for i := 0; i < 3; i++ {
 		time.Sleep(500 * time.Millisecond)
@@ -4483,13 +4517,40 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 	}
 	channel.Write([]byte("\033[0m\r\n\r\n"))
 
-	// Wait for email verification or timeout
+	// Create a goroutine to monitor for user interrupt
+	interruptChan := make(chan struct{})
+	go func() {
+		buf := make([]byte, 1)
+		for {
+			n, err := channel.Read(buf)
+			if err != nil {
+				// Channel closed or error
+				close(interruptChan)
+				return
+			}
+			if n > 0 && buf[0] == 3 { // Ctrl+C
+				channel.Write([]byte("^C\r\n"))
+				close(interruptChan)
+				return
+			}
+		}
+	}()
+
+	// Wait for email verification, timeout, or interrupt
 	select {
 	case <-verification.CompleteChan:
 		channel.Write([]byte("\r\n\033[1;32mEmail verified successfully!\033[0m\r\n\r\n"))
 
 		// Start team name creation first
 		s.startTeamNameCreation(channel, fingerprint, email)
+
+	case <-interruptChan:
+		channel.Write([]byte("\r\n\033[1;33mRegistration cancelled. You can reconnect anytime to continue.\033[0m\r\n"))
+
+		// Clean up verification
+		s.emailVerificationsMu.Lock()
+		delete(s.emailVerifications, token)
+		s.emailVerificationsMu.Unlock()
 
 	case <-time.After(10 * time.Minute):
 		channel.Write([]byte("\r\nEmail verification timeout. Please try connecting again.\r\n"))
@@ -4509,7 +4570,9 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 
 	// In dev mode, just log the URL instead of sending email and auto-complete verification
 	if s.devMode {
-		log.Printf("🔧 DEV MODE: Would send verification email to %s with URL: %s", email, verificationURL)
+		if !s.quietMode {
+			log.Printf("🔧 DEV MODE: Would send verification email to %s with URL: %s", email, verificationURL)
+		}
 
 		// Auto-complete email verification in dev mode
 		go func() {
@@ -4519,7 +4582,9 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 			if exists {
 				close(verification.CompleteChan)
 				delete(s.emailVerifications, token)
-				log.Printf("🔧 DEV MODE: Auto-completed email verification for %s", email)
+				if !s.quietMode {
+					log.Printf("🔧 DEV MODE: Auto-completed email verification for %s", email)
+				}
 			}
 			s.emailVerificationsMu.Unlock()
 		}()
@@ -4980,7 +5045,9 @@ func (s *Server) Start() error {
 	// Start HTTP server in a goroutine if configured
 	if s.httpAddr != "" {
 		go func() {
-			log.Printf("HTTP server starting on %s", s.httpAddr)
+			if !s.quietMode {
+				log.Printf("HTTP server starting on %s", s.httpAddr)
+			}
 			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Printf("HTTP server error: %v", err)
 			}
@@ -5406,6 +5473,8 @@ func (s *Server) Stop() error {
 		s.db.Close()
 	}
 
-	log.Println("Servers stopped")
+	if !s.quietMode {
+		log.Println("Servers stopped")
+	}
 	return nil
 }
