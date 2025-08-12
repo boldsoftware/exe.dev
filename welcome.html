@@ -30,11 +30,17 @@
             min-height: 100vh;
             padding: 40px 20px;
             text-align: center;
+            overflow-x: hidden;
         }
         
         .container {
             max-width: 900px;
             width: 100%;
+            overflow-x: hidden;
+        }
+        
+        html {
+            overflow-x: hidden;
         }
         
         .stop-overbuilding {
@@ -181,6 +187,8 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             white-space: nowrap;
             text-align: left;
+            max-width: 100%;
+            overflow-x: auto;
         }
         
         @media (max-width: 600px) {
@@ -200,15 +208,19 @@
             
             .divider {
                 transform: scale(0.8);
+                margin: 30px auto;
             }
             
             .just-use-ssh {
-                margin-left: -10px;
-                margin-right: -10px;
+                /* Remove negative margins that could cause overflow */
+                margin-left: 0;
+                margin-right: 0;
             }
             
             .content-section {
                 flex-direction: column;
+                width: 100%;
+                padding: 0 10px;
             }
             
             .description {
@@ -235,15 +247,22 @@
             }
             
             .command-block {
-                padding: 15px 25px;
-                white-space: normal;
+                padding: 12px 15px;
+                white-space: pre-wrap;
+                word-break: break-word;
+                font-size: clamp(14px, 3vw, 18px);
+                width: auto;
+                max-width: calc(100vw - 40px);
+                overflow-x: auto;
+                margin-left: auto;
+                margin-right: auto;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="stop-overbuilding">No More Castles in the Cloud</div>
+        <div class="stop-overbuilding">yes you can have a machine</div>
         
         <h1 class="just-use-ssh">just use ssh</h1>
 
@@ -271,8 +290,8 @@
 
         <div class="content-section command-row">
             <div class="command-block">
-                ssh exe.dev create --name=bip<br>
-                ssh bip@exe.dev
+ssh exe.dev create --name=bip<br>
+ssh bip@exe.dev
             </div>
             <p class="description">
                 make a new machine with <strong>persistent</strong> disk<br>
@@ -285,16 +304,14 @@
         <div class="content-section https-section">
             <div class="https-content">
                 <div class="command-block">
-                    ssh bip@exe.dev py -m http.server 80 &<br>
-                    curl <strong>https</strong>://bip.yourteam.exe.dev
+ssh bip@exe.dev py -m http.server 80 &<br>
+curl <strong>https</strong>://bip.yourteam.exe.dev
                 </div>
                 <p class="description">
                     <strong>HTTPS</strong> done for you<br>
                     <code>&lt;name>-&lt;port>.</code> to <strong>anything</strong>
                 </p>
-                <div class="command-block">
-                    ssh exe.dev route bip:/dropbox public<br>
-                </div>
+                <div class="command-block">ssh exe.dev route bip:/dropbox public<br></div>
                 <p class="description">
                     share what you want
                 </p>
