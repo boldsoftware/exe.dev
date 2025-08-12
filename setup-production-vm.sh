@@ -280,12 +280,14 @@ EOF
 
 # Note: nginx configuration removed - exed handles HTTPS directly on port 443
 
-# Set up automatic GKE credential refresh to prevent token expiration
-echo "Setting up GKE credential refresher..."
-cat > /usr/local/bin/refresh-gke-credentials.sh << 'SCRIPT_EOF'
+# Set up persistent GKE authentication using service account
+echo "Setting up persistent GKE authentication..."
+
+# Create setup script for GKE auth
+cat > /usr/local/bin/setup-gke-auth.sh << 'SCRIPT_EOF'
 #!/bin/bash
-# Script to refresh GKE credentials periodically
-# This prevents token expiration issues
+# Setup GKE authentication using service account from metadata server
+# This eliminates the need for credential refresh
 
 set -e
 
@@ -294,37 +296,95 @@ ZONE="us-west2-a"
 PROJECT_ID="exe-dev-468515"
 USER="ubuntu"
 
-echo "$(date): Refreshing GKE credentials..."
+echo "Setting up persistent GKE authentication..."
 
-# Refresh the credentials
-sudo -u $USER gcloud container clusters get-credentials $CLUSTER_NAME \
+# Get cluster endpoint
+CLUSTER_ENDPOINT=$(gcloud container clusters describe $CLUSTER_NAME \
     --zone=$ZONE \
     --project=$PROJECT_ID \
-    --quiet
+    --format="value(endpoint)")
 
-# Test that the credentials work
-if sudo -u $USER kubectl get nodes --request-timeout=5s > /dev/null 2>&1; then
-    echo "$(date): Credentials refreshed successfully"
-    # Restart exed to pick up new credentials
-    systemctl restart exed
-    echo "$(date): exed service restarted"
+# Get cluster CA certificate
+gcloud container clusters describe $CLUSTER_NAME \
+    --zone=$ZONE \
+    --project=$PROJECT_ID \
+    --format="value(masterAuth.clusterCaCertificate)" | base64 -d > /tmp/ca.crt
+
+# Setup kubeconfig to use gcloud command for auth (which uses metadata server)
+sudo -u $USER kubectl config set-cluster gke-cluster \
+    --server=https://$CLUSTER_ENDPOINT \
+    --certificate-authority=/tmp/ca.crt
+
+sudo -u $USER kubectl config set-context gke-context \
+    --cluster=gke-cluster \
+    --user=gke-user
+
+# Configure to use gcloud for authentication which automatically uses metadata server
+sudo -u $USER kubectl config set-credentials gke-user \
+    --exec-api-version=client.authentication.k8s.io/v1beta1 \
+    --exec-command=gke-gcloud-auth-plugin
+
+sudo -u $USER kubectl config use-context gke-context
+
+# Copy CA cert to user directory
+mkdir -p /home/$USER/.kube
+cp /tmp/ca.crt /home/$USER/.kube/ca.crt
+chown $USER:$USER /home/$USER/.kube/ca.crt
+
+# Test connection
+if sudo -u $USER kubectl get nodes --request-timeout=10s > /dev/null 2>&1; then
+    echo "GKE authentication configured successfully"
+    echo "The authentication will use the VM's service account via metadata server"
+    echo "No credential refresh needed!"
 else
-    echo "$(date): Failed to refresh credentials"
+    echo "Failed to configure GKE authentication"
     exit 1
 fi
 SCRIPT_EOF
 
-chmod +x /usr/local/bin/refresh-gke-credentials.sh
+chmod +x /usr/local/bin/setup-gke-auth.sh
 
-# Create systemd service for credential refresh
-cat > /etc/systemd/system/gke-credential-refresher.service << 'SERVICE_EOF'
+# Run initial setup
+/usr/local/bin/setup-gke-auth.sh
+
+# Create health check script (runs hourly to verify auth is working)
+cat > /usr/local/bin/check-gke-auth.sh << 'CHECK_EOF'
+#!/bin/bash
+# Check GKE authentication health
+
+USER="ubuntu"
+
+# Test that kubectl works
+if sudo -u $USER kubectl get nodes --request-timeout=10s > /dev/null 2>&1; then
+    echo "$(date): GKE authentication working"
+    exit 0
+else
+    echo "$(date): GKE authentication failed - running setup"
+    /usr/local/bin/setup-gke-auth.sh
+    
+    # Restart exed after fixing auth
+    if sudo -u $USER kubectl get nodes --request-timeout=10s > /dev/null 2>&1; then
+        echo "$(date): GKE authentication fixed, restarting exed"
+        systemctl restart exed
+        exit 0
+    else
+        echo "$(date): Failed to fix GKE authentication"
+        exit 1
+    fi
+fi
+CHECK_EOF
+
+chmod +x /usr/local/bin/check-gke-auth.sh
+
+# Create systemd service for health check
+cat > /etc/systemd/system/gke-auth-health.service << 'SERVICE_EOF'
 [Unit]
-Description=Refresh GKE credentials
+Description=Check GKE authentication health
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/refresh-gke-credentials.sh
+ExecStart=/usr/local/bin/check-gke-auth.sh
 StandardOutput=journal
 StandardError=journal
 
@@ -332,16 +392,15 @@ StandardError=journal
 WantedBy=multi-user.target
 SERVICE_EOF
 
-# Create systemd timer to run every 45 minutes
-cat > /etc/systemd/system/gke-credential-refresher.timer << 'TIMER_EOF'
+# Create systemd timer to run health check every hour
+cat > /etc/systemd/system/gke-auth-health.timer << 'TIMER_EOF'
 [Unit]
-Description=Refresh GKE credentials every 45 minutes
-Requires=gke-credential-refresher.service
+Description=Check GKE auth health every hour
+Requires=gke-auth-health.service
 
 [Timer]
-# Run every 45 minutes (tokens expire after 60 minutes)
 OnBootSec=5min
-OnUnitActiveSec=45min
+OnUnitActiveSec=1h
 
 [Install]
 WantedBy=timers.target
@@ -354,8 +413,8 @@ chown -R ubuntu:ubuntu /var/log/exed
 # Enable and reload systemd
 systemctl daemon-reload
 systemctl enable exed
-systemctl enable gke-credential-refresher.timer
-systemctl start gke-credential-refresher.timer
+systemctl enable gke-auth-health.timer
+systemctl start gke-auth-health.timer
 
 echo "VM setup complete. Ready for exed deployment."
 
