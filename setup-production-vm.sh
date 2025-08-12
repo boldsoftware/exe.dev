@@ -162,11 +162,17 @@ tailscale status
 # Ensure Tailscale SSH is enabled
 tailscale set --ssh
 
-# Install Google Cloud SDK
+# Install Google Cloud SDK and GKE auth plugin
 if ! command -v gcloud &> /dev/null; then
     echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
     curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
     apt-get update && apt-get install -y google-cloud-sdk google-cloud-sdk-gke-gcloud-auth-plugin kubectl
+else
+    # Ensure GKE auth plugin is installed even if gcloud already exists
+    if ! command -v gke-gcloud-auth-plugin &> /dev/null; then
+        echo "Installing GKE auth plugin..."
+        apt-get update && apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+    fi
 fi
 
 # Configure SSH to run on port 22222 (to free up port 22 for exed)
@@ -230,6 +236,7 @@ Environment="GKE_CLUSTER_LOCATION=us-west2-a"
 Environment="ENABLE_SANDBOX=true"
 Environment="STORAGE_CLASS_NAME=standard-rwo"
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="USE_GKE_GCLOUD_AUTH_PLUGIN=True"
 # Porkbun API credentials for wildcard certificates (replace with actual values)
 # Environment="PORKBUN_API_KEY=your-api-key-here"
 # Environment="PORKBUN_SECRET_API_KEY=your-secret-key-here"
@@ -391,6 +398,46 @@ fi
 gcloud compute instance-groups unmanaged set-named-ports exed-group \
     --named-ports=http:80,https:443 \
     --zone=$ZONE
+
+# Configure GKE cluster to allow access from this VM
+echo ""
+echo "Step 7: Configuring GKE cluster network access..."
+
+# Check if GKE cluster exists
+if gcloud container clusters describe exe-cluster --zone=$ZONE --project=$PROJECT_ID &>/dev/null; then
+    echo "Found GKE cluster 'exe-cluster', configuring network access..."
+    
+    # Get current authorized networks
+    CURRENT_AUTH_NETS=$(gcloud container clusters describe exe-cluster \
+        --zone=$ZONE \
+        --project=$PROJECT_ID \
+        --format="value(masterAuthorizedNetworksConfig.cidrBlocks[].cidrBlock)" 2>/dev/null | tr '\n' ',' | tr ';' ',' | sed 's/,$//')
+    
+    # Build new authorized networks list
+    if [ -z "$CURRENT_AUTH_NETS" ]; then
+        AUTH_NETWORKS="$EXTERNAL_IP/32,10.0.0.0/8"
+    elif [[ ! "$CURRENT_AUTH_NETS" =~ "$EXTERNAL_IP" ]]; then
+        AUTH_NETWORKS="$CURRENT_AUTH_NETS,$EXTERNAL_IP/32"
+        if [[ ! "$AUTH_NETWORKS" =~ "10.0.0.0/8" ]]; then
+            AUTH_NETWORKS="$AUTH_NETWORKS,10.0.0.0/8"
+        fi
+    else
+        AUTH_NETWORKS="$CURRENT_AUTH_NETS"
+        echo "VM IP already in authorized networks"
+    fi
+    
+    # Update cluster to allow access from VM
+    gcloud container clusters update exe-cluster \
+        --zone=$ZONE \
+        --project=$PROJECT_ID \
+        --enable-master-authorized-networks \
+        --master-authorized-networks="$AUTH_NETWORKS" \
+        --no-enable-private-endpoint || echo "Warning: Could not update cluster authorized networks"
+    
+    echo "GKE cluster configured to allow access from VM IP: $EXTERNAL_IP"
+else
+    echo "No GKE cluster found, skipping network configuration"
+fi
 
 echo ""
 echo "==========================================="

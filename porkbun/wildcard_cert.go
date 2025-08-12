@@ -257,11 +257,31 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 	}
 
 	// Create order for the certificate
-	log.Printf("Creating ACME order for domain: %s", domain)
+	// For wildcard certificates, we need to request both the domain and *.domain
+	var authzIDs []acme.AuthzID
+	if domain == w.domain {
+		// Main domain cert should include both exe.dev and *.exe.dev
+		log.Printf("Creating ACME order for wildcard certificate: %s and *.%s", domain, domain)
+		authzIDs = []acme.AuthzID{
+			{Type: "dns", Value: domain},
+			{Type: "dns", Value: "*." + domain},
+		}
+	} else if strings.HasPrefix(domain, "*.") {
+		// Already a wildcard domain
+		log.Printf("Creating ACME order for wildcard domain: %s", domain)
+		authzIDs = []acme.AuthzID{
+			{Type: "dns", Value: domain},
+		}
+	} else {
+		// Single subdomain
+		log.Printf("Creating ACME order for domain: %s", domain)
+		authzIDs = []acme.AuthzID{
+			{Type: "dns", Value: domain},
+		}
+	}
+	
 	log.Printf("Calling ACME AuthorizeOrder API...")
-	order, err := w.acmeClient.AuthorizeOrder(ctx, []acme.AuthzID{
-		{Type: "dns", Value: domain},
-	})
+	order, err := w.acmeClient.AuthorizeOrder(ctx, authzIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
@@ -344,16 +364,29 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		return nil, fmt.Errorf("failed to generate certificate key: %w", err)
 	}
 
+	// Build the CSR with the same domains we requested in the order
+	var dnsNames []string
+	var commonName string
+	
+	if domain == w.domain {
+		// Main domain cert should include both exe.dev and *.exe.dev
+		commonName = domain
+		dnsNames = []string{domain, "*." + domain}
+	} else if strings.HasPrefix(domain, "*.") {
+		// Already a wildcard domain
+		commonName = domain
+		dnsNames = []string{domain}
+	} else {
+		// Single subdomain
+		commonName = domain
+		dnsNames = []string{domain}
+	}
+	
 	req := &x509.CertificateRequest{
 		Subject: pkix.Name{
-			CommonName: domain,
+			CommonName: commonName,
 		},
-		DNSNames: []string{domain},
-	}
-
-	// For non-wildcard domains, also add www
-	if !strings.HasPrefix(domain, "*.") && domain == w.domain {
-		req.DNSNames = append(req.DNSNames, "www."+domain)
+		DNSNames: dnsNames,
 	}
 
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, req, key)

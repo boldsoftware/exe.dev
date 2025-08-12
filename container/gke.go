@@ -61,13 +61,18 @@ func NewGKEManager(ctx context.Context, config *Config, opts ...option.ClientOpt
 		log.Printf("Running in-cluster, using in-cluster config")
 	}
 
+	// Set a reasonable timeout for API calls to prevent hanging
+	k8sConfig.Timeout = 10 * time.Second
+
 	k8sClient, err := kubernetes.NewForConfig(k8sConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
 	}
 
-	// Test connectivity with a quick API call
-	_, err = k8sClient.ServerVersion()
+	// Test connectivity with a quick API call (with timeout from config)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err = k8sClient.Discovery().ServerVersion()
 	if err != nil {
 		log.Printf("Warning: Cannot connect to Kubernetes API server: %v", err)
 		log.Printf("This may be due to private cluster configuration. Cluster endpoint: %s", k8sConfig.Host)

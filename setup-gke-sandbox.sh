@@ -73,6 +73,7 @@ else
         --enable-network-policy \
         --enable-intra-node-visibility \
         --enable-private-nodes \
+        --no-enable-private-endpoint \
         --master-ipv4-cidr=172.16.0.0/28 \
         --workload-pool=${PROJECT_ID}.svc.id.goog \
         --addons=GcePersistentDiskCsiDriver,GcpFilestoreCsiDriver \

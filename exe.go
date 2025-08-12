@@ -220,7 +220,10 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 	var containerManager container.Manager
 	if gcpProjectID != "" {
 		config := container.DefaultConfig(gcpProjectID)
-		containerManager, err = container.NewGKEManager(context.Background(), config)
+		// Use a timeout context to prevent hanging during initialization
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		containerManager, err = container.NewGKEManager(ctx, config)
+		cancel() // Clean up the context
 		if err != nil {
 			log.Printf("Warning: Failed to initialize container manager: %v", err)
 			log.Printf("Container functionality will be disabled")
