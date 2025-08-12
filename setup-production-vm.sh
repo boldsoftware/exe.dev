@@ -280,6 +280,73 @@ EOF
 
 # Note: nginx configuration removed - exed handles HTTPS directly on port 443
 
+# Set up automatic GKE credential refresh to prevent token expiration
+echo "Setting up GKE credential refresher..."
+cat > /usr/local/bin/refresh-gke-credentials.sh << 'SCRIPT_EOF'
+#!/bin/bash
+# Script to refresh GKE credentials periodically
+# This prevents token expiration issues
+
+set -e
+
+CLUSTER_NAME="exe-cluster"
+ZONE="us-west2-a"
+PROJECT_ID="exe-dev-468515"
+USER="ubuntu"
+
+echo "$(date): Refreshing GKE credentials..."
+
+# Refresh the credentials
+sudo -u $USER gcloud container clusters get-credentials $CLUSTER_NAME \
+    --zone=$ZONE \
+    --project=$PROJECT_ID \
+    --quiet
+
+# Test that the credentials work
+if sudo -u $USER kubectl get nodes --request-timeout=5s > /dev/null 2>&1; then
+    echo "$(date): Credentials refreshed successfully"
+    # Restart exed to pick up new credentials
+    systemctl restart exed
+    echo "$(date): exed service restarted"
+else
+    echo "$(date): Failed to refresh credentials"
+    exit 1
+fi
+SCRIPT_EOF
+
+chmod +x /usr/local/bin/refresh-gke-credentials.sh
+
+# Create systemd service for credential refresh
+cat > /etc/systemd/system/gke-credential-refresher.service << 'SERVICE_EOF'
+[Unit]
+Description=Refresh GKE credentials
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/refresh-gke-credentials.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SERVICE_EOF
+
+# Create systemd timer to run every 45 minutes
+cat > /etc/systemd/system/gke-credential-refresher.timer << 'TIMER_EOF'
+[Unit]
+Description=Refresh GKE credentials every 45 minutes
+Requires=gke-credential-refresher.service
+
+[Timer]
+# Run every 45 minutes (tokens expire after 60 minutes)
+OnBootSec=5min
+OnUnitActiveSec=45min
+
+[Install]
+WantedBy=timers.target
+TIMER_EOF
+
 # Set proper permissions
 chown -R ubuntu:ubuntu /home/ubuntu
 chown -R ubuntu:ubuntu /var/log/exed
@@ -287,6 +354,8 @@ chown -R ubuntu:ubuntu /var/log/exed
 # Enable and reload systemd
 systemctl daemon-reload
 systemctl enable exed
+systemctl enable gke-credential-refresher.timer
+systemctl start gke-credential-refresher.timer
 
 echo "VM setup complete. Ready for exed deployment."
 

@@ -16,7 +16,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -825,74 +824,31 @@ func (m *GKEManager) GetContainerDiagnostics(ctx context.Context, userID, contai
 
 // applyNetworkPolicies applies network policies to isolate the namespace
 func (m *GKEManager) applyNetworkPolicies(ctx context.Context, namespace string) error {
-	// Policy 1: Deny all ingress and egress by default
-	denyAll := &networkingv1.NetworkPolicy{
+	// Policy 1: Deny all ingress by default (but allow egress)
+	denyIngress := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "deny-all-traffic",
+			Name:      "deny-external-ingress",
 			Namespace: namespace,
 		},
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{},
 			PolicyTypes: []networkingv1.PolicyType{
 				networkingv1.PolicyTypeIngress,
-				networkingv1.PolicyTypeEgress,
 			},
+			// Empty ingress rules = deny all ingress
 		},
 	}
 	
-	// Policy 2: Allow DNS
-	allowDNS := &networkingv1.NetworkPolicy{
+	// Policy 2: Allow same namespace ingress
+	allowSameNamespaceIngress := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allow-dns",
-			Namespace: namespace,
-		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{},
-			PolicyTypes: []networkingv1.PolicyType{
-				networkingv1.PolicyTypeEgress,
-			},
-			Egress: []networkingv1.NetworkPolicyEgressRule{
-				{
-					To: []networkingv1.NetworkPolicyPeer{
-						{
-							NamespaceSelector: &metav1.LabelSelector{
-								MatchLabels: map[string]string{
-									"name": "kube-system",
-								},
-							},
-							PodSelector: &metav1.LabelSelector{
-								MatchLabels: map[string]string{
-									"k8s-app": "kube-dns",
-								},
-							},
-						},
-					},
-					Ports: []networkingv1.NetworkPolicyPort{
-						{
-							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 53},
-						},
-						{
-							Protocol: &[]corev1.Protocol{corev1.ProtocolUDP}[0],
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 53},
-						},
-					},
-				},
-			},
-		},
-	}
-	
-	// Policy 3: Allow same namespace communication
-	allowSameNamespace := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allow-same-namespace",
+			Name:      "allow-same-namespace-ingress",
 			Namespace: namespace,
 		},
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{},
 			PolicyTypes: []networkingv1.PolicyType{
 				networkingv1.PolicyTypeIngress,
-				networkingv1.PolicyTypeEgress,
 			},
 			Ingress: []networkingv1.NetworkPolicyIngressRule{
 				{
@@ -903,22 +859,13 @@ func (m *GKEManager) applyNetworkPolicies(ctx context.Context, namespace string)
 					},
 				},
 			},
-			Egress: []networkingv1.NetworkPolicyEgressRule{
-				{
-					To: []networkingv1.NetworkPolicyPeer{
-						{
-							PodSelector: &metav1.LabelSelector{},
-						},
-					},
-				},
-			},
 		},
 	}
 	
-	// Policy 4: Allow internet egress (for package downloads, etc.)
-	allowInternet := &networkingv1.NetworkPolicy{
+	// Policy 3: Allow all egress including DNS and internet
+	allowAllEgress := &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "allow-internet-egress",
+			Name:      "allow-all-egress",
 			Namespace: namespace,
 		},
 		Spec: networkingv1.NetworkPolicySpec{
@@ -928,26 +875,7 @@ func (m *GKEManager) applyNetworkPolicies(ctx context.Context, namespace string)
 			},
 			Egress: []networkingv1.NetworkPolicyEgressRule{
 				{
-					// Allow all egress except to other namespaces in the cluster
-					// This effectively allows internet but blocks cross-namespace communication
-					Ports: []networkingv1.NetworkPolicyPort{
-						{
-							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 443},
-						},
-						{
-							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 80},
-						},
-						{
-							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 22},
-						},
-						{
-							Protocol: &[]corev1.Protocol{corev1.ProtocolTCP}[0],
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 9418},
-						},
-					},
+					// Empty rule allows all egress traffic
 				},
 			},
 		},
@@ -955,10 +883,9 @@ func (m *GKEManager) applyNetworkPolicies(ctx context.Context, namespace string)
 	
 	// Apply all policies
 	policies := []*networkingv1.NetworkPolicy{
-		denyAll,
-		allowDNS,
-		allowSameNamespace,
-		allowInternet,
+		denyIngress,
+		allowSameNamespaceIngress,
+		allowAllEgress,
 	}
 	
 	for _, policy := range policies {

@@ -126,49 +126,30 @@ gcloud container clusters get-credentials $CLUSTER_NAME \
 echo ""
 echo "Step 5: Applying network policies for namespace isolation..."
 
-# Create a default deny-all network policy template
+# Create a default network policy that allows DNS and internet access
 cat <<'EOF' > /tmp/network-policy.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: namespace-isolation
+  name: default-allow-dns-and-internet
   namespace: default
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
   - Egress
-  ingress:
-  # Allow ingress from pods in the same namespace
-  - from:
-    - podSelector: {}
   egress:
-  # Allow DNS
+  # Allow DNS resolution
   - to:
     - namespaceSelector:
         matchLabels:
           name: kube-system
-    - podSelector:
-        matchLabels:
-          k8s-app: kube-dns
     ports:
-    - protocol: TCP
-      port: 53
     - protocol: UDP
       port: 53
-  # Allow egress to pods in the same namespace
-  - from:
-    - podSelector: {}
-  # Allow external internet access
-  - to:
-    - namespaceSelector: {}
-    - podSelector: {}
-  - to:
-    ports:
     - protocol: TCP
-      port: 443
-    - protocol: TCP
-      port: 80
+      port: 53
+  # Allow all other egress (internet access)
+  - {}
 EOF
 
 kubectl apply -f /tmp/network-policy.yaml
@@ -191,7 +172,33 @@ fi
 
 # Create storage class if it doesn't exist
 echo ""
-echo "Step 7: Checking storage class..."
+echo "Step 7: Setting up Cloud NAT for internet access..."
+# Check if Cloud Router exists
+if gcloud compute routers describe exe-nat-router --region=$REGION --project=$PROJECT_ID &>/dev/null; then
+    echo "Cloud Router exe-nat-router already exists."
+else
+    echo "Creating Cloud Router..."
+    gcloud compute routers create exe-nat-router \
+        --network=default \
+        --region=$REGION \
+        --project=$PROJECT_ID
+fi
+
+# Check if Cloud NAT exists
+if gcloud compute routers nats describe exe-nat-config --router=exe-nat-router --region=$REGION --project=$PROJECT_ID &>/dev/null; then
+    echo "Cloud NAT exe-nat-config already exists."
+else
+    echo "Creating Cloud NAT configuration..."
+    gcloud compute routers nats create exe-nat-config \
+        --router=exe-nat-router \
+        --region=$REGION \
+        --nat-all-subnet-ip-ranges \
+        --auto-allocate-nat-external-ips \
+        --project=$PROJECT_ID
+fi
+
+echo ""
+echo "Step 8: Checking storage class..."
 if kubectl get storageclass standard-rwo &>/dev/null; then
     echo "Storage class standard-rwo already exists."
 else
