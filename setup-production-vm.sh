@@ -230,6 +230,9 @@ Environment="GKE_CLUSTER_LOCATION=us-west2-a"
 Environment="ENABLE_SANDBOX=true"
 Environment="STORAGE_CLASS_NAME=standard-rwo"
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Porkbun API credentials for wildcard certificates (replace with actual values)
+# Environment="PORKBUN_API_KEY=your-api-key-here"
+# Environment="PORKBUN_SECRET_API_KEY=your-secret-key-here"
 
 # Use the latest timestamp version
 ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exed.* | head -n1)" -http= -https=:443 -ssh=:22 -db=/home/ubuntu/exe.db'
@@ -242,6 +245,10 @@ StandardError=append:/var/log/exed/exed.error.log
 # Security settings
 NoNewPrivileges=true
 ProtectHome=no
+
+# Allow binding to privileged ports
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
