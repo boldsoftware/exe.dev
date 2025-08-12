@@ -19,6 +19,7 @@ exe.dev is a secure multi-tenant container service that provides users with sand
 - Go 1.24+
 - Google Cloud SDK (`gcloud`)
 - Google Cloud Project with billing enabled
+- Tailscale account (for production deployment)
 
 ### Local Development
 
@@ -43,33 +44,34 @@ exe.dev is a secure multi-tenant container service that provides users with sand
 
 ### Prerequisites
 
-1. **Tailscale Account**: You'll need a Tailscale account and an auth key
-   - Sign up at https://login.tailscale.com if you don't have an account
-   - Create an auth key at https://login.tailscale.com/admin/settings/keys
+1. **Tailscale Account**: Get an auth key from https://login.tailscale.com/admin/settings/keys
    - **Important**: Create the key with `tag:server` tag for proper ACL management
-   - The key can be reusable or one-time (one-time is more secure for production)
 
-2. **Google Cloud Project**: Set up as described below
+2. **Google Cloud Project**: Must have billing enabled
 
-### Quick Production Setup
+### Quick Setup
 
 ```bash
-# 1. Set up the production VM with Tailscale
+# 1. Set up GKE cluster with gVisor sandbox (one-time setup)
+./setup-gke-sandbox.sh
+
+# 2. Set up production VM with Tailscale
 make setup-vm TAILSCALE_AUTH_KEY=tskey-auth-xxxxxxxxxxxxxx
 
-# 2. Deploy the binary
+# 3. Deploy the binary
 make deploy
 
-# 3. Check status
+# 4. Check status
 make status
 ```
 
-The production VM will:
-- Run Ubuntu 22.04 LTS
-- Have a static external IP for public access
-- Join your Tailnet with `tag:server` for secure internal access
-- Automatically start exed on boot via systemd
-- Use versioned binaries (exed.YYYYMMDD-HHMMSS) for easy rollback
+The setup scripts will automatically:
+- Create a GKE Standard cluster with gVisor sandbox node pool
+- Configure network policies for tenant isolation
+- Set up a production VM with Ubuntu 22.04 LTS
+- Configure Tailscale for secure access
+- Install and configure systemd service for auto-start
+- Set up versioned deployments for easy rollback
 
 ### Access Methods
 
@@ -82,7 +84,6 @@ After setup, you can access the VM in two ways:
 
 2. **Tailscale Access** (recommended for daily operations):
    ```bash
-   # After Tailscale is connected
    ssh ubuntu@exed-prod-01
    ```
 
@@ -106,13 +107,11 @@ For proper security, configure your Tailscale ACL policy to restrict the `tag:se
     "tag:server": ["autogroup:admin"]
   },
   "acls": [
-    // Allow admins to access servers
     {
       "action": "accept",
       "src": ["autogroup:admin"],
       "dst": ["tag:server:*"]
     },
-    // Allow servers to access GKE cluster (if on same tailnet)
     {
       "action": "accept", 
       "src": ["tag:server"],
@@ -122,200 +121,38 @@ For proper security, configure your Tailscale ACL policy to restrict the `tag:se
 }
 ```
 
-This ensures:
-- Only admins can apply the `tag:server` tag
-- Only admins can SSH to production servers
-- Servers can communicate with your GKE cluster if needed
+## Google Cloud Setup (Manual)
 
-## Google Cloud Setup
+If you prefer manual setup instead of using the scripts, see the detailed steps below:
 
-Follow these minimal steps to set up the Google Cloud backend for container management:
+<details>
+<summary>Click to expand manual GKE setup instructions</summary>
 
-### Step 1: Create Google Cloud Project (if needed)
+### Step 1: Enable Required APIs
 ```bash
-# Create project (skip if you have one)
-gcloud projects create exe-dev-PROJECT_ID --name="exe.dev"
-
-# Set as default
-gcloud config set project PROJECT_ID
-```
-
-### Step 2: Enable Required APIs
-```bash
-# Enable the 3 APIs we need
 gcloud services enable container.googleapis.com
 gcloud services enable cloudbuild.googleapis.com  
 gcloud services enable storage.googleapis.com
 ```
 
-### Step 3: Create GKE Standard Cluster with Enhanced Security
+### Step 2: Create GKE Cluster
+See `setup-gke-sandbox.sh` for the complete cluster creation command with all security settings.
+
+### Step 3: Authenticate
 ```bash
-# Set variables
-export PROJECT_ID="exe-dev-468515"
-export CLUSTER_NAME="exe-cluster"
-export REGION="us-west2"
-export ZONE="us-west2-a"
-
-# Create cluster with security hardening (takes ~5 minutes)
-gcloud container clusters create $CLUSTER_NAME \
-  --project=$PROJECT_ID \
-  --zone=$ZONE \
-  --cluster-version=latest \
-  --enable-ip-alias \
-  --enable-autoscaling \
-  --min-nodes=1 \
-  --max-nodes=10 \
-  --machine-type=n2-standard-4 \
-  --disk-size=100 \
-  --disk-type=pd-standard \
-  --enable-autorepair \
-  --enable-autoupgrade \
-  --enable-shielded-nodes \
-  --shielded-secure-boot \
-  --shielded-integrity-monitoring \
-  --enable-network-policy \
-  --enable-intra-node-visibility \
-  --enable-private-nodes \
-  --master-ipv4-cidr=172.16.0.0/28 \
-  --maintenance-window-start=2024-01-01T00:00:00Z \
-  --maintenance-window-end=2024-01-01T04:00:00Z \
-  --maintenance-window-recurrence="FREQ=WEEKLY;BYDAY=SU" \
-  --workload-pool=${PROJECT_ID}.svc.id.goog \
-  --addons=GcePersistentDiskCsiDriver,GcpFilestoreCsiDriver \
-  --logging=SYSTEM,WORKLOAD \
-  --monitoring=SYSTEM,WORKLOAD,POD
-
-# Create sandbox node pool with gVisor
-gcloud container node-pools create sandbox-pool \
-  --cluster=$CLUSTER_NAME \
-  --zone=$ZONE \
-  --project=$PROJECT_ID \
-  --machine-type=n2-standard-4 \
-  --disk-size=100 \
-  --disk-type=pd-standard \
-  --enable-autoscaling \
-  --min-nodes=2 \
-  --max-nodes=20 \
-  --node-taints=sandbox.gke.io/runtime=gvisor:NoSchedule \
-  --node-labels=sandbox.gke.io/runtime=gvisor \
-  --sandbox type=gvisor \
-  --shielded-secure-boot \
-  --shielded-integrity-monitoring \
-  --metadata disable-legacy-endpoints=true \
-  --workload-metadata=GKE_METADATA \
-  --max-pods-per-node=32
-```
-
-### Step 4: Authenticate and Set Permissions
-```bash
-# Authenticate with your user account (opens browser)
 gcloud auth application-default login
-
-# Grant yourself the needed permissions
-gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="user:$(gcloud config get-value account)" \
-    --role="roles/container.developer"
-
-gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="user:$(gcloud config get-value account)" \
-    --role="roles/cloudbuild.builds.editor"
-
-gcloud projects add-iam-policy-binding PROJECT_ID \
-    --member="user:$(gcloud config get-value account)" \
-    --role="roles/storage.objectAdmin"
 ```
 
-### Step 5: Install GKE Auth Plugin
+### Step 4: Get Cluster Credentials
 ```bash
-# Install the GKE authentication plugin (required for kubectl access)
-gcloud components install gke-gcloud-auth-plugin
+gcloud container clusters get-credentials exe-cluster \
+    --zone=us-west2-a \
+    --project=exe-dev-468515
 ```
 
-### Step 6: Get Cluster Credentials
-```bash
-# Get credentials for kubectl access (needed for tests)
-gcloud container clusters get-credentials $CLUSTER_NAME \
-    --zone=$ZONE \
-    --project=$PROJECT_ID
-```
-
-### Step 7: Apply Network Policies for Isolation
-```bash
-# Create network policy for namespace isolation
-cat <<EOF | kubectl apply -f -
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: deny-all-ingress
-  namespace: default
-spec:
-  podSelector: {}
-  policyTypes:
-  - Ingress
-  - Egress
-  egress:
-  - to:
-    - namespaceSelector: {}
-    ports:
-    - protocol: TCP
-      port: 53
-    - protocol: UDP
-      port: 53
-  - to:
-    - podSelector: {}
-EOF
-
-# This will be applied per-namespace for user isolation
-```
-
-### Step 8: Set Environment Variables
-```bash
-# Set environment variables for the application
-export GOOGLE_CLOUD_PROJECT="exe-dev-468515"
-export GKE_CLUSTER_NAME="exe-cluster"
-export GKE_CLUSTER_LOCATION="us-west2-a"
-export ENABLE_SANDBOX="true"
-export STORAGE_CLASS_NAME="standard-rwo"
-
-# For wildcard TLS (if you have Porkbun API keys)
-# export PORKBUN_API_KEY="your-api-key"
-# export PORKBUN_SECRET_API_KEY="your-secret-key"
-```
-
-### Step 9: Test It Works
-```bash
-# Run the integration tests
-go test ./container/... -v
-
-# You should see the integration test run instead of skip
-```
+</details>
 
 ## Usage
-
-### Command Line Options
-```bash
-./exed [options]
-
-Options:
-  -http string
-        HTTP server address (default ":8080")
-  -https string
-        HTTPS server address (enables TLS with Let's Encrypt)
-  -ssh string
-        SSH server address (default ":2222")
-```
-
-### Examples
-
-**Development (HTTP only):**
-```bash
-./exed -http=:8080 -ssh=:2222
-```
-
-**Production (with HTTPS):**
-```bash
-./exed -http=:8080 -https=:443 -ssh=:22
-```
 
 ### SSH Commands
 
@@ -383,8 +220,7 @@ WORKDIR /home/appuser
 go test ./...
 
 # Integration tests (requires GCP setup)
-gcloud auth application-default login  # if not already done
-export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GOOGLE_CLOUD_PROJECT="exe-dev-468515"
 go test ./container/... -v
 ```
 
@@ -402,6 +238,21 @@ go test ./container/... -v
 └── exe_test.go        # SSH integration tests
 ```
 
+### Environment Variables
+
+**Required for Production:**
+- `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
+- `GKE_CLUSTER_NAME` - Cluster name (default: "exe-cluster")
+- `GKE_CLUSTER_LOCATION` - Cluster location (default: "us-west2-a")
+
+**Security Settings:**
+- `ENABLE_SANDBOX` - Enable gVisor sandbox (default: "true")
+- `STORAGE_CLASS_NAME` - Storage class name (default: "standard-rwo")
+
+**Optional TLS (for wildcard certificates):**
+- `PORKBUN_API_KEY` - Porkbun API key for DNS challenge
+- `PORKBUN_SECRET_API_KEY` - Porkbun secret API key
+
 ## Cost Estimates
 
 **Google Cloud costs for testing/development:**
@@ -416,26 +267,7 @@ go test ./container/... -v
 - gVisor overhead: ~10-20% performance impact
 - Better for multi-tenant workloads requiring strong isolation
 
-## Deployment
-
-### Environment Variables
-
-**Required:**
-- `GOOGLE_CLOUD_PROJECT` - Your GCP project ID
-- `GKE_CLUSTER_NAME` - Cluster name (default: "exe-cluster")
-- `GKE_CLUSTER_LOCATION` - Cluster location (default: "us-west2-a")
-
-**Security Settings:**
-- `ENABLE_SANDBOX` - Enable gVisor sandbox (default: "true")
-- `STORAGE_CLASS_NAME` - Storage class name (default: "standard-rwo")
-
-**Optional TLS (for wildcard certificates):**
-- `PORKBUN_API_KEY` - Porkbun API key for DNS challenge
-- `PORKBUN_SECRET_API_KEY` - Porkbun secret API key
-
-**Authentication:** Uses Application Default Credentials via `gcloud auth application-default login`
-
-### Production Considerations
+## Production Considerations
 
 1. **Use Workload Identity** instead of service account keys
 2. **Enable Pod Security Standards** for additional security  
@@ -456,7 +288,3 @@ go test ./container/... -v
 ## License
 
 [Your License Here]
-
----
-
-**Note**: Replace `PROJECT_ID` with your actual Google Cloud Project ID in all commands above.
