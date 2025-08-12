@@ -4974,13 +4974,15 @@ func (s *Server) Start() error {
 	s.stopping = false
 	s.mu.Unlock()
 
-	// Start HTTP server in a goroutine
-	go func() {
-		log.Printf("HTTP server starting on %s", s.httpAddr)
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("HTTP server error: %v", err)
-		}
-	}()
+	// Start HTTP server in a goroutine if configured
+	if s.httpAddr != "" {
+		go func() {
+			log.Printf("HTTP server starting on %s", s.httpAddr)
+			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Printf("HTTP server error: %v", err)
+			}
+		}()
+	}
 
 	// Start HTTPS server in a goroutine if configured
 	if s.httpsAddr != "" {
@@ -5000,6 +5002,8 @@ func (s *Server) Start() error {
 					log.Printf("Autocert HTTP server error: %v", err)
 				}
 			}()
+		} else if s.wildcardCertManager != nil {
+			log.Printf("Using DNS challenges for wildcard certificates - port 80 not required for ACME")
 		}
 	}
 
