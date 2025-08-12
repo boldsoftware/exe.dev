@@ -27,13 +27,13 @@ func NewTerminalEmulator() (*TerminalEmulator, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create a VT10x terminal
 	vt := vt10x.New(vt10x.WithSize(80, 24))
-	
+
 	// Buffer to capture what the terminal "sees"
 	buffer := &bytes.Buffer{}
-	
+
 	return &TerminalEmulator{
 		vt:     vt,
 		pty:    ptyMaster,
@@ -46,10 +46,10 @@ func NewTerminalEmulator() (*TerminalEmulator, error) {
 func (te *TerminalEmulator) Write(data []byte) (int, error) {
 	// Write to VT10x terminal
 	n, err := te.vt.Write(data)
-	
+
 	// Also capture in buffer for inspection
 	te.buffer.Write(data)
-	
+
 	return n, err
 }
 
@@ -61,7 +61,7 @@ func (te *TerminalEmulator) Read(p []byte) (int, error) {
 // GetScreenContent returns what's currently visible on the terminal screen
 func (te *TerminalEmulator) GetScreenContent() string {
 	var result strings.Builder
-	
+
 	for row := 0; row < 24; row++ {
 		line := ""
 		for col := 0; col < 80; col++ {
@@ -78,7 +78,7 @@ func (te *TerminalEmulator) GetScreenContent() string {
 			result.WriteString(line + "\n")
 		}
 	}
-	
+
 	return strings.TrimRight(result.String(), "\n")
 }
 
@@ -146,7 +146,7 @@ func TestTerminalFormatting(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Test different line ending combinations
 	testCases := []struct {
 		name   string
@@ -157,20 +157,20 @@ func TestTerminalFormatting(t *testing.T) {
 		{"carriage_return", "Overwrite\rNew Text\r\n"},
 		{"mixed_endings", "Line 1\nLine 2\r\nLine 3\n"},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Clear terminal
 			term.vt = vt10x.New(vt10x.WithSize(80, 24))
 			term.buffer.Reset()
-			
+
 			// Write test output
 			term.Write([]byte(tc.output))
 			time.Sleep(50 * time.Millisecond)
-			
+
 			screenContent := term.GetScreenContent()
 			rawOutput := term.GetRawOutput()
-			
+
 			t.Logf("Test case: %s", tc.name)
 			t.Logf("Raw output: %q", rawOutput)
 			t.Logf("Screen content:\n%s", screenContent)
@@ -190,25 +190,25 @@ func TestInteractiveFlow(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Simulate what our SSH interaction actually looks like:
 	// 1. Server writes prompt without newline
-	// 2. User types characters (echoed back)  
+	// 2. User types characters (echoed back)
 	// 3. User presses enter (we see \r or \n from user, we respond with \r\n)
 	// 4. Server processes and responds
-	
-	steps := []struct{
+
+	steps := []struct {
 		desc string
 		data string
 	}{
 		{"initial prompt", "Email address: "},
-		{"user types", "test@example.com"},     
-		{"user enter (what WE write)", "\r\n"},  // This is what our code writes 
+		{"user types", "test@example.com"},
+		{"user enter (what WE write)", "\r\n"}, // This is what our code writes
 		{"our response", "Email: test@example.com\r\n"},
 		{"blank line", "\r\n"},
 		{"next prompt", "Team name: "},
 		{"user types", "invalid"},
-		{"user enter", "\r\n"}, 
+		{"user enter", "\r\n"},
 		{"our error response", "❌ Invalid team name (must be 3-20 lowercase letters/numbers/hyphens)\r\n"},
 		{"blank line", "\r\n"},
 		{"prompt again", "Team name: "},
@@ -216,11 +216,11 @@ func TestInteractiveFlow(t *testing.T) {
 		{"user enter", "\r\n"},
 		{"success response", "✅ Team name available!\r\n"},
 	}
-	
+
 	for i, step := range steps {
 		term.Write([]byte(step.data))
 		t.Logf("Step %d: %s -> %q", i+1, step.desc, step.data)
-		
+
 		// Show screen state after each step
 		if i > 5 { // Only show details for later steps
 			screenContent := term.GetScreenContent()
@@ -232,22 +232,22 @@ func TestInteractiveFlow(t *testing.T) {
 				}
 			}
 		}
-		
+
 		time.Sleep(5 * time.Millisecond)
 	}
-	
+
 	screenContent := term.GetScreenContent()
 	t.Logf("\n=== FINAL SCREEN ===")
 	lines := strings.Split(screenContent, "\n")
 	for i, line := range lines {
 		t.Logf("Line %2d: %q", i, line)
-		
+
 		// Check for offset issues
 		if len(line) > 1 && line[0] == ' ' && strings.TrimLeft(line, " ") != "" {
 			t.Errorf("*** Line %d appears to be offset by spaces: %q", i, line)
 		}
 	}
-	
+
 	// Raw output for debugging
 	t.Logf("\n=== RAW OUTPUT SENT ===")
 	t.Logf("%q", term.GetRawOutput())
@@ -260,13 +260,13 @@ func TestCumulativeOffsetBug(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Test the exact sequence from our code that might cause cumulative offsets
 	sequences := []string{
 		"Welcome to exe.dev!\r\n\r\n",
-		"To get started, we need to verify your email address.\r\n\r\n", 
+		"To get started, we need to verify your email address.\r\n\r\n",
 		"Please enter your email address: ", // No newline here!
-		"user@example.com",                   // User input (echoed)
+		"user@example.com",                  // User input (echoed)
 		"\r\nEmail: user@example.com\r\n",   // Our response
 		"\r\nVerification email sent!\r\n",
 		"Waiting for email verification...\r\n\r\n",
@@ -274,25 +274,25 @@ func TestCumulativeOffsetBug(t *testing.T) {
 		"Now we need to verify your billing information.\r\n\r\n",
 		"Please enter a test credit card number to verify your payment method.\r\n",
 		"You can use: 4242424242424242 (Visa test card)\r\n\r\n",
-		"Credit card number: ",               // No newline here either!
-		"4242424242424242",                   // User input  
+		"Credit card number: ", // No newline here either!
+		"4242424242424242",     // User input
 		"\r\n✅ Payment method verified!\r\n\r\n",
 		"Now let's create your team name.\r\n\r\n",
 		"By default, containers will start as <name>.<team>.exe.dev\r\n\r\n",
-		"Team name: ",                        // And here!
+		"Team name: ", // And here!
 		"myteam",
 		"\r\n✅ Team name available!\r\n",
 		"Your containers will be available at: <name>.myteam.exe.dev\r\n\r\n",
 		"🎉 Registration completed! Welcome to exe.dev!\r\n\r\n",
 	}
-	
+
 	for i, seq := range sequences {
 		term.Write([]byte(seq))
-		
+
 		// Check screen state after each write
 		screenContent := term.GetScreenContent()
 		lines := strings.Split(screenContent, "\n")
-		
+
 		t.Logf("After step %d (%q):", i+1, seq)
 		for j, line := range lines {
 			if len(line) > 0 {
@@ -307,11 +307,11 @@ func TestCumulativeOffsetBug(t *testing.T) {
 		}
 		t.Logf("")
 	}
-	
+
 	// Final analysis
-	screenContent := term.GetScreenContent() 
+	screenContent := term.GetScreenContent()
 	lines := strings.Split(screenContent, "\n")
-	
+
 	t.Logf("=== FINAL ANALYSIS ===")
 	maxOffset := 0
 	for i, line := range lines {
@@ -325,7 +325,7 @@ func TestCumulativeOffsetBug(t *testing.T) {
 			}
 		}
 	}
-	
+
 	if maxOffset > 0 {
 		t.Errorf("Found cumulative offset issue: maximum offset was %d spaces", maxOffset)
 	} else {
@@ -340,37 +340,37 @@ func TestMixedLineEndingsBug(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// This test simulates exactly what happens in practice:
 	// 1. Server sends prompts with \r\n
 	// 2. User types text (echoed back)
 	// 3. User hits Enter (sends \n - just single newline)
 	// 4. Server processes input and responds with \r\n
-	
+
 	sequences := []struct {
 		desc string
 		data string
 	}{
 		{"server prompt", "Email address: "},
 		{"user types (echoed)", "test@example.com"},
-		{"user hits Enter (LF only)", "\n"},           // This is the problem!
+		{"user hits Enter (LF only)", "\n"},              // This is the problem!
 		{"server response", "Got: test@example.com\r\n"}, // Server always uses CRLF
 		{"server prompt 2", "Team name: "},
 		{"user types", "myteam"},
-		{"user hits Enter (LF only)", "\n"},           // Problem again
-		{"server response", "Team: myteam\r\n"},       // Server CRLF
+		{"user hits Enter (LF only)", "\n"},     // Problem again
+		{"server response", "Team: myteam\r\n"}, // Server CRLF
 	}
-	
+
 	for i, seq := range sequences {
 		term.Write([]byte(seq.data))
 		t.Logf("Step %d: %s -> %q", i+1, seq.desc, seq.data)
 	}
-	
+
 	screenContent := term.GetScreenContent()
 	t.Logf("\n=== FINAL SCREEN ===")
 	lines := strings.Split(screenContent, "\n")
 	offsetFound := false
-	
+
 	for i, line := range lines {
 		if len(line) > 0 {
 			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
@@ -382,7 +382,7 @@ func TestMixedLineEndingsBug(t *testing.T) {
 			}
 		}
 	}
-	
+
 	if offsetFound {
 		t.Log("*** FOUND THE BUG! Mixed \\n vs \\r\\n causes offset issues ***")
 		t.Log("FIX: Ensure either user input generates \\r\\n OR server only uses \\n")
@@ -398,15 +398,15 @@ func TestFixedLineEndingsBug(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// This test simulates the CORRECTED behavior:
 	// 1. Server sends prompts with \r\n
 	// 2. User types text (echoed back)
 	// 3. User hits Enter (sends \n)
-	// 4. readLineFromChannel now sends \r\n automatically 
+	// 4. readLineFromChannel now sends \r\n automatically
 	// 5. Server responds with \r\n
 	// Result: All lines should be properly aligned with no offsets
-	
+
 	sequences := []struct {
 		desc string
 		data string
@@ -420,17 +420,17 @@ func TestFixedLineEndingsBug(t *testing.T) {
 		{"user hits Enter -> readLineFromChannel sends \\r\\n", "\r\n"}, // Fixed!
 		{"server response", "Team: myteam\r\n"},
 	}
-	
+
 	for i, seq := range sequences {
 		term.Write([]byte(seq.data))
 		t.Logf("Step %d: %s -> %q", i+1, seq.desc, seq.data)
 	}
-	
+
 	screenContent := term.GetScreenContent()
 	t.Logf("\n=== FINAL SCREEN (AFTER FIX) ===")
 	lines := strings.Split(screenContent, "\n")
 	offsetFound := false
-	
+
 	for i, line := range lines {
 		if len(line) > 0 {
 			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
@@ -442,7 +442,7 @@ func TestFixedLineEndingsBug(t *testing.T) {
 			}
 		}
 	}
-	
+
 	if !offsetFound {
 		t.Log("*** SUCCESS! Line endings fix eliminated all offset issues! ***")
 	}
@@ -455,7 +455,7 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -463,7 +463,7 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 	}
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
-	
+
 	// Create a mock SSH channel using our terminal
 	mockChannel := &MockSSHChannel{term: term}
 	server, err := NewServer(":8080", "", ":2222", tmpDB.Name(), true, "")
@@ -471,9 +471,9 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 	defer server.Stop()
-	
+
 	t.Log("=== Testing readLineFromChannel behavior ===")
-	
+
 	// Test 1: What happens when user sends just LF (\n)?
 	t.Log("Test 1: User sends 'test\\n'")
 	go func() {
@@ -483,35 +483,35 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 			mockChannel.term.SendKeys(string(ch))
 		}
 		// Then user presses Enter (sends \n)
-		mockChannel.term.SendKeys("\n") 
+		mockChannel.term.SendKeys("\n")
 	}()
-	
+
 	input, err := server.readLineFromChannel(mockChannel)
 	if err != nil {
 		t.Fatalf("readLineFromChannel failed: %v", err)
 	}
-	
+
 	if input != "test" {
 		t.Errorf("Expected input 'test', got %q", input)
 	}
-	
+
 	rawOutput := term.GetRawOutput()
 	t.Logf("Raw output: %q", rawOutput)
 	t.Logf("Length: %d bytes", len(rawOutput))
-	
+
 	// Analyze what was actually sent to terminal
 	for i, b := range []byte(rawOutput) {
 		if b == '\r' {
 			t.Logf("  Byte %d: \\r (0x%02x)", i, b)
 		} else if b == '\n' {
-			t.Logf("  Byte %d: \\n (0x%02x)", i, b)  
+			t.Logf("  Byte %d: \\n (0x%02x)", i, b)
 		} else if b >= 32 && b <= 126 {
 			t.Logf("  Byte %d: '%c' (0x%02x)", i, b, b)
 		} else {
 			t.Logf("  Byte %d: 0x%02x", i, b)
 		}
 	}
-	
+
 	// Check terminal screen state
 	screenContent := term.GetScreenContent()
 	t.Logf("Screen content: %q", screenContent)
@@ -535,38 +535,38 @@ func TestActualSSHTerminalBehavior(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// This test recreates the EXACT scenario that happens in real SSH:
 	// 1. Server sends initial prompt (no newline at end)
 	// 2. User types characters (echoed back)
 	// 3. User hits Enter - SSH client may send just \n
 	// 4. Our readLineFromChannel processes it and sends \r\n
 	// 5. Server continues with next output
-	
+
 	t.Log("=== Simulating ACTUAL SSH interaction ===")
-	
+
 	// Step 1: Server sends prompt (this is how our welcome message works NOW)
 	term.Write([]byte("Welcome to exe.dev!\r\n\r\nTo get started, we need to verify your email address.\r\n\r\nPlease enter your email address: "))
-	
+
 	// Step 2: User types (this gets echoed back by readLineFromChannel)
 	term.Write([]byte("test@example.com"))
-	
+
 	// Step 3: User hits Enter - in real SSH this might be just \n
 	// But our readLineFromChannel now sends \r\n
-	term.Write([]byte("\r\n"))  // This is what our fix does
-	
+	term.Write([]byte("\r\n")) // This is what our fix does
+
 	// Step 4: Server processes and responds
 	term.Write([]byte("Email: test@example.com\r\n"))
-	
+
 	// Step 5: Server continues
 	term.Write([]byte("\r\nVerification email sent!\r\n"))
-	
+
 	screenContent := term.GetScreenContent()
 	t.Logf("Screen content:\n%s", screenContent)
-	
+
 	lines := strings.Split(screenContent, "\n")
 	offsetFound := false
-	
+
 	for i, line := range lines {
 		if len(line) > 0 {
 			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
@@ -578,7 +578,7 @@ func TestActualSSHTerminalBehavior(t *testing.T) {
 			}
 		}
 	}
-	
+
 	if !offsetFound {
 		t.Log("✅ No offset issues found!")
 	} else {
@@ -591,7 +591,7 @@ func TestRealSSHIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping SSH integration test in short mode")
 	}
-	
+
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -599,23 +599,23 @@ func TestRealSSHIntegration(t *testing.T) {
 	}
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
-	
+
 	// Start our SSH server on a specific port
 	server, err := NewServer(":18099", "", ":12346", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
-	
+
 	go func() {
 		if err := server.Start(); err != nil {
 			t.Logf("Server error: %v", err)
 		}
 	}()
 	defer server.Stop()
-	
+
 	// Give server time to start
 	time.Sleep(1000 * time.Millisecond)
-	
+
 	// Create a simple script to interact with SSH and capture output
 	script := `#!/usr/bin/env bash
 set -e
@@ -651,7 +651,7 @@ else
     echo "No ssh_output.txt found"
 fi
 `
-	
+
 	// Write the script to a temporary file
 	scriptFile := "/tmp/ssh_test_script.sh"
 	err = os.WriteFile(scriptFile, []byte(script), 0755)
@@ -659,38 +659,38 @@ fi
 		t.Fatalf("Failed to write test script: %v", err)
 	}
 	defer os.Remove(scriptFile)
-	
+
 	// Run the script
 	cmd := exec.Command("/bin/bash", scriptFile)
 	cmd.Dir = "/tmp"
-	
+
 	output, err := cmd.CombinedOutput()
 	t.Logf("Script output:\n%s", string(output))
-	
+
 	if err != nil {
 		t.Logf("Script error (expected): %v", err)
 	}
-	
+
 	// Try to read the captured SSH output
 	sshOutput, err := os.ReadFile("/tmp/ssh_output.txt")
 	if err == nil {
 		t.Logf("\n=== CAPTURED SSH OUTPUT ===")
 		t.Logf("Raw bytes: %q", string(sshOutput))
-		
+
 		// Analyze for unexpected offset issues, but allow centering spaces for ASCII art
 		lines := strings.Split(string(sshOutput), "\n")
 		unexpectedOffsetFound := false
 		asciiArtCenteringFound := false
-		
+
 		for i, line := range lines {
 			if len(line) > 0 {
 				leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
 				if leadingSpaces > 0 && strings.TrimLeft(line, " ") != "" {
 					// Check if this is ASCII art centering (lines with box drawing characters)
 					trimmed := strings.TrimLeft(line, " ")
-					isAsciiArt := strings.Contains(trimmed, "█") || strings.Contains(trimmed, "╗") || 
-								  strings.Contains(trimmed, "╚") || strings.Contains(trimmed, "═")
-					
+					isAsciiArt := strings.Contains(trimmed, "█") || strings.Contains(trimmed, "╗") ||
+						strings.Contains(trimmed, "╚") || strings.Contains(trimmed, "═")
+
 					if isAsciiArt && leadingSpaces <= 20 { // Reasonable centering padding
 						t.Logf("Line %d: ASCII ART CENTERED(%d spaces) %q", i, leadingSpaces, line)
 						asciiArtCenteringFound = true
@@ -703,7 +703,7 @@ fi
 				}
 			}
 		}
-		
+
 		if unexpectedOffsetFound {
 			t.Errorf("*** UNEXPECTED OFFSET ISSUES DETECTED IN REAL SSH OUTPUT ***")
 		} else if asciiArtCenteringFound {
@@ -711,7 +711,7 @@ fi
 		} else {
 			t.Log("No offset issues detected in SSH output")
 		}
-		
+
 		// Clean up
 		os.Remove("/tmp/ssh_output.txt")
 	} else {

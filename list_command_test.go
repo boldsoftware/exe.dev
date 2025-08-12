@@ -62,10 +62,10 @@ func TestHandleListCommand(t *testing.T) {
 	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
 
 	tests := []struct {
-		name                string
-		setupContainers     func()
-		expectedOutput      []string
-		expectError         bool
+		name            string
+		setupContainers func()
+		expectedOutput  []string
+		expectError     bool
 	}{
 		{
 			name: "no containers",
@@ -73,7 +73,7 @@ func TestHandleListCommand(t *testing.T) {
 				// No setup - no containers
 			},
 			expectedOutput: []string{"No machines found", "create <name>"},
-			expectError: false,
+			expectError:    false,
 		},
 		{
 			name: "single container",
@@ -86,7 +86,7 @@ func TestHandleListCommand(t *testing.T) {
 				})
 			},
 			expectedOutput: []string{"Machines for team", "test-container"},
-			expectError: false,
+			expectError:    false,
 		},
 		{
 			name: "multiple containers",
@@ -104,7 +104,7 @@ func TestHandleListCommand(t *testing.T) {
 				})
 			},
 			expectedOutput: []string{"Machines for team", "container1", "container2"},
-			expectError: false,
+			expectError:    false,
 		},
 	}
 
@@ -112,7 +112,7 @@ func TestHandleListCommand(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear containers from previous test
 			mockManager.containers = make(map[string]*container.Container)
-			
+
 			// Setup containers for this test
 			tt.setupContainers()
 

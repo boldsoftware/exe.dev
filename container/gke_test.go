@@ -19,6 +19,11 @@ func TestGKEManagerIntegration(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
+	// Skip unless explicitly requested with RUN_GKE_TESTS=true
+	if os.Getenv("RUN_GKE_TESTS") != "true" {
+		t.Skip("Skipping GKE integration test. Set RUN_GKE_TESTS=true to run")
+	}
+
 	// Check for required environment variables
 	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
 	if projectID == "" {

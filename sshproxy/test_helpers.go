@@ -12,7 +12,7 @@ func scpCommand(args ...string) *exec.Cmd {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "PasswordAuthentication=no",
-		"-o", "PreferredAuthentications=none",
+		"-o", "PubkeyAuthentication=no",
 		"-o", "LogLevel=ERROR", // Suppress warnings
 	}
 	scpArgs = append(scpArgs, args...)

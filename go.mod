@@ -1,11 +1,14 @@
 module exe.dev
 
-go 1.24.1
+go 1.24.0
+
+toolchain go1.24.1
 
 require (
 	github.com/creack/pty v1.1.24
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
+	github.com/pkg/sftp v1.13.9
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stripe/stripe-go/v76 v76.25.0
 	golang.org/x/crypto v0.40.0
@@ -50,7 +53,6 @@ require (
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pkg/sftp v1.13.9 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect

@@ -105,9 +105,9 @@ func TestSCPTildeBug(t *testing.T) {
 		stderrOutput := stderr.String()
 		stdoutOutput := stdout.String()
 
-		// We expect this to fail with the exact error we see in production
+		// With the fix, this should now succeed
 		if err == nil {
-			t.Error("Expected SCP to fail, but it succeeded")
+			t.Log("✓ SCP to ~ succeeded (fix is working!)")
 			// Check if file was created
 			var checkOut bytes.Buffer
 			checkCmd := exec.Command("docker", "exec", containerID, "ls", "-la", "/workspace")
@@ -115,17 +115,12 @@ func TestSCPTildeBug(t *testing.T) {
 			checkCmd.Run()
 			t.Logf("After successful upload, /workspace contains: %s", checkOut.String())
 		} else {
-			// Check for the exact error message
-			if strings.Contains(stderrOutput, "close remote: Failure") {
-				t.Logf("✓ Got expected 'close remote: Failure' error")
-			} else {
-				t.Errorf("Expected 'close remote: Failure' error, got stderr: %s", stderrOutput)
-				if stdoutOutput != "" {
-					t.Logf("stdout: %s", stdoutOutput)
-				}
+			// The bug is fixed, so SCP should succeed
+			t.Errorf("SCP failed when it should succeed (fix not working): %v", err)
+			t.Logf("stderr: %s", stderrOutput)
+			if stdoutOutput != "" {
+				t.Logf("stdout: %s", stdoutOutput)
 			}
-			
-			t.Logf("SCP failed with error: %v", err)
 		}
 	})
 
@@ -242,15 +237,14 @@ func handleProductionLikeChannel(t *testing.T, channel ssh.Channel, requests <-c
 	for req := range requests {
 		switch req.Type {
 		case "subsystem":
-			subsystem := string(req.Payload[4:])
-			if subsystem == "sftp" {
+			if len(req.Payload) > 4 && string(req.Payload[4:]) == "sftp" {
 				req.Reply(true, nil)
 
 				// Create filesystem and handler exactly like production
 				ctx := context.Background()
 				fs := NewUnixContainerFS(manager, "test", containerID, "/workspace")
-				// Use the original buggy handler to demonstrate the bug
-				handler := NewOriginalSFTPHandler(ctx, fs, "/workspace")
+				// Use the fixed handler since the bug is fixed
+				handler := NewSFTPHandler(ctx, fs, "/workspace")
 
 				// Set up SFTP server with production configuration
 				handlers := sftp.Handlers{
@@ -264,10 +258,20 @@ func handleProductionLikeChannel(t *testing.T, channel ssh.Channel, requests <-c
 				
 				// Log when SFTP server starts and stops
 				t.Logf("Starting SFTP server for container %s", containerID)
-				if err := server.Serve(); err != nil && err != io.EOF {
-					t.Logf("SFTP server error: %v", err)
+				err := server.Serve()
+				if err != nil {
+					if err != io.EOF {
+						t.Logf("SFTP server error: %v", err)
+					} else {
+						t.Logf("SFTP server ended with EOF (normal)")
+					}
 				}
 				t.Logf("SFTP server stopped")
+				
+				// Send exit status before closing
+				exitStatus := []byte{0, 0, 0, 0} // exit status 0
+				channel.SendRequest("exit-status", false, exitStatus)
+				
 				return
 			}
 			req.Reply(false, nil)

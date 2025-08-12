@@ -17,7 +17,7 @@ func TestQuestionMarkHelp(t *testing.T) {
 		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
-	
+
 	// Verify that the help text mentions both "help" and "?"
 	if !strings.Contains(helpText, "help") {
 		t.Error("Help text should contain 'help' command")
@@ -33,16 +33,16 @@ func TestQuestionMarkHelp(t *testing.T) {
 	if strings.Contains(helpText, "███") {
 		t.Error("Help text should NOT contain ASCII art")
 	}
-	
+
 	t.Log("Question mark help alias verified in help text")
 }
 
 func TestQuestionMarkCommandParsing(t *testing.T) {
 	// Test that the switch statement logic will handle both "help" and "?" correctly
 	// This tests the Go language feature that case "help", "?" works as expected
-	
+
 	testCases := []string{"help", "?"}
-	
+
 	for _, cmd := range testCases {
 		// Simulate the switch logic
 		matched := false
@@ -50,11 +50,11 @@ func TestQuestionMarkCommandParsing(t *testing.T) {
 		case "help", "?":
 			matched = true
 		}
-		
+
 		if !matched {
 			t.Errorf("Command %q should match the help case", cmd)
 		}
 	}
-	
+
 	t.Log("Both 'help' and '?' commands match the help case")
 }

@@ -24,7 +24,7 @@ func TestIsValidStorageSize(t *testing.T) {
 		{"10 Gi", false}, // Space not allowed
 		{"-10Gi", false}, // Negative not allowed
 	}
-	
+
 	for _, test := range tests {
 		result := isValidStorageSize(test.input)
 		if result != test.expected {

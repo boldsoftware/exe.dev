@@ -303,7 +303,7 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container, epheme
 							MountPath: "/workspace",
 						},
 					},
-					WorkingDir: "/workspace",
+					// Don't set WorkingDir - let bash use the user's home directory
 				},
 			},
 			RestartPolicy: corev1.RestartPolicyAlways,

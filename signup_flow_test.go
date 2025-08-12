@@ -99,7 +99,7 @@ func TestSignupFlowAuthentication(t *testing.T) {
 	// Test that the user can be properly handled by handleSSHShell as a registered user
 	// This simulates what happens when a registered user connects
 	registered := permissions2.Extensions["registered"] == "true"
-	
+
 	// Instead of calling the full handleSSHShell (which would hang waiting for commands),
 	// let's manually create a user session and test the create command
 	if registered {
@@ -114,7 +114,20 @@ func TestSignupFlowAuthentication(t *testing.T) {
 			t.Fatalf("User should have team membership")
 		}
 
-		team := teams[0]
+		// Find the testteam (not the personal team) for this test
+		var team TeamMember
+		for _, t := range teams {
+			if t.TeamName == teamName {
+				team = t
+				break
+			}
+		}
+		if team.TeamName == "" {
+			// Fallback to first team if testteam not found
+			team = teams[0]
+			t.Logf("Warning: Using team %s instead of %s", team.TeamName, teamName)
+		}
+
 		server.createUserSession(mockChannel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
 		defer server.removeUserSession(mockChannel)
 
@@ -140,17 +153,19 @@ func TestSignupFlowAuthentication(t *testing.T) {
 		}
 
 		// Verify container was actually created
-		machine, err := server.getMachineByName("testteam", "testcontainer")
+		machine, err := server.getMachineByName(team.TeamName, "testcontainer")
 		if err != nil {
 			t.Errorf("Container should be created in database: %v", err)
 		}
 
-		if machine.Name != "testcontainer" {
-			t.Errorf("Expected container name 'testcontainer', got %s", machine.Name)
-		}
+		if machine != nil {
+			if machine.Name != "testcontainer" {
+				t.Errorf("Expected container name 'testcontainer', got %s", machine.Name)
+			}
 
-		if machine.TeamName != "testteam" {
-			t.Errorf("Expected team name 'testteam', got %s", machine.TeamName)
+			if machine.TeamName != team.TeamName {
+				t.Errorf("Expected team name '%s', got %s", team.TeamName, machine.TeamName)
+			}
 		}
 	} else {
 		t.Error("User should be registered after completing signup")
@@ -167,7 +182,7 @@ func TestEmailVerificationInDevMode(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	// Create server in dev mode 
+	// Create server in dev mode
 	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -180,9 +195,9 @@ func TestEmailVerificationInDevMode(t *testing.T) {
 	// Create email verification
 	verification := &EmailVerification{
 		PublicKeyFingerprint: fingerprint,
-		Email:               email,
-		CompleteChan:        make(chan struct{}),
-		CreatedAt:          time.Now(),
+		Email:                email,
+		CompleteChan:         make(chan struct{}),
+		CreatedAt:            time.Now(),
 	}
 
 	server.emailVerificationsMu.Lock()

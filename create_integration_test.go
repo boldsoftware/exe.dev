@@ -21,20 +21,20 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 
 	// Create mock container manager
 	mockManager := NewMockContainerManager()
-	
+
 	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 	defer server.Stop()
-	
+
 	server.containerManager = mockManager
 
 	// Create test user and team in database
 	fingerprint := "test-create-variants"
-	email := "test@example.com" 
+	email := "test@example.com"
 	teamName := "testteam"
-	
+
 	if err := server.createUser(fingerprint, email); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -80,9 +80,9 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 				t.Skipf("Could not create terminal emulator: %v", err)
 			}
 			defer term.Close()
-			
+
 			term.buffer = &outputBuf
-			
+
 			mockChannel := &MockSSHChannel{
 				term: term,
 			}
@@ -96,20 +96,20 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 
 			// Call handleCreateCommandWithStdin
 			server.handleCreateCommandWithStdin(mockChannel, tt.args, stdinReader)
-			
+
 			// Check output
 			rawOutput := outputBuf.String()
 			output := stripANSI(rawOutput)
-			
+
 			t.Logf("Output for %s: %s", tt.name, output)
-			
+
 			// Verify expected strings appear in output
 			for _, expected := range tt.expected {
 				if !strings.Contains(output, expected) {
 					t.Errorf("Expected output to contain %q, got: %s", expected, output)
 				}
 			}
-			
+
 			// Verify container was created in the mock
 			containers := mockManager.containers
 			if len(containers) == 0 {
@@ -124,12 +124,12 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 						lastContainer = c
 					}
 				}
-				
+
 				if lastContainer == nil {
 					t.Errorf("Could not find created container")
 				} else {
 					t.Logf("Created container: %s with image: %s", lastContainer.Name, lastContainer.Image)
-					
+
 					// Verify image is set correctly
 					if tt.stdin != "" {
 						// Custom Dockerfile - image should be default
@@ -151,7 +151,7 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 					}
 				}
 			}
-			
+
 			// Clean up created containers for next test
 			mockManager.containers = make(map[string]*container.Container)
 		})

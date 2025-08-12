@@ -54,29 +54,28 @@ func TestSCPExactBug(t *testing.T) {
 			t.Log("Write succeeded (data buffered)")
 		}
 		
-		// Close - this is where it fails
+		// Close - with the fix, this should now succeed
 		err = file.Close()
 		if err != nil {
-			t.Logf("✓✓✓ Close() failed: %v", err)
-			
-			// Check if it's a permission error
-			if strings.Contains(err.Error(), "Permission denied") {
-				t.Log("Error: Permission denied writing to /")
-			} else if strings.Contains(err.Error(), "Read-only file system") {
-				t.Log("Error: Root filesystem is read-only")
-			} else if strings.Contains(err.Error(), "cannot create") {
-				t.Log("Error: Cannot create file in root")
-			}
-			
-			t.Log("\nTHIS IS THE BUG:")
+			t.Errorf("Close() failed: %v", err)
+			t.Log("ERROR: The fix is not working properly!")
+		} else {
+			t.Log("✓✓✓ Close() succeeded - fix is working!")
+			t.Log("\nFIX VERIFICATION:")
 			t.Log("1. User types: scp file.txt host:~")
 			t.Log("2. SCP resolves ~ to / and sends path: /file.txt")
-			t.Log("3. Handler tries to create /file.txt in container root")
-			t.Log("4. Write appears to succeed (buffered)")
-			t.Log("5. On Close(), actual write fails")
-			t.Log("6. SCP reports: 'close remote: Failure'")
-		} else {
-			t.Error("Close() succeeded - file was created at /test.txt (unexpected)")
+			t.Log("3. Fixed handler maps /file.txt to /workspace/file.txt")
+			t.Log("4. File is successfully created in /workspace")
+			t.Log("5. SCP completes successfully")
+			
+			// Verify the file was created in /workspace
+			var out strings.Builder
+			cmd := exec.Command("docker", "exec", containerID, "ls", "-la", "/workspace/test.txt")
+			cmd.Stdout = &out
+			err := cmd.Run()
+			if err == nil {
+				t.Logf("✓ File exists in /workspace: %s", strings.TrimSpace(out.String()))
+			}
 		}
 	})
 

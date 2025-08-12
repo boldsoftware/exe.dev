@@ -34,21 +34,34 @@ func NewMockContainerManager() *MockContainerManager {
 	}
 }
 
-// CreateContainer creates a mock container
-func (m *MockContainerManager) CreateContainer(ctx context.Context, req *container.CreateContainerRequest) (*container.Container, error) {
-	containerID := fmt.Sprintf("mock-%s-%s", req.UserID, req.Name)
-	
-	c := &container.Container{
-		ID:       containerID,
-		UserID:   req.UserID,
-		Name:     req.Name,
-		TeamName: req.TeamName,
-		Image:    req.Image,
-		Status:   container.StatusRunning,
+// AddContainer adds a pre-configured container for testing
+func (m *MockContainerManager) AddContainer(containerID, name, userID, teamName string) {
+	m.containers[containerID] = &container.Container{
+		ID:        containerID,
+		UserID:    userID,
+		Name:      name,
+		TeamName:  teamName,
+		Status:    container.StatusRunning,
 		CreatedAt: time.Now(),
 		StartedAt: func() *time.Time { t := time.Now(); return &t }(),
 	}
-	
+}
+
+// CreateContainer creates a mock container
+func (m *MockContainerManager) CreateContainer(ctx context.Context, req *container.CreateContainerRequest) (*container.Container, error) {
+	containerID := fmt.Sprintf("mock-%s-%s", req.UserID, req.Name)
+
+	c := &container.Container{
+		ID:        containerID,
+		UserID:    req.UserID,
+		Name:      req.Name,
+		TeamName:  req.TeamName,
+		Image:     req.Image,
+		Status:    container.StatusRunning,
+		CreatedAt: time.Now(),
+		StartedAt: func() *time.Time { t := time.Now(); return &t }(),
+	}
+
 	m.containers[containerID] = c
 	return c, nil
 }
@@ -131,11 +144,11 @@ func (m *MockContainerManager) ConnectToContainer(ctx context.Context, userID, c
 	if !exists {
 		return nil, fmt.Errorf("container not found")
 	}
-	
+
 	if c.Status != container.StatusRunning {
 		return nil, fmt.Errorf("container is not running (status: %s)", c.Status)
 	}
-	
+
 	return &container.ContainerConnection{
 		Container: c,
 		LocalPort: 0,
@@ -150,11 +163,11 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 	if !exists {
 		return fmt.Errorf("container not found")
 	}
-	
+
 	if c.Status != container.StatusRunning {
 		return fmt.Errorf("container is not running (status: %s)", c.Status)
 	}
-	
+
 	// Check if this is an interactive bash session
 	if len(cmd) > 0 && cmd[0] == "/bin/bash" {
 		// Generate hostname similar to real implementation
@@ -164,13 +177,13 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 		} else {
 			hostname = fmt.Sprintf("%s.exe.dev", c.Name)
 		}
-		
+
 		// Show initial prompt
 		prompt := fmt.Sprintf("root@%s:/workspace# ", hostname)
 		if stdout != nil {
 			stdout.Write([]byte(prompt))
 		}
-		
+
 		// Handle interactive shell session only if stdin is provided and readable
 		if stdin != nil {
 			// Handle the interactive session
@@ -189,7 +202,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 						if n == 0 {
 							continue
 						}
-						
+
 						// Handle special characters
 						switch b[0] {
 						case '\n', '\r':
@@ -215,7 +228,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 							}
 						}
 					}
-					
+
 				processCommand:
 					// Handle special commands
 					trimmedLine := strings.TrimSpace(line)
@@ -226,7 +239,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 						done <- true
 						return
 					}
-					
+
 					// Simulate command execution
 					if trimmedLine != "" {
 						// Simple command simulation
@@ -259,14 +272,14 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 							}
 						}
 					}
-					
+
 					// Show prompt again for next command
 					if stdout != nil {
 						stdout.Write([]byte(prompt))
 					}
 				}
 			}()
-			
+
 			// Wait for either completion or timeout (for tests)
 			select {
 			case <-done:
@@ -278,7 +291,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 				// Context cancelled
 			}
 		}
-		
+
 		// Record the interactive session
 		call := MockExecCall{
 			UserID:      userID,
@@ -289,7 +302,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 			Error:       nil,
 		}
 		m.execCalls = append(m.execCalls, call)
-		
+
 	} else {
 		// Non-interactive command execution
 		var output string
@@ -326,7 +339,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 		} else {
 			output = "\n"
 		}
-		
+
 		// Record the call
 		call := MockExecCall{
 			UserID:      userID,
@@ -337,13 +350,13 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 			Error:       nil,
 		}
 		m.execCalls = append(m.execCalls, call)
-		
+
 		// Write output
 		if stdout != nil {
 			stdout.Write([]byte(output))
 		}
 	}
-	
+
 	return nil
 }
 

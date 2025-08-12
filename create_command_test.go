@@ -74,7 +74,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			expectOutput: []string{"Invalid machine name"},
 		},
 		{
-			name:         "valid container name", 
+			name:         "valid container name",
 			args:         []string{"--name=mycontainer"},
 			expectError:  false,
 			expectOutput: []string{"Creating", "mycontainer", "for team testteam", "Ready in", "Access with ssh mycontainer@exe.dev"},
@@ -120,10 +120,10 @@ func TestHandleCreateCommand(t *testing.T) {
 				t.Skipf("Could not create terminal emulator: %v", err)
 			}
 			defer term.Close()
-			
+
 			// Override the buffer for output capture
 			term.buffer = &outputBuf
-			
+
 			mockChannel := &MockSSHChannel{
 				term: term,
 			}
@@ -187,10 +187,10 @@ func TestHandleCreateCommandWithoutContainerManager(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
@@ -235,10 +235,10 @@ func TestHandleCreateCommandWithoutUserSession(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
@@ -294,10 +294,10 @@ func TestCreateCommandIntegration(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
@@ -332,7 +332,7 @@ func TestCreateCommandIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to list containers: %v", err)
 	}
-	
+
 	found := false
 	for _, c := range containers {
 		if c.Name == containerName && c.UserID == fingerprint {
@@ -343,7 +343,7 @@ func TestCreateCommandIntegration(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !found {
 		t.Error("Container not found in mock manager")
 	}

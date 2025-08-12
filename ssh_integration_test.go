@@ -2,7 +2,6 @@ package exe
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -13,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/container"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -38,34 +36,21 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	}
 	defer server.Stop()
 
-	// Create GKE manager for testing
-	ctx := context.Background()
-	gkeManager, err := container.NewGKEManager(ctx, &container.Config{
-		ProjectID:            "exe-dev-468515",
-		ClusterName:          "exe-cluster",
-		ClusterLocation:      "us-central1",
-		NamespacePrefix:      "exe-",
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "128Mi",
-		DefaultStorageSize:   "1Gi",
-	})
-	if err != nil {
-		t.Skipf("Skipping GKE test (no cluster access): %v", err)
-	}
-
-	server.containerManager = gkeManager
+	// Use mock container manager for testing instead of real GKE
+	mockManager := NewMockContainerManager()
+	server.containerManager = mockManager
 
 	// Generate test SSH key and fingerprint
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("Failed to generate private key: %v", err)
 	}
-	
+
 	signer, err := ssh.NewSignerFromKey(privateKey)
 	if err != nil {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
-	
+
 	// Calculate fingerprint the same way the server does
 	hash := sha256.Sum256(signer.PublicKey().Marshal())
 	fingerprint := hex.EncodeToString(hash[:])
@@ -91,45 +76,24 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}
 
-	// Create test container
-	t.Log("Creating test container...")
-	containerReq := &container.CreateContainerRequest{
-		UserID:   fingerprint,
-		Name:     machineName,
-		TeamName: teamName,
-		Image:    "ubuntu:22.04", // Use standard ubuntu image (likely doesn't have openssh-client)
-	}
-
-	testContainer, err := gkeManager.CreateContainer(ctx, containerReq)
-	if err != nil {
-		t.Fatalf("Failed to create container: %v", err)
-	}
+	// Create test container with mock manager
+	t.Log("Creating mock test container...")
+	containerID := "mock-test-container"
+	
+	// Add container to mock manager
+	mockManager.AddContainer(containerID, machineName, fingerprint, teamName)
 
 	// Store container in database as a machine
 	_, err = server.db.Exec(`
 		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint)
 		VALUES (?, ?, 'running', ?, ?, ?)
-	`, teamName, machineName, containerReq.Image, testContainer.ID, fingerprint)
+	`, teamName, machineName, "ubuntu:22.04", containerID, fingerprint)
 	if err != nil {
 		t.Fatalf("Failed to store machine in database: %v", err)
 	}
 
-	// Wait for container to be running
-	t.Log("Waiting for container to be running...")
-	timeout := time.Now().Add(3 * time.Minute)
-	for time.Now().Before(timeout) {
-		cont, err := gkeManager.GetContainer(ctx, fingerprint, testContainer.ID)
-		if err == nil && cont.Status == container.StatusRunning {
-			t.Log("Container is running!")
-			break
-		}
-		if err != nil {
-			t.Logf("Error checking container status: %v", err)
-		} else {
-			t.Logf("Container status: %v, waiting...", cont.Status)
-		}
-		time.Sleep(5 * time.Second)
-	}
+	// With mock container, no need to wait
+	t.Log("Mock container is ready")
 
 	// Set up SSH server
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -162,7 +126,7 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	}
 
 	t.Log("=== Testing SSH Direct Command Execution ===")
-	
+
 	// Test 1: Basic command execution
 	client, err := ssh.Dial("tcp", listener.Addr().String(), clientConfig)
 	if err != nil {
@@ -197,7 +161,7 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	}
 
 	t.Log("=== Testing SCP (This should reproduce the 'message too long' error) ===")
-	
+
 	// Test 3: SCP command - this should fail with the exact error the user reported
 	session, err = client.NewSession()
 	if err != nil {
@@ -210,14 +174,14 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 
 	scpCommand := "scp -t /tmp/testfile"
 	t.Logf("Executing SCP command: %s", scpCommand)
-	
+
 	err = session.Run(scpCommand)
 	session.Close()
-	
+
 	t.Logf("SCP command exit status: %v", err)
 	t.Logf("SCP stdout: %q", scpStdout.String())
 	t.Logf("SCP stderr: %q", scpStderr.String())
-	
+
 	// Check if we get the protocol-breaking output
 	stdoutStr := scpStdout.String()
 	if strings.Contains(stdoutStr, "Executed:") || strings.Contains(stdoutStr, "command not found") {
@@ -226,7 +190,7 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	}
 
 	t.Log("=== Testing SFTP (This should also reproduce the error) ===")
-	
+
 	// Test 4: SFTP subsystem - this should also fail with similar error
 	session, err = client.NewSession()
 	if err != nil {
@@ -242,14 +206,14 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	if err != nil {
 		t.Logf("SFTP subsystem request failed: %v", err)
 	}
-	
+
 	// Give it a moment to respond
 	time.Sleep(1 * time.Second)
 	session.Close()
-	
+
 	t.Logf("SFTP stdout: %q", sftpStdout.String())
 	t.Logf("SFTP stderr: %q", sftpStderr.String())
-	
+
 	// Check if SFTP also gets protocol-breaking output
 	sftpStdoutStr := sftpStdout.String()
 	if strings.Contains(sftpStdoutStr, "Executed:") {
@@ -260,7 +224,7 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	client.Close()
 
 	t.Log("=== Integration test complete ===")
-	
+
 	// Clean up - delete the container
 	t.Log("Cleaning up test container...")
 	// The container will be cleaned up by the test environment

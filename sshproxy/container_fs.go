@@ -371,10 +371,7 @@ func (f *unixFile) Close() error {
 		
 		err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, &stdout, &stderr)
 		if err != nil {
-			// Log the actual error for debugging
-			actualErr := fmt.Errorf("write failed: %v, stderr: %s", err, stderr.String())
-			fmt.Fprintf(os.Stderr, "DEBUG: unixFile.Close() error: %v\n", actualErr)
-			return actualErr
+			return fmt.Errorf("write failed: %v, stderr: %s", err, stderr.String())
 		}
 		
 		// Set file mode if creating

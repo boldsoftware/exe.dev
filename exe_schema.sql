@@ -2,11 +2,16 @@
 -- This file is embedded in the Go binary and executed on startup
 
 -- Teams table: team names are unique primary keys
+-- Teams can be either personal teams (for a single user) or shared teams
+-- Personal teams have is_personal=TRUE and cannot have additional members
 CREATE TABLE IF NOT EXISTS teams (
     name TEXT PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     stripe_customer_id TEXT,
-    billing_email TEXT
+    billing_email TEXT,
+    is_personal BOOLEAN DEFAULT FALSE, -- TRUE for personal teams that cannot be shared
+    owner_fingerprint TEXT, -- For personal teams, the owner's fingerprint
+    FOREIGN KEY (owner_fingerprint) REFERENCES users(public_key_fingerprint) ON DELETE CASCADE
 );
 
 -- Users table: individual users identified by SSH key fingerprint
@@ -28,6 +33,10 @@ CREATE TABLE IF NOT EXISTS team_members (
 );
 
 -- Invitations: allow users to join teams via invite codes
+-- When inviting by email:
+--   - If user exists: just send the invite code
+--   - If user doesn't exist: send a link that sets a cookie and directs to signup
+-- After signup, users with a valid invite cookie are prompted to join the team
 CREATE TABLE IF NOT EXISTS invites (
     code TEXT PRIMARY KEY,
     team_name TEXT NOT NULL,
@@ -110,14 +119,17 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 );
 
 -- SSH keys table: supports multiple SSH keys per user
+-- Each SSH key has a default team that is used when no team is specified
 CREATE TABLE IF NOT EXISTS ssh_keys (
     fingerprint TEXT PRIMARY KEY,
     user_email TEXT NOT NULL,
     public_key TEXT NOT NULL,
     device_name TEXT, -- Optional: friendly name for the key
+    default_team TEXT, -- Default team for this SSH key
     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_used_at DATETIME,
-    verified BOOLEAN DEFAULT FALSE -- Whether this key has been verified via email
+    verified BOOLEAN DEFAULT FALSE, -- Whether this key has been verified via email
+    FOREIGN KEY (default_team) REFERENCES teams(name) ON DELETE SET NULL
 );
 
 -- Table for pending SSH key additions (when logging in from new device)
@@ -154,4 +166,7 @@ CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires ON auth_tokens(expires_at);
 CREATE INDEX IF NOT EXISTS idx_auth_tokens_subdomain ON auth_tokens(subdomain);
 CREATE INDEX IF NOT EXISTS idx_ssh_keys_email ON ssh_keys(user_email);
 CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_ssh_keys_default_team ON ssh_keys(default_team);
 CREATE INDEX IF NOT EXISTS idx_pending_ssh_keys_expires ON pending_ssh_keys(expires_at);
+CREATE INDEX IF NOT EXISTS idx_teams_personal ON teams(is_personal);
+CREATE INDEX IF NOT EXISTS idx_teams_owner ON teams(owner_fingerprint);

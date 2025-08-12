@@ -249,7 +249,7 @@ func TestMachineTimestamps(t *testing.T) {
 	}
 
 	beforeCreate := time.Now().UTC()
-	
+
 	// Create machine
 	machineName := "testmachine"
 	err = server.createMachine(fingerprint, teamName, machineName, "container-123", "ubuntu:22.04")
@@ -268,13 +268,13 @@ func TestMachineTimestamps(t *testing.T) {
 	// Check CreatedAt is within reasonable range (allow 1 second tolerance for SQLite precision)
 	tolerance := time.Second
 	if machine.CreatedAt.Before(beforeCreate.Add(-tolerance)) || machine.CreatedAt.After(afterCreate.Add(tolerance)) {
-		t.Errorf("CreatedAt timestamp %v is not within expected range %v - %v (±%v)", 
+		t.Errorf("CreatedAt timestamp %v is not within expected range %v - %v (±%v)",
 			machine.CreatedAt, beforeCreate, afterCreate, tolerance)
 	}
 
 	// Check UpdatedAt is within reasonable range (allow 1 second tolerance for SQLite precision)
 	if machine.UpdatedAt.Before(beforeCreate.Add(-tolerance)) || machine.UpdatedAt.After(afterCreate.Add(tolerance)) {
-		t.Errorf("UpdatedAt timestamp %v is not within expected range %v - %v (±%v)", 
+		t.Errorf("UpdatedAt timestamp %v is not within expected range %v - %v (±%v)",
 			machine.UpdatedAt, beforeCreate, afterCreate, tolerance)
 	}
 

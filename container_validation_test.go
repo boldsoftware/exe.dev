@@ -73,24 +73,24 @@ func TestContainerNamesSameAsTeamNames(t *testing.T) {
 	testNames := []string{
 		"validname",
 		"valid-name",
-		"name123", 
+		"name123",
 		"my-name-123",
-		"ab",              // too short
+		"ab",               // too short
 		"toolongname12345", // too long
-		"Name",            // uppercase
-		"name_with_under", // underscore
-		"name with space", // space
-		"-name",           // starts with hyphen
-		"name-",           // ends with hyphen
-		"name--with",      // consecutive hyphens
+		"Name",             // uppercase
+		"name_with_under",  // underscore
+		"name with space",  // space
+		"-name",            // starts with hyphen
+		"name-",            // ends with hyphen
+		"name--with",       // consecutive hyphens
 	}
 
 	for _, name := range testNames {
 		containerValid := server.isValidContainerName(name)
 		teamValid := server.isValidTeamName(name)
-		
+
 		if containerValid != teamValid {
-			t.Errorf("Container name validation differs from team name validation for %q: container=%v, team=%v", 
+			t.Errorf("Container name validation differs from team name validation for %q: container=%v, team=%v",
 				name, containerValid, teamValid)
 		}
 	}

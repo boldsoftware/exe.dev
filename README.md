@@ -39,6 +39,94 @@ exe.dev is a secure multi-tenant container service that provides users with sand
    ssh -p 2222 localhost
    ```
 
+## Production Deployment
+
+### Prerequisites
+
+1. **Tailscale Account**: You'll need a Tailscale account and an auth key
+   - Sign up at https://login.tailscale.com if you don't have an account
+   - Create an auth key at https://login.tailscale.com/admin/settings/keys
+   - **Important**: Create the key with `tag:server` tag for proper ACL management
+   - The key can be reusable or one-time (one-time is more secure for production)
+
+2. **Google Cloud Project**: Set up as described below
+
+### Quick Production Setup
+
+```bash
+# 1. Set up the production VM with Tailscale
+make setup-vm TAILSCALE_AUTH_KEY=tskey-auth-xxxxxxxxxxxxxx
+
+# 2. Deploy the binary
+make deploy
+
+# 3. Check status
+make status
+```
+
+The production VM will:
+- Run Ubuntu 22.04 LTS
+- Have a static external IP for public access
+- Join your Tailnet with `tag:server` for secure internal access
+- Automatically start exed on boot via systemd
+- Use versioned binaries (exed.YYYYMMDD-HHMMSS) for easy rollback
+
+### Access Methods
+
+After setup, you can access the VM in two ways:
+
+1. **Public Access** (for initial setup/debugging):
+   ```bash
+   ssh -p 22222 ubuntu@<external-ip>
+   ```
+
+2. **Tailscale Access** (recommended for daily operations):
+   ```bash
+   # After Tailscale is connected
+   ssh ubuntu@exed-prod-01
+   ```
+
+### Production Commands
+
+```bash
+make deploy        # Build and deploy new version
+make ssh-vm        # SSH to production VM
+make logs          # View production logs
+make status        # Check service status
+make restart       # Restart the service
+```
+
+### Tailscale ACL Configuration
+
+For proper security, configure your Tailscale ACL policy to restrict the `tag:server` tag:
+
+```json
+{
+  "tagOwners": {
+    "tag:server": ["autogroup:admin"]
+  },
+  "acls": [
+    // Allow admins to access servers
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["tag:server:*"]
+    },
+    // Allow servers to access GKE cluster (if on same tailnet)
+    {
+      "action": "accept", 
+      "src": ["tag:server"],
+      "dst": ["tag:k8s:*"]
+    }
+  ]
+}
+```
+
+This ensures:
+- Only admins can apply the `tag:server` tag
+- Only admins can SSH to production servers
+- Servers can communicate with your GKE cluster if needed
+
 ## Google Cloud Setup
 
 Follow these minimal steps to set up the Google Cloud backend for container management:

@@ -33,7 +33,7 @@ func TestHandleStopCommandMultipleMachines(t *testing.T) {
 	fingerprint := "test-fingerprint"
 	email := "test@example.com"
 	teamName := "testteam"
-	
+
 	// Create three test machines
 	machines := []struct {
 		name        string
@@ -61,21 +61,21 @@ func TestHandleStopCommandMultipleMachines(t *testing.T) {
 			Name:   m.name,
 			Image:  "ubuntu:latest",
 		}
-		
+
 		createdContainer, err := mockManager.CreateContainer(context.Background(), containerReq)
 		if err != nil {
 			t.Fatalf("Failed to create container %s: %v", m.name, err)
 		}
-		
+
 		// Store the actual container ID
 		machines[findMachineIndex(machines, m.name)].containerID = createdContainer.ID
-		
+
 		// Create machine record in database
 		err = server.createMachine(fingerprint, teamName, m.name, createdContainer.ID, "ubuntu:latest")
 		if err != nil {
 			t.Fatalf("Failed to create machine %s: %v", m.name, err)
 		}
-		
+
 		// Ensure container is running
 		createdContainer.Status = container.StatusRunning
 	}
@@ -182,13 +182,13 @@ func TestHandleStopCommandPartialFailure(t *testing.T) {
 		Name:   "running-machine",
 		Image:  "ubuntu:latest",
 	}
-	
+
 	createdContainer, err := mockManager.CreateContainer(context.Background(), containerReq)
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)
 	}
 	createdContainer.Status = container.StatusRunning
-	
+
 	err = server.createMachine(fingerprint, teamName, "running-machine", createdContainer.ID, "ubuntu:latest")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
@@ -200,13 +200,13 @@ func TestHandleStopCommandPartialFailure(t *testing.T) {
 		Name:   "stopped-machine",
 		Image:  "ubuntu:latest",
 	}
-	
+
 	stoppedContainer, err := mockManager.CreateContainer(context.Background(), stoppedReq)
 	if err != nil {
 		t.Fatalf("Failed to create stopped container: %v", err)
 	}
 	stoppedContainer.Status = container.StatusStopped
-	
+
 	err = server.createMachine(fingerprint, teamName, "stopped-machine", stoppedContainer.ID, "ubuntu:latest")
 	if err != nil {
 		t.Fatalf("Failed to create stopped machine: %v", err)

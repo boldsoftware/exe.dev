@@ -103,7 +103,6 @@ func (h *SFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) {
 	originalPath := req.Filepath
 	filePath := h.resolvePath(originalPath)
 	
-	fmt.Fprintf(os.Stderr, "DEBUG: Filewrite called with originalPath=%q, resolved to %q\n", originalPath, filePath)
 	
 	
 	

@@ -85,7 +85,7 @@ func TestSCPFixVerification(t *testing.T) {
 						defer channel.Close()
 
 						for req := range requests {
-							if req.Type == "subsystem" && string(req.Payload[4:]) == "sftp" {
+							if req.Type == "subsystem" && len(req.Payload) > 4 && string(req.Payload[4:]) == "sftp" {
 								req.Reply(true, nil)
 
 								ctx := context.Background()
@@ -100,9 +100,17 @@ func TestSCPFixVerification(t *testing.T) {
 								}
 
 								server := sftp.NewRequestServer(channel, handlers)
-								if err := server.Serve(); err != nil && err != io.EOF {
-									t.Logf("SFTP error: %v", err)
+								err := server.Serve()
+								if err != nil {
+									if err != io.EOF {
+										t.Logf("SFTP server error: %v", err)
+									}
 								}
+								
+								// Send exit status before closing
+								exitStatus := []byte{0, 0, 0, 0} // exit status 0
+								channel.SendRequest("exit-status", false, exitStatus)
+								
 								return
 							}
 							req.Reply(false, nil)

@@ -51,7 +51,7 @@ func TestHandleStopCommand(t *testing.T) {
 		Name:   machineName,
 		Image:  "ubuntu:latest",
 	}
-	
+
 	createdContainer, err := mockManager.CreateContainer(context.Background(), containerReq)
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)

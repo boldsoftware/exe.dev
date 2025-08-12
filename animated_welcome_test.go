@@ -53,7 +53,7 @@ func TestShowAnimatedWelcome(t *testing.T) {
 
 	// Check output
 	rawOutput := outputBuf.String()
-	
+
 	// The output should contain ANSI escape codes for:
 	// - Screen clearing
 	// - Cursor movement
@@ -80,7 +80,7 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 	// Test that the registration flow with animated welcome works
 	// This is a minimal test since full registration testing would require
 	// interactive input simulation which is complex
-	
+
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -139,7 +139,7 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 
 	// Check that the animation and signup content appeared
 	rawOutput := outputBuf.String()
-	
+
 	if !strings.Contains(rawOutput, "███") {
 		t.Error("Expected ASCII art in registration flow")
 	}
@@ -152,3 +152,4 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 
 	t.Log("Registration flow with animated welcome started successfully")
 }
+

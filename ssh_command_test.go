@@ -70,10 +70,10 @@ func TestHandleSSHCommand(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
@@ -82,11 +82,11 @@ func TestHandleSSHCommand(t *testing.T) {
 	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
 
 	tests := []struct {
-		name           string
-		args           []string
-		expectError    bool
-		expectOutput   []string
-		expectedExecs  int
+		name          string
+		args          []string
+		expectError   bool
+		expectOutput  []string
+		expectedExecs int
 	}{
 		{
 			name:          "no arguments",
@@ -177,10 +177,10 @@ func TestHandleSSHCommandWithoutContainerManager(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
@@ -248,10 +248,10 @@ func TestHandleSSHCommandContainerNotCreated(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
@@ -320,17 +320,17 @@ func TestHandleSSHCommandWithStoppedContainer(t *testing.T) {
 	}
 	mockManager.containers[containerID] = stoppedContainer
 
-	// Create mock channel  
+	// Create mock channel
 	var outputBuf bytes.Buffer
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
@@ -374,10 +374,10 @@ func TestHandleSSHCommandWithoutUserSession(t *testing.T) {
 		t.Skipf("Could not create terminal emulator: %v", err)
 	}
 	defer term.Close()
-	
+
 	// Override the buffer for output capture
 	term.buffer = &outputBuf
-	
+
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}

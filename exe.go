@@ -38,7 +38,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
-	
+
 	"exe.dev/container"
 	"exe.dev/porkbun"
 	"exe.dev/sshproxy"
@@ -137,34 +137,34 @@ type Server struct {
 	httpsAddr string
 	sshAddr   string
 	BaseURL   string
-	
-	httpServer  *http.Server
-	httpsServer *http.Server
-	sshConfig   *ssh.ServerConfig
-	certManager *autocert.Manager
+
+	httpServer          *http.Server
+	httpsServer         *http.Server
+	sshConfig           *ssh.ServerConfig
+	certManager         *autocert.Manager
 	wildcardCertManager *porkbun.WildcardCertManager
-	
+
 	// Database
 	db *sql.DB
-	
+
 	// Container management
 	containerManager container.Manager
-	
+
 	// In-memory state for active sessions (these don't need persistence)
-	emailVerificationsMu    sync.RWMutex
-	emailVerifications      map[string]*EmailVerification // token -> email verification
-	billingVerificationsMu  sync.RWMutex
-	billingVerifications    map[string]*BillingVerification // fingerprint -> billing verification
-	
+	emailVerificationsMu   sync.RWMutex
+	emailVerifications     map[string]*EmailVerification // token -> email verification
+	billingVerificationsMu sync.RWMutex
+	billingVerifications   map[string]*BillingVerification // fingerprint -> billing verification
+
 	// User sessions for tracking authenticated users
-	sessionsMu              sync.RWMutex
-	sessions                map[ssh.Channel]*UserSession // channel -> user session
-	
+	sessionsMu sync.RWMutex
+	sessions   map[ssh.Channel]*UserSession // channel -> user session
+
 	// Email and billing services
 	postmarkClient *postmark.Client
 	stripeKey      string
 	devMode        bool // Development mode - log instead of sending emails
-	
+
 	mu       sync.RWMutex
 	stopping bool
 }
@@ -176,13 +176,13 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
-	
+
 	// Execute schema
 	if _, err := db.Exec(schemaSQL); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
-	
+
 	// Initialize Postmark client
 	postmarkAPIKey := os.Getenv("POSTMARK_API_KEY")
 	var postmarkClient *postmark.Client
@@ -191,7 +191,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 	} else {
 		log.Printf("Warning: POSTMARK_API_KEY not set, email verification will not work")
 	}
-	
+
 	// Get Stripe key
 	stripeKey := os.Getenv("STRIPE_API_KEY")
 	if stripeKey == "" {
@@ -215,7 +215,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 			}
 		}
 	}
-	
+
 	// Initialize container manager if GCP project is provided
 	var containerManager container.Manager
 	if gcpProjectID != "" {
@@ -229,7 +229,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 			log.Printf("Machine management enabled for GCP project: %s", gcpProjectID)
 		}
 	}
-	
+
 	s := &Server{
 		httpAddr:             httpAddr,
 		httpsAddr:            httpsAddr,
@@ -244,11 +244,11 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 		stripeKey:            stripeKey,
 		devMode:              devMode,
 	}
-	
+
 	s.setupHTTPServer()
 	s.setupHTTPSServer()
 	s.setupSSHServer()
-	
+
 	return s, nil
 }
 
@@ -265,11 +265,11 @@ func (s *Server) setupHTTPSServer() {
 	if s.httpsAddr == "" {
 		return
 	}
-	
+
 	// Check if Porkbun API credentials are available for wildcard cert
 	porkbunAPIKey := os.Getenv("PORKBUN_API_KEY")
 	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
-	
+
 	if porkbunAPIKey != "" && porkbunSecretKey != "" {
 		// Use Porkbun for wildcard certificates with DNS challenge
 		log.Printf("Using Porkbun DNS provider for wildcard TLS certificates")
@@ -280,7 +280,7 @@ func (s *Server) setupHTTPSServer() {
 			porkbunSecretKey,
 			autocert.DirCache("certs"),
 		)
-		
+
 		s.httpsServer = &http.Server{
 			Addr:    s.httpsAddr,
 			Handler: s,
@@ -296,7 +296,7 @@ func (s *Server) setupHTTPSServer() {
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist("exe.dev"),
 		}
-		
+
 		s.httpsServer = &http.Server{
 			Addr:    s.httpsAddr,
 			Handler: s,
@@ -312,7 +312,7 @@ func (s *Server) setupSSHServer() {
 	s.sshConfig = &ssh.ServerConfig{
 		PublicKeyCallback: s.authenticatePublicKey,
 	}
-	
+
 	// Load or generate persistent host keys
 	if err := s.generateHostKey(); err != nil {
 		log.Printf("Failed to generate host key: %v", err)
@@ -324,14 +324,14 @@ func (s *Server) generateHostKey() error {
 	// Try to load existing host key from database
 	var privateKeyPEM, publicKeyPEM string
 	err := s.db.QueryRow(`SELECT private_key, public_key FROM ssh_host_key WHERE id = 1`).Scan(&privateKeyPEM, &publicKeyPEM)
-	
+
 	if err == sql.ErrNoRows {
 		// No existing key, generate a new one
 		privateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
 		if err != nil {
 			return fmt.Errorf("failed to generate RSA key: %w", err)
 		}
-		
+
 		// Convert private key to PEM format
 		privateKeyDER := x509.MarshalPKCS1PrivateKey(privateKey)
 		privateKeyPEMBytes := pem.EncodeToMemory(&pem.Block{
@@ -339,19 +339,19 @@ func (s *Server) generateHostKey() error {
 			Bytes: privateKeyDER,
 		})
 		privateKeyPEM = string(privateKeyPEMBytes)
-		
+
 		// Parse as SSH private key to get public key
 		signer, err := ssh.ParsePrivateKey(privateKeyPEMBytes)
 		if err != nil {
 			return fmt.Errorf("failed to parse private key: %w", err)
 		}
-		
+
 		// Get public key in authorized_keys format
 		publicKeyPEM = string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-		
+
 		// Calculate fingerprint
 		fingerprint := s.getPublicKeyFingerprint(signer.PublicKey())
-		
+
 		// Store in database
 		_, err = s.db.Exec(`
 			INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint, created_at, updated_at)
@@ -360,25 +360,25 @@ func (s *Server) generateHostKey() error {
 		if err != nil {
 			return fmt.Errorf("failed to store host key: %w", err)
 		}
-		
+
 		log.Printf("Generated and stored new SSH host key with fingerprint: %s", fingerprint)
 		s.sshConfig.AddHostKey(signer)
-		
+
 	} else if err != nil {
 		return fmt.Errorf("failed to query host key: %w", err)
-		
+
 	} else {
 		// Load existing key
 		signer, err := ssh.ParsePrivateKey([]byte(privateKeyPEM))
 		if err != nil {
 			return fmt.Errorf("failed to parse stored private key: %w", err)
 		}
-		
+
 		fingerprint := s.getPublicKeyFingerprint(signer.PublicKey())
 		log.Printf("Loaded existing SSH host key with fingerprint: %s", fingerprint)
 		s.sshConfig.AddHostKey(signer)
 	}
-	
+
 	return nil
 }
 
@@ -424,7 +424,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 		}
 		return fmt.Errorf("email service not configured")
 	}
-	
+
 	// Use the existing sendVerificationEmail logic
 	email := postmark.Email{
 		From:     "noreply@exe.dev",
@@ -432,7 +432,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 		Subject:  subject,
 		TextBody: body,
 	}
-	
+
 	_, err := s.postmarkClient.SendEmail(email)
 	return err
 }
@@ -441,20 +441,20 @@ func (s *Server) sendEmail(to, subject, body string) error {
 func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 	fingerprint := s.getPublicKeyFingerprint(key)
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(key))
-	
+
 	// First check if this key is already registered in ssh_keys table
 	email, verified, err := s.getEmailBySSHKey(fingerprint)
 	if err != nil {
 		log.Printf("Database error checking SSH key %s: %v", fingerprint, err)
 	}
-	
+
 	if email != "" && verified {
 		// This is a verified key, check if user has team memberships
 		teams, err := s.getUserTeamsByEmail(email)
 		if err != nil {
 			log.Printf("Database error getting teams for user %s: %v", email, err)
 		}
-		
+
 		if len(teams) > 0 {
 			// User is fully registered with team membership
 			return &ssh.Permissions{
@@ -467,25 +467,25 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 			}, nil
 		}
 	}
-	
+
 	// Check legacy users table for backward compatibility
 	user, err := s.getUserByFingerprint(fingerprint)
 	if err != nil {
 		log.Printf("Database error checking legacy user %s: %v", fingerprint, err)
 	}
-	
+
 	if user != nil {
 		// Migrate this user to the new ssh_keys table
 		if err := s.migrateLegacyUserKey(user.Email, fingerprint, publicKeyStr); err != nil {
 			log.Printf("Failed to migrate legacy user key: %v", err)
 		}
-		
+
 		// Check if user has team memberships
 		teams, err := s.getUserTeams(fingerprint)
 		if err != nil {
 			log.Printf("Database error getting teams for user %s: %v", fingerprint, err)
 		}
-		
+
 		if len(teams) > 0 {
 			// User is fully registered with team membership
 			return &ssh.Permissions{
@@ -498,21 +498,21 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 			}, nil
 		}
 	}
-	
+
 	// Check if there's an email associated with any SSH key and if this is a new key for that user
 	if email != "" && !verified {
 		// This key belongs to a user but isn't verified yet - treat as new device login attempt
 		return &ssh.Permissions{
 			Extensions: map[string]string{
-				"fingerprint":     fingerprint,
-				"registered":      "new_device",
-				"email":          email,
-				"public_key":     publicKeyStr,
+				"fingerprint":        fingerprint,
+				"registered":         "new_device",
+				"email":              email,
+				"public_key":         publicKeyStr,
 				"needs_verification": "true",
 			},
 		}, nil
 	}
-	
+
 	// User is not registered or has no team, allow connection but mark as needing registration
 	return &ssh.Permissions{
 		Extensions: map[string]string{
@@ -528,21 +528,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	stopping := s.stopping
 	s.mu.RUnlock()
-	
+
 	if stopping {
 		http.Error(w, "Server is shutting down", http.StatusServiceUnavailable)
 		return
 	}
-	
+
 	// Check if this is a container subdomain request
 	if containerName, teamName, port, isContainerRequest := s.parseContainerRequest(r.Host); isContainerRequest {
 		s.handleContainerProxy(w, r, containerName, teamName, port)
 		return
 	}
-	
+
 	// TODO: Wake up containers on HTTP request
 	log.Printf("HTTP request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
-	
+
 	switch r.URL.Path {
 	case "/":
 		s.handleRoot(w, r)
@@ -603,14 +603,168 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"containers":[],"message":"Machine management not yet implemented"}`)
 }
 
-// handleDeviceVerificationHTTP handles web-based device verification
-func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Missing token parameter", http.StatusBadRequest)
+// showDeviceVerificationForm shows a confirmation form for device verification
+func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
+	// Look up the pending SSH key to validate token and get info
+	var fingerprint, email string
+	var expires time.Time
+	err := s.db.QueryRow(`
+		SELECT fingerprint, user_email, expires_at
+		FROM pending_ssh_keys
+		WHERE token = ?`,
+		token).Scan(&fingerprint, &email, &expires)
+
+	if err == sql.ErrNoRows {
+		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 		return
 	}
-	
+	if err != nil {
+		log.Printf("Database error during device verification check: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if token has expired
+	if time.Now().After(expires) {
+		// Clean up expired token
+		s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+		http.Error(w, "Verification token has expired", http.StatusBadRequest)
+		return
+	}
+
+	// Show confirmation form
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+    <title>Confirm Device - exe.dev</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 500px;
+            margin: 100px auto;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { 
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin: 20px 0;
+        }
+        .info-box {
+            background: #f0f9ff;
+            border: 1px solid #0ea5e9;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 20px 0;
+        }
+        .info-box strong {
+            color: #0c4a6e;
+        }
+        .fingerprint {
+            font-family: monospace;
+            background: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 8px;
+        }
+        .button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-block;
+            margin-top: 20px;
+            transition: background 0.2s;
+        }
+        .button:hover {
+            background: #1d4ed8;
+        }
+        .warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 20px 0;
+            color: #92400e;
+        }
+        form {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Authorize New Device</h1>
+        <p>A new device is requesting access to your exe.dev account.</p>
+        
+        <div class="info-box">
+            <strong>Account:</strong> %s<br>
+            <strong>Device Fingerprint:</strong>
+            <div class="fingerprint">%s...</div>
+        </div>
+        
+        <div class="warning">
+            ⚠️ Only confirm if you just tried to connect from a new device
+        </div>
+        
+        <p>This will allow the device to access your exe.dev containers using SSH.</p>
+        
+        <form method="POST" action="/verify-device">
+            <input type="hidden" name="token" value="%s">
+            <button type="submit" class="button">Authorize Device</button>
+        </form>
+    </div>
+</body>
+</html>`, email, fingerprint[:16], token)
+}
+
+// handleDeviceVerificationHTTP handles web-based device verification
+func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Request) {
+	// Handle GET request - show confirmation form
+	if r.Method == http.MethodGet {
+		token := r.URL.Query().Get("token")
+		if token == "" {
+			http.Error(w, "Missing token parameter", http.StatusBadRequest)
+			return
+		}
+		s.showDeviceVerificationForm(w, r, token)
+		return
+	}
+
+	// Handle POST request - complete verification
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse form data to get the token from POST
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	token := r.FormValue("token")
+	if token == "" {
+		http.Error(w, "Missing token in form data", http.StatusBadRequest)
+		return
+	}
+
 	// Look up the pending SSH key
 	var fingerprint, publicKey, email string
 	var expires time.Time
@@ -619,7 +773,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		FROM pending_ssh_keys
 		WHERE token = ?`,
 		token).Scan(&fingerprint, &publicKey, &email, &expires)
-	
+
 	if err == sql.ErrNoRows {
 		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
 		return
@@ -629,7 +783,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Check if token has expired
 	if time.Now().After(expires) {
 		// Clean up expired token
@@ -637,23 +791,23 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Verification token has expired", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Add the SSH key to the verified keys
 	_, err = s.db.Exec(`
 		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
 		VALUES (?, ?, ?, 1, 'New Device')
 		ON CONFLICT(fingerprint) DO UPDATE SET verified = 1`,
 		fingerprint, email, publicKey)
-	
+
 	if err != nil {
 		log.Printf("Failed to add SSH key: %v", err)
 		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Clean up the pending key
 	s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
-	
+
 	// Send success response
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>
@@ -706,14 +860,140 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 </html>`, fingerprint[:16])
 }
 
-// handleEmailVerificationHTTP handles web-based email verification
-func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Missing token parameter", http.StatusBadRequest)
+// showEmailVerificationForm shows a confirmation form for email verification
+func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
+	// First validate that the token exists
+	isValid := false
+	
+	// Check if this is an SSH session token (in-memory)
+	s.emailVerificationsMu.Lock()
+	_, exists := s.emailVerifications[token]
+	s.emailVerificationsMu.Unlock()
+	
+	if exists {
+		isValid = true
+	} else {
+		// Check database for HTTP auth token (without consuming it)
+		_, err := s.checkEmailVerificationToken(token)
+		if err == nil {
+			isValid = true
+		}
+	}
+	
+	if !isValid {
+		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 		return
 	}
 	
+	// Show confirmation form
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+    <title>Confirm Email - exe.dev</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 500px;
+            margin: 100px auto;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { 
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin: 20px 0;
+        }
+        .button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-block;
+            margin-top: 20px;
+            transition: background 0.2s;
+        }
+        .button:hover {
+            background: #1d4ed8;
+        }
+        .warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 20px 0;
+            color: #92400e;
+        }
+        form {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Confirm Your Email Address</h1>
+        <p>You're about to verify your email address for exe.dev.</p>
+        
+        <div class="warning">
+            ⚠️ Only click confirm if you initiated this request
+        </div>
+        
+        <p>This will complete your email verification and allow you to proceed with your exe.dev account setup.</p>
+        
+        <form method="POST" action="/verify-email">
+            <input type="hidden" name="token" value="%s">
+            <button type="submit" class="button">Confirm Email Verification</button>
+        </form>
+    </div>
+</body>
+</html>`, token)
+}
+
+// handleEmailVerificationHTTP handles web-based email verification
+func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Request) {
+	// Handle GET request - show confirmation form
+	if r.Method == http.MethodGet {
+		token := r.URL.Query().Get("token")
+		if token == "" {
+			http.Error(w, "Missing token parameter", http.StatusBadRequest)
+			return
+		}
+		s.showEmailVerificationForm(w, r, token)
+		return
+	}
+
+	// Handle POST request - complete verification
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse form data to get the token from POST
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	token := r.FormValue("token")
+	if token == "" {
+		http.Error(w, "Missing token in form data", http.StatusBadRequest)
+		return
+	}
+
 	// First check if this is an SSH session token (in-memory)
 	s.emailVerificationsMu.Lock()
 	verification, exists := s.emailVerifications[token]
@@ -736,17 +1016,17 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			}
 			http.SetCookie(w, cookie)
 		}
-		
+
 		// Signal completion to SSH session
 		close(verification.CompleteChan)
-		
+
 		// Clean up email verification
 		delete(s.emailVerifications, token)
 		s.emailVerificationsMu.Unlock()
 	} else {
 		// Not an SSH token, check database for HTTP auth token
 		s.emailVerificationsMu.Unlock()
-		
+
 		// Try to validate as database token
 		fingerprint, err := s.validateEmailVerificationToken(token)
 		if err != nil {
@@ -754,15 +1034,15 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 			return
 		}
-		
-		// Create HTTP auth cookie for this user  
+
+		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
 		if err != nil {
 			log.Printf("Failed to create auth cookie during HTTP email verification: %v", err)
 			http.Error(w, "Failed to create authentication session", http.StatusInternalServerError)
 			return
 		}
-		
+
 		// Set the authentication cookie
 		cookie := &http.Cookie{
 			Name:     "exe-auth",
@@ -773,7 +1053,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			Secure:   r.TLS != nil,
 		}
 		http.SetCookie(w, cookie)
-		
+
 		// Clean up the database token (single use)
 		_, err = s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
 		if err != nil {
@@ -781,7 +1061,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			// Continue anyway
 		}
 	}
-	
+
 	// Send success response
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<!DOCTYPE html>
@@ -829,18 +1109,18 @@ func (s *Server) parseContainerRequest(host string) (containerName, teamName, po
 	if !strings.HasSuffix(hostname, domainSuffix) {
 		return "", "", "", false
 	}
-	
+
 	subdomain := strings.TrimSuffix(hostname, domainSuffix)
-	
+
 	// Split subdomain into parts: <name>[-<port>].<team>
 	parts := strings.Split(subdomain, ".")
 	if len(parts) != 2 {
 		return "", "", "", false
 	}
-	
-	containerPart := parts[0]  // <name> or <name>-<port>
-	teamName = parts[1]        // <team>
-	
+
+	containerPart := parts[0] // <name> or <name>-<port>
+	teamName = parts[1]       // <team>
+
 	// Check if containerPart contains a port (has dash and ends with digits)
 	if dashIdx := strings.LastIndex(containerPart, "-"); dashIdx > 0 {
 		possiblePort := containerPart[dashIdx+1:]
@@ -857,12 +1137,12 @@ func (s *Server) parseContainerRequest(host string) (containerName, teamName, po
 		containerName = containerPart
 		port = "80" // default
 	}
-	
+
 	// Validate parts are non-empty and reasonable
 	if containerName == "" || teamName == "" || port == "" {
 		return "", "", "", false
 	}
-	
+
 	return containerName, teamName, port, true
 }
 
@@ -898,8 +1178,8 @@ func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, co
 			if r.TLS != nil {
 				scheme = "https"
 			}
-			redirectURL := fmt.Sprintf("%s://%s%s&return_host=%s", scheme, 
-				strings.Replace(r.Host, containerName+"."+teamName+".", "", 1), 
+			redirectURL := fmt.Sprintf("%s://%s%s&return_host=%s", scheme,
+				strings.Replace(r.Host, containerName+"."+teamName+".", "", 1),
 				authURL, url.QueryEscape(r.Host))
 			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 		} else {
@@ -1288,50 +1568,60 @@ func getDomain(host string) string {
 	if idx := strings.LastIndex(host, ":"); idx > 0 {
 		host = host[:idx]
 	}
-	
+
 	if strings.HasSuffix(host, ".localhost") {
 		return "localhost"
 	} else if strings.HasSuffix(host, ".exe.dev") {
 		return "exe.dev"
 	}
-	
+
 	return host
 }
 
-// validateEmailVerificationToken validates an email verification token and returns the user fingerprint
-func (s *Server) validateEmailVerificationToken(token string) (string, error) {
+// checkEmailVerificationToken checks if an email verification token is valid without consuming it
+func (s *Server) checkEmailVerificationToken(token string) (string, error) {
 	var fingerprint string
 	var email string
 	var expiresAt string
-	
+
 	err := s.db.QueryRow(`
 		SELECT user_fingerprint, email, expires_at 
 		FROM email_verifications 
 		WHERE token = ?
 	`, token).Scan(&fingerprint, &email, &expiresAt)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid verification token")
 		}
 		return "", fmt.Errorf("database error: %w", err)
 	}
-	
+
 	// Check if token has expired
 	expTime, err := time.Parse(time.RFC3339, expiresAt)
 	if err != nil {
 		return "", fmt.Errorf("invalid expiration time: %w", err)
 	}
-	
+
 	if time.Now().After(expTime) {
 		// Clean up expired token
 		s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
 		return "", fmt.Errorf("verification token expired")
 	}
+
+	return fingerprint, nil
+}
+
+// validateEmailVerificationToken validates an email verification token, consumes it, and returns the user fingerprint
+func (s *Server) validateEmailVerificationToken(token string) (string, error) {
+	fingerprint, err := s.checkEmailVerificationToken(token)
+	if err != nil {
+		return "", err
+	}
 	
 	// Clean up used token
 	s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
-	
+
 	return fingerprint, nil
 }
 
@@ -1345,20 +1635,20 @@ func (s *Server) createAuthCookie(fingerprint, domain string) (string, error) {
 		return "", fmt.Errorf("failed to generate cookie: %w", err)
 	}
 	cookieValue := base64.URLEncoding.EncodeToString(cookieBytes)
-	
+
 	// Set expiration to 30 days from now
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
-	
+
 	// Store in database
 	_, err := s.db.Exec(`
 		INSERT INTO auth_cookies (cookie_value, user_fingerprint, domain, expires_at)
 		VALUES (?, ?, ?, ?)
 	`, cookieValue, fingerprint, getDomain(domain), expiresAt.Format(time.RFC3339))
-	
+
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth cookie: %w", err)
 	}
-	
+
 	return cookieValue, nil
 }
 
@@ -1366,35 +1656,35 @@ func (s *Server) createAuthCookie(fingerprint, domain string) (string, error) {
 func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) {
 	var fingerprint string
 	var expiresAt string
-	
+
 	err := s.db.QueryRow(`
 		SELECT user_fingerprint, expires_at 
 		FROM auth_cookies 
 		WHERE cookie_value = ? AND domain = ?
 	`, cookieValue, getDomain(domain)).Scan(&fingerprint, &expiresAt)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid cookie")
 		}
 		return "", fmt.Errorf("database error: %w", err)
 	}
-	
+
 	// Check if cookie has expired
 	expTime, err := time.Parse(time.RFC3339, expiresAt)
 	if err != nil {
 		return "", fmt.Errorf("invalid expiration time: %w", err)
 	}
-	
+
 	if time.Now().After(expTime) {
 		// Clean up expired cookie
 		s.db.Exec("DELETE FROM auth_cookies WHERE cookie_value = ?", cookieValue)
 		return "", fmt.Errorf("cookie expired")
 	}
-	
+
 	// Update last used time
 	s.db.Exec("UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?", cookieValue)
-	
+
 	return fingerprint, nil
 }
 
@@ -1406,20 +1696,20 @@ func (s *Server) createAuthToken(fingerprint, subdomain string) (string, error) 
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}
 	token := base64.URLEncoding.EncodeToString(tokenBytes)
-	
+
 	// Set expiration to 10 minutes from now
 	expiresAt := time.Now().Add(10 * time.Minute)
-	
+
 	// Store in database
 	_, err := s.db.Exec(`
 		INSERT INTO auth_tokens (token, user_fingerprint, subdomain, expires_at)
 		VALUES (?, ?, ?, ?)
 	`, token, fingerprint, subdomain, expiresAt.Format(time.RFC3339))
-	
+
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth token: %w", err)
 	}
-	
+
 	return token, nil
 }
 
@@ -1429,46 +1719,46 @@ func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, err
 	var subdomain sql.NullString
 	var expiresAt string
 	var usedAt sql.NullString
-	
+
 	err := s.db.QueryRow(`
 		SELECT user_fingerprint, subdomain, expires_at, used_at 
 		FROM auth_tokens 
 		WHERE token = ?
 	`, token).Scan(&fingerprint, &subdomain, &expiresAt, &usedAt)
-	
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid token")
 		}
 		return "", fmt.Errorf("database error: %w", err)
 	}
-	
+
 	// Check if token has already been used
 	if usedAt.Valid {
 		return "", fmt.Errorf("token already used")
 	}
-	
+
 	// Check if token has expired
 	expTime, err := time.Parse(time.RFC3339, expiresAt)
 	if err != nil {
 		return "", fmt.Errorf("invalid expiration time: %w", err)
 	}
-	
+
 	if time.Now().After(expTime) {
 		return "", fmt.Errorf("token expired")
 	}
-	
+
 	// Check subdomain if specified
 	if expectedSubdomain != "" && subdomain.String != expectedSubdomain {
 		return "", fmt.Errorf("token not valid for this subdomain")
 	}
-	
+
 	// Mark token as used
 	_, err = s.db.Exec("UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE token = ?", token)
 	if err != nil {
 		log.Printf("Failed to mark token as used: %v", err)
 	}
-	
+
 	return fingerprint, nil
 }
 
@@ -1476,7 +1766,7 @@ func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, err
 func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, fingerprint string) {
 	redirectURL := r.URL.Query().Get("redirect")
 	returnHost := r.URL.Query().Get("return_host")
-	
+
 	if returnHost != "" && redirectURL != "" {
 		// Create auth token for the container subdomain
 		containerName, teamName, _, isContainerRequest := s.parseContainerRequest(returnHost)
@@ -1487,19 +1777,19 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, finge
 				http.Error(w, "Failed to create authentication token", http.StatusInternalServerError)
 				return
 			}
-			
+
 			// Redirect back to container subdomain with auth token
 			scheme := "http"
 			if r.TLS != nil {
 				scheme = "https"
 			}
-			authCallbackURL := fmt.Sprintf("%s://%s/__exe_auth?token=%s&return_path=%s", 
+			authCallbackURL := fmt.Sprintf("%s://%s/__exe_auth?token=%s&return_path=%s",
 				scheme, returnHost, token, url.QueryEscape(redirectURL))
 			http.Redirect(w, r, authCallbackURL, http.StatusTemporaryRedirect)
 			return
 		}
 	}
-	
+
 	// Default redirect
 	if redirectURL != "" {
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
@@ -1515,11 +1805,11 @@ func (s *Server) userHasTeamAccess(fingerprint, teamName string) (bool, error) {
 		SELECT COUNT(*) FROM team_members 
 		WHERE user_fingerprint = ? AND team_name = ?
 	`, fingerprint, teamName).Scan(&count)
-	
+
 	if err != nil {
 		return false, err
 	}
-	
+
 	return count > 0, nil
 }
 
@@ -1529,7 +1819,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 		http.Error(w, "Machine management not available", http.StatusServiceUnavailable)
 		return
 	}
-	
+
 	// Get container connection details
 	if machine.ContainerID == nil {
 		http.Error(w, "Container not properly initialized", http.StatusServiceUnavailable)
@@ -1546,32 +1836,32 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 			conn.StopFunc()
 		}
 	}()
-	
+
 	// Create reverse proxy
 	targetURL := &url.URL{
 		Scheme: "http",
 		Host:   "localhost:" + port,
 	}
-	
+
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	
+
 	// Configure proxy to use container connection
 	if gkeManager, ok := s.containerManager.(*container.GKEManager); ok {
 		// For GKE, we need to use the container's HTTP client if available
 		proxy.Transport = &containerTransport{
-			gkeManager: gkeManager,
-			userID:     machine.CreatedByFingerprint,
+			gkeManager:  gkeManager,
+			userID:      machine.CreatedByFingerprint,
 			containerID: *machine.ContainerID,
-			targetPort: port,
+			targetPort:  port,
 		}
 	}
-	
+
 	// Handle errors
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("Proxy error for %s: %v", machine.Name, err)
 		http.Error(w, "Service temporarily unavailable", http.StatusBadGateway)
 	}
-	
+
 	// Fix Content-Length mismatch between parsed response and actual body
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		if resp.Body != nil {
@@ -1587,7 +1877,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 		}
 		return nil
 	}
-	
+
 	// Modify request headers
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
@@ -1597,7 +1887,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 		req.Header.Set("X-Forwarded-Host", r.Host)
 		req.Header.Set("X-Forwarded-Proto", getScheme(r))
 	}
-	
+
 	proxy.ServeHTTP(w, r)
 }
 
@@ -1626,12 +1916,12 @@ type SSHClient interface {
 func (ct *containerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Execute HTTP request directly inside the container using Python
 	// This avoids all the complexity of port forwarding and external tools
-	
+
 	targetURL := fmt.Sprintf("http://localhost:%s%s", ct.targetPort, req.URL.Path)
 	if req.URL.RawQuery != "" {
 		targetURL += "?" + req.URL.RawQuery
 	}
-	
+
 	// Use Python to make the HTTP request (Python is available in our test container)
 	pythonScript := fmt.Sprintf(`
 import urllib.request
@@ -1652,10 +1942,10 @@ except Exception as e:
     print()
     print('Error: %%s' %% str(e))
 `, targetURL)
-	
+
 	// Execute Python script in container
 	cmd := []string{"python3", "-c", pythonScript}
-	
+
 	var stdout, stderr strings.Builder
 	err := ct.gkeManager.ExecuteInContainer(
 		context.Background(),
@@ -1666,11 +1956,11 @@ except Exception as e:
 		&stdout,
 		&stderr,
 	)
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute HTTP request in container: %w", err)
 	}
-	
+
 	// Parse the response from Python output
 	responseText := stdout.String()
 	return ct.parseHTTPResponse(responseText)
@@ -1680,26 +1970,26 @@ except Exception as e:
 func (ct *containerTransport) parseHTTPResponse(responseText string) (*http.Response, error) {
 	// Replace \r\n with \n for consistent parsing
 	responseText = strings.ReplaceAll(responseText, "\r\n", "\n")
-	
+
 	lines := strings.Split(responseText, "\n")
 	if len(lines) < 1 {
 		return nil, fmt.Errorf("empty response")
 	}
-	
+
 	// Parse status line
 	statusLine := strings.TrimSpace(lines[0])
 	statusParts := strings.Fields(statusLine)
 	if len(statusParts) < 3 || !strings.HasPrefix(statusLine, "HTTP/") {
 		return nil, fmt.Errorf("invalid status line: %s", statusLine)
 	}
-	
+
 	statusCode := 500
 	if len(statusParts) >= 2 {
 		if code, err := strconv.Atoi(statusParts[1]); err == nil {
 			statusCode = code
 		}
 	}
-	
+
 	// Parse headers
 	headers := make(http.Header)
 	bodyStartIndex := 1
@@ -1709,20 +1999,20 @@ func (ct *containerTransport) parseHTTPResponse(responseText string) (*http.Resp
 			bodyStartIndex = i + 1
 			break
 		}
-		
+
 		if colonIndex := strings.Index(line, ":"); colonIndex > 0 {
 			name := strings.TrimSpace(line[:colonIndex])
 			value := strings.TrimSpace(line[colonIndex+1:])
 			headers.Add(name, value)
 		}
 	}
-	
+
 	// Get body
 	body := ""
 	if bodyStartIndex < len(lines) {
 		body = strings.Join(lines[bodyStartIndex:], "\n")
 	}
-	
+
 	// Create response
 	resp := &http.Response{
 		Status:        statusLine,
@@ -1734,7 +2024,7 @@ func (ct *containerTransport) parseHTTPResponse(responseText string) (*http.Resp
 		Body:          io.NopCloser(strings.NewReader(body)),
 		ContentLength: int64(len(body)),
 	}
-	
+
 	return resp, nil
 }
 
@@ -1744,7 +2034,7 @@ func (ct *containerTransport) startDirectPortForward(remotePort string) (localPo
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to get container info: %w", err)
 	}
-	
+
 	// Find available local port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1752,7 +2042,7 @@ func (ct *containerTransport) startDirectPortForward(remotePort string) (localPo
 	}
 	localPort = listener.Addr().(*net.TCPAddr).Port
 	listener.Close()
-	
+
 	// Start port forwarding directly to the HTTP port
 	return ct.startKubectlPortForward(container.Namespace, container.PodName, localPort, remotePort)
 }
@@ -1764,7 +2054,7 @@ func (ct *containerTransport) createSSHConnection() (SSHClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to start port forward: %w", err)
 	}
-	
+
 	// Step 2: Create SSH client config
 	config := &ssh.ClientConfig{
 		User: "root",
@@ -1779,14 +2069,14 @@ func (ct *containerTransport) createSSHConnection() (SSHClient, error) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
 	}
-	
+
 	// Step 3: Connect via SSH to the port-forwarded connection
 	sshClient, err := ssh.Dial("tcp", fmt.Sprintf("localhost:%d", localPort), config)
 	if err != nil {
 		stopPortForward()
 		return nil, fmt.Errorf("failed to dial SSH: %w", err)
 	}
-	
+
 	// Wrap the client to clean up port forward when closed
 	return &wrappedSSHClient{
 		Client:          sshClient,
@@ -1814,12 +2104,12 @@ func (w *wrappedSSHClient) Close() error {
 func (ct *containerTransport) startPortForward(remotePort string) (localPort int, cleanup func(), err error) {
 	// Use Kubernetes client API to start port forwarding
 	// This creates a real kubectl port-forward equivalent using the K8s API
-	
+
 	container, err := ct.gkeManager.GetContainer(context.Background(), ct.userID, ct.containerID)
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to get container info: %w", err)
 	}
-	
+
 	// Find available local port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1827,11 +2117,11 @@ func (ct *containerTransport) startPortForward(remotePort string) (localPort int
 	}
 	localPort = listener.Addr().(*net.TCPAddr).Port
 	listener.Close()
-	
+
 	// Start port forwarding using Kubernetes API
 	// TODO: Implement using k8s.io/client-go port forwarding
 	// For now, use kubectl command as fallback
-	
+
 	return ct.startKubectlPortForward(container.Namespace, container.PodName, localPort, remotePort)
 }
 
@@ -1840,11 +2130,10 @@ func (ct *containerTransport) startKubectlPortForward(namespace, podName string,
 	// Actually, let's simplify this completely and avoid port forwarding altogether
 	// Instead, we'll use the existing ExecuteInContainer to make the HTTP request directly
 	// This is more reliable and doesn't require external tools or complex port forwarding
-	
+
 	// For now, return an error to force us to implement the right approach
 	return 0, nil, fmt.Errorf("port forwarding not implemented - should use direct HTTP execution instead")
 }
-
 
 // serveSSH starts the SSH server
 func (s *Server) serveSSH() error {
@@ -1853,18 +2142,18 @@ func (s *Server) serveSSH() error {
 		return fmt.Errorf("failed to listen on SSH port: %w", err)
 	}
 	defer listener.Close()
-	
+
 	log.Printf("SSH server listening on %s", s.sshAddr)
-	
+
 	for {
 		s.mu.RLock()
 		stopping := s.stopping
 		s.mu.RUnlock()
-		
+
 		if stopping {
 			break
 		}
-		
+
 		conn, err := listener.Accept()
 		if err != nil {
 			if !stopping {
@@ -1872,46 +2161,46 @@ func (s *Server) serveSSH() error {
 			}
 			continue
 		}
-		
+
 		go s.handleSSHConnection(conn)
 	}
-	
+
 	return nil
 }
 
 // handleSSHConnection handles an individual SSH connection
 func (s *Server) handleSSHConnection(conn net.Conn) {
 	defer conn.Close()
-	
+
 	log.Printf("SSH connection from %s", conn.RemoteAddr())
-	
+
 	// TODO: Wake up containers on SSH connection
-	
+
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, s.sshConfig)
 	if err != nil {
 		log.Printf("SSH handshake failed: %v", err)
 		return
 	}
 	defer sshConn.Close()
-	
+
 	fingerprint := sshConn.Permissions.Extensions["fingerprint"]
 	registeredStatus := sshConn.Permissions.Extensions["registered"]
 	email := sshConn.Permissions.Extensions["email"]
 	publicKey := sshConn.Permissions.Extensions["public_key"]
-	
+
 	registered := registeredStatus == "true"
 	isNewDevice := registeredStatus == "new_device"
-	
-	log.Printf("SSH connection established for user: %s, fingerprint: %s, registered: %s", 
+
+	log.Printf("SSH connection established for user: %s, fingerprint: %s, registered: %s",
 		sshConn.User(), fingerprint, registeredStatus)
-	
+
 	// Check if this is a machine connection
 	username := sshConn.User()
 	var targetMachine *Machine
 	if username != "" && registered && s.containerManager != nil {
 		targetMachine = s.findMachineByNameForUser(fingerprint, username)
 	}
-	
+
 	if targetMachine != nil {
 		// Handle machine connection with port forwarding support
 		go s.handleMachineRequests(reqs, targetMachine, fingerprint, sshConn)
@@ -1919,7 +2208,7 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 		// Standard exe.dev connection
 		go ssh.DiscardRequests(reqs)
 	}
-	
+
 	for newChannel := range chans {
 		go s.handleSSHChannel(newChannel, sshConn.User(), fingerprint, registered, isNewDevice, email, publicKey)
 	}
@@ -1928,58 +2217,73 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 // handleSSHExec handles SSH exec commands (e.g., ssh exe.dev create foo)
 func (s *Server) handleSSHExec(channel ssh.Channel, payload []byte, username, fingerprint string, registered bool) {
 	defer channel.Close()
-	
+
 	// Parse the command from the payload
 	if len(payload) < 4 {
 		channel.Write([]byte("Invalid exec request\r\n"))
 		return
 	}
-	
+
 	// Extract command string from SSH wire format
 	cmdLen := int(payload[0])<<24 | int(payload[1])<<16 | int(payload[2])<<8 | int(payload[3])
 	if len(payload) < 4+cmdLen {
 		channel.Write([]byte("Invalid exec request\r\n"))
 		return
 	}
-	
+
 	command := string(payload[4 : 4+cmdLen])
-	
+
 	// Parse the command arguments
 	args := strings.Fields(command)
 	if len(args) == 0 {
 		channel.Write([]byte("No command specified\r\n"))
 		return
 	}
-	
+
 	// Check if user is registered for command execution
 	if !registered {
 		channel.Write([]byte("Please complete registration by running: ssh exe.dev\r\n"))
 		return
 	}
-	
+
 	// Create user session for command execution
 	user, err := s.getUserByFingerprint(fingerprint)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("Authentication error: %v\r\n", err)))
 		return
 	}
-	
+
 	teams, err := s.getUserTeams(fingerprint)
 	if err != nil || len(teams) == 0 {
 		channel.Write([]byte("Error: User not associated with any team\r\n"))
 		return
 	}
-	
-	// Use the first team (users can be members of multiple teams)
-	team := teams[0]
-	
+
+	// Get the default team for this SSH key, or use the first team
+	defaultTeam, err := s.getDefaultTeamForKey(fingerprint)
+	if err != nil || defaultTeam == "" {
+		defaultTeam = teams[0].TeamName
+	}
+
+	// Find the team membership details
+	var team TeamMember
+	for _, t := range teams {
+		if t.TeamName == defaultTeam {
+			team = t
+			break
+		}
+	}
+	if team.TeamName == "" {
+		team = teams[0] // Fallback to first team
+	}
+
 	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
 	defer s.removeUserSession(channel)
-	
+
 	// Handle the command
 	cmd := args[0]
 	cmdArgs := args[1:]
-	
+
 	switch cmd {
 	case "create":
 		s.handleCreateCommandWithStdin(channel, cmdArgs, channel) // Pass channel as stdin reader
@@ -2025,7 +2329,7 @@ func (s *Server) showHelpText(channel ssh.Channel) {
 		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n" +
 		"\033[1mteam remove <email>\033[0m     - Remove a team member (admin only)\r\n\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n\r\n"
-	
+
 	channel.Write([]byte(helpText))
 }
 
@@ -2035,14 +2339,14 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 		newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		return
 	}
-	
+
 	channel, requests, err := newChannel.Accept()
 	if err != nil {
 		log.Printf("Could not accept SSH channel: %v", err)
 		return
 	}
 	defer channel.Close()
-	
+
 	// Check if this is a direct machine access attempt
 	if username != "" && registered && s.containerManager != nil {
 		if machine := s.findMachineByNameForUser(fingerprint, username); machine != nil {
@@ -2051,11 +2355,11 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 			return
 		}
 	}
-	
+
 	// Standard exe.dev SSH session
 	// Store terminal dimensions when we get them
 	var terminalWidth, terminalHeight int
-	
+
 	// Handle requests
 	for req := range requests {
 		switch req.Type {
@@ -2106,7 +2410,7 @@ func (s *Server) parsePtyRequest(payload []byte) (cols, rows int) {
 	if len(payload) < 12 { // Minimum size for term string + dimensions
 		return 0, 0
 	}
-	
+
 	// Skip terminal type string (4 bytes length + string)
 	if len(payload) < 4 {
 		return 0, 0
@@ -2115,16 +2419,16 @@ func (s *Server) parsePtyRequest(payload []byte) (cols, rows int) {
 	if len(payload) < 4+termTypeLen+16 { // 4 + term string + 4*uint32
 		return 0, 0
 	}
-	
+
 	offset := 4 + termTypeLen
-	
+
 	// Extract columns (uint32)
 	cols = int(payload[offset])<<24 | int(payload[offset+1])<<16 | int(payload[offset+2])<<8 | int(payload[offset+3])
 	offset += 4
-	
-	// Extract rows (uint32)  
+
+	// Extract rows (uint32)
 	rows = int(payload[offset])<<24 | int(payload[offset+1])<<16 | int(payload[offset+2])<<8 | int(payload[offset+3])
-	
+
 	return cols, rows
 }
 
@@ -2152,41 +2456,56 @@ func (s *Server) handleSSHShellWithWidth(channel ssh.Channel, username, fingerpr
 		s.handleRegistrationWithWidth(channel, fingerprint, width)
 		return
 	}
-	
+
 	// Create user session for registered users
 	user, err := s.getUserByFingerprint(fingerprint)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("Error retrieving user info: %v\r\n", err)))
 		return
 	}
-	
+
 	teams, err := s.getUserTeams(fingerprint)
 	if err != nil || len(teams) == 0 {
 		channel.Write([]byte("Error: User not associated with any team\r\n"))
 		return
 	}
-	
-	// Use the first team (users can be members of multiple teams)
-	team := teams[0]
-	
+
+	// Get the default team for this SSH key, or use the first team
+	defaultTeam, err := s.getDefaultTeamForKey(fingerprint)
+	if err != nil || defaultTeam == "" {
+		defaultTeam = teams[0].TeamName
+	}
+
+	// Find the team membership details
+	var team TeamMember
+	for _, t := range teams {
+		if t.TeamName == defaultTeam {
+			team = t
+			break
+		}
+	}
+	if team.TeamName == "" {
+		team = teams[0] // Fallback to first team
+	}
+
 	// Check if username is a container name for direct access (ssh container-name@exe.dev)
 	if username != "" && s.containerManager != nil {
 		// Look for a container with the given name
 		if container := s.findContainerByName(fingerprint, username); container != nil {
 			s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
 			defer s.removeUserSession(channel)
-			
+
 			// Connect directly to the container
 			s.connectToContainer(channel, container.ID)
 			return
 		}
 	}
-	
+
 	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
-	
+
 	// Clean up session when connection closes
 	defer s.removeUserSession(channel)
-	
+
 	s.runMainShell(channel, false) // Returning users - no welcome
 }
 
@@ -2195,37 +2514,80 @@ func (s *Server) findContainerByName(userID, containerName string) *container.Co
 	if s.containerManager == nil {
 		return nil
 	}
-	
+
 	containers, err := s.containerManager.ListContainers(context.Background(), userID)
 	if err != nil {
 		return nil
 	}
-	
+
 	for _, c := range containers {
 		if c.Name == containerName {
 			return c
 		}
 	}
-	
+
 	return nil
 }
 
 // findMachineByNameForUser finds a machine by name that the user has access to
+// Supports both "machine" format (uses default team) and "team/machine" format
 func (s *Server) findMachineByNameForUser(fingerprint, machineName string) *Machine {
-	// Get user's teams
-	teams, err := s.getUserTeams(fingerprint)
-	if err != nil || len(teams) == 0 {
-		return nil
+	var teamName string
+	var machineNameOnly string
+
+	// Check if the machine name includes team specification (team/machine format)
+	if strings.Contains(machineName, "/") {
+		parts := strings.SplitN(machineName, "/", 2)
+		if len(parts) == 2 {
+			teamName = parts[0]
+			machineNameOnly = parts[1]
+
+			// Verify user has access to this specific team
+			teams, err := s.getUserTeams(fingerprint)
+			if err != nil {
+				return nil
+			}
+
+			// Check if user is member of the specified team
+			for _, team := range teams {
+				if team.TeamName == teamName {
+					machine, err := s.getMachineByName(teamName, machineNameOnly)
+					if err == nil {
+						return machine
+					}
+					break
+				}
+			}
+			return nil
+		}
 	}
-	
-	// Check each team for a machine with this name
-	for _, team := range teams {
-		machine, err := s.getMachineByName(team.TeamName, machineName)
+
+	// No team specified - try default team first, then search all teams
+	machineNameOnly = machineName
+
+	// Try default team first
+	defaultTeam, err := s.getDefaultTeamForKey(fingerprint)
+	if err == nil && defaultTeam != "" {
+		machine, err := s.getMachineByName(defaultTeam, machineNameOnly)
 		if err == nil {
 			return machine
 		}
 	}
-	
+
+	// Get user's teams and search all of them
+	teams, err := s.getUserTeams(fingerprint)
+	if err != nil || len(teams) == 0 {
+		return nil
+	}
+
+	// Check each team for a machine with this name
+	for _, team := range teams {
+		machine, err := s.getMachineByName(team.TeamName, machineNameOnly)
+		if err == nil {
+			return machine
+		}
+	}
+
 	return nil
 }
 
@@ -2235,7 +2597,7 @@ func (s *Server) handleMachineSSH(newChannel ssh.NewChannel, channel ssh.Channel
 		channel.Write([]byte("Machine is not running\r\n"))
 		return
 	}
-	
+
 	// Get container connection
 	conn, err := s.containerManager.ConnectToContainer(context.Background(), machine.CreatedByFingerprint, *machine.ContainerID)
 	if err != nil {
@@ -2243,7 +2605,7 @@ func (s *Server) handleMachineSSH(newChannel ssh.NewChannel, channel ssh.Channel
 		return
 	}
 	defer conn.StopFunc()
-	
+
 	// Proxy all SSH requests directly to the container
 	s.proxySSHToContainer(channel, requests, machine, fingerprint)
 }
@@ -2254,7 +2616,7 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 		channel.Write([]byte("Machine is not running\r\n"))
 		return
 	}
-	
+
 	// For now, handle each request type individually
 	// TODO: Implement full SSH protocol proxying
 	for req := range requests {
@@ -2264,7 +2626,7 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 			if req.WantReply {
 				req.Reply(true, nil)
 			}
-			
+
 		case "exec":
 			// Parse command from exec payload
 			if len(req.Payload) < 4 {
@@ -2273,7 +2635,7 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				}
 				continue
 			}
-			
+
 			cmdLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
 			if len(req.Payload) < 4+cmdLen {
 				if req.WantReply {
@@ -2281,14 +2643,14 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				}
 				continue
 			}
-			
+
 			command := string(req.Payload[4 : 4+cmdLen])
 			args := strings.Fields(command)
-			
+
 			if req.WantReply {
 				req.Reply(true, nil)
 			}
-			
+
 			// Handle SCP commands - we only support modern SCP via SFTP
 			if len(args) > 0 && args[0] == "scp" {
 				// Modern OpenSSH scp uses SFTP subsystem, not exec
@@ -2298,7 +2660,7 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				channel.SendRequest("exit-status", false, statusPayload)
 				return
 			}
-			
+
 			// Execute command in container
 			err := s.containerManager.ExecuteInContainer(
 				context.Background(),
@@ -2309,11 +2671,11 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				channel, // stdout
 				channel, // stderr
 			)
-			
+
 			if err != nil {
 				channel.Write([]byte(fmt.Sprintf("Command execution failed: %v\r\n", err)))
 			}
-			
+
 			// Send exit status
 			exitStatus := 0
 			if err != nil {
@@ -2326,28 +2688,28 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 			statusPayload[3] = byte(exitStatus)
 			channel.SendRequest("exit-status", false, statusPayload)
 			return
-			
+
 		case "shell":
 			if req.WantReply {
 				req.Reply(true, nil)
 			}
-			
+
 			// Start interactive shell in container
 			err := s.containerManager.ExecuteInContainer(
 				context.Background(),
 				machine.CreatedByFingerprint,
 				*machine.ContainerID,
 				[]string{"/bin/bash", "-l"}, // Login shell
-				channel, // stdin
-				channel, // stdout
-				channel, // stderr
+				channel,                     // stdin
+				channel,                     // stdout
+				channel,                     // stderr
 			)
-			
+
 			if err != nil {
 				channel.Write([]byte(fmt.Sprintf("Shell execution failed: %v\r\n", err)))
 			}
 			return
-			
+
 		case "subsystem":
 			// Handle subsystems like SFTP
 			if len(req.Payload) < 4 {
@@ -2356,7 +2718,7 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				}
 				continue
 			}
-			
+
 			subsystemLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
 			if len(req.Payload) < 4+subsystemLen {
 				if req.WantReply {
@@ -2364,14 +2726,14 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 				}
 				continue
 			}
-			
+
 			subsystem := string(req.Payload[4 : 4+subsystemLen])
-			
+
 			if subsystem == "sftp" {
 				if req.WantReply {
 					req.Reply(true, nil)
 				}
-				
+
 				// Use the new sshproxy package for SFTP
 				gkeFS := sshproxy.NewUnixContainerFS(
 					s.containerManager,
@@ -2396,7 +2758,7 @@ func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.R
 					req.Reply(false, nil)
 				}
 			}
-			
+
 		default:
 			if req.WantReply {
 				req.Reply(false, nil)
@@ -2437,7 +2799,7 @@ func (s *Server) handleTCPIPForward(req *ssh.Request, machine *Machine, fingerpr
 		}
 		return
 	}
-	
+
 	// Parse the request payload
 	// Format: string bind_address, uint32 bind_port
 	bindAddrLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
@@ -2447,19 +2809,19 @@ func (s *Server) handleTCPIPForward(req *ssh.Request, machine *Machine, fingerpr
 		}
 		return
 	}
-	
+
 	bindAddr := string(req.Payload[4 : 4+bindAddrLen])
 	bindPort := int(req.Payload[4+bindAddrLen])<<24 | int(req.Payload[4+bindAddrLen+1])<<16 | int(req.Payload[4+bindAddrLen+2])<<8 | int(req.Payload[4+bindAddrLen+3])
-	
+
 	// For now, implement basic port forwarding logic
 	// In a full implementation, we would:
 	// 1. Set up a listener on the requested port
 	// 2. For each incoming connection, establish a connection to the container
 	// 3. Relay data between the connections
-	
+
 	// For this implementation, we'll acknowledge the request but not implement the full forwarding
 	log.Printf("Port forwarding request: %s:%d -> machine %s", bindAddr, bindPort, machine.Name)
-	
+
 	if req.WantReply {
 		// Reply with the actual bound port (for port 0 requests)
 		response := make([]byte, 4)
@@ -2485,18 +2847,18 @@ func (s *Server) connectToContainer(channel ssh.Channel, containerID string) {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
 	}
-	
+
 	fingerprint, _, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Connect directly without showing "Connecting..." message
-	
+
 	// Use kubectl exec to connect to the container
 	ctx := context.Background()
-	
+
 	// Execute /bin/bash in the container with TTY
 	err = s.containerManager.ExecuteInContainer(
 		ctx,
@@ -2507,12 +2869,12 @@ func (s *Server) connectToContainer(channel ssh.Channel, containerID string) {
 		channel, // stdout
 		channel, // stderr
 	)
-	
+
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Connection ended normally
 	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
 }
@@ -2523,16 +2885,16 @@ func (s *Server) connectToContainerInteractive(channel ssh.Channel, containerID 
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
 	}
-	
+
 	fingerprint, _, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Use the simple direct approach - just pass the channel
 	ctx := context.Background()
-	
+
 	// Execute /bin/bash in the container
 	err = s.containerManager.ExecuteInContainer(
 		ctx,
@@ -2540,15 +2902,15 @@ func (s *Server) connectToContainerInteractive(channel ssh.Channel, containerID 
 		containerID,
 		[]string{"/bin/bash"},
 		channel, // stdin
-		channel, // stdout  
+		channel, // stdout
 		channel, // stderr
 	)
-	
+
 	if err != nil && err != io.EOF {
 		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Connection ended normally
 	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
 }
@@ -2571,7 +2933,7 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 		"\033[1mlogs <name>\033[0m    - View machine logs\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
 		"\033[1mexit\033[0m           - Exit\r\n\r\n"
-	
+
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
@@ -2587,11 +2949,11 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n" +
 		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
-	
+
 	if showWelcome {
 		channel.Write([]byte(welcome))
 	}
-	
+
 	// Command loop using proper line reading
 	for {
 		channel.Write([]byte("\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "))
@@ -2602,15 +2964,15 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 			}
 			return
 		}
-		
+
 		parts := strings.Fields(strings.TrimSpace(command))
 		if len(parts) == 0 {
 			continue // Empty command, just continue
 		}
-		
+
 		cmd := parts[0]
 		args := parts[1:]
-		
+
 		switch cmd {
 		case "exit":
 			channel.Write([]byte("Goodbye!\r\n"))
@@ -2646,23 +3008,23 @@ func (s *Server) handleTeamCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Check if user is authenticated
 	if teamName == "" {
 		channel.Write([]byte("\033[1;31mError: You must be part of a team to use team commands\033[0m\r\n"))
 		return
 	}
-	
+
 	// Parse subcommand
 	if len(args) == 0 {
 		// No subcommand - list team members
 		s.handleTeamList(channel, fingerprint, teamName)
 		return
 	}
-	
+
 	subCmd := args[0]
 	subArgs := args[1:]
-	
+
 	switch subCmd {
 	case "list", "ls":
 		s.handleTeamList(channel, fingerprint, teamName)
@@ -2672,10 +3034,16 @@ func (s *Server) handleTeamCommand(channel ssh.Channel, args []string) {
 		s.handleTeamJoin(channel, fingerprint, subArgs)
 	case "remove":
 		s.handleTeamRemove(channel, fingerprint, teamName, subArgs)
+	case "switch":
+		s.handleTeamSwitch(channel, fingerprint, subArgs)
+	case "teams":
+		s.handleListUserTeams(channel, fingerprint)
 	default:
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mUnknown team command: %s\033[0m\r\n", subCmd)))
 		channel.Write([]byte("Available team commands:\r\n"))
 		channel.Write([]byte("  team              - List team members\r\n"))
+		channel.Write([]byte("  team teams        - List all your teams\r\n"))
+		channel.Write([]byte("  team switch <team>    - Switch default team for this SSH key\r\n"))
 		channel.Write([]byte("  team invite <email>   - Invite someone to join your team\r\n"))
 		channel.Write([]byte("  team join <code>      - Join a team using an invite code\r\n"))
 		channel.Write([]byte("  team remove <email>   - Remove someone from your team (admin only)\r\n"))
@@ -2697,45 +3065,45 @@ func (s *Server) handleTeamList(channel ssh.Channel, fingerprint, teamName strin
 		return
 	}
 	defer rows.Close()
-	
+
 	channel.Write([]byte(fmt.Sprintf("\033[1;36mTeam: %s\033[0m\r\n", teamName)))
 	channel.Write([]byte("─────────────────────────────────────────────────────────────\r\n"))
-	
+
 	memberCount := 0
 	for rows.Next() {
 		var email string
 		var isAdmin bool
 		var joinedAt, createdAt time.Time
-		
+
 		if err := rows.Scan(&email, &isAdmin, &joinedAt, &createdAt); err != nil {
 			continue
 		}
-		
+
 		memberCount++
-		
+
 		// Format member info
 		role := "Member"
 		if isAdmin {
 			role = "\033[1;33mAdmin\033[0m"
 		}
-		
+
 		joinedStr := joinedAt.Format("Jan 2, 2006")
 		channel.Write([]byte(fmt.Sprintf("  • \033[1m%s\033[0m - %s (joined %s)\r\n", email, role, joinedStr)))
 	}
-	
+
 	if memberCount == 0 {
 		channel.Write([]byte("  No team members found.\r\n"))
 	} else {
 		channel.Write([]byte(fmt.Sprintf("\r\nTotal members: %d\r\n", memberCount)))
 	}
-	
+
 	// Check if current user is admin
 	var isAdmin bool
 	err = s.db.QueryRow(`
 		SELECT is_admin FROM team_members 
 		WHERE user_fingerprint = ? AND team_name = ?`,
 		fingerprint, teamName).Scan(&isAdmin)
-	
+
 	if err == nil && isAdmin {
 		channel.Write([]byte("\r\n\033[2mYou are a team admin. Use 'team invite <email>' to add members.\033[0m\r\n"))
 	}
@@ -2743,32 +3111,41 @@ func (s *Server) handleTeamList(channel ssh.Channel, fingerprint, teamName strin
 
 // handleTeamInvite handles inviting a new member to the team
 func (s *Server) handleTeamInvite(channel ssh.Channel, fingerprint, teamName string, args []string) {
+	// Check if this is a personal team
+	var isPersonal bool
+	err := s.db.QueryRow(`SELECT is_personal FROM teams WHERE name = ?`, teamName).Scan(&isPersonal)
+	if err == nil && isPersonal {
+		channel.Write([]byte("\033[1;31mError: Cannot invite members to personal teams\033[0m\r\n"))
+		channel.Write([]byte("\033[2mPersonal teams are for individual use only.\033[0m\r\n"))
+		return
+	}
+
 	// Check if user is admin
 	var isAdmin bool
-	err := s.db.QueryRow(`
+	err = s.db.QueryRow(`
 		SELECT is_admin FROM team_members 
 		WHERE user_fingerprint = ? AND team_name = ?`,
 		fingerprint, teamName).Scan(&isAdmin)
-	
+
 	if err != nil || !isAdmin {
 		channel.Write([]byte("\033[1;31mError: Only team admins can invite new members\033[0m\r\n"))
 		return
 	}
-	
+
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mError: Please specify an email address\033[0m\r\n"))
 		channel.Write([]byte("Usage: team invite <email>\r\n"))
 		return
 	}
-	
+
 	inviteEmail := args[0]
-	
+
 	// Validate email format
 	if !s.isValidEmail(inviteEmail) {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: Invalid email address: %s\033[0m\r\n", inviteEmail)))
 		return
 	}
-	
+
 	// Check if user already exists and is in the team
 	var existingMember int
 	err = s.db.QueryRow(`
@@ -2776,33 +3153,33 @@ func (s *Server) handleTeamInvite(channel ssh.Channel, fingerprint, teamName str
 		JOIN users u ON tm.user_fingerprint = u.public_key_fingerprint
 		WHERE u.email = ? AND tm.team_name = ?`,
 		inviteEmail, teamName).Scan(&existingMember)
-	
+
 	if err == nil && existingMember > 0 {
 		channel.Write([]byte(fmt.Sprintf("\033[1;33m%s is already a member of team %s\033[0m\r\n", inviteEmail, teamName)))
 		return
 	}
-	
+
 	// Generate invite code
-	inviteCode := s.generateToken()[:8] // Use first 8 chars for easier typing
+	inviteCode := s.generateToken()[:8]           // Use first 8 chars for easier typing
 	expires := time.Now().Add(7 * 24 * time.Hour) // 7 days expiry
-	
+
 	// Store invite in database
 	_, err = s.db.Exec(`
 		INSERT INTO invites (code, team_name, created_by_fingerprint, email, expires_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		inviteCode, teamName, fingerprint, inviteEmail, expires)
-	
+
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError creating invite: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Check if the email belongs to an existing user
 	var existingUserFingerprint string
 	err = s.db.QueryRow(`
 		SELECT public_key_fingerprint FROM users WHERE email = ?`,
 		inviteEmail).Scan(&existingUserFingerprint)
-	
+
 	if err == nil {
 		// User exists - send team invite email
 		subject := fmt.Sprintf("Team Invitation - %s on exe.dev", teamName)
@@ -2824,12 +3201,12 @@ This invitation will expire in 7 days.
 
 Best regards,
 The exe.dev team`, teamName, inviteCode, inviteCode)
-		
+
 		if err := s.sendEmail(inviteEmail, subject, body); err != nil {
 			channel.Write([]byte(fmt.Sprintf("\033[1;31mError sending invite email: %v\033[0m\r\n", err)))
 			return
 		}
-		
+
 		channel.Write([]byte(fmt.Sprintf("\033[1;32mInvitation sent to existing user %s!\033[0m\r\n", inviteEmail)))
 		channel.Write([]byte(fmt.Sprintf("Invite code: \033[1m%s\033[0m (expires in 7 days)\r\n", inviteCode)))
 	} else {
@@ -2863,12 +3240,12 @@ Learn more at https://exe.dev
 
 Best regards,
 The exe.dev team`, teamName, inviteCode, inviteCode)
-		
+
 		if err := s.sendEmail(inviteEmail, subject, body); err != nil {
 			channel.Write([]byte(fmt.Sprintf("\033[1;31mError sending invite email: %v\033[0m\r\n", err)))
 			return
 		}
-		
+
 		channel.Write([]byte(fmt.Sprintf("\033[1;32mInvitation sent to %s!\033[0m\r\n", inviteEmail)))
 		channel.Write([]byte("They'll need to sign up first, then use this invite code:\r\n"))
 		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m (expires in 7 days)\r\n", inviteCode)))
@@ -2882,9 +3259,9 @@ func (s *Server) handleTeamJoin(channel ssh.Channel, fingerprint string, args []
 		channel.Write([]byte("Usage: team join <invite-code>\r\n"))
 		return
 	}
-	
+
 	inviteCode := args[0]
-	
+
 	// Look up the invite
 	var inviteTeam, inviteEmail string
 	var expires time.Time
@@ -2894,12 +3271,12 @@ func (s *Server) handleTeamJoin(channel ssh.Channel, fingerprint string, args []
 		FROM invites
 		WHERE code = ?`,
 		inviteCode).Scan(&inviteTeam, &inviteEmail, &expires, &usedCount, &maxUses)
-	
+
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: Invalid invite code: %s\033[0m\r\n", inviteCode)))
 		return
 	}
-	
+
 	// Check if expired
 	if time.Now().After(expires) {
 		channel.Write([]byte("\033[1;31mError: This invite code has expired\033[0m\r\n"))
@@ -2907,65 +3284,65 @@ func (s *Server) handleTeamJoin(channel ssh.Channel, fingerprint string, args []
 		s.db.Exec("DELETE FROM invites WHERE code = ?", inviteCode)
 		return
 	}
-	
+
 	// Check if already used up
 	if maxUses > 0 && usedCount >= maxUses {
 		channel.Write([]byte("\033[1;31mError: This invite code has already been used\033[0m\r\n"))
 		return
 	}
-	
+
 	// Get user's email
 	var userEmail string
 	err = s.db.QueryRow(`
 		SELECT email FROM users WHERE public_key_fingerprint = ?`,
 		fingerprint).Scan(&userEmail)
-	
+
 	if err != nil {
 		channel.Write([]byte("\033[1;31mError: Could not find your user account\033[0m\r\n"))
 		return
 	}
-	
+
 	// Check if invite is for specific email
 	if inviteEmail != "" && inviteEmail != userEmail {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: This invite is for %s, not %s\033[0m\r\n", inviteEmail, userEmail)))
 		return
 	}
-	
+
 	// Check if already a member
 	var existingMember int
 	err = s.db.QueryRow(`
 		SELECT COUNT(*) FROM team_members
 		WHERE user_fingerprint = ? AND team_name = ?`,
 		fingerprint, inviteTeam).Scan(&existingMember)
-	
+
 	if err == nil && existingMember > 0 {
 		channel.Write([]byte(fmt.Sprintf("\033[1;33mYou are already a member of team %s\033[0m\r\n", inviteTeam)))
 		return
 	}
-	
+
 	// Add user to team
 	_, err = s.db.Exec(`
 		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
 		VALUES (?, ?, 0)`,
 		fingerprint, inviteTeam)
-	
+
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError joining team: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Update invite usage count
 	s.db.Exec(`
 		UPDATE invites SET used_count = used_count + 1
 		WHERE code = ?`,
 		inviteCode)
-	
+
 	channel.Write([]byte(fmt.Sprintf("\033[1;32mSuccessfully joined team %s!\033[0m\r\n", inviteTeam)))
 	channel.Write([]byte("\r\nYou can now:\r\n"))
 	channel.Write([]byte("  • Create machines for your team with 'create'\r\n"))
 	channel.Write([]byte("  • List team members with 'team'\r\n"))
 	channel.Write([]byte("  • Access team machines with 'list' and 'ssh <machine>'\r\n"))
-	
+
 	// Update the user's session with new team
 	s.sessionsMu.Lock()
 	if session, exists := s.sessions[channel]; exists {
@@ -2982,55 +3359,163 @@ func (s *Server) handleTeamRemove(channel ssh.Channel, fingerprint, teamName str
 		SELECT is_admin FROM team_members 
 		WHERE user_fingerprint = ? AND team_name = ?`,
 		fingerprint, teamName).Scan(&isAdmin)
-	
+
 	if err != nil || !isAdmin {
 		channel.Write([]byte("\033[1;31mError: Only team admins can remove members\033[0m\r\n"))
 		return
 	}
-	
+
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mError: Please specify an email address\033[0m\r\n"))
 		channel.Write([]byte("Usage: team remove <email>\r\n"))
 		return
 	}
-	
+
 	removeEmail := args[0]
-	
+
 	// Get the fingerprint of the user to remove
 	var removeFingerprint string
 	err = s.db.QueryRow(`
 		SELECT public_key_fingerprint FROM users WHERE email = ?`,
 		removeEmail).Scan(&removeFingerprint)
-	
+
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: User %s not found\033[0m\r\n", removeEmail)))
 		return
 	}
-	
+
 	// Don't allow removing yourself
 	if removeFingerprint == fingerprint {
 		channel.Write([]byte("\033[1;31mError: You cannot remove yourself from the team\033[0m\r\n"))
 		return
 	}
-	
+
 	// Remove from team
 	result, err := s.db.Exec(`
 		DELETE FROM team_members 
 		WHERE user_fingerprint = ? AND team_name = ?`,
 		removeFingerprint, teamName)
-	
+
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError removing member: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
 		channel.Write([]byte(fmt.Sprintf("\033[1;33m%s is not a member of team %s\033[0m\r\n", removeEmail, teamName)))
 		return
 	}
-	
+
 	channel.Write([]byte(fmt.Sprintf("\033[1;32mSuccessfully removed %s from team %s\033[0m\r\n", removeEmail, teamName)))
+}
+
+// handleListUserTeams lists all teams the user belongs to
+func (s *Server) handleListUserTeams(channel ssh.Channel, fingerprint string) {
+	teams, err := s.getUserTeams(fingerprint)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving teams: %v\033[0m\r\n", err)))
+		return
+	}
+
+	if len(teams) == 0 {
+		channel.Write([]byte("\033[1;33mYou are not a member of any teams\033[0m\r\n"))
+		return
+	}
+
+	// Get default team for this SSH key
+	defaultTeam, _ := s.getDefaultTeamForKey(fingerprint)
+
+	channel.Write([]byte("\033[1;36m═══ Your Teams ═══\033[0m\r\n\r\n"))
+
+	for _, team := range teams {
+		// Check if this is a personal team
+		var isPersonal bool
+		var ownerFingerprint sql.NullString
+		s.db.QueryRow(`SELECT is_personal, owner_fingerprint FROM teams WHERE name = ?`,
+			team.TeamName).Scan(&isPersonal, &ownerFingerprint)
+
+		roleStr := "Member"
+		if team.IsAdmin {
+			roleStr = "\033[1;33mAdmin\033[0m"
+		}
+
+		defaultStr := ""
+		if team.TeamName == defaultTeam {
+			defaultStr = " \033[1;32m[DEFAULT]\033[0m"
+		}
+
+		teamTypeStr := ""
+		if isPersonal && ownerFingerprint.String == fingerprint {
+			teamTypeStr = " \033[2m(Personal)\033[0m"
+		}
+
+		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m%s%s - %s\r\n",
+			team.TeamName, teamTypeStr, defaultStr, roleStr)))
+		channel.Write([]byte(fmt.Sprintf("    Machines: \033[1;36m<name>.%s.exe.dev\033[0m\r\n", team.TeamName)))
+		channel.Write([]byte(fmt.Sprintf("    Joined: %s\r\n\r\n", team.JoinedAt.Format("Jan 2, 2006"))))
+	}
+
+	channel.Write([]byte("\033[2mTo switch default team: team switch <team>\033[0m\r\n"))
+	channel.Write([]byte("\033[2mTo access a specific team's machine: ssh team/machine@exe.dev\033[0m\r\n"))
+}
+
+// handleTeamSwitch switches the default team for the current SSH key
+func (s *Server) handleTeamSwitch(channel ssh.Channel, fingerprint string, args []string) {
+	if len(args) == 0 {
+		channel.Write([]byte("\033[1;31mError: Please specify a team name\033[0m\r\n"))
+		channel.Write([]byte("Usage: team switch <team>\r\n"))
+		return
+	}
+
+	newTeam := args[0]
+
+	// Verify user is a member of the specified team
+	teams, err := s.getUserTeams(fingerprint)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving teams: %v\033[0m\r\n", err)))
+		return
+	}
+
+	found := false
+	for _, team := range teams {
+		if team.TeamName == newTeam {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: You are not a member of team '%s'\033[0m\r\n", newTeam)))
+		channel.Write([]byte("\033[2mUse 'team teams' to see your teams\033[0m\r\n"))
+		return
+	}
+
+	// Update the default team for this SSH key
+	err = s.setDefaultTeamForKey(fingerprint, newTeam)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError updating default team: %v\033[0m\r\n", err)))
+		return
+	}
+
+	channel.Write([]byte(fmt.Sprintf("\033[1;32mDefault team switched to '%s'\033[0m\r\n", newTeam)))
+	channel.Write([]byte(fmt.Sprintf("Machines will now default to: \033[1;36m<name>.%s.exe.dev\033[0m\r\n", newTeam)))
+
+	// Update the current session's team
+	s.sessionsMu.Lock()
+	if session, exists := s.sessions[channel]; exists {
+		// Find the admin status for the new team
+		isAdmin := false
+		for _, team := range teams {
+			if team.TeamName == newTeam {
+				isAdmin = team.IsAdmin
+				break
+			}
+		}
+		session.TeamName = newTeam
+		session.IsAdmin = isAdmin
+	}
+	s.sessionsMu.Unlock()
 }
 
 // getUserFromChannel gets user information from SSH channel session
@@ -3038,11 +3523,11 @@ func (s *Server) getUserFromChannel(channel ssh.Channel) (fingerprint, teamName 
 	s.sessionsMu.RLock()
 	session, exists := s.sessions[channel]
 	s.sessionsMu.RUnlock()
-	
+
 	if !exists {
 		return "", "", fmt.Errorf("user not authenticated")
 	}
-	
+
 	return session.Fingerprint, session.TeamName, nil
 }
 
@@ -3055,7 +3540,7 @@ func (s *Server) createUserSession(channel ssh.Channel, fingerprint, email, team
 		IsAdmin:     isAdmin,
 		CreatedAt:   time.Now(),
 	}
-	
+
 	s.sessionsMu.Lock()
 	s.sessions[channel] = session
 	s.sessionsMu.Unlock()
@@ -3074,25 +3559,25 @@ func (s *Server) handleListCommand(channel ssh.Channel) {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
 	}
-	
+
 	fingerprint, teamName, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	containers, err := s.containerManager.ListContainers(context.Background(), fingerprint)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError listing machines: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	if len(containers) == 0 {
 		channel.Write([]byte(fmt.Sprintf("No machines found for team %s.\r\n", teamName)))
 		channel.Write([]byte("Use \033[1mcreate <name>\033[0m to create your first machine.\r\n"))
 		return
 	}
-	
+
 	channel.Write([]byte(fmt.Sprintf("\033[1mMachines for team %s:\033[0m\r\n\r\n", teamName)))
 	for _, container := range containers {
 		statusColor := "37" // default gray
@@ -3104,8 +3589,8 @@ func (s *Server) handleListCommand(channel ssh.Channel) {
 		case "pending", "building":
 			statusColor = "33" // yellow
 		}
-		
-		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m - \033[%sm%s\033[0m\r\n", 
+
+		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m - \033[%sm%s\033[0m\r\n",
 			container.Name, statusColor, container.Status)))
 	}
 	channel.Write([]byte("\r\n"))
@@ -3120,15 +3605,15 @@ func generateRandomContainerName() string {
 		"dog", "easy", "fox", "george", "how", "item", "jig", "king", "love", "neon",
 		"ocean", "pine", "river", "stone", "tree", "wind", "fire", "earth", "moon", "star",
 	}
-	
+
 	word1 := words[mathrand.Intn(len(words))]
 	word2 := words[mathrand.Intn(len(words))]
-	
+
 	// Ensure we don't get the same word twice
 	for word1 == word2 {
 		word2 = words[mathrand.Intn(len(words))]
 	}
-	
+
 	return word1 + "-" + word2
 }
 
@@ -3138,17 +3623,17 @@ func isValidStorageSize(size string) bool {
 	if len(size) < 2 {
 		return false
 	}
-	
+
 	// Extract numeric part
 	i := 0
 	for i < len(size) && (size[i] >= '0' && size[i] <= '9') {
 		i++
 	}
-	
+
 	if i == 0 {
 		return false // No numeric part
 	}
-	
+
 	// Check unit suffix
 	unit := size[i:]
 	validUnits := []string{"Ki", "Mi", "Gi", "Ti"}
@@ -3157,7 +3642,7 @@ func isValidStorageSize(size string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -3167,16 +3652,16 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
 	}
-	
+
 	fingerprint, teamName, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Create a custom flag set for the create command
 	flags := flag.NewFlagSet("create", flag.ContinueOnError)
-	
+
 	// Define flags
 	var containerName string
 	var image string
@@ -3184,18 +3669,18 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 	var disk string
 	var temp bool
 	var showHelp bool
-	
+
 	flags.StringVar(&containerName, "name", "", "Machine name (auto-generated if not specified)")
 	flags.StringVar(&image, "image", "ubuntu:22.04", "Docker image to use")
 	flags.StringVar(&size, "size", "small", "Machine size: micro, small, medium, large, xlarge")
 	flags.StringVar(&disk, "disk", "", "Override disk size (e.g., 30Gi, 100Gi)")
 	flags.BoolVar(&temp, "temp", false, "Create ephemeral machine (no persistent disk)")
 	flags.BoolVar(&showHelp, "help", false, "Show help message")
-	
+
 	// Buffer to capture and discard default flag output
 	var discardBuffer bytes.Buffer
 	flags.SetOutput(&discardBuffer)
-	
+
 	// Custom usage function that we control completely
 	showUsage := func() {
 		channel.Write([]byte("Usage: create [OPTIONS]\r\n"))
@@ -3221,7 +3706,7 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		channel.Write([]byte("  create --image=python:3.11 --size=micro  # Micro Python machine\r\n"))
 		channel.Write([]byte("  cat Dockerfile | ssh exe.dev create --name=custom  # Create from Dockerfile\r\n"))
 	}
-	
+
 	// Parse flags - any automatic output goes to discardBuffer
 	parseErr := flags.Parse(args)
 	if parseErr != nil {
@@ -3232,37 +3717,37 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		showUsage()
 		return
 	}
-	
+
 	// Check for help flag
 	if showHelp {
 		showUsage()
 		return
 	}
-	
+
 	// Check for unexpected positional arguments
 	if flags.NArg() > 0 {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: unexpected argument(s): %v\033[0m\r\n\r\n", flags.Args())))
 		showUsage()
 		return
 	}
-	
+
 	var dockerfile string
-	
+
 	// Try to read from stdin using a goroutine with timeout to detect piped data
 	stdinData := make(chan []byte, 1)
 	stdinErr := make(chan error, 1)
-	
+
 	go func() {
-		defer func() { 
+		defer func() {
 			if r := recover(); r != nil {
 				stdinErr <- fmt.Errorf("stdin read panicked: %v", r)
 			}
 		}()
-		
+
 		// Try to read all available stdin data
 		var allData []byte
 		buffer := make([]byte, 4096)
-		
+
 		for {
 			n, err := stdin.Read(buffer)
 			if n > 0 {
@@ -3272,14 +3757,14 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 				break
 			}
 		}
-		
+
 		if len(allData) > 0 {
 			stdinData <- allData
 		} else {
 			stdinErr <- fmt.Errorf("no data")
 		}
 	}()
-	
+
 	// Wait up to 100ms for stdin data
 	select {
 	case data := <-stdinData:
@@ -3289,14 +3774,14 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 	case <-time.After(100 * time.Millisecond):
 		// Timeout - assume no piped data
 	}
-	
+
 	// Generate machine name if not provided
 	if containerName == "" {
 		// Generate a unique name by trying until we find one that doesn't exist
 		maxAttempts := 10
 		for attempts := 0; attempts < maxAttempts; attempts++ {
 			candidateName := generateRandomContainerName()
-			
+
 			// Check if this name is already taken
 			_, err = s.getMachineByName(teamName, candidateName)
 			if err != nil && err.Error() == "sql: no rows in result set" {
@@ -3305,7 +3790,7 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 				break
 			}
 		}
-		
+
 		if containerName == "" {
 			channel.Write([]byte("\033[1;31mFailed to generate a unique machine name. Please specify a name manually.\033[0m\r\n"))
 			return
@@ -3314,7 +3799,7 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		channel.Write([]byte("\033[1;31mInvalid machine name. Use 3-20 lowercase letters, numbers, and hyphens only.\033[0m\r\n"))
 		return
 	}
-	
+
 	// Check if container name already exists in this team
 	_, err = s.getMachineByName(teamName, containerName)
 	if err == nil {
@@ -3327,7 +3812,7 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		return
 	}
 	// err == sql.ErrNoRows means the name is available, continue
-	
+
 	// Show creation message with size info
 	if dockerfile != "" {
 		if temp {
@@ -3343,19 +3828,19 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 			channel.Write([]byte(fmt.Sprintf("Creating \033[1m%s\033[0m (%s) for team \033[1;36m%s\033[0m using image \033[1m%s\033[0m...\r\n", containerName, size, teamName, displayImage)))
 		}
 	}
-	
+
 	// Validate size parameter
 	sizePreset, exists := container.ContainerSizes[size]
 	if !exists {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: Invalid size '%s'. Valid sizes: micro, small, medium, large, xlarge\033[0m\r\n", size)))
 		return
 	}
-	
+
 	// Apply size presets
 	cpuRequest := sizePreset.CPURequest
 	memoryRequest := sizePreset.MemoryRequest
 	storageSize := sizePreset.StorageSize
-	
+
 	// Override disk size if specified
 	if disk != "" {
 		// Validate disk size format (e.g., "10Gi", "100Gi")
@@ -3365,7 +3850,7 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		}
 		storageSize = disk
 	}
-	
+
 	// Create container request
 	req := &container.CreateContainerRequest{
 		UserID:        fingerprint,
@@ -3379,16 +3864,16 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 		StorageSize:   storageSize,
 		Ephemeral:     temp,
 	}
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	
+
 	createdContainer, err := s.containerManager.CreateContainer(ctx, req)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mFailed to create machine: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Store container info in database
 	imageToStore := container.GetDisplayImageName(image)
 	if dockerfile != "" {
@@ -3397,30 +3882,30 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 	if err := s.createMachine(fingerprint, teamName, containerName, createdContainer.ID, imageToStore); err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)))
 	}
-	
+
 	// Wait for container to be running
 	channel.Write([]byte("Waiting for startup... "))
-	
+
 	maxWaitTime := 3 * time.Minute
 	containerCheckInterval := 2 * time.Second
 	timerUpdateInterval := 100 * time.Millisecond
 	startTime := time.Now()
 	lastContainerCheck := time.Time{}
-	
+
 	for time.Since(startTime) < maxWaitTime {
 		// Show elapsed time (updates every 100ms)
 		elapsed := time.Since(startTime)
 		channel.Write([]byte(fmt.Sprintf("\r\033[KWaiting for startup... (%.1fs)", elapsed.Seconds())))
-		
+
 		// Check container status only every 2 seconds to avoid overwhelming the API
 		if time.Since(lastContainerCheck) >= containerCheckInterval {
 			lastContainerCheck = time.Now()
-			
+
 			containers, err := s.containerManager.ListContainers(context.Background(), fingerprint)
 			if err != nil {
 				continue // Skip this check, try again later
 			}
-			
+
 			var containerFound bool
 			var containerStatus container.ContainerStatus
 			for _, c := range containers {
@@ -3430,28 +3915,28 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 					break
 				}
 			}
-			
+
 			if containerFound && containerStatus == container.StatusRunning {
 				totalTime := time.Since(startTime)
 				channel.Write([]byte(fmt.Sprintf("\r\033[KReady in %.1fs! Access with \033[1mssh %s@exe.dev\033[0m\r\n", totalTime.Seconds(), containerName)))
-				
+
 				// Log slow startup for debugging
 				if totalTime.Seconds() > 60 {
 					displayImage := container.GetDisplayImageName(image)
-					log.Printf("SLOW_STARTUP: Container %s took %.1fs to start (team: %s, image: %s)", 
+					log.Printf("SLOW_STARTUP: Container %s took %.1fs to start (team: %s, image: %s)",
 						containerName, totalTime.Seconds(), teamName, displayImage)
 				}
-				
+
 				// Don't auto-SSH - just return to menu
 				// The nested SSH session doesn't work properly
 				channel.Write([]byte("\r\n"))
 				return
 			}
 		}
-		
+
 		time.Sleep(timerUpdateInterval)
 	}
-	
+
 	// Timed out
 	channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;33mMachine creation timed out after %.0f seconds. Use 'ssh %s@exe.dev' to connect when ready.\033[0m\r\n", maxWaitTime.Seconds(), containerName)))
 }
@@ -3468,20 +3953,20 @@ func (s *Server) handleSSHCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte("\033[1;31mUsage: ssh <name>\033[0m\r\n"))
 		return
 	}
-	
+
 	containerName := args[0]
-	
+
 	_, teamName, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
 	}
-	
+
 	// Look up the machine in database
 	machine, err := s.getMachineByName(teamName, containerName)
 	if err != nil {
@@ -3492,13 +3977,13 @@ func (s *Server) handleSSHCommand(channel ssh.Channel, args []string) {
 		}
 		return
 	}
-	
+
 	// Check if container exists and is running
 	if machine.ContainerID == nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mMachine '%s' not yet created\033[0m\r\n", containerName)))
 		return
 	}
-	
+
 	// Inform user how to connect
 	channel.Write([]byte(fmt.Sprintf("\033[1;32mMachine '%s' is running!\033[0m\r\n\r\n", containerName)))
 	channel.Write([]byte("To connect to this machine, exit this menu and run:\r\n"))
@@ -3512,20 +3997,20 @@ func (s *Server) handleStartCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
 	}
-	
+
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mUsage: start <name>\033[0m\r\n"))
 		return
 	}
-	
+
 	containerName := args[0]
-	
+
 	_, _, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// TODO: Get container ID from database by name
 	channel.Write([]byte(fmt.Sprintf("Starting machine \033[1m%s\033[0m...\r\n", containerName)))
 	channel.Write([]byte("\033[1;33mStart command not yet fully implemented\033[0m\r\n"))
@@ -3537,22 +4022,22 @@ func (s *Server) handleStopCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
 	}
-	
+
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mUsage: stop <name> [<name> ...]\033[0m\r\n"))
 		return
 	}
-	
+
 	fingerprint, teamName, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
 		return
 	}
-	
+
 	// Process each machine name
 	successCount := 0
 	failCount := 0
-	
+
 	for _, machineName := range args {
 		// Look up the machine in database
 		machine, err := s.getMachineByName(teamName, machineName)
@@ -3565,16 +4050,16 @@ func (s *Server) handleStopCommand(channel ssh.Channel, args []string) {
 			failCount++
 			continue
 		}
-		
+
 		// Check if machine exists and has a container ID
 		if machine.ContainerID == nil {
 			channel.Write([]byte(fmt.Sprintf("\033[1;33m✗ Machine '%s' not running\033[0m\r\n", machineName)))
 			failCount++
 			continue
 		}
-		
+
 		channel.Write([]byte(fmt.Sprintf("Stopping machine \033[1m%s\033[0m...", machineName)))
-		
+
 		// Stop the container
 		ctx := context.Background()
 		err = s.containerManager.StopContainer(ctx, fingerprint, *machine.ContainerID)
@@ -3583,11 +4068,11 @@ func (s *Server) handleStopCommand(channel ssh.Channel, args []string) {
 			failCount++
 			continue
 		}
-		
+
 		channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;32m✓ Machine '%s' stopped\033[0m\r\n", machineName)))
 		successCount++
 	}
-	
+
 	// Show summary if multiple machines were processed
 	if len(args) > 1 {
 		channel.Write([]byte(fmt.Sprintf("\r\n\033[1mSummary:\033[0m %d stopped, %d failed\r\n", successCount, failCount)))
@@ -3600,7 +4085,7 @@ func (s *Server) handleDeleteCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte("\033[1;31mUsage: delete <name>\033[0m\r\n"))
 		return
 	}
-	
+
 	containerName := args[0]
 	channel.Write([]byte(fmt.Sprintf("Deleting machine \033[1m%s\033[0m...\r\n", containerName)))
 	channel.Write([]byte("\033[1;33mDelete command not yet implemented\033[0m\r\n"))
@@ -3612,7 +4097,7 @@ func (s *Server) handleLogsCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte("\033[1;31mUsage: logs <name>\033[0m\r\n"))
 		return
 	}
-	
+
 	containerName := args[0]
 	channel.Write([]byte(fmt.Sprintf("Showing logs for machine \033[1m%s\033[0m...\r\n", containerName)))
 	channel.Write([]byte("\033[1;33mLogs command not yet implemented\033[0m\r\n"))
@@ -3623,7 +4108,7 @@ func (s *Server) handleDiagCommand(channel ssh.Channel, args []string) {
 		channel.Write([]byte("\033[1;31mUsage: diag <name>\033[0m\r\n"))
 		return
 	}
-	
+
 	fingerprint, _, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
@@ -3640,7 +4125,7 @@ func (s *Server) handleDiagCommand(channel ssh.Channel, args []string) {
 			channel.Write([]byte(fmt.Sprintf("\033[1;31mFailed to get diagnostics: %s\033[0m\r\n", err)))
 			return
 		}
-		
+
 		// Format and display the diagnostics
 		lines := strings.Split(diagnostics, "\n")
 		for _, line := range lines {
@@ -3700,69 +4185,68 @@ func (s *Server) showAnimatedWelcomeWithWidth(channel ssh.Channel, terminalWidth
 		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ ",
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  ",
 	}
-	
+
 	// Use provided terminal width or detect it
 	if terminalWidth <= 0 {
 		terminalWidth = s.getTerminalWidth(channel)
 	}
-	
+
 	// Calculate art width (longest line) - count visual characters, not bytes
 	artWidth := s.getVisualWidth(asciiArt[0])
 	leftPadding := (terminalWidth - artWidth) / 2
 	if leftPadding < 0 {
 		leftPadding = 0 // Handle edge case of very narrow terminals
 	}
-	
+
 	// Debug logging without disrupting the display
-	log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d", 
+	log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d",
 		terminalWidth, artWidth, leftPadding)
-	
-	
+
 	// Clear screen and move cursor to top
 	channel.Write([]byte("\033[2J\033[H"))
-	
+
 	// Add some vertical padding to center vertically
 	channel.Write([]byte("\r\n\r\n\r\n\r\n\r\n"))
-	
+
 	// Add 3 additional blank lines above the ASCII art
 	channel.Write([]byte("\r\n\r\n\r\n"))
-	
+
 	// Beautiful fade effect for dark terminals: bright green -> dark green -> black
 	// Each step gets progressively darker until it fades to black
 	fadeSteps := []struct {
 		color string
 		delay time.Duration
 	}{
-		{"\033[1;32m", 500 * time.Millisecond},  // Bright green - the signature color
-		{"\033[0;32m", 200 * time.Millisecond},  // Normal green
-		{"\033[2;32m", 150 * time.Millisecond},  // Dim green
+		{"\033[1;32m", 500 * time.Millisecond},    // Bright green - the signature color
+		{"\033[0;32m", 200 * time.Millisecond},    // Normal green
+		{"\033[2;32m", 150 * time.Millisecond},    // Dim green
 		{"\033[38;5;28m", 150 * time.Millisecond}, // Dark green (256-color)
 		{"\033[38;5;22m", 150 * time.Millisecond}, // Darker green
 		{"\033[38;5;16m", 100 * time.Millisecond}, // Very dark (almost black)
-		{"\033[30m", 100 * time.Millisecond},     // Black (invisible on dark bg)
+		{"\033[30m", 100 * time.Millisecond},      // Black (invisible on dark bg)
 	}
-	
+
 	// Show the art with fade animation
 	for _, step := range fadeSteps {
 		// Clear the previous art area
 		channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
-		
+
 		// Draw the art with current color
 		for _, line := range asciiArt {
 			padding := strings.Repeat(" ", leftPadding)
 			channel.Write([]byte(fmt.Sprintf("%s%s%s\033[0m\r\n", padding, step.color, line)))
 		}
-		
+
 		// Wait before next step
 		time.Sleep(step.delay)
 	}
-	
+
 	// Move cursor back up and clear the art area completely
 	channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
 	for i := 0; i < len(asciiArt); i++ {
 		channel.Write([]byte("\033[2K\r\n")) // Clear entire line and move to next
 	}
-	
+
 	// Move cursor back to where the art was
 	channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
 }
@@ -3782,7 +4266,7 @@ func (s *Server) getTerminalWidth(channel ssh.Channel) int {
 			return width
 		}
 	}
-	
+
 	// Method 2: Use the actual terminal width you reported
 	// You mentioned having a 140-character terminal, so let's use that
 	return 140
@@ -3795,7 +4279,7 @@ func (s *Server) handleRegistration(channel ssh.Channel, fingerprint string) {
 func (s *Server) handleRegistrationWithWidth(channel ssh.Channel, fingerprint string, terminalWidth int) {
 	// Show the animated welcome with terminal width
 	s.showAnimatedWelcomeWithWidth(channel, terminalWidth)
-	
+
 	// Now show the signup content after the animation
 	signupContent := "\r\n\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +
 		"Let's get you set up in just a few steps:\r\n\r\n" +
@@ -3803,9 +4287,9 @@ func (s *Server) handleRegistrationWithWidth(channel ssh.Channel, fingerprint st
 		"2. Team Setup\r\n" +
 		"3. Payment Setup\033[0m\r\n\r\n" +
 		"\033[1mTo get started, please enter your email address:\033[0m\r\n"
-	
+
 	channel.Write([]byte(signupContent))
-	
+
 	// Read email address from user
 	email, err := s.readLineFromChannel(channel)
 	if err != nil {
@@ -3816,20 +4300,20 @@ func (s *Server) handleRegistrationWithWidth(channel ssh.Channel, fingerprint st
 		channel.Write([]byte("\r\nError reading input. Please try again.\r\n"))
 		return
 	}
-	
+
 	// Validate email format (basic validation)
 	if !s.isValidEmail(email) {
 		channel.Write([]byte("\r\nInvalid email address. Please try again.\r\n"))
 		return
 	}
-	
+
 	channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mEmail confirmed:\033[0m %s\r\n", email)))
-	
+
 	// Start email verification flow
 	if err := s.startEmailVerification(channel, fingerprint, email); err != nil {
 		// Log the error for debugging
 		log.Printf("Email verification failed for %s (fingerprint: %s): %v", email, fingerprint, err)
-		
+
 		// Show user-friendly error message
 		if err.Error() == "email service not configured" {
 			channel.Write([]byte("\r\nError: Email service not configured. Please contact support.\r\n"))
@@ -3846,13 +4330,13 @@ func (s *Server) handleRegistrationWithWidth(channel ssh.Channel, fingerprint st
 func (s *Server) readLineFromChannel(channel ssh.Channel) (string, error) {
 	var buffer []byte
 	temp := make([]byte, 1)
-	
+
 	for {
 		n, err := channel.Read(temp)
 		if err != nil {
 			return "", err
 		}
-		
+
 		if n > 0 {
 			switch temp[0] {
 			case '\n', '\r':
@@ -3891,18 +4375,18 @@ func (s *Server) isValidEmail(email string) bool {
 	if email == "" {
 		return false
 	}
-	
+
 	// Very basic email validation - contains @ and a dot after @
 	atIndex := strings.Index(email, "@")
 	if atIndex <= 0 || atIndex == len(email)-1 {
 		return false
 	}
-	
+
 	domain := email[atIndex+1:]
 	if !strings.Contains(domain, ".") {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -3911,34 +4395,34 @@ func (s *Server) startEmailVerification(channel ssh.Channel, fingerprint, email 
 	// First check if this email already exists
 	var existingFingerprint string
 	err := s.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", email).Scan(&existingFingerprint)
-	
+
 	if err == nil {
 		// Email already exists - this is a new device for an existing user
 		publicKey := "" // We don't have the public key in this context yet
-		
+
 		// Store this key as unverified in ssh_keys table
 		_, err = s.db.Exec(`
 			INSERT OR REPLACE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
 			VALUES (?, ?, ?, 0, 'Pending Verification')`,
 			fingerprint, email, publicKey)
-		
+
 		if err != nil {
 			return fmt.Errorf("failed to store pending key: %v", err)
 		}
-		
+
 		// Generate token for new device verification
 		token := s.generateToken()
 		expires := time.Now().Add(15 * time.Minute)
-		
+
 		_, err = s.db.Exec(`
 			INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
 			VALUES (?, ?, ?, ?, ?)`,
 			token, fingerprint, publicKey, email, expires)
-		
+
 		if err != nil {
 			return fmt.Errorf("failed to create verification token: %v", err)
 		}
-		
+
 		// Send new device verification email
 		subject := "New Device Login - exe.dev"
 		body := fmt.Sprintf(`Hello,
@@ -3960,11 +4444,11 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 
 		return s.sendEmail(email, subject, body)
 	}
-	
+
 	// New user registration flow
 	// Generate verification token
 	token := s.generateRegistrationToken()
-	
+
 	// Create email verification
 	verification := &EmailVerification{
 		PublicKeyFingerprint: fingerprint,
@@ -3973,12 +4457,12 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 		CompleteChan:         make(chan struct{}),
 		CreatedAt:            time.Now(),
 	}
-	
+
 	// Store verification
 	s.emailVerificationsMu.Lock()
 	s.emailVerifications[token] = verification
 	s.emailVerificationsMu.Unlock()
-	
+
 	// Send verification email
 	if err := s.sendVerificationEmail(email, token); err != nil {
 		s.emailVerificationsMu.Lock()
@@ -3986,7 +4470,7 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 		s.emailVerificationsMu.Unlock()
 		return err
 	}
-	
+
 	channel.Write([]byte("\r\n\033[1;33mVerification email sent!\033[0m Please check your email and click the verification link.\r\n"))
 	channel.Write([]byte("\r\n\033[2;37mWaiting for email verification"))
 	// Add animated dots
@@ -3995,35 +4479,35 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 		channel.Write([]byte("."))
 	}
 	channel.Write([]byte("\033[0m\r\n\r\n"))
-	
+
 	// Wait for email verification or timeout
 	select {
 	case <-verification.CompleteChan:
 		channel.Write([]byte("\r\n\033[1;32mEmail verified successfully!\033[0m\r\n\r\n"))
-		
+
 		// Start team name creation first
 		s.startTeamNameCreation(channel, fingerprint, email)
-		
+
 	case <-time.After(10 * time.Minute):
 		channel.Write([]byte("\r\nEmail verification timeout. Please try connecting again.\r\n"))
-		
+
 		// Clean up verification
 		s.emailVerificationsMu.Lock()
 		delete(s.emailVerifications, token)
 		s.emailVerificationsMu.Unlock()
 	}
-	
+
 	return nil
 }
 
 // sendVerificationEmail sends a verification email using Postmark
 func (s *Server) sendVerificationEmail(email, token string) error {
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", s.BaseURL, token)
-	
+
 	// In dev mode, just log the URL instead of sending email and auto-complete verification
 	if s.devMode {
 		log.Printf("🔧 DEV MODE: Would send verification email to %s with URL: %s", email, verificationURL)
-		
+
 		// Auto-complete email verification in dev mode
 		go func() {
 			time.Sleep(100 * time.Millisecond) // Brief delay to simulate async behavior
@@ -4036,14 +4520,14 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 			}
 			s.emailVerificationsMu.Unlock()
 		}()
-		
+
 		return nil
 	}
-	
+
 	if s.postmarkClient == nil {
 		return fmt.Errorf("email service not configured")
 	}
-	
+
 	emailBody := fmt.Sprintf(`
 <html>
 <body>
@@ -4057,7 +4541,7 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 </body>
 </html>
 `, verificationURL, verificationURL)
-	
+
 	email_msg := postmark.Email{
 		From:     "register@exe.dev",
 		To:       email,
@@ -4065,7 +4549,7 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 		HtmlBody: emailBody,
 		TextBody: fmt.Sprintf("Welcome to exe.dev! Please verify your email by visiting: %s", verificationURL),
 	}
-	
+
 	_, err := s.postmarkClient.SendEmail(email_msg)
 	return err
 }
@@ -4078,7 +4562,7 @@ func (s *Server) startTeamNameCreation(channel ssh.Channel, fingerprint, email s
 		channel.Write([]byte(fmt.Sprintf("\r\nError checking invites: %v\r\n", err)))
 		return
 	}
-	
+
 	// Filter valid (non-expired, not fully used) invites
 	var validInvites []Invite
 	now := time.Now()
@@ -4087,7 +4571,7 @@ func (s *Server) startTeamNameCreation(channel ssh.Channel, fingerprint, email s
 			validInvites = append(validInvites, invite)
 		}
 	}
-	
+
 	if len(validInvites) > 0 {
 		// User has pending invites, show them and let them choose
 		s.handlePendingInvites(channel, fingerprint, email, validInvites)
@@ -4109,47 +4593,47 @@ func (s *Server) handlePendingInvites(channel ssh.Channel, fingerprint, email st
 		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
 		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n" +
 		"\033[1mYou have pending team invitations!\033[0m\r\n\r\n"))
-	
+
 	// Show available invites
 	for i, invite := range invites {
 		channel.Write([]byte(fmt.Sprintf("\033[1;32m%d.\033[0m Join team \033[1;36m%s\033[0m\r\n", i+1, invite.TeamName)))
 	}
-	
+
 	channel.Write([]byte(fmt.Sprintf("\033[1;32m%d.\033[0m Create a new team instead\r\n\r\n", len(invites)+1)))
 	channel.Write([]byte("Enter your choice: "))
-	
+
 	for {
 		choice, err := s.readLineFromChannel(channel)
 		if err != nil {
 			channel.Write([]byte(fmt.Sprintf("\r\nError reading choice: %v\r\n", err)))
 			return
 		}
-		
+
 		choice = strings.TrimSpace(choice)
 		choiceNum := 0
 		fmt.Sscanf(choice, "%d", &choiceNum)
-		
+
 		if choiceNum >= 1 && choiceNum <= len(invites) {
 			// Join selected team
 			invite := invites[choiceNum-1]
-			
+
 			// Create user and add to team
 			if err := s.createUser(fingerprint, email); err != nil {
 				channel.Write([]byte(fmt.Sprintf("\r\nFailed to create user: %v\r\n", err)))
 				return
 			}
-			
+
 			if err := s.addTeamMember(fingerprint, invite.TeamName, false); err != nil {
 				channel.Write([]byte(fmt.Sprintf("\r\nFailed to add to team: %v\r\n", err)))
 				return
 			}
-			
+
 			// Use the invite
 			if err := s.useInvite(invite.Code); err != nil {
 				channel.Write([]byte(fmt.Sprintf("\r\nFailed to mark invite as used: %v\r\n", err)))
 				return
 			}
-			
+
 			channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mSuccessfully joined team: %s\033[0m\r\n\r\n", invite.TeamName)))
 			s.completeRegistration(channel, fingerprint, email, invite.TeamName)
 			return
@@ -4171,58 +4655,58 @@ func (s *Server) handlePendingInvites(channel ssh.Channel, fingerprint, email st
 // joinTeamViaInvite handles joining an existing team via invite code
 func (s *Server) joinTeamViaInvite(channel ssh.Channel, fingerprint, email string) (string, error) {
 	channel.Write([]byte("\r\n\033[1mPlease enter your invite code:\033[0m "))
-	
+
 	for {
 		inviteCode, err := s.readLineFromChannel(channel)
 		if err != nil {
 			return "", err
 		}
-		
+
 		inviteCode = strings.TrimSpace(inviteCode)
 		if inviteCode == "" {
 			channel.Write([]byte("\r\n\033[1;31mInvite code cannot be empty\033[0m\r\n\r\nInvite code: "))
 			continue
 		}
-		
+
 		// Get invite from database
 		invite, err := s.getInviteByCode(inviteCode)
 		if err != nil {
 			channel.Write([]byte("\r\n\033[1;31mInvalid invite code\033[0m\r\n\r\nInvite code: "))
 			continue
 		}
-		
+
 		// Check if invite is still valid
 		if time.Now().After(invite.ExpiresAt) {
 			channel.Write([]byte("\r\n\033[1;31mInvite code has expired\033[0m\r\n\r\nInvite code: "))
 			continue
 		}
-		
+
 		// Check if invite has remaining uses
 		if invite.UsedCount >= invite.MaxUses {
 			channel.Write([]byte("\r\n\033[1;31mInvite code has been fully used\033[0m\r\n\r\nInvite code: "))
 			continue
 		}
-		
+
 		// Check if invite is email-specific and matches
 		if invite.Email != "" && invite.Email != email {
 			channel.Write([]byte("\r\n\033[1;31mThis invite is for a different email address\033[0m\r\n\r\nInvite code: "))
 			continue
 		}
-		
+
 		// Create user and add to team
 		if err := s.createUser(fingerprint, email); err != nil {
 			return "", fmt.Errorf("failed to create user: %w", err)
 		}
-		
+
 		if err := s.addTeamMember(fingerprint, invite.TeamName, false); err != nil {
 			return "", fmt.Errorf("failed to add to team: %w", err)
 		}
-		
+
 		// Use the invite
 		if err := s.useInvite(inviteCode); err != nil {
 			return "", fmt.Errorf("failed to mark invite as used: %w", err)
 		}
-		
+
 		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mSuccessfully joined team: %s\033[0m\r\n\r\n", invite.TeamName)))
 		return invite.TeamName, nil
 	}
@@ -4234,7 +4718,7 @@ func (s *Server) completeRegistration(channel ssh.Channel, fingerprint, email, t
 	s.billingVerificationsMu.Lock()
 	delete(s.billingVerifications, fingerprint)
 	s.billingVerificationsMu.Unlock()
-	
+
 	// Show success message
 	channel.Write([]byte("\r\n\033[1;32m"))
 	celebrationFrames := []string{
@@ -4251,16 +4735,16 @@ func (s *Server) completeRegistration(channel ssh.Channel, fingerprint, email, t
 		time.Sleep(300 * time.Millisecond)
 	}
 	channel.Write([]byte("\033[0m\r\n\r\n"))
-	
+
 	channel.Write([]byte(fmt.Sprintf("\033[1mWelcome to team \033[1;32m%s\033[0m!\033[0m\r\n\r\n", teamName)))
 	channel.Write([]byte("You now have access to:\r\n"))
 	channel.Write([]byte(fmt.Sprintf("  • Team machines at \033[1;36m<name>.%s.exe.dev\033[0m\r\n", teamName)))
 	channel.Write([]byte("  • Shared team resources and collaboration\r\n\r\n"))
-	
+
 	// Create user session before continuing to main shell
 	s.createUserSession(channel, fingerprint, email, teamName, true) // Admin since they created the team
 	defer s.removeUserSession(channel)
-	
+
 	// Continue with normal shell flow
 	s.runMainShell(channel, true) // New users - show welcome
 }
@@ -4274,11 +4758,11 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		CompleteChan:         make(chan struct{}),
 		CreatedAt:            time.Now(),
 	}
-	
+
 	s.billingVerificationsMu.Lock()
 	s.billingVerifications[fingerprint] = billing
 	s.billingVerificationsMu.Unlock()
-	
+
 	message := "\r\n\033[1;36m" +
 		"╭─────────────────────────────────────────────────╮\r\n" +
 		"│  \033[1;33mStep 3: Payment Setup\033[1;36m                      │\r\n" +
@@ -4287,9 +4771,9 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		"\033[2;37mFor testing, please enter the Stripe test card:\033[0m\r\n" +
 		"\033[1;33m4242424242424242\033[0m \033[2;37m(Visa test card)\033[0m\r\n\r\n" +
 		"\033[1mCredit card number:\033[0m "
-	
+
 	channel.Write([]byte(message))
-	
+
 	// Read credit card number
 	cardNumber, err := s.readLineFromChannel(channel)
 	if err != nil {
@@ -4300,15 +4784,15 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		channel.Write([]byte("\r\nError reading input. Please try again.\r\n"))
 		return
 	}
-	
+
 	// Verify card with Stripe
 	if err := s.verifyPaymentMethod(cardNumber); err != nil {
 		channel.Write([]byte(fmt.Sprintf("\r\nPayment verification failed: %v\r\n", err)))
 		return
 	}
-	
+
 	channel.Write([]byte("\r\n\033[1;32mPayment method verified successfully!\033[0m\r\n\r\n"))
-	
+
 	// Create user and team in database
 	if err := s.createUser(fingerprint, email); err != nil {
 		channel.Write([]byte(fmt.Sprintf("\r\nFailed to create user: %v\r\n", err)))
@@ -4322,12 +4806,12 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		channel.Write([]byte(fmt.Sprintf("\r\nFailed to add to team: %v\r\n", err)))
 		return
 	}
-	
+
 	// Clean up verification states
 	s.billingVerificationsMu.Lock()
 	delete(s.billingVerifications, fingerprint)
 	s.billingVerificationsMu.Unlock()
-	
+
 	// Create celebration animation
 	channel.Write([]byte("\r\n\033[1;32m"))
 	celebrationFrames := []string{
@@ -4335,14 +4819,14 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		"  * Registration completed! *  ",
 		" *** Registration completed! *** ",
 	}
-	
+
 	for i := 0; i < 2; i++ {
 		for _, frame := range celebrationFrames {
 			channel.Write([]byte("\r" + frame))
 			time.Sleep(300 * time.Millisecond)
 		}
 	}
-	
+
 	channel.Write([]byte("\033[0m\r\n\r\n"))
 	channel.Write([]byte("\033[1;36m" +
 		"╔══════════════════════════════════════════════════════════════╗\r\n" +
@@ -4356,7 +4840,7 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 		"║  \033[37m• Access your machines anytime via SSH\033[1;36m                 ║\r\n" +
 		"║                                                              ║\r\n" +
 		"╚══════════════════════════════════════════════════════════════╝\033[0m\r\n\r\n"))
-	
+
 	// Get user's team membership to determine admin status
 	teams, err := s.getUserTeams(fingerprint)
 	isAdmin := true // Default to admin
@@ -4369,11 +4853,11 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 			}
 		}
 	}
-	
+
 	// Create user session before continuing to main shell
 	s.createUserSession(channel, fingerprint, email, teamName, isAdmin)
 	defer s.removeUserSession(channel)
-	
+
 	// Continue with normal shell flow
 	s.runMainShell(channel, true) // New team members - show welcome
 }
@@ -4382,25 +4866,25 @@ func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, emai
 func (s *Server) verifyPaymentMethod(cardNumber string) error {
 	// Remove spaces from card number
 	cardNumber = strings.ReplaceAll(cardNumber, " ", "")
-	
+
 	// Basic validation - check if it's the test card number
 	if cardNumber != "4242424242424242" {
 		return fmt.Errorf("invalid card number. Please use the test card: 4242424242424242")
 	}
-	
+
 	// Use a test payment method token instead of raw card data
 	// This is a pre-created test payment method token from Stripe
 	testPaymentMethodToken := "pm_card_visa" // Stripe test token for Visa
-	
+
 	// Try to retrieve the test payment method to verify it exists
 	pm, err := paymentmethod.Get(testPaymentMethodToken, nil)
 	if err != nil {
 		return fmt.Errorf("payment method verification failed: %w", err)
 	}
-	
+
 	// Log successful verification (but don't expose sensitive details)
 	log.Printf("Payment method verified successfully: type=%s, last4=%s", pm.Type, pm.Card.Last4)
-	
+
 	return nil
 }
 
@@ -4410,13 +4894,13 @@ func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
 		"╭─────────────────────────────────────────────────╮\r\n" +
 		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
 		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n"))
-	
+
 	channel.Write([]byte("\033[1mNow let's create your team name.\033[0m\r\n\r\n"))
 	channel.Write([]byte("\033[2;37mYour machines will be available at: \033[1;32m<name>.<team>.exe.dev\033[0m\r\n\r\n"))
-	
+
 	for {
 		channel.Write([]byte("\033[1mTeam name:\033[0m "))
-		
+
 		teamName, err := s.readLineFromChannel(channel)
 		if err != nil {
 			if err.Error() == "interrupted" || err.Error() == "EOF" {
@@ -4425,34 +4909,33 @@ func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
 			}
 			return "", err
 		}
-		
+
 		// Validate team name
 		if !s.isValidTeamName(teamName) {
 			channel.Write([]byte("\r\n\033[1;31mInvalid team name\033[0m\r\n"))
 			channel.Write([]byte("\033[2;37m   Requirements: 3-20 characters, lowercase letters/numbers/hyphens only\033[0m\r\n\r\n"))
 			continue
 		}
-		
+
 		// Check if team name is available
 		taken, err := s.isTeamNameTaken(teamName)
 		if err != nil {
 			channel.Write([]byte(fmt.Sprintf("\r\nError checking team name: %v\r\n", err)))
 			continue
 		}
-		
+
 		if taken {
 			channel.Write([]byte("\r\n\033[1;31mTeam name already taken\033[0m\r\n"))
 			channel.Write([]byte("\033[2;37m   Please try a different name\033[0m\r\n\r\n"))
 			continue
 		}
-		
+
 		channel.Write([]byte("\r\n\033[1;32mPerfect! Team name is available!\033[0m\r\n"))
 		channel.Write([]byte(fmt.Sprintf("\033[2;37m   Your machines: \033[1;32m<name>.%s.exe.dev\033[0m\r\n\r\n", teamName)))
-		
+
 		return teamName, nil
 	}
 }
-
 
 // updatePromptLine updates the current line with validation feedback (simplified)
 func (s *Server) updatePromptLine(channel ssh.Channel, prompt, input, feedback string) {
@@ -4465,23 +4948,23 @@ func (s *Server) isValidTeamName(teamName string) bool {
 	if len(teamName) < 3 || len(teamName) > 20 {
 		return false
 	}
-	
+
 	for _, char := range teamName {
 		if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') {
 			return false
 		}
 	}
-	
+
 	// Cannot start or end with hyphen
 	if teamName[0] == '-' || teamName[len(teamName)-1] == '-' {
 		return false
 	}
-	
+
 	// Cannot have consecutive hyphens
 	if strings.Contains(teamName, "--") {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -4490,7 +4973,7 @@ func (s *Server) Start() error {
 	s.mu.Lock()
 	s.stopping = false
 	s.mu.Unlock()
-	
+
 	// Start HTTP server in a goroutine
 	go func() {
 		log.Printf("HTTP server starting on %s", s.httpAddr)
@@ -4498,7 +4981,7 @@ func (s *Server) Start() error {
 			log.Printf("HTTP server error: %v", err)
 		}
 	}()
-	
+
 	// Start HTTPS server in a goroutine if configured
 	if s.httpsAddr != "" {
 		go func() {
@@ -4507,7 +4990,7 @@ func (s *Server) Start() error {
 				log.Printf("HTTPS server error: %v", err)
 			}
 		}()
-		
+
 		// Start autocert HTTP handler for ACME challenges on port 80 (only for regular autocert)
 		// Note: DNS challenge for wildcard certs doesn't need HTTP-01 challenge handler
 		if s.certManager != nil {
@@ -4519,19 +5002,19 @@ func (s *Server) Start() error {
 			}()
 		}
 	}
-	
+
 	// Start SSH server in a goroutine
 	go func() {
 		if err := s.serveSSH(); err != nil {
 			log.Printf("SSH server error: %v", err)
 		}
 	}()
-	
+
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	
+
 	log.Println("Shutting down servers...")
 	return s.Stop()
 }
@@ -4545,7 +5028,7 @@ func (s *Server) getEmailBySSHKey(fingerprint string) (email string, verified bo
 		FROM ssh_keys 
 		WHERE fingerprint = ?`,
 		fingerprint).Scan(&email, &verified)
-	
+
 	if err == sql.ErrNoRows {
 		return "", false, nil
 	}
@@ -4564,7 +5047,7 @@ func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var teams []TeamMember
 	for rows.Next() {
 		var tm TeamMember
@@ -4573,7 +5056,7 @@ func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
 		}
 		teams = append(teams, tm)
 	}
-	
+
 	return teams, rows.Err()
 }
 
@@ -4623,22 +5106,22 @@ Press ENTER to send verification email, or Ctrl+C to cancel...
 			return
 		}
 	}
-	
+
 	// Generate verification token
 	token := s.generateToken()
-	
+
 	// Store pending SSH key
 	expires := time.Now().Add(15 * time.Minute)
 	_, err := s.db.Exec(`
 		INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
 		VALUES (?, ?, ?, ?, ?)`,
 		token, fingerprint, publicKey, email, expires)
-	
+
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\r\nError storing verification request: %v\r\n", err)))
 		return
 	}
-	
+
 	// Send verification email
 	subject := "New Device Login - exe.dev"
 	body := fmt.Sprintf(`Hello,
@@ -4662,7 +5145,7 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 		channel.Write([]byte(fmt.Sprintf("\r\nError sending verification email: %v\r\n", err)))
 		return
 	}
-	
+
 	channel.Write([]byte("\r\n\033[1;32mVerification email sent!\033[0m\r\n\r\n"))
 	channel.Write([]byte("Please check your email and click the verification link.\r\n"))
 	channel.Write([]byte("Once verified, you can reconnect and access your account.\r\n\r\n"))
@@ -4677,7 +5160,7 @@ func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 		FROM users 
 		WHERE public_key_fingerprint = ?`,
 		fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
-	
+
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -4695,7 +5178,7 @@ func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var teams []TeamMember
 	for rows.Next() {
 		var tm TeamMember
@@ -4707,13 +5190,70 @@ func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
 	return teams, rows.Err()
 }
 
-// createUser creates a new user
+// createUser creates a new user with their personal team
 func (s *Server) createUser(fingerprint, email string) error {
-	_, err := s.db.Exec(`
+	// Start a transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Create the user
+	_, err = tx.Exec(`
 		INSERT INTO users (public_key_fingerprint, email) 
 		VALUES (?, ?)`,
 		fingerprint, email)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Create their personal team (username as team name)
+	username := strings.Split(email, "@")[0]
+	username = strings.ToLower(username)
+	username = strings.ReplaceAll(username, ".", "-")
+	username = strings.ReplaceAll(username, "_", "-")
+
+	// Ensure personal team name is unique
+	personalTeamName := username
+	for i := 1; ; i++ {
+		taken, err := s.isTeamNameTakenTx(tx, personalTeamName)
+		if err != nil {
+			return err
+		}
+		if !taken {
+			break
+		}
+		personalTeamName = fmt.Sprintf("%s%d", username, i)
+	}
+
+	// Create the personal team
+	_, err = tx.Exec(`
+		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint) 
+		VALUES (?, ?, TRUE, ?)`,
+		personalTeamName, email, fingerprint)
+	if err != nil {
+		return err
+	}
+
+	// Add user as admin of their personal team
+	_, err = tx.Exec(`
+		INSERT INTO team_members (user_fingerprint, team_name, is_admin) 
+		VALUES (?, ?, TRUE)`,
+		fingerprint, personalTeamName)
+	if err != nil {
+		return err
+	}
+
+	// Set this as the default team for the SSH key
+	_, err = tx.Exec(`
+		UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`,
+		personalTeamName, fingerprint)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // createTeam creates a new team
@@ -4738,7 +5278,20 @@ func (s *Server) addTeamMember(fingerprint, teamName string, isAdmin bool) error
 func (s *Server) isTeamNameTaken(teamName string) (bool, error) {
 	var count int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE name = ?`, teamName).Scan(&count)
-	return count > 0, err
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// isTeamNameTakenTx checks if a team name is already taken within a transaction
+func (s *Server) isTeamNameTakenTx(tx *sql.Tx, teamName string) (bool, error) {
+	var count int
+	err := tx.QueryRow(`SELECT COUNT(*) FROM teams WHERE name = ?`, teamName).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // createInvite creates a new team invitation
@@ -4757,7 +5310,7 @@ func (s *Server) getInviteByCode(code string) (*Invite, error) {
 	err := s.db.QueryRow(`
 		SELECT code, team_name, created_by_fingerprint, email, max_uses, used_count, expires_at, created_at
 		FROM invites WHERE code = ?
-	`, code).Scan(&invite.Code, &invite.TeamName, &invite.CreatedByFingerprint, 
+	`, code).Scan(&invite.Code, &invite.TeamName, &invite.CreatedByFingerprint,
 		&invite.Email, &invite.MaxUses, &invite.UsedCount, &invite.ExpiresAt, &invite.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -4786,7 +5339,7 @@ func (s *Server) getInvitesByEmail(email string) ([]Invite, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var invites []Invite
 	for rows.Next() {
 		var invite Invite
@@ -4797,8 +5350,27 @@ func (s *Server) getInvitesByEmail(email string) ([]Invite, error) {
 		}
 		invites = append(invites, invite)
 	}
-	
+
 	return invites, rows.Err()
+}
+
+// getDefaultTeamForKey gets the default team for an SSH key
+func (s *Server) getDefaultTeamForKey(fingerprint string) (string, error) {
+	var defaultTeam sql.NullString
+	err := s.db.QueryRow(`SELECT default_team FROM ssh_keys WHERE fingerprint = ?`, fingerprint).Scan(&defaultTeam)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return defaultTeam.String, nil
+}
+
+// setDefaultTeamForKey sets the default team for an SSH key
+func (s *Server) setDefaultTeamForKey(fingerprint, teamName string) error {
+	_, err := s.db.Exec(`UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`, teamName, fingerprint)
+	return err
 }
 
 // Stop gracefully shuts down all servers
@@ -4806,28 +5378,27 @@ func (s *Server) Stop() error {
 	s.mu.Lock()
 	s.stopping = true
 	s.mu.Unlock()
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	// Shutdown HTTP server
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		log.Printf("HTTP server shutdown error: %v", err)
 	}
-	
+
 	// Shutdown HTTPS server if running
 	if s.httpsServer != nil {
 		if err := s.httpsServer.Shutdown(ctx); err != nil {
 			log.Printf("HTTPS server shutdown error: %v", err)
 		}
 	}
-	
+
 	// Close database connection
 	if s.db != nil {
 		s.db.Close()
 	}
-	
+
 	log.Println("Servers stopped")
 	return nil
 }
-

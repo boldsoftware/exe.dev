@@ -51,7 +51,7 @@ func TestExternalSSHAccess(t *testing.T) {
 		Name:   "web-app",
 		Image:  "nginx:latest",
 	}
-	
+
 	_, err = mockManager.CreateContainer(context.Background(), containerReq)
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)
@@ -87,7 +87,7 @@ func TestExternalSSHAccess(t *testing.T) {
 			skipFullRun:  false,
 		},
 		{
-			name:         "check container lookup for non-existent", 
+			name:         "check container lookup for non-existent",
 			username:     "nonexistent",
 			expectDirect: false,
 			expectOutput: []string{}, // We'll test the lookup logic separately
@@ -204,14 +204,14 @@ func TestFindContainerByName(t *testing.T) {
 	defer server.Stop()
 
 	fingerprint := "test-user"
-	
+
 	// Create test containers
 	containers := []*container.CreateContainerRequest{
 		{UserID: fingerprint, Name: "web", Image: "nginx:latest"},
 		{UserID: fingerprint, Name: "api", Image: "node:16"},
 		{UserID: fingerprint, Name: "database", Image: "postgres:13"},
 	}
-	
+
 	for _, req := range containers {
 		_, err := mockManager.CreateContainer(context.Background(), req)
 		if err != nil {
@@ -220,10 +220,10 @@ func TestFindContainerByName(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		searchName    string
-		shouldFind    bool
-		expectedName  string
+		name         string
+		searchName   string
+		shouldFind   bool
+		expectedName string
 	}{
 		{"find existing container", "web", true, "web"},
 		{"find another existing container", "api", true, "api"},
@@ -235,7 +235,7 @@ func TestFindContainerByName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := server.findContainerByName(fingerprint, tt.searchName)
-			
+
 			if tt.shouldFind {
 				if result == nil {
 					t.Errorf("Expected to find container %q, got nil", tt.searchName)
