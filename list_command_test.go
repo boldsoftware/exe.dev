@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"exe.dev/container"
+	"exe.dev/sshbuf"
 )
 
 func TestHandleListCommand(t *testing.T) {
@@ -57,9 +58,11 @@ func TestHandleListCommand(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	tests := []struct {
 		name            string
@@ -120,7 +123,7 @@ func TestHandleListCommand(t *testing.T) {
 			outputBuf.Reset()
 
 			// Call handleListCommand
-			server.handleListCommand(mockChannel)
+			server.handleListCommand(bufferedChannel)
 
 			// Check output
 			rawOutput := outputBuf.String()
@@ -182,12 +185,14 @@ func TestHandleListCommandWithoutContainerManager(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	// Call handleListCommand
-	server.handleListCommand(mockChannel)
+	server.handleListCommand(bufferedChannel)
 
 	// Check that it reports container management not available
 	rawOutput := outputBuf.String()
@@ -196,5 +201,5 @@ func TestHandleListCommandWithoutContainerManager(t *testing.T) {
 		t.Errorf("Expected 'Machine management is not available' in output, got: %s", output)
 	}
 
-	server.removeUserSession(mockChannel)
+	server.removeUserSession(bufferedChannel)
 }

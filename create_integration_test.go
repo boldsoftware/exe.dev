@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/sshbuf"
 )
 
 func TestCreateCommandVariantsIntegration(t *testing.T) {
@@ -86,16 +87,18 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 			mockChannel := &MockSSHChannel{
 				term: term,
 			}
+			// Wrap the mock channel with SSHBufferedChannel
+			bufferedChannel := sshbuf.New(mockChannel)
 
 			// Create user session
-			server.createUserSession(mockChannel, fingerprint, email, teamName, true)
-			defer server.removeUserSession(mockChannel)
+			server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+			defer server.removeUserSession(bufferedChannel)
 
 			// Create stdin reader
 			stdinReader := strings.NewReader(tt.stdin)
 
 			// Call handleCreateCommandWithStdin
-			server.handleCreateCommandWithStdin(mockChannel, tt.args, stdinReader)
+			server.handleCreateCommandWithStdin(bufferedChannel, tt.args, stdinReader)
 
 			// Check output
 			rawOutput := outputBuf.String()

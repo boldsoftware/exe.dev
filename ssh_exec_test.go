@@ -3,6 +3,7 @@ package exe
 import (
 	"bytes"
 	"testing"
+	"exe.dev/sshbuf"
 )
 
 func TestSSHExecCommandParsing(t *testing.T) {
@@ -44,6 +45,8 @@ func TestSSHExecCommandParsing(t *testing.T) {
 			mockChannel := &MockSSHChannel{
 				term: term,
 			}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 			// Create SSH exec payload (4-byte length + command string)
 			cmdBytes := []byte(tt.command)
@@ -55,7 +58,7 @@ func TestSSHExecCommandParsing(t *testing.T) {
 			copy(payload[4:], cmdBytes)
 
 			// Call handleSSHExec (should fail for unregistered user, but we can test parsing)
-			server.handleSSHExec(mockChannel, payload, "", "unregistered-fingerprint", false)
+			server.handleSSHExec(bufferedChannel, payload, "", "unregistered-fingerprint", false)
 
 			// Check output
 			rawOutput := outputBuf.String()

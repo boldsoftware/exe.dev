@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/sshbuf"
 )
 
 func TestExternalSSHAccess(t *testing.T) {
@@ -71,6 +72,8 @@ func TestExternalSSHAccess(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	tests := []struct {
 		name         string
@@ -119,7 +122,7 @@ func TestExternalSSHAccess(t *testing.T) {
 			outputBuf.Reset()
 
 			// For direct access cases, run the full test
-			server.handleSSHShell(mockChannel, tt.username, fingerprint, true)
+			server.handleSSHShell(bufferedChannel, tt.username, fingerprint, true)
 
 			// Give it a moment to process
 			time.Sleep(50 * time.Millisecond)

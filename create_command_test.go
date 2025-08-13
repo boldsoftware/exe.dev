@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"exe.dev/container"
+	"exe.dev/sshbuf"
 )
 
 // stripANSI removes ANSI color codes from string
@@ -127,12 +128,14 @@ func TestHandleCreateCommand(t *testing.T) {
 			mockChannel := &MockSSHChannel{
 				term: term,
 			}
+			// Wrap the mock channel with SSHBufferedChannel
+			bufferedChannel := sshbuf.New(mockChannel)
 
 			// Create user session
-			server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+			server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 			// Call handleCreateCommand
-			server.handleCreateCommand(mockChannel, tt.args)
+			server.handleCreateCommand(bufferedChannel, tt.args)
 
 			// Check output (strip ANSI color codes for comparison)
 			rawOutput := outputBuf.String()
@@ -144,7 +147,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			}
 
 			// Clean up session
-			server.removeUserSession(mockChannel)
+			server.removeUserSession(bufferedChannel)
 		})
 	}
 }
@@ -194,12 +197,14 @@ func TestHandleCreateCommandWithoutContainerManager(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	// Call handleCreateCommand
-	server.handleCreateCommand(mockChannel, []string{"testcontainer"})
+	server.handleCreateCommand(bufferedChannel, []string{"testcontainer"})
 
 	// Check that it reports container management not available
 	rawOutput := outputBuf.String()
@@ -208,7 +213,7 @@ func TestHandleCreateCommandWithoutContainerManager(t *testing.T) {
 		t.Errorf("Expected 'Machine management is not available' in output, got: %s", output)
 	}
 
-	server.removeUserSession(mockChannel)
+	server.removeUserSession(bufferedChannel)
 }
 
 func TestHandleCreateCommandWithoutUserSession(t *testing.T) {
@@ -242,9 +247,11 @@ func TestHandleCreateCommandWithoutUserSession(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Call handleCreateCommand without user session
-	server.handleCreateCommand(mockChannel, []string{"testcontainer"})
+	server.handleCreateCommand(bufferedChannel, []string{"testcontainer"})
 
 	// Check that it reports authentication error
 	rawOutput := outputBuf.String()
@@ -301,12 +308,14 @@ func TestCreateCommandIntegration(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	// Call handleCreateCommand
-	server.handleCreateCommand(mockChannel, []string{"--name=" + containerName})
+	server.handleCreateCommand(bufferedChannel, []string{"--name=" + containerName})
 
 	// Verify container was created in database
 	machine, err := server.getMachineByName(teamName, containerName)
@@ -355,5 +364,5 @@ func TestCreateCommandIntegration(t *testing.T) {
 		t.Errorf("Expected success message in output, got: %s", output)
 	}
 
-	server.removeUserSession(mockChannel)
+	server.removeUserSession(bufferedChannel)
 }

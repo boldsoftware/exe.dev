@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"exe.dev/sshbuf"
 )
 
 func TestSignupFlowAuthentication(t *testing.T) {
@@ -95,6 +97,8 @@ func TestSignupFlowAuthentication(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Test that the user can be properly handled by handleSSHShell as a registered user
 	// This simulates what happens when a registered user connects
@@ -128,13 +132,13 @@ func TestSignupFlowAuthentication(t *testing.T) {
 			t.Logf("Warning: Using team %s instead of %s", team.TeamName, teamName)
 		}
 
-		server.createUserSession(mockChannel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
-		defer server.removeUserSession(mockChannel)
+		server.createUserSession(bufferedChannel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+		defer server.removeUserSession(bufferedChannel)
 
 		t.Log("=== Testing create command with registered user session ===")
 
 		// The session should be created, so the create command should work
-		server.handleCreateCommand(mockChannel, []string{"--name=testcontainer"})
+		server.handleCreateCommand(bufferedChannel, []string{"--name=testcontainer"})
 
 		rawOutput := outputBuf.String()
 		output := stripANSI(rawOutput)

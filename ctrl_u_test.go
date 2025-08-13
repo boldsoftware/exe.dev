@@ -5,6 +5,9 @@ import (
 	"io"
 	"sync"
 	"testing"
+
+	"exe.dev/sshbuf"
+	"golang.org/x/crypto/ssh"
 )
 
 // SimpleMockChannel is a basic mock SSH channel for testing
@@ -56,6 +59,9 @@ func (m *SimpleMockChannel) Stderr() io.ReadWriter {
 	return m
 }
 
+// Ensure SimpleMockChannel implements ssh.Channel
+var _ ssh.Channel = (*SimpleMockChannel)(nil)
+
 // TestReadLineCtrlU tests that Ctrl+U clears the line
 func TestReadLineCtrlU(t *testing.T) {
 	// Create a server for testing
@@ -80,9 +86,11 @@ func TestReadLineCtrlU(t *testing.T) {
 		readBuf:  readBuf,
 		writeBuf: &bytes.Buffer{},
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Read the line
-	input, err := server.readLineFromChannel(mockChannel)
+	input, err := server.readLineFromChannel(bufferedChannel)
 	if err != nil {
 		t.Fatalf("readLineFromChannel failed: %v", err)
 	}
@@ -139,9 +147,11 @@ func TestReadLineCtrlUEmpty(t *testing.T) {
 		readBuf:  readBuf,
 		writeBuf: &bytes.Buffer{},
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Read the line
-	input, err := server.readLineFromChannel(mockChannel)
+	input, err := server.readLineFromChannel(bufferedChannel)
 	if err != nil {
 		t.Fatalf("readLineFromChannel failed: %v", err)
 	}

@@ -1,6 +1,7 @@
 package exe
 
 import (
+	"exe.dev/sshbuf"
 	"bytes"
 	"os"
 	"strings"
@@ -77,9 +78,11 @@ func TestHandleSSHCommand(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	tests := []struct {
 		name          string
@@ -118,7 +121,7 @@ func TestHandleSSHCommand(t *testing.T) {
 			mockManager.execCalls = nil
 
 			// Call handleSSHCommand
-			server.handleSSHCommand(mockChannel, tt.args)
+			server.handleSSHCommand(bufferedChannel, tt.args)
 
 			// Check output (strip ANSI color codes for comparison)
 			rawOutput := outputBuf.String()
@@ -184,12 +187,14 @@ func TestHandleSSHCommandWithoutContainerManager(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	// Call handleSSHCommand
-	server.handleSSHCommand(mockChannel, []string{"testmachine"})
+	server.handleSSHCommand(bufferedChannel, []string{"testmachine"})
 
 	// Check that it reports container management not available
 	rawOutput := outputBuf.String()
@@ -255,12 +260,14 @@ func TestHandleSSHCommandContainerNotCreated(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	// Call handleSSHCommand
-	server.handleSSHCommand(mockChannel, []string{machineName})
+	server.handleSSHCommand(bufferedChannel, []string{machineName})
 
 	// Check that it reports container not yet created
 	rawOutput := outputBuf.String()
@@ -334,12 +341,14 @@ func TestHandleSSHCommandWithStoppedContainer(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
 
 	// Call handleSSHCommand
-	server.handleSSHCommand(mockChannel, []string{machineName})
+	server.handleSSHCommand(bufferedChannel, []string{machineName})
 
 	// handleSSHCommand now just shows instructions, doesn't check container status
 	rawOutput := outputBuf.String()
@@ -381,9 +390,11 @@ func TestHandleSSHCommandWithoutUserSession(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Call handleSSHCommand without user session
-	server.handleSSHCommand(mockChannel, []string{"testmachine"})
+	server.handleSSHCommand(bufferedChannel, []string{"testmachine"})
 
 	// Check that it reports authentication error
 	rawOutput := outputBuf.String()

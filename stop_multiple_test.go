@@ -1,6 +1,7 @@
 package exe
 
 import (
+	"exe.dev/sshbuf"
 	"bytes"
 	"context"
 	"os"
@@ -94,13 +95,15 @@ func TestHandleStopCommandMultipleMachines(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
-	defer server.removeUserSession(mockChannel)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	defer server.removeUserSession(bufferedChannel)
 
 	// Test stopping all three machines at once
-	server.handleStopCommand(mockChannel, []string{"machine1", "machine2", "machine3"})
+	server.handleStopCommand(bufferedChannel, []string{"machine1", "machine2", "machine3"})
 
 	// Check output
 	rawOutput := outputBuf.String()
@@ -226,13 +229,15 @@ func TestHandleStopCommandPartialFailure(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(mockChannel, fingerprint, email, teamName, true)
-	defer server.removeUserSession(mockChannel)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	defer server.removeUserSession(bufferedChannel)
 
 	// Test stopping both machines (one will fail, one nonexistent)
-	server.handleStopCommand(mockChannel, []string{"running-machine", "stopped-machine", "nonexistent"})
+	server.handleStopCommand(bufferedChannel, []string{"running-machine", "stopped-machine", "nonexistent"})
 
 	// Check output
 	rawOutput := outputBuf.String()

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/sshbuf"
 )
 
 func TestShowAnimatedWelcome(t *testing.T) {
@@ -37,10 +39,12 @@ func TestShowAnimatedWelcome(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Call the animated welcome function
 	start := time.Now()
-	server.showAnimatedWelcome(mockChannel)
+	server.showAnimatedWelcome(bufferedChannel)
 	elapsed := time.Since(start)
 
 	// Check that it took some time (the animation should take at least 1 second)
@@ -109,6 +113,8 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 	mockChannel := &MockSSHChannel{
 		term: term,
 	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Start registration in a goroutine since it will block waiting for input
 	done := make(chan bool, 1)
@@ -120,7 +126,7 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 			}
 			done <- true
 		}()
-		server.handleRegistration(mockChannel, "test-fingerprint")
+		server.handleRegistration(bufferedChannel, "test-fingerprint")
 	}()
 
 	// Give the animation some time to run

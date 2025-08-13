@@ -42,6 +42,7 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/porkbun"
+	"exe.dev/sshbuf"
 	"exe.dev/sshproxy"
 )
 
@@ -162,7 +163,7 @@ type Server struct {
 
 	// User sessions for tracking authenticated users
 	sessionsMu sync.RWMutex
-	sessions   map[ssh.Channel]*UserSession // channel -> user session
+	sessions   map[*sshbuf.Channel]*UserSession // channel -> user session
 
 	// Email and billing services
 	postmarkClient *postmark.Client
@@ -256,7 +257,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 		containerManager:     containerManager,
 		emailVerifications:   make(map[string]*EmailVerification),
 		billingVerifications: make(map[string]*BillingVerification),
-		sessions:             make(map[ssh.Channel]*UserSession),
+		sessions:             make(map[*sshbuf.Channel]*UserSession),
 		postmarkClient:       postmarkClient,
 		stripeKey:            stripeKey,
 		devMode:              devMode,
@@ -2260,7 +2261,7 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 }
 
 // handleSSHExec handles SSH exec commands (e.g., ssh exe.dev create foo)
-func (s *Server) handleSSHExec(channel ssh.Channel, payload []byte, username, fingerprint string, registered bool) {
+func (s *Server) handleSSHExec(channel *sshbuf.Channel, payload []byte, username, fingerprint string, registered bool) {
 	defer channel.Close()
 
 	// Parse the command from the payload
@@ -2356,7 +2357,7 @@ func (s *Server) handleSSHExec(channel ssh.Channel, payload []byte, username, fi
 }
 
 // showHelpText displays the help text for available commands
-func (s *Server) showHelpText(channel ssh.Channel) {
+func (s *Server) showHelpText(channel *sshbuf.Channel) {
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
@@ -2385,11 +2386,14 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 		return
 	}
 
-	channel, requests, err := newChannel.Accept()
+	rawChannel, requests, err := newChannel.Accept()
 	if err != nil {
 		log.Printf("Could not accept SSH channel: %v", err)
 		return
 	}
+	
+	// Wrap the raw SSH channel with our buffered channel
+	channel := sshbuf.New(rawChannel)
 	defer channel.Close()
 
 	// Check if this is a direct machine access attempt
@@ -2480,7 +2484,7 @@ func (s *Server) parsePtyRequest(payload []byte) (cols, rows int) {
 }
 
 // handleSSHShellWithDimensions provides the guided console management tool with terminal dimensions
-func (s *Server) handleSSHShellWithDimensions(channel ssh.Channel, username, fingerprint string, registered bool, terminalWidth, terminalHeight int) {
+func (s *Server) handleSSHShellWithDimensions(channel *sshbuf.Channel, username, fingerprint string, registered bool, terminalWidth, terminalHeight int) {
 	// Update the channel with terminal dimensions for use in centering
 	if terminalWidth > 0 {
 		// Store the terminal width in a way that getTerminalWidth can access it
@@ -2492,12 +2496,12 @@ func (s *Server) handleSSHShellWithDimensions(channel ssh.Channel, username, fin
 }
 
 // handleSSHShell provides the guided console management tool
-func (s *Server) handleSSHShell(channel ssh.Channel, username, fingerprint string, registered bool) {
+func (s *Server) handleSSHShell(channel *sshbuf.Channel, username, fingerprint string, registered bool) {
 	s.handleSSHShellWithWidth(channel, username, fingerprint, registered, 0)
 }
 
 // handleSSHShellWithWidth provides the guided console management tool with specified width
-func (s *Server) handleSSHShellWithWidth(channel ssh.Channel, username, fingerprint string, registered bool, width int) {
+func (s *Server) handleSSHShellWithWidth(channel *sshbuf.Channel, username, fingerprint string, registered bool, width int) {
 	if !registered {
 		// Handle registration flow
 		s.handleRegistrationWithWidth(channel, fingerprint, width)
@@ -2639,7 +2643,7 @@ func (s *Server) findMachineByNameForUser(fingerprint, machineName string) *Mach
 }
 
 // handleMachineSSH handles SSH connections to a specific machine
-func (s *Server) handleMachineSSH(newChannel ssh.NewChannel, channel ssh.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
+func (s *Server) handleMachineSSH(newChannel ssh.NewChannel, channel *sshbuf.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
 	if machine.ContainerID == nil {
 		channel.Write([]byte("Machine is not running\r\n"))
 		return
@@ -2658,7 +2662,7 @@ func (s *Server) handleMachineSSH(newChannel ssh.NewChannel, channel ssh.Channel
 }
 
 // proxySSHToContainer proxies SSH protocol directly to a container
-func (s *Server) proxySSHToContainer(channel ssh.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
+func (s *Server) proxySSHToContainer(channel *sshbuf.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
 	if machine.ContainerID == nil {
 		channel.Write([]byte("Machine is not running\r\n"))
 		return
@@ -2889,7 +2893,7 @@ func (s *Server) handleCancelTCPIPForward(req *ssh.Request) {
 }
 
 // connectToContainer connects directly to a container for external SSH access
-func (s *Server) connectToContainer(channel ssh.Channel, containerID string) {
+func (s *Server) connectToContainer(channel *sshbuf.Channel, containerID string) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
@@ -2927,7 +2931,7 @@ func (s *Server) connectToContainer(channel ssh.Channel, containerID string) {
 }
 
 // connectToContainerInteractive connects to a container with proper interactive shell handling
-func (s *Server) connectToContainerInteractive(channel ssh.Channel, containerID string) {
+func (s *Server) connectToContainerInteractive(channel *sshbuf.Channel, containerID string) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
@@ -2963,7 +2967,7 @@ func (s *Server) connectToContainerInteractive(channel ssh.Channel, containerID 
 }
 
 // runMainShell runs the main container management shell
-func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
+func (s *Server) runMainShell(channel *sshbuf.Channel, showWelcome bool) {
 	welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
 		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
 		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
@@ -3049,7 +3053,7 @@ func (s *Server) runMainShell(channel ssh.Channel, showWelcome bool) {
 }
 
 // handleTeamCommand handles team management commands
-func (s *Server) handleTeamCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleTeamCommand(channel *sshbuf.Channel, args []string) {
 	fingerprint, teamName, err := s.getUserFromChannel(channel)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
@@ -3098,7 +3102,7 @@ func (s *Server) handleTeamCommand(channel ssh.Channel, args []string) {
 }
 
 // handleTeamList lists all members of the team
-func (s *Server) handleTeamList(channel ssh.Channel, fingerprint, teamName string) {
+func (s *Server) handleTeamList(channel *sshbuf.Channel, fingerprint, teamName string) {
 	// Get all team members
 	rows, err := s.db.Query(`
 		SELECT u.email, tm.is_admin, tm.joined_at, u.created_at
@@ -3157,7 +3161,7 @@ func (s *Server) handleTeamList(channel ssh.Channel, fingerprint, teamName strin
 }
 
 // handleTeamInvite handles inviting a new member to the team
-func (s *Server) handleTeamInvite(channel ssh.Channel, fingerprint, teamName string, args []string) {
+func (s *Server) handleTeamInvite(channel *sshbuf.Channel, fingerprint, teamName string, args []string) {
 	// Check if this is a personal team
 	var isPersonal bool
 	err := s.db.QueryRow(`SELECT is_personal FROM teams WHERE name = ?`, teamName).Scan(&isPersonal)
@@ -3300,7 +3304,7 @@ The exe.dev team`, teamName, inviteCode, inviteCode)
 }
 
 // handleTeamJoin handles joining a team with an invite code
-func (s *Server) handleTeamJoin(channel ssh.Channel, fingerprint string, args []string) {
+func (s *Server) handleTeamJoin(channel *sshbuf.Channel, fingerprint string, args []string) {
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mError: Please specify an invite code\033[0m\r\n"))
 		channel.Write([]byte("Usage: team join <invite-code>\r\n"))
@@ -3399,7 +3403,7 @@ func (s *Server) handleTeamJoin(channel ssh.Channel, fingerprint string, args []
 }
 
 // handleTeamRemove handles removing a member from the team
-func (s *Server) handleTeamRemove(channel ssh.Channel, fingerprint, teamName string, args []string) {
+func (s *Server) handleTeamRemove(channel *sshbuf.Channel, fingerprint, teamName string, args []string) {
 	// Check if user is admin
 	var isAdmin bool
 	err := s.db.QueryRow(`
@@ -3458,7 +3462,7 @@ func (s *Server) handleTeamRemove(channel ssh.Channel, fingerprint, teamName str
 }
 
 // handleListUserTeams lists all teams the user belongs to
-func (s *Server) handleListUserTeams(channel ssh.Channel, fingerprint string) {
+func (s *Server) handleListUserTeams(channel *sshbuf.Channel, fingerprint string) {
 	teams, err := s.getUserTeams(fingerprint)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving teams: %v\033[0m\r\n", err)))
@@ -3508,7 +3512,7 @@ func (s *Server) handleListUserTeams(channel ssh.Channel, fingerprint string) {
 }
 
 // handleTeamSwitch switches the default team for the current SSH key
-func (s *Server) handleTeamSwitch(channel ssh.Channel, fingerprint string, args []string) {
+func (s *Server) handleTeamSwitch(channel *sshbuf.Channel, fingerprint string, args []string) {
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mError: Please specify a team name\033[0m\r\n"))
 		channel.Write([]byte("Usage: team switch <team>\r\n"))
@@ -3566,7 +3570,7 @@ func (s *Server) handleTeamSwitch(channel ssh.Channel, fingerprint string, args 
 }
 
 // getUserFromChannel gets user information from SSH channel session
-func (s *Server) getUserFromChannel(channel ssh.Channel) (fingerprint, teamName string, err error) {
+func (s *Server) getUserFromChannel(channel *sshbuf.Channel) (fingerprint, teamName string, err error) {
 	s.sessionsMu.RLock()
 	session, exists := s.sessions[channel]
 	s.sessionsMu.RUnlock()
@@ -3579,7 +3583,7 @@ func (s *Server) getUserFromChannel(channel ssh.Channel) (fingerprint, teamName 
 }
 
 // createUserSession creates a new user session for a channel
-func (s *Server) createUserSession(channel ssh.Channel, fingerprint, email, teamName string, isAdmin bool) {
+func (s *Server) createUserSession(channel *sshbuf.Channel, fingerprint, email, teamName string, isAdmin bool) {
 	session := &UserSession{
 		Fingerprint: fingerprint,
 		Email:       email,
@@ -3594,14 +3598,14 @@ func (s *Server) createUserSession(channel ssh.Channel, fingerprint, email, team
 }
 
 // removeUserSession removes a user session for a channel
-func (s *Server) removeUserSession(channel ssh.Channel) {
+func (s *Server) removeUserSession(channel *sshbuf.Channel) {
 	s.sessionsMu.Lock()
 	delete(s.sessions, channel)
 	s.sessionsMu.Unlock()
 }
 
 // handleListCommand lists user's machines
-func (s *Server) handleListCommand(channel ssh.Channel) {
+func (s *Server) handleListCommand(channel *sshbuf.Channel) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
@@ -3694,7 +3698,7 @@ func isValidStorageSize(size string) bool {
 }
 
 // handleCreateCommandWithStdin creates a new machine with support for stdin Dockerfile and flag-based parameters
-func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string, stdin io.Reader) {
+func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []string, stdin io.Reader) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
@@ -3989,13 +3993,13 @@ func (s *Server) handleCreateCommandWithStdin(channel ssh.Channel, args []string
 }
 
 // handleCreateCommand creates a new machine (wrapper for interactive use)
-func (s *Server) handleCreateCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleCreateCommand(channel *sshbuf.Channel, args []string) {
 	// For interactive use, we don't have meaningful stdin, so pass nil reader
 	s.handleCreateCommandWithStdin(channel, args, strings.NewReader(""))
 }
 
 // handleSSHCommand shows how to connect to a container via SSH
-func (s *Server) handleSSHCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleSSHCommand(channel *sshbuf.Channel, args []string) {
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mUsage: ssh <name>\033[0m\r\n"))
 		return
@@ -4039,7 +4043,7 @@ func (s *Server) handleSSHCommand(channel ssh.Channel, args []string) {
 }
 
 // handleStartCommand starts a machine
-func (s *Server) handleStartCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleStartCommand(channel *sshbuf.Channel, args []string) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
@@ -4064,7 +4068,7 @@ func (s *Server) handleStartCommand(channel ssh.Channel, args []string) {
 }
 
 // handleStopCommand stops one or more machines
-func (s *Server) handleStopCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleStopCommand(channel *sshbuf.Channel, args []string) {
 	if s.containerManager == nil {
 		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
 		return
@@ -4127,7 +4131,7 @@ func (s *Server) handleStopCommand(channel ssh.Channel, args []string) {
 }
 
 // handleDeleteCommand deletes a machine
-func (s *Server) handleDeleteCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleDeleteCommand(channel *sshbuf.Channel, args []string) {
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mUsage: delete <name>\033[0m\r\n"))
 		return
@@ -4139,7 +4143,7 @@ func (s *Server) handleDeleteCommand(channel ssh.Channel, args []string) {
 }
 
 // handleLogsCommand shows machine logs
-func (s *Server) handleLogsCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleLogsCommand(channel *sshbuf.Channel, args []string) {
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mUsage: logs <name>\033[0m\r\n"))
 		return
@@ -4150,7 +4154,7 @@ func (s *Server) handleLogsCommand(channel ssh.Channel, args []string) {
 	channel.Write([]byte("\033[1;33mLogs command not yet implemented\033[0m\r\n"))
 }
 
-func (s *Server) handleDiagCommand(channel ssh.Channel, args []string) {
+func (s *Server) handleDiagCommand(channel *sshbuf.Channel, args []string) {
 	if len(args) == 0 {
 		channel.Write([]byte("\033[1;31mUsage: diag <name>\033[0m\r\n"))
 		return
@@ -4217,12 +4221,12 @@ func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 
 // handleRegistration manages the user registration process with email verification and billing
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
-func (s *Server) showAnimatedWelcome(channel ssh.Channel) {
+func (s *Server) showAnimatedWelcome(channel *sshbuf.Channel) {
 	s.showAnimatedWelcomeWithWidth(channel, 0)
 }
 
 // showAnimatedWelcomeWithWidth displays the ASCII art with a beautiful fade-out animation using specified terminal width
-func (s *Server) showAnimatedWelcomeWithWidth(channel ssh.Channel, terminalWidth int) {
+func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalWidth int) {
 	// More compact ASCII art that fits better in terminals
 	asciiArt := []string{
 		"███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗",
@@ -4308,7 +4312,7 @@ func (s *Server) getVisualWidth(text string) int {
 }
 
 // getTerminalWidth attempts to determine the terminal width through multiple methods
-func (s *Server) getTerminalWidth(channel ssh.Channel) int {
+func (s *Server) getTerminalWidth(channel *sshbuf.Channel) int {
 	// Method 1: Try to get from environment (SSH often sets this)
 	if cols := os.Getenv("COLUMNS"); cols != "" {
 		if width, err := strconv.Atoi(cols); err == nil && width > 20 {
@@ -4321,11 +4325,11 @@ func (s *Server) getTerminalWidth(channel ssh.Channel) int {
 	return 140
 }
 
-func (s *Server) handleRegistration(channel ssh.Channel, fingerprint string) {
+func (s *Server) handleRegistration(channel *sshbuf.Channel, fingerprint string) {
 	s.handleRegistrationWithWidth(channel, fingerprint, 0)
 }
 
-func (s *Server) handleRegistrationWithWidth(channel ssh.Channel, fingerprint string, terminalWidth int) {
+func (s *Server) handleRegistrationWithWidth(channel *sshbuf.Channel, fingerprint string, terminalWidth int) {
 	// Show the animated welcome with terminal width
 	s.showAnimatedWelcomeWithWidth(channel, terminalWidth)
 
@@ -4376,7 +4380,7 @@ func (s *Server) handleRegistrationWithWidth(channel ssh.Channel, fingerprint st
 }
 
 // readLineFromChannel reads a line of input from an SSH channel
-func (s *Server) readLineFromChannel(channel ssh.Channel) (string, error) {
+func (s *Server) readLineFromChannel(channel *sshbuf.Channel) (string, error) {
 	var buffer []byte
 	temp := make([]byte, 1)
 
@@ -4446,7 +4450,7 @@ func (s *Server) isValidEmail(email string) bool {
 }
 
 // startEmailVerification initiates the email verification process
-func (s *Server) startEmailVerification(channel ssh.Channel, fingerprint, email string) error {
+func (s *Server) startEmailVerification(channel *sshbuf.Channel, fingerprint, email string) error {
 	// First check if this email already exists
 	var existingFingerprint string
 	err := s.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", email).Scan(&existingFingerprint)
@@ -4535,15 +4539,19 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 	}
 	channel.Write([]byte("\033[0m\r\n\r\n"))
 
-	// Create a goroutine to monitor for user interrupt
+	// Create a context that can be cancelled when email is verified
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	
+	// Monitor for Ctrl+C during email verification using interruptible reads
 	interruptChan := make(chan struct{})
+	
 	go func() {
 		buf := make([]byte, 1)
 		for {
-			n, err := channel.Read(buf)
+			n, err := channel.ReadCtx(ctx, buf)
 			if err != nil {
-				// Channel closed or error
-				close(interruptChan)
+				// Context cancelled (email verified) or channel closed
 				return
 			}
 			if n > 0 && buf[0] == 3 { // Ctrl+C
@@ -4551,26 +4559,37 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 				close(interruptChan)
 				return
 			}
+			// Discard other input during email verification
 		}
 	}()
-
-	// Wait for email verification, timeout, or interrupt
+	
+	// Wait for email verification, interrupt, or timeout
 	select {
 	case <-verification.CompleteChan:
+		// Cancel the context to stop the monitoring goroutine
+		cancel()
+		
 		channel.Write([]byte("\r\n\033[1;32mEmail verified successfully!\033[0m\r\n\r\n"))
-
-		// Start team name creation first
+		
+		// Add a small delay to ensure the monitoring goroutine exits cleanly
+		time.Sleep(100 * time.Millisecond)
+		
+		// Start team name creation
 		s.startTeamNameCreation(channel, fingerprint, email)
 
 	case <-interruptChan:
+		// User pressed Ctrl+C
 		channel.Write([]byte("\r\n\033[1;33mRegistration cancelled. You can reconnect anytime to continue.\033[0m\r\n"))
-
+		
 		// Clean up verification
 		s.emailVerificationsMu.Lock()
 		delete(s.emailVerifications, token)
 		s.emailVerificationsMu.Unlock()
 
 	case <-time.After(10 * time.Minute):
+		// Cancel the context to stop the monitoring goroutine
+		cancel()
+		
 		channel.Write([]byte("\r\nEmail verification timeout. Please try connecting again.\r\n"))
 
 		// Clean up verification
@@ -4641,7 +4660,7 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 }
 
 // startTeamNameCreation handles team name creation after email verification
-func (s *Server) startTeamNameCreation(channel ssh.Channel, fingerprint, email string) {
+func (s *Server) startTeamNameCreation(channel *sshbuf.Channel, fingerprint, email string) {
 	// Check if user's email has been invited to any teams
 	invites, err := s.getInvitesByEmail(email)
 	if err != nil {
@@ -4673,7 +4692,7 @@ func (s *Server) startTeamNameCreation(channel ssh.Channel, fingerprint, email s
 }
 
 // handlePendingInvites shows pending invites and lets user choose
-func (s *Server) handlePendingInvites(channel ssh.Channel, fingerprint, email string, invites []Invite) {
+func (s *Server) handlePendingInvites(channel *sshbuf.Channel, fingerprint, email string, invites []Invite) {
 	channel.Write([]byte("\r\n\033[1;36m" +
 		"╭─────────────────────────────────────────────────╮\r\n" +
 		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
@@ -4739,7 +4758,7 @@ func (s *Server) handlePendingInvites(channel ssh.Channel, fingerprint, email st
 }
 
 // joinTeamViaInvite handles joining an existing team via invite code
-func (s *Server) joinTeamViaInvite(channel ssh.Channel, fingerprint, email string) (string, error) {
+func (s *Server) joinTeamViaInvite(channel *sshbuf.Channel, fingerprint, email string) (string, error) {
 	channel.Write([]byte("\r\n\033[1mPlease enter your invite code:\033[0m "))
 
 	for {
@@ -4799,7 +4818,7 @@ func (s *Server) joinTeamViaInvite(channel ssh.Channel, fingerprint, email strin
 }
 
 // completeRegistration finishes the registration process without billing
-func (s *Server) completeRegistration(channel ssh.Channel, fingerprint, email, teamName string) {
+func (s *Server) completeRegistration(channel *sshbuf.Channel, fingerprint, email, teamName string) {
 	// Clean up verification states
 	s.billingVerificationsMu.Lock()
 	delete(s.billingVerifications, fingerprint)
@@ -4836,7 +4855,7 @@ func (s *Server) completeRegistration(channel ssh.Channel, fingerprint, email, t
 }
 
 // startBillingVerification initiates the billing verification process
-func (s *Server) startBillingVerification(channel ssh.Channel, fingerprint, email, teamName string) {
+func (s *Server) startBillingVerification(channel *sshbuf.Channel, fingerprint, email, teamName string) {
 	// Store billing verification state
 	billing := &BillingVerification{
 		PublicKeyFingerprint: fingerprint,
@@ -4975,7 +4994,7 @@ func (s *Server) verifyPaymentMethod(cardNumber string) error {
 }
 
 // createTeamName handles team name creation with simple validation
-func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
+func (s *Server) createTeamName(channel *sshbuf.Channel) (string, error) {
 	channel.Write([]byte("\r\n\033[1;36m" +
 		"╭─────────────────────────────────────────────────╮\r\n" +
 		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
@@ -5024,7 +5043,7 @@ func (s *Server) createTeamName(channel ssh.Channel) (string, error) {
 }
 
 // updatePromptLine updates the current line with validation feedback (simplified)
-func (s *Server) updatePromptLine(channel ssh.Channel, prompt, input, feedback string) {
+func (s *Server) updatePromptLine(channel *sshbuf.Channel, prompt, input, feedback string) {
 	// Just show feedback on a new line instead of trying to be clever
 	channel.Write([]byte(fmt.Sprintf("\r\n%s\r\n%s", feedback, prompt)))
 }
@@ -5162,7 +5181,7 @@ func (s *Server) migrateLegacyUserKey(email, fingerprint, publicKey string) erro
 }
 
 // handleNewDeviceAuth handles authentication for a user logging in from a new device
-func (s *Server) handleNewDeviceAuth(channel ssh.Channel, fingerprint, email, publicKey string, terminalWidth int) {
+func (s *Server) handleNewDeviceAuth(channel *sshbuf.Channel, fingerprint, email, publicKey string, terminalWidth int) {
 	// Show a message explaining the situation
 	channel.Write([]byte("\033[2J\033[H")) // Clear screen and move to top
 	channel.Write([]byte(fmt.Sprintf(`

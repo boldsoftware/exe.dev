@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/sshbuf"
+	"golang.org/x/crypto/ssh"
 )
 
 // mockChannel implements a minimal ssh.Channel for testing
@@ -39,6 +42,9 @@ func (m *mockChannel) SendRequest(name string, wantReply bool, payload []byte) (
 func (m *mockChannel) Stderr() io.ReadWriter {
 	return &m.stderr
 }
+
+// Ensure mockChannel implements ssh.Channel
+var _ ssh.Channel = (*mockChannel)(nil)
 
 func TestTeamCommands(t *testing.T) {
 	// Create temporary database file
@@ -99,13 +105,15 @@ func TestTeamCommands(t *testing.T) {
 
 	t.Run("ListTeamMembers", func(t *testing.T) {
 		channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session
-		server.createUserSession(channel, testAdmin, testAdminEmail, testTeam, true)
-		defer server.removeUserSession(channel)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		defer server.removeUserSession(bufferedChannel)
 
 		// Test team list command
-		server.handleTeamList(channel, testAdmin, testTeam)
+		server.handleTeamList(bufferedChannel, testAdmin, testTeam)
 
 		output := channel.output.String()
 
@@ -136,14 +144,16 @@ func TestTeamCommands(t *testing.T) {
 
 	t.Run("InviteNewMember", func(t *testing.T) {
 		channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for admin
-		server.createUserSession(channel, testAdmin, testAdminEmail, testTeam, true)
-		defer server.removeUserSession(channel)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		defer server.removeUserSession(bufferedChannel)
 
 		// Test invite command
 		newEmail := "newuser@example.com"
-		server.handleTeamInvite(channel, testAdmin, testTeam, []string{newEmail})
+		server.handleTeamInvite(bufferedChannel, testAdmin, testTeam, []string{newEmail})
 
 		output := channel.output.String()
 
@@ -170,13 +180,15 @@ func TestTeamCommands(t *testing.T) {
 
 	t.Run("NonAdminCannotInvite", func(t *testing.T) {
 		channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for non-admin member
-		server.createUserSession(channel, testMember, testMemberEmail, testTeam, false)
-		defer server.removeUserSession(channel)
+		server.createUserSession(bufferedChannel, testMember, testMemberEmail, testTeam, false)
+		defer server.removeUserSession(bufferedChannel)
 
 		// Try to invite as non-admin
-		server.handleTeamInvite(channel, testMember, testTeam, []string{"another@example.com"})
+		server.handleTeamInvite(bufferedChannel, testMember, testTeam, []string{"another@example.com"})
 
 		output := channel.output.String()
 
@@ -209,13 +221,15 @@ func TestTeamCommands(t *testing.T) {
 		}
 
 		channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 		// Create session for new user (not yet in team)
-		server.createUserSession(channel, newUserFingerprint, newUserEmail, "", false)
-		defer server.removeUserSession(channel)
+		server.createUserSession(bufferedChannel, newUserFingerprint, newUserEmail, "", false)
+		defer server.removeUserSession(bufferedChannel)
 
 		// Join team with code
-		server.handleTeamJoin(channel, newUserFingerprint, []string{inviteCode})
+		server.handleTeamJoin(bufferedChannel, newUserFingerprint, []string{inviteCode})
 
 		output := channel.output.String()
 
@@ -238,9 +252,11 @@ func TestTeamCommands(t *testing.T) {
 
 	t.Run("InvalidInviteCode", func(t *testing.T) {
 		channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 		// Try with invalid code
-		server.handleTeamJoin(channel, testMember, []string{"invalid"})
+		server.handleTeamJoin(bufferedChannel, testMember, []string{"invalid"})
 
 		output := channel.output.String()
 
@@ -252,10 +268,12 @@ func TestTeamCommands(t *testing.T) {
 
 	t.Run("RemoveTeamMember", func(t *testing.T) {
 		channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for admin
-		server.createUserSession(channel, testAdmin, testAdminEmail, testTeam, true)
-		defer server.removeUserSession(channel)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		defer server.removeUserSession(bufferedChannel)
 
 		// Add a user to remove
 		removeFingerprint := "remove-fingerprint"
@@ -275,7 +293,7 @@ func TestTeamCommands(t *testing.T) {
 		}
 
 		// Remove the member
-		server.handleTeamRemove(channel, testAdmin, testTeam, []string{removeEmail})
+		server.handleTeamRemove(bufferedChannel, testAdmin, testTeam, []string{removeEmail})
 
 		output := channel.output.String()
 
@@ -298,13 +316,15 @@ func TestTeamCommands(t *testing.T) {
 
 	t.Run("CannotRemoveSelf", func(t *testing.T) {
 		channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for admin
-		server.createUserSession(channel, testAdmin, testAdminEmail, testTeam, true)
-		defer server.removeUserSession(channel)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		defer server.removeUserSession(bufferedChannel)
 
 		// Try to remove self
-		server.handleTeamRemove(channel, testAdmin, testTeam, []string{testAdminEmail})
+		server.handleTeamRemove(bufferedChannel, testAdmin, testTeam, []string{testAdminEmail})
 
 		output := channel.output.String()
 
@@ -358,9 +378,11 @@ func TestInviteExpiration(t *testing.T) {
 	}
 
 	channel := &mockChannel{}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(channel)
 
 	// Try to use expired code
-	server.handleTeamJoin(channel, testUser, []string{expiredCode})
+	server.handleTeamJoin(bufferedChannel, testUser, []string{expiredCode})
 
 	output := channel.output.String()
 
