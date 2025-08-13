@@ -6,6 +6,7 @@ CLUSTER_NAME := exe-cluster
 CLUSTER_LOCATION := us-west2-a
 INSTANCE_NAME := exed-prod-01
 TIMESTAMP := $(shell date +%Y%m%d-%H%M%S)
+EXEUNTU_IMAGE := gcr.io/$(PROJECT_ID)/exeuntu
 
 # Colors
 RED := \033[0;31m
@@ -13,7 +14,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy setup-vm setup-dev clean run-dev
+.PHONY: help build test deploy setup-vm setup-dev clean run-dev image-build image-deploy image-size
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -136,5 +137,22 @@ lint: ## Run linters
 	@go vet ./...
 	@go fmt ./...
 	@echo "✓ Lint complete"
+
+image-build: exeuntu/Dockerfile ## Build exeuntu Docker image locally
+	@echo "${YELLOW}Building exeuntu image...${NC}"
+	@cd exeuntu && docker build -t $(EXEUNTU_IMAGE):latest .
+	@echo "${GREEN}✓ Image built: $(EXEUNTU_IMAGE):latest${NC}"
+
+image-deploy: image-build ## Build and push exeuntu Docker image
+	@echo "${YELLOW}Tagging and pushing exeuntu image...${NC}"
+	@docker tag $(EXEUNTU_IMAGE):latest $(EXEUNTU_IMAGE):$(TIMESTAMP)
+	@docker push $(EXEUNTU_IMAGE):latest
+	@docker push $(EXEUNTU_IMAGE):$(TIMESTAMP)
+	@echo "${GREEN}✓ Image pushed to $(EXEUNTU_IMAGE):latest and $(EXEUNTU_IMAGE):$(TIMESTAMP)${NC}"
+
+image-size: image-build ## Show the size of the exeuntu Docker image
+	@echo "Checking exeuntu image size..."
+	@docker images $(EXEUNTU_IMAGE):latest --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" 2>/dev/null || \
+	  (echo "${RED}Image $(EXEUNTU_IMAGE):latest not found. Run 'make image-build' first.${NC}" && exit 1)
 
 .DEFAULT_GOAL := help
