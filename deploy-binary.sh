@@ -84,9 +84,6 @@ echo ""
 echo "Deployed versions:"
 ls -la ~/exed.* | tail -5
 
-# Get cluster credentials for the VM
-gcloud container clusters get-credentials exe-cluster --zone=us-west2-a --project=$PROJECT_ID
-
 # Restart the service with the new binary
 echo ""
 echo "Restarting exed service..."
