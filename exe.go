@@ -2819,15 +2819,22 @@ func (s *Server) proxySSHToContainer(channel *sshbuf.Channel, requests <-chan *s
 				req.Reply(true, nil)
 			}
 
+			// Determine the appropriate shell for this container/user
+			shell, err := s.determineUserShell(machine.CreatedByFingerprint, *machine.ContainerID)
+			if err != nil {
+				channel.Write([]byte(fmt.Sprintf("Failed to determine shell: %v\r\n", err)))
+				return
+			}
+
 			// Start interactive shell in container
-			err := s.containerManager.ExecuteInContainer(
+			err = s.containerManager.ExecuteInContainer(
 				context.Background(),
 				machine.CreatedByFingerprint,
 				*machine.ContainerID,
-				[]string{"/bin/bash", "-l"}, // Login shell
-				channel,                     // stdin
-				channel,                     // stdout
-				channel,                     // stderr
+				[]string{shell},
+				channel, // stdin
+				channel, // stdout
+				channel, // stderr
 			)
 
 			if err != nil {
@@ -4283,6 +4290,33 @@ func (s *Server) createMachine(userFingerprint, teamName, name, containerID, ima
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, teamName, name, "pending", image, containerID, userFingerprint)
 	return err
+}
+
+// determineUserShell determines the appropriate shell to use in a container
+func (s *Server) determineUserShell(userFingerprint, containerID string) (string, error) {
+	ctx := context.Background()
+	
+	// Get the user's configured shell from passwd database
+	var passwdOut strings.Builder
+	err := s.containerManager.ExecuteInContainer(
+		ctx,
+		userFingerprint,
+		containerID,
+		[]string{"sh", "-c", "getent passwd $(whoami) | cut -d: -f7"},
+		nil,
+		&passwdOut,
+		nil,
+	)
+	
+	if err == nil {
+		shell := strings.TrimSpace(passwdOut.String())
+		if shell != "" {
+			return shell, nil
+		}
+	}
+	
+	// Fallback to /bin/sh if getent fails
+	return "/bin/sh", nil
 }
 
 // getMachineByName retrieves a machine by name and team

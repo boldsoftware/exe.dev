@@ -89,12 +89,8 @@ func (d *DockerBackend) CreateContainer(ctx context.Context, config *CreateConfi
 		return nil, fmt.Errorf("failed to create container: %w: %s", err, output)
 	}
 	
-	// Parse Docker container ID from output
-	dockerID := strings.TrimSpace(string(output))
-	if len(dockerID) > 12 {
-		dockerID = dockerID[:12]
-	}
-	
+	// Use the container name instead of Docker's internal ID for reliable operations
+	// Docker commands work reliably with container names
 	container := &Container{
 		ID:        containerID,
 		Name:      config.Name,
@@ -103,7 +99,7 @@ func (d *DockerBackend) CreateContainer(ctx context.Context, config *CreateConfi
 		Status:    StatusRunning,
 		Image:     config.Image,
 		CreatedAt: time.Now(),
-		PodName:   dockerID,
+		PodName:   containerID, // Use container name instead of truncated Docker ID
 		Namespace: "docker-local",
 	}
 	
@@ -137,7 +133,7 @@ func (d *DockerBackend) GetContainer(ctx context.Context, containerID string) (*
 						ID:        containerID,
 						Name:      extractNameFromID(containerID),
 						Status:    StatusRunning,
-						PodName:   dockerID[:12], // Use short Docker ID
+						PodName:   containerID, // Use container name for reliable operations
 						Namespace: "docker-local",
 					}
 					
@@ -157,23 +153,23 @@ func (d *DockerBackend) GetContainer(ctx context.Context, containerID string) (*
 	}
 	
 	// Update status from Docker if running with real Docker
-	if container.PodName != containerID {
-		cmd := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Status}}", container.PodName)
-		output, err := cmd.Output()
-		if err == nil {
-			status := strings.TrimSpace(string(output))
-			switch status {
-			case "running":
-				container.Status = StatusRunning
-			case "paused":
-				container.Status = StatusStopped // No sleeping status, use stopped
-			case "exited", "dead":
-				container.Status = StatusStopped
-			default:
-				container.Status = StatusPending
-			}
+	// Check if this is a real Docker container by trying to inspect it
+	cmd := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Status}}", container.PodName)
+	output, err := cmd.Output()
+	if err == nil {
+		status := strings.TrimSpace(string(output))
+		switch status {
+		case "running":
+			container.Status = StatusRunning
+		case "paused":
+			container.Status = StatusStopped // No sleeping status, use stopped
+		case "exited", "dead":
+			container.Status = StatusStopped
+		default:
+			container.Status = StatusPending
 		}
 	}
+	// If docker inspect fails, keep the existing status (works for mock containers)
 	
 	return container, nil
 }
@@ -218,12 +214,11 @@ func (d *DockerBackend) StartContainer(ctx context.Context, containerID string) 
 		return fmt.Errorf("container not found: %s", containerID)
 	}
 	
-	// Start Docker container if using real Docker
-	if container.PodName != containerID {
-		cmd := exec.CommandContext(ctx, "docker", "start", container.PodName)
-		if err := cmd.Run(); err != nil {
-			// Mock mode - just update status
-		}
+	// Try to start Docker container (works in real Docker, fails silently in mock mode)
+	cmd := exec.CommandContext(ctx, "docker", "start", container.PodName)
+	if err := cmd.Run(); err != nil {
+		// Docker command failed - either mock mode or Docker error
+		// In mock mode, this is expected and harmless
 	}
 	
 	container.Status = StatusRunning
@@ -242,12 +237,11 @@ func (d *DockerBackend) StopContainer(ctx context.Context, containerID string) e
 		return fmt.Errorf("container not found: %s", containerID)
 	}
 	
-	// Stop Docker container if using real Docker
-	if container.PodName != containerID {
-		cmd := exec.CommandContext(ctx, "docker", "stop", container.PodName)
-		if err := cmd.Run(); err != nil {
-			// Mock mode - just update status
-		}
+	// Try to stop Docker container (works in real Docker, fails silently in mock mode)
+	cmd := exec.CommandContext(ctx, "docker", "stop", container.PodName)
+	if err := cmd.Run(); err != nil {
+		// Docker command failed - either mock mode or Docker error
+		// In mock mode, this is expected and harmless
 	}
 	
 	container.Status = StatusStopped
@@ -265,12 +259,11 @@ func (d *DockerBackend) DeleteContainer(ctx context.Context, containerID string)
 		return fmt.Errorf("container not found: %s", containerID)
 	}
 	
-	// Remove Docker container if using real Docker
-	if container.PodName != containerID {
-		cmd := exec.CommandContext(ctx, "docker", "rm", "-f", container.PodName)
-		if err := cmd.Run(); err != nil {
-			// Mock mode - just delete from map
-		}
+	// Try to remove Docker container (works in real Docker, fails silently in mock mode)
+	cmd := exec.CommandContext(ctx, "docker", "rm", "-f", container.PodName)
+	if err := cmd.Run(); err != nil {
+		// Docker command failed - either mock mode or Docker error
+		// In mock mode, this is expected and harmless
 	}
 	
 	delete(d.containers, containerID)
@@ -291,15 +284,15 @@ func (d *DockerBackend) ExecuteInContainer(ctx context.Context, containerID stri
 		return "", "", fmt.Errorf("container not found: %s", containerID)
 	}
 	
-	// Use the actual Docker container ID (PodName) if available
-	dockerID := container.PodName
-	if dockerID == "" || dockerID == containerID {
-		// This is a mock container for testing
+	// Use the container name for Docker operations
+	dockerName := container.PodName
+	if dockerName == "" {
+		// This shouldn't happen, but handle gracefully
 		return "mock output\n", "", nil
 	}
 	
 	// Execute in real Docker container
-	args := append([]string{"exec", "-i", dockerID}, command...)
+	args := append([]string{"exec", "-i", dockerName}, command...)
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	
 	if stdin != nil {
@@ -326,10 +319,10 @@ func (d *DockerBackend) ExecuteInContainerWithPTY(ctx context.Context, container
 		return fmt.Errorf("container not found: %s", containerID)
 	}
 	
-	// Use the actual Docker container ID (PodName) if available
-	dockerID := container.PodName
-	if dockerID == "" || dockerID == containerID {
-		// This is a mock container for testing
+	// Use the container name for Docker operations
+	dockerName := container.PodName
+	if dockerName == "" {
+		// This shouldn't happen, but handle gracefully
 		if stdout != nil {
 			stdout.Write([]byte("mock output\n"))
 		}
@@ -343,7 +336,7 @@ func (d *DockerBackend) ExecuteInContainerWithPTY(ctx context.Context, container
 	args = append(args, "-e", "TERM=xterm-256color")
 	
 	// Add the container ID and command
-	args = append(args, dockerID)
+	args = append(args, dockerName)
 	args = append(args, command...)
 	
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -408,8 +401,8 @@ func (d *DockerBackend) ExecuteInContainerStreaming(ctx context.Context, contain
 	}
 	
 	// Use the actual Docker container ID (PodName) if available
-	dockerID := container.PodName
-	if dockerID == "" || dockerID == containerID {
+	dockerName := container.PodName
+	if dockerName == "" || dockerName == containerID {
 		// This is a mock container for testing
 		if stdout != nil {
 			stdout.Write([]byte("mock output\n"))
@@ -426,7 +419,7 @@ func (d *DockerBackend) ExecuteInContainerStreaming(ctx context.Context, contain
 	args = append(args, "-e", "TERM=xterm-256color")
 	
 	// Add the container ID and command
-	args = append(args, dockerID)
+	args = append(args, dockerName)
 	args = append(args, command...)
 	
 	cmd := exec.CommandContext(ctx, "docker", args...)
