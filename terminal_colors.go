@@ -1,7 +1,6 @@
 package exe
 
 import (
-	"bytes"
 	"context"
 	"strconv"
 	"strings"
@@ -178,23 +177,19 @@ func (s *Server) getTerminalColors(mode TerminalMode) struct {
 }
 
 // clearOSCResponse clears any remaining OSC response from the input buffer
+// This function is now deprecated and does nothing to prevent consuming user input
 func (s *Server) clearOSCResponse(channel *sshbuf.Channel) {
-	// Try to read any remaining bytes with a very short timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-	
-	discardBuf := make([]byte, 256)
-	for {
-		n, err := channel.ReadCtx(ctx, discardBuf)
-		if err != nil || n == 0 {
-			break
-		}
-		// Check if we've consumed the OSC response terminator
-		if bytes.Contains(discardBuf[:n], []byte("\033\\")) || 
-		   bytes.Contains(discardBuf[:n], []byte("\007")) {
-			break
-		}
-	}
+	// This function used to consume input aggressively, causing the bug where
+	// the first two characters of email input were lost during signup.
+	// 
+	// The fix is to not clear the OSC response aggressively since:
+	// 1. detectTerminalMode() already reads the OSC response with proper timeout
+	// 2. Any remaining OSC data is harmless and will be ignored by readLineFromChannel
+	// 3. Aggressively reading here risks consuming user input that arrives quickly
+	//
+	// If there are any remaining OSC bytes, they will be handled naturally by
+	// the input processing logic which knows how to distinguish between
+	// escape sequences and user input.
 }
 
 // getGrayText returns the appropriate gray/black text color based on terminal mode
