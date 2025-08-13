@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"strings"
@@ -57,22 +58,20 @@ func NewWarmPoolManager(k8sClient kubernetes.Interface, config *Config) *WarmPoo
 func (wpm *WarmPoolManager) Initialize(ctx context.Context) error {
 	log.Printf("Initializing warm pool manager...")
 	
-	// Default configuration
+	// Default configuration - start small and expand based on usage patterns
 	poolConfig := &WarmPoolConfig{
 		DefaultReplicas: map[string]int32{
-			"micro":  2, // Keep 2 micro containers warm
-			"small":  2, // Keep 2 small containers warm  
-			"medium": 1, // Keep 1 medium container warm
+			"micro":  0, // Don't pre-warm micro
+			"small":  2, // Keep 2 small containers warm (most common size)
+			"medium": 0, // Don't pre-warm medium
 			"large":  0, // Don't pre-warm large (too expensive)
 			"xlarge": 0, // Don't pre-warm xlarge (too expensive)
 		},
 		PreWarmImages: []string{
-			"mirror.gcr.io/library/ubuntu:22.04",
-			"mirror.gcr.io/library/python:3.12",
-			"mirror.gcr.io/library/node:20",
-			"ghcr.io/boldsoftware/sketch",
+			"mirror.gcr.io/library/ubuntu:22.04", // Most common image
+			"ghcr.io/boldsoftware/sketch",        // Sketch language
 		},
-		Namespace: "exe-warmpool",
+		Namespace: "exe-containers", // Use same namespace as user containers
 	}
 
 	// Ensure warm pool namespace exists
@@ -110,15 +109,22 @@ func (wpm *WarmPoolManager) Initialize(ctx context.Context) error {
 			}
 
 			if err := wpm.createStatefulSet(ctx, pool, containerSize); err != nil {
-				log.Printf("Warning: failed to create warm pool %s: %v", poolKey, err)
-				continue
+				// Check if the StatefulSet already exists
+				if strings.Contains(err.Error(), "already exists") {
+					// StatefulSet exists, we can still use it
+					log.Printf("Warm pool %s already exists, will use existing StatefulSet", poolKey)
+				} else {
+					// Real error, skip this pool
+					log.Printf("Warning: failed to create warm pool %s: %v", poolKey, err)
+					continue
+				}
+			} else {
+				log.Printf("Created warm pool: %s (replicas: %d)", poolKey, replicas)
 			}
 
 			wpm.mu.Lock()
 			wpm.pools[poolKey] = pool
 			wpm.mu.Unlock()
-
-			log.Printf("Created warm pool: %s (replicas: %d)", poolKey, replicas)
 		}
 	}
 
@@ -177,9 +183,14 @@ func (wpm *WarmPoolManager) ClaimPod(ctx context.Context, req *CreateContainerRe
 	if pod.Labels == nil {
 		pod.Labels = make(map[string]string)
 	}
+	
+	// Generate the container ID once and use consistently
+	containerID := generateContainerID(req.UserID, req.Name)
+	
 	pod.Labels["claimed"] = "true"
-	pod.Labels["user-id"] = req.UserID
+	pod.Labels["user-id"] = wpm.shortenForLabel(req.UserID)
 	pod.Labels["container-name"] = req.Name
+	pod.Labels["container-id"] = wpm.shortenForLabel(containerID)
 	if req.TeamName != "" {
 		pod.Labels["team-name"] = req.TeamName
 	}
@@ -191,7 +202,6 @@ func (wpm *WarmPoolManager) ClaimPod(ctx context.Context, req *CreateContainerRe
 	}
 
 	// Create container object
-	containerID := generateContainerID(req.UserID, req.Name)
 	container := &Container{
 		ID:            containerID,
 		UserID:        req.UserID,
@@ -201,11 +211,12 @@ func (wpm *WarmPoolManager) ClaimPod(ctx context.Context, req *CreateContainerRe
 		Status:        StatusRunning, // Pod is already running
 		CreatedAt:     time.Now(),
 		StartedAt:     &[]time.Time{time.Now()}[0],
-		Namespace:     pool.Namespace,
+		Namespace:     "exe-containers", // All containers in same namespace
 		PodName:       pod.Name,
 		CPURequest:    ContainerSizes[size].CPURequest,
 		MemoryRequest: ContainerSizes[size].MemoryRequest,
 		StorageSize:   ContainerSizes[size].StorageSize,
+		PVCName:       pod.Name + "-storage", // Warm pool PVC name
 	}
 
 	// Scale up the StatefulSet to maintain warm pool size
@@ -233,8 +244,8 @@ func (wpm *WarmPoolManager) createStatefulSet(ctx context.Context, pool *WarmPoo
 	memoryQuantity := resource.MustParse(containerSize.MemoryRequest)
 	storageQuantity := resource.MustParse(containerSize.StorageSize)
 
-	// Create image pre-pulling init container
-	initContainers := wpm.createImagePrePullers()
+	// No init containers - each pod only needs its specific image
+	// The main container will pull its image when it starts
 
 	statefulSet := &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -267,7 +278,6 @@ func (wpm *WarmPoolManager) createStatefulSet(ctx context.Context, pool *WarmPoo
 					},
 				},
 				Spec: corev1.PodSpec{
-					InitContainers: initContainers,
 					Containers: []corev1.Container{
 						{
 							Name:    "warm-container",
@@ -337,41 +347,6 @@ func (wpm *WarmPoolManager) createStatefulSet(ctx context.Context, pool *WarmPoo
 	return err
 }
 
-// createImagePrePullers creates init containers that pre-pull commonly used images
-func (wpm *WarmPoolManager) createImagePrePullers() []corev1.Container {
-	commonImages := []string{
-		"mirror.gcr.io/library/ubuntu:22.04",
-		"mirror.gcr.io/library/python:3.12",
-		"mirror.gcr.io/library/node:20",
-		"mirror.gcr.io/library/alpine:latest",
-		"ghcr.io/boldsoftware/sketch",
-	}
-
-	var initContainers []corev1.Container
-	for i, image := range commonImages {
-		initContainers = append(initContainers, corev1.Container{
-			Name:  fmt.Sprintf("image-puller-%d", i),
-			Image: image,
-			Command: []string{"/bin/sh"},
-			Args: []string{
-				"-c", 
-				fmt.Sprintf("echo 'Pre-pulled image: %s'; echo 'Image pull completed successfully'", image),
-			},
-			Resources: corev1.ResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("50m"),
-					corev1.ResourceMemory: resource.MustParse("64Mi"),
-				},
-				Limits: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("100m"),
-					corev1.ResourceMemory: resource.MustParse("128Mi"),
-				},
-			},
-		})
-	}
-
-	return initContainers
-}
 
 // maintainPoolSize ensures the warm pool maintains its target size
 func (wpm *WarmPoolManager) maintainPoolSize(ctx context.Context, poolKey string) {
@@ -425,10 +400,29 @@ func (wpm *WarmPoolManager) ensureNamespace(ctx context.Context, namespace strin
 
 // imageToPoolKey converts an image name to a safe key for pool identification
 func (wpm *WarmPoolManager) imageToPoolKey(image string) string {
-	// Replace problematic characters for Kubernetes labels
-	key := image
-	key = fmt.Sprintf("%x", []byte(key))[:16] // Convert to hex and truncate
-	return key
+	// Use SHA256 hash to ensure consistent, unique keys for Kubernetes labels
+	h := sha256.Sum256([]byte(image))
+	return fmt.Sprintf("%x", h)[:16] // Use first 16 chars of hex hash
+}
+
+// shortenForLabel creates a shortened version of a string suitable for Kubernetes labels
+func (wpm *WarmPoolManager) shortenForLabel(s string) string {
+	if len(s) <= 63 {
+		return s
+	}
+	
+	// Create a short hash of the value to stay within Kubernetes 63-character limit for labels
+	h := sha256.Sum256([]byte(s))
+	hash := fmt.Sprintf("%x", h)[:16] // Take first 16 chars of hex
+	
+	// Keep a short prefix for readability if possible
+	maxPrefix := 63 - 17 // Reserve 16 chars for hash + 1 for separator
+	prefix := s
+	if len(prefix) > maxPrefix {
+		prefix = prefix[:maxPrefix]
+	}
+	
+	return fmt.Sprintf("%s-%s", prefix, hash)
 }
 
 // getMirrorImage maps common Docker Hub images to Google's mirror for better performance

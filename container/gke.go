@@ -404,15 +404,11 @@ func (m *GKEManager) createPod(ctx context.Context, container *Container, epheme
 	return err
 }
 
-// getUserNamespace returns the Kubernetes namespace for a user
+// getUserNamespace returns the single namespace used for all containers
 func (m *GKEManager) getUserNamespace(userID string) string {
-	// Create a short hash of the userID to stay within Kubernetes 63-character limit
-	// NamespacePrefix is "exe-" (4 chars) + hash (16 chars) = 20 chars total, well within limit
-	hasher := sha256.New()
-	hasher.Write([]byte(userID))
-	hash := fmt.Sprintf("%x", hasher.Sum(nil))[:16] // Take first 16 chars of hex
-	
-	return m.config.NamespacePrefix + hash
+	// Use a single namespace for all containers to enable warm pool sharing
+	// User isolation is achieved through labels instead of namespaces
+	return "exe-containers"
 }
 
 // generateContainerID creates a unique container ID (shortened for Kubernetes)
@@ -589,13 +585,25 @@ func GetDisplayImageName(actualImage string) string {
 
 // GetContainer retrieves a container by ID
 func (m *GKEManager) GetContainer(ctx context.Context, userID, containerID string) (*Container, error) {
-	namespace := m.getUserNamespace(userID)
+	namespace := "exe-containers"
 	
-	// Get pod to check current status
-	pod, err := m.k8sClient.CoreV1().Pods(namespace).Get(ctx, containerID, metav1.GetOptions{})
+	// Find pod by container-id label
+	pods, err := m.k8sClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("container-id=%s,user-id=%s", m.shortenForLabel(containerID), m.shortenForLabel(userID)),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("container not found: %w", err)
+		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
+	if len(pods.Items) == 0 {
+		// Fallback: try to get by pod name for backward compatibility
+		pod, err := m.k8sClient.CoreV1().Pods(namespace).Get(ctx, containerID, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("container not found: %w", err)
+		}
+		pods.Items = []corev1.Pod{*pod}
+	}
+	
+	pod := &pods.Items[0]
 
 	// Convert pod status to our container status
 	status := m.podStatusToContainerStatus(pod.Status.Phase)
@@ -641,11 +649,11 @@ func (m *GKEManager) Close() error {
 
 // ListContainers returns all containers for a user
 func (m *GKEManager) ListContainers(ctx context.Context, userID string) ([]*Container, error) {
-	namespace := m.getUserNamespace(userID)
+	namespace := "exe-containers"
 	
-	// List all pods in the user's namespace with our app label
+	// List all pods for this user by user-id label
 	pods, err := m.k8sClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app=exe-container",
+		LabelSelector: fmt.Sprintf("user-id=%s", m.shortenForLabel(userID)),
 	})
 	if err != nil {
 		// If namespace doesn't exist, return empty list instead of error
@@ -664,13 +672,25 @@ func (m *GKEManager) ListContainers(ctx context.Context, userID string) ([]*Cont
 	var containers []*Container
 	for _, pod := range pods.Items {
 		// Extract container information from pod
-		containerID := pod.Name // Pod name is the container ID
+		// Container ID needs to be reconstructed from user ID and container name
+		// since the label only stores a shortened version
+		containerName := pod.Labels["container-name"]
+		var containerID string
+		if containerName != "" {
+			// Reconstruct the full container ID
+			containerID = generateContainerID(userID, containerName)
+		} else {
+			// Fallback for legacy pods without the container-name label
+			containerID = pod.Name
+			containerName = pod.Name // Use pod name as container name for legacy pods
+		}
 		status := m.podStatusToContainerStatus(pod.Status.Phase)
 		
 		container := &Container{
 			ID:        containerID,
 			UserID:    userID,
-			Name:      pod.Labels["container-name"], // Get name from label
+			Name:      containerName, // Use the containerName we determined above
+			TeamName:  pod.Labels["team-name"], // Get team name from label
 			Image:     pod.Spec.Containers[0].Image,
 			Status:    status,
 			Namespace: namespace,
@@ -832,14 +852,14 @@ func (m *GKEManager) ExecuteInContainer(ctx context.Context, userID, containerID
 
 // GetContainerDiagnostics returns diagnostic information for a stuck container
 func (m *GKEManager) GetContainerDiagnostics(ctx context.Context, userID, containerName string) (string, error) {
-	namespace := m.getUserNamespace(userID)
+	namespace := "exe-containers"
 	
 	var diagnostics []string
 	diagnostics = append(diagnostics, fmt.Sprintf("=== Diagnostics for container '%s' ===", containerName))
 	
-	// Get pods with the container-name label
+	// Get pods with the container-name and user-id labels
 	podList, err := m.k8sClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("container-name=%s", containerName),
+		LabelSelector: fmt.Sprintf("container-name=%s,user-id=%s", containerName, m.shortenForLabel(userID)),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to list pods: %w", err)

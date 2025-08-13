@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -32,19 +33,19 @@ func TestWarmPoolManager_Initialize(t *testing.T) {
 	}
 
 	// Check that namespace was created
-	_, err = fakeClient.CoreV1().Namespaces().Get(ctx, "exe-warmpool", metav1.GetOptions{})
+	_, err = fakeClient.CoreV1().Namespaces().Get(ctx, "exe-containers", metav1.GetOptions{})
 	if err != nil {
-		t.Errorf("Expected warmpool namespace to be created, got error: %v", err)
+		t.Errorf("Expected exe-containers namespace to be created, got error: %v", err)
 	}
 
 	// Check that headless service was created
-	_, err = fakeClient.CoreV1().Services("exe-warmpool").Get(ctx, "warmpool-headless", metav1.GetOptions{})
+	_, err = fakeClient.CoreV1().Services("exe-containers").Get(ctx, "warmpool-headless", metav1.GetOptions{})
 	if err != nil {
 		t.Errorf("Expected headless service to be created, got error: %v", err)
 	}
 
 	// Check that StatefulSets were created
-	statefulSets, err := fakeClient.AppsV1().StatefulSets("exe-warmpool").List(ctx, metav1.ListOptions{})
+	statefulSets, err := fakeClient.AppsV1().StatefulSets("exe-containers").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		t.Fatalf("Failed to list StatefulSets: %v", err)
 	}
@@ -82,23 +83,23 @@ func TestWarmPoolManager_ClaimPod(t *testing.T) {
 	wpm := NewWarmPoolManager(fakeClient, config)
 
 	// Create the warm pool manually for testing
-	poolKey := "small-6d6972726f722e67" // This matches the imageToPoolKey output for mirror.gcr.io/library/ubuntu:22.04
+	poolImageKey := wpm.imageToPoolKey("mirror.gcr.io/library/ubuntu:22.04")
+	poolKey := fmt.Sprintf("small-%s", poolImageKey)
 	pool := &WarmPool{
 		Size:            "small",
 		Image:           "mirror.gcr.io/library/ubuntu:22.04",
 		TargetReplicas:  1,
 		StatefulSetName: "warm-pool-small-test",
-		Namespace:       "exe-warmpool",
+		Namespace:       "exe-containers",
 		CreatedAt:       time.Now(),
 	}
 	wpm.pools[poolKey] = pool
 
 	// Create a fake warm pod
-	poolImageKey := wpm.imageToPoolKey("mirror.gcr.io/library/ubuntu:22.04")
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "warm-pool-test-0",
-			Namespace: "exe-warmpool",
+			Namespace: "exe-containers",
 			Labels: map[string]string{
 				"app":            "exe-warmpool",
 				"warmpool-size":  "small",
@@ -119,7 +120,7 @@ func TestWarmPoolManager_ClaimPod(t *testing.T) {
 		},
 	}
 
-	_, err := fakeClient.CoreV1().Pods("exe-warmpool").Create(context.Background(), pod, metav1.CreateOptions{})
+	_, err := fakeClient.CoreV1().Pods("exe-containers").Create(context.Background(), pod, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create fake warm pod: %v", err)
 	}
@@ -147,12 +148,12 @@ func TestWarmPoolManager_ClaimPod(t *testing.T) {
 	if container.Status != StatusRunning {
 		t.Errorf("Expected Status %s, got %s", StatusRunning, container.Status)
 	}
-	if container.Namespace != "exe-warmpool" {
+	if container.Namespace != "exe-containers" {
 		t.Errorf("Expected Namespace exe-warmpool, got %s", container.Namespace)
 	}
 
 	// Verify the pod was marked as claimed
-	updatedPod, err := fakeClient.CoreV1().Pods("exe-warmpool").Get(context.Background(), pod.Name, metav1.GetOptions{})
+	updatedPod, err := fakeClient.CoreV1().Pods("exe-containers").Get(context.Background(), pod.Name, metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Failed to get updated pod: %v", err)
 	}
@@ -177,13 +178,14 @@ func TestWarmPoolManager_ClaimPod_NoAvailable(t *testing.T) {
 	wpm := NewWarmPoolManager(fakeClient, config)
 
 	// Create a warm pool but with no pods available
-	poolKey := "small-6d6972726f722e67"
+	poolImageKey := wpm.imageToPoolKey("mirror.gcr.io/library/ubuntu:22.04")
+	poolKey := fmt.Sprintf("small-%s", poolImageKey)
 	pool := &WarmPool{
 		Size:            "small",
 		Image:           "mirror.gcr.io/library/ubuntu:22.04",
 		TargetReplicas:  1,
 		StatefulSetName: "warm-pool-small-test",
-		Namespace:       "exe-warmpool",
+		Namespace:       "exe-containers",
 		CreatedAt:       time.Now(),
 	}
 	wpm.pools[poolKey] = pool
@@ -224,7 +226,7 @@ func TestWarmPoolManager_GetPoolStats(t *testing.T) {
 		Image:           "test-image",
 		TargetReplicas:  2,
 		StatefulSetName: "warm-pool-small-test",
-		Namespace:       "exe-warmpool",
+		Namespace:       "exe-containers",
 		CreatedAt:       time.Now(),
 	}
 	wpm.pools[poolKey] = pool
@@ -233,7 +235,7 @@ func TestWarmPoolManager_GetPoolStats(t *testing.T) {
 	availablePod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod-0",
-			Namespace: "exe-warmpool",
+			Namespace: "exe-containers",
 			Labels: map[string]string{
 				"app":            "exe-warmpool",
 				"warmpool-size":  "small",
@@ -246,7 +248,7 @@ func TestWarmPoolManager_GetPoolStats(t *testing.T) {
 	claimedPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod-1",
-			Namespace: "exe-warmpool",
+			Namespace: "exe-containers",
 			Labels: map[string]string{
 				"app":            "exe-warmpool",
 				"warmpool-size":  "small",
@@ -256,12 +258,12 @@ func TestWarmPoolManager_GetPoolStats(t *testing.T) {
 		},
 	}
 
-	_, err := fakeClient.CoreV1().Pods("exe-warmpool").Create(context.Background(), availablePod, metav1.CreateOptions{})
+	_, err := fakeClient.CoreV1().Pods("exe-containers").Create(context.Background(), availablePod, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create available pod: %v", err)
 	}
 
-	_, err = fakeClient.CoreV1().Pods("exe-warmpool").Create(context.Background(), claimedPod, metav1.CreateOptions{})
+	_, err = fakeClient.CoreV1().Pods("exe-containers").Create(context.Background(), claimedPod, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create claimed pod: %v", err)
 	}
@@ -299,9 +301,9 @@ func TestImageToPoolKey(t *testing.T) {
 		image    string
 		expected string
 	}{
-		{"ubuntu:22.04", "7562756e74753a32"}, // First 16 chars of hex
-		{"python:3.12", "707974686f6e3a33"}, // First 16 chars of hex  
-		{"ghcr.io/boldsoftware/sketch", "676863722e696f2f"}, // First 16 chars of hex
+		{"ubuntu:22.04", "cb287cf26b15fded"}, // SHA256 hash truncated to 16 chars
+		{"python:3.12", "e3efd51c9a3540df"}, // SHA256 hash truncated to 16 chars  
+		{"ghcr.io/boldsoftware/sketch", "bbd785d60e8b9007"}, // SHA256 hash truncated to 16 chars
 	}
 
 	for _, tc := range testCases {
@@ -333,7 +335,7 @@ func TestWarmPoolManager_CreateStatefulSet(t *testing.T) {
 		Image:           "mirror.gcr.io/library/ubuntu:22.04",
 		TargetReplicas:  2,
 		StatefulSetName: "warm-pool-test",
-		Namespace:       "exe-warmpool",
+		Namespace:       "exe-containers",
 		CreatedAt:       time.Now(),
 	}
 
@@ -369,22 +371,9 @@ func TestWarmPoolManager_CreateStatefulSet(t *testing.T) {
 		t.Errorf("Expected gvisor runtime class, got %s", *ss.Spec.Template.Spec.RuntimeClassName)
 	}
 
-	// Check that init containers for image pre-pulling are present
-	initContainers := ss.Spec.Template.Spec.InitContainers
-	if len(initContainers) == 0 {
-		t.Error("Expected init containers for image pre-pulling")
-	}
-
-	// Check for specific images in init containers
-	foundSketch := false
-	for _, initContainer := range initContainers {
-		if initContainer.Image == "ghcr.io/boldsoftware/sketch" {
-			foundSketch = true
-			break
-		}
-	}
-	if !foundSketch {
-		t.Error("Expected ghcr.io/boldsoftware/sketch to be pre-pulled by init container")
+	// We no longer use init containers - each pod pulls only its specific image
+	if len(ss.Spec.Template.Spec.InitContainers) != 0 {
+		t.Error("Expected no init containers (each pod pulls only its specific image)")
 	}
 
 	// Check volume claim template
