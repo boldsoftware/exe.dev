@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -25,9 +26,10 @@ import (
 
 // GKEManager implements the Manager interface using Google Kubernetes Engine
 type GKEManager struct {
-	config    *Config
-	k8sClient kubernetes.Interface
-	k8sConfig *rest.Config
+	config      *Config
+	k8sClient   kubernetes.Interface
+	k8sConfig   *rest.Config
+	warmPoolMgr *WarmPoolManager
 }
 
 // NewGKEManager creates a new GKE-based container manager
@@ -79,15 +81,48 @@ func NewGKEManager(ctx context.Context, config *Config, opts ...option.ClientOpt
 		log.Printf("Successfully connected to Kubernetes cluster")
 	}
 
-	return &GKEManager{
-		config:    config,
-		k8sClient: k8sClient,
-		k8sConfig: k8sConfig,
-	}, nil
+	// Initialize warm pool manager
+	warmPoolMgr := NewWarmPoolManager(k8sClient, config)
+	
+	manager := &GKEManager{
+		config:      config,
+		k8sClient:   k8sClient,
+		k8sConfig:   k8sConfig,
+		warmPoolMgr: warmPoolMgr,
+	}
+
+	// Initialize warm pools in the background (only if not in test mode)
+	go func() {
+		// Skip warm pool initialization in test mode 
+		if os.Getenv("GO_TEST") != "" {
+			log.Printf("Skipping warm pool initialization in test mode")
+			return
+		}
+		if err := warmPoolMgr.Initialize(context.Background()); err != nil {
+			log.Printf("Warning: failed to initialize warm pools: %v", err)
+		}
+	}()
+
+	return manager, nil
 }
 
 // CreateContainer creates a new container instance
 func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error) {
+	log.Printf("Creating container for user %s, name %s, size %s, image %s", req.UserID, req.Name, req.Size, req.Image)
+	
+	// Try to claim a warm pod first (only for standard sizes and common images)
+	if req.Dockerfile == "" && !req.Ephemeral && req.Size != "" {
+		if container, err := m.warmPoolMgr.ClaimPod(ctx, req); err == nil {
+			log.Printf("Successfully claimed warm pod for container %s (startup time: ~1s)", container.ID)
+			return container, nil
+		} else {
+			log.Printf("No warm pod available for size %s, image %s: %v. Creating new container...", req.Size, req.Image, err)
+		}
+	}
+
+	// Fall back to traditional container creation
+	log.Printf("Creating container via traditional path (estimated startup time: ~15s)")
+	
 	// Generate unique IDs
 	containerID := generateContainerID(req.UserID, req.Name)
 	namespace := m.getUserNamespace(req.UserID)
@@ -502,6 +537,46 @@ func (m *GKEManager) getMirrorImage(image string) string {
 	return image
 }
 
+// isWarmPoolContainer checks if a container originated from the warm pool
+func (m *GKEManager) isWarmPoolContainer(container *Container) bool {
+	return container.Namespace == "exe-warmpool"
+}
+
+// GetWarmPoolStats returns statistics about warm pool usage
+func (m *GKEManager) GetWarmPoolStats(ctx context.Context) (map[string]interface{}, error) {
+	if m.warmPoolMgr == nil {
+		return nil, fmt.Errorf("warm pool manager not initialized")
+	}
+	return m.warmPoolMgr.GetPoolStats(ctx)
+}
+
+// CreateWarmPoolService creates a headless service for StatefulSets
+func (m *GKEManager) createWarmPoolService(ctx context.Context, namespace string) error {
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "warmpool-headless",
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app":        "exe-warmpool",
+				"managed-by": "exe.dev",
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: "None", // Headless service
+			Selector: map[string]string{
+				"app": "exe-warmpool",
+			},
+		},
+	}
+
+	_, err := m.k8sClient.CoreV1().Services(namespace).Create(ctx, service, metav1.CreateOptions{})
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		return fmt.Errorf("failed to create headless service: %w", err)
+	}
+	
+	return nil
+}
+
 // GetDisplayImageName returns a user-friendly image name for UI display
 func GetDisplayImageName(actualImage string) string {
 	// Strip mirror.gcr.io prefix for display
@@ -638,6 +713,12 @@ func (m *GKEManager) StopContainer(ctx context.Context, userID, containerID stri
 	
 	if container.Status != StatusRunning {
 		return fmt.Errorf("container is not running (status: %s)", container.Status)
+	}
+	
+	// Check if this container came from the warm pool
+	if m.isWarmPoolContainer(container) {
+		log.Printf("Releasing container %s back to warm pool", containerID)
+		return m.warmPoolMgr.ReleasePod(ctx, container)
 	}
 	
 	// Delete the pod to stop the container
