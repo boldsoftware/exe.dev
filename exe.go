@@ -3796,7 +3796,7 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 	var showHelp bool
 
 	flags.StringVar(&containerName, "name", "", "Machine name (auto-generated if not specified)")
-	flags.StringVar(&image, "image", "ghcr.io/boldsoftware/sketch", "Docker image to use")
+	flags.StringVar(&image, "image", "exeuntu", "Docker image to use")
 	flags.StringVar(&size, "size", "small", "Machine size: micro, small, medium, large, xlarge")
 	flags.StringVar(&disk, "disk", "", "Override disk size (e.g., 30Gi, 100Gi)")
 	flags.BoolVar(&temp, "temp", false, "Create ephemeral machine (no persistent disk)")

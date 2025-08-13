@@ -558,6 +558,14 @@ func (m *GKEManager) GetWarmPoolStats(ctx context.Context) (map[string]interface
 	return m.warmPoolMgr.GetPoolStats(ctx)
 }
 
+// RecreateWarmPools recreates warm pools with updated configuration
+func (m *GKEManager) RecreateWarmPools(ctx context.Context) error {
+	if m.warmPoolMgr == nil {
+		return fmt.Errorf("warm pool manager not initialized")
+	}
+	return m.warmPoolMgr.RecreateWarmPools(ctx)
+}
+
 // CreateWarmPoolService creates a headless service for StatefulSets
 func (m *GKEManager) createWarmPoolService(ctx context.Context, namespace string) error {
 	service := &corev1.Service{
@@ -590,13 +598,14 @@ func (m *GKEManager) createWarmPoolService(ctx context.Context, namespace string
 func ExpandImageName(image string) string {
 	switch image {
 	case "exeuntu":
-		return "gcr.io/exe-dev-468515/exeuntu"
+		return "gcr.io/exe-dev-468515/exeuntu:latest"
 	default:
 		return image
 	}
 }
 
 func GetDisplayImageName(actualImage string) string {
+	
 	// Strip mirror.gcr.io prefix for display
 	if strings.HasPrefix(actualImage, "mirror.gcr.io/library/") {
 		return strings.TrimPrefix(actualImage, "mirror.gcr.io/library/")

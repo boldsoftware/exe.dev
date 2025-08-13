@@ -68,8 +68,8 @@ func (wpm *WarmPoolManager) Initialize(ctx context.Context) error {
 			"xlarge": 0, // Don't pre-warm xlarge (too expensive)
 		},
 		PreWarmImages: []string{
-			"mirror.gcr.io/library/ubuntu:22.04", // Most common image
-			"gcr.io/exe-dev-468515/exeuntu",      // Exeuntu development image
+			"exeuntu",      // Default image that users get (maps to ubuntu:22.04 temporarily)
+			"ubuntu:22.04", // Common user-requested image (also maps to ubuntu:22.04)
 		},
 		Namespace: "exe-containers", // Use same namespace as user containers
 	}
@@ -96,14 +96,27 @@ func (wpm *WarmPoolManager) Initialize(ctx context.Context) error {
 			continue
 		}
 
+		// Keep track of pools we've already created to avoid duplicates
+		createdPools := make(map[string]bool)
+		
 		for _, image := range poolConfig.PreWarmImages {
-			poolKey := fmt.Sprintf("%s-%s", size, wpm.imageToPoolKey(image))
+			// Apply the same expansion and mapping that ClaimPod uses
+			expandedImage := ExpandImageName(image)
+			finalImage := wpm.getMirrorImage(expandedImage)
+			
+			poolKey := fmt.Sprintf("%s-%s", size, wpm.imageToPoolKey(finalImage))
+			
+			// Skip if we've already created this pool
+			if createdPools[poolKey] {
+				continue
+			}
+			createdPools[poolKey] = true
 			
 			pool := &WarmPool{
 				Size:           size,
-				Image:          image,
+				Image:          finalImage,
 				TargetReplicas: replicas,
-				StatefulSetName: fmt.Sprintf("warm-pool-%s", poolKey),
+				StatefulSetName: wpm.generatePoolName(finalImage, size),
 				Namespace:      poolConfig.Namespace,
 				CreatedAt:      time.Now(),
 			}
@@ -134,13 +147,14 @@ func (wpm *WarmPoolManager) Initialize(ctx context.Context) error {
 
 // ClaimPod claims a pre-warmed pod from the pool and converts it for user use
 func (wpm *WarmPoolManager) ClaimPod(ctx context.Context, req *CreateContainerRequest) (*Container, error) {
-	// Determine the image to use
+	// Determine the image to use - default to exeuntu
 	image := req.Image
 	if image == "" {
-		image = "mirror.gcr.io/library/ubuntu:22.04"
+		image = "exeuntu"
 	}
 	
-	// Map common images to their mirror versions
+	// Apply image expansion and mirroring (same as main container creation logic)
+	image = ExpandImageName(image)
 	image = wpm.getMirrorImage(image)
 	
 	// Determine the size
@@ -280,7 +294,7 @@ func (wpm *WarmPoolManager) createStatefulSet(ctx context.Context, pool *WarmPoo
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:    "warm-container",
+							Name:    "main",
 							Image:   pool.Image,
 							Command: []string{"/bin/bash"},
 							Args:    []string{"-c", "while true; do sleep 30; done"},
@@ -403,6 +417,27 @@ func (wpm *WarmPoolManager) imageToPoolKey(image string) string {
 	// Use SHA256 hash to ensure consistent, unique keys for Kubernetes labels
 	h := sha256.Sum256([]byte(image))
 	return fmt.Sprintf("%x", h)[:16] // Use first 16 chars of hex hash
+}
+
+// generatePoolName creates a user-friendly name for warm pool StatefulSets
+func (wpm *WarmPoolManager) generatePoolName(image, size string) string {
+	// Extract a clean name from the image
+	var imageName string
+	if strings.Contains(image, "gcr.io/exe-dev-468515/") {
+		// For our custom images like gcr.io/exe-dev-468515/exeuntu:latest
+		imageName = strings.TrimPrefix(image, "gcr.io/exe-dev-468515/")
+		imageName = strings.Split(imageName, ":")[0] // Remove :latest tag
+	} else if strings.Contains(image, "mirror.gcr.io/library/") {
+		// For mirror images like mirror.gcr.io/library/ubuntu:22.04
+		imageName = strings.TrimPrefix(image, "mirror.gcr.io/library/")
+		imageName = strings.Replace(imageName, ":", "", -1) // Remove :
+		imageName = strings.Replace(imageName, ".", "", -1) // Remove .
+	} else {
+		// For other images, use a safe fallback
+		imageName = "custom"
+	}
+	
+	return fmt.Sprintf("%s-%s", imageName, size)
 }
 
 // shortenForLabel creates a shortened version of a string suitable for Kubernetes labels
@@ -540,4 +575,20 @@ func (wpm *WarmPoolManager) Cleanup(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// RecreateWarmPools removes existing warm pools and creates new ones with current configuration
+func (wpm *WarmPoolManager) RecreateWarmPools(ctx context.Context) error {
+	log.Printf("Recreating warm pools with updated configuration...")
+	
+	// First cleanup existing pools
+	if err := wpm.Cleanup(ctx); err != nil {
+		return fmt.Errorf("failed to cleanup existing pools: %w", err)
+	}
+	
+	// Wait a moment for cleanup to complete
+	time.Sleep(5 * time.Second)
+	
+	// Reinitialize with new configuration
+	return wpm.Initialize(ctx)
 }
