@@ -14,6 +14,7 @@ REGION="us-west2"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "==========================================="
@@ -21,16 +22,50 @@ echo "Deploying exed to Production"
 echo "==========================================="
 echo ""
 
-# Get VM external IP
-echo "Getting VM information..."
-EXTERNAL_IP=$(gcloud compute addresses describe exed-prod-ip --region=$REGION --format="value(address)" 2>/dev/null)
-
-if [ -z "$EXTERNAL_IP" ]; then
-    echo -e "${RED}ERROR: Could not find production VM IP. Run setup-production-vm.sh first.${NC}"
+# Check if gcloud is installed
+if ! command -v gcloud >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: gcloud CLI not found${NC}"
+    echo -e "${BLUE}Please install gcloud: https://cloud.google.com/sdk/docs/install${NC}"
+    echo ""
     exit 1
 fi
 
-echo "Target VM: $EXTERNAL_IP"
+# Check if authenticated
+echo "Checking gcloud authentication..."
+if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .; then
+    echo -e "${RED}ERROR: Not authenticated with gcloud${NC}"
+    echo -e "${BLUE}Please run: gcloud auth login${NC}"
+    echo ""
+    exit 1
+fi
+
+# Set the project (in case it's not set)
+echo "Setting project to $PROJECT_ID..."
+gcloud config set project "$PROJECT_ID" >/dev/null 2>&1
+
+# Check Tailscale connectivity
+echo "Checking Tailscale connection to VM..."
+TAILSCALE_HOST="ubuntu@exed-prod-01"
+
+if ! ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes "$TAILSCALE_HOST" "echo 'Tailscale SSH connection successful'" >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: Cannot SSH to the production VM via Tailscale${NC}"
+    echo -e "${BLUE}This could be due to:${NC}"
+    echo "  1. Tailscale not running on your machine"
+    echo "  2. Not connected to the same Tailscale network" 
+    echo "  3. VM is not running or not connected to Tailscale"
+    echo "  4. SSH key not added to the VM"
+    echo ""
+    echo "To fix Tailscale SSH access:"
+    echo "  1. Make sure Tailscale is running: tailscale status"
+    echo "  2. Test manual connection: ssh ubuntu@exed-prod-01"
+    echo "  3. If that fails, check VM status in GCP Console"
+    echo "  4. Verify the VM is connected: tailscale status | grep exed-prod-01"
+    echo ""
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Tailscale SSH access verified${NC}"
+echo "Target VM: exed-prod-01 (via Tailscale)"
 echo ""
 
 # Generate timestamp for this deployment
@@ -56,13 +91,16 @@ echo ""
 # Deploy to VM
 echo -e "${YELLOW}Deploying to VM...${NC}"
 
-# Copy binary to VM (using port 22222 for admin SSH)
+# Copy binary to VM via Tailscale
 echo "Copying binary to VM..."
-scp -P 22222 -o StrictHostKeyChecking=no "/tmp/$BINARY_NAME" "ubuntu@$EXTERNAL_IP:~/"
-
-if [ $? -ne 0 ]; then
+if ! scp -o StrictHostKeyChecking=no "/tmp/$BINARY_NAME" "$TAILSCALE_HOST:~/"; then
     echo -e "${RED}ERROR: Failed to copy binary to VM${NC}"
-    echo "Make sure you can SSH to the VM: ssh -p 22222 ubuntu@$EXTERNAL_IP"
+    echo -e "${BLUE}Troubleshooting steps:${NC}"
+    echo "  1. Test SSH connection: ssh ubuntu@exed-prod-01"
+    echo "  2. Check Tailscale status: tailscale status"
+    echo "  3. Verify your SSH key is loaded: ssh-add -l"
+    echo "  4. Check VM status in GCP Console"
+    echo ""
     exit 1
 fi
 
@@ -70,13 +108,20 @@ echo -e "${GREEN}✓ Binary uploaded${NC}"
 
 # Make binary executable and create symlink
 echo "Configuring binary on VM..."
-ssh -p 22222 -o StrictHostKeyChecking=no "ubuntu@$EXTERNAL_IP" << EOF
-set -e
-
+ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" << EOF
 # Make binary executable
 chmod +x ~/$BINARY_NAME
 
+# Verify permissions were set correctly
+if [ -x ~/$BINARY_NAME ]; then
+    echo "✓ Binary permissions set correctly"
+else
+    echo "⚠ Warning: Binary may not be executable"
+    ls -la ~/$BINARY_NAME
+fi
+
 # Create a symlink to the latest version
+rm -f ~/exed.latest
 ln -sf ~/$BINARY_NAME ~/exed.latest
 
 # List all deployed versions
@@ -100,16 +145,31 @@ else
     sudo journalctl -u exed -n 20 --no-pager
 fi
 
-# Check if service is responding
-echo ""
-echo "Testing service endpoints..."
-curl -s -o /dev/null -w "HTTP Health Check: %{http_code}\n" http://localhost:8080/health || true
-
 # Show recent logs
 echo ""
 echo "Recent service logs:"
-sudo tail -n 10 /var/log/exed/exed.log 2>/dev/null || echo "No logs yet"
+sudo journalctl -u exed -n 5 --no-pager -o cat
 EOF
+
+echo -e "${GREEN}✓ Service configuration completed${NC}"
+
+echo ""
+echo -e "${YELLOW}Testing service health...${NC}"
+echo "Waiting for https://exe.dev/health to respond..."
+
+# Health check loop running on dev machine
+for i in {1..30}; do
+    if curl -s -o /dev/null -w "" https://exe.dev/health 2>/dev/null; then
+        echo -e "${GREEN}✓ Service is responding (attempt $i/30)${NC}"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        echo -e "${YELLOW}⚠ Service health check timed out after 60 seconds${NC}"
+        echo "Service may still be starting - this is normal for the first restart"
+    else
+        sleep 2
+    fi
+done
 
 echo ""
 echo -e "${GREEN}==========================================="
@@ -120,18 +180,18 @@ echo "Deployed version: $BINARY_NAME"
 echo "Timestamp: $TIMESTAMP"
 echo ""
 echo "Service endpoints:"
-echo "  HTTP:  http://$EXTERNAL_IP"
-echo "  HTTPS: https://$EXTERNAL_IP (if SSL configured)"
-echo "  SSH:   ssh -p 22 user@$EXTERNAL_IP"
+echo "  HTTP:  http://exed-prod-01 (via Tailscale)"
+echo "  HTTPS: https://exed-prod-01 (if SSL configured)" 
+echo "  SSH:   ssh user@exed-prod-01"
 echo ""
 echo "Admin access:"
-echo "  ssh -p 22222 ubuntu@$EXTERNAL_IP"
+echo "  ssh ubuntu@exed-prod-01"
 echo ""
 echo "View logs:"
-echo "  ssh -p 22222 ubuntu@$EXTERNAL_IP 'sudo tail -f /var/log/exed/exed.log'"
+echo "  ssh ubuntu@exed-prod-01 'sudo tail -f /var/log/exed/exed.log'"
 echo ""
 echo "Rollback (if needed):"
-echo "  ssh -p 22222 ubuntu@$EXTERNAL_IP"
+echo "  ssh ubuntu@exed-prod-01"
 echo "  ls -la ~/exed.*  # list all versions"
 echo "  sudo ln -sf ~/exed.TIMESTAMP ~/exed.latest"
 echo "  sudo systemctl restart exed"

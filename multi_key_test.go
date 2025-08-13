@@ -112,8 +112,8 @@ func TestMultiKeyAuthentication(t *testing.T) {
 			t.Fatalf("Authentication failed: %v", err)
 		}
 
-		if perms.Extensions["registered"] != "new_device" {
-			t.Errorf("Expected new_device status, got %s", perms.Extensions["registered"])
+		if perms.Extensions["registered"] != "false" {
+			t.Errorf("Expected false status for unverified key, got %s", perms.Extensions["registered"])
 		}
 
 		if perms.Extensions["email"] != testEmail {

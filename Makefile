@@ -14,13 +14,19 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy setup-vm setup-dev clean run-dev image-build image-deploy image-size
+.PHONY: help build test deploy setup-vm setup-dev clean run-dev image-build image-deploy image-size check-deploy
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*##"; printf "\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  ${GREEN}%-15s${NC} %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@echo ''
+	@echo 'Prerequisites for deployment commands:'
+	@echo '  - gcloud CLI installed and authenticated (gcloud auth login)'
+	@echo '  - Tailscale installed and running (connects to production VM)'
+	@echo '  - SSH key access to production VM via Tailscale'
+	@echo '  - For first-time setup: TAILSCALE_AUTH_KEY from https://login.tailscale.com/admin/settings/keys'
 	@echo ''
 
 build: ## Build the exed binary
@@ -43,9 +49,56 @@ test-integration: ## Run integration tests (requires cluster access)
 
 deploy: ## Deploy to production
 	@echo "${YELLOW}Deploying to production...${NC}"
+	@if ! command -v gcloud >/dev/null 2>&1; then \
+		echo "${RED}Error: gcloud CLI not found${NC}"; \
+		echo "${RED}Please install gcloud: https://cloud.google.com/sdk/docs/install${NC}"; \
+		exit 1; \
+	fi
+	@if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q .; then \
+		echo "${RED}Error: Not authenticated with gcloud${NC}"; \
+		echo "${RED}Please run: gcloud auth login${NC}"; \
+		exit 1; \
+	fi
 	@chmod +x deploy-binary.sh
 	@./deploy-binary.sh
-	@echo "${GREEN}✓ Deployment complete${NC}"
+
+check-deploy: ## Check deployment prerequisites
+	@echo "Checking deployment prerequisites..."
+	@echo ""
+	@if command -v gcloud >/dev/null 2>&1; then \
+		echo "${GREEN}✓ gcloud CLI installed${NC}"; \
+	else \
+		echo "${RED}✗ gcloud CLI not found${NC}"; \
+		echo "  Install: https://cloud.google.com/sdk/docs/install"; \
+	fi
+	@if gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .; then \
+		ACCOUNT=$$(gcloud auth list --filter=status:ACTIVE --format="value(account)" | head -1); \
+		echo "${GREEN}✓ Authenticated as $$ACCOUNT${NC}"; \
+	else \
+		echo "${RED}✗ Not authenticated with gcloud${NC}"; \
+		echo "  Run: gcloud auth login"; \
+	fi
+	@if command -v tailscale >/dev/null 2>&1; then \
+		echo "${GREEN}✓ Tailscale CLI installed${NC}"; \
+		if tailscale status >/dev/null 2>&1; then \
+			echo "${GREEN}✓ Tailscale is running${NC}"; \
+			if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o BatchMode=yes "ubuntu@exed-prod-01" "echo 'test'" >/dev/null 2>&1; then \
+				echo "${GREEN}✓ SSH access to exed-prod-01 working${NC}"; \
+			else \
+				echo "${YELLOW}⚠ SSH access to exed-prod-01 not working${NC}"; \
+				echo "  Try: ssh ubuntu@exed-prod-01"; \
+				echo "  Check: tailscale status | grep exed-prod-01"; \
+			fi \
+		else \
+			echo "${YELLOW}⚠ Tailscale not running${NC}"; \
+			echo "  Start Tailscale and connect to the network"; \
+		fi \
+	else \
+		echo "${RED}✗ Tailscale not found${NC}"; \
+		echo "  Install: https://tailscale.com/download"; \
+	fi
+	@echo ""
+	@echo "If all items show ✓, you're ready to run: make deploy"
 
 setup-vm: ## Set up production VM (run once) - requires TAILSCALE_AUTH_KEY
 	@echo "Setting up production VM..."
@@ -93,28 +146,24 @@ stop-dev: ## Stop development server
 	@echo "✓ Server stopped"
 
 ssh-vm: ## SSH to production VM
-	@echo "Connecting to production VM..."
-	@ssh -p 22222 ubuntu@$$(gcloud compute addresses describe exed-prod-ip --region=us-west2 --format="value(address)")
+	@echo "Connecting to production VM via Tailscale..."
+	@ssh ubuntu@exed-prod-01
 
 logs: ## View production logs
 	@echo "Fetching production logs..."
-	@ssh -p 22222 ubuntu@$$(gcloud compute addresses describe exed-prod-ip --region=us-west2 --format="value(address)") \
-		'sudo tail -f /var/log/exed/exed.log'
+	@ssh ubuntu@exed-prod-01 'sudo tail -f /var/log/exed/exed.log'
 
 logs-error: ## View production error logs
 	@echo "Fetching production error logs..."
-	@ssh -p 22222 ubuntu@$$(gcloud compute addresses describe exed-prod-ip --region=us-west2 --format="value(address)") \
-		'sudo tail -f /var/log/exed/exed.error.log'
+	@ssh ubuntu@exed-prod-01 'sudo tail -f /var/log/exed/exed.error.log'
 
 status: ## Check production service status
 	@echo "Checking production service status..."
-	@ssh -p 22222 ubuntu@$$(gcloud compute addresses describe exed-prod-ip --region=us-west2 --format="value(address)") \
-		'sudo systemctl status exed --no-pager'
+	@ssh ubuntu@exed-prod-01 'sudo systemctl status exed --no-pager'
 
 restart: ## Restart production service
 	@echo "Restarting production service..."
-	@ssh -p 22222 ubuntu@$$(gcloud compute addresses describe exed-prod-ip --region=us-west2 --format="value(address)") \
-		'sudo systemctl restart exed && echo "✓ Service restarted"'
+	@ssh ubuntu@exed-prod-01 'sudo systemctl restart exed && echo "✓ Service restarted"'
 
 clean: ## Clean build artifacts
 	@echo "Cleaning build artifacts..."
@@ -144,9 +193,27 @@ image-build: exeuntu/Dockerfile ## Build exeuntu Docker image locally
 	@echo "${GREEN}✓ Image built: $(EXEUNTU_IMAGE):latest${NC}"
 
 image-deploy: image-build ## Build and push exeuntu Docker image
+	@echo "${YELLOW}Configuring Docker authentication for GCR...${NC}"
+	@if ! command -v gcloud >/dev/null 2>&1; then \
+		echo "${RED}Error: gcloud CLI not found${NC}"; \
+		echo "${RED}Please install gcloud: https://cloud.google.com/sdk/docs/install${NC}"; \
+		exit 1; \
+	fi
+	@if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q .; then \
+		echo "${RED}Error: Not authenticated with gcloud${NC}"; \
+		echo "${RED}Please run: gcloud auth login${NC}"; \
+		exit 1; \
+	fi
+	@echo "Configuring Docker credential helper for GCR..."
+	@gcloud auth configure-docker --quiet 2>/dev/null || true
 	@echo "${YELLOW}Tagging and pushing exeuntu image...${NC}"
 	@docker tag $(EXEUNTU_IMAGE):latest $(EXEUNTU_IMAGE):$(TIMESTAMP)
-	@docker push $(EXEUNTU_IMAGE):latest
+	@if ! docker push $(EXEUNTU_IMAGE):latest 2>/dev/null; then \
+		echo "${RED}Error: Failed to push Docker image${NC}"; \
+		echo "${RED}Please ensure you have push access to $(EXEUNTU_IMAGE)${NC}"; \
+		echo "${RED}Try running: gcloud auth configure-docker${NC}"; \
+		exit 1; \
+	fi
 	@docker push $(EXEUNTU_IMAGE):$(TIMESTAMP)
 	@echo "${GREEN}✓ Image pushed to $(EXEUNTU_IMAGE):latest and $(EXEUNTU_IMAGE):$(TIMESTAMP)${NC}"
 

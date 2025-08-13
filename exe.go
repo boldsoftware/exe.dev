@@ -425,6 +425,51 @@ func (s *Server) getPublicKeyFingerprint(key ssh.PublicKey) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// inheritUserTeamMemberships adds a new SSH key to all teams that the user (by email) is already a member of
+func (s *Server) inheritUserTeamMemberships(newFingerprint, userEmail string) error {
+	// First, get the original user fingerprint from the users table
+	var originalFingerprint string
+	err := s.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", userEmail).Scan(&originalFingerprint)
+	if err != nil {
+		return fmt.Errorf("failed to find original user fingerprint: %v", err)
+	}
+
+	// Get all teams the original fingerprint is a member of
+	rows, err := s.db.Query(`
+		SELECT team_name, is_admin 
+		FROM team_members 
+		WHERE user_fingerprint = ?`, originalFingerprint)
+	if err != nil {
+		return fmt.Errorf("failed to query team memberships: %v", err)
+	}
+	defer rows.Close()
+
+	// Add the new fingerprint to each team
+	for rows.Next() {
+		var teamName string
+		var isAdmin bool
+		if err := rows.Scan(&teamName, &isAdmin); err != nil {
+			log.Printf("Error scanning team membership: %v", err)
+			continue
+		}
+
+		// Insert the new fingerprint into the same team with the same admin status
+		_, err = s.db.Exec(`
+			INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+			VALUES (?, ?, ?)
+			ON CONFLICT(user_fingerprint, team_name) DO UPDATE SET is_admin = ?`,
+			newFingerprint, teamName, isAdmin, isAdmin)
+		
+		if err != nil {
+			log.Printf("Failed to add fingerprint %s to team %s: %v", newFingerprint, teamName, err)
+		} else {
+			log.Printf("Added new SSH key to team %s (admin: %v) for user %s", teamName, isAdmin, userEmail)
+		}
+	}
+
+	return rows.Err()
+}
+
 // generateRegistrationToken creates a random registration token
 func (s *Server) generateRegistrationToken() string {
 	bytes := make([]byte, 16)
@@ -467,13 +512,18 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	// Use the existing sendVerificationEmail logic
 	email := postmark.Email{
-		From:     "noreply@exe.dev",
+		From:     "support@exe.dev",
 		To:       to,
 		Subject:  subject,
 		TextBody: body,
 	}
 
 	_, err := s.postmarkClient.SendEmail(email)
+	if err != nil {
+		log.Printf("📧 ERROR: Failed to send email to %s (subject: %s): %v", to, subject, err)
+	} else {
+		log.Printf("📧 Email sent successfully to %s (subject: %s)", to, subject)
+	}
 	return err
 }
 
@@ -541,11 +591,12 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	// Check if there's an email associated with any SSH key and if this is a new key for that user
 	if email != "" && !verified {
-		// This key belongs to a user but isn't verified yet - treat as new device login attempt
+		// This key belongs to a user but isn't verified yet - treat as standard unregistered user
+		// They will go through the normal flow and wait for email verification
 		return &ssh.Permissions{
 			Extensions: map[string]string{
 				"fingerprint":        fingerprint,
-				"registered":         "new_device",
+				"registered":         "false",
 				"email":              email,
 				"public_key":         publicKeyStr,
 				"needs_verification": "true",
@@ -856,8 +907,24 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Automatically add the new SSH key to all teams the user is already a member of
+	err = s.inheritUserTeamMemberships(fingerprint, email)
+	if err != nil {
+		log.Printf("Failed to inherit team memberships for %s: %v", email, err)
+		// Don't fail the verification, just log the error
+	}
+
 	// Clean up the pending key
 	s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+
+	// Signal completion to waiting SSH session
+	s.emailVerificationsMu.Lock()
+	verification, exists := s.emailVerifications[token]
+	if exists {
+		close(verification.CompleteChan)
+		delete(s.emailVerifications, token)
+	}
+	s.emailVerificationsMu.Unlock()
 
 	// Send success response
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -2246,7 +2313,6 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 	publicKey := sshConn.Permissions.Extensions["public_key"]
 
 	registered := registeredStatus == "true"
-	isNewDevice := registeredStatus == "new_device"
 
 	if !s.quietMode {
 		log.Printf("SSH connection established for user: %s, fingerprint: %s, registered: %s",
@@ -2269,7 +2335,7 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 	}
 
 	for newChannel := range chans {
-		go s.handleSSHChannel(newChannel, sshConn.User(), fingerprint, registered, isNewDevice, email, publicKey)
+		go s.handleSSHChannel(newChannel, sshConn.User(), fingerprint, registered, email, publicKey)
 	}
 }
 
@@ -2393,7 +2459,7 @@ func (s *Server) showHelpText(channel *sshbuf.Channel) {
 }
 
 // handleSSHChannel handles SSH channels
-func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerprint string, registered bool, isNewDevice bool, email, publicKey string) {
+func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerprint string, registered bool, email, publicKey string) {
 	if newChannel.ChannelType() != "session" {
 		newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
 		return
@@ -2448,12 +2514,7 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 				req.Reply(true, nil)
 			}
 			// Handle shell directly, not in a goroutine
-			if isNewDevice {
-				// Handle new device authentication flow
-				s.handleNewDeviceAuth(channel, fingerprint, email, publicKey, terminalWidth)
-			} else {
-				s.handleSSHShellWithDimensions(channel, username, fingerprint, registered, terminalWidth, terminalHeight)
-			}
+			s.handleSSHShellWithDimensions(channel, username, fingerprint, registered, terminalWidth, terminalHeight)
 			return // Exit after handling shell
 		case "exec":
 			if req.WantReply {
@@ -3735,7 +3796,7 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 	var showHelp bool
 
 	flags.StringVar(&containerName, "name", "", "Machine name (auto-generated if not specified)")
-	flags.StringVar(&image, "image", "ubuntu:22.04", "Docker image to use")
+	flags.StringVar(&image, "image", "ghcr.io/boldsoftware/sketch", "Docker image to use")
 	flags.StringVar(&size, "size", "small", "Machine size: micro, small, medium, large, xlarge")
 	flags.StringVar(&disk, "disk", "", "Override disk size (e.g., 30Gi, 100Gi)")
 	flags.BoolVar(&temp, "temp", false, "Create ephemeral machine (no persistent disk)")
@@ -3751,7 +3812,7 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 		channel.Write([]byte("\r\nCreate a new machine\r\n\r\n"))
 		channel.Write([]byte("Options:\r\n"))
 		channel.Write([]byte("  --name string     Machine name (auto-generated if not specified)\r\n"))
-		channel.Write([]byte("  --image string    Docker image to use (default \"ubuntu:22.04\")\r\n"))
+		channel.Write([]byte("  --image string    Docker image to use: exeuntu, ubuntu:22.04, python:3.12, etc. (default \"exeuntu\")\r\n"))
 		channel.Write([]byte("  --size string     Machine size: micro, small, medium, large, xlarge (default \"small\")\r\n"))
 		channel.Write([]byte("  --disk string     Override disk size (e.g., 30Gi, 100Gi)\r\n"))
 		channel.Write([]byte("  --temp            Create ephemeral machine (no persistent disk)\r\n"))
@@ -3877,6 +3938,9 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 	}
 	// err == sql.ErrNoRows means the name is available, continue
 
+	// Expand short image names to full paths
+	image = container.ExpandImageName(image)
+
 	// Show creation message with size info
 	if dockerfile != "" {
 		if temp {
@@ -3947,7 +4011,14 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 		channel.Write([]byte(fmt.Sprintf("\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)))
 	}
 
-	// Wait for container to be running
+	// Check if container is already running (warm pool case)
+	if createdContainer.Status == container.StatusRunning {
+		channel.Write([]byte(fmt.Sprintf("Ready in ~1s! Access with \033[1mssh %s@exe.dev\033[0m\r\n", containerName)))
+		channel.Write([]byte("\r\n"))
+		return
+	}
+
+	// Wait for container to be running (cold start case)
 	channel.Write([]byte("Waiting for startup... "))
 
 	maxWaitTime := 3 * time.Minute
@@ -4557,6 +4628,20 @@ func (s *Server) startEmailVerification(channel *sshbuf.Channel, fingerprint, em
 			return fmt.Errorf("failed to create verification token: %v", err)
 		}
 
+		// Create verification object for existing user (similar to new user flow)
+		verification := &EmailVerification{
+			PublicKeyFingerprint: fingerprint,
+			Email:                email,
+			Token:                token,
+			CompleteChan:         make(chan struct{}),
+			CreatedAt:            time.Now(),
+		}
+
+		// Store verification
+		s.emailVerificationsMu.Lock()
+		s.emailVerifications[token] = verification
+		s.emailVerificationsMu.Unlock()
+
 		// Send new device verification email
 		subject := "New Device Login - exe.dev"
 		body := fmt.Sprintf(`Hello,
@@ -4576,7 +4661,84 @@ This link will expire in 15 minutes.
 Best regards,
 The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 
-		return s.sendEmail(email, subject, body)
+		if err := s.sendEmail(email, subject, body); err != nil {
+			s.emailVerificationsMu.Lock()
+			delete(s.emailVerifications, token)
+			s.emailVerificationsMu.Unlock()
+			return err
+		}
+
+		// Wait for email verification (same flow as new users)
+		grayText := s.getGrayText(channel)
+		channel.Write([]byte("\r\n\033[1;33mDevice verification email sent!\033[0m Please check your email and click the verification link.\r\n"))
+		channel.Write([]byte(fmt.Sprintf("\r\n%sWaiting for email verification (Press Ctrl+C to cancel)", grayText)))
+		// Add animated dots
+		for i := 0; i < 3; i++ {
+			time.Sleep(500 * time.Millisecond)
+			channel.Write([]byte("."))
+		}
+		channel.Write([]byte("\033[0m\r\n\r\n"))
+
+		// Create a context that can be cancelled when email is verified
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		
+		// Monitor for Ctrl+C during email verification using interruptible reads
+		interruptChan := make(chan struct{})
+		
+		go func() {
+			buf := make([]byte, 1)
+			for {
+				n, err := channel.ReadCtx(ctx, buf)
+				if err != nil {
+					// Context cancelled (email verified) or channel closed
+					return
+				}
+				if n > 0 && buf[0] == 3 { // Ctrl+C
+					channel.Write([]byte("^C\r\n"))
+					close(interruptChan)
+					return
+				}
+				// Discard other input during email verification
+			}
+		}()
+		
+		// Wait for email verification, interrupt, or timeout
+		select {
+		case <-verification.CompleteChan:
+			// Cancel the context to stop the monitoring goroutine
+			cancel()
+			
+			channel.Write([]byte("\r\n\033[1;32mDevice verified successfully!\033[0m\r\n\r\n"))
+			
+			// Add a small delay to ensure the monitoring goroutine exits cleanly
+			time.Sleep(100 * time.Millisecond)
+			return nil
+			
+		case <-interruptChan:
+			// Cancel the context to stop the monitoring goroutine
+			cancel()
+			
+			// Clean up the verification
+			s.emailVerificationsMu.Lock()
+			delete(s.emailVerifications, token)
+			s.emailVerificationsMu.Unlock()
+			
+			channel.Write([]byte("\r\n\033[1;33mVerification cancelled.\033[0m\r\n\r\n"))
+			return fmt.Errorf("verification cancelled by user")
+			
+		case <-time.After(15 * time.Minute):
+			// Cancel the context to stop the monitoring goroutine
+			cancel()
+			
+			// Clean up the verification
+			s.emailVerificationsMu.Lock()
+			delete(s.emailVerifications, token)
+			s.emailVerificationsMu.Unlock()
+			
+			channel.Write([]byte("\r\n\033[1;31mEmail verification timed out.\033[0m Please try again.\r\n\r\n"))
+			return fmt.Errorf("verification timed out")
+		}
 	}
 
 	// New user registration flow
@@ -4732,6 +4894,11 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 	}
 
 	_, err := s.postmarkClient.SendEmail(email_msg)
+	if err != nil {
+		log.Printf("📧 ERROR: Failed to send verification email to %s: %v", email, err)
+	} else {
+		log.Printf("📧 Verification email sent successfully to %s", email)
+	}
 	return err
 }
 
@@ -5258,96 +5425,32 @@ func (s *Server) migrateLegacyUserKey(email, fingerprint, publicKey string) erro
 	return err
 }
 
-// handleNewDeviceAuth handles authentication for a user logging in from a new device
-func (s *Server) handleNewDeviceAuth(channel *sshbuf.Channel, fingerprint, email, publicKey string, terminalWidth int) {
-	// Show a message explaining the situation
-	channel.Write([]byte("\033[2J\033[H")) // Clear screen and move to top
-	channel.Write([]byte(fmt.Sprintf(`
-╔══════════════════════════════════════════════════════════════╗
-║                    NEW DEVICE DETECTED                       ║
-╚══════════════════════════════════════════════════════════════╝
-
-Hello! We see you're trying to log in from a new device.
-
-Your account email: %s
-
-For security reasons, we need to verify this new SSH key 
-before granting access to your account.
-
-We'll send a verification email to confirm this is really you.
-
-Press ENTER to send verification email, or Ctrl+C to cancel...
-`, email)))
-
-	// Wait for user to press enter
-	buf := make([]byte, 1)
-	for {
-		n, err := channel.Read(buf)
-		if err != nil || n == 0 {
-			channel.Write([]byte("\r\nCancelled.\r\n"))
-			return
-		}
-		if buf[0] == '\r' || buf[0] == '\n' {
-			break
-		}
-		if buf[0] == 3 { // Ctrl+C
-			channel.Write([]byte("\r\nCancelled.\r\n"))
-			return
-		}
-	}
-
-	// Generate verification token
-	token := s.generateToken()
-
-	// Store pending SSH key
-	expires := time.Now().Add(15 * time.Minute)
-	_, err := s.db.Exec(`
-		INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		token, fingerprint, publicKey, email, expires)
-
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nError storing verification request: %v\r\n", err)))
-		return
-	}
-
-	// Send verification email
-	subject := "New Device Login - exe.dev"
-	body := fmt.Sprintf(`Hello,
-
-Someone is trying to log into your exe.dev account from a new device.
-
-If this was you, please click the link below to authorize this device:
-
-%s/verify-device?token=%s
-
-Device fingerprint: %s
-
-If you did not attempt to log in from a new device, please ignore this email.
-
-This link will expire in 15 minutes.
-
-Best regards,
-The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
-
-	if err := s.sendEmail(email, subject, body); err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nError sending verification email: %v\r\n", err)))
-		return
-	}
-
-	channel.Write([]byte("\r\n\033[1;32mVerification email sent!\033[0m\r\n\r\n"))
-	channel.Write([]byte("Please check your email and click the verification link.\r\n"))
-	channel.Write([]byte("Once verified, you can reconnect and access your account.\r\n\r\n"))
-	channel.Write([]byte("This session will now close. Please reconnect after verifying.\r\n"))
-}
 
 // getUserByFingerprint retrieves a user by their SSH key fingerprint
 func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 	var user User
+	
+	// First try to find user by their primary fingerprint
 	err := s.db.QueryRow(`
 		SELECT public_key_fingerprint, email, created_at 
 		FROM users 
 		WHERE public_key_fingerprint = ?`,
+		fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
+
+	if err == nil {
+		return &user, nil
+	}
+	
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	// If not found, try to find user by their SSH key fingerprint
+	err = s.db.QueryRow(`
+		SELECT u.public_key_fingerprint, u.email, u.created_at 
+		FROM users u
+		JOIN ssh_keys s ON u.email = s.user_email
+		WHERE s.fingerprint = ? AND s.verified = 1`,
 		fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {

@@ -136,12 +136,12 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 					// Verify image is set correctly
 					if tt.stdin != "" {
 						// Custom Dockerfile - image should be default
-						if lastContainer.Image != "ubuntu:22.04" {
-							t.Errorf("Expected default image ubuntu:22.04 for Dockerfile build, got: %s", lastContainer.Image)
+						if lastContainer.Image != "gcr.io/exe-dev-468515/exeuntu" {
+							t.Errorf("Expected default expanded image gcr.io/exe-dev-468515/exeuntu for Dockerfile build, got: %s", lastContainer.Image)
 						}
 					} else {
 						// Check if --image flag was used
-						expectedImage := "ubuntu:22.04" // default
+						expectedImage := "exeuntu" // default
 						for _, arg := range tt.args {
 							if strings.HasPrefix(arg, "--image=") {
 								expectedImage = strings.TrimPrefix(arg, "--image=")

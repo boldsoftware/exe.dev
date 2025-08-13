@@ -12,6 +12,10 @@ import (
 	"time"
 
 	"google.golang.org/api/option"
+	container "cloud.google.com/go/container/apiv1"
+	containerpb "cloud.google.com/go/container/apiv1/containerpb"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -45,19 +49,24 @@ func NewGKEManager(ctx context.Context, config *Config, opts ...option.ClientOpt
 	// First try in-cluster config (for when running in GKE)
 	k8sConfig, err := rest.InClusterConfig()
 	if err != nil {
-		// We're running outside the cluster, use kubeconfig
+		// We're running outside the cluster, try kubeconfig first
 		log.Printf("Not running in-cluster, loading kubeconfig...")
-		// This uses the default kubeconfig location (~/.kube/config)
-		// and the credentials from `gcloud container clusters get-credentials`
 		k8sConfig, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			clientcmd.NewDefaultClientConfigLoadingRules(),
 			&clientcmd.ConfigOverrides{},
 		).ClientConfig()
+		
 		if err != nil {
-			return nil, fmt.Errorf("failed to load kubeconfig (run 'gcloud container clusters get-credentials %s --location %s --project %s'): %w", 
-				config.ClusterName, config.ClusterLocation, config.ProjectID, err)
+			// Kubeconfig failed, try to build config using Application Default Credentials
+			log.Printf("Kubeconfig failed (%v), trying Application Default Credentials...", err)
+			k8sConfig, err = buildGKEConfigFromServiceAccount(config)
+			if err != nil {
+				return nil, fmt.Errorf("failed to authenticate to GKE cluster: kubeconfig failed and ADC failed: %w", err)
+			}
+			log.Printf("Using Application Default Credentials for GKE cluster: %s", k8sConfig.Host)
+		} else {
+			log.Printf("Loaded kubeconfig, API server: %s", k8sConfig.Host)
 		}
-		log.Printf("Loaded kubeconfig, API server: %s", k8sConfig.Host)
 	} else {
 		log.Printf("Running in-cluster, using in-cluster config")
 	}
@@ -130,8 +139,11 @@ func (m *GKEManager) CreateContainer(ctx context.Context, req *CreateContainerRe
 	// Set defaults
 	image := req.Image
 	if image == "" {
-		image = "ubuntu:22.04"
+		image = "exeuntu"
 	}
+	
+	// Expand short image names to full paths
+	image = ExpandImageName(image)
 	
 	// Map common images to Google's mirror for better performance
 	image = m.getMirrorImage(image)
@@ -574,10 +586,25 @@ func (m *GKEManager) createWarmPoolService(ctx context.Context, namespace string
 }
 
 // GetDisplayImageName returns a user-friendly image name for UI display
+// ExpandImageName expands short image names to full paths
+func ExpandImageName(image string) string {
+	switch image {
+	case "exeuntu":
+		return "gcr.io/exe-dev-468515/exeuntu"
+	default:
+		return image
+	}
+}
+
 func GetDisplayImageName(actualImage string) string {
 	// Strip mirror.gcr.io prefix for display
 	if strings.HasPrefix(actualImage, "mirror.gcr.io/library/") {
 		return strings.TrimPrefix(actualImage, "mirror.gcr.io/library/")
+	}
+	
+	// Show short name for our exeuntu image
+	if actualImage == "gcr.io/exe-dev-468515/exeuntu" {
+		return "exeuntu"
 	}
 	
 	return actualImage
@@ -997,4 +1024,75 @@ func (m *GKEManager) applyNetworkPolicies(ctx context.Context, namespace string)
 	}
 	
 	return nil
+}
+
+// buildGKEConfigFromServiceAccount creates a Kubernetes config using Google Application Default Credentials
+// This is a fallback when the kubeconfig exec plugin fails
+func buildGKEConfigFromServiceAccount(config *Config) (*rest.Config, error) {
+	ctx := context.Background()
+	
+	// Use Application Default Credentials to get the cluster info
+	credentials, err := google.FindDefaultCredentials(ctx, container.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find default credentials: %w", err)
+	}
+	
+	// Create GKE container client
+	containerClient, err := container.NewClusterManagerClient(ctx, option.WithCredentials(credentials))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container client: %w", err)
+	}
+	defer containerClient.Close()
+	
+	// Get cluster information
+	clusterPath := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", 
+		config.ProjectID, config.ClusterLocation, config.ClusterName)
+	
+	cluster, err := containerClient.GetCluster(ctx, &containerpb.GetClusterRequest{
+		Name: clusterPath,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster info: %w", err)
+	}
+	
+	// Build Kubernetes config
+	k8sConfig := &rest.Config{
+		Host: fmt.Sprintf("https://%s", cluster.Endpoint),
+		TLSClientConfig: rest.TLSClientConfig{
+			CAData: []byte(cluster.MasterAuth.ClusterCaCertificate),
+		},
+	}
+	
+	// Set up OAuth2 token source
+	tokenSource := credentials.TokenSource
+	k8sConfig.Wrap(func(rt http.RoundTripper) http.RoundTripper {
+		return &oauth2RoundTripper{
+			tokenSource: tokenSource,
+			base: rt,
+		}
+	})
+	
+	return k8sConfig, nil
+}
+
+// oauth2RoundTripper adds OAuth2 authentication to requests
+type oauth2RoundTripper struct {
+	tokenSource oauth2.TokenSource
+	base        http.RoundTripper
+}
+
+func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	token, err := rt.tokenSource.Token()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get OAuth2 token: %w", err)
+	}
+	
+	// Add Authorization header
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+	
+	// Use base round tripper
+	if rt.base == nil {
+		rt.base = http.DefaultTransport
+	}
+	return rt.base.RoundTrip(req)
 }

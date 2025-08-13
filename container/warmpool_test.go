@@ -303,7 +303,7 @@ func TestImageToPoolKey(t *testing.T) {
 	}{
 		{"ubuntu:22.04", "cb287cf26b15fded"}, // SHA256 hash truncated to 16 chars
 		{"python:3.12", "e3efd51c9a3540df"}, // SHA256 hash truncated to 16 chars  
-		{"ghcr.io/boldsoftware/sketch", "bbd785d60e8b9007"}, // SHA256 hash truncated to 16 chars
+		{"gcr.io/exe-dev-468515/exeuntu", "67e7abc0b4d7bf5c"}, // SHA256 hash truncated to 16 chars
 	}
 
 	for _, tc := range testCases {

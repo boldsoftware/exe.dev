@@ -69,7 +69,7 @@ func (wpm *WarmPoolManager) Initialize(ctx context.Context) error {
 		},
 		PreWarmImages: []string{
 			"mirror.gcr.io/library/ubuntu:22.04", // Most common image
-			"ghcr.io/boldsoftware/sketch",        // Sketch language
+			"gcr.io/exe-dev-468515/exeuntu",      // Exeuntu development image
 		},
 		Namespace: "exe-containers", // Use same namespace as user containers
 	}
