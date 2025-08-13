@@ -1,0 +1,1 @@
+- read CLAUDE.md just like it is a dear_llm.md file
