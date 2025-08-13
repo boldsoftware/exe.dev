@@ -470,7 +470,7 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 
 	// Create a mock SSH channel using our terminal
 	mockChannel := &MockSSHChannel{term: term}
-	server, err := NewServer(":8080", "", ":2222", tmpDB.Name(), true, "")
+	server, err := NewServer(":8080", "", ":2222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -611,7 +611,7 @@ func TestRealSSHIntegration(t *testing.T) {
 	tmpDB.Close()
 
 	// Start our SSH server on a specific port
-	server, err := NewServer(":18099", "", ":12346", tmpDB.Name(), true, "")
+	server, err := NewServer(":18099", "", ":12346", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

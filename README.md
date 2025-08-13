@@ -9,15 +9,20 @@ The exed binary acts as the control interface and the ssh/https proxy to the con
 ## Local Development
 
 ```
-go run ./cmd/exed -dev
+go run ./cmd/exed -dev=local
 ```
 
 With this you can:
-- ssh -P 2222 localhost
+- ssh -p 2222 localhost
 - visit http://localhost:8080
 - visit http://machine.team.localhost:8080
-- scp -p 2222 junk.txt localhost:junk.txt  (NOTE: it's -p, not -P. yeah.)
+- scp -P 2222 junk.txt localhost:junk.txt  (NOTE: it's -p, not -P. yeah.)
 
+everything will run locally on docker. To test against GKE, use:
+
+```
+go run ./cmd/exed -dev=realgke
+```
 
 ## Production Deployment
 

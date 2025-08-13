@@ -19,7 +19,7 @@ func TestShowAnimatedWelcome(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

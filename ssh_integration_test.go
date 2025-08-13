@@ -30,7 +30,7 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), true, "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

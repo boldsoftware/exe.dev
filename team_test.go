@@ -55,7 +55,7 @@ func TestTeamCommands(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18084", "", ":12226", tmpDB.Name(), true, "")
+	server, err := NewServer(":18084", "", ":12226", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestInviteExpiration(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18085", "", ":12227", tmpDB.Name(), true, "")
+	server, err := NewServer(":18085", "", ":12227", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

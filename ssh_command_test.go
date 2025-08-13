@@ -23,7 +23,7 @@ func TestHandleSSHCommand(t *testing.T) {
 	// Create mock container manager
 	mockManager := NewMockContainerManager()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -151,11 +151,12 @@ func TestHandleSSHCommandWithoutContainerManager(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
-	// Don't set containerManager - leave it nil
+	// Explicitly set containerManager to nil for this test
+	server.containerManager = nil
 	defer server.Stop()
 
 	// Create test data
@@ -214,7 +215,7 @@ func TestHandleSSHCommandContainerNotCreated(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -287,7 +288,7 @@ func TestHandleSSHCommandWithStoppedContainer(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -369,7 +370,7 @@ func TestHandleSSHCommandWithoutUserSession(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

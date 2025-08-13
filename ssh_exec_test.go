@@ -28,7 +28,7 @@ func TestSSHExecCommandParsing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create server with minimal setup
 			server := &Server{
-				devMode: true,
+				devMode: "local",
 			}
 
 			// Create terminal emulator and buffer for output capture

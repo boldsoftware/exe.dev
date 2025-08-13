@@ -28,7 +28,7 @@ func TestHandleCreateCommand(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -161,11 +161,12 @@ func TestHandleCreateCommandWithoutContainerManager(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
-	// Don't set containerManager - leave it nil
+	// Explicitly set containerManager to nil for this test
+	server.containerManager = nil
 	defer server.Stop()
 
 	// Create test user and team
@@ -226,7 +227,7 @@ func TestHandleCreateCommandWithoutUserSession(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -271,7 +272,7 @@ func TestCreateCommandIntegration(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

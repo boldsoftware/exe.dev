@@ -34,7 +34,7 @@ func TestSSHCreateAndShellIntegration(t *testing.T) {
 	// Use high ports to avoid conflicts
 	httpPort := ":18190"
 	sshPort := "127.0.0.1:12390"
-	server, err := NewServer(httpPort, "", sshPort, tmpDB.Name(), true, "")
+	server, err := NewServer(httpPort, "", sshPort, tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	
+	"github.com/creack/pty"
 )
 
 // DockerBackend implements Backend using local Docker
@@ -55,8 +57,9 @@ func (d *DockerBackend) CreateContainer(ctx context.Context, config *CreateConfi
 	// Build Docker run command
 	args := []string{"run", "-d", "--name", containerID}
 	
-	// Add SSH daemon and keep container running
-	args = append(args, config.Image, "/usr/sbin/sshd", "-D")
+	// Keep container running with a simple sleep loop
+	// We'll execute commands via docker exec, not SSH
+	args = append(args, config.Image, "/bin/sh", "-c", "while true; do sleep 3600; done")
 	
 	// Execute docker run
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -120,7 +123,37 @@ func (d *DockerBackend) GetContainer(ctx context.Context, containerID string) (*
 	d.mu.RUnlock()
 	
 	if !exists {
-		return nil, fmt.Errorf("container not found: %s", containerID)
+		// Try to find the container in Docker directly
+		// This handles cases where the server was restarted
+		if strings.HasPrefix(containerID, "docker-") {
+			// Extract the Docker container name/ID
+			cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--filter", fmt.Sprintf("name=%s", containerID), "--format", "{{.ID}}")
+			output, err := cmd.Output()
+			if err == nil && len(output) > 0 {
+				dockerID := strings.TrimSpace(string(output))
+				if dockerID != "" {
+					// Create a container object from the Docker container
+					container = &Container{
+						ID:        containerID,
+						Name:      extractNameFromID(containerID),
+						Status:    StatusRunning,
+						PodName:   dockerID[:12], // Use short Docker ID
+						Namespace: "docker-local",
+					}
+					
+					// Cache it for future use
+					d.mu.Lock()
+					d.containers[containerID] = container
+					d.mu.Unlock()
+					
+					exists = true
+				}
+			}
+		}
+		
+		if !exists {
+			return nil, fmt.Errorf("container not found: %s", containerID)
+		}
 	}
 	
 	// Update status from Docker if running with real Docker
@@ -143,6 +176,17 @@ func (d *DockerBackend) GetContainer(ctx context.Context, containerID string) (*
 	}
 	
 	return container, nil
+}
+
+// extractNameFromID extracts the container name from a Docker container ID
+// e.g., "docker-david-neon-river-1755060759" -> "neon-river"
+func extractNameFromID(containerID string) string {
+	parts := strings.Split(containerID, "-")
+	if len(parts) >= 4 {
+		// Return everything between team name and timestamp
+		return strings.Join(parts[2:len(parts)-1], "-")
+	}
+	return containerID
 }
 
 // ListContainers lists all containers for a user
@@ -247,25 +291,159 @@ func (d *DockerBackend) ExecuteInContainer(ctx context.Context, containerID stri
 		return "", "", fmt.Errorf("container not found: %s", containerID)
 	}
 	
-	// Execute in Docker container if using real Docker
-	if container.PodName != containerID {
-		args := append([]string{"exec", "-i", container.PodName}, command...)
-		cmd := exec.CommandContext(ctx, "docker", args...)
-		
-		if stdin != nil {
-			cmd.Stdin = stdin
-		}
-		
-		var stdoutBuf, stderrBuf bytes.Buffer
-		cmd.Stdout = &stdoutBuf
-		cmd.Stderr = &stderrBuf
-		
-		err = cmd.Run()
-		return stdoutBuf.String(), stderrBuf.String(), err
+	// Use the actual Docker container ID (PodName) if available
+	dockerID := container.PodName
+	if dockerID == "" || dockerID == containerID {
+		// This is a mock container for testing
+		return "mock output\n", "", nil
 	}
 	
-	// Mock mode - return success
-	return "mock output\n", "", nil
+	// Execute in real Docker container
+	args := append([]string{"exec", "-i", dockerID}, command...)
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	
+	if stdin != nil {
+		cmd.Stdin = stdin
+	}
+	
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	
+	err = cmd.Run()
+	return stdoutBuf.String(), stderrBuf.String(), err
+}
+
+// ExecuteInContainerWithPTY executes a command with a pseudo-terminal (for interactive shells)
+func (d *DockerBackend) ExecuteInContainerWithPTY(ctx context.Context, containerID string, command []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	d.recordOp(fmt.Sprintf("ExecuteInContainerWithPTY: %s cmd=%v", containerID, command))
+	
+	d.mu.RLock()
+	container, exists := d.containers[containerID]
+	d.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("container not found: %s", containerID)
+	}
+	
+	// Use the actual Docker container ID (PodName) if available
+	dockerID := container.PodName
+	if dockerID == "" || dockerID == containerID {
+		// This is a mock container for testing
+		if stdout != nil {
+			stdout.Write([]byte("mock output\n"))
+		}
+		return nil
+	}
+	
+	// Build docker exec command with -it for proper PTY allocation
+	args := []string{"exec", "-it"}
+	
+	// Add environment variables for better shell experience
+	args = append(args, "-e", "TERM=xterm-256color")
+	
+	// Add the container ID and command
+	args = append(args, dockerID)
+	args = append(args, command...)
+	
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	
+	// Start the command with a PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to start docker exec with PTY: %w", err)
+	}
+	defer ptmx.Close()
+	
+	// Handle window size if possible (would need to be passed from SSH)
+	// For now, set a reasonable default
+	pty.Setsize(ptmx, &pty.Winsize{
+		Rows: 24,
+		Cols: 80,
+	})
+	
+	// Create goroutines to copy data between SSH and the PTY
+	var wg sync.WaitGroup
+	wg.Add(2)
+	
+	// Copy from stdin to PTY
+	go func() {
+		defer wg.Done()
+		io.Copy(ptmx, stdin)
+	}()
+	
+	// Copy from PTY to stdout
+	go func() {
+		defer wg.Done()
+		io.Copy(stdout, ptmx)
+	}()
+	
+	// Wait for the command to finish
+	if err := cmd.Wait(); err != nil {
+		// Check if it's just an exit code
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// This is normal when the shell exits
+			_ = exitErr
+		} else {
+			return fmt.Errorf("docker exec failed: %w", err)
+		}
+	}
+	
+	// Wait for I/O to complete
+	wg.Wait()
+	
+	return nil
+}
+
+// ExecuteInContainerStreaming executes a command with streaming I/O (for interactive shells)
+func (d *DockerBackend) ExecuteInContainerStreaming(ctx context.Context, containerID string, command []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	d.recordOp(fmt.Sprintf("ExecuteInContainerStreaming: %s cmd=%v", containerID, command))
+	
+	d.mu.RLock()
+	container, exists := d.containers[containerID]
+	d.mu.RUnlock()
+	
+	if !exists {
+		return fmt.Errorf("container not found: %s", containerID)
+	}
+	
+	// Use the actual Docker container ID (PodName) if available
+	dockerID := container.PodName
+	if dockerID == "" || dockerID == containerID {
+		// This is a mock container for testing
+		if stdout != nil {
+			stdout.Write([]byte("mock output\n"))
+		}
+		return nil
+	}
+	
+	// For interactive shells, we need to allocate a pseudo-terminal
+	// Docker exec needs -t for terminal allocation, but this requires special handling
+	// For now, we'll use -i and set TERM to make shells work better
+	args := []string{"exec", "-i"}
+	
+	// Add environment variable for better shell experience
+	args = append(args, "-e", "TERM=xterm-256color")
+	
+	// Add the container ID and command
+	args = append(args, dockerID)
+	args = append(args, command...)
+	
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	
+	// Set up the process environment to handle signals properly
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	
+	// Start the command and wait for it to complete
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start docker exec: %w", err)
+	}
+	
+	// Wait for the command to finish
+	return cmd.Wait()
 }
 
 // GetContainerLogs retrieves container logs

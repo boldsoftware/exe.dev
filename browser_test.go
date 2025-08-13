@@ -23,7 +23,7 @@ func TestBrowserScenario(t *testing.T) {
 	// We use a fixed port for testing to avoid port detection issues
 	httpPort := "18088"
 	sshPort := "12288"
-	server, err := NewServer(":"+httpPort, "", ":"+sshPort, tmpDB.Name(), true, "")
+	server, err := NewServer(":"+httpPort, "", ":"+sshPort, tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

@@ -168,15 +168,15 @@ type Server struct {
 	// Email and billing services
 	postmarkClient *postmark.Client
 	stripeKey      string
-	devMode        bool // Development mode - log instead of sending emails
-	quietMode      bool // Quiet mode - suppress log output (for tests)
+	devMode        string // Development mode: "" (production), "local" (Docker), "realgke" (real GKE with dev settings)
+	quietMode      bool  // Quiet mode - suppress log output (for tests)
 
 	mu       sync.RWMutex
 	stopping bool
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpProjectID string) (*Server, error) {
+func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, gcpProjectID string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -227,23 +227,35 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode bool, gcpPro
 		}
 	}
 
-	// Initialize container manager if GCP project is provided
+	// Initialize container manager based on dev mode
 	var containerManager container.Manager
-	if gcpProjectID != "" {
-		config := container.DefaultConfig(gcpProjectID)
-		// Use a timeout context to prevent hanging during initialization
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		containerManager, err = container.NewGKEManager(ctx, config)
-		cancel() // Clean up the context
-		if err != nil {
-			if !quietMode {
-				log.Printf("Warning: Failed to initialize container manager: %v", err)
-				log.Printf("Container functionality will be disabled")
-			}
-			containerManager = nil
-		} else {
-			if !quietMode {
-				log.Printf("Machine management enabled for GCP project: %s", gcpProjectID)
+	
+	switch devMode {
+	case "local":
+		// Use Docker backend for local development
+		containerManager = container.NewDockerManager()
+		if !quietMode {
+			log.Printf("Machine management enabled with local Docker backend")
+		}
+	
+	case "realgke", "":
+		// Use real GKE for realgke mode and production
+		if gcpProjectID != "" {
+			config := container.DefaultConfig(gcpProjectID)
+			// Use a timeout context to prevent hanging during initialization
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			containerManager, err = container.NewGKEManager(ctx, config)
+			cancel() // Clean up the context
+			if err != nil {
+				if !quietMode {
+					log.Printf("Warning: Failed to initialize container manager: %v", err)
+					log.Printf("Container functionality will be disabled")
+				}
+				containerManager = nil
+			} else {
+				if !quietMode {
+					log.Printf("Machine management enabled for GCP project: %s", gcpProjectID)
+				}
 			}
 		}
 	}
@@ -427,7 +439,7 @@ func (s *Server) generateToken() string {
 
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
-	if s.devMode {
+	if s.devMode != "" {
 		// Extract port from httpAddr (e.g., ":8080" -> "8080")
 		port := s.httpAddr
 		if strings.HasPrefix(port, ":") {
@@ -440,15 +452,16 @@ func (s *Server) getBaseURL() string {
 
 // sendEmail sends an email using the configured email service
 func (s *Server) sendEmail(to, subject, body string) error {
+	// In dev mode, always just log the email
+	if s.devMode != "" {
+		if !s.quietMode {
+			log.Printf("📧 DEV MODE: Would send email to %s\nSubject: %s\nBody:\n%s", to, subject, body)
+		}
+		return nil
+	}
+	
 	// Check if email service is configured
 	if s.postmarkClient == nil {
-		if s.devMode {
-			// In dev mode, just log the email
-			if !s.quietMode {
-				log.Printf("📧 DEV MODE: Would send email to %s\nSubject: %s\nBody:\n%s", to, subject, body)
-			}
-			return nil
-		}
 		return fmt.Errorf("email service not configured")
 	}
 
@@ -4669,7 +4682,7 @@ func (s *Server) sendVerificationEmail(email, token string) error {
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", s.BaseURL, token)
 
 	// In dev mode, just log the URL instead of sending email and auto-complete verification
-	if s.devMode {
+	if s.devMode != "" {
 		if !s.quietMode {
 			log.Printf("🔧 DEV MODE: Would send verification email to %s with URL: %s", email, verificationURL)
 		}

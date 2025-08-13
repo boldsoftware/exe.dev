@@ -27,7 +27,7 @@ func TestSignupFlowAuthentication(t *testing.T) {
 	mockManager := NewMockContainerManager()
 
 	// Create server in dev mode (no actual emails sent)
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestEmailVerificationInDevMode(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server in dev mode
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

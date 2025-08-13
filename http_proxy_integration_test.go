@@ -19,7 +19,7 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), true, "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
