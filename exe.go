@@ -3722,8 +3722,15 @@ func (s *Server) handleListCommand(channel *sshbuf.Channel) {
 			statusColor = "33" // yellow
 		}
 
-		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m - \033[%sm%s\033[0m\r\n",
-			container.Name, statusColor, container.Status)))
+		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m - \033[%sm%s\033[0m", container.Name, statusColor, container.Status)))
+		
+		// In dev=local mode, show SSH command for running machines
+		if s.devMode == "local" && container.Status == "running" {
+			sshCommand := s.formatSSHConnectionInfo(container.Name)
+			channel.Write([]byte(fmt.Sprintf(" (\033[1;36m%s\033[0m)", sshCommand)))
+		}
+		
+		channel.Write([]byte("\r\n"))
 	}
 	channel.Write([]byte("\r\n"))
 }
@@ -3747,6 +3754,37 @@ func generateRandomContainerName() string {
 	}
 
 	return word1 + "-" + word2
+}
+
+// getSSHPort extracts the port number from an SSH address string
+func (s *Server) getSSHPort() string {
+	if s.sshAddr == "" {
+		return "22"
+	}
+	
+	// Handle addresses like ":2222" or "localhost:2222"
+	_, port, err := net.SplitHostPort(s.sshAddr)
+	if err != nil {
+		// If splitting fails, try to see if it's just a port number
+		if _, err := strconv.Atoi(s.sshAddr); err == nil {
+			return s.sshAddr
+		}
+		return "22"
+	}
+	
+	return port
+}
+
+// formatSSHConnectionInfo returns SSH connection info based on dev mode
+func (s *Server) formatSSHConnectionInfo(machineName string) string {
+	if s.devMode == "local" {
+		port := s.getSSHPort()
+		if port == "22" {
+			return fmt.Sprintf("ssh %s@localhost", machineName)
+		}
+		return fmt.Sprintf("ssh -p %s %s@localhost", port, machineName)
+	}
+	return fmt.Sprintf("ssh %s@exe.dev", machineName)
 }
 
 // isValidStorageSize validates a Kubernetes storage size string (e.g., "10Gi", "100Gi")
@@ -4020,7 +4058,8 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 
 	// Check if container is already running (warm pool case)
 	if createdContainer.Status == container.StatusRunning {
-		channel.Write([]byte(fmt.Sprintf("Ready in ~1s! Access with \033[1mssh %s@exe.dev\033[0m\r\n", containerName)))
+		sshCommand := s.formatSSHConnectionInfo(containerName)
+		channel.Write([]byte(fmt.Sprintf("Ready in ~1s! Access with \033[1m%s\033[0m\r\n", sshCommand)))
 		channel.Write([]byte("\r\n"))
 		return
 	}
@@ -4060,7 +4099,8 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 
 			if containerFound && containerStatus == container.StatusRunning {
 				totalTime := time.Since(startTime)
-				channel.Write([]byte(fmt.Sprintf("\r\033[KReady in %.1fs! Access with \033[1mssh %s@exe.dev\033[0m\r\n", totalTime.Seconds(), containerName)))
+				sshCommand := s.formatSSHConnectionInfo(containerName)
+				channel.Write([]byte(fmt.Sprintf("\r\033[KReady in %.1fs! Access with \033[1m%s\033[0m\r\n", totalTime.Seconds(), sshCommand)))
 
 				// Log slow startup for debugging
 				if totalTime.Seconds() > 60 {
@@ -4080,7 +4120,8 @@ func (s *Server) handleCreateCommandWithStdin(channel *sshbuf.Channel, args []st
 	}
 
 	// Timed out
-	channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;33mMachine creation timed out after %.0f seconds. Use 'ssh %s@exe.dev' to connect when ready.\033[0m\r\n", maxWaitTime.Seconds(), containerName)))
+	sshCommand := s.formatSSHConnectionInfo(containerName)
+	channel.Write([]byte(fmt.Sprintf("\r\033[K\033[1;33mMachine creation timed out after %.0f seconds. Use '%s' to connect when ready.\033[0m\r\n", maxWaitTime.Seconds(), sshCommand)))
 }
 
 // handleCreateCommand creates a new machine (wrapper for interactive use)
@@ -4129,7 +4170,8 @@ func (s *Server) handleSSHCommand(channel *sshbuf.Channel, args []string) {
 	// Inform user how to connect
 	channel.Write([]byte(fmt.Sprintf("\033[1;32mMachine '%s' is running!\033[0m\r\n\r\n", containerName)))
 	channel.Write([]byte("To connect to this machine, exit this menu and run:\r\n"))
-	channel.Write([]byte(fmt.Sprintf("\033[1;36m  ssh %s@exe.dev\033[0m\r\n\r\n", containerName)))
+	sshCommand := s.formatSSHConnectionInfo(containerName)
+	channel.Write([]byte(fmt.Sprintf("\033[1;36m  %s\033[0m\r\n\r\n", sshCommand)))
 	channel.Write([]byte("This provides a direct SSH connection with full terminal capabilities.\r\n"))
 }
 
