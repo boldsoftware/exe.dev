@@ -23,7 +23,7 @@ RUN apt-get update; \
 		git jq sqlite3 curl vim lsof iproute2 less \
 		make python3-pip python-is-python3 tree net-tools file build-essential \
 		pipx psmisc bsdmainutils sudo \
-		unzip util-linux && \
+		unzip util-linux rsync && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/* && \
 	rm -rf /usr/share/{doc,doc-base,info,lintian,man,groff,locale,zoneinfo}/*
