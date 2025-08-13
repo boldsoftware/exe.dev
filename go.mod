@@ -1,10 +1,9 @@
 module exe.dev
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.25.0
 
 require (
+	cloud.google.com/go/container v1.44.0
 	github.com/creack/pty v1.1.24
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
@@ -12,6 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stripe/stripe-go/v76 v76.25.0
 	golang.org/x/crypto v0.40.0
+	golang.org/x/oauth2 v0.30.0
 	google.golang.org/api v0.244.0
 	k8s.io/api v0.33.3
 	k8s.io/apimachinery v0.33.3
@@ -23,7 +23,6 @@ require (
 	cloud.google.com/go/auth v0.16.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
-	cloud.google.com/go/container v1.44.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -71,7 +70,6 @@ require (
 	goji.io v2.0.2+incompatible // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.42.0 // indirect
-	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/term v0.33.0 // indirect
