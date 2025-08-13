@@ -1,0 +1,209 @@
+package exe
+
+import (
+	"bytes"
+	"context"
+	"strconv"
+	"strings"
+	"time"
+
+	"exe.dev/sshbuf"
+)
+
+// TerminalMode represents whether the terminal is in dark or light mode
+type TerminalMode int
+
+const (
+	TerminalModeDark TerminalMode = iota
+	TerminalModeLight
+)
+
+// detectTerminalMode queries the terminal background color using OSC 11 and determines if it's dark or light mode
+func (s *Server) detectTerminalMode(channel *sshbuf.Channel) TerminalMode {
+	// Send OSC 11 query for background color
+	// Format: ESC ] 11 ; ? ESC \
+	query := []byte("\033]11;?\033\\")
+	if _, err := channel.Write(query); err != nil {
+		// Default to dark mode if we can't query
+		return TerminalModeDark
+	}
+
+	// Create a context with timeout for reading the response
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// Read response with timeout
+	responseBuf := make([]byte, 100)
+	n, err := channel.ReadCtx(ctx, responseBuf)
+	if err != nil || n == 0 {
+		// Default to dark mode if no response
+		return TerminalModeDark
+	}
+
+	response := string(responseBuf[:n])
+	
+	// Parse the OSC 11 response
+	// Expected format: ESC ] 11 ; rgb:RRRR/GGGG/BBBB ESC \ or ST
+	mode := parseBackgroundColor(response)
+	
+	return mode
+}
+
+// parseBackgroundColor parses the OSC 11 response and determines if it's dark or light
+func parseBackgroundColor(response string) TerminalMode {
+	// Look for the rgb: pattern in the response
+	// Format can be: \033]11;rgb:RRRR/GGGG/BBBB\033\\ or with \007 (BEL) terminator
+	
+	// Find the rgb: part
+	rgbIndex := strings.Index(response, "rgb:")
+	if rgbIndex == -1 {
+		return TerminalModeDark // Default to dark if we can't parse
+	}
+	
+	// Extract the color values
+	colorPart := response[rgbIndex+4:]
+	
+	// Find the terminator (either ESC \ or BEL)
+	endIndex := strings.IndexAny(colorPart, "\033\007")
+	if endIndex > 0 {
+		colorPart = colorPart[:endIndex]
+	}
+	
+	// Parse RGB values (format: RRRR/GGGG/BBBB where each component can be 1-4 hex digits)
+	parts := strings.Split(colorPart, "/")
+	if len(parts) != 3 {
+		return TerminalModeDark // Default to dark if format is unexpected
+	}
+	
+	// Convert hex values to integers and normalize to 0-255 range
+	var rgb [3]int
+	for i, part := range parts {
+		// Parse as hex
+		val, err := strconv.ParseInt(part, 16, 64)
+		if err != nil {
+			return TerminalModeDark
+		}
+		
+		// Normalize to 0-255 range based on the number of hex digits
+		// 1 digit: 0-F -> multiply by 17 (0x0 -> 0, 0xF -> 255)
+		// 2 digits: 00-FF -> use as is
+		// 3 digits: 000-FFF -> divide by 16 
+		// 4 digits: 0000-FFFF -> divide by 256
+		switch len(part) {
+		case 1:
+			rgb[i] = int(val * 17)
+		case 2:
+			rgb[i] = int(val)
+		case 3:
+			rgb[i] = int(val / 16)
+		case 4:
+			rgb[i] = int(val / 256)
+		default:
+			return TerminalModeDark
+		}
+	}
+	
+	// Calculate luminance using the relative luminance formula
+	// L = 0.2126 * R + 0.7152 * G + 0.0722 * B
+	luminance := float64(rgb[0])*0.2126 + float64(rgb[1])*0.7152 + float64(rgb[2])*0.0722
+	
+	// If luminance > 128 (middle of 0-255 range), consider it light mode
+	if luminance > 128 {
+		return TerminalModeLight
+	}
+	
+	return TerminalModeDark
+}
+
+// getTerminalColors returns appropriate colors based on terminal mode
+func (s *Server) getTerminalColors(mode TerminalMode) struct {
+	grayText      string
+	fadeToColor   string
+	fadeSteps     []struct {
+		color string
+		delay time.Duration
+	}
+} {
+	if mode == TerminalModeLight {
+		// Light mode: use black text instead of gray, fade to white
+		return struct {
+			grayText      string
+			fadeToColor   string
+			fadeSteps     []struct {
+				color string
+				delay time.Duration
+			}
+		}{
+			grayText:    "\033[0;30m", // Black text for better contrast
+			fadeToColor: "\033[37m",    // White
+			fadeSteps: []struct {
+				color string
+				delay time.Duration
+			}{
+				{"\033[1;32m", 500 * time.Millisecond},    // Bright green
+				{"\033[0;32m", 200 * time.Millisecond},    // Normal green
+				{"\033[2;32m", 150 * time.Millisecond},    // Dim green
+				{"\033[38;5;114m", 150 * time.Millisecond}, // Light green
+				{"\033[38;5;150m", 150 * time.Millisecond}, // Lighter green
+				{"\033[38;5;194m", 100 * time.Millisecond}, // Very light green
+				{"\033[37m", 100 * time.Millisecond},      // White (invisible on light bg)
+			},
+		}
+	}
+	
+	// Dark mode: use existing gray text and fade to black
+	return struct {
+		grayText      string
+		fadeToColor   string
+		fadeSteps     []struct {
+			color string
+			delay time.Duration
+		}
+	}{
+		grayText:    "\033[2;37m", // Gray text (existing)
+		fadeToColor: "\033[30m",    // Black
+		fadeSteps: []struct {
+			color string
+			delay time.Duration
+		}{
+			{"\033[1;32m", 500 * time.Millisecond},    // Bright green
+			{"\033[0;32m", 200 * time.Millisecond},    // Normal green
+			{"\033[2;32m", 150 * time.Millisecond},    // Dim green
+			{"\033[38;5;28m", 150 * time.Millisecond}, // Dark green
+			{"\033[38;5;22m", 150 * time.Millisecond}, // Darker green
+			{"\033[38;5;16m", 100 * time.Millisecond}, // Very dark
+			{"\033[30m", 100 * time.Millisecond},      // Black (invisible on dark bg)
+		},
+	}
+}
+
+// clearOSCResponse clears any remaining OSC response from the input buffer
+func (s *Server) clearOSCResponse(channel *sshbuf.Channel) {
+	// Try to read any remaining bytes with a very short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	
+	discardBuf := make([]byte, 256)
+	for {
+		n, err := channel.ReadCtx(ctx, discardBuf)
+		if err != nil || n == 0 {
+			break
+		}
+		// Check if we've consumed the OSC response terminator
+		if bytes.Contains(discardBuf[:n], []byte("\033\\")) || 
+		   bytes.Contains(discardBuf[:n], []byte("\007")) {
+			break
+		}
+	}
+}
+
+// getGrayText returns the appropriate gray/black text color based on terminal mode
+func (s *Server) getGrayText(channel *sshbuf.Channel) string {
+	mode := s.detectTerminalMode(channel)
+	s.clearOSCResponse(channel)
+	
+	if mode == TerminalModeLight {
+		return "\033[0;30m" // Black text for light terminals
+	}
+	return "\033[2;37m" // Gray text for dark terminals
+}

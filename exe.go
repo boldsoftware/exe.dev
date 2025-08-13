@@ -4240,6 +4240,15 @@ func (s *Server) showAnimatedWelcome(channel *sshbuf.Channel) {
 
 // showAnimatedWelcomeWithWidth displays the ASCII art with a beautiful fade-out animation using specified terminal width
 func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalWidth int) {
+	// Detect terminal mode (dark or light)
+	terminalMode := s.detectTerminalMode(channel)
+	
+	// Clear any remaining OSC response from the buffer
+	s.clearOSCResponse(channel)
+	
+	// Get appropriate colors based on terminal mode
+	colors := s.getTerminalColors(terminalMode)
+	
 	// More compact ASCII art that fits better in terminals
 	asciiArt := []string{
 		"███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗",
@@ -4264,8 +4273,8 @@ func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalW
 
 	// Debug logging without disrupting the display
 	if !s.quietMode {
-		log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d",
-			terminalWidth, artWidth, leftPadding)
+		log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d, Mode: %v",
+			terminalWidth, artWidth, leftPadding, terminalMode)
 	}
 
 	// Clear screen and move cursor to top
@@ -4277,23 +4286,8 @@ func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalW
 	// Add 3 additional blank lines above the ASCII art
 	channel.Write([]byte("\r\n\r\n\r\n"))
 
-	// Beautiful fade effect for dark terminals: bright green -> dark green -> black
-	// Each step gets progressively darker until it fades to black
-	fadeSteps := []struct {
-		color string
-		delay time.Duration
-	}{
-		{"\033[1;32m", 500 * time.Millisecond},    // Bright green - the signature color
-		{"\033[0;32m", 200 * time.Millisecond},    // Normal green
-		{"\033[2;32m", 150 * time.Millisecond},    // Dim green
-		{"\033[38;5;28m", 150 * time.Millisecond}, // Dark green (256-color)
-		{"\033[38;5;22m", 150 * time.Millisecond}, // Darker green
-		{"\033[38;5;16m", 100 * time.Millisecond}, // Very dark (almost black)
-		{"\033[30m", 100 * time.Millisecond},      // Black (invisible on dark bg)
-	}
-
 	// Show the art with fade animation
-	for _, step := range fadeSteps {
+	for _, step := range colors.fadeSteps {
 		// Clear the previous art area
 		channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
 
@@ -4343,13 +4337,18 @@ func (s *Server) handleRegistration(channel *sshbuf.Channel, fingerprint string)
 }
 
 func (s *Server) handleRegistrationWithWidth(channel *sshbuf.Channel, fingerprint string, terminalWidth int) {
+	// Detect terminal mode
+	terminalMode := s.detectTerminalMode(channel)
+	s.clearOSCResponse(channel)
+	colors := s.getTerminalColors(terminalMode)
+	
 	// Show the animated welcome with terminal width
 	s.showAnimatedWelcomeWithWidth(channel, terminalWidth)
 
 	// Now show the signup content after the animation
 	signupContent := "\r\n\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +
 		"Let's get you set up in just a few steps:\r\n\r\n" +
-		"\033[2;37m1. Email Verification\r\n" +
+		colors.grayText + "1. Email Verification\r\n" +
 		"2. Team Setup\r\n" +
 		"3. Payment Setup\033[0m\r\n\r\n" +
 		"\033[1mTo get started, please enter your email address:\033[0m\r\n"
@@ -4606,8 +4605,9 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 		return err
 	}
 
+	grayText := s.getGrayText(channel)
 	channel.Write([]byte("\r\n\033[1;33mVerification email sent!\033[0m Please check your email and click the verification link.\r\n"))
-	channel.Write([]byte("\r\n\033[2;37mWaiting for email verification (Press Ctrl+C to cancel)"))
+	channel.Write([]byte(fmt.Sprintf("\r\n%sWaiting for email verification (Press Ctrl+C to cancel)", grayText)))
 	// Add animated dots
 	for i := 0; i < 3; i++ {
 		time.Sleep(500 * time.Millisecond)
@@ -4944,13 +4944,14 @@ func (s *Server) startBillingVerification(channel *sshbuf.Channel, fingerprint, 
 	s.billingVerifications[fingerprint] = billing
 	s.billingVerificationsMu.Unlock()
 
+	grayText := s.getGrayText(channel)
 	message := "\r\n\033[1;36m" +
 		"╭─────────────────────────────────────────────────╮\r\n" +
 		"│  \033[1;33mStep 3: Payment Setup\033[1;36m                      │\r\n" +
 		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n" +
 		"\033[1mLet's verify your payment method.\033[0m\r\n\r\n" +
-		"\033[2;37mFor testing, please enter the Stripe test card:\033[0m\r\n" +
-		"\033[1;33m4242424242424242\033[0m \033[2;37m(Visa test card)\033[0m\r\n\r\n" +
+		fmt.Sprintf("%sFor testing, please enter the Stripe test card:\033[0m\r\n", grayText) +
+		"\033[1;33m4242424242424242\033[0m " + fmt.Sprintf("%s(Visa test card)\033[0m\r\n\r\n", grayText) +
 		"\033[1mCredit card number:\033[0m "
 
 	channel.Write([]byte(message))
@@ -5077,7 +5078,8 @@ func (s *Server) createTeamName(channel *sshbuf.Channel) (string, error) {
 		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n"))
 
 	channel.Write([]byte("\033[1mNow let's create your team name.\033[0m\r\n\r\n"))
-	channel.Write([]byte("\033[2;37mYour machines will be available at: \033[1;32m<name>.<team>.exe.dev\033[0m\r\n\r\n"))
+	grayText := s.getGrayText(channel)
+	channel.Write([]byte(fmt.Sprintf("%sYour machines will be available at: \033[1;32m<name>.<team>.exe.dev\033[0m\r\n\r\n", grayText)))
 
 	for {
 		channel.Write([]byte("\033[1mTeam name:\033[0m "))
@@ -5094,7 +5096,7 @@ func (s *Server) createTeamName(channel *sshbuf.Channel) (string, error) {
 		// Validate team name
 		if !s.isValidTeamName(teamName) {
 			channel.Write([]byte("\r\n\033[1;31mInvalid team name\033[0m\r\n"))
-			channel.Write([]byte("\033[2;37m   Requirements: 3-20 characters, lowercase letters/numbers/hyphens only\033[0m\r\n\r\n"))
+			channel.Write([]byte(fmt.Sprintf("%s   Requirements: 3-20 characters, lowercase letters/numbers/hyphens only\033[0m\r\n\r\n", grayText)))
 			continue
 		}
 
@@ -5107,12 +5109,12 @@ func (s *Server) createTeamName(channel *sshbuf.Channel) (string, error) {
 
 		if taken {
 			channel.Write([]byte("\r\n\033[1;31mTeam name already taken\033[0m\r\n"))
-			channel.Write([]byte("\033[2;37m   Please try a different name\033[0m\r\n\r\n"))
+			channel.Write([]byte(fmt.Sprintf("%s   Please try a different name\033[0m\r\n\r\n", grayText)))
 			continue
 		}
 
 		channel.Write([]byte("\r\n\033[1;32mPerfect! Team name is available!\033[0m\r\n"))
-		channel.Write([]byte(fmt.Sprintf("\033[2;37m   Your machines: \033[1;32m<name>.%s.exe.dev\033[0m\r\n\r\n", teamName)))
+		channel.Write([]byte(fmt.Sprintf("%s   Your machines: \033[1;32m<name>.%s.exe.dev\033[0m\r\n\r\n", grayText, teamName)))
 
 		return teamName, nil
 	}
