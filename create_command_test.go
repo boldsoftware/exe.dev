@@ -60,7 +60,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			name:         "no arguments",
 			args:         []string{},
 			expectError:  false,
-			expectOutput: []string{"Creating", "for team testteam", "Ready in", "Access with ssh", "exe.dev"},
+			expectOutput: []string{"Creating", "for team testteam", "Ready in", "Access with ssh", "localhost"},
 		},
 		{
 			name:         "help flag",
@@ -78,7 +78,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			name:         "valid container name",
 			args:         []string{"--name=mycontainer"},
 			expectError:  false,
-			expectOutput: []string{"Creating", "mycontainer", "for team testteam", "Ready in", "Access with ssh mycontainer@exe.dev"},
+			expectOutput: []string{"Creating", "mycontainer", "for team testteam", "Ready in", "Access with ssh", "mycontainer@localhost"},
 		},
 		{
 			name:         "duplicate container name",
