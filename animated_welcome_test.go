@@ -81,6 +81,10 @@ func TestShowAnimatedWelcome(t *testing.T) {
 }
 
 func TestAnimatedWelcomeIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Test that the registration flow with animated welcome works
 	// This is a minimal test since full registration testing would require
 	// interactive input simulation which is complex

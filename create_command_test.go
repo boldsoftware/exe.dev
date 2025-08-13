@@ -263,6 +263,10 @@ func TestHandleCreateCommandWithoutUserSession(t *testing.T) {
 }
 
 func TestCreateCommandIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {

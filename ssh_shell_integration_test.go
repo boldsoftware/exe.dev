@@ -19,6 +19,10 @@ import (
 // 2. Run create command
 // 3. Test that the shell works after container is created
 func TestSSHCreateAndShellIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
