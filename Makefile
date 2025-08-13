@@ -188,8 +188,8 @@ lint: ## Run linters
 	@echo "✓ Lint complete"
 
 image-build: exeuntu/Dockerfile ## Build exeuntu Docker image locally
-	@echo "${YELLOW}Building exeuntu image...${NC}"
-	@cd exeuntu && docker build -t $(EXEUNTU_IMAGE):latest .
+	@echo "${YELLOW}Building exeuntu image for amd64...${NC}"
+	@cd exeuntu && docker build --platform linux/amd64 -t $(EXEUNTU_IMAGE):latest .
 	@echo "${GREEN}✓ Image built: $(EXEUNTU_IMAGE):latest${NC}"
 
 image-deploy: image-build ## Build and push exeuntu Docker image
