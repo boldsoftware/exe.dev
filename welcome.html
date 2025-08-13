@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>exe.dev - just use ssh</title>
+    <title>EXE.DEV - just use ssh</title>
     <style>
         * {
             margin: 0;
@@ -242,6 +242,11 @@
                 gap: 20px;
             }
             
+            /* Reorder browser section on mobile to show text first */
+            .browser-section {
+                flex-direction: column-reverse;
+            }
+            
             .woodcut-icon-side {
                 width: 130px;
             }
@@ -272,13 +277,13 @@
         
         <div class="content-section">
             <p class="description">
-                <strong>exe.dev</strong> gives you machines over ssh. no cloud cruft.
+                <strong>EXE.DEV</strong> gives you machines over ssh. no cloud cruft.
             </p>
             
             <img src="exe.dev.png" alt="exe.dev blowfish logo" class="blowfish-logo">
         </div>
 
-        <div class="content-section https-section">
+        <div class="content-section https-section browser-section">
             <img src="browser-woodcut.png" alt="HTTPS browser security" class="woodcut-icon-side">
             <p class="description">
                 <strong>HTTPS</strong> done for you<br>

@@ -38,6 +38,13 @@ func TestEmbeddedFiles(t *testing.T) {
 			contains:     []string{"exe.dev", "just use ssh", "<!DOCTYPE html>"},
 		},
 		{
+			name:         "favicon.ico is served",
+			path:         "/favicon.ico",
+			expectedCode: http.StatusOK,
+			contentType:  "image/x-icon",
+			contains:     []string{}, // ICO is binary, checking content-type is enough
+		},
+		{
 			name:         "exe.dev.png is served",
 			path:         "/exe.dev.png",
 			expectedCode: http.StatusOK,
@@ -138,8 +145,13 @@ func TestEmbeddedSizes(t *testing.T) {
 		t.Errorf("browserWoodcutPNG seems too small: %d bytes", len(browserWoodcutPNG))
 	}
 
+	if len(faviconICO) < 1024 {
+		t.Errorf("faviconICO seems too small: %d bytes", len(faviconICO))
+	}
+
 	t.Logf("Embedded file sizes:")
 	t.Logf("  welcome.html: %d bytes", len(welcomeHTML))
 	t.Logf("  exe.dev.png: %d bytes", len(exeDevPNG))
 	t.Logf("  browser-woodcut.png: %d bytes", len(browserWoodcutPNG))
+	t.Logf("  favicon.ico: %d bytes", len(faviconICO))
 }

@@ -57,6 +57,9 @@ var exeDevPNG []byte
 //go:embed browser-woodcut.png
 var browserWoodcutPNG []byte
 
+//go:embed favicon.ico
+var faviconICO []byte
+
 // User represents an individual user
 type User struct {
 	PublicKeyFingerprint string
@@ -571,6 +574,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/":
 		s.handleRoot(w, r)
+	case "/favicon.ico":
+		s.handleFavicon(w, r)
 	case "/exe.dev.png":
 		s.handleExeDevPNG(w, r)
 	case "/browser-woodcut.png":
@@ -599,6 +604,13 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Write(welcomeHTML)
+}
+
+// handleFavicon handles favicon.ico requests
+func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/x-icon")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(faviconICO)
 }
 
 // handleExeDevPNG handles exe.dev.png requests
