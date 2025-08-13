@@ -1,8 +1,9 @@
-- when changing code, always run `go test ./...` and fix any errors
 - this git repository implements the exe.dev service
-- exe.dev is a service users can use to start containers with persistent disks
-- containers are spun up on GKE autopilot + PVC
+- exe.dev is a service users can use to start containers with persistent disks, read README.md for more.
+- when changing code, run `go test ./...` and fix any errors
 - the exed server is both the web frontend and ssh frontend
-- users can `ssh exe.dev` and get a guided console management tool
 - after enough time without an ssh connection or a web request, containers are
   paused. they are reinstated on incoming HTTP request or ssh connection
+- be very careful with all text printed in the SSH UI. do *not* change the UI behavior without confirming the change with a human. in general, the service is very sparing with text shown to the user over ssh, adding more ruins the vibe.
+- test everything. the container package contains a docker implementation. write tests assuming local docker for tests. make the tests *end-to-end*, that is, actually start docker containers as machines and do things with them. actually GET and POST against the server.
+- before fixing a bug, write a complete test that fails, then fix the bug (and thus the test).
