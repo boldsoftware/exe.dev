@@ -4382,6 +4382,7 @@ func (s *Server) handleRegistrationWithWidth(channel *sshbuf.Channel, fingerprin
 // readLineFromChannel reads a line of input from an SSH channel
 func (s *Server) readLineFromChannel(channel *sshbuf.Channel) (string, error) {
 	var buffer []byte
+	var cursorPos int
 	temp := make([]byte, 1)
 
 	for {
@@ -4394,9 +4395,24 @@ func (s *Server) readLineFromChannel(channel *sshbuf.Channel) (string, error) {
 			switch temp[0] {
 			case '\n', '\r':
 				if len(buffer) > 0 {
+					// Move cursor to end of line if not already there
+					for cursorPos < len(buffer) {
+						channel.Write([]byte(string(buffer[cursorPos])))
+						cursorPos++
+					}
 					// Always send CRLF after user input to keep cursor aligned
 					channel.Write([]byte("\r\n"))
 					return string(buffer), nil
+				}
+			case 1: // Ctrl+A - move to beginning of line
+				for cursorPos > 0 {
+					channel.Write([]byte("\b"))
+					cursorPos--
+				}
+			case 5: // Ctrl+E - move to end of line
+				for cursorPos < len(buffer) {
+					channel.Write([]byte(string(buffer[cursorPos])))
+					cursorPos++
 				}
 			case 3: // Ctrl+C
 				channel.Write([]byte("^C\r\n"))
@@ -4406,23 +4422,70 @@ func (s *Server) readLineFromChannel(channel *sshbuf.Channel) (string, error) {
 					channel.Write([]byte("^D\r\n"))
 					return "", fmt.Errorf("EOF")
 				}
-				// If there's content, treat as normal character
-				buffer = append(buffer, temp[0])
-			case 8, 127: // Backspace or DEL
-				if len(buffer) > 0 {
+				// If there's content at cursor, delete it
+				if cursorPos < len(buffer) {
+					// Delete character at cursor
+					copy(buffer[cursorPos:], buffer[cursorPos+1:])
 					buffer = buffer[:len(buffer)-1]
-					channel.Write([]byte("\b \b")) // Erase character on terminal
+					// Redraw the line from cursor position
+					channel.Write(buffer[cursorPos:])
+					channel.Write([]byte(" ")) // Clear the last character
+					// Move cursor back to original position
+					for i := len(buffer) - cursorPos + 1; i > 0; i-- {
+						channel.Write([]byte("\b"))
+					}
+				}
+			case 8, 127: // Backspace or DEL
+				if cursorPos > 0 {
+					// Remove character before cursor
+					copy(buffer[cursorPos-1:], buffer[cursorPos:])
+					buffer = buffer[:len(buffer)-1]
+					cursorPos--
+					// Move cursor back
+					channel.Write([]byte("\b"))
+					// Redraw the rest of the line
+					channel.Write(buffer[cursorPos:])
+					channel.Write([]byte(" ")) // Clear the last character
+					// Move cursor back to position
+					for i := len(buffer) - cursorPos + 1; i > 0; i-- {
+						channel.Write([]byte("\b"))
+					}
 				}
 			case 21: // Ctrl+U - clear line
+				// Move cursor to beginning
+				for cursorPos > 0 {
+					channel.Write([]byte("\b"))
+					cursorPos--
+				}
 				// Clear the displayed line
 				for i := 0; i < len(buffer); i++ {
-					channel.Write([]byte("\b \b"))
+					channel.Write([]byte(" "))
+				}
+				// Move cursor back to beginning
+				for i := 0; i < len(buffer); i++ {
+					channel.Write([]byte("\b"))
 				}
 				buffer = []byte{}
+				cursorPos = 0
 			default:
 				if temp[0] >= 32 { // Printable characters
-					buffer = append(buffer, temp[0])
-					channel.Write(temp) // Echo character back
+					if cursorPos == len(buffer) {
+						// Append at end
+						buffer = append(buffer, temp[0])
+						channel.Write(temp) // Echo character back
+						cursorPos++
+					} else {
+						// Insert in middle
+						buffer = append(buffer[:cursorPos+1], buffer[cursorPos:]...)
+						buffer[cursorPos] = temp[0]
+						// Redraw from cursor position
+						channel.Write(buffer[cursorPos:])
+						cursorPos++
+						// Move cursor back to new position
+						for i := len(buffer) - cursorPos; i > 0; i-- {
+							channel.Write([]byte("\b"))
+						}
+					}
 				}
 			}
 		}
