@@ -230,13 +230,15 @@ Type=simple
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu
+Environment="HOME=/home/ubuntu"
 Environment="GOOGLE_CLOUD_PROJECT=exe-dev-468515"
 Environment="GKE_CLUSTER_NAME=exe-cluster"
 Environment="GKE_CLUSTER_LOCATION=us-west2-a"
 Environment="ENABLE_SANDBOX=true"
 Environment="STORAGE_CLASS_NAME=standard-rwo"
-Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="USE_GKE_GCLOUD_AUTH_PLUGIN=True"
+Environment="KUBECONFIG=/home/ubuntu/.kube/config"
 # Porkbun API credentials for wildcard certificates (replace with actual values)
 # Environment="PORKBUN_API_KEY=your-api-key-here"
 # Environment="PORKBUN_SECRET_API_KEY=your-secret-key-here"
@@ -246,11 +248,14 @@ ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exed.* | head -n1)" -http= -h
 
 Restart=always
 RestartSec=5
-StandardOutput=append:/var/log/exed/exed.log
-StandardError=append:/var/log/exed/exed.error.log
+
+# Use journald for logging
+StandardOutput=journal
+StandardError=journal
 
 # Security settings
-NoNewPrivileges=true
+# NoNewPrivileges must be false for gcloud auth plugin to work
+NoNewPrivileges=false
 ProtectHome=no
 
 # Allow binding to privileged ports
