@@ -4409,6 +4409,12 @@ func (s *Server) readLineFromChannel(channel ssh.Channel) (string, error) {
 					buffer = buffer[:len(buffer)-1]
 					channel.Write([]byte("\b \b")) // Erase character on terminal
 				}
+			case 21: // Ctrl+U - clear line
+				// Clear the displayed line
+				for i := 0; i < len(buffer); i++ {
+					channel.Write([]byte("\b \b"))
+				}
+				buffer = []byte{}
 			default:
 				if temp[0] >= 32 { // Printable characters
 					buffer = append(buffer, temp[0])
