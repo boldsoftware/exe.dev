@@ -147,6 +147,7 @@ func (tc *TestChannel) SendInput(data string) {
 	for _, b := range []byte(data) {
 		select {
 		case tc.inputQueue <- b:
+			// Successfully sent byte
 		case <-tc.closed:
 			return
 		}
