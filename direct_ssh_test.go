@@ -30,7 +30,7 @@ func TestDirectSSHExec(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", []string{})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestDirectSSHShell(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", []string{})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestSFTPAccess(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", []string{})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestMachineAccessPermissions(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "", []string{})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

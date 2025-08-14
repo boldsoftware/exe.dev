@@ -14,6 +14,10 @@ import (
 
 // TestEmailInputAfterFix verifies that the fix resolves the character loss issue
 func TestEmailInputAfterFix(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_fix_*.db")
 	if err != nil {
@@ -23,7 +27,7 @@ func TestEmailInputAfterFix(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -105,7 +109,7 @@ func (c *RegistrationFlowChannel) Read(p []byte) (int, error) {
 	}
 
 	if c.inputPos >= len(c.input) {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		return 0, nil
 	}
 

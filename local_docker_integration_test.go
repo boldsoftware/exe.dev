@@ -22,7 +22,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server in local mode
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -90,7 +90,6 @@ func TestDevModeString(t *testing.T) {
 	}{
 		{"", true},
 		{"local", true},
-		{"realgke", true},
 		{"invalid", false},
 		{"production", false},
 	}
@@ -99,7 +98,7 @@ func TestDevModeString(t *testing.T) {
 		t.Run(tt.devMode, func(t *testing.T) {
 			// This test verifies that the validation in cmd/exed/exed.go works
 			// The actual validation happens in the main function
-			validModes := map[string]bool{"": true, "local": true, "realgke": true}
+			validModes := map[string]bool{"": true, "local": true}
 			
 			if validModes[tt.devMode] != tt.valid {
 				t.Errorf("Expected devMode %q to be valid=%v", tt.devMode, tt.valid)

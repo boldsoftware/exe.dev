@@ -168,7 +168,7 @@ type Server struct {
 	// Email and billing services
 	postmarkClient *postmark.Client
 	stripeKey      string
-	devMode        string // Development mode: "" (production), "local" (Docker), "realgke" (real GKE with dev settings)
+	devMode        string // Development mode: "" (production) or "local" (Docker)
 	quietMode      bool  // Quiet mode - suppress log output (for tests)
 
 	mu       sync.RWMutex
@@ -176,7 +176,7 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, gcpProjectID string) (*Server, error) {
+func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dockerHosts []string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -227,36 +227,33 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, gcpP
 		}
 	}
 
-	// Initialize container manager based on dev mode
+	// Initialize container manager with Docker
 	var containerManager container.Manager
 	
-	switch devMode {
-	case "local":
-		// Use Docker backend for local development
-		containerManager = container.NewDockerManager()
-		if !quietMode {
-			log.Printf("Machine management enabled with local Docker backend")
+	if len(dockerHosts) > 0 {
+		config := &container.Config{
+			DockerHosts:          dockerHosts,
+			DefaultCPURequest:    "500m",
+			DefaultMemoryRequest: "1Gi",
+			DefaultStorageSize:   "10Gi",
 		}
-	
-	case "realgke", "":
-		// Use real GKE for realgke mode and production
-		if gcpProjectID != "" {
-			config := container.DefaultConfig(gcpProjectID)
-			// Use a timeout context to prevent hanging during initialization
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			containerManager, err = container.NewGKEManager(ctx, config)
-			cancel() // Clean up the context
-			if err != nil {
-				if !quietMode {
-					log.Printf("Warning: Failed to initialize container manager: %v", err)
-					log.Printf("Container functionality will be disabled")
-				}
-				containerManager = nil
-			} else {
-				if !quietMode {
-					log.Printf("Machine management enabled for GCP project: %s", gcpProjectID)
-				}
+		
+		var managerErr error
+		containerManager, managerErr = container.NewDockerManager(config)
+		if managerErr != nil {
+			if !quietMode {
+				log.Printf("Warning: Failed to initialize container manager: %v", managerErr)
+				log.Printf("Container functionality will be disabled")
 			}
+			containerManager = nil
+		} else {
+			if !quietMode {
+				log.Printf("Machine management enabled with Docker hosts: %v", dockerHosts)
+			}
+		}
+	} else {
+		if !quietMode {
+			log.Printf("No Docker hosts configured, container functionality disabled")
 		}
 	}
 
@@ -1965,16 +1962,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
-	// Configure proxy to use container connection
-	if gkeManager, ok := s.containerManager.(*container.GKEManager); ok {
-		// For GKE, we need to use the container's HTTP client if available
-		proxy.Transport = &containerTransport{
-			gkeManager:  gkeManager,
-			userID:      machine.CreatedByFingerprint,
-			containerID: *machine.ContainerID,
-			targetPort:  port,
-		}
-	}
+	// For Docker, standard proxy is sufficient
 
 	// Handle errors
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -2019,240 +2007,10 @@ func getScheme(r *http.Request) string {
 	return "http"
 }
 
-// containerTransport implements http.RoundTripper for container connections
-type containerTransport struct {
-	gkeManager  *container.GKEManager
-	userID      string
-	containerID string
-	targetPort  string
-}
-
 // SSHClient interface for SSH connections
 type SSHClient interface {
 	Dial(network, addr string) (net.Conn, error)
 	Close() error
-}
-
-func (ct *containerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Execute HTTP request directly inside the container using Python
-	// This avoids all the complexity of port forwarding and external tools
-
-	targetURL := fmt.Sprintf("http://localhost:%s%s", ct.targetPort, req.URL.Path)
-	if req.URL.RawQuery != "" {
-		targetURL += "?" + req.URL.RawQuery
-	}
-
-	// Use Python to make the HTTP request (Python is available in our test container)
-	pythonScript := fmt.Sprintf(`
-import urllib.request
-import sys
-try:
-    response = urllib.request.urlopen('%s')
-    # Print status line
-    print('HTTP/1.1 %%d %%s' %% (response.getcode(), 'OK' if response.getcode() == 200 else 'Error'))
-    # Print headers
-    for header, value in response.info().items():
-        print('%%s: %%s' %% (header, value))
-    print()  # Empty line to separate headers from body
-    # Print body
-    print(response.read().decode('utf-8'))
-except Exception as e:
-    print('HTTP/1.1 500 Internal Server Error')
-    print('Content-Type: text/plain')
-    print()
-    print('Error: %%s' %% str(e))
-`, targetURL)
-
-	// Execute Python script in container
-	cmd := []string{"python3", "-c", pythonScript}
-
-	var stdout, stderr strings.Builder
-	err := ct.gkeManager.ExecuteInContainer(
-		context.Background(),
-		ct.userID,
-		ct.containerID,
-		cmd,
-		nil,
-		&stdout,
-		&stderr,
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute HTTP request in container: %w", err)
-	}
-
-	// Parse the response from Python output
-	responseText := stdout.String()
-	return ct.parseHTTPResponse(responseText)
-}
-
-// parseHTTPResponse parses HTTP response text into http.Response
-func (ct *containerTransport) parseHTTPResponse(responseText string) (*http.Response, error) {
-	// Replace \r\n with \n for consistent parsing
-	responseText = strings.ReplaceAll(responseText, "\r\n", "\n")
-
-	lines := strings.Split(responseText, "\n")
-	if len(lines) < 1 {
-		return nil, fmt.Errorf("empty response")
-	}
-
-	// Parse status line
-	statusLine := strings.TrimSpace(lines[0])
-	statusParts := strings.Fields(statusLine)
-	if len(statusParts) < 3 || !strings.HasPrefix(statusLine, "HTTP/") {
-		return nil, fmt.Errorf("invalid status line: %s", statusLine)
-	}
-
-	statusCode := 500
-	if len(statusParts) >= 2 {
-		if code, err := strconv.Atoi(statusParts[1]); err == nil {
-			statusCode = code
-		}
-	}
-
-	// Parse headers
-	headers := make(http.Header)
-	bodyStartIndex := 1
-	for i := 1; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			bodyStartIndex = i + 1
-			break
-		}
-
-		if colonIndex := strings.Index(line, ":"); colonIndex > 0 {
-			name := strings.TrimSpace(line[:colonIndex])
-			value := strings.TrimSpace(line[colonIndex+1:])
-			headers.Add(name, value)
-		}
-	}
-
-	// Get body
-	body := ""
-	if bodyStartIndex < len(lines) {
-		body = strings.Join(lines[bodyStartIndex:], "\n")
-	}
-
-	// Create response
-	resp := &http.Response{
-		Status:        statusLine,
-		StatusCode:    statusCode,
-		Proto:         "HTTP/1.1",
-		ProtoMajor:    1,
-		ProtoMinor:    1,
-		Header:        headers,
-		Body:          io.NopCloser(strings.NewReader(body)),
-		ContentLength: int64(len(body)),
-	}
-
-	return resp, nil
-}
-
-// startDirectPortForward creates a direct port forward to the target port
-func (ct *containerTransport) startDirectPortForward(remotePort string) (localPort int, cleanup func(), err error) {
-	container, err := ct.gkeManager.GetContainer(context.Background(), ct.userID, ct.containerID)
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to get container info: %w", err)
-	}
-
-	// Find available local port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, nil, err
-	}
-	localPort = listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-
-	// Start port forwarding directly to the HTTP port
-	return ct.startKubectlPortForward(container.Namespace, container.PodName, localPort, remotePort)
-}
-
-// createSSHConnection creates a real SSH connection to the container
-func (ct *containerTransport) createSSHConnection() (SSHClient, error) {
-	// Step 1: Create kubectl port-forward to SSH port (22) in container
-	localPort, stopPortForward, err := ct.startPortForward("22")
-	if err != nil {
-		return nil, fmt.Errorf("failed to start port forward: %w", err)
-	}
-
-	// Step 2: Create SSH client config
-	config := &ssh.ClientConfig{
-		User: "root",
-		Auth: []ssh.AuthMethod{
-			ssh.Password(""), // Try empty password first
-			ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
-				// Handle keyboard interactive auth
-				answers := make([]string, len(questions))
-				return answers, nil
-			}),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	// Step 3: Connect via SSH to the port-forwarded connection
-	sshClient, err := ssh.Dial("tcp", fmt.Sprintf("localhost:%d", localPort), config)
-	if err != nil {
-		stopPortForward()
-		return nil, fmt.Errorf("failed to dial SSH: %w", err)
-	}
-
-	// Wrap the client to clean up port forward when closed
-	return &wrappedSSHClient{
-		Client:          sshClient,
-		stopPortForward: stopPortForward,
-	}, nil
-}
-
-// wrappedSSHClient wraps ssh.Client to cleanup port forward on close
-type wrappedSSHClient struct {
-	*ssh.Client
-	stopPortForward func()
-}
-
-func (w *wrappedSSHClient) Dial(network, addr string) (net.Conn, error) {
-	return w.Client.Dial(network, addr)
-}
-
-func (w *wrappedSSHClient) Close() error {
-	err := w.Client.Close()
-	w.stopPortForward()
-	return err
-}
-
-// startPortForward starts a kubectl port-forward and returns local port + cleanup function
-func (ct *containerTransport) startPortForward(remotePort string) (localPort int, cleanup func(), err error) {
-	// Use Kubernetes client API to start port forwarding
-	// This creates a real kubectl port-forward equivalent using the K8s API
-
-	container, err := ct.gkeManager.GetContainer(context.Background(), ct.userID, ct.containerID)
-	if err != nil {
-		return 0, nil, fmt.Errorf("failed to get container info: %w", err)
-	}
-
-	// Find available local port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, nil, err
-	}
-	localPort = listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-
-	// Start port forwarding using Kubernetes API
-	// TODO: Implement using k8s.io/client-go port forwarding
-	// For now, use kubectl command as fallback
-
-	return ct.startKubectlPortForward(container.Namespace, container.PodName, localPort, remotePort)
-}
-
-// startKubectlPortForward starts real Kubernetes API port forwarding
-func (ct *containerTransport) startKubectlPortForward(namespace, podName string, localPort int, remotePort string) (int, func(), error) {
-	// Actually, let's simplify this completely and avoid port forwarding altogether
-	// Instead, we'll use the existing ExecuteInContainer to make the HTTP request directly
-	// This is more reliable and doesn't require external tools or complex port forwarding
-
-	// For now, return an error to force us to implement the right approach
-	return 0, nil, fmt.Errorf("port forwarding not implemented - should use direct HTTP execution instead")
 }
 
 // serveSSH starts the SSH server
@@ -2479,7 +2237,7 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 	if username != "" && registered && s.containerManager != nil {
 		if machine := s.findMachineByNameForUser(fingerprint, username); machine != nil {
 			// This is a direct machine connection - proxy all SSH requests to the machine
-			s.handleMachineSSH(newChannel, channel, requests, machine, fingerprint)
+			s.handleMachineSSH(channel, requests, machine, fingerprint)
 			return
 		}
 	}
@@ -2717,7 +2475,7 @@ func (s *Server) findMachineByNameForUser(fingerprint, machineName string) *Mach
 }
 
 // handleMachineSSH handles SSH connections to a specific machine
-func (s *Server) handleMachineSSH(newChannel ssh.NewChannel, channel *sshbuf.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
+func (s *Server) handleMachineSSH(channel *sshbuf.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
 	if machine.ContainerID == nil {
 		channel.Write([]byte("Machine is not running\r\n"))
 		return
@@ -2742,12 +2500,11 @@ func (s *Server) proxySSHToContainer(channel *sshbuf.Channel, requests <-chan *s
 		return
 	}
 
-	// For now, handle each request type individually
-	// TODO: Implement full SSH protocol proxying
+	// Handle each request type
 	for req := range requests {
 		switch req.Type {
 		case "pty-req":
-			// PTY request - just acknowledge it since our mock handles terminals
+			// PTY request - acknowledge it (Docker will handle TTY allocation)
 			if req.WantReply {
 				req.Reply(true, nil)
 			}
@@ -2867,13 +2624,13 @@ func (s *Server) proxySSHToContainer(channel *sshbuf.Channel, requests <-chan *s
 				}
 
 				// Use the new sshproxy package for SFTP
-				gkeFS := sshproxy.NewUnixContainerFS(
+				containerFS := sshproxy.NewUnixContainerFS(
 					s.containerManager,
 					machine.CreatedByFingerprint,
 					*machine.ContainerID,
 					"/workspace",
 				)
-				handler := sshproxy.NewSFTPHandler(context.Background(), gkeFS, "/workspace")
+				handler := sshproxy.NewSFTPHandler(context.Background(), containerFS, "/workspace")
 				handlers := sftp.Handlers{
 					FileGet:  handler,
 					FilePut:  handler,
@@ -4303,20 +4060,16 @@ func (s *Server) handleDiagCommand(channel *sshbuf.Channel, args []string) {
 	channel.Write([]byte(fmt.Sprintf("Running diagnostics for machine \033[1m%s\033[0m...\r\n", containerName)))
 
 	// Use the container manager's diagnostic function
-	if gkeManager, ok := s.containerManager.(*container.GKEManager); ok {
-		diagnostics, err := gkeManager.GetContainerDiagnostics(context.Background(), fingerprint, containerName)
-		if err != nil {
-			channel.Write([]byte(fmt.Sprintf("\033[1;31mFailed to get diagnostics: %s\033[0m\r\n", err)))
-			return
-		}
+	diagnostics, err := s.containerManager.GetContainerDiagnostics(context.Background(), fingerprint, containerName)
+	if err != nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mFailed to get diagnostics: %s\033[0m\r\n", err)))
+		return
+	}
 
-		// Format and display the diagnostics
-		lines := strings.Split(diagnostics, "\n")
-		for _, line := range lines {
-			channel.Write([]byte(line + "\r\n"))
-		}
-	} else {
-		channel.Write([]byte("\033[1;33mDiagnostics not available for this machine manager type\033[0m\r\n"))
+	// Format and display the diagnostics
+	lines := strings.Split(diagnostics, "\n")
+	for _, line := range lines {
+		channel.Write([]byte(line + "\r\n"))
 	}
 }
 

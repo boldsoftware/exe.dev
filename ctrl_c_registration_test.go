@@ -114,7 +114,7 @@ func TestCtrlCDuringRegistration(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server in dev mode to avoid email sending issues
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestCtrlCDuringEmailInput(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

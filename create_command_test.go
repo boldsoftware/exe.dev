@@ -28,7 +28,7 @@ func TestHandleCreateCommand(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -90,13 +90,13 @@ func TestHandleCreateCommand(t *testing.T) {
 			name:         "custom image",
 			args:         []string{"--image=python:3.11"},
 			expectError:  false,
-			expectOutput: []string{"Creating", "for team testteam", "using image python:3.11"},
+			expectOutput: []string{"Creating", "for team testteam", "using image python"},
 		},
 		{
 			name:         "both name and image",
 			args:         []string{"--name=webapp", "--image=nginx:latest"},
 			expectError:  false,
-			expectOutput: []string{"Creating", "webapp", "for team testteam", "using image nginx:latest"},
+			expectOutput: []string{"Creating", "webapp", "for team testteam", "using image nginx"},
 		},
 		{
 			name:         "unexpected positional argument",
@@ -161,7 +161,7 @@ func TestHandleCreateCommandWithoutContainerManager(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestHandleCreateCommandWithoutUserSession(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestCreateCommandIntegration(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

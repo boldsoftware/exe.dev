@@ -19,13 +19,13 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 	defer server.Stop()
 
-	// Use mock container manager for testing instead of real GKE
+	// Use mock container manager for testing
 	mockManager := NewMockContainerManager()
 	server.containerManager = mockManager
 
@@ -73,8 +73,7 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	// Skip the actual container execution tests since we're using a mock
 	t.Log("Skipping container execution tests with mock manager")
 
-	// Since containerTransport requires a real GKEManager, not a mock,
-	// and we're using a mock container manager to avoid real GKE connections,
+	// Since we're using a mock container manager,
 	// we'll skip the direct transport testing
 	t.Log("Skipping direct containerTransport testing with mock manager")
 	

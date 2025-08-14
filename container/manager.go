@@ -34,55 +34,30 @@ type Manager interface {
 
 // Config holds the configuration for the container manager
 type Config struct {
-	// Google Cloud configuration
-	ProjectID       string `json:"project_id"`
-	Region          string `json:"region"`
-	ClusterName     string `json:"cluster_name"`
-	ClusterLocation string `json:"cluster_location"`
-	
-	// Container Registry configuration  
-	RegistryHost string `json:"registry_host"` // e.g., "gcr.io" or "us-docker.pkg.dev"
+	// Docker hosts - list of DOCKER_HOST values for remote Docker daemons
+	// Empty string means local Docker daemon
+	DockerHosts []string `json:"docker_hosts"`
 	
 	// Default resource limits
 	DefaultCPURequest    string `json:"default_cpu_request"`
 	DefaultMemoryRequest string `json:"default_memory_request"`
 	DefaultStorageSize   string `json:"default_storage_size"`
-	
-	// Namespace configuration
-	NamespacePrefix string `json:"namespace_prefix"` // e.g., "exe-"
-	
-	// Sandbox configuration
-	EnableSandbox    bool   `json:"enable_sandbox"`     // Enable gVisor sandbox for multi-tenant isolation
-	StorageClassName string `json:"storage_class_name"` // Storage class to use (e.g., "standard-rwo" for GKE Standard)
 }
 
 // DefaultConfig returns a sensible default configuration
-func DefaultConfig(projectID string) *Config {
+func DefaultConfig() *Config {
 	return &Config{
-		ProjectID:            projectID,
-		Region:               "us-west2",
-		ClusterName:          "exe-cluster",
-		ClusterLocation:      "us-west2",
-		RegistryHost:         "gcr.io",
+		DockerHosts:          []string{""}, // Default to local Docker
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi", 
 		DefaultStorageSize:   "1Gi",
-		NamespacePrefix:      "exe-",
-		EnableSandbox:        true,
-		StorageClassName:     "standard-rwo",
 	}
 }
 
 // validateConfig ensures all required fields are present
 func validateConfig(cfg *Config) error {
-	if cfg.ProjectID == "" {
-		return fmt.Errorf("project_id is required")
-	}
-	if cfg.ClusterName == "" {
-		return fmt.Errorf("cluster_name is required")
-	}
-	if cfg.ClusterLocation == "" {
-		return fmt.Errorf("cluster_location is required")
+	if cfg.DockerHosts == nil || len(cfg.DockerHosts) == 0 {
+		return fmt.Errorf("at least one Docker host is required")
 	}
 	return nil
 }

@@ -66,7 +66,7 @@ var _ ssh.Channel = (*SimpleMockChannel)(nil)
 // TestReadLineCtrlU tests that Ctrl+U clears the line
 func TestReadLineCtrlU(t *testing.T) {
 	// Create a server for testing
-	server, err := NewServer(":0", ":0", ":0", ":memory:", "local", "")
+	server, err := NewServer(":0", ":0", ":0", ":memory:", "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestReadLineCtrlU(t *testing.T) {
 // TestReadLineCtrlUEmpty tests that Ctrl+U on empty line does nothing
 func TestReadLineCtrlUEmpty(t *testing.T) {
 	// Create a server for testing
-	server, err := NewServer(":0", ":0", ":0", ":memory:", "local", "")
+	server, err := NewServer(":0", ":0", ":0", ":memory:", "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

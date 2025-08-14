@@ -19,7 +19,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18081", "", ":12223", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18081", "", ":12223", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18082", "", ":12224", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18082", "", ":12224", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestLegacyKeyMigration(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18083", "", ":12225", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18083", "", ":12225", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

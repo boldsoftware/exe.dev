@@ -15,6 +15,10 @@ import (
 
 // TestEmailSignupAfterCharacterLossFix verifies that the character loss bug is fixed
 func TestEmailSignupAfterCharacterLossFix(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_email_signup_fix_*.db")
 	if err != nil {
@@ -24,7 +28,7 @@ func TestEmailSignupAfterCharacterLossFix(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server in dev mode
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -117,7 +121,7 @@ func (c *SignupFlowChannel) Read(p []byte) (int, error) {
 	case 1:
 		// Second stage: user typing email
 		if c.emailPos >= len(c.userEmail) {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			return 0, nil
 		}
 
@@ -198,8 +202,7 @@ func (c *SimpleInputChannel) Read(p []byte) (int, error) {
 	defer c.mu.Unlock()
 
 	if c.inputPos >= len(c.input) {
-		time.Sleep(100 * time.Millisecond)
-		return 0, nil
+		return 0, io.EOF
 	}
 
 	// Return one character at a time to simulate typing

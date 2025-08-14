@@ -111,7 +111,7 @@ func setupTestContainer(t *testing.T) (string, func()) {
 	containerID := strings.TrimSpace(string(output))
 	
 	// Wait for container to be ready
-	time.Sleep(2 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 	
 	cleanup := func() {
 		exec.Command("docker", "kill", containerID).Run()

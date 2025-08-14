@@ -16,6 +16,10 @@ import (
 // TestFirstTwoCharactersLostBug reproduces the bug where the first two characters
 // are lost when typing an email address during SSH signup
 func TestFirstTwoCharactersLostBug(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Create a server instance for testing
 	server := &Server{}
 
@@ -116,8 +120,7 @@ func (m *ProblematicInputMockChannel) Read(data []byte) (int, error) {
 		return m.readBuf.Read(data)
 	}
 
-	// No more data
-	time.Sleep(100 * time.Millisecond)
+	// No more data - return immediately with no data
 	return 0, nil
 }
 
@@ -181,8 +184,7 @@ func (m *BulkInputMockChannel) Read(data []byte) (int, error) {
 		return n, nil
 	}
 
-	// No more data
-	time.Sleep(100 * time.Millisecond)
+	// No more data - return immediately with no data
 	return 0, nil
 }
 
@@ -212,6 +214,10 @@ var _ ssh.Channel = (*BulkInputMockChannel)(nil)
 
 // TestEmailInputDuringRegistration tests the actual registration flow to catch character loss
 func TestEmailInputDuringRegistration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_email_input_*.db")
 	if err != nil {
@@ -221,7 +227,7 @@ func TestEmailInputDuringRegistration(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server in dev mode
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

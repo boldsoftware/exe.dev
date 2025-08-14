@@ -22,7 +22,7 @@ func TestHandleListCommand(t *testing.T) {
 	// Create mock container manager
 	mockManager := NewMockContainerManager()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestHandleListCommandWithoutContainerManager(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

@@ -305,10 +305,10 @@ func TestClearOSCResponse(t *testing.T) {
 	buf := make([]byte, 100)
 	n, _ := channel.ReadCtx(ctx, buf)
 	
-	// We should have cleared up to and including the terminator
+	// clearOSCResponse is now a no-op, so we should get everything that was in the buffer
 	result := string(buf[:n])
-	if result != "more" && result != "" {
-		// Could be empty if clearOSCResponse consumed everything
-		t.Errorf("After clearOSCResponse, got %q, expected 'more' or empty", result)
+	expected := "leftover\033\\more"
+	if result != expected {
+		t.Errorf("After clearOSCResponse, got %q, expected %q", result, expected)
 	}
 }

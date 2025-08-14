@@ -27,7 +27,7 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 	// Create mock container manager
 	mockManager := NewMockContainerManager()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -140,8 +140,8 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 					// Verify image is set correctly
 					if tt.stdin != "" {
 						// Custom Dockerfile - image should be default
-						if lastContainer.Image != "gcr.io/exe-dev-468515/exeuntu" {
-							t.Errorf("Expected default expanded image gcr.io/exe-dev-468515/exeuntu for Dockerfile build, got: %s", lastContainer.Image)
+						if lastContainer.Image != "ghcr.io/boldsoftware/exeuntu:latest" {
+							t.Errorf("Expected default expanded image ghcr.io/boldsoftware/exeuntu:latest for Dockerfile build, got: %s", lastContainer.Image)
 						}
 					} else {
 						// Check if --image flag was used

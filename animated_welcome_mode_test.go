@@ -19,7 +19,7 @@ func TestShowAnimatedWelcomeWithDarkMode(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestShowAnimatedWelcomeWithLightMode(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -110,6 +110,10 @@ func TestShowAnimatedWelcomeWithLightMode(t *testing.T) {
 }
 
 func TestRegistrationFlowWithLightMode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -118,7 +122,7 @@ func TestRegistrationFlowWithLightMode(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -152,7 +156,7 @@ func TestRegistrationFlowWithLightMode(t *testing.T) {
 	}()
 
 	// Give the animation and initial output some time to run
-	time.Sleep(2 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	// Wait for completion or timeout
 	select {

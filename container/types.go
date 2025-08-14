@@ -1,4 +1,4 @@
-// Package container provides Google Cloud-based container management for exe.dev
+// Package container provides container management for exe.dev
 package container
 
 import (
@@ -29,10 +29,11 @@ type Container struct {
 	StartedAt   *time.Time      `json:"started_at,omitempty"`
 	StoppedAt   *time.Time      `json:"stopped_at,omitempty"`
 	
-	// GKE-specific fields
+	// Container backend fields
 	Namespace   string `json:"namespace"`
 	PodName     string `json:"pod_name"`
 	PVCName     string `json:"pvc_name"`
+	DockerHost  string `json:"docker_host,omitempty"` // DOCKER_HOST value for remote Docker
 	
 	// Configuration
 	CPURequest    string `json:"cpu_request"`
@@ -121,9 +122,11 @@ type CreateContainerRequest struct {
 
 // BuildRequest represents a request to build a custom Docker image
 type BuildRequest struct {
-	UserID     string `json:"user_id"`
-	Dockerfile string `json:"dockerfile"`
-	BuildID    string `json:"build_id"`
+	UserID            string `json:"user_id"`
+	TeamName          string `json:"team_name"`
+	Dockerfile        string `json:"dockerfile"`
+	DockerfileContent string `json:"dockerfile_content"`
+	BuildID           string `json:"build_id"`
 }
 
 // BuildResult contains the result of a Docker image build

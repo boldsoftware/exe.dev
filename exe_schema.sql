@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS machines (
     name TEXT NOT NULL, -- name within the team (for <name>.<team>.exe.dev)
     status TEXT NOT NULL DEFAULT 'stopped', -- stopped, starting, running, stopping
     image TEXT,
-    container_id TEXT, -- GKE container/pod ID for this machine
+    container_id TEXT, -- Docker container ID for this machine
     created_by_fingerprint TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

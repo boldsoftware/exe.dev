@@ -58,7 +58,7 @@ if ! ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes "$TAI
     echo "To fix Tailscale SSH access:"
     echo "  1. Make sure Tailscale is running: tailscale status"
     echo "  2. Test manual connection: ssh ubuntu@exed-prod-01"
-    echo "  3. If that fails, check VM status in GCP Console"
+    echo "  3. If that fails, check VM status in AWS Console"
     echo "  4. Verify the VM is connected: tailscale status | grep exed-prod-01"
     echo ""
     exit 1
@@ -99,7 +99,7 @@ if ! scp -o StrictHostKeyChecking=no "/tmp/$BINARY_NAME" "$TAILSCALE_HOST:~/"; t
     echo "  1. Test SSH connection: ssh ubuntu@exed-prod-01"
     echo "  2. Check Tailscale status: tailscale status"
     echo "  3. Verify your SSH key is loaded: ssh-add -l"
-    echo "  4. Check VM status in GCP Console"
+    echo "  4. Check VM status in AWS Console"
     echo ""
     exit 1
 fi

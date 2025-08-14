@@ -23,7 +23,7 @@ func TestHandleSSHCommand(t *testing.T) {
 	// Create mock container manager
 	mockManager := NewMockContainerManager()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestHandleSSHCommand(t *testing.T) {
 			name:          "valid container",
 			args:          []string{machineName},
 			expectError:   false,
-			expectOutput:  []string{"Machine 'testmachine' is running", "ssh testmachine@exe.dev"},
+			expectOutput:  []string{"Machine 'testmachine' is running", "ssh -p 12222 testmachine@localhost"},
 			expectedExecs: 0,
 		},
 	}
@@ -151,7 +151,7 @@ func TestHandleSSHCommandWithoutContainerManager(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestHandleSSHCommandContainerNotCreated(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestHandleSSHCommandWithStoppedContainer(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestHandleSSHCommandWithStoppedContainer(t *testing.T) {
 	rawOutput := outputBuf.String()
 	output := stripANSI(rawOutput)
 	// It should still show instructions even for stopped containers
-	if !strings.Contains(output, "Machine 'testmachine' is running") || !strings.Contains(output, "ssh testmachine@exe.dev") {
+	if !strings.Contains(output, "Machine 'testmachine' is running") || !strings.Contains(output, "ssh -p 12222 testmachine@localhost") {
 		t.Errorf("Expected instructions to be shown, got: %s", output)
 	}
 }
@@ -370,7 +370,7 @@ func TestHandleSSHCommandWithoutUserSession(t *testing.T) {
 	tmpDB.Close()
 
 	mockManager := NewMockContainerManager()
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

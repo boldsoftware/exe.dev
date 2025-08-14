@@ -30,13 +30,13 @@ func TestSSHSCPSFTPIntegration(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", "")
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 	defer server.Stop()
 
-	// Use mock container manager for testing instead of real GKE
+	// Use mock container manager for testing
 	mockManager := NewMockContainerManager()
 	server.containerManager = mockManager
 

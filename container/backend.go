@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// Backend represents a container orchestration backend (GKE, Docker, etc.)
+// Backend represents a container orchestration backend (Docker, etc.)
 type Backend interface {
 	// CreateContainer creates a new container with the given configuration
 	CreateContainer(ctx context.Context, config *CreateConfig) (*Container, error)
@@ -37,7 +37,7 @@ type Backend interface {
 	// WakeContainer wakes a sleeping container
 	WakeContainer(ctx context.Context, containerID string) error
 	
-	// GetBackendType returns the backend type (e.g., "gke", "docker")
+	// GetBackendType returns the backend type (e.g., "docker")
 	GetBackendType() string
 }
 

@@ -44,7 +44,7 @@ func TestLabelLengthFix(t *testing.T) {
 			Image:  "ubuntu:22.04",
 		}
 
-		// This should not fail in the mock (real GKE would test the actual label shortening)
+		// This should not fail in the mock (real Docker would test the actual label shortening)
 		createdContainer, err := mockManager.CreateContainer(ctx, req)
 		if err != nil {
 			t.Errorf("Mock container creation failed: %v", err)

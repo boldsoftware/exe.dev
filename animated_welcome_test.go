@@ -19,7 +19,7 @@ func TestShowAnimatedWelcome(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", "")
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestAnimatedWelcomeIntegration(t *testing.T) {
 	}()
 
 	// Give the animation some time to run
-	time.Sleep(2 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	// Send some input to unstick the registration flow
 	term.Write([]byte("\r\n"))

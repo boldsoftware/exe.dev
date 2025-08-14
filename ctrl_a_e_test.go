@@ -10,7 +10,7 @@ import (
 // TestReadLineCtrlAE tests that Ctrl+A and Ctrl+E move cursor correctly
 func TestReadLineCtrlAE(t *testing.T) {
 	// Create a server for testing
-	server, err := NewServer(":0", ":0", ":0", ":memory:", "local", "")
+	server, err := NewServer(":0", ":0", ":0", ":memory:", "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
