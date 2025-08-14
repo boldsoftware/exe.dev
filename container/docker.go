@@ -280,10 +280,8 @@ func (m *DockerManager) DeleteContainer(ctx context.Context, userID, containerID
 		return err
 	}
 
-	// Stop container first if running
-	_ = m.StopContainer(ctx, userID, containerID)
-
-	// Remove container
+	// Remove container (using -f to force remove even if running)
+	// No need to stop first since -f will handle that
 	cmd := exec.CommandContext(ctx, "docker", "rm", "-f", container.PodName)
 	if container.DockerHost != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", container.DockerHost))
