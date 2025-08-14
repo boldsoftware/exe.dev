@@ -123,4 +123,7 @@ lint: ## Run linters
 	@go fmt ./...
 	@echo "✓ Lint complete"
 
+dist/sshd: Dockerfile.sshd-static
+	docker buildx build --platform linux/amd64 -f Dockerfile.sshd-static   --target out --output type=local,dest=./dist .
+
 .DEFAULT_GOAL := help

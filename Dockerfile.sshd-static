@@ -16,8 +16,11 @@ RUN curl -fsSLO https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${O
 WORKDIR /src/openssh-${OPENSSH}
 
 ENV PKG_CONFIG="pkg-config --static"
-ENV CFLAGS="-Os -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-PIE"
-ENV LDFLAGS="-static -Wl,--gc-sections -Wl,-s -no-pie"
+ENV CFLAGS="-Os -fno-strict-aliasing -D_GNU_SOURCE"
+ENV LDFLAGS="-static -Wl,-s"
+ENV LIBS="-lz"
+ENV ac_cv_c_compiler_gnu=yes
+ENV ac_cv_func_closefrom=no
 
 RUN ./configure \
       --prefix=/usr \
@@ -27,10 +30,12 @@ RUN ./configure \
       --without-pam \
       --without-libedit \
       --without-openssl-engine \
+      --without-zlib-version-check \
+      --without-hardening \
       --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx \
       --disable-security-key
 
-RUN make -j"$(nproc)" sshd && strip -s sshd
+RUN make sshd && strip -s sshd
 RUN mkdir -p /out && cp -v sshd /out/sshd
 FROM scratch AS out
 COPY --from=build /out/sshd /sshd
