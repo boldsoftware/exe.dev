@@ -3,8 +3,10 @@ package container
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDockerExecuteInContainer(t *testing.T) {
@@ -28,9 +30,11 @@ func TestDockerExecuteInContainer(t *testing.T) {
 
 	// Create a test container
 	ctx := context.Background()
+	// Use a unique name to avoid conflicts
+	containerName := fmt.Sprintf("test-ssh-%d", time.Now().UnixNano())
 	req := &CreateContainerRequest{
 		UserID:   "test-user",
-		Name:     "test-ssh",
+		Name:     containerName,
 		TeamName: "test",
 		Image:    "ubuntu:22.04",
 	}

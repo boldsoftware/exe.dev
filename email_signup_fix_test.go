@@ -101,7 +101,7 @@ type SignupFlowChannel struct {
 func (c *SignupFlowChannel) SetUserEmail(email string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.userEmail = []byte(email)
+	c.userEmail = []byte(email + "\n") // Add newline for readLineFromChannel
 	c.emailPos = 0
 	c.stage = 0
 }
@@ -121,6 +121,7 @@ func (c *SignupFlowChannel) Read(p []byte) (int, error) {
 	case 1:
 		// Second stage: user typing email
 		if c.emailPos >= len(c.userEmail) {
+			// Done sending email, just block
 			time.Sleep(10 * time.Millisecond)
 			return 0, nil
 		}
@@ -168,7 +169,7 @@ func TestReadLineFromChannelWithRapidInput(t *testing.T) {
 		t.Run("input_"+expected, func(t *testing.T) {
 			// Create a simple channel that provides input immediately
 			mockChannel := &SimpleInputChannel{
-				input:    []byte(input),
+				input:    []byte(input + "\n"), // Add newline for readLineFromChannel
 				writeBuf: &bytes.Buffer{},
 			}
 
@@ -202,7 +203,9 @@ func (c *SimpleInputChannel) Read(p []byte) (int, error) {
 	defer c.mu.Unlock()
 
 	if c.inputPos >= len(c.input) {
-		return 0, io.EOF
+		// Done, just block
+		time.Sleep(10 * time.Millisecond)
+		return 0, nil
 	}
 
 	// Return one character at a time to simulate typing

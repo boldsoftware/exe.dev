@@ -20,32 +20,94 @@ const (
 // detectTerminalMode queries the terminal background color using OSC 11 and determines if it's dark or light mode
 func (s *Server) detectTerminalMode(channel *sshbuf.Channel) TerminalMode {
 	// Send OSC 11 query for background color
-	// Format: ESC ] 11 ; ? ESC \
 	query := []byte("\033]11;?\033\\")
 	if _, err := channel.Write(query); err != nil {
-		// Default to dark mode if we can't query
 		return TerminalModeDark
 	}
 
-	// Create a context with timeout for reading the response
+	// Read response with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	// Read response with timeout
-	responseBuf := make([]byte, 100)
-	n, err := channel.ReadCtx(ctx, responseBuf)
-	if err != nil || n == 0 {
-		// Default to dark mode if no response
-		return TerminalModeDark
-	}
+	// Buffer to collect potential OSC response
+	var buffer []byte
+	temp := make([]byte, 1)
+	state := "initial" // States: initial, saw_esc, saw_bracket, in_osc, done
+	
+	for {
+		n, err := channel.ReadCtx(ctx, temp)
+		if err != nil || n == 0 {
+			// Timeout or error - put back any non-OSC data we collected
+			if len(buffer) > 0 && !isOSCResponse(buffer) {
+				channel.Unread(buffer)
+			}
+			return TerminalModeDark
+		}
 
-	response := string(responseBuf[:n])
-	
-	// Parse the OSC 11 response
-	// Expected format: ESC ] 11 ; rgb:RRRR/GGGG/BBBB ESC \ or ST
-	mode := parseBackgroundColor(response)
-	
-	return mode
+		b := temp[0]
+		buffer = append(buffer, b)
+
+		switch state {
+		case "initial":
+			if b == '\033' {
+				state = "saw_esc"
+			} else {
+				// Not an OSC response - this is user input!
+				// Put it back and return default
+				channel.Unread(buffer)
+				return TerminalModeDark
+			}
+
+		case "saw_esc":
+			if b == ']' {
+				state = "in_osc"
+			} else {
+				// Not an OSC sequence - put back and return
+				channel.Unread(buffer)
+				return TerminalModeDark
+			}
+
+		case "in_osc":
+			// Look for OSC terminator
+			if b == '\033' {
+				// Might be ESC \ terminator
+				state = "saw_esc_in_osc"
+			} else if b == '\007' {
+				// BEL terminator - we have complete OSC response
+				state = "done"
+			}
+
+		case "saw_esc_in_osc":
+			if b == '\\' {
+				// Found ESC \ terminator
+				state = "done"
+			} else {
+				// Continue in OSC
+				state = "in_osc"
+			}
+		}
+
+		if state == "done" {
+			// We got a complete OSC response
+			response := string(buffer)
+			return parseBackgroundColor(response)
+		}
+
+		// Safety check - don't read too much
+		if len(buffer) > 100 {
+			// Too much data, probably not a valid OSC response
+			// Put back everything that's not OSC-like
+			if !isOSCResponse(buffer) {
+				channel.Unread(buffer)
+			}
+			return TerminalModeDark
+		}
+	}
+}
+
+func isOSCResponse(data []byte) bool {
+	s := string(data)
+	return strings.HasPrefix(s, "\033]")
 }
 
 // parseBackgroundColor parses the OSC 11 response and determines if it's dark or light

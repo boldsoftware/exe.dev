@@ -47,7 +47,7 @@ func TestFirstTwoCharactersLostBug(t *testing.T) {
 			bufferedChannel := sshbuf.New(mockChannel)
 
 			// Give sshbuf time to read and buffer the bulk input
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(1 * time.Millisecond) // Brief delay to prevent busy loop
 
 			// Read the line using the same function used during signup
 			result, err := server.readLineFromChannel(bufferedChannel)
@@ -324,9 +324,8 @@ func (m *RealisticSSHInputChannel) Read(data []byte) (int, error) {
 		return 1, nil
 	}
 
-	// No data available yet
-	time.Sleep(10 * time.Millisecond)
-	return 0, nil
+	// No more data available
+	return 0, io.EOF
 }
 
 func (m *RealisticSSHInputChannel) Write(data []byte) (int, error) {

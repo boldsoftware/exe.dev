@@ -155,6 +155,26 @@ func (bc *Channel) ReadCtx(ctx context.Context, p []byte) (int, error) {
 	}
 }
 
+// Unread puts data back at the front of the buffer to be read again
+// This is useful when you've read data that you need to "put back"
+func (bc *Channel) Unread(data []byte) {
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+	
+	if len(data) == 0 {
+		return
+	}
+	
+	// Prepend the data to the buffer
+	newBuf := make([]byte, len(data)+len(bc.buf))
+	copy(newBuf, data)
+	copy(newBuf[len(data):], bc.buf)
+	bc.buf = newBuf
+	
+	// Signal any waiting readers
+	bc.cond.Signal()
+}
+
 func (bc *Channel) Write(data []byte) (int, error) {
 	return bc.ch.Write(data)
 }

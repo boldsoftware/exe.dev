@@ -221,40 +221,30 @@ func TestInteractiveFlow(t *testing.T) {
 		{"success response", "✅ Team name available!\r\n"},
 	}
 
-	for i, step := range steps {
+	for _, step := range steps {
 		term.Write([]byte(step.data))
-		t.Logf("Step %d: %s -> %q", i+1, step.desc, step.data)
-
-		// Show screen state after each step
-		if i > 5 { // Only show details for later steps
-			screenContent := term.GetScreenContent()
-			lines := strings.Split(screenContent, "\n")
-			t.Logf("  Screen now has %d lines:", len(lines))
-			for j, line := range lines {
-				if len(line) > 0 {
-					t.Logf("    Line %d: %q", j, line)
-				}
-			}
-		}
-
 		time.Sleep(5 * time.Millisecond)
 	}
 
 	screenContent := term.GetScreenContent()
-	t.Logf("\n=== FINAL SCREEN ===")
 	lines := strings.Split(screenContent, "\n")
+	
+	// Only check for offset issues
 	for i, line := range lines {
-		t.Logf("Line %2d: %q", i, line)
-
-		// Check for offset issues
 		if len(line) > 1 && line[0] == ' ' && strings.TrimLeft(line, " ") != "" {
 			t.Errorf("*** Line %d appears to be offset by spaces: %q", i, line)
 		}
 	}
 
-	// Raw output for debugging
-	t.Logf("\n=== RAW OUTPUT SENT ===")
-	t.Logf("%q", term.GetRawOutput())
+	// Only show verbose output if requested
+	if testing.Verbose() {
+		t.Logf("\n=== FINAL SCREEN ===")
+		for i, line := range lines {
+			t.Logf("Line %2d: %q", i, line)
+		}
+		t.Logf("\n=== RAW OUTPUT SENT ===")
+		t.Logf("%q", term.GetRawOutput())
+	}
 }
 
 // TestCumulativeOffsetBug tests if there's a cumulative offset issue
@@ -297,26 +287,23 @@ func TestCumulativeOffsetBug(t *testing.T) {
 		screenContent := term.GetScreenContent()
 		lines := strings.Split(screenContent, "\n")
 
-		t.Logf("After step %d (%q):", i+1, seq)
+		// Only log if there's an issue
 		for j, line := range lines {
 			if len(line) > 0 {
 				// Check if line has leading spaces (offset indicator)
 				leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
 				if leadingSpaces > 0 {
-					t.Logf("  Line %d: %q [OFFSET: %d spaces]", j, line, leadingSpaces)
-				} else {
-					t.Logf("  Line %d: %q", j, line)
+					// Only log lines with offsets (potential issues)
+					t.Logf("  Step %d, Line %d: %q [OFFSET: %d spaces]", i+1, j, line, leadingSpaces)
 				}
 			}
 		}
-		t.Logf("")
 	}
 
 	// Final analysis
 	screenContent := term.GetScreenContent()
 	lines := strings.Split(screenContent, "\n")
 
-	t.Logf("=== FINAL ANALYSIS ===")
 	maxOffset := 0
 	for i, line := range lines {
 		if len(line) > 0 {
@@ -332,8 +319,6 @@ func TestCumulativeOffsetBug(t *testing.T) {
 
 	if maxOffset > 0 {
 		t.Errorf("Found cumulative offset issue: maximum offset was %d spaces", maxOffset)
-	} else {
-		t.Log("No offset issues detected!")
 	}
 }
 
@@ -425,13 +410,11 @@ func TestFixedLineEndingsBug(t *testing.T) {
 		{"server response", "Team: myteam\r\n"},
 	}
 
-	for i, seq := range sequences {
+	for _, seq := range sequences {
 		term.Write([]byte(seq.data))
-		t.Logf("Step %d: %s -> %q", i+1, seq.desc, seq.data)
 	}
 
 	screenContent := term.GetScreenContent()
-	t.Logf("\n=== FINAL SCREEN (AFTER FIX) ===")
 	lines := strings.Split(screenContent, "\n")
 	offsetFound := false
 
@@ -441,13 +424,11 @@ func TestFixedLineEndingsBug(t *testing.T) {
 			if leadingSpaces > 0 && strings.TrimLeft(line, " ") != "" {
 				t.Errorf("Line %d: STILL HAS OFFSET(%d spaces) %q", i, leadingSpaces, line)
 				offsetFound = true
-			} else {
-				t.Logf("Line %d: %q", i, line)
 			}
 		}
 	}
 
-	if !offsetFound {
+	if !offsetFound && testing.Verbose() {
 		t.Log("*** SUCCESS! Line endings fix eliminated all offset issues! ***")
 	}
 }

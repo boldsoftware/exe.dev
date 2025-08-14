@@ -126,29 +126,12 @@ func TestSCPExactBug(t *testing.T) {
 
 // TestSCPBugSummary provides a clear summary of the bug
 func TestSCPBugSummary(t *testing.T) {
-	t.Log("=== SCP '~' BUG SUMMARY ===")
-	t.Log("")
-	t.Log("PROBLEM:")
-	t.Log("  When user runs: scp file.txt user@host:~")
-	t.Log("  SCP sends SFTP path: /file.txt")
-	t.Log("  This tries to create a file in the container's root directory")
-	t.Log("")
-	t.Log("SYMPTOMS:")
-	t.Log("  - Upload shows 100% progress")
-	t.Log("  - Then fails with 'close remote: Failure'")
-	t.Log("")
-	t.Log("ROOT CAUSE:")
-	t.Log("  1. Modern OpenSSH scp uses SFTP protocol")
-	t.Log("  2. SCP resolves ~ to / before sending to SFTP")
-	t.Log("  3. Original handler doesn't transform / back to home directory")
-	t.Log("  4. Tries to write to /file.txt which fails in container")
-	t.Log("")
-	t.Log("FIX APPROACH:")
-	t.Log("  - When SFTP receives path starting with '/', treat as home directory")
-	t.Log("  - Current fix: resolvePath maps '/' to '/workspace'")
-	t.Log("  - But this doesn't handle '/file.txt' → '/workspace/file.txt'")
-	t.Log("")
-	t.Log("PROPER FIX NEEDED:")
-	t.Log("  - For paths like '/file.txt', map to '/workspace/file.txt'")
-	t.Log("  - Essentially: treat / as home directory for SFTP operations")
+	// This test just documents the bug - no actual testing
+	// The verbose explanation is only shown with -v flag
+	if testing.Verbose() {
+		t.Log("=== SCP '~' BUG SUMMARY ===")
+		t.Log("PROBLEM: scp file.txt user@host:~ sends SFTP path /file.txt (not home dir)")
+		t.Log("ROOT CAUSE: OpenSSH scp resolves ~ to / before SFTP, needs remapping")
+		t.Log("FIX: Map paths like /file.txt to /workspace/file.txt in SFTP handler")
+	}
 }
