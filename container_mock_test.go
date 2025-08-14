@@ -331,6 +331,16 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 					} else {
 						output = "" // Silent success for other SCP modes
 					}
+				} else if len(cmd) >= 3 && cmd[0] == "sh" && cmd[1] == "-c" {
+					// Handle shell commands
+					shellCmd := cmd[2]
+					if strings.Contains(shellCmd, "getent passwd") && strings.Contains(shellCmd, "cut -d: -f7") {
+						// Return a shell path for the getent passwd command
+						output = "/bin/bash\n"
+					} else {
+						// For other shell commands, return generic executed message
+						output = fmt.Sprintf("Executed: %v\n", cmd)
+					}
 				} else {
 					// For other commands, return generic executed message
 					output = fmt.Sprintf("Executed: %v\n", cmd)

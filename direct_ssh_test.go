@@ -284,13 +284,19 @@ func TestDirectSSHShell(t *testing.T) {
 	execCalls := mockManager.GetExecCalls()
 	shellFound := false
 	for _, call := range execCalls {
-		if call.ContainerID == containerID && len(call.Command) >= 2 && call.Command[0] == "/bin/bash" && call.Command[1] == "-l" {
+		// The shell could be /bin/bash or /bin/sh depending on what determineUserShell returns
+		if call.ContainerID == containerID && len(call.Command) == 1 && 
+			(call.Command[0] == "/bin/bash" || call.Command[0] == "/bin/sh") {
 			shellFound = true
 			break
 		}
 	}
 	if !shellFound {
 		t.Errorf("Shell was not started in container %s", containerID)
+		t.Logf("Total exec calls: %d", len(execCalls))
+		for _, call := range execCalls {
+			t.Logf("  ContainerID: %s, Command: %v", call.ContainerID, call.Command)
+		}
 	}
 }
 
