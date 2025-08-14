@@ -4,11 +4,7 @@
 
 set -e
 
-# Configuration
-PROJECT_ID="exe-dev-468515"
-INSTANCE_NAME="exed-prod-01"
-ZONE="us-west2-a"
-REGION="us-west2"
+INSTANCE_NAME="exed-01"
 
 # Colors for output
 RED='\033[0;31m'
@@ -22,50 +18,17 @@ echo "Deploying exed to Production"
 echo "==========================================="
 echo ""
 
-# Check if gcloud is installed
-if ! command -v gcloud >/dev/null 2>&1; then
-    echo -e "${RED}ERROR: gcloud CLI not found${NC}"
-    echo -e "${BLUE}Please install gcloud: https://cloud.google.com/sdk/docs/install${NC}"
-    echo ""
-    exit 1
-fi
-
-# Check if authenticated
-echo "Checking gcloud authentication..."
-if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .; then
-    echo -e "${RED}ERROR: Not authenticated with gcloud${NC}"
-    echo -e "${BLUE}Please run: gcloud auth login${NC}"
-    echo ""
-    exit 1
-fi
-
-# Set the project (in case it's not set)
-echo "Setting project to $PROJECT_ID..."
-gcloud config set project "$PROJECT_ID" >/dev/null 2>&1
-
 # Check Tailscale connectivity
 echo "Checking Tailscale connection to VM..."
-TAILSCALE_HOST="ubuntu@exed-prod-01"
+TAILSCALE_HOST="ubuntu@$INSTANCE_NAME"
 
-if ! ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o BatchMode=yes "$TAILSCALE_HOST" "echo 'Tailscale SSH connection successful'" >/dev/null 2>&1; then
+if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$TAILSCALE_HOST" "echo 'Tailscale SSH connection successful'" >/dev/null 2>&1; then
     echo -e "${RED}ERROR: Cannot SSH to the production VM via Tailscale${NC}"
-    echo -e "${BLUE}This could be due to:${NC}"
-    echo "  1. Tailscale not running on your machine"
-    echo "  2. Not connected to the same Tailscale network" 
-    echo "  3. VM is not running or not connected to Tailscale"
-    echo "  4. SSH key not added to the VM"
-    echo ""
-    echo "To fix Tailscale SSH access:"
-    echo "  1. Make sure Tailscale is running: tailscale status"
-    echo "  2. Test manual connection: ssh ubuntu@exed-prod-01"
-    echo "  3. If that fails, check VM status in AWS Console"
-    echo "  4. Verify the VM is connected: tailscale status | grep exed-prod-01"
-    echo ""
     exit 1
 fi
 
 echo -e "${GREEN}✓ Tailscale SSH access verified${NC}"
-echo "Target VM: exed-prod-01 (via Tailscale)"
+echo "Target VM: $INSTANCE_NAME (via Tailscale)"
 echo ""
 
 # Generate timestamp for this deployment
@@ -93,14 +56,8 @@ echo -e "${YELLOW}Deploying to VM...${NC}"
 
 # Copy binary to VM via Tailscale
 echo "Copying binary to VM..."
-if ! scp -o StrictHostKeyChecking=no "/tmp/$BINARY_NAME" "$TAILSCALE_HOST:~/"; then
+if ! scp "/tmp/$BINARY_NAME" "$TAILSCALE_HOST:~/"; then
     echo -e "${RED}ERROR: Failed to copy binary to VM${NC}"
-    echo -e "${BLUE}Troubleshooting steps:${NC}"
-    echo "  1. Test SSH connection: ssh ubuntu@exed-prod-01"
-    echo "  2. Check Tailscale status: tailscale status"
-    echo "  3. Verify your SSH key is loaded: ssh-add -l"
-    echo "  4. Check VM status in AWS Console"
-    echo ""
     exit 1
 fi
 
@@ -179,22 +136,16 @@ echo -e "${NC}"
 echo "Deployed version: $BINARY_NAME"
 echo "Timestamp: $TIMESTAMP"
 echo ""
-echo "Service endpoints:"
-echo "  HTTP:  http://exed-prod-01 (via Tailscale)"
-echo "  HTTPS: https://exed-prod-01 (if SSL configured)" 
-echo "  SSH:   ssh user@exed-prod-01"
-echo ""
 echo "Admin access:"
-echo "  ssh ubuntu@exed-prod-01"
+echo "  ssh ubuntu@$INSTANCE_NAME"
 echo ""
 echo "View logs:"
-echo "  ssh ubuntu@exed-prod-01 'sudo tail -f /var/log/exed/exed.log'"
+echo "  ssh ubuntu@INSTANCE_NAME journalctl -fu exed"
 echo ""
 echo "Rollback (if needed):"
-echo "  ssh ubuntu@exed-prod-01"
+echo "  ssh ubuntu@$INSTANCE_NAME"
 echo "  ls -la ~/exed.*  # list all versions"
 echo "  sudo ln -sf ~/exed.TIMESTAMP ~/exed.latest"
 echo "  sudo systemctl restart exed"
 
-# Clean up temporary file
 rm -f "/tmp/$BINARY_NAME"
