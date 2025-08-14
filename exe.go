@@ -113,6 +113,7 @@ type Invite struct {
 // EmailVerification represents a pending email verification (in-memory)
 type EmailVerification struct {
 	PublicKeyFingerprint string
+	PublicKey            string
 	Email                string
 	Token                string
 	CompleteChan         chan struct{}
@@ -483,6 +484,7 @@ func (s *Server) generateRegistrationToken() string {
 func (s *Server) generateToken() string {
 	return s.generateRegistrationToken()
 }
+
 
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
@@ -1119,8 +1121,40 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	verification, exists := s.emailVerifications[token]
 	if exists {
 		// This is an SSH session email verification
+		fingerprint := verification.PublicKeyFingerprint
+		email := verification.Email
+		
+		// Create the user if they don't exist
+		user, err := s.getUserByFingerprint(fingerprint)
+		if err != nil || user == nil {
+			log.Printf("User doesn't exist for fingerprint %s, creating...", fingerprint)
+			// User doesn't exist - create them with their team
+			if err := s.createUser(fingerprint, email); err != nil {
+				log.Printf("Failed to create user during email verification: %v", err)
+				s.emailVerificationsMu.Unlock()
+				http.Error(w, "Failed to create user account", http.StatusInternalServerError)
+				return
+			}
+			log.Printf("Created new user for %s (fingerprint: %s)", email, fingerprint)
+		} else {
+			log.Printf("User already exists for fingerprint %s", fingerprint)
+		}
+		
+		// Store the SSH key as verified
+		publicKey := verification.PublicKey
+		if publicKey != "" {
+			_, err = s.db.Exec(`
+				INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
+				VALUES (?, ?, ?, 1, 'Primary Device')
+				ON CONFLICT(fingerprint) DO UPDATE SET verified = 1, public_key = ?, user_email = ?`,
+				fingerprint, email, publicKey, publicKey, email)
+			if err != nil {
+				log.Printf("Error storing SSH key during verification: %v", err)
+			}
+		}
+		
 		// Create HTTP auth cookie for this user
-		cookieValue, err := s.createAuthCookie(verification.PublicKeyFingerprint, r.Host)
+		cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
 		if err != nil {
 			log.Printf("Failed to create auth cookie during SSH email verification: %v", err)
 			// Continue anyway - SSH auth will still work
@@ -5251,7 +5285,8 @@ func (s *Server) Start() error {
 
 	// Start SSH server in a goroutine
 	go func() {
-		if err := s.serveSSH(); err != nil {
+		sshServer := NewSSHServer(s)
+		if err := sshServer.Start(s.sshAddr); err != nil {
 			log.Printf("SSH server error: %v", err)
 		}
 	}()
@@ -5427,14 +5462,13 @@ func (s *Server) createUser(fingerprint, email string) error {
 		return err
 	}
 
-	// Set this as the default team for the SSH key
+	// Set this as the default team for the SSH key (if it exists)
+	// Note: The SSH key might not exist yet if this is called during registration
 	_, err = tx.Exec(`
 		UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`,
 		personalTeamName, fingerprint)
-	if err != nil {
-		return err
-	}
-
+	// Ignore the error if the key doesn't exist yet - it will be added later
+	
 	return tx.Commit()
 }
 
@@ -5445,6 +5479,46 @@ func (s *Server) createTeam(name, billingEmail string) error {
 		VALUES (?, ?)`,
 		name, billingEmail)
 	return err
+}
+
+// createPersonalTeam creates a personal team for a user
+func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
+	// Start a transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	
+	// Create the team
+	_, err = tx.Exec(`
+		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint) 
+		VALUES (?, ?, TRUE, ?)`,
+		teamName, email, fingerprint)
+	if err != nil {
+		return err
+	}
+	
+	// Add user as admin of the team
+	_, err = tx.Exec(`
+		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+		VALUES (?, ?, TRUE)`,
+		fingerprint, teamName)
+	if err != nil {
+		return err
+	}
+	
+	// Set as default team
+	_, err = tx.Exec(`
+		UPDATE ssh_keys 
+		SET default_team = ?
+		WHERE fingerprint = ?`,
+		teamName, fingerprint)
+	if err != nil {
+		return err
+	}
+	
+	return tx.Commit()
 }
 
 // addTeamMember adds a user to a team

@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	github.com/creack/pty v1.1.24
+	github.com/ergochat/readline v0.1.3
+	github.com/gliderlabs/ssh v0.3.8
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
 	github.com/pkg/sftp v1.13.9
@@ -14,6 +16,7 @@ require (
 )
 
 require (
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+
+FROM alpine:edge AS build
+ARG OPENSSH=9.9p2
+
+# Static libs + toolchain
+RUN apk add --no-cache \
+      build-base linux-headers curl tar \
+      musl-dev \
+      zlib-dev zlib-static \
+      openssl-dev openssl-libs-static
+
+WORKDIR /src
+RUN curl -fsSLO https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH}.tar.gz \
+ && tar xzf openssh-${OPENSSH}.tar.gz
+WORKDIR /src/openssh-${OPENSSH}
+
+ENV PKG_CONFIG="pkg-config --static"
+ENV CFLAGS="-Os -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-PIE"
+ENV LDFLAGS="-static -Wl,--gc-sections -Wl,-s -no-pie"
+
+RUN ./configure \
+      --prefix=/usr \
+      --sysconfdir=/etc/ssh \
+      --with-privsep-user=nobody \
+      --with-privsep-path=/var/empty \
+      --without-pam \
+      --without-libedit \
+      --without-openssl-engine \
+      --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx \
+      --disable-security-key
+
+RUN make -j"$(nproc)" sshd && strip -s sshd
+RUN mkdir -p /out && cp -v sshd /out/sshd
+FROM scratch AS out
+COPY --from=build /out/sshd /sshd
