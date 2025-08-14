@@ -18,7 +18,7 @@ func TestEmailSignupAfterCharacterLossFix(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_email_signup_fix_*.db")
 	if err != nil {
@@ -39,10 +39,10 @@ func TestEmailSignupAfterCharacterLossFix(t *testing.T) {
 		name  string
 		email string
 	}{
-		{"starts with user", "user@example.com"},    // First two chars: "us"
-		{"starts with john", "john@domain.org"},     // First two chars: "jo"
-		{"starts with test", "test@company.com"},    // First two chars: "te"
-		{"short email", "a@b.co"},                   // Very short
+		{"starts with user", "user@example.com"}, // First two chars: "us"
+		{"starts with john", "john@domain.org"},  // First two chars: "jo"
+		{"starts with test", "test@company.com"}, // First two chars: "te"
+		{"short email", "a@b.co"},                // Very short
 	}
 
 	for _, tc := range testCases {
@@ -60,10 +60,10 @@ func TestEmailSignupAfterCharacterLossFix(t *testing.T) {
 			// Simulate the exact sequence that happens in handleRegistrationWithWidth:
 			// 1. detectTerminalMode() - sends OSC query
 			terminalMode := server.detectTerminalMode(bufferedChannel)
-			
+
 			// 2. clearOSCResponse() - this used to consume user input but now should be safe
 			server.clearOSCResponse(bufferedChannel)
-			
+
 			// 3. User input should still be intact
 			email, err := server.readLineFromChannel(bufferedChannel)
 			if err != nil {
@@ -143,8 +143,8 @@ func (c *SignupFlowChannel) Write(data []byte) (int, error) {
 	return c.writeBuf.Write(data)
 }
 
-func (c *SignupFlowChannel) Close() error       { return nil }
-func (c *SignupFlowChannel) CloseWrite() error  { return nil }
+func (c *SignupFlowChannel) Close() error      { return nil }
+func (c *SignupFlowChannel) CloseWrite() error { return nil }
 func (c *SignupFlowChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }
@@ -224,8 +224,8 @@ func (c *SimpleInputChannel) Write(data []byte) (int, error) {
 	return c.writeBuf.Write(data)
 }
 
-func (c *SimpleInputChannel) Close() error       { return nil }
-func (c *SimpleInputChannel) CloseWrite() error  { return nil }
+func (c *SimpleInputChannel) Close() error      { return nil }
+func (c *SimpleInputChannel) CloseWrite() error { return nil }
 func (c *SimpleInputChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }

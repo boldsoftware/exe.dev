@@ -106,11 +106,11 @@ func TestSCPFixVerification(t *testing.T) {
 										t.Logf("SFTP server error: %v", err)
 									}
 								}
-								
+
 								// Send exit status before closing
 								exitStatus := []byte{0, 0, 0, 0} // exit status 0
 								channel.SendRequest("exit-status", false, exitStatus)
-								
+
 								return
 							}
 							req.Reply(false, nil)
@@ -143,23 +143,23 @@ func TestSCPFixVerification(t *testing.T) {
 			}
 		} else {
 			t.Log("✓ SCP to ~ succeeded with the fix!")
-			
+
 			// Verify file was created in /workspace
 			var out strings.Builder
 			checkCmd := exec.Command("docker", "exec", containerID, "ls", "-la", "/workspace")
 			checkCmd.Stdout = &out
 			checkCmd.Run()
-			
+
 			filesInWorkspace := out.String()
 			if strings.Contains(filesInWorkspace, "junk.txt") {
 				t.Log("✓ File successfully created in /workspace")
-				
+
 				// Check content
 				out.Reset()
 				checkCmd = exec.Command("docker", "exec", containerID, "cat", "/workspace/junk.txt")
 				checkCmd.Stdout = &out
 				checkCmd.Run()
-				
+
 				if strings.TrimSpace(out.String()) == string(testContent) {
 					t.Log("✓ File content matches")
 				}
@@ -191,7 +191,7 @@ func TestSCPFixVerification(t *testing.T) {
 			t.Logf("Output: %s", output)
 		} else {
 			t.Log("✓ SCP to relative path still works")
-			
+
 			// Should be in /workspace
 			var out strings.Builder
 			checkCmd := exec.Command("docker", "exec", containerID, "ls", "/workspace/relative.txt")
@@ -232,7 +232,7 @@ func TestPathResolutionWithFix(t *testing.T) {
 		t.Run(tc.input, func(t *testing.T) {
 			result := handler.resolvePath(tc.input)
 			if result != tc.expected {
-				t.Errorf("resolvePath(%q) = %q, want %q (%s)", 
+				t.Errorf("resolvePath(%q) = %q, want %q (%s)",
 					tc.input, result, tc.expected, tc.comment)
 			} else {
 				t.Logf("✓ %q → %q (%s)", tc.input, result, tc.comment)

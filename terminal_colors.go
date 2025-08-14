@@ -33,7 +33,7 @@ func (s *Server) detectTerminalMode(channel *sshbuf.Channel) TerminalMode {
 	var buffer []byte
 	temp := make([]byte, 1)
 	state := "initial" // States: initial, saw_esc, saw_bracket, in_osc, done
-	
+
 	for {
 		n, err := channel.ReadCtx(ctx, temp)
 		if err != nil || n == 0 {
@@ -114,28 +114,28 @@ func isOSCResponse(data []byte) bool {
 func parseBackgroundColor(response string) TerminalMode {
 	// Look for the rgb: pattern in the response
 	// Format can be: \033]11;rgb:RRRR/GGGG/BBBB\033\\ or with \007 (BEL) terminator
-	
+
 	// Find the rgb: part
 	rgbIndex := strings.Index(response, "rgb:")
 	if rgbIndex == -1 {
 		return TerminalModeDark // Default to dark if we can't parse
 	}
-	
+
 	// Extract the color values
 	colorPart := response[rgbIndex+4:]
-	
+
 	// Find the terminator (either ESC \ or BEL)
 	endIndex := strings.IndexAny(colorPart, "\033\007")
 	if endIndex > 0 {
 		colorPart = colorPart[:endIndex]
 	}
-	
+
 	// Parse RGB values (format: RRRR/GGGG/BBBB where each component can be 1-4 hex digits)
 	parts := strings.Split(colorPart, "/")
 	if len(parts) != 3 {
 		return TerminalModeDark // Default to dark if format is unexpected
 	}
-	
+
 	// Convert hex values to integers and normalize to 0-255 range
 	var rgb [3]int
 	for i, part := range parts {
@@ -144,11 +144,11 @@ func parseBackgroundColor(response string) TerminalMode {
 		if err != nil {
 			return TerminalModeDark
 		}
-		
+
 		// Normalize to 0-255 range based on the number of hex digits
 		// 1 digit: 0-F -> multiply by 17 (0x0 -> 0, 0xF -> 255)
 		// 2 digits: 00-FF -> use as is
-		// 3 digits: 000-FFF -> divide by 16 
+		// 3 digits: 000-FFF -> divide by 16
 		// 4 digits: 0000-FFFF -> divide by 256
 		switch len(part) {
 		case 1:
@@ -163,24 +163,24 @@ func parseBackgroundColor(response string) TerminalMode {
 			return TerminalModeDark
 		}
 	}
-	
+
 	// Calculate luminance using the relative luminance formula
 	// L = 0.2126 * R + 0.7152 * G + 0.0722 * B
 	luminance := float64(rgb[0])*0.2126 + float64(rgb[1])*0.7152 + float64(rgb[2])*0.0722
-	
+
 	// If luminance > 128 (middle of 0-255 range), consider it light mode
 	if luminance > 128 {
 		return TerminalModeLight
 	}
-	
+
 	return TerminalModeDark
 }
 
 // getTerminalColors returns appropriate colors based on terminal mode
 func (s *Server) getTerminalColors(mode TerminalMode) struct {
-	grayText      string
-	fadeToColor   string
-	fadeSteps     []struct {
+	grayText    string
+	fadeToColor string
+	fadeSteps   []struct {
 		color string
 		delay time.Duration
 	}
@@ -188,41 +188,41 @@ func (s *Server) getTerminalColors(mode TerminalMode) struct {
 	if mode == TerminalModeLight {
 		// Light mode: use black text instead of gray, fade to white
 		return struct {
-			grayText      string
-			fadeToColor   string
-			fadeSteps     []struct {
+			grayText    string
+			fadeToColor string
+			fadeSteps   []struct {
 				color string
 				delay time.Duration
 			}
 		}{
 			grayText:    "\033[0;30m", // Black text for better contrast
-			fadeToColor: "\033[37m",    // White
+			fadeToColor: "\033[37m",   // White
 			fadeSteps: []struct {
 				color string
 				delay time.Duration
 			}{
-				{"\033[1;32m", 500 * time.Millisecond},    // Bright green
-				{"\033[0;32m", 200 * time.Millisecond},    // Normal green
-				{"\033[2;32m", 150 * time.Millisecond},    // Dim green
+				{"\033[1;32m", 500 * time.Millisecond},     // Bright green
+				{"\033[0;32m", 200 * time.Millisecond},     // Normal green
+				{"\033[2;32m", 150 * time.Millisecond},     // Dim green
 				{"\033[38;5;114m", 150 * time.Millisecond}, // Light green
 				{"\033[38;5;150m", 150 * time.Millisecond}, // Lighter green
 				{"\033[38;5;194m", 100 * time.Millisecond}, // Very light green
-				{"\033[37m", 100 * time.Millisecond},      // White (invisible on light bg)
+				{"\033[37m", 100 * time.Millisecond},       // White (invisible on light bg)
 			},
 		}
 	}
-	
+
 	// Dark mode: use existing gray text and fade to black
 	return struct {
-		grayText      string
-		fadeToColor   string
-		fadeSteps     []struct {
+		grayText    string
+		fadeToColor string
+		fadeSteps   []struct {
 			color string
 			delay time.Duration
 		}
 	}{
 		grayText:    "\033[2;37m", // Gray text (existing)
-		fadeToColor: "\033[30m",    // Black
+		fadeToColor: "\033[30m",   // Black
 		fadeSteps: []struct {
 			color string
 			delay time.Duration
@@ -243,7 +243,7 @@ func (s *Server) getTerminalColors(mode TerminalMode) struct {
 func (s *Server) clearOSCResponse(channel *sshbuf.Channel) {
 	// This function used to consume input aggressively, causing the bug where
 	// the first two characters of email input were lost during signup.
-	// 
+	//
 	// The fix is to not clear the OSC response aggressively since:
 	// 1. detectTerminalMode() already reads the OSC response with proper timeout
 	// 2. Any remaining OSC data is harmless and will be ignored by readLineFromChannel
@@ -258,7 +258,7 @@ func (s *Server) clearOSCResponse(channel *sshbuf.Channel) {
 func (s *Server) getGrayText(channel *sshbuf.Channel) string {
 	mode := s.detectTerminalMode(channel)
 	s.clearOSCResponse(channel)
-	
+
 	if mode == TerminalModeLight {
 		return "\033[0;30m" // Black text for light terminals
 	}

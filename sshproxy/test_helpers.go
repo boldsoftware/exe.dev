@@ -16,7 +16,7 @@ func scpCommand(args ...string) *exec.Cmd {
 		"-o", "LogLevel=ERROR", // Suppress warnings
 	}
 	scpArgs = append(scpArgs, args...)
-	
+
 	cmd := exec.Command("scp", scpArgs...)
 	// Set environment to avoid any SSH agent issues
 	cmd.Env = append(os.Environ(),
@@ -36,7 +36,7 @@ func sftpCommand(args ...string) *exec.Cmd {
 		"-o", "LogLevel=ERROR",
 	}
 	sftpArgs = append(sftpArgs, args...)
-	
+
 	cmd := exec.Command("sftp", sftpArgs...)
 	cmd.Env = append(os.Environ(),
 		"SSH_AUTH_SOCK=", // Disable SSH agent
@@ -55,7 +55,7 @@ func sshCommand(args ...string) *exec.Cmd {
 		"-o", "LogLevel=ERROR",
 	}
 	sshArgs = append(sshArgs, args...)
-	
+
 	cmd := exec.Command("ssh", sshArgs...)
 	cmd.Env = append(os.Environ(),
 		"SSH_AUTH_SOCK=", // Disable SSH agent

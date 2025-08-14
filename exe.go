@@ -168,11 +168,11 @@ type Server struct {
 	// Email and billing services
 	postmarkClient *postmark.Client
 	stripeKey      string
-	
+
 	// Test mode - skip animations for faster testing
-	testMode bool
-	devMode        string // Development mode: "" (production) or "local" (Docker)
-	quietMode      bool  // Quiet mode - suppress log output (for tests)
+	testMode  bool
+	devMode   string // Development mode: "" (production) or "local" (Docker)
+	quietMode bool   // Quiet mode - suppress log output (for tests)
 
 	mu       sync.RWMutex
 	stopping bool
@@ -232,7 +232,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dock
 
 	// Initialize container manager with Docker
 	var containerManager container.Manager
-	
+
 	if len(dockerHosts) > 0 {
 		config := &container.Config{
 			DockerHosts:          dockerHosts,
@@ -240,7 +240,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dock
 			DefaultMemoryRequest: "1Gi",
 			DefaultStorageSize:   "10Gi",
 		}
-		
+
 		var managerErr error
 		containerManager, managerErr = container.NewDockerManager(config)
 		if managerErr != nil {
@@ -460,7 +460,7 @@ func (s *Server) inheritUserTeamMemberships(newFingerprint, userEmail string) er
 			VALUES (?, ?, ?)
 			ON CONFLICT(user_fingerprint, team_name) DO UPDATE SET is_admin = ?`,
 			newFingerprint, teamName, isAdmin, isAdmin)
-		
+
 		if err != nil {
 			log.Printf("Failed to add fingerprint %s to team %s: %v", newFingerprint, teamName, err)
 		} else {
@@ -482,7 +482,6 @@ func (s *Server) generateRegistrationToken() string {
 func (s *Server) generateToken() string {
 	return s.generateRegistrationToken()
 }
-
 
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
@@ -506,7 +505,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 		}
 		return nil
 	}
-	
+
 	// Check if email service is configured
 	if s.postmarkClient == nil {
 		return fmt.Errorf("email service not configured")
@@ -984,12 +983,12 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
 	// First validate that the token exists
 	isValid := false
-	
+
 	// Check if this is an SSH session token (in-memory)
 	s.emailVerificationsMu.Lock()
 	_, exists := s.emailVerifications[token]
 	s.emailVerificationsMu.Unlock()
-	
+
 	if exists {
 		isValid = true
 	} else {
@@ -999,12 +998,12 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 			isValid = true
 		}
 	}
-	
+
 	if !isValid {
 		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 		return
 	}
-	
+
 	// Show confirmation form
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<!DOCTYPE html>
@@ -1121,7 +1120,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// This is an SSH session email verification
 		fingerprint := verification.PublicKeyFingerprint
 		email := verification.Email
-		
+
 		// Create the user if they don't exist
 		user, err := s.getUserByFingerprint(fingerprint)
 		if err != nil || user == nil {
@@ -1137,7 +1136,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		} else {
 			log.Printf("User already exists for fingerprint %s", fingerprint)
 		}
-		
+
 		// Store the SSH key as verified
 		publicKey := verification.PublicKey
 		if publicKey != "" {
@@ -1150,7 +1149,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				log.Printf("Error storing SSH key during verification: %v", err)
 			}
 		}
-		
+
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
 		if err != nil {
@@ -1772,7 +1771,7 @@ func (s *Server) validateEmailVerificationToken(token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Clean up used token
 	s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
 
@@ -2049,8 +2048,6 @@ type SSHClient interface {
 	Dial(network, addr string) (net.Conn, error)
 	Close() error
 }
-
-
 
 func (s *Server) parsePtyRequest(payload []byte) (cols, rows int) {
 	if len(payload) < 12 { // Minimum size for term string + dimensions
@@ -2593,7 +2590,7 @@ func (s *Server) handleWhoamiCommand(channel *sshbuf.Channel, fingerprint, email
 	channel.Write([]byte(fmt.Sprintf("\r\n\033[1;36mUser Information:\033[0m\r\n\r\n")))
 	channel.Write([]byte(fmt.Sprintf("\033[1mEmail Address:\033[0m %s\r\n", email)))
 	channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key Fingerprint:\033[0m %s\r\n", fingerprint)))
-	
+
 	// Display public key if available
 	if publicKey != "" {
 		channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key:\033[0m %s\r\n", strings.TrimSpace(publicKey))))
@@ -2635,7 +2632,7 @@ func (s *Server) getSSHPort() string {
 	if s.sshAddr == "" {
 		return "22"
 	}
-	
+
 	// Handle addresses like ":2222" or "localhost:2222"
 	_, port, err := net.SplitHostPort(s.sshAddr)
 	if err != nil {
@@ -2645,7 +2642,7 @@ func (s *Server) getSSHPort() string {
 		}
 		return "22"
 	}
-	
+
 	return port
 }
 
@@ -2707,7 +2704,7 @@ func (s *Server) createMachine(userFingerprint, teamName, name, containerID, ima
 // determineUserShell determines the appropriate shell to use in a container
 func (s *Server) determineUserShell(userFingerprint, containerID string) (string, error) {
 	ctx := context.Background()
-	
+
 	// Get the user's configured shell from passwd database
 	var passwdOut strings.Builder
 	err := s.containerManager.ExecuteInContainer(
@@ -2719,14 +2716,14 @@ func (s *Server) determineUserShell(userFingerprint, containerID string) (string
 		&passwdOut,
 		nil,
 	)
-	
+
 	if err == nil {
 		shell := strings.TrimSpace(passwdOut.String())
 		if shell != "" {
 			return shell, nil
 		}
 	}
-	
+
 	// Fallback to /bin/sh if getent fails
 	return "/bin/sh", nil
 }
@@ -2764,16 +2761,16 @@ func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalW
 		channel.Write([]byte("╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \r\n\r\n"))
 		return
 	}
-	
+
 	// Detect terminal mode (dark or light)
 	terminalMode := s.detectTerminalMode(channel)
-	
+
 	// Clear any remaining OSC response from the buffer
 	s.clearOSCResponse(channel)
-	
+
 	// Get appropriate colors based on terminal mode
 	colors := s.getTerminalColors(terminalMode)
-	
+
 	// More compact ASCII art that fits better in terminals
 	asciiArt := []string{
 		"███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗",
@@ -2866,7 +2863,7 @@ func (s *Server) handleRegistrationWithWidth(channel *sshbuf.Channel, fingerprin
 	terminalMode := s.detectTerminalMode(channel)
 	s.clearOSCResponse(channel)
 	colors := s.getTerminalColors(terminalMode)
-	
+
 	// Show the animated welcome with terminal width
 	s.showAnimatedWelcomeWithWidth(channel, terminalWidth)
 
@@ -3136,10 +3133,10 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 		// Create a context that can be cancelled when email is verified
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		
+
 		// Monitor for Ctrl+C during email verification using interruptible reads
 		interruptChan := make(chan struct{})
-		
+
 		go func() {
 			buf := make([]byte, 1)
 			for {
@@ -3156,40 +3153,40 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 				// Discard other input during email verification
 			}
 		}()
-		
+
 		// Wait for email verification, interrupt, or timeout
 		select {
 		case <-verification.CompleteChan:
 			// Cancel the context to stop the monitoring goroutine
 			cancel()
-			
+
 			channel.Write([]byte("\r\n\033[1;32mDevice verified successfully!\033[0m\r\n\r\n"))
-			
+
 			// Add a small delay to ensure the monitoring goroutine exits cleanly
 			time.Sleep(100 * time.Millisecond)
 			return nil
-			
+
 		case <-interruptChan:
 			// Cancel the context to stop the monitoring goroutine
 			cancel()
-			
+
 			// Clean up the verification
 			s.emailVerificationsMu.Lock()
 			delete(s.emailVerifications, token)
 			s.emailVerificationsMu.Unlock()
-			
+
 			channel.Write([]byte("\r\n\033[1;33mVerification cancelled.\033[0m\r\n\r\n"))
 			return fmt.Errorf("verification cancelled by user")
-			
+
 		case <-time.After(15 * time.Minute):
 			// Cancel the context to stop the monitoring goroutine
 			cancel()
-			
+
 			// Clean up the verification
 			s.emailVerificationsMu.Lock()
 			delete(s.emailVerifications, token)
 			s.emailVerificationsMu.Unlock()
-			
+
 			channel.Write([]byte("\r\n\033[1;31mEmail verification timed out.\033[0m Please try again.\r\n\r\n"))
 			return fmt.Errorf("verification timed out")
 		}
@@ -3234,10 +3231,10 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 	// Create a context that can be cancelled when email is verified
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	// Monitor for Ctrl+C during email verification using interruptible reads
 	interruptChan := make(chan struct{})
-	
+
 	go func() {
 		buf := make([]byte, 1)
 		for {
@@ -3254,25 +3251,25 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 			// Discard other input during email verification
 		}
 	}()
-	
+
 	// Wait for email verification, interrupt, or timeout
 	select {
 	case <-verification.CompleteChan:
 		// Cancel the context to stop the monitoring goroutine
 		cancel()
-		
+
 		channel.Write([]byte("\r\n\033[1;32mEmail verified successfully!\033[0m\r\n\r\n"))
-		
+
 		// Add a small delay to ensure the monitoring goroutine exits cleanly
 		time.Sleep(100 * time.Millisecond)
-		
+
 		// Start team name creation
 		s.startTeamNameCreation(channel, fingerprint, email)
 
 	case <-interruptChan:
 		// User pressed Ctrl+C
 		channel.Write([]byte("\r\n\033[1;33mRegistration cancelled. You can reconnect anytime to continue.\033[0m\r\n"))
-		
+
 		// Clean up verification
 		s.emailVerificationsMu.Lock()
 		delete(s.emailVerifications, token)
@@ -3281,7 +3278,7 @@ The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
 	case <-time.After(10 * time.Minute):
 		// Cancel the context to stop the monitoring goroutine
 		cancel()
-		
+
 		channel.Write([]byte("\r\nEmail verification timeout. Please try connecting again.\r\n"))
 
 		// Clean up verification
@@ -3882,11 +3879,10 @@ func (s *Server) migrateLegacyUserKey(email, fingerprint, publicKey string) erro
 	return err
 }
 
-
 // getUserByFingerprint retrieves a user by their SSH key fingerprint
 func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 	var user User
-	
+
 	// First try to find user by their primary fingerprint
 	err := s.db.QueryRow(`
 		SELECT public_key_fingerprint, email, created_at 
@@ -3897,7 +3893,7 @@ func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 	if err == nil {
 		return &user, nil
 	}
-	
+
 	if err != sql.ErrNoRows {
 		return nil, err
 	}
@@ -4000,7 +3996,7 @@ func (s *Server) createUser(fingerprint, email string) error {
 		UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`,
 		personalTeamName, fingerprint)
 	// Ignore the error if the key doesn't exist yet - it will be added later
-	
+
 	return tx.Commit()
 }
 
@@ -4021,7 +4017,7 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 		return err
 	}
 	defer tx.Rollback()
-	
+
 	// Create the team
 	_, err = tx.Exec(`
 		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint) 
@@ -4030,7 +4026,7 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Add user as admin of the team
 	_, err = tx.Exec(`
 		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
@@ -4039,7 +4035,7 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Set as default team
 	_, err = tx.Exec(`
 		UPDATE ssh_keys 
@@ -4049,7 +4045,7 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return tx.Commit()
 }
 

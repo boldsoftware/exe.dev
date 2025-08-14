@@ -92,7 +92,7 @@ func TestSSHEmailVerificationBug(t *testing.T) {
 	// 1. Start email verification
 	email := "test@example.com"
 	token := fmt.Sprintf("%x", make([]byte, 16))
-	
+
 	// Manually set up the verification like startEmailVerificationNew does
 	completeChan := make(chan struct{})
 	server.emailVerificationsMu.Lock()
@@ -102,7 +102,7 @@ func TestSSHEmailVerificationBug(t *testing.T) {
 		PublicKeyFingerprint: fingerprint,
 		PublicKey:            publicKeyStr,
 		CompleteChan:         completeChan,
-		CreatedAt:           time.Now(),
+		CreatedAt:            time.Now(),
 	}
 	server.emailVerificationsMu.Unlock()
 
@@ -169,7 +169,7 @@ func TestSSHEmailVerificationBug(t *testing.T) {
 	var sshKeyCount int
 	err = server.db.QueryRow(`SELECT COUNT(*) FROM ssh_keys WHERE fingerprint = ?`, fingerprint).Scan(&sshKeyCount)
 	if err != nil {
-		t.Fatalf("Failed to query ssh_keys: %v", err)  
+		t.Fatalf("Failed to query ssh_keys: %v", err)
 	}
 	t.Logf("SSH keys in database: %d", sshKeyCount)
 

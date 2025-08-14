@@ -70,4 +70,3 @@ func containsPrefix(shortened, original string) bool {
 	expectedPrefix := original[:46] // Max prefix length we use
 	return len(shortened) >= 46 && shortened[:46] == expectedPrefix
 }
-

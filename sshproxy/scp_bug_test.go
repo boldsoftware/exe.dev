@@ -76,11 +76,11 @@ func TestSCPBugRootCause(t *testing.T) {
 	err = file.Close()
 	if err != nil {
 		t.Logf("✓✓✓ Close() FAILED as expected: %v", err)
-		
+
 		if strings.Contains(err.Error(), "Is a directory") {
 			t.Log("✓ Error confirms '/' is a directory")
 		}
-		
+
 		t.Log("")
 		t.Log("CONCLUSION: This causes 'scp: close remote: Failure'")
 		t.Log("The fix needs to handle '/' as a special case")
@@ -102,7 +102,7 @@ func TestSCPIntegration(t *testing.T) {
 	t.Run("BuggyHandler", func(t *testing.T) {
 		testSCPWithHandler(t, false) // Use original buggy handler
 	})
-	
+
 	t.Run("FixedHandler", func(t *testing.T) {
 		testSCPWithHandler(t, true) // Use fixed handler
 	})
@@ -145,36 +145,36 @@ func testSCPWithHandler(t *testing.T, useFixed bool) {
 
 			go func(conn net.Conn) {
 				defer conn.Close()
-				
+
 				sshConn, channels, reqs, err := ssh.NewServerConn(conn, config)
 				if err != nil {
 					return
 				}
 				defer sshConn.Close()
-				
+
 				go ssh.DiscardRequests(reqs)
-				
+
 				for newChannel := range channels {
 					if newChannel.ChannelType() != "session" {
 						newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
 						continue
 					}
-					
+
 					channel, requests, err := newChannel.Accept()
 					if err != nil {
 						continue
 					}
-					
+
 					go func(channel ssh.Channel, requests <-chan *ssh.Request) {
 						defer channel.Close()
-						
+
 						for req := range requests {
 							if req.Type == "subsystem" && len(req.Payload) > 4 && string(req.Payload[4:]) == "sftp" {
 								req.Reply(true, nil)
-								
+
 								ctx := context.Background()
 								fs := NewUnixContainerFS(manager, "test", containerID, "/workspace")
-								
+
 								var handlers sftp.Handlers
 								if useFixed {
 									// Use fixed handler
@@ -195,7 +195,7 @@ func testSCPWithHandler(t *testing.T, useFixed bool) {
 										FileList: h,
 									}
 								}
-								
+
 								server := sftp.NewRequestServer(channel, handlers)
 								if err := server.Serve(); err != nil && err != io.EOF {
 									t.Logf("SFTP server error: %v", err)

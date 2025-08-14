@@ -50,32 +50,32 @@ func TestDebugProduction(t *testing.T) {
 
 	// Now test actual file operations
 	t.Log("\n=== File Operations Test ===")
-	
+
 	// This is what happens when SCP sends /test.txt
 	testPath := "/test.txt"
 	resolvedPath := handler.resolvePath(testPath)
 	t.Logf("Testing write to %q (resolved to %q)", testPath, resolvedPath)
-	
+
 	// Try to create the file
 	file, err := fs.OpenFile(ctx, resolvedPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		t.Fatalf("OpenFile failed: %v", err)
 	}
-	
+
 	// Write data
 	_, err = file.Write([]byte("test"))
 	if err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
-	
+
 	// Close - this is where it might fail
 	err = file.Close()
 	if err != nil {
 		t.Fatalf("Close failed: %v", err)
 	}
-	
+
 	t.Log("✓ File operation succeeded")
-	
+
 	// Verify file was created
 	var out strings.Builder
 	cmd = exec.Command("docker", "exec", containerID, "ls", "-la", "/workspace")

@@ -91,7 +91,7 @@ func TestSCPProductionBug(t *testing.T) {
 
 								ctx := context.Background()
 								fs := NewUnixContainerFS(manager, "test", containerID, "/workspace")
-								
+
 								// Use a wrapper that logs events
 								originalHandler := NewOriginalSFTPHandler(ctx, fs, "/workspace")
 								handler := &loggingHandler{
@@ -155,7 +155,7 @@ func TestSCPProductionBug(t *testing.T) {
 		t.Logf("Command: scp test.txt user@localhost:~")
 		t.Logf("Exit code: %v", err)
 		t.Logf("Output: %s", string(output))
-		
+
 		t.Log("\n=== SFTP Events ===")
 		for _, event := range events {
 			t.Log(event)

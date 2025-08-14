@@ -23,7 +23,7 @@ func TestClearOSCResponseConsumesUserInput(t *testing.T) {
 	}
 
 	// Provide both OSC response and user input upfront to avoid race conditions
-	oscResponse := "\033]11;rgb:0000/0000/0000\033\\"  // Dark background response
+	oscResponse := "\033]11;rgb:0000/0000/0000\033\\" // Dark background response
 	userInput := "user@example.com\n"
 	combinedInput := oscResponse + userInput
 	mockChannel.SetQuickInput(combinedInput)
@@ -38,7 +38,7 @@ func TestClearOSCResponseConsumesUserInput(t *testing.T) {
 	t.Logf("Combined input provided: %q (length %d)", combinedInput, len(combinedInput))
 	terminalMode := server.detectTerminalMode(bufferedChannel)
 	t.Logf("Detected terminal mode: %v", terminalMode)
-	
+
 	// User starts typing immediately (simulating very fast typing)
 	// Give sshbuf time to buffer the user input
 	time.Sleep(5 * time.Millisecond)
@@ -48,33 +48,33 @@ func TestClearOSCResponseConsumesUserInput(t *testing.T) {
 
 	// The main goal of this test is to ensure it doesn't hang for 10 minutes
 	// The test has succeeded if we reach this point without timing out
-	
+
 	// Check if any data is available after clearOSCResponse
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	
+
 	temp := make([]byte, 1)
 	n, err := bufferedChannel.ReadCtx(ctx, temp)
-	
+
 	if err != nil || n == 0 {
 		// This is expected behavior since detectTerminalMode consumed all input
 		t.Logf("No data available after clearOSCResponse (expected): %v", err)
 		// Test passes - we demonstrated that the function completes quickly
 		return
 	}
-	
+
 	// If there is data available, try to read it without hanging
 	t.Logf("First byte available: %q (%d)", temp[0], temp[0])
-	
+
 	done := make(chan struct{})
 	var result string
 	var readErr error
-	
+
 	go func() {
 		defer close(done)
 		result, readErr = server.readLineFromChannel(bufferedChannel)
 	}()
-	
+
 	select {
 	case <-done:
 		if readErr != nil {
@@ -116,10 +116,10 @@ func TestClearOSCResponseTiming(t *testing.T) {
 
 			// Trigger the problematic sequence
 			server.detectTerminalMode(bufferedChannel)
-			
+
 			// User input starts arriving after the delay
 			time.Sleep(tc.delay + 1*time.Millisecond)
-			
+
 			// clearOSCResponse consumes anything in the buffer
 			server.clearOSCResponse(bufferedChannel)
 
@@ -133,7 +133,7 @@ func TestClearOSCResponseTiming(t *testing.T) {
 			// The main goal is to ensure the test completes without hanging
 			// With the current implementation, detectTerminalMode may consume input
 			// depending on timing, which is expected behavior
-			
+
 			// Just log the results - the important thing is that we don't hang
 			if n > 0 {
 				t.Logf("For delay=%v, got input: %c", tc.delay, temp[0])
@@ -146,14 +146,14 @@ func TestClearOSCResponseTiming(t *testing.T) {
 
 // QuickTypingChannel simulates a user typing immediately
 type QuickTypingChannel struct {
-	writeBuf     *bytes.Buffer
-	input        []byte
-	inputPos     int
-	mu           sync.Mutex
-	closed       bool
-	phase        int
-	oscResponse  []byte
-	userInput    []byte
+	writeBuf    *bytes.Buffer
+	input       []byte
+	inputPos    int
+	mu          sync.Mutex
+	closed      bool
+	phase       int
+	oscResponse []byte
+	userInput   []byte
 }
 
 func (c *QuickTypingChannel) SetQuickInput(input string) {
@@ -199,7 +199,7 @@ func (c *QuickTypingChannel) Close() error {
 	c.closed = true
 	return nil
 }
-func (c *QuickTypingChannel) CloseWrite() error  { return nil }
+func (c *QuickTypingChannel) CloseWrite() error { return nil }
 func (c *QuickTypingChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }
@@ -209,13 +209,13 @@ var _ ssh.Channel = (*QuickTypingChannel)(nil)
 
 // DelayedTypingChannel simulates typing after a specified delay
 type DelayedTypingChannel struct {
-	writeBuf    *bytes.Buffer
-	input       []byte
-	inputPos    int
-	typingDelay time.Duration
-	startTime   time.Time
-	mu          sync.Mutex
-	closed      bool
+	writeBuf     *bytes.Buffer
+	input        []byte
+	inputPos     int
+	typingDelay  time.Duration
+	startTime    time.Time
+	mu           sync.Mutex
+	closed       bool
 	finishedTime time.Time
 }
 
@@ -279,7 +279,7 @@ func (c *DelayedTypingChannel) Close() error {
 	c.closed = true
 	return nil
 }
-func (c *DelayedTypingChannel) CloseWrite() error  { return nil }
+func (c *DelayedTypingChannel) CloseWrite() error { return nil }
 func (c *DelayedTypingChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }

@@ -258,7 +258,7 @@ func TestBaseURLGeneration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping test that requires Docker in short mode")
 	}
-	
+
 	tests := []struct {
 		httpAddr  string
 		httpsAddr string

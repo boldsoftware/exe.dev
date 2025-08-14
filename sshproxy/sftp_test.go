@@ -86,12 +86,12 @@ func (m *mockContainerFS) OpenFile(ctx context.Context, path string, flags int, 
 			}
 		}
 	}
-	
+
 	file, ok := m.files[path]
 	if !ok && flags&os.O_CREATE == 0 {
 		return nil, os.ErrNotExist
 	}
-	
+
 	return &mockFileHandle{
 		fs:    m,
 		path:  path,
@@ -297,11 +297,11 @@ func TestSFTPHandlerPathResolution(t *testing.T) {
 		{"absolute path", "/tmp/file.txt", "/tmp/file.txt"},
 		{"absolute workspace", "/workspace/file.txt", "/workspace/file.txt"},
 	}
-	
+
 	ctx := context.Background()
 	fs := newMockContainerFS()
 	handler := NewSFTPHandler(ctx, fs, "/workspace")
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := handler.resolvePath(tt.input)
@@ -316,7 +316,7 @@ func TestSFTPFileUpload(t *testing.T) {
 	ctx := context.Background()
 	fs := newMockContainerFS()
 	handler := NewSFTPHandler(ctx, fs, "/workspace")
-	
+
 	// Test cases for file upload paths
 	tests := []struct {
 		name         string
@@ -358,16 +358,16 @@ func TestSFTPFileUpload(t *testing.T) {
 			expectError: false, // Now succeeds - creates file in directory
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := &sftp.Request{
 				Method:   "Put",
 				Filepath: tt.sftpPath,
 			}
-			
+
 			writer, err := handler.Filewrite(req)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error for path %q, got nil", tt.sftpPath)
@@ -376,7 +376,7 @@ func TestSFTPFileUpload(t *testing.T) {
 				if err != nil {
 					t.Errorf("Unexpected error for path %q: %v", tt.sftpPath, err)
 				}
-				
+
 				// Write some data
 				if writer != nil {
 					testData := []byte("test content")
@@ -387,12 +387,12 @@ func TestSFTPFileUpload(t *testing.T) {
 					if n != len(testData) {
 						t.Errorf("WriteAt wrote %d bytes, expected %d", n, len(testData))
 					}
-					
+
 					// Close the writer
 					if closer, ok := writer.(io.Closer); ok {
 						closer.Close()
 					}
-					
+
 					// Verify file was created at expected path (if specified)
 					if tt.expectedPath != "" {
 						if _, exists := fs.files[tt.expectedPath]; !exists {
@@ -413,13 +413,13 @@ func TestSFTPDirectoryOperations(t *testing.T) {
 	ctx := context.Background()
 	fs := newMockContainerFS()
 	handler := NewSFTPHandler(ctx, fs, "/workspace")
-	
+
 	// Create a directory
 	err := handler.mkdir("testdir", &sftp.FileStat{Mode: 0755})
 	if err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
-	
+
 	// Check directory was created
 	expectedPath := "/workspace/testdir"
 	file, exists := fs.files[expectedPath]
@@ -429,13 +429,13 @@ func TestSFTPDirectoryOperations(t *testing.T) {
 	if !file.isDir {
 		t.Errorf("Created file is not a directory")
 	}
-	
+
 	// List directory contents
 	lister, err := handler.list(".")
 	if err != nil {
 		t.Fatalf("list failed: %v", err)
 	}
-	
+
 	var entries []os.FileInfo
 	for {
 		batch := make([]os.FileInfo, 10)
@@ -448,7 +448,7 @@ func TestSFTPDirectoryOperations(t *testing.T) {
 			t.Fatalf("ListAt failed: %v", err)
 		}
 	}
-	
+
 	// Should have at least the testdir
 	found := false
 	for _, entry := range entries {
@@ -460,13 +460,13 @@ func TestSFTPDirectoryOperations(t *testing.T) {
 	if !found {
 		t.Errorf("Created directory not found in listing")
 	}
-	
+
 	// Remove directory
 	err = handler.rmdir("testdir")
 	if err != nil {
 		t.Fatalf("rmdir failed: %v", err)
 	}
-	
+
 	// Check directory was removed
 	if _, exists := fs.files[expectedPath]; exists {
 		t.Errorf("Directory not removed")
@@ -477,7 +477,7 @@ func TestSFTPRename(t *testing.T) {
 	ctx := context.Background()
 	fs := newMockContainerFS()
 	handler := NewSFTPHandler(ctx, fs, "/workspace")
-	
+
 	// Create a file
 	oldPath := "/workspace/old.txt"
 	fs.files[oldPath] = &mockFile{
@@ -485,18 +485,18 @@ func TestSFTPRename(t *testing.T) {
 		mode:    0644,
 		mtime:   time.Now(),
 	}
-	
+
 	// Rename file
 	err := handler.rename("old.txt", "new.txt")
 	if err != nil {
 		t.Fatalf("rename failed: %v", err)
 	}
-	
+
 	// Check old file is gone
 	if _, exists := fs.files[oldPath]; exists {
 		t.Errorf("Old file still exists")
 	}
-	
+
 	// Check new file exists
 	newPath := "/workspace/new.txt"
 	file, exists := fs.files[newPath]
@@ -512,7 +512,7 @@ func TestSFTPSymlink(t *testing.T) {
 	ctx := context.Background()
 	fs := newMockContainerFS()
 	handler := NewSFTPHandler(ctx, fs, "/workspace")
-	
+
 	// Create a target file
 	targetPath := "/workspace/target.txt"
 	fs.files[targetPath] = &mockFile{
@@ -520,13 +520,13 @@ func TestSFTPSymlink(t *testing.T) {
 		mode:    0644,
 		mtime:   time.Now(),
 	}
-	
+
 	// Create symlink
 	err := handler.symlink("target.txt", "link.txt")
 	if err != nil {
 		t.Fatalf("symlink failed: %v", err)
 	}
-	
+
 	// Check symlink exists
 	linkPath := "/workspace/link.txt"
 	link, exists := fs.files[linkPath]
@@ -536,13 +536,13 @@ func TestSFTPSymlink(t *testing.T) {
 	if link.mode&os.ModeSymlink == 0 {
 		t.Errorf("Created file is not a symlink")
 	}
-	
+
 	// Read symlink
 	lister, err := handler.readlink("link.txt")
 	if err != nil {
 		t.Fatalf("readlink failed: %v", err)
 	}
-	
+
 	entries := make([]os.FileInfo, 1)
 	n, _ := lister.ListAt(entries, 0)
 	if n > 0 {
@@ -557,7 +557,7 @@ func TestSFTPPermissions(t *testing.T) {
 	ctx := context.Background()
 	fs := newMockContainerFS()
 	handler := NewSFTPHandler(ctx, fs, "/workspace")
-	
+
 	// Create a file
 	filePath := "/workspace/test.txt"
 	fs.files[filePath] = &mockFile{
@@ -565,7 +565,7 @@ func TestSFTPPermissions(t *testing.T) {
 		mode:    0644,
 		mtime:   time.Now(),
 	}
-	
+
 	// Change permissions
 	err := handler.setstat("test.txt", &sftp.FileStat{
 		Mode:  0755,
@@ -575,7 +575,7 @@ func TestSFTPPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setstat failed: %v", err)
 	}
-	
+
 	// Check permissions changed
 	file := fs.files[filePath]
 	if file.mode != 0755 {

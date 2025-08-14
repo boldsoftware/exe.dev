@@ -94,7 +94,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 
 	// Request PTY - this is crucial for terminal input
 	modes := ssh.TerminalModes{
-		ssh.ECHO:          1,     // Enable echo
+		ssh.ECHO:          1, // Enable echo
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
 	}
@@ -123,7 +123,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 		buf := make([]byte, 4096)
 		output := &bytes.Buffer{}
 		deadline := time.Now().Add(timeout)
-		
+
 		for time.Now().Before(deadline) {
 			// Set a short read timeout to avoid blocking
 			n, err := stdout.Read(buf)
@@ -151,7 +151,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 
 	// Step 2: Test that we can write input character by character
 	testEmail := "test@example.com"
-	
+
 	// Write email character by character to test terminal responsiveness
 	for i, ch := range testEmail {
 		n, err := stdin.Write([]byte{byte(ch)})
@@ -164,7 +164,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 		// Small delay to simulate typing
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	// Send newline to submit
 	n, err := stdin.Write([]byte("\n"))
 	if err != nil {
@@ -173,7 +173,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("Failed to write newline: wrote %d bytes, expected 1", n)
 	}
-	
+
 	t.Logf("Successfully entered email: %s", testEmail)
 
 	// Step 3: Verify email was accepted
@@ -185,14 +185,14 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 		}
 	}
 	t.Log("Email was accepted and processed correctly")
-	
+
 	// Step 4: Send Ctrl+C to cancel and exit cleanly
 	stdin.Write([]byte{3}) // Ctrl+C
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Session should end
 	session.Wait()
-	
+
 	t.Log("Test completed successfully - terminal input works correctly")
 }
 

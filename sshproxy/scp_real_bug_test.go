@@ -51,14 +51,14 @@ func TestSCPRealBug(t *testing.T) {
 
 			hostKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 			hostSigner, _ := ssh.NewSignerFromKey(hostKey)
-			
+
 			config := &ssh.ServerConfig{
 				NoClientAuth: true,
 			}
 			config.AddHostKey(hostSigner)
 
 			manager := &DockerContainerManager{containerID: containerID}
-			
+
 			// Track errors from the SFTP server
 			sftpErrors := make(chan error, 10)
 
@@ -100,7 +100,7 @@ func TestSCPRealBug(t *testing.T) {
 
 										ctx := context.Background()
 										fs := NewUnixContainerFS(manager, "test", containerID, "/workspace")
-										
+
 										var handler sftp.Handlers
 										if tc.useOriginal {
 											h := NewOriginalSFTPHandler(ctx, fs, "/workspace")
@@ -149,9 +149,9 @@ func TestSCPRealBug(t *testing.T) {
 			// Test 1: SCP to ~ (which becomes /)
 			t.Run("ToTilde", func(t *testing.T) {
 				cmd := scpCommand("-P", port, testFile, "test@localhost:~")
-				
+
 				output, err := cmd.CombinedOutput()
-				
+
 				if tc.useOriginal {
 					// Original handler should fail
 					if err == nil {
@@ -188,9 +188,9 @@ func TestSCPRealBug(t *testing.T) {
 			// Test 2: SCP to explicit path
 			t.Run("ToExplicitPath", func(t *testing.T) {
 				cmd := scpCommand("-P", port, testFile, "test@localhost:/workspace/uploaded.txt")
-				
+
 				output, err := cmd.CombinedOutput()
-				
+
 				if err != nil {
 					if strings.Contains(string(output), "close remote: Failure") {
 						t.Logf("Got 'close remote: Failure' for explicit path")
@@ -206,17 +206,17 @@ func TestSCPRealBug(t *testing.T) {
 }
 
 func createSimpleContainer(t *testing.T) string {
-	cmd := exec.Command("docker", "run", "-d", "--rm", "ubuntu:22.04", 
+	cmd := exec.Command("docker", "run", "-d", "--rm", "ubuntu:22.04",
 		"sh", "-c", "mkdir -p /workspace && sleep 300")
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)
 	}
-	
+
 	containerID := strings.TrimSpace(string(output))
 	time.Sleep(500 * time.Millisecond) // Let container start
-	
+
 	return containerID
 }
 

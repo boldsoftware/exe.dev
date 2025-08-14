@@ -124,7 +124,7 @@ expect eof
 	cmd := exec.Command("expect", scriptFile)
 	output, err := cmd.CombinedOutput()
 	t.Logf("Expect output:\n%s", output)
-	
+
 	if err != nil {
 		t.Logf("Expect script failed (this is expected for unverified signup): %v", err)
 	}
@@ -140,7 +140,7 @@ expect eof
 	if count > 0 {
 		t.Errorf("Expected 0 user records (verification not completed), got %d", count)
 	}
-	
+
 	// Check that an email verification is pending in memory
 	// (we can't easily check this without accessing server internals)
 }
@@ -207,14 +207,14 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
-	
+
 	hash := sha256.Sum256(signer.PublicKey().Marshal())
 	fingerprint := hex.EncodeToString(hash[:])
 
 	// Set up registered user in database
 	email := "test@example.com"
 	teamName := "testteam"
-	
+
 	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -232,7 +232,7 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 
 	// Mark SSH key as verified
 	publicKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified) VALUES (?, ?, ?, 1)`, 
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified) VALUES (?, ?, ?, 1)`,
 		fingerprint, email, string(publicKeyBytes))
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
@@ -293,7 +293,7 @@ expect eof
 	cmd := exec.Command("expect", scriptFile)
 	output, err := cmd.CombinedOutput()
 	t.Logf("Expect output:\n%s", output)
-	
+
 	if err != nil {
 		t.Logf("Expect script error (might be OK if machine was created): %v", err)
 	}
@@ -304,7 +304,7 @@ expect eof
 	if err != nil {
 		t.Fatalf("Failed to query machines: %v", err)
 	}
-	
+
 	// The machine might not be created if Docker is not fully functional in CI
 	if strings.Contains(string(output), "Machine created successfully") || strings.Contains(string(output), "Machine found in list") {
 		if machineCount != 1 {
@@ -563,12 +563,12 @@ func TestSSHDirectExecCommands(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			session.Stdout = &stdout
 			session.Stderr = &stderr
-			
+
 			err = session.Run(tc.command)
-			
+
 			output := stdout.String() + stderr.String()
 			t.Logf("Command '%s' output: %s", tc.command, output)
-			
+
 			if !strings.Contains(output, tc.expected) {
 				t.Errorf("Expected output to contain '%s', got: %s", tc.expected, output)
 			}

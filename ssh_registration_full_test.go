@@ -156,7 +156,7 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 		buf := make([]byte, 4096)
 		output := &bytes.Buffer{}
 		deadline := time.Now().Add(timeout)
-		
+
 		for time.Now().Before(deadline) {
 			n, err := stdout.Read(buf)
 			if n > 0 {
@@ -316,7 +316,7 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 		buf := make([]byte, 4096)
 		output := &bytes.Buffer{}
 		deadline := time.Now().Add(timeout)
-		
+
 		for time.Now().Before(deadline) {
 			n, err := stdout2.Read(buf)
 			if n > 0 {
@@ -350,20 +350,20 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 	output, found = readUntil2("No machines", 5*time.Second)
 	if !found {
 		// Might say "machines found" if there are machines
-		output, found = readUntil2("machines", 5*time.Second) 
+		output, found = readUntil2("machines", 5*time.Second)
 	}
-	
+
 	if found {
 		t.Log("List command executed successfully")
 		t.Logf("List output: %s", output)
 	} else {
 		t.Errorf("List command not working. Output:\n%s", output)
 	}
-	
+
 	// Step 10: Test help command as another simple test
 	t.Log("Sending 'help' command")
 	stdin2.Write([]byte("help\n"))
-	
+
 	output, found = readUntil2("Machine Management", 5*time.Second)
 	if found {
 		t.Log("Help command executed successfully")
@@ -375,7 +375,7 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 	t.Log("Exiting session")
 	stdin2.Write([]byte("exit\n"))
 	session2.Wait()
-	
+
 	t.Log("Test completed successfully - registration flow works with reconnection")
 }
 
@@ -511,7 +511,7 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 	// Read initial output
 	buf := make([]byte, 4096)
 	output := &bytes.Buffer{}
-	
+
 	// Collect initial output
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -534,11 +534,11 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 
 	// Clear buffer and test commands
 	output.Reset()
-	
+
 	// Send a simple command
 	t.Log("Testing 'help' command")
 	stdin.Write([]byte("help\n"))
-	
+
 	// Read response with timeout
 	responseReceived := false
 	deadline = time.Now().Add(5 * time.Second)
@@ -564,7 +564,7 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 	output.Reset()
 	t.Log("Testing 'list' command")
 	stdin.Write([]byte("list\n"))
-	
+
 	responseReceived = false
 	deadline = time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

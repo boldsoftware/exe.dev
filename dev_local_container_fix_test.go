@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+
 	"exe.dev/container"
 )
 
@@ -40,15 +41,15 @@ func TestDevLocalContainerFix(t *testing.T) {
 
 	// Test container creation and lookup
 	ctx := context.Background()
-	
+
 	// Create a container
 	req := &container.CreateContainerRequest{
 		UserID:   "test-user",
-		TeamName: "test-team", 
+		TeamName: "test-team",
 		Name:     "test-container",
 		Image:    "alpine:latest",
 	}
-	
+
 	createdContainer, err := dockerManager.CreateContainer(ctx, req)
 	if err != nil {
 		t.Logf("Container creation error (expected if Docker not available): %v", err)

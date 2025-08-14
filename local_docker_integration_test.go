@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+
 	"exe.dev/container"
 )
 
@@ -40,7 +41,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 
 	// Test basic container operations
 	ctx := context.Background()
-	
+
 	// Create a container
 	req := &container.CreateContainerRequest{
 		UserID:   "test-user",
@@ -48,7 +49,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 		Name:     "test-container",
 		Image:    "alpine:latest",
 	}
-	
+
 	createdContainer, err := dockerManager.CreateContainer(ctx, req)
 	if err != nil {
 		t.Logf("Container creation error (expected if Docker not available): %v", err)
@@ -85,8 +86,8 @@ func TestLocalDockerIntegration(t *testing.T) {
 
 func TestDevModeString(t *testing.T) {
 	tests := []struct {
-		devMode  string
-		valid    bool
+		devMode string
+		valid   bool
 	}{
 		{"", true},
 		{"local", true},
@@ -99,7 +100,7 @@ func TestDevModeString(t *testing.T) {
 			// This test verifies that the validation in cmd/exed/exed.go works
 			// The actual validation happens in the main function
 			validModes := map[string]bool{"": true, "local": true}
-			
+
 			if validModes[tt.devMode] != tt.valid {
 				t.Errorf("Expected devMode %q to be valid=%v", tt.devMode, tt.valid)
 			}

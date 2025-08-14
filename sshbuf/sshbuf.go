@@ -27,19 +27,19 @@ func New(ch ssh.Channel) *Channel {
 		done: make(chan struct{}),
 	}
 	bc.cond = sync.NewCond(&bc.mu)
-	
+
 	go bc.readLoop()
-	
+
 	return bc
 }
 
 func (bc *Channel) readLoop() {
 	defer close(bc.done)
-	
+
 	readBuf := make([]byte, defaultBufferSize)
 	for {
 		n, err := bc.ch.Read(readBuf)
-		
+
 		bc.mu.Lock()
 		if n > 0 {
 			bc.buf = append(bc.buf, readBuf[:n]...)
@@ -59,25 +59,25 @@ func (bc *Channel) readLoop() {
 func (bc *Channel) Read(p []byte) (int, error) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
-	
+
 	for len(bc.buf) == 0 && !bc.closed {
 		bc.cond.Wait()
 	}
-	
+
 	if len(bc.buf) == 0 && bc.closed {
 		if bc.err != nil {
 			return 0, bc.err
 		}
 		return 0, io.EOF
 	}
-	
+
 	n := copy(p, bc.buf)
 	bc.buf = bc.buf[n:]
-	
+
 	if len(bc.buf) == 0 && cap(bc.buf) > defaultBufferSize*2 {
 		bc.buf = make([]byte, 0, defaultBufferSize)
 	}
-	
+
 	return n, nil
 }
 
@@ -85,10 +85,10 @@ func (bc *Channel) ReadCtx(ctx context.Context, p []byte) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	
+
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
-	
+
 	// Fast path: data already available or channel closed
 	if len(bc.buf) > 0 || bc.closed {
 		if len(bc.buf) == 0 && bc.closed {
@@ -97,31 +97,31 @@ func (bc *Channel) ReadCtx(ctx context.Context, p []byte) (int, error) {
 			}
 			return 0, io.EOF
 		}
-		
+
 		n := copy(p, bc.buf)
 		bc.buf = bc.buf[n:]
-		
+
 		if len(bc.buf) == 0 && cap(bc.buf) > defaultBufferSize*2 {
 			bc.buf = make([]byte, 0, defaultBufferSize)
 		}
-		
+
 		return n, nil
 	}
-	
+
 	// Slow path: need to wait for data with context cancellation
 	done := make(chan struct{})
 	var n int
 	var err error
-	
+
 	go func() {
 		bc.mu.Lock()
 		defer bc.mu.Unlock()
 		defer close(done)
-		
+
 		for len(bc.buf) == 0 && !bc.closed {
 			bc.cond.Wait()
 		}
-		
+
 		if len(bc.buf) == 0 && bc.closed {
 			if bc.err != nil {
 				err = bc.err
@@ -130,18 +130,18 @@ func (bc *Channel) ReadCtx(ctx context.Context, p []byte) (int, error) {
 			}
 			return
 		}
-		
+
 		n = copy(p, bc.buf)
 		bc.buf = bc.buf[n:]
-		
+
 		if len(bc.buf) == 0 && cap(bc.buf) > defaultBufferSize*2 {
 			bc.buf = make([]byte, 0, defaultBufferSize)
 		}
 	}()
-	
+
 	// Release the lock while waiting
 	bc.mu.Unlock()
-	
+
 	select {
 	case <-ctx.Done():
 		bc.mu.Lock()
@@ -160,17 +160,17 @@ func (bc *Channel) ReadCtx(ctx context.Context, p []byte) (int, error) {
 func (bc *Channel) Unread(data []byte) {
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
-	
+
 	if len(data) == 0 {
 		return
 	}
-	
+
 	// Prepend the data to the buffer
 	newBuf := make([]byte, len(data)+len(bc.buf))
 	copy(newBuf, data)
 	copy(newBuf[len(data):], bc.buf)
 	bc.buf = newBuf
-	
+
 	// Signal any waiting readers
 	bc.cond.Signal()
 }

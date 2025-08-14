@@ -9,37 +9,37 @@ import (
 type ContainerStatus string
 
 const (
-	StatusPending   ContainerStatus = "pending"
-	StatusRunning   ContainerStatus = "running"
-	StatusStopped   ContainerStatus = "stopped"
-	StatusFailed    ContainerStatus = "failed"
-	StatusBuilding  ContainerStatus = "building"
-	StatusUnknown   ContainerStatus = "unknown"
+	StatusPending  ContainerStatus = "pending"
+	StatusRunning  ContainerStatus = "running"
+	StatusStopped  ContainerStatus = "stopped"
+	StatusFailed   ContainerStatus = "failed"
+	StatusBuilding ContainerStatus = "building"
+	StatusUnknown  ContainerStatus = "unknown"
 )
 
 // Container represents a user's container instance
 type Container struct {
-	ID          string          `json:"id"`
-	UserID      string          `json:"user_id"`
-	Name        string          `json:"name"`
-	TeamName    string          `json:"team_name,omitempty"`
-	Image       string          `json:"image"`
-	Status      ContainerStatus `json:"status"`
-	CreatedAt   time.Time       `json:"created_at"`
-	StartedAt   *time.Time      `json:"started_at,omitempty"`
-	StoppedAt   *time.Time      `json:"stopped_at,omitempty"`
-	
+	ID        string          `json:"id"`
+	UserID    string          `json:"user_id"`
+	Name      string          `json:"name"`
+	TeamName  string          `json:"team_name,omitempty"`
+	Image     string          `json:"image"`
+	Status    ContainerStatus `json:"status"`
+	CreatedAt time.Time       `json:"created_at"`
+	StartedAt *time.Time      `json:"started_at,omitempty"`
+	StoppedAt *time.Time      `json:"stopped_at,omitempty"`
+
 	// Container backend fields
-	Namespace   string `json:"namespace"`
-	PodName     string `json:"pod_name"`
-	PVCName     string `json:"pvc_name"`
-	DockerHost  string `json:"docker_host,omitempty"` // DOCKER_HOST value for remote Docker
-	
+	Namespace  string `json:"namespace"`
+	PodName    string `json:"pod_name"`
+	PVCName    string `json:"pvc_name"`
+	DockerHost string `json:"docker_host,omitempty"` // DOCKER_HOST value for remote Docker
+
 	// Configuration
 	CPURequest    string `json:"cpu_request"`
 	MemoryRequest string `json:"memory_request"`
 	StorageSize   string `json:"storage_size"`
-	
+
 	// Custom build information
 	HasCustomImage bool   `json:"has_custom_image"`
 	BuildID        string `json:"build_id,omitempty"`
@@ -101,21 +101,21 @@ var ContainerSizes = map[string]ContainerSize{
 
 // CreateContainerRequest represents the parameters for creating a new container
 type CreateContainerRequest struct {
-	UserID      string `json:"user_id"`
-	Name        string `json:"name"`
-	TeamName    string `json:"team_name,omitempty"` // Team name for hostname configuration
-	Image       string `json:"image,omitempty"` // Optional, defaults to "ubuntu"
-	Dockerfile  string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
-	
+	UserID     string `json:"user_id"`
+	Name       string `json:"name"`
+	TeamName   string `json:"team_name,omitempty"`  // Team name for hostname configuration
+	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"
+	Dockerfile string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
+
 	// Resource configuration
-	Size        string `json:"size,omitempty"`         // T-shirt size: micro, small, medium, large, xlarge
+	Size          string `json:"size,omitempty"`           // T-shirt size: micro, small, medium, large, xlarge
 	CPURequest    string `json:"cpu_request,omitempty"`    // Set by size
 	MemoryRequest string `json:"memory_request,omitempty"` // Set by size
 	StorageSize   string `json:"storage_size,omitempty"`   // Can be overridden with --disk
-	
+
 	// Ephemeral flag - if true, no PVC is created
-	Ephemeral   bool   `json:"ephemeral,omitempty"`
-	
+	Ephemeral bool `json:"ephemeral,omitempty"`
+
 	// Sandbox configuration - allow opting out of sandbox for specific containers
 	DisableSandbox bool `json:"disable_sandbox,omitempty"`
 }
@@ -140,7 +140,7 @@ type BuildResult struct {
 
 // ContainerConnection represents an active connection to a container
 type ContainerConnection struct {
-	Container  *Container `json:"container"`
-	LocalPort  int        `json:"local_port"`
-	StopFunc   func()     `json:"-"` // Function to stop the port-forward
+	Container *Container `json:"container"`
+	LocalPort int        `json:"local_port"`
+	StopFunc  func()     `json:"-"` // Function to stop the port-forward
 }

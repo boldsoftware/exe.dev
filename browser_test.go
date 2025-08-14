@@ -57,7 +57,7 @@ func TestBrowserScenario(t *testing.T) {
 	// Create a mock container
 	containerID := "mock-httptest-container"
 	machineName := "httptest"
-	
+
 	// Add container to mock manager
 	mockManager.AddContainer(containerID, machineName, fingerprint, teamName)
 
@@ -70,7 +70,7 @@ func TestBrowserScenario(t *testing.T) {
 		t.Fatalf("Failed to store machine in database: %v", err)
 	}
 
-	// Create auth cookie for the test  
+	// Create auth cookie for the test
 	cookieValue, err := server.createAuthCookie(fingerprint, "localhost")
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
@@ -114,15 +114,15 @@ func TestBrowserScenario(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("HTTP request to main page failed: %v", err)
 	}
 	resp.Body.Close()
-	
+
 	t.Logf("Main page response status: %s", resp.Status)
-	
+
 	// Test 2: Access container via subdomain using Host header
 	// This simulates browser accessing httptest.testteam.localhost
 	req, err = http.NewRequest("GET", "http://localhost:"+httpPort+"/", nil)
@@ -136,8 +136,8 @@ func TestBrowserScenario(t *testing.T) {
 
 	// Set auth cookie
 	req.AddCookie(&http.Cookie{
-		Name:  "exe-auth",
-		Value: cookieValue,
+		Name:   "exe-auth",
+		Value:  cookieValue,
 		Domain: "localhost",
 		Path:   "/",
 	})
@@ -154,7 +154,7 @@ func TestBrowserScenario(t *testing.T) {
 	// Since we're using a mock container manager, we expect the proxy to attempt
 	// to forward the request but the mock won't actually serve content
 	// We should at least get past authentication
-	
+
 	// In dev mode with mock container, we might get different responses
 	// Let's check that we're properly routing based on subdomain
 	if resp.StatusCode == 502 || resp.StatusCode == 503 {
@@ -179,7 +179,7 @@ func TestBrowserScenario(t *testing.T) {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 	req.Host = machineName + "." + teamName + ".localhost"
-	
+
 	// Use a client without redirect following to check the redirect
 	noRedirectClient := &http.Client{
 		Timeout: 5 * time.Second,
@@ -187,13 +187,13 @@ func TestBrowserScenario(t *testing.T) {
 			return http.ErrUseLastResponse // Don't follow redirects
 		},
 	}
-	
+
 	resp, err = noRedirectClient.Do(req)
 	if err != nil {
 		t.Fatalf("HTTP request without auth failed: %v", err)
 	}
 	resp.Body.Close()
-	
+
 	// Should redirect to auth (302 or 307)
 	if resp.StatusCode != 302 && resp.StatusCode != 307 {
 		// Also accept 200 if it's showing a login page directly
@@ -205,7 +205,6 @@ func TestBrowserScenario(t *testing.T) {
 	} else {
 		t.Logf("Got expected redirect to auth: %s", resp.Header.Get("Location"))
 	}
-	
+
 	t.Log("Browser scenario test completed successfully!")
 }
-

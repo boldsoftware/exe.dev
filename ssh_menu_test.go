@@ -76,7 +76,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
-	
+
 	// Get the personal team that was created
 	var personalTeamName string
 	err = server.db.QueryRow(`
@@ -95,7 +95,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to store SSH key: %v", err)
 	}
-	
+
 	// Verify team membership was created
 	var memberCount int
 	err = server.db.QueryRow(`
@@ -105,13 +105,13 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 		t.Fatalf("Failed to count team members: %v", err)
 	}
 	t.Logf("User is member of %d teams", memberCount)
-	
+
 	// Test authentication directly to see what permissions are returned
 	perms, err := server.authenticatePublicKey(nil, signer.PublicKey())
 	if err != nil {
 		t.Fatalf("Failed to authenticate public key: %v", err)
 	}
-	t.Logf("Authentication result - registered: %s, email: %s", 
+	t.Logf("Authentication result - registered: %s, email: %s",
 		perms.Extensions["registered"], perms.Extensions["email"])
 
 	// Now test SSH connection with menu interaction
@@ -169,7 +169,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	// Read initial output (should see welcome menu)
 	buf := make([]byte, 4096)
 	outputCollected := &bytes.Buffer{}
-	
+
 	// Use goroutine to read output
 	outputChan := make(chan string, 1)
 	go func() {
@@ -186,9 +186,9 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 			if n > 0 {
 				outputCollected.Write(buf[:n])
 				// Look for either the welcome message or the prompt
-				if strings.Contains(outputCollected.String(), "Welcome to EXE.DEV") || 
-				   (strings.Contains(outputCollected.String(), "exe.dev") && 
-				    strings.Contains(outputCollected.String(), "▶")) {
+				if strings.Contains(outputCollected.String(), "Welcome to EXE.DEV") ||
+					(strings.Contains(outputCollected.String(), "exe.dev") &&
+						strings.Contains(outputCollected.String(), "▶")) {
 					outputChan <- outputCollected.String()
 					return
 				}
@@ -258,7 +258,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 // TestSSHMenuInteractiveCommands tests various menu commands
 func TestSSHMenuInteractiveCommands(t *testing.T) {
 	t.Skip("Skipping interactive test - complex readline interaction")
-	
+
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_menu_cmds_*.db")
 	if err != nil {
@@ -382,7 +382,7 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 		buf := make([]byte, 4096)
 		output := &bytes.Buffer{}
 		deadline := time.Now().Add(2 * time.Second)
-		
+
 		for time.Now().Before(deadline) {
 			n, err := stdout.Read(buf)
 			if n > 0 {
@@ -415,7 +415,7 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 
 	for _, tc := range commands {
 		t.Logf("Testing command: %s", strings.TrimSpace(tc.cmd))
-		
+
 		if _, err := stdin.Write([]byte(tc.cmd)); err != nil {
 			t.Errorf("Failed to write command %s: %v", tc.cmd, err)
 			continue
@@ -423,7 +423,7 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 
 		output := readUntilPrompt()
 		if !strings.Contains(output, tc.expected) {
-			t.Errorf("Command %s: expected output to contain %q, got:\n%s", 
+			t.Errorf("Command %s: expected output to contain %q, got:\n%s",
 				strings.TrimSpace(tc.cmd), tc.expected, output)
 		}
 	}
@@ -489,10 +489,10 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 
 	// Simulate the registration and verification flow
 	// This simulates what happens when user completes email verification
-	
+
 	// 1. User would normally go through registration, we'll simulate verification completion
 	token := server.generateToken()
-	
+
 	// Create the verification entry as if registration started
 	verification := &EmailVerification{
 		PublicKeyFingerprint: fingerprint,
@@ -500,9 +500,9 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 		Email:                email,
 		Token:                token,
 		CompleteChan:         make(chan struct{}),
-		CreatedAt:           time.Now(),
+		CreatedAt:            time.Now(),
 	}
-	
+
 	server.emailVerificationsMu.Lock()
 	server.emailVerifications[token] = verification
 	server.emailVerificationsMu.Unlock()
@@ -512,7 +512,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 	go func() {
 		// Wait a moment to let SSH connection establish
 		time.Sleep(500 * time.Millisecond)
-		
+
 		// Simulate the HTTP verification handler
 		server.emailVerificationsMu.Lock()
 		if v, exists := server.emailVerifications[token]; exists {
@@ -524,7 +524,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 				server.emailVerificationsMu.Unlock()
 				return
 			}
-			
+
 			// Store SSH key
 			_, err = server.db.Exec(`
 				INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
@@ -533,7 +533,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 			if err != nil {
 				t.Logf("Failed to store SSH key: %v", err)
 			}
-			
+
 			// Signal completion
 			close(v.CompleteChan)
 			delete(server.emailVerifications, token)
@@ -593,7 +593,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 	// The session should show registration prompt initially
 	buf := make([]byte, 8192)
 	output := &bytes.Buffer{}
-	
+
 	// Collect output with timeout
 	outputDone := make(chan struct{})
 	go func() {
@@ -604,7 +604,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 				output.Write(buf[:n])
 				// Check if we've reached the menu
 				if strings.Contains(output.String(), "Setting up your workspace") &&
-				   strings.Contains(output.String(), "EXE.DEV commands") {
+					strings.Contains(output.String(), "EXE.DEV commands") {
 					outputDone <- struct{}{}
 					return
 				}
@@ -626,7 +626,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 
 	// Wait for output or timeout
 	<-outputDone
-	
+
 	finalOutput := output.String()
 	t.Logf("Session output:\n%s", finalOutput)
 
@@ -634,7 +634,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 	if !strings.Contains(finalOutput, "Setting up your workspace") {
 		t.Error("Expected 'Setting up your workspace' message")
 	}
-	
+
 	if !strings.Contains(finalOutput, "EXE.DEV commands") {
 		t.Error("Expected to see menu commands")
 	}
@@ -643,7 +643,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 	if strings.Contains(finalOutput, "▶") {
 		// We have a prompt, try a command
 		stdin.Write([]byte("help\n"))
-		
+
 		// Read response
 		output.Reset()
 		deadline := time.Now().Add(2 * time.Second)
@@ -657,7 +657,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
-		
+
 		if !strings.Contains(output.String(), "Machine Management") {
 			t.Error("Menu doesn't respond to commands after registration")
 		}

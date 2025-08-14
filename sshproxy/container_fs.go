@@ -43,7 +43,7 @@ func (fs *UnixContainerFS) Stat(ctx context.Context, path string) (os.FileInfo, 
 	// Use stat command to get file info
 	var stdout, stderr bytes.Buffer
 	cmd := []string{"stat", "-c", "%n|%s|%Y|%f|%u|%g", path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
 		if strings.Contains(stderr.String(), "No such file") || strings.Contains(stderr.String(), "cannot stat") {
@@ -51,7 +51,7 @@ func (fs *UnixContainerFS) Stat(ctx context.Context, path string) (os.FileInfo, 
 		}
 		return nil, fmt.Errorf("stat failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return parseStatOutput(stdout.String(), filepath.Base(path))
 }
 
@@ -60,7 +60,7 @@ func (fs *UnixContainerFS) Lstat(ctx context.Context, path string) (os.FileInfo,
 	// Use lstat to not follow symlinks - we can use ls -ld for this
 	var stdout, stderr bytes.Buffer
 	cmd := []string{"ls", "-ld", path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
 		if strings.Contains(stderr.String(), "No such file") || strings.Contains(stderr.String(), "cannot access") {
@@ -68,9 +68,9 @@ func (fs *UnixContainerFS) Lstat(ctx context.Context, path string) (os.FileInfo,
 		}
 		return nil, fmt.Errorf("lstat failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	output := stdout.String()
-	
+
 	// Parse ls -ld output for a single file
 	return parseLsStatOutput(output, filepath.Base(path))
 }
@@ -80,12 +80,12 @@ func (fs *UnixContainerFS) ReadDir(ctx context.Context, path string) ([]os.FileI
 	var stdout, stderr bytes.Buffer
 	// Use ls with detailed output for compatibility with BusyBox
 	cmd := []string{"ls", "-la", path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
 		return nil, fmt.Errorf("readdir failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return parseLsOutput(stdout.String())
 }
 
@@ -114,12 +114,12 @@ func (fs *UnixContainerFS) OpenFile(ctx context.Context, path string, flags int,
 func (fs *UnixContainerFS) Mkdir(ctx context.Context, path string, mode os.FileMode) error {
 	var stderr bytes.Buffer
 	cmd := []string{"mkdir", "-p", path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("mkdir failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	// Set permissions if not default
 	if mode != 0755 {
 		cmd = []string{"chmod", fmt.Sprintf("%o", mode), path}
@@ -128,7 +128,7 @@ func (fs *UnixContainerFS) Mkdir(ctx context.Context, path string, mode os.FileM
 			return fmt.Errorf("chmod failed: %v, stderr: %s", err, stderr.String())
 		}
 	}
-	
+
 	return nil
 }
 
@@ -136,7 +136,7 @@ func (fs *UnixContainerFS) Mkdir(ctx context.Context, path string, mode os.FileM
 func (fs *UnixContainerFS) Remove(ctx context.Context, path string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"rm", "-f", path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		// Try rmdir if rm fails (might be a directory)
@@ -146,7 +146,7 @@ func (fs *UnixContainerFS) Remove(ctx context.Context, path string) error {
 			return fmt.Errorf("remove failed: %v, stderr: %s", err, stderr.String())
 		}
 	}
-	
+
 	return nil
 }
 
@@ -154,12 +154,12 @@ func (fs *UnixContainerFS) Remove(ctx context.Context, path string) error {
 func (fs *UnixContainerFS) RemoveAll(ctx context.Context, path string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"rm", "-rf", path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("removeall failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return nil
 }
 
@@ -167,12 +167,12 @@ func (fs *UnixContainerFS) RemoveAll(ctx context.Context, path string) error {
 func (fs *UnixContainerFS) Rename(ctx context.Context, oldPath, newPath string) error {
 	var stderr bytes.Buffer
 	cmd := []string{"mv", oldPath, newPath}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("rename failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return nil
 }
 
@@ -182,12 +182,12 @@ func (fs *UnixContainerFS) Symlink(ctx context.Context, target, link string) err
 	// ln -s target link (creates 'link' pointing to 'target')
 	// Debug: let's see what we're actually executing
 	cmd := []string{"ln", "-s", target, link}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
 		return fmt.Errorf("symlink failed (target=%q, link=%q): %v, stderr: %s", target, link, err, stderr.String())
 	}
-	
+
 	return nil
 }
 
@@ -195,12 +195,12 @@ func (fs *UnixContainerFS) Symlink(ctx context.Context, target, link string) err
 func (fs *UnixContainerFS) Readlink(ctx context.Context, path string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := []string{"readlink", path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
 		return "", fmt.Errorf("readlink failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return strings.TrimSpace(stdout.String()), nil
 }
 
@@ -208,12 +208,12 @@ func (fs *UnixContainerFS) Readlink(ctx context.Context, path string) (string, e
 func (fs *UnixContainerFS) Chmod(ctx context.Context, path string, mode os.FileMode) error {
 	var stderr bytes.Buffer
 	cmd := []string{"chmod", fmt.Sprintf("%o", mode), path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("chmod failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return nil
 }
 
@@ -221,7 +221,7 @@ func (fs *UnixContainerFS) Chmod(ctx context.Context, path string, mode os.FileM
 func (fs *UnixContainerFS) Chown(ctx context.Context, path string, uid, gid int) error {
 	var stderr bytes.Buffer
 	cmd := []string{"chown", fmt.Sprintf("%d:%d", uid, gid), path}
-	
+
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	// Ignore errors as containers may not support chown
 	_ = err
@@ -234,32 +234,32 @@ func (fs *UnixContainerFS) Chtimes(ctx context.Context, path string, atime, mtim
 	// Use touch command with specific times
 	atimeStr := time.Unix(atime, 0).Format("200601021504.05")
 	mtimeStr := time.Unix(mtime, 0).Format("200601021504.05")
-	
+
 	// Set access time
 	cmd := []string{"touch", "-a", "-t", atimeStr, path}
 	err := fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, io.Discard, &stderr)
 	if err != nil {
 		return fmt.Errorf("setting atime failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	// Set modification time
 	cmd = []string{"touch", "-m", "-t", mtimeStr, path}
 	err = fs.manager.ExecuteInContainer(ctx, fs.userID, fs.containerID, cmd, nil, nil, &stderr)
 	if err != nil {
 		return fmt.Errorf("setting mtime failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return nil
 }
 
 // unixFile implements the File interface for Unix-based containers
 type unixFile struct {
-	fs     *UnixContainerFS
-	path   string
-	flags  int
-	mode   os.FileMode
-	ctx    context.Context
-	
+	fs    *UnixContainerFS
+	path  string
+	flags int
+	mode  os.FileMode
+	ctx   context.Context
+
 	// For write operations, we buffer data
 	writeBuffer []byte
 	mu          sync.Mutex
@@ -276,7 +276,7 @@ func (f *unixFile) ReadAt(p []byte, offset int64) (int, error) {
 	if f.closed {
 		return 0, fmt.Errorf("file is closed")
 	}
-	
+
 	// Use dd to read specific bytes from file
 	var stdout, stderr bytes.Buffer
 	cmd := []string{
@@ -287,7 +287,7 @@ func (f *unixFile) ReadAt(p []byte, offset int64) (int, error) {
 		fmt.Sprintf("count=%d", len(p)),
 		"status=none",
 	}
-	
+
 	err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, &stdout, &stderr)
 	if err != nil {
 		if strings.Contains(stderr.String(), "No such file") {
@@ -295,7 +295,7 @@ func (f *unixFile) ReadAt(p []byte, offset int64) (int, error) {
 		}
 		return 0, fmt.Errorf("read failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	n := copy(p, stdout.Bytes())
 	if n < len(p) {
 		return n, io.EOF
@@ -307,11 +307,11 @@ func (f *unixFile) ReadAt(p []byte, offset int64) (int, error) {
 func (f *unixFile) Write(p []byte) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	if f.closed {
 		return 0, fmt.Errorf("file is closed")
 	}
-	
+
 	f.writeBuffer = append(f.writeBuffer, p...)
 	return len(p), nil
 }
@@ -320,11 +320,11 @@ func (f *unixFile) Write(p []byte) (int, error) {
 func (f *unixFile) WriteAt(p []byte, offset int64) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	if f.closed {
 		return 0, fmt.Errorf("file is closed")
 	}
-	
+
 	// Extend buffer if necessary
 	endPos := int(offset) + len(p)
 	if endPos > len(f.writeBuffer) {
@@ -332,7 +332,7 @@ func (f *unixFile) WriteAt(p []byte, offset int64) (int, error) {
 		copy(newBuffer, f.writeBuffer)
 		f.writeBuffer = newBuffer
 	}
-	
+
 	// Write data at offset
 	copy(f.writeBuffer[offset:], p)
 	return len(p), nil
@@ -349,38 +349,38 @@ func (f *unixFile) Seek(offset int64, whence int) (int64, error) {
 func (f *unixFile) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	
+
 	if f.closed {
 		return nil
 	}
-	
+
 	// If we have buffered writes, flush them
 	if len(f.writeBuffer) > 0 {
 		// For large files, use a different approach to avoid command line limits
 		if len(f.writeBuffer) > 1024*1024 { // 1MB threshold
 			return f.flushLargeBuffer()
 		}
-		
+
 		// Encode data as base64 for safe transfer
 		encoded := base64.StdEncoding.EncodeToString(f.writeBuffer)
-		
+
 		// Ensure parent directory exists and write to file using base64 decoding
 		var stdout, stderr bytes.Buffer
 		parentDir := filepath.Dir(f.path)
 		cmd := []string{"sh", "-c", fmt.Sprintf("mkdir -p '%s' && echo '%s' | base64 -d > '%s'", parentDir, encoded, f.path)}
-		
+
 		err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, &stdout, &stderr)
 		if err != nil {
 			return fmt.Errorf("write failed: %v, stderr: %s", err, stderr.String())
 		}
-		
+
 		// Set file mode if creating
 		if f.flags&os.O_CREATE != 0 && f.mode != 0 {
 			cmd = []string{"chmod", fmt.Sprintf("%o", f.mode), f.path}
 			f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, io.Discard, io.Discard)
 		}
 	}
-	
+
 	f.closed = true
 	return nil
 }
@@ -391,19 +391,19 @@ func (f *unixFile) flushLargeBuffer() error {
 	var stderr bytes.Buffer
 	parentDir := filepath.Dir(f.path)
 	cmd := []string{"sh", "-c", fmt.Sprintf("mkdir -p '%s' && cat > '%s'", parentDir, f.path)}
-	
-	err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, 
+
+	err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd,
 		bytes.NewReader(f.writeBuffer), nil, &stderr)
 	if err != nil {
 		return fmt.Errorf("write failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	// Set file mode if creating
 	if f.flags&os.O_CREATE != 0 && f.mode != 0 {
 		cmd = []string{"chmod", fmt.Sprintf("%o", f.mode), f.path}
 		f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, io.Discard, io.Discard)
 	}
-	
+
 	return nil
 }
 
@@ -422,12 +422,12 @@ func (f *unixFile) Sync() error {
 func (f *unixFile) Truncate(size int64) error {
 	var stderr bytes.Buffer
 	cmd := []string{"truncate", "-s", strconv.FormatInt(size, 10), f.path}
-	
+
 	err := f.fs.manager.ExecuteInContainer(f.ctx, f.fs.userID, f.fs.containerID, cmd, nil, nil, &stderr)
 	if err != nil {
 		return fmt.Errorf("truncate failed: %v, stderr: %s", err, stderr.String())
 	}
-	
+
 	return nil
 }
 
@@ -438,15 +438,15 @@ func parseStatOutput(output, name string) (os.FileInfo, error) {
 	if len(parts) < 4 {
 		return nil, fmt.Errorf("invalid stat output")
 	}
-	
+
 	size, _ := strconv.ParseInt(parts[1], 10, 64)
 	mtime, _ := strconv.ParseInt(parts[2], 10, 64)
 	modeHex, _ := strconv.ParseUint(parts[3], 16, 32)
-	
+
 	// Convert the hex mode to os.FileMode
 	// The stat %f format gives us the raw mode bits in hex
 	var mode os.FileMode = os.FileMode(modeHex & 0777) // Permission bits
-	
+
 	// Check file type bits
 	if modeHex&0x4000 != 0 { // S_IFDIR
 		mode |= os.ModeDir
@@ -457,7 +457,7 @@ func parseStatOutput(output, name string) (os.FileInfo, error) {
 	if modeHex&0x8000 == 0x8000 && modeHex&0x4000 == 0 { // S_IFREG (regular file)
 		// Regular file - no special mode bit needed
 	}
-	
+
 	return &fileInfo{
 		name:  name,
 		size:  size,
@@ -469,35 +469,35 @@ func parseStatOutput(output, name string) (os.FileInfo, error) {
 func parseLsOutput(output string) ([]os.FileInfo, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var entries []os.FileInfo
-	
+
 	for _, line := range lines {
 		if line == "" || strings.HasPrefix(line, "total") {
 			continue
 		}
-		
+
 		// Parse ls -la output format:
 		// -rw-r--r-- 1 user group size date time name
 		fields := strings.Fields(line)
 		if len(fields) < 9 {
 			continue
 		}
-		
+
 		// Skip . and .. entries
 		name := strings.Join(fields[8:], " ")
 		if name == "." || name == ".." {
 			continue
 		}
-		
+
 		// Parse permissions
 		perms := fields[0]
 		mode := parseFileMode(perms)
-		
+
 		// Parse size
 		size, _ := strconv.ParseInt(fields[4], 10, 64)
-		
+
 		// For now, use current time as mtime (ls output varies)
 		mtime := time.Now()
-		
+
 		entries = append(entries, &fileInfo{
 			name:  name,
 			size:  size,
@@ -505,7 +505,7 @@ func parseLsOutput(output string) ([]os.FileInfo, error) {
 			mtime: mtime,
 		})
 	}
-	
+
 	return entries, nil
 }
 
@@ -516,17 +516,17 @@ func parseLsStatOutput(output, name string) (os.FileInfo, error) {
 	if len(fields) < 9 {
 		return nil, fmt.Errorf("invalid ls output: %q", trimmed)
 	}
-	
+
 	// Parse permissions
 	perms := fields[0]
 	mode := parseFileMode(perms)
-	
+
 	// Parse size
 	size, _ := strconv.ParseInt(fields[4], 10, 64)
-	
+
 	// For now, use current time as mtime
 	mtime := time.Now()
-	
+
 	// Debug: log what we're parsing
 	if strings.HasPrefix(perms, "l") {
 		// It's a symlink, ensure mode has symlink bit
@@ -534,7 +534,7 @@ func parseLsStatOutput(output, name string) (os.FileInfo, error) {
 			return nil, fmt.Errorf("failed to parse symlink mode from perms=%q, got mode=%o", perms, mode)
 		}
 	}
-	
+
 	return &fileInfo{
 		name:  name,
 		size:  size,
@@ -547,9 +547,9 @@ func parseFileMode(perms string) os.FileMode {
 	if len(perms) < 10 {
 		return 0755
 	}
-	
+
 	var mode os.FileMode
-	
+
 	// File type
 	switch perms[0] {
 	case 'd':
@@ -565,25 +565,43 @@ func parseFileMode(perms string) os.FileMode {
 	case 'b':
 		mode |= os.ModeDevice
 	}
-	
+
 	// Parse rwx permissions more simply
 	var perm os.FileMode
-	
+
 	// Owner permissions (positions 1-3)
-	if perms[1] == 'r' { perm |= 0400 }
-	if perms[2] == 'w' { perm |= 0200 }
-	if perms[3] == 'x' || perms[3] == 's' { perm |= 0100 }
-	
+	if perms[1] == 'r' {
+		perm |= 0400
+	}
+	if perms[2] == 'w' {
+		perm |= 0200
+	}
+	if perms[3] == 'x' || perms[3] == 's' {
+		perm |= 0100
+	}
+
 	// Group permissions (positions 4-6)
-	if perms[4] == 'r' { perm |= 0040 }
-	if perms[5] == 'w' { perm |= 0020 }
-	if perms[6] == 'x' || perms[6] == 's' { perm |= 0010 }
-	
+	if perms[4] == 'r' {
+		perm |= 0040
+	}
+	if perms[5] == 'w' {
+		perm |= 0020
+	}
+	if perms[6] == 'x' || perms[6] == 's' {
+		perm |= 0010
+	}
+
 	// Other permissions (positions 7-9)
-	if perms[7] == 'r' { perm |= 0004 }
-	if perms[8] == 'w' { perm |= 0002 }
-	if perms[9] == 'x' || perms[9] == 't' { perm |= 0001 }
-	
+	if perms[7] == 'r' {
+		perm |= 0004
+	}
+	if perms[8] == 'w' {
+		perm |= 0002
+	}
+	if perms[9] == 'x' || perms[9] == 't' {
+		perm |= 0001
+	}
+
 	return mode | perm
 }
 

@@ -216,7 +216,7 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 					keyPEMBlock = pem.EncodeToMemory(block)
 				}
 			}
-			
+
 			if len(certPEMBlock) > 0 && len(keyPEMBlock) > 0 {
 				// Try to parse the cached certificate
 				if cert, err := tls.X509KeyPair(certPEMBlock, keyPEMBlock); err == nil {
@@ -279,7 +279,7 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 			{Type: "dns", Value: domain},
 		}
 	}
-	
+
 	log.Printf("Calling ACME AuthorizeOrder API...")
 	order, err := w.acmeClient.AuthorizeOrder(ctx, authzIDs)
 	if err != nil {
@@ -367,7 +367,7 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 	// Build the CSR with the same domains we requested in the order
 	var dnsNames []string
 	var commonName string
-	
+
 	if domain == w.domain {
 		// Main domain cert should include both exe.dev and *.exe.dev
 		commonName = domain
@@ -381,7 +381,7 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		commonName = domain
 		dnsNames = []string{domain}
 	}
-	
+
 	req := &x509.CertificateRequest{
 		Subject: pkix.Name{
 			CommonName: commonName,
@@ -424,13 +424,13 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 			}
 			certPEM = append(certPEM, pem.EncodeToMemory(block)...)
 		}
-		
+
 		// Convert private key to PEM format
 		keyPEM := pem.EncodeToMemory(&pem.Block{
 			Type:  "RSA PRIVATE KEY",
 			Bytes: x509.MarshalPKCS1PrivateKey(key),
 		})
-		
+
 		// Combine cert and key for caching
 		fullPEM := append(certPEM, keyPEM...)
 		w.cache.Put(ctx, domain, fullPEM)

@@ -34,18 +34,18 @@ func (h *SFTPHandler) resolvePath(sftpPath string) string {
 	if sftpPath == "" || sftpPath == "." {
 		return h.homeDir
 	}
-	
+
 	// Handle ~ for home directory
 	if sftpPath == "~" || sftpPath == "/~" {
 		return h.homeDir
 	}
-	
+
 	// CRITICAL: When user types "scp file host:~", OpenSSH sends "/" as the path
 	// This should map to the home directory, not the root
 	if sftpPath == "/" {
 		return h.homeDir
 	}
-	
+
 	// Handle tilde paths - some SFTP clients send /~/path instead of ~/path
 	if strings.HasPrefix(sftpPath, "/~/") {
 		return filepath.Join(h.homeDir, sftpPath[3:])
@@ -53,7 +53,7 @@ func (h *SFTPHandler) resolvePath(sftpPath string) string {
 	if strings.HasPrefix(sftpPath, "~/") {
 		return filepath.Join(h.homeDir, sftpPath[2:])
 	}
-	
+
 	// CRITICAL FIX: When SCP resolves ~ to /, it sends paths like /filename
 	// We need to treat root-level file paths as relative to home
 	// This handles the case: scp file.txt host:~ → SFTP receives /file.txt
@@ -68,19 +68,19 @@ func (h *SFTPHandler) resolvePath(sftpPath string) string {
 				break
 			}
 		}
-		
+
 		// If it's not a system path, treat it as relative to home
 		// This fixes the SCP ~ bug where /file.txt should go to /workspace/file.txt
 		if !isSystemPath {
 			return filepath.Join(h.homeDir, sftpPath)
 		}
 	}
-	
+
 	// Handle paths that are already correctly absolute
 	if filepath.IsAbs(sftpPath) {
 		return filepath.Clean(sftpPath)
 	}
-	
+
 	// Relative paths are relative to home directory
 	return filepath.Join(h.homeDir, sftpPath)
 }
@@ -88,13 +88,13 @@ func (h *SFTPHandler) resolvePath(sftpPath string) string {
 // Fileread implements sftp.FileReader
 func (h *SFTPHandler) Fileread(req *sftp.Request) (io.ReaderAt, error) {
 	path := h.resolvePath(req.Filepath)
-	
+
 	// Open the file for reading
 	file, err := h.fs.OpenFile(h.ctx, path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &readerAtWrapper{file: file}, nil
 }
 
@@ -102,26 +102,23 @@ func (h *SFTPHandler) Fileread(req *sftp.Request) (io.ReaderAt, error) {
 func (h *SFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) {
 	originalPath := req.Filepath
 	filePath := h.resolvePath(originalPath)
-	
-	
-	
-	
+
 	// Check if the path points to an existing directory OR
 	// if it's a special path that should be treated as a directory
 	// When SCP uploads to a directory (e.g., "scp file.txt host:~"),
 	// the standard behavior is to extract the filename from the source
 	// and create the file in that directory.
-	
+
 	// First check if it exists and is a directory
 	info, err := h.fs.Stat(h.ctx, filePath)
 	if err == nil && info.IsDir() {
 		// The path is a directory. The SFTP protocol doesn't provide
 		// the source filename, so we need to handle this specially.
-		// 
+		//
 		// For paths like "~" or ".", we'll accept the write but store
 		// the data in a special wrapper that will figure out the actual
 		// filename when more information is available.
-		
+
 		// Return a special wrapper that handles directory uploads
 		return &directoryUploadWrapper{
 			fs:       h.fs,
@@ -130,8 +127,7 @@ func (h *SFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) {
 			origPath: originalPath,
 		}, nil
 	}
-	
-	
+
 	// Determine flags based on request flags
 	flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
 	if req.Pflags().Append {
@@ -140,13 +136,13 @@ func (h *SFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) {
 	if req.Pflags().Excl {
 		flags |= os.O_EXCL
 	}
-	
+
 	// Open/create the file
 	file, err := h.fs.OpenFile(h.ctx, filePath, flags, 0644)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &writerAtWrapper{file: file, path: filePath}, nil
 }
 
@@ -194,19 +190,19 @@ func (h *SFTPHandler) Filelist(req *sftp.Request) (sftp.ListerAt, error) {
 // list returns directory contents
 func (h *SFTPHandler) list(sftpPath string) (sftp.ListerAt, error) {
 	path := h.resolvePath(sftpPath)
-	
+
 	entries, err := h.fs.ReadDir(h.ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &listerAt{entries: entries}, nil
 }
 
 // stat returns file info for a single file
 func (h *SFTPHandler) stat(sftpPath string) (sftp.ListerAt, error) {
 	path := h.resolvePath(sftpPath)
-	
+
 	// First try lstat to check if it's a symlink
 	// The SFTP client library seems to send "Stat" for both stat and lstat
 	info, err := h.fs.Lstat(h.ctx, path)
@@ -217,31 +213,31 @@ func (h *SFTPHandler) stat(sftpPath string) (sftp.ListerAt, error) {
 			return nil, err
 		}
 	}
-	
+
 	return &listerAt{entries: []os.FileInfo{info}}, nil
 }
 
 // lstat returns file info without following symlinks
 func (h *SFTPHandler) lstat(sftpPath string) (sftp.ListerAt, error) {
 	path := h.resolvePath(sftpPath)
-	
+
 	info, err := h.fs.Lstat(h.ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &listerAt{entries: []os.FileInfo{info}}, nil
 }
 
 // readlink reads a symbolic link
 func (h *SFTPHandler) readlink(sftpPath string) (sftp.ListerAt, error) {
 	path := h.resolvePath(sftpPath)
-	
+
 	target, err := h.fs.Readlink(h.ctx, path)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Return a fake FileInfo with the link target as the name
 	info := &linkInfo{name: target}
 	return &listerAt{entries: []os.FileInfo{info}}, nil
@@ -250,14 +246,14 @@ func (h *SFTPHandler) readlink(sftpPath string) (sftp.ListerAt, error) {
 // setstat sets file attributes
 func (h *SFTPHandler) setstat(sftpPath string, attrs *sftp.FileStat) error {
 	path := h.resolvePath(sftpPath)
-	
+
 	// Set file mode if specified
 	if attrs.Mode != 0 {
 		if err := h.fs.Chmod(h.ctx, path, os.FileMode(attrs.Mode)); err != nil {
 			return err
 		}
 	}
-	
+
 	// Set times if specified
 	if attrs.Atime != 0 || attrs.Mtime != 0 {
 		atime := int64(attrs.Atime)
@@ -266,7 +262,7 @@ func (h *SFTPHandler) setstat(sftpPath string, attrs *sftp.FileStat) error {
 			return err
 		}
 	}
-	
+
 	// Set ownership if specified (may be no-op)
 	if attrs.UID != 0 || attrs.GID != 0 {
 		if err := h.fs.Chown(h.ctx, path, int(attrs.UID), int(attrs.GID)); err != nil {
@@ -274,7 +270,7 @@ func (h *SFTPHandler) setstat(sftpPath string, attrs *sftp.FileStat) error {
 			_ = err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -333,7 +329,7 @@ func (d *directoryUploadWrapper) WriteAt(p []byte, off int64) (int, error) {
 	if d.closed {
 		return 0, fmt.Errorf("file is closed")
 	}
-	
+
 	// Extend buffer if necessary
 	endPos := int(off) + len(p)
 	if endPos > len(d.buffer) {
@@ -341,7 +337,7 @@ func (d *directoryUploadWrapper) WriteAt(p []byte, off int64) (int, error) {
 		copy(newBuffer, d.buffer)
 		d.buffer = newBuffer
 	}
-	
+
 	// Write data at offset
 	copy(d.buffer[off:], p)
 	return len(p), nil
@@ -352,11 +348,11 @@ func (d *directoryUploadWrapper) Close() error {
 		return nil
 	}
 	d.closed = true
-	
+
 	// When closing, we need to actually create the file
 	// Since we don't have the original filename, we'll use a default name
 	// based on the original path
-	
+
 	var filename string
 	if d.origPath == "~" || d.origPath == "/~" || d.origPath == "." {
 		// For these special paths, generate a unique filename
@@ -372,14 +368,14 @@ func (d *directoryUploadWrapper) Close() error {
 			filename = fmt.Sprintf("scp-upload-%s", timestamp)
 		}
 	}
-	
+
 	// Create the actual file in the directory
 	actualPath := filepath.Join(d.dirPath, filename)
 	file, err := d.fs.OpenFile(d.ctx, actualPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create file %q: %v", actualPath, err)
 	}
-	
+
 	// Write the buffered data
 	if len(d.buffer) > 0 {
 		_, err = file.Write(d.buffer)
@@ -388,7 +384,7 @@ func (d *directoryUploadWrapper) Close() error {
 			return fmt.Errorf("failed to write data: %v", err)
 		}
 	}
-	
+
 	return file.Close()
 }
 
@@ -423,7 +419,7 @@ func (l *listerAt) ListAt(entries []os.FileInfo, offset int64) (int, error) {
 	if offset >= int64(len(l.entries)) {
 		return 0, io.EOF
 	}
-	
+
 	n := copy(entries, l.entries[offset:])
 	if n < len(entries) {
 		return n, io.EOF

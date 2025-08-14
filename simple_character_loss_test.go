@@ -58,8 +58,8 @@ func TestDirectCharacterLoss(t *testing.T) {
 			// Test with character-by-character input (simulating typing)
 			t.Run("typing", func(t *testing.T) {
 				mockChannel := &TypingSimulatorChannel{
-					input:    []byte(tc.input),
-					writeBuf: &bytes.Buffer{},
+					input:       []byte(tc.input),
+					writeBuf:    &bytes.Buffer{},
 					typingDelay: 50 * time.Millisecond,
 				}
 				bufferedChannel := sshbuf.New(mockChannel)
@@ -111,8 +111,8 @@ func (c *SimpleTestChannel) Write(data []byte) (int, error) {
 	return c.writeBuf.Write(data)
 }
 
-func (c *SimpleTestChannel) Close() error       { return nil }
-func (c *SimpleTestChannel) CloseWrite() error  { return nil }
+func (c *SimpleTestChannel) Close() error      { return nil }
+func (c *SimpleTestChannel) CloseWrite() error { return nil }
 func (c *SimpleTestChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }
@@ -161,8 +161,8 @@ func (c *TypingSimulatorChannel) Write(data []byte) (int, error) {
 	return c.writeBuf.Write(data)
 }
 
-func (c *TypingSimulatorChannel) Close() error       { return nil }
-func (c *TypingSimulatorChannel) CloseWrite() error  { return nil }
+func (c *TypingSimulatorChannel) Close() error      { return nil }
+func (c *TypingSimulatorChannel) CloseWrite() error { return nil }
 func (c *TypingSimulatorChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }
@@ -176,7 +176,7 @@ func TestCharacterLossOnFastInput(t *testing.T) {
 
 	// Test the specific pattern mentioned in the bug report
 	email := "user@example.com"
-	
+
 	// Create a channel that sends the first few characters very quickly
 	mockChannel := &FastInitialInputChannel{
 		input:    []byte(email + "\n"),
@@ -234,7 +234,7 @@ func (c *FastInitialInputChannel) Read(p []byte) (int, error) {
 		if burstSize > len(p) {
 			burstSize = len(p)
 		}
-		
+
 		copy(p, c.input[c.inputPos:c.inputPos+burstSize])
 		c.inputPos += burstSize
 		return burstSize, nil
@@ -256,8 +256,8 @@ func (c *FastInitialInputChannel) Write(data []byte) (int, error) {
 	return c.writeBuf.Write(data)
 }
 
-func (c *FastInitialInputChannel) Close() error       { return nil }
-func (c *FastInitialInputChannel) CloseWrite() error  { return nil }
+func (c *FastInitialInputChannel) Close() error      { return nil }
+func (c *FastInitialInputChannel) CloseWrite() error { return nil }
 func (c *FastInitialInputChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }

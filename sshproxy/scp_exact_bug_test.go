@@ -32,20 +32,20 @@ func TestSCPExactBug(t *testing.T) {
 	fs := NewUnixContainerFS(manager, "test", containerID, "/workspace")
 
 	t.Run("DirectProblem", func(t *testing.T) {
-		// This is what happens when SCP sends "/test.txt" 
+		// This is what happens when SCP sends "/test.txt"
 		// (which it does when user types "scp file host:~")
-		
+
 		t.Log("Testing what happens when SFTP tries to write to /test.txt")
-		
+
 		// Try to create /test.txt
 		file, err := fs.OpenFile(ctx, "/test.txt", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
 			t.Logf("OpenFile(/test.txt) failed immediately: %v", err)
 			return
 		}
-		
+
 		t.Log("OpenFile(/test.txt) succeeded (file handle created)")
-		
+
 		// Write data
 		_, err = file.Write([]byte("test content"))
 		if err != nil {
@@ -53,7 +53,7 @@ func TestSCPExactBug(t *testing.T) {
 		} else {
 			t.Log("Write succeeded (data buffered)")
 		}
-		
+
 		// Close - with the fix, this should now succeed
 		err = file.Close()
 		if err != nil {
@@ -67,7 +67,7 @@ func TestSCPExactBug(t *testing.T) {
 			t.Log("3. Fixed handler maps /file.txt to /workspace/file.txt")
 			t.Log("4. File is successfully created in /workspace")
 			t.Log("5. SCP completes successfully")
-			
+
 			// Verify the file was created in /workspace
 			var out strings.Builder
 			cmd := exec.Command("docker", "exec", containerID, "ls", "-la", "/workspace/test.txt")
@@ -83,21 +83,21 @@ func TestSCPExactBug(t *testing.T) {
 		// Show how different handlers resolve paths
 		originalHandler := NewOriginalSFTPHandler(ctx, fs, "/workspace")
 		currentHandler := NewSFTPHandler(ctx, fs, "/workspace")
-		
+
 		testPaths := []string{
-			"/",           // What SCP sends for ~ (before appending filename)
-			"/test.txt",   // What SCP actually sends for ~/test.txt
-			"~",           // Tilde
-			"~/test.txt",  // Tilde with file
+			"/",          // What SCP sends for ~ (before appending filename)
+			"/test.txt",  // What SCP actually sends for ~/test.txt
+			"~",          // Tilde
+			"~/test.txt", // Tilde with file
 		}
-		
+
 		t.Log("Path resolution comparison:")
 		for _, path := range testPaths {
 			origResolved := originalHandler.resolvePath(path)
 			currResolved := currentHandler.resolvePath(path)
-			
+
 			if origResolved != currResolved {
-				t.Logf("  %q: original→%q, current→%q ✓ DIFFERENT", 
+				t.Logf("  %q: original→%q, current→%q ✓ DIFFERENT",
 					path, origResolved, currResolved)
 			} else {
 				t.Logf("  %q: both→%q", path, origResolved)
@@ -112,7 +112,7 @@ func TestSCPExactBug(t *testing.T) {
 		cmd.Stdout = &out
 		cmd.Run()
 		t.Logf("Root directory permissions: %s", strings.TrimSpace(out.String()))
-		
+
 		out.Reset()
 		cmd = exec.Command("docker", "exec", containerID, "touch", "/test-write")
 		cmd.Stdout = &out

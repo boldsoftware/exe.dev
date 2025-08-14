@@ -22,22 +22,22 @@ type SimpleMockChannel struct {
 func (m *SimpleMockChannel) Read(data []byte) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if m.closed {
 		return 0, io.EOF
 	}
-	
+
 	return m.readBuf.Read(data)
 }
 
 func (m *SimpleMockChannel) Write(data []byte) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if m.closed {
 		return 0, io.EOF
 	}
-	
+
 	return m.writeBuf.Write(data)
 }
 
@@ -82,7 +82,7 @@ func TestReadLineCtrlU(t *testing.T) {
 	readBuf.WriteString("world")
 	// Press Enter
 	readBuf.WriteByte('\n')
-	
+
 	mockChannel := &SimpleMockChannel{
 		readBuf:  readBuf,
 		writeBuf: &bytes.Buffer{},
@@ -103,33 +103,33 @@ func TestReadLineCtrlU(t *testing.T) {
 
 	// Check the output to verify the line was cleared visually
 	output := mockChannel.writeBuf.String()
-	
+
 	// Should contain:
 	// - "hello" being echoed
 	// - backspaces and spaces to clear "hello"
 	// - "world" being echoed
 	// - "\r\n" at the end
-	
+
 	// The new implementation moves cursor to beginning with backspaces,
 	// then writes spaces to clear, then moves back again
 	// So we should see: 5 backspaces, 5 spaces, 5 backspaces for clearing
-	
+
 	// Check that "hello" was echoed
 	if !strings.Contains(output, "hello") {
 		t.Errorf("Expected 'hello' to be echoed in output")
 	}
-	
+
 	// Check that we have enough backspaces (at least 5 for moving to start)
 	backspaceCount := strings.Count(output, "\b")
 	if backspaceCount < 5 {
 		t.Errorf("Expected at least 5 backspaces for Ctrl+U, found %d", backspaceCount)
 	}
-	
+
 	// Check that "world" was echoed
 	if !strings.Contains(output, "world") {
 		t.Errorf("Expected 'world' to be echoed in output")
 	}
-	
+
 	t.Logf("Output buffer: %q", output)
 	t.Logf("Final input: %q", input)
 }
@@ -151,7 +151,7 @@ func TestReadLineCtrlUEmpty(t *testing.T) {
 	readBuf.WriteString("test")
 	// Press Enter
 	readBuf.WriteByte('\n')
-	
+
 	mockChannel := &SimpleMockChannel{
 		readBuf:  readBuf,
 		writeBuf: &bytes.Buffer{},
@@ -172,13 +172,13 @@ func TestReadLineCtrlUEmpty(t *testing.T) {
 
 	// Check that no backspaces were sent for the empty Ctrl+U
 	output := mockChannel.writeBuf.String()
-	
+
 	// Should just have "test" echoed and "\r\n"
 	// No backspace sequences should appear before "test"
 	if output[:4] != "test" {
 		t.Errorf("Expected output to start with 'test', got: %q", output[:4])
 	}
-	
+
 	t.Logf("Output buffer: %q", output)
 	t.Logf("Final input: %q", input)
 }

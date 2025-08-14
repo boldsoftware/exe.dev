@@ -7,14 +7,14 @@ import (
 func TestContainerSizes(t *testing.T) {
 	// Test that all expected sizes exist
 	expectedSizes := []string{"micro", "small", "medium", "large", "xlarge"}
-	
+
 	for _, size := range expectedSizes {
 		preset, exists := ContainerSizes[size]
 		if !exists {
 			t.Errorf("Expected size %s to exist", size)
 			continue
 		}
-		
+
 		// Verify all fields are populated
 		if preset.Name == "" {
 			t.Errorf("Size %s has empty Name", size)
@@ -35,7 +35,7 @@ func TestContainerSizes(t *testing.T) {
 			t.Errorf("Size %s has empty Description", size)
 		}
 	}
-	
+
 	// Test specific size values
 	micro := ContainerSizes["micro"]
 	if micro.CPURequest != "250m" {
@@ -47,7 +47,7 @@ func TestContainerSizes(t *testing.T) {
 	if micro.StorageSize != "5Gi" {
 		t.Errorf("Expected micro storage to be 5Gi, got %s", micro.StorageSize)
 	}
-	
+
 	xlarge := ContainerSizes["xlarge"]
 	if xlarge.CPURequest != "4000m" {
 		t.Errorf("Expected xlarge CPU to be 4000m, got %s", xlarge.CPURequest)
@@ -65,14 +65,14 @@ func TestCreateContainerRequestDefaults(t *testing.T) {
 		UserID: "test-user",
 		Name:   "test-container",
 	}
-	
+
 	// Verify the fields exist and can be set
 	req.Size = "medium"
 	req.CPURequest = "1000m"
 	req.MemoryRequest = "4Gi"
 	req.StorageSize = "20Gi"
 	req.Ephemeral = true
-	
+
 	if req.Size != "medium" {
 		t.Errorf("Expected Size to be medium, got %s", req.Size)
 	}

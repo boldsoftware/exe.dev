@@ -54,7 +54,7 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	t.Log("Creating mock test container...")
 	containerID := "mock-httptest-container"
 	machineName := "httptest"
-	
+
 	// Add container to mock manager
 	mockManager.AddContainer(containerID, machineName, fingerprint, teamName)
 
@@ -76,7 +76,7 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	// Since we're using a mock container manager,
 	// we'll skip the direct transport testing
 	t.Log("Skipping direct containerTransport testing with mock manager")
-	
+
 	// The actual HTTP proxy functionality is tested in TestBrowserScenario
 	// which tests the full flow through the server's HTTP handlers
 	t.Log("HTTP proxy functionality is tested via TestBrowserScenario")

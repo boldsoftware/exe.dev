@@ -19,7 +19,7 @@ func TestFirstTwoCharactersLostBug(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// Create a server instance for testing
 	server := &Server{}
 
@@ -57,9 +57,9 @@ func TestFirstTwoCharactersLostBug(t *testing.T) {
 
 			// Check if we lost characters
 			if result != tc.email {
-				t.Errorf("REPRODUCING BUG: Expected %q, got %q (lost %d characters)", 
+				t.Errorf("REPRODUCING BUG: Expected %q, got %q (lost %d characters)",
 					tc.email, result, len(tc.email)-len(result))
-				
+
 				// Log the exact characters lost
 				if len(result) < len(tc.email) {
 					lost := tc.email[:len(tc.email)-len(result)]
@@ -72,12 +72,12 @@ func TestFirstTwoCharactersLostBug(t *testing.T) {
 
 // ProblematicInputMockChannel simulates the specific input pattern that causes character loss
 type ProblematicInputMockChannel struct {
-	readBuf       *bytes.Buffer
-	writeBuf      *bytes.Buffer
-	mu            sync.Mutex
+	readBuf          *bytes.Buffer
+	writeBuf         *bytes.Buffer
+	mu               sync.Mutex
 	problematicInput []byte
-	readIndex     int
-	firstRead     bool
+	readIndex        int
+	firstRead        bool
 }
 
 func (m *ProblematicInputMockChannel) SetProblematicInput(input string) {
@@ -150,10 +150,10 @@ var _ ssh.Channel = (*ProblematicInputMockChannel)(nil)
 
 // BulkInputMockChannel sends all input at once, simulating rapid typing or paste
 type BulkInputMockChannel struct {
-	writeBuf    *bytes.Buffer
-	mu          sync.Mutex
-	bulkInput   []byte
-	delivered   bool
+	writeBuf  *bytes.Buffer
+	mu        sync.Mutex
+	bulkInput []byte
+	delivered bool
 }
 
 func (m *BulkInputMockChannel) SetBulkInput(input string) {
@@ -217,7 +217,7 @@ func TestEmailInputDuringRegistration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_email_input_*.db")
 	if err != nil {
@@ -241,7 +241,7 @@ func TestEmailInputDuringRegistration(t *testing.T) {
 	}
 
 	// Simulate the user typing the email quickly after the prompt appears
-	mockChannel.SetDelayedInput(testEmail + "\n", 100*time.Millisecond)
+	mockChannel.SetDelayedInput(testEmail+"\n", 100*time.Millisecond)
 
 	// Wrap with buffered channel
 	bufferedChannel := sshbuf.New(mockChannel)
@@ -270,7 +270,7 @@ func TestEmailInputDuringRegistration(t *testing.T) {
 
 	// Check the output for any signs of character loss
 	output := mockChannel.writeBuf.String()
-	
+
 	if registrationErr != nil {
 		t.Logf("Registration error: %v", registrationErr)
 	}
@@ -304,7 +304,7 @@ func (m *RealisticSSHInputChannel) SetDelayedInput(input string, delay time.Dura
 	m.delayedInput = []byte(input)
 	m.inputReady = false
 	m.inputIndex = 0
-	
+
 	// Start timer to make input available after delay
 	m.inputTimer = time.AfterFunc(delay, func() {
 		m.mu.Lock()

@@ -11,7 +11,7 @@ func TestDNSProviderIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// This is an integration test that requires real API keys and domain
 	// Skip test if API keys are not provided
 	apiKey := os.Getenv("PORKBUN_API_KEY")

@@ -63,11 +63,11 @@ func TestDockerExecuteInContainer(t *testing.T) {
 	t.Run("InteractiveExec", func(t *testing.T) {
 		stdin := strings.NewReader("echo 'interactive test'\nexit\n")
 		var stdout bytes.Buffer
-		
+
 		err := manager.ExecuteInContainer(ctx, "test-user", container.ID,
 			[]string{"/bin/bash"},
 			stdin, &stdout, nil)
-		
+
 		// The command might fail due to PTY handling, but should not give "input device is not a TTY"
 		if err != nil && strings.Contains(err.Error(), "input device is not a TTY") {
 			t.Errorf("Got TTY error when it should be handled: %v", err)

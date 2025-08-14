@@ -20,7 +20,7 @@ type MockSSHChannelWithInterrupt struct {
 	writeBuf *bytes.Buffer
 	mu       sync.Mutex
 	closed   bool
-	
+
 	// Control when to send Ctrl+C
 	sendCtrlCAfter time.Duration
 	ctrlCSent      bool
@@ -39,12 +39,12 @@ func NewMockSSHChannelWithInterrupt(sendCtrlCAfter time.Duration) *MockSSHChanne
 func (m *MockSSHChannelWithInterrupt) Read(data []byte) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// First, return any buffered data (like email input)
 	if m.readBuf.Len() > 0 {
 		return m.readBuf.Read(data)
 	}
-	
+
 	// Check if we should send Ctrl+C
 	if !m.ctrlCSent && time.Since(m.startTime) >= m.sendCtrlCAfter {
 		m.ctrlCSent = true
@@ -52,7 +52,7 @@ func (m *MockSSHChannelWithInterrupt) Read(data []byte) (int, error) {
 		data[0] = 3
 		return 1, nil
 	}
-	
+
 	// Otherwise return no data (blocking read simulation)
 	time.Sleep(100 * time.Millisecond)
 	return 0, nil
@@ -61,11 +61,11 @@ func (m *MockSSHChannelWithInterrupt) Read(data []byte) (int, error) {
 func (m *MockSSHChannelWithInterrupt) Write(data []byte) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if m.closed {
 		return 0, fmt.Errorf("channel closed")
 	}
-	
+
 	return m.writeBuf.Write(data)
 }
 
@@ -125,10 +125,10 @@ func TestCtrlCDuringRegistration(t *testing.T) {
 		readBuf:  &bytes.Buffer{},
 		writeBuf: &bytes.Buffer{},
 	}
-	
+
 	// Put the email input in the buffer
 	mockChannel.readBuf.WriteString("test@example.com\n")
-	
+
 	// After 100ms, add Ctrl+C to simulate user pressing it
 	go func() {
 		time.Sleep(100 * time.Millisecond)
@@ -162,13 +162,13 @@ func TestCtrlCDuringRegistration(t *testing.T) {
 
 	// Check the output
 	output := mockChannel.writeBuf.String()
-	
+
 	// Basic checks that the registration flow started
 	if !strings.Contains(output, "type ssh to get a server") {
 		t.Logf("Output: %q", output)
 		t.Error("Missing initial welcome message")
 	}
-	
+
 	// The test is mainly to ensure registration doesn't hang and produces some output
 	if len(output) < 100 {
 		t.Errorf("Expected substantial output from registration, got %d chars", len(output))
@@ -197,7 +197,7 @@ func TestCtrlCDuringEmailInput(t *testing.T) {
 		readBuf:  &bytes.Buffer{},
 		writeBuf: &bytes.Buffer{},
 	}
-	
+
 	// Simulate typing "test" then Ctrl+C
 	mockChannel.readBuf.Write([]byte("test"))
 	mockChannel.readBuf.WriteByte(3) // Ctrl+C
@@ -207,17 +207,17 @@ func TestCtrlCDuringEmailInput(t *testing.T) {
 
 	// Test readLineFromChannel directly
 	result, err := server.readLineFromChannel(bufferedChannel)
-	
+
 	// Should get an interrupted error
 	if err == nil || err.Error() != "interrupted" {
 		t.Errorf("Expected 'interrupted' error, got: %v", err)
 	}
-	
+
 	// Result should be empty (input was cancelled)
 	if result != "" {
 		t.Errorf("Expected empty result after Ctrl+C, got: %q", result)
 	}
-	
+
 	// Output should contain ^C indicator
 	output := mockChannel.writeBuf.String()
 	if !strings.Contains(output, "^C") {

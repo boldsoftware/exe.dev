@@ -10,12 +10,12 @@ import (
 
 // TestChannel provides a deterministic channel for testing without sleeps
 type TestChannel struct {
-	inputQueue   chan byte
-	inputClosed  bool
-	inputMu      sync.Mutex
-	outputBuf    *bytes.Buffer
-	outputMu     sync.Mutex
-	closed       chan struct{}
+	inputQueue  chan byte
+	inputClosed bool
+	inputMu     sync.Mutex
+	outputBuf   *bytes.Buffer
+	outputMu    sync.Mutex
+	closed      chan struct{}
 }
 
 // NewTestChannel creates a new test channel
@@ -31,13 +31,13 @@ func NewTestChannel() *TestChannel {
 func (tc *TestChannel) Write(data []byte) (int, error) {
 	tc.outputMu.Lock()
 	defer tc.outputMu.Unlock()
-	
+
 	select {
 	case <-tc.closed:
 		return 0, io.ErrClosedPipe
 	default:
 	}
-	
+
 	return tc.outputBuf.Write(data)
 }
 
@@ -139,11 +139,11 @@ func (tc *TestChannel) ReadCtx(ctx context.Context, p []byte) (int, error) {
 func (tc *TestChannel) SendInput(data string) {
 	tc.inputMu.Lock()
 	defer tc.inputMu.Unlock()
-	
+
 	if tc.inputClosed {
 		return
 	}
-	
+
 	for _, b := range []byte(data) {
 		select {
 		case tc.inputQueue <- b:
@@ -170,7 +170,7 @@ func (tc *TestChannel) GetOutput() string {
 func (tc *TestChannel) Close() error {
 	tc.inputMu.Lock()
 	defer tc.inputMu.Unlock()
-	
+
 	if !tc.inputClosed {
 		tc.inputClosed = true
 		close(tc.inputQueue)
@@ -238,10 +238,10 @@ func (sc *ScriptedChannel) AddScript(expect, send string) {
 func (sc *ScriptedChannel) RunScript() error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	
+
 	for sc.scriptIndex < len(sc.script) {
 		step := sc.script[sc.scriptIndex]
-		
+
 		// Wait for expected output
 		deadline := time.After(2 * time.Second)
 		for {
@@ -256,14 +256,14 @@ func (sc *ScriptedChannel) RunScript() error {
 				time.Sleep(10 * time.Millisecond)
 			}
 		}
-		
+
 		// Send response
 		if step.send != "" {
 			sc.SendInput(step.send)
 		}
-		
+
 		sc.scriptIndex++
 	}
-	
+
 	return nil
 }

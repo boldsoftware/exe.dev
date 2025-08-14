@@ -228,7 +228,7 @@ func TestInteractiveFlow(t *testing.T) {
 
 	screenContent := term.GetScreenContent()
 	lines := strings.Split(screenContent, "\n")
-	
+
 	// Only check for offset issues
 	for i, line := range lines {
 		if len(line) > 1 && line[0] == ' ' && strings.TrimLeft(line, " ") != "" {

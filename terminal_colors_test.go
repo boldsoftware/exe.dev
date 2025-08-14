@@ -12,9 +12,9 @@ import (
 
 // MockChannelWithResponse is a mock SSH channel that returns a pre-configured response
 type MockChannelWithResponse struct {
-	response   []byte
-	buffer     *bytes.Buffer
-	readCalled bool
+	response    []byte
+	buffer      *bytes.Buffer
+	readCalled  bool
 	writeCalled bool
 }
 
@@ -165,20 +165,20 @@ func TestDetectTerminalMode(t *testing.T) {
 				response: tt.response,
 				buffer:   &bytes.Buffer{},
 			}
-			
+
 			// Wrap with buffered channel
 			channel := sshbuf.New(mockChannel)
-			
+
 			// Give the background reader a moment to start
 			time.Sleep(10 * time.Millisecond)
-			
+
 			result := server.detectTerminalMode(channel)
-			
+
 			// Verify OSC 11 query was sent
 			if !mockChannel.writeCalled {
 				t.Error("Expected Write to be called for OSC 11 query")
 			}
-			
+
 			if result != tt.expected {
 				t.Errorf("detectTerminalMode() = %v, want %v", result, tt.expected)
 			}
@@ -193,18 +193,18 @@ func TestGetTerminalColors(t *testing.T) {
 
 	t.Run("Dark mode colors", func(t *testing.T) {
 		colors := server.getTerminalColors(TerminalModeDark)
-		
+
 		// Check gray text is gray for dark mode
 		if colors.grayText != "\033[2;37m" {
 			t.Errorf("Dark mode gray text = %q, want %q", colors.grayText, "\033[2;37m")
 		}
-		
+
 		// Check fade ends in black
 		lastStep := colors.fadeSteps[len(colors.fadeSteps)-1]
 		if lastStep.color != "\033[30m" {
 			t.Errorf("Dark mode fade final color = %q, want %q", lastStep.color, "\033[30m")
 		}
-		
+
 		// Check we have the right number of fade steps
 		if len(colors.fadeSteps) != 7 {
 			t.Errorf("Dark mode fade steps count = %d, want 7", len(colors.fadeSteps))
@@ -213,18 +213,18 @@ func TestGetTerminalColors(t *testing.T) {
 
 	t.Run("Light mode colors", func(t *testing.T) {
 		colors := server.getTerminalColors(TerminalModeLight)
-		
+
 		// Check gray text is black for light mode
 		if colors.grayText != "\033[0;30m" {
 			t.Errorf("Light mode gray text = %q, want %q", colors.grayText, "\033[0;30m")
 		}
-		
+
 		// Check fade ends in white
 		lastStep := colors.fadeSteps[len(colors.fadeSteps)-1]
 		if lastStep.color != "\033[37m" {
 			t.Errorf("Light mode fade final color = %q, want %q", lastStep.color, "\033[37m")
 		}
-		
+
 		// Check we have the right number of fade steps
 		if len(colors.fadeSteps) != 7 {
 			t.Errorf("Light mode fade steps count = %d, want 7", len(colors.fadeSteps))
@@ -261,15 +261,15 @@ func TestGetGrayText(t *testing.T) {
 				response: tt.response,
 				buffer:   &bytes.Buffer{},
 			}
-			
+
 			// Wrap with buffered channel
 			channel := sshbuf.New(mockChannel)
-			
+
 			// Give the background reader a moment to start
 			time.Sleep(10 * time.Millisecond)
-			
+
 			result := server.getGrayText(channel)
-			
+
 			if result != tt.expected {
 				t.Errorf("getGrayText() = %q, want %q", result, tt.expected)
 			}
@@ -288,23 +288,23 @@ func TestClearOSCResponse(t *testing.T) {
 		response: leftoverResponse,
 		buffer:   &bytes.Buffer{},
 	}
-	
+
 	// Wrap with buffered channel
 	channel := sshbuf.New(mockChannel)
-	
+
 	// Give the background reader a moment to read the data
 	time.Sleep(20 * time.Millisecond)
-	
+
 	// Clear the OSC response
 	server.clearOSCResponse(channel)
-	
+
 	// Try to read - should get remaining data after terminator
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	
+
 	buf := make([]byte, 100)
 	n, _ := channel.ReadCtx(ctx, buf)
-	
+
 	// clearOSCResponse is now a no-op, so we should get everything that was in the buffer
 	result := string(buf[:n])
 	expected := "leftover\033\\more"

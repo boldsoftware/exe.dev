@@ -12,10 +12,10 @@ import (
 func TestTestChannel(t *testing.T) {
 	tc := NewTestChannel()
 	defer tc.Close()
-	
+
 	// Send some data
 	tc.SendInputString("hello")
-	
+
 	// Read it back
 	buf := make([]byte, 5)
 	n, err := tc.Read(buf)
@@ -28,7 +28,7 @@ func TestTestChannel(t *testing.T) {
 	if string(buf[:n]) != "hello" {
 		t.Fatalf("Expected 'hello', got %q", string(buf[:n]))
 	}
-	
+
 	t.Log("TestChannel basic test passed")
 }
 
@@ -36,16 +36,16 @@ func TestTestChannel(t *testing.T) {
 func TestSshBufWithTestChannel(t *testing.T) {
 	tc := NewTestChannel()
 	defer tc.Close()
-	
+
 	bc := sshbuf.New(tc)
 	defer bc.Close()
-	
+
 	// Send some data
 	tc.SendInputString("hello")
-	
+
 	// Give readLoop time to process
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Read it back
 	buf := make([]byte, 5)
 	n, err := bc.Read(buf)
@@ -58,7 +58,7 @@ func TestSshBufWithTestChannel(t *testing.T) {
 	if string(buf[:n]) != "hello" {
 		t.Fatalf("Expected 'hello', got %q", string(buf[:n]))
 	}
-	
+
 	t.Log("sshbuf.Channel with TestChannel test passed")
 }
 
@@ -76,17 +76,17 @@ func TestReadLineFromChannel(t *testing.T) {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 	defer server.Stop()
-	
+
 	tc := NewTestChannel()
 	defer tc.Close()
-	
+
 	bc := sshbuf.New(tc)
 	defer bc.Close()
-	
+
 	// Start reading in goroutine
 	done := make(chan string, 1)
 	errChan := make(chan error, 1)
-	
+
 	go func() {
 		result, err := server.readLineFromChannel(bc)
 		if err != nil {
@@ -95,14 +95,14 @@ func TestReadLineFromChannel(t *testing.T) {
 		}
 		done <- result
 	}()
-	
+
 	// Wait a moment for readLineFromChannel to start
 	time.Sleep(10 * time.Millisecond)
-	
+
 	// Send input
 	tc.SendInputString("test@example.com")
 	tc.SendInputString("\n")
-	
+
 	// Wait for result
 	select {
 	case result := <-done:
@@ -149,30 +149,30 @@ func TestEmailSignupFlow(t *testing.T) {
 			// Create a deterministic test channel
 			testChan := NewTestChannel()
 			defer testChan.Close()
-			
+
 			bufferedChannel := sshbuf.New(testChan)
 			defer bufferedChannel.Close()
-			
+
 			// Start reading in a goroutine
 			done := make(chan struct{})
 			var email string
 			var readErr error
-			
+
 			go func() {
 				defer close(done)
-				
+
 				// Just test readLineFromChannel without detectTerminalMode
 				// since detectTerminalMode adds timing complexity
 				email, readErr = server.readLineFromChannel(bufferedChannel)
 			}()
-			
+
 			// Give readLineFromChannel time to start waiting for input
 			time.Sleep(20 * time.Millisecond)
-			
+
 			// Now simulate user interaction:
 			// Type the email and press enter
 			testChan.SendInputString(tc.email + "\n")
-			
+
 			// Wait for the read to complete with timeout
 			select {
 			case <-done:
@@ -182,7 +182,7 @@ func TestEmailSignupFlow(t *testing.T) {
 			case <-time.After(1 * time.Second):
 				t.Fatal("readLineFromChannel timed out after sending input")
 			}
-			
+
 			// Verify we got the correct email
 			if email != tc.email {
 				t.Errorf("Expected email %q, got %q", tc.email, email)
@@ -232,18 +232,18 @@ func TestReadLineEditing(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			testChan := NewTestChannel()
 			bufferedChannel := sshbuf.New(testChan)
-			
+
 			done := make(chan string, 1)
 			go func() {
 				result, _ := server.readLineFromChannel(bufferedChannel)
 				done <- result
 			}()
-			
+
 			// Send input sequence
 			for _, input := range tt.input {
 				testChan.SendInputString(input)
 			}
-			
+
 			result := <-done
 			if result != tt.expected {
 				t.Errorf("Expected %q, got %q", tt.expected, result)

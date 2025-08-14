@@ -8,7 +8,7 @@ func ExpandImageName(image string) string {
 	if !strings.Contains(image, ":") && !strings.Contains(image, "@") {
 		image += ":latest"
 	}
-	
+
 	// Expand common short names
 	switch {
 	case image == "exeuntu" || image == "exeuntu:latest":
@@ -29,7 +29,7 @@ func ExpandImageName(image string) string {
 	case image == "rust" || image == "rust:latest":
 		return "rust:latest"
 	}
-	
+
 	return image
 }
 
@@ -44,7 +44,7 @@ func GetDisplayImageName(image string) string {
 			image = strings.Join(parts[1:], "/")
 		}
 	}
-	
+
 	// Simplify common images
 	switch image {
 	case "ghcr.io/boldsoftware/exeuntu:latest", "exeuntu:latest", "exeuntu":
@@ -66,11 +66,11 @@ func GetDisplayImageName(image string) string {
 	case "nginx:latest":
 		return "nginx"
 	}
-	
+
 	// Remove :latest suffix for cleaner display
 	if strings.HasSuffix(image, ":latest") {
 		return strings.TrimSuffix(image, ":latest")
 	}
-	
+
 	return image
 }

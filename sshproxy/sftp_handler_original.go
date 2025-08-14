@@ -35,12 +35,12 @@ func (h *OriginalSFTPHandler) resolvePath(sftpPath string) string {
 	if sftpPath == "" || sftpPath == "." {
 		return h.homeDir
 	}
-	
+
 	// Handle ~ for home directory
 	if sftpPath == "~" || sftpPath == "/~" {
 		return h.homeDir
 	}
-	
+
 	// Handle tilde paths - some SFTP clients send /~/path instead of ~/path
 	if strings.HasPrefix(sftpPath, "/~/") {
 		return filepath.Join(h.homeDir, sftpPath[3:])
@@ -48,13 +48,13 @@ func (h *OriginalSFTPHandler) resolvePath(sftpPath string) string {
 	if strings.HasPrefix(sftpPath, "~/") {
 		return filepath.Join(h.homeDir, sftpPath[2:])
 	}
-	
+
 	// Handle absolute paths
 	if filepath.IsAbs(sftpPath) {
 		// If path is already absolute, clean it
 		return filepath.Clean(sftpPath)
 	}
-	
+
 	// Relative paths are relative to home directory
 	return filepath.Join(h.homeDir, sftpPath)
 }
@@ -62,13 +62,13 @@ func (h *OriginalSFTPHandler) resolvePath(sftpPath string) string {
 // Fileread implements sftp.FileReader
 func (h *OriginalSFTPHandler) Fileread(req *sftp.Request) (io.ReaderAt, error) {
 	path := h.resolvePath(req.Filepath)
-	
+
 	// Open the file for reading
 	file, err := h.fs.OpenFile(h.ctx, path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &readerAtWrapper{file: file}, nil
 }
 
@@ -76,7 +76,7 @@ func (h *OriginalSFTPHandler) Fileread(req *sftp.Request) (io.ReaderAt, error) {
 func (h *OriginalSFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) {
 	originalPath := req.Filepath
 	filePath := h.resolvePath(originalPath)
-	
+
 	// Check if the path points to an existing directory
 	info, err := h.fs.Stat(h.ctx, filePath)
 	if err == nil && info.IsDir() {
@@ -88,10 +88,10 @@ func (h *OriginalSFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) 
 			origPath: originalPath,
 		}, nil
 	}
-	
+
 	// NO special handling for "/" - this is the bug!
 	// When SCP sends "/", we try to create a file at "/" which fails on Close
-	
+
 	// Determine flags based on request flags
 	flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
 	if req.Pflags().Append {
@@ -100,13 +100,13 @@ func (h *OriginalSFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) 
 	if req.Pflags().Excl {
 		flags |= os.O_EXCL
 	}
-	
+
 	// Open/create the file
 	file, err := h.fs.OpenFile(h.ctx, filePath, flags, 0644)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &writerAtWrapper{file: file, path: filePath}, nil
 }
 
@@ -190,14 +190,14 @@ func (h *OriginalSFTPHandler) readlink(sftpPath string) (sftp.ListerAt, error) {
 
 func (h *OriginalSFTPHandler) setstat(sftpPath string, attrs *sftp.FileStat) error {
 	path := h.resolvePath(sftpPath)
-	
+
 	// Set file mode if specified
 	if attrs.Mode != 0 {
 		if err := h.fs.Chmod(h.ctx, path, os.FileMode(attrs.Mode)); err != nil {
 			return err
 		}
 	}
-	
+
 	// Set times if specified
 	if attrs.Atime != 0 || attrs.Mtime != 0 {
 		atime := int64(attrs.Atime)
@@ -206,12 +206,12 @@ func (h *OriginalSFTPHandler) setstat(sftpPath string, attrs *sftp.FileStat) err
 			return err
 		}
 	}
-	
+
 	// Set ownership if specified (may be no-op)
 	if attrs.UID != 0 || attrs.GID != 0 {
 		h.fs.Chown(h.ctx, path, int(attrs.UID), int(attrs.GID))
 	}
-	
+
 	return nil
 }
 

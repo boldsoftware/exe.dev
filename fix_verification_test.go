@@ -17,7 +17,7 @@ func TestEmailInputAfterFix(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_fix_*.db")
 	if err != nil {
@@ -77,11 +77,11 @@ func TestEmailInputAfterFix(t *testing.T) {
 
 // RegistrationFlowChannel simulates the registration flow
 type RegistrationFlowChannel struct {
-	writeBuf    *bytes.Buffer
-	input       []byte
-	inputPos    int
-	mu          sync.Mutex
-	inputReady  bool
+	writeBuf   *bytes.Buffer
+	input      []byte
+	inputPos   int
+	mu         sync.Mutex
+	inputReady bool
 }
 
 func (c *RegistrationFlowChannel) SetInput(input string) {
@@ -129,8 +129,8 @@ func (c *RegistrationFlowChannel) Write(data []byte) (int, error) {
 	return c.writeBuf.Write(data)
 }
 
-func (c *RegistrationFlowChannel) Close() error       { return nil }
-func (c *RegistrationFlowChannel) CloseWrite() error  { return nil }
+func (c *RegistrationFlowChannel) Close() error      { return nil }
+func (c *RegistrationFlowChannel) CloseWrite() error { return nil }
 func (c *RegistrationFlowChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return false, nil
 }

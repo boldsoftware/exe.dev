@@ -141,7 +141,7 @@ func TestSCPTildeBug(t *testing.T) {
 		if err != nil {
 			t.Logf("SCP to explicit path also failed: %v", err)
 			t.Logf("Output: %s", output)
-			
+
 			if strings.Contains(output, "close remote: Failure") {
 				t.Log("Got same 'close remote: Failure' for explicit path")
 			}
@@ -255,7 +255,7 @@ func handleProductionLikeChannel(t *testing.T, channel ssh.Channel, requests <-c
 				}
 
 				server := sftp.NewRequestServer(channel, handlers)
-				
+
 				// Log when SFTP server starts and stops
 				t.Logf("Starting SFTP server for container %s", containerID)
 				err := server.Serve()
@@ -267,11 +267,11 @@ func handleProductionLikeChannel(t *testing.T, channel ssh.Channel, requests <-c
 					}
 				}
 				t.Logf("SFTP server stopped")
-				
+
 				// Send exit status before closing
 				exitStatus := []byte{0, 0, 0, 0} // exit status 0
 				channel.SendRequest("exit-status", false, exitStatus)
-				
+
 				return
 			}
 			req.Reply(false, nil)
@@ -351,7 +351,7 @@ func TestSCPTildeWorkaround(t *testing.T) {
 
 								ctx := context.Background()
 								fs := NewUnixContainerFS(manager, "test", containerID, "/workspace")
-								
+
 								// Try using the current handler with the fix
 								handler := NewSFTPHandler(ctx, fs, "/workspace")
 
@@ -392,13 +392,13 @@ func TestSCPTildeWorkaround(t *testing.T) {
 	if err != nil {
 		t.Logf("With current handler: still fails with: %v", err)
 		t.Logf("Output: %s", stderr.String())
-		
+
 		if strings.Contains(stderr.String(), "close remote: Failure") {
 			t.Log("Confirmed: Current fix does NOT resolve the issue")
 		}
 	} else {
 		t.Log("With current handler: upload succeeded")
-		
+
 		// Verify file was created
 		var stdout bytes.Buffer
 		checkCmd := exec.Command("docker", "exec", containerID, "ls", "-la", "/workspace")
@@ -475,7 +475,7 @@ func TestDebugSFTPProtocol(t *testing.T) {
 
 								ctx := context.Background()
 								fs := NewUnixContainerFS(manager, "test", containerID, "/workspace")
-								
+
 								// Create a debug handler that logs paths
 								handler := &debugSFTPHandler{
 									SFTPHandler: NewSFTPHandler(ctx, fs, "/workspace"),
@@ -548,9 +548,9 @@ func (h *debugSFTPHandler) Filewrite(req *sftp.Request) (io.WriterAt, error) {
 	case h.pathsChan <- req.Filepath:
 	default:
 	}
-	
+
 	// Log to test output
 	fmt.Fprintf(os.Stderr, "DEBUG: Filewrite called with path: %q\n", req.Filepath)
-	
+
 	return h.SFTPHandler.Filewrite(req)
 }
