@@ -133,6 +133,7 @@ type UserSession struct {
 	Email       string
 	TeamName    string
 	IsAdmin     bool
+	PublicKey   string
 	CreatedAt   time.Time
 }
 
@@ -2102,7 +2103,7 @@ func (s *Server) handleSSHConnection(conn net.Conn) {
 }
 
 // handleSSHExec handles SSH exec commands (e.g., ssh exe.dev create foo)
-func (s *Server) handleSSHExec(channel *sshbuf.Channel, payload []byte, username, fingerprint string, registered bool) {
+func (s *Server) handleSSHExec(channel *sshbuf.Channel, payload []byte, username, fingerprint, email, publicKey string, registered bool) {
 	defer channel.Close()
 
 	// Parse the command from the payload
@@ -2164,7 +2165,7 @@ func (s *Server) handleSSHExec(channel *sshbuf.Channel, payload []byte, username
 		team = teams[0] // Fallback to first team
 	}
 
-	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, publicKey, team.IsAdmin)
 	defer s.removeUserSession(channel)
 
 	// Handle the command
@@ -2190,6 +2191,8 @@ func (s *Server) handleSSHExec(channel *sshbuf.Channel, payload []byte, username
 		s.handleDiagCommand(channel, cmdArgs)
 	case "team":
 		s.handleTeamCommand(channel, cmdArgs)
+	case "whoami":
+		s.handleWhoamiCommand(channel, fingerprint, email, publicKey)
 	case "help", "?":
 		s.showHelpText(channel)
 	default:
@@ -2215,6 +2218,8 @@ func (s *Server) showHelpText(channel *sshbuf.Channel) {
 		"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
 		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n" +
 		"\033[1mteam remove <email>\033[0m     - Remove a team member (admin only)\r\n\r\n" +
+		"\033[1;36mUser Information:\033[0m\r\n" +
+		"\033[1mwhoami\033[0m                  - Show your public key, fingerprint, and email\r\n\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n\r\n"
 
 	channel.Write([]byte(helpText))
@@ -2283,7 +2288,7 @@ func (s *Server) handleSSHChannel(newChannel ssh.NewChannel, username, fingerpri
 				req.Reply(true, nil)
 			}
 			// Handle exec commands (e.g., ssh exe.dev create foo)
-			go s.handleSSHExec(channel, req.Payload, username, fingerprint, registered)
+			go s.handleSSHExec(channel, req.Payload, username, fingerprint, email, publicKey, registered)
 		default:
 			if req.WantReply {
 				req.Reply(false, nil)
@@ -2379,7 +2384,7 @@ func (s *Server) handleSSHShellWithWidth(channel *sshbuf.Channel, username, fing
 	if username != "" && s.containerManager != nil {
 		// Look for a container with the given name
 		if container := s.findContainerByName(fingerprint, username); container != nil {
-			s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+			s.createUserSession(channel, fingerprint, user.Email, team.TeamName, "", team.IsAdmin)
 			defer s.removeUserSession(channel)
 
 			// Connect directly to the container
@@ -2388,7 +2393,7 @@ func (s *Server) handleSSHShellWithWidth(channel *sshbuf.Channel, username, fing
 		}
 	}
 
-	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+	s.createUserSession(channel, fingerprint, user.Email, team.TeamName, "", team.IsAdmin)
 
 	// Clean up session when connection closes
 	defer s.removeUserSession(channel)
@@ -2840,6 +2845,8 @@ func (s *Server) runMainShell(channel *sshbuf.Channel, showWelcome bool) {
 		"\033[1mteam\033[0m                    - List team members\r\n" +
 		"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
 		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n" +
+		"\033[1;36mUser Information:\033[0m\r\n" +
+		"\033[1mwhoami\033[0m                  - Show your public key, fingerprint, and email\r\n\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n" +
 		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
 
@@ -2870,6 +2877,13 @@ func (s *Server) runMainShell(channel *sshbuf.Channel, showWelcome bool) {
 		case "exit":
 			channel.Write([]byte("Goodbye!\r\n"))
 			return
+		case "whoami":
+			fingerprint, email, _, publicKey, err := s.getUserInfoFromChannel(channel)
+			if err != nil {
+				channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
+			} else {
+				s.handleWhoamiCommand(channel, fingerprint, email, publicKey)
+			}
 		case "help", "?":
 			channel.Write([]byte(helpText))
 		case "list", "ls":
@@ -3424,13 +3438,27 @@ func (s *Server) getUserFromChannel(channel *sshbuf.Channel) (fingerprint, teamN
 	return session.Fingerprint, session.TeamName, nil
 }
 
+// getUserInfoFromChannel gets complete user information from SSH channel session
+func (s *Server) getUserInfoFromChannel(channel *sshbuf.Channel) (fingerprint, email, teamName, publicKey string, err error) {
+	s.sessionsMu.RLock()
+	session, exists := s.sessions[channel]
+	s.sessionsMu.RUnlock()
+
+	if !exists {
+		return "", "", "", "", fmt.Errorf("user not authenticated")
+	}
+
+	return session.Fingerprint, session.Email, session.TeamName, session.PublicKey, nil
+}
+
 // createUserSession creates a new user session for a channel
-func (s *Server) createUserSession(channel *sshbuf.Channel, fingerprint, email, teamName string, isAdmin bool) {
+func (s *Server) createUserSession(channel *sshbuf.Channel, fingerprint, email, teamName, publicKey string, isAdmin bool) {
 	session := &UserSession{
 		Fingerprint: fingerprint,
 		Email:       email,
 		TeamName:    teamName,
 		IsAdmin:     isAdmin,
+		PublicKey:   publicKey,
 		CreatedAt:   time.Now(),
 	}
 
@@ -3444,6 +3472,27 @@ func (s *Server) removeUserSession(channel *sshbuf.Channel) {
 	s.sessionsMu.Lock()
 	delete(s.sessions, channel)
 	s.sessionsMu.Unlock()
+}
+
+// handleWhoamiCommand shows the user's key fingerprint, public key, and email address
+func (s *Server) handleWhoamiCommand(channel *sshbuf.Channel, fingerprint, email, publicKey string) {
+	channel.Write([]byte(fmt.Sprintf("\r\n\033[1;36mUser Information:\033[0m\r\n\r\n")))
+	channel.Write([]byte(fmt.Sprintf("\033[1mEmail Address:\033[0m %s\r\n", email)))
+	channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key Fingerprint:\033[0m %s\r\n", fingerprint)))
+	
+	// Display public key if available
+	if publicKey != "" {
+		channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key:\033[0m %s\r\n", strings.TrimSpace(publicKey))))
+	} else {
+		// Try to look up public key from database
+		var dbPublicKey string
+		err := s.db.QueryRow(`SELECT public_key FROM ssh_keys WHERE fingerprint = ? AND verified = 1 LIMIT 1`, fingerprint).Scan(&dbPublicKey)
+		if err == nil && dbPublicKey != "" {
+			channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key:\033[0m %s\r\n", strings.TrimSpace(dbPublicKey))))
+		} else {
+			channel.Write([]byte("\033[1mPublic Key:\033[0m \033[2m(not available in current session)\033[0m\r\n"))
+		}
+	}
 }
 
 // handleListCommand lists user's machines
@@ -4931,7 +4980,7 @@ func (s *Server) completeRegistration(channel *sshbuf.Channel, fingerprint, emai
 	channel.Write([]byte("  • Shared team resources and collaboration\r\n\r\n"))
 
 	// Create user session before continuing to main shell
-	s.createUserSession(channel, fingerprint, email, teamName, true) // Admin since they created the team
+	s.createUserSession(channel, fingerprint, email, teamName, "", true) // Admin since they created the team
 	defer s.removeUserSession(channel)
 
 	// Continue with normal shell flow
@@ -5045,7 +5094,7 @@ func (s *Server) startBillingVerification(channel *sshbuf.Channel, fingerprint, 
 	}
 
 	// Create user session before continuing to main shell
-	s.createUserSession(channel, fingerprint, email, teamName, isAdmin)
+	s.createUserSession(channel, fingerprint, email, teamName, "", isAdmin)
 	defer s.removeUserSession(channel)
 
 	// Continue with normal shell flow

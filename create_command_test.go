@@ -132,7 +132,7 @@ func TestHandleCreateCommand(t *testing.T) {
 			bufferedChannel := sshbuf.New(mockChannel)
 
 			// Create user session
-			server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+			server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 			// Call handleCreateCommand
 			server.handleCreateCommand(bufferedChannel, tt.args)
@@ -202,7 +202,7 @@ func TestHandleCreateCommandWithoutContainerManager(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	// Call handleCreateCommand
 	server.handleCreateCommand(bufferedChannel, []string{"testcontainer"})
@@ -317,7 +317,7 @@ func TestCreateCommandIntegration(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	// Call handleCreateCommand
 	server.handleCreateCommand(bufferedChannel, []string{"--name=" + containerName})

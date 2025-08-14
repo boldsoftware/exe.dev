@@ -95,7 +95,7 @@ func TestCreateCommandVariantsIntegration(t *testing.T) {
 			bufferedChannel := sshbuf.New(mockChannel)
 
 			// Create user session
-			server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+			server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 			defer server.removeUserSession(bufferedChannel)
 
 			// Create stdin reader

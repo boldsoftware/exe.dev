@@ -130,7 +130,7 @@ func TestHandleStopCommand(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 			// Create user session
-			server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+			server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 			defer server.removeUserSession(bufferedChannel)
 
 			// Call handleStopCommand
@@ -201,7 +201,7 @@ func TestHandleStopCommandWithoutContainerManager(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 	defer server.removeUserSession(bufferedChannel)
 
 	// Call handleStopCommand
@@ -277,7 +277,7 @@ func TestHandleStopCommandContainerNotCreated(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 	defer server.removeUserSession(bufferedChannel)
 
 	// Call handleStopCommand

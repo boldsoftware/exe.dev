@@ -62,7 +62,7 @@ func TestHandleListCommand(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	tests := []struct {
 		name            string
@@ -190,7 +190,7 @@ func TestHandleListCommandWithoutContainerManager(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	// Call handleListCommand
 	server.handleListCommand(bufferedChannel)

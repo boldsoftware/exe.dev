@@ -132,7 +132,7 @@ func TestSignupFlowAuthentication(t *testing.T) {
 			t.Logf("Warning: Using team %s instead of %s", team.TeamName, teamName)
 		}
 
-		server.createUserSession(bufferedChannel, fingerprint, user.Email, team.TeamName, team.IsAdmin)
+		server.createUserSession(bufferedChannel, fingerprint, user.Email, team.TeamName, "", team.IsAdmin)
 		defer server.removeUserSession(bufferedChannel)
 
 		t.Log("=== Testing create command with registered user session ===")

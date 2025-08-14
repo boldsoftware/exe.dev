@@ -99,7 +99,7 @@ func TestHandleStopCommandMultipleMachines(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 	defer server.removeUserSession(bufferedChannel)
 
 	// Test stopping all three machines at once
@@ -233,7 +233,7 @@ func TestHandleStopCommandPartialFailure(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 	defer server.removeUserSession(bufferedChannel)
 
 	// Test stopping both machines (one will fail, one nonexistent)

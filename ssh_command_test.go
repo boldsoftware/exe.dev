@@ -82,7 +82,7 @@ func TestHandleSSHCommand(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	tests := []struct {
 		name          string
@@ -192,7 +192,7 @@ func TestHandleSSHCommandWithoutContainerManager(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	// Call handleSSHCommand
 	server.handleSSHCommand(bufferedChannel, []string{"testmachine"})
@@ -265,7 +265,7 @@ func TestHandleSSHCommandContainerNotCreated(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	// Call handleSSHCommand
 	server.handleSSHCommand(bufferedChannel, []string{machineName})
@@ -346,7 +346,7 @@ func TestHandleSSHCommandWithStoppedContainer(t *testing.T) {
 	bufferedChannel := sshbuf.New(mockChannel)
 
 	// Create user session
-	server.createUserSession(bufferedChannel, fingerprint, email, teamName, true)
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
 
 	// Call handleSSHCommand
 	server.handleSSHCommand(bufferedChannel, []string{machineName})
@@ -410,4 +410,133 @@ type MockEOFError struct{}
 
 func (e *MockEOFError) Error() string {
 	return "EOF"
+}
+
+func TestHandleWhoamiCommand(t *testing.T) {
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	// Create mock container manager
+	mockManager := NewMockContainerManager()
+
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{})
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	server.containerManager = mockManager
+	defer server.Stop()
+
+	// Create test data
+	fingerprint := "SHA256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+	email := "test@example.com"
+	teamName := "testteam"
+
+	// Set up user and team
+	if err := server.createUser(fingerprint, email); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	if err := server.createTeam(teamName, email); err != nil {
+		t.Fatalf("Failed to create team: %v", err)
+	}
+	if err := server.addTeamMember(fingerprint, teamName, true); err != nil {
+		t.Fatalf("Failed to add team member: %v", err)
+	}
+
+	// Create mock channel
+	var outputBuf bytes.Buffer
+	term, err := NewTerminalEmulator()
+	if err != nil {
+		t.Fatalf("Failed to create terminal emulator: %v", err)
+	}
+
+	// Override the buffer for output capture
+	term.buffer = &outputBuf
+
+	mockChannel := &MockSSHChannel{
+		term: term,
+	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
+
+	// Create user session
+	server.createUserSession(bufferedChannel, fingerprint, email, teamName, "", true)
+
+	// Call handleWhoamiCommand
+	publicKeyTest := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7vbqajDuLLbvQ test@example.com"
+	server.handleWhoamiCommand(bufferedChannel, fingerprint, email, publicKeyTest)
+
+	// Check output
+	rawOutput := outputBuf.String()
+	output := stripANSI(rawOutput)
+	
+	// Check that it contains the user information
+	if !strings.Contains(output, "User Information:") {
+		t.Errorf("Expected 'User Information:' in output, got: %s", output)
+	}
+	if !strings.Contains(output, fingerprint) {
+		t.Errorf("Expected fingerprint '%s' in output, got: %s", fingerprint, output)
+	}
+	if !strings.Contains(output, email) {
+		t.Errorf("Expected email '%s' in output, got: %s", email, output)
+	}
+	if !strings.Contains(output, "Public Key Fingerprint:") {
+		t.Errorf("Expected 'Public Key Fingerprint:' in output, got: %s", output)
+	}
+	if !strings.Contains(output, "Email Address:") {
+		t.Errorf("Expected 'Email Address:' in output, got: %s", output)
+	}
+	if !strings.Contains(output, "Public Key:") {
+		t.Errorf("Expected 'Public Key:' in output, got: %s", output)
+	}
+	if !strings.Contains(output, "ssh-rsa") {
+		t.Errorf("Expected public key content in output, got: %s", output)
+	}
+}
+
+func TestHandleWhoamiCommandWithoutUserSession(t *testing.T) {
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	mockManager := NewMockContainerManager()
+	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{})
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	server.containerManager = mockManager
+	defer server.Stop()
+
+	// Create mock channel WITHOUT creating user session
+	var outputBuf bytes.Buffer
+	term, err := NewTerminalEmulator()
+	if err != nil {
+		t.Fatalf("Failed to create terminal emulator: %v", err)
+	}
+
+	// Override the buffer for output capture
+	term.buffer = &outputBuf
+
+	mockChannel := &MockSSHChannel{
+		term: term,
+	}
+	// Wrap the mock channel with SSHBufferedChannel
+	bufferedChannel := sshbuf.New(mockChannel)
+
+	// Create a simple test to ensure the getUserInfoFromChannel works correctly
+	_, _, _, _, err = server.getUserInfoFromChannel(bufferedChannel)
+	if err == nil {
+		t.Errorf("Expected error when no user session exists, got none")
+	}
+	if !strings.Contains(err.Error(), "user not authenticated") {
+		t.Errorf("Expected 'user not authenticated' error, got: %v", err)
+	}
 }

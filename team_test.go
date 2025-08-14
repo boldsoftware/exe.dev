@@ -109,7 +109,7 @@ func TestTeamCommands(t *testing.T) {
 	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session
-		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, "", true)
 		defer server.removeUserSession(bufferedChannel)
 
 		// Test team list command
@@ -148,7 +148,7 @@ func TestTeamCommands(t *testing.T) {
 	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for admin
-		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, "", true)
 		defer server.removeUserSession(bufferedChannel)
 
 		// Test invite command
@@ -184,7 +184,7 @@ func TestTeamCommands(t *testing.T) {
 	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for non-admin member
-		server.createUserSession(bufferedChannel, testMember, testMemberEmail, testTeam, false)
+		server.createUserSession(bufferedChannel, testMember, testMemberEmail, testTeam, "", false)
 		defer server.removeUserSession(bufferedChannel)
 
 		// Try to invite as non-admin
@@ -225,7 +225,7 @@ func TestTeamCommands(t *testing.T) {
 	bufferedChannel := sshbuf.New(channel)
 
 		// Create session for new user (not yet in team)
-		server.createUserSession(bufferedChannel, newUserFingerprint, newUserEmail, "", false)
+		server.createUserSession(bufferedChannel, newUserFingerprint, newUserEmail, "", "", false)
 		defer server.removeUserSession(bufferedChannel)
 
 		// Join team with code
@@ -272,7 +272,7 @@ func TestTeamCommands(t *testing.T) {
 	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for admin
-		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, "", true)
 		defer server.removeUserSession(bufferedChannel)
 
 		// Add a user to remove
@@ -320,7 +320,7 @@ func TestTeamCommands(t *testing.T) {
 	bufferedChannel := sshbuf.New(channel)
 
 		// Create user session for admin
-		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, true)
+		server.createUserSession(bufferedChannel, testAdmin, testAdminEmail, testTeam, "", true)
 		defer server.removeUserSession(bufferedChannel)
 
 		// Try to remove self
