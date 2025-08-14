@@ -577,7 +577,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		// Get the personal team name
 		var personalTeamName string
 		err = ss.server.db.QueryRow(`
-			SELECT name FROM teams 
+			SELECT name FROM teams
 			WHERE owner_fingerprint = ? AND is_personal = TRUE`,
 			fingerprint).Scan(&personalTeamName)
 		if err == nil && personalTeamName != "" {
@@ -1326,10 +1326,9 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, fingerprint, teamName str
 
 	// Update database status
 	_, err = ss.server.db.Exec(`
-		UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP 
+		UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP
 		WHERE name = ? AND team_name = ?`,
 		machineName, teamName)
-
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
 	}
@@ -1375,10 +1374,9 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, fingerprint, teamName stri
 
 		// Update database status
 		_, err = ss.server.db.Exec(`
-			UPDATE machines SET status = 'stopped' 
+			UPDATE machines SET status = 'stopped'
 			WHERE name = ? AND team_name = ?`,
 			machineName, teamName)
-
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
 		}
@@ -1401,10 +1399,9 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, fingerprint, teamName st
 		fmt.Fprintf(s, "Deleting \033[1m%s\033[0m...\r\n", machineName)
 
 		_, err := ss.server.db.Exec(`
-			DELETE FROM machines 
+			DELETE FROM machines
 			WHERE name = ? AND team_name = ?`,
 			machineName, teamName)
-
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError deleting machine: %v\033[0m\r\n", err)
 			return
@@ -1434,10 +1431,9 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, fingerprint, teamName st
 
 	// Delete from database
 	_, err = ss.server.db.Exec(`
-		DELETE FROM machines 
+		DELETE FROM machines
 		WHERE name = ? AND team_name = ?`,
 		machineName, teamName)
-
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError deleting machine from database: %v\033[0m\r\n", err)
 		return
@@ -1529,7 +1525,7 @@ func (ss *SSHServer) handleTeamList(s ssh.Session, fingerprint, teamName string)
 // Helper method to get machines for a team
 func (s *Server) getMachinesForTeam(teamName string) ([]*Machine, error) {
 	rows, err := s.db.Query(`
-		SELECT id, team_name, name, status, image, container_id, 
+		SELECT id, team_name, name, status, image, container_id,
 		       created_by_fingerprint, created_at, updated_at, last_started_at
 		FROM machines
 		WHERE team_name = ?
@@ -1569,7 +1565,6 @@ func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey str
 			INSERT OR REPLACE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
 			VALUES (?, ?, ?, 0, 'Pending Verification')`,
 			fingerprint, email, publicKey)
-
 		if err != nil {
 			return fmt.Errorf("failed to store pending key: %v", err)
 		}
@@ -1582,7 +1577,6 @@ func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey str
 			INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
 			VALUES (?, ?, ?, ?, ?)`,
 			token, fingerprint, publicKey, email, expires)
-
 		if err != nil {
 			return fmt.Errorf("failed to create verification token: %v", err)
 		}

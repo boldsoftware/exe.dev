@@ -402,7 +402,6 @@ func (s *Server) generateHostKey() error {
 
 	} else if err != nil {
 		return fmt.Errorf("failed to query host key: %w", err)
-
 	} else {
 		// Load existing key
 		signer, err := ssh.ParsePrivateKey([]byte(privateKeyPEM))
@@ -437,8 +436,8 @@ func (s *Server) inheritUserTeamMemberships(newFingerprint, userEmail string) er
 
 	// Get all teams the original fingerprint is a member of
 	rows, err := s.db.Query(`
-		SELECT team_name, is_admin 
-		FROM team_members 
+		SELECT team_name, is_admin
+		FROM team_members
 		WHERE user_fingerprint = ?`, originalFingerprint)
 	if err != nil {
 		return fmt.Errorf("failed to query team memberships: %v", err)
@@ -742,7 +741,7 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 <head>
     <title>Confirm Device - exe.dev</title>
     <style>
-        body { 
+        body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             max-width: 500px;
             margin: 100px auto;
@@ -755,7 +754,7 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
             padding: 40px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        h1 { 
+        h1 {
             color: #333;
             margin-bottom: 10px;
             font-size: 28px;
@@ -816,19 +815,19 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
     <div class="container">
         <h1>Authorize New Device</h1>
         <p>A new device is requesting access to your exe.dev account.</p>
-        
+
         <div class="info-box">
             <strong>Account:</strong> %s<br>
             <strong>Device Fingerprint:</strong>
             <div class="fingerprint">%s...</div>
         </div>
-        
+
         <div class="warning">
             ⚠️ Only confirm if you just tried to connect from a new device
         </div>
-        
+
         <p>This will allow the device to access your exe.dev containers using SSH.</p>
-        
+
         <form method="POST" action="/verify-device">
             <input type="hidden" name="token" value="%s">
             <button type="submit" class="button">Authorize Device</button>
@@ -901,7 +900,6 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		VALUES (?, ?, ?, 1, 'New Device')
 		ON CONFLICT(fingerprint) DO UPDATE SET verified = 1`,
 		fingerprint, email, publicKey)
-
 	if err != nil {
 		log.Printf("Failed to add SSH key: %v", err)
 		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
@@ -1011,7 +1009,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 <head>
     <title>Confirm Email - exe.dev</title>
     <style>
-        body { 
+        body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             max-width: 500px;
             margin: 100px auto;
@@ -1024,7 +1022,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
             padding: 40px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        h1 { 
+        h1 {
             color: #333;
             margin-bottom: 10px;
             font-size: 28px;
@@ -1067,13 +1065,13 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
     <div class="container">
         <h1>Confirm Your Email Address</h1>
         <p>You're about to verify your email address for exe.dev.</p>
-        
+
         <div class="warning">
             ⚠️ Only click confirm if you initiated this request
         </div>
-        
+
         <p>This will complete your email verification and allow you to proceed with your exe.dev account setup.</p>
-        
+
         <form method="POST" action="/verify-email">
             <input type="hidden" name="token" value="%s">
             <button type="submit" class="button">Confirm Email Verification</button>
@@ -1464,44 +1462,44 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
         .subtitle { color: #666; margin-bottom: 30px; }
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 5px; font-weight: 500; color: #333; }
-        input[type="email"] { 
-            width: 100%%; 
-            padding: 12px; 
-            border: 2px solid #e1e5e9; 
-            border-radius: 6px; 
+        input[type="email"] {
+            width: 100%%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 6px;
             font-size: 16px;
             box-sizing: border-box;
         }
-        input[type="email"]:focus { 
-            outline: none; 
-            border-color: #007cba; 
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #007cba;
         }
-        button { 
-            width: 100%%; 
-            background: #007cba; 
-            color: white; 
-            padding: 12px 20px; 
-            border: none; 
-            border-radius: 6px; 
-            cursor: pointer; 
+        button {
+            width: 100%%;
+            background: #007cba;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
             font-size: 16px;
             font-weight: 500;
         }
         button:hover { background: #006ba1; }
         button:disabled { background: #ccc; cursor: not-allowed; }
-        .alt-method { 
-            margin-top: 30px; 
-            padding-top: 30px; 
-            border-top: 1px solid #e1e5e9; 
-            text-align: center; 
-            color: #666; 
+        .alt-method {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e1e5e9;
+            text-align: center;
+            color: #666;
         }
-        .ssh-command { 
-            background: #f8f9fa; 
-            padding: 12px; 
-            border-radius: 4px; 
-            font-family: 'Monaco', 'Consolas', monospace; 
-            color: #333; 
+        .ssh-command {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            color: #333;
             border-left: 3px solid #007cba;
         }
     </style>
@@ -1510,16 +1508,16 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
     <div class="container">
         <h1>Sign in to exe.dev</h1>
         <p class="subtitle">Enter your email address to receive a sign-in link</p>
-        
+
         <form method="POST" action="/auth">
             <div class="form-group">
                 <label for="email">Email address</label>
                 <input type="email" id="email" name="email" required placeholder="you@example.com">
             </div>
-            
+
             <button type="submit">Send sign-in link</button>
         </form>
-        
+
         <div class="alt-method">
             <p>Or authenticate via SSH:</p>
             <div class="ssh-command">ssh exe.dev</div>
@@ -1564,7 +1562,6 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		INSERT INTO email_verifications (token, email, user_fingerprint, expires_at)
 		VALUES (?, ?, ?, ?)
 	`, token, email, userFingerprint, time.Now().Add(24*time.Hour).Format(time.RFC3339))
-
 	if err != nil {
 		log.Printf("Failed to store email verification: %v", err)
 		s.showAuthError(w, r, "Failed to create verification. Please try again.")
@@ -1588,7 +1585,6 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	// Send email using existing verification system
 	err = s.sendVerificationEmail(email, token)
-
 	if err != nil {
 		log.Printf("Failed to send auth email: %v", err)
 		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.")
@@ -1738,11 +1734,10 @@ func (s *Server) checkEmailVerificationToken(token string) (string, error) {
 	var expiresAt string
 
 	err := s.db.QueryRow(`
-		SELECT user_fingerprint, email, expires_at 
-		FROM email_verifications 
+		SELECT user_fingerprint, email, expires_at
+		FROM email_verifications
 		WHERE token = ?
 	`, token).Scan(&fingerprint, &email, &expiresAt)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid verification token")
@@ -1797,7 +1792,6 @@ func (s *Server) createAuthCookie(fingerprint, domain string) (string, error) {
 		INSERT INTO auth_cookies (cookie_value, user_fingerprint, domain, expires_at)
 		VALUES (?, ?, ?, ?)
 	`, cookieValue, fingerprint, getDomain(domain), expiresAt.Format(time.RFC3339))
-
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth cookie: %w", err)
 	}
@@ -1811,11 +1805,10 @@ func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) 
 	var expiresAt string
 
 	err := s.db.QueryRow(`
-		SELECT user_fingerprint, expires_at 
-		FROM auth_cookies 
+		SELECT user_fingerprint, expires_at
+		FROM auth_cookies
 		WHERE cookie_value = ? AND domain = ?
 	`, cookieValue, getDomain(domain)).Scan(&fingerprint, &expiresAt)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid cookie")
@@ -1858,7 +1851,6 @@ func (s *Server) createAuthToken(fingerprint, subdomain string) (string, error) 
 		INSERT INTO auth_tokens (token, user_fingerprint, subdomain, expires_at)
 		VALUES (?, ?, ?, ?)
 	`, token, fingerprint, subdomain, expiresAt.Format(time.RFC3339))
-
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth token: %w", err)
 	}
@@ -1874,11 +1866,10 @@ func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, err
 	var usedAt sql.NullString
 
 	err := s.db.QueryRow(`
-		SELECT user_fingerprint, subdomain, expires_at, used_at 
-		FROM auth_tokens 
+		SELECT user_fingerprint, subdomain, expires_at, used_at
+		FROM auth_tokens
 		WHERE token = ?
 	`, token).Scan(&fingerprint, &subdomain, &expiresAt, &usedAt)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid token")
@@ -1955,10 +1946,9 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, finge
 func (s *Server) userHasTeamAccess(fingerprint, teamName string) (bool, error) {
 	var count int
 	err := s.db.QueryRow(`
-		SELECT COUNT(*) FROM team_members 
+		SELECT COUNT(*) FROM team_members
 		WHERE user_fingerprint = ? AND team_name = ?
 	`, fingerprint, teamName).Scan(&count)
-
 	if err != nil {
 		return false, err
 	}
@@ -2236,7 +2226,6 @@ func (s *Server) proxySSHToContainer(channel *sshbuf.Channel, requests <-chan *s
 				channel, // stdout
 				channel, // stderr
 			)
-
 			if err != nil {
 				channel.Write([]byte(fmt.Sprintf("Command execution failed: %v\r\n", err)))
 			}
@@ -2276,7 +2265,6 @@ func (s *Server) proxySSHToContainer(channel *sshbuf.Channel, requests <-chan *s
 				channel, // stdout
 				channel, // stderr
 			)
-
 			if err != nil {
 				channel.Write([]byte(fmt.Sprintf("Shell execution failed: %v\r\n", err)))
 			}
@@ -2441,7 +2429,6 @@ func (s *Server) connectToContainer(channel *sshbuf.Channel, containerID string)
 		channel, // stdout
 		channel, // stderr
 	)
-
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
 		return
@@ -2695,7 +2682,7 @@ func (s *Server) isValidContainerName(name string) bool {
 // createMachine stores machine info in database
 func (s *Server) createMachine(userFingerprint, teamName, name, containerID, image string) error {
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint) 
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, teamName, name, "pending", image, containerID, userFingerprint)
 	return err
@@ -2733,7 +2720,7 @@ func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 	var machine Machine
 	err := s.db.QueryRow(`
 		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at
-		FROM machines 
+		FROM machines
 		WHERE team_name = ? AND name = ?
 	`, teamName, name).Scan(
 		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
@@ -3061,7 +3048,6 @@ func (s *Server) startEmailVerification(channel *sshbuf.Channel, fingerprint, em
 			INSERT OR REPLACE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
 			VALUES (?, ?, ?, 0, 'Pending Verification')`,
 			fingerprint, email, publicKey)
-
 		if err != nil {
 			return fmt.Errorf("failed to store pending key: %v", err)
 		}
@@ -3074,7 +3060,6 @@ func (s *Server) startEmailVerification(channel *sshbuf.Channel, fingerprint, em
 			INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
 			VALUES (?, ?, ?, ?, ?)`,
 			token, fingerprint, publicKey, email, expires)
-
 		if err != nil {
 			return fmt.Errorf("failed to create verification token: %v", err)
 		}
@@ -3834,8 +3819,8 @@ func (s *Server) Start() error {
 // getEmailBySSHKey checks if an SSH key is registered and returns the associated email
 func (s *Server) getEmailBySSHKey(fingerprint string) (email string, verified bool, err error) {
 	err = s.db.QueryRow(`
-		SELECT user_email, verified 
-		FROM ssh_keys 
+		SELECT user_email, verified
+		FROM ssh_keys
 		WHERE fingerprint = ?`,
 		fingerprint).Scan(&email, &verified)
 
@@ -3885,8 +3870,8 @@ func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 
 	// First try to find user by their primary fingerprint
 	err := s.db.QueryRow(`
-		SELECT public_key_fingerprint, email, created_at 
-		FROM users 
+		SELECT public_key_fingerprint, email, created_at
+		FROM users
 		WHERE public_key_fingerprint = ?`,
 		fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
 
@@ -3900,7 +3885,7 @@ func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 
 	// If not found, try to find user by their SSH key fingerprint
 	err = s.db.QueryRow(`
-		SELECT u.public_key_fingerprint, u.email, u.created_at 
+		SELECT u.public_key_fingerprint, u.email, u.created_at
 		FROM users u
 		JOIN ssh_keys s ON u.email = s.user_email
 		WHERE s.fingerprint = ? AND s.verified = 1`,
@@ -3915,8 +3900,8 @@ func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 // getUserTeams returns all teams a user belongs to
 func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
 	rows, err := s.db.Query(`
-		SELECT user_fingerprint, team_name, is_admin, joined_at 
-		FROM team_members 
+		SELECT user_fingerprint, team_name, is_admin, joined_at
+		FROM team_members
 		WHERE user_fingerprint = ?`,
 		fingerprint)
 	if err != nil {
@@ -3946,7 +3931,7 @@ func (s *Server) createUser(fingerprint, email string) error {
 
 	// Create the user
 	_, err = tx.Exec(`
-		INSERT INTO users (public_key_fingerprint, email) 
+		INSERT INTO users (public_key_fingerprint, email)
 		VALUES (?, ?)`,
 		fingerprint, email)
 	if err != nil {
@@ -3974,7 +3959,7 @@ func (s *Server) createUser(fingerprint, email string) error {
 
 	// Create the personal team
 	_, err = tx.Exec(`
-		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint) 
+		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint)
 		VALUES (?, ?, TRUE, ?)`,
 		personalTeamName, email, fingerprint)
 	if err != nil {
@@ -3983,7 +3968,7 @@ func (s *Server) createUser(fingerprint, email string) error {
 
 	// Add user as admin of their personal team
 	_, err = tx.Exec(`
-		INSERT INTO team_members (user_fingerprint, team_name, is_admin) 
+		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
 		VALUES (?, ?, TRUE)`,
 		fingerprint, personalTeamName)
 	if err != nil {
@@ -4003,7 +3988,7 @@ func (s *Server) createUser(fingerprint, email string) error {
 // createTeam creates a new team
 func (s *Server) createTeam(name, billingEmail string) error {
 	_, err := s.db.Exec(`
-		INSERT INTO teams (name, billing_email) 
+		INSERT INTO teams (name, billing_email)
 		VALUES (?, ?)`,
 		name, billingEmail)
 	return err
@@ -4020,7 +4005,7 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 
 	// Create the team
 	_, err = tx.Exec(`
-		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint) 
+		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint)
 		VALUES (?, ?, TRUE, ?)`,
 		teamName, email, fingerprint)
 	if err != nil {
@@ -4038,7 +4023,7 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 
 	// Set as default team
 	_, err = tx.Exec(`
-		UPDATE ssh_keys 
+		UPDATE ssh_keys
 		SET default_team = ?
 		WHERE fingerprint = ?`,
 		teamName, fingerprint)
@@ -4052,7 +4037,7 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 // addTeamMember adds a user to a team
 func (s *Server) addTeamMember(fingerprint, teamName string, isAdmin bool) error {
 	_, err := s.db.Exec(`
-		INSERT INTO team_members (user_fingerprint, team_name, is_admin) 
+		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
 		VALUES (?, ?, ?)`,
 		fingerprint, teamName, isAdmin)
 	return err
@@ -4082,7 +4067,7 @@ func (s *Server) isTeamNameTakenTx(tx *sql.Tx, teamName string) (bool, error) {
 func (s *Server) createInvite(teamName, createdByFingerprint, email string, maxUses int, expiresAt time.Time) (string, error) {
 	code := s.generateInviteCode()
 	_, err := s.db.Exec(`
-		INSERT INTO invites (code, team_name, created_by_fingerprint, email, max_uses, expires_at) 
+		INSERT INTO invites (code, team_name, created_by_fingerprint, email, max_uses, expires_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, code, teamName, createdByFingerprint, email, maxUses, expiresAt)
 	return code, err
