@@ -168,6 +168,9 @@ type Server struct {
 	// Email and billing services
 	postmarkClient *postmark.Client
 	stripeKey      string
+	
+	// Test mode - skip animations for faster testing
+	testMode bool
 	devMode        string // Development mode: "" (production) or "local" (Docker)
 	quietMode      bool  // Quiet mode - suppress log output (for tests)
 
@@ -271,6 +274,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dock
 		stripeKey:            stripeKey,
 		devMode:              devMode,
 		quietMode:            quietMode,
+		testMode:             testing.Testing(),
 	}
 
 	s.setupHTTPServer()
@@ -4140,6 +4144,14 @@ func (s *Server) showAnimatedWelcome(channel *sshbuf.Channel) {
 
 // showAnimatedWelcomeWithWidth displays the ASCII art with a beautiful fade-out animation using specified terminal width
 func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalWidth int) {
+	// Skip animation in test mode for faster tests
+	if s.testMode {
+		channel.Write([]byte("\033[2J\033[H"))
+		channel.Write([]byte("███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n"))
+		channel.Write([]byte("╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \r\n\r\n"))
+		return
+	}
+	
 	// Detect terminal mode (dark or light)
 	terminalMode := s.detectTerminalMode(channel)
 	
