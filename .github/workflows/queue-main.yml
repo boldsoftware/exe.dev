@@ -1,0 +1,109 @@
+# Simplified Commit Queue
+#
+# (Force) push to "queue-main-$USER" a potential change, and
+# this job will push it main if it passes pre-commit and tests,
+# which will run in parallel. The push may fail if the commit
+# cannot be pushed cleanly because it needs to be rebased, which
+# will happen especially if another developer pushes a change at
+# roughly the same time.
+
+name: Commit Queue
+run-name: ${{ github.event.head_commit.message }}
+
+on:
+  push:
+    branches:
+      - "queue-*"
+
+permissions: read-all
+
+jobs:
+  formatting:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      commit_sha: ${{ steps.get_commit.outputs.commit_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Check and fix goimports
+        run: |
+          # Install goimports
+          go install golang.org/x/tools/cmd/goimports@latest
+          
+          # Check if goimports would make changes
+          CHANGES=$(find . -name "*.go" -exec goimports -l {} +)
+          if [ -n "$CHANGES" ]; then
+            echo "goimports would change the following files:"
+            echo "$CHANGES"
+            
+            # Apply goimports
+            find . -name "*.go" -exec goimports -w {} +
+            
+            # Configure git and commit changes
+            git config --global user.name "Auto-formatter"
+            git config --global user.email "bot@exe.dev"
+            git add .
+            git commit -m "goimports: fix imports"
+            git push
+          else
+            echo "No goimports changes needed"
+          fi
+
+      - name: Get commit SHA
+        id: get_commit
+        run: echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+  test:
+    needs: formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.formatting.outputs.commit_sha }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run tests
+        run: go test -short ./...
+
+  push-to-main:
+    runs-on: ubuntu-latest
+    needs: [formatting, test]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.formatting.outputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Push to main
+        run: |
+          # Try to rebase onto main and push
+          git fetch origin main
+          
+          # Check if we can fast-forward
+          if git merge-base --is-ancestor HEAD origin/main; then
+            echo "Already up to date with main"
+            git push origin HEAD:main
+          elif git rebase origin/main; then
+            echo "Successfully rebased onto main"
+            git push origin HEAD:main
+          else
+            echo "Failed to rebase - conflicts detected"
+            exit 1
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
