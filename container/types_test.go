@@ -96,7 +96,7 @@ func TestExpandImageName(t *testing.T) {
 		{"node", "node:20"},
 		{"golang", "golang:1.21"},
 		{"rust", "rust:latest"},
-		{"custom/image:tag", "custom/image:tag"}, // Should not be modified
+		{"custom/image:tag", "custom/image:tag"},             // Should not be modified
 		{"ghcr.io/user/repo:v1.0", "ghcr.io/user/repo:v1.0"}, // Should not be modified
 	}
 
