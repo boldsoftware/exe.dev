@@ -1,0 +1,296 @@
+# sshpiper service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sshpiper
+spec:
+  selector:
+    app: sshpiper
+  ports:
+    - protocol: TCP
+      port: 2222
+---
+apiVersion: v1
+data:
+  server_key: |
+    LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNCWUhWV01lNzVDZ3Rzdm5rOWlTekJFU3hSdjdMb3U3K0tVbndmb3VnNzcxZ0FBQUpEQnArS0d3YWZpCmhnQUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDQllIVldNZTc1Q2d0c3ZuazlpU3pCRVN4UnY3TG91NytLVW53Zm91Zzc3MWcKQUFBRUJKSDU3eTFaRTUxbVo2a2VsWUR0eDQ1ajBhZGdsUk5CY0pZOE94YTY4TEJWZ2RWWXg3dmtLQzJ5K2VUMkpMTUVSTApGRy9zdWk3djRwU2ZCK2k2RHZ2V0FBQUFEV0p2YkdsaGJrQjFZblZ1ZEhVPQotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K
+kind: Secret
+metadata:
+  name: sshpiper-server-key
+type: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sshpiper-deployment
+  labels:
+    app: sshpiper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sshpiper
+  template:
+    metadata:
+      labels:
+        app: sshpiper
+    spec:
+      serviceAccountName: sshpiper-account
+      containers:
+      - name: sshpiper
+        imagePullPolicy: Never
+        image: sshpiper-test-image
+        ports:
+        - containerPort: 2222
+        env:
+        - name: PLUGIN
+          value: "kubernetes"
+        - name: SSHPIPERD_SERVER_KEY
+          value: "/serverkey/ssh_host_ed25519_key"
+        - name: SSHPIPERD_LOG_LEVEL
+          value: "trace"
+        volumeMounts:
+        - name: sshpiper-server-key
+          mountPath: "/serverkey/"
+          readOnly: true
+        - name: sshpiper-files
+          mountPath: "/files/"
+          readOnly: true
+      volumes:
+      - name: sshpiper-server-key
+        secret:
+          secretName: sshpiper-server-key
+          items:
+          - key: server_key
+            path: ssh_host_ed25519_key
+      - name: sshpiper-files
+        configMap:
+          name: sshpiper-files
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sshpiper-files
+data:
+  # htpasswd -nb htpwdfile htpasswordfile
+  htpasswd: |
+    htpwdfile:$apr1$qOeWE6f6$39xTQwVbAT88CMJp234wY/
+  authorized_keys: |
+    ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINRGTH325rDUp12tplwukHmR8ytbC9TPZ886gCstynP1
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sshpiper-reader
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+- apiGroups: ["sshpiper.com"]
+  resources: ["pipes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: read-sshpiper
+subjects:
+- kind: ServiceAccount
+  name: sshpiper-account
+roleRef:
+  kind: Role
+  name: sshpiper-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sshpiper-account
+
+# pipe to a password based sshd
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-password
+spec:
+  from:
+  - username: "pass"
+  to:
+    host: host-password:2222
+    username: "user"
+    ignore_hostkey: true
+---
+
+
+
+# pipe to a key based sshd with custom key field
+---
+apiVersion: v1
+data:
+  custom_field: |
+    LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNEVVJreDk5dWF3MUtkZHJhWmNMcEI1a2ZNcld3dlV6MmZQT29BckxjcHo5UUFBQUpDK2owK1N2bzlQCmtnQUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDRFVSa3g5OXVhdzFLZGRyYVpjTHBCNWtmTXJXd3ZVejJmUE9vQXJMY3B6OVEKQUFBRURjUWdkaDJ6MnIvNmJscTB6aUoxbDZzNklBWDhDKzlRSGZBSDkzMWNITk85UkdUSDMyNXJEVXAxMnRwbHd1a0htUgo4eXRiQzlUUFo4ODZnQ3N0eW5QMUFBQUFEV0p2YkdsaGJrQjFZblZ1ZEhVPQotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K
+  # echo -n 'notakey' | base64
+  ssh-privatekey: |
+    bm90YWtleSAtbgo=
+  authorized_keys: |
+    c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSU5SR1RIMzI1ckRVcDEydHBsd3VrSG1SOHl0YkM5VFBaODg2Z0NzdHluUDEK
+kind: Secret
+metadata:
+  name: host-publickey-key-custom-field
+type: Opaque
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-publickey-custom-field
+  annotations:
+    privatekey_field_name: custom_field
+spec:
+  from:
+  - username: "custom_field" # catch all    
+    username_regex_match: true
+    authorized_keys_secret: # use the secret with custom field
+      name: host-publickey-key-custom-field
+  to:
+    host: host-publickey:2222
+    username: "user"
+    private_key_secret:
+      name: host-publickey-key-custom-field
+    ignore_hostkey: true
+
+# pipe to a key based sshd
+---
+apiVersion: v1
+data:
+  ssh-privatekey: |
+    LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNEVVJreDk5dWF3MUtkZHJhWmNMcEI1a2ZNcld3dlV6MmZQT29BckxjcHo5UUFBQUpDK2owK1N2bzlQCmtnQUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDRFVSa3g5OXVhdzFLZGRyYVpjTHBCNWtmTXJXd3ZVejJmUE9vQXJMY3B6OVEKQUFBRURjUWdkaDJ6MnIvNmJscTB6aUoxbDZzNklBWDhDKzlRSGZBSDkzMWNITk85UkdUSDMyNXJEVXAxMnRwbHd1a0htUgo4eXRiQzlUUFo4ODZnQ3N0eW5QMUFBQUFEV0p2YkdsaGJrQjFZblZ1ZEhVPQotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K
+kind: Secret
+metadata:
+  name: host-publickey-key
+type: kubernetes.io/ssh-auth
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-publickey-regex
+spec:
+  from:
+  - username: "any.*" # catch all    
+    username_regex_match: true
+    authorized_keys_data: "c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSU5SR1RIMzI1ckRVcDEydHBsd3VrSG1SOHl0YkM5VFBaODg2Z0NzdHluUDEK"
+  to:
+    host: host-publickey:2222
+    username: "user"
+    private_key_secret:
+      name: host-publickey-key
+    ignore_hostkey: true
+
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-publickey-authorized-file
+spec:
+  from:
+  - username: "authorizedfile"
+    authorized_keys_file: /files/authorized_keys
+  to:
+    host: host-publickey:2222
+    username: "user"
+    private_key_secret:
+      name: host-publickey-key
+    ignore_hostkey: true
+
+# htpasswd pipe to a password based sshd
+---
+apiVersion: v1
+stringData:
+  password: pass
+kind: Secret
+metadata:
+  name: host-pass-secret
+type: Opaque
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-htpwd
+spec:
+  from:
+  - username: "htpwd"
+    # htpasswd -nb htpwd htpassword
+    htpasswd_data: "htpwd:$apr1$FazBEvaq$BZWaLi8Q1efsWNTKcuUgN1"
+  to:
+    host: host-password:2222
+    username: "user"
+    password_secret:
+      name: host-pass-secret
+    ignore_hostkey: true
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-htpwd-file
+spec:
+  from:
+  - username: "htpwdfile"
+    htpasswd_file: /files/htpasswd
+  to:
+    host: host-password:2222
+    username: "user"
+    password_secret:
+      name: host-pass-secret
+    ignore_hostkey: true
+---
+
+# private key with ca
+---
+apiVersion: v1
+stringData:
+  ssh-privatekey: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+    QyNTUxOQAAACDURkx99uaw1KddraZcLpB5kfMrWwvUz2fPOoArLcpz9QAAAJC+j0+Svo9P
+    kgAAAAtzc2gtZWQyNTUxOQAAACDURkx99uaw1KddraZcLpB5kfMrWwvUz2fPOoArLcpz9Q
+    AAAEDcQgdh2z2r/6blq0ziJ1l6s6IAX8C+9QHfAH931cHNO9RGTH325rDUp12tplwukHmR
+    8ytbC9TPZ886gCstynP1AAAADWJvbGlhbkB1YnVudHU=
+    -----END OPENSSH PRIVATE KEY-----    
+  ssh-publickey-cert: |
+    ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIAf6qglkclnZFuSIlW4ClXcwq+SCYJn7rCYcUpbVVaKrAAAAINRGTH325rDUp12tplwukHmR8ytbC9TPZ886gCstynP1AAAAAAAAAAAAAAABAAAACHNzaF91c2VyAAAACwAAAAdjYV91c2VyAAAAAAAAAAD//////////wAAAAAAAACCAAAAFXBlcm1pdC1YMTEtZm9yd2FyZGluZwAAAAAAAAAXcGVybWl0LWFnZW50LWZvcndhcmRpbmcAAAAAAAAAFnBlcm1pdC1wb3J0LWZvcndhcmRpbmcAAAAAAAAACnBlcm1pdC1wdHkAAAAAAAAADnBlcm1pdC11c2VyLXJjAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIJrzCeQ3a+m8PnA/KUmK+JAfC1tM7SG2gkGmW29nXj1nAAAAUwAAAAtzc2gtZWQyNTUxOQAAAECM8mKjWLhTKmhj4sb6r0CVaTz/vO8oy1o/7OzmQyUMMa1ex4mo+HB3RHa5eUGOdcFAJu6O8r6GBEah+O0maH8A
+kind: Secret
+metadata:
+  name: host-publickey-key-ca
+type: Opaque
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-publickey-ca
+spec:
+  from:
+  - username: "hostcapublickey"
+    authorized_keys_file: /files/authorized_keys
+  to:
+    host: host-capublickey:2222
+    username: "ca_user"
+    private_key_secret:
+      name: host-publickey-key-ca
+    ignore_hostkey: true
+---
+apiVersion: sshpiper.com/v1beta1
+kind: Pipe
+metadata:
+  name: pipe-keytopass
+spec:
+  from:
+  - username: "keytopass"
+    authorized_keys_file: /files/authorized_keys
+  to:
+    host: host-password:2222
+    username: "user"
+    password_secret:
+      name: host-pass-secret
+    ignore_hostkey: true
+---    

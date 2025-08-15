@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    branches: [ master ]
+  release:
+    types: [ released ]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+
+  draft:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'release'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - name: Repo SemVer
+        uses: lhstrh/action-repo-semver@v1.2.1
+        id: repo-semver
+        with:
+          bump: patch
+
+      - name: Create draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: | 
+          gh release list | grep Draft | grep v${{ steps.repo-semver.outputs.bump }} | cut -f 1 | xargs -r -L 1 gh release delete --yes
+          gh release create -d --generate-notes v${{ steps.repo-semver.outputs.bump }}
+
+  goreleaser:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          submodules: 'recursive'     
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry docker hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}          
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: true
+
+      - name: Setup Snap
+        run: |
+          set -e
+          sudo snap install snapcraft --classic --revision 11040
+          # https://github.com/goreleaser/goreleaser/pull/2117
+          mkdir -p $HOME/.cache/snapcraft/download
+          mkdir -p $HOME/.cache/snapcraft/stage-packages   
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          # GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SKIP_PUSH: ${{ github.event_name != 'release' }}
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        
+      - name: Upload binaries to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: | 
+          awk '{print "dist/"$2}' dist/checksums.txt | xargs gh release upload ${{github.event.release.name}} dist/checksums.txt

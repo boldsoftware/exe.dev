@@ -1,0 +1,143 @@
+services:
+  host-password:
+    image: linuxserver/openssh-server:9.9_p1-r2-ls190
+    environment:
+      - PASSWORD_ACCESS=true
+      - USER_PASSWORD=pass
+      - USER_NAME=user
+      - LOG_STDOUT=true
+    labels:
+      - sshpiper.username=pass
+      - sshpiper.container_username=user
+      - sshpiper.port=2222
+      - sshpiper.network=e2e_default
+    volumes:
+      - shared:/shared
+      - ./sshdconfig/no_penalties.conf:/config/sshd/sshd_config.d/no_penalties.conf:ro
+      - ./sshdconfig/banner.conf:/config/sshd/sshd_config.d/banner.conf:ro
+      - ./sshdconfig/banner:/tmp/banner:ro
+    networks:
+      - default
+      - netdistract
+
+  host-password-old:
+    image: linuxserver/openssh-server:8.1_p1-r0-ls19
+    environment:
+      - PASSWORD_ACCESS=true
+      - USER_PASSWORD=pass
+      - USER_NAME=user
+      - LOG_STDOUT=true
+    volumes:
+      - shared:/shared
+    networks:
+      - default
+      - netdistract      
+
+  host-publickey:
+    image: linuxserver/openssh-server:9.9_p1-r2-ls190
+    environment:
+      - USER_NAME=user
+      - LOG_STDOUT=true
+    labels:
+      - sshpiper.container_username=user
+      - sshpiper.port=2222
+      - sshpiper.authorized_keys=c3NoLWVkMjU1MTkgQUFBQUMzTnphQzFsWkRJMU5URTVBQUFBSU5SR1RIMzI1ckRVcDEydHBsd3VrSG1SOHl0YkM5VFBaODg2Z0NzdHluUDEgdGVzdEB0ZXN0Cg==
+      - sshpiper.private_key=LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUFNd0FBQUF0emMyZ3RaVwpReU5UVXhPUUFBQUNEVVJreDk5dWF3MUtkZHJhWmNMcEI1a2ZNcld3dlV6MmZQT29BckxjcHo5UUFBQUpDK2owK1N2bzlQCmtnQUFBQXR6YzJndFpXUXlOVFV4T1FBQUFDRFVSa3g5OXVhdzFLZGRyYVpjTHBCNWtmTXJXd3ZVejJmUE9vQXJMY3B6OVEKQUFBRURjUWdkaDJ6MnIvNmJscTB6aUoxbDZzNklBWDhDKzlRSGZBSDkzMWNITk85UkdUSDMyNXJEVXAxMnRwbHd1a0htUgo4eXRiQzlUUFo4ODZnQ3N0eW5QMUFBQUFEV0p2YkdsaGJrQjFZblZ1ZEhVPQotLS0tLUVORCBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0K
+    volumes:
+      - shared:/shared
+      - publickey_authorized_keys:/config/.ssh/
+      - ./sshdconfig/no_penalties.conf:/config/sshd/sshd_config.d/no_penalties.conf:ro
+
+  host-capublickey:
+    image: linuxserver/openssh-server:9.9_p1-r2-ls190
+    environment:
+      - USER_NAME=ca_user
+      - LOG_STDOUT=true
+    volumes:
+      - shared:/shared
+      - ./sshdconfig/no_penalties.conf:/config/sshd/sshd_config.d/no_penalties.conf:ro
+      - ./sshdconfig/trusted-ca.conf:/config/sshd/sshd_config.d/trusted-ca.conf:ro
+      - ./sshdconfig/trusted-ca.pub:/config/sshd/trusted-ca.pub:ro
+
+    
+  host-k8s-proxy:
+    build: ./kubetools
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../plugin/kubernetes/crd.yaml:/kubernetes/crd.yaml:ro
+      - ./k8sworkload.yaml:/kubernetes/workload.yaml:ro
+      - kubeconfig:/root/.kube
+    # networks:
+    #   - kind
+    #   - default
+    command: 
+      - bash
+      - -cx 
+      - |
+        (kind get kubeconfig -q -n sshpipertest || kind create cluster -n sshpipertest)
+        docker network connect kind $$(hostname) # self contain
+        docker network connect e2e_default sshpipertest-control-plane
+        kind export kubeconfig -n sshpipertest --internal
+        kubectl wait --for=condition=ready pod -n kube-system --all --timeout=2m
+        kubectl delete -f /kubernetes/crd.yaml --force --ignore-not-found
+        kubectl delete -f /kubernetes/workload.yaml --force --ignore-not-found
+        set -e
+        kind load docker-image -n sshpipertest sshpiper-test-image
+        kubectl wait --for=delete pod --all --timeout=2m # ensure no leftover
+        kubectl apply -f /kubernetes/crd.yaml
+        kubectl apply -f /kubernetes/workload.yaml
+        kubectl wait deployment --all --for condition=Available=True
+        kubectl port-forward service/sshpiper --pod-running-timeout=2m --address 0.0.0.0 2222:2222 &
+        kubectl logs -f deployment/sshpiper-deployment
+    privileged: true
+    depends_on:
+      - host-publickey
+      - host-password    
+      - piper-imageonly
+
+  testrunner:
+    environment:
+      - SSHPIPERD_LOG_LEVEL=trace
+      - SSHPIPERD_E2E_TEST=1
+      - SSHPIPERD_DEBUG=${SSHPIPERD_DEBUG}
+      - SSHPIPERD_ALLOWED_PROXY_ADDRESSES=0.0.0.0/0
+      - SSHPIPERD_SERVER_KEY_GENERATE_MODE=notexist
+    build: 
+      context: ../
+      target: testrunner
+      args:
+        - BUILDTAGS=e2e
+    volumes:
+      - ..:/src
+      - shared:/shared
+      - publickey_authorized_keys:/publickey_authorized_keys
+      - /var/run/docker.sock:/var/run/docker.sock
+      - kubeconfig:/root/.kube:ro
+    command: ["./e2eentry.sh"]
+    privileged: true
+    working_dir: /src/e2e
+    depends_on:
+      - host-publickey
+      - host-password
+      - host-capublickey
+      - host-k8s-proxy
+
+  # ensure sshpiperd image works
+  piper-imageonly:
+    environment:
+      - SSHPIPERD_LOG_LEVEL=trace
+    build: ../
+    image: sshpiper-test-image
+
+volumes:
+  shared:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+
+  publickey_authorized_keys:
+
+  kubeconfig:
+
+networks:
+  netdistract:
