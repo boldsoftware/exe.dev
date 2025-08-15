@@ -3805,6 +3805,17 @@ func (s *Server) Start() error {
 		}
 	}()
 
+	// Print SSH connection command for local dev mode
+	if s.devMode == "local" {
+		// Extract just the port number from the address
+		sshPort := s.sshAddr
+		if strings.HasPrefix(sshPort, ":") {
+			sshPort = sshPort[1:]
+		}
+		log.Printf("SSH server started in local dev mode. Connect with:")
+		log.Printf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %s localhost", sshPort)
+	}
+
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
