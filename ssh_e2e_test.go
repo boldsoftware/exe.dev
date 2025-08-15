@@ -171,6 +171,13 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	}
 	server.testMode = true
 	defer server.Stop()
+	
+	// Clean up any existing test containers
+	teamName := "testteam"
+	machineName := "testmachine"
+	containerName := fmt.Sprintf("exe-%s-%s", teamName, machineName)
+	exec.Command("docker", "rm", "-f", containerName).Run() // Ignore errors
+	defer exec.Command("docker", "rm", "-f", containerName).Run() // Clean up after test
 
 	// Check if Docker is available
 	if server.containerManager == nil {
@@ -213,7 +220,6 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 
 	// Set up registered user in database
 	email := "test@example.com"
-	teamName := "testteam"
 
 	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
 	if err != nil {
@@ -246,7 +252,7 @@ spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s -p %
 # Wait for menu prompt
 expect {
     "exe.dev" {
-        send "create testmachine\r"
+        send "create %s --image=ubuntu\r"
     }
     timeout {
         puts "Timeout waiting for menu"
@@ -256,22 +262,23 @@ expect {
 
 # Wait for creation confirmation
 expect {
-    "Creating machine" {
-        puts "Machine creation started"
-    }
-    "Created machine" {
+    "Ready in" {
         puts "Machine created successfully"
+    }
+    "Failed to create machine" {
+        puts "Machine creation failed"
+        exit 1
     }
     timeout {
         puts "Timeout waiting for machine creation"
-        # Don't fail here as creation might be slow
+        exit 1
     }
 }
 
 # List machines to verify
 send "list\r"
 expect {
-    "testmachine" {
+    "%s" {
         puts "Machine found in list"
     }
     timeout {
@@ -282,7 +289,7 @@ expect {
 # Exit
 send "exit\r"
 expect eof
-`, keyFile, strings.Split(sshAddr, ":")[1])
+`, keyFile, strings.Split(sshAddr, ":")[1], machineName, machineName)
 
 	// Write and execute expect script
 	scriptFile := filepath.Join(t.TempDir(), "create.expect")
@@ -300,7 +307,7 @@ expect eof
 
 	// Verify machine was created in database
 	var machineCount int
-	err = server.db.QueryRow(`SELECT COUNT(*) FROM machines WHERE name = 'testmachine' AND team_name = ?`, teamName).Scan(&machineCount)
+	err = server.db.QueryRow(`SELECT COUNT(*) FROM machines WHERE name = ? AND team_name = ?`, machineName, teamName).Scan(&machineCount)
 	if err != nil {
 		t.Fatalf("Failed to query machines: %v", err)
 	}
