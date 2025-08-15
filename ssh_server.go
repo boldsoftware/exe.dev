@@ -1263,9 +1263,23 @@ func (ss *SSHServer) handleCreateCommand(s ssh.Session, fingerprint, teamName st
 		return
 	}
 
-	// Store container info in database
+	// Store container info in database with SSH keys
 	imageToStore := container.GetDisplayImageName(image)
-	if err := ss.server.createMachine(fingerprint, teamName, machineName, createdContainer.ID, imageToStore); err != nil {
+	if createdContainer.SSHServerIdentityKey == "" {
+		fmt.Fprintf(s, "\033[1;31mError: Container created without SSH keys - this should not happen\033[0m\r\n")
+		return
+	}
+
+	// Container has SSH keys, use the SSH-enabled storage
+	sshKeys := &container.ContainerSSHKeys{
+		ServerIdentityKey: createdContainer.SSHServerIdentityKey,
+		AuthorizedKeys:    createdContainer.SSHAuthorizedKeys,
+		CAPublicKey:       createdContainer.SSHCAPublicKey,
+		HostCertificate:   createdContainer.SSHHostCertificate,
+		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
+		SSHPort:           createdContainer.SSHPort,
+	}
+	if err := ss.server.createMachineWithSSH(fingerprint, teamName, machineName, createdContainer.ID, imageToStore, sshKeys, createdContainer.SSHPort); err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 

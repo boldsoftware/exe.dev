@@ -62,6 +62,20 @@ CREATE TABLE IF NOT EXISTS machines (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_started_at DATETIME,
+    -- SSH key material for container access
+    -- To add these columns to existing machines table, use:
+    -- ALTER TABLE machines ADD COLUMN ssh_server_identity_key TEXT;
+    -- ALTER TABLE machines ADD COLUMN ssh_authorized_keys TEXT;
+    -- ALTER TABLE machines ADD COLUMN ssh_ca_public_key TEXT;
+    -- ALTER TABLE machines ADD COLUMN ssh_host_certificate TEXT;
+    -- ALTER TABLE machines ADD COLUMN ssh_client_private_key TEXT;
+    -- ALTER TABLE machines ADD COLUMN ssh_port INTEGER DEFAULT 22;
+    ssh_server_identity_key TEXT, -- SSH server private key (PEM)
+    ssh_authorized_keys TEXT,     -- User certificate for authorized_keys
+    ssh_ca_public_key TEXT,       -- CA public key for mutual auth
+    ssh_host_certificate TEXT,    -- Host certificate for host key validation
+    ssh_client_private_key TEXT,  -- Private key for connecting to container
+    ssh_port INTEGER DEFAULT 22,  -- SSH port exposed for this container
     UNIQUE(team_name, name), -- name must be unique within team
     FOREIGN KEY (team_name) REFERENCES teams(name) ON DELETE CASCADE,
     FOREIGN KEY (created_by_fingerprint) REFERENCES users(public_key_fingerprint)
@@ -161,6 +175,8 @@ CREATE TABLE IF NOT EXISTS ssh_host_key (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+
 
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_name);

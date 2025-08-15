@@ -2692,6 +2692,20 @@ func (s *Server) createMachine(userFingerprint, teamName, name, containerID, ima
 	return err
 }
 
+// createMachineWithSSH stores machine info including SSH keys in database
+func (s *Server) createMachineWithSSH(userFingerprint, teamName, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	_, err := s.db.Exec(`
+		INSERT INTO machines (
+			team_name, name, status, image, container_id, created_by_fingerprint,
+			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+			ssh_host_certificate, ssh_client_private_key, ssh_port
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, teamName, name, "running", image, containerID, userFingerprint,
+		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
+		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort)
+	return err
+}
+
 // determineUserShell determines the appropriate shell to use in a container
 func (s *Server) determineUserShell(userFingerprint, containerID string) (string, error) {
 	ctx := context.Background()
