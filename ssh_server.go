@@ -216,40 +216,6 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 		log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", email, showWelcome)
 	}
 
-	// Show welcome message
-	if showWelcome {
-		if !ss.server.testMode {
-			log.Printf("Showing welcome banner")
-		}
-		welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
-			"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
-			"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
-			"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝\r\n" +
-			"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ \r\n" +
-			"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \033[0m\r\n\r\n" +
-			"\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-			"\033[1mlist\033[0m           - List your machines\r\n" +
-			"\033[1mcreate [name]\033[0m  - Create a new machine (auto-generates name if not specified)\r\n" +
-			"\033[1mssh <name>\033[0m     - SSH into a machine\r\n" +
-			"\033[1mstart <name>\033[0m   - Start a machine\r\n" +
-			"\033[1mstop <name> [...]\033[0m - Stop one or more machines\r\n" +
-			"\033[1mdelete <name>\033[0m  - Delete a machine\r\n" +
-			"\033[1mlogs <name>\033[0m    - View machine logs\r\n" +
-			"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
-			"\033[1mexit\033[0m           - Exit\r\n\r\n"
-		fmt.Fprint(s, welcome)
-		if !ss.server.testMode {
-			log.Printf("Welcome banner sent, length: %d bytes", len(welcome))
-		}
-	} else {
-		// Show brief welcome for registered users
-		fmt.Fprintf(s, "\r\n\033[1;33mWelcome to EXE.DEV\033[0m - Team: %s\r\n", teamName)
-		fmt.Fprintf(s, "Type 'help' for available commands\r\n\r\n")
-	}
-
-	// Create a terminal using golang.org/x/term
-	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
-
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
@@ -265,6 +231,23 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n" +
 		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
+
+	// Show welcome message
+	if showWelcome {
+		if !ss.server.testMode {
+			log.Printf("Showing welcome banner")
+		}
+		fmt.Fprint(s, helpText)
+		if !ss.server.testMode {
+			log.Printf("Welcome banner sent, length: %d bytes", len(helpText))
+		}
+	} else {
+		// No welcome for registered users.
+		// They can figure it out.
+	}
+
+	// Create a terminal using golang.org/x/term
+	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
 
 	// Command loop using term package
 	if !ss.server.testMode {
@@ -469,8 +452,45 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 
 	fmt.Fprintf(s, "\r\n\033[1;32mEmail confirmed:\033[0m %s\r\n", email)
 
+	// Ask for team name BEFORE email verification
+	fmt.Fprint(s, "\r\n\033[1;36m"+
+		"╭─────────────────────────────────────────────────╮\r\n"+
+		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n"+
+		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n")
+
+	var teamName string
+	for {
+		fmt.Fprint(s, "\033[1mEnter your team name:\033[0m ")
+		teamName = ss.readLineWithEcho(s)
+		if teamName == "" {
+			fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
+			return
+		}
+
+		// Validate team name format
+		if !ss.server.isValidTeamName(teamName) {
+			fmt.Fprintf(s, "\r\n%sInvalid team name. Team names can only contain lowercase letters, numbers, and hyphens.%s\r\n", "\033[1;31m", "\033[0m")
+			continue
+		}
+
+		// Check if team name is taken
+		taken, err := ss.server.isTeamNameTakenOrReserved(teamName)
+		if err != nil {
+			fmt.Fprintf(s, "\r\n%sError checking team name availability: %v%s\r\n", "\033[1;31m", err, "\033[0m")
+			continue
+		}
+		if taken {
+			fmt.Fprintf(s, "\r\n%sTeam name '%s' is already taken. Please choose a different name.%s\r\n", "\033[1;31m", teamName, "\033[0m")
+			continue
+		}
+
+		break
+	}
+
+	fmt.Fprintf(s, "\r\n\033[1;32mTeam name confirmed:\033[0m %s\r\n", teamName)
+
 	// Start email verification directly without using sshbuf.Channel
-	if err := ss.startEmailVerificationNew(fingerprint, email, publicKey); err != nil {
+	if err := ss.startEmailVerificationNew(fingerprint, email, publicKey, teamName); err != nil {
 		// Log the error for debugging
 		log.Printf("Email verification failed for %s (fingerprint: %s): %v", email, fingerprint, err)
 		// Show user-friendly error message
@@ -601,9 +621,9 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	}
 
 	// Registration complete - wait for user to press Enter
-	fmt.Fprintf(s, "\r\n%s🎉 Registration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
+	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
 	fmt.Fprintf(s, "Your account has been successfully created.\r\n\r\n")
-	fmt.Fprintf(s, "%sWelcome to exe.dev! Press [Enter] to start making machines...%s", "\033[1;36m", "\033[0m")
+	fmt.Fprintf(s, "%sPress any key continue...%s", "\033[1;36m", "\033[0m")
 
 	// Wait for the goroutine to exit (user presses Enter or any key)
 	<-goroutineDone
@@ -1595,7 +1615,7 @@ func (s *Server) getMachinesForTeam(teamName string) ([]*Machine, error) {
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
-func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey string) error {
+func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey, teamName string) error {
 	// Check if this email already exists
 	var existingFingerprint string
 	err := ss.server.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", email).Scan(&existingFingerprint)
@@ -1629,6 +1649,7 @@ func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey str
 			PublicKeyFingerprint: fingerprint,
 			PublicKey:            publicKey,
 			Email:                email,
+			TeamName:             "", // Existing users don't need team name
 			Token:                token,
 			CompleteChan:         make(chan struct{}),
 			CreatedAt:            time.Now(),
@@ -1676,6 +1697,7 @@ The exe.dev team`, ss.server.getBaseURL(), token, fingerprint[:16])
 		PublicKeyFingerprint: fingerprint,
 		PublicKey:            publicKey,
 		Email:                email,
+		TeamName:             teamName, // Team name selected by new user
 		Token:                token,
 		CompleteChan:         make(chan struct{}),
 		CreatedAt:            time.Now(),

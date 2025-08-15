@@ -185,10 +185,9 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 			}
 			if n > 0 {
 				outputCollected.Write(buf[:n])
-				// Look for either the welcome message or the prompt
-				if strings.Contains(outputCollected.String(), "Welcome to EXE.DEV") ||
-					(strings.Contains(outputCollected.String(), "exe.dev") &&
-						strings.Contains(outputCollected.String(), "▶")) {
+				// Look for the prompt (registered users don't get welcome message)
+				if strings.Contains(outputCollected.String(), "exe.dev") &&
+					strings.Contains(outputCollected.String(), "▶") {
 					outputChan <- outputCollected.String()
 					return
 				}
@@ -202,10 +201,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	select {
 	case output := <-outputChan:
 		t.Logf("Initial output:\n%s", output)
-		if !strings.Contains(output, "Welcome to EXE.DEV") {
-			t.Error("Expected to see 'Welcome to EXE.DEV' message")
-		}
-		// The prompt might not appear immediately, so just check for welcome
+		// Registered users go straight to prompt, no welcome message
 	case <-time.After(3 * time.Second):
 		t.Logf("Output collected so far:\n%s", outputCollected.String())
 		t.Fatal("Timeout waiting for menu prompt")

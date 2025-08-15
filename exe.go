@@ -33,7 +33,6 @@ import (
 	"github.com/keighl/postmark"
 	"github.com/pkg/sftp"
 	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/paymentmethod"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
@@ -113,6 +112,7 @@ type EmailVerification struct {
 	PublicKeyFingerprint string
 	PublicKey            string
 	Email                string
+	TeamName             string // Team name selected by user
 	Token                string
 	CompleteChan         chan struct{}
 	CreatedAt            time.Time
@@ -525,6 +525,25 @@ func (s *Server) sendEmail(to, subject, body string) error {
 		log.Printf("📧 Email sent successfully to %s (subject: %s)", to, subject)
 	}
 	return err
+}
+
+// sendVerificationEmail sends an email verification link
+func (s *Server) sendVerificationEmail(email, token string) error {
+	subject := "Verify your email - exe.dev"
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", s.getBaseURL(), token)
+
+	body := fmt.Sprintf(`Hello,
+
+Please click the link below to verify your email address:
+
+%s
+
+This link will expire in 15 minutes.
+
+Best regards,
+The exe.dev team`, verifyURL)
+
+	return s.sendEmail(email, subject, body)
 }
 
 // authenticatePublicKey handles SSH public key authentication
@@ -1118,19 +1137,35 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// This is an SSH session email verification
 		fingerprint := verification.PublicKeyFingerprint
 		email := verification.Email
+		teamName := verification.TeamName
 
 		// Create the user if they don't exist
 		user, err := s.getUserByFingerprint(fingerprint)
 		if err != nil || user == nil {
 			log.Printf("User doesn't exist for fingerprint %s, creating...", fingerprint)
 			// User doesn't exist - create them with their team
-			if err := s.createUser(fingerprint, email); err != nil {
-				log.Printf("Failed to create user during email verification: %v", err)
-				s.emailVerificationsMu.Unlock()
-				http.Error(w, "Failed to create user account", http.StatusInternalServerError)
-				return
+			if teamName != "" {
+				// Use the team name selected during registration
+				if err := s.createUserWithTeam(fingerprint, email, teamName); err != nil {
+					log.Printf("Failed to create user with team during email verification: %v", err)
+					s.emailVerificationsMu.Unlock()
+					// Clean up pending registration on failure
+					s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+					http.Error(w, "Failed to create user account", http.StatusInternalServerError)
+					return
+				}
+				// Clean up pending registration on success
+				s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+			} else {
+				// Fallback to auto-generated team name for existing flow
+				if err := s.createUser(fingerprint, email); err != nil {
+					log.Printf("Failed to create user during email verification: %v", err)
+					s.emailVerificationsMu.Unlock()
+					http.Error(w, "Failed to create user account", http.StatusInternalServerError)
+					return
+				}
 			}
-			log.Printf("Created new user for %s (fingerprint: %s)", email, fingerprint)
+			log.Printf("Created new user for %s (fingerprint: %s, team: %s)", email, fingerprint, teamName)
 		} else {
 			log.Printf("User already exists for fingerprint %s", fingerprint)
 		}
@@ -2841,178 +2876,6 @@ func (s *Server) getTerminalWidth(channel *sshbuf.Channel) int {
 	return 140
 }
 
-func (s *Server) handleRegistration(channel *sshbuf.Channel, fingerprint string) {
-	s.handleRegistrationWithWidth(channel, fingerprint, 0)
-}
-
-func (s *Server) handleRegistrationWithWidth(channel *sshbuf.Channel, fingerprint string, terminalWidth int) {
-	// Detect terminal mode
-	terminalMode := s.detectTerminalMode(channel)
-	s.clearOSCResponse(channel)
-	colors := s.getTerminalColors(terminalMode)
-
-	// Show the animated welcome with terminal width
-	s.showAnimatedWelcomeWithWidth(channel, terminalWidth)
-
-	// Now show the signup content after the animation
-	signupContent := "\r\n\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +
-		"Let's get you set up in just a few steps:\r\n\r\n" +
-		colors.grayText + "1. Email Verification\r\n" +
-		"2. Team Setup\r\n" +
-		"3. Payment Setup\033[0m\r\n\r\n" +
-		"\033[1mTo get started, please enter your email address:\033[0m\r\n"
-
-	channel.Write([]byte(signupContent))
-
-	// Read email address from user
-	email, err := s.readLineFromChannel(channel)
-	if err != nil {
-		if err.Error() == "interrupted" || err.Error() == "EOF" {
-			channel.Write([]byte("Goodbye!\r\n"))
-			return
-		}
-		channel.Write([]byte("\r\nError reading input. Please try again.\r\n"))
-		return
-	}
-
-	// Validate email format (basic validation)
-	if !s.isValidEmail(email) {
-		channel.Write([]byte("\r\nInvalid email address. Please try again.\r\n"))
-		return
-	}
-
-	channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mEmail confirmed:\033[0m %s\r\n", email)))
-
-	// Start email verification flow
-	if err := s.startEmailVerification(channel, fingerprint, email); err != nil {
-		// Log the error for debugging
-		log.Printf("Email verification failed for %s (fingerprint: %s): %v", email, fingerprint, err)
-
-		// Show user-friendly error message
-		if err.Error() == "email service not configured" {
-			channel.Write([]byte("\r\nError: Email service not configured. Please contact support.\r\n"))
-		} else if strings.Contains(err.Error(), "marked as inactive") {
-			channel.Write([]byte("\r\nError: This email address cannot receive emails (blocked by email provider).\r\nPlease try a different email address.\r\n"))
-		} else {
-			channel.Write([]byte(fmt.Sprintf("\r\nError sending verification email: %v\r\n", err)))
-		}
-		return
-	}
-}
-
-// readLineFromChannel reads a line of input from an SSH channel
-func (s *Server) readLineFromChannel(channel *sshbuf.Channel) (string, error) {
-	var buffer []byte
-	var cursorPos int
-	temp := make([]byte, 1)
-
-	for {
-		n, err := channel.Read(temp)
-		if err != nil {
-			return "", err
-		}
-
-		if n > 0 {
-			switch temp[0] {
-			case '\n', '\r':
-				if len(buffer) > 0 {
-					// Move cursor to end of line if not already there
-					for cursorPos < len(buffer) {
-						channel.Write([]byte(string(buffer[cursorPos])))
-						cursorPos++
-					}
-					// Always send CRLF after user input to keep cursor aligned
-					channel.Write([]byte("\r\n"))
-					return string(buffer), nil
-				}
-			case 1: // Ctrl+A - move to beginning of line
-				for cursorPos > 0 {
-					channel.Write([]byte("\b"))
-					cursorPos--
-				}
-			case 5: // Ctrl+E - move to end of line
-				for cursorPos < len(buffer) {
-					channel.Write([]byte(string(buffer[cursorPos])))
-					cursorPos++
-				}
-			case 3: // Ctrl+C
-				channel.Write([]byte("^C\r\n"))
-				return "", fmt.Errorf("interrupted")
-			case 4: // Ctrl+D
-				if len(buffer) == 0 {
-					channel.Write([]byte("^D\r\n"))
-					return "", fmt.Errorf("EOF")
-				}
-				// If there's content at cursor, delete it
-				if cursorPos < len(buffer) {
-					// Delete character at cursor
-					copy(buffer[cursorPos:], buffer[cursorPos+1:])
-					buffer = buffer[:len(buffer)-1]
-					// Redraw the line from cursor position
-					channel.Write(buffer[cursorPos:])
-					channel.Write([]byte(" ")) // Clear the last character
-					// Move cursor back to original position
-					for i := len(buffer) - cursorPos + 1; i > 0; i-- {
-						channel.Write([]byte("\b"))
-					}
-				}
-			case 8, 127: // Backspace or DEL
-				if cursorPos > 0 {
-					// Remove character before cursor
-					copy(buffer[cursorPos-1:], buffer[cursorPos:])
-					buffer = buffer[:len(buffer)-1]
-					cursorPos--
-					// Move cursor back
-					channel.Write([]byte("\b"))
-					// Redraw the rest of the line
-					channel.Write(buffer[cursorPos:])
-					channel.Write([]byte(" ")) // Clear the last character
-					// Move cursor back to position
-					for i := len(buffer) - cursorPos + 1; i > 0; i-- {
-						channel.Write([]byte("\b"))
-					}
-				}
-			case 21: // Ctrl+U - clear line
-				// Move cursor to beginning
-				for cursorPos > 0 {
-					channel.Write([]byte("\b"))
-					cursorPos--
-				}
-				// Clear the displayed line
-				for i := 0; i < len(buffer); i++ {
-					channel.Write([]byte(" "))
-				}
-				// Move cursor back to beginning
-				for i := 0; i < len(buffer); i++ {
-					channel.Write([]byte("\b"))
-				}
-				buffer = []byte{}
-				cursorPos = 0
-			default:
-				if temp[0] >= 32 { // Printable characters
-					if cursorPos == len(buffer) {
-						// Append at end
-						buffer = append(buffer, temp[0])
-						channel.Write(temp) // Echo character back
-						cursorPos++
-					} else {
-						// Insert in middle
-						buffer = append(buffer[:cursorPos+1], buffer[cursorPos:]...)
-						buffer[cursorPos] = temp[0]
-						// Redraw from cursor position
-						channel.Write(buffer[cursorPos:])
-						cursorPos++
-						// Move cursor back to new position
-						for i := len(buffer) - cursorPos; i > 0; i-- {
-							channel.Write([]byte("\b"))
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
 // isValidEmail performs basic email validation
 func (s *Server) isValidEmail(email string) bool {
 	if email == "" {
@@ -3033,699 +2896,6 @@ func (s *Server) isValidEmail(email string) bool {
 	return true
 }
 
-// startEmailVerification initiates the email verification process
-func (s *Server) startEmailVerification(channel *sshbuf.Channel, fingerprint, email string) error {
-	// First check if this email already exists
-	var existingFingerprint string
-	err := s.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", email).Scan(&existingFingerprint)
-
-	if err == nil {
-		// Email already exists - this is a new device for an existing user
-		publicKey := "" // We don't have the public key in this context yet
-
-		// Store this key as unverified in ssh_keys table
-		_, err = s.db.Exec(`
-			INSERT OR REPLACE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-			VALUES (?, ?, ?, 0, 'Pending Verification')`,
-			fingerprint, email, publicKey)
-		if err != nil {
-			return fmt.Errorf("failed to store pending key: %v", err)
-		}
-
-		// Generate token for new device verification
-		token := s.generateToken()
-		expires := time.Now().Add(15 * time.Minute)
-
-		_, err = s.db.Exec(`
-			INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
-			VALUES (?, ?, ?, ?, ?)`,
-			token, fingerprint, publicKey, email, expires)
-		if err != nil {
-			return fmt.Errorf("failed to create verification token: %v", err)
-		}
-
-		// Create verification object for existing user (similar to new user flow)
-		verification := &EmailVerification{
-			PublicKeyFingerprint: fingerprint,
-			Email:                email,
-			Token:                token,
-			CompleteChan:         make(chan struct{}),
-			CreatedAt:            time.Now(),
-		}
-
-		// Store verification
-		s.emailVerificationsMu.Lock()
-		s.emailVerifications[token] = verification
-		s.emailVerificationsMu.Unlock()
-
-		// Send new device verification email
-		subject := "New Device Login - exe.dev"
-		body := fmt.Sprintf(`Hello,
-
-A new device is trying to register with your exe.dev account email.
-
-If this was you, please click the link below to authorize this device:
-
-%s/verify-device?token=%s
-
-Device fingerprint: %s
-
-If you did not attempt to register from a new device, please ignore this email.
-
-This link will expire in 15 minutes.
-
-Best regards,
-The exe.dev team`, s.getBaseURL(), token, fingerprint[:16])
-
-		if err := s.sendEmail(email, subject, body); err != nil {
-			s.emailVerificationsMu.Lock()
-			delete(s.emailVerifications, token)
-			s.emailVerificationsMu.Unlock()
-			return err
-		}
-
-		// Wait for email verification (same flow as new users)
-		grayText := s.getGrayText(channel)
-		channel.Write([]byte("\r\n\033[1;33mDevice verification email sent!\033[0m Please check your email and click the verification link.\r\n"))
-		channel.Write([]byte(fmt.Sprintf("\r\n%sWaiting for email verification (Press Ctrl+C to cancel)", grayText)))
-		// Add animated dots
-		for i := 0; i < 3; i++ {
-			time.Sleep(500 * time.Millisecond)
-			channel.Write([]byte("."))
-		}
-		channel.Write([]byte("\033[0m\r\n\r\n"))
-
-		// Create a context that can be cancelled when email is verified
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		// Monitor for Ctrl+C during email verification using interruptible reads
-		interruptChan := make(chan struct{})
-
-		go func() {
-			buf := make([]byte, 1)
-			for {
-				n, err := channel.ReadCtx(ctx, buf)
-				if err != nil {
-					// Context cancelled (email verified) or channel closed
-					return
-				}
-				if n > 0 && buf[0] == 3 { // Ctrl+C
-					channel.Write([]byte("^C\r\n"))
-					close(interruptChan)
-					return
-				}
-				// Discard other input during email verification
-			}
-		}()
-
-		// Wait for email verification, interrupt, or timeout
-		select {
-		case <-verification.CompleteChan:
-			// Cancel the context to stop the monitoring goroutine
-			cancel()
-
-			channel.Write([]byte("\r\n\033[1;32mDevice verified successfully!\033[0m\r\n\r\n"))
-
-			// Add a small delay to ensure the monitoring goroutine exits cleanly
-			time.Sleep(100 * time.Millisecond)
-			return nil
-
-		case <-interruptChan:
-			// Cancel the context to stop the monitoring goroutine
-			cancel()
-
-			// Clean up the verification
-			s.emailVerificationsMu.Lock()
-			delete(s.emailVerifications, token)
-			s.emailVerificationsMu.Unlock()
-
-			channel.Write([]byte("\r\n\033[1;33mVerification cancelled.\033[0m\r\n\r\n"))
-			return fmt.Errorf("verification cancelled by user")
-
-		case <-time.After(15 * time.Minute):
-			// Cancel the context to stop the monitoring goroutine
-			cancel()
-
-			// Clean up the verification
-			s.emailVerificationsMu.Lock()
-			delete(s.emailVerifications, token)
-			s.emailVerificationsMu.Unlock()
-
-			channel.Write([]byte("\r\n\033[1;31mEmail verification timed out.\033[0m Please try again.\r\n\r\n"))
-			return fmt.Errorf("verification timed out")
-		}
-	}
-
-	// New user registration flow
-	// Generate verification token
-	token := s.generateRegistrationToken()
-
-	// Create email verification
-	verification := &EmailVerification{
-		PublicKeyFingerprint: fingerprint,
-		Email:                email,
-		Token:                token,
-		CompleteChan:         make(chan struct{}),
-		CreatedAt:            time.Now(),
-	}
-
-	// Store verification
-	s.emailVerificationsMu.Lock()
-	s.emailVerifications[token] = verification
-	s.emailVerificationsMu.Unlock()
-
-	// Send verification email
-	if err := s.sendVerificationEmail(email, token); err != nil {
-		s.emailVerificationsMu.Lock()
-		delete(s.emailVerifications, token)
-		s.emailVerificationsMu.Unlock()
-		return err
-	}
-
-	grayText := s.getGrayText(channel)
-	channel.Write([]byte("\r\n\033[1;33mVerification email sent!\033[0m Please check your email and click the verification link.\r\n"))
-	channel.Write([]byte(fmt.Sprintf("\r\n%sWaiting for email verification (Press Ctrl+C to cancel)", grayText)))
-	// Add animated dots
-	for i := 0; i < 3; i++ {
-		time.Sleep(500 * time.Millisecond)
-		channel.Write([]byte("."))
-	}
-	channel.Write([]byte("\033[0m\r\n\r\n"))
-
-	// Create a context that can be cancelled when email is verified
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Monitor for Ctrl+C during email verification using interruptible reads
-	interruptChan := make(chan struct{})
-
-	go func() {
-		buf := make([]byte, 1)
-		for {
-			n, err := channel.ReadCtx(ctx, buf)
-			if err != nil {
-				// Context cancelled (email verified) or channel closed
-				return
-			}
-			if n > 0 && buf[0] == 3 { // Ctrl+C
-				channel.Write([]byte("^C\r\n"))
-				close(interruptChan)
-				return
-			}
-			// Discard other input during email verification
-		}
-	}()
-
-	// Wait for email verification, interrupt, or timeout
-	select {
-	case <-verification.CompleteChan:
-		// Cancel the context to stop the monitoring goroutine
-		cancel()
-
-		channel.Write([]byte("\r\n\033[1;32mEmail verified successfully!\033[0m\r\n\r\n"))
-
-		// Add a small delay to ensure the monitoring goroutine exits cleanly
-		time.Sleep(100 * time.Millisecond)
-
-		// Start team name creation
-		s.startTeamNameCreation(channel, fingerprint, email)
-
-	case <-interruptChan:
-		// User pressed Ctrl+C
-		channel.Write([]byte("\r\n\033[1;33mRegistration cancelled. You can reconnect anytime to continue.\033[0m\r\n"))
-
-		// Clean up verification
-		s.emailVerificationsMu.Lock()
-		delete(s.emailVerifications, token)
-		s.emailVerificationsMu.Unlock()
-
-	case <-time.After(10 * time.Minute):
-		// Cancel the context to stop the monitoring goroutine
-		cancel()
-
-		channel.Write([]byte("\r\nEmail verification timeout. Please try connecting again.\r\n"))
-
-		// Clean up verification
-		s.emailVerificationsMu.Lock()
-		delete(s.emailVerifications, token)
-		s.emailVerificationsMu.Unlock()
-	}
-
-	return nil
-}
-
-// sendVerificationEmail sends a verification email using Postmark
-func (s *Server) sendVerificationEmail(email, token string) error {
-	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", s.BaseURL, token)
-
-	// In dev mode, just log the URL instead of sending email and auto-complete verification
-	if s.devMode != "" {
-		if !s.quietMode {
-			log.Printf("🔧 DEV MODE: Would send verification email to %s with URL: %s", email, verificationURL)
-		}
-
-		// Auto-complete email verification in dev mode
-		go func() {
-			time.Sleep(100 * time.Millisecond) // Brief delay to simulate async behavior
-			s.emailVerificationsMu.Lock()
-			verification, exists := s.emailVerifications[token]
-			if exists {
-				close(verification.CompleteChan)
-				delete(s.emailVerifications, token)
-				if !s.quietMode {
-					log.Printf("🔧 DEV MODE: Auto-completed email verification for %s", email)
-				}
-			}
-			s.emailVerificationsMu.Unlock()
-		}()
-
-		return nil
-	}
-
-	if s.postmarkClient == nil {
-		return fmt.Errorf("email service not configured")
-	}
-
-	emailBody := fmt.Sprintf(`
-<html>
-<body>
-    <h1>Welcome to exe.dev!</h1>
-    <p>Please click the link below to verify your email address:</p>
-    <p><a href="%s" style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Verify Email</a></p>
-    <p>Or copy and paste this link into your browser:</p>
-    <p>%s</p>
-    <p>This link will expire in 10 minutes.</p>
-    <p>If you didn't request this verification, you can safely ignore this email.</p>
-</body>
-</html>
-`, verificationURL, verificationURL)
-
-	email_msg := postmark.Email{
-		From:     "register@exe.dev",
-		To:       email,
-		Subject:  "Verify your email for exe.dev",
-		HtmlBody: emailBody,
-		TextBody: fmt.Sprintf("Welcome to exe.dev! Please verify your email by visiting: %s", verificationURL),
-	}
-
-	_, err := s.postmarkClient.SendEmail(email_msg)
-	if err != nil {
-		log.Printf("📧 ERROR: Failed to send verification email to %s: %v", email, err)
-	} else {
-		log.Printf("📧 Verification email sent successfully to %s", email)
-	}
-	return err
-}
-
-// startTeamNameCreation handles team name creation after email verification
-func (s *Server) startTeamNameCreation(channel *sshbuf.Channel, fingerprint, email string) {
-	// Check if user's email has been invited to any teams
-	invites, err := s.getInvitesByEmail(email)
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nError checking invites: %v\r\n", err)))
-		return
-	}
-
-	// Filter valid (non-expired, not fully used) invites
-	var validInvites []Invite
-	now := time.Now()
-	for _, invite := range invites {
-		if now.Before(invite.ExpiresAt) && invite.UsedCount < invite.MaxUses {
-			validInvites = append(validInvites, invite)
-		}
-	}
-
-	if len(validInvites) > 0 {
-		// User has pending invites, show them and let them choose
-		s.handlePendingInvites(channel, fingerprint, email, validInvites)
-	} else {
-		// No pending invites, proceed with team creation
-		teamName, err := s.createTeamName(channel)
-		if err != nil {
-			channel.Write([]byte(fmt.Sprintf("\r\nError creating team: %v\r\n", err)))
-			return
-		}
-		s.startBillingVerification(channel, fingerprint, email, teamName)
-	}
-}
-
-// handlePendingInvites shows pending invites and lets user choose
-func (s *Server) handlePendingInvites(channel *sshbuf.Channel, fingerprint, email string, invites []Invite) {
-	channel.Write([]byte("\r\n\033[1;36m" +
-		"╭─────────────────────────────────────────────────╮\r\n" +
-		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
-		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n" +
-		"\033[1mYou have pending team invitations!\033[0m\r\n\r\n"))
-
-	// Show available invites
-	for i, invite := range invites {
-		channel.Write([]byte(fmt.Sprintf("\033[1;32m%d.\033[0m Join team \033[1;36m%s\033[0m\r\n", i+1, invite.TeamName)))
-	}
-
-	channel.Write([]byte(fmt.Sprintf("\033[1;32m%d.\033[0m Create a new team instead\r\n\r\n", len(invites)+1)))
-	channel.Write([]byte("Enter your choice: "))
-
-	for {
-		choice, err := s.readLineFromChannel(channel)
-		if err != nil {
-			channel.Write([]byte(fmt.Sprintf("\r\nError reading choice: %v\r\n", err)))
-			return
-		}
-
-		choice = strings.TrimSpace(choice)
-		choiceNum := 0
-		fmt.Sscanf(choice, "%d", &choiceNum)
-
-		if choiceNum >= 1 && choiceNum <= len(invites) {
-			// Join selected team
-			invite := invites[choiceNum-1]
-
-			// Create user and add to team
-			if err := s.createUser(fingerprint, email); err != nil {
-				channel.Write([]byte(fmt.Sprintf("\r\nFailed to create user: %v\r\n", err)))
-				return
-			}
-
-			if err := s.addTeamMember(fingerprint, invite.TeamName, false); err != nil {
-				channel.Write([]byte(fmt.Sprintf("\r\nFailed to add to team: %v\r\n", err)))
-				return
-			}
-
-			// Use the invite
-			if err := s.useInvite(invite.Code); err != nil {
-				channel.Write([]byte(fmt.Sprintf("\r\nFailed to mark invite as used: %v\r\n", err)))
-				return
-			}
-
-			channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mSuccessfully joined team: %s\033[0m\r\n\r\n", invite.TeamName)))
-			s.completeRegistration(channel, fingerprint, email, invite.TeamName)
-			return
-		} else if choiceNum == len(invites)+1 {
-			// Create new team
-			teamName, err := s.createTeamName(channel)
-			if err != nil {
-				channel.Write([]byte(fmt.Sprintf("\r\nError creating team: %v\r\n", err)))
-				return
-			}
-			s.startBillingVerification(channel, fingerprint, email, teamName)
-			return
-		} else {
-			channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mPlease enter a number between 1 and %d\033[0m\r\n\r\nEnter your choice: ", len(invites)+1)))
-		}
-	}
-}
-
-// joinTeamViaInvite handles joining an existing team via invite code
-func (s *Server) joinTeamViaInvite(channel *sshbuf.Channel, fingerprint, email string) (string, error) {
-	channel.Write([]byte("\r\n\033[1mPlease enter your invite code:\033[0m "))
-
-	for {
-		inviteCode, err := s.readLineFromChannel(channel)
-		if err != nil {
-			return "", err
-		}
-
-		inviteCode = strings.TrimSpace(inviteCode)
-		if inviteCode == "" {
-			channel.Write([]byte("\r\n\033[1;31mInvite code cannot be empty\033[0m\r\n\r\nInvite code: "))
-			continue
-		}
-
-		// Get invite from database
-		invite, err := s.getInviteByCode(inviteCode)
-		if err != nil {
-			channel.Write([]byte("\r\n\033[1;31mInvalid invite code\033[0m\r\n\r\nInvite code: "))
-			continue
-		}
-
-		// Check if invite is still valid
-		if time.Now().After(invite.ExpiresAt) {
-			channel.Write([]byte("\r\n\033[1;31mInvite code has expired\033[0m\r\n\r\nInvite code: "))
-			continue
-		}
-
-		// Check if invite has remaining uses
-		if invite.UsedCount >= invite.MaxUses {
-			channel.Write([]byte("\r\n\033[1;31mInvite code has been fully used\033[0m\r\n\r\nInvite code: "))
-			continue
-		}
-
-		// Check if invite is email-specific and matches
-		if invite.Email != "" && invite.Email != email {
-			channel.Write([]byte("\r\n\033[1;31mThis invite is for a different email address\033[0m\r\n\r\nInvite code: "))
-			continue
-		}
-
-		// Create user and add to team
-		if err := s.createUser(fingerprint, email); err != nil {
-			return "", fmt.Errorf("failed to create user: %w", err)
-		}
-
-		if err := s.addTeamMember(fingerprint, invite.TeamName, false); err != nil {
-			return "", fmt.Errorf("failed to add to team: %w", err)
-		}
-
-		// Use the invite
-		if err := s.useInvite(inviteCode); err != nil {
-			return "", fmt.Errorf("failed to mark invite as used: %w", err)
-		}
-
-		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;32mSuccessfully joined team: %s\033[0m\r\n\r\n", invite.TeamName)))
-		return invite.TeamName, nil
-	}
-}
-
-// completeRegistration finishes the registration process without billing
-func (s *Server) completeRegistration(channel *sshbuf.Channel, fingerprint, email, teamName string) {
-	// Clean up verification states
-	s.billingVerificationsMu.Lock()
-	delete(s.billingVerifications, fingerprint)
-	s.billingVerificationsMu.Unlock()
-
-	// Show success message
-	channel.Write([]byte("\r\n\033[1;32m"))
-	celebrationFrames := []string{
-		"    🎉 Registration Complete! 🎉    ",
-		"    ✨ Registration Complete! ✨    ",
-		"    🌟 Registration Complete! 🌟    ",
-		"    🎊 Registration Complete! 🎊    ",
-	}
-	for i, frame := range celebrationFrames {
-		if i > 0 {
-			channel.Write([]byte("\r"))
-		}
-		channel.Write([]byte(frame))
-		time.Sleep(300 * time.Millisecond)
-	}
-	channel.Write([]byte("\033[0m\r\n\r\n"))
-
-	channel.Write([]byte(fmt.Sprintf("\033[1mWelcome to team \033[1;32m%s\033[0m!\033[0m\r\n\r\n", teamName)))
-	channel.Write([]byte("You now have access to:\r\n"))
-	channel.Write([]byte(fmt.Sprintf("  • Team machines at \033[1;36m<name>.%s.exe.dev\033[0m\r\n", teamName)))
-	channel.Write([]byte("  • Shared team resources and collaboration\r\n\r\n"))
-
-	// Create user session before continuing to main shell
-	s.createUserSession(channel, fingerprint, email, teamName, "", true) // Admin since they created the team
-	defer s.removeUserSession(channel)
-
-	// Continue with normal shell flow
-	// s.runMainShell(channel, true) // New users - show welcome
-	// NOTE: This is now handled by the new SSH server in ssh_server.go
-}
-
-// startBillingVerification initiates the billing verification process
-func (s *Server) startBillingVerification(channel *sshbuf.Channel, fingerprint, email, teamName string) {
-	// Store billing verification state
-	billing := &BillingVerification{
-		PublicKeyFingerprint: fingerprint,
-		TeamName:             teamName,
-		CompleteChan:         make(chan struct{}),
-		CreatedAt:            time.Now(),
-	}
-
-	s.billingVerificationsMu.Lock()
-	s.billingVerifications[fingerprint] = billing
-	s.billingVerificationsMu.Unlock()
-
-	grayText := s.getGrayText(channel)
-	message := "\r\n\033[1;36m" +
-		"╭─────────────────────────────────────────────────╮\r\n" +
-		"│  \033[1;33mStep 3: Payment Setup\033[1;36m                      │\r\n" +
-		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n" +
-		"\033[1mLet's verify your payment method.\033[0m\r\n\r\n" +
-		fmt.Sprintf("%sFor testing, please enter the Stripe test card:\033[0m\r\n", grayText) +
-		"\033[1;33m4242424242424242\033[0m " + fmt.Sprintf("%s(Visa test card)\033[0m\r\n\r\n", grayText) +
-		"\033[1mCredit card number:\033[0m "
-
-	channel.Write([]byte(message))
-
-	// Read credit card number
-	cardNumber, err := s.readLineFromChannel(channel)
-	if err != nil {
-		if err.Error() == "interrupted" || err.Error() == "EOF" {
-			channel.Write([]byte("Goodbye!\r\n"))
-			return
-		}
-		channel.Write([]byte("\r\nError reading input. Please try again.\r\n"))
-		return
-	}
-
-	// Verify card with Stripe
-	if err := s.verifyPaymentMethod(cardNumber); err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nPayment verification failed: %v\r\n", err)))
-		return
-	}
-
-	channel.Write([]byte("\r\n\033[1;32mPayment method verified successfully!\033[0m\r\n\r\n"))
-
-	// Create user and team in database
-	if err := s.createUser(fingerprint, email); err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nFailed to create user: %v\r\n", err)))
-		return
-	}
-	if err := s.createTeam(teamName, email); err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nFailed to create team: %v\r\n", err)))
-		return
-	}
-	if err := s.addTeamMember(fingerprint, teamName, true); err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\nFailed to add to team: %v\r\n", err)))
-		return
-	}
-
-	// Clean up verification states
-	s.billingVerificationsMu.Lock()
-	delete(s.billingVerifications, fingerprint)
-	s.billingVerificationsMu.Unlock()
-
-	// Create celebration animation
-	channel.Write([]byte("\r\n\033[1;32m"))
-	celebrationFrames := []string{
-		"   Registration completed!   ",
-		"  * Registration completed! *  ",
-		" *** Registration completed! *** ",
-	}
-
-	for i := 0; i < 2; i++ {
-		for _, frame := range celebrationFrames {
-			channel.Write([]byte("\r" + frame))
-			time.Sleep(300 * time.Millisecond)
-		}
-	}
-
-	channel.Write([]byte("\033[0m\r\n\r\n"))
-	channel.Write([]byte("\033[1;36m" +
-		"╔══════════════════════════════════════════════════════════════╗\r\n" +
-		"║                                                              ║\r\n" +
-		"║               \033[1;32mWelcome to exe.dev!\033[1;36m                     ║\r\n" +
-		"║                                                              ║\r\n" +
-		"║  \033[1;37mYour account is now ready! You can:\033[1;36m                     ║\r\n" +
-		"║                                                              ║\r\n" +
-		"║  \033[37m• Create and manage machines\033[1;36m                            ║\r\n" +
-		"║  \033[37m• Deploy applications with persistent storage\033[1;36m           ║\r\n" +
-		"║  \033[37m• Access your machines anytime via SSH\033[1;36m                 ║\r\n" +
-		"║                                                              ║\r\n" +
-		"╚══════════════════════════════════════════════════════════════╝\033[0m\r\n\r\n"))
-
-	// Get user's team membership to determine admin status
-	teams, err := s.getUserTeams(fingerprint)
-	isAdmin := true // Default to admin
-	if err == nil && len(teams) > 0 {
-		// Find the team membership to get correct admin status
-		for _, team := range teams {
-			if team.TeamName == teamName {
-				isAdmin = team.IsAdmin
-				break
-			}
-		}
-	}
-
-	// Create user session before continuing to main shell
-	s.createUserSession(channel, fingerprint, email, teamName, "", isAdmin)
-	defer s.removeUserSession(channel)
-
-	// Continue with normal shell flow
-	// s.runMainShell(channel, true) // New team members - show welcome
-	// NOTE: This is now handled by the new SSH server in ssh_server.go
-}
-
-// verifyPaymentMethod verifies a payment method with Stripe using test tokens
-func (s *Server) verifyPaymentMethod(cardNumber string) error {
-	// Remove spaces from card number
-	cardNumber = strings.ReplaceAll(cardNumber, " ", "")
-
-	// Basic validation - check if it's the test card number
-	if cardNumber != "4242424242424242" {
-		return fmt.Errorf("invalid card number. Please use the test card: 4242424242424242")
-	}
-
-	// Use a test payment method token instead of raw card data
-	// This is a pre-created test payment method token from Stripe
-	testPaymentMethodToken := "pm_card_visa" // Stripe test token for Visa
-
-	// Try to retrieve the test payment method to verify it exists
-	pm, err := paymentmethod.Get(testPaymentMethodToken, nil)
-	if err != nil {
-		return fmt.Errorf("payment method verification failed: %w", err)
-	}
-
-	// Log successful verification (but don't expose sensitive details)
-	log.Printf("Payment method verified successfully: type=%s, last4=%s", pm.Type, pm.Card.Last4)
-
-	return nil
-}
-
-// createTeamName handles team name creation with simple validation
-func (s *Server) createTeamName(channel *sshbuf.Channel) (string, error) {
-	channel.Write([]byte("\r\n\033[1;36m" +
-		"╭─────────────────────────────────────────────────╮\r\n" +
-		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n" +
-		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n"))
-
-	channel.Write([]byte("\033[1mNow let's create your team name.\033[0m\r\n\r\n"))
-	grayText := s.getGrayText(channel)
-	channel.Write([]byte(fmt.Sprintf("%sYour machines will be available at: \033[1;32m<name>.<team>.exe.dev\033[0m\r\n\r\n", grayText)))
-
-	for {
-		channel.Write([]byte("\033[1mTeam name:\033[0m "))
-
-		teamName, err := s.readLineFromChannel(channel)
-		if err != nil {
-			if err.Error() == "interrupted" || err.Error() == "EOF" {
-				channel.Write([]byte("Goodbye!\r\n"))
-				return "", err
-			}
-			return "", err
-		}
-
-		// Validate team name
-		if !s.isValidTeamName(teamName) {
-			channel.Write([]byte("\r\n\033[1;31mInvalid team name\033[0m\r\n"))
-			channel.Write([]byte(fmt.Sprintf("%s   Requirements: 3-20 characters, lowercase letters/numbers/hyphens only\033[0m\r\n\r\n", grayText)))
-			continue
-		}
-
-		// Check if team name is available
-		taken, err := s.isTeamNameTaken(teamName)
-		if err != nil {
-			channel.Write([]byte(fmt.Sprintf("\r\nError checking team name: %v\r\n", err)))
-			continue
-		}
-
-		if taken {
-			channel.Write([]byte("\r\n\033[1;31mTeam name already taken\033[0m\r\n"))
-			channel.Write([]byte(fmt.Sprintf("%s   Please try a different name\033[0m\r\n\r\n", grayText)))
-			continue
-		}
-
-		channel.Write([]byte("\r\n\033[1;32mPerfect! Team name is available!\033[0m\r\n"))
-		channel.Write([]byte(fmt.Sprintf("%s   Your machines: \033[1;32m<name>.%s.exe.dev\033[0m\r\n\r\n", grayText, teamName)))
-
-		return teamName, nil
-	}
-}
-
-// updatePromptLine updates the current line with validation feedback (simplified)
 func (s *Server) updatePromptLine(channel *sshbuf.Channel, prompt, input, feedback string) {
 	// Just show feedback on a new line instead of trying to be clever
 	channel.Write([]byte(fmt.Sprintf("\r\n%s\r\n%s", feedback, prompt)))
@@ -3931,6 +3101,54 @@ func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
 	return teams, rows.Err()
 }
 
+// createUserWithTeam creates a new user with a specific team name
+func (s *Server) createUserWithTeam(fingerprint, email, teamName string) error {
+	// Start a transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Create user
+	_, err = tx.Exec(`
+		INSERT INTO users (public_key_fingerprint, email)
+		VALUES (?, ?)`,
+		fingerprint, email)
+	if err != nil {
+		return err
+	}
+
+	// Create personal team
+	_, err = tx.Exec(`
+		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint)
+		VALUES (?, ?, TRUE, ?)`,
+		teamName, email, fingerprint)
+	if err != nil {
+		return err
+	}
+
+	// Add user as admin of the team
+	_, err = tx.Exec(`
+		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+		VALUES (?, ?, TRUE)`,
+		fingerprint, teamName)
+	if err != nil {
+		return err
+	}
+
+	// Set this as the default team for the SSH key
+	_, err = tx.Exec(`
+		UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`,
+		teamName, fingerprint)
+	if err != nil {
+		return err
+	}
+
+	// Commit transaction
+	return tx.Commit()
+}
+
 // createUser creates a new user with their personal team
 func (s *Server) createUser(fingerprint, email string) error {
 	// Start a transaction
@@ -4058,6 +3276,27 @@ func (s *Server) addTeamMember(fingerprint, teamName string, isAdmin bool) error
 func (s *Server) isTeamNameTaken(teamName string) (bool, error) {
 	var count int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE name = ?`, teamName).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// isTeamNameTakenOrReserved checks if a team name already exists or is reserved in pending registrations
+func (s *Server) isTeamNameTakenOrReserved(teamName string) (bool, error) {
+	// Check existing teams
+	taken, err := s.isTeamNameTaken(teamName)
+	if err != nil || taken {
+		return taken, err
+	}
+
+	// Check pending registrations (reserved team names)
+	var count int
+	currentTime := time.Now().Format(time.RFC3339)
+	err = s.db.QueryRow(`
+		SELECT COUNT(*) FROM pending_registrations 
+		WHERE team_name = ? AND expires_at > ?`,
+		teamName, currentTime).Scan(&count)
 	if err != nil {
 		return false, err
 	}

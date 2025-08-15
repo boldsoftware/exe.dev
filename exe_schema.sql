@@ -142,6 +142,16 @@ CREATE TABLE IF NOT EXISTS pending_ssh_keys (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Table for pending registrations with team name reservation
+CREATE TABLE IF NOT EXISTS pending_registrations (
+    token TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    email TEXT NOT NULL,
+    team_name TEXT UNIQUE NOT NULL, -- Reserved team name
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- SSH host key storage: ensures consistent host key across restarts
 CREATE TABLE IF NOT EXISTS ssh_host_key (
     id INTEGER PRIMARY KEY CHECK (id = 1), -- Ensure only one row
@@ -168,5 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_ssh_keys_email ON ssh_keys(user_email);
 CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);
 CREATE INDEX IF NOT EXISTS idx_ssh_keys_default_team ON ssh_keys(default_team);
 CREATE INDEX IF NOT EXISTS idx_pending_ssh_keys_expires ON pending_ssh_keys(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pending_registrations_expires ON pending_registrations(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pending_registrations_team ON pending_registrations(team_name);
 CREATE INDEX IF NOT EXISTS idx_teams_personal ON teams(is_personal);
 CREATE INDEX IF NOT EXISTS idx_teams_owner ON teams(owner_fingerprint);
