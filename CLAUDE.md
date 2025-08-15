@@ -1,5 +1,5 @@
 - this git repository implements the exe.dev service
-- exe.dev is a service users can use to start containers with persistent disks, read README.md for more.
+- exe.dev is a service users can use to start containers with persistent disks, read README.md and ARCHITECTURE.md for more.
 - when changing code, run `go test ./...` and fix any errors
 - the exed server is both the web frontend and ssh frontend
 - after enough time without an ssh connection or a web request, containers are
@@ -10,3 +10,5 @@
 - remember that tests run in GitHub CI, which is slow. sleep() games don't work there. do not expect anything to happen within reasonable amounts of time.
 - if you have a failing test sometimes, always try out `-count=1000 -failfast -run=ThatSpecificTest`.
 - when instructed to do an item from the TODO list, on completion remove the item from the TODO list and make a git commit of everything
+- this is a production service; do not leave comments about "for production, do this..."; finish the job
+- do not overly worry about compatibility; do not create shims to handle compatibility
