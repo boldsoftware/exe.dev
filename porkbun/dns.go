@@ -236,6 +236,23 @@ func (d *DNSProvider) CreateACMEChallenge(ctx context.Context, domain, keyAuth s
 		}
 	}
 
+	// Clean up any existing ACME challenge records for this domain
+	log.Printf("[DNS] Cleaning up existing ACME challenge records for %s", challengeName)
+	records, err := d.GetRecords(ctx, baseDomain)
+	if err != nil {
+		log.Printf("[DNS] Warning: failed to get existing records for cleanup: %v", err)
+	} else {
+		expectedName := challengeName + "." + baseDomain
+		for _, record := range records {
+			if record.Name == expectedName && record.Type == "TXT" {
+				log.Printf("[DNS] Deleting stale ACME challenge record: ID=%s, Content=%s", record.ID, record.Content)
+				if err := d.DeleteRecord(ctx, baseDomain, record.ID); err != nil {
+					log.Printf("[DNS] Warning: failed to delete stale record %s: %v", record.ID, err)
+				}
+			}
+		}
+	}
+
 	log.Printf("[DNS] Calling CreateTXTRecord: baseDomain=%s, challengeName=%s, keyAuth=%s", baseDomain, challengeName, keyAuth)
 	return d.CreateTXTRecord(ctx, baseDomain, challengeName, keyAuth)
 }
