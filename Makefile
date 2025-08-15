@@ -55,7 +55,7 @@ setup-vm: ## Set up production VM (run once) - requires TAILSCALE_AUTH_KEY
 
 build-exeuntu: ## Build the exeuntu Docker image locally
 	@echo "Building exeuntu Docker image..."
-	@docker build -t ghcr.io/boldsoftware/exeuntu:latest ./exeuntu
+	@docker build -t ghcr.io/boldsoftware/exeuntu:latest ../exeuntu
 	@echo "✓ Image built locally as ghcr.io/boldsoftware/exeuntu:latest"
 
 push-exeuntu: build-exeuntu ## Build and push exeuntu image to GitHub Container Registry
