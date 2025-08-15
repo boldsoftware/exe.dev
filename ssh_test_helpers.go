@@ -14,11 +14,11 @@ import (
 // On timeout or error, it calls t.Fatal with a descriptive message.
 func mustRead(t *testing.T, r io.Reader, pattern string, timeout time.Duration, context string) string {
 	t.Helper()
-	
+
 	output := &bytes.Buffer{}
 	found := make(chan bool, 1)
 	errChan := make(chan error, 1)
-	
+
 	// Start a goroutine to do the blocking read
 	go func() {
 		buf := make([]byte, 4096)
@@ -39,19 +39,19 @@ func mustRead(t *testing.T, r io.Reader, pattern string, timeout time.Duration, 
 			}
 		}
 	}()
-	
+
 	// Wait for pattern, error, or timeout
 	select {
 	case <-found:
 		return output.String()
 	case err := <-errChan:
-		t.Fatalf("%s: Read error while waiting for pattern %q: %v\nOutput so far:\n%s", 
+		t.Fatalf("%s: Read error while waiting for pattern %q: %v\nOutput so far:\n%s",
 			context, pattern, err, output.String())
 	case <-time.After(timeout):
-		t.Fatalf("%s: Timeout after %v waiting for pattern %q\nOutput received:\n%s", 
+		t.Fatalf("%s: Timeout after %v waiting for pattern %q\nOutput received:\n%s",
 			context, timeout, pattern, output.String())
 	}
-	
+
 	// This should never be reached
 	return output.String()
 }
@@ -59,13 +59,13 @@ func mustRead(t *testing.T, r io.Reader, pattern string, timeout time.Duration, 
 // mustWrite writes data to the writer and fails the test on error.
 func mustWrite(t *testing.T, w io.Writer, data string, context string) {
 	t.Helper()
-	
+
 	n, err := w.Write([]byte(data))
 	if err != nil {
 		t.Fatalf("%s: Failed to write %q: %v", context, data, err)
 	}
 	if n != len(data) {
-		t.Fatalf("%s: Partial write of %q: wrote %d bytes, expected %d", 
+		t.Fatalf("%s: Partial write of %q: wrote %d bytes, expected %d",
 			context, data, n, len(data))
 	}
 }
@@ -74,15 +74,15 @@ func mustWrite(t *testing.T, w io.Writer, data string, context string) {
 // This simulates typing and is useful for terminal input testing.
 func mustWriteChars(t *testing.T, w io.Writer, text string, delay time.Duration, context string) {
 	t.Helper()
-	
+
 	for i, ch := range text {
 		n, err := w.Write([]byte{byte(ch)})
 		if err != nil {
-			t.Fatalf("%s: Failed to write character %c at position %d: %v", 
+			t.Fatalf("%s: Failed to write character %c at position %d: %v",
 				context, ch, i, err)
 		}
 		if n != 1 {
-			t.Fatalf("%s: Failed to write character %c: wrote %d bytes, expected 1", 
+			t.Fatalf("%s: Failed to write character %c: wrote %d bytes, expected 1",
 				context, ch, n)
 		}
 		if delay > 0 {
@@ -96,7 +96,7 @@ func mustWriteChars(t *testing.T, w io.Writer, text string, delay time.Duration,
 func readWithTimeout(r io.Reader, timeout time.Duration) (string, error) {
 	output := &bytes.Buffer{}
 	done := make(chan error, 1)
-	
+
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -110,7 +110,7 @@ func readWithTimeout(r io.Reader, timeout time.Duration) (string, error) {
 			}
 		}
 	}()
-	
+
 	select {
 	case err := <-done:
 		if err == io.EOF {
