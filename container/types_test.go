@@ -80,3 +80,32 @@ func TestCreateContainerRequestDefaults(t *testing.T) {
 		t.Error("Expected Ephemeral to be true")
 	}
 }
+
+func TestExpandImageName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"exeuntu", "ghcr.io/boldsoftware/exeuntu:latest"},
+		{"exeuntu:latest", "ghcr.io/boldsoftware/exeuntu:latest"},
+		{"ubuntu", "ubuntu:22.04"},
+		{"ubuntu:latest", "ubuntu:22.04"},
+		{"debian", "debian:bookworm"},
+		{"alpine", "alpine:latest"},
+		{"python", "python:3.11"},
+		{"node", "node:20"},
+		{"golang", "golang:1.21"},
+		{"rust", "rust:latest"},
+		{"custom/image:tag", "custom/image:tag"}, // Should not be modified
+		{"ghcr.io/user/repo:v1.0", "ghcr.io/user/repo:v1.0"}, // Should not be modified
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := ExpandImageName(tt.input)
+			if result != tt.expected {
+				t.Errorf("ExpandImageName(%q) = %q, expected %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}

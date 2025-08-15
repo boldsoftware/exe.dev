@@ -152,6 +152,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	if image == "" {
 		image = "ubuntu:latest"
 	}
+	image = ExpandImageName(image)
 	args = append(args, image)
 
 	// Keep container running
