@@ -262,4 +262,3 @@ func TestEmailBySSHKey(t *testing.T) {
 		t.Error("Expected unverified key")
 	}
 }
-

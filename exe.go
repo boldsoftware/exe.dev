@@ -577,7 +577,6 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		}
 	}
 
-
 	// Check if there's an email associated with any SSH key and if this is a new key for that user
 	if email != "" && !verified {
 		// This key belongs to a user but isn't verified yet - treat as standard unregistered user
@@ -3005,7 +3004,6 @@ func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
 
 	return teams, rows.Err()
 }
-
 
 // getUserByFingerprint retrieves a user by their SSH key fingerprint
 func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {

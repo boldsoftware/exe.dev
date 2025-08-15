@@ -514,7 +514,7 @@ func TestSSHDirectExecCommands(t *testing.T) {
 	}
 
 	// Add the SSH key to ssh_keys table and mark it as verified
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`, 
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`,
 		fingerprint, email, publicKeyStr, "test-device")
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
