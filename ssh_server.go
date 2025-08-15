@@ -14,6 +14,7 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/sshproxy"
+	"exe.dev/termfun"
 	"github.com/gliderlabs/ssh"
 	"github.com/pkg/sftp"
 	gossh "golang.org/x/crypto/ssh"
@@ -61,7 +62,9 @@ func (ss *SSHServer) Start(addr string) error {
 		}
 	}
 
-	log.Printf("Starting SSH server on %s", addr)
+	if ss.server == nil || !ss.server.testMode {
+		log.Printf("Starting SSH server on %s", addr)
+	}
 	return ss.srv.ListenAndServe()
 }
 
@@ -209,11 +212,15 @@ func (ss *SSHServer) handleShell(s ssh.Session, username, fingerprint string, re
 
 // runMainShellWithReadline implements the main menu using a simple line reader
 func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email, teamName string, isAdmin bool, showWelcome bool) {
-	log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", email, showWelcome)
+	if !ss.server.testMode {
+		log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", email, showWelcome)
+	}
 
 	// Show welcome message
 	if showWelcome {
-		log.Printf("Showing welcome banner")
+		if !ss.server.testMode {
+			log.Printf("Showing welcome banner")
+		}
 		welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
 			"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
 			"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
@@ -231,7 +238,9 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
 			"\033[1mexit\033[0m           - Exit\r\n\r\n"
 		fmt.Fprint(s, welcome)
-		log.Printf("Welcome banner sent, length: %d bytes", len(welcome))
+		if !ss.server.testMode {
+			log.Printf("Welcome banner sent, length: %d bytes", len(welcome))
+		}
 	} else {
 		// Show brief welcome for registered users
 		fmt.Fprintf(s, "\r\n\033[1;33mWelcome to EXE.DEV\033[0m - Team: %s\r\n", teamName)
@@ -258,7 +267,9 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
 
 	// Command loop using term package
-	log.Printf("Entering command loop")
+	if !ss.server.testMode {
+		log.Printf("Entering command loop")
+	}
 	for {
 		// Read line using terminal (it handles the prompt)
 		line, err := terminal.ReadLine()
@@ -269,7 +280,9 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			return
 		}
 
-		log.Printf("Command received: %q", line)
+		if !ss.server.testMode {
+			log.Printf("Command received: %q", line)
+		}
 
 		parts := strings.Fields(strings.TrimSpace(line))
 		if len(parts) == 0 {
@@ -311,7 +324,6 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 	// Skip animation in test mode for faster tests
 	if ss.server.testMode {
-		fmt.Fprint(s, "\033[2J\033[H")
 		fmt.Fprint(s, "███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n")
 		fmt.Fprint(s, "╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \r\n\r\n")
 		return
@@ -342,54 +354,44 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 	// Clear screen and move cursor to top
 	fmt.Fprint(s, "\033[2J\033[H")
 
-	// Add some vertical padding to center vertically
-	fmt.Fprint(s, "\r\n\r\n\r\n\r\n\r\n")
+	// Add just 2 lines of vertical padding from the top
+	fmt.Fprint(s, "\r\n\r\n")
 
-	// Add 3 additional blank lines above the ASCII art
-	fmt.Fprint(s, "\r\n\r\n\r\n")
-
-	// Fade animation colors (bright green to darker shades)
-	fadeSteps := []struct {
-		color string
-		delay time.Duration
-	}{
-		{"\033[1;92m", 100 * time.Millisecond}, // Bright light green
-		{"\033[1;32m", 100 * time.Millisecond}, // Bright green
-		{"\033[0;92m", 100 * time.Millisecond}, // Normal light green
-		{"\033[0;32m", 100 * time.Millisecond}, // Normal green
-		{"\033[2;32m", 100 * time.Millisecond}, // Dim green
-		{"\033[0;33m", 100 * time.Millisecond}, // Dark yellow/olive
-		{"\033[2;33m", 100 * time.Millisecond}, // Dim yellow
-		{"\033[2;90m", 100 * time.Millisecond}, // Dim gray
-		{"\033[2;90m", 100 * time.Millisecond}, // Keep dim gray
-		{"\033[0m", 0},                         // Clear
-	}
-
-	// Show the art with fade animation
-	for _, step := range fadeSteps {
-		// Clear the previous art area
-		fmt.Fprintf(s, "\033[%dA", len(asciiArt))
-
-		// Draw the art with current color
-		for _, line := range asciiArt {
-			padding := strings.Repeat(" ", leftPadding)
-			fmt.Fprintf(s, "%s%s%s\033[0m\r\n", padding, step.color, line)
-		}
-
-		// Wait before next step
-		if step.delay > 0 {
-			time.Sleep(step.delay)
+	// Draw each line with padding centered (initial display in green)
+	padding := strings.Repeat(" ", leftPadding)
+	for i, line := range asciiArt {
+		fmt.Fprintf(s, "%s\033[1;92m%s\033[0m", padding, line)
+		if i < len(asciiArt)-1 {
+			fmt.Fprint(s, "\r\n")
 		}
 	}
 
-	// Move cursor back up and clear the art area completely
-	fmt.Fprintf(s, "\033[%dA", len(asciiArt))
+	// Move cursor back to start of ASCII art for animation
+	fmt.Fprintf(s, "\033[%dA", len(asciiArt)-1)
+	fmt.Fprint(s, "\r")
+
+	// Query background color (with timeout fallback to black)
+	bg := termfun.QueryBackgroundColor(s, s)
+
+	// Fade from bright green to background color
+	from := termfun.RGB{80, 255, 120}
+	to := bg
+
+	// Animate with proper 24-bit colors
+	termfun.FadeTextInPlace(s, asciiArt, leftPadding, from, to, 900*time.Millisecond, 12)
+
+	// After animation, cursor is at the last line of the art
+	// Move back to first line and clear everything
+	fmt.Fprintf(s, "\033[%dA", len(asciiArt)-1)
 	for i := 0; i < len(asciiArt); i++ {
-		fmt.Fprint(s, "\033[2K\r\n") // Clear entire line and move to next
+		fmt.Fprint(s, "\033[2K") // Clear entire line
+		if i < len(asciiArt)-1 {
+			fmt.Fprint(s, "\r\n")
+		}
 	}
 
-	// Move cursor back to where the art was
-	fmt.Fprintf(s, "\033[%dA", len(asciiArt))
+	// Move cursor back to where the art started
+	fmt.Fprintf(s, "\033[%dA", len(asciiArt)-1)
 }
 
 // readLineWithEcho reads a line with echo (for registration)
