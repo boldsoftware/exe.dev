@@ -163,7 +163,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	args = append(args, image)
 
 	// Keep container running - SSH will be setup after container starts
-	// TODO(philip): socat TCP-LISTEN:22,reuseaddr,fork EXEC:"/usr/sbin/sshd -i" 
+	// TODO(philip): socat TCP-LISTEN:22,reuseaddr,fork EXEC:"/usr/sbin/sshd -i"
 	args = append(args, "tail", "-f", "/dev/null")
 
 	// Execute docker run
@@ -184,7 +184,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 		// Use a separate context with longer timeout for SSH setup
 		sshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		
+
 		if err := m.setupContainerSSH(sshCtx, containerID, dockerHost, sshKeys); err != nil {
 			log.Printf("Warning: Failed to setup SSH in container: %v", err)
 		}
@@ -747,7 +747,7 @@ func (m *DockerManager) getContainerSSHPort(ctx context.Context, containerID, do
 // Supports both IPv4 (0.0.0.0:32768) and IPv6 ([::]:32768) formats
 func parseDockerPortMapping(portStr string) (int, error) {
 	var portPart string
-	
+
 	if strings.HasPrefix(portStr, "[") {
 		// IPv6 format: [::]:32768 or [2001:db8::1]:8080
 		parts := strings.Split(portStr, "]:")

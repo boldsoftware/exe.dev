@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"go4.org/netipx"
 	"net"
 	"net/netip"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"go4.org/netipx"
 
 	gocache "github.com/patrickmn/go-cache"
 	log "github.com/sirupsen/logrus"

@@ -288,7 +288,7 @@ func main() {
 						if dir == "" {
 							continue
 						}
-						
+
 						pluginexe := filepath.Join(dir, pluginEnv)
 						if _, err := os.Stat(pluginexe); err == nil {
 							args = append(args, pluginexe)

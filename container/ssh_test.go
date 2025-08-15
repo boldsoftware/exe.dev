@@ -91,9 +91,9 @@ func TestContainerWithSSH(t *testing.T) {
 	}
 
 	config := &Config{
-		DockerHosts:           []string{""},
-		DefaultCPURequest:     "100m",
-		DefaultMemoryRequest:  "128Mi",
+		DockerHosts:          []string{""},
+		DefaultCPURequest:    "100m",
+		DefaultMemoryRequest: "128Mi",
 	}
 
 	manager, err := NewDockerManager(config)

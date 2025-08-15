@@ -106,7 +106,7 @@ func TestSSHContainerE2E(t *testing.T) {
 		FROM machines 
 		WHERE team_name = ? AND name = ? AND container_id = ?
 	`, teamName, "ssh-container", createdContainer.ID).Scan(
-		&machineID, &storedServerKey, &storedAuthKeys, &storedCAKey, 
+		&machineID, &storedServerKey, &storedAuthKeys, &storedCAKey,
 		&storedHostCert, &storedClientKey, &storedSSHPort)
 
 	if err != nil {
