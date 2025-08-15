@@ -492,7 +492,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	}
 
 	fmt.Fprintf(s, "\r\n%sVerification email sent!%s\r\n\r\n", "\033[1;32m", "\033[0m")
-	
+
 	// Only show the verification URL in dev mode
 	if ss.server.devMode != "" {
 		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", ss.server.getBaseURL(), verification.Token)
@@ -501,7 +501,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	} else {
 		fmt.Fprintf(s, "Please check your email and click the verification link.\r\n\r\n")
 	}
-	
+
 	fmt.Fprintf(s, "%sWaiting for email verification...%s\r\n", grayText, "\033[0m")
 
 	// Create channels and atomic bool for coordinating with Ctrl+C handler
