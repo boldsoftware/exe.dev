@@ -111,7 +111,20 @@ lint: ## Run linters
 	@go fmt ./...
 	@echo "✓ Lint complete"
 
-dist/sshd: Dockerfile.sshd-static
-	docker buildx build --platform linux/amd64 -f Dockerfile.sshd-static   --target out --output type=local,dest=./dist .
+dist/sshd: dist/sshd.arm64 dist/sshd.amd64
+
+dist/sshd.arm64: Dockerfile.sshd-static
+	@echo "Building sshd for arm64..."
+	@docker buildx build --platform linux/arm64 -f Dockerfile.sshd-static --target out --output type=local,dest=./dist-arm64 .
+	@mv ./dist-arm64/sshd ./dist/sshd.arm64
+	@rm -rf ./dist-arm64
+	@echo "✓ Built dist/sshd.arm64"
+
+dist/sshd.amd64: Dockerfile.sshd-static
+	@echo "Building sshd for amd64..."
+	@docker buildx build --platform linux/amd64 -f Dockerfile.sshd-static --target out --output type=local,dest=./dist-amd64 .
+	@mv ./dist-amd64/sshd ./dist/sshd.amd64
+	@rm -rf ./dist-amd64
+	@echo "✓ Built dist/sshd.amd64"
 
 .DEFAULT_GOAL := help
