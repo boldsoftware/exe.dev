@@ -83,7 +83,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}()
 
 	// Wait for servers to start
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Create SSH command with real PTY
 	cmd := exec.Command("ssh",
@@ -192,7 +192,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}
 
 	// Step 1: Wait for email prompt
-	output, err := readUntil("enter your email address", 5*time.Second)
+	output, err := readUntil("enter your email address", 2*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to get email prompt: %v\nOutput: %s", err, output)
 	}
@@ -206,14 +206,14 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	t.Logf("✓ Entered email: %s", email)
 
 	// Step 3: Wait for verification message
-	output, err = readUntil("Verification email sent", 3*time.Second)
+	output, err = readUntil("Verification email sent", 1*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to see verification sent: %v\nOutput: %s", err, output)
 	}
 	t.Log("✓ Verification email sent")
 
 	// Step 4: Find and complete verification
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 	var token string
 	server.emailVerificationsMu.RLock()
 	for t, v := range server.emailVerifications {
@@ -241,8 +241,13 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}
 	t.Log("✓ Email verified")
 
+	// Step 4b: Press Enter to continue after email verification
+	if err := writeToPTY("\n"); err != nil {
+		t.Fatalf("Failed to press Enter to continue: %v", err)
+	}
+
 	// Step 5: Check for menu transition (not reconnect message)
-	output, err = readUntil("Registration complete", 3*time.Second)
+	output, err = readUntil("Registration complete", 1*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to see registration complete: %v\nOutput: %s", err, output)
 	}
@@ -255,8 +260,17 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 		t.Log("✓ Transitioned directly to menu")
 	}
 
-	// Step 6: Wait for menu/prompt to appear
-	time.Sleep(500 * time.Millisecond)
+	// Step 6: Wait for help text which indicates menu is fully loaded
+	output, err = readUntil("Type 'help'", 2*time.Second)
+	if err != nil {
+		// Try waiting for the prompt as fallback
+		output, err = readUntil("exe.dev", 1*time.Second)
+		if err != nil {
+			t.Logf("Warning: didn't see menu ready signal: %v", err)
+		}
+	}
+	// Small delay to ensure prompt is ready for input
+	time.Sleep(100 * time.Millisecond)
 
 	// Step 7: Create a machine
 	if err := writeToPTY("create\n"); err != nil {
@@ -265,7 +279,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	t.Log("✓ Sent create command")
 
 	// Step 8: Wait for machine creation confirmation
-	output, err = readUntil("Ready in", 10*time.Second)
+	output, err = readUntil("Ready in", 2*time.Second)
 	if err != nil {
 		// Machine might have been created from warm pool
 		if strings.Contains(output, "Creating") {
@@ -282,7 +296,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 		t.Fatalf("Failed to send list command: %v", err)
 	}
 
-	output, err = readUntil("Your machines:", 3*time.Second)
+	output, err = readUntil("Your machines:", 1*time.Second)
 	if err != nil {
 		t.Logf("List output: %s", output)
 	} else {
@@ -307,7 +321,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 		} else {
 			t.Log("✓ SSH session ended cleanly")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(500 * time.Millisecond):
 		cmd.Process.Kill()
 		t.Log("Had to kill SSH process")
 	}

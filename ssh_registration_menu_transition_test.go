@@ -190,7 +190,7 @@ func TestRegistrationToMenuTransition(t *testing.T) {
 	// Simulate email verification in a goroutine
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		
+
 		server.emailVerificationsMu.Lock()
 		if v, exists := server.emailVerifications[token]; exists {
 			// Create user
@@ -239,13 +239,13 @@ func TestRegistrationToMenuTransition(t *testing.T) {
 	if !pressEnterAppeared {
 		t.Fatalf("Press [Enter] prompt didn't appear. Output: %s", output)
 	}
-	
+
 	// Press Enter to continue to menu
 	_, err = stdin.Write([]byte{'\n'})
 	if err != nil {
 		t.Fatalf("Failed to send Enter: %v", err)
 	}
-	
+
 	// Now wait for the menu prompt to appear
 	output = ""
 	menuAppeared := false
@@ -273,14 +273,14 @@ func TestRegistrationToMenuTransition(t *testing.T) {
 	// Send "help" command
 	testCommand := "help"
 	t.Logf("Sending command: %s", testCommand)
-	
+
 	// Clear any pending output first
 	for {
 		session.Stdout = &bytes.Buffer{}
 		time.Sleep(50 * time.Millisecond)
 		break
 	}
-	
+
 	// Send each character with small delay to simulate typing
 	for _, char := range testCommand {
 		_, err = stdin.Write([]byte{byte(char)})
@@ -289,7 +289,7 @@ func TestRegistrationToMenuTransition(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	// Send enter
 	_, err = stdin.Write([]byte{'\n'})
 	if err != nil {
@@ -326,7 +326,7 @@ func TestRegistrationToMenuTransition(t *testing.T) {
 	// Test another command to ensure consistent behavior
 	testCommand2 := "list"
 	t.Logf("Sending second command: %s", testCommand2)
-	
+
 	for _, char := range testCommand2 {
 		_, err = stdin.Write([]byte{byte(char)})
 		if err != nil {
@@ -334,7 +334,7 @@ func TestRegistrationToMenuTransition(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	// Send enter
 	_, err = stdin.Write([]byte{'\n'})
 	if err != nil {
@@ -362,6 +362,6 @@ func TestRegistrationToMenuTransition(t *testing.T) {
 	if !strings.Contains(output, "list") && !strings.Contains(output, "machines") {
 		t.Errorf("Second command 'list' may have had character loss. Output: %s", output)
 	}
-	
+
 	t.Logf("Test completed successfully - no character loss detected in menu after registration")
 }

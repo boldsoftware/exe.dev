@@ -240,7 +240,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
-	
+
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
@@ -268,7 +268,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			}
 			return
 		}
-		
+
 		log.Printf("Command received: %q", line)
 
 		parts := strings.Fields(strings.TrimSpace(line))
@@ -397,13 +397,13 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 func (ss *SSHServer) readLineWithEcho(s ssh.Session) string {
 	var line []byte
 	buf := make([]byte, 1)
-	
+
 	for {
 		n, err := s.Read(buf)
 		if err != nil || n == 0 {
 			return ""
 		}
-		
+
 		b := buf[0]
 		switch b {
 		case '\n', '\r':
@@ -453,7 +453,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
 		return
 	}
-	
+
 	// Validate email
 	for !ss.server.isValidEmail(email) {
 		fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
@@ -500,7 +500,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	ctrlCChan := make(chan struct{})
 	goroutineDone := make(chan struct{})
 	var verificationComplete atomic.Bool
-	
+
 	// Start goroutine to handle Ctrl+C and discard other input during verification
 	go func() {
 		defer close(goroutineDone)
@@ -517,7 +517,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 					// Verification complete, exit goroutine
 					return
 				}
-				
+
 				// Check for Ctrl+C
 				if buf[0] == 3 { // Ctrl+C
 					select {
@@ -532,7 +532,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 			}
 		}
 	}()
-	
+
 	// Wait for email verification with Ctrl+C support
 	select {
 	case <-verification.CompleteChan:
@@ -545,7 +545,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	case <-time.After(10 * time.Minute):
 		fmt.Fprintf(s, "%sEmail verification timed out. Please try again.%s\r\n", "\033[1;31m", "\033[0m")
 		verificationComplete.Store(true) // Stop the goroutine
-		<-goroutineDone // Wait for goroutine to exit
+		<-goroutineDone                  // Wait for goroutine to exit
 		return
 	case <-s.Context().Done():
 		// Session disconnected
@@ -596,23 +596,23 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	fmt.Fprintf(s, "\r\n%s🎉 Registration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
 	fmt.Fprintf(s, "Your account has been successfully created.\r\n\r\n")
 	fmt.Fprintf(s, "%sWelcome to exe.dev! Press [Enter] to start making machines...%s", "\033[1;36m", "\033[0m")
-	
+
 	// Wait for the goroutine to exit (user presses Enter or any key)
 	<-goroutineDone
-	
+
 	// Get team info for the menu
 	teams, err := ss.server.getUserTeams(fingerprint)
 	if err != nil || len(teams) == 0 {
 		fmt.Fprintf(s, "Error: User not associated with any team\r\n")
 		return
 	}
-	
+
 	// Get the default team for this SSH key
 	defaultTeam, err := ss.server.getDefaultTeamForKey(fingerprint)
 	if err != nil || defaultTeam == "" {
 		defaultTeam = teams[0].TeamName
 	}
-	
+
 	// Find the team membership details
 	var team TeamMember
 	for _, t := range teams {
@@ -624,10 +624,10 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	if team.TeamName == "" {
 		team = teams[0]
 	}
-	
+
 	// Visual feedback that we're entering the menu
 	fmt.Fprintf(s, "\r\n\r\n")
-	
+
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
 	// This avoids issues with partially consumed readers
@@ -872,12 +872,12 @@ func (ss *SSHServer) handleCancelPortForward(ctx ssh.Context, srv *ssh.Server, r
 // SSHSessionChannel wraps a gliderlabs SSH session to implement compatibility with sshbuf.Channel
 type SSHSessionChannel struct {
 	ssh.Session
-	mu       sync.Mutex
-	cond     *sync.Cond
-	buf      []byte
-	closed   bool
-	err      error
-	done     chan struct{}
+	mu     sync.Mutex
+	cond   *sync.Cond
+	buf    []byte
+	closed bool
+	err    error
+	done   chan struct{}
 }
 
 // NewSSHSessionChannel creates a new SSHSessionChannel with buffering support

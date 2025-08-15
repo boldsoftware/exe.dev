@@ -330,7 +330,7 @@ func TestRegistrationInputDiscarding(t *testing.T) {
 	// Send some random input that should be discarded
 	t.Logf("Sending random input that should be discarded")
 	stdin.Write([]byte("random text that should be ignored"))
-	
+
 	// Get verification token
 	var token string
 	server.emailVerificationsMu.Lock()

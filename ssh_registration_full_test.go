@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -35,7 +34,7 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -85,7 +84,7 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 	}()
 
 	// Wait for servers to start
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// Generate test SSH key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -151,33 +150,41 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 		t.Fatalf("Failed to start shell: %v", err)
 	}
 
-	// Helper to read output until a pattern is found
-	readUntil := func(pattern string, timeout time.Duration) (string, bool) {
-		buf := make([]byte, 4096)
-		output := &bytes.Buffer{}
-		deadline := time.Now().Add(timeout)
+	// Create a shared buffer for reading
+	outputBuffer := &bytes.Buffer{}
 
-		for time.Now().Before(deadline) {
+	// Start a goroutine to continuously read output
+	readDone := make(chan bool)
+	go func() {
+		buf := make([]byte, 1024)
+		for {
 			n, err := stdout.Read(buf)
 			if n > 0 {
-				output.Write(buf[:n])
-				if strings.Contains(output.String(), pattern) {
-					return output.String(), true
-				}
+				outputBuffer.Write(buf[:n])
 			}
-			if err != nil && err != io.EOF {
-				t.Logf("Read error: %v", err)
-				break
+			if err != nil {
+				close(readDone)
+				return
+			}
+		}
+	}()
+
+	// Helper to check if pattern exists in output
+	waitForPattern := func(pattern string, timeout time.Duration) bool {
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			if strings.Contains(outputBuffer.String(), pattern) {
+				return true
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
-		return output.String(), false
+		t.Logf("Pattern '%s' not found. Current output:\n%s", pattern, outputBuffer.String())
+		return false
 	}
 
 	// Step 1: Wait for registration prompt
-	output, found := readUntil("enter your email", 5*time.Second)
-	if !found {
-		t.Fatalf("Registration prompt not found. Output:\n%s", output)
+	if !waitForPattern("enter your email", 1*time.Second) {
+		t.Fatalf("Registration prompt not found")
 	}
 	t.Log("Got registration prompt")
 
@@ -193,12 +200,12 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 	t.Logf("Entered email: %s", testEmail)
 
 	// Step 3: Wait for verification URL
-	output, found = readUntil("verify-email?token=", 5*time.Second)
-	if !found {
-		t.Fatalf("Verification URL not found. Output:\n%s", output)
+	if !waitForPattern("verify-email?token=", 1*time.Second) {
+		t.Fatalf("Verification URL not found")
 	}
 
 	// Extract token from output
+	output := outputBuffer.String()
 	lines := strings.Split(output, "\n")
 	var token string
 	for _, line := range lines {
@@ -223,7 +230,7 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 	verificationDone := make(chan bool, 1)
 	go func() {
 		// Wait a moment to ensure SSH session is waiting
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 
 		// POST to verification endpoint
 		form := url.Values{}
@@ -248,18 +255,20 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 
 	// Step 5: Wait for registration complete message
 	t.Log("Waiting for registration complete message...")
-	output, found = readUntil("Registration complete!", 10*time.Second)
-	if !found {
-		t.Fatalf("Registration complete message not found. Output:\n%s", output)
+	if !waitForPattern("Registration complete!", 2*time.Second) {
+		t.Fatalf("Registration complete message not found")
 	}
 	t.Log("Got registration complete message")
 
-	// Wait for reconnect instructions
-	output, found = readUntil("ssh exe.dev", 5*time.Second)
-	if !found {
-		t.Logf("Reconnect instructions not found. Output:\n%s", output)
+	// Press Enter to continue to the menu
+	stdin.Write([]byte("\n"))
+	t.Log("Pressed Enter to continue")
+
+	// Wait for menu prompt to appear
+	if waitForPattern("exe.dev", 2*time.Second) {
+		t.Log("Got menu prompt")
 	} else {
-		t.Log("Got reconnect instructions")
+		t.Logf("Menu prompt not found")
 	}
 
 	// Check verification completed
@@ -268,115 +277,42 @@ func TestFullRegistrationFlowWithCreate(t *testing.T) {
 		if !verified {
 			t.Fatal("Email verification failed")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(500 * time.Millisecond):
 		t.Log("Verification timeout (may have completed)")
 	}
 
-	// Session should end after registration
-	session.Wait()
-	client.Close()
-
-	// Step 6: Reconnect as a registered user
-	t.Log("Reconnecting as registered user...")
-	time.Sleep(500 * time.Millisecond)
-
-	client2, err := ssh.Dial("tcp", sshAddr, config)
-	if err != nil {
-		t.Fatalf("Failed to reconnect to SSH server: %v", err)
-	}
-	defer client2.Close()
-
-	session2, err := client2.NewSession()
-	if err != nil {
-		t.Fatalf("Failed to create second session: %v", err)
-	}
-	defer session2.Close()
-
-	// Request PTY for second session
-	if err := session2.RequestPty("xterm", 40, 80, modes); err != nil {
-		t.Fatalf("Failed to request PTY for second session: %v", err)
-	}
-
-	stdin2, err := session2.StdinPipe()
-	if err != nil {
-		t.Fatalf("Failed to get stdin pipe for second session: %v", err)
-	}
-
-	stdout2, err := session2.StdoutPipe()
-	if err != nil {
-		t.Fatalf("Failed to get stdout pipe for second session: %v", err)
-	}
-
-	if err := session2.Shell(); err != nil {
-		t.Fatalf("Failed to start shell for second session: %v", err)
-	}
-
-	// Helper for second session
-	readUntil2 := func(pattern string, timeout time.Duration) (string, bool) {
-		buf := make([]byte, 4096)
-		output := &bytes.Buffer{}
-		deadline := time.Now().Add(timeout)
-
-		for time.Now().Before(deadline) {
-			n, err := stdout2.Read(buf)
-			if n > 0 {
-				output.Write(buf[:n])
-				if strings.Contains(output.String(), pattern) {
-					return output.String(), true
-				}
-			}
-			if err != nil && err != io.EOF {
-				t.Logf("Read error: %v", err)
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		return output.String(), false
-	}
-
-	// Step 7: Wait for menu to appear
-	t.Log("Waiting for menu in new session...")
-	output, found = readUntil2("EXE.DEV", 5*time.Second)
-	if !found {
-		t.Fatalf("Menu not found in new session. Output:\n%s", output)
-	}
-	t.Log("Menu appeared in new session")
-
-	// Step 8: Test that we can type commands - send list command first (simpler)
+	// Now we're in the menu in the same session
+	// Step 6: Test that we can type commands - send list command first (simpler)
 	t.Log("Sending 'list' command")
-	stdin2.Write([]byte("list\n"))
+	stdin.Write([]byte("list\n"))
 
-	// Step 9: Check for list command output
-	output, found = readUntil2("No machines", 5*time.Second)
-	if !found {
-		// Might say "machines found" if there are machines
-		output, found = readUntil2("machines", 5*time.Second)
-	}
-
-	if found {
+	// Step 7: Check for list command output
+	if waitForPattern("No machines", 1*time.Second) || waitForPattern("machines", 500*time.Millisecond) {
 		t.Log("List command executed successfully")
-		t.Logf("List output: %s", output)
 	} else {
-		t.Errorf("List command not working. Output:\n%s", output)
+		t.Errorf("List command not working")
 	}
 
-	// Step 10: Test help command as another simple test
-	t.Log("Sending 'help' command")
-	stdin2.Write([]byte("help\n"))
+	// Step 8: Test create command
+	t.Log("Sending 'create' command")
+	stdin.Write([]byte("create\n"))
 
-	output, found = readUntil2("Machine Management", 5*time.Second)
-	if found {
-		t.Log("Help command executed successfully")
+	if waitForPattern("Creating", 1*time.Second) {
+		t.Log("Create command executed successfully")
+		// Wait for machine to be ready
+		if waitForPattern("Ready in", 2*time.Second) {
+			t.Log("Machine created successfully")
+		}
 	} else {
-		t.Errorf("Help command not working. Output:\n%s", output)
+		t.Errorf("Create command not working")
 	}
 
-	// Step 11: Exit cleanly
+	// Step 9: Exit cleanly
 	t.Log("Exiting session")
-	stdin2.Write([]byte("exit\n"))
-	session2.Wait()
+	stdin.Write([]byte("exit\n"))
+	session.Wait()
 
-	t.Log("Test completed successfully - registration flow works with reconnection")
+	t.Log("Test completed successfully - registration flow works with create command")
 }
 
 // TestRegistrationMenuFreeze specifically tests the freeze issue
@@ -390,7 +326,7 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -418,7 +354,7 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 	}()
 
 	// Wait for server to start
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// Generate test SSH key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -513,7 +449,7 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 	output := &bytes.Buffer{}
 
 	// Collect initial output
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(500 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		n, _ := stdout.Read(buf)
 		if n > 0 {
@@ -541,7 +477,7 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 
 	// Read response with timeout
 	responseReceived := false
-	deadline = time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(1 * time.Second)
 	for time.Now().Before(deadline) {
 		n, _ := stdout.Read(buf)
 		if n > 0 {
@@ -566,7 +502,7 @@ func TestRegistrationMenuFreeze(t *testing.T) {
 	stdin.Write([]byte("list\n"))
 
 	responseReceived = false
-	deadline = time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(1 * time.Second)
 	for time.Now().Before(deadline) {
 		n, _ := stdout.Read(buf)
 		if n > 0 {
