@@ -9,14 +9,15 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"exe.dev/container"
 	"exe.dev/sshproxy"
-	"github.com/ergochat/readline"
 	"github.com/gliderlabs/ssh"
 	"github.com/pkg/sftp"
 	gossh "golang.org/x/crypto/ssh"
+	"golang.org/x/term"
 )
 
 // SSHServer wraps the gliderlabs SSH server implementation
@@ -206,14 +207,13 @@ func (ss *SSHServer) handleShell(s ssh.Session, username, fingerprint string, re
 	ss.runMainShellWithReadline(s, fingerprint, user.Email, team.TeamName, team.IsAdmin, false)
 }
 
-// runMainShellWithReadline implements the main menu using ergochat/readline
+// runMainShellWithReadline implements the main menu using a simple line reader
 func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email, teamName string, isAdmin bool, showWelcome bool) {
 	log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", email, showWelcome)
 
-	// Show welcome message BEFORE creating readline
-	// This ensures the output is sent to the client
+	// Show welcome message
 	if showWelcome {
-		log.Printf("Showing welcome banner before readline")
+		log.Printf("Showing welcome banner")
 		welcome := "\r\n\033[1;32m███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n" +
 			"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║\r\n" +
 			"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║\r\n" +
@@ -231,37 +231,16 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
 			"\033[1mexit\033[0m           - Exit\r\n\r\n"
 		fmt.Fprint(s, welcome)
-		log.Printf("Welcome banner sent before readline, length: %d bytes", len(welcome))
+		log.Printf("Welcome banner sent, length: %d bytes", len(welcome))
 	} else {
 		// Show brief welcome for registered users
 		fmt.Fprintf(s, "\r\n\033[1;33mWelcome to EXE.DEV\033[0m - Team: %s\r\n", teamName)
 		fmt.Fprintf(s, "Type 'help' for available commands\r\n\r\n")
 	}
 
-	// Create readline config
-	config := &readline.Config{
-		Prompt:          "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ",
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-		Stdin:           s,
-		Stdout:          s,
-		Stderr:          s.Stderr(),
-	}
-
-	// Create readline instance
-	rl, err := readline.NewEx(config)
-	if err != nil {
-		log.Printf("Failed to create readline in runMainShellWithReadline: %v", err)
-		fmt.Fprintf(s, "Error initializing readline: %v\r\n", err)
-		return
-	}
-	defer rl.Close()
-
-	log.Printf("Readline created successfully in runMainShellWithReadline")
-
-	// For the new SSH server, we don't use sshbuf.Channel
-	// We'll work directly with the ssh.Session
-
+	// Create a terminal using golang.org/x/term
+	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
+	
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
@@ -278,17 +257,19 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n" +
 		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
 
-	// Command loop
+	// Command loop using term package
 	log.Printf("Entering command loop")
 	for {
-		log.Printf("Waiting for readline input...")
-		line, err := rl.Readline()
+		// Read line using terminal (it handles the prompt)
+		line, err := terminal.ReadLine()
 		if err != nil {
-			if err == readline.ErrInterrupt || err == io.EOF {
+			if err == io.EOF {
 				fmt.Fprint(s, "Goodbye!\r\n")
 			}
 			return
 		}
+		
+		log.Printf("Command received: %q", line)
 
 		parts := strings.Fields(strings.TrimSpace(line))
 		if len(parts) == 0 {
@@ -407,6 +388,43 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 	fmt.Fprintf(s, "\033[%dA", len(asciiArt))
 }
 
+// readLineWithEcho reads a line with echo (for registration)
+// This uses direct byte reading to avoid buffering issues when transitioning to the menu
+func (ss *SSHServer) readLineWithEcho(s ssh.Session) string {
+	var line []byte
+	buf := make([]byte, 1)
+	
+	for {
+		n, err := s.Read(buf)
+		if err != nil || n == 0 {
+			return ""
+		}
+		
+		b := buf[0]
+		switch b {
+		case '\n', '\r':
+			// Enter pressed
+			fmt.Fprint(s, "\r\n")
+			return strings.TrimSpace(string(line))
+		case 3: // Ctrl+C
+			return ""
+		case 127, 8: // Backspace
+			if len(line) > 0 {
+				// Remove last character
+				line = line[:len(line)-1]
+				// Move cursor back, write space, move back again
+				fmt.Fprint(s, "\b \b")
+			}
+		default:
+			if b >= 32 && b < 127 { // Printable characters
+				line = append(line, b)
+				// Echo the character
+				fmt.Fprintf(s, "%c", b)
+			}
+		}
+	}
+}
+
 // handleRegistration handles the registration flow using readline
 func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey string, terminalWidth int) {
 	// Show the animated welcome first
@@ -425,52 +443,23 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		"\033[1mTo get started, please enter your email address:\033[0m\r\n"
 	fmt.Fprint(s, signupContent)
 
-	// Email verification - we MUST use readline for terminal input to work properly
-	// Create readline just for email input, then close it
-	rlConfig := &readline.Config{
-		Prompt:          "", // No prompt, we already showed it
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-		Stdin:           s,
-		Stdout:          s,
-		Stderr:          s.Stderr(),
-	}
-
-	rl, err := readline.NewEx(rlConfig)
-	if err != nil {
-		fmt.Fprintf(s, "Error initializing input: %v\r\n", err)
+	// Simple line input with echo for email
+	email := ss.readLineWithEcho(s)
+	if email == "" {
+		fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
 		return
 	}
-	defer rl.Close()
-
-	var email string
-	for {
-		emailInput, err := rl.Readline()
-		if err != nil {
-			if err == readline.ErrInterrupt || err == io.EOF {
-				fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
-				return
-			}
-			continue
-		}
-
-		email = strings.TrimSpace(emailInput)
+	
+	// Validate email
+	for !ss.server.isValidEmail(email) {
+		fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
+		fmt.Fprint(s, "\033[1mPlease enter your email address:\033[0m ")
+		email = ss.readLineWithEcho(s)
 		if email == "" {
-			fmt.Fprint(s, "\033[1mPlease enter your email address:\033[0m ")
-			continue
+			fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
+			return
 		}
-
-		if !ss.server.isValidEmail(email) {
-			fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
-			fmt.Fprint(s, "\033[1mPlease enter your email address:\033[0m ")
-			continue
-		}
-
-		break
 	}
-
-	// Close readline before proceeding - important!
-	rl.Close()
 
 	fmt.Fprintf(s, "\r\n\033[1;32mEmail confirmed:\033[0m %s\r\n", email)
 
@@ -503,25 +492,30 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	fmt.Fprintf(s, "\033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 	fmt.Fprintf(s, "%sWaiting for email verification...%s\r\n", grayText, "\033[0m")
 
-	// Create a channel to listen for Ctrl+C
+	// Create channels and atomic bool for coordinating with Ctrl+C handler
 	ctrlCChan := make(chan struct{})
-	done := make(chan struct{})
-	defer close(done) // Clean up the goroutine when we're done
-
+	goroutineDone := make(chan struct{})
+	var verificationComplete atomic.Bool
+	
+	// Start goroutine to handle Ctrl+C and discard other input during verification
 	go func() {
-		// Read input in background to detect Ctrl+C
+		defer close(goroutineDone)
 		buf := make([]byte, 1)
 		for {
-			select {
-			case <-done:
+			n, err := s.Read(buf)
+			if err != nil {
+				// Connection closed or error
 				return
-			default:
-				n, err := s.Read(buf)
-				if err != nil {
-					// Connection closed or error
+			}
+			if n > 0 {
+				// Check if verification is complete
+				if verificationComplete.Load() {
+					// Verification complete, exit goroutine
 					return
 				}
-				if n > 0 && buf[0] == 3 { // Ctrl+C
+				
+				// Check for Ctrl+C
+				if buf[0] == 3 { // Ctrl+C
 					select {
 					case <-ctrlCChan:
 						// Already closed
@@ -530,21 +524,28 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 					}
 					return
 				}
+				// Discard any other input during verification
 			}
 		}
 	}()
-
+	
 	// Wait for email verification with Ctrl+C support
 	select {
 	case <-verification.CompleteChan:
 		fmt.Fprintf(s, "%s✓ Email verified successfully!%s\r\n\r\n", "\033[1;32m", "\033[0m")
+		// Signal the goroutine that verification is complete
+		verificationComplete.Store(true)
 	case <-ctrlCChan:
 		fmt.Fprintf(s, "\r\n%sRegistration cancelled.%s\r\n", "\033[1;33m", "\033[0m")
 		return
 	case <-time.After(10 * time.Minute):
 		fmt.Fprintf(s, "%sEmail verification timed out. Please try again.%s\r\n", "\033[1;31m", "\033[0m")
+		verificationComplete.Store(true) // Stop the goroutine
+		<-goroutineDone // Wait for goroutine to exit
 		return
 	case <-s.Context().Done():
+		// Session disconnected
+		verificationComplete.Store(true) // Stop the goroutine
 		return
 	}
 
@@ -587,15 +588,46 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		}
 	}
 
-	// Registration complete - ask user to reconnect for a clean session
+	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%s🎉 Registration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
-	fmt.Fprintf(s, "Your account has been successfully created.\r\n")
-	fmt.Fprintf(s, "\r\n%sPlease reconnect to start using exe.dev:%s\r\n", "\033[1;36m", "\033[0m")
-	fmt.Fprintf(s, "\033[1;33mssh exe.dev\033[0m\r\n\r\n")
-	fmt.Fprintf(s, "This ensures you have a clean session to work with.\r\n")
-
-	// Exit cleanly - user will reconnect
-	return
+	fmt.Fprintf(s, "Your account has been successfully created.\r\n\r\n")
+	fmt.Fprintf(s, "%sWelcome to exe.dev! Press [Enter] to start making machines...%s", "\033[1;36m", "\033[0m")
+	
+	// Wait for the goroutine to exit (user presses Enter or any key)
+	<-goroutineDone
+	
+	// Get team info for the menu
+	teams, err := ss.server.getUserTeams(fingerprint)
+	if err != nil || len(teams) == 0 {
+		fmt.Fprintf(s, "Error: User not associated with any team\r\n")
+		return
+	}
+	
+	// Get the default team for this SSH key
+	defaultTeam, err := ss.server.getDefaultTeamForKey(fingerprint)
+	if err != nil || defaultTeam == "" {
+		defaultTeam = teams[0].TeamName
+	}
+	
+	// Find the team membership details
+	var team TeamMember
+	for _, t := range teams {
+		if t.TeamName == defaultTeam {
+			team = t
+			break
+		}
+	}
+	if team.TeamName == "" {
+		team = teams[0]
+	}
+	
+	// Visual feedback that we're entering the menu
+	fmt.Fprintf(s, "\r\n\r\n")
+	
+	// Transition directly to the main shell menu
+	// We pass the session directly and let runMainShellWithReadline create its own reader
+	// This avoids issues with partially consumed readers
+	ss.runMainShellWithReadline(s, fingerprint, user.Email, team.TeamName, team.IsAdmin, true)
 }
 
 // handleExec handles exec commands
@@ -836,7 +868,6 @@ func (ss *SSHServer) handleCancelPortForward(ctx ssh.Context, srv *ssh.Server, r
 // SSHSessionChannel wraps a gliderlabs SSH session to implement compatibility with sshbuf.Channel
 type SSHSessionChannel struct {
 	ssh.Session
-	readline *readline.Instance
 	mu       sync.Mutex
 	cond     *sync.Cond
 	buf      []byte

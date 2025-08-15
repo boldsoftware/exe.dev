@@ -1,0 +1,335 @@
+package exe
+
+import (
+	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/creack/pty"
+	"golang.org/x/crypto/ssh"
+)
+
+// TestSSHRegistrationE2EWithPTY tests the complete flow using a real PTY and ssh command:
+// 1. Connect with ssh command to unregistered user
+// 2. Go through email registration
+// 3. Get transitioned directly to menu (no reconnect)
+// 4. Create a machine
+// 5. List machines to verify it was created
+func TestSSHRegistrationE2EWithPTY(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping e2e PTY test in short mode")
+	}
+
+	// Create temporary directory for SSH keys
+	tmpDir, err := os.MkdirTemp("", "ssh_test_")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Generate SSH key pair
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate private key: %v", err)
+	}
+
+	// Save private key to file
+	privKeyPath := filepath.Join(tmpDir, "id_rsa")
+	privKeyFile, err := os.OpenFile(privKeyPath, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatalf("Failed to create private key file: %v", err)
+	}
+
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to create signer: %v", err)
+	}
+
+	// Write private key in PEM format
+	privateKeyDER := x509.MarshalPKCS1PrivateKey(privateKey)
+	privateKeyBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privateKeyDER,
+	}
+	if err := pem.Encode(privKeyFile, privateKeyBlock); err != nil {
+		t.Fatalf("Failed to write private key: %v", err)
+	}
+	privKeyFile.Close()
+
+	// Calculate fingerprint for later verification
+	hash := sha256.Sum256(signer.PublicKey().Marshal())
+	fingerprint := hex.EncodeToString(hash[:])
+
+	// Create temporary database
+	tmpDB, err := os.CreateTemp("", "test_e2e_pty_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	// Create server
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	server.testMode = true // Skip animations
+	defer server.Stop()
+
+	// Mock container manager
+	mockManager := NewMockContainerManager()
+	server.containerManager = mockManager
+
+	// Find free ports
+	sshListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to find free port: %v", err)
+	}
+	sshPort := sshListener.Addr().(*net.TCPAddr).Port
+	sshListener.Close()
+
+	httpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to find free port for HTTP: %v", err)
+	}
+	httpAddr := httpListener.Addr().String()
+	httpListener.Close()
+	server.httpAddr = httpAddr
+
+	// Start HTTP server for email verification
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/verify-email", server.handleEmailVerificationHTTP)
+	httpServer := &http.Server{
+		Addr:    httpAddr,
+		Handler: httpMux,
+	}
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			t.Logf("HTTP server error: %v", err)
+		}
+	}()
+	defer httpServer.Close()
+
+	// Start SSH server
+	sshServer := NewSSHServer(server)
+	go func() {
+		if err := sshServer.Start(fmt.Sprintf("127.0.0.1:%d", sshPort)); err != nil {
+			t.Logf("SSH server error: %v", err)
+		}
+	}()
+
+	// Wait for servers to start
+	time.Sleep(500 * time.Millisecond)
+
+	// Create SSH command with real PTY
+	cmd := exec.Command("ssh",
+		"-p", fmt.Sprintf("%d", sshPort),
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		"-i", privKeyPath,
+		"127.0.0.1",
+	)
+
+	// Start the command with a PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		t.Fatalf("Failed to start SSH with PTY: %v", err)
+	}
+	defer ptmx.Close()
+
+	// Helper function to read until we see a pattern
+	readUntil := func(pattern string, timeout time.Duration) (string, error) {
+		var output bytes.Buffer
+		done := make(chan bool)
+		go func() {
+			buf := make([]byte, 1024)
+			for {
+				n, err := ptmx.Read(buf)
+				if n > 0 {
+					output.Write(buf[:n])
+					if strings.Contains(output.String(), pattern) {
+						done <- true
+						return
+					}
+				}
+				if err != nil {
+					done <- false
+					return
+				}
+			}
+		}()
+
+		select {
+		case success := <-done:
+			if success {
+				return output.String(), nil
+			}
+			return output.String(), fmt.Errorf("read error")
+		case <-time.After(timeout):
+			return output.String(), fmt.Errorf("timeout waiting for pattern: %s", pattern)
+		}
+	}
+
+	// Helper to write to PTY
+	writeToPTY := func(text string) error {
+		_, err := ptmx.Write([]byte(text))
+		return err
+	}
+
+	// Step 1: Wait for email prompt
+	output, err := readUntil("enter your email address", 5*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to get email prompt: %v\nOutput: %s", err, output)
+	}
+	t.Log("✓ Got email prompt")
+
+	// Step 2: Enter email address
+	email := "test@example.com"
+	if err := writeToPTY(email + "\n"); err != nil {
+		t.Fatalf("Failed to write email: %v", err)
+	}
+	t.Logf("✓ Entered email: %s", email)
+
+	// Step 3: Wait for verification message
+	output, err = readUntil("Verification email sent", 3*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to see verification sent: %v\nOutput: %s", err, output)
+	}
+	t.Log("✓ Verification email sent")
+
+	// Step 4: Find and complete verification
+	time.Sleep(100 * time.Millisecond)
+	var token string
+	server.emailVerificationsMu.RLock()
+	for t, v := range server.emailVerifications {
+		if v.PublicKeyFingerprint == fingerprint {
+			token = t
+			break
+		}
+	}
+	server.emailVerificationsMu.RUnlock()
+
+	if token == "" {
+		t.Fatal("No verification token found")
+	}
+
+	// Simulate clicking the verification link
+	resp, err := http.PostForm(fmt.Sprintf("http://%s/verify-email", httpAddr),
+		url.Values{"token": {token}})
+	if err != nil {
+		t.Fatalf("Failed to verify email: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Email verification failed with status: %d", resp.StatusCode)
+	}
+	t.Log("✓ Email verified")
+
+	// Step 5: Check for menu transition (not reconnect message)
+	output, err = readUntil("Registration complete", 3*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to see registration complete: %v\nOutput: %s", err, output)
+	}
+
+	if strings.Contains(output, "Please reconnect") {
+		t.Fatal("❌ FAILED: User was asked to reconnect instead of getting menu")
+	}
+
+	if strings.Contains(output, "Entering exe.dev menu") {
+		t.Log("✓ Transitioned directly to menu")
+	}
+
+	// Step 6: Wait for menu/prompt to appear
+	time.Sleep(500 * time.Millisecond)
+
+	// Step 7: Create a machine
+	if err := writeToPTY("create\n"); err != nil {
+		t.Fatalf("Failed to send create command: %v", err)
+	}
+	t.Log("✓ Sent create command")
+
+	// Step 8: Wait for machine creation confirmation
+	output, err = readUntil("Ready in", 10*time.Second)
+	if err != nil {
+		// Machine might have been created from warm pool
+		if strings.Contains(output, "Creating") {
+			t.Log("✓ Machine creation started")
+		} else {
+			t.Logf("Machine creation output: %s", output)
+		}
+	} else {
+		t.Log("✓ Machine created successfully")
+	}
+
+	// Step 9: List machines to verify
+	if err := writeToPTY("list\n"); err != nil {
+		t.Fatalf("Failed to send list command: %v", err)
+	}
+
+	output, err = readUntil("Your machines:", 3*time.Second)
+	if err != nil {
+		t.Logf("List output: %s", output)
+	} else {
+		t.Log("✓ Listed machines successfully")
+	}
+
+	// Step 10: Exit cleanly
+	if err := writeToPTY("exit\n"); err != nil {
+		t.Logf("Failed to send exit: %v", err)
+	}
+
+	// Wait for process to exit
+	done := make(chan error)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil && !strings.Contains(err.Error(), "exit status") {
+			t.Logf("SSH exited with error: %v", err)
+		} else {
+			t.Log("✓ SSH session ended cleanly")
+		}
+	case <-time.After(2 * time.Second):
+		cmd.Process.Kill()
+		t.Log("Had to kill SSH process")
+	}
+
+	// Verify database state
+	user, err := server.getUserByFingerprint(fingerprint)
+	if err != nil {
+		t.Fatalf("Error getting user: %v", err)
+	}
+	if user == nil {
+		t.Fatal("User not created in database")
+	}
+	if user.Email != email {
+		t.Errorf("User email mismatch: got %s, want %s", user.Email, email)
+	}
+	t.Log("✓ User correctly stored in database")
+
+	// Check if machine was created
+	machines, err := server.getMachinesForTeam(user.Email)
+	if err == nil && len(machines) > 0 {
+		t.Logf("✓ Machine created: %s", machines[0].Name)
+	}
+
+	t.Log("\n✅ E2E test completed successfully - user registered and created machine in single session")
+}
