@@ -62,6 +62,12 @@ func TestPublicKeyAuthentication(t *testing.T) {
 	if err := server.createUser(fingerprint, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
+	// Add the SSH key to ssh_keys table  
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
+	if _, err := server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`,
+		fingerprint, "test@example.com", publicKeyStr, "test-device"); err != nil {
+		t.Fatalf("Failed to add SSH key: %v", err)
+	}
 	if err := server.createTeam("testteam", "test@example.com"); err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}

@@ -185,7 +185,7 @@ func (s *Server) handleSFTP(ctx context.Context, channel ssh.Channel) {
 func (s *Server) handleSCP(ctx context.Context, channel ssh.Channel, args []string) {
 	// Modern SCP uses SFTP protocol internally
 	// We should not get here if the client is using modern OpenSSH
-	// If we do, it means the client is using legacy SCP protocol
+	// If we do, it means the client is using old SCP protocol
 
 	// Send error message
 	channel.Stderr().Write([]byte("This server only supports modern SCP (SFTP protocol). Please upgrade your SSH client.\n"))

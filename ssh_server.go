@@ -1202,7 +1202,7 @@ func (ss *SSHServer) handleCreateCommand(s ssh.Session, fingerprint, teamName st
 		} else if strings.HasPrefix(arg, "--size=") {
 			size = strings.TrimPrefix(arg, "--size=")
 		} else if !strings.HasPrefix(arg, "--") && machineName == "" {
-			// Positional argument for name (legacy support)
+			// Positional argument for name
 			machineName = arg
 		}
 	}

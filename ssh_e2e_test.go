@@ -506,10 +506,18 @@ func TestSSHDirectExecCommands(t *testing.T) {
 	// Set up registered user
 	email := "test@example.com"
 	teamName := "testteam"
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 
 	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Add the SSH key to ssh_keys table and mark it as verified
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`, 
+		fingerprint, email, publicKeyStr, "test-device")
+	if err != nil {
+		t.Fatalf("Failed to add SSH key: %v", err)
 	}
 
 	_, err = server.db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)

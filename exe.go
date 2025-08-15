@@ -577,36 +577,6 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		}
 	}
 
-	// Check legacy users table for backward compatibility
-	user, err := s.getUserByFingerprint(fingerprint)
-	if err != nil {
-		log.Printf("Database error checking legacy user %s: %v", fingerprint, err)
-	}
-
-	if user != nil {
-		// Migrate this user to the new ssh_keys table
-		if err := s.migrateLegacyUserKey(user.Email, fingerprint, publicKeyStr); err != nil {
-			log.Printf("Failed to migrate legacy user key: %v", err)
-		}
-
-		// Check if user has team memberships
-		teams, err := s.getUserTeams(fingerprint)
-		if err != nil {
-			log.Printf("Database error getting teams for user %s: %v", fingerprint, err)
-		}
-
-		if len(teams) > 0 {
-			// User is fully registered with team membership
-			return &ssh.Permissions{
-				Extensions: map[string]string{
-					"fingerprint": fingerprint,
-					"registered":  "true",
-					"email":       user.Email,
-					"public_key":  publicKeyStr,
-				},
-			}, nil
-		}
-	}
 
 	// Check if there's an email associated with any SSH key and if this is a new key for that user
 	if email != "" && !verified {
@@ -3036,14 +3006,6 @@ func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
 	return teams, rows.Err()
 }
 
-// migrateLegacyUserKey migrates a key from the old users table to the new ssh_keys table
-func (s *Server) migrateLegacyUserKey(email, fingerprint, publicKey string) error {
-	_, err := s.db.Exec(`
-		INSERT OR IGNORE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-		VALUES (?, ?, ?, 1, 'Original Device')`,
-		fingerprint, email, publicKey)
-	return err
-}
 
 // getUserByFingerprint retrieves a user by their SSH key fingerprint
 func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
