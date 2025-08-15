@@ -424,12 +424,9 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	grayText := "\033[2m" // Default gray text
 
 	// Show the signup content after the animation
-	signupContent := "\r\n\033[1;33mtype ssh to get a server\033[0m\r\n\r\n" +
-		"Let's get you set up in just a few steps:\r\n\r\n" +
-		grayText + "1. Email Verification\r\n" +
-		"2. Team Setup\r\n" +
-		"3. Payment Setup\033[0m\r\n\r\n" +
-		"\033[1mTo get started, please enter your email address:\033[0m\r\n"
+	signupContent := "\r\n\033[1;33mEXE.DEV: get a machine over ssh\033[0m\r\n" +
+		"Signup involves verifying your email, picking a team name and setting up billing.\r\n\r\n" +
+		"\033[1mPlease enter your email address:\033[0m "
 	fmt.Fprint(s, signupContent)
 
 	// Simple line input with echo for email
@@ -450,17 +447,10 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		}
 	}
 
-	fmt.Fprintf(s, "\r\n\033[1;32mEmail confirmed:\033[0m %s\r\n", email)
-
 	// Ask for team name BEFORE email verification
-	fmt.Fprint(s, "\r\n\033[1;36m"+
-		"╭─────────────────────────────────────────────────╮\r\n"+
-		"│  \033[1;33mStep 2: Team Setup\033[1;36m                        │\r\n"+
-		"╰─────────────────────────────────────────────────╯\033[0m\r\n\r\n")
-
 	var teamName string
 	for {
-		fmt.Fprint(s, "\033[1mEnter your team name:\033[0m ")
+		fmt.Fprint(s, "\033[1mChoose a team name:\033[0m ")
 		teamName = ss.readLineWithEcho(s)
 		if teamName == "" {
 			fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
@@ -487,7 +477,10 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		break
 	}
 
-	fmt.Fprintf(s, "\r\n\033[1;32mTeam name confirmed:\033[0m %s\r\n", teamName)
+	// Log for debugging
+	if !ss.server.testMode && !ss.server.quietMode {
+		log.Printf("Starting email verification for %s with team %s", email, teamName)
+	}
 
 	// Start email verification directly without using sshbuf.Channel
 	if err := ss.startEmailVerificationNew(fingerprint, email, publicKey, teamName); err != nil {
@@ -495,7 +488,8 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		log.Printf("Email verification failed for %s (fingerprint: %s): %v", email, fingerprint, err)
 		// Show user-friendly error message
 		if err.Error() == "email service not configured" {
-			fmt.Fprintf(s, "\r\nError: Email service not configured. Please contact support.\r\n")
+			fmt.Fprintf(s, "\r\n%sError: Email service is not configured. Cannot send verification email.%s\r\n", "\033[1;31m", "\033[0m")
+			fmt.Fprintf(s, "Please contact support at support@exe.dev\r\n")
 		} else if strings.Contains(err.Error(), "marked as inactive") {
 			fmt.Fprintf(s, "\r\nError: This email address cannot receive emails (blocked by email provider).\r\nPlease try a different email address.\r\n")
 		} else {
@@ -511,15 +505,13 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		return
 	}
 
-	fmt.Fprintf(s, "\r\n%sVerification email sent!%s\r\n\r\n", "\033[1;32m", "\033[0m")
+	fmt.Fprintf(s, "%sVerification email sent to %s%s.\r\n", "\033[1;32m", "\033[0m", email)
 
 	// Only show the verification URL in dev mode
 	if ss.server.devMode != "" {
 		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", ss.server.getBaseURL(), verification.Token)
-		fmt.Fprintf(s, "Please click the link in your email to verify your account:\r\n")
+		fmt.Fprintf(s, "\r\nPlease click the link in your email to verify your account:\r\n")
 		fmt.Fprintf(s, "\033[1;36m%s\033[0m\r\n\r\n", verifyURL)
-	} else {
-		fmt.Fprintf(s, "Please check your email and click the verification link.\r\n\r\n")
 	}
 
 	fmt.Fprintf(s, "%sWaiting for email verification...%s\r\n", grayText, "\033[0m")
@@ -1661,10 +1653,10 @@ func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey, te
 		ss.server.emailVerificationsMu.Unlock()
 
 		// Send new device verification email
-		subject := "New Device Login - exe.dev"
+		subject := "New Device Login - EXE.DEV"
 		body := fmt.Sprintf(`Hello,
 
-A new device is trying to register with your exe.dev account email.
+A new device is trying to register with your EXE.DEV account email.
 
 If this was you, please click the link below to authorize this device:
 
@@ -1677,7 +1669,7 @@ If you did not attempt to register from a new device, please ignore this email.
 This link will expire in 15 minutes.
 
 Best regards,
-The exe.dev team`, ss.server.getBaseURL(), token, fingerprint[:16])
+The EXE.DEV team`, ss.server.getBaseURL(), token, fingerprint[:16])
 
 		if err := ss.server.sendEmail(email, subject, body); err != nil {
 			ss.server.emailVerificationsMu.Lock()
@@ -1709,8 +1701,8 @@ The exe.dev team`, ss.server.getBaseURL(), token, fingerprint[:16])
 	ss.server.emailVerificationsMu.Unlock()
 
 	// Send verification email
-	subject := "Welcome to exe.dev - Verify Your Email"
-	body := fmt.Sprintf(`Welcome to exe.dev!
+	subject := "Welcome to EXE.DEV - Verify Your Email"
+	body := fmt.Sprintf(`Welcome to EXE.DEV!
 
 Please click the link below to verify your email address:
 
@@ -1719,7 +1711,7 @@ Please click the link below to verify your email address:
 This link will expire in 15 minutes.
 
 Best regards,
-The exe.dev team`, ss.server.getBaseURL(), token)
+The EXE.DEV team`, ss.server.getBaseURL(), token)
 
 	if err := ss.server.sendEmail(email, subject, body); err != nil {
 		ss.server.emailVerificationsMu.Lock()
