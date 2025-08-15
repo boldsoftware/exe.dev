@@ -353,11 +353,15 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 		color string
 		delay time.Duration
 	}{
-		{"\033[1;32m", 200 * time.Millisecond}, // Bright green
-		{"\033[0;32m", 150 * time.Millisecond}, // Normal green
-		{"\033[2;32m", 150 * time.Millisecond}, // Dim green
-		{"\033[2;90m", 150 * time.Millisecond}, // Dim gray
-		{"\033[2;90m", 200 * time.Millisecond}, // Keep dim gray
+		{"\033[1;92m", 100 * time.Millisecond}, // Bright light green
+		{"\033[1;32m", 100 * time.Millisecond}, // Bright green
+		{"\033[0;92m", 100 * time.Millisecond}, // Normal light green
+		{"\033[0;32m", 100 * time.Millisecond}, // Normal green
+		{"\033[2;32m", 100 * time.Millisecond}, // Dim green
+		{"\033[0;33m", 100 * time.Millisecond}, // Dark yellow/olive
+		{"\033[2;33m", 100 * time.Millisecond}, // Dim yellow
+		{"\033[2;90m", 100 * time.Millisecond}, // Dim gray
+		{"\033[2;90m", 100 * time.Millisecond}, // Keep dim gray
 		{"\033[0m", 0},                         // Clear
 	}
 
