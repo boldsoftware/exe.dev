@@ -360,8 +360,8 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 	from := termfun.RGB{80, 255, 120}
 	to := bg
 
-	// Animate with proper 24-bit colors
-	termfun.FadeTextInPlace(s, asciiArt, leftPadding, from, to, 900*time.Millisecond, 12)
+	// Animate with proper 24-bit colors - more frames for smoother animation
+	termfun.FadeTextInPlace(s, asciiArt, leftPadding, from, to, 900*time.Millisecond, 30)
 
 	// After animation, cursor is at the last line of the art
 	// Move back to first line and clear everything
