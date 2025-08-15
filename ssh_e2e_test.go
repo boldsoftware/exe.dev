@@ -171,12 +171,12 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	}
 	server.testMode = true
 	defer server.Stop()
-	
+
 	// Clean up any existing test containers
 	teamName := "testteam"
 	machineName := "testmachine"
 	containerName := fmt.Sprintf("exe-%s-%s", teamName, machineName)
-	exec.Command("docker", "rm", "-f", containerName).Run() // Ignore errors
+	exec.Command("docker", "rm", "-f", containerName).Run()       // Ignore errors
 	defer exec.Command("docker", "rm", "-f", containerName).Run() // Clean up after test
 
 	// Check if Docker is available
