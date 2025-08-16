@@ -61,7 +61,6 @@ var browserWoodcutPNG []byte
 //go:embed favicon.ico
 var faviconICO []byte
 
-
 // SSHMetrics holds SSH server metrics
 type SSHMetrics struct {
 	connectionsTotal   *prometheus.CounterVec
@@ -69,7 +68,6 @@ type SSHMetrics struct {
 	authAttempts       *prometheus.CounterVec
 	sessionDuration    *prometheus.HistogramVec
 }
-
 
 // NewSSHMetrics creates and registers SSH metrics
 func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
@@ -672,8 +670,6 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		},
 	}, nil
 }
-
-
 
 // ServeHTTP implements http.Handler for the HTTP server
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
