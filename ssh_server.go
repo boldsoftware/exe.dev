@@ -236,20 +236,16 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 	}
 
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-		"\033[1;36mMachine Management:\033[0m\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
 		"\033[1mcreate [image] [name]\033[0m   - Create a new machine (defaults: ubuntu, auto-generated name)\r\n" +
 		"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
 		"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
 		"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
 		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
-		"\033[1mlogs <name>\033[0m             - View machine logs\r\n\r\n" +
-		"\033[1;36mTeam Management:\033[0m\r\n" +
-		"\033[1mteam\033[0m                    - List team members\r\n" +
-		"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
-		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n" +
-		"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n" +
-		"\033[1mexit\033[0m                   - Exit\r\n\r\n"
+		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
+		"\033[1mteam\033[0m                    - Team management\r\n" +
+		"\033[1m?\033[0m                       - Show this help\r\n" +
+		"\033[1mexit\033[0m                    - Exit\r\n\r\n"
 
 	// Show welcome message
 	if showWelcome {
@@ -788,7 +784,6 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 	case "help", "?":
 		// Show help text directly
 		helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-			"\033[1;36mMachine Management:\033[0m\r\n" +
 			"\033[1mlist\033[0m                    - List your machines\r\n" +
 			"\033[1mcreate [image] [name]\033[0m   - Create a new machine (defaults: ubuntu, auto-generated name)\r\n" +
 			"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
@@ -796,13 +791,9 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 			"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
 			"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
 			"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
-			"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n\r\n" +
-			"\033[1;36mTeam Management:\033[0m\r\n" +
-			"\033[1mteam\033[0m                    - List team members\r\n" +
-			"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
-			"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n" +
-			"\033[1mteam remove <email>\033[0m     - Remove a team member (admin only)\r\n\r\n" +
-			"\033[1mhelp\033[0m or \033[1m?\033[0m              - Show this help\r\n\r\n"
+			"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
+			"\033[1mteam\033[0m                    - Team management\r\n" +
+			"\033[1m?\033[0m                       - Show this help\r\n\r\n"
 		fmt.Fprint(s, helpText)
 	default:
 		fmt.Fprintf(s, "Unknown command: %s\r\nRun 'ssh exe.dev help' for available commands.\r\n", command)
@@ -1588,24 +1579,42 @@ func (ss *SSHServer) handleLogsCommand(s ssh.Session, fingerprint, teamName stri
 }
 
 func (ss *SSHServer) handleTeamCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+	// Define team help text
+	teamHelpText := "\r\n\033[1;36mTeam subcommands:\033[0m\r\n\r\n" +
+		"\033[1mteam ls\033[0m                 - List team members\r\n" +
+		"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
+		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n"
+
 	if len(args) == 0 {
-		// List team members
-		ss.handleTeamList(s, fingerprint, teamName)
+		// Show current team and help
+		fmt.Fprintf(s, "\r\nCurrent team: \033[1;36m%s\033[0m\r\n", teamName)
+		fmt.Fprint(s, teamHelpText)
 		return
 	}
 
 	subCmd := args[0]
-	// subArgs := args[1:] // Currently unused
+	subArgs := args[1:]
 
 	switch subCmd {
 	case "list", "ls":
 		ss.handleTeamList(s, fingerprint, teamName)
 	case "invite":
+		if len(subArgs) == 0 {
+			fmt.Fprintf(s, "\033[1;31mError: Please specify an email address\033[0m\r\n")
+			fmt.Fprintf(s, "Usage: team invite <email>\r\n")
+			return
+		}
 		fmt.Fprintf(s, "\033[1;33mTeam invite not implemented in new server yet\033[0m\r\n")
 	case "join":
+		if len(subArgs) == 0 {
+			fmt.Fprintf(s, "\033[1;31mError: Please specify an invite code\033[0m\r\n")
+			fmt.Fprintf(s, "Usage: team join <code>\r\n")
+			return
+		}
 		fmt.Fprintf(s, "\033[1;33mTeam join not implemented in new server yet\033[0m\r\n")
 	default:
 		fmt.Fprintf(s, "\033[1;31mUnknown team command: %s\033[0m\r\n", subCmd)
+		fmt.Fprint(s, teamHelpText)
 	}
 }
 

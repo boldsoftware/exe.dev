@@ -213,31 +213,40 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 		t.Fatalf("Failed to write help command: %v", err)
 	}
 
-	// Read response
+	// Read response - spin waiting for complete output
 	outputCollected.Reset()
-	go func() {
-		for {
-			n, err := stdout.Read(buf)
-			if err != nil {
-				break
-			}
-			outputCollected.Write(buf[:n])
-			if strings.Contains(outputCollected.String(), "Machine Management") {
-				outputChan <- outputCollected.String()
-				return
-			}
-		}
-		outputChan <- outputCollected.String()
-	}()
 
-	select {
-	case output := <-outputChan:
-		t.Logf("Help output:\n%s", output)
-		if !strings.Contains(output, "Machine Management") {
-			t.Error("Expected help text with 'Machine Management'")
+	// Read whatever is available with a simple timeout loop
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		n, err := stdout.Read(buf)
+		if n > 0 {
+			outputCollected.Write(buf[:n])
 		}
-	case <-time.After(3 * time.Second):
-		t.Errorf("Timeout waiting for help response, got: %s", outputCollected.String())
+		if err != nil && err != io.EOF {
+			break
+		}
+		// If we got the complete help text and prompt back, we're done
+		output := outputCollected.String()
+		if strings.Contains(output, "EXE.DEV") &&
+			strings.Contains(output, "commands") &&
+			strings.Contains(output, "exit") &&
+			strings.Contains(output, "▶") {
+			break
+		}
+		// Small sleep just to avoid tight spinning
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	output := outputCollected.String()
+	t.Logf("Help output:\n%s", output)
+
+	// Check for the new help format without sections
+	if !strings.Contains(output, "EXE.DEV") || !strings.Contains(output, "commands") {
+		t.Errorf("Expected help text with 'EXE.DEV commands', got: %s", output)
+	}
+	if !strings.Contains(output, "list") || !strings.Contains(output, "create") {
+		t.Error("Expected help text with machine commands")
 	}
 
 	// Test exit command
@@ -405,8 +414,8 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 		expected string
 	}{
 		{"list\n", "No machines found"},
-		{"help\n", "Machine Management"},
-		{"?\n", "Machine Management"},
+		{"help\n", "EXE.DEV commands"},
+		{"?\n", "EXE.DEV commands"},
 	}
 
 	for _, tc := range commands {
@@ -647,14 +656,14 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 			n, _ := stdout.Read(buf)
 			if n > 0 {
 				output.Write(buf[:n])
-				if strings.Contains(output.String(), "Machine Management") {
+				if strings.Contains(output.String(), "EXE.DEV commands") {
 					break
 				}
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 
-		if !strings.Contains(output.String(), "Machine Management") {
+		if !strings.Contains(output.String(), "EXE.DEV commands") {
 			t.Error("Menu doesn't respond to commands after registration")
 		}
 	}
