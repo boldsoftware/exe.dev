@@ -245,7 +245,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	if !strings.Contains(output, "EXE.DEV") || !strings.Contains(output, "commands") {
 		t.Errorf("Expected help text with 'EXE.DEV commands', got: %s", output)
 	}
-	if !strings.Contains(output, "list") || !strings.Contains(output, "create") {
+	if !strings.Contains(output, "list") || !strings.Contains(output, "new") {
 		t.Error("Expected help text with machine commands")
 	}
 

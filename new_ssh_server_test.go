@@ -316,7 +316,7 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 	}
 
 	// Check that we get the help output for registered users
-	if !strings.Contains(string(output), "list") || !strings.Contains(string(output), "create") {
+	if !strings.Contains(string(output), "list") || !strings.Contains(string(output), "new") {
 		t.Errorf("Expected help output for registered user, got: %s", output)
 	}
 }

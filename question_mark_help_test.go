@@ -9,14 +9,15 @@ func TestQuestionMarkHelp(t *testing.T) {
 	// Test that the help text (without ASCII art) includes the "?" alias
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
-		"\033[1mcreate [name]\033[0m  - Create a new container (auto-generates name if not specified)\r\n" +
+		"\033[1mnew [args]\033[0m     - Create a new machine\r\n" +
 		"\033[1mssh <name>\033[0m     - SSH into a container\r\n" +
 		"\033[1mstart <name>\033[0m   - Start a container\r\n" +
 		"\033[1mstop <name>\033[0m    - Stop a container\r\n" +
 		"\033[1mdelete <name>\033[0m  - Delete a container\r\n" +
 		"\033[1mlogs <name>\033[0m    - View container logs\r\n" +
 		"\033[1mhelp\033[0m or \033[1m?\033[0m     - Show this help\r\n" +
-		"\033[1mexit\033[0m           - Exit\r\n\r\n"
+		"\033[1mexit\033[0m           - Exit\r\n\r\n" +
+		"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
 
 	// Verify that the help text mentions both "help" and "?"
 	if !strings.Contains(helpText, "help") {

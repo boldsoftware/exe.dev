@@ -1,9 +1,11 @@
 package exe
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -237,7 +239,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
-		"\033[1mcreate [image] [name]\033[0m   - Create a new machine (defaults: ubuntu, auto-generated name)\r\n" +
+		"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
 		"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
 		"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
 		"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
@@ -245,7 +247,8 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
 		"\033[1mteam\033[0m                    - Team management\r\n" +
 		"\033[1m?\033[0m                       - Show this help\r\n" +
-		"\033[1mexit\033[0m                    - Exit\r\n\r\n"
+		"\033[1mexit\033[0m                    - Exit\r\n\r\n" +
+		"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
 
 	// Show welcome message
 	if showWelcome {
@@ -295,11 +298,16 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			fmt.Fprint(s, "Goodbye!\r\n")
 			return
 		case "help", "?":
-			fmt.Fprint(s, helpText)
+			// Check if asking for help on a specific command
+			if len(args) > 0 {
+				ss.handleHelpCommand(s, args[0])
+			} else {
+				fmt.Fprint(s, helpText)
+			}
 		case "list", "ls":
 			ss.handleListCommand(s, fingerprint, teamName)
-		case "create":
-			ss.handleCreateCommand(s, fingerprint, teamName, args)
+		case "new":
+			ss.handleNewCommand(s, fingerprint, teamName, args)
 		case "ssh":
 			ss.handleSSHCommandMenu(s, fingerprint, teamName, args)
 		case "start":
@@ -763,8 +771,8 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 
 	// Use the new handlers that work directly with ssh.Session
 	switch command {
-	case "create":
-		ss.handleCreateCommand(s, fingerprint, team.TeamName, args)
+	case "new":
+		ss.handleNewCommand(s, fingerprint, team.TeamName, args)
 	case "list", "ls":
 		ss.handleListCommand(s, fingerprint, team.TeamName)
 	case "ssh":
@@ -782,19 +790,25 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 	case "team":
 		ss.handleTeamCommand(s, fingerprint, team.TeamName, args)
 	case "help", "?":
-		// Show help text directly
-		helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-			"\033[1mlist\033[0m                    - List your machines\r\n" +
-			"\033[1mcreate [image] [name]\033[0m   - Create a new machine (defaults: ubuntu, auto-generated name)\r\n" +
-			"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
-			"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
-			"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
-			"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
-			"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
-			"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
-			"\033[1mteam\033[0m                    - Team management\r\n" +
-			"\033[1m?\033[0m                       - Show this help\r\n\r\n"
-		fmt.Fprint(s, helpText)
+		// Check if asking for help on a specific command
+		if len(args) > 0 {
+			ss.handleHelpCommand(s, args[0])
+		} else {
+			// Show help text directly
+			helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
+				"\033[1mlist\033[0m                    - List your machines\r\n" +
+				"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
+				"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
+				"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
+				"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
+				"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
+				"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
+				"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
+				"\033[1mteam\033[0m                    - Team management\r\n" +
+				"\033[1m?\033[0m                       - Show this help\r\n\r\n" +
+				"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
+			fmt.Fprint(s, helpText)
+		}
 	default:
 		fmt.Fprintf(s, "Unknown command: %s\r\nRun 'ssh exe.dev help' for available commands.\r\n", command)
 	}
@@ -1167,7 +1181,7 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, fingerprint, teamName stri
 		}
 
 		if len(containers) == 0 {
-			fmt.Fprintf(s, "No machines found. Create one with 'create'.\r\n")
+			fmt.Fprintf(s, "No machines found. Create one with 'new'.\r\n")
 			return
 		}
 
@@ -1208,7 +1222,7 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, fingerprint, teamName stri
 	}
 
 	if len(machines) == 0 {
-		fmt.Fprintf(s, "No machines found. Create one with 'create'.\r\n")
+		fmt.Fprintf(s, "No machines found. Create one with 'new'.\r\n")
 		return
 	}
 
@@ -1235,31 +1249,37 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, fingerprint, teamName stri
 	}
 }
 
-func (ss *SSHServer) handleCreateCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName string, args []string) {
 	if ss.server.containerManager == nil {
 		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
 		return
 	}
 
-	// Parse flags (simplified version - just handle basic cases for now)
+	// Create a FlagSet for parsing
+	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	var machineName string
-	var image string = "exeuntu"
-	var size string = "small"
+	var image string
+	var size string
 
-	// Simple argument parsing - this is a simplified version
-	// In production, we'd use the full flag parsing from handleCreateCommandWithStdin
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if strings.HasPrefix(arg, "--name=") {
-			machineName = strings.TrimPrefix(arg, "--name=")
-		} else if strings.HasPrefix(arg, "--image=") {
-			image = strings.TrimPrefix(arg, "--image=")
-		} else if strings.HasPrefix(arg, "--size=") {
-			size = strings.TrimPrefix(arg, "--size=")
-		} else if !strings.HasPrefix(arg, "--") && machineName == "" {
-			// Positional argument for name
-			machineName = arg
-		}
+	fs.StringVar(&machineName, "name", "", "machine name (auto-generated if not specified)")
+	fs.StringVar(&image, "image", "exeuntu", "container image")
+
+	// Capture the output to avoid printing errors to the session
+	var buf bytes.Buffer
+	fs.SetOutput(&buf)
+
+	// Parse the flags
+	err := fs.Parse(args)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
+		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>]\r\n")
+		return
+	}
+
+	// Check for non-flag arguments (future command execution)
+	if fs.NArg() > 0 {
+		fmt.Fprintf(s, "\033[1;31mError: Command execution after machine creation is a TODO\033[0m\r\n")
+		return
 	}
 
 	// Generate machine name if not provided
@@ -1576,6 +1596,68 @@ func (ss *SSHServer) handleLogsCommand(s ssh.Session, fingerprint, teamName stri
 	machineName := args[0]
 	fmt.Fprintf(s, "Fetching logs for machine '%s'...\r\n", machineName)
 	fmt.Fprintf(s, "\033[1;33mNote: Logs not implemented in new server yet\033[0m\r\n")
+}
+
+func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
+	switch command {
+	case "new":
+		helpText := "\r\n\033[1;33mCommand: new\033[0m\r\n\r\n" +
+			"Create a new machine with specified options.\r\n\r\n" +
+			"\033[1mUsage:\033[0m new [options]\r\n\r\n" +
+			"\033[1mOptions:\033[0m\r\n" +
+			"  \033[1m--name=<name>\033[0m     Machine name (auto-generated if not specified)\r\n" +
+			"  \033[1m--image=<image>\033[0m   Container image (default: exeuntu)\r\n\r\n" +
+			"\033[1mExamples:\033[0m\r\n" +
+			"  new                                # just give me a computer\r\n" +
+			"  new --name=m --image=ubuntu:22.04  # custom image and name\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	case "team":
+		teamHelpText := "\r\n\033[1;33mCommand: team\033[0m\r\n\r\n" +
+			"Manage team members and settings.\r\n\r\n" +
+			"\033[1mSubcommands:\033[0m\r\n" +
+			"  \033[1mteam ls\033[0m                 - List team members\r\n" +
+			"  \033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
+			"  \033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n"
+		fmt.Fprint(s, teamHelpText)
+	case "list", "ls":
+		helpText := "\r\n\033[1;33mCommand: list (or ls)\033[0m\r\n\r\n" +
+			"List all machines in your current team.\r\n\r\n" +
+			"\033[1mUsage:\033[0m list\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	case "ssh":
+		helpText := "\r\n\033[1;33mCommand: ssh\033[0m\r\n\r\n" +
+			"SSH into a machine.\r\n\r\n" +
+			"\033[1mUsage:\033[0m ssh <machine-name>\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	case "start":
+		helpText := "\r\n\033[1;33mCommand: start\033[0m\r\n\r\n" +
+			"Start a stopped machine.\r\n\r\n" +
+			"\033[1mUsage:\033[0m start <machine-name>\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	case "stop":
+		helpText := "\r\n\033[1;33mCommand: stop\033[0m\r\n\r\n" +
+			"Stop one or more running machines.\r\n\r\n" +
+			"\033[1mUsage:\033[0m stop <machine-name> [<machine-name>...]\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	case "delete":
+		helpText := "\r\n\033[1;33mCommand: delete\033[0m\r\n\r\n" +
+			"Delete a machine permanently.\r\n\r\n" +
+			"\033[1mUsage:\033[0m delete <machine-name>\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	case "logs":
+		helpText := "\r\n\033[1;33mCommand: logs\033[0m\r\n\r\n" +
+			"View logs for a machine.\r\n\r\n" +
+			"\033[1mUsage:\033[0m logs <machine-name>\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	case "diag":
+		helpText := "\r\n\033[1;33mCommand: diag\033[0m\r\n\r\n" +
+			"Get startup diagnostics for a machine.\r\n\r\n" +
+			"\033[1mUsage:\033[0m diag <machine-name>\r\n\r\n"
+		fmt.Fprint(s, helpText)
+	default:
+		fmt.Fprintf(s, "\r\n\033[1;31mNo help available for command: %s\033[0m\r\n\r\n", command)
+		fmt.Fprintf(s, "Run \033[1mhelp\033[0m without arguments to see all available commands.\r\n\r\n")
+	}
 }
 
 func (ss *SSHServer) handleTeamCommand(s ssh.Session, fingerprint, teamName string, args []string) {
