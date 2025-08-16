@@ -2,3 +2,5 @@ dist/
 ./exed
 exe.db
 ghuser/whoami.sqlite3
+.vscode/
+node_modules/

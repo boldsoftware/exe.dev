@@ -78,6 +78,8 @@ func (ss *SSHServer) Stop() error {
 
 // authenticatePublicKey handles public key authentication
 func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) bool {
+	// Increment auth attempts metric
+	ss.server.sshMetrics.authAttempts.WithLabelValues("attempt", "public_key").Inc()
 	// Convert gliderlabs public key to golang.org/x/crypto/ssh public key for compatibility
 	goKey, err := gossh.ParsePublicKey(key.Marshal())
 	if err != nil {
@@ -89,8 +91,13 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	perms, err := ss.server.authenticatePublicKey(nil, goKey)
 	if err != nil {
 		log.Printf("Authentication failed: %v", err)
+		// Increment failed auth metric
+		ss.server.sshMetrics.authAttempts.WithLabelValues("failed", "public_key").Inc()
 		return false
 	}
+
+	// Increment successful auth metric
+	ss.server.sshMetrics.authAttempts.WithLabelValues("success", "public_key").Inc()
 
 	// Store permissions in context for later use
 	ctx.SetValue("fingerprint", perms.Extensions["fingerprint"])
@@ -104,6 +111,18 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 // handleSession handles SSH sessions
 func (ss *SSHServer) handleSession(s ssh.Session) {
 	defer s.Close()
+
+	// Track SSH connection
+	ss.server.sshMetrics.connectionsTotal.WithLabelValues("connected").Inc()
+	ss.server.sshMetrics.connectionsCurrent.Inc()
+	sessionStart := time.Now()
+
+	defer func() {
+		// Track connection end and duration
+		ss.server.sshMetrics.connectionsCurrent.Dec()
+		duration := time.Since(sessionStart).Seconds()
+		ss.server.sshMetrics.sessionDuration.WithLabelValues("normal").Observe(duration)
+	}()
 
 	// Get authentication info from context
 	fingerprint, _ := s.Context().Value("fingerprint").(string)

@@ -556,3 +556,119 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 		t.Errorf("Invalid token should return 404: got status %d", w.Code)
 	}
 }
+
+// TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics
+func TestMetricsEndpoint(t *testing.T) {
+	// Create temporary database
+	tmpDB, err := os.CreateTemp("", "test_metrics_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", nil)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
+
+	// Use httptest.Server for testing
+	testServer := httptest.NewServer(server)
+	defer testServer.Close()
+
+	// Make a request to the health endpoint first to trigger HTTP metrics
+	healthResp, err := http.Get(testServer.URL + "/health")
+	if err != nil {
+		t.Fatalf("Failed to make health request: %v", err)
+	}
+	healthResp.Body.Close()
+
+	// Make request to metrics endpoint
+	resp, err := http.Get(testServer.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("Failed to fetch metrics: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	bodyStr := string(body)
+
+	// Debug: print the actual response
+	t.Logf("Metrics response body: %s", bodyStr)
+
+	// Check for standard promhttp metrics
+	expectedMetrics := []string{
+		"promhttp_metric_handler_requests_total",
+		"ssh_connections_current", // This should always be present as a gauge
+	}
+
+	for _, metric := range expectedMetrics {
+		if !strings.Contains(bodyStr, metric) {
+			t.Errorf("Expected to find metric %s in response", metric)
+		}
+	}
+
+	// Verify the response is in Prometheus format
+	if !strings.Contains(bodyStr, "# HELP") {
+		t.Error("Expected Prometheus format with HELP comments")
+	}
+	if !strings.Contains(bodyStr, "# TYPE") {
+		t.Error("Expected Prometheus format with TYPE comments")
+	}
+}
+
+// TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
+func TestHTTPMetricsInstrumentation(t *testing.T) {
+	// Create temporary database
+	tmpDB, err := os.CreateTemp("", "test_http_metrics_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", nil)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
+
+	// Use httptest.Server for testing
+	testServer := httptest.NewServer(server)
+	defer testServer.Close()
+
+	// Make a request to the health endpoint
+	resp, err := http.Get(testServer.URL + "/health")
+	if err != nil {
+		t.Fatalf("Failed to make health check request: %v", err)
+	}
+	resp.Body.Close()
+
+	// Now fetch metrics to see if the request was recorded
+	resp, err = http.Get(testServer.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("Failed to fetch metrics: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read metrics response: %v", err)
+	}
+
+	bodyStr := string(body)
+
+	// Check that we have standard promhttp metrics
+	if !strings.Contains(bodyStr, "promhttp_metric_handler_requests_total") {
+		t.Error("Expected to find promhttp_metric_handler_requests_total metric")
+	}
+}

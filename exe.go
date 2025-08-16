@@ -30,6 +30,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/keighl/postmark"
 	"github.com/pkg/sftp"
 	"github.com/stripe/stripe-go/v76"
@@ -57,6 +60,59 @@ var browserWoodcutPNG []byte
 
 //go:embed favicon.ico
 var faviconICO []byte
+
+
+// SSHMetrics holds SSH server metrics
+type SSHMetrics struct {
+	connectionsTotal   *prometheus.CounterVec
+	connectionsCurrent prometheus.Gauge
+	authAttempts       *prometheus.CounterVec
+	sessionDuration    *prometheus.HistogramVec
+}
+
+
+// NewSSHMetrics creates and registers SSH metrics
+func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
+	metrics := &SSHMetrics{
+		connectionsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "ssh_connections_total",
+				Help: "Total number of SSH connections.",
+			},
+			[]string{"result"},
+		),
+		connectionsCurrent: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "ssh_connections_current",
+				Help: "Current number of active SSH connections.",
+			},
+		),
+		authAttempts: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "ssh_auth_attempts_total",
+				Help: "Total number of SSH authentication attempts.",
+			},
+			[]string{"result", "method"},
+		),
+		sessionDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "ssh_session_duration_seconds",
+				Help:    "Duration of SSH sessions in seconds.",
+				Buckets: []float64{1, 10, 60, 300, 600, 1800, 3600, 7200}, // 1s to 2h
+			},
+			[]string{"reason"},
+		),
+	}
+
+	registry.MustRegister(
+		metrics.connectionsTotal,
+		metrics.connectionsCurrent,
+		metrics.authAttempts,
+		metrics.sessionDuration,
+	)
+
+	return metrics
+}
 
 // User represents an individual user
 type User struct {
@@ -174,6 +230,10 @@ type Server struct {
 	devMode   string // Development mode: "" (production) or "local" (Docker)
 	quietMode bool   // Quiet mode - suppress log output (for tests)
 
+	// Metrics
+	metricsRegistry *prometheus.Registry
+	sshMetrics      *SSHMetrics
+
 	mu       sync.RWMutex
 	stopping bool
 }
@@ -260,6 +320,10 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dock
 		}
 	}
 
+	// Initialize metrics
+	metricsRegistry := prometheus.NewRegistry()
+	sshMetrics := NewSSHMetrics(metricsRegistry)
+
 	s := &Server{
 		httpAddr:             httpAddr,
 		httpsAddr:            httpsAddr,
@@ -275,6 +339,8 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dock
 		devMode:              devMode,
 		quietMode:            quietMode,
 		testMode:             testing.Testing(),
+		metricsRegistry:      metricsRegistry,
+		sshMetrics:           sshMetrics,
 	}
 
 	s.setupHTTPServer()
@@ -286,9 +352,14 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dock
 
 // setupHTTPServer configures the HTTP server
 func (s *Server) setupHTTPServer() {
+	// Use standard promhttp instrumentation
+	instrumentedHandler := promhttp.InstrumentMetricHandler(
+		s.metricsRegistry,
+		s)
+
 	s.httpServer = &http.Server{
 		Addr:    s.httpAddr,
-		Handler: s,
+		Handler: instrumentedHandler,
 	}
 }
 
@@ -602,6 +673,8 @@ func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	}, nil
 }
 
+
+
 // ServeHTTP implements http.Handler for the HTTP server
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
@@ -635,6 +708,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleBrowserWoodcutPNG(w, r)
 	case "/health":
 		s.handleHealth(w, r)
+	case "/metrics":
+		s.handleMetrics(w, r)
 	case "/containers":
 		s.handleContainers(w, r)
 	case "/verify-email":
@@ -684,6 +759,12 @@ func (s *Server) handleBrowserWoodcutPNG(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
+}
+
+// handleMetrics serves Prometheus metrics
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	handler := promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{})
+	handler.ServeHTTP(w, r)
 }
 
 // handleContainers handles container management requests
