@@ -399,8 +399,19 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 // readLineWithEcho reads a line with echo (for registration)
 // This uses direct byte reading to avoid buffering issues when transitioning to the menu
 func (ss *SSHServer) readLineWithEcho(s ssh.Session) string {
+	return ss.readLineWithEchoAndDefault(s, "")
+}
+
+// readLineWithEchoAndDefault reads a line with echo and optionally pre-fills a default value
+func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue string) string {
 	var line []byte
 	buf := make([]byte, 1)
+
+	// Pre-fill with default value if provided
+	if defaultValue != "" {
+		line = []byte(defaultValue)
+		fmt.Fprint(s, defaultValue)
+	}
 
 	for {
 		n, err := s.Read(buf)
@@ -467,10 +478,40 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	}
 
 	// Ask for team name BEFORE email verification
+	// Extract username from email as a suggested team name
+	suggestedTeamName := ""
+	if atIndex := strings.Index(email, "@"); atIndex > 0 {
+		suggestedTeamName = email[:atIndex]
+		// Ensure suggested name is valid (lowercase, alphanumeric and hyphens only)
+		suggestedTeamName = strings.ToLower(suggestedTeamName)
+		// Replace invalid characters with hyphens
+		var cleaned []rune
+		for _, r := range suggestedTeamName {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+				cleaned = append(cleaned, r)
+			} else if len(cleaned) > 0 && cleaned[len(cleaned)-1] != '-' {
+				// Replace invalid chars with hyphen, but avoid multiple consecutive hyphens
+				cleaned = append(cleaned, '-')
+			}
+		}
+		suggestedTeamName = string(cleaned)
+		// Trim any trailing hyphens
+		suggestedTeamName = strings.Trim(suggestedTeamName, "-")
+		
+		// Check if the suggested name is available
+		if suggestedTeamName != "" {
+			taken, err := ss.server.isTeamNameTakenOrReserved(suggestedTeamName)
+			if err != nil || taken {
+				// If taken or error, don't suggest it
+				suggestedTeamName = ""
+			}
+		}
+	}
+
 	var teamName string
 	for {
 		fmt.Fprint(s, "\033[1mChoose a team name:\033[0m ")
-		teamName = ss.readLineWithEcho(s)
+		teamName = ss.readLineWithEchoAndDefault(s, suggestedTeamName)
 		if teamName == "" {
 			fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
 			return
@@ -479,6 +520,8 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		// Validate team name format
 		if !ss.server.isValidTeamName(teamName) {
 			fmt.Fprintf(s, "\r\n%sInvalid team name. Team names can only contain lowercase letters, numbers, and hyphens.%s\r\n", "\033[1;31m", "\033[0m")
+			// Clear the suggested name after first attempt
+			suggestedTeamName = ""
 			continue
 		}
 
@@ -486,10 +529,12 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		taken, err := ss.server.isTeamNameTakenOrReserved(teamName)
 		if err != nil {
 			fmt.Fprintf(s, "\r\n%sError checking team name availability: %v%s\r\n", "\033[1;31m", err, "\033[0m")
+			suggestedTeamName = ""
 			continue
 		}
 		if taken {
 			fmt.Fprintf(s, "\r\n%sTeam name '%s' is already taken. Please choose a different name.%s\r\n", "\033[1;31m", teamName, "\033[0m")
+			suggestedTeamName = ""
 			continue
 		}
 
