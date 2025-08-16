@@ -497,7 +497,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 		suggestedTeamName = string(cleaned)
 		// Trim any trailing hyphens
 		suggestedTeamName = strings.Trim(suggestedTeamName, "-")
-		
+
 		// Check if the suggested name is available
 		if suggestedTeamName != "" {
 			taken, err := ss.server.isTeamNameTakenOrReserved(suggestedTeamName)
