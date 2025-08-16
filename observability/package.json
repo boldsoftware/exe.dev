@@ -1,0 +1,19 @@
+{
+  "name": "observability",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@grafana/grafana-foundation-sdk": "^11.1.0-cogv0.0.x.1746458718",
+    "tsx": "^4.19.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.1",
+    "typescript": "^5.8.3"
+  }
+}
