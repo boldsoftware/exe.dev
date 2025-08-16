@@ -7,8 +7,8 @@
 - be very careful with all text printed in the SSH UI. do *not* change the UI behavior without confirming the change with a human. in general, the service is very sparing with text shown to the user over ssh, adding more ruins the vibe.
 - test everything. the container package contains a docker implementation. write tests assuming local docker for tests. make the tests *end-to-end*, that is, actually start docker containers as machines and do things with them. actually GET and POST against the server.
 - before fixing a bug, write a complete test that fails, then fix the bug (and thus the test).
-- remember that tests run in GitHub CI, which is slow. sleep() games don't work there. do not expect anything to happen within reasonable amounts of time.
-- if you have a failing test sometimes, always try out `-count=1000 -failfast -run=ThatSpecificTest`.
+- when testing, do not insert sleeps that slow down the test waiting for state to be reached. instead, spin for some short amount of time until the state appears, or exit the test fast. make tests fast.
+- if you have a failing test sometimes, try something like `-count=1000 -failfast -run=ThatSpecificTest`.
 - when instructed to do an item from the TODO list, on completion remove the item from the TODO list and make a git commit of everything
 - this is a production service; do not leave comments about "for production, do this..."; finish the job
 - do not overly worry about compatibility; do not create shims to handle compatibility
