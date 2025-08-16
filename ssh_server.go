@@ -1263,6 +1263,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 
 	fs.StringVar(&machineName, "name", "", "machine name (auto-generated if not specified)")
 	fs.StringVar(&image, "image", "exeuntu", "container image")
+	fs.StringVar(&size, "size", "medium", "machine size (small, medium, or large)")
 
 	// Capture the output to avoid printing errors to the session
 	var buf bytes.Buffer
@@ -1272,7 +1273,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 	err := fs.Parse(args)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
-		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>]\r\n")
+		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>]\r\n")
 		return
 	}
 
