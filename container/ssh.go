@@ -23,6 +23,7 @@ type ContainerSSHKeys struct {
 
 // GenerateContainerSSHKeys generates all SSH key material needed for a container
 // This is adapted from the generateSSHKeys function in bold/skaband/dockerhost
+// TODO(philip): Not totally sure we need certs at all.
 func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 	// Generate server identity key (Ed25519)
 	_, serverPriv, err := ed25519.GenerateKey(crand.Reader)
@@ -70,10 +71,12 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 		Key:             serverSSHPub,
 		Serial:          1,
 		CertType:        ssh.HostCert,
+		// Use a descriptive key ID for host certificates
 		KeyId:           "exe-container-host",
 		ValidPrincipals: []string{"localhost", "127.0.0.1", "::1"},
 		ValidAfter:      uint64(time.Now().Add(-1 * time.Hour).Unix()),
-		ValidBefore:     uint64(time.Now().Add(2160 * time.Hour).Unix()), // 90 days
+		// Set a long expiration time (1 year) for host certificates
+		ValidBefore:     uint64(time.Now().Add(8760 * time.Hour).Unix()), // 1 year
 	}
 
 	// Create user certificate for client authentication
@@ -81,9 +84,11 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 		Key:             clientSSHPub,
 		Serial:          2,
 		CertType:        ssh.UserCert,
+		// Let's include the container-name.team-name here.
 		KeyId:           "exe-user",
 		ValidPrincipals: []string{"root"},
 		ValidAfter:      uint64(time.Now().Add(-1 * time.Hour).Unix()),
+		// We don't want expiration
 		ValidBefore:     uint64(time.Now().Add(2160 * time.Hour).Unix()), // 90 days
 		Permissions: ssh.Permissions{
 			Extensions: map[string]string{
@@ -115,11 +120,12 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 
 	return &ContainerSSHKeys{
 		ServerIdentityKey: string(pem.EncodeToMemory(serverPrivKeyPEM)),
-		AuthorizedKeys:    string(ssh.MarshalAuthorizedKey(userCert)),
+		AuthorizedKeys:    string(ssh.MarshalAuthorizedKey(clientSSHPub)), // Public key for authorized_keys file
 		CAPublicKey:       string(ssh.MarshalAuthorizedKey(caSSHPub)),
 		HostCertificate:   string(ssh.MarshalAuthorizedKey(hostCert)),
 		ClientPrivateKey:  string(pem.EncodeToMemory(clientPrivKeyPEM)),
-		SSHPort:           22, // Default SSH port
+		// SSH port is always 22 inside containers (Docker maps to random host ports)
+		SSHPort:           22,
 	}, nil
 }
 

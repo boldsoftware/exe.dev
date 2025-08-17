@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"exe.dev/container"
-	"exe.dev/sshproxy"
+
 	"exe.dev/termfun"
 	"github.com/gliderlabs/ssh"
-	"github.com/pkg/sftp"
+
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -46,13 +46,8 @@ func (ss *SSHServer) Start(addr string) error {
 		ChannelHandlers: map[string]ssh.ChannelHandler{
 			"session": ssh.DefaultSessionHandler,
 		},
-		SubsystemHandlers: map[string]ssh.SubsystemHandler{
-			"sftp": ss.handleSFTP,
-		},
-		RequestHandlers: map[string]ssh.RequestHandler{
-			"tcpip-forward":        ss.handlePortForward,
-			"cancel-tcpip-forward": ss.handleCancelPortForward,
-		},
+		SubsystemHandlers: map[string]ssh.SubsystemHandler{},
+		RequestHandlers:   map[string]ssh.RequestHandler{},
 	}
 
 	// Add host keys from the existing server configuration
@@ -90,7 +85,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	}
 
 	// Use existing authentication logic
-	perms, err := ss.server.authenticatePublicKey(nil, goKey)
+	perms, err := ss.server.AuthenticatePublicKey(nil, goKey)
 	if err != nil {
 		log.Printf("Authentication failed: %v", err)
 		// Increment failed auth metric
@@ -150,15 +145,6 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 		}()
 	}
 
-	// Check if this is a direct machine access attempt
-	if username != "" && registered && ss.server.containerManager != nil {
-		if machine := ss.server.findMachineByNameForUser(fingerprint, username); machine != nil {
-			// This is a direct machine connection
-			ss.handleMachineSSH(s, machine, fingerprint)
-			return
-		}
-	}
-
 	// Check for exec command
 	cmd := s.Command()
 	if len(cmd) > 0 {
@@ -216,16 +202,10 @@ func (ss *SSHServer) handleShell(s ssh.Session, username, fingerprint string, re
 		team = teams[0]
 	}
 
-	// Check if username is a container name for direct access
-	if username != "" && ss.server.containerManager != nil {
-		if container := ss.server.findContainerByName(fingerprint, username); container != nil {
-			// For container connections, we need to use a different approach
-			// since the existing methods expect sshbuf.Channel
-			// TODO: Implement proper container connection for new SSH server
-			fmt.Fprintf(s, "Container connection not yet implemented in new SSH server\r\n")
-			return
-		}
-	}
+	// Note: Direct container access should never reach this point.
+	// Container connections are handled by the SSH piper plugin via handleMachineAccess,
+	// which routes directly to the container without involving exed.
+	// If we reach here, the user is connecting to the interactive shell.
 
 	// Run the main shell with readline
 	ss.runMainShellWithReadline(s, fingerprint, user.Email, team.TeamName, team.IsAdmin, false)
@@ -815,148 +795,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 }
 
 // handleMachineSSH handles direct SSH access to a machine
-func (ss *SSHServer) handleMachineSSH(s ssh.Session, machine *Machine, fingerprint string) {
-	if machine.ContainerID == nil {
-		fmt.Fprintf(s, "Machine is not running\r\n")
-		return
-	}
 
-	// Show connection message
-	fmt.Fprintf(s, "Connecting to machine %s...\r\n", machine.Name)
-
-	// Get container connection to ensure it's available
-	conn, err := ss.server.containerManager.ConnectToContainer(context.Background(), machine.CreatedByFingerprint, *machine.ContainerID)
-	if err != nil {
-		fmt.Fprintf(s, "Failed to connect to machine: %v\r\n", err)
-		return
-	}
-	if conn != nil && conn.StopFunc != nil {
-		defer conn.StopFunc()
-	}
-
-	// Get PTY if requested
-	pty, _, isPty := s.Pty()
-
-	// Determine the shell to use
-	shell, err := ss.server.determineUserShell(machine.CreatedByFingerprint, *machine.ContainerID)
-	if err != nil {
-		shell = "/bin/bash" // Fallback
-	}
-
-	// Check what command was requested
-	cmd := s.Command()
-	if len(cmd) > 0 {
-		// Execute specific command
-		err = ss.server.containerManager.ExecuteInContainer(
-			context.Background(),
-			machine.CreatedByFingerprint,
-			*machine.ContainerID,
-			cmd,
-			s,          // stdin
-			s,          // stdout
-			s.Stderr(), // stderr
-		)
-
-		// Send exit status
-		exitStatus := 0
-		if err != nil {
-			exitStatus = 1
-			fmt.Fprintf(s.Stderr(), "Command execution failed: %v\r\n", err)
-		}
-		s.Exit(exitStatus)
-		return
-	}
-
-	// Interactive shell session
-	shellCmd := []string{shell}
-
-	// Add interactive flags if we have a PTY
-	if isPty {
-		// Set terminal size environment variables if available
-		if pty.Window.Width > 0 && pty.Window.Height > 0 {
-			shellCmd = []string{shell, "-c", fmt.Sprintf("stty cols %d rows %d; exec %s", pty.Window.Width, pty.Window.Height, shell)}
-		}
-	}
-
-	// Execute interactive shell
-	err = ss.server.containerManager.ExecuteInContainer(
-		context.Background(),
-		machine.CreatedByFingerprint,
-		*machine.ContainerID,
-		shellCmd,
-		s,          // stdin
-		s,          // stdout
-		s.Stderr(), // stderr
-	)
-
-	if err != nil {
-		fmt.Fprintf(s.Stderr(), "Shell execution failed: %v\r\n", err)
-		s.Exit(1)
-	} else {
-		s.Exit(0)
-	}
-}
-
-// handleSFTP handles SFTP subsystem requests
-func (ss *SSHServer) handleSFTP(s ssh.Session) {
-	// Get the username to determine if this is for a specific machine
-	username := s.User()
-	fingerprint, _ := s.Context().Value("fingerprint").(string)
-
-	// Check if this is a machine-specific SFTP request
-	if username != "" && fingerprint != "" && ss.server.containerManager != nil {
-		machine := ss.server.findMachineByNameForUser(fingerprint, username)
-		if machine != nil && machine.ContainerID != nil {
-			// Handle SFTP for the specific machine
-			ss.handleMachineSFTP(s, machine, fingerprint)
-			return
-		}
-	}
-
-	// No machine found or general SFTP request
-	fmt.Fprintf(s, "SFTP subsystem not available for this context\r\n")
-}
-
-// handleMachineSFTP handles SFTP requests for a specific machine
-func (ss *SSHServer) handleMachineSFTP(s ssh.Session, machine *Machine, fingerprint string) {
-	if machine.ContainerID == nil {
-		fmt.Fprintf(s, "Machine is not running\r\n")
-		return
-	}
-
-	// Use the sshproxy package for SFTP
-	containerFS := sshproxy.NewUnixContainerFS(
-		ss.server.containerManager,
-		machine.CreatedByFingerprint,
-		*machine.ContainerID,
-		"/workspace",
-	)
-
-	handler := sshproxy.NewSFTPHandler(context.Background(), containerFS, "/workspace")
-	handlers := sftp.Handlers{
-		FileGet:  handler,
-		FilePut:  handler,
-		FileCmd:  handler,
-		FileList: handler,
-	}
-
-	server := sftp.NewRequestServer(s, handlers)
-	if err := server.Serve(); err != nil && err != io.EOF {
-		log.Printf("SFTP server error for machine %s: %v", machine.Name, err)
-	}
-}
-
-// handlePortForward handles port forwarding requests
-func (ss *SSHServer) handlePortForward(ctx ssh.Context, srv *ssh.Server, req *gossh.Request) (bool, []byte) {
-	// TODO: Implement port forwarding
-	return false, nil
-}
-
-// handleCancelPortForward handles cancel port forwarding requests
-func (ss *SSHServer) handleCancelPortForward(ctx ssh.Context, srv *ssh.Server, req *gossh.Request) (bool, []byte) {
-	// TODO: Implement cancel port forwarding
-	return false, nil
-}
 
 // SSHSessionChannel wraps a gliderlabs SSH session to implement compatibility with sshbuf.Channel
 type SSHSessionChannel struct {
@@ -1355,7 +1194,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}
-	if err := ss.server.createMachineWithSSH(fingerprint, teamName, machineName, createdContainer.ID, imageToStore, sshKeys, createdContainer.SSHPort); err != nil {
+	if err := ss.server.createMachineWithSSHAndDockerHost(fingerprint, teamName, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, sshKeys, createdContainer.SSHPort); err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 

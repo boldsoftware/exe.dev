@@ -23,7 +23,7 @@ func TestDevLocalContainerFix(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server in local mode
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

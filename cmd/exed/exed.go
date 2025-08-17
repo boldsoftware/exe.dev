@@ -11,7 +11,8 @@ import (
 
 func main() {
 	httpAddr := flag.String("http", ":8080", "HTTP server address")
-	sshAddr := flag.String("ssh", ":2222", "SSH server address")
+	sshAddr := flag.String("ssh", ":2223", "SSH server address")
+	piperAddr := flag.String("piper", ":2224", "Piper plugin gRPC server address")
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt)")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", "Development mode: \"\" (production) or \"local\" (local Docker)")
@@ -49,7 +50,7 @@ func main() {
 		log.Printf("Use -docker-hosts flag or set DOCKER_HOST env var")
 	}
 
-	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *dbPath, *devMode, hosts)
+	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, hosts)
 	if err != nil {
 		log.Printf("Failed to create server: %v", err)
 		os.Exit(1)

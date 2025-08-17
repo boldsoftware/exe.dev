@@ -40,7 +40,7 @@ func TestSSHEndToEndSignupFlow(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server with Docker support
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestSSHDirectExecCommands(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

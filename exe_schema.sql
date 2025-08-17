@@ -75,7 +75,8 @@ CREATE TABLE IF NOT EXISTS machines (
     ssh_ca_public_key TEXT,       -- CA public key for mutual auth
     ssh_host_certificate TEXT,    -- Host certificate for host key validation
     ssh_client_private_key TEXT,  -- Private key for connecting to container
-    ssh_port INTEGER DEFAULT 22,  -- SSH port exposed for this container
+    ssh_port INTEGER,  -- SSH port exposed for this container (as seen on docker host)
+    docker_host TEXT,              -- DOCKER_HOST value where this container runs
     UNIQUE(team_name, name), -- name must be unique within team
     FOREIGN KEY (team_name) REFERENCES teams(name) ON DELETE CASCADE,
     FOREIGN KEY (created_by_fingerprint) REFERENCES users(public_key_fingerprint)

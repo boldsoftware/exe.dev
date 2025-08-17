@@ -56,11 +56,15 @@ setup-vm: ## Set up production VM (run once) - requires TAILSCALE_AUTH_KEY
 run-dev: ## Run exed locally for development
 	@echo "Starting development server..."
 	@echo "Note: Using ghcr.io/boldsoftware/exeuntu:latest image"
-	@go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2222
+	@go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223
+
+run-sshpiper: ## Run sshpiper proxy server
+	@echo "Starting sshpiper proxy..."
+	@./sshpiper.sh
 
 run-dev-bg: ## Run exed in background for development
 	@echo "Starting development server in background..."
-	@nohup go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2222 > exed.log 2>&1 &
+	@nohup go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223 > exed.log 2>&1 &
 	@echo "✓ Server started in background. Check exed.log for output"
 	@echo "To stop: make stop-dev"
 

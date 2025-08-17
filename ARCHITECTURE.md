@@ -46,14 +46,23 @@ User                                exe.dev Service
 
 exe.dev provides containers/VMs very, very easily over SSH.
 
+## SSH Architecture
+
 Users SSH into exe.dev, which is handled by sshpiper. sshpiper
 talks to exed over a gRPC plugin interface to find out what to
 do with the connection. Connections for "host.team@exe.dev" with
 appropriate credentials are forwarded onto the container itself.
 Connections for the "exe.dev shell" are forwarded to exed directly.
 
-For HTTP, connections https://host.team.exe.dev/ are handled by exe.dev
+sshd is set up on container credential with new credentials stored
+in the database.
+
+## HTTP Architecture
+
+For HTTP, connections https://host.team.exe.dev/ are handled by exed directly
 and proxied to their containers.
+
+## Container Management
 
 Container creation happens in exed. A random docker_host is chosen, and the
 container is created with the gvisor Docker container runtime. Credentials

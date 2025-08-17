@@ -43,8 +43,8 @@ func TestGenerateContainerSSHKeys(t *testing.T) {
 	}
 
 	// Verify public keys start with expected prefixes
-	if !strings.HasPrefix(sshKeys.AuthorizedKeys, "ssh-ed25519-cert-v01@openssh.com") {
-		t.Error("AuthorizedKeys not in certificate format")
+	if !strings.HasPrefix(sshKeys.AuthorizedKeys, "ssh-ed25519") {
+		t.Error("AuthorizedKeys not in ed25519 public key format")
 	}
 	if !strings.HasPrefix(sshKeys.CAPublicKey, "ssh-ed25519") {
 		t.Error("CAPublicKey not in ed25519 format")
@@ -171,10 +171,12 @@ func TestContainerWithSSH(t *testing.T) {
 	// Verify SSH key files exist in container
 	var keyFileCheck strings.Builder
 	err = manager.ExecuteInContainer(ctx, req.UserID, container.ID,
-		[]string{"ls", "-la", "/etc/ssh/ssh_host_ed25519_key", "/root/.ssh/authorized_keys"},
+		[]string{"ls", "-la", "/etc/ssh/ssh_host_ed25519_key", "/etc/ssh/ssh_host_ed25519_key.pub", "/root/.ssh/authorized_keys"},
 		nil, &keyFileCheck, nil)
 	if err != nil {
 		t.Errorf("SSH key files not found in container: %v", err)
+	} else {
+		t.Logf("SSH key files found: %s", keyFileCheck.String())
 	}
 }
 

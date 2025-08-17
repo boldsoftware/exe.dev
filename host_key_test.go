@@ -15,7 +15,7 @@ func TestSSHHostKeyPersistence(t *testing.T) {
 	tmpDB.Close()
 
 	// First server instance - should generate and store a new key
-	server1, err := NewServer(":18090", "", ":12230", tmpDB.Name(), "local", []string{""})
+	server1, err := NewServer(":18090", "", ":12230", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create first server: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestSSHHostKeyPersistence(t *testing.T) {
 	server1.Stop()
 
 	// Second server instance - should load the existing key
-	server2, err := NewServer(":18091", "", ":12231", tmpDB.Name(), "local", []string{""})
+	server2, err := NewServer(":18091", "", ":12231", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create second server: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSSHHostKeyTable(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18092", "", ":12232", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":18092", "", ":12232", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

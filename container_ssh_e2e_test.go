@@ -24,7 +24,7 @@ func TestSSHContainerE2E(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18080", "", ":12222", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -140,8 +140,8 @@ func TestSSHContainerE2E(t *testing.T) {
 	if !strings.Contains(storedClientKey, "OPENSSH PRIVATE KEY") {
 		t.Error("Client key not in OpenSSH format")
 	}
-	if !strings.HasPrefix(storedAuthKeys, "ssh-ed25519-cert-v01@openssh.com") {
-		t.Error("Authorized keys not in certificate format")
+	if !strings.HasPrefix(storedAuthKeys, "ssh-ed25519 AAAAC3") {
+		t.Error("Authorized keys not in public key format")
 	}
 	if !strings.HasPrefix(storedCAKey, "ssh-ed25519") {
 		t.Error("CA key not in ed25519 format")

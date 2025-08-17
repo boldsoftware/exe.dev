@@ -25,7 +25,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 		_ = os.Remove(dbPath)
 	}()
 
-	server, err := NewServer(":8080", "", "", dbPath, "local", []string{"unix:///var/run/docker.sock"})
+	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{"unix:///var/run/docker.sock"})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 	}
 
 	publicKey := signer.PublicKey()
-	fingerprint := server.getPublicKeyFingerprint(publicKey)
+	fingerprint := server.GetPublicKeyFingerprint(publicKey)
 
 	// Register the user in the database
 	email := "test@example.com"

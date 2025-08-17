@@ -19,7 +19,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18081", "", ":12223", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":18081", "", ":12223", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fingerprint1 := server.getPublicKeyFingerprint(pubKey1)
+	fingerprint1 := server.GetPublicKeyFingerprint(pubKey1)
 
 	key2, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -44,7 +44,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fingerprint2 := server.getPublicKeyFingerprint(pubKey2)
+	fingerprint2 := server.GetPublicKeyFingerprint(pubKey2)
 
 	testEmail := "multikey@example.com"
 
@@ -66,13 +66,13 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		}
 
 		// Verify authentication with first key returns verified status
-		_, err = server.authenticatePublicKey(nil, pubKey1)
+		_, err = server.AuthenticatePublicKey(nil, pubKey1)
 		if err != nil {
 			t.Fatalf("Authentication failed: %v", err)
 		}
 
 		// First key should be verified
-		email, verified, err := server.getEmailBySSHKey(fingerprint1)
+		email, verified, err := server.GetEmailBySSHKey(fingerprint1)
 		if err != nil {
 			t.Fatalf("Failed to get email by SSH key: %v", err)
 		}
@@ -87,7 +87,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	// Test 2: Second key for same email requires verification
 	t.Run("SecondKeyRequiresVerification", func(t *testing.T) {
 		// Try to authenticate with second key (not yet added)
-		perms, err := server.authenticatePublicKey(nil, pubKey2)
+		perms, err := server.AuthenticatePublicKey(nil, pubKey2)
 		if err != nil {
 			t.Fatalf("Authentication failed: %v", err)
 		}
@@ -107,7 +107,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		}
 
 		// Try authentication again - should be new_device status
-		perms, err = server.authenticatePublicKey(nil, pubKey2)
+		perms, err = server.AuthenticatePublicKey(nil, pubKey2)
 		if err != nil {
 			t.Fatalf("Authentication failed: %v", err)
 		}
@@ -138,7 +138,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 			VALUES (?, 'test-team', 1)`, fingerprint1)
 
 		// Now authentication should succeed
-		perms, err := server.authenticatePublicKey(nil, pubKey2)
+		perms, err := server.AuthenticatePublicKey(nil, pubKey2)
 		if err != nil {
 			t.Fatalf("Authentication failed: %v", err)
 		}
@@ -163,7 +163,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fingerprint3 := server.getPublicKeyFingerprint(pubKey3)
+		fingerprint3 := server.GetPublicKeyFingerprint(pubKey3)
 		publicKey3 := string(ssh.MarshalAuthorizedKey(pubKey3))
 
 		// Create pending key entry
@@ -200,7 +200,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	defer os.Remove(tmpDB.Name())
 	tmpDB.Close()
 
-	server, err := NewServer(":18082", "", ":12224", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":18082", "", ":12224", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	testPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC..."
 
 	// Test non-existent key
-	email, verified, err := server.getEmailBySSHKey("non-existent")
+	email, verified, err := server.GetEmailBySSHKey("non-existent")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	}
 
 	// Test existing verified key
-	email, verified, err = server.getEmailBySSHKey(testFingerprint)
+	email, verified, err = server.GetEmailBySSHKey(testFingerprint)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	}
 
 	// Test unverified key
-	email, verified, err = server.getEmailBySSHKey(unverifiedFingerprint)
+	email, verified, err = server.GetEmailBySSHKey(unverifiedFingerprint)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

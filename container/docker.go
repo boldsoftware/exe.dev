@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"golang.org/x/crypto/ssh"
 )
 
 // DockerManager implements the Manager interface using Docker with DOCKER_HOST support
@@ -190,11 +191,10 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 		}
 	}()
 
-	// Get the assigned SSH port
-	sshPort, err := m.getContainerSSHPort(ctx, containerID, dockerHost)
+	// Get the host port that Docker mapped for SSH (container port 22)
+	hostSSHPort, err := m.getContainerSSHPort(ctx, containerID, dockerHost)
 	if err != nil {
-		log.Printf("Warning: Failed to get SSH port: %v", err)
-		sshPort = 22 // Default fallback
+		return nil, fmt.Errorf("failed to get container SSH port mapping: %w", err)
 	}
 
 	// Get container info
@@ -215,7 +215,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 		SSHCAPublicKey:       sshKeys.CAPublicKey,
 		SSHHostCertificate:   sshKeys.HostCertificate,
 		SSHClientPrivateKey:  sshKeys.ClientPrivateKey,
-		SSHPort:              sshPort,
+		SSHPort:              hostSSHPort, // Host port that Docker mapped for SSH access
 	}
 
 	m.mu.Lock()
@@ -281,6 +281,18 @@ func (m *DockerManager) StartContainer(ctx context.Context, userID, containerID 
 
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to start container: %w: %s", err, output)
+	}
+
+	// Restart SSH daemon after container start (it doesn't persist across stops)
+	log.Printf("[SSH] Restarting SSH daemon in container %s after start", containerID)
+	sshCmd := exec.CommandContext(ctx, "docker", "exec", "-d", container.PodName, "/usr/sbin/sshd", "-D", "-f", "/etc/ssh/sshd_config")
+	if container.DockerHost != "" {
+		sshCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", container.DockerHost))
+	}
+	if sshOutput, sshErr := sshCmd.CombinedOutput(); sshErr != nil {
+		log.Printf("[SSH WARNING] Failed to restart SSH daemon in container %s: %v: %s", containerID, sshErr, sshOutput)
+	} else {
+		log.Printf("[SSH] SSH daemon restarted in container %s", containerID)
 	}
 
 	container.Status = StatusRunning
@@ -640,7 +652,14 @@ func convertMemoryLimit(k8sFormat string) string {
 	return result
 }
 
-// setupContainerSSH configures SSH inside the container
+// SetupContainerSSH configures SSH inside the container (public method for migration/setup)
+// This is used to add SSH configuration to existing containers that were created
+// before SSH support was added to the system
+func (m *DockerManager) SetupContainerSSH(ctx context.Context, containerID, dockerHost string, sshKeys *ContainerSSHKeys) error {
+	return m.setupContainerSSH(ctx, containerID, dockerHost, sshKeys)
+}
+
+// setupContainerSSH configures SSH inside the container (internal method)
 func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dockerHost string, sshKeys *ContainerSSHKeys) error {
 	// Create SSH config files inside the container
 	cmds := [][]string{
@@ -656,62 +675,103 @@ func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dock
 			execCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 		}
 		if output, err := execCmd.CombinedOutput(); err != nil {
-			log.Printf("SSH setup command failed: %v: %s", err, output)
-			// Continue with other commands even if one fails
+			return fmt.Errorf("SSH setup command failed %v: %w: %s", cmd, err, output)
 		}
 	}
 
-	// Write SSH key files
+	// Create SSH daemon configuration for public key authentication
+	sshConfig := `# SSH daemon configuration for public key authentication
+Port 22
+ListenAddress 0.0.0.0
+PermitRootLogin yes
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /root/.ssh/authorized_keys
+HostKey /etc/ssh/ssh_host_ed25519_key
+LogLevel INFO
+`
+
+	// Extract server public key from the server identity key for the .pub file
+	serverPrivKey, err := ssh.ParsePrivateKey([]byte(sshKeys.ServerIdentityKey))
+	if err != nil {
+		return fmt.Errorf("failed to parse server private key: %w", err)
+	}
+	serverPubKey := string(ssh.MarshalAuthorizedKey(serverPrivKey.PublicKey()))
+
+	// Write SSH key files and configuration for public key auth
 	files := map[string]string{
 		"/etc/ssh/ssh_host_ed25519_key":     sshKeys.ServerIdentityKey,
+		"/etc/ssh/ssh_host_ed25519_key.pub": serverPubKey,
 		"/root/.ssh/authorized_keys":        sshKeys.AuthorizedKeys,
-		"/etc/ssh/ca_key.pub":               sshKeys.CAPublicKey,
-		"/etc/ssh/ssh_host_ed25519_key.pub": sshKeys.HostCertificate,
+		"/etc/ssh/sshd_config":              sshConfig,
 	}
 
+	// Use install command to create files with correct permissions in one step
 	for filePath, content := range files {
-		// Write file content via docker exec
-		cmd := exec.CommandContext(ctx, "docker", "exec", "-i", containerID, "tee", filePath)
+		// Set appropriate permissions: private keys 600, public keys and config 644
+		mode := "600"
+		if strings.HasSuffix(filePath, ".pub") || strings.HasSuffix(filePath, "sshd_config") {
+			mode = "644"
+		}
+		cmd := exec.CommandContext(ctx, "docker", "exec", "-i", containerID, "install", "-m", mode, "/dev/stdin", filePath)
 		if dockerHost != "" {
 			cmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 		}
 		cmd.Stdin = strings.NewReader(content)
 		if output, err := cmd.CombinedOutput(); err != nil {
-			log.Printf("Failed to write SSH file %s: %v: %s", filePath, err, output)
+			return fmt.Errorf("failed to install SSH file %s: %w: %s", filePath, err, output)
 		}
 	}
 
-	// Set proper permissions
-	permCmds := [][]string{
-		{"chmod", "600", "/etc/ssh/ssh_host_ed25519_key"},
-		{"chmod", "644", "/etc/ssh/ssh_host_ed25519_key.pub"},
-		{"chmod", "600", "/root/.ssh/authorized_keys"},
-		{"chmod", "644", "/etc/ssh/ca_key.pub"},
-	}
-
-	for _, cmd := range permCmds {
-		execCmd := exec.CommandContext(ctx, "docker", append([]string{"exec", containerID}, cmd...)...)
-		if dockerHost != "" {
-			execCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
-		}
-		_ = execCmd.Run() // Ignore errors for permission setting
-	}
-
-	// Install and start SSH daemon asynchronously
-	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "bash", "-c", `
-		# Install openssh-server if not present
+	// Install openssh-server if not present, then start SSH daemon
+	installCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "bash", "-c", `
 		if ! command -v sshd >/dev/null 2>&1; then
-			apt-get update >/dev/null 2>&1
-			apt-get install -y openssh-server >/dev/null 2>&1
+			apt-get update >/dev/null 2>&1 && apt-get install -y openssh-server >/dev/null 2>&1
 		fi
-		# Start SSH daemon
-		/usr/sbin/sshd -D
 	`)
+	if dockerHost != "" {
+		installCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+	if output, err := installCmd.CombinedOutput(); err != nil {
+		// Log but don't fail - some test environments may have issues with package installation
+		log.Printf("Warning: Failed to install openssh-server (continuing anyway): %v: %s", err, output)
+	}
+
+	// Start SSH daemon in background
+	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "/usr/sbin/sshd", "-D", "-f", "/etc/ssh/sshd_config")
 	if dockerHost != "" {
 		startCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
 	if output, err := startCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to start SSH setup for container %s: %w: %s", containerID, err, output)
+		// Check if it's because sshd is already running
+		if strings.Contains(string(output), "Address already in use") {
+			log.Printf("[SSH] SSH daemon already running in container %s", containerID)
+		} else {
+			log.Printf("[SSH ERROR] Failed to start SSH daemon in container %s: %v: %s", containerID, err, output)
+			// Try alternative startup method
+			retryCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "bash", "-c", "nohup /usr/sbin/sshd -D -f /etc/ssh/sshd_config > /dev/null 2>&1 &")
+			if dockerHost != "" {
+				retryCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+			}
+			if retryOutput, retryErr := retryCmd.CombinedOutput(); retryErr != nil {
+				log.Printf("[SSH ERROR] Retry also failed for container %s: %v: %s", containerID, retryErr, retryOutput)
+			} else {
+				log.Printf("[SSH] SSH daemon started via retry method in container %s", containerID)
+			}
+		}
+	} else {
+		log.Printf("[SSH] SSH daemon started successfully in container %s", containerID)
+	}
+
+	// Verify SSH daemon is running
+	checkCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "pgrep", "-f", "sshd")
+	if dockerHost != "" {
+		checkCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+	if output, err := checkCmd.CombinedOutput(); err != nil {
+		log.Printf("[SSH WARNING] SSH daemon verification failed for container %s: %v", containerID, err)
+	} else {
+		log.Printf("[SSH] SSH daemon verified running in container %s (PIDs: %s)", containerID, strings.TrimSpace(string(output)))
 	}
 
 	return nil
@@ -726,18 +786,29 @@ func (m *DockerManager) getContainerSSHPort(ctx context.Context, containerID, do
 
 	output, err := cmd.Output()
 	if err != nil {
-		return 22, fmt.Errorf("failed to get container port: %w", err)
+		return 0, fmt.Errorf("failed to get container port: %w", err)
 	}
 
-	// Parse port output: "0.0.0.0:32768" or "[::]:32768" -> 32768
-	portStr := strings.TrimSpace(string(output))
-	if portStr == "" {
-		return 22, fmt.Errorf("no port mapping found")
+	// Parse port output: Docker may return multiple lines for IPv4 and IPv6
+	// e.g., "0.0.0.0:32768\n[::]:32768"
+	// Take the first non-empty line
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	var portLine string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			portLine = line
+			break
+		}
 	}
 
-	port, err := parseDockerPortMapping(portStr)
+	if portLine == "" {
+		return 0, fmt.Errorf("no port mapping found in output")
+	}
+
+	port, err := parseDockerPortMapping(portLine)
 	if err != nil {
-		return 22, err
+		return 0, fmt.Errorf("failed to parse port from line '%s': %w", portLine, err)
 	}
 
 	return port, nil

@@ -20,7 +20,7 @@ func TestNewSSHServerBasicConnection(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)
 
-	server, err := NewServer(":8080", "", "", dbPath, "local", []string{"unix:///var/run/docker.sock"})
+	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{"unix:///var/run/docker.sock"})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestNewSSHServerInteractiveShell(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_shell_%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)
 
-	server, err := NewServer(":8080", "", "", dbPath, "local", []string{"unix:///var/run/docker.sock"})
+	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{"unix:///var/run/docker.sock"})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_registered_%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)
 
-	server, err := NewServer(":8080", "", "", dbPath, "local", []string{"unix:///var/run/docker.sock"})
+	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{"unix:///var/run/docker.sock"})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 	}
 
 	publicKey := signer.PublicKey()
-	fingerprint := server.getPublicKeyFingerprint(publicKey)
+	fingerprint := server.GetPublicKeyFingerprint(publicKey)
 
 	// Register the user in the database
 	email := "test@example.com"

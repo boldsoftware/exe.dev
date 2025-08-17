@@ -4,3 +4,4 @@ exe.db
 ghuser/whoami.sqlite3
 .vscode/
 node_modules/
+sshpiper/sshpiperd

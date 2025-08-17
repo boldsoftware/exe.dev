@@ -34,7 +34,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/keighl/postmark"
-	"github.com/pkg/sftp"
+
 	"github.com/stripe/stripe-go/v76"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
@@ -43,7 +43,6 @@ import (
 	"exe.dev/container"
 	"exe.dev/porkbun"
 	"exe.dev/sshbuf"
-	"exe.dev/sshproxy"
 )
 
 //go:embed exe_schema.sql
@@ -147,6 +146,7 @@ type Machine struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	LastStartedAt        *time.Time
+	DockerHost           *string // DOCKER_HOST value where this container runs
 }
 
 // Invite represents a team invitation
@@ -195,6 +195,7 @@ type Server struct {
 	httpAddr  string
 	httpsAddr string
 	sshAddr   string
+	piperAddr string
 	BaseURL   string
 
 	httpServer          *http.Server
@@ -202,6 +203,9 @@ type Server struct {
 	sshConfig           *ssh.ServerConfig
 	certManager         *autocert.Manager
 	wildcardCertManager *porkbun.WildcardCertManager
+
+	// Piper plugin for SSH proxy authentication
+	piperPlugin *PiperPlugin
 
 	// Database
 	db *sql.DB
@@ -237,7 +241,7 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dockerHosts []string) (*Server, error) {
+func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode string, dockerHosts []string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -326,6 +330,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, dbPath string, devMode string, dock
 		httpAddr:             httpAddr,
 		httpsAddr:            httpsAddr,
 		sshAddr:              sshAddr,
+		piperAddr:            piperAddr,
 		BaseURL:              baseURL,
 		db:                   db,
 		containerManager:     containerManager,
@@ -413,7 +418,9 @@ func (s *Server) setupHTTPSServer() {
 // setupSSHServer configures the SSH server
 func (s *Server) setupSSHServer() {
 	s.sshConfig = &ssh.ServerConfig{
-		PublicKeyCallback: s.authenticatePublicKey,
+		PublicKeyCallback: s.AuthenticatePublicKey,
+		AuthLogCallback:   s.logAuthAttempt,
+		MaxAuthTries:      6, // Limit authentication attempts to prevent brute force
 	}
 
 	// Load or generate persistent host keys
@@ -453,7 +460,7 @@ func (s *Server) generateHostKey() error {
 		publicKeyPEM = string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 
 		// Calculate fingerprint
-		fingerprint := s.getPublicKeyFingerprint(signer.PublicKey())
+		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
 
 		// Store in database
 		_, err = s.db.Exec(`
@@ -478,7 +485,7 @@ func (s *Server) generateHostKey() error {
 			return fmt.Errorf("failed to parse stored private key: %w", err)
 		}
 
-		fingerprint := s.getPublicKeyFingerprint(signer.PublicKey())
+		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
 		if !s.quietMode {
 			log.Printf("Loaded existing SSH host key with fingerprint: %s", fingerprint)
 		}
@@ -489,7 +496,7 @@ func (s *Server) generateHostKey() error {
 }
 
 // getPublicKeyFingerprint generates a SHA256 fingerprint for a public key
-func (s *Server) getPublicKeyFingerprint(key ssh.PublicKey) string {
+func (s *Server) GetPublicKeyFingerprint(key ssh.PublicKey) string {
 	hash := sha256.Sum256(key.Marshal())
 	return hex.EncodeToString(hash[:])
 }
@@ -555,10 +562,7 @@ func (s *Server) generateToken() string {
 func (s *Server) getBaseURL() string {
 	if s.devMode != "" {
 		// Extract port from httpAddr (e.g., ":8080" -> "8080")
-		port := s.httpAddr
-		if strings.HasPrefix(port, ":") {
-			port = port[1:]
-		}
+		port := strings.TrimPrefix(s.httpAddr, ":")
 		return fmt.Sprintf("http://localhost:%s", port)
 	}
 	return "https://exe.dev"
@@ -615,13 +619,59 @@ The exe.dev team`, verifyURL)
 	return s.sendEmail(email, subject, body)
 }
 
+// logAuthAttempt logs all SSH authentication attempts for debugging
+func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error) {
+	if s.testMode {
+		return // Skip auth logging in test mode to reduce noise
+	}
+
+	var user, remoteAddr, clientVersion string
+	if conn != nil {
+		user = conn.User()
+		remoteAddr = conn.RemoteAddr().String()
+		clientVersion = string(conn.ClientVersion())
+	}
+
+	if err != nil {
+		// Log failed authentication attempts with more detail for security monitoring
+		log.Printf("[SSH AUTH] FAILED %s auth - User: '%s', RemoteAddr: %s, ClientVersion: %s, Error: %v",
+			method, user, remoteAddr, clientVersion, err)
+	} else {
+		// Log successful authentication
+		log.Printf("[SSH AUTH] SUCCESS %s auth - User: '%s', RemoteAddr: %s, ClientVersion: %s",
+			method, user, remoteAddr, clientVersion)
+	}
+}
+
 // authenticatePublicKey handles SSH public key authentication
-func (s *Server) authenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-	fingerprint := s.getPublicKeyFingerprint(key)
+func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	fingerprint := s.GetPublicKeyFingerprint(key)
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(key))
 
+	var user, remoteAddr string
+	if conn != nil {
+		user = conn.User()
+		remoteAddr = conn.RemoteAddr().String()
+	} else {
+		user = "<nil>"
+		remoteAddr = "<nil>"
+	}
+	log.Printf("[AUTH DEBUG] Authentication request - User: %s, RemoteAddr: %s, KeyType: %s, Fingerprint: %s",
+		user, remoteAddr, key.Type(), fingerprint[:16])
+
+	// Check if this is a proxy connection from sshpiper
+	log.Printf("[AUTH DEBUG] Checking if key %s is a proxy key", fingerprint[:16])
+	if originalUserKey := s.lookupEphemeralProxyKey(key); originalUserKey != nil {
+		log.Printf("[PROXY] Ephemeral proxy authentication detected for user: %s", user)
+		return s.authenticateProxyUser(user, originalUserKey)
+	} else {
+		log.Printf("[AUTH DEBUG] Not a proxy key, treating as direct user connection")
+	}
+	// Log non-proxy connections for monitoring - in production, all connections should come via proxy
+	log.Printf("[SECURITY] Direct connection to exed from %s (fingerprint: %s) - should come via proxy", remoteAddr, fingerprint)
+
 	// First check if this key is already registered in ssh_keys table
-	email, verified, err := s.getEmailBySSHKey(fingerprint)
+	email, verified, err := s.GetEmailBySSHKey(fingerprint)
 	if err != nil {
 		log.Printf("Database error checking SSH key %s: %v", fingerprint, err)
 	}
@@ -2168,7 +2218,8 @@ func (s *Server) findContainerByName(userID, containerName string) *container.Co
 
 // findMachineByNameForUser finds a machine by name that the user has access to
 // Supports both "machine" format (uses default team) and "team/machine" format
-func (s *Server) findMachineByNameForUser(fingerprint, machineName string) *Machine {
+func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Machine {
+	log.Printf("[MACHINE DEBUG] FindMachineByNameForUser: fingerprint=%s, machineName=%s", fingerprint[:16], machineName)
 	var teamName string
 	var machineNameOnly string
 
@@ -2204,8 +2255,10 @@ func (s *Server) findMachineByNameForUser(fingerprint, machineName string) *Mach
 
 	// Try default team first
 	defaultTeam, err := s.getDefaultTeamForKey(fingerprint)
+	log.Printf("[MACHINE DEBUG] Default team for key: %s (err: %v)", defaultTeam, err)
 	if err == nil && defaultTeam != "" {
 		machine, err := s.getMachineByName(defaultTeam, machineNameOnly)
+		log.Printf("[MACHINE DEBUG] Checked default team '%s' for machine '%s': found=%v, err=%v", defaultTeam, machineNameOnly, machine != nil, err)
 		if err == nil {
 			return machine
 		}
@@ -2213,6 +2266,7 @@ func (s *Server) findMachineByNameForUser(fingerprint, machineName string) *Mach
 
 	// Get user's teams and search all of them
 	teams, err := s.getUserTeams(fingerprint)
+	log.Printf("[MACHINE DEBUG] User teams: %d teams, err=%v", len(teams), err)
 	if err != nil || len(teams) == 0 {
 		return nil
 	}
@@ -2220,339 +2274,14 @@ func (s *Server) findMachineByNameForUser(fingerprint, machineName string) *Mach
 	// Check each team for a machine with this name
 	for _, team := range teams {
 		machine, err := s.getMachineByName(team.TeamName, machineNameOnly)
+		log.Printf("[MACHINE DEBUG] Checked team '%s' for machine '%s': found=%v, err=%v", team.TeamName, machineNameOnly, machine != nil, err)
 		if err == nil {
 			return machine
 		}
 	}
 
+	log.Printf("[MACHINE DEBUG] Machine '%s' not found in any team for user %s", machineName, fingerprint[:16])
 	return nil
-}
-
-// handleMachineSSH handles SSH connections to a specific machine
-func (s *Server) handleMachineSSH(channel *sshbuf.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
-	if machine.ContainerID == nil {
-		channel.Write([]byte("Machine is not running\r\n"))
-		return
-	}
-
-	// Get container connection
-	conn, err := s.containerManager.ConnectToContainer(context.Background(), machine.CreatedByFingerprint, *machine.ContainerID)
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("Failed to connect to machine: %v\r\n", err)))
-		return
-	}
-	defer conn.StopFunc()
-
-	// Proxy all SSH requests directly to the container
-	s.proxySSHToContainer(channel, requests, machine, fingerprint)
-}
-
-// proxySSHToContainer proxies SSH protocol directly to a container
-func (s *Server) proxySSHToContainer(channel *sshbuf.Channel, requests <-chan *ssh.Request, machine *Machine, fingerprint string) {
-	if machine.ContainerID == nil {
-		channel.Write([]byte("Machine is not running\r\n"))
-		return
-	}
-
-	// Handle each request type
-	for req := range requests {
-		switch req.Type {
-		case "pty-req":
-			// PTY request - acknowledge it (Docker will handle TTY allocation)
-			if req.WantReply {
-				req.Reply(true, nil)
-			}
-
-		case "exec":
-			// Parse command from exec payload
-			if len(req.Payload) < 4 {
-				if req.WantReply {
-					req.Reply(false, nil)
-				}
-				continue
-			}
-
-			cmdLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
-			if len(req.Payload) < 4+cmdLen {
-				if req.WantReply {
-					req.Reply(false, nil)
-				}
-				continue
-			}
-
-			command := string(req.Payload[4 : 4+cmdLen])
-			args := strings.Fields(command)
-
-			if req.WantReply {
-				req.Reply(true, nil)
-			}
-
-			// Handle SCP commands - we only support modern SCP via SFTP
-			if len(args) > 0 && args[0] == "scp" {
-				// Modern OpenSSH scp uses SFTP subsystem, not exec
-				channel.Stderr().Write([]byte("This server requires modern SCP (OpenSSH 8.0+) which uses SFTP protocol\n"))
-				statusPayload := make([]byte, 4)
-				statusPayload[3] = 1 // exit status 1
-				channel.SendRequest("exit-status", false, statusPayload)
-				return
-			}
-
-			// Execute command in container
-			err := s.containerManager.ExecuteInContainer(
-				context.Background(),
-				machine.CreatedByFingerprint,
-				*machine.ContainerID,
-				args,
-				nil,     // stdin
-				channel, // stdout
-				channel, // stderr
-			)
-			if err != nil {
-				channel.Write([]byte(fmt.Sprintf("Command execution failed: %v\r\n", err)))
-			}
-
-			// Send exit status
-			exitStatus := 0
-			if err != nil {
-				exitStatus = 1
-			}
-			statusPayload := make([]byte, 4)
-			statusPayload[0] = byte(exitStatus >> 24)
-			statusPayload[1] = byte(exitStatus >> 16)
-			statusPayload[2] = byte(exitStatus >> 8)
-			statusPayload[3] = byte(exitStatus)
-			channel.SendRequest("exit-status", false, statusPayload)
-			return
-
-		case "shell":
-			if req.WantReply {
-				req.Reply(true, nil)
-			}
-
-			// Determine the appropriate shell for this container/user
-			shell, err := s.determineUserShell(machine.CreatedByFingerprint, *machine.ContainerID)
-			if err != nil {
-				channel.Write([]byte(fmt.Sprintf("Failed to determine shell: %v\r\n", err)))
-				return
-			}
-
-			// Start interactive shell in container
-			err = s.containerManager.ExecuteInContainer(
-				context.Background(),
-				machine.CreatedByFingerprint,
-				*machine.ContainerID,
-				[]string{shell},
-				channel, // stdin
-				channel, // stdout
-				channel, // stderr
-			)
-			if err != nil {
-				channel.Write([]byte(fmt.Sprintf("Shell execution failed: %v\r\n", err)))
-			}
-			return
-
-		case "subsystem":
-			// Handle subsystems like SFTP
-			if len(req.Payload) < 4 {
-				if req.WantReply {
-					req.Reply(false, nil)
-				}
-				continue
-			}
-
-			subsystemLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
-			if len(req.Payload) < 4+subsystemLen {
-				if req.WantReply {
-					req.Reply(false, nil)
-				}
-				continue
-			}
-
-			subsystem := string(req.Payload[4 : 4+subsystemLen])
-
-			if subsystem == "sftp" {
-				if req.WantReply {
-					req.Reply(true, nil)
-				}
-
-				// Use the new sshproxy package for SFTP
-				containerFS := sshproxy.NewUnixContainerFS(
-					s.containerManager,
-					machine.CreatedByFingerprint,
-					*machine.ContainerID,
-					"/workspace",
-				)
-				handler := sshproxy.NewSFTPHandler(context.Background(), containerFS, "/workspace")
-				handlers := sftp.Handlers{
-					FileGet:  handler,
-					FilePut:  handler,
-					FileCmd:  handler,
-					FileList: handler,
-				}
-				server := sftp.NewRequestServer(channel, handlers)
-				if err := server.Serve(); err != nil && err != io.EOF {
-					fmt.Fprintf(os.Stderr, "SFTP server error: %v\n", err)
-				}
-				return
-			} else {
-				if req.WantReply {
-					req.Reply(false, nil)
-				}
-			}
-
-		default:
-			if req.WantReply {
-				req.Reply(false, nil)
-			}
-		}
-	}
-}
-
-// handleMachineRequests handles SSH global requests for machine connections (like port forwarding)
-func (s *Server) handleMachineRequests(requests <-chan *ssh.Request, machine *Machine, fingerprint string, sshConn ssh.Conn) {
-	for req := range requests {
-		switch req.Type {
-		case "tcpip-forward":
-			// Handle -L (local) port forwarding
-			s.handleTCPIPForward(req, machine, fingerprint, sshConn, false)
-		case "cancel-tcpip-forward":
-			// Handle cancellation of port forwarding
-			s.handleCancelTCPIPForward(req)
-		case "forwarded-tcpip":
-			// This is actually handled in channel requests, not global requests
-			if req.WantReply {
-				req.Reply(false, nil)
-			}
-		default:
-			// Unknown request type
-			if req.WantReply {
-				req.Reply(false, nil)
-			}
-		}
-	}
-}
-
-// handleTCPIPForward handles SSH port forwarding to machines
-func (s *Server) handleTCPIPForward(req *ssh.Request, machine *Machine, fingerprint string, sshConn ssh.Conn, reverse bool) {
-	if len(req.Payload) < 8 {
-		if req.WantReply {
-			req.Reply(false, nil)
-		}
-		return
-	}
-
-	// Parse the request payload
-	// Format: string bind_address, uint32 bind_port
-	bindAddrLen := int(req.Payload[0])<<24 | int(req.Payload[1])<<16 | int(req.Payload[2])<<8 | int(req.Payload[3])
-	if len(req.Payload) < 4+bindAddrLen+4 {
-		if req.WantReply {
-			req.Reply(false, nil)
-		}
-		return
-	}
-
-	bindAddr := string(req.Payload[4 : 4+bindAddrLen])
-	bindPort := int(req.Payload[4+bindAddrLen])<<24 | int(req.Payload[4+bindAddrLen+1])<<16 | int(req.Payload[4+bindAddrLen+2])<<8 | int(req.Payload[4+bindAddrLen+3])
-
-	// For now, implement basic port forwarding logic
-	// In a full implementation, we would:
-	// 1. Set up a listener on the requested port
-	// 2. For each incoming connection, establish a connection to the container
-	// 3. Relay data between the connections
-
-	// For this implementation, we'll acknowledge the request but not implement the full forwarding
-	log.Printf("Port forwarding request: %s:%d -> machine %s", bindAddr, bindPort, machine.Name)
-
-	if req.WantReply {
-		// Reply with the actual bound port (for port 0 requests)
-		response := make([]byte, 4)
-		response[0] = byte(bindPort >> 24)
-		response[1] = byte(bindPort >> 16)
-		response[2] = byte(bindPort >> 8)
-		response[3] = byte(bindPort)
-		req.Reply(true, response)
-	}
-}
-
-// handleCancelTCPIPForward handles cancellation of port forwarding
-func (s *Server) handleCancelTCPIPForward(req *ssh.Request) {
-	// TODO: Implement port forwarding cancellation
-	if req.WantReply {
-		req.Reply(true, nil)
-	}
-}
-
-// connectToContainer connects directly to a container for external SSH access
-func (s *Server) connectToContainer(channel *sshbuf.Channel, containerID string) {
-	if s.containerManager == nil {
-		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
-		return
-	}
-
-	fingerprint, _, err := s.getUserFromChannel(channel)
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
-		return
-	}
-
-	// Connect directly without showing "Connecting..." message
-
-	// Use kubectl exec to connect to the container
-	ctx := context.Background()
-
-	// Execute /bin/bash in the container with TTY
-	err = s.containerManager.ExecuteInContainer(
-		ctx,
-		fingerprint, // Using fingerprint as userID
-		containerID,
-		[]string{"/bin/bash"},
-		channel, // stdin
-		channel, // stdout
-		channel, // stderr
-	)
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
-		return
-	}
-
-	// Connection ended normally
-	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
-}
-
-// connectToContainerInteractive connects to a container with proper interactive shell handling
-func (s *Server) connectToContainerInteractive(channel *sshbuf.Channel, containerID string) {
-	if s.containerManager == nil {
-		channel.Write([]byte("\033[1;31mMachine management is not available\033[0m\r\n"))
-		return
-	}
-
-	fingerprint, _, err := s.getUserFromChannel(channel)
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\033[1;31mError: %v\033[0m\r\n", err)))
-		return
-	}
-
-	// Use the simple direct approach - just pass the channel
-	ctx := context.Background()
-
-	// Execute /bin/bash in the container
-	err = s.containerManager.ExecuteInContainer(
-		ctx,
-		fingerprint,
-		containerID,
-		[]string{"/bin/bash"},
-		channel, // stdin
-		channel, // stdout
-		channel, // stderr
-	)
-
-	if err != nil && err != io.EOF {
-		channel.Write([]byte(fmt.Sprintf("\r\n\033[1;31mConnection failed: %v\033[0m\r\n", err)))
-		return
-	}
-
-	// Connection ended normally
-	channel.Write([]byte("\r\n\033[1;32mConnection closed\033[0m\r\n"))
 }
 
 func (s *Server) handleListUserTeams(channel *sshbuf.Channel, fingerprint string) {
@@ -2655,7 +2384,7 @@ func (s *Server) removeUserSession(channel *sshbuf.Channel) {
 
 // handleWhoamiCommand shows the user's key fingerprint, public key, and email address
 func (s *Server) handleWhoamiCommand(channel *sshbuf.Channel, fingerprint, email, publicKey string) {
-	channel.Write([]byte(fmt.Sprintf("\r\n\033[1;36mUser Information:\033[0m\r\n\r\n")))
+	channel.Write([]byte("\r\n\033[1;36mUser Information:\033[0m\r\n\r\n"))
 	channel.Write([]byte(fmt.Sprintf("\033[1mEmail Address:\033[0m %s\r\n", email)))
 	channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key Fingerprint:\033[0m %s\r\n", fingerprint)))
 
@@ -2769,6 +2498,15 @@ func (s *Server) createMachine(userFingerprint, teamName, name, containerID, ima
 	return err
 }
 
+// createMachineWithDockerHost stores machine info including docker host in database
+func (s *Server) createMachineWithDockerHost(userFingerprint, teamName, name, containerID, image, dockerHost string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, docker_host)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, teamName, name, "pending", image, containerID, userFingerprint, dockerHost)
+	return err
+}
+
 // createMachineWithSSH stores machine info including SSH keys in database
 func (s *Server) createMachineWithSSH(userFingerprint, teamName, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	_, err := s.db.Exec(`
@@ -2780,6 +2518,20 @@ func (s *Server) createMachineWithSSH(userFingerprint, teamName, name, container
 	`, teamName, name, "running", image, containerID, userFingerprint,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
 		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort)
+	return err
+}
+
+// createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
+func (s *Server) createMachineWithSSHAndDockerHost(userFingerprint, teamName, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	_, err := s.db.Exec(`
+		INSERT INTO machines (
+			team_name, name, status, image, container_id, created_by_fingerprint,
+			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, teamName, name, "running", image, containerID, userFingerprint,
+		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
+		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost)
 	return err
 }
 
@@ -2814,13 +2566,13 @@ func (s *Server) determineUserShell(userFingerprint, containerID string) (string
 func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 	var machine Machine
 	err := s.db.QueryRow(`
-		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at
+		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at, docker_host
 		FROM machines
 		WHERE team_name = ? AND name = ?
 	`, teamName, name).Scan(
 		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
-		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
+		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost,
 	)
 	if err != nil {
 		return nil, err
@@ -3027,6 +2779,15 @@ func (s *Server) Start() error {
 		}
 	}
 
+	// Start piper plugin server in a goroutine
+	// Set the plugin reference before starting the server to avoid race conditions
+	s.piperPlugin = NewPiperPlugin(s, s.piperAddr)
+	go func() {
+		if err := s.piperPlugin.Serve(); err != nil {
+			log.Printf("Piper plugin server error: %v", err)
+		}
+	}()
+
 	// Start SSH server in a goroutine
 	go func() {
 		sshServer := NewSSHServer(s)
@@ -3038,10 +2799,7 @@ func (s *Server) Start() error {
 	// Print SSH connection command for local dev mode
 	if s.devMode == "local" {
 		// Extract just the port number from the address
-		sshPort := s.sshAddr
-		if strings.HasPrefix(sshPort, ":") {
-			sshPort = sshPort[1:]
-		}
+		sshPort := strings.TrimPrefix(s.sshAddr, ":")
 		log.Printf("SSH server started in local dev mode. Connect with:")
 		log.Printf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %s localhost", sshPort)
 	}
@@ -3058,7 +2816,7 @@ func (s *Server) Start() error {
 // Database helper methods
 
 // getEmailBySSHKey checks if an SSH key is registered and returns the associated email
-func (s *Server) getEmailBySSHKey(fingerprint string) (email string, verified bool, err error) {
+func (s *Server) GetEmailBySSHKey(fingerprint string) (email string, verified bool, err error) {
 	err = s.db.QueryRow(`
 		SELECT user_email, verified
 		FROM ssh_keys
@@ -3473,4 +3231,101 @@ func (s *Server) Stop() error {
 		log.Println("Servers stopped")
 	}
 	return nil
+}
+
+// lookupEphemeralProxyKey checks if the given key is an ephemeral proxy key
+// and if so, returns the original user's public key by asking the piper plugin.
+//
+// EPHEMERAL PROXY KEY FLOW:
+// 1. User connects to sshpiper with their key
+// 2. Piper plugin generates ephemeral proxy key and stores mapping
+// 3. Piper sends proxy key to exed for authentication
+// 4. Exed recognizes proxy key and asks piper plugin for original user key
+// 5. Exed authenticates based on original user key
+func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) []byte {
+	// Get the original user key from the piper plugin
+	// The piper plugin is always configured when SSH proxy is enabled
+	if s.piperPlugin == nil {
+		log.Printf("[ERROR] Piper plugin not configured but proxy key received")
+		return nil
+	}
+
+	proxyFingerprint := s.GetPublicKeyFingerprint(proxyKey)
+	log.Printf("[PROXY DEBUG] Looking up proxy key: %s", proxyFingerprint[:16])
+
+	originalUserKey, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
+	if !exists {
+		log.Printf("[PROXY DEBUG] Proxy key not found or expired: %s", proxyFingerprint[:16])
+		return nil // Not a proxy key or expired
+	}
+
+	log.Printf("[PROXY DEBUG] Found original user key (%d bytes) for proxy key %s",
+		len(originalUserKey), proxyFingerprint[:16])
+	return originalUserKey
+}
+
+// authenticateProxyUser authenticates a user through an ephemeral proxy connection
+func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []byte) (*ssh.Permissions, error) {
+	// Parse the original user's public key
+	originalUserKey, err := ssh.ParsePublicKey(originalUserKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse original user key: %v", err)
+	}
+
+	originalFingerprint := s.GetPublicKeyFingerprint(originalUserKey)
+	originalKeyStr := string(ssh.MarshalAuthorizedKey(originalUserKey))
+
+	log.Printf("[PROXY DEBUG] Authenticating original user: fingerprint=%s, username=%s",
+		originalFingerprint, username)
+
+	// Look up the user by their original fingerprint
+	email, verified, err := s.GetEmailBySSHKey(originalFingerprint)
+	if err != nil {
+		log.Printf("Database error checking SSH key %s: %v", originalFingerprint, err)
+	}
+
+	if email != "" && verified {
+		// This is a verified key, check if user has team memberships
+		teams, err := s.getUserTeamsByEmail(email)
+		if err != nil {
+			log.Printf("Database error getting teams for user %s: %v", email, err)
+		}
+
+		if len(teams) > 0 {
+			// User is fully registered with team membership
+			return &ssh.Permissions{
+				Extensions: map[string]string{
+					"fingerprint": originalFingerprint,
+					"registered":  "true",
+					"email":       email,
+					"public_key":  originalKeyStr,
+					"proxy_user":  username,
+				},
+			}, nil
+		}
+	}
+
+	// Handle unregistered or unverified users
+	if email != "" && !verified {
+		return &ssh.Permissions{
+			Extensions: map[string]string{
+				"fingerprint":        originalFingerprint,
+				"registered":         "false",
+				"email":              email,
+				"public_key":         originalKeyStr,
+				"needs_verification": "true",
+				"proxy_user":         username,
+			},
+		}, nil
+	}
+
+	// User is not registered
+	return &ssh.Permissions{
+		Extensions: map[string]string{
+			"fingerprint": originalFingerprint,
+			"registered":  "false",
+			"public_key":  originalKeyStr,
+			"proxy_user":  username,
+		},
+	}, nil
 }

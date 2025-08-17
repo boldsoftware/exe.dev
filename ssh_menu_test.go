@@ -27,7 +27,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	t.Logf("User is member of %d teams", memberCount)
 
 	// Test authentication directly to see what permissions are returned
-	perms, err := server.authenticatePublicKey(nil, signer.PublicKey())
+	perms, err := server.AuthenticatePublicKey(nil, signer.PublicKey())
 	if err != nil {
 		t.Fatalf("Failed to authenticate public key: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", tmpDB.Name(), "local", []string{""})
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}

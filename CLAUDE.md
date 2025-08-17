@@ -12,3 +12,4 @@
 - when instructed to do an item from the TODO list, on completion remove the item from the TODO list and make a git commit of everything
 - this is a production service; do not leave comments about "for production, do this..."; finish the job
 - do not overly worry about compatibility; do not create shims to handle compatibility
+- NEVER create defaults for things that are required. If data is missing, either fix the missing data or fail with a clear error explaining what's wrong
