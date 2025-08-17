@@ -1,0 +1,34 @@
+[Unit]
+Description=SSH Piper Proxy Server
+Documentation=https://github.com/tg123/sshpiper
+After=network.target exed.service
+Requires=exed.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
+ExecStart=/bin/bash -c 'PRIVATE_KEY=$(sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;") && /home/ubuntu/sshpiperd.latest --log-level=INFO --port=2222 --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" grpc --endpoint=localhost:2224 --insecure'
+Restart=always
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/home/ubuntu
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sshpiper
+
+[Install]
+WantedBy=multi-user.target
