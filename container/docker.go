@@ -661,6 +661,35 @@ func (m *DockerManager) SetupContainerSSH(ctx context.Context, containerID, dock
 
 // setupContainerSSH configures SSH inside the container (internal method)
 func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dockerHost string, sshKeys *ContainerSSHKeys) error {
+	// Wait for container to be ready by spinning until we can execute a simple command
+	// This ensures the container is fully running before we try to set up SSH
+	waitStart := time.Now()
+	for {
+		// Try a simple echo command to check if container is ready
+		testCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "echo", "ready")
+		if dockerHost != "" {
+			testCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+		}
+		if _, err := testCmd.CombinedOutput(); err == nil {
+			// Container is ready
+			break
+		}
+		
+		// Check if we've been waiting too long
+		if time.Since(waitStart) > 30*time.Second {
+			return fmt.Errorf("container not ready after 30 seconds")
+		}
+		
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while waiting for container: %w", ctx.Err())
+		default:
+			// Short spin wait - 100ms
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	
 	// Create SSH config files inside the container
 	cmds := [][]string{
 		// Create SSH directories
@@ -724,9 +753,17 @@ LogLevel INFO
 	}
 
 	// Install openssh-server if not present, then start SSH daemon
-	installCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "bash", "-c", `
+	// Support both Alpine (apk) and Debian/Ubuntu (apt-get)
+	installCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", `
 		if ! command -v sshd >/dev/null 2>&1; then
-			apt-get update >/dev/null 2>&1 && apt-get install -y openssh-server >/dev/null 2>&1
+			if command -v apk >/dev/null 2>&1; then
+				# Alpine Linux
+				apk add --no-cache openssh-server >/dev/null 2>&1
+			elif command -v apt-get >/dev/null 2>&1; then
+				# Debian/Ubuntu - use minimal install to reduce memory usage
+				export DEBIAN_FRONTEND=noninteractive
+				timeout 60 apt-get update >/dev/null 2>&1 && timeout 60 apt-get install -y --no-install-recommends openssh-server >/dev/null 2>&1
+			fi
 		fi
 	`)
 	if dockerHost != "" {
@@ -737,8 +774,24 @@ LogLevel INFO
 		log.Printf("Warning: Failed to install openssh-server (continuing anyway): %v: %s", err, output)
 	}
 
-	// Start SSH daemon in background
-	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "/usr/sbin/sshd", "-D", "-f", "/etc/ssh/sshd_config")
+	// Start SSH daemon in background - first check if sshd exists
+	checkSSHDCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", "which sshd || which /usr/sbin/sshd || echo 'NO_SSHD'")
+	if dockerHost != "" {
+		checkSSHDCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+	sshdPath, _ := checkSSHDCmd.Output()
+	sshdPathStr := strings.TrimSpace(string(sshdPath))
+	
+	if sshdPathStr == "NO_SSHD" || sshdPathStr == "" {
+		// If no sshd found, try to use dropbear or another lightweight SSH server as fallback
+		log.Printf("[SSH] No sshd found in container %s, SSH will not be available", containerID)
+		// For now, we'll just skip SSH setup if sshd is not available
+		// In production, we could install dropbear or another lightweight SSH server
+		return nil
+	}
+	
+	// Start SSH daemon in background using the found path
+	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, sshdPathStr, "-D", "-f", "/etc/ssh/sshd_config")
 	if dockerHost != "" {
 		startCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
@@ -749,7 +802,7 @@ LogLevel INFO
 		} else {
 			log.Printf("[SSH ERROR] Failed to start SSH daemon in container %s: %v: %s", containerID, err, output)
 			// Try alternative startup method
-			retryCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "bash", "-c", "nohup /usr/sbin/sshd -D -f /etc/ssh/sshd_config > /dev/null 2>&1 &")
+			retryCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "sh", "-c", fmt.Sprintf("nohup %s -D -f /etc/ssh/sshd_config > /dev/null 2>&1 &", sshdPathStr))
 			if dockerHost != "" {
 				retryCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 			}

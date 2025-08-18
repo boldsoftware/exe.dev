@@ -852,3 +852,30 @@ func TestSSHPiperRealKeyIntegration(t *testing.T) {
 	t.Logf("  - Original fingerprint: %s", userFingerprint)
 	t.Logf("  - Proxy key mappings: %d active", len(plugin.proxyKeyMappings))
 }
+
+// Helper functions for test setup
+func (s *Server) createTestUser(fingerprint, email string) error {
+	_, err := s.db.Exec(`
+		INSERT OR REPLACE INTO users (public_key_fingerprint, email)
+		VALUES (?, ?)
+	`, fingerprint, email)
+	return err
+}
+
+func (s *Server) createTestTeam(teamName, ownerFingerprint string) error {
+	// Create team
+	_, err := s.db.Exec(`
+		INSERT OR REPLACE INTO teams (name, is_personal, owner_fingerprint)
+		VALUES (?, ?, ?)
+	`, teamName, true, ownerFingerprint)
+	if err != nil {
+		return err
+	}
+
+	// Add owner as admin member
+	_, err = s.db.Exec(`
+		INSERT OR REPLACE INTO team_members (user_fingerprint, team_name, is_admin)
+		VALUES (?, ?, ?)
+	`, ownerFingerprint, teamName, true)
+	return err
+}
