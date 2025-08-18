@@ -24,7 +24,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// For testing, we use ubuntu:22.04 directly
 	// Note: This test may fail if Docker has insufficient memory allocated
 	// (apt-get install openssh-server needs ~512MB during installation)
@@ -112,7 +112,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	if err != nil || strings.Contains(checkSSHOutput.String(), "NO_SSHD") {
 		t.Skip("SSH daemon not available in container (likely due to memory constraints during apt-get install)")
 	}
-	
+
 	// Spin wait for SSH port to be accessible AND SSH daemon to be ready
 	waitStart := time.Now()
 	for {
@@ -138,12 +138,12 @@ func TestRealContainerSSHSetup(t *testing.T) {
 			}
 			// Port is open but SSH not ready yet, continue spinning
 		}
-		
+
 		// Fail fast if waiting too long
 		if time.Since(waitStart) > 30*time.Second {
 			t.Fatalf("SSH setup did not complete within 30 seconds")
 		}
-		
+
 		// Very short spin wait - 50ms
 		time.Sleep(50 * time.Millisecond)
 	}

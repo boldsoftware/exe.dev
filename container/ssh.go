@@ -68,28 +68,28 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 
 	// Create host certificate for the SSH server
 	hostCert := &ssh.Certificate{
-		Key:             serverSSHPub,
-		Serial:          1,
-		CertType:        ssh.HostCert,
+		Key:      serverSSHPub,
+		Serial:   1,
+		CertType: ssh.HostCert,
 		// Use a descriptive key ID for host certificates
 		KeyId:           "exe-container-host",
 		ValidPrincipals: []string{"localhost", "127.0.0.1", "::1"},
 		ValidAfter:      uint64(time.Now().Add(-1 * time.Hour).Unix()),
 		// Set a long expiration time (1 year) for host certificates
-		ValidBefore:     uint64(time.Now().Add(8760 * time.Hour).Unix()), // 1 year
+		ValidBefore: uint64(time.Now().Add(8760 * time.Hour).Unix()), // 1 year
 	}
 
 	// Create user certificate for client authentication
 	userCert := &ssh.Certificate{
-		Key:             clientSSHPub,
-		Serial:          2,
-		CertType:        ssh.UserCert,
+		Key:      clientSSHPub,
+		Serial:   2,
+		CertType: ssh.UserCert,
 		// Let's include the container-name.team-name here.
 		KeyId:           "exe-user",
 		ValidPrincipals: []string{"root"},
 		ValidAfter:      uint64(time.Now().Add(-1 * time.Hour).Unix()),
 		// We don't want expiration
-		ValidBefore:     uint64(time.Now().Add(2160 * time.Hour).Unix()), // 90 days
+		ValidBefore: uint64(time.Now().Add(2160 * time.Hour).Unix()), // 90 days
 		Permissions: ssh.Permissions{
 			Extensions: map[string]string{
 				"permit-pty":              "",
@@ -125,7 +125,7 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 		HostCertificate:   string(ssh.MarshalAuthorizedKey(hostCert)),
 		ClientPrivateKey:  string(pem.EncodeToMemory(clientPrivKeyPEM)),
 		// SSH port is always 22 inside containers (Docker maps to random host ports)
-		SSHPort:           22,
+		SSHPort: 22,
 	}, nil
 }
 

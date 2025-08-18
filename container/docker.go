@@ -198,17 +198,17 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		
+
 		status := strings.TrimSpace(string(statusOutput))
-		
+
 		if status == "running" {
 			break
 		}
-		
+
 		if time.Since(waitStart) > 30*time.Second {
 			return nil, fmt.Errorf("container did not start within 30 seconds, status: %q", status)
 		}
-		
+
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -706,12 +706,12 @@ func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dock
 			// Container is ready
 			break
 		}
-		
+
 		// Check if we've been waiting too long
 		if time.Since(waitStart) > 30*time.Second {
 			return fmt.Errorf("container not ready after 30 seconds")
 		}
-		
+
 		// Check if context is cancelled
 		select {
 		case <-ctx.Done():
@@ -721,7 +721,7 @@ func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dock
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
-	
+
 	// Create SSH config files inside the container
 	cmds := [][]string{
 		// Create SSH directories
@@ -813,7 +813,7 @@ LogLevel INFO
 	}
 	sshdPath, _ := checkSSHDCmd.Output()
 	sshdPathStr := strings.TrimSpace(string(sshdPath))
-	
+
 	if sshdPathStr == "NO_SSHD" || sshdPathStr == "" {
 		// If no sshd found, try to use dropbear or another lightweight SSH server as fallback
 		log.Printf("[SSH] No sshd found in container %s, SSH will not be available", containerID)
@@ -821,7 +821,7 @@ LogLevel INFO
 		// In production, we could install dropbear or another lightweight SSH server
 		return nil
 	}
-	
+
 	// Start SSH daemon in background using the found path
 	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, sshdPathStr, "-D", "-f", "/etc/ssh/sshd_config")
 	if dockerHost != "" {

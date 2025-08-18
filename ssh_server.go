@@ -796,7 +796,6 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 
 // handleMachineSSH handles direct SSH access to a machine
 
-
 // SSHSessionChannel wraps a gliderlabs SSH session to implement compatibility with sshbuf.Channel
 type SSHSessionChannel struct {
 	ssh.Session

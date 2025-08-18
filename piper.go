@@ -38,7 +38,7 @@ type PiperPlugin struct {
 	// 3. Expire old mappings to prevent memory leaks
 	proxyKeyMappings map[string]*ProxyKeyMapping
 	// RWMutex allows concurrent reads while protecting writes
-	proxyKeyMutex    sync.RWMutex
+	proxyKeyMutex sync.RWMutex
 }
 
 // NewPiperPlugin creates a new piper plugin instance
@@ -76,7 +76,7 @@ func (p *PiperPlugin) Serve() error {
 
 	log.Printf("[PIPER DEBUG] Starting sshpiper plugin on %s", p.addr)
 	log.Printf("[PIPER DEBUG] Plugin server listening on %s", lis.Addr())
-	
+
 	err = plugin.Serve()
 	if err != nil {
 		log.Printf("[PIPER ERROR] Plugin server error: %v", err)
@@ -146,12 +146,12 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		UserName: username, // Use original username, not encoded
 		Auth:     libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
 	}
-	
-	log.Printf("[PIPER DEBUG] Returning upstream config: Host=%s, Port=%d, User=%s, AuthType=PrivateKey", 
+
+	log.Printf("[PIPER DEBUG] Returning upstream config: Host=%s, Port=%d, User=%s, AuthType=PrivateKey",
 		upstream.Host, upstream.Port, upstream.UserName)
-	log.Printf("[PIPER DEBUG] Private key length: %d bytes, starts with: %s", 
+	log.Printf("[PIPER DEBUG] Private key length: %d bytes, starts with: %s",
 		len(proxyPrivateKeyPEM), proxyPrivateKeyPEM[:50])
-	
+
 	return upstream, nil
 }
 
@@ -242,7 +242,7 @@ func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte) (s
 	}
 
 	proxyFingerprint := p.server.GetPublicKeyFingerprint(signer.PublicKey())
-	log.Printf("[PIPER DEBUG] Generated proxy key - Type: %s, Fingerprint: %s", 
+	log.Printf("[PIPER DEBUG] Generated proxy key - Type: %s, Fingerprint: %s",
 		signer.PublicKey().Type(), proxyFingerprint[:16])
 
 	// Validate the generated key by trying to parse it again
@@ -294,7 +294,7 @@ func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte,
 // relevant data.
 func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname, netaddr string, key []byte) error {
 	log.Printf("[PIPER DEBUG] VerifyHostKey called - hostname: %s, netaddr: %s, key length: %d", hostname, netaddr, len(key))
-	
+
 	log.Printf("[PIPER DEBUG] Accepting host key for %s", hostname)
 	return nil // Accept the host key
 }
