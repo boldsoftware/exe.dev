@@ -93,6 +93,31 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@latest
 
+      - name: Cache Docker images
+        uses: actions/cache@v3
+        with:
+          path: ~/docker-cache
+          key: docker-images-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+
+      - name: Load cached Docker images
+        run: |
+          if [ -d ~/docker-cache ]; then
+            docker load -i ~/docker-cache/ubuntu-22.04.tar || true
+            docker load -i ~/docker-cache/alpine-latest.tar || true
+          fi
+
+      - name: Pre-pull and save Docker images
+        run: |
+          mkdir -p ~/docker-cache
+          if ! docker image inspect ubuntu:22.04 >/dev/null 2>&1; then
+            docker pull ubuntu:22.04
+          fi
+          if ! docker image inspect alpine:latest >/dev/null 2>&1; then
+            docker pull alpine:latest
+          fi
+          docker save ubuntu:22.04 -o ~/docker-cache/ubuntu-22.04.tar
+          docker save alpine:latest -o ~/docker-cache/alpine-latest.tar
+
       - name: Run tests
         run: gotestsum --format testname -- ./...
 
