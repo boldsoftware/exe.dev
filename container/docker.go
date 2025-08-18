@@ -180,6 +180,38 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 
 	containerID := strings.TrimSpace(string(output))
 
+	// Wait for container to be running before proceeding
+	// This avoids race conditions with port mapping and SSH setup
+	// Use 30 seconds timeout for slower CI environments
+	waitStart := time.Now()
+	for {
+		statusCmd := exec.CommandContext(ctx, "docker", "inspect", containerID, "--format", "{{.State.Status}}")
+		if dockerHost != "" {
+			statusCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+		}
+		statusOutput, err := statusCmd.Output()
+		if err != nil {
+			// Container might not be ready for inspect yet, continue waiting
+			if time.Since(waitStart) > 30*time.Second {
+				return nil, fmt.Errorf("container did not start within 30 seconds, inspect failed: %w", err)
+			}
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		
+		status := strings.TrimSpace(string(statusOutput))
+		
+		if status == "running" {
+			break
+		}
+		
+		if time.Since(waitStart) > 30*time.Second {
+			return nil, fmt.Errorf("container did not start within 30 seconds, status: %q", status)
+		}
+		
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	// Configure SSH in the container (asynchronously)
 	go func() {
 		// Use a separate context with longer timeout for SSH setup
