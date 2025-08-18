@@ -3,6 +3,7 @@ package exe
 import (
 	"bytes"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"strings"
@@ -30,11 +31,15 @@ func TestAuthLogCallback(t *testing.T) {
 	server.testMode = false // Enable auth logging for this test
 	defer server.Stop()
 
-	// Capture log output
+	// Capture slog output
 	var logBuffer bytes.Buffer
-	originalOutput := log.Writer()
-	log.SetOutput(&logBuffer)
-	defer log.SetOutput(originalOutput)
+	originalLogger := slog.Default()
+	// Create a text handler that writes to our buffer
+	textHandler := slog.NewTextHandler(&logBuffer, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+	slog.SetDefault(slog.New(textHandler))
+	defer slog.SetDefault(originalLogger)
 
 	// Create a mock connection metadata
 	mockConn := &mockConnMetadataForAuth{
@@ -54,25 +59,25 @@ func TestAuthLogCallback(t *testing.T) {
 	logOutput := logBuffer.String()
 	t.Logf("Auth log output:\n%s", logOutput)
 
-	// Verify successful auth log
-	if !strings.Contains(logOutput, "[SSH AUTH] SUCCESS publickey auth") {
+	// Verify successful auth log (now using structured logging)
+	if !strings.Contains(logOutput, "SSH auth success") {
 		t.Error("Expected success log message not found")
 	}
-	if !strings.Contains(logOutput, "User: 'testuser'") {
+	if !strings.Contains(logOutput, "user=testuser") {
 		t.Error("Expected user in log message")
 	}
-	if !strings.Contains(logOutput, "RemoteAddr: 192.168.1.100:54321") {
+	if !strings.Contains(logOutput, "remote_addr=192.168.1.100:54321") {
 		t.Error("Expected remote address in log message")
 	}
-	if !strings.Contains(logOutput, "ClientVersion: SSH-2.0-OpenSSH_8.9") {
+	if !strings.Contains(logOutput, "client_version=SSH-2.0-OpenSSH_8.9") {
 		t.Error("Expected client version in log message")
 	}
 
-	// Verify failed auth log
-	if !strings.Contains(logOutput, "[SSH AUTH] FAILED publickey auth") {
+	// Verify failed auth log (now using structured logging)
+	if !strings.Contains(logOutput, "SSH auth failed") {
 		t.Error("Expected failure log message not found")
 	}
-	if !strings.Contains(logOutput, "Error:") {
+	if !strings.Contains(logOutput, "error=") {
 		t.Error("Expected error in failure log message")
 	}
 

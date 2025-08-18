@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	mathrand "math/rand"
 	"net"
 	"net/http"
@@ -47,6 +48,45 @@ import (
 
 //go:embed exe_schema.sql
 var schemaSQL string
+
+// SetupLogger configures slog based on the LOG_FORMAT environment variable.
+// LOG_FORMAT can be "json", "text", or "" (default: text)
+// LOG_LEVEL can be "debug", "info", "warn", "error" (default: info)
+func SetupLogger() {
+	logFormat := strings.ToLower(os.Getenv("LOG_FORMAT"))
+	logLevel := strings.ToLower(os.Getenv("LOG_LEVEL"))
+
+	// Parse log level
+	var level slog.Level
+	switch logLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "info", "":
+		level = slog.LevelInfo
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	// Create handler based on format
+	var handler slog.Handler
+	opts := &slog.HandlerOptions{
+		Level: level,
+	}
+
+	switch logFormat {
+	case "json":
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	default:
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	// Set as default logger
+	slog.SetDefault(slog.New(handler))
+}
 
 //go:embed welcome.html
 var welcomeHTML []byte
@@ -263,7 +303,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	if postmarkAPIKey != "" {
 		postmarkClient = postmark.NewClient(postmarkAPIKey, "")
 	} else if !quietMode {
-		log.Printf("Warning: POSTMARK_API_KEY not set, email verification will not work")
+		slog.Warn("POSTMARK_API_KEY not set, email verification will not work")
 	}
 
 	// Get Stripe key
@@ -271,7 +311,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	if stripeKey == "" {
 		stripeKey = "sk_test_51QxIgSGWIXq1kJnoiKwEcehJeO68QFsueLGymU9zR5jsJtMup5arFZZlHYaOzG3Bsw2GfnIG9H3Jv8Be10vqK1nW001hUxrS2g"
 		if !quietMode {
-			log.Printf("Using default Stripe test key")
+			slog.Info("Using default Stripe test key")
 		}
 	}
 	stripe.Key = stripeKey
@@ -307,18 +347,17 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		containerManager, managerErr = container.NewDockerManager(config)
 		if managerErr != nil {
 			if !quietMode {
-				log.Printf("Warning: Failed to initialize container manager: %v", managerErr)
-				log.Printf("Container functionality will be disabled")
+				slog.Warn("Failed to initialize container manager, functionality will be disabled", "error", managerErr)
 			}
 			containerManager = nil
 		} else {
 			if !quietMode {
-				log.Printf("Machine management enabled with Docker hosts: %v", dockerHosts)
+				slog.Info("Machine management enabled", "docker_hosts", dockerHosts)
 			}
 		}
 	} else {
 		if !quietMode {
-			log.Printf("No Docker hosts configured, container functionality disabled")
+			slog.Info("No Docker hosts configured, container functionality disabled")
 		}
 	}
 
@@ -378,7 +417,7 @@ func (s *Server) setupHTTPSServer() {
 
 	if porkbunAPIKey != "" && porkbunSecretKey != "" {
 		// Use Porkbun for wildcard certificates with DNS challenge
-		log.Printf("Using Porkbun DNS provider for wildcard TLS certificates")
+		slog.Info("Using Porkbun DNS provider for wildcard TLS certificates")
 		s.wildcardCertManager = porkbun.NewWildcardCertManager(
 			"exe.dev",
 			"support@exe.dev",
@@ -397,7 +436,7 @@ func (s *Server) setupHTTPSServer() {
 	} else {
 		// Fall back to regular autocert for non-wildcard certificates
 		if !s.quietMode {
-			log.Printf("Using standard autocert (no wildcard support). Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates.")
+			slog.Info("Using standard autocert (no wildcard support)", "note", "Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates")
 		}
 		s.certManager = &autocert.Manager{
 			Cache:      autocert.DirCache("certs"),
@@ -425,7 +464,7 @@ func (s *Server) setupSSHServer() {
 
 	// Load or generate persistent host keys
 	if err := s.generateHostKey(); err != nil {
-		log.Printf("Failed to generate host key: %v", err)
+		slog.Error("Failed to generate host key", "error", err)
 	}
 }
 
@@ -472,7 +511,7 @@ func (s *Server) generateHostKey() error {
 		}
 
 		if !s.quietMode {
-			log.Printf("Generated and stored new SSH host key with fingerprint: %s", fingerprint)
+			slog.Info("Generated and stored new SSH host key", "fingerprint", fingerprint)
 		}
 		s.sshConfig.AddHostKey(signer)
 
@@ -487,7 +526,7 @@ func (s *Server) generateHostKey() error {
 
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
 		if !s.quietMode {
-			log.Printf("Loaded existing SSH host key with fingerprint: %s", fingerprint)
+			slog.Info("Loaded existing SSH host key", "fingerprint", fingerprint)
 		}
 		s.sshConfig.AddHostKey(signer)
 	}
@@ -525,7 +564,7 @@ func (s *Server) inheritUserTeamMemberships(newFingerprint, userEmail string) er
 		var teamName string
 		var isAdmin bool
 		if err := rows.Scan(&teamName, &isAdmin); err != nil {
-			log.Printf("Error scanning team membership: %v", err)
+			slog.Error("Error scanning team membership", "error", err)
 			continue
 		}
 
@@ -537,9 +576,9 @@ func (s *Server) inheritUserTeamMemberships(newFingerprint, userEmail string) er
 			newFingerprint, teamName, isAdmin, isAdmin)
 
 		if err != nil {
-			log.Printf("Failed to add fingerprint %s to team %s: %v", newFingerprint, teamName, err)
+			slog.Error("Failed to add fingerprint to team", "fingerprint", newFingerprint, "team", teamName, "error", err)
 		} else {
-			log.Printf("Added new SSH key to team %s (admin: %v) for user %s", teamName, isAdmin, userEmail)
+			slog.Info("Added new SSH key to team", "team", teamName, "admin", isAdmin, "user", userEmail)
 		}
 	}
 
@@ -573,7 +612,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 	// In dev mode, always just log the email
 	if s.devMode != "" {
 		if !s.quietMode {
-			log.Printf("📧 DEV MODE: Would send email to %s\nSubject: %s\nBody:\n%s", to, subject, body)
+			slog.Info("📧 DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
 		}
 		return nil
 	}
@@ -593,9 +632,9 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	_, err := s.postmarkClient.SendEmail(email)
 	if err != nil {
-		log.Printf("📧 ERROR: Failed to send email to %s (subject: %s): %v", to, subject, err)
+		slog.Error("📧 Failed to send email", "to", to, "subject", subject, "error", err)
 	} else {
-		log.Printf("📧 Email sent successfully to %s (subject: %s)", to, subject)
+		slog.Info("📧 Email sent successfully", "to", to, "subject", subject)
 	}
 	return err
 }
@@ -634,12 +673,10 @@ func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error)
 
 	if err != nil {
 		// Log failed authentication attempts with more detail for security monitoring
-		log.Printf("[SSH AUTH] FAILED %s auth - User: '%s', RemoteAddr: %s, ClientVersion: %s, Error: %v",
-			method, user, remoteAddr, clientVersion, err)
+		slog.Warn("SSH auth failed", "method", method, "user", user, "remote_addr", remoteAddr, "client_version", clientVersion, "error", err)
 	} else {
 		// Log successful authentication
-		log.Printf("[SSH AUTH] SUCCESS %s auth - User: '%s', RemoteAddr: %s, ClientVersion: %s",
-			method, user, remoteAddr, clientVersion)
+		slog.Info("SSH auth success", "method", method, "user", user, "remote_addr", remoteAddr, "client_version", clientVersion)
 	}
 }
 
@@ -656,31 +693,30 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		user = "<nil>"
 		remoteAddr = "<nil>"
 	}
-	log.Printf("[AUTH DEBUG] Authentication request - User: %s, RemoteAddr: %s, KeyType: %s, Fingerprint: %s",
-		user, remoteAddr, key.Type(), fingerprint[:16])
+	slog.Debug("Authentication request", "user", user, "remote_addr", remoteAddr, "key_type", key.Type(), "fingerprint", fingerprint[:16])
 
 	// Check if this is a proxy connection from sshpiper
-	log.Printf("[AUTH DEBUG] Checking if key %s is a proxy key", fingerprint[:16])
+	slog.Debug("Checking if key is a proxy key", "fingerprint", fingerprint[:16])
 	if originalUserKey := s.lookupEphemeralProxyKey(key); originalUserKey != nil {
-		log.Printf("[PROXY] Ephemeral proxy authentication detected for user: %s", user)
+		slog.Debug("Ephemeral proxy authentication detected", "user", user)
 		return s.authenticateProxyUser(user, originalUserKey)
 	} else {
-		log.Printf("[AUTH DEBUG] Not a proxy key, treating as direct user connection")
+		slog.Debug("Not a proxy key, treating as direct user connection")
 	}
 	// Log non-proxy connections for monitoring - in production, all connections should come via proxy
-	log.Printf("[SECURITY] Direct connection to exed from %s (fingerprint: %s) - should come via proxy", remoteAddr, fingerprint)
+	slog.Warn("Direct connection to exed - should come via proxy", "remote_addr", remoteAddr, "fingerprint", fingerprint)
 
 	// First check if this key is already registered in ssh_keys table
 	email, verified, err := s.GetEmailBySSHKey(fingerprint)
 	if err != nil {
-		log.Printf("Database error checking SSH key %s: %v", fingerprint, err)
+		slog.Error("Database error checking SSH key", "fingerprint", fingerprint, "error", err)
 	}
 
 	if email != "" && verified {
 		// This is a verified key, check if user has team memberships
 		teams, err := s.getUserTeamsByEmail(email)
 		if err != nil {
-			log.Printf("Database error getting teams for user %s: %v", email, err)
+			slog.Error("Database error getting teams for user", "email", email, "error", err)
 		}
 
 		if len(teams) > 0 {
@@ -740,7 +776,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Wake up containers on HTTP request
 	if !s.quietMode {
-		log.Printf("HTTP request: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+		slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 	}
 
 	switch r.URL.Path {
@@ -836,7 +872,7 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err != nil {
-		log.Printf("Database error during device verification check: %v", err)
+		slog.Error("Database error during device verification check", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -996,7 +1032,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err != nil {
-		log.Printf("Database error during device verification: %v", err)
+		slog.Error("Database error during device verification", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -1016,7 +1052,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		ON CONFLICT(fingerprint) DO UPDATE SET verified = 1`,
 		fingerprint, email, publicKey)
 	if err != nil {
-		log.Printf("Failed to add SSH key: %v", err)
+		slog.Error("Failed to add SSH key", "error", err)
 		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
 		return
 	}
@@ -1024,7 +1060,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	// Automatically add the new SSH key to all teams the user is already a member of
 	err = s.inheritUserTeamMemberships(fingerprint, email)
 	if err != nil {
-		log.Printf("Failed to inherit team memberships for %s: %v", email, err)
+		slog.Error("Failed to inherit team memberships", "email", email, "error", err)
 		// Don't fail the verification, just log the error
 	}
 
@@ -1238,12 +1274,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Create the user if they don't exist
 		user, err := s.getUserByFingerprint(fingerprint)
 		if err != nil || user == nil {
-			log.Printf("User doesn't exist for fingerprint %s, creating...", fingerprint)
+			slog.Info("User doesn't exist for fingerprint, creating", "fingerprint", fingerprint)
 			// User doesn't exist - create them with their team
 			if teamName != "" {
 				// Use the team name selected during registration
 				if err := s.createUserWithTeam(fingerprint, email, teamName); err != nil {
-					log.Printf("Failed to create user with team during email verification: %v", err)
+					slog.Error("Failed to create user with team during email verification", "error", err)
 					s.emailVerificationsMu.Unlock()
 					// Clean up pending registration on failure
 					s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
@@ -1255,15 +1291,15 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			} else {
 				// Fallback to auto-generated team name for existing flow
 				if err := s.createUser(fingerprint, email); err != nil {
-					log.Printf("Failed to create user during email verification: %v", err)
+					slog.Error("Failed to create user during email verification", "error", err)
 					s.emailVerificationsMu.Unlock()
 					http.Error(w, "Failed to create user account", http.StatusInternalServerError)
 					return
 				}
 			}
-			log.Printf("Created new user for %s (fingerprint: %s, team: %s)", email, fingerprint, teamName)
+			slog.Info("Created new user", "email", email, "fingerprint", fingerprint, "team", teamName)
 		} else {
-			log.Printf("User already exists for fingerprint %s", fingerprint)
+			slog.Debug("User already exists for fingerprint", "fingerprint", fingerprint)
 		}
 
 		// Store the SSH key as verified
@@ -1275,14 +1311,14 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				ON CONFLICT(fingerprint) DO UPDATE SET verified = 1, public_key = ?, user_email = ?`,
 				fingerprint, email, publicKey, publicKey, email)
 			if err != nil {
-				log.Printf("Error storing SSH key during verification: %v", err)
+				slog.Error("Error storing SSH key during verification", "error", err)
 			}
 		}
 
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
 		if err != nil {
-			log.Printf("Failed to create auth cookie during SSH email verification: %v", err)
+			slog.Error("Failed to create auth cookie during SSH email verification", "error", err)
 			// Continue anyway - SSH auth will still work
 		} else {
 			// Set the authentication cookie
@@ -1310,7 +1346,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Try to validate as database token
 		fingerprint, err := s.validateEmailVerificationToken(token)
 		if err != nil {
-			log.Printf("Invalid email verification token: %v", err)
+			slog.Error("Invalid email verification token", "error", err)
 			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 			return
 		}
@@ -1318,7 +1354,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
 		if err != nil {
-			log.Printf("Failed to create auth cookie during HTTP email verification: %v", err)
+			slog.Error("Failed to create auth cookie during HTTP email verification", "error", err)
 			http.Error(w, "Failed to create authentication session", http.StatusInternalServerError)
 			return
 		}
@@ -1337,7 +1373,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Clean up the database token (single use)
 		_, err = s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
 		if err != nil {
-			log.Printf("Failed to cleanup email verification token: %v", err)
+			slog.Error("Failed to cleanup email verification token", "error", err)
 			// Continue anyway
 		}
 	}
@@ -1445,7 +1481,7 @@ func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, co
 	}
 
 	if !s.quietMode {
-		log.Printf("Container proxy request: %s.%s:%s %s", containerName, teamName, port, r.URL.Path)
+		slog.Info("Container proxy request", "container", containerName, "team", teamName, "port", port, "path", r.URL.Path)
 	}
 
 	// Check for authentication cookie
@@ -1473,7 +1509,7 @@ func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, co
 	// Validate cookie and get user info
 	fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host)
 	if err != nil {
-		log.Printf("Invalid auth cookie: %v", err)
+		slog.Error("Invalid auth cookie", "error", err)
 		// Invalid cookie, redirect to auth
 		authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
 		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
@@ -1483,7 +1519,7 @@ func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, co
 	// Check if user has access to this team/container
 	hasAccess, err := s.userHasTeamAccess(fingerprint, teamName)
 	if err != nil {
-		log.Printf("Error checking team access: %v", err)
+		slog.Error("Error checking team access", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -1495,7 +1531,7 @@ func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, co
 	// Get container info and ensure it exists
 	machine, err := s.getMachineByName(teamName, containerName)
 	if err != nil {
-		log.Printf("Container not found: %v", err)
+		slog.Error("Container not found", "error", err)
 		http.Error(w, "Container not found", http.StatusNotFound)
 		return
 	}
@@ -1505,7 +1541,7 @@ func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, co
 	if machine.ContainerID != nil {
 		containerID = *machine.ContainerID
 	}
-	log.Printf("Proxying to container %s (id: %s)", machine.Name, containerID)
+	slog.Info("Proxying to container", "name", machine.Name, "id", containerID)
 
 	// Proxy the request to the container
 	s.proxyToContainer(w, r, machine, port)
@@ -1522,7 +1558,7 @@ func (s *Server) handleContainerAuthCallback(w http.ResponseWriter, r *http.Requ
 	// Validate the auth token and get user fingerprint
 	fingerprint, err := s.validateAuthToken(token, containerName+"."+teamName)
 	if err != nil {
-		log.Printf("Invalid auth token: %v", err)
+		slog.Error("Invalid auth token", "error", err)
 		http.Error(w, "Invalid or expired auth token", http.StatusUnauthorized)
 		return
 	}
@@ -1530,7 +1566,7 @@ func (s *Server) handleContainerAuthCallback(w http.ResponseWriter, r *http.Requ
 	// Create authentication cookie for this team
 	cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
 	if err != nil {
-		log.Printf("Failed to create auth cookie: %v", err)
+		slog.Error("Failed to create auth cookie", "error", err)
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
 		return
 	}
@@ -1680,7 +1716,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			s.showAuthError(w, r, "No account found with this email address. Please sign up first using SSH: ssh exe.dev")
 			return
 		}
-		log.Printf("Database error checking user: %v", err)
+		slog.Error("Database error checking user", "error", err)
 		s.showAuthError(w, r, "Database error occurred. Please try again.")
 		return
 	}
@@ -1694,7 +1730,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		VALUES (?, ?, ?, ?)
 	`, token, email, userFingerprint, time.Now().Add(24*time.Hour).Format(time.RFC3339))
 	if err != nil {
-		log.Printf("Failed to store email verification: %v", err)
+		slog.Error("Failed to store email verification", "error", err)
 		s.showAuthError(w, r, "Failed to create verification. Please try again.")
 		return
 	}
@@ -1717,7 +1753,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	// Send email using existing verification system
 	err = s.sendVerificationEmail(email, token)
 	if err != nil {
-		log.Printf("Failed to send auth email: %v", err)
+		slog.Error("Failed to send auth email", "error", err)
 		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.")
 		return
 	}
@@ -1798,7 +1834,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		// Validate email verification token
 		fingerprint, err = s.validateEmailVerificationToken(token)
 		if err != nil {
-			log.Printf("Invalid email verification token: %v", err)
+			slog.Error("Invalid email verification token", "error", err)
 			http.Error(w, "Invalid or expired verification token", http.StatusUnauthorized)
 			return
 		}
@@ -1813,7 +1849,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		// Validate the auth token
 		fingerprint, err = s.validateAuthToken(token, "")
 		if err != nil {
-			log.Printf("Invalid auth token in callback: %v", err)
+			slog.Error("Invalid auth token in callback", "error", err)
 			http.Error(w, "Invalid or expired authentication token", http.StatusUnauthorized)
 			return
 		}
@@ -1822,7 +1858,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Create main domain auth cookie
 	cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
 	if err != nil {
-		log.Printf("Failed to create main auth cookie: %v", err)
+		slog.Error("Failed to create main auth cookie", "error", err)
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
 		return
 	}
@@ -2031,7 +2067,7 @@ func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, err
 	// Mark token as used
 	_, err = s.db.Exec("UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE token = ?", token)
 	if err != nil {
-		log.Printf("Failed to mark token as used: %v", err)
+		slog.Error("Failed to mark token as used", "error", err)
 	}
 
 	return fingerprint, nil
@@ -2048,7 +2084,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, finge
 		if isContainerRequest {
 			token, err := s.createAuthToken(fingerprint, containerName+"."+teamName)
 			if err != nil {
-				log.Printf("Failed to create auth token: %v", err)
+				slog.Error("Failed to create auth token", "error", err)
 				http.Error(w, "Failed to create authentication token", http.StatusInternalServerError)
 				return
 			}
@@ -2101,7 +2137,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 	}
 	conn, err := s.containerManager.ConnectToContainer(context.Background(), machine.CreatedByFingerprint, *machine.ContainerID)
 	if err != nil {
-		log.Printf("Failed to connect to container: %v", err)
+		slog.Error("Failed to connect to container", "error", err)
 		http.Error(w, "Container not available", http.StatusServiceUnavailable)
 		return
 	}
@@ -2123,7 +2159,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 
 	// Handle errors
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("Proxy error for %s: %v", machine.Name, err)
+		slog.Error("Proxy error", "machine", machine.Name, "error", err)
 		http.Error(w, "Service temporarily unavailable", http.StatusBadGateway)
 	}
 
@@ -2219,7 +2255,7 @@ func (s *Server) findContainerByName(userID, containerName string) *container.Co
 // findMachineByNameForUser finds a machine by name that the user has access to
 // Supports both "machine" format (uses default team) and "team/machine" format
 func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Machine {
-	log.Printf("[MACHINE DEBUG] FindMachineByNameForUser: fingerprint=%s, machineName=%s", fingerprint[:16], machineName)
+	slog.Debug("FindMachineByNameForUser", "fingerprint", fingerprint[:16], "machine_name", machineName)
 	var teamName string
 	var machineNameOnly string
 
@@ -2255,10 +2291,10 @@ func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Mach
 
 	// Try default team first
 	defaultTeam, err := s.getDefaultTeamForKey(fingerprint)
-	log.Printf("[MACHINE DEBUG] Default team for key: %s (err: %v)", defaultTeam, err)
+	slog.Debug("Default team for key", "team", defaultTeam, "error", err)
 	if err == nil && defaultTeam != "" {
 		machine, err := s.getMachineByName(defaultTeam, machineNameOnly)
-		log.Printf("[MACHINE DEBUG] Checked default team '%s' for machine '%s': found=%v, err=%v", defaultTeam, machineNameOnly, machine != nil, err)
+		slog.Debug("Checked default team for machine", "team", defaultTeam, "machine", machineNameOnly, "found", machine != nil, "error", err)
 		if err == nil {
 			return machine
 		}
@@ -2266,7 +2302,7 @@ func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Mach
 
 	// Get user's teams and search all of them
 	teams, err := s.getUserTeams(fingerprint)
-	log.Printf("[MACHINE DEBUG] User teams: %d teams, err=%v", len(teams), err)
+	slog.Debug("User teams", "count", len(teams), "error", err)
 	if err != nil || len(teams) == 0 {
 		return nil
 	}
@@ -2274,13 +2310,13 @@ func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Mach
 	// Check each team for a machine with this name
 	for _, team := range teams {
 		machine, err := s.getMachineByName(team.TeamName, machineNameOnly)
-		log.Printf("[MACHINE DEBUG] Checked team '%s' for machine '%s': found=%v, err=%v", team.TeamName, machineNameOnly, machine != nil, err)
+		slog.Debug("Checked team for machine", "team", team.TeamName, "machine", machineNameOnly, "found", machine != nil, "error", err)
 		if err == nil {
 			return machine
 		}
 	}
 
-	log.Printf("[MACHINE DEBUG] Machine '%s' not found in any team for user %s", machineName, fingerprint[:16])
+	slog.Debug("Machine not found in any team for user", "machine", machineName, "user", fingerprint[:16])
 	return nil
 }
 
@@ -2629,8 +2665,7 @@ func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalW
 
 	// Debug logging without disrupting the display
 	if !s.quietMode {
-		log.Printf("ASCII art centering: Terminal: %d chars, Art: %d chars, Padding: %d, Mode: %v",
-			terminalWidth, artWidth, leftPadding, terminalMode)
+		slog.Debug("ASCII art centering", "terminal_width", terminalWidth, "art_width", artWidth, "padding", leftPadding, "mode", terminalMode)
 	}
 
 	// Clear screen and move cursor to top
@@ -2748,10 +2783,10 @@ func (s *Server) Start() error {
 	if s.httpAddr != "" {
 		go func() {
 			if !s.quietMode {
-				log.Printf("HTTP server starting on %s", s.httpAddr)
+				slog.Info("HTTP server starting", "addr", s.httpAddr)
 			}
 			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("HTTP server error: %v", err)
+				slog.Error("HTTP server error", "error", err)
 			}
 		}()
 	}
@@ -2759,9 +2794,9 @@ func (s *Server) Start() error {
 	// Start HTTPS server in a goroutine if configured
 	if s.httpsAddr != "" {
 		go func() {
-			log.Printf("HTTPS server starting on %s with Let's Encrypt for exe.dev", s.httpsAddr)
+			slog.Info("HTTPS server starting with Let's Encrypt for exe.dev", "addr", s.httpsAddr)
 			if err := s.httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				log.Printf("HTTPS server error: %v", err)
+				slog.Error("HTTPS server error", "error", err)
 			}
 		}()
 
@@ -2769,13 +2804,13 @@ func (s *Server) Start() error {
 		// Note: DNS challenge for wildcard certs doesn't need HTTP-01 challenge handler
 		if s.certManager != nil {
 			go func() {
-				log.Printf("Starting autocert HTTP server on :80 for ACME challenges")
+				slog.Info("Starting autocert HTTP server on :80 for ACME challenges")
 				if err := http.ListenAndServe(":80", s.certManager.HTTPHandler(nil)); err != nil {
-					log.Printf("Autocert HTTP server error: %v", err)
+					slog.Error("Autocert HTTP server error", "error", err)
 				}
 			}()
 		} else if s.wildcardCertManager != nil {
-			log.Printf("Using DNS challenges for wildcard certificates - port 80 not required for ACME")
+			slog.Info("Using DNS challenges for wildcard certificates - port 80 not required for ACME")
 		}
 	}
 
@@ -2784,7 +2819,7 @@ func (s *Server) Start() error {
 	s.piperPlugin = NewPiperPlugin(s, s.piperAddr)
 	go func() {
 		if err := s.piperPlugin.Serve(); err != nil {
-			log.Printf("Piper plugin server error: %v", err)
+			slog.Error("Piper plugin server error", "error", err)
 		}
 	}()
 
@@ -2792,7 +2827,7 @@ func (s *Server) Start() error {
 	go func() {
 		sshServer := NewSSHServer(s)
 		if err := sshServer.Start(s.sshAddr); err != nil {
-			log.Printf("SSH server error: %v", err)
+			slog.Error("SSH server error", "error", err)
 		}
 	}()
 
@@ -2800,8 +2835,8 @@ func (s *Server) Start() error {
 	if s.devMode == "local" {
 		// Extract just the port number from the address
 		sshPort := strings.TrimPrefix(s.sshAddr, ":")
-		log.Printf("SSH server started in local dev mode. Connect with:")
-		log.Printf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %s localhost", sshPort)
+		slog.Info("SSH server started in local dev mode. Connect with:")
+		slog.Info("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %s localhost", "port", sshPort)
 	}
 
 	// Wait for interrupt signal
@@ -3212,13 +3247,13 @@ func (s *Server) Stop() error {
 
 	// Shutdown HTTP server
 	if err := s.httpServer.Shutdown(ctx); err != nil {
-		log.Printf("HTTP server shutdown error: %v", err)
+		slog.Error("HTTP server shutdown error", "error", err)
 	}
 
 	// Shutdown HTTPS server if running
 	if s.httpsServer != nil {
 		if err := s.httpsServer.Shutdown(ctx); err != nil {
-			log.Printf("HTTPS server shutdown error: %v", err)
+			slog.Error("HTTPS server shutdown error", "error", err)
 		}
 	}
 
@@ -3246,21 +3281,20 @@ func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) []byte {
 	// Get the original user key from the piper plugin
 	// The piper plugin is always configured when SSH proxy is enabled
 	if s.piperPlugin == nil {
-		log.Printf("[ERROR] Piper plugin not configured but proxy key received")
+		slog.Error("Piper plugin not configured but proxy key received")
 		return nil
 	}
 
 	proxyFingerprint := s.GetPublicKeyFingerprint(proxyKey)
-	log.Printf("[PROXY DEBUG] Looking up proxy key: %s", proxyFingerprint[:16])
+	slog.Debug("Looking up proxy key", "fingerprint", proxyFingerprint[:16])
 
 	originalUserKey, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
-		log.Printf("[PROXY DEBUG] Proxy key not found or expired: %s", proxyFingerprint[:16])
+		slog.Debug("Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
 		return nil // Not a proxy key or expired
 	}
 
-	log.Printf("[PROXY DEBUG] Found original user key (%d bytes) for proxy key %s",
-		len(originalUserKey), proxyFingerprint[:16])
+	slog.Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "proxy_fingerprint", proxyFingerprint[:16])
 	return originalUserKey
 }
 
@@ -3275,20 +3309,19 @@ func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []b
 	originalFingerprint := s.GetPublicKeyFingerprint(originalUserKey)
 	originalKeyStr := string(ssh.MarshalAuthorizedKey(originalUserKey))
 
-	log.Printf("[PROXY DEBUG] Authenticating original user: fingerprint=%s, username=%s",
-		originalFingerprint, username)
+	slog.Debug("Authenticating original user", "fingerprint", originalFingerprint, "username", username)
 
 	// Look up the user by their original fingerprint
 	email, verified, err := s.GetEmailBySSHKey(originalFingerprint)
 	if err != nil {
-		log.Printf("Database error checking SSH key %s: %v", originalFingerprint, err)
+		slog.Error("Database error checking SSH key", "fingerprint", originalFingerprint, "error", err)
 	}
 
 	if email != "" && verified {
 		// This is a verified key, check if user has team memberships
 		teams, err := s.getUserTeamsByEmail(email)
 		if err != nil {
-			log.Printf("Database error getting teams for user %s: %v", email, err)
+			slog.Error("Database error getting teams for user", "email", email, "error", err)
 		}
 
 		if len(teams) > 0 {

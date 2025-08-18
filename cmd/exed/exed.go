@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -19,12 +19,13 @@ func main() {
 	dockerHosts := flag.String("docker-hosts", "", "Comma-separated list of DOCKER_HOST values (e.g., 'tcp://host1:2376,tcp://host2:2376')")
 	flag.Parse()
 
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Printf("Starting exed server...")
+	// Setup structured logging
+	exe.SetupLogger()
+	slog.Info("Starting exed server")
 
 	// Validate dev mode
 	if *devMode != "" && *devMode != "local" {
-		log.Printf("Invalid -dev mode: %s. Must be \"\" or \"local\"", *devMode)
+		slog.Error("Invalid dev mode", "mode", *devMode, "valid_options", []string{"", "local"})
 		os.Exit(1)
 	}
 
@@ -46,18 +47,17 @@ func main() {
 	}
 
 	if len(hosts) == 0 {
-		log.Printf("Warning: No Docker hosts specified. Container functionality will be disabled.")
-		log.Printf("Use -docker-hosts flag or set DOCKER_HOST env var")
+		slog.Warn("No Docker hosts specified, container functionality will be disabled", "suggestion", "Use -docker-hosts flag or set DOCKER_HOST env var")
 	}
 
 	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, hosts)
 	if err != nil {
-		log.Printf("Failed to create server: %v", err)
+		slog.Error("Failed to create server", "error", err)
 		os.Exit(1)
 	}
 
 	if err := server.Start(); err != nil {
-		log.Printf("Server error: %v", err)
+		slog.Error("Server error", "error", err)
 		os.Exit(1)
 	}
 }
