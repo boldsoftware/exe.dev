@@ -176,16 +176,20 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, fingerprint string) 
 	// The container might be paused/stopped, but we have the port mapping in the database
 	host := "localhost"
 	if sshDetails.DockerHost != nil && *sshDetails.DockerHost != "" {
-		// Parse DOCKER_HOST to extract hostname
-		// Format: tcp://hostname:port or unix:///path/to/socket
+		// Parse docker host to extract hostname
+		// Formats: tcp://hostname:port, ssh://hostname, or direct hostname
 		dockerHost := *sshDetails.DockerHost
 		if strings.HasPrefix(dockerHost, "tcp://") {
 			// Extract hostname from tcp://hostname:port
 			parts := strings.Split(strings.TrimPrefix(dockerHost, "tcp://"), ":")
 			if len(parts) > 0 && parts[0] != "" {
 				host = parts[0]
-				log.Printf("[PIPER DEBUG] Using docker host %s from DOCKER_HOST=%s", host, dockerHost)
+				log.Printf("[PIPER DEBUG] Using docker host %s from tcp format: %s", host, dockerHost)
 			}
+		} else if strings.HasPrefix(dockerHost, "ssh://") {
+			// Extract hostname from ssh://hostname
+			host = strings.TrimPrefix(dockerHost, "ssh://")
+			log.Printf("[PIPER DEBUG] Using docker host %s from ssh format: %s", host, dockerHost)
 		} else if dockerHost != "" && !strings.HasPrefix(dockerHost, "unix://") {
 			// Direct hostname
 			host = dockerHost
