@@ -2486,7 +2486,7 @@ func (s *Server) formatSSHConnectionInfo(machineName string) string {
 		if port == "22" {
 			return fmt.Sprintf("ssh %s@localhost", machineName)
 		}
-		return fmt.Sprintf("ssh -p %s %s@localhost", port, machineName)
+		return fmt.Sprintf("ssh -p 2222 %s@localhost", machineName)
 	}
 	return fmt.Sprintf("ssh %s@exe.dev", machineName)
 }
