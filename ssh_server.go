@@ -220,7 +220,6 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m                    - List your machines\r\n" +
 		"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
-		"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
 		"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
 		"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
 		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
@@ -288,8 +287,6 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			ss.handleListCommand(s, fingerprint, teamName)
 		case "new":
 			ss.handleNewCommand(s, fingerprint, teamName, args)
-		case "ssh":
-			ss.handleSSHCommandMenu(s, fingerprint, teamName, args)
 		case "start":
 			ss.handleStartCommand(s, fingerprint, teamName, args)
 		case "stop":
@@ -755,8 +752,6 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 		ss.handleNewCommand(s, fingerprint, team.TeamName, args)
 	case "list", "ls":
 		ss.handleListCommand(s, fingerprint, team.TeamName)
-	case "ssh":
-		ss.handleSSHCommandMenu(s, fingerprint, team.TeamName, args)
 	case "start":
 		ss.handleStartCommand(s, fingerprint, team.TeamName, args)
 	case "stop":
@@ -778,7 +773,6 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 			helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 				"\033[1mlist\033[0m                    - List your machines\r\n" +
 				"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
-				"\033[1mssh <name>\033[0m              - SSH into a machine\r\n" +
 				"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
 				"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
 				"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
@@ -1257,18 +1251,6 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 
 	// Timed out
 	fmt.Fprintf(s, "\r\033[K\033[1;31mTimeout: Machine failed to start within 3 minutes\033[0m\r\n")
-}
-
-func (ss *SSHServer) handleSSHCommandMenu(s ssh.Session, fingerprint, teamName string, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
-		fmt.Fprintf(s, "Usage: ssh <machine-name>\r\n")
-		return
-	}
-
-	machineName := args[0]
-	fmt.Fprintf(s, "Connecting to machine '%s'...\r\n", machineName)
-	fmt.Fprintf(s, "\033[1;33mNote: SSH to machines not fully implemented in new server yet\033[0m\r\n")
 }
 
 func (ss *SSHServer) handleStartCommand(s ssh.Session, fingerprint, teamName string, args []string) {
