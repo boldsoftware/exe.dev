@@ -1,0 +1,95 @@
+name: exe e2e ai tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 3 AM UTC
+    - cron: '0 3 * * *'
+
+jobs:
+  ai-test:
+    runs-on: "linux-x64-ubuntu-latest-8-core"
+    environment: ai-testing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "./go.mod"
+          cache: true
+
+      - name: Cache Go dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Setup test environment
+        run: |
+          # Assert Docker is running (it should already be in GitHub Actions)
+          docker version
+          
+          # Install tmux if not available (needed for the e2e tests)
+          sudo apt-get update
+          sudo apt-get install -y tmux
+
+      - name: Build exe.dev
+        run: |
+          go build -o exed ./cmd/exed
+
+      - name: Download latest sketch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Use gh CLI to download the latest sketch binary (gh is pre-installed in GitHub Actions)
+          gh release download -p 'sketch*linux*amd64' --repo boldsoftware/sketch
+          
+          # Find and rename the downloaded binary
+          SKETCH_BINARY=$(find . -name 'sketch*linux*amd64' -type f | head -1)
+          if [ -z "$SKETCH_BINARY" ]; then
+            echo "No sketch linux amd64 binary found after download"
+            exit 1
+          fi
+          
+          mv "$SKETCH_BINARY" sketch
+          chmod +x sketch
+          
+          # Verify the binary works
+          ./sketch --version || echo "sketch binary downloaded successfully"
+
+      - name: Run e2e AI tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cd e2e
+          
+          # Execute sketch with the test prompt
+          ../sketch -one-shot -unsafe -prompt 'read test-prompt.md and follow instructions'
+          
+          # Check if the test created a result file
+          if [ -f "result.txt" ]; then
+            RESULT=$(cat result.txt)
+            echo "Test result: $RESULT"
+            if [ "$RESULT" != "SUCCESS" ]; then
+              echo "E2E test failed with result: $RESULT"
+              exit 1
+            fi
+          else
+            echo "No result.txt file found - test may not have completed properly"
+            exit 1
+          fi
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe-e2e-test-logs
+          path: |
+            e2e/*.log
+            e2e/*.txt
+            *.log
+            *.txt
+          retention-days: 7
