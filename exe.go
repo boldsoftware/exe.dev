@@ -9,7 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -47,8 +47,8 @@ import (
 	"exe.dev/sshbuf"
 )
 
-//go:embed exe_schema.sql
-var schemaSQL string
+//go:embed schema/*.sql
+var migrationFS embed.FS
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
 // LOG_FORMAT can be "json", "text", "tint", or "" (defaults: tint in dev, text in prod)
@@ -302,10 +302,10 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Execute schema
-	if _, err := db.Exec(schemaSQL); err != nil {
+	// Run database migrations
+	if err := runMigrations(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	// Detect if we're running in test mode
