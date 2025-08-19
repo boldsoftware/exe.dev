@@ -9,6 +9,7 @@ require (
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
+	github.com/lmittmann/tint v1.1.2
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stripe/stripe-go/v76 v76.25.0
 	github.com/tg123/sshpiper v0.0.0-00010101000000-000000000000

@@ -19,15 +19,17 @@ func main() {
 	dockerHosts := flag.String("docker-hosts", "", "Comma-separated list of DOCKER_HOST values (e.g., 'tcp://host1:2376,tcp://host2:2376')")
 	flag.Parse()
 
-	// Setup structured logging
-	exe.SetupLogger()
-	slog.Info("Starting exed server")
-
 	// Validate dev mode
 	if *devMode != "" && *devMode != "local" {
+		// Setup basic logging first for error reporting
+		exe.SetupLogger(*devMode)
 		slog.Error("Invalid dev mode", "mode", *devMode, "valid_options", []string{"", "local"})
 		os.Exit(1)
 	}
+
+	// Setup structured logging
+	exe.SetupLogger(*devMode)
+	slog.Info("Starting exed server")
 
 	// Parse Docker hosts
 	var hosts []string

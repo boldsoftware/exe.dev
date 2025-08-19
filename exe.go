@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/keighl/postmark"
+	"github.com/lmittmann/tint"
 
 	"github.com/stripe/stripe-go/v76"
 	"golang.org/x/crypto/acme/autocert"
@@ -50,11 +51,20 @@ import (
 var schemaSQL string
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
-// LOG_FORMAT can be "json", "text", or "" (default: text)
+// LOG_FORMAT can be "json", "text", "tint", or "" (defaults: tint in dev, text in prod)
 // LOG_LEVEL can be "debug", "info", "warn", "error" (default: info)
-func SetupLogger() {
+func SetupLogger(devMode string) {
 	logFormat := strings.ToLower(os.Getenv("LOG_FORMAT"))
 	logLevel := strings.ToLower(os.Getenv("LOG_LEVEL"))
+
+	// Set default format based on dev mode if not explicitly set
+	if logFormat == "" {
+		if devMode != "" {
+			logFormat = "tint" // Use tint in dev mode
+		} else {
+			logFormat = "text" // Use text in production
+		}
+	}
 
 	// Parse log level
 	var level slog.Level
@@ -80,7 +90,11 @@ func SetupLogger() {
 	switch logFormat {
 	case "json":
 		handler = slog.NewJSONHandler(os.Stdout, opts)
-	default:
+	case "tint":
+		handler = tint.NewHandler(os.Stdout, &tint.Options{
+			Level: level,
+		})
+	default: // "text" and any unknown format
 		handler = slog.NewTextHandler(os.Stdout, opts)
 	}
 
