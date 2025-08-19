@@ -225,6 +225,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
 		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
 		"\033[1mteam\033[0m                    - Team management\r\n" +
+		"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 		"\033[1m?\033[0m                       - Show this help\r\n" +
 		"\033[1mexit\033[0m                    - Exit\r\n\r\n" +
 		"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
@@ -297,6 +298,8 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			ss.handleLogsCommand(s, fingerprint, teamName, args)
 		case "team":
 			ss.handleTeamCommand(s, fingerprint, teamName, args)
+		case "whoami":
+			ss.handleWhoamiCommand(s, fingerprint, email)
 		default:
 			fmt.Fprint(s, "Unknown command. Type 'help' for available commands.\r\n")
 		}
@@ -710,7 +713,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 	}
 
 	// Get user and team info
-	_, err := ss.server.getUserByFingerprint(fingerprint)
+	user, err := ss.server.getUserByFingerprint(fingerprint)
 	if err != nil {
 		fmt.Fprintf(s, "Authentication error: %v\r\n", err)
 		return
@@ -764,6 +767,8 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 		fmt.Fprintf(s, "\033[1;33mDiagnostics not implemented in new server yet\033[0m\r\n")
 	case "team":
 		ss.handleTeamCommand(s, fingerprint, team.TeamName, args)
+	case "whoami":
+		ss.handleWhoamiCommand(s, fingerprint, user.Email)
 	case "help", "?":
 		// Check if asking for help on a specific command
 		if len(args) > 0 {
@@ -779,6 +784,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 				"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
 				"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
 				"\033[1mteam\033[0m                    - Team management\r\n" +
+				"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 				"\033[1m?\033[0m                       - Show this help\r\n\r\n" +
 				"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
 			fmt.Fprint(s, helpText)
@@ -1475,10 +1481,71 @@ func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
 			"Get startup diagnostics for a machine.\r\n\r\n" +
 			"\033[1mUsage:\033[0m diag <machine-name>\r\n\r\n"
 		fmt.Fprint(s, helpText)
+	case "whoami":
+		helpText := "\r\n\033[1;33mCommand: whoami\033[0m\r\n\r\n" +
+			"Show your user information including email and all SSH keys.\r\n" +
+			"The currently connected key is highlighted.\r\n\r\n" +
+			"\033[1mUsage:\033[0m whoami\r\n\r\n"
+		fmt.Fprint(s, helpText)
 	default:
 		fmt.Fprintf(s, "\r\n\033[1;31mNo help available for command: %s\033[0m\r\n\r\n", command)
 		fmt.Fprintf(s, "Run \033[1mhelp\033[0m without arguments to see all available commands.\r\n\r\n")
 	}
+}
+
+func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, fingerprint, email string) {
+	fmt.Fprintf(s, "\r\n\033[1;36mUser Information:\033[0m\r\n\r\n")
+	fmt.Fprintf(s, "\033[1mEmail Address:\033[0m %s\r\n", email)
+
+	// Get the current session's public key
+	currentPublicKey, _ := s.Context().Value("public_key").(string)
+
+	// Get all public keys for this user
+	rows, err := ss.server.db.Query(`SELECT fingerprint, public_key, device_name FROM ssh_keys WHERE user_email = ? AND verified = 1 ORDER BY fingerprint`, email)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError retrieving SSH keys: %v\033[0m\r\n", err)
+		return
+	}
+	defer rows.Close()
+
+	fmt.Fprintf(s, "\033[1mSSH Keys:\033[0m\r\n")
+	keyCount := 0
+	for rows.Next() {
+		var dbFingerprint, dbPublicKey, deviceName string
+		if err := rows.Scan(&dbFingerprint, &dbPublicKey, &deviceName); err != nil {
+			continue
+		}
+		keyCount++
+
+		// Check if this is the current key being used
+		isCurrent := dbFingerprint == fingerprint
+		currentIndicator := ""
+		if isCurrent {
+			currentIndicator = " \033[1;32m← current\033[0m"
+		}
+
+		fmt.Fprintf(s, "  \033[1mDevice:\033[0m %s%s\r\n", deviceName, currentIndicator)
+		fmt.Fprintf(s, "  \033[1mFingerprint:\033[0m %s\r\n", dbFingerprint)
+
+		// Use the current session's key if this is the current fingerprint, otherwise use DB key
+		displayKey := dbPublicKey
+		if isCurrent && currentPublicKey != "" {
+			displayKey = currentPublicKey
+		}
+
+		if displayKey != "" {
+			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m %s\r\n", strings.TrimSpace(displayKey))
+		} else {
+			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m \033[2m(not available)\033[0m\r\n")
+		}
+		fmt.Fprintf(s, "\r\n")
+	}
+
+	if keyCount == 0 {
+		fmt.Fprintf(s, "  \033[2mNo SSH keys found\033[0m\r\n")
+	}
+
+	fmt.Fprintf(s, "\r\n")
 }
 
 func (ss *SSHServer) handleTeamCommand(s ssh.Session, fingerprint, teamName string, args []string) {

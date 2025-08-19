@@ -520,6 +520,13 @@ func TestSSHDirectExecCommands(t *testing.T) {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}
 
+	// Add a second SSH key to test multiple key display
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`,
+		"dummy-fingerprint-123", email, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDummykey...", "laptop")
+	if err != nil {
+		t.Fatalf("Failed to add second SSH key: %v", err)
+	}
+
 	_, err = server.db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)
 	if err != nil {
 		t.Fatalf("Failed to create team: %v", err)
@@ -545,6 +552,16 @@ func TestSSHDirectExecCommands(t *testing.T) {
 			name:     "help command",
 			command:  "help",
 			expected: "EXE.DEV",
+		},
+		{
+			name:     "whoami command",
+			command:  "whoami",
+			expected: "test@example.com",
+		},
+		{
+			name:     "help whoami command",
+			command:  "help whoami",
+			expected: "Show your user information",
 		},
 	}
 
