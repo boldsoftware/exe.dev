@@ -34,6 +34,7 @@ echo ""
 # Generate timestamp for this deployment
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BINARY_NAME="sshpiperd.$TIMESTAMP"
+METRICS_NAME="metrics.$TIMESTAMP"
 
 echo -e "${YELLOW}Building sshpiper binary...${NC}"
 echo "Binary name: $BINARY_NAME"
@@ -48,18 +49,41 @@ if [ ! -f "/tmp/$BINARY_NAME" ]; then
     exit 1
 fi
 
+echo -e "${YELLOW}Building metrics binary...${NC}"
+echo "Binary name: $METRICS_NAME"
+
+# Build metrics binary for linux/amd64 (same as exed deployment)
+cd sshpiper
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$METRICS_NAME" ./plugin/metrics
+cd ..
+
+if [ ! -f "/tmp/$METRICS_NAME" ]; then
+    echo -e "${RED}ERROR: Failed to build metrics binary${NC}"
+    exit 1
+fi
+
 # Get binary size
 BINARY_SIZE=$(ls -lh "/tmp/$BINARY_NAME" | awk '{print $5}')
 echo -e "${GREEN}✓ sshpiper binary built successfully (size: $BINARY_SIZE)${NC}"
 echo ""
 
+# Get metrics binary size
+METRICS_BINARY_SIZE=$(ls -lh "/tmp/$METRICS_NAME" | awk '{print $5}')
+echo -e "${GREEN}✓ metrics binary built successfully (size: $METRICS_BINARY_SIZE)${NC}"
+echo ""
+
 # Deploy to VM
 echo -e "${YELLOW}Deploying to VM...${NC}"
 
-# Copy binary to VM via Tailscale
+# Copy binaries to VM via Tailscale
 echo "Copying binary to VM..."
 if ! scp "/tmp/$BINARY_NAME" "$TAILSCALE_HOST:~/"; then
     echo -e "${RED}ERROR: Failed to copy binary to VM${NC}"
+    exit 1
+fi
+
+if ! scp "/tmp/$METRICS_NAME" "$TAILSCALE_HOST:~/"; then
+    echo -e "${RED}ERROR: Failed to copy metrics binary to VM${NC}"
     exit 1
 fi
 
@@ -88,9 +112,22 @@ else
     ls -la ~/$BINARY_NAME
 fi
 
-# Create a symlink to the latest version
+# Make metrics plugin executable
+chmod +x ~/$METRICS_NAME
+
+if [ -x ~/$METRICS_NAME ]; then
+    echo "✓ Binary permissions set correctly"
+else
+    echo "⚠ Warning: Binary may not be executable"
+    ls -la ~/$METRICS_NAME
+fi
+
+# Create a symlinks to the latest versions
 rm -f ~/sshpiperd.latest
 ln -sf ~/$BINARY_NAME ~/sshpiperd.latest
+
+rm -f ~/metrics.latest
+ln -sf ~/$METRICS_NAME ~/metrics.latest
 
 # Install systemd service file
 sudo cp ~/sshpiper.service /etc/systemd/system/
@@ -134,3 +171,4 @@ echo "  sudo ln -sf ~/sshpiperd.TIMESTAMP ~/sshpiperd.latest"
 echo "  sudo systemctl restart sshpiper"
 
 rm -f "/tmp/$BINARY_NAME"
+rm -f "/tmp/$METRICS_NAME"
