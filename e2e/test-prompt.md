@@ -17,7 +17,15 @@ Test Steps:
 
 The e-mail thing will require doing a web call; use the browser to handle that.
 
-2. Create a new container using "ssh -p 2222 localhost"
+2. Test the "whoami" command.
 
-3. SSH into that container (by using ssh -p 2222 name@localhost) and run "id"
+3. Test the "list" command (should have no machines yet!)
+
+4. Create a new container using "ssh -p 2222 localhost"
+
+5. SSH into that container (by using ssh -p 2222 name@localhost) and run "id"
   (docker exec is not the right way to do this)
+
+6. Open up a shell to the new container and check the hostname.
+
+7. Use scp with the new container to test that SSH subsystems work.
