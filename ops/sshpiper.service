@@ -10,7 +10,7 @@ Type=exec
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu
-ExecStart=/bin/bash -c 'PRIVATE_KEY=$(sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;") && /home/ubuntu/sshpiperd.latest --log-level=INFO --port=2222 --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" grpc --endpoint=localhost:2224 --insecure'
+ExecStart=/bin/bash -c 'PRIVATE_KEY=$(sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;") && exec /home/ubuntu/sshpiperd.latest --log-level=INFO --port=22 --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" grpc --endpoint=localhost:2224 --insecure'
 Restart=always
 RestartSec=5
 TimeoutStartSec=30
@@ -29,6 +29,10 @@ ReadWritePaths=/home/ubuntu
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=sshpiper
+
+# Allow binding to privileged ports
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target

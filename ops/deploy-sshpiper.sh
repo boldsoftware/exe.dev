@@ -67,7 +67,7 @@ echo -e "${GREEN}✓ Binary uploaded${NC}"
 
 # Copy systemd service file
 echo "Copying systemd service file..."
-if ! scp "ops/sshpiper.service" "$TAILSCALE_HOST:~/"; then
+if ! scp "ops/sshpiper.service" "$TAILSCALE_HOST:/etc/systemd/system/sshpiper.service"; then
     echo -e "${RED}ERROR: Failed to copy service file to VM${NC}"
     exit 1
 fi
