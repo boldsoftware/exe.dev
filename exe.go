@@ -782,6 +782,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if this should be handled by the proxy handler
+	if s.isProxyRequest(r.Host) {
+		s.handleProxyRequest(w, r)
+		return
+	}
+
 	// Check if this is a container subdomain request
 	if containerName, teamName, port, isContainerRequest := s.parseContainerRequest(r.Host); isContainerRequest {
 		s.handleContainerProxy(w, r, containerName, teamName, port)
