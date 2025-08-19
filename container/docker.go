@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -723,11 +725,25 @@ func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dock
 		}
 	}
 
+	// Copy /exe.dev SSH binaries to the container
+	if err := m.copySSHBinaries(ctx, containerID, dockerHost); err != nil {
+		return fmt.Errorf("failed to copy SSH binaries: %w", err)
+	}
+
 	// Create SSH config files inside the container
 	cmds := [][]string{
 		// Create SSH directories
-		{"mkdir", "-p", "/etc/ssh", "/root/.ssh", "/run/sshd"},
+		{"mkdir", "-p", "/etc/ssh", "/root/.ssh", "/run/sshd", "/var/empty", "/usr/lib/ssh"},
 		{"chmod", "700", "/root/.ssh"},
+		{"chmod", "755", "/var/empty"},
+		// Create sshd user for privilege separation (required by OpenSSH)
+		{"sh", "-c", "grep -q '^sshd:' /etc/passwd || echo 'sshd:x:22:22:sshd:/var/empty:/bin/false' >> /etc/passwd"},
+		{"sh", "-c", "grep -q '^sshd:' /etc/group || echo 'sshd:x:22:' >> /etc/group"},
+		// Create symlinks for dynamic loaders in standard locations
+		// This ensures the binaries with hardcoded interpreter paths can find their loader
+		{"sh", "-c", "if [ -f /exe.dev/lib/ld-linux-x86-64.so.2 ] && [ ! -e /lib64/ld-linux-x86-64.so.2 ]; then mkdir -p /lib64 && ln -sf /exe.dev/lib/ld-linux-x86-64.so.2 /lib64/; fi"},
+		{"sh", "-c", "if [ -f /exe.dev/lib/ld-musl-aarch64.so.1 ] && [ ! -e /lib/ld-musl-aarch64.so.1 ]; then ln -sf /exe.dev/lib/ld-musl-aarch64.so.1 /lib/; fi"},
+		{"sh", "-c", "if [ -f /exe.dev/lib/ld-musl-x86_64.so.1 ] && [ ! -e /lib/ld-musl-x86_64.so.1 ]; then ln -sf /exe.dev/lib/ld-musl-x86_64.so.1 /lib/; fi"},
 	}
 
 	// Execute setup commands
@@ -785,46 +801,48 @@ LogLevel INFO
 		}
 	}
 
-	// Install openssh-server if not present, then start SSH daemon
-	// Support both Alpine (apk) and Debian/Ubuntu (apt-get)
-	installCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", `
-		if ! command -v sshd >/dev/null 2>&1; then
-			if command -v apk >/dev/null 2>&1; then
-				# Alpine Linux
-				apk add --no-cache openssh-server >/dev/null 2>&1
-			elif command -v apt-get >/dev/null 2>&1; then
-				# Debian/Ubuntu - use minimal install to reduce memory usage
-				export DEBIAN_FRONTEND=noninteractive
-				timeout 60 apt-get update >/dev/null 2>&1 && timeout 60 apt-get install -y --no-install-recommends openssh-server >/dev/null 2>&1
-			fi
-		fi
-	`)
-	if dockerHost != "" {
-		installCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
-	}
-	if output, err := installCmd.CombinedOutput(); err != nil {
-		// Log but don't fail - some test environments may have issues with package installation
-		log.Printf("Warning: Failed to install openssh-server (continuing anyway): %v: %s", err, output)
-	}
-
-	// Start SSH daemon in background - first check if sshd exists
-	checkSSHDCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", "which sshd || which /usr/sbin/sshd || echo 'NO_SSHD'")
+	// We now have our own SSH binaries in /exe.dev, so use them directly
+	// First check if our sshd binary exists
+	checkSSHDCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "test", "-x", "/exe.dev/bin/sshd")
 	if dockerHost != "" {
 		checkSSHDCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
-	sshdPath, _ := checkSSHDCmd.Output()
-	sshdPathStr := strings.TrimSpace(string(sshdPath))
 
-	if sshdPathStr == "NO_SSHD" || sshdPathStr == "" {
-		// If no sshd found, try to use dropbear or another lightweight SSH server as fallback
-		log.Printf("[SSH] No sshd found in container %s, SSH will not be available", containerID)
-		// For now, we'll just skip SSH setup if sshd is not available
-		// In production, we could install dropbear or another lightweight SSH server
-		return nil
+	var sshdPath string
+	if err := checkSSHDCmd.Run(); err == nil {
+		// Use our embedded sshd directly
+		sshdPath = "/exe.dev/bin/sshd"
+		log.Printf("[SSH] Using embedded SSH daemon from /exe.dev")
+	} else {
+		// Fallback to system sshd if available
+		fallbackCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", "which sshd || which /usr/sbin/sshd || echo 'NO_SSHD'")
+		if dockerHost != "" {
+			fallbackCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+		}
+		output, _ := fallbackCmd.Output()
+		sshdPath = strings.TrimSpace(string(output))
+
+		if sshdPath == "NO_SSHD" || sshdPath == "" {
+			log.Printf("[SSH] No SSH daemon available in container %s", containerID)
+			return fmt.Errorf("no SSH daemon available")
+		}
+		log.Printf("[SSH] Using system SSH daemon: %s", sshdPath)
+	}
+
+	// Update sshd_config to use our embedded sftp-server if available
+	if sshdPath == "/exe.dev/bin/sshd" {
+		updateConfigCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c",
+			`sed -i 's|^Subsystem sftp .*|Subsystem sftp /exe.dev/bin/sftp-server|' /etc/ssh/sshd_config`)
+		if dockerHost != "" {
+			updateConfigCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+		}
+		if output, err := updateConfigCmd.CombinedOutput(); err != nil {
+			log.Printf("Warning: Failed to update sftp subsystem path: %v: %s", err, output)
+		}
 	}
 
 	// Start SSH daemon in background using the found path
-	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, sshdPathStr, "-D", "-f", "/etc/ssh/sshd_config")
+	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, sshdPath, "-D", "-f", "/etc/ssh/sshd_config")
 	if dockerHost != "" {
 		startCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
@@ -835,7 +853,7 @@ LogLevel INFO
 		} else {
 			log.Printf("[SSH ERROR] Failed to start SSH daemon in container %s: %v: %s", containerID, err, output)
 			// Try alternative startup method
-			retryCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "sh", "-c", fmt.Sprintf("nohup %s -D -f /etc/ssh/sshd_config > /dev/null 2>&1 &", sshdPathStr))
+			retryCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "sh", "-c", fmt.Sprintf("nohup %s -D -f /etc/ssh/sshd_config > /dev/null 2>&1 &", sshdPath))
 			if dockerHost != "" {
 				retryCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 			}
@@ -849,17 +867,132 @@ LogLevel INFO
 		log.Printf("[SSH] SSH daemon started successfully in container %s", containerID)
 	}
 
-	// Verify SSH daemon is running
-	checkCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "pgrep", "-f", "sshd")
-	if dockerHost != "" {
-		checkCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
-	}
-	if output, err := checkCmd.CombinedOutput(); err != nil {
-		log.Printf("[SSH WARNING] SSH daemon verification failed for container %s: %v", containerID, err)
-	} else {
-		log.Printf("[SSH] SSH daemon verified running in container %s (PIDs: %s)", containerID, strings.TrimSpace(string(output)))
+	// Spin wait for SSH daemon to be running (up to 5 seconds)
+	startTime := time.Now()
+	for time.Since(startTime) < 5*time.Second {
+		checkCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", "ps aux | grep -v grep | grep -E 'sshd|ssh-'")
+		if dockerHost != "" {
+			checkCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+		}
+		if output, err := checkCmd.CombinedOutput(); err == nil {
+			outputStr := strings.TrimSpace(string(output))
+			if outputStr != "" {
+				log.Printf("[SSH] SSH daemon verified running in container %s", containerID)
+				return nil
+			}
+		} else if ctx.Err() != nil {
+			// Context cancelled
+			return ctx.Err()
+		}
+		// Short spin wait - 100ms
+		time.Sleep(100 * time.Millisecond)
 	}
 
+	// Final check after timeout
+	log.Printf("[SSH WARNING] SSH daemon may not be running in container %s after 5s", containerID)
+
+	return nil
+}
+
+// getDockerHostArch gets the architecture of the Docker host
+func (m *DockerManager) getDockerHostArch(ctx context.Context, dockerHost string) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker", "version", "--format", "{{.Server.Arch}}")
+	if dockerHost != "" {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Docker host architecture: %w", err)
+	}
+
+	arch := strings.TrimSpace(string(output))
+	// Normalize architecture names
+	switch arch {
+	case "amd64", "x86_64":
+		return "amd64", nil
+	case "arm64", "aarch64":
+		return "arm64", nil
+	default:
+		return "", fmt.Errorf("unsupported Docker host architecture: %s", arch)
+	}
+}
+
+// copySSHBinaries copies the embedded SSH binaries to /exe.dev in the container
+func (m *DockerManager) copySSHBinaries(ctx context.Context, containerID, dockerHost string) error {
+	// Get the Docker host architecture
+	arch, err := m.getDockerHostArch(ctx, dockerHost)
+	if err != nil {
+		return fmt.Errorf("failed to get Docker host architecture: %w", err)
+	}
+
+	// Get the embedded filesystem for this architecture
+	rovolFS, err := GetRovolFS(arch)
+	if err != nil {
+		return fmt.Errorf("failed to get rovol filesystem: %w", err)
+	}
+
+	// Create a temporary directory to stage the files
+	tmpDir, err := os.MkdirTemp("", "exe-rovol-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Walk the embedded filesystem and copy files to temp directory
+	err = fs.WalkDir(rovolFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		destPath := filepath.Join(tmpDir, path)
+
+		if d.IsDir() {
+			return os.MkdirAll(destPath, 0755)
+		}
+
+		// Read the file from embedded FS
+		data, err := fs.ReadFile(rovolFS, path)
+		if err != nil {
+			return fmt.Errorf("failed to read embedded file %s: %w", path, err)
+		}
+
+		// Write to temp directory
+		return os.WriteFile(destPath, data, 0755)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to extract rovol files: %w", err)
+	}
+
+	// Create /exe.dev directory in container
+	mkdirCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "mkdir", "-p", "/exe.dev")
+	if dockerHost != "" {
+		mkdirCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+	if output, err := mkdirCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create /exe.dev directory: %w: %s", err, output)
+	}
+
+	// Copy the files to the container
+	copyCmd := exec.CommandContext(ctx, "docker", "cp", tmpDir+"/.", containerID+":/exe.dev/")
+	if dockerHost != "" {
+		copyCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+	if output, err := copyCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to copy files to container: %w: %s", err, output)
+	}
+
+	// Make the sshd binary executable (should already be from docker cp, but ensure it)
+	chmodCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "chmod", "+x", "/exe.dev/bin/sshd", "/exe.dev/bin/sftp-server", "/exe.dev/bin/sshd-session")
+	if dockerHost != "" {
+		chmodCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+	if output, err := chmodCmd.CombinedOutput(); err != nil {
+		// Non-fatal, just log
+		log.Printf("Warning: Failed to chmod SSH binaries: %v: %s", err, output)
+	}
+
+	log.Printf("[SSH] Copied SSH binaries for %s architecture to container %s", arch, containerID)
 	return nil
 }
 

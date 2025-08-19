@@ -83,7 +83,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", nil)
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "dev", nil)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -141,6 +141,9 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
+		"-o", "IdentitiesOnly=yes",
+		"-o", "PubkeyAuthentication=yes",
+		"-o", "PasswordAuthentication=no",
 		"-i", privKeyPath,
 		"127.0.0.1",
 	)
@@ -231,9 +234,9 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	// No sleep needed here
 	var token string
 	server.emailVerificationsMu.RLock()
-	for t, v := range server.emailVerifications {
+	for tok, v := range server.emailVerifications {
 		if v.PublicKeyFingerprint == fingerprint {
-			token = t
+			token = tok
 			break
 		}
 	}

@@ -1,0 +1,159 @@
+# syntax=docker/dockerfile:1
+
+FROM alpine:3.19 AS build
+ARG OPENSSH_VERSION=9.9p1
+
+# Install build dependencies (no OpenSSL needed!)
+RUN apk add --no-cache \
+      build-base \
+      linux-headers \
+      curl \
+      tar \
+      musl-dev
+
+# Set up /exe.dev/lib with the interpreter so compilation can use it
+RUN mkdir -p /exe.dev/lib && \
+    cp -v /lib/ld-musl-*.so.1 /exe.dev/lib/ && \
+    cd /exe.dev/lib && \
+    for f in ld-musl-*.so.1; do \
+      arch=$(echo $f | sed 's/ld-musl-//' | sed 's/\.so\.1//') && \
+      ln -sf "$f" "libc.musl-${arch}.so.1"; \
+    done
+
+WORKDIR /src
+RUN curl -fsSLO https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz \
+ && tar xzf openssh-${OPENSSH_VERSION}.tar.gz
+WORKDIR /src/openssh-${OPENSSH_VERSION}
+
+# Configure with minimal features, no OpenSSL, using built-in crypto
+# Set rpath and interpreter to use our /exe.dev paths
+ENV CFLAGS="-O2 -fno-strict-aliasing"
+ENV LDFLAGS="-Wl,-rpath,/exe.dev/lib -Wl,--dynamic-linker,/exe.dev/lib/ld-musl-aarch64.so.1"
+RUN ./configure \
+      --prefix=/exe.dev \
+      --exec-prefix=/exe.dev \
+      --bindir=/exe.dev/bin \
+      --sbindir=/exe.dev/bin \
+      --libexecdir=/exe.dev/bin \
+      --sysconfdir=/etc/ssh \
+      --with-privsep-user=sshd \
+      --with-privsep-path=/var/empty \
+      --without-openssl \
+      --without-zlib \
+      --without-pam \
+      --without-libedit \
+      --disable-lastlog \
+      --disable-utmp \
+      --disable-utmpx \
+      --disable-wtmp \
+      --disable-wtmpx \
+      --disable-pututline \
+      --disable-pututxline \
+      --disable-security-key \
+      --disable-pkcs11 \
+      --without-kerberos5 \
+      --without-ldns \
+      --disable-strip \
+      --with-security-key-builtin=no \
+      --without-hardening
+
+RUN \
+  if grep -q '^#define USE_BTMP' config.h; then \
+    sed -i 's/^#define USE_BTMP.*/\/\* #undef USE_BTMP \*\//' config.h; \
+  fi
+
+
+# Build all necessary binaries
+# Use -j2 for faster builds on larger machines
+RUN make -j2
+RUN strip --strip-all --remove-section=.comment --remove-section=.note \
+      sshd ssh-keygen sshd-session sftp-server
+
+# Create output directory structure
+RUN mkdir -p /out/exe.dev/bin /out/exe.dev/etc/ssh /out/exe.dev/lib
+
+# Copy the built binaries (they already have correct interpreter and rpath)
+RUN cp -v sshd /out/exe.dev/bin/
+RUN cp -v sshd-session /out/exe.dev/bin/
+RUN cp -v sftp-server /out/exe.dev/bin/
+RUN cp -v ssh-keygen /out/exe.dev/bin/
+
+# Check that rpath is set correctly
+RUN readelf -d /out/exe.dev/bin/sshd | grep -E 'RPATH|RUNPATH' || echo "No RPATH found"
+
+# Create minimal sshd_config with only built-in crypto algorithms
+RUN cat > /out/exe.dev/etc/ssh/sshd_config <<'EOF'
+# Minimal sshd configuration for exe.dev containers
+# Using only built-in crypto (no OpenSSL dependency)
+Port 22
+Protocol 2
+
+# Only use Ed25519 host keys (built-in crypto)
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKeyAlgorithms ssh-ed25519
+
+# Key exchange using built-in Curve25519
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+
+# Ciphers using built-in implementations
+Ciphers chacha20-poly1305@openssh.com,aes256-ctr,aes128-ctr
+
+# MACs using built-in implementations
+MACs umac-128-etm@openssh.com,umac-64-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+
+# Security settings
+PermitRootLogin prohibit-password
+PubkeyAuthentication yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+
+# Performance settings
+UseDNS no
+Compression no
+
+# Enable SFTP (binary will be found via PATH or absolute path)
+Subsystem sftp /exe.dev/bin/sftp-server
+
+# Allow agent and port forwarding
+AllowAgentForwarding yes
+AllowTcpForwarding yes
+X11Forwarding yes
+X11UseLocalhost no
+
+# Keep connections alive
+ClientAliveInterval 60
+ClientAliveCountMax 3
+
+# Logging
+SyslogFacility AUTH
+LogLevel INFO
+EOF
+
+# Copy required shared libraries (should be minimal without OpenSSL)
+RUN for bin in /out/exe.dev/bin/*; do \
+      if [ -f "$bin" ]; then \
+        ldd "$bin" 2>/dev/null | grep "=>" | awk '{print $3}' | while read lib; do \
+          if [ -f "$lib" ] && [ ! -f "/out/exe.dev/lib/$(basename $lib)" ]; then \
+            cp -v "$lib" /out/exe.dev/lib/; \
+          fi \
+        done; \
+      fi \
+    done
+
+# Copy the musl interpreter (already done when copying libraries above)
+RUN cp -v /lib/ld-musl-*.so.1 /out/exe.dev/lib/ && \
+    cd /out/exe.dev/lib && \
+    for f in ld-musl-*.so.1; do \
+      arch=$(echo $f | sed 's/ld-musl-//' | sed 's/\.so\.1//') && \
+      ln -sf "$f" "libc.musl-${arch}.so.1"; \
+    done
+
+# Check binary sizes for comparison
+RUN echo "=== Binary sizes ===" && \
+    ls -lh /out/exe.dev/bin/ && \
+    echo "=== Library dependencies ===" && \
+    ldd /out/exe.dev/bin/sshd 2>/dev/null || echo "No dynamic dependencies"
+
+FROM scratch AS out
+COPY --from=build /out/exe.dev /
