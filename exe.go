@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"log/slog"
 	mathrand "math/rand"
@@ -102,17 +103,8 @@ func SetupLogger(devMode string) {
 	slog.SetDefault(slog.New(handler))
 }
 
-//go:embed welcome.html
-var welcomeHTML []byte
-
-//go:embed exe.dev.png
-var exeDevPNG []byte
-
-//go:embed browser-woodcut.png
-var browserWoodcutPNG []byte
-
-//go:embed favicon.ico
-var faviconICO []byte
+//go:embed static
+var staticFS embed.FS
 
 // SSHMetrics holds SSH server metrics
 type SSHMetrics struct {
@@ -799,15 +791,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 	}
 
-	switch r.URL.Path {
-	case "/":
-		s.handleRoot(w, r)
-	case "/favicon.ico":
-		s.handleFavicon(w, r)
-	case "/exe.dev.png":
-		s.handleExeDevPNG(w, r)
-	case "/browser-woodcut.png":
-		s.handleBrowserWoodcutPNG(w, r)
+	// Handle root path by serving welcome.html
+	path := r.URL.Path
+	if path == "/" {
+		path = "/welcome.html"
+	}
+
+	switch path {
 	case "/health":
 		s.handleHealth(w, r)
 	case "/metrics":
@@ -821,40 +811,45 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/auth":
 		s.handleAuth(w, r)
 	default:
-		if strings.HasPrefix(r.URL.Path, "/auth/") {
+		if strings.HasPrefix(path, "/auth/") {
 			s.handleAuthCallback(w, r)
 			return
+		}
+		// Try to serve static file if GET request
+		if r.Method == "GET" && len(path) > 1 {
+			filename := path[1:] // Remove leading slash
+			// Security check: ensure filename doesn't contain path traversal
+			if !strings.Contains(filename, "..") && !strings.Contains(filename, "/") {
+				s.serveStaticFile(w, r, filename)
+				return
+			}
 		}
 		http.NotFound(w, r)
 	}
 }
 
 // handleRoot handles requests to the root path
-func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	w.Write(welcomeHTML)
-}
+// serveStaticFile serves a file from the embedded static directory using http.FileServer
+func (s *Server) serveStaticFile(w http.ResponseWriter, r *http.Request, filename string) {
+	// Create a sub-filesystem from the static directory
+	staticSubFS, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-// handleFavicon handles favicon.ico requests
-func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "image/x-icon")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(faviconICO)
-}
+	// Check if file exists
+	if _, err := staticSubFS.Open(filename); err != nil {
+		http.NotFound(w, r)
+		return
+	}
 
-// handleExeDevPNG handles exe.dev.png requests
-func (s *Server) handleExeDevPNG(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(exeDevPNG)
-}
+	// Create a temporary request with the filename as path
+	tempReq := r.Clone(r.Context())
+	tempReq.URL.Path = "/" + filename
 
-// handleBrowserWoodcutPNG handles browser-woodcut.png requests
-func (s *Server) handleBrowserWoodcutPNG(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Write(browserWoodcutPNG)
+	// Use http.FileServer to serve the file
+	http.FileServer(http.FS(staticSubFS)).ServeHTTP(w, tempReq)
 }
 
 // handleHealth handles health check requests

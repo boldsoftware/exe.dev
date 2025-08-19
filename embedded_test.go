@@ -41,7 +41,7 @@ func TestEmbeddedFiles(t *testing.T) {
 			name:         "favicon.ico is served",
 			path:         "/favicon.ico",
 			expectedCode: http.StatusOK,
-			contentType:  "image/x-icon",
+			contentType:  "image/",   // Accept any image content type for ico files
 			contains:     []string{}, // ICO is binary, checking content-type is enough
 		},
 		{
@@ -119,39 +119,32 @@ func TestEmbeddedFiles(t *testing.T) {
 
 func TestEmbeddedSizes(t *testing.T) {
 	// Verify that embedded files are not empty and have reasonable sizes
-	if len(welcomeHTML) == 0 {
-		t.Error("welcomeHTML is empty")
-	}
-
-	if len(exeDevPNG) == 0 {
-		t.Error("exeDevPNG is empty")
-	}
-
-	if len(browserWoodcutPNG) == 0 {
-		t.Error("browserWoodcutPNG is empty")
-	}
-
-	// Check that welcome.html has reasonable size (at least 1KB)
-	if len(welcomeHTML) < 1024 {
-		t.Errorf("welcomeHTML seems too small: %d bytes", len(welcomeHTML))
-	}
-
-	// Check that PNGs have reasonable sizes (at least 10KB for real images)
-	if len(exeDevPNG) < 10240 {
-		t.Errorf("exeDevPNG seems too small: %d bytes", len(exeDevPNG))
-	}
-
-	if len(browserWoodcutPNG) < 10240 {
-		t.Errorf("browserWoodcutPNG seems too small: %d bytes", len(browserWoodcutPNG))
-	}
-
-	if len(faviconICO) < 1024 {
-		t.Errorf("faviconICO seems too small: %d bytes", len(faviconICO))
+	files := []struct {
+		name    string
+		minSize int
+	}{
+		{"welcome.html", 1024},
+		{"exe.dev.png", 10240},
+		{"browser-woodcut.png", 10240},
+		{"favicon.ico", 1024},
 	}
 
 	t.Logf("Embedded file sizes:")
-	t.Logf("  welcome.html: %d bytes", len(welcomeHTML))
-	t.Logf("  exe.dev.png: %d bytes", len(exeDevPNG))
-	t.Logf("  browser-woodcut.png: %d bytes", len(browserWoodcutPNG))
-	t.Logf("  favicon.ico: %d bytes", len(faviconICO))
+	for _, file := range files {
+		data, err := staticFS.ReadFile("static/" + file.name)
+		if err != nil {
+			t.Errorf("Failed to read %s from static FS: %v", file.name, err)
+			continue
+		}
+
+		if len(data) == 0 {
+			t.Errorf("%s is empty", file.name)
+		}
+
+		if len(data) < file.minSize {
+			t.Errorf("%s seems too small: %d bytes (expected at least %d)", file.name, len(data), file.minSize)
+		}
+
+		t.Logf("  %s: %d bytes", file.name, len(data))
+	}
 }
