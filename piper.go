@@ -6,7 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -74,56 +74,56 @@ func (p *PiperPlugin) Serve() error {
 		return fmt.Errorf("failed to create plugin: %v", err)
 	}
 
-	log.Printf("[PIPER DEBUG] Starting sshpiper plugin on %s", p.addr)
-	log.Printf("[PIPER DEBUG] Plugin server listening on %s", lis.Addr())
+	slog.Debug("Starting sshpiper plugin", "component", "piper-plugin", "addr", p.addr)
+	slog.Debug("Plugin server listening", "component", "piper-plugin", "addr", lis.Addr())
 
 	err = plugin.Serve()
 	if err != nil {
-		log.Printf("[PIPER ERROR] Plugin server error: %v", err)
+		slog.Error("Plugin server error", "component", "piper-plugin", "error", err)
 	}
 	return err
 }
 
 // handlePublicKeyAuth handles public key authentication and routing decisions
 func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byte) (*libplugin.Upstream, error) {
-	log.Printf("[PIPER DEBUG] Auth request - User: %s, RemoteAddr: %s", conn.User(), conn.RemoteAddr())
+	slog.Debug("Auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 
 	// Parse the provided key
 	pubKey, err := ssh.ParsePublicKey(key)
 	if err != nil {
-		log.Printf("[PIPER DEBUG] Failed to parse public key: %v", err)
+		slog.Debug("Failed to parse public key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to parse public key: %v", err)
 	}
 
 	// Get fingerprint and check if user is registered
 	fingerprint := p.server.GetPublicKeyFingerprint(pubKey)
-	log.Printf("[PIPER DEBUG] Key fingerprint: %s", fingerprint)
+	slog.Debug("Key fingerprint", "component", "piper-plugin", "fingerprint", fingerprint)
 
 	email, verified, err := p.server.GetEmailBySSHKey(fingerprint)
 	if err != nil {
-		log.Printf("[PIPER DEBUG] Database error checking SSH key %s: %v", fingerprint, err)
+		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "fingerprint", fingerprint, "error", err)
 	}
-	log.Printf("[PIPER DEBUG] User lookup - email: %s, verified: %t", email, verified)
+	slog.Debug("User lookup", "component", "piper-plugin", "email", email, "verified", verified)
 
 	registered := email != "" && verified
 	username := conn.User()
-	log.Printf("[PIPER DEBUG] Registered: %t, Username: %s", registered, username)
+	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username)
 
 	// Check if this is a direct machine access attempt
 	if username != "" && registered {
-		log.Printf("[PIPER DEBUG] Checking for machine: %s", username)
+		slog.Debug("Checking for machine", "component", "piper-plugin", "username", username)
 		if machine := p.server.FindMachineByNameForUser(fingerprint, username); machine != nil {
-			log.Printf("[PIPER DEBUG] Found machine %s (ID: %d), routing to container", machine.Name, machine.ID)
+			slog.Debug("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
 			return p.handleMachineAccess(machine, fingerprint)
 		} else {
-			log.Printf("[PIPER DEBUG] No machine found with name: %s", username)
+			slog.Debug("No machine found with name", "component", "piper-plugin", "username", username)
 		}
 	}
 
 	// For all other cases (interactive shell, registration, etc.),
 	// route to exed directly on port 2223 using ephemeral proxy authentication
-	log.Printf("[PIPER DEBUG] Routing to exed shell on port 2223")
-	log.Printf("[PIPER DEBUG] User's public key length: %d bytes", len(key))
+	slog.Debug("Routing to exed shell on port 2223", "component", "piper-plugin")
+	slog.Debug("User's public key length", "component", "piper-plugin", "key_length_bytes", len(key))
 
 	// EPHEMERAL PROXY KEY APPROACH:
 	// 1. Generate a unique, temporary private key for this connection
@@ -134,11 +134,11 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key)
 	if err != nil {
-		log.Printf("[PIPER DEBUG] Failed to generate ephemeral proxy key: %v", err)
+		slog.Debug("Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to generate ephemeral proxy key: %v", err)
 	}
 
-	log.Printf("[PIPER DEBUG] Generated ephemeral proxy key with fingerprint: %s", proxyFingerprint)
+	slog.Debug("Generated ephemeral proxy key with fingerprint", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint)
 
 	upstream := &libplugin.Upstream{
 		Host:     "127.0.0.1", // Use explicit IPv4 instead of localhost
@@ -147,30 +147,28 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		Auth:     libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
 	}
 
-	log.Printf("[PIPER DEBUG] Returning upstream config: Host=%s, Port=%d, User=%s, AuthType=PrivateKey",
-		upstream.Host, upstream.Port, upstream.UserName)
-	log.Printf("[PIPER DEBUG] Private key length: %d bytes, starts with: %s",
-		len(proxyPrivateKeyPEM), proxyPrivateKeyPEM[:50])
+	slog.Debug("Returning upstream config", "component", "piper-plugin", "host", upstream.Host, "port", upstream.Port, "username", upstream.UserName, "auth_type", "PrivateKey")
+	slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(proxyPrivateKeyPEM), "key_preview", proxyPrivateKeyPEM[:50])
 
 	return upstream, nil
 }
 
 // handleMachineAccess sets up routing to a specific machine container
 func (p *PiperPlugin) handleMachineAccess(machine *Machine, fingerprint string) (*libplugin.Upstream, error) {
-	log.Printf("[PIPER DEBUG] handleMachineAccess for machine %s (ID: %d)", machine.Name, machine.ID)
+	slog.Debug("handleMachineAccess for machine", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
 
 	if machine.ContainerID == nil {
-		log.Printf("[PIPER DEBUG] Machine %s has no container ID", machine.Name)
+		slog.Debug("Machine has no container ID", "component", "piper-plugin", "machine_name", machine.Name)
 		return nil, fmt.Errorf("machine %s is not running", machine.Name)
 	}
 
 	// Get SSH connection details from the database
 	sshDetails, err := p.server.GetMachineSSHDetails(machine.ID)
 	if err != nil {
-		log.Printf("[PIPER DEBUG] Failed to get SSH details for machine %s: %v", machine.Name, err)
+		slog.Debug("Failed to get SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "error", err)
 		return nil, fmt.Errorf("failed to get SSH details for machine %s: %v", machine.Name, err)
 	}
-	log.Printf("[PIPER DEBUG] Got SSH details for machine %s (port: %d)", machine.Name, sshDetails.Port)
+	slog.Debug("Got SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "port", sshDetails.Port)
 
 	// Use SSH details from database instead of querying Docker
 	// The container might be paused/stopped, but we have the port mapping in the database
@@ -184,26 +182,26 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, fingerprint string) 
 			parts := strings.Split(strings.TrimPrefix(dockerHost, "tcp://"), ":")
 			if len(parts) > 0 && parts[0] != "" {
 				host = parts[0]
-				log.Printf("[PIPER DEBUG] Using docker host %s from tcp format: %s", host, dockerHost)
+				slog.Debug("Using docker host from tcp format", "component", "piper-plugin", "host", host, "docker_host", dockerHost)
 			}
 		} else if strings.HasPrefix(dockerHost, "ssh://") {
 			// Extract hostname from ssh://hostname
 			host = strings.TrimPrefix(dockerHost, "ssh://")
-			log.Printf("[PIPER DEBUG] Using docker host %s from ssh format: %s", host, dockerHost)
+			slog.Debug("Using docker host from ssh format", "component", "piper-plugin", "host", host, "docker_host", dockerHost)
 		} else if dockerHost != "" && !strings.HasPrefix(dockerHost, "unix://") {
 			// Direct hostname
 			host = dockerHost
-			log.Printf("[PIPER DEBUG] Using direct docker host %s", host)
+			slog.Debug("Using direct docker host", "component", "piper-plugin", "host", host)
 		}
 	}
 	port := sshDetails.Port
-	log.Printf("[PIPER DEBUG] Using database SSH details for machine %s: %s:%d", machine.Name, host, port)
+	slog.Debug("Using database SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "host", host, "port", port)
 
 	// Create upstream configuration for direct SSH to container
-	log.Printf("[PIPER DEBUG] Creating upstream to container %s:%d as root", host, port)
-	log.Printf("[PIPER DEBUG] Private key length: %d bytes", len(sshDetails.PrivateKey))
+	slog.Debug("Creating upstream to container as root", "component", "piper-plugin", "host", host, "port", port)
+	slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(sshDetails.PrivateKey))
 	if len(sshDetails.PrivateKey) > 50 {
-		log.Printf("[PIPER DEBUG] Private key preview: %s...", sshDetails.PrivateKey[:50])
+		slog.Debug("Private key preview", "component", "piper-plugin", "key_preview", sshDetails.PrivateKey[:50])
 	}
 	return &libplugin.Upstream{
 		Host:     host, // Container host (from docker_host or localhost)
@@ -242,15 +240,14 @@ func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte) (s
 	}
 
 	proxyFingerprint := p.server.GetPublicKeyFingerprint(signer.PublicKey())
-	log.Printf("[PIPER DEBUG] Generated proxy key - Type: %s, Fingerprint: %s",
-		signer.PublicKey().Type(), proxyFingerprint[:16])
+	slog.Debug("Generated proxy key", "component", "piper-plugin", "key_type", signer.PublicKey().Type(), "fingerprint_preview", proxyFingerprint[:16])
 
 	// Validate the generated key by trying to parse it again
 	if _, err := ssh.ParsePrivateKey(privateKeyPEMBytes); err != nil {
-		log.Printf("[PIPER ERROR] Generated private key is invalid: %v", err)
+		slog.Error("Generated private key is invalid", "component", "piper-plugin", "error", err)
 		return "", "", fmt.Errorf("generated invalid private key: %v", err)
 	}
-	log.Printf("[PIPER DEBUG] Private key validation successful")
+	slog.Debug("Private key validation successful", "component", "piper-plugin")
 
 	// Store the mapping: proxy key fingerprint -> original user public key
 	p.proxyKeyMutex.Lock()
@@ -260,8 +257,7 @@ func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte) (s
 	}
 	p.proxyKeyMutex.Unlock()
 
-	log.Printf("[PIPER DEBUG] Stored ephemeral proxy mapping: %s -> user key (%d bytes)",
-		proxyFingerprint, len(originalUserPublicKey))
+	slog.Debug("Stored ephemeral proxy mapping", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint, "user_key_length_bytes", len(originalUserPublicKey))
 
 	return privateKeyPEM, proxyFingerprint, nil
 }
@@ -293,9 +289,9 @@ func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte,
 // TODO(philip): We could do host key checking here; I think we have all the
 // relevant data.
 func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname, netaddr string, key []byte) error {
-	log.Printf("[PIPER DEBUG] VerifyHostKey called - hostname: %s, netaddr: %s, key length: %d", hostname, netaddr, len(key))
+	slog.Debug("VerifyHostKey called", "component", "piper-plugin", "hostname", hostname, "netaddr", netaddr, "key_length", len(key))
 
-	log.Printf("[PIPER DEBUG] Accepting host key for %s", hostname)
+	slog.Debug("Accepting host key", "component", "piper-plugin", "hostname", hostname)
 	return nil // Accept the host key
 }
 
@@ -318,7 +314,7 @@ func (p *PiperPlugin) cleanupExpiredMappings() {
 			for _, key := range expiredKeys {
 				delete(p.proxyKeyMappings, key)
 			}
-			log.Printf("[PIPER DEBUG] Cleaned up %d expired proxy key mappings", len(expiredKeys))
+			slog.Debug("Cleaned up expired proxy key mappings", "component", "piper-plugin", "count", len(expiredKeys))
 		}
 		p.proxyKeyMutex.RUnlock()
 	}
