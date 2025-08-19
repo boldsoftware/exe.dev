@@ -128,6 +128,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	args := []string{
 		"run", "-d",
 		"--name", containerName,
+		"--hostname", fmt.Sprintf("%s.%s.exe.dev", req.Name, req.TeamName),
 		"--label", fmt.Sprintf("user_id=%s", req.UserID),
 		"--label", fmt.Sprintf("team=%s", req.TeamName),
 		"--label", "managed_by=exe",
