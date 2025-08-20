@@ -924,6 +924,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Handle root path and user dashboard
 	path := r.URL.Path
 	if path == "/" {
+		// In production mode, require basic auth for home page
+		if s.devMode == "" {
+			user, pass, ok := r.BasicAuth()
+			if !ok || user != "comingsoon" || pass != "" {
+				w.Header().Set("WWW-Authenticate", `Basic realm="exe.dev"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+
 		// Check if user is authenticated
 		if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
 			if fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
