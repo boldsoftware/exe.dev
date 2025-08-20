@@ -45,6 +45,7 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/porkbun"
+	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
 )
 
@@ -370,6 +371,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	// Initialize metrics
 	metricsRegistry := prometheus.NewRegistry()
 	sshMetrics := NewSSHMetrics(metricsRegistry)
+	sqlite.RegisterSQLiteMetrics(metricsRegistry)
 
 	s := &Server{
 		httpAddr:             httpAddr,

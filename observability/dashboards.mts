@@ -153,28 +153,31 @@ function makeDevExeDashboard() {
     },
   );
 
-  // Row 4: System resources
-  addTimeseriesChart("Available memory", `node_memory_MemAvailable_bytes{job="exed"}`, {
-    panelCustomization: (x) => x.gridPos({ x: 0, y: 22, w: 8, h: 6 }).unit("decbytes"),
-  });
+  // sshpiperd metrics
+  addTimeseriesChart(
+    "sshpiper Pipe Open Connections",
+    `rate(sshpiper_pipe_open_connections[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
+    },
+  );
 
-  addTimeseriesChart("Filesystem free space", `node_filesystem_avail_bytes{job="exed"}`, {
-    panelCustomization: (x) => x.gridPos({ x: 8, y: 22, w: 8, h: 6 }).unit("decbytes"),
-  });
+  addTimeseriesChart(
+    "sshpiper Pipe Create Errors",
+    `rate(sshpiper_pipe_create_errors[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 10, w: 8, h: 6 }),
+    },
+  );
 
-  addTimeseriesChart("CPU Usage %", 
-    `100 - (avg(irate(node_cpu_seconds_total{job="exed",mode="idle"}[5m])) * 100)`, {
-    panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 22, w: 8, h: 6 }),
-  });
+  addTimeseriesChart(
+    "sshpiper Upstream Auth Failures",
+    `rate(sshpiper_upstream_auth_failures[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
+    },
+  );
 
-  // Row 5: Process metrics
-  addTimeseriesChart("Process uptime", `time() - process_start_time_seconds{job="exed"}`, {
-    panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 28, w: 12, h: 6 }),
-  });
-
-  addTimeseriesChart("Go goroutines", `go_goroutines{job="exed"}`, {
-    panelCustomization: (x) => x.min(0).gridPos({ x: 12, y: 28, w: 12, h: 6 }),
-  });
 
   // Row 6: SQLite Connection Pool Metrics
   dash.withRow(new RowBuilder("SQLite Connection Pool").gridPos({ x: 0, y: 34, w: 24, h: 1 }));
