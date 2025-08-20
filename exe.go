@@ -743,6 +743,9 @@ This link will expire in 15 minutes.
 Best regards,
 The exe.dev team`, verifyURL)
 
+	if s.devMode != "" && !s.quietMode {
+		fmt.Printf("Verification Link: \n%s\n\n", verifyURL)
+	}
 	return s.sendEmail(email, subject, body)
 }
 
