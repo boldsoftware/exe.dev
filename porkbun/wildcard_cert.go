@@ -163,9 +163,21 @@ func (w *WildcardCertManager) getCertificateKey(serverName string) string {
 		return w.domain
 	}
 
-	// For all subdomains, use the wildcard cert
+	// For all subdomains, determine the wildcard pattern based on subdomain depth
 	if strings.HasSuffix(serverName, "."+w.domain) {
-		return "*." + w.domain
+		// Count the number of dots to determine subdomain depth
+		domainDots := strings.Count(w.domain, ".")
+		serverDots := strings.Count(serverName, ".")
+		subdomainLevels := serverDots - domainDots
+		
+		// Only support up to 2 subdomain levels
+		if subdomainLevels > 2 {
+			return serverName // Let it fail - we don't support more than 2 levels
+		}
+		
+		// Generate the appropriate wildcard pattern
+		wildcardPrefix := strings.Repeat("*.", subdomainLevels)
+		return wildcardPrefix + w.domain
 	}
 
 	return serverName
