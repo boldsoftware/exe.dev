@@ -727,6 +727,35 @@ func (s *Server) sendEmail(to, subject, body string) error {
 	return err
 }
 
+// renderTemplate is a helper method that handles template parsing and execution
+func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data interface{}) error {
+	// Parse template
+	tmplFS, err := fs.Sub(templatesFS, "templates")
+	if err != nil {
+		slog.Error("Failed to access templates filesystem", "error", err, "template", templateName)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+
+	tmpl, err := template.ParseFS(tmplFS, templateName)
+	if err != nil {
+		slog.Error("Failed to parse template", "error", err, "template", templateName)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+
+	// Render template
+	w.Header().Set("Content-Type", "text/html")
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		slog.Error("Failed to execute template", "error", err, "template", templateName)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return err
+	}
+
+	return nil
+}
+
 // sendVerificationEmail sends an email verification link
 func (s *Server) sendVerificationEmail(email, token string) error {
 	subject := "Verify your email - exe.dev"
@@ -1282,83 +1311,15 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Show confirmation form
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>Confirm Email - exe.dev</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 500px;
-            margin: 100px auto;
-            padding: 40px;
-            background: #f5f5f5;
-        }
-        .container {
-            background: white;
-            border-radius: 12px;
-            padding: 40px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        p {
-            color: #666;
-            line-height: 1.6;
-            margin: 20px 0;
-        }
-        .button {
-            background: #2563eb;
-            color: white;
-            border: none;
-            padding: 12px 32px;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            display: inline-block;
-            margin-top: 20px;
-            transition: background 0.2s;
-        }
-        .button:hover {
-            background: #1d4ed8;
-        }
-        .warning {
-            background: #fef3c7;
-            border: 1px solid #f59e0b;
-            border-radius: 6px;
-            padding: 12px;
-            margin: 20px 0;
-            color: #92400e;
-        }
-        form {
-            margin: 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Confirm Your Email Address</h1>
-        <p>You're about to verify your email address for exe.dev.</p>
+	// Prepare template data
+	data := struct {
+		Token string
+	}{
+		Token: token,
+	}
 
-        <div class="warning">
-            ⚠️ Only click confirm if you initiated this request
-        </div>
-
-        <p>This will complete your email verification and allow you to proceed with your exe.dev account setup.</p>
-
-        <form method="POST" action="/verify-email">
-            <input type="hidden" name="token" value="%s">
-            <button type="submit" class="button">Confirm Email Verification</button>
-        </form>
-    </div>
-</body>
-</html>`, token)
+	// Render template
+	s.renderTemplate(w, "email-verification-form.html", data)
 }
 
 // handleEmailVerificationHTTP handles web-based email verification
@@ -1508,25 +1469,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Send success response
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>Email Verified - exe.dev</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-        .success { color: #4CAF50; text-align: center; }
-        .code { background-color: #f5f5f5; padding: 10px; font-family: monospace; }
-    </style>
-</head>
-<body>
-    <h1 class="success">✅ Email Verified!</h1>
-    <p>Your email address has been successfully verified.</p>
-    <p>You can now return to your SSH session to complete billing setup.</p>
-    <p>If you don't have an active SSH session, you can connect with:</p>
-    <div class="code">ssh exe.dev</div>
-</body>
-</html>`)
+	s.renderTemplate(w, "email-verified.html", nil)
 }
 
 // parseContainerRequest checks if the host matches container subdomain patterns
@@ -2332,29 +2275,8 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fin
 		Machines: machines,
 	}
 
-	// Parse template
-	tmplFS, err := fs.Sub(templatesFS, "templates")
-	if err != nil {
-		slog.Error("Failed to access templates filesystem", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	tmpl, err := template.ParseFS(tmplFS, "user.html")
-	if err != nil {
-		slog.Error("Failed to parse user template", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
 	// Render template
-	w.Header().Set("Content-Type", "text/html")
-	err = tmpl.Execute(w, data)
-	if err != nil {
-		slog.Error("Failed to execute user template", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	s.renderTemplate(w, "user.html", data)
 }
 
 // handleLogout logs out the user by clearing their auth cookie
