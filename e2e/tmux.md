@@ -1,54 +1,104 @@
 # Using tmux for Non-Blocking Program Testing
 
 You will use **tmux** to run and test programs in a way that never blocks your own process.
-Each **tmux session** corresponds to a single command or program you want to run. You can create as many sessions as you need.
+Use a **single tmux session** with multiple **windows** - each window corresponds to a single command or program you want to run.
 
-## Basics
+## Key Concepts
 
-* A **session** is a named terminal.
-* You run one program per session.
-* You interact by sending keystrokes into the session and capturing its output.
-* All tmux commands return immediately.
+* A **session** is the main tmux container - create one for your entire test run
+* A **window** is a named terminal within the session - use one per program/command
+* You run one program per window
+* You interact by sending keystrokes into windows and capturing their output
+* All tmux commands return immediately
 
-## Start a session with a command
+## Start the main session
+
+First, create your main testing session:
 
 ```bash
-tmux new-session -d -s web 'python3 -m http.server 8000'
+tmux new-session -d -s testing
 ```
 
-This starts a new detached session called `web`, running a Python HTTP server.
+This creates a detached session called `testing` with a default window.
 
-## Send more input later
+## Create a new window with a command
 
 ```bash
-tmux send-keys -t web 'echo hello' C-m
+tmux new-window -t testing -n web 'python3 -m http.server 8000'
 ```
 
-This types into the session’s terminal as if a user did.
+This creates a new window called `web` in the `testing` session, running a Python HTTP server.
 
-## Read the output
+## Create an empty window (for interactive commands)
 
 ```bash
-tmux capture-pane -p -S -50 -E -1 -t web
+tmux new-window -t testing -n build
 ```
 
-This prints the last 50 lines of the session’s output.
+This creates an empty window called `build` where you can send commands later.
 
-## List or check sessions
-
-* List all sessions:
-
-  ```bash
-  tmux list-sessions
-  ```
-* Check if a session is still alive:
-
-  ```bash
-  tmux has-session -t web
-  ```
-
-## Stop a session
+## Send input to a specific window
 
 ```bash
-tmux kill-session -t web
+tmux send-keys -t testing:build 'make build' C-m
+```
+
+This types into the `build` window of the `testing` session.
+
+## Read output from a specific window
+
+```bash
+tmux capture-pane -p -S -50 -E -1 -t testing:web
+```
+
+This prints the last 50 lines from the `web` window.
+
+## List windows in your session
+
+```bash
+tmux list-windows -t testing
+```
+
+## Check if a window exists
+
+```bash
+tmux list-windows -t testing | grep -q '^[0-9]*: web'
+```
+
+## Kill a specific window
+
+```bash
+tmux kill-window -t testing:web
+```
+
+## Kill the entire session when done
+
+```bash
+tmux kill-session -t testing
+```
+
+## Example workflow
+
+```bash
+# Start main session
+tmux new-session -d -s testing
+
+# Create windows for different services
+tmux new-window -t testing -n exed
+tmux new-window -t testing -n sshpiper
+tmux new-window -t testing -n client
+
+# Start services in their windows
+tmux send-keys -t testing:exed 'cd /app && make dev' C-m
+tmux send-keys -t testing:sshpiper './sshpiper/cmd/sshpiperd/sshpiperd' C-m
+
+# Use client window for interactive testing
+tmux send-keys -t testing:client 'ssh -p 2222 localhost' C-m
+
+# Check outputs
+tmux capture-pane -p -t testing:exed
+tmux capture-pane -p -t testing:client
+
+# Clean up when done
+tmux kill-session -t testing
 ```
