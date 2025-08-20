@@ -1,5 +1,7 @@
 # AWS
 
+## Setup
+
 1. Go to the AWS console.
 2. Go to *IAM -> Users -> [client your user]*
 3. Click *Security credentials*.
@@ -9,8 +11,10 @@
 
 Then:
 
+```
 $ brew install aws
 $ aws configure
+```
 
 Type in:
 
@@ -18,3 +22,12 @@ Type in:
 - Secret Access Key
 - Default region: us-west-2
 - Default output: json
+
+## Things to do
+
+```
+aws ec2 describe-instances \
+  --filters "Name=instance-state-name,Values=running" \
+  --query "Reservations[].Instances[].[InstanceId,PublicIpAddress,Tags[?Key=='Name'].Value|[0]]" \
+  --output table
+```
