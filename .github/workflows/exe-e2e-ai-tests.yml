@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # Run daily at 3 AM UTC
-    - cron: '0 3 * * *'
+    - cron: "0 3 * * *"
 
 jobs:
   ai-test:
@@ -31,7 +31,7 @@ jobs:
         run: |
           # Assert Docker is running (it should already be in GitHub Actions)
           docker version
-          
+
           # Install tmux if not available (needed for the e2e tests)
           sudo apt-get update
           sudo apt-get install -y tmux
@@ -46,17 +46,17 @@ jobs:
         run: |
           # Use gh CLI to download the latest sketch binary (gh is pre-installed in GitHub Actions)
           gh release download -p 'sketch*linux*amd64' --repo boldsoftware/sketch
-          
+
           # Find and rename the downloaded binary
           SKETCH_BINARY=$(find . -name 'sketch*linux*amd64' -type f | head -1)
           if [ -z "$SKETCH_BINARY" ]; then
             echo "No sketch linux amd64 binary found after download"
             exit 1
           fi
-          
+
           mv "$SKETCH_BINARY" sketch
           chmod +x sketch
-          
+
           # Verify the binary works
           ./sketch --version || echo "sketch binary downloaded successfully"
 
@@ -65,10 +65,10 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           cd e2e
-          
+
           # Execute sketch with the test prompt
-          ../sketch -one-shot -unsafe -prompt 'read test-prompt.md and follow instructions'
-          
+          ../sketch -one-shot -skaband-addr= -unsafe -prompt 'read test-prompt.md and follow instructions'
+
           # Check if the test created a result file
           if [ -f "result.txt" ]; then
             RESULT=$(cat result.txt)
@@ -82,6 +82,70 @@ jobs:
             exit 1
           fi
 
+          # Create a branch with the test report and push to timestamped ref
+          if [ -d "report" ] || [ -f "result.txt" ]; then
+            echo "Creating report branch..."
+            
+            # Generate timestamp for unique ref
+            TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+            RUN_ID="${{ github.run_id }}"
+            REF_NAME="test-report-$TIMESTAMP-run-$RUN_ID"
+            
+            # Configure git user for the commit
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            
+            # Create tree with report files using git plumbing
+            echo "Creating git tree with report files..."
+            
+            # Create temporary index for our report tree
+            export GIT_INDEX_FILE=".git/index-report"
+            
+            # Add report files to the temporary index
+            if [ -d "report" ]; then
+              find report -type f -exec git update-index --add {} \;
+            fi
+            if [ -f "result.txt" ]; then
+              git update-index --add result.txt
+            fi
+            
+            # Create tree object from the index
+            TREE_SHA=$(git write-tree)
+            echo "Created tree: $TREE_SHA"
+            
+            # Create commit object
+            printf "E2E test report - %s\n\nWorkflow run: %s/%s/actions/runs/%s\nTriggered by: %s\nCommit: %s\nResult: %s\n" \
+              "$TIMESTAMP" \
+              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
+              "${{ github.event_name }}" "${{ github.sha }}" "$RESULT" \
+              > commit-msg.txt
+            
+            COMMIT_SHA=$(git commit-tree $TREE_SHA < commit-msg.txt)
+            rm commit-msg.txt
+            echo "Created commit: $COMMIT_SHA"
+            
+            # Push directly to workflow ref namespace
+            git push origin "$COMMIT_SHA:refs/workflow/$REF_NAME"
+            
+            # Clean up temporary index
+            rm -f ".git/index-report"
+            unset GIT_INDEX_FILE
+            
+            # Output the link to the report
+            REPO_URL="https://github.com/${{ github.repository }}"
+            REPORT_URL="$REPO_URL/tree/$COMMIT_SHA"
+            echo "📋 Test report available at: $REPORT_URL"
+            
+            # Also output as workflow summary
+            echo "## E2E Test Report" >> $GITHUB_STEP_SUMMARY
+            echo "**Result:** $RESULT" >> $GITHUB_STEP_SUMMARY
+            echo "**Report:** [$REF_NAME]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
+            echo "**Timestamp:** $TIMESTAMP" >> $GITHUB_STEP_SUMMARY
+            echo "**Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No report directory or result.txt found - skipping report branch creation"
+          fi
+
       - name: Upload artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -90,6 +154,7 @@ jobs:
           path: |
             e2e/*.log
             e2e/*.txt
+            e2e/report/**/*
             *.log
             *.txt
           retention-days: 7
