@@ -163,21 +163,25 @@ func (w *WildcardCertManager) getCertificateKey(serverName string) string {
 		return w.domain
 	}
 
-	// For all subdomains, determine the wildcard pattern based on subdomain depth
+	// For subdomains, extract the team name and return *.team.exe.dev
 	if strings.HasSuffix(serverName, "."+w.domain) {
-		// Count the number of dots to determine subdomain depth
-		domainDots := strings.Count(w.domain, ".")
-		serverDots := strings.Count(serverName, ".")
-		subdomainLevels := serverDots - domainDots
-
-		// Only support up to 2 subdomain levels
-		if subdomainLevels > 2 {
-			return serverName // Let it fail - we don't support more than 2 levels
+		// Remove the main domain suffix to get the subdomain part
+		subdomain := strings.TrimSuffix(serverName, "."+w.domain)
+		
+		// Split subdomain parts (e.g., "machine.team" -> ["machine", "team"])
+		parts := strings.Split(subdomain, ".")
+		
+		if len(parts) == 1 {
+			// Single level subdomain (e.g., "api.exe.dev") - use regular wildcard
+			return "*." + w.domain
+		} else if len(parts) == 2 {
+			// Two level subdomain (e.g., "machine.team.exe.dev") - use team-specific wildcard
+			teamName := parts[1]
+			return "*." + teamName + "." + w.domain
+		} else {
+			// More than 2 levels - not supported
+			return serverName
 		}
-
-		// Generate the appropriate wildcard pattern
-		wildcardPrefix := strings.Repeat("*.", subdomainLevels)
-		return wildcardPrefix + w.domain
 	}
 
 	return serverName

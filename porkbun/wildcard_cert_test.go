@@ -26,13 +26,18 @@ func TestWildcardCertManager_getCertificateKey(t *testing.T) {
 		},
 		{
 			name:       "single level subdomain",
-			serverName: "foo.exe.dev",
+			serverName: "api.exe.dev",
 			want:       "*.exe.dev",
 		},
 		{
-			name:       "two level subdomain",
-			serverName: "foo.bar.exe.dev",
-			want:       "*.*.exe.dev",
+			name:       "machine.team two level subdomain",
+			serverName: "myapp.myteam.exe.dev",
+			want:       "*.myteam.exe.dev",
+		},
+		{
+			name:       "another machine.team subdomain",
+			serverName: "webapp.devteam.exe.dev",
+			want:       "*.devteam.exe.dev",
 		},
 		{
 			name:       "three level subdomain - not supported",
