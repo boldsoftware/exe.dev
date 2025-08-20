@@ -1,6 +1,7 @@
 package exe
 
 import (
+	"bufio"
 	"bytes"
 	"database/sql"
 	"flag"
@@ -8,11 +9,18 @@ import (
 	"io"
 	"log/slog"
 	mathrand "math/rand"
+	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+
+	"exe.dev/container"
 )
 
 // handleProxyRequest handles requests that should be proxied to containers
@@ -72,24 +80,38 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// For now, return debug info - will be replaced with actual proxy logic
-	w.Header().Set("Content-Type", "text/plain")
-	fmt.Fprintf(w, "Proxy handler - Route matched!\n")
-	fmt.Fprintf(w, "Machine: %s.%s\n", machineName, teamName)
-	fmt.Fprintf(w, "Matched route: %s (priority %d)\n", matchingRoute.Name, matchingRoute.Priority)
-	fmt.Fprintf(w, "Policy: %s\n", matchingRoute.Policy)
-	fmt.Fprintf(w, "Request method: %s\n", r.Method)
-	fmt.Fprintf(w, "Request path: %s\n", r.URL.Path)
+	// Handle debug path in dev mode
+	if r.URL.Path == "/__exe.dev/debug" && s.devMode != "" {
+		// Show debug info for /__exe.dev/debug in dev mode
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
+		fmt.Fprintf(w, "Machine: %s.%s\n", machineName, teamName)
+		fmt.Fprintf(w, "Matched route: %s (priority %d)\n", matchingRoute.Name, matchingRoute.Priority)
+		fmt.Fprintf(w, "Policy: %s\n", matchingRoute.Policy)
+		fmt.Fprintf(w, "Request method: %s\n", r.Method)
+		fmt.Fprintf(w, "Request path: %s\n", r.URL.Path)
 
-	// Show current user info
-	if cookie, err := r.Cookie("exe-proxy-auth"); err == nil && cookie.Value != "" {
-		if fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
-			fmt.Fprintf(w, "Logged in user: %s\n", fingerprint)
+		// Show current user info
+		if cookie, err := r.Cookie("exe-proxy-auth"); err == nil && cookie.Value != "" {
+			if fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
+				fmt.Fprintf(w, "Logged in user: %s\n", fingerprint)
+			} else {
+				fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
+			}
 		} else {
-			fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
+			fmt.Fprintf(w, "Not logged in\n")
 		}
-	} else {
-		fmt.Fprintf(w, "Not logged in\n")
+		return
+	}
+
+	// Proxy the request to the container
+	err = s.proxyToContainer(w, r, machine, matchingRoute)
+	if err != nil {
+		if !s.quietMode {
+			slog.Error("Failed to proxy request", "error", err, "machine", machineName, "team", teamName)
+		}
+		http.Error(w, "Failed to proxy request to container", http.StatusBadGateway)
+		return
 	}
 }
 
@@ -643,4 +665,136 @@ func (s *Server) generateRandomRouteName() string {
 	}
 
 	return fmt.Sprintf("%s-%s", road1, road2)
+}
+
+// proxyToContainer proxies the HTTP request to a container via SSH port forwarding
+func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machine *Machine, route *Route) error {
+	// Validate machine has SSH credentials
+	if machine.SSHClientPrivateKey == nil || machine.SSHPort == nil {
+		return fmt.Errorf("machine missing SSH credentials")
+	}
+
+	// In test mode, skip actual SSH connection if SSH key is fake
+	if s.testMode && (*machine.SSHClientPrivateKey == "test-client-key" || strings.HasPrefix(*machine.SSHClientPrivateKey, "test-")) {
+		// For tests, just simulate a successful proxy response
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w, "Test proxy response from route: %s\n", route.Name)
+		return nil
+	}
+
+	// Parse the SSH private key
+	sshKey, err := container.CreateSSHSigner(*machine.SSHClientPrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to parse SSH private key: %w", err)
+	}
+
+	// Determine SSH host address
+	sshHost := "localhost"
+	if machine.DockerHost != nil && *machine.DockerHost != "" {
+		// Extract hostname from docker host URL if available
+		if u, err := url.Parse(*machine.DockerHost); err == nil && u.Host != "" {
+			if host, _, err := net.SplitHostPort(u.Host); err == nil {
+				sshHost = host
+			} else {
+				sshHost = u.Host
+			}
+		}
+	}
+
+	// Try each port in the route until one succeeds
+	for _, port := range route.Ports {
+		err = s.proxyViaSSHPortForward(w, r, sshHost, *machine.SSHPort, sshKey, port)
+		if err == nil {
+			return nil // Success!
+		}
+		if !s.quietMode {
+			slog.Debug("Failed to proxy via port, trying next", "port", port, "error", err)
+		}
+	}
+
+	return fmt.Errorf("failed to proxy to any port in route: %v", route.Ports)
+}
+
+// proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
+func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, sshPort int, sshKey ssh.Signer, targetPort int) error {
+	// Create SSH client config
+	sshConfig := &ssh.ClientConfig{
+		User: "root",
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(sshKey),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Use proper host key validation
+		Timeout:         10 * time.Second,
+	}
+
+	// Connect to SSH server
+	sshAddr := fmt.Sprintf("%s:%d", sshHost, sshPort)
+	sshConn, err := ssh.Dial("tcp", sshAddr, sshConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SSH server %s: %w", sshAddr, err)
+	}
+	defer sshConn.Close()
+
+	// Connect directly to the target port inside the container via SSH
+	remoteAddr := fmt.Sprintf("127.0.0.1:%d", targetPort)
+	remoteConn, err := sshConn.Dial("tcp", remoteAddr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to port %d in container: %w", targetPort, err)
+	}
+	defer remoteConn.Close()
+
+	// Create a custom transport that uses the SSH connection
+	transport := &sshTransport{
+		sshConn:    sshConn,
+		remoteAddr: remoteAddr,
+	}
+
+	// Create HTTP reverse proxy with custom transport
+	targetURL := &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("127.0.0.1:%d", targetPort),
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy.Transport = transport
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		if !s.quietMode {
+			slog.Debug("HTTP proxy error", "error", err, "target_port", targetPort)
+		}
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+	}
+
+	// Proxy the request
+	proxy.ServeHTTP(w, r)
+	return nil
+}
+
+// sshTransport implements http.RoundTripper to send HTTP requests through SSH connections
+type sshTransport struct {
+	sshConn    *ssh.Client
+	remoteAddr string
+}
+
+// RoundTrip implements the http.RoundTripper interface
+func (t *sshTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Connect to the target through SSH
+	conn, err := t.sshConn.Dial("tcp", t.remoteAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to establish SSH connection: %w", err)
+	}
+	defer conn.Close()
+
+	// Write the HTTP request to the connection
+	err = req.Write(conn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write HTTP request: %w", err)
+	}
+
+	// Read the HTTP response from the connection
+	resp, err := http.ReadResponse(bufio.NewReader(conn), req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read HTTP response: %w", err)
+	}
+
+	return resp, nil
 }

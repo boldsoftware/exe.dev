@@ -228,7 +228,13 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
 			docker_host TEXT,
-			routes TEXT
+			routes TEXT,
+			ssh_server_identity_key TEXT,
+			ssh_authorized_keys TEXT,
+			ssh_ca_public_key TEXT,
+			ssh_host_certificate TEXT,
+			ssh_client_private_key TEXT,
+			ssh_port INTEGER
 		)
 	`)
 	if err != nil {
@@ -296,7 +302,13 @@ func TestHandleProxyRequest(t *testing.T) {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
 			docker_host TEXT,
-			routes TEXT
+			routes TEXT,
+			ssh_server_identity_key TEXT,
+			ssh_authorized_keys TEXT,
+			ssh_ca_public_key TEXT,
+			ssh_host_certificate TEXT,
+			ssh_client_private_key TEXT,
+			ssh_port INTEGER
 		)
 	`)
 	if err != nil {
@@ -491,7 +503,13 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
 			docker_host TEXT,
-			routes TEXT
+			routes TEXT,
+			ssh_server_identity_key TEXT,
+			ssh_authorized_keys TEXT,
+			ssh_ca_public_key TEXT,
+			ssh_host_certificate TEXT,
+			ssh_client_private_key TEXT,
+			ssh_port INTEGER
 		);
 	`)
 	if err != nil {

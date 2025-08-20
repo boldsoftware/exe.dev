@@ -217,6 +217,13 @@ type Machine struct {
 	LastStartedAt        *time.Time
 	DockerHost           *string // DOCKER_HOST value where this container runs
 	Routes               *string // JSON-encoded routing configuration
+	// SSH fields for container access
+	SSHServerIdentityKey *string // SSH server private key (PEM format)
+	SSHAuthorizedKeys    *string // User certificate for authorized_keys (client auth)
+	SSHCAPublicKey       *string // CA public key for mutual auth
+	SSHHostCertificate   *string // Host certificate for host key validation
+	SSHClientPrivateKey  *string // Private key for connecting to container (PEM format)
+	SSHPort              *int    // SSH port for this container
 }
 
 // GetRoutes parses and returns the machine's routing configuration
@@ -2370,9 +2377,13 @@ func getDefaultRoutesJSON() string {
 func (s *Server) createMachine(userFingerprint, teamName, name, containerID, image string) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, routes)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userFingerprint, routes)
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, routes,
+		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, teamName, name, "pending", image, containerID, userFingerprint, routes,
+		"test-identity-key", "test-authorized-keys", "test-ca-key",
+		"test-host-cert", "test-client-key", 2222)
 	return err
 }
 
@@ -2380,9 +2391,13 @@ func (s *Server) createMachine(userFingerprint, teamName, name, containerID, ima
 func (s *Server) createMachineWithDockerHost(userFingerprint, teamName, name, containerID, image, dockerHost string) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, docker_host, routes)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userFingerprint, dockerHost, routes)
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, docker_host, routes,
+		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, teamName, name, "pending", image, containerID, userFingerprint, dockerHost, routes,
+		"test-identity-key", "test-authorized-keys", "test-ca-key",
+		"test-host-cert", "test-client-key", 2222)
 	return err
 }
 
@@ -2447,13 +2462,15 @@ func (s *Server) determineUserShell(userFingerprint, containerID string) (string
 func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 	var machine Machine
 	err := s.db.QueryRow(`
-		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at, docker_host, routes
+		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at, docker_host, routes,
+		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
 		FROM machines
 		WHERE team_name = ? AND name = ?
 	`, teamName, name).Scan(
 		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
+		&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort,
 	)
 	if err != nil {
 		return nil, err

@@ -35,7 +35,13 @@ func TestProxyRequestRouting(t *testing.T) {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
 			docker_host TEXT,
-			routes TEXT
+			routes TEXT,
+			ssh_server_identity_key TEXT,
+			ssh_authorized_keys TEXT,
+			ssh_ca_public_key TEXT,
+			ssh_host_certificate TEXT,
+			ssh_client_private_key TEXT,
+			ssh_port INTEGER
 		)
 	`)
 	if err != nil {
@@ -160,7 +166,13 @@ func TestProxyRequestDetails(t *testing.T) {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
 			docker_host TEXT,
-			routes TEXT
+			routes TEXT,
+			ssh_server_identity_key TEXT,
+			ssh_authorized_keys TEXT,
+			ssh_ca_public_key TEXT,
+			ssh_host_certificate TEXT,
+			ssh_client_private_key TEXT,
+			ssh_port INTEGER
 		)
 	`)
 	if err != nil {
@@ -226,7 +238,13 @@ func TestMagicAuthFlow(t *testing.T) {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
 			docker_host TEXT,
-			routes TEXT
+			routes TEXT,
+			ssh_server_identity_key TEXT,
+			ssh_authorized_keys TEXT,
+			ssh_ca_public_key TEXT,
+			ssh_host_certificate TEXT,
+			ssh_client_private_key TEXT,
+			ssh_port INTEGER
 		)
 	`)
 	if err != nil {
@@ -250,8 +268,10 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	// Create a test machine with a private route
 	_, err = db.Exec(`
-		INSERT INTO machines (team_name, name, image, container_id, created_by_fingerprint, docker_host, routes) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO machines (team_name, name, image, container_id, created_by_fingerprint, docker_host, routes, 
+		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
+		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, "testteam", "testmachine", "test-image", "test-container-id", "test-fingerprint", "unix:///var/run/docker.sock", `[
 		{
 			"name": "default",
@@ -261,7 +281,7 @@ func TestMagicAuthFlow(t *testing.T) {
 			"priority": 1,
 			"ports": [80]
 		}
-	]`)
+	]`, "test-identity-key", "test-authorized-keys", "test-ca-key", "test-host-cert", "test-client-key", 2222)
 	if err != nil {
 		t.Fatalf("Failed to insert test machine: %v", err)
 	}
@@ -416,4 +436,118 @@ func TestMagicAuthFlow(t *testing.T) {
 			t.Errorf("Second request should fail with 401, got %d", w2.Code)
 		}
 	})
+}
+
+// TestProxyDebugPath tests the debug path handling in dev mode
+func TestProxyDebugPath(t *testing.T) {
+	// Create temporary database
+	dbFile := "/tmp/test_proxy_debug.db"
+	defer os.Remove(dbFile)
+
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer db.Close()
+
+	// Create tables
+	_, err = db.Exec(`
+		CREATE TABLE machines (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			team_name TEXT NOT NULL,
+			name TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'stopped',
+			image TEXT,
+			container_id TEXT,
+			created_by_fingerprint TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_started_at DATETIME,
+			docker_host TEXT,
+			routes TEXT,
+			ssh_server_identity_key TEXT,
+			ssh_authorized_keys TEXT,
+			ssh_ca_public_key TEXT,
+			ssh_host_certificate TEXT,
+			ssh_client_private_key TEXT,
+			ssh_port INTEGER
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create machines table: %v", err)
+	}
+
+	// Create a test machine
+	_, err = db.Exec(`
+		INSERT INTO machines (team_name, name, image, container_id, created_by_fingerprint, docker_host, routes, 
+		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
+		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "testteam", "testmachine", "test-image", "test-container-id", "test-fingerprint", "unix:///var/run/docker.sock", `[
+		{
+			"name": "default",
+			"policy": "public",
+			"methods": ["*"],
+			"paths": {"prefix": "/"},
+			"priority": 1,
+			"ports": [80]
+		}
+	]`, "test-identity-key", "test-authorized-keys", "test-ca-key", "test-host-cert", "test-client-key", 2222)
+	if err != nil {
+		t.Fatalf("Failed to insert test machine: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		devMode  string
+		path     string
+		expected string
+	}{
+		{
+			name:     "debug_path_in_dev_mode",
+			devMode:  "local",
+			path:     "/__exe.dev/debug",
+			expected: "Proxy handler - Route matched!",
+		},
+		{
+			name:     "debug_path_in_prod_mode",
+			devMode:  "",
+			path:     "/__exe.dev/debug",
+			expected: "Test proxy response",
+		},
+		{
+			name:     "regular_path_in_dev_mode",
+			devMode:  "local",
+			path:     "/",
+			expected: "Test proxy response",
+		},
+		{
+			name:     "regular_path_in_prod_mode",
+			devMode:  "",
+			path:     "/",
+			expected: "Test proxy response",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a test server
+			server := &Server{
+				quietMode: true,
+				db:        db,
+				testMode:  true,
+				devMode:   tt.devMode,
+			}
+
+			req := httptest.NewRequest("GET", "http://testmachine.testteam.localhost"+tt.path, nil)
+			req.Host = "testmachine.testteam.localhost"
+			w := httptest.NewRecorder()
+
+			server.handleProxyRequest(w, req)
+
+			if !strings.Contains(w.Body.String(), tt.expected) {
+				t.Errorf("Expected body to contain '%s', got: %s", tt.expected, w.Body.String())
+			}
+		})
+	}
 }
