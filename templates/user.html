@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXE.DEV - {{.User.Email}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fffff8;
+            background-image: 
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(0,0,0,0.035) 0px,
+                    rgba(0,0,0,0.035) 2px,
+                    transparent 2px,
+                    transparent 4px
+                );
+            background-size: 4px 4px;
+            font-family: Georgia, 'Times New Roman', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 40px 20px;
+            text-align: center;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            max-width: 900px;
+            width: 100%;
+            overflow-x: hidden;
+        }
+        
+        html {
+            overflow-x: hidden;
+        }
+        
+        .welcome-back {
+            font-size: 14px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 400;
+            position: relative;
+        }
+        
+        .welcome-back::before,
+        .welcome-back::after {
+            content: '§';
+            font-size: 18px;
+            opacity: 0.5;
+            margin: 0 15px;
+            font-weight: normal;
+        }
+        
+        .divider {
+            width: 200px;
+            height: 40px;
+            margin: 40px auto;
+            position: relative;
+            opacity: 0.4;
+        }
+        
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                #333 20%, 
+                #333 80%, 
+                transparent 100%);
+        }
+        
+        .divider::after {
+            content: '❦';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            background: #fffff8;
+            padding: 0 10px;
+            color: #333;
+        }
+        
+        .you-section {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .you-section .section-title {
+            font-size: 18px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #444;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        .you-section .info-item {
+            display: inline-block;
+            margin: 0;
+            padding: 10px 20px;
+            background: rgba(255, 255, 248, 0.95);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .you-section .info-label {
+            font-size: 12px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        
+        .you-section .info-value {
+            font-size: 16px;
+            color: #000;
+            font-weight: normal;
+        }
+        
+        .content-section {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 40px;
+            margin: 40px auto 50px;
+            flex-wrap: wrap;
+        }
+        
+        .blowfish-logo {
+            width: 150px;
+            height: auto;
+            flex-shrink: 0;
+        }
+        
+        .info-panel {
+            flex: 1;
+            max-width: 500px;
+            text-align: left;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #444;
+            margin-bottom: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+        }
+        
+        .info-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(255, 255, 248, 0.95);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .info-label {
+            font-size: 14px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: 400;
+        }
+        
+        .info-value {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 16px;
+            color: #000;
+            word-break: break-all;
+        }
+        
+        .team-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #000;
+        }
+        
+        .machine-item {
+            border-left: 4px solid #4a90e2;
+            padding-left: 12px;
+        }
+        
+        .machine-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #000;
+            margin-bottom: 5px;
+        }
+        
+        .machine-status {
+            font-size: 14px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 5px;
+        }
+        
+        .status-running {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-stopped {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-starting {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .machine-url {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .no-machines {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .machines-table {
+            width: 100%;
+            margin-top: 15px;
+        }
+        
+        .table-header {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1.5fr 3.5fr 2fr;
+            gap: 15px;
+            padding: 12px 0;
+            border-bottom: 2px solid #ddd;
+            font-weight: bold;
+            font-size: 14px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #444;
+        }
+        
+        .table-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1.5fr 3.5fr 2fr;
+            gap: 15px;
+            padding: 15px 0;
+            border-bottom: 1px solid #eee;
+            align-items: center;
+        }
+        
+        .table-row:last-child {
+            border-bottom: none;
+        }
+        
+        .table-row:hover {
+            background-color: rgba(0,0,0,0.02);
+        }
+        
+        .public-key {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            word-break: break-all;
+            background: #f8f8f8;
+            padding: 8px;
+            border-radius: 4px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        
+        .auth-door {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .door-button {
+            display: block;
+            text-decoration: none;
+            transition: transform 0.2s ease;
+            position: relative;
+        }
+        
+        .door-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .door-image {
+            width: 80px;
+            height: 120px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .door-text {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: #ffffff;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 2px 6px;
+            border-radius: 3px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+        
+        .connection-command {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .copy-btn {
+            background: #4a90e2;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 6px;
+            cursor: pointer;
+            color: white;
+            display: flex;
+            align-items: center;
+            transition: background-color 0.2s ease;
+            font-size: 0;
+        }
+        
+        .copy-btn:hover {
+            background: #357abd;
+        }
+        
+        .copy-btn:active {
+            background: #2d5aa0;
+        }
+        
+        .copy-btn svg {
+            width: 12px;
+            height: 12px;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 10px;
+            }
+            
+            .content-section {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+            
+            .info-panel {
+                text-align: center;
+            }
+            
+            .info-item {
+                text-align: left;
+            }
+            
+            .blowfish-logo {
+                width: 120px;
+            }
+            
+            .user-email {
+                word-break: break-word;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-door">
+        <a href="/logout" class="door-button logout-door">
+            <img src="closed-door-small.png" alt="Logout" class="door-image">
+            <div class="door-text">logout</div>
+        </a>
+    </div>
+    
+    <div class="container">
+        <div class="welcome-back">welcome back</div>
+        
+        <div class="you-section">
+            <div class="section-title">You</div>
+            <div class="info-item">
+                <div class="info-label">Email</div>
+                <div class="info-value">{{.User.Email}}</div>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="content-section">
+            <img src="exe.dev.png" alt="exe.dev blowfish logo" class="blowfish-logo">
+            
+            <div class="info-panel" style="max-width: 100%;">
+                <div class="section-title">Your Machines</div>
+                {{if .Machines}}
+                <div class="machines-table">
+                    <div class="table-header">
+                        <div class="col-name">Name</div>
+                        <div class="col-status">Status</div>
+                        <div class="col-team">Team</div>
+                        <div class="col-connection">Connection</div>
+                        <div class="col-image">Image</div>
+                    </div>
+                    {{range .Machines}}
+                    <div class="table-row">
+                        <div class="col-name machine-name">{{.Name}}</div>
+                        <div class="col-status">
+                            <span class="machine-status status-{{.Status}}">{{.Status}}</span>
+                        </div>
+                        <div class="col-team team-name">{{.TeamName}}</div>
+                        <div class="col-connection">
+                            <div class="connection-command">
+                                <span class="machine-url">ssh {{.Name}}@{{.TeamName}}.exe.dev</span>
+                                <button class="copy-btn" onclick="copyToClipboard('ssh {{.Name}}@{{.TeamName}}.exe.dev')" title="Copy to clipboard">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-image">{{if .Image}}{{.Image}}{{else}}-{{end}}</div>
+                    </div>
+                    {{end}}
+                </div>
+                {{else}}
+                <div class="info-item no-machines">
+                    No machines yet. Create one with:<br>
+                    <code>ssh exe.dev create --name=myname</code>
+                </div>
+                {{end}}
+            </div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="content-section">
+            <div class="info-panel" style="max-width: 100%;">
+                <div class="section-title">Your SSH Keys</div>
+                {{range .SSHKeys}}
+                <div class="info-item">
+                    <div class="info-label">Public Key</div>
+                    <div class="info-value public-key">{{.PublicKey}}</div>
+                    {{if .DeviceName}}
+                    <div class="info-label">Device</div>
+                    <div class="info-value">{{.DeviceName}}</div>
+                    {{end}}
+                    {{if .DefaultTeam}}
+                    <div class="info-label">Default Team</div>
+                    <div class="info-value team-name">{{.DefaultTeam}}</div>
+                    {{end}}
+                </div>
+                {{else}}
+                <div class="info-item no-machines">
+                    No SSH keys found.
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                // Use the modern clipboard API
+                navigator.clipboard.writeText(text).then(function() {
+                    showCopyFeedback();
+                }).catch(function(err) {
+                    console.error('Failed to copy: ', err);
+                    fallbackCopyTextToClipboard(text);
+                });
+            } else {
+                // Fallback for older browsers
+                fallbackCopyTextToClipboard(text);
+            }
+        }
+        
+        function fallbackCopyTextToClipboard(text) {
+            var textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // Avoid scrolling to bottom
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                var successful = document.execCommand('copy');
+                if (successful) {
+                    showCopyFeedback();
+                }
+            } catch (err) {
+                console.error('Fallback: Oops, unable to copy', err);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+        
+        function showCopyFeedback() {
+            // Find all copy buttons and briefly change their appearance
+            var copyButtons = document.querySelectorAll('.copy-btn');
+            copyButtons.forEach(function(btn) {
+                var originalBg = btn.style.backgroundColor;
+                btn.style.backgroundColor = '#28a745';
+                btn.title = 'Copied!';
+                
+                setTimeout(function() {
+                    btn.style.backgroundColor = originalBg;
+                    btn.title = 'Copy to clipboard';
+                }, 1000);
+            });
+        }
+    </script>
+</body>
+</html>

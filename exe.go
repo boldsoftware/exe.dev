@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"html/template"
 	"io"
 	"io/fs"
 	"log"
@@ -107,6 +108,9 @@ func SetupLogger(devMode string) {
 //go:embed static
 var staticFS embed.FS
 
+//go:embed templates
+var templatesFS embed.FS
+
 // SSHMetrics holds SSH server metrics
 type SSHMetrics struct {
 	connectionsTotal   *prometheus.CounterVec
@@ -194,6 +198,22 @@ type Machine struct {
 	UpdatedAt            time.Time
 	LastStartedAt        *time.Time
 	DockerHost           *string // DOCKER_HOST value where this container runs
+}
+
+// UserPageData represents the data for the user dashboard page
+type UserPageData struct {
+	User     User
+	SSHKeys  []SSHKey
+	Machines []Machine
+}
+
+// SSHKey represents an SSH key for the user page
+type SSHKey struct {
+	Fingerprint string
+	PublicKey   string
+	DeviceName  *string
+	DefaultTeam *string
+	Verified    bool
 }
 
 // Invite represents a team invitation
@@ -793,10 +813,37 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 	}
 
-	// Handle root path by serving welcome.html
+	// Handle root path and user dashboard
 	path := r.URL.Path
 	if path == "/" {
+		// Check if user is authenticated
+		if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
+			if fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
+				// User is authenticated, redirect to user dashboard
+				s.handleUserDashboard(w, r, fingerprint)
+				return
+			}
+		}
+		// User not authenticated, serve welcome page
 		path = "/welcome.html"
+	} else if path == "/~" || path == "/~/" {
+		// User dashboard - require authentication
+		cookie, err := r.Cookie("exe-auth")
+		if err != nil || cookie.Value == "" {
+			// Not authenticated, redirect to auth
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host)
+		if err != nil {
+			// Invalid cookie, redirect to auth
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleUserDashboard(w, r, fingerprint)
+		return
 	}
 
 	switch path {
@@ -812,6 +859,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleDeviceVerificationHTTP(w, r)
 	case "/auth":
 		s.handleAuth(w, r)
+	case "/logout":
+		s.handleLogout(w, r)
 	default:
 		if strings.HasPrefix(path, "/auth/") {
 			s.handleAuthCallback(w, r)
@@ -2124,6 +2173,153 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, finge
 	} else {
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 	}
+}
+
+// handleUserDashboard renders the user dashboard page
+func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fingerprint string) {
+	// Get user info
+	var user User
+	err := s.db.QueryRow(`
+		SELECT public_key_fingerprint, email, created_at
+		FROM users
+		WHERE public_key_fingerprint = ?
+	`, fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
+	if err != nil {
+		slog.Error("Failed to get user info for dashboard", "error", err, "fingerprint", fingerprint)
+		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		return
+	}
+
+	// Get user's SSH keys
+	sshKeys := []SSHKey{}
+	rows, err := s.db.Query(`
+		SELECT fingerprint, public_key, device_name, default_team, verified
+		FROM ssh_keys
+		WHERE user_email = ?
+		ORDER BY added_at DESC
+	`, user.Email)
+	if err != nil {
+		slog.Error("Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var key SSHKey
+			var deviceName, defaultTeam sql.NullString
+			err := rows.Scan(&key.Fingerprint, &key.PublicKey, &deviceName, &defaultTeam, &key.Verified)
+			if err != nil {
+				slog.Error("Error scanning SSH key", "error", err)
+				continue
+			}
+			if deviceName.Valid {
+				key.DeviceName = &deviceName.String
+			}
+			if defaultTeam.Valid {
+				key.DefaultTeam = &defaultTeam.String
+			}
+			sshKeys = append(sshKeys, key)
+		}
+	}
+
+	// Get user's machines from all teams they belong to
+	machines := []Machine{}
+	machineRows, err := s.db.Query(`
+		SELECT m.id, m.team_name, m.name, m.status, COALESCE(m.image, ''), 
+		       COALESCE(m.container_id, ''), m.created_by_fingerprint, 
+		       m.created_at, m.updated_at, m.last_started_at, m.docker_host
+		FROM machines m
+		JOIN team_members tm ON m.team_name = tm.team_name
+		WHERE tm.user_fingerprint = ?
+		ORDER BY m.updated_at DESC
+	`, fingerprint)
+	if err != nil {
+		slog.Error("Failed to get machines for dashboard", "error", err, "fingerprint", fingerprint)
+	} else {
+		defer machineRows.Close()
+		for machineRows.Next() {
+			var machine Machine
+			var containerID, image, dockerHost sql.NullString
+			var lastStartedAt sql.NullTime
+			err := machineRows.Scan(&machine.ID, &machine.TeamName, &machine.Name,
+				&machine.Status, &image, &containerID, &machine.CreatedByFingerprint,
+				&machine.CreatedAt, &machine.UpdatedAt, &lastStartedAt, &dockerHost)
+			if err != nil {
+				slog.Error("Error scanning machine", "error", err)
+				continue
+			}
+			if containerID.Valid {
+				machine.ContainerID = &containerID.String
+			}
+			if image.Valid {
+				machine.Image = image.String
+			}
+			if lastStartedAt.Valid {
+				machine.LastStartedAt = &lastStartedAt.Time
+			}
+			if dockerHost.Valid {
+				machine.DockerHost = &dockerHost.String
+			}
+			machines = append(machines, machine)
+		}
+	}
+
+	// Prepare template data
+	data := UserPageData{
+		User:     user,
+		SSHKeys:  sshKeys,
+		Machines: machines,
+	}
+
+	// Parse template
+	tmplFS, err := fs.Sub(templatesFS, "templates")
+	if err != nil {
+		slog.Error("Failed to access templates filesystem", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	tmpl, err := template.ParseFS(tmplFS, "user.html")
+	if err != nil {
+		slog.Error("Failed to parse user template", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Render template
+	w.Header().Set("Content-Type", "text/html")
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		slog.Error("Failed to execute user template", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleLogout logs out the user by clearing their auth cookie
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// Get the current auth cookie
+	cookie, err := r.Cookie("exe-auth")
+	if err == nil && cookie.Value != "" {
+		// Delete the cookie from the database
+		_, err := s.db.Exec(`
+			DELETE FROM auth_cookies 
+			WHERE cookie_value = ?
+		`, cookie.Value)
+		if err != nil {
+			slog.Error("Failed to delete auth cookie from database", "error", err)
+		}
+	}
+
+	// Clear the cookie in the browser
+	http.SetCookie(w, &http.Cookie{
+		Name:     "exe-auth",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+
+	// Redirect to home page
+	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
 // userHasTeamAccess checks if a user has access to a team

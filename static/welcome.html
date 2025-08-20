@@ -263,9 +263,58 @@
                 margin-right: auto;
             }
         }
+        
+        .auth-door {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .door-button {
+            display: block;
+            text-decoration: none;
+            transition: transform 0.2s ease;
+            position: relative;
+        }
+        
+        .door-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .door-image {
+            width: 80px;
+            height: 120px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .door-text {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: #ffffff;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 2px 6px;
+            border-radius: 3px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
     </style>
 </head>
 <body>
+    <div class="auth-door">
+        <a href="/auth" class="door-button login-door">
+            <img src="open-door-small.png" alt="Login" class="door-image">
+            <div class="door-text">login</div>
+        </a>
+    </div>
+    
     <div class="container">
         <div class="stop-overbuilding">yes you can have a machine</div>
         
