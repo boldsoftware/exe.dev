@@ -167,10 +167,10 @@ func (w *WildcardCertManager) getCertificateKey(serverName string) string {
 	if strings.HasSuffix(serverName, "."+w.domain) {
 		// Remove the main domain suffix to get the subdomain part
 		subdomain := strings.TrimSuffix(serverName, "."+w.domain)
-		
+
 		// Split subdomain parts (e.g., "machine.team" -> ["machine", "team"])
 		parts := strings.Split(subdomain, ".")
-		
+
 		if len(parts) == 1 {
 			// Single level subdomain (e.g., "api.exe.dev") - use regular wildcard
 			return "*." + w.domain
