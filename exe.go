@@ -16,14 +16,11 @@ import (
 	"encoding/pem"
 	"fmt"
 	"html/template"
-	"io"
 	"io/fs"
 	"log"
 	"log/slog"
-	mathrand "math/rand"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
@@ -33,6 +30,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	mathrand "math/rand"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -299,6 +298,15 @@ type EmailVerification struct {
 	CreatedAt            time.Time
 }
 
+// MagicSecret represents a temporary authentication secret for proxy magic URLs
+type MagicSecret struct {
+	Fingerprint string
+	TeamName    string
+	RedirectURL string
+	ExpiresAt   time.Time
+	CreatedAt   time.Time
+}
+
 // BillingVerification represents a pending billing verification (in-memory)
 type BillingVerification struct {
 	PublicKeyFingerprint string
@@ -345,6 +353,8 @@ type Server struct {
 	emailVerifications     map[string]*EmailVerification // token -> email verification
 	billingVerificationsMu sync.RWMutex
 	billingVerifications   map[string]*BillingVerification // fingerprint -> billing verification
+	magicSecretsMu         sync.RWMutex
+	magicSecrets           map[string]*MagicSecret // secret -> magic secret with expiration
 
 	// User sessions for tracking authenticated users
 	sessionsMu sync.RWMutex
@@ -463,6 +473,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		containerManager:     containerManager,
 		emailVerifications:   make(map[string]*EmailVerification),
 		billingVerifications: make(map[string]*BillingVerification),
+		magicSecrets:         make(map[string]*MagicSecret),
 		sessions:             make(map[*sshbuf.Channel]*UserSession),
 		postmarkClient:       postmarkClient,
 		stripeKey:            stripeKey,
@@ -888,22 +899,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Wake up containers on HTTP request
+	if !s.quietMode {
+		slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr, "host", r.Host)
+	}
+
 	// Check if this should be handled by the proxy handler
-	if s.isProxyRequest(r.Host) {
+	isProxy := s.isProxyRequest(r.Host)
+	if !s.quietMode {
+		slog.Info("[REDIRECT] Main handler routing check", "host", r.Host, "isProxy", isProxy)
+	}
+	if isProxy {
 		s.handleProxyRequest(w, r)
 		return
 	}
 
-	// Check if this is a container subdomain request
-	if containerName, teamName, port, isContainerRequest := s.parseContainerRequest(r.Host); isContainerRequest {
-		s.handleContainerProxy(w, r, containerName, teamName, port)
-		return
-	}
-
-	// TODO: Wake up containers on HTTP request
-	if !s.quietMode {
-		slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr)
-	}
 
 	// Handle root path and user dashboard
 	path := r.URL.Path
@@ -1335,72 +1345,19 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			slog.Error("Failed to cleanup email verification token", "error", err)
 			// Continue anyway
 		}
-	}
-
-	// Send success response
-	s.renderTemplate(w, "email-verified.html", nil)
-}
-
-// parseContainerRequest checks if the host matches container subdomain patterns
-// Returns: containerName, teamName, port, isContainerRequest
-// Supports: <name>.<team>.localhost|exe.dev (port 80) and <name>-<port>.<team>.localhost|exe.dev (custom port)
-func (s *Server) parseContainerRequest(host string) (containerName, teamName, port string, isContainerRequest bool) {
-	// Remove port if present in host
-	hostname := host
-	if idx := strings.LastIndex(host, ":"); idx > 0 {
-		hostname = host[:idx]
-	}
-
-	// Check for localhost development pattern
-	var domain string
-	if strings.HasSuffix(hostname, ".localhost") {
-		domain = "localhost"
-	} else if strings.HasSuffix(hostname, ".exe.dev") {
-		domain = "exe.dev"
-	} else {
-		return "", "", "", false
-	}
-
-	// Remove domain suffix to get the subdomain part
-	domainSuffix := "." + domain
-	if !strings.HasSuffix(hostname, domainSuffix) {
-		return "", "", "", false
-	}
-
-	subdomain := strings.TrimSuffix(hostname, domainSuffix)
-
-	// Split subdomain into parts: <name>[-<port>].<team>
-	parts := strings.Split(subdomain, ".")
-	if len(parts) != 2 {
-		return "", "", "", false
-	}
-
-	containerPart := parts[0] // <name> or <name>-<port>
-	teamName = parts[1]       // <team>
-
-	// Check if containerPart contains a port (has dash and ends with digits)
-	if dashIdx := strings.LastIndex(containerPart, "-"); dashIdx > 0 {
-		possiblePort := containerPart[dashIdx+1:]
-		// Validate that everything after dash is digits
-		if isNumeric(possiblePort) {
-			containerName = containerPart[:dashIdx]
-			port = possiblePort
-		} else {
-			// No port, treat as container name with dash
-			containerName = containerPart
-			port = "80" // default
+		
+		// Check if this is part of a web auth flow with redirect parameters
+		redirectURL := r.URL.Query().Get("redirect")
+		returnHost := r.URL.Query().Get("return_host")
+		if redirectURL != "" || returnHost != "" {
+			// This is a web auth flow, perform redirect after authentication
+			s.redirectAfterAuth(w, r, fingerprint)
+			return
 		}
-	} else {
-		containerName = containerPart
-		port = "80" // default
 	}
 
-	// Validate parts are non-empty and reasonable
-	if containerName == "" || teamName == "" || port == "" {
-		return "", "", "", false
-	}
-
-	return containerName, teamName, port, true
+	// Send success response (for SSH registrations or standalone verifications)
+	s.renderTemplate(w, "email-verified.html", nil)
 }
 
 // isNumeric checks if a string contains only digits
@@ -1413,133 +1370,11 @@ func isNumeric(s string) bool {
 	return len(s) > 0
 }
 
-// handleContainerProxy handles authenticated reverse proxy requests to containers
-func (s *Server) handleContainerProxy(w http.ResponseWriter, r *http.Request, containerName, teamName, port string) {
-	// Special case: handle auth callback
-	if strings.HasPrefix(r.URL.Path, "/__exe_auth") {
-		s.handleContainerAuthCallback(w, r, containerName, teamName, port)
-		return
-	}
-
-	if !s.quietMode {
-		slog.Info("Container proxy request", "container", containerName, "team", teamName, "port", port, "path", r.URL.Path)
-	}
-
-	// Check for authentication cookie
-	cookieName := "exe-auth-" + teamName
-	cookie, err := r.Cookie(cookieName)
-	if err != nil || cookie.Value == "" {
-		// No auth cookie, redirect to main auth flow
-		authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
-		if r.Host != "" {
-			// Redirect to main domain with return URL
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
-			redirectURL := fmt.Sprintf("%s://%s%s&return_host=%s", scheme,
-				strings.Replace(r.Host, containerName+"."+teamName+".", "", 1),
-				authURL, url.QueryEscape(r.Host))
-			http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
-		} else {
-			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-		}
-		return
-	}
-
-	// Validate cookie and get user info
-	fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host)
-	if err != nil {
-		slog.Error("Invalid auth cookie", "error", err)
-		// Invalid cookie, redirect to auth
-		authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-		return
-	}
-
-	// Check if user has access to this team/container
-	hasAccess, err := s.userHasTeamAccess(fingerprint, teamName)
-	if err != nil {
-		slog.Error("Error checking team access", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	if !hasAccess {
-		http.Error(w, "Access denied", http.StatusForbidden)
-		return
-	}
-
-	// Get container info and ensure it exists
-	machine, err := s.getMachineByName(teamName, containerName)
-	if err != nil {
-		slog.Error("Container not found", "error", err)
-		http.Error(w, "Container not found", http.StatusNotFound)
-		return
-	}
-
-	// TODO: Wake up container if it's sleeping
-	containerID := ""
-	if machine.ContainerID != nil {
-		containerID = *machine.ContainerID
-	}
-	slog.Info("Proxying to container", "name", machine.Name, "id", containerID)
-
-	// Proxy the request to the container
-	s.proxyToContainer(w, r, machine, port)
-}
-
-// handleContainerAuthCallback handles the auth callback for container subdomains
-func (s *Server) handleContainerAuthCallback(w http.ResponseWriter, r *http.Request, containerName, teamName, port string) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Missing auth token", http.StatusBadRequest)
-		return
-	}
-
-	// Validate the auth token and get user fingerprint
-	fingerprint, err := s.validateAuthToken(token, containerName+"."+teamName)
-	if err != nil {
-		slog.Error("Invalid auth token", "error", err)
-		http.Error(w, "Invalid or expired auth token", http.StatusUnauthorized)
-		return
-	}
-
-	// Create authentication cookie for this team
-	cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
-	if err != nil {
-		slog.Error("Failed to create auth cookie", "error", err)
-		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
-		return
-	}
-
-	// Set the authentication cookie
-	cookieName := "exe-auth-" + teamName
-	cookie := &http.Cookie{
-		Name:     cookieName,
-		Value:    cookieValue,
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   30 * 24 * 60 * 60, // 30 days
-		Secure:   r.TLS != nil,
-	}
-	http.SetCookie(w, cookie)
-
-	// Redirect back to the original path
-	returnPath := r.URL.Query().Get("return_path")
-	if returnPath == "" {
-		returnPath = "/"
-	}
-
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	redirectURL := fmt.Sprintf("%s://%s-%s.%s%s", scheme, containerName, port, teamName+"."+getDomain(r.Host), returnPath)
-	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
-}
-
 // handleAuth handles the main domain authentication flow
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
+	if !s.quietMode {
+		slog.Info("[REDIRECT] handleAuth called", "method", r.Method, "url", r.URL.String(), "host", r.Host)
+	}
 	// Check if user already has a valid exe.dev auth cookie
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
@@ -1617,8 +1452,36 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		verificationURL += "&return_host=" + url.QueryEscape(returnHost)
 	}
 
-	// Send email using existing verification system
-	err = s.sendVerificationEmail(email, token)
+	// Send email with proper verification URL that includes redirect params
+	scheme2 := "http"
+	if r.TLS != nil {
+		scheme2 = "https"
+	}
+	verifyEmailURL := fmt.Sprintf("%s://%s/verify-email?token=%s", scheme2, r.Host, token)
+	
+	// Add redirect parameters to the verify-email URL if present
+	// Both params needed: redirect=path, return_host=subdomain for cross-domain auth flow
+	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
+		verifyEmailURL += "&redirect=" + url.QueryEscape(redirect)
+	}
+	if returnHost := r.URL.Query().Get("return_host"); returnHost != "" {
+		verifyEmailURL += "&return_host=" + url.QueryEscape(returnHost)
+	}
+	
+	// Send custom email for web auth with the proper URL
+	subject := "Verify your email - exe.dev"
+	body := fmt.Sprintf(`Hello,
+
+Please click the link below to verify your email address:
+
+%s
+
+This link will expire in 24 hours.
+
+Best regards,
+The exe.dev team`, verifyEmailURL)
+	
+	err = s.sendEmail(email, subject, body)
 	if err != nil {
 		slog.Error("Failed to send auth email", "error", err)
 		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.")
@@ -1840,28 +1703,64 @@ func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) 
 	return fingerprint, nil
 }
 
-// createAuthToken creates a temporary authentication token
-func (s *Server) createAuthToken(fingerprint, subdomain string) (string, error) {
-	// Generate a random token
-	tokenBytes := make([]byte, 32)
-	if _, err := cryptorand.Read(tokenBytes); err != nil {
-		return "", fmt.Errorf("failed to generate token: %w", err)
+// createMagicSecret creates a temporary magic secret for proxy authentication
+func (s *Server) createMagicSecret(fingerprint, teamName, redirectURL string) (string, error) {
+	// Generate a random secret
+	secret := cryptorand.Text()
+
+	// Clean up expired secrets while we're here
+	s.cleanupExpiredMagicSecrets()
+
+	// Store in memory with 2-minute expiration
+	s.magicSecretsMu.Lock()
+	defer s.magicSecretsMu.Unlock()
+
+	s.magicSecrets[secret] = &MagicSecret{
+		Fingerprint: fingerprint,
+		TeamName:    teamName,
+		RedirectURL: redirectURL,
+		ExpiresAt:   time.Now().Add(2 * time.Minute),
+		CreatedAt:   time.Now(),
 	}
-	token := base64.URLEncoding.EncodeToString(tokenBytes)
 
-	// Set expiration to 10 minutes from now
-	expiresAt := time.Now().Add(10 * time.Minute)
+	return secret, nil
+}
 
-	// Store in database
-	_, err := s.db.Exec(`
-		INSERT INTO auth_tokens (token, user_fingerprint, subdomain, expires_at)
-		VALUES (?, ?, ?, ?)
-	`, token, fingerprint, subdomain, expiresAt.Format(time.RFC3339))
-	if err != nil {
-		return "", fmt.Errorf("failed to store auth token: %w", err)
+// validateMagicSecret validates and consumes a magic secret
+func (s *Server) validateMagicSecret(secret string) (*MagicSecret, error) {
+	s.magicSecretsMu.Lock()
+	defer s.magicSecretsMu.Unlock()
+
+	magicSecret, exists := s.magicSecrets[secret]
+	if !exists {
+		return nil, fmt.Errorf("invalid secret")
 	}
 
-	return token, nil
+	// Check expiration
+	if time.Now().After(magicSecret.ExpiresAt) {
+		// Clean up expired secret
+		delete(s.magicSecrets, secret)
+		return nil, fmt.Errorf("secret expired")
+	}
+
+	// Secret is valid, consume it (single use)
+	result := *magicSecret // Copy the struct
+	delete(s.magicSecrets, secret)
+
+	return &result, nil
+}
+
+// cleanupExpiredMagicSecrets removes expired magic secrets from memory
+func (s *Server) cleanupExpiredMagicSecrets() {
+	s.magicSecretsMu.Lock()
+	defer s.magicSecretsMu.Unlock()
+
+	now := time.Now()
+	for secret, magicSecret := range s.magicSecrets {
+		if now.After(magicSecret.ExpiresAt) {
+			delete(s.magicSecrets, secret)
+		}
+	}
 }
 
 // validateAuthToken validates an authentication token and returns the user fingerprint
@@ -1917,25 +1816,47 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, finge
 	redirectURL := r.URL.Query().Get("redirect")
 	returnHost := r.URL.Query().Get("return_host")
 
+	if !s.quietMode {
+		slog.Info("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "fingerprint", fingerprint[:10]+"...")
+	}
+
 	if returnHost != "" && redirectURL != "" {
-		// Create auth token for the container subdomain
-		containerName, teamName, _, isContainerRequest := s.parseContainerRequest(returnHost)
-		if isContainerRequest {
-			token, err := s.createAuthToken(fingerprint, containerName+"."+teamName)
+		if s.isProxyRequest(returnHost) {
+			if !s.quietMode {
+				slog.Info("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
+			}
+			// Parse hostname to extract machine and team names
+			hostname := returnHost
+			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
+				hostname = returnHost[:idx]
+			}
+
+			_, teamName, err := s.parseProxyHostname(hostname)
 			if err != nil {
-				slog.Error("Failed to create auth token", "error", err)
-				http.Error(w, "Failed to create authentication token", http.StatusInternalServerError)
+				slog.Error("Failed to parse proxy hostname", "hostname", hostname, "error", err)
+				http.Error(w, "Invalid hostname format", http.StatusBadRequest)
 				return
 			}
 
-			// Redirect back to container subdomain with auth token
+			// Create magic secret for the proxy subdomain
+			secret, err := s.createMagicSecret(fingerprint, teamName, redirectURL)
+			if err != nil {
+				slog.Error("Failed to create magic secret", "error", err)
+				http.Error(w, "Failed to create authentication secret", http.StatusInternalServerError)
+				return
+			}
+
+			// Redirect back to proxy subdomain with magic secret
 			scheme := "http"
 			if r.TLS != nil {
 				scheme = "https"
 			}
-			authCallbackURL := fmt.Sprintf("%s://%s/__exe_auth?token=%s&return_path=%s",
-				scheme, returnHost, token, url.QueryEscape(redirectURL))
-			http.Redirect(w, r, authCallbackURL, http.StatusTemporaryRedirect)
+			magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
+				scheme, returnHost, secret, url.QueryEscape(redirectURL))
+			if !s.quietMode {
+				slog.Info("[REDIRECT] redirectAfterAuth creating magic URL", "magicURL", magicURL)
+			}
+			http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
 			return
 		}
 	}
@@ -2048,22 +1969,36 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fin
 
 // handleLogout logs out the user by clearing their auth cookie
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// Get the current auth cookie
+	// Get the current user's fingerprint from the main auth cookie
+	var userFingerprint string
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
-		// Delete the cookie from the database
+		// Get the user fingerprint before deleting
+		userFingerprint, _ = s.validateAuthCookie(cookie.Value, r.Host)
+	}
+
+	// Clear ALL auth cookies for this user across all domains
+	if userFingerprint != "" {
 		_, err := s.db.Exec(`
 			DELETE FROM auth_cookies 
-			WHERE cookie_value = ?
-		`, cookie.Value)
+			WHERE user_fingerprint = ?
+		`, userFingerprint)
 		if err != nil {
-			slog.Error("Failed to delete auth cookie from database", "error", err)
+			slog.Error("Failed to delete user's auth cookies from database", "error", err)
 		}
 	}
 
-	// Clear the cookie in the browser
+	// Clear both cookies in the browser
 	http.SetCookie(w, &http.Cookie{
 		Name:     "exe-auth",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+	
+	http.SetCookie(w, &http.Cookie{
+		Name:     "exe-proxy-auth",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -2086,75 +2021,6 @@ func (s *Server) userHasTeamAccess(fingerprint, teamName string) (bool, error) {
 	}
 
 	return count > 0, nil
-}
-
-// proxyToContainer proxies the HTTP request to the container
-func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machine *Machine, port string) {
-	if s.containerManager == nil {
-		http.Error(w, "Machine management not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	// Get container connection details
-	if machine.ContainerID == nil {
-		http.Error(w, "Container not properly initialized", http.StatusServiceUnavailable)
-		return
-	}
-	conn, err := s.containerManager.ConnectToContainer(context.Background(), machine.CreatedByFingerprint, *machine.ContainerID)
-	if err != nil {
-		slog.Error("Failed to connect to container", "error", err)
-		http.Error(w, "Container not available", http.StatusServiceUnavailable)
-		return
-	}
-	defer func() {
-		if conn.StopFunc != nil {
-			conn.StopFunc()
-		}
-	}()
-
-	// Create reverse proxy
-	targetURL := &url.URL{
-		Scheme: "http",
-		Host:   "localhost:" + port,
-	}
-
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-
-	// For Docker, standard proxy is sufficient
-
-	// Handle errors
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		slog.Error("Proxy error", "machine", machine.Name, "error", err)
-		http.Error(w, "Service temporarily unavailable", http.StatusBadGateway)
-	}
-
-	// Fix Content-Length mismatch between parsed response and actual body
-	proxy.ModifyResponse = func(resp *http.Response) error {
-		if resp.Body != nil {
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return err
-			}
-			// Replace the body so it can still be read by the client
-			resp.Body = io.NopCloser(strings.NewReader(string(body)))
-			// Update Content-Length to match actual body length
-			resp.ContentLength = int64(len(body))
-			resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
-		}
-		return nil
-	}
-
-	// Modify request headers
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		// Add container-specific headers if needed
-		req.Header.Set("X-Forwarded-For", r.RemoteAddr)
-		req.Header.Set("X-Forwarded-Host", r.Host)
-		req.Header.Set("X-Forwarded-Proto", getScheme(r))
-	}
-
-	proxy.ServeHTTP(w, r)
 }
 
 // getScheme returns the request scheme

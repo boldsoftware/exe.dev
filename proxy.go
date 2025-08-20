@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	mathrand "math/rand"
 	"net/http"
 	"net/url"
@@ -17,6 +18,15 @@ import (
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches machine.team.exe.dev or machine.team.localhost
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
+	if !s.quietMode {
+		slog.Info("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
+	}
+	// Handle magic URL for authentication
+	if r.URL.Path == "/__exe.dev/auth" {
+		s.handleMagicAuth(w, r)
+		return
+	}
+
 	// Extract machine and team from Host header
 	hostname := r.Host
 	// Remove port if present
@@ -70,6 +80,17 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Policy: %s\n", matchingRoute.Policy)
 	fmt.Fprintf(w, "Request method: %s\n", r.Method)
 	fmt.Fprintf(w, "Request path: %s\n", r.URL.Path)
+
+	// Show current user info
+	if cookie, err := r.Cookie("exe-proxy-auth"); err == nil && cookie.Value != "" {
+		if fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
+			fmt.Fprintf(w, "Logged in user: %s\n", fingerprint)
+		} else {
+			fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
+		}
+	} else {
+		fmt.Fprintf(w, "Not logged in\n")
+	}
 }
 
 // isProxyRequest determines if a request should be handled by the proxy
@@ -199,6 +220,22 @@ func (s *Server) getMainDomain() string {
 	return "exe.dev"
 }
 
+// getMainDomainWithPort returns the main domain with port for redirects
+func (s *Server) getMainDomainWithPort() string {
+	if s.devMode != "" {
+		// Extract port from httpAddr (e.g., ":8080" -> "8080")
+		if s.httpAddr != "" {
+			port := strings.TrimPrefix(s.httpAddr, ":")
+			if port != "" {
+				return fmt.Sprintf("localhost:%s", port)
+			}
+		}
+		// Fallback to just localhost if no port specified
+		return "localhost"
+	}
+	return "exe.dev"
+}
+
 // redirectToAuth redirects the user to authentication
 func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 	// Create auth URL with redirect parameter
@@ -206,7 +243,7 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 
 	// If we're on a subdomain, redirect to the main domain
 	if r.Host != "" {
-		mainDomain := s.getMainDomain()
+		mainDomain := s.getMainDomainWithPort()
 
 		scheme := "http"
 		if r.TLS != nil {
@@ -217,7 +254,68 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 		authURL = fmt.Sprintf("%s://%s%s&return_host=%s", scheme, mainDomain, authURL, url.QueryEscape(r.Host))
 	}
 
+	if !s.quietMode {
+		slog.Info("[REDIRECT] redirectToAuth", "from", r.Host+r.URL.Path, "to", authURL)
+	}
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+
+// handleMagicAuth handles the magic authentication URL /__exe.dev/auth
+// TODOX: rename this to indicate that this is for container/subdomain requests
+func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
+	secret := r.URL.Query().Get("secret")
+	redirectURL := r.URL.Query().Get("redirect")
+
+	if !s.quietMode {
+		slog.Info("[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:10]+"...", "redirect", redirectURL)
+	}
+
+	if secret == "" {
+		http.Error(w, "Missing secret parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Validate and consume the magic secret
+	magicSecret, err := s.validateMagicSecret(secret)
+	if err != nil {
+		if !s.quietMode {
+			slog.Error("[REDIRECT] Magic secret validation failed", "error", err)
+		}
+		http.Error(w, "Invalid or expired secret", http.StatusUnauthorized)
+		return
+	}
+
+	// Create authentication cookie for this subdomain
+	cookieValue, err := s.createAuthCookie(magicSecret.Fingerprint, r.Host)
+	if err != nil {
+		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
+		return
+	}
+
+	// Set the proxy auth cookie (different from main site cookie)
+	cookie := &http.Cookie{
+		Name:     "exe-proxy-auth",
+		Value:    cookieValue,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   30 * 24 * 60 * 60, // 30 days
+		Secure:   r.TLS != nil,
+	}
+	http.SetCookie(w, cookie)
+
+	// Redirect to the original URL or the redirect from the magic secret
+	finalRedirect := redirectURL
+	if finalRedirect == "" {
+		finalRedirect = magicSecret.RedirectURL
+	}
+	if finalRedirect == "" {
+		finalRedirect = "/" // Default fallback
+	}
+
+	if !s.quietMode {
+		slog.Info("[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
+	}
+	http.Redirect(w, r, finalRedirect, http.StatusTemporaryRedirect)
 }
 
 // Route command handling methods
