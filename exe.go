@@ -914,7 +914,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	// Handle root path and user dashboard
 	path := r.URL.Path
 	if path == "/" {
@@ -1345,7 +1344,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			slog.Error("Failed to cleanup email verification token", "error", err)
 			// Continue anyway
 		}
-		
+
 		// Check if this is part of a web auth flow with redirect parameters
 		redirectURL := r.URL.Query().Get("redirect")
 		returnHost := r.URL.Query().Get("return_host")
@@ -1458,7 +1457,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		scheme2 = "https"
 	}
 	verifyEmailURL := fmt.Sprintf("%s://%s/verify-email?token=%s", scheme2, r.Host, token)
-	
+
 	// Add redirect parameters to the verify-email URL if present
 	// Both params needed: redirect=path, return_host=subdomain for cross-domain auth flow
 	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
@@ -1467,7 +1466,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	if returnHost := r.URL.Query().Get("return_host"); returnHost != "" {
 		verifyEmailURL += "&return_host=" + url.QueryEscape(returnHost)
 	}
-	
+
 	// Send custom email for web auth with the proper URL
 	subject := "Verify your email - exe.dev"
 	body := fmt.Sprintf(`Hello,
@@ -1480,7 +1479,7 @@ This link will expire in 24 hours.
 
 Best regards,
 The exe.dev team`, verifyEmailURL)
-	
+
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
 		slog.Error("Failed to send auth email", "error", err)
@@ -1996,7 +1995,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 	})
-	
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "exe-proxy-auth",
 		Value:    "",
