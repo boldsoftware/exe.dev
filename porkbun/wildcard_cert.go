@@ -169,12 +169,12 @@ func (w *WildcardCertManager) getCertificateKey(serverName string) string {
 		domainDots := strings.Count(w.domain, ".")
 		serverDots := strings.Count(serverName, ".")
 		subdomainLevels := serverDots - domainDots
-		
+
 		// Only support up to 2 subdomain levels
 		if subdomainLevels > 2 {
 			return serverName // Let it fail - we don't support more than 2 levels
 		}
-		
+
 		// Generate the appropriate wildcard pattern
 		wildcardPrefix := strings.Repeat("*.", subdomainLevels)
 		return wildcardPrefix + w.domain
