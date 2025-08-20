@@ -40,6 +40,8 @@ Test Setup:
 
 Test Steps:
 
+## Registration
+
 1. Register with exed by running "ssh -p 2222 localhost" 
    <hint>Use: `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 localhost`. Prompts for email and team name.</hint>
 
@@ -51,6 +53,8 @@ The e-mail thing will require doing a web call; use the browser to handle that.
 
 3. Test the "list" command (should have no machines yet!)
    <hint>Type `list` at exe.dev prompt. Should show "No machines found. Create one with 'new'."</hint>
+
+## Container Creation and SSH Access
 
 4. Create a new container using "ssh -p 2222 localhost"
    <hint>Type `new` at exe.dev prompt. Creates machine with random name like "able-yankee". Shows command like "ssh -p 2222 able-yankee@localhost"</hint>
@@ -64,3 +68,18 @@ The e-mail thing will require doing a web call; use the browser to handle that.
 
 7. Use scp with the new container to test that SSH subsystems work.
    <hint>Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P 2222 localfile machinename@localhost:/remote/path`. Ensure SSH connection works first before testing SCP.</hint>
+
+
+## HTTP Proxying
+
+8. Start an HTTP server on machinename@localhost
+
+9. Connect to it via http://machinename.team.localhost:8080/ . There should be a login flow
+   of some sort that might just be redirections.
+
+10. Logout on http://localhost:8080/
+
+11. Connect again; you should require login; don't log in.
+
+10. Use the "route" command in the exe.dev shell to make / public. You should be
+   able to access it without auth, then.
