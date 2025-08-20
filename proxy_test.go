@@ -1,15 +1,58 @@
 package exe
 
 import (
+	"database/sql"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestProxyRequestRouting(t *testing.T) {
+	// Create temporary database
+	dbFile := "/tmp/test_proxy_routing.db"
+	defer os.Remove(dbFile)
+
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer db.Close()
+
+	// Create tables
+	_, err = db.Exec(`
+		CREATE TABLE machines (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			team_name TEXT NOT NULL,
+			name TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'stopped',
+			image TEXT,
+			container_id TEXT,
+			created_by_fingerprint TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_started_at DATETIME,
+			docker_host TEXT,
+			routes TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create machines table: %v", err)
+	}
+
 	// Create a test server
 	server := &Server{
 		quietMode: true,
+		db:        db,
+		testMode:  true,
+	}
+
+	// Create a test machine with default routes
+	err = server.createMachine("test-fingerprint", "myteam", "myapp", "container123", "nginx")
+	if err != nil {
+		t.Fatalf("Failed to create test machine: %v", err)
 	}
 
 	tests := []struct {
@@ -23,22 +66,22 @@ func TestProxyRequestRouting(t *testing.T) {
 			name:           "production proxy request",
 			host:           "myapp.myteam.exe.dev",
 			expectedProxy:  true,
-			expectedStatus: 200,
-			expectedBody:   "Proxy handler called for host: myapp.myteam.exe.dev",
+			expectedStatus: 307, // Should redirect to auth for private routes
+			expectedBody:   "auth?redirect=",
 		},
 		{
 			name:           "development proxy request",
 			host:           "myapp.myteam.localhost",
 			expectedProxy:  true,
-			expectedStatus: 200,
-			expectedBody:   "Proxy handler called for host: myapp.myteam.localhost",
+			expectedStatus: 307, // Should redirect to auth for private routes
+			expectedBody:   "auth?redirect=",
 		},
 		{
 			name:           "production proxy request with port",
 			host:           "myapp.myteam.exe.dev:8080",
 			expectedProxy:  true,
-			expectedStatus: 200,
-			expectedBody:   "Proxy handler called for host: myapp.myteam.exe.dev",
+			expectedStatus: 307, // Should redirect to auth for private routes
+			expectedBody:   "auth?redirect=",
 		},
 		{
 			name:           "main domain request",
@@ -93,9 +136,48 @@ func TestProxyRequestRouting(t *testing.T) {
 }
 
 func TestProxyRequestDetails(t *testing.T) {
+	// Create temporary database
+	dbFile := "/tmp/test_proxy_details.db"
+	defer os.Remove(dbFile)
+
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer db.Close()
+
+	// Create tables
+	_, err = db.Exec(`
+		CREATE TABLE machines (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			team_name TEXT NOT NULL,
+			name TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'stopped',
+			image TEXT,
+			container_id TEXT,
+			created_by_fingerprint TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_started_at DATETIME,
+			docker_host TEXT,
+			routes TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create machines table: %v", err)
+	}
+
 	// Create a test server
 	server := &Server{
 		quietMode: true,
+		db:        db,
+		testMode:  true,
+	}
+
+	// Create a test machine
+	err = server.createMachine("test-fingerprint", "devteam", "webapp", "container456", "nginx")
+	if err != nil {
+		t.Fatalf("Failed to create test machine: %v", err)
 	}
 
 	// Test that the proxy handler shows request details
@@ -107,22 +189,14 @@ func TestProxyRequestDetails(t *testing.T) {
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
-	if w.Code != 200 {
-		t.Errorf("ServeHTTP status = %d, want %d", w.Code, 200)
+	// Should get 307 redirect to auth due to authentication requirement
+	if w.Code != 307 {
+		t.Errorf("ServeHTTP status = %d, want %d", w.Code, 307)
 	}
 
-	body := w.Body.String()
-	expected := []string{
-		"Proxy handler called for host: webapp.devteam.exe.dev",
-		"Request method: POST",
-		"Request path: /api/test",
-		"X-Custom-Header: test-value",
-		"Content-Type: application/json",
-	}
-
-	for _, exp := range expected {
-		if !strings.Contains(body, exp) {
-			t.Errorf("ServeHTTP body missing %q\nGot: %s", exp, body)
-		}
+	// Check the Location header for the redirect
+	location := w.Header().Get("Location")
+	if !strings.Contains(location, "auth?redirect=") {
+		t.Errorf("Expected auth redirect in Location header, got: %s", location)
 	}
 }

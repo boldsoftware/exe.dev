@@ -12,6 +12,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"html/template"
@@ -185,6 +186,24 @@ type TeamMember struct {
 	JoinedAt        time.Time
 }
 
+// PathMatcher defines how to match request paths
+type PathMatcher struct {
+	Prefix string `json:"prefix,omitempty"` // Match paths with this prefix
+}
+
+// Route defines access rules for HTTP requests
+type Route struct {
+	Name     string      `json:"name"`     // Unique name for this route
+	Priority int         `json:"priority"` // Lower numbers = higher priority
+	Methods  []string    `json:"methods"`  // HTTP methods ("*" for all)
+	Paths    PathMatcher `json:"paths"`    // Path matching rules
+	Policy   string      `json:"policy"`   // "public" or "private"
+	Ports    []int       `json:"ports"`    // Allowed destination ports. We try all of them until success.
+}
+
+// MachineRoutes represents the complete routing configuration for a machine
+type MachineRoutes []Route
+
 // Machine represents a container/VM
 type Machine struct {
 	ID                   int
@@ -198,6 +217,47 @@ type Machine struct {
 	UpdatedAt            time.Time
 	LastStartedAt        *time.Time
 	DockerHost           *string // DOCKER_HOST value where this container runs
+	Routes               *string // JSON-encoded routing configuration
+}
+
+// GetRoutes parses and returns the machine's routing configuration
+func (m *Machine) GetRoutes() (MachineRoutes, error) {
+	if m.Routes == nil || *m.Routes == "" {
+		return m.getDefaultRoutes(), nil
+	}
+
+	var routes MachineRoutes
+	err := json.Unmarshal([]byte(*m.Routes), &routes)
+	if err != nil {
+		return m.getDefaultRoutes(), err
+	}
+
+	return routes, nil
+}
+
+// SetRoutes sets the machine's routing configuration
+func (m *Machine) SetRoutes(routes MachineRoutes) error {
+	data, err := json.Marshal(routes)
+	if err != nil {
+		return err
+	}
+	routesStr := string(data)
+	m.Routes = &routesStr
+	return nil
+}
+
+// getDefaultRoutes returns the default routing configuration
+func (m *Machine) getDefaultRoutes() MachineRoutes {
+	return MachineRoutes{
+		{
+			Name:     "default",
+			Priority: 10,
+			Methods:  []string{"*"},
+			Paths:    PathMatcher{Prefix: "/"},
+			Policy:   "private",
+			Ports:    []int{80, 8000, 8080, 8888},
+		},
+	}
 }
 
 // UserPageData represents the data for the user dashboard page
@@ -2738,49 +2798,64 @@ func (s *Server) isValidContainerName(name string) bool {
 	return s.isValidTeamName(name) // Reuse team name validation
 }
 
+// getDefaultRoutesJSON returns the default routes as a JSON string
+func getDefaultRoutesJSON() string {
+	var machine Machine
+	routes := machine.getDefaultRoutes()
+	data, err := json.Marshal(routes)
+	if err != nil {
+		log.Fatalf("Failed to marshal default routes: %v", err)
+	}
+	return string(data)
+}
+
 // createMachine stores machine info in database
 func (s *Server) createMachine(userFingerprint, teamName, name, containerID, image string) error {
+	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userFingerprint)
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, routes)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, teamName, name, "pending", image, containerID, userFingerprint, routes)
 	return err
 }
 
 // createMachineWithDockerHost stores machine info including docker host in database
 func (s *Server) createMachineWithDockerHost(userFingerprint, teamName, name, containerID, image, dockerHost string) error {
+	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, docker_host)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userFingerprint, dockerHost)
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, docker_host, routes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, teamName, name, "pending", image, containerID, userFingerprint, dockerHost, routes)
 	return err
 }
 
 // createMachineWithSSH stores machine info including SSH keys in database
 func (s *Server) createMachineWithSSH(userFingerprint, teamName, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
 			team_name, name, status, image, container_id, created_by_fingerprint,
 			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			ssh_host_certificate, ssh_client_private_key, ssh_port
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ssh_host_certificate, ssh_client_private_key, ssh_port, routes
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, teamName, name, "running", image, containerID, userFingerprint,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort)
+		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, routes)
 	return err
 }
 
 // createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
 func (s *Server) createMachineWithSSHAndDockerHost(userFingerprint, teamName, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
 			team_name, name, status, image, container_id, created_by_fingerprint,
 			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, routes
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, teamName, name, "running", image, containerID, userFingerprint,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost)
+		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, routes)
 	return err
 }
 
@@ -2815,13 +2890,13 @@ func (s *Server) determineUserShell(userFingerprint, containerID string) (string
 func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 	var machine Machine
 	err := s.db.QueryRow(`
-		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at, docker_host
+		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at, docker_host, routes
 		FROM machines
 		WHERE team_name = ? AND name = ?
 	`, teamName, name).Scan(
 		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
-		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost,
+		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
 	)
 	if err != nil {
 		return nil, err

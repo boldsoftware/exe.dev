@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -224,6 +226,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 		"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
 		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
 		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
+		"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
 		"\033[1mteam\033[0m                    - Team management\r\n" +
 		"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 		"\033[1m?\033[0m                       - Show this help\r\n" +
@@ -296,6 +299,8 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 			ss.handleDeleteCommand(s, fingerprint, teamName, args)
 		case "logs":
 			ss.handleLogsCommand(s, fingerprint, teamName, args)
+		case "route":
+			ss.handleRouteCommand(s, fingerprint, teamName, args)
 		case "team":
 			ss.handleTeamCommand(s, fingerprint, teamName, args)
 		case "whoami":
@@ -765,6 +770,8 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 		ss.handleLogsCommand(s, fingerprint, team.TeamName, args)
 	case "diag", "diagnostics":
 		fmt.Fprintf(s, "\033[1;33mDiagnostics not implemented in new server yet\033[0m\r\n")
+	case "route":
+		ss.handleRouteCommand(s, fingerprint, team.TeamName, args)
 	case "team":
 		ss.handleTeamCommand(s, fingerprint, team.TeamName, args)
 	case "whoami":
@@ -783,6 +790,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 				"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
 				"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
 				"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
+				"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
 				"\033[1mteam\033[0m                    - Team management\r\n" +
 				"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 				"\033[1m?\033[0m                       - Show this help\r\n\r\n" +
@@ -1425,6 +1433,10 @@ func (ss *SSHServer) handleLogsCommand(s ssh.Session, fingerprint, teamName stri
 	fmt.Fprintf(s, "\033[1;33mNote: Logs not implemented in new server yet\033[0m\r\n")
 }
 
+func (ss *SSHServer) handleRouteCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+	ss.server.handleRouteCommand(s, fingerprint, teamName, args)
+}
+
 func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
 	switch command {
 	case "new":
@@ -1476,6 +1488,14 @@ func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
 			"View logs for a machine.\r\n\r\n" +
 			"\033[1mUsage:\033[0m logs <machine-name>\r\n\r\n"
 		fmt.Fprint(s, helpText)
+	case "route":
+		routeHelpText := "\r\n\033[1;33mCommand: route\033[0m\r\n\r\n" +
+			"Manage HTTP routing rules for a machine.\r\n\r\n" +
+			"\033[1mSubcommands:\033[0m\r\n" +
+			"  \033[1mroute <machine> list\033[0m         - List all routes\r\n" +
+			"  \033[1mroute <machine> add\033[0m          - Add a new route\r\n" +
+			"  \033[1mroute <machine> delete\033[0m       - Delete a route\r\n\r\n"
+		fmt.Fprint(s, routeHelpText)
 	case "diag":
 		helpText := "\r\n\033[1;33mCommand: diag\033[0m\r\n\r\n" +
 			"Get startup diagnostics for a machine.\r\n\r\n" +
@@ -1778,4 +1798,269 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	}
 
 	return nil
+}
+
+func (ss *SSHServer) handleRouteList(s ssh.Session, fingerprint, teamName, machineName string) {
+	// Get machine
+	machine, err := ss.getMachine(fingerprint, teamName, machineName)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Get routes
+	routes, err := machine.GetRoutes()
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
+		return
+	}
+
+	fmt.Fprintf(s, "\r\n\033[1;36mRoutes for machine '%s':\033[0m\r\n\r\n", machineName)
+
+	if len(routes) == 0 {
+		fmt.Fprintf(s, "No routes configured.\r\n")
+		return
+	}
+
+	for _, route := range routes {
+		methods := strings.Join(route.Methods, ",")
+		ports := make([]string, len(route.Ports))
+		for i, port := range route.Ports {
+			ports[i] = fmt.Sprintf("%d", port)
+		}
+		portList := strings.Join(ports, ",")
+
+		fmt.Fprintf(s, "  \033[1m%s\033[0m (priority %d)\r\n", route.Name, route.Priority)
+		fmt.Fprintf(s, "    Methods: %s\r\n", methods)
+		fmt.Fprintf(s, "    Path prefix: %s\r\n", route.Paths.Prefix)
+		fmt.Fprintf(s, "    Policy: %s\r\n", route.Policy)
+		fmt.Fprintf(s, "    Ports: %s\r\n\r\n", portList)
+	}
+}
+
+func (ss *SSHServer) handleRouteAdd(s ssh.Session, fingerprint, teamName, machineName string, args []string) {
+	// Create a FlagSet for parsing
+	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
+	var name, methodsStr, prefix, policy, portsStr string
+	var priority int
+
+	fs.StringVar(&name, "name", "", "route name (auto-generated if not specified)")
+	fs.IntVar(&priority, "priority", -1, "priority (lower = higher priority, defaults to lowest priority)")
+	fs.StringVar(&methodsStr, "methods", "*", "HTTP methods (comma-separated, or '*' for all)")
+	fs.StringVar(&prefix, "prefix", "/", "path prefix to match")
+	fs.StringVar(&policy, "policy", "private", "'public' or 'private'")
+	fs.StringVar(&portsStr, "ports", "80,8000,8080,8888", "allowed ports (comma-separated)")
+
+	// Capture the output to avoid printing errors to the session
+	var buf bytes.Buffer
+	fs.SetOutput(&buf)
+
+	// Parse the flags
+	err := fs.Parse(args)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError parsing flags: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Generate name if not provided
+	if name == "" {
+		name = ss.server.generateRandomRouteName()
+	}
+
+	// Get machine
+	machine, err := ss.getMachine(fingerprint, teamName, machineName)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Get existing routes
+	routes, err := machine.GetRoutes()
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Set default priority if not specified
+	if priority == -1 {
+		// Find the highest priority number and set this route to be lower priority (higher number)
+		maxPriority := 0
+		for _, route := range routes {
+			if route.Priority > maxPriority {
+				maxPriority = route.Priority
+			}
+		}
+		priority = maxPriority + 10 // Add some gap
+	}
+
+	// Parse methods
+	var methods []string
+	if methodsStr == "*" {
+		methods = []string{"*"}
+	} else {
+		methods = strings.Split(methodsStr, ",")
+		for i, method := range methods {
+			methods[i] = strings.TrimSpace(strings.ToUpper(method))
+		}
+	}
+
+	// Parse ports
+	portStrs := strings.Split(portsStr, ",")
+	var ports []int
+	for _, portStr := range portStrs {
+		portStr = strings.TrimSpace(portStr)
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			fmt.Fprintf(s, "\033[1;31mError: Invalid port '%s': %v\033[0m\r\n", portStr, err)
+			return
+		}
+		ports = append(ports, port)
+	}
+
+	// Validate policy
+	if policy != "public" && policy != "private" {
+		fmt.Fprintf(s, "\033[1;31mError: Policy must be 'public' or 'private'\033[0m\r\n")
+		return
+	}
+
+	// Check for duplicate name or priority
+	for _, route := range routes {
+		if route.Name == name {
+			fmt.Fprintf(s, "\033[1;31mError: Route with name '%s' already exists\033[0m\r\n", name)
+			return
+		}
+		if route.Priority == priority {
+			fmt.Fprintf(s, "\033[1;31mError: Route with priority %d already exists\033[0m\r\n", priority)
+			return
+		}
+	}
+
+	// Create new route
+	newRoute := Route{
+		Name:     name,
+		Priority: priority,
+		Methods:  methods,
+		Paths:    PathMatcher{Prefix: prefix},
+		Policy:   policy,
+		Ports:    ports,
+	}
+
+	// Add to routes list
+	routes = append(routes, newRoute)
+
+	// Set routes back on machine
+	err = machine.SetRoutes(routes)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Update database
+	_, err = ss.server.db.Exec(`
+		UPDATE machines SET routes = ? 
+		WHERE name = ? AND team_name = ?`,
+		*machine.Routes, machineName, teamName)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError saving route: %v\033[0m\r\n", err)
+		return
+	}
+
+	fmt.Fprintf(s, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
+}
+
+func (ss *SSHServer) handleRouteRemove(s ssh.Session, fingerprint, teamName, machineName string, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(s, "\033[1;31mError: Please specify route name\033[0m\r\n")
+		fmt.Fprintf(s, "Usage: route %s remove <name>\r\n", machineName)
+		return
+	}
+
+	routeName := args[0]
+
+	// Get machine
+	machine, err := ss.getMachine(fingerprint, teamName, machineName)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Get existing routes
+	routes, err := machine.GetRoutes()
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Find and remove the route
+	var newRoutes MachineRoutes
+	found := false
+	for _, route := range routes {
+		if route.Name == routeName {
+			found = true
+			continue // Skip this route (delete it)
+		}
+		newRoutes = append(newRoutes, route)
+	}
+
+	if !found {
+		fmt.Fprintf(s, "\033[1;31mError: Route '%s' not found\033[0m\r\n", routeName)
+		return
+	}
+
+	// Set routes back on machine
+	err = machine.SetRoutes(newRoutes)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
+		return
+	}
+
+	// Update database
+	_, err = ss.server.db.Exec(`
+		UPDATE machines SET routes = ? 
+		WHERE name = ? AND team_name = ?`,
+		*machine.Routes, machineName, teamName)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
+		return
+	}
+
+	fmt.Fprintf(s, "\033[1;32mRoute '%s' deleted successfully\033[0m\r\n", routeName)
+}
+
+// getMachine retrieves a machine for the given user/team/name
+func (ss *SSHServer) getMachine(fingerprint, teamName, machineName string) (*Machine, error) {
+	// First verify user has access to the team
+	var exists bool
+	err := ss.server.db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM team_members 
+			WHERE user_fingerprint = ? AND team_name = ?
+		)`, fingerprint, teamName).Scan(&exists)
+	if err != nil {
+		return nil, fmt.Errorf("database error: %v", err)
+	}
+	if !exists {
+		return nil, fmt.Errorf("access denied to team '%s'", teamName)
+	}
+
+	// Get the machine
+	var machine Machine
+	err = ss.server.db.QueryRow(`
+		SELECT id, team_name, name, status, image, container_id, 
+		       created_by_fingerprint, created_at, updated_at, 
+		       last_started_at, docker_host, routes
+		FROM machines 
+		WHERE name = ? AND team_name = ?`, machineName, teamName).Scan(
+		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
+		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
+		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
+		&machine.DockerHost, &machine.Routes)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("machine '%s' not found", machineName)
+		}
+		return nil, fmt.Errorf("database error: %v", err)
+	}
+
+	return &machine, nil
 }

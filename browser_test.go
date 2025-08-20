@@ -61,11 +61,14 @@ func TestBrowserScenario(t *testing.T) {
 	// Add container to mock manager
 	mockManager.AddContainer(containerID, machineName, fingerprint, teamName)
 
-	// Store container in database
-	_, err = server.db.Exec(`
-		INSERT OR REPLACE INTO machines (team_name, name, container_id, created_by_fingerprint, status)
-		VALUES (?, ?, ?, ?, 'running')
-	`, teamName, machineName, containerID, fingerprint)
+	// Store container in database using the proper createMachine method
+	err = server.createMachine(fingerprint, teamName, machineName, containerID, "")
+	if err != nil {
+		t.Fatalf("Failed to create machine: %v", err)
+	}
+
+	// Update status to running
+	_, err = server.db.Exec(`UPDATE machines SET status = 'running' WHERE name = ? AND team_name = ?`, machineName, teamName)
 	if err != nil {
 		t.Fatalf("Failed to store machine in database: %v", err)
 	}
