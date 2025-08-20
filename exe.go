@@ -1044,106 +1044,17 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Show confirmation form
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>Confirm Device - exe.dev</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 500px;
-            margin: 100px auto;
-            padding: 40px;
-            background: #f5f5f5;
-        }
-        .container {
-            background: white;
-            border-radius: 12px;
-            padding: 40px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
-        p {
-            color: #666;
-            line-height: 1.6;
-            margin: 20px 0;
-        }
-        .info-box {
-            background: #f0f9ff;
-            border: 1px solid #0ea5e9;
-            border-radius: 6px;
-            padding: 16px;
-            margin: 20px 0;
-        }
-        .info-box strong {
-            color: #0c4a6e;
-        }
-        .fingerprint {
-            font-family: monospace;
-            background: #f5f5f5;
-            padding: 8px 12px;
-            border-radius: 4px;
-            display: inline-block;
-            margin-top: 8px;
-        }
-        .button {
-            background: #2563eb;
-            color: white;
-            border: none;
-            padding: 12px 32px;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            display: inline-block;
-            margin-top: 20px;
-            transition: background 0.2s;
-        }
-        .button:hover {
-            background: #1d4ed8;
-        }
-        .warning {
-            background: #fef3c7;
-            border: 1px solid #f59e0b;
-            border-radius: 6px;
-            padding: 12px;
-            margin: 20px 0;
-            color: #92400e;
-        }
-        form {
-            margin: 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Authorize New Device</h1>
-        <p>A new device is requesting access to your exe.dev account.</p>
+	data := struct {
+		Email       string
+		Fingerprint string
+		Token       string
+	}{
+		Email:       email,
+		Fingerprint: fingerprint[:16],
+		Token:       token,
+	}
 
-        <div class="info-box">
-            <strong>Account:</strong> %s<br>
-            <strong>Device Fingerprint:</strong>
-            <div class="fingerprint">%s...</div>
-        </div>
-
-        <div class="warning">
-            ⚠️ Only confirm if you just tried to connect from a new device
-        </div>
-
-        <p>This will allow the device to access your exe.dev containers using SSH.</p>
-
-        <form method="POST" action="/verify-device">
-            <input type="hidden" name="token" value="%s">
-            <button type="submit" class="button">Authorize Device</button>
-        </form>
-    </div>
-</body>
-</html>`, email, fingerprint[:16], token)
+	s.renderTemplate(w, "device-verification.html", data)
 }
 
 // handleDeviceVerificationHTTP handles web-based device verification
@@ -1235,55 +1146,13 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	s.emailVerificationsMu.Unlock()
 
 	// Send success response
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>Device Verified - exe.dev</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            max-width: 400px;
-        }
-        h1 { color: #2d3748; margin-bottom: 20px; }
-        p { color: #4a5568; line-height: 1.6; }
-        .success { color: #48bb78; font-size: 48px; margin-bottom: 20px; }
-        .command {
-            background: #f7fafc;
-            padding: 15px;
-            border-radius: 5px;
-            font-family: monospace;
-            margin: 20px 0;
-            border: 1px solid #e2e8f0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="success">✓</div>
-        <h1>Device Verified!</h1>
-        <p>Your new device has been successfully authorized.</p>
-        <p>You can now reconnect to exe.dev from your terminal:</p>
-        <div class="command">ssh exe.dev</div>
-        <p style="font-size: 14px; color: #718096; margin-top: 30px;">
-            Device fingerprint: %s...
-        </p>
-    </div>
-</body>
-</html>`, fingerprint[:16])
+	data := struct {
+		Fingerprint string
+	}{
+		Fingerprint: fingerprint[:16],
+	}
+
+	s.renderTemplate(w, "device-verified.html", data)
 }
 
 // showEmailVerificationForm shows a confirmation form for email verification
@@ -1689,81 +1558,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Show authentication form
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>exe.dev - Authentication Required</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 80px auto; padding: 20px; line-height: 1.6; }
-        .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; margin-bottom: 10px; font-size: 24px; }
-        .subtitle { color: #666; margin-bottom: 30px; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 5px; font-weight: 500; color: #333; }
-        input[type="email"] {
-            width: 100%%;
-            padding: 12px;
-            border: 2px solid #e1e5e9;
-            border-radius: 6px;
-            font-size: 16px;
-            box-sizing: border-box;
-        }
-        input[type="email"]:focus {
-            outline: none;
-            border-color: #007cba;
-        }
-        button {
-            width: 100%%;
-            background: #007cba;
-            color: white;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 500;
-        }
-        button:hover { background: #006ba1; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .alt-method {
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 1px solid #e1e5e9;
-            text-align: center;
-            color: #666;
-        }
-        .ssh-command {
-            background: #f8f9fa;
-            padding: 12px;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Consolas', monospace;
-            color: #333;
-            border-left: 3px solid #007cba;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Sign in to exe.dev</h1>
-        <p class="subtitle">Enter your email address to receive a sign-in link</p>
-
-        <form method="POST" action="/auth">
-            <div class="form-group">
-                <label for="email">Email address</label>
-                <input type="email" id="email" name="email" required placeholder="you@example.com">
-            </div>
-
-            <button type="submit">Send sign-in link</button>
-        </form>
-
-        <div class="alt-method">
-            <p>Or authenticate via SSH:</p>
-            <div class="ssh-command">ssh exe.dev</div>
-        </div>
-    </div>
-</body>
-</html>`)
+	s.renderTemplate(w, "auth-form.html", nil)
 }
 
 // handleAuthEmailSubmission handles the email form submission for web auth
@@ -1836,57 +1631,29 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 // showAuthError displays an authentication error page
 func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message string) {
-	w.Header().Set("Content-Type", "text/html")
+	data := struct {
+		Message     string
+		QueryString string
+	}{
+		Message:     message,
+		QueryString: r.URL.RawQuery,
+	}
+
 	w.WriteHeader(http.StatusBadRequest)
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>exe.dev - Authentication Error</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 80px auto; padding: 20px; line-height: 1.6; }
-        .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .error { color: #d73a49; background: #ffeef0; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
-        a { color: #007cba; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Authentication Error</h1>
-        <div class="error">%s</div>
-        <p><a href="/auth?%s">← Try again</a></p>
-    </div>
-</body>
-</html>`, message, r.URL.RawQuery)
+	s.renderTemplate(w, "auth-error.html", data)
 }
 
 // showAuthEmailSent displays the email sent confirmation page
 func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email string) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head>
-    <title>exe.dev - Check Your Email</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 80px auto; padding: 20px; line-height: 1.6; }
-        .container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
-        .success { color: #28a745; background: #f0f8f0; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
-        .email { font-weight: 500; color: #007cba; }
-        a { color: #007cba; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📧 Check Your Email</h1>
-        <div class="success">
-            We've sent a sign-in link to <span class="email">%s</span>
-        </div>
-        <p>Click the link in the email to complete your authentication.</p>
-        <p><small>The link will expire in 24 hours. Didn't receive it? <a href="/auth?%s">Try again</a></small></p>
-    </div>
-</body>
-</html>`, email, r.URL.RawQuery)
+	data := struct {
+		Email       string
+		QueryString string
+	}{
+		Email:       email,
+		QueryString: r.URL.RawQuery,
+	}
+
+	s.renderTemplate(w, "email-sent.html", data)
 }
 
 // handleAuthCallback handles authentication callbacks with magic tokens
