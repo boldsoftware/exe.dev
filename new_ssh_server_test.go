@@ -227,24 +227,29 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 	}
 
 	publicKey := signer.PublicKey()
-	fingerprint := server.GetPublicKeyFingerprint(publicKey)
 
 	// Register the user in the database
 	email := "test@example.com"
 	teamName := "test-team"
 
 	// Create user
+	userID, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
 	_, err = server.db.Exec(`
-		INSERT INTO users (public_key_fingerprint, email)
+		INSERT INTO users (user_id, email)
 		VALUES (?, ?)`,
-		fingerprint, email)
+		userID, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
+	// SSH key will be added later with proper details
+
 	// Create team
 	_, err = server.db.Exec(`
-		INSERT INTO teams (name, billing_email, is_personal)
+		INSERT INTO teams (team_name, billing_email, is_personal)
 		VALUES (?, ?, ?)`,
 		teamName, email, true)
 	if err != nil {
@@ -253,18 +258,18 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 
 	// Add user to team
 	_, err = server.db.Exec(`
-		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+		INSERT INTO team_members (user_id, team_name, is_admin)
 		VALUES (?, ?, ?)`,
-		fingerprint, teamName, true)
+		userID, teamName, true)
 	if err != nil {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}
 
 	// Add SSH key
 	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-		VALUES (?, ?, ?, ?, ?)`,
-		fingerprint, email, string(ssh.MarshalAuthorizedKey(publicKey)), true, "test-device")
+		INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
+		VALUES (?, ?, ?, ?)`,
+		userID, string(ssh.MarshalAuthorizedKey(publicKey)), true, "test-device")
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}

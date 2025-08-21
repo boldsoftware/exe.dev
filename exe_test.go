@@ -42,8 +42,6 @@ func TestPublicKeyAuthentication(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	fingerprint := server.GetPublicKeyFingerprint(signer.PublicKey())
-
 	// Test authentication with unregistered key
 	permissions, err := server.AuthenticatePublicKey(nil, signer.PublicKey())
 	if err != nil {
@@ -54,24 +52,27 @@ func TestPublicKeyAuthentication(t *testing.T) {
 		t.Error("Unregistered key should have registered=false")
 	}
 
-	if permissions.Extensions["fingerprint"] != fingerprint {
-		t.Errorf("Expected fingerprint %s, got %s", fingerprint, permissions.Extensions["fingerprint"])
-	}
+	// Fingerprints have been eliminated - no longer included in permissions
 
 	// Register the user and team in the database
-	if err := server.createUser(fingerprint, "test@example.com"); err != nil {
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
+	if err := server.createUser(publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
-	// Add the SSH key to ssh_keys table
-	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-	if _, err := server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`,
-		fingerprint, "test@example.com", publicKeyStr, "test-device"); err != nil {
-		t.Fatalf("Failed to add SSH key: %v", err)
+	// Update the SSH key with proper public key and device name
+	if _, err := server.db.Exec(`UPDATE ssh_keys SET device_name = ? WHERE public_key = ?`,
+		"test-device", publicKeyStr); err != nil {
+		t.Fatalf("Failed to update SSH key: %v", err)
 	}
 	if err := server.createTeam("testteam", "test@example.com"); err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}
-	if err := server.addTeamMember(fingerprint, "testteam", true); err != nil {
+	// Get the user ID for team membership
+	var userID string
+	if err := server.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "test@example.com").Scan(&userID); err != nil {
+		t.Fatalf("Failed to get user ID: %v", err)
+	}
+	if err := server.addTeamMember(userID, "testteam", true); err != nil {
 		t.Fatalf("Failed to add team member: %v", err)
 	}
 
@@ -190,11 +191,11 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	// Create a test email verification
 	token := server.generateRegistrationToken()
 	verification := &EmailVerification{
-		PublicKeyFingerprint: "test-fingerprint",
-		Email:                "test@example.com",
-		Token:                token,
-		CompleteChan:         make(chan struct{}),
-		CreatedAt:            time.Now(),
+		PublicKey:    "ssh-rsa test-key",
+		Email:        "test@example.com",
+		Token:        token,
+		CompleteChan: make(chan struct{}),
+		CreatedAt:    time.Now(),
 	}
 
 	server.emailVerificationsMu.Lock()
@@ -476,20 +477,27 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	}
 
 	// Create a test user
-	fingerprint := "test-fingerprint-12345"
 	email := "test@example.com"
-	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
+	// Create user with generated user_id
+	userID := "usr1234567890123" // test user ID
+	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Add SSH key
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, verified, public_key) VALUES (?, 1, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
 	// Create an email verification token
 	token := "test-token-" + time.Now().Format("20060102150405")
 	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
 	_, err = server.db.Exec(`
-		INSERT INTO email_verifications (token, email, user_fingerprint, expires_at)
+		INSERT INTO email_verifications (token, email, user_id, expires_at)
 		VALUES (?, ?, ?, ?)`,
-		token, email, fingerprint, expires)
+		token, email, userID, expires)
 	if err != nil {
 		t.Fatalf("Failed to create verification token: %v", err)
 	}

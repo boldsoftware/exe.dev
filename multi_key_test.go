@@ -34,7 +34,6 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fingerprint1 := server.GetPublicKeyFingerprint(pubKey1)
 
 	key2, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -44,25 +43,15 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fingerprint2 := server.GetPublicKeyFingerprint(pubKey2)
 
 	testEmail := "multikey@example.com"
 
 	// Test 1: First key registration creates new user
 	t.Run("FirstKeyRegistration", func(t *testing.T) {
 		// Create user with first key
-		err := server.createUser(fingerprint1, testEmail)
+		err := server.createUser(string(ssh.MarshalAuthorizedKey(pubKey1)), testEmail)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
-		}
-
-		// Add first key to ssh_keys table
-		_, err = server.db.Exec(`
-			INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified)
-			VALUES (?, ?, ?, 1)`,
-			fingerprint1, testEmail, string(ssh.MarshalAuthorizedKey(pubKey1)))
-		if err != nil {
-			t.Fatalf("Failed to add SSH key: %v", err)
 		}
 
 		// Verify authentication with first key returns verified status
@@ -72,7 +61,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		}
 
 		// First key should be verified
-		email, verified, err := server.GetEmailBySSHKey(fingerprint1)
+		email, verified, err := server.GetEmailBySSHKey(string(ssh.MarshalAuthorizedKey(pubKey1)))
 		if err != nil {
 			t.Fatalf("Failed to get email by SSH key: %v", err)
 		}
@@ -99,9 +88,9 @@ func TestMultiKeyAuthentication(t *testing.T) {
 
 		// Add second key as unverified
 		_, err = server.db.Exec(`
-			INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified)
-			VALUES (?, ?, ?, 0)`,
-			fingerprint2, testEmail, string(ssh.MarshalAuthorizedKey(pubKey2)))
+			INSERT INTO ssh_keys (user_id, public_key, verified)
+			VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 0)`,
+			testEmail, string(ssh.MarshalAuthorizedKey(pubKey2)))
 		if err != nil {
 			t.Fatalf("Failed to add unverified SSH key: %v", err)
 		}
@@ -125,17 +114,23 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	t.Run("VerifiedSecondKey", func(t *testing.T) {
 		// Mark second key as verified
 		_, err = server.db.Exec(`
-			UPDATE ssh_keys SET verified = 1 WHERE fingerprint = ?`,
-			fingerprint2)
+			UPDATE ssh_keys SET verified = 1 WHERE public_key = ?`,
+			string(ssh.MarshalAuthorizedKey(pubKey2)))
 		if err != nil {
 			t.Fatalf("Failed to verify SSH key: %v", err)
 		}
 
 		// Create team membership for full authentication
-		server.db.Exec("INSERT OR IGNORE INTO teams (name) VALUES ('test-team')")
+		server.db.Exec("INSERT OR IGNORE INTO teams (team_name) VALUES ('test-team')")
+		// Get or create user and add to team
+		userID1, err := generateUserID()
+		if err != nil {
+			t.Fatalf("Failed to generate user ID: %v", err)
+		}
+		server.db.Exec(`INSERT OR IGNORE INTO users (user_id, email) VALUES (?, ?)`, userID1, "test1@example.com")
 		server.db.Exec(`INSERT OR IGNORE INTO team_members 
-			(user_fingerprint, team_name, is_admin) 
-			VALUES (?, 'test-team', 1)`, fingerprint1)
+			(user_id, team_name, is_admin) 
+			VALUES (?, 'test-team', 1)`, userID1)
 
 		// Now authentication should succeed
 		perms, err := server.AuthenticatePublicKey(nil, pubKey2)
@@ -163,16 +158,15 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fingerprint3 := server.GetPublicKeyFingerprint(pubKey3)
 		publicKey3 := string(ssh.MarshalAuthorizedKey(pubKey3))
 
 		// Create pending key entry
 		token := "test-verification-token"
 		expires := time.Now().Add(15 * time.Minute)
 		_, err = server.db.Exec(`
-			INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
-			VALUES (?, ?, ?, ?, ?)`,
-			token, fingerprint3, publicKey3, testEmail, expires)
+			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+			VALUES (?, ?, ?, ?)`,
+			token, publicKey3, testEmail, expires)
 		if err != nil {
 			t.Fatalf("Failed to create pending key: %v", err)
 		}
@@ -207,7 +201,6 @@ func TestEmailBySSHKey(t *testing.T) {
 	defer server.Stop()
 
 	testEmail := "test@example.com"
-	testFingerprint := "test-fingerprint-123"
 	testPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC..."
 
 	// Test non-existent key
@@ -219,17 +212,30 @@ func TestEmailBySSHKey(t *testing.T) {
 		t.Error("Expected empty result for non-existent key")
 	}
 
+	// Create user first
+	userID, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+	_, err = server.db.Exec(`
+		INSERT INTO users (user_id, email)
+		VALUES (?, ?)`,
+		userID, testEmail)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
 	// Add verified key
 	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified)
-		VALUES (?, ?, ?, 1)`,
-		testFingerprint, testEmail, testPublicKey)
+		INSERT INTO ssh_keys (user_id, public_key, verified)
+		VALUES (?, ?, 1)`,
+		userID, testPublicKey)
 	if err != nil {
 		t.Fatalf("Failed to insert SSH key: %v", err)
 	}
 
 	// Test existing verified key
-	email, verified, err = server.GetEmailBySSHKey(testFingerprint)
+	email, verified, err = server.GetEmailBySSHKey(testPublicKey)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -241,17 +247,17 @@ func TestEmailBySSHKey(t *testing.T) {
 	}
 
 	// Add unverified key
-	unverifiedFingerprint := "unverified-fingerprint-456"
+	unverifiedPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDUnverified..."
 	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified)
-		VALUES (?, ?, ?, 0)`,
-		unverifiedFingerprint, testEmail, testPublicKey)
+		INSERT INTO ssh_keys (user_id, public_key, verified)
+		VALUES (?, ?, 0)`,
+		userID, unverifiedPublicKey)
 	if err != nil {
 		t.Fatalf("Failed to insert unverified SSH key: %v", err)
 	}
 
 	// Test unverified key
-	email, verified, err = server.GetEmailBySSHKey(unverifiedFingerprint)
+	email, verified, err = server.GetEmailBySSHKey(unverifiedPublicKey)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

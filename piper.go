@@ -95,26 +95,22 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		return nil, fmt.Errorf("failed to parse public key: %v", err)
 	}
 
-	// Get fingerprint and check if user is registered
-	fingerprint := p.server.GetPublicKeyFingerprint(pubKey)
-	slog.Debug("Key fingerprint", "component", "piper-plugin", "fingerprint", fingerprint)
-
-	email, verified, err := p.server.GetEmailBySSHKey(fingerprint)
+	// Get user info by public key directly
+	userID, err := p.server.getUserIDByPublicKey(pubKey)
 	if err != nil {
-		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "fingerprint", fingerprint, "error", err)
+		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "error", err)
 	}
-	slog.Debug("User lookup", "component", "piper-plugin", "email", email, "verified", verified)
 
-	registered := email != "" && verified
+	registered := userID != ""
 	username := conn.User()
-	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username)
+	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
 
 	// Check if this is a direct machine access attempt
 	if username != "" && registered {
 		slog.Debug("Checking for machine", "component", "piper-plugin", "username", username)
-		if machine := p.server.FindMachineByNameForUser(fingerprint, username); machine != nil {
+		if machine := p.server.FindMachineByNameForUser(userID, username); machine != nil {
 			slog.Debug("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
-			return p.handleMachineAccess(machine, fingerprint)
+			return p.handleMachineAccess(machine, userID)
 		} else {
 			slog.Debug("No machine found with name", "component", "piper-plugin", "username", username)
 		}
@@ -154,8 +150,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 }
 
 // handleMachineAccess sets up routing to a specific machine container
-func (p *PiperPlugin) handleMachineAccess(machine *Machine, fingerprint string) (*libplugin.Upstream, error) {
-	slog.Debug("handleMachineAccess for machine", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
+func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID string) (*libplugin.Upstream, error) {
+	slog.Debug("handleMachineAccess for machine", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID, "user_id", userID)
 
 	if machine.ContainerID == nil {
 		slog.Debug("Machine has no container ID", "component", "piper-plugin", "machine_name", machine.Name)

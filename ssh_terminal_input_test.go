@@ -3,8 +3,6 @@ package exe
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/hex"
 	"net"
 	"os"
 	"strings"
@@ -63,9 +61,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	hash := sha256.Sum256(signer.PublicKey().Marshal())
-	fingerprint := hex.EncodeToString(hash[:])
-	t.Logf("Test fingerprint: %s", fingerprint)
+	// Fingerprint logging removed as no longer needed
 
 	// Connect to SSH server
 	config := &ssh.ClientConfig{

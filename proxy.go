@@ -72,10 +72,23 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Apply authentication based on route policy
 	if matchingRoute.Policy == "private" {
-		// Check if user is authenticated and has access to this team
-		if !s.isUserAuthorizedForTeam(r, teamName) {
-			// Redirect to authentication instead of returning 401
+		// Check if user is authenticated
+		userID, authenticated := s.getAuthenticatedUserID(r)
+		if !authenticated {
+			// User not authenticated, redirect to auth
 			s.redirectToAuth(w, r)
+			return
+		}
+
+		// User is authenticated, check if they have team access
+		hasAccess, err := s.userHasTeamAccess(userID, teamName)
+		if err != nil {
+			http.Error(w, "Error checking team access", http.StatusInternalServerError)
+			return
+		}
+		if !hasAccess {
+			// User is authenticated but not authorized for this team
+			http.Error(w, "Forbidden: You do not have access to this team", http.StatusForbidden)
 			return
 		}
 	}
@@ -93,8 +106,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		// Show current user info
 		if cookie, err := r.Cookie("exe-proxy-auth"); err == nil && cookie.Value != "" {
-			if fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
-				fmt.Fprintf(w, "Logged in user: %s\n", fingerprint)
+			if userID, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
+				fmt.Fprintf(w, "Logged in user: %s\n", userID)
 			} else {
 				fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
 			}
@@ -210,23 +223,34 @@ func (s *Server) routeMatches(route *Route, r *http.Request) bool {
 	return true
 }
 
-// isUserAuthorizedForTeam checks if the user is authorized to access the team
-func (s *Server) isUserAuthorizedForTeam(r *http.Request, teamName string) bool {
-	// Check for authentication cookie.
-	// Slightly different name than the top-level cookie, just for ease of debugging.
+// getAuthenticatedUserID checks if the user is authenticated and returns their userID
+// Returns (userID, true) if authenticated, ("", false) if not authenticated
+func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
+	// Check for authentication cookie
 	cookie, err := r.Cookie("exe-proxy-auth")
 	if err != nil || cookie.Value == "" {
-		return false
+		return "", false
 	}
 
-	// Validate cookie and get user fingerprint
-	fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host)
+	// Validate cookie and get user ID
+	userID, err := s.validateAuthCookie(cookie.Value, r.Host)
 	if err != nil {
+		return "", false
+	}
+
+	return userID, true
+}
+
+// isUserAuthorizedForTeam checks if the user is authorized to access the team
+// This function is deprecated - use getAuthenticatedUserID + userHasTeamAccess instead
+func (s *Server) isUserAuthorizedForTeam(r *http.Request, teamName string) bool {
+	userID, authenticated := s.getAuthenticatedUserID(r)
+	if !authenticated {
 		return false
 	}
 
 	// Check if user has access to this team
-	hasAccess, err := s.userHasTeamAccess(fingerprint, teamName)
+	hasAccess, err := s.userHasTeamAccess(userID, teamName)
 	if err != nil {
 		return false
 	}
@@ -283,7 +307,7 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleMagicAuth handles the magic authentication URL /__exe.dev/auth
-// TODOX: rename this to indicate that this is for container/subdomain requests
+
 func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	secret := r.URL.Query().Get("secret")
 	redirectURL := r.URL.Query().Get("redirect")
@@ -308,7 +332,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create authentication cookie for this subdomain
-	cookieValue, err := s.createAuthCookie(magicSecret.Fingerprint, r.Host)
+	cookieValue, err := s.createAuthCookie(magicSecret.UserID, r.Host)
 	if err != nil {
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
 		return
@@ -343,7 +367,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 // Route command handling methods
 
 // handleRouteCommand handles route management commands from SSH
-func (s *Server) handleRouteCommand(w io.Writer, fingerprint, teamName string, args []string) {
+func (s *Server) handleRouteCommand(w io.Writer, publicKey, teamName string, args []string) {
 	// Define route help text
 	routeHelpText := "\r\n\033[1;36mRoute subcommands:\033[0m\r\n\r\n" +
 		"\033[1mroute <machine> list\033[0m           - List all routes\r\n" +
@@ -369,20 +393,20 @@ func (s *Server) handleRouteCommand(w io.Writer, fingerprint, teamName string, a
 
 	switch subCmd {
 	case "list":
-		s.handleRouteList(w, fingerprint, teamName, machineName)
+		s.handleRouteList(w, publicKey, teamName, machineName)
 	case "add":
-		s.handleRouteAdd(w, fingerprint, teamName, machineName, subArgs)
+		s.handleRouteAdd(w, publicKey, teamName, machineName, subArgs)
 	case "remove":
-		s.handleRouteRemove(w, fingerprint, teamName, machineName, subArgs)
+		s.handleRouteRemove(w, publicKey, teamName, machineName, subArgs)
 	default:
 		fmt.Fprintf(w, "\033[1;31mUnknown route command: %s\033[0m\r\n", subCmd)
 		fmt.Fprint(w, routeHelpText)
 	}
 }
 
-func (s *Server) handleRouteList(w io.Writer, fingerprint, teamName, machineName string) {
+func (s *Server) handleRouteList(w io.Writer, publicKey, teamName, machineName string) {
 	// Get machine
-	machine, err := s.getMachineForUser(fingerprint, teamName, machineName)
+	machine, err := s.getMachineForUser(publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -418,7 +442,7 @@ func (s *Server) handleRouteList(w io.Writer, fingerprint, teamName, machineName
 	}
 }
 
-func (s *Server) handleRouteAdd(w io.Writer, fingerprint, teamName, machineName string, args []string) {
+func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName string, args []string) {
 	// Create a FlagSet for parsing
 	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
 	var name, methodsStr, prefix, policy, portsStr string
@@ -448,7 +472,7 @@ func (s *Server) handleRouteAdd(w io.Writer, fingerprint, teamName, machineName 
 	}
 
 	// Get machine
-	machine, err := s.getMachineForUser(fingerprint, teamName, machineName)
+	machine, err := s.getMachineForUser(publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -548,7 +572,7 @@ func (s *Server) handleRouteAdd(w io.Writer, fingerprint, teamName, machineName 
 	fmt.Fprintf(w, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
 }
 
-func (s *Server) handleRouteRemove(w io.Writer, fingerprint, teamName, machineName string, args []string) {
+func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(w, "\033[1;31mError: Please specify route name\033[0m\r\n")
 		fmt.Fprintf(w, "Usage: route %s remove <name>\r\n", machineName)
@@ -558,7 +582,7 @@ func (s *Server) handleRouteRemove(w io.Writer, fingerprint, teamName, machineNa
 	routeName := args[0]
 
 	// Get machine
-	machine, err := s.getMachineForUser(fingerprint, teamName, machineName)
+	machine, err := s.getMachineForUser(publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -608,14 +632,16 @@ func (s *Server) handleRouteRemove(w io.Writer, fingerprint, teamName, machineNa
 }
 
 // getMachineForUser retrieves a machine for the given user/team/name
-func (s *Server) getMachineForUser(fingerprint, teamName, machineName string) (*Machine, error) {
+func (s *Server) getMachineForUser(publicKey, teamName, machineName string) (*Machine, error) {
 	// First verify user has access to the team
 	var exists bool
 	err := s.db.QueryRow(`
 		SELECT EXISTS(
-			SELECT 1 FROM team_members 
-			WHERE user_fingerprint = ? AND team_name = ?
-		)`, fingerprint, teamName).Scan(&exists)
+			SELECT 1 FROM team_members tm
+			JOIN users u ON tm.user_id = u.user_id
+			JOIN ssh_keys sk ON u.user_id = sk.user_id
+			WHERE sk.public_key = ? AND sk.verified = 1 AND tm.team_name = ?
+		)`, publicKey, teamName).Scan(&exists)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %v", err)
 	}
@@ -627,12 +653,12 @@ func (s *Server) getMachineForUser(fingerprint, teamName, machineName string) (*
 	var machine Machine
 	err = s.db.QueryRow(`
 		SELECT id, team_name, name, status, image, container_id, 
-		       created_by_fingerprint, created_at, updated_at, 
+		       created_by_user_id, created_at, updated_at, 
 		       last_started_at, docker_host, routes
 		FROM machines 
 		WHERE name = ? AND team_name = ?`, machineName, teamName).Scan(
 		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
+		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
 		&machine.DockerHost, &machine.Routes)
 	if err != nil {

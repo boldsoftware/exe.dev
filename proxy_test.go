@@ -21,7 +21,20 @@ func TestProxyRequestRouting(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create tables
+	// Create users table first
+	_, err = db.Exec(`
+		CREATE TABLE users (
+			user_id TEXT PRIMARY KEY,
+			
+			email TEXT UNIQUE NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create machines table
 	_, err = db.Exec(`
 		CREATE TABLE machines (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +43,7 @@ func TestProxyRequestRouting(t *testing.T) {
 			status TEXT NOT NULL DEFAULT 'stopped',
 			image TEXT,
 			container_id TEXT,
-			created_by_fingerprint TEXT NOT NULL,
+			created_by_user_id TEXT NOT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
@@ -48,6 +61,34 @@ func TestProxyRequestRouting(t *testing.T) {
 		t.Fatalf("Failed to create machines table: %v", err)
 	}
 
+	// Create ssh_keys table
+	_, err = db.Exec(`
+		CREATE TABLE ssh_keys (
+			fingerprint TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			public_key TEXT NOT NULL,
+			verified INTEGER NOT NULL DEFAULT 0,
+			default_team TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(user_id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create ssh_keys table: %v", err)
+	}
+
+	// Create test user
+	userID := "usr1234567890123" // test user ID
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Add SSH key for test user
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create SSH key: %v", err)
+	}
 	// Create a test server
 	server := &Server{
 		quietMode: true,
@@ -56,7 +97,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	}
 
 	// Create a test machine with default routes
-	err = server.createMachine("test-fingerprint", "myteam", "myapp", "container123", "nginx")
+	err = server.createMachine(userID, "myteam", "myapp", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
 	}
@@ -152,7 +193,20 @@ func TestProxyRequestDetails(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create tables
+	// Create users table first
+	_, err = db.Exec(`
+		CREATE TABLE users (
+			user_id TEXT PRIMARY KEY,
+			
+			email TEXT UNIQUE NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create machines table
 	_, err = db.Exec(`
 		CREATE TABLE machines (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +215,7 @@ func TestProxyRequestDetails(t *testing.T) {
 			status TEXT NOT NULL DEFAULT 'stopped',
 			image TEXT,
 			container_id TEXT,
-			created_by_fingerprint TEXT NOT NULL,
+			created_by_user_id TEXT NOT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
@@ -178,6 +232,34 @@ func TestProxyRequestDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create machines table: %v", err)
 	}
+	// Create ssh_keys table
+	_, err = db.Exec(`
+		CREATE TABLE ssh_keys (
+			fingerprint TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			public_key TEXT NOT NULL,
+			verified INTEGER NOT NULL DEFAULT 0,
+			default_team TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(user_id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create ssh_keys table: %v", err)
+	}
+
+	// Create test user
+	userID := "usr2234567890123" // test user ID
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Add SSH key for test user
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create SSH key: %v", err)
+	}
 
 	// Create a test server
 	server := &Server{
@@ -187,7 +269,7 @@ func TestProxyRequestDetails(t *testing.T) {
 	}
 
 	// Create a test machine
-	err = server.createMachine("test-fingerprint", "devteam", "webapp", "container456", "nginx")
+	err = server.createMachine(userID, "devteam", "webapp", "container456", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
 	}
@@ -224,55 +306,37 @@ func TestMagicAuthFlow(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create tables
-	_, err = db.Exec(`
-		CREATE TABLE machines (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			team_name TEXT NOT NULL,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'stopped',
-			image TEXT,
-			container_id TEXT,
-			created_by_fingerprint TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_started_at DATETIME,
-			docker_host TEXT,
-			routes TEXT,
-			ssh_server_identity_key TEXT,
-			ssh_authorized_keys TEXT,
-			ssh_ca_public_key TEXT,
-			ssh_host_certificate TEXT,
-			ssh_client_private_key TEXT,
-			ssh_port INTEGER
-		)
-	`)
+	// Use proper migration system
+	err = runMigrations(db)
 	if err != nil {
-		t.Fatalf("Failed to create machines table: %v", err)
+		t.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Create auth_cookies table for cookie creation
-	_, err = db.Exec(`
-		CREATE TABLE auth_cookies (
-			cookie_value TEXT PRIMARY KEY,
-			user_fingerprint TEXT NOT NULL,
-			domain TEXT NOT NULL,
-			expires_at DATETIME NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
+	// Create a test user
+	userID, err := generateUserID()
 	if err != nil {
-		t.Fatalf("Failed to create auth_cookies table: %v", err)
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Create SSH key for the test user
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
+		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...", "test-device")
+	if err != nil {
+		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
 	// Create a test machine with a private route
 	_, err = db.Exec(`
-		INSERT INTO machines (team_name, name, image, container_id, created_by_fingerprint, docker_host, routes, 
+		INSERT INTO machines (team_name, name, image, container_id, created_by_user_id, docker_host, routes, 
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, "testteam", "testmachine", "test-image", "test-container-id", "test-fingerprint", "unix:///var/run/docker.sock", `[
+	`, "testteam", "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
 		{
 			"name": "default",
 			"policy": "private",
@@ -334,7 +398,7 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 2: Magic URL with valid secret should set cookie and redirect
 	t.Run("valid_magic_secret_sets_cookie", func(t *testing.T) {
 		// Create a magic secret
-		secret, err := server.createMagicSecret("test-fingerprint", "testteam", "/original-path")
+		secret, err := server.createMagicSecret("test-user-id", "testteam", "/original-path")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
@@ -409,7 +473,7 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 5: Magic secret should be consumed (single use)
 	t.Run("magic_secret_single_use", func(t *testing.T) {
 		// Create a magic secret
-		secret, err := server.createMagicSecret("test-fingerprint", "testteam", "/original-path")
+		secret, err := server.createMagicSecret("test-user-id", "testteam", "/original-path")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
@@ -459,7 +523,7 @@ func TestProxyDebugPath(t *testing.T) {
 			status TEXT NOT NULL DEFAULT 'stopped',
 			image TEXT,
 			container_id TEXT,
-			created_by_fingerprint TEXT NOT NULL,
+			created_by_user_id TEXT NOT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_started_at DATETIME,
@@ -479,11 +543,11 @@ func TestProxyDebugPath(t *testing.T) {
 
 	// Create a test machine
 	_, err = db.Exec(`
-		INSERT INTO machines (team_name, name, image, container_id, created_by_fingerprint, docker_host, routes, 
+		INSERT INTO machines (team_name, name, image, container_id, created_by_user_id, docker_host, routes, 
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, "testteam", "testmachine", "test-image", "test-container-id", "test-fingerprint", "unix:///var/run/docker.sock", `[
+	`, "testteam", "testmachine", "test-image", "test-container-id", 1, "unix:///var/run/docker.sock", `[
 		{
 			"name": "default",
 			"policy": "public",

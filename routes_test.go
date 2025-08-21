@@ -204,53 +204,45 @@ func TestRouteMatching(t *testing.T) {
 }
 
 func TestMachineCreationWithRoutes(t *testing.T) {
-	// Create temporary database
-	dbFile := "/tmp/test_routes.db"
-	defer os.Remove(dbFile)
-
-	db, err := sql.Open("sqlite", dbFile)
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_routes_*.db")
 	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
+		t.Fatalf("Failed to create temp db: %v", err)
 	}
-	defer db.Close()
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
 
-	// Create tables
-	_, err = db.Exec(`
-		CREATE TABLE machines (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			team_name TEXT NOT NULL,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'stopped',
-			image TEXT,
-			container_id TEXT,
-			created_by_fingerprint TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_started_at DATETIME,
-			docker_host TEXT,
-			routes TEXT,
-			ssh_server_identity_key TEXT,
-			ssh_authorized_keys TEXT,
-			ssh_ca_public_key TEXT,
-			ssh_host_certificate TEXT,
-			ssh_client_private_key TEXT,
-			ssh_port INTEGER
-		)
-	`)
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
-		t.Fatalf("Failed to create machines table: %v", err)
+		t.Fatalf("Failed to create server: %v", err)
 	}
+	defer server.Stop()
 
-	server := &Server{db: db}
+	// Set up test user and team
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
+	email := "test@example.com"
+	teamName := "test-team"
+
+	// Create user and team
+	err = server.createUserWithTeam(publicKey, email, teamName)
+	if err != nil {
+		t.Fatalf("Failed to create user and team: %v", err)
+	}
 
 	// Test creating a machine
-	err = server.createMachine("test-fingerprint", "test-team", "test-machine", "container123", "ubuntu")
+	// Get userID for machine creation
+	var userID string
+	err = server.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+	if err != nil {
+		t.Fatalf("Failed to get user ID: %v", err)
+	}
+	err = server.createMachine(userID, teamName, "test-machine", "container123", "ubuntu")
 	if err != nil {
 		t.Errorf("Failed to create machine: %v", err)
 	}
 
 	// Retrieve the machine and check its routes
-	machine, err := server.getMachineByName("test-team", "test-machine")
+	machine, err := server.getMachineByName(teamName, "test-machine")
 	if err != nil {
 		t.Errorf("Failed to get machine: %v", err)
 	}
@@ -288,37 +280,35 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create tables
-	_, err = db.Exec(`
-		CREATE TABLE machines (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			team_name TEXT NOT NULL,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'stopped',
-			image TEXT,
-			container_id TEXT,
-			created_by_fingerprint TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_started_at DATETIME,
-			docker_host TEXT,
-			routes TEXT,
-			ssh_server_identity_key TEXT,
-			ssh_authorized_keys TEXT,
-			ssh_ca_public_key TEXT,
-			ssh_host_certificate TEXT,
-			ssh_client_private_key TEXT,
-			ssh_port INTEGER
-		)
-	`)
+	// Use proper migration system
+	err = runMigrations(db)
 	if err != nil {
-		t.Fatalf("Failed to create machines table: %v", err)
+		t.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Create a test user first
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
+	userID, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Create SSH key for the user
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
+		userID, publicKey, "test-device")
+	if err != nil {
+		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
 	server := &Server{db: db, testMode: true}
 
 	// Create a test machine with custom routes
-	err = server.createMachine("test-fingerprint", "test-team", "web-server", "container123", "nginx")
+	err = server.createMachine(userID, "test-team", "web-server", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -473,47 +463,10 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create tables
-	_, err = db.Exec(`
-		CREATE TABLE teams (
-			name TEXT PRIMARY KEY,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE TABLE users (
-			public_key_fingerprint TEXT PRIMARY KEY,
-			email TEXT UNIQUE NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE TABLE team_members (
-			user_fingerprint TEXT NOT NULL,
-			team_name TEXT NOT NULL,
-			is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-			joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (user_fingerprint, team_name)
-		);
-		CREATE TABLE machines (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			team_name TEXT NOT NULL,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'stopped',
-			image TEXT,
-			container_id TEXT,
-			created_by_fingerprint TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_started_at DATETIME,
-			docker_host TEXT,
-			routes TEXT,
-			ssh_server_identity_key TEXT,
-			ssh_authorized_keys TEXT,
-			ssh_ca_public_key TEXT,
-			ssh_host_certificate TEXT,
-			ssh_client_private_key TEXT,
-			ssh_port INTEGER
-		);
-	`)
+	// Use proper migration system
+	err = runMigrations(db)
 	if err != nil {
-		t.Fatalf("Failed to create tables: %v", err)
+		t.Fatalf("Failed to run migrations: %v", err)
 	}
 
 	// Create a test server
@@ -524,28 +477,40 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	}
 
 	// Create test user and team
-	fingerprint := "test-fingerprint"
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
 	email := "test@example.com"
 	teamName := "test-team"
 	machineName := "web-server"
 
-	_, err = db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
+	userID, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)
+	// Create SSH key for the user
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
+		userID, publicKey, "test-device")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
 	if err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO team_members (user_fingerprint, team_name, is_admin) VALUES (?, ?, TRUE)`, fingerprint, teamName)
+	_, err = db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, TRUE)`, userID, teamName)
 	if err != nil {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}
 
 	// Create a test machine
-	err = server.createMachine(fingerprint, teamName, machineName, "container123", "nginx")
+	err = server.createMachine(userID, teamName, machineName, "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -604,7 +569,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			sess := &mockSession{}
-			server.handleRouteCommand(sess, fingerprint, teamName, test.args)
+			server.handleRouteCommand(sess, publicKey, teamName, test.args)
 			output := sess.output.String()
 
 			// Check expected strings

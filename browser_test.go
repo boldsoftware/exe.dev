@@ -34,22 +34,21 @@ func TestBrowserScenario(t *testing.T) {
 	server.containerManager = mockManager
 
 	// Generate test user
-	fingerprint := "test-fingerprint-browser"
 	email := "test@example.com"
 	teamName := "testteam"
 
 	// Create user and team
-	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
+	userID, err := server.createTestUserWithID(email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)
+	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
 	if err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO team_members (user_fingerprint, team_name, is_admin) VALUES (?, ?, ?)`, fingerprint, teamName, true)
+	_, err = server.db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, ?)`, userID, teamName, true)
 	if err != nil {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}
@@ -59,10 +58,10 @@ func TestBrowserScenario(t *testing.T) {
 	machineName := "httptest"
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, fingerprint, teamName)
+	mockManager.AddContainer(containerID, machineName, userID, teamName)
 
 	// Store container in database using the proper createMachine method
-	err = server.createMachine(fingerprint, teamName, machineName, containerID, "")
+	err = server.createMachine(userID, teamName, machineName, containerID, "")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -74,7 +73,7 @@ func TestBrowserScenario(t *testing.T) {
 	}
 
 	// Create auth cookie for the test
-	cookieValue, err := server.createAuthCookie(fingerprint, "localhost")
+	cookieValue, err := server.createAuthCookie(userID, "localhost")
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}

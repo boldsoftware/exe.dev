@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -215,31 +213,34 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	hash := sha256.Sum256(signer.PublicKey().Marshal())
-	fingerprint := hex.EncodeToString(hash[:])
+	// hash := sha256.Sum256(signer.PublicKey().Marshal()) // No longer needed
 
 	// Set up registered user in database
 	email := "test@example.com"
 
-	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
+	userID, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)
+	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
 	if err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_fingerprint, is_admin) VALUES (?, ?, 1)`, teamName, fingerprint)
+	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, is_admin) VALUES (?, ?, 1)`, teamName, userID)
 	if err != nil {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}
 
 	// Mark SSH key as verified
 	publicKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified) VALUES (?, ?, ?, 1)`,
-		fingerprint, email, string(publicKeyBytes))
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+		userID, string(publicKeyBytes))
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}
@@ -378,8 +379,7 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	hash := sha256.Sum256(signer.PublicKey().Marshal())
-	fingerprint := hex.EncodeToString(hash[:])
+	// hash := sha256.Sum256(signer.PublicKey().Marshal()) // No longer needed
 
 	// Set up registered user and machine in database
 	email := "test@example.com"
@@ -387,29 +387,41 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 	machineName := "testmachine"
 	containerID := "mock-container-123"
 
-	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
+	userID2, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID2, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)
+	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
 	if err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_fingerprint, is_admin) VALUES (?, ?, 1)`, teamName, fingerprint)
+	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, is_admin) VALUES (?, ?, 1)`, teamName, userID2)
 	if err != nil {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}
 
+	// Add SSH key for this user
+	publicKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+		userID2, string(publicKeyBytes))
+	if err != nil {
+		t.Fatalf("Failed to add SSH key: %v", err)
+	}
+
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, fingerprint, teamName)
+	mockManager.AddContainer(containerID, machineName, userID2, teamName)
 
 	// Create machine in database
 	_, err = server.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint)
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_user_id)
 		VALUES (?, ?, 'running', 'ubuntu:22.04', ?, ?)
-	`, teamName, machineName, containerID, fingerprint)
+	`, teamName, machineName, containerID, userID2)
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -500,39 +512,42 @@ func TestSSHDirectExecCommands(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	hash := sha256.Sum256(signer.PublicKey().Marshal())
-	fingerprint := hex.EncodeToString(hash[:])
+	// hash := sha256.Sum256(signer.PublicKey().Marshal()) // No longer needed
 
 	// Set up registered user
 	email := "test@example.com"
 	teamName := "testteam"
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 
-	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
+	userID, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Add the SSH key to ssh_keys table and mark it as verified
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`,
-		fingerprint, email, publicKeyStr, "test-device")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
+		userID, publicKeyStr, "test-device")
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}
 
 	// Add a second SSH key to test multiple key display
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name) VALUES (?, ?, ?, 1, ?)`,
-		"dummy-fingerprint-123", email, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDummykey...", "laptop")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
+		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDummykey...", "laptop")
 	if err != nil {
 		t.Fatalf("Failed to add second SSH key: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)
+	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
 	if err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_fingerprint, is_admin) VALUES (?, ?, 1)`, teamName, fingerprint)
+	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, is_admin) VALUES (?, ?, 1)`, teamName, userID)
 	if err != nil {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}

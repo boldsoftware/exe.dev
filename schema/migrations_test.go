@@ -20,7 +20,7 @@ func TestMigrationNumbersAreUnique(t *testing.T) {
 
 	// Track migration numbers
 	migrationNumbers := make(map[int]string)
-	migrationPattern := regexp.MustCompile(`^(\d{3})_.*\.sql$`)
+	migrationPattern := regexp.MustCompile(`^(\d{3})-.*\.sql$`)
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
@@ -30,7 +30,7 @@ func TestMigrationNumbersAreUnique(t *testing.T) {
 		// Check filename format
 		matches := migrationPattern.FindStringSubmatch(entry.Name())
 		if len(matches) != 2 {
-			t.Errorf("migration file %s does not follow naming convention XXX_description.sql", entry.Name())
+			t.Errorf("migration file %s does not follow naming convention XXX-description.sql", entry.Name())
 			continue
 		}
 
@@ -56,15 +56,12 @@ func TestMigrationNumbersAreUnique(t *testing.T) {
 	}
 
 	// Ensure we have at least the base migrations
-	if len(migrationNumbers) < 2 {
-		t.Errorf("expected at least 2 migration files, found %d", len(migrationNumbers))
+	if len(migrationNumbers) < 1 {
+		t.Errorf("expected at least 1 migration file, found %d", len(migrationNumbers))
 	}
 
-	// Check that we have 001 and 002
+	// Check that we have 001
 	if _, exists := migrationNumbers[1]; !exists {
-		t.Error("missing base migration 001_base.sql")
-	}
-	if _, exists := migrationNumbers[2]; !exists {
-		t.Error("missing migration 002_add_migrations_table.sql")
+		t.Error("missing base migration 001-base.sql")
 	}
 }

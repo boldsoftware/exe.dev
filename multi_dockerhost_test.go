@@ -19,11 +19,17 @@ func TestMultiDockerHostSSH(t *testing.T) {
 
 	// Test docker host values
 	dockerHost := "tcp://dockerhost1:2376"
-	userFingerprint := "test-fingerprint"
+	userID := "test-user-id"
 	teamName := "testteam"
 	machineName := "testmachine"
 	containerID := "test-container-id"
 	image := "ubuntu:latest"
+
+	// Create test user
+	err := server.createUser(userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	// Create SSH keys for testing
 	sshKeys, err := container.GenerateContainerSSHKeys()
@@ -33,7 +39,7 @@ func TestMultiDockerHostSSH(t *testing.T) {
 
 	// Store machine with docker host using the NEW method
 	err = server.createMachineWithSSHAndDockerHost(
-		userFingerprint, teamName, machineName, containerID, image, dockerHost,
+		userID, teamName, machineName, containerID, image, dockerHost,
 		sshKeys, 2222,
 	)
 	if err != nil {
@@ -77,11 +83,17 @@ func TestDockerHostPersistence(t *testing.T) {
 	defer os.Remove(tempDB.Name())
 
 	dockerHost := "tcp://production-docker:2376"
-	userFingerprint := "test-user-fp"
+	userID := "test-user-fp"
 	teamName := "prodteam"
 	machineName := "prodmachine"
 	containerID := "prod-container"
 	image := "alpine:latest"
+
+	// Create test user
+	err := server.createUser(userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	// Generate SSH keys
 	sshKeys, err := container.GenerateContainerSSHKeys()
@@ -92,7 +104,7 @@ func TestDockerHostPersistence(t *testing.T) {
 	// 1. Container created on specific docker host
 	// 2. Machine record stored in DB with docker host info
 	err = server.createMachineWithSSHAndDockerHost(
-		userFingerprint, teamName, machineName, containerID, image, dockerHost,
+		userID, teamName, machineName, containerID, image, dockerHost,
 		sshKeys, 2222,
 	)
 	if err != nil {

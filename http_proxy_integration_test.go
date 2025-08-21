@@ -30,22 +30,21 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	server.containerManager = mockManager
 
 	// Generate test user
-	fingerprint := "test-fingerprint-12345"
 	email := "test@example.com"
 	teamName := "testteam"
 
 	// Create user and team
-	_, err = server.db.Exec(`INSERT INTO users (public_key_fingerprint, email) VALUES (?, ?)`, fingerprint, email)
+	userID, err := server.createTestUserWithID(email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (name) VALUES (?)`, teamName)
+	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
 	if err != nil {
 		t.Fatalf("Failed to create team: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO team_members (user_fingerprint, team_name, is_admin) VALUES (?, ?, ?)`, fingerprint, teamName, true)
+	_, err = server.db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, ?)`, userID, teamName, true)
 	if err != nil {
 		t.Fatalf("Failed to add user to team: %v", err)
 	}
@@ -56,13 +55,13 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	machineName := "httptest"
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, fingerprint, teamName)
+	mockManager.AddContainer(containerID, machineName, userID, teamName)
 
 	// Store container ID in database
 	_, err = server.db.Exec(`
-		INSERT INTO machines (team_name, name, container_id, created_by_fingerprint, status)
+		INSERT INTO machines (team_name, name, container_id, created_by_user_id, status)
 		VALUES (?, ?, ?, ?, 'running')
-	`, teamName, machineName, containerID, fingerprint)
+	`, teamName, machineName, containerID, userID)
 	if err != nil {
 		t.Fatalf("Failed to store machine in database: %v", err)
 	}

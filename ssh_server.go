@@ -3,9 +3,7 @@ package exe
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -99,7 +97,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	ss.server.sshMetrics.authAttempts.WithLabelValues("success", "public_key").Inc()
 
 	// Store permissions in context for later use
-	ctx.SetValue("fingerprint", perms.Extensions["fingerprint"])
+	// Note: fingerprint removed as no longer needed in context
 	ctx.SetValue("registered", perms.Extensions["registered"])
 	ctx.SetValue("email", perms.Extensions["email"])
 	ctx.SetValue("public_key", perms.Extensions["public_key"])
@@ -124,7 +122,7 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 	}()
 
 	// Get authentication info from context
-	fingerprint, _ := s.Context().Value("fingerprint").(string)
+	publicKey, _ := s.Context().Value("public_key").(string)
 	registered := s.Context().Value("registered").(string) == "true"
 	// email, _ := s.Context().Value("email").(string) // Currently unused
 	username := s.User()
@@ -151,26 +149,26 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 	cmd := s.Command()
 	if len(cmd) > 0 {
 		// Handle exec commands
-		ss.handleExec(s, cmd, username, fingerprint, registered)
+		ss.handleExec(s, cmd, username, publicKey, registered)
 		return
 	}
 
 	// Handle interactive shell session
-	ss.handleShell(s, username, fingerprint, registered, terminalWidth, terminalHeight)
+	ss.handleShell(s, username, publicKey, registered, terminalWidth, terminalHeight)
 }
 
 // handleShell handles interactive shell sessions with readline
-func (ss *SSHServer) handleShell(s ssh.Session, username, fingerprint string, registered bool, terminalWidth, terminalHeight int) {
+func (ss *SSHServer) handleShell(s ssh.Session, username, publicKey string, registered bool, terminalWidth, terminalHeight int) {
+	// publicKey is already passed as parameter from context
+
 	if !registered {
-		// Get public key from context for registration
-		publicKey, _ := s.Context().Value("public_key").(string)
 		// Handle registration flow
-		ss.handleRegistration(s, fingerprint, publicKey, terminalWidth)
+		ss.handleRegistration(s, publicKey, terminalWidth)
 		return
 	}
 
 	// Create user session for registered users
-	user, err := ss.server.getUserByFingerprint(fingerprint)
+	user, err := ss.server.getUserByPublicKey(publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "Error retrieving user info: %v\r\n", err)
 		return
@@ -180,14 +178,14 @@ func (ss *SSHServer) handleShell(s ssh.Session, username, fingerprint string, re
 		return
 	}
 
-	teams, err := ss.server.getUserTeams(fingerprint)
+	teams, err := ss.server.getUserTeams(user.UserID)
 	if err != nil || len(teams) == 0 {
 		fmt.Fprintf(s, "Error: User not associated with any team\r\n")
 		return
 	}
 
 	// Get the default team for this SSH key
-	defaultTeam, err := ss.server.getDefaultTeamForKey(fingerprint)
+	defaultTeam, err := ss.server.getDefaultTeamForUser(user.UserID)
 	if err != nil || defaultTeam == "" {
 		defaultTeam = teams[0].TeamName
 	}
@@ -210,11 +208,11 @@ func (ss *SSHServer) handleShell(s ssh.Session, username, fingerprint string, re
 	// If we reach here, the user is connecting to the interactive shell.
 
 	// Run the main shell with readline
-	ss.runMainShellWithReadline(s, fingerprint, user.Email, team.TeamName, team.IsAdmin, false)
+	ss.runMainShellWithReadline(s, publicKey, user.Email, team.TeamName, team.IsAdmin, false)
 }
 
 // runMainShellWithReadline implements the main menu using a simple line reader
-func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email, teamName string, isAdmin bool, showWelcome bool) {
+func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, teamName string, isAdmin bool, showWelcome bool) {
 	if !ss.server.testMode {
 		log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", email, showWelcome)
 	}
@@ -288,23 +286,23 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, fingerprint, email,
 				fmt.Fprint(s, helpText)
 			}
 		case "list", "ls":
-			ss.handleListCommand(s, fingerprint, teamName)
+			ss.handleListCommand(s, publicKey, teamName)
 		case "new":
-			ss.handleNewCommand(s, fingerprint, teamName, args)
+			ss.handleNewCommand(s, publicKey, teamName, args)
 		case "start":
-			ss.handleStartCommand(s, fingerprint, teamName, args)
+			ss.handleStartCommand(s, publicKey, teamName, args)
 		case "stop":
-			ss.handleStopCommand(s, fingerprint, teamName, args)
+			ss.handleStopCommand(s, publicKey, teamName, args)
 		case "delete":
-			ss.handleDeleteCommand(s, fingerprint, teamName, args)
+			ss.handleDeleteCommand(s, publicKey, teamName, args)
 		case "logs":
-			ss.handleLogsCommand(s, fingerprint, teamName, args)
+			ss.handleLogsCommand(s, publicKey, teamName, args)
 		case "route":
-			ss.handleRouteCommand(s, fingerprint, teamName, args)
+			ss.handleRouteCommand(s, publicKey, teamName, args)
 		case "team":
-			ss.handleTeamCommand(s, fingerprint, teamName, args)
+			ss.handleTeamCommand(s, publicKey, teamName, args)
 		case "whoami":
-			ss.handleWhoamiCommand(s, fingerprint, email)
+			ss.handleWhoamiCommand(s, email)
 		default:
 			fmt.Fprint(s, "Unknown command. Type 'help' for available commands.\r\n")
 		}
@@ -365,7 +363,7 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 	bg := termfun.QueryBackgroundColor(s, s)
 
 	// Fade from bright green to background color
-	from := termfun.RGB{80, 255, 120}
+	from := termfun.RGB{R: 80, G: 255, B: 120}
 	to := bg
 
 	// Animate with proper 24-bit colors - more frames for smoother animation
@@ -434,7 +432,7 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 }
 
 // handleRegistration handles the registration flow using readline
-func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey string, terminalWidth int) {
+func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, terminalWidth int) {
 	// Show the animated welcome first
 	ss.showAnimatedWelcome(s, terminalWidth)
 
@@ -536,9 +534,9 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	}
 
 	// Start email verification directly without using sshbuf.Channel
-	if err := ss.startEmailVerificationNew(fingerprint, email, publicKey, teamName); err != nil {
+	if err := ss.startEmailVerificationNew(publicKey, email, teamName); err != nil {
 		// Log the error for debugging
-		log.Printf("Email verification failed for %s (fingerprint: %s): %v", email, fingerprint, err)
+		log.Printf("Email verification failed for %s: %v", email, err)
 		// Show user-friendly error message
 		if err.Error() == "email service not configured" {
 			fmt.Fprintf(s, "\r\n%sError: Email service is not configured. Cannot send verification email.%s\r\n", "\033[1;31m", "\033[0m")
@@ -552,7 +550,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	}
 
 	// Get the verification details for displaying the URL
-	verification, exists := ss.server.getEmailVerification(fingerprint)
+	verification, exists := ss.server.getEmailVerification(publicKey)
 	if !exists {
 		fmt.Fprintf(s, "%sError: Verification process failed%s\r\n", "\033[1;31m", "\033[0m")
 		return
@@ -628,42 +626,25 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 
 	// After successful verification, the user should have been created by the HTTP handler
 	// Get the user to verify it was created
-	user, err := ss.server.getUserByFingerprint(fingerprint)
-	if err != nil || user == nil {
-		log.Printf("Error: User not found after verification for fingerprint %s: %v", fingerprint, err)
+	user, userErr := ss.server.getUserByPublicKey(publicKey)
+	if userErr != nil || user == nil {
+		log.Printf("Error: User not found after verification: %v", userErr)
 		fmt.Fprintf(s, "Error loading user profile. Please try registering again.\r\n")
 		return
 	}
 
 	// Store/update the SSH key as verified
-	_, err = ss.server.db.Exec(`
-		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-		VALUES (?, ?, ?, 1, 'Primary Device')
-		ON CONFLICT(fingerprint) DO UPDATE SET verified = 1, public_key = ?, user_email = ?`,
-		fingerprint, user.Email, publicKey, publicKey, user.Email)
-	if err != nil {
-		log.Printf("Error storing SSH key: %v", err)
+	_, storeErr := ss.server.db.Exec(`
+		INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
+		VALUES (?, ?, 1, 'Primary Device')
+		ON CONFLICT(public_key) DO UPDATE SET verified = 1, user_id = ?`,
+		user.UserID, publicKey, user.UserID)
+	if storeErr != nil {
+		log.Printf("Error storing SSH key: %v", storeErr)
 		// Don't fail here, the key might already exist
 	}
 
-	// Set the default team for the SSH key if not already set
-	var currentDefaultTeam string
-	err = ss.server.db.QueryRow(`
-		SELECT default_team FROM ssh_keys WHERE fingerprint = ?`,
-		fingerprint).Scan(&currentDefaultTeam)
-	if err != nil || currentDefaultTeam == "" {
-		// Get the personal team name
-		var personalTeamName string
-		err = ss.server.db.QueryRow(`
-			SELECT name FROM teams
-			WHERE owner_fingerprint = ? AND is_personal = TRUE`,
-			fingerprint).Scan(&personalTeamName)
-		if err == nil && personalTeamName != "" {
-			ss.server.db.Exec(`
-				UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`,
-				personalTeamName, fingerprint)
-		}
-	}
+	// TODO: Set the default team for the SSH key if not already set
 
 	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
@@ -674,14 +655,14 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	<-goroutineDone
 
 	// Get team info for the menu
-	teams, err := ss.server.getUserTeams(fingerprint)
+	teams, err := ss.server.getUserTeams(user.UserID)
 	if err != nil || len(teams) == 0 {
 		fmt.Fprintf(s, "Error: User not associated with any team\r\n")
 		return
 	}
 
 	// Get the default team for this SSH key
-	defaultTeam, err := ss.server.getDefaultTeamForKey(fingerprint)
+	defaultTeam, err := ss.server.getDefaultTeamForUser(user.UserID)
 	if err != nil || defaultTeam == "" {
 		defaultTeam = teams[0].TeamName
 	}
@@ -704,11 +685,11 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, fingerprint, publicKey st
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
 	// This avoids issues with partially consumed readers
-	ss.runMainShellWithReadline(s, fingerprint, user.Email, team.TeamName, team.IsAdmin, true)
+	ss.runMainShellWithReadline(s, publicKey, user.Email, team.TeamName, team.IsAdmin, true)
 }
 
 // handleExec handles exec commands
-func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerprint string, registered bool) {
+func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, publicKey string, registered bool) {
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
@@ -718,19 +699,20 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 	}
 
 	// Get user and team info
-	user, err := ss.server.getUserByFingerprint(fingerprint)
+	// publicKey is already passed as parameter from context
+	user, err := ss.server.getUserByPublicKey(publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "Authentication error: %v\r\n", err)
 		return
 	}
 
-	teams, err := ss.server.getUserTeams(fingerprint)
+	teams, err := ss.server.getUserTeams(user.UserID)
 	if err != nil || len(teams) == 0 {
 		fmt.Fprint(s, "Error: User not associated with any team\r\n")
 		return
 	}
 
-	defaultTeam, err := ss.server.getDefaultTeamForKey(fingerprint)
+	defaultTeam, err := ss.server.getDefaultTeamForUser(user.UserID)
 	if err != nil || defaultTeam == "" {
 		defaultTeam = teams[0].TeamName
 	}
@@ -757,25 +739,25 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, fingerpri
 	// Use the new handlers that work directly with ssh.Session
 	switch command {
 	case "new":
-		ss.handleNewCommand(s, fingerprint, team.TeamName, args)
+		ss.handleNewCommand(s, publicKey, team.TeamName, args)
 	case "list", "ls":
-		ss.handleListCommand(s, fingerprint, team.TeamName)
+		ss.handleListCommand(s, publicKey, team.TeamName)
 	case "start":
-		ss.handleStartCommand(s, fingerprint, team.TeamName, args)
+		ss.handleStartCommand(s, publicKey, team.TeamName, args)
 	case "stop":
-		ss.handleStopCommand(s, fingerprint, team.TeamName, args)
+		ss.handleStopCommand(s, publicKey, team.TeamName, args)
 	case "delete":
-		ss.handleDeleteCommand(s, fingerprint, team.TeamName, args)
+		ss.handleDeleteCommand(s, publicKey, team.TeamName, args)
 	case "logs":
-		ss.handleLogsCommand(s, fingerprint, team.TeamName, args)
+		ss.handleLogsCommand(s, publicKey, team.TeamName, args)
 	case "diag", "diagnostics":
 		fmt.Fprintf(s, "\033[1;33mDiagnostics not implemented in new server yet\033[0m\r\n")
 	case "route":
-		ss.handleRouteCommand(s, fingerprint, team.TeamName, args)
+		ss.handleRouteCommand(s, publicKey, team.TeamName, args)
 	case "team":
-		ss.handleTeamCommand(s, fingerprint, team.TeamName, args)
+		ss.handleTeamCommand(s, publicKey, team.TeamName, args)
 	case "whoami":
-		ss.handleWhoamiCommand(s, fingerprint, user.Email)
+		ss.handleWhoamiCommand(s, user.Email)
 	case "help", "?":
 		// Check if asking for help on a specific command
 		if len(args) > 0 {
@@ -997,19 +979,13 @@ func (c *SSHSessionChannel) Stderr() io.ReadWriter {
 	return c.Session.Stderr()
 }
 
-// GetPublicKeyFingerprint calculates the SHA256 fingerprint of a public key
-func GetPublicKeyFingerprint(key ssh.PublicKey) string {
-	hash := sha256.Sum256(key.Marshal())
-	return hex.EncodeToString(hash[:])
-}
-
-// getEmailVerification retrieves an email verification by fingerprint
-func (s *Server) getEmailVerification(fingerprint string) (*EmailVerification, bool) {
+// getEmailVerification retrieves an email verification by public key
+func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, bool) {
 	s.emailVerificationsMu.RLock()
 	defer s.emailVerificationsMu.RUnlock()
 
 	for _, v := range s.emailVerifications {
-		if v.PublicKeyFingerprint == fingerprint {
+		if strings.TrimSpace(v.PublicKey) == strings.TrimSpace(publicKey) {
 			return v, true
 		}
 	}
@@ -1017,10 +993,17 @@ func (s *Server) getEmailVerification(fingerprint string) (*EmailVerification, b
 }
 
 // Command handlers for the new SSH server
-func (ss *SSHServer) handleListCommand(s ssh.Session, fingerprint, teamName string) {
+func (ss *SSHServer) handleListCommand(s ssh.Session, publicKey, teamName string) {
+	// Get user information
+	user, err := ss.server.getUserByPublicKey(publicKey)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
+		return
+	}
+
 	// If container manager is available, get real-time status
 	if ss.server.containerManager != nil {
-		containers, err := ss.server.containerManager.ListContainers(context.Background(), fingerprint)
+		containers, err := ss.server.containerManager.ListContainers(context.Background(), user.UserID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError listing machines: %v\033[0m\r\n", err)
 			return
@@ -1095,9 +1078,16 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, fingerprint, teamName stri
 	}
 }
 
-func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string, args []string) {
 	if ss.server.containerManager == nil {
 		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
+		return
+	}
+
+	// Get user information
+	user, err := ss.server.getUserByPublicKey(publicKey)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
 		return
 	}
 
@@ -1116,9 +1106,9 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 	fs.SetOutput(&buf)
 
 	// Parse the flags
-	err := fs.Parse(args)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
+	parseErr := fs.Parse(args)
+	if parseErr != nil {
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", parseErr)
 		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>]\r\n")
 		return
 	}
@@ -1165,7 +1155,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 
 	// Create container request
 	req := &container.CreateContainerRequest{
-		UserID:        fingerprint,
+		UserID:        user.UserID,
 		Name:          machineName,
 		TeamName:      teamName,
 		Image:         image,
@@ -1201,7 +1191,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}
-	if err := ss.server.createMachineWithSSHAndDockerHost(fingerprint, teamName, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, sshKeys, createdContainer.SSHPort); err != nil {
+	if err := ss.server.createMachineWithSSHAndDockerHost(user.UserID, teamName, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, sshKeys, createdContainer.SSHPort); err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 
@@ -1236,7 +1226,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 		if time.Since(lastContainerCheck) >= containerCheckInterval {
 			lastContainerCheck = time.Now()
 
-			containers, err := ss.server.containerManager.ListContainers(context.Background(), fingerprint)
+			containers, err := ss.server.containerManager.ListContainers(context.Background(), user.UserID)
 			if err != nil {
 				continue
 			}
@@ -1267,7 +1257,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, fingerprint, teamName strin
 	fmt.Fprintf(s, "\r\033[K\033[1;31mTimeout: Machine failed to start within 3 minutes\033[0m\r\n")
 }
 
-func (ss *SSHServer) handleStartCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, teamName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: start <machine-name>\r\n")
@@ -1275,6 +1265,13 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, fingerprint, teamName str
 	}
 
 	machineName := args[0]
+
+	// Get user information
+	user, err := ss.server.getUserByPublicKey(publicKey)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
+		return
+	}
 
 	if ss.server.containerManager == nil {
 		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
@@ -1297,7 +1294,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, fingerprint, teamName str
 
 	// Start the container
 	ctx := context.Background()
-	err = ss.server.containerManager.StartContainer(ctx, fingerprint, *machine.ContainerID)
+	err = ss.server.containerManager.StartContainer(ctx, user.UserID, *machine.ContainerID)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError starting machine: %v\033[0m\r\n", err)
 		return
@@ -1316,7 +1313,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, fingerprint, teamName str
 	fmt.Fprintf(s, "\033[1;32mMachine started!\033[0m Access with \033[1m%s\033[0m\r\n", sshCommand)
 }
 
-func (ss *SSHServer) handleStopCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, teamName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify at least one machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: stop <machine-name> [...]\r\n")
@@ -1325,6 +1322,13 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, fingerprint, teamName stri
 
 	if ss.server.containerManager == nil {
 		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
+		return
+	}
+
+	// Get user information
+	user, err := ss.server.getUserByPublicKey(publicKey)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
 		return
 	}
 
@@ -1345,7 +1349,7 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, fingerprint, teamName stri
 
 		// Stop the container
 		ctx := context.Background()
-		err = ss.server.containerManager.StopContainer(ctx, fingerprint, *machine.ContainerID)
+		err = ss.server.containerManager.StopContainer(ctx, user.UserID, *machine.ContainerID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError stopping machine %s: %v\033[0m\r\n", machineName, err)
 			continue
@@ -1364,7 +1368,7 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, fingerprint, teamName stri
 	}
 }
 
-func (ss *SSHServer) handleDeleteCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: delete <machine-name>\r\n")
@@ -1372,6 +1376,13 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, fingerprint, teamName st
 	}
 
 	machineName := args[0]
+
+	// Get user information
+	user, err := ss.server.getUserByPublicKey(publicKey)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
+		return
+	}
 
 	if ss.server.containerManager == nil {
 		// Just delete from database if no container manager
@@ -1402,7 +1413,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, fingerprint, teamName st
 	// Delete the container if it exists
 	if machine.ContainerID != nil {
 		ctx := context.Background()
-		err = ss.server.containerManager.DeleteContainer(ctx, fingerprint, *machine.ContainerID)
+		err = ss.server.containerManager.DeleteContainer(ctx, user.UserID, *machine.ContainerID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;33mWarning: Failed to delete container: %v\033[0m\r\n", err)
 		}
@@ -1421,7 +1432,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, fingerprint, teamName st
 	fmt.Fprintf(s, "\033[1;32mMachine '%s' deleted successfully\033[0m\r\n", machineName)
 }
 
-func (ss *SSHServer) handleLogsCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+func (ss *SSHServer) handleLogsCommand(s ssh.Session, publicKey, teamName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: logs <machine-name>\r\n")
@@ -1433,8 +1444,8 @@ func (ss *SSHServer) handleLogsCommand(s ssh.Session, fingerprint, teamName stri
 	fmt.Fprintf(s, "\033[1;33mNote: Logs not implemented in new server yet\033[0m\r\n")
 }
 
-func (ss *SSHServer) handleRouteCommand(s ssh.Session, fingerprint, teamName string, args []string) {
-	ss.server.handleRouteCommand(s, fingerprint, teamName, args)
+func (ss *SSHServer) handleRouteCommand(s ssh.Session, publicKey, teamName string, args []string) {
+	ss.server.handleRouteCommand(s, publicKey, teamName, args)
 }
 
 func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
@@ -1513,7 +1524,7 @@ func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
 	}
 }
 
-func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, fingerprint, email string) {
+func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 	fmt.Fprintf(s, "\r\n\033[1;36mUser Information:\033[0m\r\n\r\n")
 	fmt.Fprintf(s, "\033[1mEmail Address:\033[0m %s\r\n", email)
 
@@ -1521,7 +1532,7 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, fingerprint, email strin
 	currentPublicKey, _ := s.Context().Value("public_key").(string)
 
 	// Get all public keys for this user
-	rows, err := ss.server.db.Query(`SELECT fingerprint, public_key, device_name FROM ssh_keys WHERE user_email = ? AND verified = 1 ORDER BY fingerprint`, email)
+	rows, err := ss.server.db.Query(`SELECT public_key, COALESCE(device_name, '') FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) AND verified = 1 ORDER BY public_key`, email)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError retrieving SSH keys: %v\033[0m\r\n", err)
 		return
@@ -1531,23 +1542,22 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, fingerprint, email strin
 	fmt.Fprintf(s, "\033[1mSSH Keys:\033[0m\r\n")
 	keyCount := 0
 	for rows.Next() {
-		var dbFingerprint, dbPublicKey, deviceName string
-		if err := rows.Scan(&dbFingerprint, &dbPublicKey, &deviceName); err != nil {
+		var dbPublicKey, deviceName string
+		if err := rows.Scan(&dbPublicKey, &deviceName); err != nil {
 			continue
 		}
 		keyCount++
 
 		// Check if this is the current key being used
-		isCurrent := dbFingerprint == fingerprint
+		isCurrent := strings.TrimSpace(dbPublicKey) == strings.TrimSpace(currentPublicKey)
 		currentIndicator := ""
 		if isCurrent {
 			currentIndicator = " \033[1;32m← current\033[0m"
 		}
 
 		fmt.Fprintf(s, "  \033[1mDevice:\033[0m %s%s\r\n", deviceName, currentIndicator)
-		fmt.Fprintf(s, "  \033[1mFingerprint:\033[0m %s\r\n", dbFingerprint)
 
-		// Use the current session's key if this is the current fingerprint, otherwise use DB key
+		// Use the current session's key if this is the current key, otherwise use DB key
 		displayKey := dbPublicKey
 		if isCurrent && currentPublicKey != "" {
 			displayKey = currentPublicKey
@@ -1568,7 +1578,7 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, fingerprint, email strin
 	fmt.Fprintf(s, "\r\n")
 }
 
-func (ss *SSHServer) handleTeamCommand(s ssh.Session, fingerprint, teamName string, args []string) {
+func (ss *SSHServer) handleTeamCommand(s ssh.Session, publicKey, teamName string, args []string) {
 	// Define team help text
 	teamHelpText := "\r\n\033[1;36mTeam subcommands:\033[0m\r\n\r\n" +
 		"\033[1mteam ls\033[0m                 - List team members\r\n" +
@@ -1587,7 +1597,7 @@ func (ss *SSHServer) handleTeamCommand(s ssh.Session, fingerprint, teamName stri
 
 	switch subCmd {
 	case "list", "ls":
-		ss.handleTeamList(s, fingerprint, teamName)
+		ss.handleTeamList(s, publicKey, teamName)
 	case "invite":
 		if len(subArgs) == 0 {
 			fmt.Fprintf(s, "\033[1;31mError: Please specify an email address\033[0m\r\n")
@@ -1608,12 +1618,12 @@ func (ss *SSHServer) handleTeamCommand(s ssh.Session, fingerprint, teamName stri
 	}
 }
 
-func (ss *SSHServer) handleTeamList(s ssh.Session, fingerprint, teamName string) {
+func (ss *SSHServer) handleTeamList(s ssh.Session, publicKey, teamName string) {
 	// Get team members
 	rows, err := ss.server.db.Query(`
 		SELECT u.email, tm.is_admin, tm.joined_at
 		FROM team_members tm
-		JOIN users u ON tm.user_fingerprint = u.public_key_fingerprint
+		JOIN users u ON tm.user_id = u.user_id
 		WHERE tm.team_name = ?
 		ORDER BY tm.joined_at ASC`,
 		teamName)
@@ -1658,7 +1668,7 @@ func (ss *SSHServer) handleTeamList(s ssh.Session, fingerprint, teamName string)
 func (s *Server) getMachinesForTeam(teamName string) ([]*Machine, error) {
 	rows, err := s.db.Query(`
 		SELECT id, team_name, name, status, image, container_id,
-		       created_by_fingerprint, created_at, updated_at, last_started_at
+		       created_by_user_id, created_at, updated_at, last_started_at
 		FROM machines
 		WHERE team_name = ?
 		ORDER BY name ASC`,
@@ -1672,7 +1682,7 @@ func (s *Server) getMachinesForTeam(teamName string) ([]*Machine, error) {
 	for rows.Next() {
 		m := &Machine{}
 		err := rows.Scan(&m.ID, &m.TeamName, &m.Name, &m.Status, &m.Image,
-			&m.ContainerID, &m.CreatedByFingerprint, &m.CreatedAt,
+			&m.ContainerID, &m.CreatedByUserID, &m.CreatedAt,
 			&m.UpdatedAt, &m.LastStartedAt)
 		if err != nil {
 			return nil, err
@@ -1684,19 +1694,19 @@ func (s *Server) getMachinesForTeam(teamName string) ([]*Machine, error) {
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
-func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey, teamName string) error {
+func (ss *SSHServer) startEmailVerificationNew(publicKey, email, teamName string) error {
 	// Check if this email already exists
-	var existingFingerprint string
-	err := ss.server.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", email).Scan(&existingFingerprint)
+	var existingUserID string
+	err := ss.server.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&existingUserID)
 
 	if err == nil {
 		// Email already exists - this is a new device for an existing user
 
 		// Store this key as unverified in ssh_keys table
 		_, err = ss.server.db.Exec(`
-			INSERT OR REPLACE INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-			VALUES (?, ?, ?, 0, 'Pending Verification')`,
-			fingerprint, email, publicKey)
+			INSERT OR REPLACE INTO ssh_keys (user_id, public_key, verified, device_name)
+			VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 0, 'Pending Verification')`,
+			email, publicKey)
 		if err != nil {
 			return fmt.Errorf("failed to store pending key: %v", err)
 		}
@@ -1706,22 +1716,21 @@ func (ss *SSHServer) startEmailVerificationNew(fingerprint, email, publicKey, te
 		expires := time.Now().Add(15 * time.Minute)
 
 		_, err = ss.server.db.Exec(`
-			INSERT INTO pending_ssh_keys (token, fingerprint, public_key, user_email, expires_at)
-			VALUES (?, ?, ?, ?, ?)`,
-			token, fingerprint, publicKey, email, expires)
+			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+			VALUES (?, ?, ?, ?)`,
+			token, publicKey, email, expires)
 		if err != nil {
 			return fmt.Errorf("failed to create verification token: %v", err)
 		}
 
 		// Create verification object
 		verification := &EmailVerification{
-			PublicKeyFingerprint: fingerprint,
-			PublicKey:            publicKey,
-			Email:                email,
-			TeamName:             "", // Existing users don't need team name
-			Token:                token,
-			CompleteChan:         make(chan struct{}),
-			CreatedAt:            time.Now(),
+			PublicKey:    publicKey,
+			Email:        email,
+			TeamName:     "", // Existing users don't need team name
+			Token:        token,
+			CompleteChan: make(chan struct{}),
+			CreatedAt:    time.Now(),
 		}
 
 		// Store verification
@@ -1739,14 +1748,12 @@ If this was you, please click the link below to authorize this device:
 
 %s/verify-device?token=%s
 
-Device fingerprint: %s
-
 If you did not attempt to register from a new device, please ignore this email.
 
 This link will expire in 15 minutes.
 
 Best regards,
-The EXE.DEV team`, ss.server.getBaseURL(), token, fingerprint[:16])
+The EXE.DEV team`, ss.server.getBaseURL(), token)
 
 		if err := ss.server.sendEmail(email, subject, body); err != nil {
 			ss.server.emailVerificationsMu.Lock()
@@ -1763,13 +1770,12 @@ The EXE.DEV team`, ss.server.getBaseURL(), token, fingerprint[:16])
 
 	// Create verification object
 	verification := &EmailVerification{
-		PublicKeyFingerprint: fingerprint,
-		PublicKey:            publicKey,
-		Email:                email,
-		TeamName:             teamName, // Team name selected by new user
-		Token:                token,
-		CompleteChan:         make(chan struct{}),
-		CreatedAt:            time.Now(),
+		PublicKey:    publicKey,
+		Email:        email,
+		TeamName:     teamName, // Team name selected by new user
+		Token:        token,
+		CompleteChan: make(chan struct{}),
+		CreatedAt:    time.Now(),
 	}
 
 	// Store verification
@@ -1800,9 +1806,9 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	return nil
 }
 
-func (ss *SSHServer) handleRouteList(s ssh.Session, fingerprint, teamName, machineName string) {
+func (ss *SSHServer) handleRouteList(s ssh.Session, publicKey, teamName, machineName string) {
 	// Get machine
-	machine, err := ss.getMachine(fingerprint, teamName, machineName)
+	machine, err := ss.getMachine(publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -1838,7 +1844,7 @@ func (ss *SSHServer) handleRouteList(s ssh.Session, fingerprint, teamName, machi
 	}
 }
 
-func (ss *SSHServer) handleRouteAdd(s ssh.Session, fingerprint, teamName, machineName string, args []string) {
+func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineName string, args []string) {
 	// Create a FlagSet for parsing
 	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
 	var name, methodsStr, prefix, policy, portsStr string
@@ -1868,7 +1874,7 @@ func (ss *SSHServer) handleRouteAdd(s ssh.Session, fingerprint, teamName, machin
 	}
 
 	// Get machine
-	machine, err := ss.getMachine(fingerprint, teamName, machineName)
+	machine, err := ss.getMachine(publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -1968,7 +1974,7 @@ func (ss *SSHServer) handleRouteAdd(s ssh.Session, fingerprint, teamName, machin
 	fmt.Fprintf(s, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
 }
 
-func (ss *SSHServer) handleRouteRemove(s ssh.Session, fingerprint, teamName, machineName string, args []string) {
+func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machineName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify route name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: route %s remove <name>\r\n", machineName)
@@ -1978,7 +1984,7 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, fingerprint, teamName, mac
 	routeName := args[0]
 
 	// Get machine
-	machine, err := ss.getMachine(fingerprint, teamName, machineName)
+	machine, err := ss.getMachine(publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -2028,14 +2034,16 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, fingerprint, teamName, mac
 }
 
 // getMachine retrieves a machine for the given user/team/name
-func (ss *SSHServer) getMachine(fingerprint, teamName, machineName string) (*Machine, error) {
+func (ss *SSHServer) getMachine(publicKey, teamName, machineName string) (*Machine, error) {
 	// First verify user has access to the team
 	var exists bool
 	err := ss.server.db.QueryRow(`
 		SELECT EXISTS(
-			SELECT 1 FROM team_members 
-			WHERE user_fingerprint = ? AND team_name = ?
-		)`, fingerprint, teamName).Scan(&exists)
+			SELECT 1 FROM team_members tm
+			JOIN users u ON tm.user_id = u.user_id
+			JOIN ssh_keys sk ON u.user_id = sk.user_id
+			WHERE sk.public_key = ? AND sk.verified = 1 AND tm.team_name = ?
+		)`, publicKey, teamName).Scan(&exists)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %v", err)
 	}
@@ -2047,12 +2055,12 @@ func (ss *SSHServer) getMachine(fingerprint, teamName, machineName string) (*Mac
 	var machine Machine
 	err = ss.server.db.QueryRow(`
 		SELECT id, team_name, name, status, image, container_id, 
-		       created_by_fingerprint, created_at, updated_at, 
+		       created_by_user_id, created_at, updated_at, 
 		       last_started_at, docker_host, routes
 		FROM machines 
 		WHERE name = ? AND team_name = ?`, machineName, teamName).Scan(
 		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
+		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
 		&machine.DockerHost, &machine.Routes)
 	if err != nil {

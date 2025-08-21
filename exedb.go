@@ -75,7 +75,7 @@ func (s *Server) setupContainerSSH(machineID int) error {
 	// Get machine details
 	var containerID, userFingerprint, teamName, machineName, image string
 	err := s.db.QueryRow(
-		`SELECT container_id, created_by_fingerprint, team_name, name, image FROM machines WHERE id = ?`,
+		`SELECT container_id, created_by_user_id, team_name, name, image FROM machines WHERE id = ?`,
 		machineID,
 	).Scan(&containerID, &userFingerprint, &teamName, &machineName, &image)
 	if err != nil {
@@ -134,17 +134,18 @@ func runMigrations(db *sql.DB) error {
 
 	// Filter and validate migration files
 	var migrations []string
-	migrationPattern := regexp.MustCompile(`^(\d{3})_.*\.sql$`)
+	migrationPattern := regexp.MustCompile(`^(\d{3})-.*\.sql$`)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		// Check filename format
 		if !migrationPattern.MatchString(entry.Name()) {
-			continue // Skip non-migration files
+			continue
 		}
 		migrations = append(migrations, entry.Name())
 	}
+
+	// Sort migrations by number
 	sort.Strings(migrations)
 
 	// Get executed migrations
@@ -175,7 +176,7 @@ func runMigrations(db *sql.DB) error {
 
 	// Run any migrations that haven't been executed
 	for _, migration := range migrations {
-		// Extract migration number from filename (e.g., "001_base.sql" -> 001)
+		// Extract migration number from filename (e.g., "001-base.sql" -> 001)
 		matches := migrationPattern.FindStringSubmatch(migration)
 		if len(matches) != 2 {
 			return fmt.Errorf("invalid migration filename format: %s", migration)

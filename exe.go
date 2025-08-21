@@ -164,9 +164,9 @@ func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
 
 // User represents an individual user
 type User struct {
-	PublicKeyFingerprint string
-	Email                string
-	CreatedAt            time.Time
+	UserID    string
+	Email     string
+	CreatedAt time.Time
 }
 
 // Team represents a team with billing information
@@ -175,14 +175,16 @@ type Team struct {
 	CreatedAt        time.Time
 	StripeCustomerID string
 	BillingEmail     string
+	IsPersonal       bool
+	OwnerUserID      string
 }
 
 // TeamMember represents membership in a team
 type TeamMember struct {
-	UserFingerprint string
-	TeamName        string
-	IsAdmin         bool
-	JoinedAt        time.Time
+	UserID   string
+	TeamName string
+	IsAdmin  bool
+	JoinedAt time.Time
 }
 
 // PathMatcher defines how to match request paths
@@ -205,18 +207,18 @@ type MachineRoutes []Route
 
 // Machine represents a container/VM
 type Machine struct {
-	ID                   int
-	TeamName             string
-	Name                 string
-	Status               string
-	Image                string
-	ContainerID          *string
-	CreatedByFingerprint string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	LastStartedAt        *time.Time
-	DockerHost           *string // DOCKER_HOST value where this container runs
-	Routes               *string // JSON-encoded routing configuration
+	ID              int
+	TeamName        string
+	Name            string
+	Status          string
+	Image           string
+	ContainerID     *string
+	CreatedByUserID string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	LastStartedAt   *time.Time
+	DockerHost      *string // DOCKER_HOST value where this container runs
+	Routes          *string // JSON-encoded routing configuration
 	// SSH fields for container access
 	SSHServerIdentityKey *string // SSH server private key (PEM format)
 	SSHAuthorizedKeys    *string // User certificate for authorized_keys (client auth)
@@ -275,7 +277,7 @@ type UserPageData struct {
 
 // SSHKey represents an SSH key for the user page
 type SSHKey struct {
-	Fingerprint string
+	UserID      string
 	PublicKey   string
 	DeviceName  *string
 	DefaultTeam *string
@@ -284,30 +286,29 @@ type SSHKey struct {
 
 // Invite represents a team invitation
 type Invite struct {
-	Code                 string
-	TeamName             string
-	CreatedByFingerprint string
-	Email                string // optional
-	MaxUses              int
-	UsedCount            int
-	ExpiresAt            time.Time
-	CreatedAt            time.Time
+	Code            string
+	TeamName        string
+	CreatedByUserID string
+	Email           string // optional
+	MaxUses         int
+	UsedCount       int
+	ExpiresAt       time.Time
+	CreatedAt       time.Time
 }
 
 // EmailVerification represents a pending email verification (in-memory)
 type EmailVerification struct {
-	PublicKeyFingerprint string
-	PublicKey            string
-	Email                string
-	TeamName             string // Team name selected by user
-	Token                string
-	CompleteChan         chan struct{}
-	CreatedAt            time.Time
+	PublicKey    string
+	Email        string
+	TeamName     string // Team name selected by user
+	Token        string
+	CompleteChan chan struct{}
+	CreatedAt    time.Time
 }
 
 // MagicSecret represents a temporary authentication secret for proxy magic URLs
 type MagicSecret struct {
-	Fingerprint string
+	UserID      string
 	TeamName    string
 	RedirectURL string
 	ExpiresAt   time.Time
@@ -324,12 +325,12 @@ type BillingVerification struct {
 
 // UserSession represents an active SSH user session
 type UserSession struct {
-	Fingerprint string
-	Email       string
-	TeamName    string
-	IsAdmin     bool
-	PublicKey   string
-	CreatedAt   time.Time
+	UserID    string
+	Email     string
+	TeamName  string
+	IsAdmin   bool
+	PublicKey string
+	CreatedAt time.Time
 }
 
 // Server implements both HTTP and SSH server functionality for exe.dev
@@ -359,7 +360,7 @@ type Server struct {
 	emailVerificationsMu   sync.RWMutex
 	emailVerifications     map[string]*EmailVerification // token -> email verification
 	billingVerificationsMu sync.RWMutex
-	billingVerifications   map[string]*BillingVerification // fingerprint -> billing verification
+	billingVerifications   map[string]*BillingVerification // user_id -> billing verification
 	magicSecretsMu         sync.RWMutex
 	magicSecrets           map[string]*MagicSecret // secret -> magic secret with expiration
 
@@ -646,51 +647,6 @@ func (s *Server) GetPublicKeyFingerprint(key ssh.PublicKey) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// inheritUserTeamMemberships adds a new SSH key to all teams that the user (by email) is already a member of
-func (s *Server) inheritUserTeamMemberships(newFingerprint, userEmail string) error {
-	// First, get the original user fingerprint from the users table
-	var originalFingerprint string
-	err := s.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", userEmail).Scan(&originalFingerprint)
-	if err != nil {
-		return fmt.Errorf("failed to find original user fingerprint: %v", err)
-	}
-
-	// Get all teams the original fingerprint is a member of
-	rows, err := s.db.Query(`
-		SELECT team_name, is_admin
-		FROM team_members
-		WHERE user_fingerprint = ?`, originalFingerprint)
-	if err != nil {
-		return fmt.Errorf("failed to query team memberships: %v", err)
-	}
-	defer rows.Close()
-
-	// Add the new fingerprint to each team
-	for rows.Next() {
-		var teamName string
-		var isAdmin bool
-		if err := rows.Scan(&teamName, &isAdmin); err != nil {
-			slog.Error("Error scanning team membership", "error", err)
-			continue
-		}
-
-		// Insert the new fingerprint into the same team with the same admin status
-		_, err = s.db.Exec(`
-			INSERT INTO team_members (user_fingerprint, team_name, is_admin)
-			VALUES (?, ?, ?)
-			ON CONFLICT(user_fingerprint, team_name) DO UPDATE SET is_admin = ?`,
-			newFingerprint, teamName, isAdmin, isAdmin)
-
-		if err != nil {
-			slog.Error("Failed to add fingerprint to team", "fingerprint", newFingerprint, "team", teamName, "error", err)
-		} else {
-			slog.Info("Added new SSH key to team", "team", teamName, "admin", isAdmin, "user", userEmail)
-		}
-	}
-
-	return rows.Err()
-}
-
 // generateRegistrationToken creates a random registration token
 func (s *Server) generateRegistrationToken() string {
 	bytes := make([]byte, 16)
@@ -820,7 +776,6 @@ func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error)
 
 // authenticatePublicKey handles SSH public key authentication
 func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-	fingerprint := s.GetPublicKeyFingerprint(key)
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(key))
 
 	var user, remoteAddr string
@@ -831,10 +786,10 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		user = "<nil>"
 		remoteAddr = "<nil>"
 	}
-	slog.Debug("Authentication request", "user", user, "remote_addr", remoteAddr, "key_type", key.Type(), "fingerprint", fingerprint[:16])
+	slog.Debug("Authentication request", "user", user, "remote_addr", remoteAddr, "key_type", key.Type())
 
 	// Check if this is a proxy connection from sshpiper
-	slog.Debug("Checking if key is a proxy key", "fingerprint", fingerprint[:16])
+	slog.Debug("Checking if key is a proxy key")
 	if originalUserKey := s.lookupEphemeralProxyKey(key); originalUserKey != nil {
 		slog.Debug("Ephemeral proxy authentication detected", "user", user)
 		return s.authenticateProxyUser(user, originalUserKey)
@@ -842,17 +797,18 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		slog.Debug("Not a proxy key, treating as direct user connection")
 	}
 	// Log non-proxy connections for monitoring - in production, all connections should come via proxy
-	slog.Warn("Direct connection to exed - should come via proxy", "remote_addr", remoteAddr, "fingerprint", fingerprint)
+	slog.Warn("Direct connection to exed - should come via proxy", "remote_addr", remoteAddr)
 
 	// First check if this key is already registered in ssh_keys table
-	email, verified, err := s.GetEmailBySSHKey(fingerprint)
+	email, verified, err := s.GetEmailBySSHKey(publicKeyStr)
 	if err != nil {
-		slog.Error("Database error checking SSH key", "fingerprint", fingerprint, "error", err)
+		slog.Error("Database error checking SSH key", "error", err)
 	}
 
 	if email != "" && verified {
 		// This is a verified key, check if user has team memberships
-		teams, err := s.getUserTeamsByEmail(email)
+		var teams []TeamMember
+		teams, err = s.getUserTeamsByEmail(email)
 		if err != nil {
 			slog.Error("Database error getting teams for user", "email", email, "error", err)
 		}
@@ -861,10 +817,9 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 			// User is fully registered with team membership
 			return &ssh.Permissions{
 				Extensions: map[string]string{
-					"fingerprint": fingerprint,
-					"registered":  "true",
-					"email":       email,
-					"public_key":  publicKeyStr,
+					"registered": "true",
+					"email":      email,
+					"public_key": publicKeyStr,
 				},
 			}, nil
 		}
@@ -876,7 +831,6 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		// They will go through the normal flow and wait for email verification
 		return &ssh.Permissions{
 			Extensions: map[string]string{
-				"fingerprint":        fingerprint,
 				"registered":         "false",
 				"email":              email,
 				"public_key":         publicKeyStr,
@@ -888,9 +842,8 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	// User is not registered or has no team, allow connection but mark as needing registration
 	return &ssh.Permissions{
 		Extensions: map[string]string{
-			"fingerprint": fingerprint,
-			"registered":  "false",
-			"public_key":  publicKeyStr,
+			"registered": "false",
+			"public_key": publicKeyStr,
 		},
 	}, nil
 }
@@ -936,9 +889,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Check if user is authenticated
 		if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
-			if fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
+			if userID, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
 				// User is authenticated, redirect to user dashboard
-				s.handleUserDashboard(w, r, fingerprint)
+				s.handleUserDashboard(w, r, userID)
 				return
 			}
 		}
@@ -953,14 +906,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 			return
 		}
-		fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host)
+		userID, err := s.validateAuthCookie(cookie.Value, r.Host)
 		if err != nil {
 			// Invalid cookie, redirect to auth
 			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
 			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 			return
 		}
-		s.handleUserDashboard(w, r, fingerprint)
+		s.handleUserDashboard(w, r, userID)
 		return
 	}
 
@@ -1043,13 +996,13 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
 	// Look up the pending SSH key to validate token and get info
-	var fingerprint, email string
+	var publicKey, email string
 	var expires time.Time
 	err := s.db.QueryRow(`
-		SELECT fingerprint, user_email, expires_at
+		SELECT public_key, user_email, expires_at
 		FROM pending_ssh_keys
 		WHERE token = ?`,
-		token).Scan(&fingerprint, &email, &expires)
+		token).Scan(&publicKey, &email, &expires)
 
 	if err == sql.ErrNoRows {
 		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
@@ -1070,14 +1023,20 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Show confirmation form
+	// Use public key preview for verification display
+	publicKeyPreview := publicKey
+	if len(publicKey) > 32 {
+		publicKeyPreview = publicKey[:32] + "..."
+	}
+
 	data := struct {
-		Email       string
-		Fingerprint string
-		Token       string
+		Email     string
+		PublicKey string
+		Token     string
 	}{
-		Email:       email,
-		Fingerprint: fingerprint[:16],
-		Token:       token,
+		Email:     email,
+		PublicKey: publicKeyPreview,
+		Token:     token,
 	}
 
 	s.renderTemplate(w, "device-verification.html", data)
@@ -1114,13 +1073,13 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 
 	// Look up the pending SSH key
-	var fingerprint, publicKey, email string
+	var publicKey, email string
 	var expires time.Time
 	err := s.db.QueryRow(`
-		SELECT fingerprint, public_key, user_email, expires_at
+		SELECT public_key, user_email, expires_at
 		FROM pending_ssh_keys
 		WHERE token = ?`,
-		token).Scan(&fingerprint, &publicKey, &email, &expires)
+		token).Scan(&publicKey, &email, &expires)
 
 	if err == sql.ErrNoRows {
 		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
@@ -1142,21 +1101,14 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 	// Add the SSH key to the verified keys
 	_, err = s.db.Exec(`
-		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-		VALUES (?, ?, ?, 1, 'New Device')
-		ON CONFLICT(fingerprint) DO UPDATE SET verified = 1`,
-		fingerprint, email, publicKey)
+		INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
+		VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1, 'New Device')
+		ON CONFLICT(public_key) DO UPDATE SET verified = 1`,
+		email, publicKey)
 	if err != nil {
 		slog.Error("Failed to add SSH key", "error", err)
 		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
 		return
-	}
-
-	// Automatically add the new SSH key to all teams the user is already a member of
-	err = s.inheritUserTeamMemberships(fingerprint, email)
-	if err != nil {
-		slog.Error("Failed to inherit team memberships", "email", email, "error", err)
-		// Don't fail the verification, just log the error
 	}
 
 	// Clean up the pending key
@@ -1171,11 +1123,17 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 	s.emailVerificationsMu.Unlock()
 
-	// Send success response
+	// Send success response with public key preview for verification
+	// Use first 32 characters of public key as display identifier
+	publicKeyPreview := publicKey
+	if len(publicKey) > 32 {
+		publicKeyPreview = publicKey[:32] + "..."
+	}
+
 	data := struct {
-		Fingerprint string
+		PublicKey string
 	}{
-		Fingerprint: fingerprint[:16],
+		PublicKey: publicKeyPreview,
 	}
 
 	s.renderTemplate(w, "device-verified.html", data)
@@ -1252,18 +1210,17 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	verification, exists := s.emailVerifications[token]
 	if exists {
 		// This is an SSH session email verification
-		fingerprint := verification.PublicKeyFingerprint
 		email := verification.Email
 		teamName := verification.TeamName
 
 		// Create the user if they don't exist
-		user, err := s.getUserByFingerprint(fingerprint)
+		user, err := s.getUserByPublicKey(verification.PublicKey)
 		if err != nil || user == nil {
-			slog.Info("User doesn't exist for fingerprint, creating", "fingerprint", fingerprint)
+			slog.Info("User doesn't exist, creating", "email", email)
 			// User doesn't exist - create them with their team
 			if teamName != "" {
 				// Use the team name selected during registration
-				if err := s.createUserWithTeam(fingerprint, email, teamName); err != nil {
+				if err := s.createUserWithTeam(verification.PublicKey, email, teamName); err != nil {
 					slog.Error("Failed to create user with team during email verification", "error", err)
 					s.emailVerificationsMu.Unlock()
 					// Clean up pending registration on failure
@@ -1275,47 +1232,53 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
 			} else {
 				// Fallback to auto-generated team name for existing flow
-				if err := s.createUser(fingerprint, email); err != nil {
+				if err := s.createUser(verification.PublicKey, email); err != nil {
 					slog.Error("Failed to create user during email verification", "error", err)
 					s.emailVerificationsMu.Unlock()
 					http.Error(w, "Failed to create user account", http.StatusInternalServerError)
 					return
 				}
 			}
-			slog.Info("Created new user", "email", email, "fingerprint", fingerprint, "team", teamName)
+			slog.Info("Created new user", "email", email, "team", teamName)
 		} else {
-			slog.Debug("User already exists for fingerprint", "fingerprint", fingerprint)
+			slog.Debug("User already exists", "email", email)
 		}
 
 		// Store the SSH key as verified
 		publicKey := verification.PublicKey
 		if publicKey != "" {
 			_, err = s.db.Exec(`
-				INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-				VALUES (?, ?, ?, 1, 'Primary Device')
-				ON CONFLICT(fingerprint) DO UPDATE SET verified = 1, public_key = ?, user_email = ?`,
-				fingerprint, email, publicKey, publicKey, email)
+				INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
+				VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1, 'Primary Device')
+				ON CONFLICT(public_key) DO UPDATE SET verified = 1, user_id = (SELECT user_id FROM users WHERE email = ?)`,
+				email, publicKey, email)
 			if err != nil {
 				slog.Error("Error storing SSH key during verification", "error", err)
 			}
 		}
 
 		// Create HTTP auth cookie for this user
-		cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
+		var userID string
+		err = s.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
 		if err != nil {
-			slog.Error("Failed to create auth cookie during SSH email verification", "error", err)
-			// Continue anyway - SSH auth will still work
+			slog.Error("Failed to get user ID by email during SSH email verification", "error", err)
 		} else {
-			// Set the authentication cookie
-			cookie := &http.Cookie{
-				Name:     "exe-auth",
-				Value:    cookieValue,
-				Path:     "/",
-				HttpOnly: true,
-				MaxAge:   30 * 24 * 60 * 60, // 30 days
-				Secure:   r.TLS != nil,
+			cookieValue, err := s.createAuthCookie(userID, r.Host)
+			if err != nil {
+				slog.Error("Failed to create auth cookie during SSH email verification", "error", err)
+				// Continue anyway - SSH auth will still work
+			} else {
+				// Set the authentication cookie
+				cookie := &http.Cookie{
+					Name:     "exe-auth",
+					Value:    cookieValue,
+					Path:     "/",
+					HttpOnly: true,
+					MaxAge:   30 * 24 * 60 * 60, // 30 days
+					Secure:   r.TLS != nil,
+				}
+				http.SetCookie(w, cookie)
 			}
-			http.SetCookie(w, cookie)
 		}
 
 		// Signal completion to SSH session
@@ -1329,7 +1292,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		s.emailVerificationsMu.Unlock()
 
 		// Try to validate as database token
-		fingerprint, err := s.validateEmailVerificationToken(token)
+		userID, err := s.validateEmailVerificationToken(token)
 		if err != nil {
 			slog.Error("Invalid email verification token", "error", err)
 			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
@@ -1337,7 +1300,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Create HTTP auth cookie for this user
-		cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
+		cookieValue, err := s.createAuthCookie(userID, r.Host)
 		if err != nil {
 			slog.Error("Failed to create auth cookie during HTTP email verification", "error", err)
 			http.Error(w, "Failed to create authentication session", http.StatusInternalServerError)
@@ -1367,7 +1330,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		returnHost := r.URL.Query().Get("return_host")
 		if redirectURL != "" || returnHost != "" {
 			// This is a web auth flow, perform redirect after authentication
-			s.redirectAfterAuth(w, r, fingerprint)
+			s.redirectAfterAuth(w, r, userID)
 			return
 		}
 	}
@@ -1394,10 +1357,10 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	// Check if user already has a valid exe.dev auth cookie
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
-		fingerprint, err := s.validateAuthCookie(cookie.Value, r.Host)
+		userID, err := s.validateAuthCookie(cookie.Value, r.Host)
 		if err == nil {
 			// User is already authenticated, handle redirect
-			s.redirectAfterAuth(w, r, fingerprint)
+			s.redirectAfterAuth(w, r, userID)
 			return
 		}
 	}
@@ -1427,8 +1390,8 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Check if user exists
-	var userFingerprint string
-	err := s.db.QueryRow("SELECT public_key_fingerprint FROM users WHERE email = ?", email).Scan(&userFingerprint)
+	var userID string
+	err := s.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			s.showAuthError(w, r, "No account found with this email address. Please sign up first using SSH: ssh exe.dev")
@@ -1444,9 +1407,9 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	// Store verification in database (reuse existing email_verifications table)
 	_, err = s.db.Exec(`
-		INSERT INTO email_verifications (token, email, user_fingerprint, expires_at)
+		INSERT INTO email_verifications (token, email, user_id, expires_at)
 		VALUES (?, ?, ?, ?)
-	`, token, email, userFingerprint, time.Now().Add(24*time.Hour).Format(time.RFC3339))
+	`, token, email, userID, time.Now().Add(24*time.Hour).Format(time.RFC3339))
 	if err != nil {
 		slog.Error("Failed to store email verification", "error", err)
 		s.showAuthError(w, r, "Failed to create verification. Please try again.")
@@ -1538,7 +1501,7 @@ func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email
 // handleAuthCallback handles authentication callbacks with magic tokens
 func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	var token string
-	var fingerprint string
+	var userID string
 	var err error
 
 	// Check if this is an email verification request (/auth/verify?token=...)
@@ -1550,7 +1513,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Validate email verification token
-		fingerprint, err = s.validateEmailVerificationToken(token)
+		userID, err = s.validateEmailVerificationToken(token)
 		if err != nil {
 			slog.Error("Invalid email verification token", "error", err)
 			http.Error(w, "Invalid or expired verification token", http.StatusUnauthorized)
@@ -1565,7 +1528,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Validate the auth token
-		fingerprint, err = s.validateAuthToken(token, "")
+		userID, err = s.validateAuthToken(token, "")
 		if err != nil {
 			slog.Error("Invalid auth token in callback", "error", err)
 			http.Error(w, "Invalid or expired authentication token", http.StatusUnauthorized)
@@ -1574,7 +1537,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create main domain auth cookie
-	cookieValue, err := s.createAuthCookie(fingerprint, r.Host)
+	cookieValue, err := s.createAuthCookie(userID, r.Host)
 	if err != nil {
 		slog.Error("Failed to create main auth cookie", "error", err)
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
@@ -1593,7 +1556,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, cookie)
 
 	// Handle redirect after authentication
-	s.redirectAfterAuth(w, r, fingerprint)
+	s.redirectAfterAuth(w, r, userID)
 }
 
 // getDomain extracts the base domain from a host
@@ -1614,15 +1577,16 @@ func getDomain(host string) string {
 
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
 func (s *Server) checkEmailVerificationToken(token string) (string, error) {
-	var fingerprint string
+	var userID string
 	var email string
 	var expiresAt string
 
+	// Get verification info and return user_id directly
 	err := s.db.QueryRow(`
-		SELECT user_fingerprint, email, expires_at
-		FROM email_verifications
-		WHERE token = ?
-	`, token).Scan(&fingerprint, &email, &expiresAt)
+		SELECT e.user_id, e.email, e.expires_at
+		FROM email_verifications e
+		WHERE e.token = ?
+	`, token).Scan(&userID, &email, &expiresAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid verification token")
@@ -1642,12 +1606,12 @@ func (s *Server) checkEmailVerificationToken(token string) (string, error) {
 		return "", fmt.Errorf("verification token expired")
 	}
 
-	return fingerprint, nil
+	return userID, nil
 }
 
-// validateEmailVerificationToken validates an email verification token, consumes it, and returns the user fingerprint
+// validateEmailVerificationToken validates an email verification token, consumes it, and returns the user ID
 func (s *Server) validateEmailVerificationToken(token string) (string, error) {
-	fingerprint, err := s.checkEmailVerificationToken(token)
+	userID, err := s.checkEmailVerificationToken(token)
 	if err != nil {
 		return "", err
 	}
@@ -1655,13 +1619,13 @@ func (s *Server) validateEmailVerificationToken(token string) (string, error) {
 	// Clean up used token
 	s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
 
-	return fingerprint, nil
+	return userID, nil
 }
 
 // Helper functions for authentication and reverse proxy
 
 // createAuthCookie creates a new authentication cookie for the user
-func (s *Server) createAuthCookie(fingerprint, domain string) (string, error) {
+func (s *Server) createAuthCookie(userID, domain string) (string, error) {
 	// Generate a random cookie value
 	cookieBytes := make([]byte, 32)
 	if _, err := cryptorand.Read(cookieBytes); err != nil {
@@ -1674,9 +1638,9 @@ func (s *Server) createAuthCookie(fingerprint, domain string) (string, error) {
 
 	// Store in database
 	_, err := s.db.Exec(`
-		INSERT INTO auth_cookies (cookie_value, user_fingerprint, domain, expires_at)
+		INSERT INTO auth_cookies (cookie_value, user_id, domain, expires_at)
 		VALUES (?, ?, ?, ?)
-	`, cookieValue, fingerprint, getDomain(domain), expiresAt.Format(time.RFC3339))
+	`, cookieValue, userID, getDomain(domain), expiresAt.Format(time.RFC3339))
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth cookie: %w", err)
 	}
@@ -1684,16 +1648,17 @@ func (s *Server) createAuthCookie(fingerprint, domain string) (string, error) {
 	return cookieValue, nil
 }
 
-// validateAuthCookie validates an authentication cookie and returns the user fingerprint
+// validateAuthCookie validates an authentication cookie and returns the user_id
 func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) {
-	var fingerprint string
+	var userID string
 	var expiresAt string
 
+	// Get auth cookie info
 	err := s.db.QueryRow(`
-		SELECT user_fingerprint, expires_at
-		FROM auth_cookies
-		WHERE cookie_value = ? AND domain = ?
-	`, cookieValue, getDomain(domain)).Scan(&fingerprint, &expiresAt)
+		SELECT ac.user_id, ac.expires_at
+		FROM auth_cookies ac
+		WHERE ac.cookie_value = ? AND ac.domain = ?
+	`, cookieValue, getDomain(domain)).Scan(&userID, &expiresAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid cookie")
@@ -1716,11 +1681,11 @@ func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) 
 	// Update last used time
 	s.db.Exec("UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?", cookieValue)
 
-	return fingerprint, nil
+	return userID, nil
 }
 
 // createMagicSecret creates a temporary magic secret for proxy authentication
-func (s *Server) createMagicSecret(fingerprint, teamName, redirectURL string) (string, error) {
+func (s *Server) createMagicSecret(userID, teamName, redirectURL string) (string, error) {
 	// Generate a random secret
 	secret := cryptorand.Text()
 
@@ -1732,7 +1697,7 @@ func (s *Server) createMagicSecret(fingerprint, teamName, redirectURL string) (s
 	defer s.magicSecretsMu.Unlock()
 
 	s.magicSecrets[secret] = &MagicSecret{
-		Fingerprint: fingerprint,
+		UserID:      userID,
 		TeamName:    teamName,
 		RedirectURL: redirectURL,
 		ExpiresAt:   time.Now().Add(2 * time.Minute),
@@ -1779,18 +1744,19 @@ func (s *Server) cleanupExpiredMagicSecrets() {
 	}
 }
 
-// validateAuthToken validates an authentication token and returns the user fingerprint
+// validateAuthToken validates an authentication token and returns the user ID
 func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, error) {
-	var fingerprint string
+	var userID string
 	var subdomain sql.NullString
 	var expiresAt string
 	var usedAt sql.NullString
 
+	// Get auth token info and return user_id directly
 	err := s.db.QueryRow(`
-		SELECT user_fingerprint, subdomain, expires_at, used_at
-		FROM auth_tokens
-		WHERE token = ?
-	`, token).Scan(&fingerprint, &subdomain, &expiresAt, &usedAt)
+		SELECT at.user_id, at.subdomain, at.expires_at, at.used_at
+		FROM auth_tokens at
+		WHERE at.token = ?
+	`, token).Scan(&userID, &subdomain, &expiresAt, &usedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("invalid token")
@@ -1824,16 +1790,16 @@ func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, err
 		slog.Error("Failed to mark token as used", "error", err)
 	}
 
-	return fingerprint, nil
+	return userID, nil
 }
 
 // redirectAfterAuth handles redirecting user after successful authentication
-func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, fingerprint string) {
+func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userID string) {
 	redirectURL := r.URL.Query().Get("redirect")
 	returnHost := r.URL.Query().Get("return_host")
 
 	if !s.quietMode {
-		slog.Info("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "fingerprint", fingerprint[:10]+"...")
+		slog.Info("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
 	}
 
 	if returnHost != "" && redirectURL != "" {
@@ -1855,7 +1821,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, finge
 			}
 
 			// Create magic secret for the proxy subdomain
-			secret, err := s.createMagicSecret(fingerprint, teamName, redirectURL)
+			secret, err := s.createMagicSecret(userID, teamName, redirectURL)
 			if err != nil {
 				slog.Error("Failed to create magic secret", "error", err)
 				http.Error(w, "Failed to create authentication secret", http.StatusInternalServerError)
@@ -1886,28 +1852,32 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, finge
 }
 
 // handleUserDashboard renders the user dashboard page
-func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fingerprint string) {
+func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
 	var user User
 	err := s.db.QueryRow(`
-		SELECT public_key_fingerprint, email, created_at
+		SELECT user_id, email, created_at
 		FROM users
-		WHERE public_key_fingerprint = ?
-	`, fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
+		WHERE user_id = ?
+	`, userID).Scan(&user.UserID, &user.Email, &user.CreatedAt)
 	if err != nil {
-		slog.Error("Failed to get user info for dashboard", "error", err, "fingerprint", fingerprint)
-		http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		if err == sql.ErrNoRows {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			slog.Error("Failed to get user info for dashboard", "error", err, "user_id", userID)
+			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	// Get user's SSH keys
 	sshKeys := []SSHKey{}
 	rows, err := s.db.Query(`
-		SELECT fingerprint, public_key, device_name, default_team, verified
+		SELECT public_key, device_name, default_team, verified
 		FROM ssh_keys
-		WHERE user_email = ?
+		WHERE user_id = ?
 		ORDER BY added_at DESC
-	`, user.Email)
+	`, user.UserID)
 	if err != nil {
 		slog.Error("Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
 	} else {
@@ -1915,7 +1885,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fin
 		for rows.Next() {
 			var key SSHKey
 			var deviceName, defaultTeam sql.NullString
-			err := rows.Scan(&key.Fingerprint, &key.PublicKey, &deviceName, &defaultTeam, &key.Verified)
+			err := rows.Scan(&key.PublicKey, &deviceName, &defaultTeam, &key.Verified)
 			if err != nil {
 				slog.Error("Error scanning SSH key", "error", err)
 				continue
@@ -1934,15 +1904,15 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fin
 	machines := []Machine{}
 	machineRows, err := s.db.Query(`
 		SELECT m.id, m.team_name, m.name, m.status, COALESCE(m.image, ''), 
-		       COALESCE(m.container_id, ''), m.created_by_fingerprint, 
+		       COALESCE(m.container_id, ''), m.created_by_user_id, 
 		       m.created_at, m.updated_at, m.last_started_at, m.docker_host
 		FROM machines m
 		JOIN team_members tm ON m.team_name = tm.team_name
-		WHERE tm.user_fingerprint = ?
+		WHERE tm.user_id = ?
 		ORDER BY m.updated_at DESC
-	`, fingerprint)
+	`, user.UserID)
 	if err != nil {
-		slog.Error("Failed to get machines for dashboard", "error", err, "fingerprint", fingerprint)
+		slog.Error("Failed to get machines for dashboard", "error", err, "user_id", userID)
 	} else {
 		defer machineRows.Close()
 		for machineRows.Next() {
@@ -1950,7 +1920,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fin
 			var containerID, image, dockerHost sql.NullString
 			var lastStartedAt sql.NullTime
 			err := machineRows.Scan(&machine.ID, &machine.TeamName, &machine.Name,
-				&machine.Status, &image, &containerID, &machine.CreatedByFingerprint,
+				&machine.Status, &image, &containerID, &machine.CreatedByUserID,
 				&machine.CreatedAt, &machine.UpdatedAt, &lastStartedAt, &dockerHost)
 			if err != nil {
 				slog.Error("Error scanning machine", "error", err)
@@ -1985,20 +1955,20 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, fin
 
 // handleLogout logs out the user by clearing their auth cookie
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// Get the current user's fingerprint from the main auth cookie
-	var userFingerprint string
+	// Get the current user's ID from the main auth cookie
+	var userID string
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
-		// Get the user fingerprint before deleting
-		userFingerprint, _ = s.validateAuthCookie(cookie.Value, r.Host)
+		// Get the user ID before deleting
+		userID, _ = s.validateAuthCookie(cookie.Value, r.Host)
 	}
 
 	// Clear ALL auth cookies for this user across all domains
-	if userFingerprint != "" {
+	if userID != "" {
 		_, err := s.db.Exec(`
 			DELETE FROM auth_cookies 
-			WHERE user_fingerprint = ?
-		`, userFingerprint)
+			WHERE user_id = ?
+		`, userID)
 		if err != nil {
 			slog.Error("Failed to delete user's auth cookies from database", "error", err)
 		}
@@ -2026,12 +1996,12 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // userHasTeamAccess checks if a user has access to a team
-func (s *Server) userHasTeamAccess(fingerprint, teamName string) (bool, error) {
+func (s *Server) userHasTeamAccess(userID, teamName string) (bool, error) {
 	var count int
 	err := s.db.QueryRow(`
-		SELECT COUNT(*) FROM team_members
-		WHERE user_fingerprint = ? AND team_name = ?
-	`, fingerprint, teamName).Scan(&count)
+		SELECT COUNT(*) FROM team_members tm
+		WHERE tm.user_id = ? AND tm.team_name = ?
+	`, userID, teamName).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -2101,8 +2071,8 @@ func (s *Server) findContainerByName(userID, containerName string) *container.Co
 
 // findMachineByNameForUser finds a machine by name that the user has access to
 // Supports both "machine" format (uses default team) and "team/machine" format
-func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Machine {
-	slog.Debug("FindMachineByNameForUser", "fingerprint", fingerprint[:16], "machine_name", machineName)
+func (s *Server) FindMachineByNameForUser(userID, machineName string) *Machine {
+	slog.Debug("FindMachineByNameForUser", "user_id", userID, "machine_name", machineName)
 	var teamName string
 	var machineNameOnly string
 
@@ -2114,7 +2084,7 @@ func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Mach
 			machineNameOnly = parts[1]
 
 			// Verify user has access to this specific team
-			teams, err := s.getUserTeams(fingerprint)
+			teams, err := s.getUserTeams(userID)
 			if err != nil {
 				return nil
 			}
@@ -2137,7 +2107,7 @@ func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Mach
 	machineNameOnly = machineName
 
 	// Try default team first
-	defaultTeam, err := s.getDefaultTeamForKey(fingerprint)
+	defaultTeam, err := s.getDefaultTeamForUser(userID)
 	slog.Debug("Default team for key", "team", defaultTeam, "error", err)
 	if err == nil && defaultTeam != "" {
 		machine, err := s.getMachineByName(defaultTeam, machineNameOnly)
@@ -2148,7 +2118,7 @@ func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Mach
 	}
 
 	// Get user's teams and search all of them
-	teams, err := s.getUserTeams(fingerprint)
+	teams, err := s.getUserTeams(userID)
 	slog.Debug("User teams", "count", len(teams), "error", err)
 	if err != nil || len(teams) == 0 {
 		return nil
@@ -2163,12 +2133,17 @@ func (s *Server) FindMachineByNameForUser(fingerprint, machineName string) *Mach
 		}
 	}
 
-	slog.Debug("Machine not found in any team for user", "machine", machineName, "user", fingerprint[:16])
+	slog.Debug("Machine not found in any team for user", "machine", machineName, "user_id", userID)
 	return nil
 }
 
-func (s *Server) handleListUserTeams(channel *sshbuf.Channel, fingerprint string) {
-	teams, err := s.getUserTeams(fingerprint)
+func (s *Server) handleListUserTeams(channel *sshbuf.Channel, publicKey string) {
+	user, err := s.getUserByPublicKey(publicKey)
+	if err != nil || user == nil {
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving user: %v\033[0m\r\n", err)))
+		return
+	}
+	teams, err := s.getUserTeams(user.UserID)
 	if err != nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving teams: %v\033[0m\r\n", err)))
 		return
@@ -2179,17 +2154,17 @@ func (s *Server) handleListUserTeams(channel *sshbuf.Channel, fingerprint string
 		return
 	}
 
-	// Get default team for this SSH key
-	defaultTeam, _ := s.getDefaultTeamForKey(fingerprint)
+	// Get default team for this user
+	defaultTeam, _ := s.getDefaultTeamForUser(user.UserID)
 
 	channel.Write([]byte("\033[1;36m═══ Your Teams ═══\033[0m\r\n\r\n"))
 
 	for _, team := range teams {
 		// Check if this is a personal team
 		var isPersonal bool
-		var ownerFingerprint sql.NullString
-		s.db.QueryRow(`SELECT is_personal, owner_fingerprint FROM teams WHERE name = ?`,
-			team.TeamName).Scan(&isPersonal, &ownerFingerprint)
+		var ownerUserID sql.NullString
+		s.db.QueryRow(`SELECT is_personal, owner_user_id FROM teams WHERE team_name = ?`,
+			team.TeamName).Scan(&isPersonal, &ownerUserID)
 
 		roleStr := "Member"
 		if team.IsAdmin {
@@ -2202,7 +2177,7 @@ func (s *Server) handleListUserTeams(channel *sshbuf.Channel, fingerprint string
 		}
 
 		teamTypeStr := ""
-		if isPersonal && ownerFingerprint.String == fingerprint {
+		if isPersonal && ownerUserID.Valid && ownerUserID.String == user.UserID {
 			teamTypeStr = " \033[2m(Personal)\033[0m"
 		}
 
@@ -2216,41 +2191,15 @@ func (s *Server) handleListUserTeams(channel *sshbuf.Channel, fingerprint string
 	channel.Write([]byte("\033[2mTo access a specific team's machine: ssh team/machine@exe.dev\033[0m\r\n"))
 }
 
-// handleTeamSwitch switches the default team for the current SSH key
-func (s *Server) getUserFromChannel(channel *sshbuf.Channel) (fingerprint, teamName string, err error) {
-	s.sessionsMu.RLock()
-	session, exists := s.sessions[channel]
-	s.sessionsMu.RUnlock()
-
-	if !exists {
-		return "", "", fmt.Errorf("user not authenticated")
-	}
-
-	return session.Fingerprint, session.TeamName, nil
-}
-
-// getUserInfoFromChannel gets complete user information from SSH channel session
-func (s *Server) getUserInfoFromChannel(channel *sshbuf.Channel) (fingerprint, email, teamName, publicKey string, err error) {
-	s.sessionsMu.RLock()
-	session, exists := s.sessions[channel]
-	s.sessionsMu.RUnlock()
-
-	if !exists {
-		return "", "", "", "", fmt.Errorf("user not authenticated")
-	}
-
-	return session.Fingerprint, session.Email, session.TeamName, session.PublicKey, nil
-}
-
 // createUserSession creates a new user session for a channel
-func (s *Server) createUserSession(channel *sshbuf.Channel, fingerprint, email, teamName, publicKey string, isAdmin bool) {
+func (s *Server) createUserSession(channel *sshbuf.Channel, userID string, email, teamName, publicKey string, isAdmin bool) {
 	session := &UserSession{
-		Fingerprint: fingerprint,
-		Email:       email,
-		TeamName:    teamName,
-		IsAdmin:     isAdmin,
-		PublicKey:   publicKey,
-		CreatedAt:   time.Now(),
+		UserID:    userID,
+		Email:     email,
+		TeamName:  teamName,
+		IsAdmin:   isAdmin,
+		PublicKey: publicKey,
+		CreatedAt: time.Now(),
 	}
 
 	s.sessionsMu.Lock()
@@ -2263,27 +2212,6 @@ func (s *Server) removeUserSession(channel *sshbuf.Channel) {
 	s.sessionsMu.Lock()
 	delete(s.sessions, channel)
 	s.sessionsMu.Unlock()
-}
-
-// handleWhoamiCommand shows the user's key fingerprint, public key, and email address
-func (s *Server) handleWhoamiCommand(channel *sshbuf.Channel, fingerprint, email, publicKey string) {
-	channel.Write([]byte("\r\n\033[1;36mUser Information:\033[0m\r\n\r\n"))
-	channel.Write([]byte(fmt.Sprintf("\033[1mEmail Address:\033[0m %s\r\n", email)))
-	channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key Fingerprint:\033[0m %s\r\n", fingerprint)))
-
-	// Display public key if available
-	if publicKey != "" {
-		channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key:\033[0m %s\r\n", strings.TrimSpace(publicKey))))
-	} else {
-		// Try to look up public key from database
-		var dbPublicKey string
-		err := s.db.QueryRow(`SELECT public_key FROM ssh_keys WHERE fingerprint = ? AND verified = 1 LIMIT 1`, fingerprint).Scan(&dbPublicKey)
-		if err == nil && dbPublicKey != "" {
-			channel.Write([]byte(fmt.Sprintf("\033[1mPublic Key:\033[0m %s\r\n", strings.TrimSpace(dbPublicKey))))
-		} else {
-			channel.Write([]byte("\033[1mPublic Key:\033[0m \033[2m(not available in current session)\033[0m\r\n"))
-		}
-	}
 }
 
 // handleListCommand lists user's machines
@@ -2384,58 +2312,58 @@ func getDefaultRoutesJSON() string {
 }
 
 // createMachine stores machine info in database
-func (s *Server) createMachine(userFingerprint, teamName, name, containerID, image string) error {
+func (s *Server) createMachine(userID, teamName, name, containerID, image string) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, routes,
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_user_id, routes,
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userFingerprint, routes,
+	`, teamName, name, "pending", image, containerID, userID, routes,
 		"test-identity-key", "test-authorized-keys", "test-ca-key",
 		"test-host-cert", "test-client-key", 2222)
 	return err
 }
 
 // createMachineWithDockerHost stores machine info including docker host in database
-func (s *Server) createMachineWithDockerHost(userFingerprint, teamName, name, containerID, image, dockerHost string) error {
+func (s *Server) createMachineWithDockerHost(userID, teamName, name, containerID, image, dockerHost string) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_fingerprint, docker_host, routes,
+		INSERT INTO machines (team_name, name, status, image, container_id, created_by_user_id, docker_host, routes,
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userFingerprint, dockerHost, routes,
+	`, teamName, name, "pending", image, containerID, userID, dockerHost, routes,
 		"test-identity-key", "test-authorized-keys", "test-ca-key",
 		"test-host-cert", "test-client-key", 2222)
 	return err
 }
 
 // createMachineWithSSH stores machine info including SSH keys in database
-func (s *Server) createMachineWithSSH(userFingerprint, teamName, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+func (s *Server) createMachineWithSSH(userID, teamName, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
-			team_name, name, status, image, container_id, created_by_fingerprint,
+			team_name, name, status, image, container_id, created_by_user_id,
 			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 			ssh_host_certificate, ssh_client_private_key, ssh_port, routes
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "running", image, containerID, userFingerprint,
+	`, teamName, name, "running", image, containerID, userID,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
 		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, routes)
 	return err
 }
 
 // createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
-func (s *Server) createMachineWithSSHAndDockerHost(userFingerprint, teamName, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+func (s *Server) createMachineWithSSHAndDockerHost(userID, teamName, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
-			team_name, name, status, image, container_id, created_by_fingerprint,
+			team_name, name, status, image, container_id, created_by_user_id,
 			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, routes
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "running", image, containerID, userFingerprint,
+	`, teamName, name, "running", image, containerID, userID,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
 		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, routes)
 	return err
@@ -2472,13 +2400,13 @@ func (s *Server) determineUserShell(userFingerprint, containerID string) (string
 func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 	var machine Machine
 	err := s.db.QueryRow(`
-		SELECT id, team_name, name, status, image, container_id, created_by_fingerprint, created_at, updated_at, last_started_at, docker_host, routes,
+		SELECT id, team_name, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
 		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
 		FROM machines
 		WHERE team_name = ? AND name = ?
 	`, teamName, name).Scan(
 		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByFingerprint,
+		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
 		&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort,
 	)
@@ -2723,12 +2651,13 @@ func (s *Server) Start() error {
 // Database helper methods
 
 // getEmailBySSHKey checks if an SSH key is registered and returns the associated email
-func (s *Server) GetEmailBySSHKey(fingerprint string) (email string, verified bool, err error) {
+func (s *Server) GetEmailBySSHKey(publicKeyStr string) (email string, verified bool, err error) {
 	err = s.db.QueryRow(`
-		SELECT user_email, verified
-		FROM ssh_keys
-		WHERE fingerprint = ?`,
-		fingerprint).Scan(&email, &verified)
+		SELECT u.email, s.verified
+		FROM ssh_keys s
+		JOIN users u ON s.user_id = u.user_id
+		WHERE s.public_key = ?`,
+		publicKeyStr).Scan(&email, &verified)
 
 	if err == sql.ErrNoRows {
 		return "", false, nil
@@ -2739,9 +2668,9 @@ func (s *Server) GetEmailBySSHKey(fingerprint string) (email string, verified bo
 // getUserTeamsByEmail retrieves teams for a user by email
 func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
 	rows, err := s.db.Query(`
-		SELECT tm.user_fingerprint, tm.team_name, tm.is_admin, tm.joined_at
+		SELECT tm.user_id, tm.team_name, tm.is_admin, tm.joined_at
 		FROM team_members tm
-		JOIN users u ON tm.user_fingerprint = u.public_key_fingerprint
+		JOIN users u ON tm.user_id = u.user_id
 		WHERE u.email = ?`,
 		email)
 	if err != nil {
@@ -2752,41 +2681,23 @@ func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
 	var teams []TeamMember
 	for rows.Next() {
 		var tm TeamMember
-		if err := rows.Scan(&tm.UserFingerprint, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
+		if err := rows.Scan(&tm.UserID, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
 			return nil, err
 		}
 		teams = append(teams, tm)
 	}
-
 	return teams, rows.Err()
-}
-
-// getUserByFingerprint retrieves a user by their SSH key fingerprint
-func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
+} // getUserByPublicKey retrieves a user by their SSH public key
+func (s *Server) getUserByPublicKey(publicKeyStr string) (*User, error) {
 	var user User
 
-	// First try to find user by their primary fingerprint
+	// Find user by their SSH public key
 	err := s.db.QueryRow(`
-		SELECT public_key_fingerprint, email, created_at
-		FROM users
-		WHERE public_key_fingerprint = ?`,
-		fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
-
-	if err == nil {
-		return &user, nil
-	}
-
-	if err != sql.ErrNoRows {
-		return nil, err
-	}
-
-	// If not found, try to find user by their SSH key fingerprint
-	err = s.db.QueryRow(`
-		SELECT u.public_key_fingerprint, u.email, u.created_at
+		SELECT u.user_id, u.email, u.created_at
 		FROM users u
-		JOIN ssh_keys s ON u.email = s.user_email
-		WHERE s.fingerprint = ? AND s.verified = 1`,
-		fingerprint).Scan(&user.PublicKeyFingerprint, &user.Email, &user.CreatedAt)
+		JOIN ssh_keys s ON u.user_id = s.user_id
+		WHERE s.public_key = ? AND s.verified = 1`,
+		publicKeyStr).Scan(&user.UserID, &user.Email, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -2795,12 +2706,12 @@ func (s *Server) getUserByFingerprint(fingerprint string) (*User, error) {
 }
 
 // getUserTeams returns all teams a user belongs to
-func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
+func (s *Server) getUserTeams(userID string) ([]TeamMember, error) {
 	rows, err := s.db.Query(`
-		SELECT user_fingerprint, team_name, is_admin, joined_at
+		SELECT user_id, team_name, is_admin, joined_at
 		FROM team_members
-		WHERE user_fingerprint = ?`,
-		fingerprint)
+		WHERE user_id = ?`,
+		userID)
 	if err != nil {
 		return nil, err
 	}
@@ -2809,7 +2720,7 @@ func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
 	var teams []TeamMember
 	for rows.Next() {
 		var tm TeamMember
-		if err := rows.Scan(&tm.UserFingerprint, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
+		if err := rows.Scan(&tm.UserID, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
 			return nil, err
 		}
 		teams = append(teams, tm)
@@ -2818,7 +2729,7 @@ func (s *Server) getUserTeams(fingerprint string) ([]TeamMember, error) {
 }
 
 // createUserWithTeam creates a new user with a specific team name
-func (s *Server) createUserWithTeam(fingerprint, email, teamName string) error {
+func (s *Server) createUserWithTeam(publicKey, email, teamName string) error {
 	// Start a transaction
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -2826,37 +2737,52 @@ func (s *Server) createUserWithTeam(fingerprint, email, teamName string) error {
 	}
 	defer tx.Rollback()
 
+	// Generate user ID
+	userID, err := generateUserID()
+	if err != nil {
+		return err
+	}
+
 	// Create user
 	_, err = tx.Exec(`
-		INSERT INTO users (public_key_fingerprint, email)
+		INSERT INTO users (user_id, email)
 		VALUES (?, ?)`,
-		fingerprint, email)
+		userID, email)
+	if err != nil {
+		return err
+	}
+
+	// Add the SSH key to ssh_keys table
+	_, err = tx.Exec(`
+		INSERT INTO ssh_keys (user_id, verified, public_key)
+		VALUES (?, 1, ?)`,
+		userID, publicKey)
 	if err != nil {
 		return err
 	}
 
 	// Create personal team
 	_, err = tx.Exec(`
-		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint)
+		INSERT INTO teams (team_name, billing_email, is_personal, owner_user_id)
 		VALUES (?, ?, TRUE, ?)`,
-		teamName, email, fingerprint)
+		teamName, email, userID)
 	if err != nil {
 		return err
 	}
 
 	// Add user as admin of the team
 	_, err = tx.Exec(`
-		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+		INSERT INTO team_members (user_id, team_name, is_admin)
 		VALUES (?, ?, TRUE)`,
-		fingerprint, teamName)
+		userID, teamName)
 	if err != nil {
 		return err
 	}
 
 	// Set this as the default team for the SSH key
 	_, err = tx.Exec(`
-		UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`,
-		teamName, fingerprint)
+		UPDATE ssh_keys SET default_team = ? WHERE public_key = ? AND user_id = ?`,
+		teamName, publicKey, userID)
 	if err != nil {
 		return err
 	}
@@ -2866,7 +2792,7 @@ func (s *Server) createUserWithTeam(fingerprint, email, teamName string) error {
 }
 
 // createUser creates a new user with their personal team
-func (s *Server) createUser(fingerprint, email string) error {
+func (s *Server) createUser(publicKey, email string) error {
 	// Start a transaction
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -2874,11 +2800,26 @@ func (s *Server) createUser(fingerprint, email string) error {
 	}
 	defer tx.Rollback()
 
+	// Generate user ID
+	userID, err := generateUserID()
+	if err != nil {
+		return err
+	}
+
 	// Create the user
 	_, err = tx.Exec(`
-		INSERT INTO users (public_key_fingerprint, email)
+		INSERT INTO users (user_id, email)
 		VALUES (?, ?)`,
-		fingerprint, email)
+		userID, email)
+	if err != nil {
+		return err
+	}
+
+	// Add the SSH key to ssh_keys table
+	_, err = tx.Exec(`
+		INSERT INTO ssh_keys (user_id, verified, public_key)
+		VALUES (?, 1, ?)`,
+		userID, publicKey)
 	if err != nil {
 		return err
 	}
@@ -2904,18 +2845,18 @@ func (s *Server) createUser(fingerprint, email string) error {
 
 	// Create the personal team
 	_, err = tx.Exec(`
-		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint)
+		INSERT INTO teams (team_name, billing_email, is_personal, owner_user_id)
 		VALUES (?, ?, TRUE, ?)`,
-		personalTeamName, email, fingerprint)
+		personalTeamName, email, userID)
 	if err != nil {
 		return err
 	}
 
 	// Add user as admin of their personal team
 	_, err = tx.Exec(`
-		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+		INSERT INTO team_members (user_id, team_name, is_admin)
 		VALUES (?, ?, TRUE)`,
-		fingerprint, personalTeamName)
+		userID, personalTeamName)
 	if err != nil {
 		return err
 	}
@@ -2923,8 +2864,8 @@ func (s *Server) createUser(fingerprint, email string) error {
 	// Set this as the default team for the SSH key (if it exists)
 	// Note: The SSH key might not exist yet if this is called during registration
 	_, err = tx.Exec(`
-		UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`,
-		personalTeamName, fingerprint)
+		UPDATE ssh_keys SET default_team = ? WHERE public_key = ? AND user_id = ?`,
+		personalTeamName, publicKey, userID)
 	// Ignore the error if the key doesn't exist yet - it will be added later
 
 	return tx.Commit()
@@ -2933,14 +2874,14 @@ func (s *Server) createUser(fingerprint, email string) error {
 // createTeam creates a new team
 func (s *Server) createTeam(name, billingEmail string) error {
 	_, err := s.db.Exec(`
-		INSERT INTO teams (name, billing_email)
+		INSERT INTO teams (team_name, billing_email)
 		VALUES (?, ?)`,
 		name, billingEmail)
 	return err
 }
 
 // createPersonalTeam creates a personal team for a user
-func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
+func (s *Server) createPersonalTeam(publicKey, teamName, email string) error {
 	// Start a transaction
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -2950,18 +2891,18 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 
 	// Create the team
 	_, err = tx.Exec(`
-		INSERT INTO teams (name, billing_email, is_personal, owner_fingerprint)
-		VALUES (?, ?, TRUE, ?)`,
-		teamName, email, fingerprint)
+		INSERT INTO teams (team_name, billing_email, is_personal, owner_user_id)
+		VALUES (?, ?, TRUE, (SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1))`,
+		teamName, email, publicKey)
 	if err != nil {
 		return err
 	}
 
 	// Add user as admin of the team
 	_, err = tx.Exec(`
-		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
-		VALUES (?, ?, TRUE)`,
-		fingerprint, teamName)
+		INSERT INTO team_members (user_id, team_name, is_admin)
+		VALUES ((SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1), ?, TRUE)`,
+		publicKey, teamName)
 	if err != nil {
 		return err
 	}
@@ -2970,8 +2911,8 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 	_, err = tx.Exec(`
 		UPDATE ssh_keys
 		SET default_team = ?
-		WHERE fingerprint = ?`,
-		teamName, fingerprint)
+		WHERE public_key = ?`,
+		teamName, publicKey)
 	if err != nil {
 		return err
 	}
@@ -2980,18 +2921,18 @@ func (s *Server) createPersonalTeam(fingerprint, teamName, email string) error {
 }
 
 // addTeamMember adds a user to a team
-func (s *Server) addTeamMember(fingerprint, teamName string, isAdmin bool) error {
+func (s *Server) addTeamMember(userID, teamName string, isAdmin bool) error {
 	_, err := s.db.Exec(`
-		INSERT INTO team_members (user_fingerprint, team_name, is_admin)
+		INSERT INTO team_members (user_id, team_name, is_admin)
 		VALUES (?, ?, ?)`,
-		fingerprint, teamName, isAdmin)
+		userID, teamName, isAdmin)
 	return err
 }
 
 // isTeamNameTaken checks if a team name is already taken
 func (s *Server) isTeamNameTaken(teamName string) (bool, error) {
 	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE name = ?`, teamName).Scan(&count)
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE team_name = ?`, teamName).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -3022,7 +2963,7 @@ func (s *Server) isTeamNameTakenOrReserved(teamName string) (bool, error) {
 // isTeamNameTakenTx checks if a team name is already taken within a transaction
 func (s *Server) isTeamNameTakenTx(tx *sql.Tx, teamName string) (bool, error) {
 	var count int
-	err := tx.QueryRow(`SELECT COUNT(*) FROM teams WHERE name = ?`, teamName).Scan(&count)
+	err := tx.QueryRow(`SELECT COUNT(*) FROM teams WHERE team_name = ?`, teamName).Scan(&count)
 	if err != nil {
 		return false, err
 	}
@@ -3030,12 +2971,12 @@ func (s *Server) isTeamNameTakenTx(tx *sql.Tx, teamName string) (bool, error) {
 }
 
 // createInvite creates a new team invitation
-func (s *Server) createInvite(teamName, createdByFingerprint, email string, maxUses int, expiresAt time.Time) (string, error) {
+func (s *Server) createInvite(teamName, createdByPublicKey, email string, maxUses int, expiresAt time.Time) (string, error) {
 	code := s.generateInviteCode()
 	_, err := s.db.Exec(`
-		INSERT INTO invites (code, team_name, created_by_fingerprint, email, max_uses, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, code, teamName, createdByFingerprint, email, maxUses, expiresAt)
+		INSERT INTO invites (code, team_name, created_by_user_id, email, max_uses, expires_at)
+		VALUES (?, ?, (SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1), ?, ?, ?)
+	`, code, teamName, createdByPublicKey, email, maxUses, expiresAt)
 	return code, err
 }
 
@@ -3043,9 +2984,9 @@ func (s *Server) createInvite(teamName, createdByFingerprint, email string, maxU
 func (s *Server) getInviteByCode(code string) (*Invite, error) {
 	var invite Invite
 	err := s.db.QueryRow(`
-		SELECT code, team_name, created_by_fingerprint, email, max_uses, used_count, expires_at, created_at
+		SELECT code, team_name, created_by_user_id, email, max_uses, used_count, expires_at, created_at
 		FROM invites WHERE code = ?
-	`, code).Scan(&invite.Code, &invite.TeamName, &invite.CreatedByFingerprint,
+	`, code).Scan(&invite.Code, &invite.TeamName, &invite.CreatedByUserID,
 		&invite.Email, &invite.MaxUses, &invite.UsedCount, &invite.ExpiresAt, &invite.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -3067,7 +3008,7 @@ func (s *Server) generateInviteCode() string {
 // getInvitesByEmail retrieves all invites for a specific email
 func (s *Server) getInvitesByEmail(email string) ([]Invite, error) {
 	rows, err := s.db.Query(`
-		SELECT code, team_name, created_by_fingerprint, email, max_uses, used_count, expires_at, created_at
+		SELECT code, team_name, created_by_user_id, email, max_uses, used_count, expires_at, created_at
 		FROM invites WHERE email = ?
 	`, email)
 	if err != nil {
@@ -3078,7 +3019,7 @@ func (s *Server) getInvitesByEmail(email string) ([]Invite, error) {
 	var invites []Invite
 	for rows.Next() {
 		var invite Invite
-		err := rows.Scan(&invite.Code, &invite.TeamName, &invite.CreatedByFingerprint,
+		err := rows.Scan(&invite.Code, &invite.TeamName, &invite.CreatedByUserID,
 			&invite.Email, &invite.MaxUses, &invite.UsedCount, &invite.ExpiresAt, &invite.CreatedAt)
 		if err != nil {
 			return nil, err
@@ -3089,10 +3030,10 @@ func (s *Server) getInvitesByEmail(email string) ([]Invite, error) {
 	return invites, rows.Err()
 }
 
-// getDefaultTeamForKey gets the default team for an SSH key
-func (s *Server) getDefaultTeamForKey(fingerprint string) (string, error) {
+// getDefaultTeamForUser gets the default team for a user (from their first verified SSH key)
+func (s *Server) getDefaultTeamForUser(userID string) (string, error) {
 	var defaultTeam sql.NullString
-	err := s.db.QueryRow(`SELECT default_team FROM ssh_keys WHERE fingerprint = ?`, fingerprint).Scan(&defaultTeam)
+	err := s.db.QueryRow(`SELECT default_team FROM ssh_keys WHERE user_id = ? AND verified = 1 ORDER BY added_at LIMIT 1`, userID).Scan(&defaultTeam)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", nil
@@ -3103,8 +3044,8 @@ func (s *Server) getDefaultTeamForKey(fingerprint string) (string, error) {
 }
 
 // setDefaultTeamForKey sets the default team for an SSH key
-func (s *Server) setDefaultTeamForKey(fingerprint, teamName string) error {
-	_, err := s.db.Exec(`UPDATE ssh_keys SET default_team = ? WHERE fingerprint = ?`, teamName, fingerprint)
+func (s *Server) setDefaultTeamForKey(userID, teamName string) error {
+	_, err := s.db.Exec(`UPDATE ssh_keys SET default_team = ? WHERE user_id = ?`, teamName, userID)
 	return err
 }
 
@@ -3183,15 +3124,16 @@ func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []b
 
 	slog.Debug("Authenticating original user", "fingerprint", originalFingerprint, "username", username)
 
-	// Look up the user by their original fingerprint
-	email, verified, err := s.GetEmailBySSHKey(originalFingerprint)
+	// Look up the user by their original public key
+	email, verified, err := s.GetEmailBySSHKey(originalKeyStr)
 	if err != nil {
 		slog.Error("Database error checking SSH key", "fingerprint", originalFingerprint, "error", err)
 	}
 
 	if email != "" && verified {
 		// This is a verified key, check if user has team memberships
-		teams, err := s.getUserTeamsByEmail(email)
+		var teams []TeamMember
+		teams, err = s.getUserTeamsByEmail(email)
 		if err != nil {
 			slog.Error("Database error getting teams for user", "email", email, "error", err)
 		}
@@ -3233,4 +3175,65 @@ func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []b
 			"proxy_user":  username,
 		},
 	}, nil
+}
+
+// generateUserID creates a new user ID with "usr" prefix + 13 random characters
+func generateUserID() (string, error) {
+	randomPart := cryptorand.Text()
+	if len(randomPart) < 13 {
+		return "", fmt.Errorf("random text too short: %d", len(randomPart))
+	}
+	return "usr" + randomPart[:13], nil
+}
+
+// createTestUserWithID is a helper function for tests to create a user with proper user_id
+func (s *Server) createTestUserWithID(email string) (string, error) {
+	userID, err := generateUserID()
+	if err != nil {
+		return "", err
+	}
+
+	// Create user
+	_, err = s.db.Exec(`
+		INSERT INTO users (user_id, email)
+		VALUES (?, ?)`,
+		userID, email)
+	if err != nil {
+		return "", err
+	}
+
+	// Add the SSH key to ssh_keys table
+	_, err = s.db.Exec(`
+		INSERT INTO ssh_keys (user_id, verified, public_key)
+		VALUES (?, 1, ?)`,
+		userID, "ssh-rsa dummy-test-key test@example.com")
+	if err != nil {
+		return "", err
+	}
+
+	return userID, nil
+}
+
+// getUserIDByPublicKey gets user_id from an SSH public key
+func (s *Server) getUserIDByPublicKey(publicKey ssh.PublicKey) (string, error) {
+	var userID string
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
+	err := s.db.QueryRow(`
+		SELECT user_id FROM ssh_keys
+		WHERE public_key = ? AND verified = 1
+		LIMIT 1
+	`, publicKeyStr).Scan(&userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("user not found for public key")
+		}
+		return "", fmt.Errorf("database error: %w", err)
+	}
+	return userID, nil
+}
+
+// getUserBySSHKey retrieves a user by their SSH public key
+func (s *Server) getUserBySSHKey(publicKey ssh.PublicKey) (*User, error) {
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
+	return s.getUserByPublicKey(publicKeyStr)
 }

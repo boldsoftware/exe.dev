@@ -266,10 +266,10 @@ func TestMachineAccessImplementation(t *testing.T) {
 
 	// Test machine that doesn't exist
 	machine := &Machine{
-		ID:                   999,
-		Name:                 "nonexistent",
-		ContainerID:          nil,
-		CreatedByFingerprint: "test-fp",
+		ID:              999,
+		Name:            "nonexistent",
+		ContainerID:     nil,
+		CreatedByUserID: "usr1234567890123", // test user ID
 	}
 
 	upstream, err := plugin.handleMachineAccess(machine, "test-fp")
@@ -335,15 +335,15 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// Create test user and team
-	fingerprint := "test-e2e-fingerprint"
 	email := "test-e2e@example.com"
 	teamName := "e2e-test-team"
 
-	if err := server.createTestUser(fingerprint, email); err != nil {
+	userID, err := server.createTestUser(email)
+	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	if err := server.createTestTeam(teamName, fingerprint); err != nil {
+	if err := server.createTestTeam(teamName, userID); err != nil {
 		t.Fatalf("Failed to create test team: %v", err)
 	}
 
@@ -356,7 +356,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 
 	ctx := context.Background()
 	req := &container.CreateContainerRequest{
-		UserID:   fingerprint,
+		UserID:   userID,
 		Name:     "test-machine",
 		TeamName: teamName,
 		Image:    "ubuntu:22.04",
@@ -369,7 +369,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	}
 	defer func() {
 		// Cleanup
-		server.containerManager.DeleteContainer(context.Background(), fingerprint, createdContainer.ID)
+		server.containerManager.DeleteContainer(context.Background(), userID, createdContainer.ID)
 	}()
 
 	t.Logf("✅ Container created with ID: %s", createdContainer.ID)
@@ -386,7 +386,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 		SSHPort:           createdContainer.SSHPort,
 	}
 
-	if err := server.createMachineWithSSH(fingerprint, teamName, "test-machine", createdContainer.ID, "ubuntu:22.04", sshKeys, createdContainer.SSHPort); err != nil {
+	if err := server.createMachineWithSSH(userID, teamName, "test-machine", createdContainer.ID, "ubuntu:22.04", sshKeys, createdContainer.SSHPort); err != nil {
 		t.Fatalf("Failed to store machine with SSH keys: %v", err)
 	}
 
@@ -396,7 +396,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	plugin := NewPiperPlugin(server, fmt.Sprintf(":%d", piperPort))
 
 	// Test finding the machine
-	machine := server.FindMachineByNameForUser(fingerprint, "test-machine")
+	machine := server.FindMachineByNameForUser(userID, "test-machine")
 	if machine == nil {
 		t.Fatal("Expected to find test machine")
 	}
@@ -412,7 +412,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	t.Logf("✅ SSH details retrieved (port: %d, has private key: %t)", sshDetails.Port, sshDetails.PrivateKey != "")
 
 	// Test getting container host port
-	host, port, err := server.GetContainerHostPort(*machine.ContainerID, machine.CreatedByFingerprint)
+	host, port, err := server.GetContainerHostPort(*machine.ContainerID, machine.CreatedByUserID)
 	if err != nil {
 		t.Fatalf("Failed to get container host port: %v", err)
 	}
@@ -420,7 +420,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	t.Logf("✅ Container host port retrieved (host: %s, port: %d)", host, port)
 
 	// Test the complete machine access flow
-	upstream, err := plugin.handleMachineAccess(machine, fingerprint)
+	upstream, err := plugin.handleMachineAccess(machine, userID)
 	if err != nil {
 		t.Fatalf("Failed to handle machine access: %v", err)
 	}
@@ -492,15 +492,15 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 	defer server.Stop()
 
 	// Create test user and team
-	fingerprint := "legacy-test-fingerprint"
 	email := "legacy-test@example.com"
 	teamName := "legacy-team"
 
-	if err := server.createTestUser(fingerprint, email); err != nil {
+	userID, err := server.createTestUser(email)
+	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	if err := server.createTestTeam(teamName, fingerprint); err != nil {
+	if err := server.createTestTeam(teamName, userID); err != nil {
 		t.Fatalf("Failed to create test team: %v", err)
 	}
 
@@ -508,9 +508,9 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 	containerID := "legacy-container-123"
 	_, err = server.db.Exec(`
 		INSERT INTO machines (
-			team_name, name, status, image, container_id, created_by_fingerprint
+			team_name, name, status, image, container_id, created_by_user_id
 		) VALUES (?, ?, ?, ?, ?, ?)
-	`, teamName, "legacy-machine", "running", "ubuntu:22.04", containerID, fingerprint)
+	`, teamName, "legacy-machine", "running", "ubuntu:22.04", containerID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create legacy machine: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 	t.Log("✅ Legacy machine created (no SSH data)")
 
 	// Find the machine
-	machine := server.FindMachineByNameForUser(fingerprint, "legacy-machine")
+	machine := server.FindMachineByNameForUser(userID, "legacy-machine")
 	if machine == nil {
 		t.Fatal("Expected to find legacy machine")
 	}
@@ -854,28 +854,47 @@ func TestSSHPiperRealKeyIntegration(t *testing.T) {
 }
 
 // Helper functions for test setup
-func (s *Server) createTestUser(fingerprint, email string) error {
-	_, err := s.db.Exec(`
-		INSERT OR REPLACE INTO users (public_key_fingerprint, email)
+func (s *Server) createTestUser(email string) (string, error) {
+	userID, err := generateUserID()
+	if err != nil {
+		return "", err
+	}
+
+	// Create user
+	_, err = s.db.Exec(`
+		INSERT OR REPLACE INTO users (user_id, email)
 		VALUES (?, ?)
-	`, fingerprint, email)
-	return err
+	`, userID, email)
+	if err != nil {
+		return "", err
+	}
+
+	// Add SSH key
+	_, err = s.db.Exec(`
+		INSERT OR REPLACE INTO ssh_keys (user_id, public_key, verified)
+		VALUES (?, ?, 1)
+	`, userID, "ssh-rsa dummy-test-key test@example.com")
+	if err != nil {
+		return "", err
+	}
+
+	return userID, nil
 }
 
-func (s *Server) createTestTeam(teamName, ownerFingerprint string) error {
+func (s *Server) createTestTeam(teamName, ownerUserID string) error {
 	// Create team
 	_, err := s.db.Exec(`
-		INSERT OR REPLACE INTO teams (name, is_personal, owner_fingerprint)
+		INSERT OR REPLACE INTO teams (team_name, is_personal, owner_user_id)
 		VALUES (?, ?, ?)
-	`, teamName, true, ownerFingerprint)
+	`, teamName, true, ownerUserID)
 	if err != nil {
 		return err
 	}
 
 	// Add owner as admin member
 	_, err = s.db.Exec(`
-		INSERT OR REPLACE INTO team_members (user_fingerprint, team_name, is_admin)
+		INSERT OR REPLACE INTO team_members (user_id, team_name, is_admin)
 		VALUES (?, ?, ?)
-	`, ownerFingerprint, teamName, true)
+	`, ownerUserID, teamName, true)
 	return err
 }

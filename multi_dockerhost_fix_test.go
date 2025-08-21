@@ -35,11 +35,17 @@ func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 
 	// Test docker host values
 	dockerHost := "tcp://dockerhost1:2376"
-	userFingerprint := "test-fingerprint"
+	userID := "test-user-id"
 	teamName := "testteam"
 	machineName := "testmachine"
 	containerID := "test-container-id"
 	image := "ubuntu:latest"
+
+	// Create test user and team
+	err := server.createUser(userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
 
 	// Create SSH keys for testing
 	sshKeys, err := container.GenerateContainerSSHKeys()
@@ -49,7 +55,7 @@ func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 
 	// Store machine with docker host in database
 	err = server.createMachineWithSSHAndDockerHost(
-		userFingerprint, teamName, machineName, containerID, image, dockerHost,
+		userID, teamName, machineName, containerID, image, dockerHost,
 		sshKeys, 2222,
 	)
 	if err != nil {
@@ -157,14 +163,20 @@ func TestMultiDockerHostSchemaCompatibility(t *testing.T) {
 	defer tempDB.Close()
 
 	// Create a machine without docker host (legacy case)
-	userFingerprint := "test-fingerprint"
+	userID := "test-user-id"
 	teamName := "testteam"
 	machineName := "legacymachine"
 	containerID := "legacy-container-id"
 	image := "ubuntu:latest"
 
+	// Create test user and team
+	err := server.createUser(userID, "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
 	// Use the old method without docker host
-	err := server.createMachine(userFingerprint, teamName, machineName, containerID, image)
+	err = server.createMachine(userID, teamName, machineName, containerID, image)
 	if err != nil {
 		t.Fatalf("Failed to create legacy machine: %v", err)
 	}

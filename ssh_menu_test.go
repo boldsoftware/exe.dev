@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"net"
 	"os"
@@ -64,15 +62,13 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	hash := sha256.Sum256(signer.PublicKey().Marshal())
-	fingerprint := hex.EncodeToString(hash[:])
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 
 	// Set up a registered user with a team
 	email := "test@example.com"
 
 	// Create user and team directly
-	err = server.createUser(fingerprint, email)
+	err = server.createUser(publicKeyStr, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -80,27 +76,37 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	// Get the personal team that was created
 	var personalTeamName string
 	err = server.db.QueryRow(`
-		SELECT name FROM teams WHERE owner_fingerprint = ? AND is_personal = TRUE`,
-		fingerprint).Scan(&personalTeamName)
+		SELECT t.team_name FROM teams t
+		JOIN ssh_keys sk ON t.owner_user_id = sk.user_id
+		WHERE sk.public_key = ? AND sk.verified = 1 AND t.is_personal = TRUE`,
+		publicKeyStr).Scan(&personalTeamName)
 	if err != nil {
 		t.Fatalf("Failed to get personal team: %v", err)
 	}
 	t.Logf("Personal team created: %s", personalTeamName)
 
-	// Store SSH key as verified with the correct team
-	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name, default_team)
-		VALUES (?, ?, ?, 1, 'Primary Device', ?)`,
-		fingerprint, email, publicKeyStr, personalTeamName)
+	// Get the user_id that was created
+	var userID string
+	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1`, publicKeyStr).Scan(&userID)
 	if err != nil {
-		t.Fatalf("Failed to store SSH key: %v", err)
+		t.Fatalf("Failed to get user_id: %v", err)
+	}
+
+	// Update SSH key with proper public key, device name, and default team
+	_, err = server.db.Exec(`
+		UPDATE ssh_keys SET device_name = ?, default_team = ? WHERE user_id = ?`,
+		"Primary Device", personalTeamName, userID)
+	if err != nil {
+		t.Fatalf("Failed to update SSH key: %v", err)
 	}
 
 	// Verify team membership was created
 	var memberCount int
 	err = server.db.QueryRow(`
-		SELECT COUNT(*) FROM team_members WHERE user_fingerprint = ?`,
-		fingerprint).Scan(&memberCount)
+		SELECT COUNT(*) FROM team_members tm
+		JOIN ssh_keys sk ON tm.user_id = sk.user_id
+		WHERE sk.public_key = ? AND sk.verified = 1`,
+		publicKeyStr).Scan(&memberCount)
 	if err != nil {
 		t.Fatalf("Failed to count team members: %v", err)
 	}
@@ -314,26 +320,29 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	hash := sha256.Sum256(signer.PublicKey().Marshal())
-	fingerprint := hex.EncodeToString(hash[:])
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 
 	// Set up a registered user
 	email := "test@example.com"
 	teamName := "testteam"
 
-	err = server.createUser(fingerprint, email)
+	err = server.createUser(publicKeyStr, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Store SSH key
-	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name, default_team)
-		VALUES (?, ?, ?, 1, 'Primary Device', ?)`,
-		fingerprint, email, publicKeyStr, teamName)
+	// Get user ID and update SSH key
+	var userID string
+	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ?`, publicKeyStr).Scan(&userID)
 	if err != nil {
-		t.Fatalf("Failed to store SSH key: %v", err)
+		t.Fatalf("Failed to get user ID: %v", err)
+	}
+
+	_, err = server.db.Exec(`
+		UPDATE ssh_keys SET device_name = ?, default_team = ? WHERE user_id = ?`,
+		"Primary Device", teamName, userID)
+	if err != nil {
+		t.Fatalf("Failed to update SSH key: %v", err)
 	}
 
 	// Connect to SSH
@@ -487,8 +496,6 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 		t.Fatalf("Failed to create signer: %v", err)
 	}
 
-	hash := sha256.Sum256(signer.PublicKey().Marshal())
-	fingerprint := hex.EncodeToString(hash[:])
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 	email := "test@example.com"
 
@@ -500,12 +507,11 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 
 	// Create the verification entry as if registration started
 	verification := &EmailVerification{
-		PublicKeyFingerprint: fingerprint,
-		PublicKey:            publicKeyStr,
-		Email:                email,
-		Token:                token,
-		CompleteChan:         make(chan struct{}),
-		CreatedAt:            time.Now(),
+		PublicKey:    publicKeyStr,
+		Email:        email,
+		Token:        token,
+		CompleteChan: make(chan struct{}),
+		CreatedAt:    time.Now(),
 	}
 
 	server.emailVerificationsMu.Lock()
@@ -522,7 +528,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 		server.emailVerificationsMu.Lock()
 		if v, exists := server.emailVerifications[token]; exists {
 			// Create user
-			err := server.createUser(fingerprint, email)
+			err := server.createUser(publicKeyStr, email)
 			if err != nil {
 				t.Logf("Failed to create user: %v", err)
 				verificationComplete <- false
@@ -530,13 +536,19 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 				return
 			}
 
-			// Store SSH key
-			_, err = server.db.Exec(`
-				INSERT INTO ssh_keys (fingerprint, user_email, public_key, verified, device_name)
-				VALUES (?, ?, ?, 1, 'Primary Device')`,
-				fingerprint, email, publicKeyStr)
+			// Get user ID and store SSH key
+			var userID string
+			err = server.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
 			if err != nil {
-				t.Logf("Failed to store SSH key: %v", err)
+				t.Logf("Failed to get user ID: %v", err)
+			} else {
+				_, err = server.db.Exec(`
+					INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
+					VALUES (?, ?, 1, "Primary Device")`,
+					userID, publicKeyStr)
+				if err != nil {
+					t.Logf("Failed to store SSH key: %v", err)
+				}
 			}
 
 			// Signal completion
