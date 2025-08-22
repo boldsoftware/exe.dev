@@ -18,6 +18,7 @@ PRIVATE_KEY=$(sqlite3 exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;
 # Start sshpiper
 exec ./sshpiper/sshpiperd \
     --log-level=DEBUG \
+    --drop-hostkeys-message \
     --port=2222 \
     --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" \
     grpc --endpoint=localhost:2224 --insecure \

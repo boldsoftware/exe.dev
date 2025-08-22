@@ -10,7 +10,7 @@ Type=exec
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu
-ExecStart=/bin/bash -c 'PRIVATE_KEY=$(sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;") && exec /home/ubuntu/sshpiperd.latest --log-level=INFO --port=22 --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" grpc --endpoint=localhost:2224 --insecure -- /home/ubuntu/metrics.latest --port 8888 --collect-pipe-create-errors --collect-upstream-auth-failures'
+ExecStart=/bin/bash -c 'PRIVATE_KEY=$(sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;") && exec /home/ubuntu/sshpiperd.latest --log-level=INFO --port=22 --drop-hostkeys-message --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" grpc --endpoint=localhost:2224 --insecure -- /home/ubuntu/metrics.latest --port 8888 --collect-pipe-create-errors --collect-upstream-auth-failures'
 Restart=always
 RestartSec=5
 TimeoutStartSec=30
