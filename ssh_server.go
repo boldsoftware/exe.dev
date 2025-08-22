@@ -1136,6 +1136,12 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 		}
 	}
 
+	// Validate machine name (both provided and generated)
+	if !ss.server.isValidMachineName(machineName) {
+		fmt.Fprintf(s, "\033[1;31mError: Invalid machine name '%s'. Machine names must be lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), and be up to 32 characters\033[0m\r\n", machineName)
+		return
+	}
+
 	// Get the display image name
 	displayImage := container.GetDisplayImageName(image)
 	if image == "exeuntu" {

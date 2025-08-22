@@ -2,6 +2,7 @@ package exe
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -280,5 +281,116 @@ func TestMachineTimestamps(t *testing.T) {
 	// LastStartedAt should be nil initially
 	if machine.LastStartedAt != nil {
 		t.Errorf("Expected LastStartedAt to be nil, got %v", machine.LastStartedAt)
+	}
+}
+
+func TestMachineNameValidationIntegration(t *testing.T) {
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	// Create test user and team
+	userID := "test-user-123"
+	email := "test@example.com"
+	teamName := "testteam"
+
+	if err := server.createUser(userID, email); err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	if err := server.createTeam(teamName, email); err != nil {
+		t.Fatalf("Failed to create team: %v", err)
+	}
+
+	if err := server.addTeamMember(userID, teamName, true); err != nil {
+		t.Fatalf("Failed to add team member: %v", err)
+	}
+
+	testCases := []struct {
+		name          string
+		machineName   string
+		shouldSucceed bool
+		description   string
+	}{
+		{"valid simple", "myapp", true, "simple valid name"},
+		{"valid with numbers", "web123", true, "valid name with numbers"},
+		{"valid with hyphens", "my-app", true, "valid name with hyphens"},
+		{"valid 32 chars", "abcdefghijklmnopqrstuvwxyz123456", true, "valid 32 character name"},
+
+		{"uppercase letters", "MyApp", false, "contains uppercase letters"},
+		{"starts with number", "123app", false, "starts with number"},
+		{"starts with hyphen", "-myapp", false, "starts with hyphen"},
+		{"ends with hyphen", "myapp-", false, "ends with hyphen"},
+		{"consecutive hyphens", "my--app", false, "contains consecutive hyphens"},
+		{"too long", "abcdefghijklmnopqrstuvwxyz1234567", false, "33 characters (too long)"},
+		{"contains underscore", "my_app", false, "contains underscore"},
+		{"empty string", "", false, "empty string"},
+	}
+
+	for i, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use a unique container ID for each test
+			containerID := fmt.Sprintf("mock-container-%d", i)
+
+			// Test direct validation first
+			validationResult := server.isValidMachineName(tc.machineName)
+			if validationResult != tc.shouldSucceed {
+				t.Errorf("Validation mismatch for %s: expected %v, got %v", tc.description, tc.shouldSucceed, validationResult)
+			}
+
+			// Test actual machine creation - this should work for valid names
+			// and is expected to work even for invalid names in this test since
+			// we're testing the validation logic separately from database constraints
+			if tc.shouldSucceed {
+				err := server.createMachine(userID, teamName, tc.machineName, containerID, "ubuntu:22.04")
+				if err != nil {
+					t.Errorf("Failed to create machine with valid name %s (%s): %v", tc.machineName, tc.description, err)
+				} else {
+					// Verify machine was created
+					machine, err := server.getMachineByName(teamName, tc.machineName)
+					if err != nil {
+						t.Errorf("Failed to retrieve created machine %s: %v", tc.machineName, err)
+					} else if machine.Name != tc.machineName {
+						t.Errorf("Machine name mismatch: expected %s, got %s", tc.machineName, machine.Name)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGeneratedMachineNamesAreValid(t *testing.T) {
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	// Generate 100 random names and ensure they're all valid
+	for i := 0; i < 100; i++ {
+		generatedName := generateRandomContainerName()
+		if !server.isValidMachineName(generatedName) {
+			t.Errorf("Generated machine name '%s' failed validation", generatedName)
+		}
+		// Also check length
+		if len(generatedName) > 32 {
+			t.Errorf("Generated machine name '%s' is too long (%d chars)", generatedName, len(generatedName))
+		}
 	}
 }

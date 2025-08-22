@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -2293,6 +2294,17 @@ func isValidStorageSize(size string) bool {
 	}
 
 	return false
+}
+
+// isValidMachineName validates machine name format
+func (s *Server) isValidMachineName(name string) bool {
+	if len(name) == 0 || len(name) > 32 {
+		return false
+	}
+
+	// Check pattern: starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
+	matched, _ := regexp.MatchString(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, name)
+	return matched
 }
 
 // handleCreateCommandWithStdin creates a new machine with support for stdin Dockerfile and flag-based parameters

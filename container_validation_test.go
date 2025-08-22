@@ -54,6 +54,57 @@ func TestIsValidContainerName(t *testing.T) {
 	}
 }
 
+func TestIsValidMachineName(t *testing.T) {
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		// Valid names
+		{"valid simple", "myapp", true},
+		{"valid with numbers", "web123", true},
+		{"valid with hyphens", "my-app", true},
+		{"valid long name", "very-long-machine-name-twelve", true},
+		{"valid 32 chars", "abcdefghijklmnopqrstuvwxyz123456", true},
+		{"single letter", "a", true},
+		{"numbers at end", "app123", true},
+
+		// Invalid names
+		{"empty string", "", false},
+		{"too long", "abcdefghijklmnopqrstuvwxyz1234567", false}, // 33 chars
+		{"starts with number", "123app", false},
+		{"starts with hyphen", "-myapp", false},
+		{"ends with hyphen", "myapp-", false},
+		{"consecutive hyphens", "my--app", false},
+		{"contains uppercase", "MyApp", false},
+		{"contains underscore", "my_app", false},
+		{"contains space", "my app", false},
+		{"contains special chars", "app@123", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := server.isValidMachineName(tt.input)
+			if result != tt.expected {
+				t.Errorf("isValidMachineName(%q) = %v, want %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestContainerNamesSameAsTeamNames(t *testing.T) {
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
