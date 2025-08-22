@@ -165,7 +165,9 @@ func (g *GrpcPlugin) CreateChallengeContext(conn ssh.ServerPreAuthConn) (ssh.Cha
 		UserName: conn.User(),
 		FromAddr: conn.RemoteAddr().String(),
 		UniqId:   uiq.String(),
-		Metadata: make(map[string]string),
+		Metadata: map[string]string{
+			"local_address": conn.LocalAddr().String(),
+		},
 	}
 
 	return &meta, g.NewConnection(&meta)
