@@ -320,7 +320,7 @@ func (m *DockerManager) StartContainer(ctx context.Context, userID, containerID 
 
 	// Restart SSH daemon after container start (it doesn't persist across stops)
 	log.Printf("[SSH] Restarting SSH daemon in container %s after start", containerID)
-	sshCmd := exec.CommandContext(ctx, "docker", "exec", "-d", container.PodName, "/usr/sbin/sshd", "-D", "-f", "/etc/ssh/sshd_config")
+	sshCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", "-d", container.PodName, "/usr/sbin/sshd", "-D", "-f", "/etc/ssh/sshd_config")
 	if container.DockerHost != "" {
 		sshCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", container.DockerHost))
 	}
@@ -701,7 +701,7 @@ func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dock
 	waitStart := time.Now()
 	for {
 		// Try a simple echo command to check if container is ready
-		testCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "echo", "ready")
+		testCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", containerID, "echo", "ready")
 		if dockerHost != "" {
 			testCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 		}
@@ -748,7 +748,7 @@ func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dock
 
 	// Execute setup commands
 	for _, cmd := range cmds {
-		execCmd := exec.CommandContext(ctx, "docker", append([]string{"exec", containerID}, cmd...)...)
+		execCmd := exec.CommandContext(ctx, "docker", append([]string{"exec", "-u", "root", containerID}, cmd...)...)
 		if dockerHost != "" {
 			execCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 		}
@@ -791,7 +791,7 @@ LogLevel INFO
 		if strings.HasSuffix(filePath, ".pub") || strings.HasSuffix(filePath, "sshd_config") {
 			mode = "644"
 		}
-		cmd := exec.CommandContext(ctx, "docker", "exec", "-i", containerID, "install", "-m", mode, "/dev/stdin", filePath)
+		cmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", "-i", containerID, "install", "-m", mode, "/dev/stdin", filePath)
 		if dockerHost != "" {
 			cmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 		}
@@ -803,7 +803,7 @@ LogLevel INFO
 
 	// We now have our own SSH binaries in /exe.dev, so use them directly
 	// First check if our sshd binary exists
-	checkSSHDCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "test", "-x", "/exe.dev/bin/sshd")
+	checkSSHDCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", containerID, "test", "-x", "/exe.dev/bin/sshd")
 	if dockerHost != "" {
 		checkSSHDCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
@@ -815,7 +815,7 @@ LogLevel INFO
 		log.Printf("[SSH] Using embedded SSH daemon from /exe.dev")
 	} else {
 		// Fallback to system sshd if available
-		fallbackCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", "which sshd || which /usr/sbin/sshd || echo 'NO_SSHD'")
+		fallbackCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", containerID, "sh", "-c", "which sshd || which /usr/sbin/sshd || echo 'NO_SSHD'")
 		if dockerHost != "" {
 			fallbackCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 		}
@@ -831,7 +831,7 @@ LogLevel INFO
 
 	// Update sshd_config to use our embedded sftp-server if available
 	if sshdPath == "/exe.dev/bin/sshd" {
-		updateConfigCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c",
+		updateConfigCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", containerID, "sh", "-c",
 			`sed -i 's|^Subsystem sftp .*|Subsystem sftp /exe.dev/bin/sftp-server|' /etc/ssh/sshd_config`)
 		if dockerHost != "" {
 			updateConfigCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
@@ -842,7 +842,7 @@ LogLevel INFO
 	}
 
 	// Start SSH daemon in background using the found path
-	startCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, sshdPath, "-D", "-f", "/etc/ssh/sshd_config")
+	startCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", "-d", containerID, sshdPath, "-D", "-f", "/etc/ssh/sshd_config")
 	if dockerHost != "" {
 		startCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
@@ -853,7 +853,7 @@ LogLevel INFO
 		} else {
 			log.Printf("[SSH ERROR] Failed to start SSH daemon in container %s: %v: %s", containerID, err, output)
 			// Try alternative startup method
-			retryCmd := exec.CommandContext(ctx, "docker", "exec", "-d", containerID, "sh", "-c", fmt.Sprintf("nohup %s -D -f /etc/ssh/sshd_config > /dev/null 2>&1 &", sshdPath))
+			retryCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", "-d", containerID, "sh", "-c", fmt.Sprintf("nohup %s -D -f /etc/ssh/sshd_config > /dev/null 2>&1 &", sshdPath))
 			if dockerHost != "" {
 				retryCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 			}
@@ -870,7 +870,7 @@ LogLevel INFO
 	// Spin wait for SSH daemon to be running (up to 5 seconds)
 	startTime := time.Now()
 	for time.Since(startTime) < 5*time.Second {
-		checkCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "sh", "-c", "ps aux | grep -v grep | grep -E 'sshd|ssh-'")
+		checkCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", containerID, "sh", "-c", "ps aux | grep -v grep | grep -E 'sshd|ssh-'")
 		if dockerHost != "" {
 			checkCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 		}
@@ -965,7 +965,7 @@ func (m *DockerManager) copySSHBinaries(ctx context.Context, containerID, docker
 	}
 
 	// Create /exe.dev directory in container
-	mkdirCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "mkdir", "-p", "/exe.dev")
+	mkdirCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", containerID, "mkdir", "-p", "/exe.dev")
 	if dockerHost != "" {
 		mkdirCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
@@ -983,7 +983,7 @@ func (m *DockerManager) copySSHBinaries(ctx context.Context, containerID, docker
 	}
 
 	// Make the sshd binary executable (should already be from docker cp, but ensure it)
-	chmodCmd := exec.CommandContext(ctx, "docker", "exec", containerID, "chmod", "+x", "/exe.dev/bin/sshd", "/exe.dev/bin/sftp-server", "/exe.dev/bin/sshd-session")
+	chmodCmd := exec.CommandContext(ctx, "docker", "exec", "-u", "root", containerID, "chmod", "+x", "/exe.dev/bin/sshd", "/exe.dev/bin/sftp-server", "/exe.dev/bin/sshd-session")
 	if dockerHost != "" {
 		chmodCmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
 	}
