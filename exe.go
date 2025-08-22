@@ -2591,6 +2591,10 @@ func (s *Server) Start() error {
 	s.stopping = false
 	s.mu.Unlock()
 
+	// Create a cancellable context for startup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Start HTTP server in a goroutine if configured
 	if s.httpAddr != "" {
 		go func() {
@@ -2598,7 +2602,8 @@ func (s *Server) Start() error {
 				slog.Info("HTTP server starting", "addr", s.httpAddr)
 			}
 			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("HTTP server error", "error", err)
+				slog.Error("HTTP server startup failed", "error", err)
+				cancel()
 			}
 		}()
 	}
@@ -2608,7 +2613,8 @@ func (s *Server) Start() error {
 		go func() {
 			slog.Info("HTTPS server starting with Let's Encrypt for exe.dev", "addr", s.httpsAddr)
 			if err := s.httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				slog.Error("HTTPS server error", "error", err)
+				slog.Error("HTTPS server startup failed", "error", err)
+				cancel()
 			}
 		}()
 
@@ -2618,7 +2624,8 @@ func (s *Server) Start() error {
 			go func() {
 				slog.Info("Starting autocert HTTP server on :80 for ACME challenges")
 				if err := http.ListenAndServe(":80", s.certManager.HTTPHandler(nil)); err != nil {
-					slog.Error("Autocert HTTP server error", "error", err)
+					slog.Error("Autocert HTTP server startup failed", "error", err)
+					cancel()
 				}
 			}()
 		} else if s.wildcardCertManager != nil {
@@ -2631,7 +2638,8 @@ func (s *Server) Start() error {
 	s.piperPlugin = NewPiperPlugin(s, s.piperAddr)
 	go func() {
 		if err := s.piperPlugin.Serve(); err != nil {
-			slog.Error("Piper plugin server error", "error", err)
+			slog.Error("Piper plugin server startup failed", "error", err)
+			cancel()
 		}
 	}()
 
@@ -2639,7 +2647,8 @@ func (s *Server) Start() error {
 	go func() {
 		sshServer := NewSSHServer(s)
 		if err := sshServer.Start(s.sshAddr); err != nil {
-			slog.Error("SSH server error", "error", err)
+			slog.Error("SSH server startup failed", "error", err)
+			cancel()
 		}
 	}()
 
@@ -2647,17 +2656,22 @@ func (s *Server) Start() error {
 	if s.devMode == "local" {
 		// Extract just the port number from the address
 		sshPort := strings.TrimPrefix(s.sshAddr, ":")
-		slog.Info("SSH server started in local dev mode. Connect with:")
-		slog.Info("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %s localhost", "port", sshPort)
+		slog.Info("SSH server started in local dev mode.", "port", sshPort)
 	}
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or startup failure
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
 
-	log.Println("Shutting down servers...")
-	return s.Stop()
+	select {
+	case <-sigChan:
+		slog.Info("Shutting down servers...")
+		return s.Stop()
+	case <-ctx.Done():
+		slog.Error("Server startup failed, shutting down")
+		s.Stop()
+		return fmt.Errorf("server startup failed")
+	}
 }
 
 // Database helper methods
