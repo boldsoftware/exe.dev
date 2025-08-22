@@ -20,6 +20,7 @@ exec ./sshpiper/sshpiperd \
     --log-level=DEBUG \
     --drop-hostkeys-message \
     --port=2222 \
+    --address=0.0.0.0 \
     --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" \
     grpc --endpoint=localhost:2224 --insecure \
     -- ./sshpiper/metrics --collect-pipe-create-errors \

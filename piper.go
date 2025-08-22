@@ -23,6 +23,7 @@ import (
 // proxy key, we can look up the original user's key.
 type ProxyKeyMapping struct {
 	OriginalPublicKey []byte    // The user's original public key (SSH wire format)
+	LocalAddress      string    // The local IP address the client connected to (for mDNS routing)
 	CreatedAt         time.Time // When this mapping was created (for expiration)
 }
 
@@ -101,6 +102,29 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "error", err)
 	}
 
+	// Extract local address for mDNS routing
+	localAddress := conn.GetMeta("local_address")
+	if localAddress != "" {
+		localAddress, _, err = net.SplitHostPort(localAddress)
+		if err != nil {
+			slog.Error("spliting host and port", "component", "piper-plugin", "local_address", conn.GetMeta("local_address"), "error", err)
+			return nil, err
+		}
+		slog.Info("Extracted local address", "component", "piper-plugin", "local_address", localAddress)
+	}
+	if localAddress == "" {
+		localAddress = "127.0.0.1" // Default fallback
+	}
+
+	if localAddress != "127.0.0.1" && p.server.ipAllocator != nil { // i.e. they are asking for a host that isn't exe.local.
+		slog.Info("Checking for machine", "component", "piper-plugin", "userID", userID, "localAddress", localAddress)
+		if machine := p.server.FindMachineByNameForUserAndIP(userID, localAddress); machine != nil {
+			slog.Info("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
+			return p.handleMachineAccess(machine, userID)
+		} else {
+			slog.Info("No machine found with name", "component", "piper-plugin", "userID", userID, "localAddress", localAddress)
+		}
+	}
 	registered := userID != ""
 	username := conn.User()
 	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
@@ -128,7 +152,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// 4. When exed sees the proxy key, it can look up the original user's key
 	// 5. Mappings expire after a few minutes to prevent memory leaks
 
-	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key)
+	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key, localAddress)
 	if err != nil {
 		slog.Debug("Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to generate ephemeral proxy key: %v", err)
@@ -214,7 +238,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID string) (*lib
 // allowing exed to later identify the original user when it sees the proxy key.
 //
 // Returns: (privateKeyPEM, proxyKeyFingerprint, error)
-func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte) (string, string, error) {
+func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte, localAddress string) (string, string, error) {
 	// Generate a new ED25519 private key for this connection (simpler and more reliable than RSA)
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -245,10 +269,11 @@ func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte) (s
 	}
 	slog.Debug("Private key validation successful", "component", "piper-plugin")
 
-	// Store the mapping: proxy key fingerprint -> original user public key
+	// Store the mapping: proxy key fingerprint -> original user public key + local address
 	p.proxyKeyMutex.Lock()
 	p.proxyKeyMappings[proxyFingerprint] = &ProxyKeyMapping{
 		OriginalPublicKey: originalUserPublicKey,
+		LocalAddress:      localAddress,
 		CreatedAt:         time.Now(),
 	}
 	p.proxyKeyMutex.Unlock()
@@ -258,15 +283,15 @@ func (p *PiperPlugin) generateEphemeralProxyKey(originalUserPublicKey []byte) (s
 	return privateKeyPEM, proxyFingerprint, nil
 }
 
-// lookupOriginalUserKey retrieves the original user's public key from an ephemeral proxy key.
+// lookupOriginalUserKey retrieves the original user's public key and local address from an ephemeral proxy key.
 // This is called by exed when it sees a proxy key and needs to identify the original user.
-func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte, bool) {
+func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte, string, bool) {
 	p.proxyKeyMutex.RLock()
 	mapping, exists := p.proxyKeyMappings[proxyKeyFingerprint]
 	p.proxyKeyMutex.RUnlock()
 
 	if !exists {
-		return nil, false
+		return nil, "", false
 	}
 
 	// Check if mapping has expired (15 minutes)
@@ -275,10 +300,10 @@ func (p *PiperPlugin) lookupOriginalUserKey(proxyKeyFingerprint string) ([]byte,
 		p.proxyKeyMutex.Lock()
 		delete(p.proxyKeyMappings, proxyKeyFingerprint)
 		p.proxyKeyMutex.Unlock()
-		return nil, false
+		return nil, "", false
 	}
 
-	return mapping.OriginalPublicKey, true
+	return mapping.OriginalPublicKey, mapping.LocalAddress, true
 }
 
 // handleVerifyHostKey handles host key verification for upstream connections

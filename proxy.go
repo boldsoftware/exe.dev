@@ -224,7 +224,7 @@ func (s *Server) routeMatches(route *Route, r *http.Request) bool {
 }
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
-// Returns (userID, true) if authenticated, ("", false) if not authenticated
+// Returns (userID, true) if authenticated, ("") if not authenticated
 func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
 	// Check for authentication cookie
 	cookie, err := r.Cookie("exe-proxy-auth")

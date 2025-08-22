@@ -1203,7 +1203,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 
 	// Check if container is already running (warm pool case)
 	if createdContainer.Status == container.StatusRunning {
-		sshCommand := ss.server.formatSSHConnectionInfo(machineName)
+		sshCommand := ss.server.formatSSHConnectionInfo(teamName, machineName)
 		fmt.Fprintf(s, "Ready in ~1s! Access with \033[1m%s\033[0m\r\n\r\n", sshCommand)
 		return
 	}
@@ -1249,7 +1249,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 
 			if containerFound && containerStatus == container.StatusRunning {
 				totalTime := time.Since(startTime)
-				sshCommand := ss.server.formatSSHConnectionInfo(machineName)
+				sshCommand := ss.server.formatSSHConnectionInfo(teamName, machineName)
 				fmt.Fprintf(s, "\r\033[KReady in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
 					totalTime.Seconds(), sshCommand)
 				return
@@ -1315,7 +1315,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, teamName strin
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
 	}
 
-	sshCommand := ss.server.formatSSHConnectionInfo(machineName)
+	sshCommand := ss.server.formatSSHConnectionInfo(teamName, machineName)
 	fmt.Fprintf(s, "\033[1;32mMachine started!\033[0m Access with \033[1m%s\033[0m\r\n", sshCommand)
 }
 
@@ -1403,6 +1403,14 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 			return
 		}
 
+		// Deregister from IP allocation strategy if enabled
+		if ss.server.ipAllocator != nil {
+			if allocErr := ss.server.ipAllocator.Deallocate(teamName, machineName); allocErr != nil {
+				// Don't fail the operation if IP deallocation fails
+				fmt.Fprintf(s, "\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m\r\n", allocErr)
+			}
+		}
+
 		fmt.Fprintf(s, "\033[1;32mMachine '%s' deleted\033[0m\r\n", machineName)
 		return
 	}
@@ -1433,6 +1441,14 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError deleting machine from database: %v\033[0m\r\n", err)
 		return
+	}
+
+	// Deregister from IP allocation strategy if enabled
+	if ss.server.ipAllocator != nil {
+		if allocErr := ss.server.ipAllocator.Deallocate(teamName, machineName); allocErr != nil {
+			// Don't fail the operation if IP deallocation fails
+			fmt.Fprintf(s, "\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m\r\n", allocErr)
+		}
 	}
 
 	fmt.Fprintf(s, "\033[1;32mMachine '%s' deleted successfully\033[0m\r\n", machineName)

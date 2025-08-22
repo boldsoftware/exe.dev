@@ -17,6 +17,7 @@ func main() {
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", "Development mode: \"\" (production) or \"local\" (local Docker)")
 	dockerHosts := flag.String("docker-hosts", "", "Comma-separated list of DOCKER_HOST values (e.g., 'tcp://host1:2376,tcp://host2:2376')")
+	mdnsEnabled := flag.Bool("mdns", false, "Enable mDNS registration for dev mode (.local hostnames)")
 	flag.Parse()
 
 	// Validate dev mode
@@ -56,6 +57,10 @@ func main() {
 	if err != nil {
 		slog.Error("Failed to create server", "error", err)
 		os.Exit(1)
+	}
+
+	if *mdnsEnabled {
+		server.SetIPAllocator(exe.NewMDNSAllocator())
 	}
 
 	if err := server.Start(); err != nil {

@@ -53,6 +53,12 @@ setup-vm: ## Set up production VM (run once) - requires TAILSCALE_AUTH_KEY
 	@./setup-production-vm.sh "$(TAILSCALE_AUTH_KEY)"
 	@echo "✓ VM setup complete with Tailscale"
 
+
+run-mdns: ## Run exed locally for development, and enable multicast DNS for *.exe.local resolution.
+	@echo "Starting development server..."
+	@echo "Note: Using ghcr.io/boldsoftware/exeuntu:latest image"
+	@go run ./cmd/exed/exed.go -dev=local -http=0.0.0.0:8080 -ssh=0.0.0.0:2223 -mdns
+
 run-dev: ## Run exed locally for development
 	@echo "Starting development server..."
 	@echo "Note: Using ghcr.io/boldsoftware/exeuntu:latest image"

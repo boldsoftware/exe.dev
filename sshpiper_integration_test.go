@@ -594,7 +594,7 @@ func TestSSHPiperProxyAuthentication(t *testing.T) {
 	plugin := NewPiperPlugin(server, fmt.Sprintf(":%d", piperPort))
 
 	// Test ephemeral proxy key generation
-	proxyKey, proxyFingerprint, err := plugin.generateEphemeralProxyKey(userPublicKeyBytes)
+	proxyKey, proxyFingerprint, err := plugin.generateEphemeralProxyKey(userPublicKeyBytes, "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Failed to generate ephemeral proxy key: %v", err)
 	}
@@ -630,7 +630,7 @@ func TestSSHPiperProxyAuthentication(t *testing.T) {
 	}
 
 	// Test that we can look up the original user key
-	lookedUpKey, exists := plugin.lookupOriginalUserKey(proxyFingerprint)
+	lookedUpKey, _, exists := plugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
 		t.Errorf("Failed to lookup original user key for proxy fingerprint %s", proxyFingerprint)
 	}
@@ -700,7 +700,7 @@ func TestSSHPiperExedEphemeralProxyAuth(t *testing.T) {
 	t.Logf("User fingerprint: %s", userFingerprint)
 
 	// Generate ephemeral proxy key
-	proxyKeyPEM, proxyFingerprint, err := plugin.generateEphemeralProxyKey(userPublicKeyBytes)
+	proxyKeyPEM, proxyFingerprint, err := plugin.generateEphemeralProxyKey(userPublicKeyBytes, "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Failed to generate ephemeral proxy key: %v", err)
 	}

@@ -382,6 +382,9 @@ type Server struct {
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
 
+	// IP allocation strategy for dev/production modes
+	ipAllocator IPAllocator
+
 	mu       sync.RWMutex
 	stopping bool
 }
@@ -498,6 +501,11 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	s.setupSSHServer()
 
 	return s, nil
+}
+
+// SetIPAllocator enables or disables mDNS functionality for the server
+func (s *Server) SetIPAllocator(allocator IPAllocator) {
+	s.ipAllocator = allocator
 }
 
 // setupHTTPServer configures the HTTP server
@@ -791,9 +799,9 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	// Check if this is a proxy connection from sshpiper
 	slog.Debug("Checking if key is a proxy key")
-	if originalUserKey := s.lookupEphemeralProxyKey(key); originalUserKey != nil {
-		slog.Debug("Ephemeral proxy authentication detected", "user", user)
-		return s.authenticateProxyUser(user, originalUserKey)
+	if originalUserKey, localAddress := s.lookupEphemeralProxyKey(key); originalUserKey != nil {
+		slog.Debug("Ephemeral proxy authentication detected", "user", user, "local_address", localAddress)
+		return s.authenticateProxyUserWithLocalAddress(user, originalUserKey, localAddress)
 	} else {
 		slog.Debug("Not a proxy key, treating as direct user connection")
 	}
@@ -2070,6 +2078,41 @@ func (s *Server) findContainerByName(userID, containerName string) *container.Co
 	return nil
 }
 
+// FindMachineByNameForUserAndIP returns the machine associated with the userID, ip pair.
+// If the user is somehow associated with more than a single team, this function will return
+// nil, due to the ambiuguity of which of those teams' maps of IP address->machine to
+// index with the supplied ip address.
+// See https://docs.google.com/document/d/1WF_Z4F4_viN5Abhxhus6IwOC33yClt7BViA3kNA4GPE/edit?tab=t.0
+// for an more detailed explanation of why this is the case.
+func (s *Server) FindMachineByNameForUserAndIP(userID, ip string) *Machine {
+	slog.Debug("FindMachineByNameForUserAndIP", "user_id", userID, "ip", ip)
+
+	teams, err := s.getUserTeams(userID)
+	if err != nil {
+		return nil
+	}
+	if len(teams) > 1 {
+		slog.Error("User is in multiple teams, therefore we cannot identify the precise machine for this request. Returning nil.", "userID", userID, "teams", teams, "ip", ip)
+		return nil
+	}
+	slog.Debug("FindMachineByNameForUserAndIP", "teams", teams)
+
+	team := teams[0]
+	machineName, found := s.ipAllocator.LookupMachine(team.TeamName, ip)
+	if !found {
+		slog.Debug("FindMachineByNameForUserAndIP machine not found for team", "team", team.TeamName, "ip", ip)
+		return nil
+	}
+
+	slog.Debug("FindMachineByNameForUserAndIP found machine", "machine", machineName)
+	machine, err := s.getMachineByName(team.TeamName, machineName)
+	if err == nil {
+		return machine
+	}
+
+	return nil
+}
+
 // findMachineByNameForUser finds a machine by name that the user has access to
 // Supports both "machine" format (uses default team) and "team/machine" format
 func (s *Server) FindMachineByNameForUser(userID, machineName string) *Machine {
@@ -2256,7 +2299,13 @@ func (s *Server) getSSHPort() string {
 }
 
 // formatSSHConnectionInfo returns SSH connection info based on dev mode
-func (s *Server) formatSSHConnectionInfo(machineName string) string {
+func (s *Server) formatSSHConnectionInfo(teamName, machineName string) string {
+	if s.ipAllocator != nil {
+		allocation, err := s.ipAllocator.Allocate(teamName, machineName)
+		if err == nil && allocation != nil {
+			return fmt.Sprintf("ssh -p 2222 -o ConnectTimeout=1 %s", allocation.Hostname)
+		}
+	}
 	if s.devMode == "local" {
 		port := s.getSSHPort()
 		if port == "22" {
@@ -2378,7 +2427,19 @@ func (s *Server) createMachineWithSSHAndDockerHost(userID, teamName, name, conta
 	`, teamName, name, "running", image, containerID, userID,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
 		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, routes)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Register machine with IP allocation strategy if enabled
+	if s.ipAllocator != nil {
+		if _, allocErr := s.ipAllocator.Allocate(teamName, name); allocErr != nil {
+			slog.Warn("Failed to register machine with IP allocation", "team", teamName, "machine", name, "error", allocErr)
+			// Don't fail the whole operation if IP allocation fails
+		}
+	}
+
+	return nil
 }
 
 // determineUserShell determines the appropriate shell to use in a container
@@ -2656,7 +2717,20 @@ func (s *Server) Start() error {
 	if s.devMode == "local" {
 		// Extract just the port number from the address
 		sshPort := strings.TrimPrefix(s.sshAddr, ":")
-		slog.Info("SSH server started in local dev mode.", "port", sshPort)
+		slog.Info("SSH server started in local dev mode. Connect with:")
+		slog.Info("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %s localhost", "port", sshPort)
+	}
+
+	// Register all existing machines with IP allocation strategy
+	if s.ipAllocator != nil {
+		slog.Info("Starting IP allocator...")
+		// Start IP allocation strategy if enabled
+		if err := s.ipAllocator.Start(); err != nil {
+			return fmt.Errorf("failed to start IP allocator: %v", err)
+		}
+		if err := s.allocateIPsForExistingMachines(); err != nil {
+			slog.Warn("Failed to register existing machines with ipAllocator", "error", err)
+		}
 	}
 
 	// Wait for interrupt signal or startup failure
@@ -2713,7 +2787,9 @@ func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
 		teams = append(teams, tm)
 	}
 	return teams, rows.Err()
-} // getUserByPublicKey retrieves a user by their SSH public key
+}
+
+// getUserByPublicKey retrieves a user by their SSH public key
 func (s *Server) getUserByPublicKey(publicKeyStr string) (*User, error) {
 	var user User
 
@@ -3108,7 +3184,8 @@ func (s *Server) Stop() error {
 }
 
 // lookupEphemeralProxyKey checks if the given key is an ephemeral proxy key
-// and if so, returns the original user's public key by asking the piper plugin.
+// and if so, returns the original user's public key and local IP address they
+// connected to on sshpiperd by asking the piper plugin.
 //
 // EPHEMERAL PROXY KEY FLOW:
 // 1. User connects to sshpiper with their key
@@ -3116,25 +3193,25 @@ func (s *Server) Stop() error {
 // 3. Piper sends proxy key to exed for authentication
 // 4. Exed recognizes proxy key and asks piper plugin for original user key
 // 5. Exed authenticates based on original user key
-func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) []byte {
+func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) ([]byte, string) {
 	// Get the original user key from the piper plugin
 	// The piper plugin is always configured when SSH proxy is enabled
 	if s.piperPlugin == nil {
 		slog.Error("Piper plugin not configured but proxy key received")
-		return nil
+		return nil, ""
 	}
 
 	proxyFingerprint := s.GetPublicKeyFingerprint(proxyKey)
 	slog.Debug("Looking up proxy key", "fingerprint", proxyFingerprint[:16])
 
-	originalUserKey, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
+	originalUserKey, localAddress, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
 		slog.Debug("Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
-		return nil // Not a proxy key or expired
+		return nil, "" // Not a proxy key or expired
 	}
 
-	slog.Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "proxy_fingerprint", proxyFingerprint[:16])
-	return originalUserKey
+	slog.Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "proxy_fingerprint", proxyFingerprint[:16])
+	return originalUserKey, localAddress
 }
 
 // authenticateProxyUser authenticates a user through an ephemeral proxy connection
@@ -3203,6 +3280,50 @@ func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []b
 	}, nil
 }
 
+// authenticateProxyUserWithLocalAddress authenticates a user through an ephemeral proxy connection
+// and includes the local address for ipAllocator routing
+func (s *Server) authenticateProxyUserWithLocalAddress(username string, originalUserKeyBytes []byte, localAddress string) (*ssh.Permissions, error) {
+	// Check if this is an IP allocation strategy-based machine access request
+	// TODO: clean up the "127.0.0.1" check here - it's only there to distinguish between exe.local and *.*.exe.local, and Server
+	// shouldn't have to know anything about that.
+	if s.ipAllocator == nil || localAddress == "" || localAddress == "127.0.0.1" {
+		// Fall back to normal proxy authentication
+		return s.authenticateProxyUser(username, originalUserKeyBytes)
+	}
+
+	// Parse the local address to see if it's a machine IP and try to route it based on ipAllocator
+	localIP := net.ParseIP(localAddress)
+	if localIP == nil {
+		return nil, fmt.Errorf("could't parse IP address: %q", localAddress)
+	}
+	teams, err := s.getUserTeams(username)
+	if err != nil {
+		return nil, err
+	}
+	var machineName string
+	var teamName string
+	for _, team := range teams {
+		if mn, ok := s.ipAllocator.LookupMachine(team.TeamName, localIP.String()); ok {
+			machineName = mn
+			teamName = team.TeamName
+
+			// This is a request to access a specific machine with an address known to ipAllocator
+			slog.Debug("ipAllocator-based machine access detected", "team", teamName, "machine", machineName, "local_address", localAddress)
+
+			perms, err := s.authenticateProxyUser(""+machineName, originalUserKeyBytes)
+			if err != nil {
+				return nil, err
+			}
+
+			return perms, nil
+
+		}
+	}
+
+	// Fall back to normal proxy authentication
+	return s.authenticateProxyUser(username, originalUserKeyBytes)
+}
+
 // generateUserID creates a new user ID with "usr" prefix + 13 random characters
 func generateUserID() (string, error) {
 	randomPart := cryptorand.Text()
@@ -3262,4 +3383,38 @@ func (s *Server) getUserIDByPublicKey(publicKey ssh.PublicKey) (string, error) {
 func (s *Server) getUserBySSHKey(publicKey ssh.PublicKey) (*User, error) {
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
 	return s.getUserByPublicKey(publicKeyStr)
+}
+
+// allocateIPsForExistingMachines registers all existing machines with the ipAllocator
+func (s *Server) allocateIPsForExistingMachines() error {
+	rows, err := s.db.Query(`
+		SELECT id, team_name, name 
+		FROM machines 
+		ORDER BY team_name, name
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to query existing machines: %v", err)
+	}
+	defer rows.Close()
+
+	var machines []*Machine
+	for rows.Next() {
+		machine := &Machine{}
+		err := rows.Scan(&machine.ID, &machine.TeamName, &machine.Name)
+		if err != nil {
+			return fmt.Errorf("failed to scan machine row: %v", err)
+		}
+		machines = append(machines, machine)
+	}
+
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("error iterating machine rows: %v", err)
+	}
+	for _, machine := range machines {
+		_, err := s.ipAllocator.Allocate(machine.TeamName, machine.Name)
+		if err != nil {
+			return fmt.Errorf("failed to register machine %s.%s: %v", machine.Name, machine.TeamName, err)
+		}
+	}
+	return nil
 }
