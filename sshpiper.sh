@@ -15,6 +15,19 @@ fi
 PRIVATE_KEY=$(sqlite3 exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;")
 [ -z "$PRIVATE_KEY" ] && { echo "No SSH host key found"; exit 1; }
 
+# Check if nc is available
+if ! command -v nc >/dev/null 2>&1; then
+    echo "Error: nc (netcat) is required but not found"
+    exit 1
+fi
+
+# Wait until something is listening on port 2224
+echo "Waiting for service on port 2224..."
+while ! nc -z localhost 2224 2>/dev/null; do
+    sleep 0.1
+done
+echo "Port 2224 is ready"
+
 # Start sshpiper
 exec ./sshpiper/sshpiperd \
     --log-level=DEBUG \
