@@ -2114,18 +2114,18 @@ func (s *Server) FindMachineByNameForUserAndIP(userID, ip string) *Machine {
 }
 
 // findMachineByNameForUser finds a machine by name that the user has access to
-// Supports both "machine" format (uses default team) and "team/machine" format
+// Supports both "machine" format (uses default team) and "machine.team" format
 func (s *Server) FindMachineByNameForUser(userID, machineName string) *Machine {
 	slog.Debug("FindMachineByNameForUser", "user_id", userID, "machine_name", machineName)
 	var teamName string
 	var machineNameOnly string
 
-	// Check if the machine name includes team specification (team/machine format)
-	if strings.Contains(machineName, "/") {
-		parts := strings.SplitN(machineName, "/", 2)
+	// Check if the machine name includes team specification (machine.team format)
+	if strings.Contains(machineName, ".") {
+		parts := strings.SplitN(machineName, ".", 2)
 		if len(parts) == 2 {
-			teamName = parts[0]
-			machineNameOnly = parts[1]
+			machineNameOnly = parts[0]
+			teamName = parts[1]
 
 			// Verify user has access to this specific team
 			teams, err := s.getUserTeams(userID)
@@ -2227,12 +2227,12 @@ func (s *Server) handleListUserTeams(channel *sshbuf.Channel, publicKey string) 
 
 		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m%s%s - %s\r\n",
 			team.TeamName, teamTypeStr, defaultStr, roleStr)))
-		channel.Write([]byte(fmt.Sprintf("    Machines: \033[1;36m<name>.%s.exe.dev\033[0m\r\n", team.TeamName)))
+		channel.Write([]byte(fmt.Sprintf("    Machines: \033[1;36m<name>.%s@exe.dev\033[0m\r\n", team.TeamName)))
 		channel.Write([]byte(fmt.Sprintf("    Joined: %s\r\n\r\n", team.JoinedAt.Format("Jan 2, 2006"))))
 	}
 
 	channel.Write([]byte("\033[2mTo switch default team: team switch <team>\033[0m\r\n"))
-	channel.Write([]byte("\033[2mTo access a specific team's machine: ssh team/machine@exe.dev\033[0m\r\n"))
+	channel.Write([]byte("\033[2mTo access a specific team's machine: ssh machine.team@exe.dev\033[0m\r\n"))
 }
 
 // createUserSession creates a new user session for a channel
@@ -2309,11 +2309,11 @@ func (s *Server) formatSSHConnectionInfo(teamName, machineName string) string {
 	if s.devMode == "local" {
 		port := s.getSSHPort()
 		if port == "22" {
-			return fmt.Sprintf("ssh %s@localhost", machineName)
+			return fmt.Sprintf("ssh %s.%s@localhost", machineName, teamName)
 		}
-		return fmt.Sprintf("ssh -p 2222 %s@localhost", machineName)
+		return fmt.Sprintf("ssh -p 2222 %s.%s@localhost", machineName, teamName)
 	}
-	return fmt.Sprintf("ssh %s@exe.dev", machineName)
+	return fmt.Sprintf("ssh %s.%s@exe.dev", machineName, teamName)
 }
 
 // isValidStorageSize validates a Kubernetes storage size string (e.g., "10Gi", "100Gi")
