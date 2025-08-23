@@ -1,0 +1,233 @@
+package exe
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
+
+// mockKeyboardChallenge simulates a client responding to keyboard interactive challenges
+type mockKeyboardChallenge struct {
+	responses []string
+	index     int
+}
+
+func (m *mockKeyboardChallenge) challenge(user, instruction string, question string, echo bool) (string, error) {
+	if m.index >= len(m.responses) {
+		return "", fmt.Errorf("no more responses available")
+	}
+	response := m.responses[m.index]
+	m.index++
+	return response, nil
+}
+
+// mockConnection implements libplugin.ConnMetadata for testing
+type mockConnection struct {
+	user string
+	addr string
+	meta map[string]string
+}
+
+func (m *mockConnection) User() string {
+	return m.user
+}
+
+func (m *mockConnection) RemoteAddr() string {
+	return m.addr
+}
+
+func (m *mockConnection) GetMeta(key string) string {
+	if m.meta == nil {
+		return ""
+	}
+	return m.meta[key]
+}
+
+func (m *mockConnection) UniqueID() string {
+	return "test-unique-id"
+}
+
+func TestKeyboardInteractiveAuthentication(t *testing.T) {
+	// Create a temporary database
+	tmpDB, err := os.CreateTemp("", "test-*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp database: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	// Create test server
+	server, err := NewServer(
+		":0", // HTTP port
+		"",   // no HTTPS
+		":0", // SSH port
+		":0", // piper port
+		tmpDB.Name(),
+		"local",
+		[]string{""},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	server.testMode = true
+	server.quietMode = true
+	defer server.Stop()
+
+	// Create piper plugin
+	piper := NewPiperPlugin(server, ":0")
+
+	// Create mock connection metadata
+	mockConn := &mockConnection{
+		user: "testuser",
+		addr: "127.0.0.1:12345",
+	}
+
+	// Create mock keyboard interactive challenge client
+	mockClient := &mockKeyboardChallenge{
+		responses: []string{""}, // User presses Enter
+	}
+
+	// Test keyboard interactive authentication
+	upstream, err := piper.handleKeyboardInteractive(mockConn, mockClient.challenge)
+
+	// Should return nil upstream (deny access)
+	if upstream != nil {
+		t.Errorf("Expected nil upstream, got %v", upstream)
+	}
+
+	// Should return an error explaining public key requirement
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "SSH public key authentication is required") {
+		t.Errorf("Expected error to mention SSH public key requirement, got: %v", err)
+	}
+
+	t.Logf("✅ Keyboard interactive authentication correctly denies access with helpful message: %v", err)
+}
+
+func TestAuthMethodAdvertisement(t *testing.T) {
+	// Create a temporary database
+	tmpDB, err := os.CreateTemp("", "test-*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp database: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	// Create test server
+	server, err := NewServer(
+		":0", // HTTP port
+		"",   // no HTTPS
+		":0", // SSH port
+		":0", // piper port
+		tmpDB.Name(),
+		"local",
+		[]string{""},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	server.testMode = true
+	server.quietMode = true
+	defer server.Stop()
+
+	// Create piper plugin
+	piper := NewPiperPlugin(server, ":0")
+
+	// Create mock connection metadata
+	mockConn := &mockConnection{
+		user: "testuser",
+		addr: "127.0.0.1:12345",
+	}
+
+	// Test next auth methods
+	methods, err := piper.handleNextAuthMethods(mockConn)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// Should advertise both publickey and keyboard-interactive
+	expectedMethods := []string{"publickey", "keyboard-interactive"}
+	if len(methods) != len(expectedMethods) {
+		t.Fatalf("Expected %d methods, got %d: %v", len(expectedMethods), len(methods), methods)
+	}
+
+	for i, expected := range expectedMethods {
+		if methods[i] != expected {
+			t.Errorf("Expected method %d to be %s, got %s", i, expected, methods[i])
+		}
+	}
+
+	t.Logf("✅ NextAuthMethods correctly advertises both publickey and keyboard-interactive: %v", methods)
+}
+
+func TestKeyboardInteractiveNoRetries(t *testing.T) {
+	// Create a temporary database
+	tmpDB, err := os.CreateTemp("", "test-*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp database: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	// Create test server
+	server, err := NewServer(
+		":0", // HTTP port
+		"",   // no HTTPS
+		":0", // SSH port
+		":0", // piper port
+		tmpDB.Name(),
+		"local",
+		[]string{""},
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	server.testMode = true
+	server.quietMode = true
+	defer server.Stop()
+
+	// Create piper plugin
+	piper := NewPiperPlugin(server, ":0")
+
+	// Create mock connection metadata with same unique ID
+	mockConn := &mockConnection{
+		user: "testuser",
+		addr: "127.0.0.1:12345",
+	}
+
+	challengeCallCount := 0
+	mockClient := func(user, instruction string, question string, echo bool) (string, error) {
+		challengeCallCount++
+		return "", nil // User presses Enter
+	}
+
+	// First call - should show message
+	upstream1, err1 := piper.handleKeyboardInteractive(mockConn, mockClient)
+	if upstream1 != nil {
+		t.Errorf("Expected nil upstream on first call, got %v", upstream1)
+	}
+	if err1 == nil {
+		t.Error("Expected error on first call, got nil")
+	}
+	if challengeCallCount != 1 {
+		t.Errorf("Expected challenge to be called once on first attempt, got %d", challengeCallCount)
+	}
+
+	// Second call with same connection - should NOT show message again
+	upstream2, err2 := piper.handleKeyboardInteractive(mockConn, mockClient)
+	if upstream2 != nil {
+		t.Errorf("Expected nil upstream on retry, got %v", upstream2)
+	}
+	if err2 == nil {
+		t.Error("Expected error on retry, got nil")
+	}
+	if challengeCallCount != 1 {
+		t.Errorf("Expected challenge to still be called only once after retry, got %d", challengeCallCount)
+	}
+
+	t.Log("✅ Keyboard interactive authentication shows message only once per connection")
+}

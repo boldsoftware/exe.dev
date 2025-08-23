@@ -40,14 +40,20 @@ type PiperPlugin struct {
 	proxyKeyMappings map[string]*ProxyKeyMapping
 	// RWMutex allows concurrent reads while protecting writes
 	proxyKeyMutex sync.RWMutex
+
+	// keyboardInteractiveShown tracks which connections have already seen the keyboard interactive message
+	// This prevents showing the message multiple times when SSH clients retry authentication
+	keyboardInteractiveShown map[string]bool
+	keyboardInteractiveMutex sync.RWMutex
 }
 
 // NewPiperPlugin creates a new piper plugin instance
 func NewPiperPlugin(server *Server, addr string) *PiperPlugin {
 	p := &PiperPlugin{
-		server:           server,
-		addr:             addr,
-		proxyKeyMappings: make(map[string]*ProxyKeyMapping),
+		server:                   server,
+		addr:                     addr,
+		proxyKeyMappings:         make(map[string]*ProxyKeyMapping),
+		keyboardInteractiveShown: make(map[string]bool),
 	}
 
 	// Start cleanup goroutine to remove expired proxy key mappings
@@ -58,9 +64,12 @@ func NewPiperPlugin(server *Server, addr string) *PiperPlugin {
 
 // Serve starts the sshpiper plugin gRPC server
 func (p *PiperPlugin) Serve() error {
+	slog.Debug("Starting sshpiper plugin gRPC server", "component", "piper-plugin", "addr", p.addr)
 	config := libplugin.SshPiperPluginConfig{
-		PublicKeyCallback:     p.handlePublicKeyAuth,
-		VerifyHostKeyCallback: p.handleVerifyHostKey,
+		NextAuthMethodsCallback:      p.handleNextAuthMethods,
+		PublicKeyCallback:            p.handlePublicKeyAuth,
+		KeyboardInteractiveCallback:  p.handleKeyboardInteractive,
+		VerifyHostKeyCallback:        p.handleVerifyHostKey,
 	}
 
 	s := grpc.NewServer()
@@ -83,6 +92,59 @@ func (p *PiperPlugin) Serve() error {
 		slog.Error("Plugin server error", "component", "piper-plugin", "error", err)
 	}
 	return err
+}
+
+// handleNextAuthMethods advertises available authentication methods
+func (p *PiperPlugin) handleNextAuthMethods(conn libplugin.ConnMetadata) ([]string, error) {
+	slog.Debug("NextAuthMethods request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
+	// Always offer both publickey and keyboard-interactive
+	return []string{"publickey", "keyboard-interactive"}, nil
+}
+
+// handleKeyboardInteractive provides a user-friendly message when public key auth fails
+//
+// OMG, let me tell you about SSH. We want to require the user to come with a key.
+// If they come with a key, great, we'll register it, and so forth. If they don't,
+// we need to send them an error message. SSH doesn't have a way to send them an error
+// message that I could find.
+//
+// I tried using a Banner, but that shows up before auth, and it's noisy in the common
+// case of actually using the service.
+//
+// I tried using "none" auth. That seemed great: say that you like public-key first and then
+// none, and have a separate SSH server that just accepts none, sends a message, and closes.
+// But, of course, SSH clients always try none first, and if that works, you always get the
+// message.
+//
+// Anyway, that's why we're at keyboard interactive.
+func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, client libplugin.KeyboardInteractiveChallenge) (*libplugin.Upstream, error) {
+	slog.Debug("Keyboard interactive auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
+
+	// Use connection's unique ID to track if we've already shown the message
+	connID := conn.UniqueID()
+	
+	p.keyboardInteractiveMutex.Lock()
+	alreadyShown := p.keyboardInteractiveShown[connID]
+	if !alreadyShown {
+		p.keyboardInteractiveShown[connID] = true
+	}
+	p.keyboardInteractiveMutex.Unlock()
+
+	if !alreadyShown {
+		// First time - send helpful message about setting up SSH keys
+		_, err := client("", "SSH keys are required to access exe.dev.", 
+		"Please create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.", false)
+		if err != nil {
+			slog.Debug("Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
+			return nil, err
+		}
+	} else {
+		// Already shown message - just fail silently to avoid repeating
+		slog.Debug("Keyboard interactive auth retry - skipping message display", "component", "piper-plugin", "conn_id", connID)
+	}
+
+	// Always return nil to deny access
+	return nil, fmt.Errorf("SSH public key authentication is required")
 }
 
 // handlePublicKeyAuth handles public key authentication and routing decisions
@@ -316,7 +378,7 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 	return nil // Accept the host key
 }
 
-// cleanupExpiredMappings runs periodically to remove expired proxy key mappings
+// cleanupExpiredMappings runs periodically to remove expired proxy key mappings and keyboard interactive tracking
 func (p *PiperPlugin) cleanupExpiredMappings() {
 	ticker := time.NewTicker(5 * time.Minute) // Run every 5 minutes
 	defer ticker.Stop()
@@ -325,18 +387,26 @@ func (p *PiperPlugin) cleanupExpiredMappings() {
 		now := time.Now()
 		expiredKeys := make([]string, 0)
 
-		p.proxyKeyMutex.RLock()
+		p.proxyKeyMutex.Lock()
 		for fingerprint, mapping := range p.proxyKeyMappings {
 			if now.Sub(mapping.CreatedAt) > 15*time.Minute {
 				expiredKeys = append(expiredKeys, fingerprint)
 			}
 		}
-		if len(expiredKeys) > 0 {
-			for _, key := range expiredKeys {
-				delete(p.proxyKeyMappings, key)
-			}
-			slog.Debug("Cleaned up expired proxy key mappings", "component", "piper-plugin", "count", len(expiredKeys))
+		for _, key := range expiredKeys {
+			delete(p.proxyKeyMappings, key)
 		}
-		p.proxyKeyMutex.RUnlock()
+		p.proxyKeyMutex.Unlock()
+
+		// Clean up keyboard interactive tracking (clear entire map periodically)
+		// This is safe since it just tracks whether we've shown the message once per connection
+		p.keyboardInteractiveMutex.Lock()
+		keyboardCount := len(p.keyboardInteractiveShown)
+		p.keyboardInteractiveShown = make(map[string]bool) // Clear entire map
+		p.keyboardInteractiveMutex.Unlock()
+
+		if len(expiredKeys) > 0 || keyboardCount > 0 {
+			slog.Debug("Cleaned up expired mappings", "component", "piper-plugin", "proxy_keys", len(expiredKeys), "keyboard_connections", keyboardCount)
+		}
 	}
 }
