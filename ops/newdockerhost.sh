@@ -268,15 +268,32 @@ runcmd:
     tailscale status 2>&1
     echo "Tailscale initialization complete"
   - |
-    # Setup 1TB swap on NVMe
-    echo "Setting up swap on NVMe..."
-    NVME_DEVICE="/dev/nvme0n1"
-    parted -s \${NVME_DEVICE} mklabel gpt
-    parted -s \${NVME_DEVICE} mkpart primary linux-swap 1MiB 1025GiB
-    mkswap \${NVME_DEVICE}p1
-    swapon \${NVME_DEVICE}p1
-    echo "\${NVME_DEVICE}p1 none swap sw 0 0" >> /etc/fstab
-    echo "Swap setup complete"
+    # Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
+    echo "Setting up dual swap partitions on NVMe drives..."
+    
+    # First NVMe drive
+    NVME1="/dev/nvme0n1"
+    echo "Setting up 500GB swap on \${NVME1}..."
+    parted -s \${NVME1} mklabel gpt
+    parted -s \${NVME1} mkpart primary linux-swap 1MiB 501GiB
+    mkswap \${NVME1}p1
+    
+    # Second NVMe drive
+    NVME2="/dev/nvme1n1"
+    echo "Setting up 500GB swap on \${NVME2}..."
+    parted -s \${NVME2} mklabel gpt
+    parted -s \${NVME2} mkpart primary linux-swap 1MiB 501GiB
+    mkswap \${NVME2}p1
+    
+    # Enable both swaps with equal priority for I/O interleaving
+    swapon -p 1 \${NVME1}p1
+    swapon -p 1 \${NVME2}p1
+    
+    # Add to fstab with priority
+    echo "\${NVME1}p1 none swap sw,pri=1 0 0" >> /etc/fstab
+    echo "\${NVME2}p1 none swap sw,pri=1 0 0" >> /etc/fstab
+    
+    echo "Dual swap setup complete (2x 500GB with equal priority)"
   - |
     # Setup data volume
     echo "Setting up data volume..."
@@ -398,7 +415,7 @@ echo "Security Group: ${SECURITY_GROUP_NAME} (${SECURITY_GROUP_ID})"
 echo "SSH Key: Hardcoded (ubuntu@exed-01)"
 echo ""
 echo "The instance is configuring itself with:"
-echo "  - 1TB swap on NVMe storage"
+echo "  - 2x 500GB swap partitions on dual NVMe drives (equal priority for I/O interleaving)"
 echo "  - 250GB XFS data volume at /data with pquota"
 echo "  - Tailscale with tag:server and SSH enabled"
 echo ""
