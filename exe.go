@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"regexp"
 	"strconv"
@@ -2704,6 +2705,11 @@ func (s *Server) Start() error {
 		}
 	}()
 
+	// In dev mode, automatically start sshpiper if not already running
+	if s.devMode != "" {
+		go s.autoStartSSHPiper(ctx)
+	}
+
 	// Start SSH server in a goroutine
 	go func() {
 		sshServer := NewSSHServer(s)
@@ -2746,6 +2752,72 @@ func (s *Server) Start() error {
 		s.Stop()
 		return fmt.Errorf("server startup failed")
 	}
+}
+
+// autoStartSSHPiper automatically starts sshpiper.sh in dev mode if port 2222 isn't listening
+func (s *Server) autoStartSSHPiper(ctx context.Context) {
+	// Check if sshpiper is already running on port 2222
+	if s.isPortListening("localhost:2222") {
+		slog.Info("sshpiper already running on port 2222")
+		return
+	}
+
+	// First, wait for the piper plugin to be ready (listening on port 2224)
+	if !s.waitForPort(ctx, "localhost:2224", 30*time.Second) {
+		slog.Error("Timed out waiting for piper plugin to start on port 2224")
+		return
+	}
+
+	// Start sshpiper.sh
+	slog.Info("Starting sshpiper.sh automatically in dev mode")
+
+	cmd := exec.CommandContext(ctx, "./sshpiper.sh")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		slog.Error("Failed to start sshpiper.sh", "error", err)
+		return
+	}
+
+	// Wait for the process in a separate goroutine
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			slog.Error("sshpiper.sh exited with error", "error", err)
+		} else {
+			slog.Info("sshpiper.sh exited normally")
+		}
+	}()
+}
+
+// waitForPort waits for a port to become available with a timeout
+func (s *Server) waitForPort(ctx context.Context, address string, timeout time.Duration) bool {
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeoutCtx.Done():
+			return false
+		case <-ticker.C:
+			if s.isPortListening(address) {
+				return true
+			}
+		}
+	}
+}
+
+// isPortListening checks if a port is currently listening
+func (s *Server) isPortListening(address string) bool {
+	conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 // Database helper methods
