@@ -1,0 +1,47 @@
+# Main Test Execution Prompt
+
+## Instructions
+
+Please test exed by running all test groups in sequence. Doing so requires operating interactively with SSH, so read tmux.md for information on how to do so.
+
+Run the following test groups in order:
+1. setup-and-basics.txt - Setup, registration, and basic commands
+2. container-creation-ssh.txt - Container creation and SSH access
+3. http-proxying.txt - HTTP proxying and authentication
+
+When you are done, create a file called "result.txt" with either SUCCESS or
+FAILURE in it, and commit. Please also create "report/report.md" with details
+about what you did including "screenshots". If testing a web thing, that can be
+real screenshots. If testing interactive terminal things, just include the text
+from the tmux output!
+
+**Important**: Any screenshots included in the markdown reports must also be added to git and committed along with the report.
+
+To speed things up in terms of discovering how things work, amend the
+individual test files with updated hints in their <hint>...</hint> sections.
+For example, if you've discovered how to build or start something, indicate
+that in hint blocks so future test runs don't need to rediscover the whole
+thing.
+
+## Coverage Reporting
+
+Run exed with Go coverage enabled to generate a coverage report:
+
+1. Start exed with coverage: `go run -coverprofile=coverage.out ./cmd/exed`
+2. After completing all tests, generate coverage report: `go tool cover -html=coverage.out -o coverage.html`
+3. Include coverage.out and coverage.html in your git commit
+4. Mention coverage statistics in your report.md
+
+## Hints
+
+### General Testing Hints
+- Use tmux for non-blocking testing as described in tmux.md
+- Always verify Docker is running before starting (`docker ps`)
+- Check service logs using tmux capture-pane commands
+- Wait appropriate times for services to fully start before testing
+
+### Coverage Hints
+- Coverage data is collected automatically when using `go run -coverprofile=coverage.out`
+- Generate HTML report after all testing is complete
+- Include both coverage.out (data) and coverage.html (report) files
+- Coverage statistics help identify untested code paths

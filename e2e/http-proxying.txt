@@ -1,0 +1,42 @@
+# HTTP Proxying Test
+
+## Instructions
+
+Test HTTP proxying capabilities, authentication flows, and route management.
+
+### Prerequisites
+
+- Registration must be completed (setup-and-basics.txt)
+- Container must be created and SSH access working (container-creation-ssh.txt)
+- exed and sshpiper must be running
+
+### Test Steps
+
+#### HTTP Proxying
+
+8. Start an HTTP server on machinename@localhost
+
+9. Connect to it via http://machinename.team.localhost:8080/ . There should be a login flow of some sort that might just be redirections.
+
+10. Logout on http://localhost:8080/
+
+11. Connect again; you should require login; don't log in.
+
+12. Use the "route" command in the exe.dev shell to make / public. You should be able to access it without auth, then.
+
+## Hints
+
+### HTTP Server Hints
+- In the container, start a simple HTTP server: `python3 -m http.server 8000` or similar
+- Access via browser at http://machinename.team.localhost:8080/
+- The system should redirect through authentication flows
+
+### Authentication Hints
+- Login flow may involve redirections and session management
+- Logout typically available at http://localhost:8080/logout or similar endpoint
+- After logout, accessing container URLs should require re-authentication
+
+### Route Management Hints
+- Use `route` command in exe.dev shell to manage public/private access
+- Making routes public bypasses authentication requirements
+- Test both authenticated and unauthenticated access patterns
