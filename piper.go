@@ -66,10 +66,10 @@ func NewPiperPlugin(server *Server, addr string) *PiperPlugin {
 func (p *PiperPlugin) Serve() error {
 	slog.Debug("Starting sshpiper plugin gRPC server", "component", "piper-plugin", "addr", p.addr)
 	config := libplugin.SshPiperPluginConfig{
-		NextAuthMethodsCallback:      p.handleNextAuthMethods,
-		PublicKeyCallback:            p.handlePublicKeyAuth,
-		KeyboardInteractiveCallback:  p.handleKeyboardInteractive,
-		VerifyHostKeyCallback:        p.handleVerifyHostKey,
+		NextAuthMethodsCallback:     p.handleNextAuthMethods,
+		PublicKeyCallback:           p.handlePublicKeyAuth,
+		KeyboardInteractiveCallback: p.handleKeyboardInteractive,
+		VerifyHostKeyCallback:       p.handleVerifyHostKey,
 	}
 
 	s := grpc.NewServer()
@@ -122,7 +122,7 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 	// Use connection's unique ID to track if we've already shown the message
 	connID := conn.UniqueID()
-	
+
 	p.keyboardInteractiveMutex.Lock()
 	alreadyShown := p.keyboardInteractiveShown[connID]
 	if !alreadyShown {
@@ -132,8 +132,8 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 	if !alreadyShown {
 		// First time - send helpful message about setting up SSH keys
-		_, err := client("", "SSH keys are required to access exe.dev.", 
-		"Please create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.", false)
+		_, err := client("", "SSH keys are required to access exe.dev.",
+			"Please create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.", false)
 		if err != nil {
 			slog.Debug("Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
 			return nil, err
