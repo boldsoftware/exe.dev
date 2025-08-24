@@ -10,6 +10,13 @@ import (
 	"testing"
 )
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func TestUserDashboard(t *testing.T) {
 	server, cleanup := setupTestServerWithDatabase(t)
 	defer cleanup()
@@ -62,9 +69,8 @@ func TestUserDashboard(t *testing.T) {
 
 	// Create test server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set auth context
-		r = r.WithContext(WithAuth(r.Context(), userID))
-		server.handleUserDashboard(w, r)
+		// Call handleUserDashboard directly with userID
+		server.handleUserDashboard(w, r, userID)
 	}))
 	defer ts.Close()
 
@@ -101,9 +107,15 @@ func TestUserDashboard(t *testing.T) {
 		t.Errorf("Expected to find machine name %s in dashboard", machineName)
 	}
 
-	// Check that the page has expected dashboard elements
-	if !strings.Contains(bodyStr, "Dashboard") && !strings.Contains(bodyStr, "dashboard") {
-		t.Errorf("Expected to find 'Dashboard' in page title or content")
+	// Check that the page has expected elements (title contains EXE.DEV)
+	if !strings.Contains(bodyStr, "EXE.DEV") {
+		t.Logf("Response body (first 500 chars): %s", bodyStr[:min(500, len(bodyStr))])
+		t.Errorf("Expected to find 'EXE.DEV' in page title")
+	}
+	
+	// Check for welcome message or machines section
+	if !strings.Contains(bodyStr, "welcome") && !strings.Contains(bodyStr, "Machines") && !strings.Contains(bodyStr, "machines") {
+		t.Errorf("Expected to find welcome message or machines section")
 	}
 }
 

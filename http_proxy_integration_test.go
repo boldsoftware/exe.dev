@@ -31,22 +31,17 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 
 	// Generate test user
 	email := "test@example.com"
-	teamName := "testteam"
+	allocID := "test-alloc"
 
-	// Create user and team
+	// Create user and alloc
 	userID, err := server.createTestUserWithID(email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	_, err = server.db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, ?)`, userID, teamName, true)
-	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create test container with mock manager
@@ -55,13 +50,13 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	machineName := "httptest"
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID, teamName)
+	mockManager.AddContainer(containerID, machineName, userID, allocID)
 
 	// Store container ID in database
 	_, err = server.db.Exec(`
-		INSERT INTO machines (team_name, name, container_id, created_by_user_id, status)
+		INSERT INTO machines (alloc_id, name, container_id, created_by_user_id, status)
 		VALUES (?, ?, ?, ?, 'running')
-	`, teamName, machineName, containerID, userID)
+	`, allocID, machineName, containerID, userID)
 	if err != nil {
 		t.Fatalf("Failed to store machine in database: %v", err)
 	}

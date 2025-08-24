@@ -1781,8 +1781,8 @@ func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineN
 	// Update database
 	_, err = ss.server.db.Exec(`
 		UPDATE machines SET routes = ? 
-		WHERE name = ? AND team_name = ?`,
-		*machine.Routes, machineName, teamName)
+		WHERE name = ?`,
+		*machine.Routes, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError saving route: %v\033[0m\r\n", err)
 		return
@@ -1840,8 +1840,8 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machi
 	// Update database
 	_, err = ss.server.db.Exec(`
 		UPDATE machines SET routes = ? 
-		WHERE name = ? AND team_name = ?`,
-		*machine.Routes, machineName, teamName)
+		WHERE name = ?`,
+		*machine.Routes, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
 		return

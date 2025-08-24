@@ -171,9 +171,9 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	defer server.Stop()
 
 	// Clean up any existing test containers
-	teamName := "testteam"
+	// teamName no longer used - machines are globally unique
 	machineName := "testmachine"
-	containerName := fmt.Sprintf("exe-%s-%s", teamName, machineName)
+	containerName := fmt.Sprintf("exe-%s", machineName)
 	exec.Command("docker", "rm", "-f", containerName).Run()       // Ignore errors
 	defer exec.Command("docker", "rm", "-f", containerName).Run() // Clean up after test
 
@@ -227,14 +227,14 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	// Create alloc for user
+	allocID := "test-alloc-" + userID[:8]
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+		allocID, userID, email)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, is_admin) VALUES (?, ?, 1)`, teamName, userID)
-	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Mark SSH key as verified
@@ -308,7 +308,7 @@ expect eof
 
 	// Verify machine was created in database
 	var machineCount int
-	err = server.db.QueryRow(`SELECT COUNT(*) FROM machines WHERE name = ? AND team_name = ?`, machineName, teamName).Scan(&machineCount)
+	err = server.db.QueryRow(`SELECT COUNT(*) FROM machines WHERE name = ?`, machineName).Scan(&machineCount)
 	if err != nil {
 		t.Fatalf("Failed to query machines: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 
 	// Set up registered user and machine in database
 	email := "test@example.com"
-	teamName := "testteam"
+	// teamName no longer used - machines are globally unique
 	machineName := "testmachine"
 	containerID := "mock-container-123"
 
@@ -396,14 +396,14 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	// Create alloc for user2
+	allocID2 := "test-alloc-" + userID2[:8]
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+		allocID2, userID2, email)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, is_admin) VALUES (?, ?, 1)`, teamName, userID2)
-	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key for this user
@@ -415,13 +415,13 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 	}
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID2, teamName)
+	mockManager.AddContainer(containerID, machineName, userID2, allocID2)
 
 	// Create machine in database
 	_, err = server.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_user_id)
+		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id)
 		VALUES (?, ?, 'running', 'ubuntu:22.04', ?, ?)
-	`, teamName, machineName, containerID, userID2)
+	`, allocID2, machineName, containerID, userID2)
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -516,7 +516,7 @@ func TestSSHDirectExecCommands(t *testing.T) {
 
 	// Set up registered user
 	email := "test@example.com"
-	teamName := "testteam"
+	// teamName no longer used - machines are globally unique
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 
 	userID, err := generateUserID()
@@ -542,14 +542,14 @@ func TestSSHDirectExecCommands(t *testing.T) {
 		t.Fatalf("Failed to add second SSH key: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	// Create alloc for user
+	allocID := "test-alloc-" + userID[:8]
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+		allocID, userID, email)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, is_admin) VALUES (?, ?, 1)`, teamName, userID)
-	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Test cases for exec commands

@@ -336,15 +336,16 @@ func TestRealMachineAccessE2E(t *testing.T) {
 
 	// Create test user and team
 	email := "test-e2e@example.com"
-	teamName := "e2e-test-team"
+	// teamName no longer used - machines are globally unique
 
 	userID, err := server.createTestUser(email)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	if err := server.createTestTeam(teamName, userID); err != nil {
-		t.Fatalf("Failed to create test team: %v", err)
+	allocID := "test-alloc-" + userID[:8]
+	if err := server.createTestAlloc(allocID, userID); err != nil {
+		t.Fatalf("Failed to create test alloc: %v", err)
 	}
 
 	t.Log("✅ Test user and team created")
@@ -386,7 +387,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 		SSHPort:           createdContainer.SSHPort,
 	}
 
-	if err := server.createMachineWithSSH(userID, teamName, "test-machine", createdContainer.ID, "ubuntu:22.04", sshKeys, createdContainer.SSHPort); err != nil {
+	if err := server.createMachineWithSSH(userID, allocID, "test-machine", createdContainer.ID, "ubuntu:22.04", sshKeys, createdContainer.SSHPort); err != nil {
 		t.Fatalf("Failed to store machine with SSH keys: %v", err)
 	}
 
@@ -493,24 +494,25 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 
 	// Create test user and team
 	email := "legacy-test@example.com"
-	teamName := "legacy-team"
+	// teamName no longer used - machines are globally unique
 
 	userID, err := server.createTestUser(email)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	if err := server.createTestTeam(teamName, userID); err != nil {
-		t.Fatalf("Failed to create test team: %v", err)
+	allocID := "test-alloc-" + userID[:8]
+	if err := server.createTestAlloc(allocID, userID); err != nil {
+		t.Fatalf("Failed to create test alloc: %v", err)
 	}
 
 	// Create a legacy machine WITHOUT SSH details (simulating old containers)
 	containerID := "legacy-container-123"
 	_, err = server.db.Exec(`
 		INSERT INTO machines (
-			team_name, name, status, image, container_id, created_by_user_id
+			alloc_id, name, status, image, container_id, created_by_user_id
 		) VALUES (?, ?, ?, ?, ?, ?)
-	`, teamName, "legacy-machine", "running", "ubuntu:22.04", containerID, userID)
+	`, allocID, "legacy-machine", "running", "ubuntu:22.04", containerID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create legacy machine: %v", err)
 	}
@@ -881,20 +883,11 @@ func (s *Server) createTestUser(email string) (string, error) {
 	return userID, nil
 }
 
-func (s *Server) createTestTeam(teamName, ownerUserID string) error {
-	// Create team
+func (s *Server) createTestAlloc(allocID, ownerUserID string) error {
+	// Create alloc for user
 	_, err := s.db.Exec(`
-		INSERT OR REPLACE INTO teams (team_name, is_personal, owner_user_id)
-		VALUES (?, ?, ?)
-	`, teamName, true, ownerUserID)
-	if err != nil {
-		return err
-	}
-
-	// Add owner as admin member
-	_, err = s.db.Exec(`
-		INSERT OR REPLACE INTO team_members (user_id, team_name, is_admin)
-		VALUES (?, ?, ?)
-	`, ownerUserID, teamName, true)
+		INSERT OR REPLACE INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')
+	`, allocID, ownerUserID)
 	return err
 }

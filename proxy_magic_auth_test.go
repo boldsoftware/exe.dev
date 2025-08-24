@@ -37,40 +37,36 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 
 	// Create test data
 	email := "test@example.com"
-	teamName := "testteam"
 	machineName := "testmachine"
 	containerID := "test-container-123"
 
-	// Create user and team
+	// Create user and alloc
 	userID, err := server.createTestUserWithID(email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 	t.Logf("Created user with ID: %s", userID)
 
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	// Create alloc for user
+	allocID := "test-alloc-" + userID[:8]
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	_, err = server.db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, ?)`, userID, teamName, true)
-	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create machine
-	err = server.createMachine(userID, teamName, machineName, containerID, "ubuntu:22.04")
+	err = server.createMachine(userID, allocID, machineName, containerID, "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID, teamName)
+	mockManager.AddContainer(containerID, machineName, userID, allocID)
 
-	// Step 1: Simulate initial request to machine.team.localhost (no auth cookie)
+	// Step 1: Simulate initial request to machine.localhost (no auth cookie)
 	t.Logf("Step 1: Initial request to proxy subdomain without auth")
-	req1 := httptest.NewRequest("GET", "http://testmachine.testteam.localhost:8080/", nil)
-	req1.Host = "testmachine.testteam.localhost:8080"
+	req1 := httptest.NewRequest("GET", "http://testmachine.localhost:8080/", nil)
+	req1.Host = "testmachine.localhost:8080"
 	w1 := httptest.NewRecorder()
 
 	server.ServeHTTP(w1, req1)
@@ -161,7 +157,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	// Step 3: Follow magic auth redirect
 	t.Logf("Step 3: Follow magic auth redirect")
 	req3 := httptest.NewRequest("GET", location2b, nil)
-	req3.Host = "testmachine.testteam.localhost:8080"
+	req3.Host = "testmachine.localhost:8080"
 	w3 := httptest.NewRecorder()
 
 	server.ServeHTTP(w3, req3)
@@ -196,7 +192,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	// Step 4: Final request with proxy auth cookie should succeed
 	t.Logf("Step 4: Final request with proxy auth cookie")
 	req4 := httptest.NewRequest("GET", "/", nil)
-	req4.Host = "testmachine.testteam.localhost:8080"
+	req4.Host = "testmachine.localhost:8080"
 
 	// Copy the proxy auth cookie from step 3
 	for _, cookie := range w3.Result().Cookies() {
@@ -235,10 +231,10 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 		t.Logf("Step 4 Debug: Cookie found in DB for user: %s", dbUserID)
 	}
 
-	// Check team access
-	var teamAccessCount int
-	server.db.QueryRow(`SELECT COUNT(*) FROM team_members WHERE user_id = ? AND team_name = ?`, dbUserID, teamName).Scan(&teamAccessCount)
-	t.Logf("Step 4 Debug: User %s has %d team memberships for %s", dbUserID, teamAccessCount, teamName)
+	// Check alloc access
+	var allocCount int
+	server.db.QueryRow(`SELECT COUNT(*) FROM allocs WHERE user_id = ?`, dbUserID).Scan(&allocCount)
+	t.Logf("Step 4 Debug: User %s has %d allocs", dbUserID, allocCount)
 
 	server.ServeHTTP(w4, req4)
 
@@ -254,7 +250,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	t.Logf("✅ Magic auth flow completed successfully without infinite redirect")
 }
 
-// TestProxyMagicAuthUnauthorized tests that authenticated users without team access get 403
+// TestProxyMagicAuthUnauthorized tests that authenticated users cannot access machines in other users' allocs
 func TestProxyMagicAuthUnauthorized(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -280,54 +276,68 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 	mockManager := NewMockContainerManager()
 	server.containerManager = mockManager
 
-	// Create test data - user and TWO teams
-	email := "test@example.com"
-	userTeam := "userteam"   // User has access to this team
-	otherTeam := "otherteam" // User does NOT have access to this team
+	// Create test data - two users with their own allocs
+	email1 := "user1@example.com"
+	email2 := "user2@example.com"
 	machineName := "testmachine"
 	containerID := "test-container-123"
 
-	// Create user
-	userID, err := server.createTestUserWithID(email)
+	// Create first user
+	userID1, err := server.createTestUserWithID(email1)
 	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
+		t.Fatalf("Failed to create user1: %v", err)
 	}
-	t.Logf("Created user with ID: %s", userID)
+	t.Logf("Created user1 with ID: %s", userID1)
 
-	// Create both teams
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, userTeam)
+	// Create second user
+	userID2, err := server.createTestUserWithID(email2)
 	if err != nil {
-		t.Fatalf("Failed to create user team: %v", err)
+		t.Fatalf("Failed to create user2: %v", err)
 	}
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, otherTeam)
+	t.Logf("Created user2 with ID: %s", userID2)
+
+	// Create alloc for user1
+	allocID1 := "alloc1"
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`, 
+		allocID1, userID1, "medium", "aws-us-west-2", "", email1)
 	if err != nil {
-		t.Fatalf("Failed to create other team: %v", err)
+		t.Fatalf("Failed to create alloc for user1: %v", err)
 	}
 
-	// Add user ONLY to userTeam, NOT to otherTeam
-	_, err = server.db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, ?)`, userID, userTeam, true)
+	// Create alloc for user2
+	allocID2 := "alloc2"
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`, 
+		allocID2, userID2, "medium", "aws-us-west-2", "", email2)
 	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc for user2: %v", err)
 	}
 
-	// Create machine in otherTeam (which user doesn't have access to)
-	err = server.createMachine(userID, otherTeam, machineName, containerID, "ubuntu:22.04")
+	// Create machine in user2's alloc
+	err = server.createMachine(userID2, allocID2, machineName, containerID, "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
-	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID, otherTeam)
+	// Add container to mock manager (using allocID instead of team)
+	mockManager.AddContainer(containerID, machineName, userID2, allocID2)
 
-	// Create proxy auth cookie directly (simulating user went through magic auth)
-	proxyCookieValue, err := server.createAuthCookie(userID, "testmachine.otherteam.localhost")
+	// Create proxy auth cookie for user1 (who shouldn't have access to user2's machine)
+	proxyCookieValue, err := server.createAuthCookie(userID1, "testmachine.localhost")
 	if err != nil {
 		t.Fatalf("Failed to create proxy auth cookie: %v", err)
 	}
 
-	// Try to access machine in team they don't belong to
+	// Verify user1's alloc was created
+	var checkAllocID string
+	err = server.db.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID1).Scan(&checkAllocID)
+	if err != nil {
+		t.Fatalf("Failed to verify user1's alloc: %v", err)
+	}
+	t.Logf("User1's alloc verified: %s", checkAllocID)
+
+	// Try to access machine in another user's alloc
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = "testmachine.otherteam.localhost:8080"
+	req.Host = "testmachine.localhost:8080"
 	req.AddCookie(&http.Cookie{Name: "exe-proxy-auth", Value: proxyCookieValue})
 
 	w := httptest.NewRecorder()

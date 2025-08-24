@@ -32,10 +32,10 @@ func TestMachineNameFormatParsing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create alloc
+	// Create alloc with all required fields
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatal(err)
 	}

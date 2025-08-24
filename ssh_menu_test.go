@@ -73,44 +73,29 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Get the personal team that was created
-	var personalTeamName string
-	err = server.db.QueryRow(`
-		SELECT t.team_name FROM teams t
-		JOIN ssh_keys sk ON t.owner_user_id = sk.user_id
-		WHERE sk.public_key = ? AND sk.verified = 1 AND t.is_personal = TRUE`,
-		publicKeyStr).Scan(&personalTeamName)
-	if err != nil {
-		t.Fatalf("Failed to get personal team: %v", err)
-	}
-	t.Logf("Personal team created: %s", personalTeamName)
-
 	// Get the user_id that was created
 	var userID string
 	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1`, publicKeyStr).Scan(&userID)
 	if err != nil {
 		t.Fatalf("Failed to get user_id: %v", err)
 	}
+	t.Logf("User created with ID: %s", userID)
 
-	// Update SSH key with proper public key, device name, and default team
+	// Get the alloc that was created for the user
+	alloc, err := server.getUserAlloc(userID)
+	if err != nil || alloc == nil {
+		t.Fatalf("Failed to get user alloc: %v", err)
+	}
+	t.Logf("User alloc created: %s", alloc.AllocID)
+
+	// Update SSH key with proper public key and device name
 	_, err = server.db.Exec(`
-		UPDATE ssh_keys SET device_name = ?, default_team = ? WHERE user_id = ?`,
-		"Primary Device", personalTeamName, userID)
+		UPDATE ssh_keys SET device_name = ? WHERE user_id = ?`,
+		"Primary Device", userID)
 	if err != nil {
 		t.Fatalf("Failed to update SSH key: %v", err)
 	}
 
-	// Verify team membership was created
-	var memberCount int
-	err = server.db.QueryRow(`
-		SELECT COUNT(*) FROM team_members tm
-		JOIN ssh_keys sk ON tm.user_id = sk.user_id
-		WHERE sk.public_key = ? AND sk.verified = 1`,
-		publicKeyStr).Scan(&memberCount)
-	if err != nil {
-		t.Fatalf("Failed to count team members: %v", err)
-	}
-	t.Logf("User is member of %d teams", memberCount)
 
 	// Test authentication directly to see what permissions are returned
 	perms, err := server.AuthenticatePublicKey(nil, signer.PublicKey())

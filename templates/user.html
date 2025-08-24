@@ -429,7 +429,6 @@
                     <div class="table-header">
                         <div class="col-name">Name</div>
                         <div class="col-status">Status</div>
-                        <div class="col-team">Team</div>
                         <div class="col-connection">Connection</div>
                         <div class="col-image">Image</div>
                     </div>
@@ -439,11 +438,10 @@
                         <div class="col-status">
                             <span class="machine-status status-{{.Status}}">{{.Status}}</span>
                         </div>
-                        <div class="col-team team-name">{{.TeamName}}</div>
                         <div class="col-connection">
                             <div class="connection-command">
-                                <span class="machine-url">ssh {{.Name}}@{{.TeamName}}.exe.dev</span>
-                                <button class="copy-btn" onclick="copyToClipboard('ssh {{.Name}}@{{.TeamName}}.exe.dev')" title="Copy to clipboard">
+                                <span class="machine-url">ssh {{.Name}}@exe.dev</span>
+                                <button class="copy-btn" onclick="copyToClipboard('ssh {{.Name}}@exe.dev')" title="Copy to clipboard">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -476,10 +474,6 @@
                     {{if .DeviceName}}
                     <div class="info-label">Device</div>
                     <div class="info-value">{{.DeviceName}}</div>
-                    {{end}}
-                    {{if .DefaultTeam}}
-                    <div class="info-label">Default Team</div>
-                    <div class="info-value team-name">{{.DefaultTeam}}</div>
                     {{end}}
                 </div>
                 {{else}}

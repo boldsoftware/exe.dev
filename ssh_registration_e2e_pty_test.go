@@ -207,19 +207,6 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}
 	t.Logf("✓ Entered email: %s", email)
 
-	// Step 2.5: Wait for and enter team name
-	output, err = readUntil("Choose a team name:", 500*time.Millisecond)
-	if err != nil {
-		t.Fatalf("Failed to see team name prompt: %v\nOutput: %s", err, output)
-	}
-	t.Log("✓ Got team name prompt")
-
-	teamName := "testteam"
-	if err := writeToPTY(teamName + "\n"); err != nil {
-		t.Fatalf("Failed to write team name: %v", err)
-	}
-	t.Logf("✓ Entered team name: %s", teamName)
-
 	// Step 3: Wait for verification message
 	output, err = readUntil("Verification email sent", 500*time.Millisecond)
 	if err != nil {

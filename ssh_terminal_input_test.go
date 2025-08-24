@@ -124,17 +124,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	mustWrite(t, stdin, "\n", "submitting email")
 	t.Logf("Successfully entered email: %s", testEmail)
 
-	// Step 3: Wait for team name prompt
-	_ = mustRead(t, stdout, "Choose a team name", 500*time.Millisecond, "waiting for team name prompt")
-	t.Log("Got team name prompt")
-
-	// Step 4: Enter team name
-	testTeamName := "test-team-123"
-	mustWriteChars(t, stdin, testTeamName, 2*time.Millisecond, "entering team name")
-	mustWrite(t, stdin, "\n", "submitting team name")
-	t.Logf("Successfully entered team name: %s", testTeamName)
-
-	// Step 5: Verify email verification started
+	// Step 3: Verify email verification started
 	// Try to read for verification message, but don't fail if we get an error about email service
 	verifyOutput, err := readWithTimeout(stdout, 500*time.Millisecond)
 	if err == nil && !strings.Contains(verifyOutput, "verification") && !strings.Contains(verifyOutput, "Email service") && !strings.Contains(verifyOutput, "verify-email?token=") {

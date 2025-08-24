@@ -230,7 +230,7 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 
 	// Register the user in the database
 	email := "test@example.com"
-	teamName := "test-team"
+	// teamName no longer used - machines are globally unique
 
 	// Create user
 	userID, err := generateUserID()
@@ -247,22 +247,14 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 
 	// SSH key will be added later with proper details
 
-	// Create team
+	// Create alloc for user
+	allocID := "test-alloc-" + userID[:8]
 	_, err = server.db.Exec(`
-		INSERT INTO teams (team_name, billing_email, is_personal)
-		VALUES (?, ?, ?)`,
-		teamName, email, true)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+		allocID, userID, email)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	// Add user to team
-	_, err = server.db.Exec(`
-		INSERT INTO team_members (user_id, team_name, is_admin)
-		VALUES (?, ?, ?)`,
-		userID, teamName, true)
-	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key

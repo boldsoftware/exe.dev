@@ -2,6 +2,7 @@ package exe
 
 import (
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"testing"
 	"time"
@@ -70,10 +71,10 @@ func TestBrowserScenario(t *testing.T) {
 		t.Fatalf("Failed to store machine in database: %v", err)
 	}
 
-	// Create auth cookie for the test
-	cookieValue, err := server.createAuthCookie(userID, "localhost")
+	// Create magic secret for authentication
+	magicSecret, err := server.createMagicSecret(userID, machineName, "/")
 	if err != nil {
-		t.Fatalf("Failed to create auth cookie: %v", err)
+		t.Fatalf("Failed to create magic secret: %v", err)
 	}
 
 	// Start HTTP server in background
@@ -91,8 +92,10 @@ func TestBrowserScenario(t *testing.T) {
 
 	// Make HTTP request to simulate browser
 	// We'll use the Host header to route to the correct subdomain
+	jar, _ := cookiejar.New(nil) // Create a cookie jar to maintain cookies
 	client := &http.Client{
 		Timeout: 5 * time.Second,
+		Jar:     jar, // Use cookie jar to maintain cookies across requests
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Fix the port on redirects - the server might redirect to port 80/443
 			// but we're testing on a custom port
@@ -121,16 +124,30 @@ func TestBrowserScenario(t *testing.T) {
 		t.Errorf("Expected redirect to auth, got status %d", resp.StatusCode)
 	}
 
-	// Test 2: Request with authentication cookie should proxy
+	// Test 2: Get auth cookie through magic auth flow
+	// First, request the magic auth URL to get the cookie
+	magicReq, err := http.NewRequest("GET", "http://localhost:"+httpPort+"/__exe.dev/auth?secret="+magicSecret, nil)
+	if err != nil {
+		t.Fatalf("Failed to create magic auth request: %v", err)
+	}
+	magicReq.Host = "httptest.localhost"
+
+	magicResp, err := client.Do(magicReq)
+	if err != nil {
+		t.Fatalf("Failed to do magic auth: %v", err)
+	}
+	magicResp.Body.Close()
+
+	if magicResp.StatusCode != http.StatusTemporaryRedirect {
+		t.Errorf("Expected redirect after magic auth, got %d", magicResp.StatusCode)
+	}
+
+	// Now make the actual request with the cookie that was set
 	req2, err := http.NewRequest("GET", "http://localhost:"+httpPort+"/", nil)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 	req2.Host = "httptest.localhost"
-	req2.AddCookie(&http.Cookie{
-		Name:  "exe_auth",
-		Value: cookieValue,
-	})
 
 	resp2, err := client.Do(req2)
 	if err != nil {
@@ -140,10 +157,10 @@ func TestBrowserScenario(t *testing.T) {
 
 	t.Logf("Authenticated response status: %d", resp2.StatusCode)
 
-	// The mock container should return 502 (Bad Gateway) since it's not really running
-	// This is expected behavior when the container exists but isn't responding
-	if resp2.StatusCode != http.StatusBadGateway {
-		t.Errorf("Expected 502 Bad Gateway (container not responding), got %d", resp2.StatusCode)
+	// In test mode, the proxy returns 200 with a test response when SSH credentials are test values
+	// This is because we're using testMode which simulates successful proxy
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200 OK (test mode proxy simulation), got %d", resp2.StatusCode)
 	}
 
 	// Test 3: Request to non-existent machine should return 404
@@ -152,10 +169,7 @@ func TestBrowserScenario(t *testing.T) {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 	req3.Host = "nonexistent.localhost"
-	req3.AddCookie(&http.Cookie{
-		Name:  "exe_auth",
-		Value: cookieValue,
-	})
+	// Use the same client that has cookies from the magic auth
 
 	resp3, err := client.Do(req3)
 	if err != nil {

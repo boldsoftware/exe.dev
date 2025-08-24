@@ -317,7 +317,7 @@ func TestHandleProxyRequest(t *testing.T) {
 		t.Fatalf("Failed to generate alloc ID: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) VALUES (?, ?, 'shared', 'us-east', datetime('now'))`, allocID, userID)
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		t.Fatalf("Failed to generate alloc ID: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) VALUES (?, ?, 'shared', 'us-east', datetime('now'))`, allocID, userID)
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}

@@ -38,26 +38,28 @@ func TestAuthConfirmE2EFlow(t *testing.T) {
 
 	// Test data
 	email := "test@example.com"
-	teamName := "myteam"
 	machineName := "web"
-	originalURL := fmt.Sprintf("http://%s.%s.localhost:8080/dashboard", machineName, teamName)
-	proxyHost := fmt.Sprintf("%s.%s.localhost:8080", machineName, teamName)
+	originalURL := fmt.Sprintf("http://%s.localhost:8080/dashboard", machineName)
+	proxyHost := fmt.Sprintf("%s.localhost:8080", machineName)
 
-	// Create user and team
+	// Create user and alloc
 	userID, err := server.createTestUserWithID(email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	// Create alloc for user
+	allocID := "test-alloc-" + userID[:8]
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, joined_at) VALUES (?, ?, datetime('now'))`,
-		teamName, userID)
+	// Create machine
+	_, err = server.db.Exec(`INSERT INTO machines (alloc_id, name, status, created_by_user_id) VALUES (?, ?, 'stopped', ?)`,
+		allocID, machineName, userID)
 	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// For this test, simulate the auth flow by manually creating the auth redirect URL
@@ -115,10 +117,10 @@ func TestAuthConfirmE2EFlow(t *testing.T) {
 		t.Error("✗ Missing 'Confirm Login' title")
 	}
 
-	if strings.Contains(confirmBody, teamName) {
-		t.Logf("✓ Team name: '%s'", teamName)
+	if strings.Contains(confirmBody, machineName) {
+		t.Logf("✓ Machine name: '%s'", machineName)
 	} else {
-		t.Errorf("✗ Missing team name '%s'", teamName)
+		t.Errorf("✗ Missing machine name '%s'", machineName)
 	}
 
 	if strings.Contains(confirmBody, "Continue") && strings.Contains(confirmBody, "Cancel") {
@@ -148,7 +150,7 @@ func TestAuthConfirmE2EFlow(t *testing.T) {
 
 	t.Log("=== STEP 3b: User clicks Continue (new secret) ===")
 	// Create new magic secret since the previous one was consumed by cancel
-	secret, err := server.createMagicSecret(userID, teamName, originalURL)
+	secret, err := server.createMagicSecret(userID, machineName, originalURL)
 	if err != nil {
 		t.Fatalf("Failed to create magic secret: %v", err)
 	}

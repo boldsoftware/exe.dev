@@ -36,28 +36,29 @@ func TestAuthConfirmInterstitial(t *testing.T) {
 
 	// Create test data
 	email := "test@example.com"
-	teamName := "testteam"
-	returnHost := "machine.testteam.localhost:8080"
-	redirectURL := "http://machine.testteam.localhost:8080/"
+	machineName := "machine"
+	returnHost := "machine.localhost:8080"
+	redirectURL := "http://machine.localhost:8080/"
 
-	// Create user and team
+	// Create user and alloc
 	userID, err := server.createTestUserWithID(email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 	t.Logf("Created user with ID: %s", userID)
 
-	// Create team
-	_, err = server.db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	// Create alloc for user
+	allocID := "test-alloc-" + userID[:8]
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	// Add user to team
-	_, err = server.db.Exec(`INSERT INTO team_members (team_name, user_id, joined_at) VALUES (?, ?, datetime('now'))`,
-		teamName, userID)
+	// Create machine
+	_, err = server.db.Exec(`INSERT INTO machines (alloc_id, name, status, created_by_user_id) VALUES (?, ?, 'stopped', ?)`,
+		allocID, machineName, userID)
 	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	t.Log("Test 1: Missing secret parameter returns error")
@@ -80,7 +81,7 @@ func TestAuthConfirmInterstitial(t *testing.T) {
 
 	t.Log("Test 3: Valid secret shows confirmation page")
 	// Create a valid magic secret
-	secret, err := server.createMagicSecret(userID, teamName, redirectURL)
+	secret, err := server.createMagicSecret(userID, machineName, redirectURL)
 	if err != nil {
 		t.Fatalf("Failed to create magic secret: %v", err)
 	}
@@ -97,16 +98,16 @@ func TestAuthConfirmInterstitial(t *testing.T) {
 	if !strings.Contains(body3, "Confirm Login") {
 		t.Error("Confirmation page should contain 'Confirm Login' title")
 	}
-	if !strings.Contains(body3, teamName) {
+	if !strings.Contains(body3, machineName) {
 		t.Error("Confirmation page should show team name")
 	}
-	if !strings.Contains(body3, "machine.testteam.localhost") {
+	if !strings.Contains(body3, "machine.localhost") {
 		t.Error("Confirmation page should show site domain")
 	}
 
 	t.Log("Test 4: User confirms - should redirect to magic URL")
 	// Create another secret for the confirm test
-	secret4, err := server.createMagicSecret(userID, teamName, redirectURL)
+	secret4, err := server.createMagicSecret(userID, machineName, redirectURL)
 	if err != nil {
 		t.Fatalf("Failed to create magic secret: %v", err)
 	}
@@ -132,7 +133,7 @@ func TestAuthConfirmInterstitial(t *testing.T) {
 
 	t.Log("Test 5: User cancels - should clean up secret and redirect to home")
 	// Create another secret for the cancel test
-	secret5, err := server.createMagicSecret(userID, teamName, redirectURL)
+	secret5, err := server.createMagicSecret(userID, machineName, redirectURL)
 	if err != nil {
 		t.Fatalf("Failed to create magic secret: %v", err)
 	}
@@ -158,7 +159,7 @@ func TestAuthConfirmInterstitial(t *testing.T) {
 
 	t.Log("Test 6: Missing return_host parameter returns error")
 	// Create another secret for this test
-	secret6, err := server.createMagicSecret(userID, teamName, redirectURL)
+	secret6, err := server.createMagicSecret(userID, machineName, redirectURL)
 	if err != nil {
 		t.Fatalf("Failed to create magic secret: %v", err)
 	}

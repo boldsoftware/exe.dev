@@ -105,10 +105,10 @@ func TestGetMachineByName(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Create alloc
+	// Create alloc with all required fields
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -182,8 +182,8 @@ func TestMachineUniqueConstraint(t *testing.T) {
 	}
 
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID2, userID2)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test2@example.com')`, allocID2, userID2)
 	if err != nil {
 		t.Fatalf("Failed to create alloc2: %v", err)
 	}
@@ -231,53 +231,54 @@ func TestMachineTimestamps(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Create alloc
+	// Create alloc with all required fields
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	beforeCreate := time.Now()
+	// Truncate to second precision since SQLite datetime() has second precision
+	beforeCreate := time.Now().UTC().Truncate(time.Second)
 	err = server.createMachine(userID, allocID, machineName, "container-123", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
-	afterCreate := time.Now()
+	afterCreate := time.Now().UTC().Truncate(time.Second).Add(time.Second) // Add 1 second for upper bound
 
 	machine, err := server.getMachineByName(machineName)
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
 
-	// Check created_at timestamp
+	// Check created_at timestamp (with second precision)
 	if machine.CreatedAt.Before(beforeCreate) || machine.CreatedAt.After(afterCreate) {
 		t.Errorf("Created timestamp %v is not between %v and %v",
 			machine.CreatedAt, beforeCreate, afterCreate)
 	}
 
-	// Check updated_at timestamp
+	// Check updated_at timestamp (with second precision)
 	if machine.UpdatedAt.Before(beforeCreate) || machine.UpdatedAt.After(afterCreate) {
 		t.Errorf("Updated timestamp %v is not between %v and %v",
 			machine.UpdatedAt, beforeCreate, afterCreate)
 	}
 
 	// Update machine status
-	time.Sleep(10 * time.Millisecond) // Ensure time has passed
-	beforeUpdate := time.Now()
+	time.Sleep(1 * time.Second) // Ensure at least 1 second has passed for SQLite datetime precision
+	beforeUpdate := time.Now().UTC().Truncate(time.Second)
 	_, err = server.db.Exec(`UPDATE machines SET status = 'running', updated_at = datetime('now') WHERE name = ?`, machineName)
 	if err != nil {
 		t.Fatalf("Failed to update machine: %v", err)
 	}
-	afterUpdate := time.Now()
+	afterUpdate := time.Now().UTC().Truncate(time.Second).Add(time.Second) // Add 1 second for upper bound
 
 	updatedMachine, err := server.getMachineByName(machineName)
 	if err != nil {
 		t.Fatalf("Failed to get updated machine: %v", err)
 	}
 
-	// Check that updated_at changed
+	// Check that updated_at changed (with second precision)
 	if updatedMachine.UpdatedAt.Before(beforeUpdate) || updatedMachine.UpdatedAt.After(afterUpdate) {
 		t.Errorf("Updated timestamp %v is not between %v and %v after update",
 			updatedMachine.UpdatedAt, beforeUpdate, afterUpdate)
@@ -313,10 +314,10 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Create alloc
+	// Create alloc with all required fields
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}

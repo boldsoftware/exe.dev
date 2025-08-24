@@ -562,8 +562,8 @@ func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName st
 	// Update database
 	_, err = s.db.Exec(`
 		UPDATE machines SET routes = ? 
-		WHERE name = ? AND team_name = ?`,
-		*machine.Routes, machineName, teamName)
+		WHERE name = ?`,
+		*machine.Routes, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError saving route: %v\033[0m\r\n", err)
 		return
@@ -621,8 +621,8 @@ func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName
 	// Update database
 	_, err = s.db.Exec(`
 		UPDATE machines SET routes = ? 
-		WHERE name = ? AND team_name = ?`,
-		*machine.Routes, machineName, teamName)
+		WHERE name = ?`,
+		*machine.Routes, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
 		return

@@ -191,10 +191,10 @@ type Alloc struct {
 	UserID           string
 	AllocType        AllocType
 	Region           Region
-	DockerHost       string // Docker host where this alloc's containers run
+	DockerHost       sql.NullString // Docker host where this alloc's containers run
 	CreatedAt        time.Time
-	StripeCustomerID string
-	BillingEmail     string
+	StripeCustomerID sql.NullString
+	BillingEmail     sql.NullString
 }
 
 // PathMatcher defines how to match request paths
@@ -290,20 +290,7 @@ type SSHKey struct {
 	UserID      string
 	PublicKey   string
 	DeviceName  *string
-	DefaultTeam *string
 	Verified    bool
-}
-
-// Invite represents a team invitation
-type Invite struct {
-	Code            string
-	TeamName        string
-	CreatedByUserID string
-	Email           string // optional
-	MaxUses         int
-	UsedCount       int
-	ExpiresAt       time.Time
-	CreatedAt       time.Time
 }
 
 // EmailVerification represents a pending email verification (in-memory)
@@ -1633,8 +1620,8 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		hostname = returnHost[:idx]
 	}
 
-	// Parse hostname to get team name
-	_, teamName, err := s.parseProxyHostname(hostname)
+	// Parse hostname to get machine name
+	machineName, err := s.parseProxyHostname(hostname)
 	if err != nil {
 		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
 		return
@@ -1651,7 +1638,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		ConfirmURL string
 		CancelURL  string
 	}{
-		TeamName:   teamName,
+		TeamName:   machineName,
 		SiteDomain: hostname,
 		ConfirmURL: confirmURL,
 		CancelURL:  cancelURL,
@@ -1969,7 +1956,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	// Get user's SSH keys
 	sshKeys := []SSHKey{}
 	rows, err := s.db.Query(`
-		SELECT public_key, device_name, default_team, verified
+		SELECT public_key, device_name, verified
 		FROM ssh_keys
 		WHERE user_id = ?
 		ORDER BY added_at DESC
@@ -1980,17 +1967,14 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		defer rows.Close()
 		for rows.Next() {
 			var key SSHKey
-			var deviceName, defaultTeam sql.NullString
-			err := rows.Scan(&key.PublicKey, &deviceName, &defaultTeam, &key.Verified)
+			var deviceName sql.NullString
+			err := rows.Scan(&key.PublicKey, &deviceName, &key.Verified)
 			if err != nil {
 				slog.Error("Error scanning SSH key", "error", err)
 				continue
 			}
 			if deviceName.Valid {
 				key.DeviceName = &deviceName.String
-			}
-			if defaultTeam.Valid {
-				key.DefaultTeam = &defaultTeam.String
 			}
 			sshKeys = append(sshKeys, key)
 		}
@@ -2413,6 +2397,11 @@ func getDefaultRoutesJSON() string {
 
 // createMachine stores machine info in database
 func (s *Server) createMachine(userID, allocID, name, containerID, image string) error {
+	// Validate machine name
+	if !s.isValidMachineName(name) {
+		return fmt.Errorf("invalid machine name: %s", name)
+	}
+	
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, routes,
@@ -2427,6 +2416,11 @@ func (s *Server) createMachine(userID, allocID, name, containerID, image string)
 
 // createMachineWithDockerHost stores machine info including docker host in database
 func (s *Server) createMachineWithDockerHost(userID, allocID, name, containerID, image, dockerHost string) error {
+	// Validate machine name
+	if !s.isValidMachineName(name) {
+		return fmt.Errorf("invalid machine name: %s", name)
+	}
+	
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, docker_host, routes,
@@ -2441,6 +2435,11 @@ func (s *Server) createMachineWithDockerHost(userID, allocID, name, containerID,
 
 // createMachineWithSSH stores machine info including SSH keys in database
 func (s *Server) createMachineWithSSH(userID, allocID, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	// Validate machine name
+	if !s.isValidMachineName(name) {
+		return fmt.Errorf("invalid machine name: %s", name)
+	}
+	
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
@@ -2456,6 +2455,11 @@ func (s *Server) createMachineWithSSH(userID, allocID, name, containerID, image 
 
 // createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
 func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	// Validate machine name
+	if !s.isValidMachineName(name) {
+		return fmt.Errorf("invalid machine name: %s", name)
+	}
+	
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
@@ -3134,83 +3138,16 @@ func (s *Server) createUser(publicKey, email string) error {
 // Team-related functions have been removed as teams are no longer user-facing.
 // Users now have direct resource allocations (allocs) instead.
 
-// createInvite creates a new team invitation
-func (s *Server) createInvite(teamName, createdByPublicKey, email string, maxUses int, expiresAt time.Time) (string, error) {
-	code := s.generateInviteCode()
-	_, err := s.db.Exec(`
-		INSERT INTO invites (code, team_name, created_by_user_id, email, max_uses, expires_at)
-		VALUES (?, ?, (SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1), ?, ?, ?)
-	`, code, teamName, createdByPublicKey, email, maxUses, expiresAt)
-	return code, err
-}
-
-// getInviteByCode retrieves an invite by its code
-func (s *Server) getInviteByCode(code string) (*Invite, error) {
-	var invite Invite
-	err := s.db.QueryRow(`
-		SELECT code, team_name, created_by_user_id, email, max_uses, used_count, expires_at, created_at
-		FROM invites WHERE code = ?
-	`, code).Scan(&invite.Code, &invite.TeamName, &invite.CreatedByUserID,
-		&invite.Email, &invite.MaxUses, &invite.UsedCount, &invite.ExpiresAt, &invite.CreatedAt)
-	if err != nil {
-		return nil, err
-	}
-	return &invite, nil
-}
-
-// useInvite increments the used count of an invite
-func (s *Server) useInvite(code string) error {
-	_, err := s.db.Exec("UPDATE invites SET used_count = used_count + 1 WHERE code = ?", code)
-	return err
-}
-
-// generateInviteCode generates a random invite code
-func (s *Server) generateInviteCode() string {
-	return s.generateRegistrationToken()[:8] // Use first 8 chars for invite codes
-}
-
-// getInvitesByEmail retrieves all invites for a specific email
-func (s *Server) getInvitesByEmail(email string) ([]Invite, error) {
-	rows, err := s.db.Query(`
-		SELECT code, team_name, created_by_user_id, email, max_uses, used_count, expires_at, created_at
-		FROM invites WHERE email = ?
-	`, email)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var invites []Invite
-	for rows.Next() {
-		var invite Invite
-		err := rows.Scan(&invite.Code, &invite.TeamName, &invite.CreatedByUserID,
-			&invite.Email, &invite.MaxUses, &invite.UsedCount, &invite.ExpiresAt, &invite.CreatedAt)
-		if err != nil {
-			return nil, err
-		}
-		invites = append(invites, invite)
-	}
-
-	return invites, rows.Err()
-}
-
-// getDefaultTeamForUser gets the default team for a user (from their first verified SSH key)
+// getDefaultTeamForUser - deprecated, teams no longer exist
 func (s *Server) getDefaultTeamForUser(userID string) (string, error) {
-	var defaultTeam sql.NullString
-	err := s.db.QueryRow(`SELECT default_team FROM ssh_keys WHERE user_id = ? AND verified = 1 ORDER BY added_at LIMIT 1`, userID).Scan(&defaultTeam)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
-		}
-		return "", err
-	}
-	return defaultTeam.String, nil
+	// Teams no longer exist - return empty string
+	return "", nil
 }
 
-// setDefaultTeamForKey sets the default team for an SSH key
+// setDefaultTeamForKey - deprecated, teams no longer exist
 func (s *Server) setDefaultTeamForKey(userID, teamName string) error {
-	_, err := s.db.Exec(`UPDATE ssh_keys SET default_team = ? WHERE user_id = ?`, teamName, userID)
-	return err
+	// Teams no longer exist - no-op
+	return nil
 }
 
 // Stop gracefully shuts down all servers
@@ -3433,11 +3370,11 @@ func (s *Server) createTestUserWithID(email string) (string, error) {
 		return "", err
 	}
 
-	// Add the SSH key to ssh_keys table
+	// Add the SSH key to ssh_keys table with unique key per user
 	_, err = s.db.Exec(`
 		INSERT INTO ssh_keys (user_id, verified, public_key)
 		VALUES (?, 1, ?)`,
-		userID, "ssh-rsa dummy-test-key test@example.com")
+		userID, fmt.Sprintf("ssh-rsa dummy-test-key-%s %s", userID, email))
 	if err != nil {
 		return "", err
 	}

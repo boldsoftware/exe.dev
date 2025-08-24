@@ -43,6 +43,8 @@ func TestProxyRequestRouting(t *testing.T) {
 			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
 			docker_host TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			stripe_customer_id TEXT,
+			billing_email TEXT,
 			FOREIGN KEY (user_id) REFERENCES users(user_id)
 		)
 	`)
@@ -105,7 +107,7 @@ func TestProxyRequestRouting(t *testing.T) {
 
 	// Create alloc for test user
 	allocID := "alloc_" + userID
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, userID)
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -241,6 +243,8 @@ func TestProxyRequestDetails(t *testing.T) {
 			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
 			docker_host TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			stripe_customer_id TEXT,
+			billing_email TEXT,
 			FOREIGN KEY (user_id) REFERENCES users(user_id)
 		)
 	`)
@@ -302,7 +306,7 @@ func TestProxyRequestDetails(t *testing.T) {
 
 	// Create alloc for test user
 	allocID := "alloc_" + userID
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, userID)
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -384,7 +388,7 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	// Create alloc for test user
 	allocID := "test-alloc-" + userID
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, userID)
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -581,7 +585,9 @@ func TestProxyDebugPath(t *testing.T) {
 			alloc_type TEXT NOT NULL DEFAULT 'medium',
 			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
 			docker_host TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			stripe_customer_id TEXT,
+			billing_email TEXT
 		)
 	`)
 	if err != nil {
@@ -637,7 +643,7 @@ func TestProxyDebugPath(t *testing.T) {
 
 	// Create alloc for test
 	allocID := "test-alloc-debug"
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, "test-user")
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, "test-user")
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}

@@ -47,7 +47,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 
 	// Register the user in the database
 	email := "test@example.com"
-	teamName := "test-team"
+	// teamName no longer used - machines are globally unique
 	machineName := "test-machine"
 	containerID := "test-container-123"
 
@@ -65,22 +65,14 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Create team
+	// Create alloc for user
+	allocID := "test-alloc-" + userID[:8]
 	_, err = server.db.Exec(`
-		INSERT INTO teams (team_name, billing_email)
-		VALUES (?, ?)`,
-		teamName, email)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+		allocID, userID, email)
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	// Add user to team
-	_, err = server.db.Exec(`
-		INSERT INTO team_members (user_id, team_name)
-		VALUES (?, ?)`,
-		userID, teamName)
-	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key
@@ -94,9 +86,9 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 
 	// Create a machine in the database
 	_, err = server.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_user_id)
+		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		teamName, machineName, "running", "ubuntu", containerID, 1) // hardcode user_id for test
+		allocID, machineName, "running", "ubuntu", containerID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
