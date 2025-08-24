@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Check if timeout command exists
+if ! command -v timeout &> /dev/null; then
+    echo "Error: 'timeout' command not found. On macOS, run 'brew install coreutils'"
+    exit 1
+fi
+
 # Build sshpiperd if needed
 if [ ! -f sshpiper/sshpiperd ]; then
     cd sshpiper && go build -o sshpiperd ./cmd/sshpiperd && cd ..
