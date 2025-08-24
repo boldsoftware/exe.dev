@@ -18,6 +18,9 @@ Test HTTP proxying capabilities, authentication flows, and route management.
 
 9. Connect to it via http://machinename.team.localhost:8080/ . There should be a login flow of some sort that might just be redirections.
 
+Note that there should be a confirmation interstitial screen for logging into
+machinename.team using your exe.dev credentials.
+
 10. Logout on http://localhost:8080/
 
 11. Connect again; you should require login; don't log in.

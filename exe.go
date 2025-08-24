@@ -940,6 +940,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleDeviceVerificationHTTP(w, r)
 	case "/auth":
 		s.handleAuth(w, r)
+	case "/auth/confirm":
+		s.handleAuthConfirm(w, r)
 	case "/logout":
 		s.handleLogout(w, r)
 	default:
@@ -1569,6 +1571,93 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	s.redirectAfterAuth(w, r, userID)
 }
 
+// handleAuthConfirm handles the interstitial confirmation page for magic auth
+func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
+	// Get magic secret from query parameter
+	secret := r.URL.Query().Get("secret")
+	if secret == "" {
+		http.Error(w, "Missing secret parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the magic secret WITHOUT consuming it (peek only)
+	s.magicSecretsMu.RLock()
+	magicSecret, exists := s.magicSecrets[secret]
+	s.magicSecretsMu.RUnlock()
+
+	if !exists {
+		http.Error(w, "Invalid secret", http.StatusUnauthorized)
+		return
+	}
+
+	// Check expiration
+	if time.Now().After(magicSecret.ExpiresAt) {
+		http.Error(w, "Secret expired", http.StatusUnauthorized)
+		return
+	}
+
+	// Check for confirmation or cancellation
+	action := r.URL.Query().Get("action")
+	if action == "confirm" {
+		// User confirmed, redirect to magic auth handler
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
+			scheme, r.URL.Query().Get("return_host"), secret, url.QueryEscape(magicSecret.RedirectURL))
+		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+		return
+	}
+	if action == "cancel" {
+		// User canceled, clean up the secret and redirect to main domain
+		s.magicSecretsMu.Lock()
+		delete(s.magicSecrets, secret)
+		s.magicSecretsMu.Unlock()
+		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Show confirmation page
+	returnHost := r.URL.Query().Get("return_host")
+	if returnHost == "" {
+		http.Error(w, "Missing return_host parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Extract hostname without port for display
+	hostname := returnHost
+	if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
+		hostname = returnHost[:idx]
+	}
+
+	// Parse hostname to get team name
+	_, teamName, err := s.parseProxyHostname(hostname)
+	if err != nil {
+		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
+		return
+	}
+
+	// Prepare template data
+	currentURL := r.URL.String()
+	confirmURL := strings.ReplaceAll(currentURL, "action=", "unused=") + "&action=confirm"
+	cancelURL := strings.ReplaceAll(currentURL, "action=", "unused=") + "&action=cancel"
+
+	data := struct {
+		TeamName   string
+		SiteDomain string
+		ConfirmURL string
+		CancelURL  string
+	}{
+		TeamName:   teamName,
+		SiteDomain: hostname,
+		ConfirmURL: confirmURL,
+		CancelURL:  cancelURL,
+	}
+
+	s.renderTemplate(w, "login-confirmation.html", data)
+}
+
 // getDomain extracts the base domain from a host
 func getDomain(host string) string {
 	// Remove port if present
@@ -1838,17 +1927,12 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 				return
 			}
 
-			// Redirect back to proxy subdomain with magic secret
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
-			magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
-				scheme, returnHost, secret, url.QueryEscape(redirectURL))
+			// Redirect to confirmation page with magic secret
+			confirmURL := fmt.Sprintf("/auth/confirm?secret=%s&return_host=%s", secret, url.QueryEscape(returnHost))
 			if !s.quietMode {
-				slog.Info("[REDIRECT] redirectAfterAuth creating magic URL", "magicURL", magicURL)
+				slog.Info("[REDIRECT] redirectAfterAuth creating confirmation URL", "confirmURL", confirmURL)
 			}
-			http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+			http.Redirect(w, r, confirmURL, http.StatusTemporaryRedirect)
 			return
 		}
 	}

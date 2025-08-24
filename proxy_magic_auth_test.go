@@ -125,17 +125,42 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	location2 := w2.Header().Get("Location")
 	t.Logf("Step 2 Redirect to: %s", location2)
 
-	if !strings.Contains(location2, "__exe.dev/auth") {
-		t.Fatalf("Expected redirect to magic auth URL, got: %s", location2)
+	if !strings.Contains(location2, "/auth/confirm") {
+		t.Fatalf("Expected redirect to confirmation page, got: %s", location2)
 	}
 
 	if !strings.Contains(location2, "secret=") {
-		t.Fatalf("Expected secret parameter in magic auth URL, got: %s", location2)
+		t.Fatalf("Expected secret parameter in confirmation URL, got: %s", location2)
+	}
+
+	// Step 2b: Simulate user clicking "Continue" on confirmation page
+	t.Logf("Step 2b: User confirms login")
+	confirmLocation := location2 + "&action=confirm"
+	req2b := httptest.NewRequest("GET", confirmLocation, nil)
+	req2b.Host = "localhost:0"
+	w2b := httptest.NewRecorder()
+
+	server.ServeHTTP(w2b, req2b)
+
+	t.Logf("Step 2b Response: Status=%d", w2b.Code)
+	for k, v := range w2b.Header() {
+		t.Logf("Step 2b Header: %s = %v", k, v)
+	}
+
+	location2b := w2b.Header().Get("Location")
+	t.Logf("Step 2b Redirect to: %s", location2b)
+
+	if !strings.Contains(location2b, "__exe.dev/auth") {
+		t.Fatalf("Expected redirect to magic auth URL after confirmation, got: %s", location2b)
+	}
+
+	if !strings.Contains(location2b, "secret=") {
+		t.Fatalf("Expected secret parameter in magic auth URL, got: %s", location2b)
 	}
 
 	// Step 3: Follow magic auth redirect
 	t.Logf("Step 3: Follow magic auth redirect")
-	req3 := httptest.NewRequest("GET", location2, nil)
+	req3 := httptest.NewRequest("GET", location2b, nil)
 	req3.Host = "testmachine.testteam.localhost:8080"
 	w3 := httptest.NewRecorder()
 
