@@ -95,7 +95,7 @@ func (m *DockerManager) discoverContainers(ctx context.Context, dockerHost strin
 			ID:         containerInfo.ID,
 			Name:       strings.TrimPrefix(containerInfo.Names, "exe-"),
 			UserID:     labels["user_id"],
-			TeamName:   labels["team"],
+			AllocID:    labels["alloc_id"],
 			Status:     mapDockerStatus(containerInfo.State),
 			Image:      containerInfo.Image,
 			CreatedAt:  time.Unix(containerInfo.Created, 0),
@@ -124,15 +124,15 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	dockerHost := m.selectHost()
 
 	// Generate container name
-	containerName := fmt.Sprintf("exe-%s-%s", req.TeamName, req.Name)
+	containerName := fmt.Sprintf("exe-%s-%s", req.AllocID, req.Name)
 
 	// Build Docker run command
 	args := []string{
 		"run", "-d",
 		"--name", containerName,
-		"--hostname", fmt.Sprintf("%s.%s.exe.dev", req.Name, req.TeamName),
+		"--hostname", fmt.Sprintf("%s.exe.dev", req.Name),
 		"--label", fmt.Sprintf("user_id=%s", req.UserID),
-		"--label", fmt.Sprintf("team=%s", req.TeamName),
+		"--label", fmt.Sprintf("alloc_id=%s", req.AllocID),
 		"--label", "managed_by=exe",
 		"-p", "0:22", // Expose SSH port 22 to a random host port
 	}
@@ -152,7 +152,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	}
 
 	// Mount a volume for persistent storage
-	volumeName := fmt.Sprintf("exe-vol-%s-%s", req.TeamName, req.Name)
+	volumeName := fmt.Sprintf("exe-vol-%s-%s", req.AllocID, req.Name)
 	args = append(args, "-v", fmt.Sprintf("%s:/workspace", volumeName))
 
 	// Set working directory
@@ -237,7 +237,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 		ID:         containerID,
 		Name:       req.Name,
 		UserID:     req.UserID,
-		TeamName:   req.TeamName,
+		AllocID:    req.AllocID,
 		Status:     StatusRunning,
 		Image:      image,
 		CreatedAt:  time.Now(),
@@ -373,7 +373,7 @@ func (m *DockerManager) DeleteContainer(ctx context.Context, userID, containerID
 	}
 
 	// Remove volume
-	volumeName := fmt.Sprintf("exe-vol-%s-%s", container.TeamName, container.Name)
+	volumeName := fmt.Sprintf("exe-vol-%s-%s", container.AllocID, container.Name)
 	cmd = exec.CommandContext(ctx, "docker", "volume", "rm", volumeName)
 	if container.DockerHost != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", container.DockerHost))
@@ -406,7 +406,7 @@ func (m *DockerManager) BuildImage(ctx context.Context, req *BuildRequest) (*Bui
 	}
 
 	// Generate image name
-	imageName := fmt.Sprintf("exe-custom-%s-%d", req.TeamName, time.Now().Unix())
+	imageName := fmt.Sprintf("exe-custom-%s-%d", req.AllocID, time.Now().Unix())
 
 	// Build the image
 	cmd := exec.CommandContext(ctx, "docker", "build", "-t", imageName, tmpDir)

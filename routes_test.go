@@ -109,19 +109,19 @@ func TestProxyHostnameParsing(t *testing.T) {
 	tests := []struct {
 		hostname        string
 		expectedMachine string
-		expectedTeam    string
 		shouldError     bool
 	}{
-		{"test-machine.my-team.exe.dev", "test-machine", "my-team", false},
-		{"web.production.localhost", "web", "production", false},
-		{"api.staging.exe.dev", "api", "staging", false},
-		{"invalid.domain.com", "", "", true},
-		{"no-team.exe.dev", "", "", true},
-		{"too.many.parts.team.exe.dev", "", "", true},
+		{"test-machine.exe.dev", "test-machine", false},
+		{"web.localhost", "web", false},
+		{"api.exe.dev", "api", false},
+		{"empty.exe.dev", "empty", false}, // Valid in new format
+		{"invalid.domain.com", "", true},
+		{"machine.with.dots.exe.dev", "", true}, // Too many subdomains
+		{"just-domain.com", "", true},           // Not exe.dev or localhost
 	}
 
 	for _, test := range tests {
-		machine, team, err := server.parseProxyHostname(test.hostname)
+		machine, err := server.parseProxyHostname(test.hostname)
 
 		if test.shouldError {
 			if err == nil {
@@ -137,9 +137,6 @@ func TestProxyHostnameParsing(t *testing.T) {
 
 		if machine != test.expectedMachine {
 			t.Errorf("Expected machine '%s', got '%s'", test.expectedMachine, machine)
-		}
-		if team != test.expectedTeam {
-			t.Errorf("Expected team '%s', got '%s'", test.expectedTeam, team)
 		}
 	}
 }
@@ -218,15 +215,15 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 	}
 	defer server.Stop()
 
-	// Set up test user and team
+	// Set up test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
 	email := "test@example.com"
-	teamName := "test-team"
+	allocID := "alloc-test-123"
 
-	// Create user and team
-	err = server.createUserWithTeam(publicKey, email, teamName)
+	// Create user with alloc
+	err = server.createUserWithAlloc(publicKey, email)
 	if err != nil {
-		t.Fatalf("Failed to create user and team: %v", err)
+		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
 	// Test creating a machine
@@ -236,13 +233,20 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get user ID: %v", err)
 	}
-	err = server.createMachine(userID, teamName, "test-machine", "container123", "ubuntu")
+
+	// Get allocID for this user
+	err = server.db.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID).Scan(&allocID)
+	if err != nil {
+		t.Fatalf("Failed to get alloc ID: %v", err)
+	}
+
+	err = server.createMachine(userID, allocID, "test-machine", "container123", "ubuntu")
 	if err != nil {
 		t.Errorf("Failed to create machine: %v", err)
 	}
 
 	// Retrieve the machine and check its routes
-	machine, err := server.getMachineByName(teamName, "test-machine")
+	machine, err := server.getMachineByName("test-machine")
 	if err != nil {
 		t.Errorf("Failed to get machine: %v", err)
 	}
@@ -307,14 +311,25 @@ func TestHandleProxyRequest(t *testing.T) {
 
 	server := &Server{db: db, testMode: true}
 
+	// Create alloc for the user
+	allocID, err := generateAllocID()
+	if err != nil {
+		t.Fatalf("Failed to generate alloc ID: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) VALUES (?, ?, 'shared', 'us-east', datetime('now'))`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
+	}
+
 	// Create a test machine with custom routes
-	err = server.createMachine(userID, "test-team", "web-server", "container123", "nginx")
+	err = server.createMachine(userID, allocID, "web-server", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Get the machine and add a public API route
-	machine, err := server.getMachineByName("test-team", "web-server")
+	machine, err := server.getMachineByName("web-server")
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
@@ -341,8 +356,8 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	// Update the machine in the database
-	_, err = db.Exec(`UPDATE machines SET routes = ? WHERE name = ? AND team_name = ?`,
-		*machine.Routes, "web-server", "test-team")
+	_, err = db.Exec(`UPDATE machines SET routes = ? WHERE name = ? AND alloc_id = ?`,
+		*machine.Routes, "web-server", allocID)
 	if err != nil {
 		t.Fatalf("Failed to update machine routes: %v", err)
 	}
@@ -354,10 +369,9 @@ func TestHandleProxyRequest(t *testing.T) {
 		expectedStatus int
 		expectedBody   string
 	}{
-		{"web-server.test-team.exe.dev", "GET", "/api/public/status", 200, "public-api"},
-		{"web-server.test-team.exe.dev", "GET", "/private/admin", 307, "auth?redirect="}, // Should redirect to auth for private route
-		{"nonexistent.test-team.exe.dev", "GET", "/", 404, "Machine not found"},
-		{"web-server.nonexistent-team.exe.dev", "GET", "/", 404, "Machine not found"},
+		{"web-server.exe.dev", "GET", "/api/public/status", 200, "public-api"},
+		{"web-server.exe.dev", "GET", "/private/admin", 307, "auth?redirect="}, // Should redirect to auth for private route
+		{"nonexistent.exe.dev", "GET", "/", 404, "Machine not found"},
 	}
 
 	for _, test := range tests {
@@ -476,10 +490,9 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		devMode:  "local",
 	}
 
-	// Create test user and team
+	// Create test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
 	email := "test@example.com"
-	teamName := "test-team"
 	machineName := "web-server"
 
 	userID, err := generateUserID()
@@ -499,18 +512,19 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO teams (team_name) VALUES (?)`, teamName)
+	// Create alloc for the user
+	allocID, err := generateAllocID()
 	if err != nil {
-		t.Fatalf("Failed to create team: %v", err)
+		t.Fatalf("Failed to generate alloc ID: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, TRUE)`, userID, teamName)
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) VALUES (?, ?, 'shared', 'us-east', datetime('now'))`, allocID, userID)
 	if err != nil {
-		t.Fatalf("Failed to add user to team: %v", err)
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine
-	err = server.createMachine(userID, teamName, machineName, "container123", "nginx")
+	err = server.createMachine(userID, allocID, machineName, "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -569,7 +583,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			sess := &mockSession{}
-			server.handleRouteCommand(sess, publicKey, teamName, test.args)
+			server.handleRouteCommand(sess, publicKey, allocID, test.args)
 			output := sess.output.String()
 
 			// Check expected strings

@@ -178,28 +178,11 @@ func (ss *SSHServer) handleShell(s ssh.Session, username, publicKey string, regi
 		return
 	}
 
-	teams, err := ss.server.getUserTeams(user.UserID)
-	if err != nil || len(teams) == 0 {
-		fmt.Fprintf(s, "Error: User not associated with any team\r\n")
+	// Get or create user's alloc
+	alloc, err := ss.server.getUserAlloc(user.UserID)
+	if err != nil || alloc == nil {
+		fmt.Fprintf(s, "Error: User has no allocation\r\n")
 		return
-	}
-
-	// Get the default team for this SSH key
-	defaultTeam, err := ss.server.getDefaultTeamForUser(user.UserID)
-	if err != nil || defaultTeam == "" {
-		defaultTeam = teams[0].TeamName
-	}
-
-	// Find the team membership details
-	var team TeamMember
-	for _, t := range teams {
-		if t.TeamName == defaultTeam {
-			team = t
-			break
-		}
-	}
-	if team.TeamName == "" {
-		team = teams[0]
 	}
 
 	// Note: Direct container access should never reach this point.
@@ -208,11 +191,11 @@ func (ss *SSHServer) handleShell(s ssh.Session, username, publicKey string, regi
 	// If we reach here, the user is connecting to the interactive shell.
 
 	// Run the main shell with readline
-	ss.runMainShellWithReadline(s, publicKey, user.Email, team.TeamName, team.IsAdmin, false)
+	ss.runMainShellWithReadline(s, publicKey, user.Email, alloc.AllocID, false)
 }
 
 // runMainShellWithReadline implements the main menu using a simple line reader
-func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, teamName string, isAdmin bool, showWelcome bool) {
+func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, allocID string, showWelcome bool) {
 	if !ss.server.testMode {
 		log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", email, showWelcome)
 	}
@@ -286,21 +269,21 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, t
 				fmt.Fprint(s, helpText)
 			}
 		case "list", "ls":
-			ss.handleListCommand(s, publicKey, teamName)
+			ss.handleListCommand(s, publicKey, allocID)
 		case "new":
-			ss.handleNewCommand(s, publicKey, teamName, args)
+			ss.handleNewCommand(s, publicKey, allocID, args)
 		case "start":
-			ss.handleStartCommand(s, publicKey, teamName, args)
+			ss.handleStartCommand(s, publicKey, allocID, args)
 		case "stop":
-			ss.handleStopCommand(s, publicKey, teamName, args)
+			ss.handleStopCommand(s, publicKey, allocID, args)
 		case "delete":
-			ss.handleDeleteCommand(s, publicKey, teamName, args)
+			ss.handleDeleteCommand(s, publicKey, allocID, args)
 		case "logs":
-			ss.handleLogsCommand(s, publicKey, teamName, args)
+			ss.handleLogsCommand(s, publicKey, allocID, args)
 		case "route":
-			ss.handleRouteCommand(s, publicKey, teamName, args)
-		case "team":
-			ss.handleTeamCommand(s, publicKey, teamName, args)
+			ss.handleRouteCommand(s, publicKey, allocID, args)
+		case "alloc":
+			ss.handleAllocCommand(s, publicKey, allocID, args)
 		case "whoami":
 			ss.handleWhoamiCommand(s, email)
 		default:
@@ -442,7 +425,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 
 	// Show the signup content after the animation
 	signupContent := "\r\n\033[1;33mEXE.DEV: get a machine over ssh\033[0m\r\n" +
-		"Signup involves verifying your email, picking a team name and setting up billing.\r\n\r\n" +
+		"Signup involves verifying your email and setting up billing.\r\n\r\n" +
 		"\033[1mPlease enter your email address:\033[0m "
 	fmt.Fprint(s, signupContent)
 
@@ -464,77 +447,15 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 		}
 	}
 
-	// Ask for team name BEFORE email verification
-	// Extract username from email as a suggested team name
-	suggestedTeamName := ""
-	if atIndex := strings.Index(email, "@"); atIndex > 0 {
-		suggestedTeamName = email[:atIndex]
-		// Ensure suggested name is valid (lowercase, alphanumeric and hyphens only)
-		suggestedTeamName = strings.ToLower(suggestedTeamName)
-		// Replace invalid characters with hyphens
-		var cleaned []rune
-		for _, r := range suggestedTeamName {
-			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-				cleaned = append(cleaned, r)
-			} else if len(cleaned) > 0 && cleaned[len(cleaned)-1] != '-' {
-				// Replace invalid chars with hyphen, but avoid multiple consecutive hyphens
-				cleaned = append(cleaned, '-')
-			}
-		}
-		suggestedTeamName = string(cleaned)
-		// Trim any trailing hyphens
-		suggestedTeamName = strings.Trim(suggestedTeamName, "-")
-
-		// Check if the suggested name is available
-		if suggestedTeamName != "" {
-			taken, err := ss.server.isTeamNameTakenOrReserved(suggestedTeamName)
-			if err != nil || taken {
-				// If taken or error, don't suggest it
-				suggestedTeamName = ""
-			}
-		}
-	}
-
-	var teamName string
-	for {
-		fmt.Fprint(s, "\033[1mChoose a team name:\033[0m ")
-		teamName = ss.readLineWithEchoAndDefault(s, suggestedTeamName)
-		if teamName == "" {
-			fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
-			return
-		}
-
-		// Validate team name format
-		if !ss.server.isValidTeamName(teamName) {
-			fmt.Fprintf(s, "\r\n%sInvalid team name. Team names can only contain lowercase letters, numbers, and hyphens.%s\r\n", "\033[1;31m", "\033[0m")
-			// Clear the suggested name after first attempt
-			suggestedTeamName = ""
-			continue
-		}
-
-		// Check if team name is taken
-		taken, err := ss.server.isTeamNameTakenOrReserved(teamName)
-		if err != nil {
-			fmt.Fprintf(s, "\r\n%sError checking team name availability: %v%s\r\n", "\033[1;31m", err, "\033[0m")
-			suggestedTeamName = ""
-			continue
-		}
-		if taken {
-			fmt.Fprintf(s, "\r\n%sTeam name '%s' is already taken. Please choose a different name.%s\r\n", "\033[1;31m", teamName, "\033[0m")
-			suggestedTeamName = ""
-			continue
-		}
-
-		break
-	}
+	// No longer ask for team name - machines will be named directly under exe.dev
 
 	// Log for debugging
 	if !ss.server.testMode && !ss.server.quietMode {
-		log.Printf("Starting email verification for %s with team %s", email, teamName)
+		log.Printf("Starting email verification for %s", email)
 	}
 
 	// Start email verification directly without using sshbuf.Channel
-	if err := ss.startEmailVerificationNew(publicKey, email, teamName); err != nil {
+	if err := ss.startEmailVerificationNew(publicKey, email); err != nil {
 		// Log the error for debugging
 		log.Printf("Email verification failed for %s: %v", email, err)
 		// Show user-friendly error message
@@ -654,29 +575,11 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 	// Wait for the goroutine to exit (user presses Enter or any key)
 	<-goroutineDone
 
-	// Get team info for the menu
-	teams, err := ss.server.getUserTeams(user.UserID)
-	if err != nil || len(teams) == 0 {
-		fmt.Fprintf(s, "Error: User not associated with any team\r\n")
+	// Get user's alloc for the menu
+	alloc, err := ss.server.getUserAlloc(user.UserID)
+	if err != nil || alloc == nil {
+		fmt.Fprintf(s, "Error: User not associated with any allocation\r\n")
 		return
-	}
-
-	// Get the default team for this SSH key
-	defaultTeam, err := ss.server.getDefaultTeamForUser(user.UserID)
-	if err != nil || defaultTeam == "" {
-		defaultTeam = teams[0].TeamName
-	}
-
-	// Find the team membership details
-	var team TeamMember
-	for _, t := range teams {
-		if t.TeamName == defaultTeam {
-			team = t
-			break
-		}
-	}
-	if team.TeamName == "" {
-		team = teams[0]
 	}
 
 	// Visual feedback that we're entering the menu
@@ -685,7 +588,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
 	// This avoids issues with partially consumed readers
-	ss.runMainShellWithReadline(s, publicKey, user.Email, team.TeamName, team.IsAdmin, true)
+	ss.runMainShellWithReadline(s, publicKey, user.Email, alloc.AllocID, true)
 }
 
 // handleExec handles exec commands
@@ -706,26 +609,10 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, publicKey
 		return
 	}
 
-	teams, err := ss.server.getUserTeams(user.UserID)
-	if err != nil || len(teams) == 0 {
-		fmt.Fprint(s, "Error: User not associated with any team\r\n")
+	alloc, err := ss.server.getUserAlloc(user.UserID)
+	if err != nil || alloc == nil {
+		fmt.Fprint(s, "Error: User not associated with any allocation\r\n")
 		return
-	}
-
-	defaultTeam, err := ss.server.getDefaultTeamForUser(user.UserID)
-	if err != nil || defaultTeam == "" {
-		defaultTeam = teams[0].TeamName
-	}
-
-	var team TeamMember
-	for _, t := range teams {
-		if t.TeamName == defaultTeam {
-			team = t
-			break
-		}
-	}
-	if team.TeamName == "" {
-		team = teams[0]
 	}
 
 	// Handle the command
@@ -739,23 +626,23 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, publicKey
 	// Use the new handlers that work directly with ssh.Session
 	switch command {
 	case "new":
-		ss.handleNewCommand(s, publicKey, team.TeamName, args)
+		ss.handleNewCommand(s, publicKey, alloc.AllocID, args)
 	case "list", "ls":
-		ss.handleListCommand(s, publicKey, team.TeamName)
+		ss.handleListCommand(s, publicKey, alloc.AllocID)
 	case "start":
-		ss.handleStartCommand(s, publicKey, team.TeamName, args)
+		ss.handleStartCommand(s, publicKey, alloc.AllocID, args)
 	case "stop":
-		ss.handleStopCommand(s, publicKey, team.TeamName, args)
+		ss.handleStopCommand(s, publicKey, alloc.AllocID, args)
 	case "delete":
-		ss.handleDeleteCommand(s, publicKey, team.TeamName, args)
+		ss.handleDeleteCommand(s, publicKey, alloc.AllocID, args)
 	case "logs":
-		ss.handleLogsCommand(s, publicKey, team.TeamName, args)
+		ss.handleLogsCommand(s, publicKey, alloc.AllocID, args)
 	case "diag", "diagnostics":
 		fmt.Fprintf(s, "\033[1;33mDiagnostics not implemented in new server yet\033[0m\r\n")
 	case "route":
-		ss.handleRouteCommand(s, publicKey, team.TeamName, args)
-	case "team":
-		ss.handleTeamCommand(s, publicKey, team.TeamName, args)
+		ss.handleRouteCommand(s, publicKey, alloc.AllocID, args)
+	case "alloc":
+		ss.handleAllocCommand(s, publicKey, alloc.AllocID, args)
 	case "whoami":
 		ss.handleWhoamiCommand(s, user.Email)
 	case "help", "?":
@@ -773,7 +660,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, publicKey
 				"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
 				"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
 				"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
-				"\033[1mteam\033[0m                    - Team management\r\n" +
+				"\033[1malloc\033[0m                   - Resource allocation info\r\n" +
 				"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 				"\033[1m?\033[0m                       - Show this help\r\n\r\n" +
 				"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
@@ -993,7 +880,7 @@ func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, boo
 }
 
 // Command handlers for the new SSH server
-func (ss *SSHServer) handleListCommand(s ssh.Session, publicKey, teamName string) {
+func (ss *SSHServer) handleListCommand(s ssh.Session, publicKey, allocID string) {
 	// Get user information
 	user, err := ss.server.getUserByPublicKey(publicKey)
 	if err != nil {
@@ -1044,7 +931,7 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, publicKey, teamName string
 	}
 
 	// Fallback to database if container manager not available
-	machines, err := ss.server.getMachinesForTeam(teamName)
+	machines, err := ss.server.getMachinesForAlloc(allocID)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError listing machines: %v\033[0m\r\n", err)
 		return
@@ -1078,7 +965,7 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, publicKey, teamName string
 	}
 }
 
-func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string, args []string) {
+func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, args []string) {
 	if ss.server.containerManager == nil {
 		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
 		return
@@ -1123,12 +1010,12 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 	if machineName == "" {
 		machineName = generateRandomContainerName()
 		// Check if name is already taken
-		_, err := ss.server.getMachineByName(teamName, machineName)
+		_, err := ss.server.getMachineByName(machineName)
 		if err == nil {
 			// Name exists, try again
 			for attempts := 0; attempts < 10; attempts++ {
 				machineName = generateRandomContainerName()
-				_, err = ss.server.getMachineByName(teamName, machineName)
+				_, err = ss.server.getMachineByName(machineName)
 				if err != nil {
 					break
 				}
@@ -1149,8 +1036,8 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 	}
 
 	// Show creation message with proper formatting
-	fmt.Fprintf(s, "Creating \033[1m%s\033[0m (%s) for team \033[1;36m%s\033[0m using image \033[1m%s\033[0m...\r\n",
-		machineName, size, teamName, displayImage)
+	fmt.Fprintf(s, "Creating \033[1m%s\033[0m (%s) using image \033[1m%s\033[0m...\r\n",
+		machineName, size, displayImage)
 
 	// Get size preset
 	sizePreset, exists := container.ContainerSizes[size]
@@ -1163,7 +1050,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 	req := &container.CreateContainerRequest{
 		UserID:        user.UserID,
 		Name:          machineName,
-		TeamName:      teamName,
+		AllocID:       allocID,
 		Image:         image,
 		Size:          size,
 		CPURequest:    sizePreset.CPURequest,
@@ -1197,13 +1084,13 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}
-	if err := ss.server.createMachineWithSSHAndDockerHost(user.UserID, teamName, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, sshKeys, createdContainer.SSHPort); err != nil {
+	if err := ss.server.createMachineWithSSHAndDockerHost(user.UserID, allocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, sshKeys, createdContainer.SSHPort); err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 
 	// Check if container is already running (warm pool case)
 	if createdContainer.Status == container.StatusRunning {
-		sshCommand := ss.server.formatSSHConnectionInfo(teamName, machineName)
+		sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
 		fmt.Fprintf(s, "Ready in ~1s! Access with \033[1m%s\033[0m\r\n\r\n", sshCommand)
 		return
 	}
@@ -1249,7 +1136,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 
 			if containerFound && containerStatus == container.StatusRunning {
 				totalTime := time.Since(startTime)
-				sshCommand := ss.server.formatSSHConnectionInfo(teamName, machineName)
+				sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
 				fmt.Fprintf(s, "\r\033[KReady in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
 					totalTime.Seconds(), sshCommand)
 				return
@@ -1263,7 +1150,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, teamName string,
 	fmt.Fprintf(s, "\r\033[K\033[1;31mTimeout: Machine failed to start within 3 minutes\033[0m\r\n")
 }
 
-func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, teamName string, args []string) {
+func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, allocID string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: start <machine-name>\r\n")
@@ -1285,7 +1172,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, teamName strin
 	}
 
 	// Get machine info
-	machine, err := ss.server.getMachineByName(teamName, machineName)
+	machine, err := ss.server.getMachineByName(machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
 		return
@@ -1309,17 +1196,17 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, teamName strin
 	// Update database status
 	_, err = ss.server.db.Exec(`
 		UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP
-		WHERE name = ? AND team_name = ?`,
-		machineName, teamName)
+		WHERE name = ?`,
+		machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
 	}
 
-	sshCommand := ss.server.formatSSHConnectionInfo(teamName, machineName)
+	sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
 	fmt.Fprintf(s, "\033[1;32mMachine started!\033[0m Access with \033[1m%s\033[0m\r\n", sshCommand)
 }
 
-func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, teamName string, args []string) {
+func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, allocID string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify at least one machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: stop <machine-name> [...]\r\n")
@@ -1340,7 +1227,7 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, teamName string
 
 	for _, machineName := range args {
 		// Get machine info
-		machine, err := ss.server.getMachineByName(teamName, machineName)
+		machine, err := ss.server.getMachineByName(machineName)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
 			continue
@@ -1364,8 +1251,8 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, teamName string
 		// Update database status
 		_, err = ss.server.db.Exec(`
 			UPDATE machines SET status = 'stopped'
-			WHERE name = ? AND team_name = ?`,
-			machineName, teamName)
+			WHERE name = ?`,
+			machineName)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
 		}
@@ -1374,7 +1261,7 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, teamName string
 	}
 }
 
-func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName string, args []string) {
+func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, allocID string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: delete <machine-name>\r\n")
@@ -1396,8 +1283,8 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 
 		_, err := ss.server.db.Exec(`
 			DELETE FROM machines
-			WHERE name = ? AND team_name = ?`,
-			machineName, teamName)
+			WHERE name = ?`,
+			machineName)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError deleting machine: %v\033[0m\r\n", err)
 			return
@@ -1405,7 +1292,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 
 		// Deregister from IP allocation strategy if enabled
 		if ss.server.ipAllocator != nil {
-			if allocErr := ss.server.ipAllocator.Deallocate(teamName, machineName); allocErr != nil {
+			if allocErr := ss.server.ipAllocator.Deallocate(allocID, machineName); allocErr != nil {
 				// Don't fail the operation if IP deallocation fails
 				fmt.Fprintf(s, "\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m\r\n", allocErr)
 			}
@@ -1416,7 +1303,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 	}
 
 	// Get machine info
-	machine, err := ss.server.getMachineByName(teamName, machineName)
+	machine, err := ss.server.getMachineByName(machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
 		return
@@ -1436,8 +1323,8 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 	// Delete from database
 	_, err = ss.server.db.Exec(`
 		DELETE FROM machines
-		WHERE name = ? AND team_name = ?`,
-		machineName, teamName)
+		WHERE name = ?`,
+		machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError deleting machine from database: %v\033[0m\r\n", err)
 		return
@@ -1445,7 +1332,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 
 	// Deregister from IP allocation strategy if enabled
 	if ss.server.ipAllocator != nil {
-		if allocErr := ss.server.ipAllocator.Deallocate(teamName, machineName); allocErr != nil {
+		if allocErr := ss.server.ipAllocator.Deallocate(allocID, machineName); allocErr != nil {
 			// Don't fail the operation if IP deallocation fails
 			fmt.Fprintf(s, "\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m\r\n", allocErr)
 		}
@@ -1454,7 +1341,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, teamName stri
 	fmt.Fprintf(s, "\033[1;32mMachine '%s' deleted successfully\033[0m\r\n", machineName)
 }
 
-func (ss *SSHServer) handleLogsCommand(s ssh.Session, publicKey, teamName string, args []string) {
+func (ss *SSHServer) handleLogsCommand(s ssh.Session, publicKey, allocID string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: logs <machine-name>\r\n")
@@ -1466,8 +1353,8 @@ func (ss *SSHServer) handleLogsCommand(s ssh.Session, publicKey, teamName string
 	fmt.Fprintf(s, "\033[1;33mNote: Logs not implemented in new server yet\033[0m\r\n")
 }
 
-func (ss *SSHServer) handleRouteCommand(s ssh.Session, publicKey, teamName string, args []string) {
-	ss.server.handleRouteCommand(s, publicKey, teamName, args)
+func (ss *SSHServer) handleRouteCommand(s ssh.Session, publicKey, allocID string, args []string) {
+	ss.server.handleRouteCommand(s, publicKey, allocID, args)
 }
 
 func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
@@ -1483,17 +1370,15 @@ func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
 			"  new                                # just give me a computer\r\n" +
 			"  new --name=m --image=ubuntu:22.04  # custom image and name\r\n\r\n"
 		fmt.Fprint(s, helpText)
-	case "team":
-		teamHelpText := "\r\n\033[1;33mCommand: team\033[0m\r\n\r\n" +
-			"Manage team members and settings.\r\n\r\n" +
+	case "alloc":
+		allocHelpText := "\r\n\033[1;33mCommand: alloc\033[0m\r\n\r\n" +
+			"Show resource allocation information.\r\n\r\n" +
 			"\033[1mSubcommands:\033[0m\r\n" +
-			"  \033[1mteam ls\033[0m                 - List team members\r\n" +
-			"  \033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
-			"  \033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n"
-		fmt.Fprint(s, teamHelpText)
+			"  \033[1malloc info\033[0m              - Show allocation usage\r\n\r\n"
+		fmt.Fprint(s, allocHelpText)
 	case "list", "ls":
 		helpText := "\r\n\033[1;33mCommand: list (or ls)\033[0m\r\n\r\n" +
-			"List all machines in your current team.\r\n\r\n" +
+			"List all machines in your allocation.\r\n\r\n" +
 			"\033[1mUsage:\033[0m list\r\n\r\n"
 		fmt.Fprint(s, helpText)
 	case "ssh":
@@ -1600,123 +1485,35 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 	fmt.Fprintf(s, "\r\n")
 }
 
-func (ss *SSHServer) handleTeamCommand(s ssh.Session, publicKey, teamName string, args []string) {
-	// Define team help text
-	teamHelpText := "\r\n\033[1;36mTeam subcommands:\033[0m\r\n\r\n" +
-		"\033[1mteam ls\033[0m                 - List team members\r\n" +
-		"\033[1mteam invite <email>\033[0m     - Invite someone to your team\r\n" +
-		"\033[1mteam join <code>\033[0m        - Join a team with an invite code\r\n\r\n"
-
-	if len(args) == 0 {
-		// Show current team and help
-		fmt.Fprintf(s, "\r\nCurrent team: \033[1;36m%s\033[0m\r\n", teamName)
-		fmt.Fprint(s, teamHelpText)
+func (ss *SSHServer) handleAllocCommand(s ssh.Session, publicKey, allocID string, args []string) {
+	// Show allocation info
+	user, err := ss.server.getUserByPublicKey(publicKey)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
 		return
 	}
 
-	subCmd := args[0]
-	subArgs := args[1:]
-
-	switch subCmd {
-	case "list", "ls":
-		ss.handleTeamList(s, publicKey, teamName)
-	case "invite":
-		if len(subArgs) == 0 {
-			fmt.Fprintf(s, "\033[1;31mError: Please specify an email address\033[0m\r\n")
-			fmt.Fprintf(s, "Usage: team invite <email>\r\n")
-			return
-		}
-		fmt.Fprintf(s, "\033[1;33mTeam invite not implemented in new server yet\033[0m\r\n")
-	case "join":
-		if len(subArgs) == 0 {
-			fmt.Fprintf(s, "\033[1;31mError: Please specify an invite code\033[0m\r\n")
-			fmt.Fprintf(s, "Usage: team join <code>\r\n")
-			return
-		}
-		fmt.Fprintf(s, "\033[1;33mTeam join not implemented in new server yet\033[0m\r\n")
-	default:
-		fmt.Fprintf(s, "\033[1;31mUnknown team command: %s\033[0m\r\n", subCmd)
-		fmt.Fprint(s, teamHelpText)
-	}
-}
-
-func (ss *SSHServer) handleTeamList(s ssh.Session, publicKey, teamName string) {
-	// Get team members
-	rows, err := ss.server.db.Query(`
-		SELECT u.email, tm.is_admin, tm.joined_at
-		FROM team_members tm
-		JOIN users u ON tm.user_id = u.user_id
-		WHERE tm.team_name = ?
-		ORDER BY tm.joined_at ASC`,
-		teamName)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError retrieving team members: %v\033[0m\r\n", err)
+	alloc, err := ss.server.getUserAlloc(user.UserID)
+	if err != nil || alloc == nil {
+		fmt.Fprintf(s, "\033[1;31mError: No allocation found\033[0m\r\n")
 		return
 	}
-	defer rows.Close()
 
-	fmt.Fprintf(s, "\033[1;36mTeam: %s\033[0m\r\n", teamName)
-	fmt.Fprintf(s, "─────────────────────────────────────────────────────────────\r\n")
-
-	memberCount := 0
-	for rows.Next() {
-		var email string
-		var isAdmin bool
-		var joinedAt time.Time
-
-		if err := rows.Scan(&email, &isAdmin, &joinedAt); err != nil {
-			continue
-		}
-
-		memberCount++
-
-		role := "Member"
-		if isAdmin {
-			role = "\033[1;33mAdmin\033[0m"
-		}
-
-		joinedStr := joinedAt.Format("Jan 2, 2006")
-		fmt.Fprintf(s, "  • \033[1m%s\033[0m - %s (joined %s)\r\n", email, role, joinedStr)
-	}
-
-	if memberCount == 0 {
-		fmt.Fprintf(s, "  No team members found.\r\n")
-	} else {
-		fmt.Fprintf(s, "\r\nTotal members: %d\r\n", memberCount)
-	}
+	fmt.Fprintf(s, "\r\n\033[1;36mYour Allocation:\033[0m\r\n\r\n")
+	fmt.Fprintf(s, "  ID: \033[1m%s\033[0m\r\n", alloc.AllocID)
+	fmt.Fprintf(s, "  Type: \033[1m%s\033[0m\r\n", alloc.AllocType)
+	fmt.Fprintf(s, "  Region: \033[1m%s\033[0m\r\n", alloc.Region)
+	fmt.Fprintf(s, "  Created: %s\r\n\r\n", alloc.CreatedAt.Format("Jan 2, 2006"))
 }
 
-// Helper method to get machines for a team
-func (s *Server) getMachinesForTeam(teamName string) ([]*Machine, error) {
-	rows, err := s.db.Query(`
-		SELECT id, team_name, name, status, image, container_id,
-		       created_by_user_id, created_at, updated_at, last_started_at
-		FROM machines
-		WHERE team_name = ?
-		ORDER BY name ASC`,
-		teamName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var machines []*Machine
-	for rows.Next() {
-		m := &Machine{}
-		err := rows.Scan(&m.ID, &m.TeamName, &m.Name, &m.Status, &m.Image,
-			&m.ContainerID, &m.CreatedByUserID, &m.CreatedAt,
-			&m.UpdatedAt, &m.LastStartedAt)
-		if err != nil {
-			return nil, err
-		}
-		machines = append(machines, m)
-	}
-
-	return machines, rows.Err()
+// getMachinesForTeam is obsolete - use getMachinesForAlloc instead
+func (s *Server) getMachinesForTeam(allocID string) ([]*Machine, error) {
+	// This function is kept for backward compatibility but redirects to getMachinesForAlloc
+	return s.getMachinesForAlloc(allocID)
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
-func (ss *SSHServer) startEmailVerificationNew(publicKey, email, teamName string) error {
+func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
 	// Check if this email already exists
 	var existingUserID string
 	err := ss.server.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&existingUserID)
@@ -1749,7 +1546,6 @@ func (ss *SSHServer) startEmailVerificationNew(publicKey, email, teamName string
 		verification := &EmailVerification{
 			PublicKey:    publicKey,
 			Email:        email,
-			TeamName:     "", // Existing users don't need team name
 			Token:        token,
 			CompleteChan: make(chan struct{}),
 			CreatedAt:    time.Now(),
@@ -1794,7 +1590,6 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	verification := &EmailVerification{
 		PublicKey:    publicKey,
 		Email:        email,
-		TeamName:     teamName, // Team name selected by new user
 		Token:        token,
 		CompleteChan: make(chan struct{}),
 		CreatedAt:    time.Now(),
@@ -2056,32 +1851,32 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machi
 }
 
 // getMachine retrieves a machine for the given user/team/name
-func (ss *SSHServer) getMachine(publicKey, teamName, machineName string) (*Machine, error) {
-	// First verify user has access to the team
+func (ss *SSHServer) getMachine(publicKey, allocID, machineName string) (*Machine, error) {
+	// First verify user has access to the alloc
 	var exists bool
 	err := ss.server.db.QueryRow(`
 		SELECT EXISTS(
-			SELECT 1 FROM team_members tm
-			JOIN users u ON tm.user_id = u.user_id
+			SELECT 1 FROM allocs a
+			JOIN users u ON a.user_id = u.user_id
 			JOIN ssh_keys sk ON u.user_id = sk.user_id
-			WHERE sk.public_key = ? AND sk.verified = 1 AND tm.team_name = ?
-		)`, publicKey, teamName).Scan(&exists)
+			WHERE sk.public_key = ? AND sk.verified = 1 AND a.alloc_id = ?
+		)`, publicKey, allocID).Scan(&exists)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %v", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("access denied to team '%s'", teamName)
+		return nil, fmt.Errorf("access denied to allocation '%s'", allocID)
 	}
 
 	// Get the machine
 	var machine Machine
 	err = ss.server.db.QueryRow(`
-		SELECT id, team_name, name, status, image, container_id, 
+		SELECT id, alloc_id, name, status, image, container_id, 
 		       created_by_user_id, created_at, updated_at, 
 		       last_started_at, docker_host, routes
 		FROM machines 
-		WHERE name = ? AND team_name = ?`, machineName, teamName).Scan(
-		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
+		WHERE name = ? AND alloc_id = ?`, machineName, allocID).Scan(
+		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
 		&machine.DockerHost, &machine.Routes)

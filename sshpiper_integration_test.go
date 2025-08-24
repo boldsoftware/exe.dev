@@ -356,10 +356,10 @@ func TestRealMachineAccessE2E(t *testing.T) {
 
 	ctx := context.Background()
 	req := &container.CreateContainerRequest{
-		UserID:   userID,
-		Name:     "test-machine",
-		TeamName: teamName,
-		Image:    "ubuntu:22.04",
+		UserID:  userID,
+		Name:    "test-machine",
+		AllocID: "test-alloc",
+		Image:   "ubuntu:22.04",
 	}
 
 	t.Log("Creating container with SSH...")

@@ -105,11 +105,11 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 	mockManager := &TestMockContainerManager{
 		containers: map[string]*container.Container{
 			containerID: {
-				ID:       containerID,
-				Name:     machineName,
-				Status:   container.StatusRunning,
-				UserID:   userID,
-				TeamName: teamName,
+				ID:      containerID,
+				Name:    machineName,
+				Status:  container.StatusRunning,
+				UserID:  userID,
+				AllocID: "test-alloc",
 			},
 		},
 	}
@@ -175,11 +175,11 @@ type TestMockContainerManager struct {
 
 func (m *TestMockContainerManager) CreateContainer(ctx context.Context, req *container.CreateContainerRequest) (*container.Container, error) {
 	return &container.Container{
-		ID:       "new-container",
-		Name:     req.Name,
-		Status:   container.StatusRunning,
-		UserID:   req.UserID,
-		TeamName: req.TeamName,
+		ID:      "new-container",
+		Name:    req.Name,
+		Status:  container.StatusRunning,
+		UserID:  req.UserID,
+		AllocID: req.AllocID,
 	}, nil
 }
 

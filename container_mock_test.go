@@ -35,12 +35,12 @@ func NewMockContainerManager() *MockContainerManager {
 }
 
 // AddContainer adds a pre-configured container for testing
-func (m *MockContainerManager) AddContainer(containerID, name, userID, teamName string) {
+func (m *MockContainerManager) AddContainer(containerID, name, userID, allocID string) {
 	m.containers[containerID] = &container.Container{
 		ID:        containerID,
 		UserID:    userID,
 		Name:      name,
-		TeamName:  teamName,
+		AllocID:   allocID,
 		Status:    container.StatusRunning,
 		CreatedAt: time.Now(),
 		StartedAt: func() *time.Time { t := time.Now(); return &t }(),
@@ -55,7 +55,7 @@ func (m *MockContainerManager) CreateContainer(ctx context.Context, req *contain
 		ID:        containerID,
 		UserID:    req.UserID,
 		Name:      req.Name,
-		TeamName:  req.TeamName,
+		AllocID:   req.AllocID,
 		Image:     req.Image,
 		Status:    container.StatusRunning,
 		CreatedAt: time.Now(),
@@ -172,8 +172,8 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 	if len(cmd) > 0 && cmd[0] == "/bin/bash" {
 		// Generate hostname similar to real implementation
 		var hostname string
-		if c.TeamName != "" {
-			hostname = fmt.Sprintf("%s.%s.exe.dev", c.Name, c.TeamName)
+		if c.AllocID != "" {
+			hostname = fmt.Sprintf("%s.exe.dev", c.Name)
 		} else {
 			hostname = fmt.Sprintf("%s.exe.dev", c.Name)
 		}

@@ -32,19 +32,29 @@ func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 	// Create test server with database
 	server, tempDB := setupTestServerWithDB(t)
 	defer tempDB.Close()
+	defer os.Remove(tempDB.Name())
+	defer server.Stop()
 
 	// Test docker host values
 	dockerHost := "tcp://dockerhost1:2376"
 	userID := "test-user-id"
-	teamName := "testteam"
+	allocID := "test-alloc"
 	machineName := "testmachine"
 	containerID := "test-container-id"
 	image := "ubuntu:latest"
 
-	// Create test user and team
+	// Create test user and alloc
 	err := server.createUser(userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Create alloc for the user
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', ?, datetime('now'))`, allocID, userID, dockerHost)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create SSH keys for testing
@@ -55,15 +65,15 @@ func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 
 	// Store machine with docker host in database
 	err = server.createMachineWithSSHAndDockerHost(
-		userID, teamName, machineName, containerID, image, dockerHost,
+		userID, allocID, machineName, containerID, image, dockerHost,
 		sshKeys, 2222,
 	)
 	if err != nil {
 		t.Fatalf("Failed to store machine with docker host: %v", err)
 	}
 
-	// Retrieve machine from database
-	machine, err := server.getMachineByName(teamName, machineName)
+	// Retrieve machine from database (globally unique name now)
+	machine, err := server.getMachineByName(machineName)
 	if err != nil {
 		t.Fatalf("Failed to retrieve machine: %v", err)
 	}
@@ -161,28 +171,38 @@ func TestMultiDockerHostSchemaCompatibility(t *testing.T) {
 	// Create test server with database
 	server, tempDB := setupTestServerWithDB(t)
 	defer tempDB.Close()
+	defer os.Remove(tempDB.Name())
+	defer server.Stop()
 
 	// Create a machine without docker host (legacy case)
 	userID := "test-user-id"
-	teamName := "testteam"
+	allocID := "test-alloc"
 	machineName := "legacymachine"
 	containerID := "legacy-container-id"
 	image := "ubuntu:latest"
 
-	// Create test user and team
+	// Create test user and alloc
 	err := server.createUser(userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
+	// Create alloc without docker host
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
+	}
+
 	// Use the old method without docker host
-	err = server.createMachine(userID, teamName, machineName, containerID, image)
+	err = server.createMachine(userID, allocID, machineName, containerID, image)
 	if err != nil {
 		t.Fatalf("Failed to create legacy machine: %v", err)
 	}
 
-	// Retrieve machine from database
-	machine, err := server.getMachineByName(teamName, machineName)
+	// Retrieve machine from database (globally unique name now)
+	machine, err := server.getMachineByName(machineName)
 	if err != nil {
 		t.Fatalf("Failed to retrieve legacy machine: %v", err)
 	}

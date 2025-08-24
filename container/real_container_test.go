@@ -44,7 +44,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	req := &CreateContainerRequest{
 		UserID:        "test-user-ssh",
 		Name:          "ssh-test-container",
-		TeamName:      "test-team",
+		AllocID:       "test-alloc",
 		Image:         "ubuntu:22.04",
 		Size:          "small",
 		CPURequest:    "100m",

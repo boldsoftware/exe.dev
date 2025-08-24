@@ -107,10 +107,10 @@ func TestContainerWithSSH(t *testing.T) {
 
 	// Create container request
 	req := &CreateContainerRequest{
-		UserID:   "test-user",
-		Name:     "ssh-test",
-		TeamName: "testteam",
-		Image:    "ubuntu:22.04",
+		UserID:  "test-user",
+		Name:    "ssh-test",
+		AllocID: "test-alloc",
+		Image:   "ubuntu:22.04",
 	}
 
 	// Create container

@@ -33,10 +33,10 @@ func TestDockerExecuteInContainer(t *testing.T) {
 	// Use a unique name to avoid conflicts
 	containerName := fmt.Sprintf("test-ssh-%d", time.Now().UnixNano())
 	req := &CreateContainerRequest{
-		UserID:   "test-user",
-		Name:     containerName,
-		TeamName: "test",
-		Image:    "ubuntu:22.04",
+		UserID:  "test-user",
+		Name:    containerName,
+		AllocID: "test-alloc",
+		Image:   "ubuntu:22.04",
 	}
 
 	container, err := manager.CreateContainer(ctx, req)

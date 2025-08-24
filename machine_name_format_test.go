@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestMachineNameFormatParsing tests the new machine.team format instead of team/machine
+// TestMachineNameFormatParsing tests machine name parsing with the new alloc-based system
 func TestMachineNameFormatParsing(t *testing.T) {
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
@@ -21,43 +21,36 @@ func TestMachineNameFormatParsing(t *testing.T) {
 	}
 	defer server.Stop()
 
-	// Create test user and teams
+	// Create test user and alloc
 	userID := "test-user-123"
-	team1 := "team1"
-	team2 := "team2"
+	allocID := "alloc-123"
 	machineName := "testmachine"
 
 	// Create user
-	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	_, err = server.db.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`, userID, "test@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Create teams
-	for _, team := range []string{team1, team2} {
-		_, err = server.db.Exec(`INSERT INTO teams (team_name, created_at) VALUES (?, datetime('now'))`, team)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Add user to both teams
-		_, err = server.db.Exec(`INSERT INTO team_members (user_id, team_name, is_admin) VALUES (?, ?, 1)`, userID, team)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Create a machine in each team
-		_, err = server.db.Exec(`
-			INSERT INTO machines (team_name, name, status, image, created_by_user_id, created_at, updated_at)
-			VALUES (?, ?, 'stopped', 'ubuntu', ?, datetime('now'), datetime('now'))
-		`, team, machineName, userID)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// Create alloc
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// Set team1 as default team
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, default_team) VALUES (?, ?, 1, ?)`, userID, "dummy-key", team1)
+	// Create a machine in the alloc
+	_, err = server.db.Exec(`
+		INSERT INTO machines (alloc_id, name, status, image, created_by_user_id, created_at, updated_at)
+		VALUES (?, ?, 'stopped', 'ubuntu', ?, datetime('now'), datetime('now'))
+	`, allocID, machineName, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add SSH key for user
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`, userID, "dummy-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,30 +58,16 @@ func TestMachineNameFormatParsing(t *testing.T) {
 	tests := []struct {
 		name          string
 		machineName   string
-		expectedTeam  string
+		expectedAlloc string
 		expectedFound bool
 		description   string
 	}{
 		{
-			name:          "machine only - uses default team",
+			name:          "machine by name - globally unique",
 			machineName:   "testmachine",
-			expectedTeam:  team1, // default team
+			expectedAlloc: allocID,
 			expectedFound: true,
-			description:   "When no team is specified, should use default team",
-		},
-		{
-			name:          "machine.team format - team1",
-			machineName:   "testmachine.team1",
-			expectedTeam:  team1,
-			expectedFound: true,
-			description:   "Should parse machine.team format correctly",
-		},
-		{
-			name:          "machine.team format - team2",
-			machineName:   "testmachine.team2",
-			expectedTeam:  team2,
-			expectedFound: true,
-			description:   "Should parse machine.team format correctly for different team",
+			description:   "Machine names are globally unique",
 		},
 		{
 			name:          "nonexistent machine",
@@ -97,16 +76,10 @@ func TestMachineNameFormatParsing(t *testing.T) {
 			description:   "Should return nil for nonexistent machine",
 		},
 		{
-			name:          "machine in nonexistent team",
-			machineName:   "testmachine.nonexistent",
+			name:          "machine with dots in name",
+			machineName:   "test.machine.name",
 			expectedFound: false,
-			description:   "Should return nil for machine in nonexistent team",
-		},
-		{
-			name:          "old team/machine format should not work",
-			machineName:   "team1/testmachine",
-			expectedFound: false,
-			description:   "Old team/machine format should not be recognized",
+			description:   "Machine with dots (old format) should not exist",
 		},
 	}
 
@@ -119,8 +92,8 @@ func TestMachineNameFormatParsing(t *testing.T) {
 					t.Errorf("Expected to find machine, but got nil. %s", tt.description)
 					return
 				}
-				if machine.TeamName != tt.expectedTeam {
-					t.Errorf("Expected team %s, got %s. %s", tt.expectedTeam, machine.TeamName, tt.description)
+				if machine.AllocID != tt.expectedAlloc {
+					t.Errorf("Expected alloc %s, got %s. %s", tt.expectedAlloc, machine.AllocID, tt.description)
 				}
 				if machine.Name != "testmachine" {
 					t.Errorf("Expected machine name 'testmachine', got %s", machine.Name)
@@ -134,37 +107,37 @@ func TestMachineNameFormatParsing(t *testing.T) {
 	}
 }
 
-// TestFormatSSHConnectionInfo tests the new SSH connection format
+// TestFormatSSHConnectionInfo tests the SSH connection format with the new naming
 func TestFormatSSHConnectionInfo(t *testing.T) {
 	server := &Server{}
 
 	tests := []struct {
 		name        string
 		devMode     string
-		teamName    string
+		allocID     string
 		machineName string
 		expected    string
 	}{
 		{
 			name:        "production mode",
 			devMode:     "",
-			teamName:    "myteam",
+			allocID:     "alloc-123",
 			machineName: "mymachine",
-			expected:    "ssh mymachine.myteam@exe.dev",
+			expected:    "ssh mymachine@exe.dev",
 		},
 		{
 			name:        "local dev mode with port 22",
 			devMode:     "local",
-			teamName:    "testteam",
+			allocID:     "alloc-456",
 			machineName: "testmachine",
-			expected:    "ssh testmachine.testteam@localhost",
+			expected:    "ssh testmachine@localhost",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server.devMode = tt.devMode
-			result := server.formatSSHConnectionInfo(tt.teamName, tt.machineName)
+			result := server.formatSSHConnectionInfo(tt.allocID, tt.machineName)
 
 			if result != tt.expected {
 				t.Errorf("Expected %q, got %q", tt.expected, result)

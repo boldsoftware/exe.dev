@@ -44,10 +44,10 @@ func TestDevLocalContainerFix(t *testing.T) {
 
 	// Create a container
 	req := &container.CreateContainerRequest{
-		UserID:   "test-user",
-		TeamName: "test-team",
-		Name:     "test-container",
-		Image:    "alpine:latest",
+		UserID:  "test-user",
+		AllocID: "test-alloc",
+		Name:    "test-container",
+		Image:   "alpine:latest",
 	}
 
 	createdContainer, err := dockerManager.CreateContainer(ctx, req)

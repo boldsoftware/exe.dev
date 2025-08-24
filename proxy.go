@@ -42,15 +42,15 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		hostname = hostname[:idx]
 	}
 
-	// Parse hostname to extract machine and team names
-	machineName, teamName, err := s.parseProxyHostname(hostname)
+	// Parse hostname to extract machine name
+	machineName, err := s.parseProxyHostname(hostname)
 	if err != nil {
 		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
 		return
 	}
 
 	// Find the machine
-	machine, err := s.getMachineByName(teamName, machineName)
+	machine, err := s.getMachineByName(machineName)
 	if err != nil {
 		http.Error(w, "Machine not found", http.StatusNotFound)
 		return
@@ -80,15 +80,16 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// User is authenticated, check if they have team access
-		hasAccess, err := s.userHasTeamAccess(userID, teamName)
-		if err != nil {
-			http.Error(w, "Error checking team access", http.StatusInternalServerError)
+		// User is authenticated, check if they have access to this machine
+		// Machine must belong to user's alloc
+		alloc, err := s.getUserAlloc(userID)
+		if err != nil || alloc == nil {
+			http.Error(w, "Error checking user allocation", http.StatusInternalServerError)
 			return
 		}
-		if !hasAccess {
-			// User is authenticated but not authorized for this team
-			http.Error(w, "Forbidden: You do not have access to this team", http.StatusForbidden)
+		if machine.AllocID != alloc.AllocID {
+			// User is authenticated but machine belongs to different alloc
+			http.Error(w, "Forbidden: You do not have access to this machine", http.StatusForbidden)
 			return
 		}
 	}
@@ -98,7 +99,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		// Show debug info for /__exe.dev/debug in dev mode
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
-		fmt.Fprintf(w, "Machine: %s.%s\n", machineName, teamName)
+		fmt.Fprintf(w, "Machine: %s\n", machineName)
 		fmt.Fprintf(w, "Matched route: %s (priority %d)\n", matchingRoute.Name, matchingRoute.Priority)
 		fmt.Fprintf(w, "Policy: %s\n", matchingRoute.Policy)
 		fmt.Fprintf(w, "Request method: %s\n", r.Method)
@@ -121,7 +122,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	err = s.proxyToContainer(w, r, machine, matchingRoute)
 	if err != nil {
 		if !s.quietMode {
-			slog.Error("Failed to proxy request", "error", err, "machine", machineName, "team", teamName)
+			slog.Error("Failed to proxy request", "error", err, "machine", machineName)
 		}
 		http.Error(w, "Failed to proxy request to container", http.StatusBadGateway)
 		return
@@ -151,7 +152,7 @@ func (s *Server) isProxyRequest(host string) bool {
 
 // parseProxyHostname extracts machine and team names from hostname
 // Supports both machine.team.exe.dev and machine.team.localhost formats
-func (s *Server) parseProxyHostname(hostname string) (machine, team string, err error) {
+func (s *Server) parseProxyHostname(hostname string) (machine string, err error) {
 	// Remove domain suffix based on dev mode
 	expectedDomain := s.getMainDomain()
 	expectedSuffix := "." + expectedDomain
@@ -164,17 +165,16 @@ func (s *Server) parseProxyHostname(hostname string) (machine, team string, err 
 		} else if s.devMode == "" && strings.HasSuffix(hostname, ".localhost") {
 			hostname = strings.TrimSuffix(hostname, ".localhost")
 		} else {
-			return "", "", fmt.Errorf("unsupported domain")
+			return "", fmt.Errorf("unsupported domain")
 		}
 	}
 
-	// Split into machine.team
-	parts := strings.Split(hostname, ".")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("hostname must be in format machine.team")
+	// The remaining part is just the machine name
+	if hostname == "" || strings.Contains(hostname, ".") {
+		return "", fmt.Errorf("invalid machine name")
 	}
 
-	return parts[0], parts[1], nil
+	return hostname, nil
 }
 
 // findMatchingRoute finds the best matching route for the request
@@ -406,7 +406,7 @@ func (s *Server) handleRouteCommand(w io.Writer, publicKey, teamName string, arg
 
 func (s *Server) handleRouteList(w io.Writer, publicKey, teamName, machineName string) {
 	// Get machine
-	machine, err := s.getMachineForUser(publicKey, teamName, machineName)
+	machine, err := s.getMachineForUser(publicKey, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -472,7 +472,7 @@ func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName st
 	}
 
 	// Get machine
-	machine, err := s.getMachineForUser(publicKey, teamName, machineName)
+	machine, err := s.getMachineForUser(publicKey, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -582,7 +582,7 @@ func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName
 	routeName := args[0]
 
 	// Get machine
-	machine, err := s.getMachineForUser(publicKey, teamName, machineName)
+	machine, err := s.getMachineForUser(publicKey, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -632,38 +632,34 @@ func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName
 }
 
 // getMachineForUser retrieves a machine for the given user/team/name
-func (s *Server) getMachineForUser(publicKey, teamName, machineName string) (*Machine, error) {
-	// First verify user has access to the team
-	var exists bool
-	err := s.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM team_members tm
-			JOIN users u ON tm.user_id = u.user_id
-			JOIN ssh_keys sk ON u.user_id = sk.user_id
-			WHERE sk.public_key = ? AND sk.verified = 1 AND tm.team_name = ?
-		)`, publicKey, teamName).Scan(&exists)
-	if err != nil {
-		return nil, fmt.Errorf("database error: %v", err)
+func (s *Server) getMachineForUser(publicKey, machineName string) (*Machine, error) {
+	// Get user from public key
+	user, err := s.getUserByPublicKey(publicKey)
+	if err != nil || user == nil {
+		return nil, fmt.Errorf("user not found")
 	}
-	if !exists {
-		return nil, fmt.Errorf("access denied to team '%s'", teamName)
+
+	// Get user's alloc
+	alloc, err := s.getUserAlloc(user.UserID)
+	if err != nil || alloc == nil {
+		return nil, fmt.Errorf("user has no allocation")
 	}
 
 	// Get the machine
 	var machine Machine
 	err = s.db.QueryRow(`
-		SELECT id, team_name, name, status, image, container_id, 
+		SELECT id, alloc_id, name, status, image, container_id, 
 		       created_by_user_id, created_at, updated_at, 
 		       last_started_at, docker_host, routes
 		FROM machines 
-		WHERE name = ? AND team_name = ?`, machineName, teamName).Scan(
-		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
+		WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
+		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
 		&machine.DockerHost, &machine.Routes)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("machine '%s' not found", machineName)
+			return nil, fmt.Errorf("machine '%s' not found or access denied", machineName)
 		}
 		return nil, fmt.Errorf("database error: %v", err)
 	}

@@ -22,7 +22,7 @@ type Container struct {
 	ID        string          `json:"id"`
 	UserID    string          `json:"user_id"`
 	Name      string          `json:"name"`
-	TeamName  string          `json:"team_name,omitempty"`
+	AllocID   string          `json:"alloc_id,omitempty"`
 	Image     string          `json:"image"`
 	Status    ContainerStatus `json:"status"`
 	CreatedAt time.Time       `json:"created_at"`
@@ -111,7 +111,7 @@ var ContainerSizes = map[string]ContainerSize{
 type CreateContainerRequest struct {
 	UserID     string `json:"user_id"`
 	Name       string `json:"name"`
-	TeamName   string `json:"team_name,omitempty"`  // Team name for hostname configuration
+	AllocID    string `json:"alloc_id,omitempty"`   // Allocation ID for this container
 	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"
 	Dockerfile string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
 
@@ -131,7 +131,7 @@ type CreateContainerRequest struct {
 // BuildRequest represents a request to build a custom Docker image
 type BuildRequest struct {
 	UserID            string `json:"user_id"`
-	TeamName          string `json:"team_name"`
+	AllocID           string `json:"alloc_id"`
 	Dockerfile        string `json:"dockerfile"`
 	DockerfileContent string `json:"dockerfile_content"`
 	BuildID           string `json:"build_id"`

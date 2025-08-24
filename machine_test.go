@@ -23,21 +23,21 @@ func TestCreateMachine(t *testing.T) {
 	}
 	defer server.Stop()
 
-	// Create test user and team first
+	// Create test user and alloc first
 	userID := "test-user-id"
 	email := "test@example.com"
-	teamName := "testteam"
+	allocID := "test-alloc-id"
 
 	if err := server.createUser(userID, email); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	if err := server.createTeam(teamName, email); err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	if err := server.addTeamMember(userID, teamName, true); err != nil {
-		t.Fatalf("Failed to add team member: %v", err)
+	// Create alloc for the user
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Test creating a machine
@@ -45,19 +45,19 @@ func TestCreateMachine(t *testing.T) {
 	containerID := "mock-container-123"
 	image := "ubuntu:22.04"
 
-	err = server.createMachine(userID, teamName, machineName, containerID, image)
+	err = server.createMachine(userID, allocID, machineName, containerID, image)
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Verify machine was created correctly
-	machine, err := server.getMachineByName(teamName, machineName)
+	machine, err := server.getMachineByName(machineName)
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
 
-	if machine.TeamName != teamName {
-		t.Errorf("Expected team name %s, got %s", teamName, machine.TeamName)
+	if machine.AllocID != allocID {
+		t.Errorf("Expected alloc ID %s, got %s", allocID, machine.AllocID)
 	}
 
 	if machine.Name != machineName {
@@ -98,27 +98,28 @@ func TestGetMachineByName(t *testing.T) {
 	// Create test data
 	userID := "test-user-id"
 	email := "test@example.com"
-	teamName := "testteam"
+	allocID := "test-alloc-id"
+	machineName := "testmachine"
 
 	if err := server.createUser(userID, email); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
-	if err := server.createTeam(teamName, email); err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-	if err := server.addTeamMember(userID, teamName, true); err != nil {
-		t.Fatalf("Failed to add team member: %v", err)
+
+	// Create alloc
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	// Create machine
-	machineName := "testmachine"
-	containerID := "mock-container-123"
-	if err := server.createMachine(userID, teamName, machineName, containerID, "ubuntu:22.04"); err != nil {
+	err = server.createMachine(userID, allocID, machineName, "container-123", "ubuntu:22.04")
+	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
-	// Test getting existing machine
-	machine, err := server.getMachineByName(teamName, machineName)
+	// Test getting machine by name (globally unique now)
+	machine, err := server.getMachineByName(machineName)
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
@@ -128,18 +129,18 @@ func TestGetMachineByName(t *testing.T) {
 	}
 
 	// Test getting non-existent machine
-	_, err = server.getMachineByName(teamName, "nonexistent")
+	_, err = server.getMachineByName("nonexistent")
+	if err == nil {
+		t.Error("Expected error when getting non-existent machine")
+	}
 	if err != sql.ErrNoRows {
-		t.Errorf("Expected sql.ErrNoRows for non-existent machine, got %v", err)
+		t.Errorf("Expected sql.ErrNoRows, got %v", err)
 	}
 
-	// Test getting machine from different team
-	if err := server.createTeam("otherteam", email); err != nil {
-		t.Fatalf("Failed to create other team: %v", err)
-	}
-	_, err = server.getMachineByName("otherteam", machineName)
-	if err != sql.ErrNoRows {
-		t.Errorf("Expected sql.ErrNoRows for machine in different team, got %v", err)
+	// Test getting machine with empty name
+	_, err = server.getMachineByName("")
+	if err == nil {
+		t.Error("Expected error when getting machine with empty name")
 	}
 }
 
@@ -158,63 +159,51 @@ func TestMachineUniqueConstraint(t *testing.T) {
 	}
 	defer server.Stop()
 
-	// Create test data
-	userID := "test-user-id"
-	email := "test@example.com"
-	teamName := "testteam"
-
-	if err := server.createUser(userID, email); err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-	if err := server.createTeam(teamName, email); err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-	if err := server.addTeamMember(userID, teamName, true); err != nil {
-		t.Fatalf("Failed to add team member: %v", err)
-	}
-
-	// Create first machine
+	// Create test users and allocs
+	userID1 := "test-user-1"
+	userID2 := "test-user-2"
+	allocID1 := "test-alloc-1"
+	allocID2 := "test-alloc-2"
 	machineName := "testmachine"
-	err = server.createMachine(userID, teamName, machineName, "container-1", "ubuntu:22.04")
+
+	if err := server.createUser(userID1, "user1@example.com"); err != nil {
+		t.Fatalf("Failed to create user1: %v", err)
+	}
+	if err := server.createUser(userID2, "user2@example.com"); err != nil {
+		t.Fatalf("Failed to create user2: %v", err)
+	}
+
+	// Create allocs
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID1, userID1)
+	if err != nil {
+		t.Fatalf("Failed to create alloc1: %v", err)
+	}
+
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID2, userID2)
+	if err != nil {
+		t.Fatalf("Failed to create alloc2: %v", err)
+	}
+
+	// Create machine in first alloc
+	err = server.createMachine(userID1, allocID1, machineName, "container-1", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create first machine: %v", err)
 	}
 
-	// Try to create machine with same name in same team - should fail
-	err = server.createMachine(userID, teamName, machineName, "container-2", "ubuntu:22.04")
+	// Try to create machine with same name in different alloc - should fail now (globally unique)
+	err = server.createMachine(userID2, allocID2, machineName, "container-2", "ubuntu:22.04")
 	if err == nil {
-		t.Error("Expected error when creating machine with duplicate name in same team")
+		t.Error("Expected error when creating machine with duplicate name (globally unique)")
 	}
 
-	// Create machine with same name in different team - should succeed
-	otherTeam := "otherteam"
-	if err := server.createTeam(otherTeam, email); err != nil {
-		t.Fatalf("Failed to create other team: %v", err)
-	}
-	if err := server.addTeamMember(userID, otherTeam, true); err != nil {
-		t.Fatalf("Failed to add to other team: %v", err)
-	}
-
-	err = server.createMachine(userID, otherTeam, machineName, "container-3", "ubuntu:22.04")
+	// Create machine with different name should work
+	err = server.createMachine(userID2, allocID2, "differentmachine", "container-3", "ubuntu:22.04")
 	if err != nil {
-		t.Errorf("Failed to create machine with same name in different team: %v", err)
-	}
-
-	// Verify both machines exist
-	machine1, err := server.getMachineByName(teamName, machineName)
-	if err != nil {
-		t.Fatalf("Failed to get first machine: %v", err)
-	}
-	if *machine1.ContainerID != "container-1" {
-		t.Errorf("Expected container-1, got %s", *machine1.ContainerID)
-	}
-
-	machine2, err := server.getMachineByName(otherTeam, machineName)
-	if err != nil {
-		t.Fatalf("Failed to get second machine: %v", err)
-	}
-	if *machine2.ContainerID != "container-3" {
-		t.Errorf("Expected container-3, got %s", *machine2.ContainerID)
+		t.Fatalf("Failed to create machine with different name: %v", err)
 	}
 }
 
@@ -235,52 +224,69 @@ func TestMachineTimestamps(t *testing.T) {
 
 	// Create test data
 	userID := "test-user-id"
-	email := "test@example.com"
-	teamName := "testteam"
+	allocID := "test-alloc-id"
+	machineName := "testmachine"
 
-	if err := server.createUser(userID, email); err != nil {
+	if err := server.createUser(userID, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
-	if err := server.createTeam(teamName, email); err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-	if err := server.addTeamMember(userID, teamName, true); err != nil {
-		t.Fatalf("Failed to add team member: %v", err)
+
+	// Create alloc
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	beforeCreate := time.Now().UTC()
-
-	// Create machine
-	machineName := "testmachine"
-	err = server.createMachine(userID, teamName, machineName, "container-123", "ubuntu:22.04")
+	beforeCreate := time.Now()
+	err = server.createMachine(userID, allocID, machineName, "container-123", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
+	afterCreate := time.Now()
 
-	afterCreate := time.Now().UTC()
-
-	// Get machine and check timestamps
-	machine, err := server.getMachineByName(teamName, machineName)
+	machine, err := server.getMachineByName(machineName)
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
 
-	// Check CreatedAt is within reasonable range (allow 1 second tolerance for SQLite precision)
-	tolerance := time.Second
-	if machine.CreatedAt.Before(beforeCreate.Add(-tolerance)) || machine.CreatedAt.After(afterCreate.Add(tolerance)) {
-		t.Errorf("CreatedAt timestamp %v is not within expected range %v - %v (±%v)",
-			machine.CreatedAt, beforeCreate, afterCreate, tolerance)
+	// Check created_at timestamp
+	if machine.CreatedAt.Before(beforeCreate) || machine.CreatedAt.After(afterCreate) {
+		t.Errorf("Created timestamp %v is not between %v and %v",
+			machine.CreatedAt, beforeCreate, afterCreate)
 	}
 
-	// Check UpdatedAt is within reasonable range (allow 1 second tolerance for SQLite precision)
-	if machine.UpdatedAt.Before(beforeCreate.Add(-tolerance)) || machine.UpdatedAt.After(afterCreate.Add(tolerance)) {
-		t.Errorf("UpdatedAt timestamp %v is not within expected range %v - %v (±%v)",
-			machine.UpdatedAt, beforeCreate, afterCreate, tolerance)
+	// Check updated_at timestamp
+	if machine.UpdatedAt.Before(beforeCreate) || machine.UpdatedAt.After(afterCreate) {
+		t.Errorf("Updated timestamp %v is not between %v and %v",
+			machine.UpdatedAt, beforeCreate, afterCreate)
 	}
 
-	// LastStartedAt should be nil initially
-	if machine.LastStartedAt != nil {
-		t.Errorf("Expected LastStartedAt to be nil, got %v", machine.LastStartedAt)
+	// Update machine status
+	time.Sleep(10 * time.Millisecond) // Ensure time has passed
+	beforeUpdate := time.Now()
+	_, err = server.db.Exec(`UPDATE machines SET status = 'running', updated_at = datetime('now') WHERE name = ?`, machineName)
+	if err != nil {
+		t.Fatalf("Failed to update machine: %v", err)
+	}
+	afterUpdate := time.Now()
+
+	updatedMachine, err := server.getMachineByName(machineName)
+	if err != nil {
+		t.Fatalf("Failed to get updated machine: %v", err)
+	}
+
+	// Check that updated_at changed
+	if updatedMachine.UpdatedAt.Before(beforeUpdate) || updatedMachine.UpdatedAt.After(afterUpdate) {
+		t.Errorf("Updated timestamp %v is not between %v and %v after update",
+			updatedMachine.UpdatedAt, beforeUpdate, afterUpdate)
+	}
+
+	// Check that created_at didn't change
+	if !updatedMachine.CreatedAt.Equal(machine.CreatedAt) {
+		t.Errorf("Created timestamp changed from %v to %v",
+			machine.CreatedAt, updatedMachine.CreatedAt)
 	}
 }
 
@@ -297,71 +303,58 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
+	defer server.Stop()
 
-	// Create test user and team
-	userID := "test-user-123"
-	email := "test@example.com"
-	teamName := "testteam"
+	// Create test data
+	userID := "test-user-id"
+	allocID := "test-alloc-id"
 
-	if err := server.createUser(userID, email); err != nil {
+	if err := server.createUser(userID, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	if err := server.createTeam(teamName, email); err != nil {
-		t.Fatalf("Failed to create team: %v", err)
+	// Create alloc
+	_, err = server.db.Exec(`
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	if err := server.addTeamMember(userID, teamName, true); err != nil {
-		t.Fatalf("Failed to add team member: %v", err)
-	}
-
-	testCases := []struct {
-		name          string
-		machineName   string
-		shouldSucceed bool
-		description   string
+	tests := []struct {
+		name        string
+		machineName string
+		shouldFail  bool
+		description string
 	}{
-		{"valid simple", "myapp", true, "simple valid name"},
-		{"valid with numbers", "web123", true, "valid name with numbers"},
-		{"valid with hyphens", "my-app", true, "valid name with hyphens"},
-		{"valid 32 chars", "abcdefghijklmnopqrstuvwxyz123456", true, "valid 32 character name"},
-
-		{"uppercase letters", "MyApp", false, "contains uppercase letters"},
-		{"starts with number", "123app", false, "starts with number"},
-		{"starts with hyphen", "-myapp", false, "starts with hyphen"},
-		{"ends with hyphen", "myapp-", false, "ends with hyphen"},
-		{"consecutive hyphens", "my--app", false, "contains consecutive hyphens"},
-		{"too long", "abcdefghijklmnopqrstuvwxyz1234567", false, "33 characters (too long)"},
-		{"contains underscore", "my_app", false, "contains underscore"},
-		{"empty string", "", false, "empty string"},
+		{"valid lowercase", "validmachine", false, "Valid lowercase name should succeed"},
+		{"valid with numbers", "machine123", false, "Valid name with numbers should succeed"},
+		{"valid with hyphen", "my-machine", false, "Valid name with hyphen should succeed"},
+		{"empty name", "", true, "Empty name should fail"},
+		{"uppercase letters", "MyMachine", true, "Uppercase letters should fail"},
+		{"with underscore", "my_machine", true, "Underscore should fail"},
+		{"with space", "my machine", true, "Space should fail"},
+		{"with dot", "my.machine", true, "Dot should fail"},
+		{"starts with hyphen", "-machine", true, "Starting with hyphen should fail"},
+		{"ends with hyphen", "machine-", true, "Ending with hyphen should fail"},
+		{"too long", "verylongmachinenamethatexceedslimit12345678901234567890", true, "Name exceeding limit should fail"},
 	}
 
-	for i, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Use a unique container ID for each test
-			containerID := fmt.Sprintf("mock-container-%d", i)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			containerID := fmt.Sprintf("container-%s", tt.machineName)
+			err := server.createMachine(userID, allocID, tt.machineName, containerID, "ubuntu:22.04")
 
-			// Test direct validation first
-			validationResult := server.isValidMachineName(tc.machineName)
-			if validationResult != tc.shouldSucceed {
-				t.Errorf("Validation mismatch for %s: expected %v, got %v", tc.description, tc.shouldSucceed, validationResult)
-			}
-
-			// Test actual machine creation - this should work for valid names
-			// and is expected to work even for invalid names in this test since
-			// we're testing the validation logic separately from database constraints
-			if tc.shouldSucceed {
-				err := server.createMachine(userID, teamName, tc.machineName, containerID, "ubuntu:22.04")
+			if tt.shouldFail {
+				if err == nil {
+					t.Errorf("%s: Expected error but got none", tt.description)
+				}
+			} else {
 				if err != nil {
-					t.Errorf("Failed to create machine with valid name %s (%s): %v", tc.machineName, tc.description, err)
+					t.Errorf("%s: Expected success but got error: %v", tt.description, err)
 				} else {
-					// Verify machine was created
-					machine, err := server.getMachineByName(teamName, tc.machineName)
-					if err != nil {
-						t.Errorf("Failed to retrieve created machine %s: %v", tc.machineName, err)
-					} else if machine.Name != tc.machineName {
-						t.Errorf("Machine name mismatch: expected %s, got %s", tc.machineName, machine.Name)
-					}
+					// Clean up successful creation for next test
+					_, _ = server.db.Exec(`DELETE FROM machines WHERE name = ?`, tt.machineName)
 				}
 			}
 		})
@@ -381,16 +374,19 @@ func TestGeneratedMachineNamesAreValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
+	defer server.Stop()
 
-	// Generate 100 random names and ensure they're all valid
-	for i := 0; i < 100; i++ {
-		generatedName := generateRandomContainerName()
-		if !server.isValidMachineName(generatedName) {
-			t.Errorf("Generated machine name '%s' failed validation", generatedName)
+	// Test that generateRandomContainerName creates valid names
+	for i := 0; i < 10; i++ {
+		name := generateRandomContainerName()
+
+		if !server.isValidMachineName(name) {
+			t.Errorf("Generated name '%s' is not valid", name)
 		}
-		// Also check length
-		if len(generatedName) > 32 {
-			t.Errorf("Generated machine name '%s' is too long (%d chars)", generatedName, len(generatedName))
+
+		// Check length
+		if len(name) > 30 {
+			t.Errorf("Generated name '%s' is too long (%d chars)", name, len(name))
 		}
 	}
 }

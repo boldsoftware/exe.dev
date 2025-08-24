@@ -171,22 +171,30 @@ type User struct {
 	CreatedAt time.Time
 }
 
-// Team represents a team with billing information
-type Team struct {
-	Name             string
+// AllocType defines the resource allocation tier
+type AllocType string
+
+const (
+	AllocTypeMedium AllocType = "medium" // Default allocation type
+)
+
+// Region represents a geographical region where resources are allocated
+type Region string
+
+const (
+	RegionAWSUSWest2 Region = "aws-us-west-2" // Default and only region for now
+)
+
+// Alloc represents an allocation of resources for a user
+type Alloc struct {
+	AllocID          string
+	UserID           string
+	AllocType        AllocType
+	Region           Region
+	DockerHost       string // Docker host where this alloc's containers run
 	CreatedAt        time.Time
 	StripeCustomerID string
 	BillingEmail     string
-	IsPersonal       bool
-	OwnerUserID      string
-}
-
-// TeamMember represents membership in a team
-type TeamMember struct {
-	UserID   string
-	TeamName string
-	IsAdmin  bool
-	JoinedAt time.Time
 }
 
 // PathMatcher defines how to match request paths
@@ -210,7 +218,7 @@ type MachineRoutes []Route
 // Machine represents a container/VM
 type Machine struct {
 	ID              int
-	TeamName        string
+	AllocID         string
 	Name            string
 	Status          string
 	Image           string
@@ -302,7 +310,6 @@ type Invite struct {
 type EmailVerification struct {
 	PublicKey    string
 	Email        string
-	TeamName     string // Team name selected by user
 	Token        string
 	CompleteChan chan struct{}
 	CreatedAt    time.Time
@@ -311,7 +318,7 @@ type EmailVerification struct {
 // MagicSecret represents a temporary authentication secret for proxy magic URLs
 type MagicSecret struct {
 	UserID      string
-	TeamName    string
+	MachineName string // Direct machine name instead of team
 	RedirectURL string
 	ExpiresAt   time.Time
 	CreatedAt   time.Time
@@ -816,22 +823,23 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	}
 
 	if email != "" && verified {
-		// This is a verified key, check if user has team memberships
-		var teams []TeamMember
-		teams, err = s.getUserTeamsByEmail(email)
-		if err != nil {
-			slog.Error("Database error getting teams for user", "email", email, "error", err)
-		}
-
-		if len(teams) > 0 {
-			// User is fully registered with team membership
-			return &ssh.Permissions{
-				Extensions: map[string]string{
-					"registered": "true",
-					"email":      email,
-					"public_key": publicKeyStr,
-				},
-			}, nil
+		// This is a verified key, check if user has an alloc
+		var userID string
+		err = s.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
+		if err == nil {
+			// Check if user has an alloc
+			var allocExists bool
+			err = s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM allocs WHERE user_id = ?)", userID).Scan(&allocExists)
+			if err == nil && allocExists {
+				// User is fully registered with an allocation
+				return &ssh.Permissions{
+					Extensions: map[string]string{
+						"registered": "true",
+						"email":      email,
+						"public_key": publicKeyStr,
+					},
+				}, nil
+			}
 		}
 	}
 
@@ -1223,35 +1231,23 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	if exists {
 		// This is an SSH session email verification
 		email := verification.Email
-		teamName := verification.TeamName
 
 		// Create the user if they don't exist
 		user, err := s.getUserByPublicKey(verification.PublicKey)
 		if err != nil || user == nil {
 			slog.Info("User doesn't exist, creating", "email", email)
-			// User doesn't exist - create them with their team
-			if teamName != "" {
-				// Use the team name selected during registration
-				if err := s.createUserWithTeam(verification.PublicKey, email, teamName); err != nil {
-					slog.Error("Failed to create user with team during email verification", "error", err)
-					s.emailVerificationsMu.Unlock()
-					// Clean up pending registration on failure
-					s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
-					http.Error(w, "Failed to create user account", http.StatusInternalServerError)
-					return
-				}
-				// Clean up pending registration on success
+			// User doesn't exist - create them with their alloc
+			if err := s.createUserWithAlloc(verification.PublicKey, email); err != nil {
+				slog.Error("Failed to create user with alloc during email verification", "error", err)
+				s.emailVerificationsMu.Unlock()
+				// Clean up pending registration on failure
 				s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
-			} else {
-				// Fallback to auto-generated team name for existing flow
-				if err := s.createUser(verification.PublicKey, email); err != nil {
-					slog.Error("Failed to create user during email verification", "error", err)
-					s.emailVerificationsMu.Unlock()
-					http.Error(w, "Failed to create user account", http.StatusInternalServerError)
-					return
-				}
+				http.Error(w, "Failed to create user account", http.StatusInternalServerError)
+				return
 			}
-			slog.Info("Created new user", "email", email, "team", teamName)
+			// Clean up pending registration on success
+			s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+			slog.Info("Created new user", "email", email)
 		} else {
 			slog.Debug("User already exists", "email", email)
 		}
@@ -1790,7 +1786,7 @@ func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) 
 }
 
 // createMagicSecret creates a temporary magic secret for proxy authentication
-func (s *Server) createMagicSecret(userID, teamName, redirectURL string) (string, error) {
+func (s *Server) createMagicSecret(userID, machineName, redirectURL string) (string, error) {
 	// Generate a random secret
 	secret := cryptorand.Text()
 
@@ -1803,7 +1799,7 @@ func (s *Server) createMagicSecret(userID, teamName, redirectURL string) (string
 
 	s.magicSecrets[secret] = &MagicSecret{
 		UserID:      userID,
-		TeamName:    teamName,
+		MachineName: machineName,
 		RedirectURL: redirectURL,
 		ExpiresAt:   time.Now().Add(2 * time.Minute),
 		CreatedAt:   time.Now(),
@@ -1918,7 +1914,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 				hostname = returnHost[:idx]
 			}
 
-			_, teamName, err := s.parseProxyHostname(hostname)
+			machineName, err := s.parseProxyHostname(hostname)
 			if err != nil {
 				slog.Error("Failed to parse proxy hostname", "hostname", hostname, "error", err)
 				http.Error(w, "Invalid hostname format", http.StatusBadRequest)
@@ -1926,7 +1922,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			}
 
 			// Create magic secret for the proxy subdomain
-			secret, err := s.createMagicSecret(userID, teamName, redirectURL)
+			secret, err := s.createMagicSecret(userID, machineName, redirectURL)
 			if err != nil {
 				slog.Error("Failed to create magic secret", "error", err)
 				http.Error(w, "Failed to create authentication secret", http.StatusInternalServerError)
@@ -2003,12 +1999,12 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	// Get user's machines from all teams they belong to
 	machines := []Machine{}
 	machineRows, err := s.db.Query(`
-		SELECT m.id, m.team_name, m.name, m.status, COALESCE(m.image, ''), 
+		SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''), 
 		       COALESCE(m.container_id, ''), m.created_by_user_id, 
 		       m.created_at, m.updated_at, m.last_started_at, m.docker_host
 		FROM machines m
-		JOIN team_members tm ON m.team_name = tm.team_name
-		WHERE tm.user_id = ?
+		JOIN allocs a ON m.alloc_id = a.alloc_id
+		WHERE a.user_id = ?
 		ORDER BY m.updated_at DESC
 	`, user.UserID)
 	if err != nil {
@@ -2019,7 +2015,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			var machine Machine
 			var containerID, image, dockerHost sql.NullString
 			var lastStartedAt sql.NullTime
-			err := machineRows.Scan(&machine.ID, &machine.TeamName, &machine.Name,
+			err := machineRows.Scan(&machine.ID, &machine.AllocID, &machine.Name,
 				&machine.Status, &image, &containerID, &machine.CreatedByUserID,
 				&machine.CreatedAt, &machine.UpdatedAt, &lastStartedAt, &dockerHost)
 			if err != nil {
@@ -2178,25 +2174,25 @@ func (s *Server) findContainerByName(userID, containerName string) *container.Co
 func (s *Server) FindMachineByNameForUserAndIP(userID, ip string) *Machine {
 	slog.Debug("FindMachineByNameForUserAndIP", "user_id", userID, "ip", ip)
 
-	teams, err := s.getUserTeams(userID)
-	if err != nil {
+	// Get user's alloc
+	alloc, err := s.getUserAlloc(userID)
+	if err != nil || alloc == nil {
+		slog.Debug("FindMachineByNameForUserAndIP no alloc found", "user_id", userID)
 		return nil
 	}
-	if len(teams) > 1 {
-		slog.Error("User is in multiple teams, therefore we cannot identify the precise machine for this request. Returning nil.", "userID", userID, "teams", teams, "ip", ip)
-		return nil
-	}
-	slog.Debug("FindMachineByNameForUserAndIP", "teams", teams)
 
-	team := teams[0]
-	machineName, found := s.ipAllocator.LookupMachine(team.TeamName, ip)
+	if s.ipAllocator == nil {
+		return nil
+	}
+
+	machineName, found := s.ipAllocator.LookupMachine(alloc.AllocID, ip)
 	if !found {
-		slog.Debug("FindMachineByNameForUserAndIP machine not found for team", "team", team.TeamName, "ip", ip)
+		slog.Debug("FindMachineByNameForUserAndIP machine not found for alloc", "alloc", alloc.AllocID, "ip", ip)
 		return nil
 	}
 
 	slog.Debug("FindMachineByNameForUserAndIP found machine", "machine", machineName)
-	machine, err := s.getMachineByName(team.TeamName, machineName)
+	machine, err := s.getMachineByName(machineName)
 	if err == nil {
 		return machine
 	}
@@ -2205,125 +2201,77 @@ func (s *Server) FindMachineByNameForUserAndIP(userID, ip string) *Machine {
 }
 
 // findMachineByNameForUser finds a machine by name that the user has access to
-// Supports both "machine" format (uses default team) and "machine.team" format
 func (s *Server) FindMachineByNameForUser(userID, machineName string) *Machine {
 	slog.Debug("FindMachineByNameForUser", "user_id", userID, "machine_name", machineName)
-	var teamName string
-	var machineNameOnly string
 
-	// Check if the machine name includes team specification (machine.team format)
+	// Machine names are now globally unique, no team prefix
 	if strings.Contains(machineName, ".") {
-		parts := strings.SplitN(machineName, ".", 2)
-		if len(parts) == 2 {
-			machineNameOnly = parts[0]
-			teamName = parts[1]
-
-			// Verify user has access to this specific team
-			teams, err := s.getUserTeams(userID)
-			if err != nil {
-				return nil
-			}
-
-			// Check if user is member of the specified team
-			for _, team := range teams {
-				if team.TeamName == teamName {
-					machine, err := s.getMachineByName(teamName, machineNameOnly)
-					if err == nil {
-						return machine
-					}
-					break
-				}
-			}
-			return nil
-		}
-	}
-
-	// No team specified - try default team first, then search all teams
-	machineNameOnly = machineName
-
-	// Try default team first
-	defaultTeam, err := s.getDefaultTeamForUser(userID)
-	slog.Debug("Default team for key", "team", defaultTeam, "error", err)
-	if err == nil && defaultTeam != "" {
-		machine, err := s.getMachineByName(defaultTeam, machineNameOnly)
-		slog.Debug("Checked default team for machine", "team", defaultTeam, "machine", machineNameOnly, "found", machine != nil, "error", err)
-		if err == nil {
-			return machine
-		}
-	}
-
-	// Get user's teams and search all of them
-	teams, err := s.getUserTeams(userID)
-	slog.Debug("User teams", "count", len(teams), "error", err)
-	if err != nil || len(teams) == 0 {
+		// Legacy format not supported
 		return nil
 	}
 
-	// Check each team for a machine with this name
-	for _, team := range teams {
-		machine, err := s.getMachineByName(team.TeamName, machineNameOnly)
-		slog.Debug("Checked team for machine", "team", team.TeamName, "machine", machineNameOnly, "found", machine != nil, "error", err)
-		if err == nil {
-			return machine
-		}
+	// Get user's alloc to verify access
+	alloc, err := s.getUserAlloc(userID)
+	if err != nil || alloc == nil {
+		slog.Debug("FindMachineByNameForUser no alloc found", "user_id", userID)
+		return nil
 	}
 
-	slog.Debug("Machine not found in any team for user", "machine", machineName, "user_id", userID)
-	return nil
+	// Check if machine exists and belongs to user's alloc
+	machine, err := s.getMachineByName(machineName)
+	if err != nil {
+		slog.Debug("Machine not found", "machine", machineName, "error", err)
+		return nil
+	}
+
+	// Verify the machine belongs to the user's alloc
+	if machine.AllocID != alloc.AllocID {
+		slog.Debug("Machine belongs to different alloc", "machine", machineName, "machine_alloc", machine.AllocID, "user_alloc", alloc.AllocID)
+		return nil
+	}
+
+	return machine
 }
 
-func (s *Server) handleListUserTeams(channel *sshbuf.Channel, publicKey string) {
+// handleListUserAlloc shows the user's allocation info
+func (s *Server) handleListUserAlloc(channel *sshbuf.Channel, publicKey string) {
 	user, err := s.getUserByPublicKey(publicKey)
 	if err != nil || user == nil {
 		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving user: %v\033[0m\r\n", err)))
 		return
 	}
-	teams, err := s.getUserTeams(user.UserID)
+
+	alloc, err := s.getUserAlloc(user.UserID)
 	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving teams: %v\033[0m\r\n", err)))
+		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving allocation: %v\033[0m\r\n", err)))
 		return
 	}
 
-	if len(teams) == 0 {
-		channel.Write([]byte("\033[1;33mYou are not a member of any teams\033[0m\r\n"))
+	if alloc == nil {
+		channel.Write([]byte("\033[1;33mNo allocation found\033[0m\r\n"))
 		return
 	}
 
-	// Get default team for this user
-	defaultTeam, _ := s.getDefaultTeamForUser(user.UserID)
+	channel.Write([]byte("\033[1;36m═══ Your Allocation ═══\033[0m\r\n\r\n"))
+	channel.Write([]byte(fmt.Sprintf("  Type: \033[1m%s\033[0m\r\n", alloc.AllocType)))
+	channel.Write([]byte(fmt.Sprintf("  Region: \033[1m%s\033[0m\r\n", alloc.Region)))
+	channel.Write([]byte(fmt.Sprintf("  Created: %s\r\n", alloc.CreatedAt.Format("Jan 2, 2006"))))
+	channel.Write([]byte(fmt.Sprintf("  Machines: \033[1;36m<name>@exe.dev\033[0m\r\n")))
 
-	channel.Write([]byte("\033[1;36m═══ Your Teams ═══\033[0m\r\n\r\n"))
-
-	for _, team := range teams {
-		// Check if this is a personal team
-		var isPersonal bool
-		var ownerUserID sql.NullString
-		s.db.QueryRow(`SELECT is_personal, owner_user_id FROM teams WHERE team_name = ?`,
-			team.TeamName).Scan(&isPersonal, &ownerUserID)
-
-		roleStr := "Member"
-		if team.IsAdmin {
-			roleStr = "\033[1;33mAdmin\033[0m"
+	// List machines in this alloc
+	machines, err := s.getMachinesForAlloc(alloc.AllocID)
+	if err == nil && len(machines) > 0 {
+		channel.Write([]byte("\r\n  \033[1mMachines:\033[0m\r\n"))
+		for _, m := range machines {
+			statusColor := "\033[1;31m" // red for stopped
+			if m.Status == "running" {
+				statusColor = "\033[1;32m" // green for running
+			}
+			channel.Write([]byte(fmt.Sprintf("    - %s %s[%s]\033[0m\r\n", m.Name, statusColor, m.Status)))
 		}
-
-		defaultStr := ""
-		if team.TeamName == defaultTeam {
-			defaultStr = " \033[1;32m[DEFAULT]\033[0m"
-		}
-
-		teamTypeStr := ""
-		if isPersonal && ownerUserID.Valid && ownerUserID.String == user.UserID {
-			teamTypeStr = " \033[2m(Personal)\033[0m"
-		}
-
-		channel.Write([]byte(fmt.Sprintf("  \033[1m%s\033[0m%s%s - %s\r\n",
-			team.TeamName, teamTypeStr, defaultStr, roleStr)))
-		channel.Write([]byte(fmt.Sprintf("    Machines: \033[1;36m<name>.%s@exe.dev\033[0m\r\n", team.TeamName)))
-		channel.Write([]byte(fmt.Sprintf("    Joined: %s\r\n\r\n", team.JoinedAt.Format("Jan 2, 2006"))))
 	}
 
-	channel.Write([]byte("\033[2mTo switch default team: team switch <team>\033[0m\r\n"))
-	channel.Write([]byte("\033[2mTo access a specific team's machine: ssh machine.team@exe.dev\033[0m\r\n"))
+	channel.Write([]byte("\r\n\033[2mTo access a machine: ssh <machine>@exe.dev\033[0m\r\n"))
 }
 
 // createUserSession creates a new user session for a channel
@@ -2390,9 +2338,9 @@ func (s *Server) getSSHPort() string {
 }
 
 // formatSSHConnectionInfo returns SSH connection info based on dev mode
-func (s *Server) formatSSHConnectionInfo(teamName, machineName string) string {
+func (s *Server) formatSSHConnectionInfo(allocID, machineName string) string {
 	if s.ipAllocator != nil {
-		allocation, err := s.ipAllocator.Allocate(teamName, machineName)
+		allocation, err := s.ipAllocator.Allocate(allocID, machineName)
 		if err == nil && allocation != nil {
 			return fmt.Sprintf("ssh -p 2222 -o ConnectTimeout=1 %s", allocation.Hostname)
 		}
@@ -2400,11 +2348,11 @@ func (s *Server) formatSSHConnectionInfo(teamName, machineName string) string {
 	if s.devMode == "local" {
 		port := s.getSSHPort()
 		if port == "22" {
-			return fmt.Sprintf("ssh %s.%s@localhost", machineName, teamName)
+			return fmt.Sprintf("ssh %s@localhost", machineName)
 		}
-		return fmt.Sprintf("ssh -p 2222 %s.%s@localhost", machineName, teamName)
+		return fmt.Sprintf("ssh -p 2222 %s@localhost", machineName)
 	}
-	return fmt.Sprintf("ssh %s.%s@exe.dev", machineName, teamName)
+	return fmt.Sprintf("ssh %s@exe.dev", machineName)
 }
 
 // isValidStorageSize validates a Kubernetes storage size string (e.g., "10Gi", "100Gi")
@@ -2464,58 +2412,58 @@ func getDefaultRoutesJSON() string {
 }
 
 // createMachine stores machine info in database
-func (s *Server) createMachine(userID, teamName, name, containerID, image string) error {
+func (s *Server) createMachine(userID, allocID, name, containerID, image string) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_user_id, routes,
+		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, routes,
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userID, routes,
+	`, allocID, name, "pending", image, containerID, userID, routes,
 		"test-identity-key", "test-authorized-keys", "test-ca-key",
 		"test-host-cert", "test-client-key", 2222)
 	return err
 }
 
 // createMachineWithDockerHost stores machine info including docker host in database
-func (s *Server) createMachineWithDockerHost(userID, teamName, name, containerID, image, dockerHost string) error {
+func (s *Server) createMachineWithDockerHost(userID, allocID, name, containerID, image, dockerHost string) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
-		INSERT INTO machines (team_name, name, status, image, container_id, created_by_user_id, docker_host, routes,
+		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, docker_host, routes,
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "pending", image, containerID, userID, dockerHost, routes,
+	`, allocID, name, "pending", image, containerID, userID, dockerHost, routes,
 		"test-identity-key", "test-authorized-keys", "test-ca-key",
 		"test-host-cert", "test-client-key", 2222)
 	return err
 }
 
 // createMachineWithSSH stores machine info including SSH keys in database
-func (s *Server) createMachineWithSSH(userID, teamName, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+func (s *Server) createMachineWithSSH(userID, allocID, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
-			team_name, name, status, image, container_id, created_by_user_id,
+			alloc_id, name, status, image, container_id, created_by_user_id,
 			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 			ssh_host_certificate, ssh_client_private_key, ssh_port, routes
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "running", image, containerID, userID,
+	`, allocID, name, "running", image, containerID, userID,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
 		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, routes)
 	return err
 }
 
 // createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
-func (s *Server) createMachineWithSSHAndDockerHost(userID, teamName, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
-			team_name, name, status, image, container_id, created_by_user_id,
+			alloc_id, name, status, image, container_id, created_by_user_id,
 			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, routes
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, teamName, name, "running", image, containerID, userID,
+	`, allocID, name, "running", image, containerID, userID,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
 		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, routes)
 	if err != nil {
@@ -2524,8 +2472,8 @@ func (s *Server) createMachineWithSSHAndDockerHost(userID, teamName, name, conta
 
 	// Register machine with IP allocation strategy if enabled
 	if s.ipAllocator != nil {
-		if _, allocErr := s.ipAllocator.Allocate(teamName, name); allocErr != nil {
-			slog.Warn("Failed to register machine with IP allocation", "team", teamName, "machine", name, "error", allocErr)
+		if _, allocErr := s.ipAllocator.Allocate(allocID, name); allocErr != nil {
+			slog.Warn("Failed to register machine with IP allocation", "alloc", allocID, "machine", name, "error", allocErr)
 			// Don't fail the whole operation if IP allocation fails
 		}
 	}
@@ -2561,15 +2509,15 @@ func (s *Server) determineUserShell(userFingerprint, containerID string) (string
 }
 
 // getMachineByName retrieves a machine by name and team
-func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
+func (s *Server) getMachineByName(name string) (*Machine, error) {
 	var machine Machine
 	err := s.db.QueryRow(`
-		SELECT id, team_name, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
+		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
 		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
 		FROM machines
-		WHERE team_name = ? AND name = ?
-	`, teamName, name).Scan(
-		&machine.ID, &machine.TeamName, &machine.Name, &machine.Status,
+		WHERE name = ?
+	`, name).Scan(
+		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
 		&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort,
@@ -2578,6 +2526,69 @@ func (s *Server) getMachineByName(teamName, name string) (*Machine, error) {
 		return nil, err
 	}
 	return &machine, nil
+}
+
+// getMachinesForAlloc gets all machines for an allocation
+func (s *Server) getMachinesForAlloc(allocID string) ([]*Machine, error) {
+	rows, err := s.db.Query(`
+		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
+		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
+		FROM machines
+		WHERE alloc_id = ?
+		ORDER BY name
+	`, allocID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var machines []*Machine
+	for rows.Next() {
+		var m Machine
+		err := rows.Scan(
+			&m.ID, &m.AllocID, &m.Name, &m.Status, &m.Image, &m.ContainerID, &m.CreatedByUserID,
+			&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.DockerHost, &m.Routes,
+			&m.SSHServerIdentityKey, &m.SSHAuthorizedKeys, &m.SSHCAPublicKey, &m.SSHHostCertificate, &m.SSHClientPrivateKey, &m.SSHPort,
+		)
+		if err != nil {
+			return nil, err
+		}
+		machines = append(machines, &m)
+	}
+	return machines, nil
+}
+
+// getMachinesForUser gets all machines for a user across all their allocs
+func (s *Server) getMachinesForUser(userID string) ([]*Machine, error) {
+	rows, err := s.db.Query(`
+		SELECT m.id, m.alloc_id, m.name, m.status, m.image, m.container_id, m.created_by_user_id, 
+		       m.created_at, m.updated_at, m.last_started_at, m.docker_host, m.routes,
+		       m.ssh_server_identity_key, m.ssh_authorized_keys, m.ssh_ca_public_key, 
+		       m.ssh_host_certificate, m.ssh_client_private_key, m.ssh_port
+		FROM machines m
+		JOIN allocs a ON m.alloc_id = a.alloc_id
+		WHERE a.user_id = ?
+		ORDER BY m.name
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var machines []*Machine
+	for rows.Next() {
+		var m Machine
+		err := rows.Scan(
+			&m.ID, &m.AllocID, &m.Name, &m.Status, &m.Image, &m.ContainerID, &m.CreatedByUserID,
+			&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.DockerHost, &m.Routes,
+			&m.SSHServerIdentityKey, &m.SSHAuthorizedKeys, &m.SSHCAPublicKey, &m.SSHHostCertificate, &m.SSHClientPrivateKey, &m.SSHPort,
+		)
+		if err != nil {
+			return nil, err
+		}
+		machines = append(machines, &m)
+	}
+	return machines, nil
 }
 
 // handleRegistration manages the user registration process with email verification and billing
@@ -2927,30 +2938,6 @@ func (s *Server) GetEmailBySSHKey(publicKeyStr string) (email string, verified b
 	return email, verified, err
 }
 
-// getUserTeamsByEmail retrieves teams for a user by email
-func (s *Server) getUserTeamsByEmail(email string) ([]TeamMember, error) {
-	rows, err := s.db.Query(`
-		SELECT tm.user_id, tm.team_name, tm.is_admin, tm.joined_at
-		FROM team_members tm
-		JOIN users u ON tm.user_id = u.user_id
-		WHERE u.email = ?`,
-		email)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var teams []TeamMember
-	for rows.Next() {
-		var tm TeamMember
-		if err := rows.Scan(&tm.UserID, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
-			return nil, err
-		}
-		teams = append(teams, tm)
-	}
-	return teams, rows.Err()
-}
-
 // getUserByPublicKey retrieves a user by their SSH public key
 func (s *Server) getUserByPublicKey(publicKeyStr string) (*User, error) {
 	var user User
@@ -2970,30 +2957,9 @@ func (s *Server) getUserByPublicKey(publicKeyStr string) (*User, error) {
 }
 
 // getUserTeams returns all teams a user belongs to
-func (s *Server) getUserTeams(userID string) ([]TeamMember, error) {
-	rows, err := s.db.Query(`
-		SELECT user_id, team_name, is_admin, joined_at
-		FROM team_members
-		WHERE user_id = ?`,
-		userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 
-	var teams []TeamMember
-	for rows.Next() {
-		var tm TeamMember
-		if err := rows.Scan(&tm.UserID, &tm.TeamName, &tm.IsAdmin, &tm.JoinedAt); err != nil {
-			return nil, err
-		}
-		teams = append(teams, tm)
-	}
-	return teams, rows.Err()
-}
-
-// createUserWithTeam creates a new user with a specific team name
-func (s *Server) createUserWithTeam(publicKey, email, teamName string) error {
+// createUserWithAlloc creates a new user with their resource allocation
+func (s *Server) createUserWithAlloc(publicKey, email string) error {
 	// Start a transaction
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -3025,28 +2991,20 @@ func (s *Server) createUserWithTeam(publicKey, email, teamName string) error {
 		return err
 	}
 
-	// Create personal team
-	_, err = tx.Exec(`
-		INSERT INTO teams (team_name, billing_email, is_personal, owner_user_id)
-		VALUES (?, ?, TRUE, ?)`,
-		teamName, email, userID)
+	// Generate alloc ID
+	allocID, err := generateAllocID()
 	if err != nil {
 		return err
 	}
 
-	// Add user as admin of the team
-	_, err = tx.Exec(`
-		INSERT INTO team_members (user_id, team_name, is_admin)
-		VALUES (?, ?, TRUE)`,
-		userID, teamName)
-	if err != nil {
-		return err
-	}
+	// Select a docker host for this alloc
+	dockerHost := s.selectDockerHostForNewAlloc()
 
-	// Set this as the default team for the SSH key
+	// Create alloc for the user
 	_, err = tx.Exec(`
-		UPDATE ssh_keys SET default_team = ? WHERE public_key = ? AND user_id = ?`,
-		teamName, publicKey, userID)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
 	if err != nil {
 		return err
 	}
@@ -3055,7 +3013,71 @@ func (s *Server) createUserWithTeam(publicKey, email, teamName string) error {
 	return tx.Commit()
 }
 
-// createUser creates a new user with their personal team
+// getUserAlloc gets the alloc for a user (creates one if it doesn't exist)
+func (s *Server) getUserAlloc(userID string) (*Alloc, error) {
+	var alloc Alloc
+	err := s.db.QueryRow(`
+		SELECT alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email
+		FROM allocs
+		WHERE user_id = ?
+		LIMIT 1`,
+		userID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region,
+		&alloc.DockerHost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+
+	if err == sql.ErrNoRows {
+		// User exists but has no alloc yet - create one
+		allocID, err := generateAllocID()
+		if err != nil {
+			return nil, err
+		}
+
+		// Get user's email for billing
+		var email string
+		err = s.db.QueryRow(`SELECT email FROM users WHERE user_id = ?`, userID).Scan(&email)
+		if err != nil {
+			return nil, err
+		}
+
+		dockerHost := s.selectDockerHostForNewAlloc()
+
+		_, err = s.db.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
+		if err != nil {
+			return nil, err
+		}
+
+		return s.getUserAlloc(userID)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &alloc, nil
+}
+
+// selectDockerHostForNewAlloc selects the best docker host for a new alloc
+func (s *Server) selectDockerHostForNewAlloc() string {
+	// For now, just use the first configured docker host
+	// In the future, this could do load balancing
+	// For now, just return empty string (local docker)
+	// In future, could query the container manager for available hosts
+	return "" // Local docker
+}
+
+// generateAllocID generates a unique allocation ID
+func generateAllocID() (string, error) {
+	// Generate a random ID with "alloc_" prefix
+	bytes := make([]byte, 12)
+	if _, err := cryptorand.Read(bytes); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("alloc_%s", hex.EncodeToString(bytes)), nil
+}
+
+// createUser creates a new user (deprecated - use createUserWithAlloc)
 func (s *Server) createUser(publicKey, email string) error {
 	// Start a transaction
 	tx, err := s.db.Begin()
@@ -3079,104 +3101,29 @@ func (s *Server) createUser(publicKey, email string) error {
 		return err
 	}
 
-	// Add the SSH key to ssh_keys table
-	_, err = tx.Exec(`
-		INSERT INTO ssh_keys (user_id, verified, public_key)
-		VALUES (?, 1, ?)`,
-		userID, publicKey)
-	if err != nil {
-		return err
-	}
-
-	// Create their personal team (username as team name)
-	username := strings.Split(email, "@")[0]
-	username = strings.ToLower(username)
-	username = strings.ReplaceAll(username, ".", "-")
-	username = strings.ReplaceAll(username, "_", "-")
-
-	// Ensure personal team name is unique
-	personalTeamName := username
-	for i := 1; ; i++ {
-		taken, err := s.isTeamNameTakenTx(tx, personalTeamName)
+	// Add the SSH key to ssh_keys table if provided
+	if publicKey != "" {
+		_, err = tx.Exec(`
+			INSERT INTO ssh_keys (user_id, verified, public_key)
+			VALUES (?, 1, ?)`,
+			userID, publicKey)
 		if err != nil {
 			return err
 		}
-		if !taken {
-			break
-		}
-		personalTeamName = fmt.Sprintf("%s%d", username, i)
 	}
 
-	// Create the personal team
-	_, err = tx.Exec(`
-		INSERT INTO teams (team_name, billing_email, is_personal, owner_user_id)
-		VALUES (?, ?, TRUE, ?)`,
-		personalTeamName, email, userID)
+	// Create an alloc for the user
+	allocID, err := generateAllocID()
 	if err != nil {
 		return err
 	}
 
-	// Add user as admin of their personal team
+	dockerHost := s.selectDockerHostForNewAlloc()
+
 	_, err = tx.Exec(`
-		INSERT INTO team_members (user_id, team_name, is_admin)
-		VALUES (?, ?, TRUE)`,
-		userID, personalTeamName)
-	if err != nil {
-		return err
-	}
-
-	// Set this as the default team for the SSH key (if it exists)
-	// Note: The SSH key might not exist yet if this is called during registration
-	_, err = tx.Exec(`
-		UPDATE ssh_keys SET default_team = ? WHERE public_key = ? AND user_id = ?`,
-		personalTeamName, publicKey, userID)
-	// Ignore the error if the key doesn't exist yet - it will be added later
-
-	return tx.Commit()
-}
-
-// createTeam creates a new team
-func (s *Server) createTeam(name, billingEmail string) error {
-	_, err := s.db.Exec(`
-		INSERT INTO teams (team_name, billing_email)
-		VALUES (?, ?)`,
-		name, billingEmail)
-	return err
-}
-
-// createPersonalTeam creates a personal team for a user
-func (s *Server) createPersonalTeam(publicKey, teamName, email string) error {
-	// Start a transaction
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Create the team
-	_, err = tx.Exec(`
-		INSERT INTO teams (team_name, billing_email, is_personal, owner_user_id)
-		VALUES (?, ?, TRUE, (SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1))`,
-		teamName, email, publicKey)
-	if err != nil {
-		return err
-	}
-
-	// Add user as admin of the team
-	_, err = tx.Exec(`
-		INSERT INTO team_members (user_id, team_name, is_admin)
-		VALUES ((SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1), ?, TRUE)`,
-		publicKey, teamName)
-	if err != nil {
-		return err
-	}
-
-	// Set as default team
-	_, err = tx.Exec(`
-		UPDATE ssh_keys
-		SET default_team = ?
-		WHERE public_key = ?`,
-		teamName, publicKey)
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
 	if err != nil {
 		return err
 	}
@@ -3184,55 +3131,8 @@ func (s *Server) createPersonalTeam(publicKey, teamName, email string) error {
 	return tx.Commit()
 }
 
-// addTeamMember adds a user to a team
-func (s *Server) addTeamMember(userID, teamName string, isAdmin bool) error {
-	_, err := s.db.Exec(`
-		INSERT INTO team_members (user_id, team_name, is_admin)
-		VALUES (?, ?, ?)`,
-		userID, teamName, isAdmin)
-	return err
-}
-
-// isTeamNameTaken checks if a team name is already taken
-func (s *Server) isTeamNameTaken(teamName string) (bool, error) {
-	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM teams WHERE team_name = ?`, teamName).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-// isTeamNameTakenOrReserved checks if a team name already exists or is reserved in pending registrations
-func (s *Server) isTeamNameTakenOrReserved(teamName string) (bool, error) {
-	// Check existing teams
-	taken, err := s.isTeamNameTaken(teamName)
-	if err != nil || taken {
-		return taken, err
-	}
-
-	// Check pending registrations (reserved team names)
-	var count int
-	currentTime := time.Now().Format(time.RFC3339)
-	err = s.db.QueryRow(`
-		SELECT COUNT(*) FROM pending_registrations 
-		WHERE team_name = ? AND expires_at > ?`,
-		teamName, currentTime).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-// isTeamNameTakenTx checks if a team name is already taken within a transaction
-func (s *Server) isTeamNameTakenTx(tx *sql.Tx, teamName string) (bool, error) {
-	var count int
-	err := tx.QueryRow(`SELECT COUNT(*) FROM teams WHERE team_name = ?`, teamName).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
+// Team-related functions have been removed as teams are no longer user-facing.
+// Users now have direct resource allocations (allocs) instead.
 
 // createInvite creates a new team invitation
 func (s *Server) createInvite(teamName, createdByPublicKey, email string, maxUses int, expiresAt time.Time) (string, error) {
@@ -3396,24 +3296,30 @@ func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []b
 	}
 
 	if email != "" && verified {
-		// This is a verified key, check if user has team memberships
-		var teams []TeamMember
-		teams, err = s.getUserTeamsByEmail(email)
-		if err != nil {
-			slog.Error("Database error getting teams for user", "email", email, "error", err)
+		// This is a verified key, check if user has an alloc
+		user, err := s.GetUserByEmail(email)
+		if err != nil && err != sql.ErrNoRows {
+			slog.Error("Database error getting user", "email", email, "error", err)
 		}
 
-		if len(teams) > 0 {
-			// User is fully registered with team membership
-			return &ssh.Permissions{
-				Extensions: map[string]string{
-					"fingerprint": originalFingerprint,
-					"registered":  "true",
-					"email":       email,
-					"public_key":  originalKeyStr,
-					"proxy_user":  username,
-				},
-			}, nil
+		if user != nil {
+			alloc, err := s.getUserAlloc(user.UserID)
+			if err != nil && err != sql.ErrNoRows {
+				slog.Error("Database error getting alloc for user", "userID", user.UserID, "error", err)
+			}
+
+			if alloc != nil {
+				// User is fully registered with an alloc
+				return &ssh.Permissions{
+					Extensions: map[string]string{
+						"fingerprint": originalFingerprint,
+						"registered":  "true",
+						"email":       email,
+						"public_key":  originalKeyStr,
+						"proxy_user":  username,
+					},
+				}, nil
+			}
 		}
 	}
 
@@ -3458,28 +3364,44 @@ func (s *Server) authenticateProxyUserWithLocalAddress(username string, original
 	if localIP == nil {
 		return nil, fmt.Errorf("could't parse IP address: %q", localAddress)
 	}
-	teams, err := s.getUserTeams(username)
+
+	// Get user's alloc to check machine IPs
+	originalUserKey, _, _, _, err := ssh.ParseAuthorizedKey(originalUserKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse public key: %w", err)
+	}
+	originalKeyStr := string(ssh.MarshalAuthorizedKey(originalUserKey))
+
+	email, _, err := s.GetEmailBySSHKey(originalKeyStr)
 	if err != nil {
 		return nil, err
 	}
-	var machineName string
-	var teamName string
-	for _, team := range teams {
-		if mn, ok := s.ipAllocator.LookupMachine(team.TeamName, localIP.String()); ok {
-			machineName = mn
-			teamName = team.TeamName
+	if email == "" {
+		return nil, fmt.Errorf("user not found")
+	}
 
-			// This is a request to access a specific machine with an address known to ipAllocator
-			slog.Debug("ipAllocator-based machine access detected", "team", teamName, "machine", machineName, "local_address", localAddress)
+	user, err := s.GetUserByEmail(email)
+	if err != nil {
+		return nil, err
+	}
 
-			perms, err := s.authenticateProxyUser(""+machineName, originalUserKeyBytes)
-			if err != nil {
-				return nil, err
-			}
+	alloc, err := s.getUserAlloc(user.UserID)
+	if err != nil {
+		return nil, err
+	}
 
-			return perms, nil
+	if mn, ok := s.ipAllocator.LookupMachine(alloc.AllocID, localIP.String()); ok {
+		machineName := mn
 
+		// This is a request to access a specific machine with an address known to ipAllocator
+		slog.Debug("ipAllocator-based machine access detected", "alloc", alloc.AllocID, "machine", machineName, "local_address", localAddress)
+
+		perms, err := s.authenticateProxyUser(""+machineName, originalUserKeyBytes)
+		if err != nil {
+			return nil, err
 		}
+
+		return perms, nil
 	}
 
 	// Fall back to normal proxy authentication
@@ -3547,12 +3469,29 @@ func (s *Server) getUserBySSHKey(publicKey ssh.PublicKey) (*User, error) {
 	return s.getUserByPublicKey(publicKeyStr)
 }
 
+// GetUserByEmail retrieves a user by their email address
+func (s *Server) GetUserByEmail(email string) (*User, error) {
+	var user User
+	err := s.db.QueryRow(`
+		SELECT user_id, email, created_at 
+		FROM users 
+		WHERE email = ?
+	`, email).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, sql.ErrNoRows
+		}
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+	return &user, nil
+}
+
 // allocateIPsForExistingMachines registers all existing machines with the ipAllocator
 func (s *Server) allocateIPsForExistingMachines() error {
 	rows, err := s.db.Query(`
-		SELECT id, team_name, name 
+		SELECT id, alloc_id, name 
 		FROM machines 
-		ORDER BY team_name, name
+		ORDER BY alloc_id, name
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to query existing machines: %v", err)
@@ -3562,7 +3501,7 @@ func (s *Server) allocateIPsForExistingMachines() error {
 	var machines []*Machine
 	for rows.Next() {
 		machine := &Machine{}
-		err := rows.Scan(&machine.ID, &machine.TeamName, &machine.Name)
+		err := rows.Scan(&machine.ID, &machine.AllocID, &machine.Name)
 		if err != nil {
 			return fmt.Errorf("failed to scan machine row: %v", err)
 		}
@@ -3573,9 +3512,9 @@ func (s *Server) allocateIPsForExistingMachines() error {
 		return fmt.Errorf("error iterating machine rows: %v", err)
 	}
 	for _, machine := range machines {
-		_, err := s.ipAllocator.Allocate(machine.TeamName, machine.Name)
+		_, err := s.ipAllocator.Allocate(machine.AllocID, machine.Name)
 		if err != nil {
-			return fmt.Errorf("failed to register machine %s.%s: %v", machine.Name, machine.TeamName, err)
+			return fmt.Errorf("failed to register machine %s (alloc %s): %v", machine.Name, machine.AllocID, err)
 		}
 	}
 	return nil

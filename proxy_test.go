@@ -34,11 +34,27 @@ func TestProxyRequestRouting(t *testing.T) {
 		t.Fatalf("Failed to create users table: %v", err)
 	}
 
-	// Create machines table
+	// Create allocs table
+	_, err = db.Exec(`
+		CREATE TABLE allocs (
+			alloc_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			alloc_type TEXT NOT NULL DEFAULT 'medium',
+			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
+			docker_host TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(user_id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create allocs table: %v", err)
+	}
+
+	// Create machines table with alloc_id instead of team_name
 	_, err = db.Exec(`
 		CREATE TABLE machines (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			team_name TEXT NOT NULL,
+			alloc_id TEXT NOT NULL,
 			name TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'stopped',
 			image TEXT,
@@ -54,22 +70,25 @@ func TestProxyRequestRouting(t *testing.T) {
 			ssh_ca_public_key TEXT,
 			ssh_host_certificate TEXT,
 			ssh_client_private_key TEXT,
-			ssh_port INTEGER
+			ssh_port INTEGER,
+			UNIQUE(name),
+			FOREIGN KEY (alloc_id) REFERENCES allocs(alloc_id)
 		)
 	`)
 	if err != nil {
 		t.Fatalf("Failed to create machines table: %v", err)
 	}
 
-	// Create ssh_keys table
+	// Create ssh_keys table without default_team
 	_, err = db.Exec(`
 		CREATE TABLE ssh_keys (
-			fingerprint TEXT PRIMARY KEY,
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL,
-			public_key TEXT NOT NULL,
-			verified INTEGER NOT NULL DEFAULT 0,
-			default_team TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			public_key TEXT UNIQUE NOT NULL,
+			device_name TEXT,
+			added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_used_at DATETIME,
+			verified BOOLEAN DEFAULT FALSE,
 			FOREIGN KEY (user_id) REFERENCES users(user_id)
 		)
 	`)
@@ -82,6 +101,13 @@ func TestProxyRequestRouting(t *testing.T) {
 	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Create alloc for test user
+	allocID := "alloc_" + userID
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key for test user
@@ -97,7 +123,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	}
 
 	// Create a test machine with default routes
-	err = server.createMachine(userID, "myteam", "myapp", "container123", "nginx")
+	err = server.createMachine(userID, allocID, "myapp", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
 	}
@@ -111,21 +137,21 @@ func TestProxyRequestRouting(t *testing.T) {
 	}{
 		{
 			name:           "production proxy request",
-			host:           "myapp.myteam.exe.dev",
+			host:           "myapp.exe.dev",
 			expectedProxy:  true,
 			expectedStatus: 307, // Should redirect to auth for private routes
 			expectedBody:   "auth?redirect=",
 		},
 		{
 			name:           "development proxy request",
-			host:           "myapp.myteam.localhost",
+			host:           "myapp.localhost",
 			expectedProxy:  true,
 			expectedStatus: 307, // Should redirect to auth for private routes
 			expectedBody:   "auth?redirect=",
 		},
 		{
 			name:           "production proxy request with port",
-			host:           "myapp.myteam.exe.dev:8080",
+			host:           "myapp.exe.dev:8080",
 			expectedProxy:  true,
 			expectedStatus: 307, // Should redirect to auth for private routes
 			expectedBody:   "auth?redirect=",
@@ -206,11 +232,27 @@ func TestProxyRequestDetails(t *testing.T) {
 		t.Fatalf("Failed to create users table: %v", err)
 	}
 
-	// Create machines table
+	// Create allocs table
+	_, err = db.Exec(`
+		CREATE TABLE allocs (
+			alloc_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			alloc_type TEXT NOT NULL DEFAULT 'medium',
+			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
+			docker_host TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(user_id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create allocs table: %v", err)
+	}
+
+	// Create machines table with alloc_id instead of team_name
 	_, err = db.Exec(`
 		CREATE TABLE machines (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			team_name TEXT NOT NULL,
+			alloc_id TEXT NOT NULL,
 			name TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'stopped',
 			image TEXT,
@@ -226,21 +268,24 @@ func TestProxyRequestDetails(t *testing.T) {
 			ssh_ca_public_key TEXT,
 			ssh_host_certificate TEXT,
 			ssh_client_private_key TEXT,
-			ssh_port INTEGER
+			ssh_port INTEGER,
+			UNIQUE(name),
+			FOREIGN KEY (alloc_id) REFERENCES allocs(alloc_id)
 		)
 	`)
 	if err != nil {
 		t.Fatalf("Failed to create machines table: %v", err)
 	}
-	// Create ssh_keys table
+	// Create ssh_keys table without default_team
 	_, err = db.Exec(`
 		CREATE TABLE ssh_keys (
-			fingerprint TEXT PRIMARY KEY,
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL,
-			public_key TEXT NOT NULL,
-			verified INTEGER NOT NULL DEFAULT 0,
-			default_team TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			public_key TEXT UNIQUE NOT NULL,
+			device_name TEXT,
+			added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			last_used_at DATETIME,
+			verified BOOLEAN DEFAULT FALSE,
 			FOREIGN KEY (user_id) REFERENCES users(user_id)
 		)
 	`)
@@ -253,6 +298,13 @@ func TestProxyRequestDetails(t *testing.T) {
 	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Create alloc for test user
+	allocID := "alloc_" + userID
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key for test user
@@ -269,14 +321,14 @@ func TestProxyRequestDetails(t *testing.T) {
 	}
 
 	// Create a test machine
-	err = server.createMachine(userID, "devteam", "webapp", "container456", "nginx")
+	err = server.createMachine(userID, allocID, "webapp", "container456", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
 	}
 
 	// Test that the proxy handler shows request details
 	req := httptest.NewRequest("POST", "/api/test?param=value", strings.NewReader("test body"))
-	req.Host = "webapp.devteam.exe.dev"
+	req.Host = "webapp.exe.dev"
 	req.Header.Set("X-Custom-Header", "test-value")
 	req.Header.Set("Content-Type", "application/json")
 
@@ -330,13 +382,20 @@ func TestMagicAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
+	// Create alloc for test user
+	allocID := "test-alloc-" + userID
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
+	}
+
 	// Create a test machine with a private route
 	_, err = db.Exec(`
-		INSERT INTO machines (team_name, name, image, container_id, created_by_user_id, docker_host, routes, 
+		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes, 
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, "testteam", "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
+	`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
 		{
 			"name": "default",
 			"policy": "private",
@@ -362,7 +421,7 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 1: Request to private route without auth should redirect to auth
 	t.Run("unauthenticated_request_redirects_to_auth", func(t *testing.T) {
 		// First verify the machine exists
-		machine, err := server.getMachineByName("testteam", "testmachine")
+		machine, err := server.getMachineByName("testmachine")
 		if err != nil {
 			t.Fatalf("Test machine not found: %v", err)
 		}
@@ -370,8 +429,8 @@ func TestMagicAuthFlow(t *testing.T) {
 			t.Fatal("Machine is nil")
 		}
 
-		req := httptest.NewRequest("GET", "http://testmachine.testteam.localhost/", nil)
-		req.Host = "testmachine.testteam.localhost"
+		req := httptest.NewRequest("GET", "http://testmachine.localhost/", nil)
+		req.Host = "testmachine.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -398,14 +457,14 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 2: Magic URL with valid secret should set cookie and redirect
 	t.Run("valid_magic_secret_sets_cookie", func(t *testing.T) {
 		// Create a magic secret
-		secret, err := server.createMagicSecret("test-user-id", "testteam", "/original-path")
+		secret, err := server.createMagicSecret("test-user-id", "testmachine", "/original-path")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
 
 		// Request magic URL
-		req := httptest.NewRequest("GET", "http://testmachine.testteam.localhost/__exe.dev/auth?secret="+secret+"&redirect=/custom-redirect", nil)
-		req.Host = "testmachine.testteam.localhost"
+		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret+"&redirect=/custom-redirect", nil)
+		req.Host = "testmachine.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -446,8 +505,8 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	// Test 3: Magic URL with invalid secret should return error
 	t.Run("invalid_magic_secret_returns_error", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://testmachine.testteam.localhost/__exe.dev/auth?secret=invalid-secret", nil)
-		req.Host = "testmachine.testteam.localhost"
+		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret=invalid-secret", nil)
+		req.Host = "testmachine.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -459,8 +518,8 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	// Test 4: Magic URL without secret should return error
 	t.Run("missing_secret_returns_error", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://testmachine.testteam.localhost/__exe.dev/auth", nil)
-		req.Host = "testmachine.testteam.localhost"
+		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth", nil)
+		req.Host = "testmachine.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -473,14 +532,14 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 5: Magic secret should be consumed (single use)
 	t.Run("magic_secret_single_use", func(t *testing.T) {
 		// Create a magic secret
-		secret, err := server.createMagicSecret("test-user-id", "testteam", "/original-path")
+		secret, err := server.createMagicSecret("test-user-id", "testmachine", "/original-path")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
 
 		// First request should succeed
-		req1 := httptest.NewRequest("GET", "http://testmachine.testteam.localhost/__exe.dev/auth?secret="+secret, nil)
-		req1.Host = "testmachine.testteam.localhost"
+		req1 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret, nil)
+		req1.Host = "testmachine.localhost"
 		w1 := httptest.NewRecorder()
 
 		server.ServeHTTP(w1, req1)
@@ -490,8 +549,8 @@ func TestMagicAuthFlow(t *testing.T) {
 		}
 
 		// Second request should fail (secret consumed)
-		req2 := httptest.NewRequest("GET", "http://testmachine.testteam.localhost/__exe.dev/auth?secret="+secret, nil)
-		req2.Host = "testmachine.testteam.localhost"
+		req2 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret, nil)
+		req2.Host = "testmachine.localhost"
 		w2 := httptest.NewRecorder()
 
 		server.ServeHTTP(w2, req2)
@@ -514,11 +573,26 @@ func TestProxyDebugPath(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create tables
+	// Create allocs table
+	_, err = db.Exec(`
+		CREATE TABLE allocs (
+			alloc_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			alloc_type TEXT NOT NULL DEFAULT 'medium',
+			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
+			docker_host TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create allocs table: %v", err)
+	}
+
+	// Create tables with alloc_id instead of team_name
 	_, err = db.Exec(`
 		CREATE TABLE machines (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			team_name TEXT NOT NULL,
+			alloc_id TEXT NOT NULL,
 			name TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'stopped',
 			image TEXT,
@@ -534,20 +608,47 @@ func TestProxyDebugPath(t *testing.T) {
 			ssh_ca_public_key TEXT,
 			ssh_host_certificate TEXT,
 			ssh_client_private_key TEXT,
-			ssh_port INTEGER
+			ssh_port INTEGER,
+			UNIQUE(name),
+			FOREIGN KEY (alloc_id) REFERENCES allocs(alloc_id)
 		)
 	`)
 	if err != nil {
 		t.Fatalf("Failed to create machines table: %v", err)
 	}
 
+	// Create users table
+	_, err = db.Exec(`
+		CREATE TABLE users (
+			user_id TEXT PRIMARY KEY,
+			email TEXT UNIQUE NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create test user
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, "test-user", "test@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Create alloc for test
+	allocID := "test-alloc-debug"
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id) VALUES (?, ?)`, allocID, "test-user")
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
+	}
+
 	// Create a test machine
 	_, err = db.Exec(`
-		INSERT INTO machines (team_name, name, image, container_id, created_by_user_id, docker_host, routes, 
+		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes, 
 		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, "testteam", "testmachine", "test-image", "test-container-id", 1, "unix:///var/run/docker.sock", `[
+	`, allocID, "testmachine", "test-image", "test-container-id", "test-user", "unix:///var/run/docker.sock", `[
 		{
 			"name": "default",
 			"policy": "public",
@@ -603,8 +704,8 @@ func TestProxyDebugPath(t *testing.T) {
 				devMode:   tt.devMode,
 			}
 
-			req := httptest.NewRequest("GET", "http://testmachine.testteam.localhost"+tt.path, nil)
-			req.Host = "testmachine.testteam.localhost"
+			req := httptest.NewRequest("GET", "http://testmachine.localhost"+tt.path, nil)
+			req.Host = "testmachine.localhost"
 			w := httptest.NewRecorder()
 
 			server.handleProxyRequest(w, req)

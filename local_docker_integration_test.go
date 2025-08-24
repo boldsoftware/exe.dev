@@ -44,10 +44,10 @@ func TestLocalDockerIntegration(t *testing.T) {
 
 	// Create a container
 	req := &container.CreateContainerRequest{
-		UserID:   "test-user",
-		TeamName: "test-team",
-		Name:     "test-container",
-		Image:    "alpine:latest",
+		UserID:  "test-user",
+		AllocID: "test-alloc",
+		Name:    "test-container",
+		Image:   "alpine:latest",
 	}
 
 	createdContainer, err := dockerManager.CreateContainer(ctx, req)
@@ -64,8 +64,8 @@ func TestLocalDockerIntegration(t *testing.T) {
 	if createdContainer.Name != "test-container" {
 		t.Errorf("Expected container name 'test-container', got %s", createdContainer.Name)
 	}
-	if createdContainer.TeamName != "test-team" {
-		t.Errorf("Expected team name 'test-team', got %s", createdContainer.TeamName)
+	if createdContainer.AllocID != "test-alloc" {
+		t.Errorf("Expected alloc ID 'test-alloc', got %s", createdContainer.AllocID)
 	}
 
 	// List containers

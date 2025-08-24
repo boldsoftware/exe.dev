@@ -54,26 +54,15 @@ func TestPublicKeyAuthentication(t *testing.T) {
 
 	// Fingerprints have been eliminated - no longer included in permissions
 
-	// Register the user and team in the database
+	// Register the user with alloc in the database
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-	if err := server.createUser(publicKeyStr, "test@example.com"); err != nil {
-		t.Fatalf("Failed to create user: %v", err)
+	if err := server.createUserWithAlloc(publicKeyStr, "test@example.com"); err != nil {
+		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
-	// Update the SSH key with proper public key and device name
+	// Update the SSH key with device name
 	if _, err := server.db.Exec(`UPDATE ssh_keys SET device_name = ? WHERE public_key = ?`,
 		"test-device", publicKeyStr); err != nil {
 		t.Fatalf("Failed to update SSH key: %v", err)
-	}
-	if err := server.createTeam("testteam", "test@example.com"); err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-	// Get the user ID for team membership
-	var userID string
-	if err := server.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "test@example.com").Scan(&userID); err != nil {
-		t.Fatalf("Failed to get user ID: %v", err)
-	}
-	if err := server.addTeamMember(userID, "testteam", true); err != nil {
-		t.Fatalf("Failed to add team member: %v", err)
 	}
 
 	// Test authentication with registered key
@@ -375,88 +364,6 @@ func TestEmailValidation(t *testing.T) {
 		if result != tt.valid {
 			t.Errorf("isValidEmail(%q) = %v, want %v", tt.email, result, tt.valid)
 		}
-	}
-}
-
-func TestTeamNameValidation(t *testing.T) {
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":8080", "", ":2222", ":0", tmpDB.Name(), "local", nil)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
-
-	tests := []struct {
-		teamName string
-		valid    bool
-	}{
-		{"validteam", true},
-		{"valid-team", true},
-		{"team123", true},
-		{"my-team-123", true},
-		{"ab", false},                     // too short
-		{"toolongteamnamehere123", false}, // too long
-		{"Team", false},                   // uppercase
-		{"team_name", false},              // underscore
-		{"team name", false},              // space
-		{"-team", false},                  // starts with hyphen
-		{"team-", false},                  // ends with hyphen
-		{"team--name", false},             // consecutive hyphens
-		{"123", true},                     // numbers only
-		{"a-b-c", true},                   // minimum length with hyphens
-	}
-
-	for _, tt := range tests {
-		result := server.isValidTeamName(tt.teamName)
-		if result != tt.valid {
-			t.Errorf("isValidTeamName(%q) = %v, want %v", tt.teamName, result, tt.valid)
-		}
-	}
-}
-
-func TestTeamNameAvailability(t *testing.T) {
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":8080", "", ":2222", ":0", tmpDB.Name(), "local", nil)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
-
-	// Create a team to mark the name as taken
-	if err := server.createTeam("taken", "test@example.com"); err != nil {
-		t.Fatalf("Failed to create team: %v", err)
-	}
-
-	// Check that it's marked as taken
-	isTaken, err := server.isTeamNameTaken("taken")
-	if err != nil {
-		t.Fatalf("Failed to check if team name is taken: %v", err)
-	}
-	if !isTaken {
-		t.Error("Team name 'taken' should be marked as taken")
-	}
-
-	// Check that a new name is available
-	isAvailable, err := server.isTeamNameTaken("available")
-	if err != nil {
-		t.Fatalf("Failed to check if team name is taken: %v", err)
-	}
-	if isAvailable {
-		t.Error("Team name 'available' should not be taken")
 	}
 }
 
