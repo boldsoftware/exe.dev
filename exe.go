@@ -1480,7 +1480,11 @@ The exe.dev team`, verifyEmailURL)
 	}
 
 	// Show success page
-	s.showAuthEmailSent(w, r, email)
+	var devURL string
+	if s.devMode != "" && (strings.Contains(r.Host, "localhost") || strings.Contains(r.Host, "127.0.0.1")) {
+		devURL = verifyEmailURL
+	}
+	s.showAuthEmailSent(w, r, email, devURL)
 }
 
 // showAuthError displays an authentication error page
@@ -1498,13 +1502,15 @@ func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message s
 }
 
 // showAuthEmailSent displays the email sent confirmation page
-func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email string) {
+func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email string, devURL string) {
 	data := struct {
 		Email       string
 		QueryString string
+		DevURL      string // Development-only URL for easy testing
 	}{
 		Email:       email,
 		QueryString: r.URL.RawQuery,
+		DevURL:      devURL,
 	}
 
 	s.renderTemplate(w, "email-sent.html", data)

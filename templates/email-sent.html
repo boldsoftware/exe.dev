@@ -45,6 +45,13 @@
             We've sent a sign-in link to <span class="email">{{.Email}}</span>
         </div>
         <p>Click the link in the email to complete your authentication.</p>
+        {{if .DevURL}}
+        <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 20px 0; text-align: left;">
+            <h4 style="color: #856404; margin: 0 0 10px 0; font-size: 14px;">🚧 Development Mode Only</h4>
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #856404;">For development convenience, here's the verification link:</p>
+            <a href="{{.DevURL}}" style="word-break: break-all; font-family: monospace; font-size: 12px; background: #f8f9fa; padding: 5px; border-radius: 3px; display: block;">{{.DevURL}}</a>
+        </div>
+        {{end}}
         <p><small>The link will expire in 24 hours. Didn't receive it? <a href="/auth?{{.QueryString}}">Try again</a></small></p>
     </div>
 </body>
