@@ -992,9 +992,10 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		return
 	}
 
-	// Check for non-flag arguments (future command execution)
+	// Check for non-flag arguments - not supported
 	if fs.NArg() > 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Command execution after machine creation is a TODO\033[0m\r\n")
+		fmt.Fprintf(s, "\033[1;31mError: Unexpected arguments: %s\033[0m\r\n", strings.Join(fs.Args(), " "))
+		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>]\r\n")
 		return
 	}
 
