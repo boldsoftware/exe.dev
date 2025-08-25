@@ -1340,16 +1340,6 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	s.renderTemplate(w, "email-verified.html", nil)
 }
 
-// isNumeric checks if a string contains only digits
-func isNumeric(s string) bool {
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return len(s) > 0
-}
-
 // handleAuth handles the main domain authentication flow
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	if !s.quietMode {

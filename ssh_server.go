@@ -1477,12 +1477,6 @@ func (ss *SSHServer) handleAllocCommand(s ssh.Session, publicKey, allocID string
 	fmt.Fprintf(s, "  Created: %s\r\n\r\n", alloc.CreatedAt.Format("Jan 2, 2006"))
 }
 
-// getMachinesForTeam is obsolete - use getMachinesForAlloc instead
-func (s *Server) getMachinesForTeam(allocID string) ([]*Machine, error) {
-	// This function is kept for backward compatibility but redirects to getMachinesForAlloc
-	return s.getMachinesForAlloc(allocID)
-}
-
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
 func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
 	// Check if this email already exists
