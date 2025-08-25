@@ -1150,7 +1150,6 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, allocID string
 
 	machineName := args[0]
 
-
 	if ss.server.containerManager == nil {
 		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
 		return
@@ -1203,7 +1202,6 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, allocID string,
 		return
 	}
 
-
 	for _, machineName := range args {
 		// Get machine info
 		machine, err := ss.server.getMachineByName(machineName)
@@ -1248,7 +1246,6 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, allocID strin
 	}
 
 	machineName := args[0]
-
 
 	if ss.server.containerManager == nil {
 		// Just delete from database if no container manager

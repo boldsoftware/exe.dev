@@ -298,7 +298,7 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 
 	// Create alloc for user1
 	allocID1 := "alloc1"
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`, 
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`,
 		allocID1, userID1, "medium", "aws-us-west-2", "", email1)
 	if err != nil {
 		t.Fatalf("Failed to create alloc for user1: %v", err)
@@ -306,7 +306,7 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 
 	// Create alloc for user2
 	allocID2 := "alloc2"
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`, 
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`,
 		allocID2, userID2, "medium", "aws-us-west-2", "", email2)
 	if err != nil {
 		t.Fatalf("Failed to create alloc for user2: %v", err)

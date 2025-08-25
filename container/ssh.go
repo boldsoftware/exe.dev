@@ -81,9 +81,9 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 
 	// Create user certificate for client authentication
 	userCert := &ssh.Certificate{
-		Key:      clientSSHPub,
-		Serial:   2,
-		CertType: ssh.UserCert,
+		Key:             clientSSHPub,
+		Serial:          2,
+		CertType:        ssh.UserCert,
 		KeyId:           "exe-user",
 		ValidPrincipals: []string{"root"},
 		ValidAfter:      uint64(time.Now().Add(-1 * time.Hour).Unix()),

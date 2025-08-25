@@ -287,10 +287,10 @@ type UserPageData struct {
 
 // SSHKey represents an SSH key for the user page
 type SSHKey struct {
-	UserID      string
-	PublicKey   string
-	DeviceName  *string
-	Verified    bool
+	UserID     string
+	PublicKey  string
+	DeviceName *string
+	Verified   bool
 }
 
 // EmailVerification represents a pending email verification (in-memory)
@@ -2401,7 +2401,7 @@ func (s *Server) createMachine(userID, allocID, name, containerID, image string)
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
 	}
-	
+
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, routes,
@@ -2420,7 +2420,7 @@ func (s *Server) createMachineWithDockerHost(userID, allocID, name, containerID,
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
 	}
-	
+
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, docker_host, routes,
@@ -2439,7 +2439,7 @@ func (s *Server) createMachineWithSSH(userID, allocID, name, containerID, image 
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
 	}
-	
+
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (
@@ -2459,7 +2459,7 @@ func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, contai
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
 	}
-	
+
 	routes := getDefaultRoutesJSON()
 	_, err := s.db.Exec(`
 		INSERT INTO machines (

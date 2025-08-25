@@ -112,7 +112,7 @@ func TestUserDashboard(t *testing.T) {
 		t.Logf("Response body (first 500 chars): %s", bodyStr[:min(500, len(bodyStr))])
 		t.Errorf("Expected to find 'EXE.DEV' in page title")
 	}
-	
+
 	// Check for welcome message or machines section
 	if !strings.Contains(bodyStr, "welcome") && !strings.Contains(bodyStr, "Machines") && !strings.Contains(bodyStr, "machines") {
 		t.Errorf("Expected to find welcome message or machines section")

@@ -108,7 +108,7 @@ var ContainerSizes = map[string]ContainerSize{
 
 // CreateContainerRequest represents the parameters for creating a new container
 type CreateContainerRequest struct {
-	AllocID    string `json:"alloc_id"`             // Allocation ID for this container
+	AllocID    string `json:"alloc_id"` // Allocation ID for this container
 	Name       string `json:"name"`
 	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"
 	Dockerfile string `json:"dockerfile,omitempty"` // Optional custom Dockerfile

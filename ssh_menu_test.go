@@ -96,7 +96,6 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 		t.Fatalf("Failed to update SSH key: %v", err)
 	}
 
-
 	// Test authentication directly to see what permissions are returned
 	perms, err := server.AuthenticatePublicKey(nil, signer.PublicKey())
 	if err != nil {
