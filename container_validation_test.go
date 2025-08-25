@@ -6,7 +6,7 @@ import (
 
 func TestIsValidMachineName(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	tests := []struct {
 		name     string
@@ -66,7 +66,7 @@ func TestIsValidMachineName(t *testing.T) {
 
 func TestMachineNameDenylist(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Test all denylisted machine names
 	denylistedWords := []string{

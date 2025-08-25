@@ -25,14 +25,14 @@ func run() error {
 	piperAddr := flag.String("piper", ":2224", "Piper plugin gRPC server address")
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt)")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
-	devMode := flag.String("dev", "", "Development mode: \"\" (production) or \"local\" (local Docker)")
+	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local Docker), or "test" (test mode)`)
 	dockerHosts := flag.String("docker-hosts", "", "Comma-separated list of DOCKER_HOST values (e.g., 'tcp://host1:2376,tcp://host2:2376')")
 	mdnsEnabled := flag.Bool("mdns", false, "Enable mDNS registration for dev mode (.local hostnames)")
 	flag.Parse()
 
 	// Validate dev mode
-	if *devMode != "" && *devMode != "local" {
-		return fmt.Errorf(`valid dev modes are "" and "local", got: %q`, *devMode)
+	if *devMode != "" && *devMode != "local" && *devMode != "test" {
+		return fmt.Errorf(`valid dev modes are "", "local", and "test", got: %q`, *devMode)
 	}
 
 	// Setup structured logging
@@ -46,8 +46,8 @@ func run() error {
 		for i, h := range hosts {
 			hosts[i] = strings.TrimSpace(h)
 		}
-	} else if *devMode == "local" {
-		// Default to local Docker for dev mode
+	} else if *devMode != "" {
+		// Default to local Docker for dev/test mode
 		hosts = []string{""}
 	} else {
 		// Try to get from environment

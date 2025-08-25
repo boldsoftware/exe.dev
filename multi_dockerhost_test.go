@@ -13,7 +13,7 @@ func TestMultiDockerHostSSH(t *testing.T) {
 	// This test verifies the fix for multi-dockerhost SSH routing
 
 	// Create test server with database
-	server := setupTestServerWithDB(t)
+	server := NewTestServer(t)
 
 	// Test docker host values
 	dockerHost := "tcp://dockerhost1:2376"
@@ -85,7 +85,7 @@ func TestDockerHostPersistence(t *testing.T) {
 	// This test verifies that docker host information is now properly stored
 
 	// Create test server with database
-	server := setupTestServerWithDB(t)
+	server := NewTestServer(t)
 
 	dockerHost := "tcp://production-docker:2376"
 	userID := "test-user-fp"

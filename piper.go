@@ -35,8 +35,8 @@ type HostKeyMapping struct {
 
 // PiperPlugin implements the sshpiper plugin interface
 type PiperPlugin struct {
-	server *Server
-	addr   string
+	server      *Server
+	exedSSHPort int // exed's SSH port, usually 2223
 
 	// proxyKeyMappings maps SSH public key fingerprints of ephemeral proxy keys
 	// to the original user's public key. This allows us to:
@@ -58,10 +58,10 @@ type PiperPlugin struct {
 }
 
 // NewPiperPlugin creates a new piper plugin instance
-func NewPiperPlugin(server *Server, addr string) *PiperPlugin {
+func NewPiperPlugin(server *Server, port int) *PiperPlugin {
 	p := &PiperPlugin{
 		server:                   server,
-		addr:                     addr,
+		exedSSHPort:              port,
 		proxyKeyMappings:         make(map[string]*ProxyKeyMapping),
 		keyboardInteractiveShown: make(map[string]bool),
 		expectedHostKeys:         make(map[string]*HostKeyMapping),
@@ -111,9 +111,18 @@ func (p *PiperPlugin) getServerHostKey() (string, error) {
 	return publicKey, nil
 }
 
-// Serve starts the sshpiper plugin gRPC server
-func (p *PiperPlugin) Serve() error {
-	slog.Debug("Starting sshpiper plugin gRPC server", "component", "piper-plugin", "addr", p.addr)
+// ListenAndServe starts the sshpiper plugin gRPC server, listening on addr.
+func (p *PiperPlugin) ListenAndServe(addr string) error {
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %v", addr, err)
+	}
+	return p.Serve(lis)
+}
+
+// Serve starts the sshpiper plugin gRPC server, listening on ln.
+func (p *PiperPlugin) Serve(lis net.Listener) error {
+	slog.Debug("Starting sshpiper plugin gRPC server", "component", "piper-plugin", "addr", lis.Addr())
 	config := libplugin.SshPiperPluginConfig{
 		NextAuthMethodsCallback:     p.handleNextAuthMethods,
 		PublicKeyCallback:           p.handlePublicKeyAuth,
@@ -123,17 +132,12 @@ func (p *PiperPlugin) Serve() error {
 
 	s := grpc.NewServer()
 
-	lis, err := net.Listen("tcp", p.addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %v", p.addr, err)
-	}
-
 	plugin, err := libplugin.NewFromGrpc(config, s, lis)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin: %v", err)
 	}
 
-	slog.Debug("Starting sshpiper plugin", "component", "piper-plugin", "addr", p.addr)
+	slog.Debug("Starting sshpiper plugin", "component", "piper-plugin", "addr", lis.Addr())
 	slog.Debug("Plugin server listening", "component", "piper-plugin", "addr", lis.Addr())
 
 	err = plugin.Serve()
@@ -255,8 +259,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	}
 
 	// For all other cases (interactive shell, registration, etc.),
-	// route to exed directly on port 2223 using ephemeral proxy authentication
-	slog.Debug("Routing to exed shell on port 2223", "component", "piper-plugin")
+	// route to exed directly using ephemeral proxy authentication
+	slog.Debug("Routing to exed shell", "port", p.exedSSHPort, "component", "piper-plugin")
 	slog.Debug("User's public key length", "component", "piper-plugin", "key_length_bytes", len(key))
 
 	// EPHEMERAL PROXY KEY APPROACH:
@@ -276,7 +280,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	upstream := &libplugin.Upstream{
 		Host:     "127.0.0.1", // Use explicit IPv4 instead of localhost
-		Port:     2223,
+		Port:     int32(p.exedSSHPort),
 		UserName: username, // Use original username, not encoded
 		// Host key validation is handled by VerifyHostKeyCallback
 		IgnoreHostKey: false, // Enable host key validation
@@ -312,7 +316,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	// In development mode, try to use host.docker.internal if it resolves
 	// This handles the case where we're running inside a container (like Sketch)
 	// and need to connect to Docker-published ports
-	if p.server.devMode == "local" {
+	if p.server.devMode != "" {
 		if _, err := net.LookupHost("host.docker.internal"); err == nil {
 			host = "host.docker.internal"
 			slog.Debug("Using host.docker.internal in dev mode", "component", "piper-plugin", "host", host)

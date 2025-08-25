@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func NewTestServer(t *testing.T, httpAddr, sshAddr string) *Server {
+func NewTestServer(t *testing.T, dockerhosts ...string) *Server {
 	t.Helper()
 
 	tmpDB, err := os.CreateTemp("", t.Name()+"_*.db")
@@ -17,13 +17,23 @@ func NewTestServer(t *testing.T, httpAddr, sshAddr string) *Server {
 		os.Remove(tmpDB.Name())
 	})
 
-	server, err := NewServer(httpAddr, "", sshAddr, ":0", tmpDB.Name(), "local", []string{""})
+	if len(dockerhosts) == 0 {
+		dockerhosts = []string{""}
+	}
+
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "test", dockerhosts)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
 	t.Cleanup(func() {
 		server.Stop()
 	})
+
+	server.testMode = true
+	server.quietMode = true
+
+	go server.Start()
+	server.ready.Wait()
 
 	return server
 }

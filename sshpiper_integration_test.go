@@ -4,161 +4,15 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
-	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"exe.dev/container"
 	"golang.org/x/crypto/ssh"
 )
-
-// TestSSHPiperIntegration tests the new sshpiper architecture end-to-end
-func TestSSHPiperIntegration(t *testing.T) {
-	t.Parallel()
-	t.Run("ExedStartsWithPiperPlugin", func(t *testing.T) {
-		// Create temporary database file
-		tmpDB, err := os.CreateTemp("", "test_*.db")
-		if err != nil {
-			t.Fatalf("Failed to create temp db: %v", err)
-		}
-		defer os.Remove(tmpDB.Name())
-		tmpDB.Close()
-
-		// Create server with available ports
-		httpPort := findAvailablePort(t)
-		sshPort := findAvailablePort(t)
-		piperPort := findAvailablePort(t)
-
-		server, err := NewServer(
-			fmt.Sprintf(":%d", httpPort),
-			"", // no HTTPS
-			fmt.Sprintf(":%d", sshPort),
-			fmt.Sprintf(":%d", piperPort),
-			tmpDB.Name(),
-			"local",
-			[]string{""}, // local docker
-		)
-		if err != nil {
-			t.Fatalf("Failed to create server: %v", err)
-		}
-		defer server.Stop()
-
-		// Start the server in a goroutine
-		go func() {
-			server.Start()
-		}()
-
-		// Wait for both SSH and Piper ports to be ready in parallel
-		errc := make(chan error, 2)
-		var wg sync.WaitGroup
-		wg.Go(func() { errc <- waitForPort(sshPort) })
-		wg.Go(func() { errc <- waitForPort(piperPort) })
-		wg.Wait()
-		close(errc)
-		for err := range errc {
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-
-		// Test that the piper plugin gRPC server is listening
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", piperPort), 5*time.Second)
-		if err != nil {
-			t.Errorf("Piper plugin gRPC server not listening on port %d: %v", piperPort, err)
-		} else {
-			conn.Close()
-			t.Logf("✅ Piper plugin gRPC server is listening on port %d", piperPort)
-		}
-
-		// Test that the SSH server is listening on the new port (2223 by default, or our test port)
-		conn, err = net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", sshPort), 5*time.Second)
-		if err != nil {
-			t.Errorf("SSH server not listening on port %d: %v", sshPort, err)
-		} else {
-			conn.Close()
-			t.Logf("✅ SSH server is listening on port %d", sshPort)
-		}
-	})
-
-	t.Run("PiperPluginAuthentication", func(t *testing.T) {
-		// Create a temporary database with test data
-		tmpDB, err := os.CreateTemp("", "test_*.db")
-		if err != nil {
-			t.Fatalf("Failed to create temp db: %v", err)
-		}
-		defer os.Remove(tmpDB.Name())
-		tmpDB.Close()
-
-		// Create server
-		piperPort := findAvailablePort(t)
-		server, err := NewServer(
-			":0", // HTTP
-			"",   // no HTTPS
-			":0", // SSH
-			fmt.Sprintf(":%d", piperPort),
-			tmpDB.Name(),
-			"local",
-			[]string{""}, // local docker
-		)
-		if err != nil {
-			t.Fatalf("Failed to create server: %v", err)
-		}
-		defer server.Stop()
-
-		// Test the piper plugin directly
-		plugin := NewPiperPlugin(server, fmt.Sprintf(":%d", piperPort))
-
-		// Start the plugin in a goroutine
-		go func() {
-			plugin.Serve()
-		}()
-
-		// Wait for plugin port to be ready
-		err = waitForPort(piperPort)
-		if err != nil {
-			t.Fatalf("Piper plugin server failed to start: %v", err)
-		}
-
-		// Test that the plugin server is running
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", piperPort), 5*time.Second)
-		if err != nil {
-			t.Errorf("Plugin server not listening: %v", err)
-			return
-		}
-		conn.Close()
-		t.Logf("✅ Piper plugin server is running")
-	})
-}
-
-// findAvailablePort finds an available TCP port for testing
-func findAvailablePort(t *testing.T) int {
-	listener, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("Failed to find available port: %v", err)
-	}
-	defer listener.Close()
-
-	addr := listener.Addr().(*net.TCPAddr)
-	return addr.Port
-}
-
-// waitForPort waits for the specified port to be listening
-func waitForPort(port int) error {
-	for range 50 {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 100*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			return nil
-		}
-	}
-
-	return fmt.Errorf("port %d failed to become ready", port)
-}
 
 // TestSSHPiperScript tests the sshpiper.sh script
 func TestSSHPiperScript(t *testing.T) {
@@ -168,28 +22,7 @@ func TestSSHPiperScript(t *testing.T) {
 		t.Skip("Skipping sshpiper script test in short mode")
 	}
 
-	// Check if sqlite3 is available
-	if _, err := exec.LookPath("sqlite3"); err != nil {
-		t.Skip("sqlite3 not available, skipping script test")
-	}
-
-	// Create temporary database with host key
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	// Create server to generate host key
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
-
-	// Generate host key by setting up SSH server
-	server.setupSSHServer()
+	server := NewTestServer(t)
 
 	// Test that the script can extract the host key
 	scriptPath := "./sshpiper.sh"
@@ -209,7 +42,7 @@ func TestSSHPiperScript(t *testing.T) {
 	}
 
 	// Test extracting host key from database
-	cmd := exec.Command("sqlite3", tmpDB.Name(), "SELECT private_key FROM ssh_host_key WHERE id = 1;")
+	cmd := exec.Command("sqlite3", server.dbPath, "SELECT private_key FROM ssh_host_key WHERE id = 1;")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to query database: %v", err)
@@ -266,32 +99,7 @@ func TestSSHPiperConfiguration(t *testing.T) {
 
 // TestMachineAccessImplementation tests the machine access functionality
 func TestMachineAccessImplementation(t *testing.T) {
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	// Create server
-	piperPort := findAvailablePort(t)
-	server, err := NewServer(
-		":0", // HTTP
-		"",   // no HTTPS
-		":0", // SSH
-		fmt.Sprintf(":%d", piperPort),
-		tmpDB.Name(),
-		"local",
-		[]string{""}, // local docker
-	)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
-
-	// Test the piper plugin directly
-	plugin := NewPiperPlugin(server, fmt.Sprintf(":%d", piperPort))
+	server := NewTestServer(t)
 
 	// Test machine that doesn't exist
 	machine := &Machine{
@@ -301,7 +109,7 @@ func TestMachineAccessImplementation(t *testing.T) {
 		CreatedByUserID: "usr1234567890123", // test user ID
 	}
 
-	upstream, err := plugin.handleMachineAccess(machine, "test-fp", "test-conn-id")
+	upstream, err := server.piperPlugin.handleMachineAccess(machine, "test-fp", "test-conn-id")
 	if err == nil || upstream != nil {
 		t.Error("Expected error for machine with no ContainerID")
 	} else {
@@ -329,40 +137,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 		t.Skip("Skipping real machine access E2E test in short mode")
 	}
 
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_e2e_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	// Create server with container management enabled
-	httpPort := findAvailablePort(t)
-	sshPort := findAvailablePort(t)
-	piperPort := findAvailablePort(t)
-
-	server, err := NewServer(
-		fmt.Sprintf(":%d", httpPort),
-		"", // no HTTPS
-		fmt.Sprintf(":%d", sshPort),
-		fmt.Sprintf(":%d", piperPort),
-		tmpDB.Name(),
-		"local",
-		[]string{""}, // local docker
-	)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
-
-	// Start the server
-	go func() {
-		server.Start()
-	}()
-
-	// Wait for server to start
-	time.Sleep(3 * time.Second)
+	server := NewTestServer(t)
 
 	// Create test user and team
 	email := "test-e2e@example.com"
@@ -422,9 +197,6 @@ func TestRealMachineAccessE2E(t *testing.T) {
 
 	t.Log("✅ Machine stored in database with SSH keys")
 
-	// Test the piper plugin directly
-	plugin := NewPiperPlugin(server, fmt.Sprintf(":%d", piperPort))
-
 	// Test finding the machine
 	machine := server.FindMachineByNameForUser(userID, "test-machine")
 	if machine == nil {
@@ -450,7 +222,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	t.Logf("✅ Container host port retrieved (host: %s, port: %d)", host, port)
 
 	// Test the complete machine access flow
-	upstream, err := plugin.handleMachineAccess(machine, userID, "test-conn-id")
+	upstream, err := server.piperPlugin.handleMachineAccess(machine, userID, "test-conn-id")
 	if err != nil {
 		t.Fatalf("Failed to handle machine access: %v", err)
 	}
@@ -482,31 +254,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 // TestLegacyContainerSSHSetup tests the SSH setup for containers created before SSH support
 func TestLegacyContainerSSHSetup(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_legacy_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	// Create server
-	piperPort := findAvailablePort(t)
-	server, err := NewServer(
-		":0", // HTTP
-		"",   // no HTTPS
-		":0", // SSH
-		fmt.Sprintf(":%d", piperPort),
-		tmpDB.Name(),
-		"local",
-		[]string{""}, // local docker
-	)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
-
-	// Create test user and team
+	server := NewTestServer(t)
 	email := "legacy-test@example.com"
 	// teamName no longer used - machines are globally unique
 
@@ -567,17 +315,7 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 // TestSSHPiperProxyAuthentication tests the complete proxy authentication flow
 func TestSSHPiperProxyAuthentication(t *testing.T) {
 	t.Parallel()
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
-
-	// Start the server
-	go server.Start()
-	defer server.Stop()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
+	server := NewTestServer(t)
 
 	// Generate test user SSH key
 	privateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
@@ -596,12 +334,8 @@ func TestSSHPiperProxyAuthentication(t *testing.T) {
 
 	t.Logf("Test user fingerprint: %s", userFingerprint)
 
-	// Create piper plugin
-	piperPort := findAvailablePort(t)
-	plugin := NewPiperPlugin(server, fmt.Sprintf(":%d", piperPort))
-
 	// Test ephemeral proxy key generation
-	proxyKey, proxyFingerprint, err := plugin.generateEphemeralProxyKey(userPublicKeyBytes, "127.0.0.1")
+	proxyKey, proxyFingerprint, err := server.piperPlugin.generateEphemeralProxyKey(userPublicKeyBytes, "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Failed to generate ephemeral proxy key: %v", err)
 	}
@@ -609,7 +343,7 @@ func TestSSHPiperProxyAuthentication(t *testing.T) {
 
 	// Test proxy authentication logic
 	username := "root"
-	upstream, err := plugin.handlePublicKeyAuth(mockConnMetadata{
+	upstream, err := server.piperPlugin.handlePublicKeyAuth(mockConnMetadata{
 		user: username,
 		addr: "127.0.0.1:12345",
 	}, userPublicKeyBytes)
@@ -627,8 +361,8 @@ func TestSSHPiperProxyAuthentication(t *testing.T) {
 	if upstream.Host != "localhost" && upstream.Host != "127.0.0.1" {
 		t.Errorf("Expected host=localhost or 127.0.0.1, got %s", upstream.Host)
 	}
-	if upstream.Port != 2223 {
-		t.Errorf("Expected port=2223, got %d", upstream.Port)
+	if upstream.Port != int32(server.piperPlugin.exedSSHPort) {
+		t.Errorf("Expected port=%d, got %d", server.piperPlugin.exedSSHPort, upstream.Port)
 	}
 
 	// Check that username is preserved (no longer encoded with fingerprint)
@@ -637,7 +371,7 @@ func TestSSHPiperProxyAuthentication(t *testing.T) {
 	}
 
 	// Test that we can look up the original user key
-	lookedUpKey, _, exists := plugin.lookupOriginalUserKey(proxyFingerprint)
+	lookedUpKey, _, exists := server.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
 		t.Errorf("Failed to lookup original user key for proxy fingerprint %s", proxyFingerprint)
 	}
@@ -673,14 +407,7 @@ func (m mockConnMetadata) GetMeta(key string) string {
 // TestSSHPiperExedEphemeralProxyAuth tests that exed correctly handles ephemeral proxy authentication
 func TestSSHPiperExedEphemeralProxyAuth(t *testing.T) {
 	t.Parallel()
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
-
-	// Create piper plugin
-	plugin := NewPiperPlugin(server, ":0")
-	server.piperPlugin = plugin // Set the reference
+	server := NewTestServer(t)
 
 	// Generate test user key
 	userPrivateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
@@ -698,7 +425,7 @@ func TestSSHPiperExedEphemeralProxyAuth(t *testing.T) {
 	t.Logf("User fingerprint: %s", userFingerprint)
 
 	// Generate ephemeral proxy key
-	proxyKeyPEM, proxyFingerprint, err := plugin.generateEphemeralProxyKey(userPublicKeyBytes, "127.0.0.1")
+	proxyKeyPEM, proxyFingerprint, err := server.piperPlugin.generateEphemeralProxyKey(userPublicKeyBytes, "127.0.0.1")
 	if err != nil {
 		t.Fatalf("Failed to generate ephemeral proxy key: %v", err)
 	}
@@ -793,12 +520,10 @@ func TestSSHPiperRealKeyIntegration(t *testing.T) {
 	}
 
 	// Create a temporary server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
+	server := NewTestServer(t)
 
 	// Create piper plugin
-	plugin := NewPiperPlugin(server, ":0")
+	plugin := NewPiperPlugin(server, 0)
 	server.piperPlugin = plugin
 
 	userKeyBytes := pubKey.Marshal()

@@ -27,13 +27,10 @@ func generateTestHostKey(t *testing.T, keyName string) []byte {
 func TestVerifyHostKeyImplemented(t *testing.T) {
 	t.Parallel()
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
+	server := NewTestServer(t)
 
 	// Start the piper plugin
-	piper := NewPiperPlugin(server, ":0")
+	piper := NewPiperPlugin(server, 0)
 
 	// Create a mock connection metadata
 	mockConn := mockConnMetadata{
@@ -65,40 +62,14 @@ func TestVerifyHostKeyImplemented(t *testing.T) {
 	t.Logf("   - Result: Properly rejected unknown key: %v", err)
 }
 
-// TestSSHPiperNoVerifyHostKeyError tests that SSH connections through the piper
-// no longer fail with "method VerifyHostKey not implemented"
-func TestSSHPiperNoVerifyHostKeyError(t *testing.T) {
-	t.Parallel()
-
-	// Create server with piper enabled
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
-
-	// Wait for server to start
-	time.Sleep(200 * time.Millisecond)
-
-	// The fact that the server starts without errors and the piper plugin
-	// initializes successfully proves that VerifyHostKey is implemented.
-	// If it weren't implemented, we'd get gRPC "Unimplemented" errors.
-
-	t.Logf("✅ SSH piper server started successfully with VerifyHostKey implemented")
-	t.Logf("   - SSH piper plugin is running")
-	t.Logf("   - No 'method VerifyHostKey not implemented' errors occurred")
-	t.Logf("   - Plugin properly handles host key verification callbacks")
-}
-
 // TestVerifyHostKeyRejectsUnknownKeys verifies our implementation properly rejects unknown host keys
 // and only accepts keys from machines with stored expected host keys
 func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 	t.Parallel()
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
+	server := NewTestServer(t)
 
-	piper := NewPiperPlugin(server, ":0")
+	piper := NewPiperPlugin(server, 0)
 	mockConn := mockConnMetadata{
 		user: "testuser",
 		addr: "127.0.0.1:54321",
@@ -151,13 +122,9 @@ func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 // TestVerifyHostKeyAcceptsKnownKeys verifies that stored host keys are properly validated
 func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 	t.Parallel()
+	server := NewTestServer(t)
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
-
-	piper := NewPiperPlugin(server, ":0")
+	piper := NewPiperPlugin(server, 0)
 	testMachineName := "test-machine"
 	mockConn := mockConnMetadata{
 		user: testMachineName,
@@ -188,13 +155,9 @@ func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 // TestVerifyHostKeyExpiration verifies that expired host keys are rejected
 func TestVerifyHostKeyExpiration(t *testing.T) {
 	t.Parallel()
+	server := NewTestServer(t)
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = true
-	server.testMode = true
-
-	piper := NewPiperPlugin(server, ":0")
+	piper := NewPiperPlugin(server, 0)
 	testMachineName := "expire-test-machine"
 	mockConn := mockConnMetadata{
 		user: testMachineName,

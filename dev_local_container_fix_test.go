@@ -15,7 +15,7 @@ func TestDevLocalContainerFix(t *testing.T) {
 	}
 
 	// Create server in local mode
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Verify we have a Docker manager
 	if server.containerManager == nil {

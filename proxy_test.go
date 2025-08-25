@@ -1,129 +1,34 @@
 package exe
 
 import (
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
-
-	"exe.dev/exedb"
-	_ "modernc.org/sqlite"
 )
 
 func TestProxyRequestRouting(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	dbFile := "/tmp/test_proxy_routing.db"
-	defer os.Remove(dbFile)
-
-	db, err := sql.Open("sqlite", dbFile)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-	defer db.Close()
-
-	// Create users table first
-	_, err = db.Exec(`
-		CREATE TABLE users (
-			user_id TEXT PRIMARY KEY,
-			
-			email TEXT UNIQUE NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create users table: %v", err)
-	}
-
-	// Create allocs table
-	_, err = db.Exec(`
-		CREATE TABLE allocs (
-			alloc_id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			alloc_type TEXT NOT NULL DEFAULT 'medium',
-			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
-			docker_host TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			stripe_customer_id TEXT,
-			billing_email TEXT,
-			FOREIGN KEY (user_id) REFERENCES users(user_id)
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create allocs table: %v", err)
-	}
-
-	// Create machines table with alloc_id instead of team_name
-	_, err = db.Exec(`
-		CREATE TABLE machines (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			alloc_id TEXT NOT NULL,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'stopped',
-			image TEXT,
-			container_id TEXT,
-			created_by_user_id TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_started_at DATETIME,
-			docker_host TEXT,
-			routes TEXT,
-			ssh_server_identity_key TEXT,
-			ssh_authorized_keys TEXT,
-			ssh_ca_public_key TEXT,
-			ssh_host_certificate TEXT,
-			ssh_client_private_key TEXT,
-			ssh_port INTEGER,
-			UNIQUE(name),
-			FOREIGN KEY (alloc_id) REFERENCES allocs(alloc_id)
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create machines table: %v", err)
-	}
-
-	// Create ssh_keys table without default_team
-	_, err = db.Exec(`
-		CREATE TABLE ssh_keys (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id TEXT NOT NULL,
-			public_key TEXT UNIQUE NOT NULL,
-			added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_used_at DATETIME,
-			verified BOOLEAN DEFAULT FALSE,
-			FOREIGN KEY (user_id) REFERENCES users(user_id)
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create ssh_keys table: %v", err)
-	}
+	server := NewTestServer(t)
 
 	// Create test user
 	userID := "usr1234567890123" // test user ID
-	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	err := server.createUser(userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create alloc for test user
 	allocID := "alloc_" + userID
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key for test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
-	}
-	// Create a test server
-	server := &Server{
-		quietMode: true,
-		db:        db,
-		testMode:  true,
 	}
 
 	// Create a test machine with default routes
@@ -214,116 +119,26 @@ func TestProxyRequestRouting(t *testing.T) {
 
 func TestProxyRequestDetails(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	dbFile := "/tmp/test_proxy_details.db"
-	defer os.Remove(dbFile)
-
-	db, err := sql.Open("sqlite", dbFile)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-	defer db.Close()
-
-	// Create users table first
-	_, err = db.Exec(`
-		CREATE TABLE users (
-			user_id TEXT PRIMARY KEY,
-			
-			email TEXT UNIQUE NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create users table: %v", err)
-	}
-
-	// Create allocs table
-	_, err = db.Exec(`
-		CREATE TABLE allocs (
-			alloc_id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			alloc_type TEXT NOT NULL DEFAULT 'medium',
-			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
-			docker_host TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			stripe_customer_id TEXT,
-			billing_email TEXT,
-			FOREIGN KEY (user_id) REFERENCES users(user_id)
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create allocs table: %v", err)
-	}
-
-	// Create machines table with alloc_id instead of team_name
-	_, err = db.Exec(`
-		CREATE TABLE machines (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			alloc_id TEXT NOT NULL,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'stopped',
-			image TEXT,
-			container_id TEXT,
-			created_by_user_id TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_started_at DATETIME,
-			docker_host TEXT,
-			routes TEXT,
-			ssh_server_identity_key TEXT,
-			ssh_authorized_keys TEXT,
-			ssh_ca_public_key TEXT,
-			ssh_host_certificate TEXT,
-			ssh_client_private_key TEXT,
-			ssh_port INTEGER,
-			UNIQUE(name),
-			FOREIGN KEY (alloc_id) REFERENCES allocs(alloc_id)
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create machines table: %v", err)
-	}
-	// Create ssh_keys table without default_team
-	_, err = db.Exec(`
-		CREATE TABLE ssh_keys (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id TEXT NOT NULL,
-			public_key TEXT UNIQUE NOT NULL,
-			added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_used_at DATETIME,
-			verified BOOLEAN DEFAULT FALSE,
-			FOREIGN KEY (user_id) REFERENCES users(user_id)
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create ssh_keys table: %v", err)
-	}
+	server := NewTestServer(t)
 
 	// Create test user
 	userID := "usr2234567890123" // test user ID
-	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	err := server.createUser(userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create alloc for test user
 	allocID := "alloc_" + userID
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key for test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
-	}
-
-	// Create a test server
-	server := &Server{
-		quietMode: true,
-		db:        db,
-		testMode:  true,
 	}
 
 	// Create a test machine
@@ -355,21 +170,8 @@ func TestProxyRequestDetails(t *testing.T) {
 
 func TestMagicAuthFlow(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	dbFile := "/tmp/test_magic_auth.db"
-	defer os.Remove(dbFile)
-
-	db, err := sql.Open("sqlite", dbFile)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-	defer db.Close()
-
-	// Use proper migration system
-	err = exedb.RunMigrations(db)
-	if err != nil {
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
+	server := NewTestServer(t)
+	server.magicSecrets = make(map[string]*MagicSecret)
 
 	// Create a test user
 	userID, err := generateUserID()
@@ -377,13 +179,13 @@ func TestMagicAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test@example.com")
+	err = server.createUser(userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create SSH key for the test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
 		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
@@ -391,16 +193,16 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	// Create alloc for test user
 	allocID := "test-alloc-" + userID
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine with a private route
-	_, err = db.Exec(`
-		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes, 
-		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
-		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
+	_, err = server.db.Exec(`
+		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
+		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
 		{
@@ -414,15 +216,6 @@ func TestMagicAuthFlow(t *testing.T) {
 	]`, "test-identity-key", "test-authorized-keys", "test-ca-key", "test-host-cert", "test-client-key", 2222)
 	if err != nil {
 		t.Fatalf("Failed to insert test machine: %v", err)
-	}
-
-	// Create a test server
-	server := &Server{
-		quietMode:    true,
-		db:           db,
-		testMode:     true,
-		devMode:      "local",
-		magicSecrets: make(map[string]*MagicSecret),
 	}
 
 	// Test 1: Request to private route without auth should redirect to auth
@@ -453,7 +246,7 @@ func TestMagicAuthFlow(t *testing.T) {
 		}
 
 		location := w.Header().Get("Location")
-		if !strings.Contains(location, "localhost/auth?") {
+		if !strings.Contains(location, "/auth?") {
 			t.Errorf("Expected redirect to auth, got %s", location)
 		}
 		if !strings.Contains(location, "return_host=") {
@@ -571,92 +364,26 @@ func TestMagicAuthFlow(t *testing.T) {
 // TestProxyDebugPath tests the debug path handling in dev mode
 func TestProxyDebugPath(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	dbFile := "/tmp/test_proxy_debug.db"
-	defer os.Remove(dbFile)
-
-	db, err := sql.Open("sqlite", dbFile)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-	defer db.Close()
-
-	// Create allocs table
-	_, err = db.Exec(`
-		CREATE TABLE allocs (
-			alloc_id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			alloc_type TEXT NOT NULL DEFAULT 'medium',
-			region TEXT NOT NULL DEFAULT 'aws-us-west-2',
-			docker_host TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			stripe_customer_id TEXT,
-			billing_email TEXT
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create allocs table: %v", err)
-	}
-
-	// Create tables with alloc_id instead of team_name
-	_, err = db.Exec(`
-		CREATE TABLE machines (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			alloc_id TEXT NOT NULL,
-			name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'stopped',
-			image TEXT,
-			container_id TEXT,
-			created_by_user_id TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			last_started_at DATETIME,
-			docker_host TEXT,
-			routes TEXT,
-			ssh_server_identity_key TEXT,
-			ssh_authorized_keys TEXT,
-			ssh_ca_public_key TEXT,
-			ssh_host_certificate TEXT,
-			ssh_client_private_key TEXT,
-			ssh_port INTEGER,
-			UNIQUE(name),
-			FOREIGN KEY (alloc_id) REFERENCES allocs(alloc_id)
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create machines table: %v", err)
-	}
-
-	// Create users table
-	_, err = db.Exec(`
-		CREATE TABLE users (
-			user_id TEXT PRIMARY KEY,
-			email TEXT UNIQUE NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create users table: %v", err)
-	}
+	baseServer := NewTestServer(t)
 
 	// Create test user
-	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, "test-user", "test@example.com")
+	err := baseServer.createUser("test-user", "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create alloc for test
 	allocID := "test-alloc-debug"
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, "test-user")
+	_, err = baseServer.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, "test-user")
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine
-	_, err = db.Exec(`
-		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes, 
-		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
-		                     ssh_host_certificate, ssh_client_private_key, ssh_port) 
+	_, err = baseServer.db.Exec(`
+		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
+		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, allocID, "testmachine", "test-image", "test-container-id", "test-user", "unix:///var/run/docker.sock", `[
 		{
@@ -709,7 +436,7 @@ func TestProxyDebugPath(t *testing.T) {
 			// Create a test server
 			server := &Server{
 				quietMode: true,
-				db:        db,
+				db:        baseServer.db,
 				testMode:  true,
 				devMode:   tt.devMode,
 			}
@@ -729,21 +456,8 @@ func TestProxyDebugPath(t *testing.T) {
 
 func TestProxyLogoutFlow(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	dbFile := "/tmp/test_proxy_logout_5dd277dc.db"
-	defer os.Remove(dbFile)
-
-	db, err := sql.Open("sqlite", dbFile)
-	if err != nil {
-		t.Fatalf("Failed to create test database: %v", err)
-	}
-	defer db.Close()
-
-	// Use proper migration system
-	err = exedb.RunMigrations(db)
-	if err != nil {
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
+	server := NewTestServer(t)
+	server.magicSecrets = make(map[string]*MagicSecret)
 
 	// Create a test user
 	userID, err := generateUserID()
@@ -751,13 +465,13 @@ func TestProxyLogoutFlow(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test-logout@example.com")
+	err = server.createUser(userID, "test-logout@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create SSH key for the test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
 		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
@@ -765,16 +479,16 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 	// Create alloc for test user
 	allocID := "test-alloc-" + userID
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine with a private route
-	_, err = db.Exec(`
-		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes, 
-						 ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
-						 ssh_host_certificate, ssh_client_private_key, ssh_port) 
+	_, err = server.db.Exec(`
+		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
+						 ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+						 ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
 		{
@@ -788,13 +502,6 @@ func TestProxyLogoutFlow(t *testing.T) {
 	]`, "test-key", "test-keys", "test-ca", "test-cert", "test-client-key", 2222)
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
-	}
-
-	server := &Server{
-		quietMode:    true,
-		db:           db,
-		testMode:     true,
-		magicSecrets: make(map[string]*MagicSecret),
 	}
 
 	// Test 1: Logout without authentication should still work (redirect to root)
@@ -861,7 +568,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 		// Verify the cookie is valid by checking database
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
 		if err != nil || count != 1 {
 			t.Fatal("Auth cookie should exist in database")
 		}
@@ -897,7 +604,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Verify the auth cookie was deleted from database
-		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
 		if err != nil || count != 0 {
 			t.Error("Auth cookie should have been deleted from database")
 		}
@@ -953,7 +660,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 		// Verify we have 2 auth cookies in database for this user
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
 		if err != nil || count != 2 {
 			t.Fatalf("Should have 2 auth cookies for user, got %d", count)
 		}
@@ -970,14 +677,14 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Verify only the first cookie was deleted, second one remains
-		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
 		if err != nil || count != 1 {
 			t.Errorf("Should have 1 auth cookie remaining for user, got %d", count)
 		}
 
 		// Verify the remaining cookie is the second one
 		var remainingCookie string
-		err = db.QueryRow("SELECT cookie_value FROM auth_cookies WHERE user_id = ?", userID).Scan(&remainingCookie)
+		err = server.db.QueryRow("SELECT cookie_value FROM auth_cookies WHERE user_id = ?", userID).Scan(&remainingCookie)
 		if err != nil {
 			t.Fatal("Failed to get remaining cookie")
 		}
@@ -986,7 +693,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Verify the first cookie was deleted
-		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ?", cookie1.Value).Scan(&count)
+		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ?", cookie1.Value).Scan(&count)
 		if err != nil || count != 0 {
 			t.Error("First cookie should have been deleted from database")
 		}

@@ -7,19 +7,10 @@ import (
 	"exe.dev/container"
 )
 
-// setupTestServerWithDB creates a test server with a temporary database
-func setupTestServerWithDB(t *testing.T) *Server {
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true
-	server.quietMode = true
-	return server
-}
-
 // TestMultiDockerHostDatabasePersistence tests that docker host information is properly stored and retrieved
 func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 	t.Parallel()
-	// Create test server with database
-	server := setupTestServerWithDB(t)
+	server := NewTestServer(t)
 
 	// Test docker host values
 	dockerHost := "tcp://dockerhost1:2376"
@@ -37,7 +28,7 @@ func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 
 	// Create alloc for the user
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', ?, datetime('now'))`, allocID, userID, dockerHost)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
@@ -156,8 +147,7 @@ func TestSSHRoutingWithDockerHost(t *testing.T) {
 // TestMultiDockerHostSchemaCompatibility tests backward compatibility with existing machines
 func TestMultiDockerHostSchemaCompatibility(t *testing.T) {
 	t.Parallel()
-	// Create test server with database
-	server := setupTestServerWithDB(t)
+	server := NewTestServer(t)
 
 	// Create a machine without docker host (legacy case)
 	userID := "test-user-id"
@@ -174,7 +164,7 @@ func TestMultiDockerHostSchemaCompatibility(t *testing.T) {
 
 	// Create alloc without docker host
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)

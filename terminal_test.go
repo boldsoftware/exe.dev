@@ -453,7 +453,7 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 
 	// Create a mock SSH channel using our terminal
 	mockChannel := &MockSSHChannel{term: term}
-	server := NewTestServer(t, ":8080", ":2222")
+	server := NewTestServer(t)
 
 	t.Log("=== Testing readLineFromChannel behavior ===")
 

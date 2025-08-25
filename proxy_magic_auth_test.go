@@ -14,10 +14,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-
-	// Create server with quiet mode disabled to see debug logs
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = false // Enable logging for debugging
+	server := NewTestServer(t)
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()
@@ -245,9 +242,7 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = false
+	server := NewTestServer(t)
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()

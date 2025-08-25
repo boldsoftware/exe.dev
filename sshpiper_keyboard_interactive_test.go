@@ -2,7 +2,6 @@ package exe
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 )
@@ -50,33 +49,10 @@ func (m *mockConnection) UniqueID() string {
 
 func TestKeyboardInteractiveAuthentication(t *testing.T) {
 	t.Parallel()
-	// Create a temporary database
-	tmpDB, err := os.CreateTemp("", "test-*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp database: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	// Create test server
-	server, err := NewServer(
-		":0", // HTTP port
-		"",   // no HTTPS
-		":0", // SSH port
-		":0", // piper port
-		tmpDB.Name(),
-		"local",
-		[]string{""},
-	)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	server.testMode = true
-	server.quietMode = true
-	defer server.Stop()
+	server := NewTestServer(t)
 
 	// Create piper plugin
-	piper := NewPiperPlugin(server, ":0")
+	piper := NewPiperPlugin(server, 0)
 
 	// Create mock connection metadata
 	mockConn := &mockConnection{
@@ -111,33 +87,10 @@ func TestKeyboardInteractiveAuthentication(t *testing.T) {
 
 func TestAuthMethodAdvertisement(t *testing.T) {
 	t.Parallel()
-	// Create a temporary database
-	tmpDB, err := os.CreateTemp("", "test-*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp database: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	// Create test server
-	server, err := NewServer(
-		":0", // HTTP port
-		"",   // no HTTPS
-		":0", // SSH port
-		":0", // piper port
-		tmpDB.Name(),
-		"local",
-		[]string{""},
-	)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	server.testMode = true
-	server.quietMode = true
-	defer server.Stop()
+	server := NewTestServer(t)
 
 	// Create piper plugin
-	piper := NewPiperPlugin(server, ":0")
+	piper := NewPiperPlugin(server, 0)
 
 	// Create mock connection metadata
 	mockConn := &mockConnection{
@@ -168,33 +121,10 @@ func TestAuthMethodAdvertisement(t *testing.T) {
 
 func TestKeyboardInteractiveNoRetries(t *testing.T) {
 	t.Parallel()
-	// Create a temporary database
-	tmpDB, err := os.CreateTemp("", "test-*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp database: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	// Create test server
-	server, err := NewServer(
-		":0", // HTTP port
-		"",   // no HTTPS
-		":0", // SSH port
-		":0", // piper port
-		tmpDB.Name(),
-		"local",
-		[]string{""},
-	)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	server.testMode = true
-	server.quietMode = true
-	defer server.Stop()
+	server := NewTestServer(t)
 
 	// Create piper plugin
-	piper := NewPiperPlugin(server, ":0")
+	piper := NewPiperPlugin(server, 0)
 
 	// Create mock connection metadata with same unique ID
 	mockConn := &mockConnection{

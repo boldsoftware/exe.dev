@@ -11,7 +11,7 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	}
 
 	// Create server
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Use mock container manager for testing
 	mockManager := NewMockContainerManager()

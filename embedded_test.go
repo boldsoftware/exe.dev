@@ -9,7 +9,7 @@ import (
 
 func TestEmbeddedFiles(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	tests := []struct {
 		name         string

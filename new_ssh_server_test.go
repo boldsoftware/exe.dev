@@ -5,13 +5,10 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"io"
-	"net"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"exe.dev/billing"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -19,30 +16,7 @@ import (
 func TestNewSSHServerBasicConnection(t *testing.T) {
 	t.Parallel()
 	// Create a test server
-	server := NewTestServer(t, ":8080", "")
-	server.quietMode = true
-
-	// Find a free port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	addr := listener.Addr().String()
-	listener.Close()
-
-	// Start the SSH server in a goroutine
-	billing, cleanup := billing.NewWithMockStripe(t, server.db)
-	defer cleanup()
-
-	go func() {
-		sshServer := NewSSHServer(server, billing)
-		if err := sshServer.Start(addr); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
+	server := NewTestServer(t)
 
 	// Generate a test SSH key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -66,7 +40,8 @@ func TestNewSSHServerBasicConnection(t *testing.T) {
 	}
 
 	// Try to connect
-	client, err := ssh.Dial("tcp", addr, config)
+	sshAddr := fmt.Sprintf("127.0.0.1:%d", server.sshLn.tcp.Port)
+	client, err := ssh.Dial("tcp", sshAddr, config)
 	if err != nil {
 		t.Fatalf("Failed to connect to SSH server: %v", err)
 	}
@@ -97,35 +72,7 @@ func TestNewSSHServerBasicConnection(t *testing.T) {
 // TestNewSSHServerInteractiveShell tests interactive shell with the new SSH server
 func TestNewSSHServerInteractiveShell(t *testing.T) {
 	t.Parallel()
-	// Create a test server
-	dbPath := fmt.Sprintf("/tmp/test_new_ssh_shell_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
-
-	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	server.quietMode = true
-	server.testMode = true // Skip animations
-
-	// Find a free port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	addr := listener.Addr().String()
-	listener.Close()
-
-	// Start the SSH server in a goroutine
-	sshDone := make(chan error, 1)
-	go func() {
-		billing := billing.New(server.db)
-		sshServer := NewSSHServer(server, billing)
-		sshDone <- sshServer.Start(addr)
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
+	server := NewTestServer(t)
 
 	// Generate a test SSH key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -149,7 +96,7 @@ func TestNewSSHServerInteractiveShell(t *testing.T) {
 	}
 
 	// Connect to the server
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", server.sshLn.tcp.Port), config)
 	if err != nil {
 		t.Fatalf("Failed to connect to SSH server: %v", err)
 	}
@@ -206,16 +153,7 @@ func TestNewSSHServerInteractiveShell(t *testing.T) {
 // TestNewSSHServerWithRegisteredUser tests the new SSH server with a registered user
 func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 	t.Parallel()
-	// Create a test server
-	dbPath := fmt.Sprintf("/tmp/test_new_ssh_registered_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
-
-	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	server.quietMode = true
-	server.testMode = true
+	server := NewTestServer(t)
 
 	// Generate a test SSH key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -268,24 +206,6 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}
 
-	// Find a free port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	addr := listener.Addr().String()
-	listener.Close()
-
-	// Start the SSH server
-	go func() {
-		billing := billing.New(server.db)
-		sshServer := NewSSHServer(server, billing)
-		sshServer.Start(addr)
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
-
 	// Create SSH client config
 	config := &ssh.ClientConfig{
 		User: "",
@@ -297,7 +217,7 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 	}
 
 	// Connect to the server
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", server.sshLn.tcp.Port), config)
 	if err != nil {
 		t.Fatalf("Failed to connect to SSH server: %v", err)
 	}

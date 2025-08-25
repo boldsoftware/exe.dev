@@ -26,7 +26,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -322,11 +321,17 @@ type UserSession struct {
 
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
-	httpAddr  string
-	httpsAddr string
-	sshAddr   string
-	piperAddr string
-	BaseURL   string
+	httpLn  *listener
+	httpsLn *listener
+	sshLn   *listener
+	piperLn *listener
+	BaseURL string
+
+	// ready indicates that the server is fully ready and serving.
+	// ready must not be waited on prior to calling Start.
+	// it's not 100% perfect--of necessity, we must call it before actually calling start on the various blocking servers--
+	// but it's close, and it's much better than time.Sleep+hope.
+	ready sync.WaitGroup
 
 	httpServer          *http.Server
 	httpsServer         *http.Server
@@ -339,7 +344,8 @@ type Server struct {
 	piperPlugin *PiperPlugin
 
 	// Database
-	db *sql.DB
+	db     *sql.DB
+	dbPath string
 
 	// Container management
 	containerManager container.Manager
@@ -358,9 +364,8 @@ type Server struct {
 	postmarkClient *postmark.Client
 	stripeKey      string
 
-	// Test mode - skip animations for faster testing
-	testMode  bool
-	devMode   string // Development mode: "" (production) or "local" (Docker)
+	testMode  bool   // Test mode - skip animations for faster testing
+	devMode   string // Development mode: "" (production) or "local" (Docker) or "test" for test mode
 	quietMode bool   // Quiet mode - suppress log output (for tests)
 
 	// Metrics
@@ -372,6 +377,35 @@ type Server struct {
 
 	mu       sync.RWMutex
 	stopping bool
+}
+
+// A listener is a listening port, along with address information.
+// It exists to do the bookkeeping, particularly when starting a server with an address of :0.
+type listener struct {
+	origAddr string       // original requested listening address
+	ln       net.Listener // listener (nil if not started yet)
+	addr     string       // resolved listening address (e.g. if origAddr was :0)
+	tcp      *net.TCPAddr // resolved TCP listening address
+}
+
+func unusedListener(addr string) *listener {
+	return &listener{origAddr: addr}
+}
+
+func startListener(typ, addr string) (*listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	// this log line is important for e2e tests, they parse it to get port numbers!
+	slog.Info("listening", "type", typ, "addr", tcpAddr.String(), "port", tcpAddr.Port)
+	return &listener{
+		origAddr: addr,
+		ln:       ln,
+		addr:     tcpAddr.String(),
+		tcp:      tcpAddr,
+	}, nil
 }
 
 var setStripeKey = sync.OnceFunc(func() {
@@ -415,20 +449,39 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 
 	setStripeKey()
 	var baseURL string
+	var httpLn *listener
+	var httpsLn *listener
 	if httpsAddr != "" {
 		// HTTPS is configured, use https://exe.dev
 		baseURL = "https://exe.dev"
-	} else {
-		// No HTTPS, use http://localhost with the HTTP port
-		baseURL = "http://localhost" + httpAddr
-		// If httpAddr doesn't start with :, it might be host:port format
-		if httpAddr[0] != ':' {
-			// Extract just the port part if it's in host:port format
-			parts := strings.Split(httpAddr, ":")
-			if len(parts) >= 2 {
-				baseURL = "http://localhost:" + parts[len(parts)-1]
-			}
+		httpLn = unusedListener(httpAddr)
+		httpsLn, err = startListener("https", httpsAddr)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to listen on HTTPS address %q: %w", httpsAddr, err)
 		}
+	} else {
+		httpsLn = unusedListener(httpsAddr)
+		httpLn, err = startListener("http", httpAddr)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
+		}
+		// No HTTPS, use http://localhost with the HTTP port
+		baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
+		slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
+	}
+
+	sshLn, err := startListener("ssh", sshAddr)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to listen on SSH address %q: %w", sshAddr, err)
+	}
+
+	piperLn, err := startListener("piper", piperAddr)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to listen on Piper address %q: %w", piperAddr, err)
 	}
 
 	// Initialize container manager with Docker
@@ -466,12 +519,13 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	sqlite.RegisterSQLiteMetrics(metricsRegistry)
 
 	s := &Server{
-		httpAddr:           httpAddr,
-		httpsAddr:          httpsAddr,
-		sshAddr:            sshAddr,
-		piperAddr:          piperAddr,
+		httpLn:             httpLn,
+		httpsLn:            httpsLn,
+		sshLn:              sshLn,
+		piperLn:            piperLn,
 		BaseURL:            baseURL,
 		db:                 db,
+		dbPath:             dbPath,
 		containerManager:   containerManager,
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
@@ -480,7 +534,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		stripeKey:          stripe.Key,
 		devMode:            devMode,
 		quietMode:          quietMode,
-		testMode:           testing.Testing(),
+		testMode:           testing.Testing() || devMode == "test",
 		metricsRegistry:    metricsRegistry,
 		sshMetrics:         sshMetrics,
 	}
@@ -488,6 +542,13 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	s.setupHTTPServer()
 	s.setupHTTPSServer()
 	s.setupSSHServer()
+
+	s.ready.Add(1) // matched with final done at bottom of Start
+	go func() {
+		s.ready.Wait()
+		// The following log line signals to e2e tests that they may proceed with using the server (better than sleeps!)
+		slog.Info("server started")
+	}()
 
 	return s, nil
 }
@@ -505,14 +566,14 @@ func (s *Server) setupHTTPServer() {
 		s)
 
 	s.httpServer = &http.Server{
-		Addr:    s.httpAddr,
+		Addr:    s.httpLn.addr,
 		Handler: instrumentedHandler,
 	}
 }
 
 // setupHTTPSServer configures the HTTPS server with Let's Encrypt if enabled
 func (s *Server) setupHTTPSServer() {
-	if s.httpsAddr == "" {
+	if s.httpsLn.ln == nil {
 		return
 	}
 
@@ -532,7 +593,7 @@ func (s *Server) setupHTTPSServer() {
 		)
 
 		s.httpsServer = &http.Server{
-			Addr:    s.httpsAddr,
+			Addr:    s.httpsLn.addr,
 			Handler: s,
 			TLSConfig: &tls.Config{
 				GetCertificate: s.wildcardCertManager.GetCertificate,
@@ -550,7 +611,7 @@ func (s *Server) setupHTTPSServer() {
 		}
 
 		s.httpsServer = &http.Server{
-			Addr:    s.httpsAddr,
+			Addr:    s.httpsLn.addr,
 			Handler: s,
 			TLSConfig: &tls.Config{
 				GetCertificate: s.certManager.GetCertificate,
@@ -662,9 +723,7 @@ func (s *Server) generateToken() string {
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
 	if s.devMode != "" {
-		// Extract port from httpAddr (e.g., ":8080" -> "8080")
-		port := strings.TrimPrefix(s.httpAddr, ":")
-		return fmt.Sprintf("http://localhost:%s", port)
+		return fmt.Sprintf("http://localhost:%v", s.httpLn.tcp.Port)
 	}
 	return "https://exe.dev"
 }
@@ -732,10 +791,6 @@ func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data
 
 // logAuthAttempt logs all SSH authentication attempts for debugging
 func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error) {
-	if s.testMode {
-		return // Skip auth logging in test mode to reduce noise
-	}
-
 	var user, remoteAddr, clientVersion string
 	if conn != nil {
 		user = conn.User()
@@ -2223,25 +2278,6 @@ func generateRandomContainerName() string {
 	return word1 + "-" + word2
 }
 
-// getSSHPort extracts the port number from an SSH address string
-func (s *Server) getSSHPort() string {
-	if s.sshAddr == "" {
-		return "22"
-	}
-
-	// Handle addresses like ":2222" or "localhost:2222"
-	_, port, err := net.SplitHostPort(s.sshAddr)
-	if err != nil {
-		// If splitting fails, try to see if it's just a port number
-		if _, err := strconv.Atoi(s.sshAddr); err == nil {
-			return s.sshAddr
-		}
-		return "22"
-	}
-
-	return port
-}
-
 // formatSSHConnectionInfo returns SSH connection info based on dev mode
 func (s *Server) formatSSHConnectionInfo(allocID, machineName string) string {
 	if s.ipAllocator != nil {
@@ -2250,12 +2286,11 @@ func (s *Server) formatSSHConnectionInfo(allocID, machineName string) string {
 			return fmt.Sprintf("ssh -p 2222 -o ConnectTimeout=1 %s", allocation.Hostname)
 		}
 	}
-	if s.devMode == "local" {
-		port := s.getSSHPort()
-		if port == "22" {
+	if s.devMode != "" {
+		if s.sshLn.tcp.Port == 22 {
 			return fmt.Sprintf("ssh %s@localhost", machineName)
 		}
-		return fmt.Sprintf("ssh -p 2222 %s@localhost", machineName)
+		return fmt.Sprintf("ssh -p %v %s@localhost", s.sshLn.tcp.Port, machineName)
 	}
 	return fmt.Sprintf("ssh %s@exe.dev", machineName)
 }
@@ -2565,12 +2600,12 @@ func (s *Server) Start() error {
 	defer cancel()
 
 	// Start HTTP server in a goroutine if configured
-	if s.httpAddr != "" {
+	if s.httpLn.ln != nil {
 		go func() {
 			if !s.quietMode {
-				slog.Info("HTTP server starting", "addr", s.httpAddr)
+				slog.Info("HTTP server starting", "addr", s.httpLn)
 			}
-			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := s.httpServer.Serve(s.httpLn.ln); err != nil && err != http.ErrServerClosed {
 				slog.Error("HTTP server startup failed", "error", err)
 				cancel()
 			}
@@ -2578,10 +2613,10 @@ func (s *Server) Start() error {
 	}
 
 	// Start HTTPS server in a goroutine if configured
-	if s.httpsAddr != "" {
+	if s.httpsLn.ln != nil {
 		go func() {
-			slog.Info("HTTPS server starting with Let's Encrypt for exe.dev", "addr", s.httpsAddr)
-			if err := s.httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			slog.Info("HTTPS server starting with Let's Encrypt for exe.dev", "addr", s.httpsLn)
+			if err := s.httpsServer.ServeTLS(s.httpsLn.ln, "", ""); err != nil && err != http.ErrServerClosed {
 				slog.Error("HTTPS server startup failed", "error", err)
 				cancel()
 			}
@@ -2602,37 +2637,32 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Start piper plugin server in a goroutine
-	// Set the plugin reference before starting the server to avoid race conditions
-	s.piperPlugin = NewPiperPlugin(s, s.piperAddr)
-	go func() {
-		if err := s.piperPlugin.Serve(); err != nil {
-			slog.Error("Piper plugin server startup failed", "error", err)
-			cancel()
-		}
-	}()
-
-	// In dev mode, automatically start sshpiper if not already running
-	if s.devMode != "" {
-		go s.autoStartSSHPiper(ctx)
-	}
-
 	// Start SSH server in a goroutine
 	go func() {
 		billing := billing.New(s.db)
 		sshServer := NewSSHServer(s, billing)
-		if err := sshServer.Start(s.sshAddr); err != nil {
+		if err := sshServer.Start(s.sshLn.ln); err != nil {
 			slog.Error("SSH server startup failed", "error", err)
 			cancel()
 		}
 	}()
 
-	// Print SSH connection command for local dev mode
+	// Start piper plugin server in a goroutine
+	slog.Info("piper plugin server listening", "addr", s.piperLn.addr, "port", s.piperLn.tcp.Port)
+	s.piperPlugin = NewPiperPlugin(s, s.sshLn.tcp.Port)
+	go func() {
+		if err := s.piperPlugin.Serve(s.piperLn.ln); err != nil {
+			slog.Error("Piper plugin server startup failed", "error", err)
+			cancel()
+		}
+	}()
+
 	if s.devMode == "local" {
-		// Extract just the port number from the address
-		sshPort := strings.TrimPrefix(s.sshAddr, ":")
+		// In dev mode, automatically start sshpiper if not already running
+		go s.autoStartSSHPiper(ctx)
+
 		slog.Info("SSH server started in local dev mode. Connect with:")
-		slog.Info("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %s localhost", "port", sshPort)
+		slog.Info(fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
 	}
 
 	// Register all existing machines with IP allocation strategy
@@ -2650,6 +2680,8 @@ func (s *Server) Start() error {
 	// Wait for interrupt signal or startup failure
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	s.ready.Done()
 
 	select {
 	case <-sigChan:
@@ -2670,16 +2702,24 @@ func (s *Server) autoStartSSHPiper(ctx context.Context) {
 		return
 	}
 
-	// First, wait for the piper plugin to be ready (listening on port 2224)
-	if !s.waitForPort(ctx, "localhost:2224", 30*time.Second) {
-		slog.Error("Timed out waiting for piper plugin to start on port 2224")
+	// Use the actual piper TCP address
+	if s.piperLn.tcp == nil {
+		slog.Error("Piper TCP address not available")
 		return
 	}
 
-	// Start sshpiper.sh
-	slog.Info("Starting sshpiper.sh automatically in dev mode")
+	piperPluginAddr := fmt.Sprintf("localhost:%d", s.piperLn.tcp.Port)
 
-	cmd := exec.CommandContext(ctx, "./sshpiper.sh")
+	// First, wait for the piper plugin to be ready
+	if !s.waitForPort(ctx, piperPluginAddr, 30*time.Second) {
+		slog.Error("Timed out waiting for piper plugin to start", "addr", piperPluginAddr)
+		return
+	}
+
+	// Start sshpiper.sh with the piper plugin port
+	slog.Info("Starting sshpiper.sh automatically in dev mode", "piperPluginPort", s.piperLn.tcp.Port)
+
+	cmd := exec.CommandContext(ctx, "./sshpiper.sh", fmt.Sprint(s.piperLn.tcp.Port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -2720,7 +2760,7 @@ func (s *Server) waitForPort(ctx context.Context, address string, timeout time.D
 
 // isPortListening checks if a port is currently listening
 func (s *Server) isPortListening(address string) bool {
-	conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
+	conn, err := net.DialTimeout("tcp", address, 10*time.Millisecond)
 	if err != nil {
 		return false
 	}

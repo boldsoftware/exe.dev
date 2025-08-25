@@ -207,7 +207,7 @@ func TestRouteMatching(t *testing.T) {
 
 func TestMachineCreationWithRoutes(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Set up test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
@@ -312,7 +312,7 @@ func TestHandleProxyRequest(t *testing.T) {
 		t.Fatalf("Failed to generate alloc ID: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -515,7 +515,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		t.Fatalf("Failed to generate alloc ID: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}

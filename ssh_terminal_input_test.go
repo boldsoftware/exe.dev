@@ -3,12 +3,11 @@ package exe
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"net"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"exe.dev/billing"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -17,28 +16,7 @@ import (
 func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	t.Parallel()
 	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true // Skip animations
-
-	// Find a free port for SSH
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	sshAddr := listener.Addr().String()
-	listener.Close()
-
-	// Start SSH server
-	billing := billing.New(server.db)
-	sshServer := NewSSHServer(server, billing)
-	go func() {
-		if err := sshServer.Start(sshAddr); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
-
-	// Wait for server to start
-	time.Sleep(50 * time.Millisecond)
+	server := NewTestServer(t)
 
 	// Generate test SSH key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -63,7 +41,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 		Timeout:         2 * time.Second,
 	}
 
-	client, err := ssh.Dial("tcp", sshAddr, config)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", server.sshLn.tcp.Port), config)
 	if err != nil {
 		t.Fatalf("Failed to connect to SSH server: %v", err)
 	}
@@ -136,28 +114,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 func TestSSHTerminalModes(t *testing.T) {
 	t.Parallel()
 	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true
-
-	// Find a free port for SSH
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	sshAddr := listener.Addr().String()
-	listener.Close()
-
-	// Start SSH server
-	billing := billing.New(server.db)
-	sshServer := NewSSHServer(server, billing)
-	go func() {
-		if err := sshServer.Start(sshAddr); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
-
-	// Wait for server to start
-	time.Sleep(50 * time.Millisecond)
+	server := NewTestServer(t)
 
 	// Test different terminal scenarios
 	testCases := []struct {
@@ -200,7 +157,7 @@ func TestSSHTerminalModes(t *testing.T) {
 				Timeout:         2 * time.Second,
 			}
 
-			client, err := ssh.Dial("tcp", sshAddr, config)
+			client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", server.sshLn.tcp.Port), config)
 			if err != nil {
 				t.Fatalf("Failed to connect to SSH server: %v", err)
 			}

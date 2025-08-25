@@ -11,7 +11,7 @@ import (
 
 func TestMultiKeyAuthentication(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18081", ":12223")
+	server := NewTestServer(t)
 
 	// Generate two different SSH keys
 	key1, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -193,7 +193,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 
 func TestEmailBySSHKey(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18082", ":12224")
+	server := NewTestServer(t)
 
 	testEmail := "test@example.com"
 	testPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC..."

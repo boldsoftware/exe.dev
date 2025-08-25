@@ -1,9 +1,9 @@
 package exe
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
-	"os"
 	"testing"
 	"time"
 )
@@ -13,23 +13,8 @@ func TestBrowserScenario(t *testing.T) {
 	// This test simulates browser access using foo.localhost subdomains
 	// which work without DNS setup on most systems
 
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server with HTTP enabled for dev mode on a specific port
-	// We use a fixed port for testing to avoid port detection issues
-	httpPort := "18088"
-	sshPort := "12288"
-	server, err := NewServer(":"+httpPort, "", ":"+sshPort, ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t)
 
 	// Use mock container manager for testing
 	mockManager := NewMockContainerManager()
@@ -78,19 +63,6 @@ func TestBrowserScenario(t *testing.T) {
 		t.Fatalf("Failed to create magic secret: %v", err)
 	}
 
-	// Start HTTP server in background
-	serverStarted := make(chan bool)
-	go func() {
-		serverStarted <- true
-		server.Start() // This starts all servers (HTTP, HTTPS, SSH)
-	}()
-
-	// Wait for server to start
-	<-serverStarted
-	time.Sleep(200 * time.Millisecond)
-
-	t.Logf("HTTP server listening on port %s", httpPort)
-
 	// Make HTTP request to simulate browser
 	// We'll use the Host header to route to the correct subdomain
 	jar, _ := cookiejar.New(nil) // Create a cookie jar to maintain cookies
@@ -104,8 +76,10 @@ func TestBrowserScenario(t *testing.T) {
 		},
 	}
 
+	baseURL := fmt.Sprintf("http://localhost:%v/", server.httpLn.tcp.Port)
+
 	// Test 1: Request without authentication should redirect to auth
-	req, err := http.NewRequest("GET", "http://localhost:"+httpPort+"/", nil)
+	req, err := http.NewRequest("GET", baseURL, nil)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
@@ -127,7 +101,7 @@ func TestBrowserScenario(t *testing.T) {
 
 	// Test 2: Get auth cookie through magic auth flow
 	// First, request the magic auth URL to get the cookie
-	magicReq, err := http.NewRequest("GET", "http://localhost:"+httpPort+"/__exe.dev/auth?secret="+magicSecret, nil)
+	magicReq, err := http.NewRequest("GET", fmt.Sprintf("%s__exe.dev/auth?secret=%s", baseURL, magicSecret), nil)
 	if err != nil {
 		t.Fatalf("Failed to create magic auth request: %v", err)
 	}
@@ -144,7 +118,7 @@ func TestBrowserScenario(t *testing.T) {
 	}
 
 	// Now make the actual request with the cookie that was set
-	req2, err := http.NewRequest("GET", "http://localhost:"+httpPort+"/", nil)
+	req2, err := http.NewRequest("GET", baseURL, nil)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
@@ -165,7 +139,7 @@ func TestBrowserScenario(t *testing.T) {
 	}
 
 	// Test 3: Request to non-existent machine should return 404
-	req3, err := http.NewRequest("GET", "http://localhost:"+httpPort+"/", nil)
+	req3, err := http.NewRequest("GET", baseURL, nil)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}

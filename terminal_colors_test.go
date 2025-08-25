@@ -135,9 +135,7 @@ func TestDetectTerminalMode(t *testing.T) {
 	t.Parallel()
 
 	// Create a test server
-	server := &Server{
-		quietMode: true,
-	}
+	server := NewTestServer(t)
 
 	tests := []struct {
 		name     string

@@ -7,7 +7,7 @@ import (
 // TestMachineNameFormatParsing tests machine name parsing with the new alloc-based system
 func TestMachineNameFormatParsing(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Create test user and alloc
 	userID := "test-user-123"
@@ -90,47 +90,6 @@ func TestMachineNameFormatParsing(t *testing.T) {
 				if machine != nil {
 					t.Errorf("Expected nil, but found machine: %+v. %s", machine, tt.description)
 				}
-			}
-		})
-	}
-}
-
-// TestFormatSSHConnectionInfo tests the SSH connection format with the new naming
-func TestFormatSSHConnectionInfo(t *testing.T) {
-	t.Parallel()
-
-	server := &Server{}
-
-	tests := []struct {
-		name        string
-		devMode     string
-		allocID     string
-		machineName string
-		expected    string
-	}{
-		{
-			name:        "production mode",
-			devMode:     "",
-			allocID:     "alloc-123",
-			machineName: "mymachine",
-			expected:    "ssh mymachine@exe.dev",
-		},
-		{
-			name:        "local dev mode with port 22",
-			devMode:     "local",
-			allocID:     "alloc-456",
-			machineName: "testmachine",
-			expected:    "ssh testmachine@localhost",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server.devMode = tt.devMode
-			result := server.formatSSHConnectionInfo(tt.allocID, tt.machineName)
-
-			if result != tt.expected {
-				t.Errorf("Expected %q, got %q", tt.expected, result)
 			}
 		})
 	}

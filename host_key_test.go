@@ -1,33 +1,19 @@
 package exe
 
 import (
-	"os"
 	"testing"
 )
 
 func TestSSHHostKeyTable(t *testing.T) {
 	t.Parallel()
-
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_hostkey_table_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18092", "", ":12232", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t)
 
 	// Verify all expected columns exist
 	var id int
 	var privateKey, publicKey, fingerprint string
 	var createdAt, updatedAt string
 
-	err = server.db.QueryRow(`
+	err := server.db.QueryRow(`
 		SELECT id, private_key, public_key, fingerprint, created_at, updated_at
 		FROM ssh_host_key
 		WHERE id = 1`).Scan(&id, &privateKey, &publicKey, &fingerprint, &createdAt, &updatedAt)

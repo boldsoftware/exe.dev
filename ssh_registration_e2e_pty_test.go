@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/billing"
 	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh"
 )
@@ -73,59 +71,16 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	t.Logf("Generated public key: %s", publicKeyStr)
 
 	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true // Skip animations
+	server := NewTestServer(t)
 
 	// Mock container manager
 	mockManager := NewMockContainerManager()
 	server.containerManager = mockManager
 
-	// Find free ports
-	sshListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	sshPort := sshListener.Addr().(*net.TCPAddr).Port
-	sshListener.Close()
-
-	httpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port for HTTP: %v", err)
-	}
-	httpAddr := httpListener.Addr().String()
-	httpListener.Close()
-	server.httpAddr = httpAddr
-
-	// Start HTTP server for email verification
-	httpMux := http.NewServeMux()
-	httpMux.HandleFunc("/verify-email", server.handleEmailVerificationHTTP)
-	httpServer := &http.Server{
-		Addr:    httpAddr,
-		Handler: httpMux,
-	}
-	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			t.Logf("HTTP server error: %v", err)
-		}
-	}()
-	defer httpServer.Close()
-
-	// Start SSH server
-	billing := billing.New(server.db)
-	sshServer := NewSSHServer(server, billing)
-	go func() {
-		if err := sshServer.Start(fmt.Sprintf("127.0.0.1:%d", sshPort)); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
-
-	// Wait for servers to start
-	time.Sleep(50 * time.Millisecond)
-
 	// Create SSH command with real PTY
 	// Clear SSH_AUTH_SOCK to disable SSH agent
 	cmd := exec.Command("ssh",
-		"-p", fmt.Sprintf("%d", sshPort),
+		"-p", fmt.Sprint(server.sshLn.tcp.Port),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
@@ -229,7 +184,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}
 
 	// Simulate clicking the verification link
-	resp, err := http.PostForm(fmt.Sprintf("http://%s/verify-email", httpAddr),
+	resp, err := http.PostForm(fmt.Sprintf("http://%v/verify-email", server.httpLn.addr),
 		url.Values{"token": {token}})
 	if err != nil {
 		t.Fatalf("Failed to verify email: %v", err)

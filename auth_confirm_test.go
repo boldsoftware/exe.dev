@@ -14,9 +14,7 @@ func TestAuthConfirmInterstitial(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.quietMode = false
+	server := NewTestServer(t)
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()

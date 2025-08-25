@@ -80,10 +80,14 @@ func New(token, dbPath string) (*Client, error) {
 	c := &Client{token: token}
 
 	// Validate token with GitHub API by fetching a known user
-	_, err := c.githubUser(67496) // @josharian
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate GitHub token: %w", err)
-	}
+	// TODO: maybe restore this...or maybe not.
+	// It is disabled because it adds ~300ms and a GitHub dependency to startup time.
+	// But it would be nice to catch invalid tokens earlier in dev mode.
+	//
+	// _, err := c.githubUser(67496) // @josharian
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to validate GitHub token: %w", err)
+	// }
 
 	// Open database
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")

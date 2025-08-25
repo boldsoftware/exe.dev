@@ -12,7 +12,7 @@ import (
 func TestUserDashboard(t *testing.T) {
 	t.Parallel()
 
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Create a test user
 	email := "test@example.com"

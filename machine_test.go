@@ -8,7 +8,7 @@ import (
 
 func TestGetMachineByName(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Create test data
 	userID := "test-user-id"
@@ -61,7 +61,7 @@ func TestGetMachineByName(t *testing.T) {
 
 func TestMachineUniqueConstraint(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Create test users and allocs
 	userID1 := "test-user-1"
@@ -113,7 +113,7 @@ func TestMachineUniqueConstraint(t *testing.T) {
 
 func TestMachineNameValidationIntegration(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Create test data
 	userID := "test-user-id"
@@ -173,7 +173,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 
 func TestGeneratedMachineNamesAreValid(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Test that generateRandomContainerName creates valid names
 	for i := 0; i < 10; i++ {

@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/billing"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -31,26 +29,7 @@ func TestSSHEndToEndSignupFlow(t *testing.T) {
 		t.Skip("expect not found, skipping E2E test")
 	}
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true // Skip animations
-
-	// Find a free port for SSH
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	sshAddr := listener.Addr().String()
-	listener.Close()
-
-	// Start SSH server
-	go func() {
-		billing := billing.New(server.db)
-		sshServer := NewSSHServer(server, billing)
-		if err := sshServer.Start(sshAddr); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
+	server := NewTestServer(t)
 
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
@@ -65,7 +44,7 @@ func TestSSHEndToEndSignupFlow(t *testing.T) {
 	expectScript := fmt.Sprintf(`#!/usr/bin/expect -f
 set timeout 10
 set env(SSH_AUTH_SOCK) ""
-spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -o IdentityFile=%s -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o ChallengeResponseAuthentication=no -o IdentityAgent=none -i %s -p %s 127.0.0.1
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -o IdentityFile=%s -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o ChallengeResponseAuthentication=no -o IdentityAgent=none -i %s -p %v 127.0.0.1
 
 # Wait for email prompt
 expect {
@@ -103,7 +82,7 @@ expect {
 }
 
 expect eof
-`, keyFile, keyFile, strings.Split(sshAddr, ":")[1])
+`, keyFile, keyFile, server.sshLn.tcp.Port)
 
 	// Write and execute expect script
 	scriptFile := filepath.Join(t.TempDir(), "signup.expect")
@@ -148,8 +127,7 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	}
 
 	// Create server with Docker support
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true
+	server := NewTestServer(t)
 
 	// Clean up any existing test containers
 	// teamName no longer used - machines are globally unique
@@ -162,26 +140,6 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	if server.containerManager == nil {
 		t.Skip("Docker not available, skipping container test")
 	}
-
-	// Find a free port for SSH
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	sshAddr := listener.Addr().String()
-	listener.Close()
-
-	// Start SSH server
-	go func() {
-		billing := billing.New(server.db)
-		sshServer := NewSSHServer(server, billing)
-		if err := sshServer.Start(sshAddr); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
 
 	// Generate test SSH key and get fingerprint
 	keyFile := filepath.Join(t.TempDir(), "test_key")
@@ -231,7 +189,7 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	expectScript := fmt.Sprintf(`#!/usr/bin/expect -f
 set timeout 30
 set env(SSH_AUTH_SOCK) ""
-spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -o IdentityFile=%s -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o ChallengeResponseAuthentication=no -o IdentityAgent=none -i %s -p %s 127.0.0.1
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -o IdentityFile=%s -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o ChallengeResponseAuthentication=no -o IdentityAgent=none -i %s -p %v 127.0.0.1
 
 # Wait for menu prompt
 expect {
@@ -277,7 +235,7 @@ expect {
 # Exit
 send "exit\r"
 expect eof
-`, keyFile, keyFile, strings.Split(sshAddr, ":")[1], machineName, machineName)
+`, keyFile, keyFile, server.sshLn.tcp.Port, machineName, machineName)
 
 	// Write and execute expect script
 	scriptFile := filepath.Join(t.TempDir(), "create.expect")
@@ -328,33 +286,11 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true
+	server := NewTestServer(t)
 
 	// Use mock container manager for predictable testing
 	mockManager := NewMockContainerManager()
 	server.containerManager = mockManager
-
-	// Find a free port for SSH
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	sshAddr := listener.Addr().String()
-	listener.Close()
-
-	// Start SSH server
-	go func() {
-		billing := billing.New(server.db)
-		sshServer := NewSSHServer(server, billing)
-		if err := sshServer.Start(sshAddr); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
 
 	// Generate test SSH key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -425,7 +361,7 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 	}
 
 	// Connect to SSH server
-	client, err := ssh.Dial("tcp", sshAddr, config)
+	client, err := ssh.Dial("tcp", server.sshLn.addr, config)
 	if err != nil {
 		t.Fatalf("Failed to connect to SSH server: %v", err)
 	}
@@ -451,34 +387,11 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 // TestSSHDirectExecCommands tests direct command execution via SSH
 func TestSSHDirectExecCommands(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	// Create server
-	server := NewTestServer(t, ":0", ":0")
-	server.testMode = true
+	server := NewTestServer(t)
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()
 	server.containerManager = mockManager
-
-	// Find a free port for SSH
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	sshAddr := listener.Addr().String()
-	listener.Close()
-
-	// Start SSH server
-	go func() {
-		billing := billing.New(server.db)
-		sshServer := NewSSHServer(server, billing)
-		if err := sshServer.Start(sshAddr); err != nil {
-			t.Logf("SSH server error: %v", err)
-		}
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
 
 	// Generate test SSH key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -572,7 +485,7 @@ func TestSSHDirectExecCommands(t *testing.T) {
 			}
 
 			// Connect to SSH server
-			client, err := ssh.Dial("tcp", sshAddr, config)
+			client, err := ssh.Dial("tcp", server.sshLn.addr, config)
 			if err != nil {
 				t.Fatalf("Failed to connect to SSH server: %v", err)
 			}

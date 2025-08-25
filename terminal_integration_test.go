@@ -9,7 +9,7 @@ import (
 )
 
 func TestTerminalRouting(t *testing.T) {
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Test that terminal subdomains are detected correctly
 	tests := []struct {
@@ -37,7 +37,7 @@ func TestTerminalRouting(t *testing.T) {
 
 func TestTerminalPageRequiresAuth(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Request terminal page without authentication
 	req := httptest.NewRequest("GET", "/", nil)
@@ -63,7 +63,7 @@ func TestTerminalPageRequiresAuth(t *testing.T) {
 
 func TestTerminalStaticFiles(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Create a test user and auth them
 	userID := "test-user-id"
@@ -124,7 +124,7 @@ func TestTerminalCleanupTimer(t *testing.T) {
 
 func TestTerminalHostnameParsing(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	tests := []struct {
 		name        string

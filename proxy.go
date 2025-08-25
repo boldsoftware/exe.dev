@@ -258,14 +258,10 @@ func (s *Server) getMainDomain() string {
 // getMainDomainWithPort returns the main domain with port for redirects
 func (s *Server) getMainDomainWithPort() string {
 	if s.devMode != "" {
-		// Extract port from httpAddr (e.g., ":8080" -> "8080")
-		if s.httpAddr != "" {
-			port := strings.TrimPrefix(s.httpAddr, ":")
-			if port != "" {
-				return fmt.Sprintf("localhost:%s", port)
-			}
+		if s.httpLn.tcp != nil {
+			port := s.httpLn.tcp.Port
+			return fmt.Sprintf("localhost:%d", port)
 		}
-		// Fallback to just localhost if no port specified
 		return "localhost"
 	}
 	return "exe.dev"
@@ -302,7 +298,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	redirectURL := r.URL.Query().Get("redirect")
 
 	if !s.quietMode {
-		slog.Info("[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:10]+"...", "redirect", redirectURL)
+		slog.Info("[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:min(10, len(secret))]+"...", "redirect", redirectURL)
 	}
 
 	if secret == "" {

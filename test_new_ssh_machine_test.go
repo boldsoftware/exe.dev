@@ -6,13 +6,10 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"io"
-	"net"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"exe.dev/billing"
 	"exe.dev/container"
 	"golang.org/x/crypto/ssh"
 )
@@ -20,19 +17,7 @@ import (
 // TestNewSSHServerMachineConnection tests SSH connection to a specific machine
 func TestNewSSHServerMachineConnection(t *testing.T) {
 	t.Parallel()
-	// Create a test server
-	dbPath := fmt.Sprintf("/tmp/test_new_ssh_machine_%d.db", time.Now().UnixNano())
-	defer func() {
-		// Clean up
-		_ = os.Remove(dbPath)
-	}()
-
-	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{"unix:///var/run/docker.sock"})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	server.quietMode = true
-	server.testMode = true
+	server := NewTestServer(t, "unix:///var/run/docker.sock")
 
 	// Generate a test SSH key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -108,24 +93,6 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 	}
 	server.containerManager = mockManager
 
-	// Find a free port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to find free port: %v", err)
-	}
-	addr := listener.Addr().String()
-	listener.Close()
-
-	// Start the SSH server
-	go func() {
-		billing := billing.New(server.db)
-		sshServer := NewSSHServer(server, billing)
-		sshServer.Start(addr)
-	}()
-
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
-
 	// Create SSH client config - connect as the machine name
 	config := &ssh.ClientConfig{
 		User: machineName, // Use machine name as username
@@ -137,7 +104,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 	}
 
 	// Connect to the server
-	client, err := ssh.Dial("tcp", addr, config)
+	client, err := ssh.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", server.sshLn.tcp.Port), config)
 	if err != nil {
 		t.Fatalf("Failed to connect to SSH server: %v", err)
 	}

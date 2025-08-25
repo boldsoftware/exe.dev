@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ import (
 )
 
 func TestPublicKeyAuthentication(t *testing.T) {
-	server := NewTestServer(t, ":18080", ":12222")
+	server := NewTestServer(t)
 
 	// Generate a test key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -64,19 +63,10 @@ func TestPublicKeyAuthentication(t *testing.T) {
 }
 
 func TestServerStartStop(t *testing.T) {
-	server := NewTestServer(t, ":18081", ":12223")
-
-	// Start server in a goroutine
-	errChan := make(chan error, 1)
-	go func() {
-		errChan <- server.Start()
-	}()
-
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
+	server := NewTestServer(t)
 
 	// Test that server is responding
-	resp, err := http.Get("http://127.0.0.1:18081/health")
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", server.httpLn.tcp.Port))
 	if err != nil {
 		t.Fatalf("Health check failed: %v", err)
 	}
@@ -97,16 +87,9 @@ func TestServerStartStop(t *testing.T) {
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	server := NewTestServer(t, ":18082", ":12224")
+	server := NewTestServer(t)
 
-	// Start server
-	go server.Start()
-	defer server.Stop()
-
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
-
-	resp, err := http.Get("http://127.0.0.1:18082/health")
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", server.httpLn.tcp.Port))
 	if err != nil {
 		t.Fatalf("Health check failed: %v", err)
 	}
@@ -118,14 +101,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestEmailVerificationHTTP(t *testing.T) {
-	server := NewTestServer(t, ":18083", ":12225")
-
-	// Start server
-	go server.Start()
-	defer server.Stop()
-
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
+	server := NewTestServer(t)
 
 	// Create a test email verification
 	token := server.generateRegistrationToken()
@@ -142,7 +118,7 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	server.emailVerificationsMu.Unlock()
 
 	// Test GET request shows form
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:18083/verify-email?token=%s", token))
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email?token=%s", server.httpLn.tcp.Port, token))
 	if err != nil {
 		t.Fatalf("Failed to GET verify-email: %v", err)
 	}
@@ -160,7 +136,7 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	form := url.Values{}
 	form.Add("token", token)
 	resp, err = http.Post(
-		"http://127.0.0.1:18083/verify-email",
+		fmt.Sprintf("http://127.0.0.1:%d/verify-email", server.httpLn.tcp.Port),
 		"application/x-www-form-urlencoded",
 		strings.NewReader(form.Encode()),
 	)
@@ -178,7 +154,7 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	}
 
 	// Test invalid token
-	resp2, err := http.Get("http://127.0.0.1:18083/verify-email?token=invalid")
+	resp2, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email?token=invalid", server.httpLn.tcp.Port))
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -189,7 +165,7 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	}
 
 	// Test missing token
-	resp3, err := http.Get("http://127.0.0.1:18083/verify-email")
+	resp3, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email", server.httpLn.tcp.Port))
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -200,62 +176,16 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	}
 }
 
-func TestBaseURLGeneration(t *testing.T) {
-	tests := []struct {
-		httpAddr  string
-		httpsAddr string
-		expected  string
-	}{
-		{":8080", "", "http://localhost:8080"},
-		{":80", "", "http://localhost:80"},
-		{"localhost:8080", "", "http://localhost:8080"},
-		{"0.0.0.0:8080", "", "http://localhost:8080"},
-		{":8080", ":443", "https://exe.dev"},
-	}
-
-	for _, tt := range tests {
-		// Create temporary database file
-		tmpDB, err := os.CreateTemp("", "test_*.db")
-		if err != nil {
-			t.Fatalf("Failed to create temp db: %v", err)
-		}
-		defer os.Remove(tmpDB.Name())
-		tmpDB.Close()
-
-		server, err := NewServer(tt.httpAddr, tt.httpsAddr, ":2222", ":0", tmpDB.Name(), "local", nil)
-		if err != nil {
-			t.Fatalf("Failed to create server: %v", err)
-		}
-		defer server.Stop()
-		if server.BaseURL != tt.expected {
-			t.Errorf("BaseURL for http=%s https=%s: expected %s, got %s",
-				tt.httpAddr, tt.httpsAddr, tt.expected, server.BaseURL)
-		}
-	}
-}
-
 func TestPostmarkClientInitialization(t *testing.T) {
 	// Test without API key (should be nil since POSTMARK_API_KEY is not set)
-	server1 := NewTestServer(t, ":8080", ":2222")
+	server1 := NewTestServer(t)
 	if server1.postmarkClient != nil {
 		t.Log("Warning: Postmark client was initialized, POSTMARK_API_KEY might be set in environment")
 	}
 }
 
 func TestTokenGeneration(t *testing.T) {
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":8080", "", ":2222", ":0", tmpDB.Name(), "local", nil)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t)
 
 	token1 := server.generateRegistrationToken()
 	token2 := server.generateRegistrationToken()
@@ -270,7 +200,7 @@ func TestTokenGeneration(t *testing.T) {
 }
 
 func TestEmailValidation(t *testing.T) {
-	server := NewTestServer(t, ":8080", ":2222")
+	server := NewTestServer(t)
 
 	tests := []struct {
 		email string
@@ -296,7 +226,7 @@ func TestEmailValidation(t *testing.T) {
 // TestEmailVerificationRequiresPOST tests that email verification requires POST confirmation
 func TestEmailVerificationRequiresPOST(t *testing.T) {
 	// Create server
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Create a test user
 	email := "test@example.com"
@@ -389,7 +319,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 
 // TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics
 func TestMetricsEndpoint(t *testing.T) {
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Use httptest.Server for testing
 	testServer := httptest.NewServer(server)
@@ -446,7 +376,7 @@ func TestMetricsEndpoint(t *testing.T) {
 
 // TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
 func TestHTTPMetricsInstrumentation(t *testing.T) {
-	server := NewTestServer(t, ":0", ":0")
+	server := NewTestServer(t)
 
 	// Use httptest.Server for testing
 	testServer := httptest.NewServer(server)

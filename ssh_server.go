@@ -40,22 +40,10 @@ func NewSSHServer(s *Server, billing billing.Billing) *SSHServer {
 }
 
 // Start initializes and starts the SSH server
-func (ss *SSHServer) Start(addr string) error {
-	if addr == "" {
-		return fmt.Errorf("SSH server address cannot be empty")
-	}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
-	if !ok {
-		return fmt.Errorf("failed to get TCP address")
-	}
-
+func (ss *SSHServer) Start(ln net.Listener) error {
 	// Initialize the gliderlabs SSH server
 	ss.srv = &ssh.Server{
-		Addr:             tcpAddr.String(),
+		Addr:             ln.Addr().String(),
 		Handler:          ss.handleSession,
 		PublicKeyHandler: ss.authenticatePublicKey,
 		ChannelHandlers: map[string]ssh.ChannelHandler{
@@ -76,7 +64,12 @@ func (ss *SSHServer) Start(addr string) error {
 	}
 
 	if ss.server == nil || !ss.server.testMode {
-		slog.Info("starting SSH server", "addr", tcpAddr.String(), "ip", tcpAddr.IP.String(), "port", tcpAddr.Port)
+		tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+		if ok {
+			slog.Info("starting SSH server", "addr", tcpAddr.String(), "ip", tcpAddr.IP.String(), "port", tcpAddr.Port)
+		} else {
+			slog.Info("starting SSH server", "addr", ln.Addr().String(), "net", ln.Addr().Network())
+		}
 	}
 
 	return ss.srv.Serve(ln)
