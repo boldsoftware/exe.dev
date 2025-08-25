@@ -392,6 +392,8 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	slog.Debug("Opened database", "dbPath", dbPath)
+
 	// Run database migrations
 	if err := runMigrations(db); err != nil {
 		db.Close()
