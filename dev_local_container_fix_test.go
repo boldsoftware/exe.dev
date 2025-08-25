@@ -2,7 +2,6 @@ package exe
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"exe.dev/container"
@@ -15,20 +14,8 @@ func TestDevLocalContainerFix(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server in local mode
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":0", ":0")
 
 	// Verify we have a Docker manager
 	if server.containerManager == nil {

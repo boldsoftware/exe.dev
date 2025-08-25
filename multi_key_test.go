@@ -3,7 +3,6 @@ package exe
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"os"
 	"testing"
 	"time"
 
@@ -12,19 +11,7 @@ import (
 
 func TestMultiKeyAuthentication(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_multikey_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18081", "", ":12223", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18081", ":12223")
 
 	// Generate two different SSH keys
 	key1, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -206,19 +193,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 
 func TestEmailBySSHKey(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_emailkey_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18082", "", ":12224", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18082", ":12224")
 
 	testEmail := "test@example.com"
 	testPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC..."

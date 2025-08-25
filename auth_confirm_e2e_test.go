@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 )
@@ -17,21 +16,9 @@ func TestAuthConfirmE2EFlow(t *testing.T) {
 		t.Skip("Skipping E2E integration test in short mode")
 	}
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "auth_confirm_e2e_test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = false
-	defer server.Stop()
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()

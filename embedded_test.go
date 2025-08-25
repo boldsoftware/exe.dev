@@ -3,26 +3,13 @@ package exe
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
 
 func TestEmbeddedFiles(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":0", ":0")
 
 	tests := []struct {
 		name         string

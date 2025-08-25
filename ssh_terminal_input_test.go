@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"net"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,21 +16,9 @@ import (
 // This test specifically checks that we can type during the email prompt
 func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_terminal_input_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true // Skip animations
-	defer server.Stop()
 
 	// Find a free port for SSH
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -148,21 +135,9 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 // TestSSHTerminalModes tests that PTY modes are correctly handled
 func TestSSHTerminalModes(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_pty_modes_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true
-	defer server.Stop()
 
 	// Find a free port for SSH
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

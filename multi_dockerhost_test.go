@@ -1,7 +1,6 @@
 package exe
 
 import (
-	"os"
 	"testing"
 
 	"exe.dev/container"
@@ -14,10 +13,7 @@ func TestMultiDockerHostSSH(t *testing.T) {
 	// This test verifies the fix for multi-dockerhost SSH routing
 
 	// Create test server with database
-	server, tempDB := setupTestServerWithDB(t)
-	defer tempDB.Close()
-	defer os.Remove(tempDB.Name())
-	defer server.Stop()
+	server := setupTestServerWithDB(t)
 
 	// Test docker host values
 	dockerHost := "tcp://dockerhost1:2376"
@@ -89,10 +85,7 @@ func TestDockerHostPersistence(t *testing.T) {
 	// This test verifies that docker host information is now properly stored
 
 	// Create test server with database
-	server, tempDB := setupTestServerWithDB(t)
-	defer tempDB.Close()
-	defer os.Remove(tempDB.Name())
-	defer server.Stop()
+	server := setupTestServerWithDB(t)
 
 	dockerHost := "tcp://production-docker:2376"
 	userID := "test-user-fp"

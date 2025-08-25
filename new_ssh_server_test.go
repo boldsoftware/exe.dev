@@ -19,13 +19,7 @@ import (
 func TestNewSSHServerBasicConnection(t *testing.T) {
 	t.Parallel()
 	// Create a test server
-	dbPath := fmt.Sprintf("/tmp/test_new_ssh_%d.db", time.Now().UnixNano())
-	defer os.Remove(dbPath)
-
-	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":8080", "")
 	server.quietMode = true
 
 	// Find a free port

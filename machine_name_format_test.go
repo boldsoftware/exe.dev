@@ -1,26 +1,13 @@
 package exe
 
 import (
-	"os"
 	"testing"
 )
 
 // TestMachineNameFormatParsing tests machine name parsing with the new alloc-based system
 func TestMachineNameFormatParsing(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18080", ":12222")
 
 	// Create test user and alloc
 	userID := "test-user-123"
@@ -28,7 +15,7 @@ func TestMachineNameFormatParsing(t *testing.T) {
 	machineName := "testmachine"
 
 	// Create user
-	_, err = server.db.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`, userID, "test@example.com")
+	_, err := server.db.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`, userID, "test@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}

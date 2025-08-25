@@ -3,35 +3,13 @@ package exe
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
-func setupTestServerWithCleanup(t *testing.T) (*Server, func()) {
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	tmpDB.Close()
-
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		os.Remove(tmpDB.Name())
-		t.Fatalf("Failed to create server: %v", err)
-	}
-
-	return server, func() {
-		server.Stop()
-		os.Remove(tmpDB.Name())
-	}
-}
-
 func TestTerminalRouting(t *testing.T) {
-	// Create test server
-	server, cleanup := setupTestServerWithCleanup(t)
-	defer cleanup()
+	server := NewTestServer(t, ":0", ":0")
 
 	// Test that terminal subdomains are detected correctly
 	tests := []struct {
@@ -59,9 +37,7 @@ func TestTerminalRouting(t *testing.T) {
 
 func TestTerminalPageRequiresAuth(t *testing.T) {
 	t.Parallel()
-	// Create test server
-	server, cleanup := setupTestServerWithCleanup(t)
-	defer cleanup()
+	server := NewTestServer(t, ":0", ":0")
 
 	// Request terminal page without authentication
 	req := httptest.NewRequest("GET", "/", nil)
@@ -87,9 +63,7 @@ func TestTerminalPageRequiresAuth(t *testing.T) {
 
 func TestTerminalStaticFiles(t *testing.T) {
 	t.Parallel()
-	// Create test server
-	server, cleanup := setupTestServerWithCleanup(t)
-	defer cleanup()
+	server := NewTestServer(t, ":0", ":0")
 
 	// Create a test user and auth them
 	userID := "test-user-id"
@@ -150,9 +124,7 @@ func TestTerminalCleanupTimer(t *testing.T) {
 
 func TestTerminalHostnameParsing(t *testing.T) {
 	t.Parallel()
-	// Create test server
-	server, cleanup := setupTestServerWithCleanup(t)
-	defer cleanup()
+	server := NewTestServer(t, ":0", ":0")
 
 	tests := []struct {
 		name        string

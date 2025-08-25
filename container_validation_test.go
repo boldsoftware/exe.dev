@@ -1,24 +1,12 @@
 package exe
 
 import (
-	"os"
 	"testing"
 )
 
 func TestIsValidMachineName(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":18080", ":12222")
 
 	tests := []struct {
 		name     string
@@ -78,18 +66,7 @@ func TestIsValidMachineName(t *testing.T) {
 
 func TestMachineNameDenylist(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":18080", ":12222")
 
 	// Test all denylisted machine names
 	denylistedWords := []string{

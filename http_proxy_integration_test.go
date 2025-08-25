@@ -1,7 +1,6 @@
 package exe
 
 import (
-	"os"
 	"testing"
 )
 
@@ -11,20 +10,8 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18080", ":12222")
 
 	// Use mock container manager for testing
 	mockManager := NewMockContainerManager()

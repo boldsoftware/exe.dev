@@ -72,21 +72,9 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
 	t.Logf("Generated public key: %s", publicKeyStr)
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_e2e_pty_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true // Skip animations
-	defer server.Stop()
 
 	// Mock container manager
 	mockManager := NewMockContainerManager()
@@ -204,7 +192,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}
 
 	// Step 1: Wait for email prompt
-	output, err := readUntil("enter your email address", 2*time.Second)
+	output, err := readUntil("enter your email", 2*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to get email prompt: %v\nOutput: %s", err, output)
 	}

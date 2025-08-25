@@ -1,7 +1,6 @@
 package exe
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -9,32 +8,18 @@ import (
 )
 
 // setupTestServerWithDB creates a test server with a temporary database
-func setupTestServerWithDB(t *testing.T) (*Server, *os.File) {
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	tmpDB.Close()
-
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		os.Remove(tmpDB.Name())
-		t.Fatalf("Failed to create server: %v", err)
-	}
+func setupTestServerWithDB(t *testing.T) *Server {
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true
 	server.quietMode = true
-
-	return server, tmpDB
+	return server
 }
 
 // TestMultiDockerHostDatabasePersistence tests that docker host information is properly stored and retrieved
 func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 	t.Parallel()
 	// Create test server with database
-	server, tempDB := setupTestServerWithDB(t)
-	defer tempDB.Close()
-	defer os.Remove(tempDB.Name())
-	defer server.Stop()
+	server := setupTestServerWithDB(t)
 
 	// Test docker host values
 	dockerHost := "tcp://dockerhost1:2376"
@@ -172,10 +157,7 @@ func TestSSHRoutingWithDockerHost(t *testing.T) {
 func TestMultiDockerHostSchemaCompatibility(t *testing.T) {
 	t.Parallel()
 	// Create test server with database
-	server, tempDB := setupTestServerWithDB(t)
-	defer tempDB.Close()
-	defer os.Remove(tempDB.Name())
-	defer server.Stop()
+	server := setupTestServerWithDB(t)
 
 	// Create a machine without docker host (legacy case)
 	userID := "test-user-id"

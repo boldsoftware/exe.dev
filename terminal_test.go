@@ -451,21 +451,9 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 	}
 	defer term.Close()
 
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create a mock SSH channel using our terminal
 	mockChannel := &MockSSHChannel{term: term}
-	server, err := NewServer(":8080", "", ":2222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":8080", ":2222")
 
 	t.Log("=== Testing readLineFromChannel behavior ===")
 

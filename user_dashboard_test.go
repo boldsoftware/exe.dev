@@ -5,23 +5,14 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func TestUserDashboard(t *testing.T) {
 	t.Parallel()
 
-	server, cleanup := setupTestServerWithDatabase(t)
-	defer cleanup()
+	server := NewTestServer(t, ":0", ":0")
 
 	// Create a test user
 	email := "test@example.com"
@@ -34,7 +25,7 @@ func TestUserDashboard(t *testing.T) {
 	}
 
 	_, err = server.db.Exec(`
-		INSERT INTO users (user_id, email) 
+		INSERT INTO users (user_id, email)
 		VALUES (?, ?)
 	`, userID, email)
 	if err != nil {
@@ -52,7 +43,7 @@ func TestUserDashboard(t *testing.T) {
 
 	// Create alloc for the user
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))
 	`, allocID, userID)
 	if err != nil {
@@ -119,26 +110,4 @@ func TestUserDashboard(t *testing.T) {
 	if !strings.Contains(bodyStr, "welcome") && !strings.Contains(bodyStr, "Machines") && !strings.Contains(bodyStr, "machines") {
 		t.Errorf("Expected to find welcome message or machines section")
 	}
-}
-
-func setupTestServerWithDatabase(t *testing.T) (*Server, func()) {
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	tmpDB.Close()
-
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "", []string{""})
-	if err != nil {
-		os.Remove(tmpDB.Name())
-		t.Fatalf("Failed to create server: %v", err)
-	}
-
-	cleanup := func() {
-		server.Stop()
-		os.Remove(tmpDB.Name())
-	}
-
-	return server, cleanup
 }

@@ -3,7 +3,6 @@ package exe
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"os"
 	"testing"
 	"time"
 
@@ -28,22 +27,10 @@ func generateTestHostKey(t *testing.T, keyName string) []byte {
 func TestVerifyHostKeyImplemented(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
-	defer server.Stop()
 
 	// Start the piper plugin
 	piper := NewPiperPlugin(server, ":0")
@@ -66,7 +53,7 @@ func TestVerifyHostKeyImplemented(t *testing.T) {
 	piper.storeExpectedHostKeyForConnection(connID, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDifferentTestKey test@different")
 
 	// Call the VerifyHostKey handler - this should fail due to key mismatch
-	err = piper.handleVerifyHostKey(mockConn, hostname, netaddr, mockHostKey)
+	err := piper.handleVerifyHostKey(mockConn, hostname, netaddr, mockHostKey)
 	if err == nil {
 		t.Fatalf("VerifyHostKey should reject mismatched keys but accepted one")
 	}
@@ -83,22 +70,10 @@ func TestVerifyHostKeyImplemented(t *testing.T) {
 func TestSSHPiperNoVerifyHostKeyError(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server with piper enabled
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
-	defer server.Stop()
 
 	// Wait for server to start
 	time.Sleep(200 * time.Millisecond)
@@ -118,22 +93,10 @@ func TestSSHPiperNoVerifyHostKeyError(t *testing.T) {
 func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
-	defer server.Stop()
 
 	piper := NewPiperPlugin(server, ":0")
 	mockConn := mockConnMetadata{
@@ -189,22 +152,10 @@ func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
-	defer server.Stop()
 
 	piper := NewPiperPlugin(server, ":0")
 	testMachineName := "test-machine"
@@ -238,22 +189,10 @@ func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 func TestVerifyHostKeyExpiration(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
-	defer server.Stop()
 
 	piper := NewPiperPlugin(server, ":0")
 	testMachineName := "expire-test-machine"

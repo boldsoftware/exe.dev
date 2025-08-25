@@ -5,7 +5,6 @@ import (
 	"log"
 	"log/slog"
 	"net"
-	"os"
 	"strings"
 	"testing"
 
@@ -16,22 +15,10 @@ import (
 func TestAuthLogCallback(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = false // Enable auth logging for this test
-	defer server.Stop()
 
 	// Capture slog output
 	var logBuffer bytes.Buffer
@@ -94,22 +81,10 @@ func TestAuthLogCallback(t *testing.T) {
 func TestAuthLogCallbackInServerConfig(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
-	defer server.Stop()
 
 	// Verify that the SSH server config has the auth log callback set
 	if server.sshConfig == nil {
@@ -134,22 +109,10 @@ func TestAuthLogCallbackInServerConfig(t *testing.T) {
 func TestAuthLogSkipsInTestMode(t *testing.T) {
 	t.Parallel()
 
-	// Create test database
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server in test mode
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true // Enable test mode
-	defer server.Stop()
 
 	// Capture log output
 	var logBuffer bytes.Buffer

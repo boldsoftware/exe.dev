@@ -3,7 +3,6 @@ package exe
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
@@ -16,21 +15,9 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "proxy_magic_auth_test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server with quiet mode disabled to see debug logs
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = false // Enable logging for debugging
-	defer server.Stop()
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()
@@ -258,21 +245,9 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "proxy_unauthorized_test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = false
-	defer server.Stop()
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()

@@ -567,18 +567,8 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 // TestSSHPiperProxyAuthentication tests the complete proxy authentication flow
 func TestSSHPiperProxyAuthentication(t *testing.T) {
 	t.Parallel()
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
 
@@ -683,18 +673,8 @@ func (m mockConnMetadata) GetMeta(key string) string {
 // TestSSHPiperExedEphemeralProxyAuth tests that exed correctly handles ephemeral proxy authentication
 func TestSSHPiperExedEphemeralProxyAuth(t *testing.T) {
 	t.Parallel()
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
 
@@ -813,17 +793,7 @@ func TestSSHPiperRealKeyIntegration(t *testing.T) {
 	}
 
 	// Create a temporary server
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.quietMode = true
 	server.testMode = true
 

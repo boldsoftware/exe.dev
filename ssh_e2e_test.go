@@ -31,21 +31,9 @@ func TestSSHEndToEndSignupFlow(t *testing.T) {
 		t.Skip("expect not found, skipping E2E test")
 	}
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_e2e_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true // Skip animations
-	defer server.Stop()
 
 	// Find a free port for SSH
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -159,21 +147,9 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 		t.Skip("expect not found, skipping E2E test")
 	}
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_e2e_create_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server with Docker support
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true
-	defer server.Stop()
 
 	// Clean up any existing test containers
 	// teamName no longer used - machines are globally unique
@@ -352,21 +328,9 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_e2e_access_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true
-	defer server.Stop()
 
 	// Use mock container manager for predictable testing
 	mockManager := NewMockContainerManager()
@@ -488,20 +452,9 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 func TestSSHDirectExecCommands(t *testing.T) {
 	t.Parallel()
 	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_exec_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true
-	defer server.Stop()
 
 	// Use mock container manager
 	mockManager := NewMockContainerManager()

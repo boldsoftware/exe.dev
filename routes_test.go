@@ -207,19 +207,7 @@ func TestRouteMatching(t *testing.T) {
 
 func TestMachineCreationWithRoutes(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_routes_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":0", ":0")
 
 	// Set up test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
@@ -227,7 +215,7 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 	allocID := "alloc-test-123"
 
 	// Create user with alloc
-	err = server.createUserWithAlloc(publicKey, email)
+	err := server.createUserWithAlloc(publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"io"
 	"net"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,21 +17,9 @@ import (
 // TestSSHMenuAfterRegistration tests that the menu works after registration
 func TestSSHMenuAfterRegistration(t *testing.T) {
 	t.Parallel()
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_menu_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true // Skip animations
-	defer server.Stop()
 
 	// Find a free port for SSH
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -249,21 +236,9 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 func TestSSHMenuInteractiveCommands(t *testing.T) {
 	t.Parallel()
 
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_menu_cmds_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true
-	defer server.Stop()
 
 	// Mock container manager for testing
 	mockManager := NewMockContainerManager()
@@ -431,21 +406,9 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 	t.Parallel()
 
 	t.Skip("Skipping registration flow test - complex readline interaction")
-	// Create temporary database
-	tmpDB, err := os.CreateTemp("", "test_reg_flow_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	server := NewTestServer(t, ":0", ":0")
 	server.testMode = true
-	defer server.Stop()
 
 	// Find a free port for SSH
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

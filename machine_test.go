@@ -3,25 +3,12 @@ package exe
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"testing"
 )
 
 func TestGetMachineByName(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18080", ":12222")
 
 	// Create test data
 	userID := "test-user-id"
@@ -34,7 +21,7 @@ func TestGetMachineByName(t *testing.T) {
 	}
 
 	// Create alloc with all required fields
-	_, err = server.db.Exec(`
+	_, err := server.db.Exec(`
 		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
@@ -74,19 +61,7 @@ func TestGetMachineByName(t *testing.T) {
 
 func TestMachineUniqueConstraint(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18080", ":12222")
 
 	// Create test users and allocs
 	userID1 := "test-user-1"
@@ -103,7 +78,7 @@ func TestMachineUniqueConstraint(t *testing.T) {
 	}
 
 	// Create allocs
-	_, err = server.db.Exec(`
+	_, err := server.db.Exec(`
 		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID1, userID1)
 	if err != nil {
@@ -138,19 +113,7 @@ func TestMachineUniqueConstraint(t *testing.T) {
 
 func TestMachineNameValidationIntegration(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18080", ":12222")
 
 	// Create test data
 	userID := "test-user-id"
@@ -161,7 +124,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 	}
 
 	// Create alloc with all required fields
-	_, err = server.db.Exec(`
+	_, err := server.db.Exec(`
 		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
@@ -210,19 +173,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 
 func TestGeneratedMachineNamesAreValid(t *testing.T) {
 	t.Parallel()
-	// Create temporary database file
-	tmpDB, err := os.CreateTemp("", "test_*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp db: %v", err)
-	}
-	defer os.Remove(tmpDB.Name())
-	tmpDB.Close()
-
-	server, err := NewServer(":18080", "", ":12222", ":0", tmpDB.Name(), "local", []string{""})
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	defer server.Stop()
+	server := NewTestServer(t, ":18080", ":12222")
 
 	// Test that generateRandomContainerName creates valid names
 	for i := 0; i < 10; i++ {
