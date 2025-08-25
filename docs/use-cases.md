@@ -6,3 +6,9 @@
 
 * Try a coding agent
 
+* Set up a git server (b/c GitHub/Microsoft news)
+* Set up a gerrit / reviewboard
+* Set up a Zulip
+* Set up a Jitsi
+* Set up a wiki
+* Set up a mastodon
