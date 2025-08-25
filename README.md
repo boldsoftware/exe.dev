@@ -4,6 +4,31 @@ EXE.DEV creates machines for you in the cloud, entirely over ssh.
 
 Machines are Docker containers running on AWS EC2 instances. The exed binary acts as the control interface and the ssh/https proxy to the containers.
 
+## Local machine setup
+
+Get docker running. The easiest way is installing: https://orbstack.dev/
+
+```
+brew install tailscale coreutils
+tailscale up
+```
+
+In your ~/.ssh/config add:
+
+```
+Host localexe
+ HostName localhost
+ Port 2222
+ StrictHostKeyChecking no
+ UserKnownHostsFile /dev/null
+
+Host *.localexe
+ HostName %h.localhost
+ Port 2222
+ StrictHostKeyChecking no
+ UserKnownHostsFile /dev/null
+```
+
 ## Local Development
 
 ```
@@ -11,21 +36,15 @@ go run ./cmd/exed -dev=local
 ```
 
 With this you can:
-- ssh -p 2222 localhost
+- ssh localexe
+- ssh <machine>@localexe
 - visit http://localhost:8080
-- visit http://machine.localhost:8080
-- scp -P 2222 junk.txt localhost:junk.txt  (NOTE: it's -P, not -p)
+- visit http://machine.localhost:8080 (run `python -m http.server` in the machine first)
+- scp junk.txt localexe:junk.txt
 
 Everything will run locally on docker.
 
 ## Production Deployment
-
-### Local machine setup
-
-```
-brew install tailscale
-tailscale up
-```
 
 ### Regular deployment
 
