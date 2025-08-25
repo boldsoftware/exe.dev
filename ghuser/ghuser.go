@@ -43,7 +43,7 @@ func (c *Client) githubUser(userID int64) (*githubUserInfo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 401 {
-		return nil, fmt.Errorf("invalid GitHub token")
+		return nil, fmt.Errorf("invalid GitHub token %q", c.token)
 	}
 	if resp.StatusCode == 429 {
 		return nil, fmt.Errorf("GitHub API rate limit exceeded")
@@ -157,21 +157,31 @@ type Info struct {
 // Users should be using the Extensions field of the Permissions return value from the various authentication callbacks to record data associated with the authentication attempt instead of referencing external state. Once the connection is established the state corresponding to the successful authentication attempt can be retrieved via the ServerConn.Permissions field. Note that some third-party libraries misuse the Permissions type by sharing it across authentication attempts; users of third-party libraries should refer to the relevant projects for guidance.
 //
 // See also https://github.com/gliderlabs/ssh/issues/242
-func (c *Client) Info(pubKey ssh.PublicKey) (*Info, error) {
-	// Calculate key hash
+func (c *Client) InfoKey(pubKey ssh.PublicKey) (Info, error) {
+	if c == nil {
+		return Info{}, fmt.Errorf("nil ghuser.Client")
+	}
 	authorizedKey := ssh.MarshalAuthorizedKey(pubKey)
-	trimmed := strings.TrimSpace(string(authorizedKey))
+	return c.InfoString(string(authorizedKey))
+}
+
+func (c *Client) InfoString(pubKey string) (Info, error) {
+	if c == nil {
+		return Info{}, fmt.Errorf("nil ghuser.Client")
+	}
+	// Calculate key hash
+	trimmed := strings.TrimSpace(pubKey)
 	hash := sha256.Sum256([]byte(trimmed))
 	dbKey := hash[:16]
 	return c.info(dbKey)
 }
 
-func (c *Client) info(dbKey []byte) (*Info, error) {
+func (c *Client) info(dbKey []byte) (Info, error) {
 	if c.db == nil || c.stmt == nil {
-		return nil, fmt.Errorf("client not initialized")
+		return Info{}, fmt.Errorf("client not initialized")
 	}
 
-	info := new(Info)
+	var info Info
 
 	// Look up user ID in database
 	// Note: modernc.org/sqlite requires string for binary comparison
@@ -181,12 +191,12 @@ func (c *Client) info(dbKey []byte) (*Info, error) {
 		return info, nil // IsGitHubUser is false
 	}
 	if err != nil {
-		return nil, fmt.Errorf("database query failed: %w", err)
+		return Info{}, fmt.Errorf("database query failed: %w", err)
 	}
 
 	user, err := c.githubUser(userID)
 	if err != nil {
-		return nil, fmt.Errorf("GitHub API request failed: %w", err)
+		return Info{}, fmt.Errorf("GitHub API request failed: %w", err)
 	}
 
 	info.IsGitHubUser = true

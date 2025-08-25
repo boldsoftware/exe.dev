@@ -73,9 +73,9 @@ func TestClient_Info_EndToEnd(t *testing.T) {
 	defer c.Close()
 
 	// Get info for the key
-	info, err := c.Info(pubKey)
+	info, err := c.InfoKey(pubKey)
 	if err != nil {
-		t.Fatalf("Info failed: %v", err)
+		t.Fatalf("InfoKey failed: %v", err)
 	}
 
 	// Verify results
@@ -111,9 +111,9 @@ func TestClient_Info_UnknownKey(t *testing.T) {
 	defer c.Close()
 
 	// Get info for unknown key
-	info, err := c.Info(pubKey)
+	info, err := c.InfoKey(pubKey)
 	if err != nil {
-		t.Fatalf("Info failed: %v", err)
+		t.Fatalf("InfoKey failed: %v", err)
 	}
 
 	// Should not be recognized as GitHub user
@@ -135,10 +135,10 @@ func TestClient_Info_NotInitialized(t *testing.T) {
 		t.Fatalf("failed to parse test key: %v", err)
 	}
 
-	// Try to use Info with uninitialized client
+	// Try to use InfoKey with uninitialized client
 	c := &Client{}
 
-	_, err = c.Info(pubKey)
+	_, err = c.InfoKey(pubKey)
 	if err == nil || err.Error() != "client not initialized" {
 		t.Errorf("expected 'client not initialized' error, got: %v", err)
 	}
