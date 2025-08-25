@@ -2385,9 +2385,38 @@ func isValidStorageSize(size string) bool {
 	return false
 }
 
+// denylistedMachineNames contains common computer-related five-letter words that are not allowed as machine names
+var denylistedMachineNames = map[string]bool{
+	"abort": true, "admin": true, "allow": true, "array": true, "async": true,
+	"audit": true, "block": true, "board": true, "boost": true, "break": true,
+	"build": true, "bytes": true, "cable": true, "cache": true, "catch": true,
+	"chain": true, "check": true, "chips": true, "class": true, "clock": true,
+	"cloud": true, "codec": true, "codes": true, "const": true, "cores": true,
+	"crawl": true, "crypt": true, "debug": true, "drive": true, "email": true,
+	"entry": true, "error": true, "event": true, "fetch": true, "fiber": true,
+	"field": true, "flash": true, "frame": true, "games": true, "grant": true,
+	"guard": true, "guest": true, "https": true, "image": true, "index": true,
+	"input": true, "laser": true, "links": true, "logic": true, "login": true,
+	"macro": true, "match": true, "merge": true, "modem": true, "mount": true,
+	"nodes": true, "parse": true, "paste": true, "patch": true, "pixel": true,
+	"ports": true, "power": true, "print": true, "proxy": true, "query": true,
+	"radio": true, "regex": true, "reset": true, "route": true, "scope": true,
+	"serve": true, "setup": true, "share": true, "shell": true, "solid": true,
+	"sound": true, "speed": true, "spell": true, "stack": true, "start": true,
+	"store": true, "style": true, "table": true, "theme": true, "throw": true,
+	"timer": true, "token": true, "tower": true, "trace": true, "trash": true,
+	"trust": true, "users": true, "video": true, "virus": true, "watts": true,
+}
+
 // isValidMachineName validates machine name format
 func (s *Server) isValidMachineName(name string) bool {
-	if len(name) == 0 || len(name) > 32 {
+	// Must be at least 5 characters and at most 32 characters
+	if len(name) < 5 || len(name) > 32 {
+		return false
+	}
+
+	// Check if name is in denylist
+	if denylistedMachineNames[name] {
 		return false
 	}
 

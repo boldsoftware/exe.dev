@@ -1020,7 +1020,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 
 	// Validate machine name (both provided and generated)
 	if !ss.server.isValidMachineName(machineName) {
-		fmt.Fprintf(s, "\033[1;31mError: Invalid machine name '%s'. Machine names must be lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), and be up to 32 characters\033[0m\r\n", machineName)
+		fmt.Fprintf(s, "\033[1;31mError: Invalid machine name '%s'. Machine names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 32 characters\033[0m\r\n", machineName)
 		return
 	}
 
