@@ -133,7 +133,6 @@ CREATE TABLE IF NOT EXISTS ssh_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     public_key TEXT UNIQUE NOT NULL, -- Public keys are globally unique to identify users
-    device_name TEXT, -- Optional: friendly name for the key
     default_team TEXT, -- Default team for this SSH key
     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_used_at DATETIME,

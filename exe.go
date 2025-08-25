@@ -287,10 +287,9 @@ type UserPageData struct {
 
 // SSHKey represents an SSH key for the user page
 type SSHKey struct {
-	UserID     string
-	PublicKey  string
-	DeviceName *string
-	Verified   bool
+	UserID    string
+	PublicKey string
+	Verified  bool
 }
 
 // EmailVerification represents a pending email verification (in-memory)
@@ -1110,8 +1109,8 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 	// Add the SSH key to the verified keys
 	_, err = s.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
-		VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1, 'New Device')
+		INSERT INTO ssh_keys (user_id, public_key, verified)
+		VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1)
 		ON CONFLICT(public_key) DO UPDATE SET verified = 1`,
 		email, publicKey)
 	if err != nil {
@@ -1249,8 +1248,8 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		publicKey := verification.PublicKey
 		if publicKey != "" {
 			_, err = s.db.Exec(`
-				INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
-				VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1, 'Primary Device')
+				INSERT INTO ssh_keys (user_id, public_key, verified)
+				VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1)
 				ON CONFLICT(public_key) DO UPDATE SET verified = 1, user_id = (SELECT user_id FROM users WHERE email = ?)`,
 				email, publicKey, email)
 			if err != nil {
@@ -1963,7 +1962,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	// Get user's SSH keys
 	sshKeys := []SSHKey{}
 	rows, err := s.db.Query(`
-		SELECT public_key, device_name, verified
+		SELECT public_key, verified
 		FROM ssh_keys
 		WHERE user_id = ?
 		ORDER BY added_at DESC
@@ -1974,14 +1973,10 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		defer rows.Close()
 		for rows.Next() {
 			var key SSHKey
-			var deviceName sql.NullString
-			err := rows.Scan(&key.PublicKey, &deviceName, &key.Verified)
+			err := rows.Scan(&key.PublicKey, &key.Verified)
 			if err != nil {
 				slog.Error("Error scanning SSH key", "error", err)
 				continue
-			}
-			if deviceName.Valid {
-				key.DeviceName = &deviceName.String
 			}
 			sshKeys = append(sshKeys, key)
 		}

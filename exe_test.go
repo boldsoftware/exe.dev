@@ -59,11 +59,6 @@ func TestPublicKeyAuthentication(t *testing.T) {
 	if err := server.createUserWithAlloc(publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
-	// Update the SSH key with device name
-	if _, err := server.db.Exec(`UPDATE ssh_keys SET device_name = ? WHERE public_key = ?`,
-		"test-device", publicKeyStr); err != nil {
-		t.Fatalf("Failed to update SSH key: %v", err)
-	}
 
 	// Test authentication with registered key
 	permissions2, err := server.AuthenticatePublicKey(nil, signer.PublicKey())

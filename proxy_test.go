@@ -87,7 +87,6 @@ func TestProxyRequestRouting(t *testing.T) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL,
 			public_key TEXT UNIQUE NOT NULL,
-			device_name TEXT,
 			added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_used_at DATETIME,
 			verified BOOLEAN DEFAULT FALSE,
@@ -286,7 +285,6 @@ func TestProxyRequestDetails(t *testing.T) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id TEXT NOT NULL,
 			public_key TEXT UNIQUE NOT NULL,
-			device_name TEXT,
 			added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			last_used_at DATETIME,
 			verified BOOLEAN DEFAULT FALSE,
@@ -380,8 +378,8 @@ func TestMagicAuthFlow(t *testing.T) {
 	}
 
 	// Create SSH key for the test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
-		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...", "test-device")
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}

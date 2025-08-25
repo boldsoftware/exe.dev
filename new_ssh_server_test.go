@@ -259,9 +259,9 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 
 	// Add SSH key
 	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
-		VALUES (?, ?, ?, ?)`,
-		userID, string(ssh.MarshalAuthorizedKey(publicKey)), true, "test-device")
+		INSERT INTO ssh_keys (user_id, public_key, verified)
+		VALUES (?, ?, ?)`,
+		userID, string(ssh.MarshalAuthorizedKey(publicKey)), true)
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}

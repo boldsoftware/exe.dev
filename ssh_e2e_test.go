@@ -529,15 +529,15 @@ func TestSSHDirectExecCommands(t *testing.T) {
 	}
 
 	// Add the SSH key to ssh_keys table and mark it as verified
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
-		userID, publicKeyStr, "test-device")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+		userID, publicKeyStr)
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}
 
 	// Add a second SSH key to test multiple key display
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified, device_name) VALUES (?, ?, 1, ?)`,
-		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDummykey...", "laptop")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDummykey...")
 	if err != nil {
 		t.Fatalf("Failed to add second SSH key: %v", err)
 	}

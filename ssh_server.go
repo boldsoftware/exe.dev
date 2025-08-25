@@ -559,8 +559,8 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 
 	// Store/update the SSH key as verified
 	_, storeErr := ss.server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
-		VALUES (?, ?, 1, 'Primary Device')
+		INSERT INTO ssh_keys (user_id, public_key, verified)
+		VALUES (?, ?, 1)
 		ON CONFLICT(public_key) DO UPDATE SET verified = 1, user_id = ?`,
 		user.UserID, publicKey, user.UserID)
 	if storeErr != nil {
@@ -1429,7 +1429,7 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 	currentPublicKey, _ := s.Context().Value("public_key").(string)
 
 	// Get all public keys for this user
-	rows, err := ss.server.db.Query(`SELECT public_key, COALESCE(device_name, '') FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) AND verified = 1 ORDER BY public_key`, email)
+	rows, err := ss.server.db.Query(`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) AND verified = 1 ORDER BY public_key`, email)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError retrieving SSH keys: %v\033[0m\r\n", err)
 		return
@@ -1439,8 +1439,8 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 	fmt.Fprintf(s, "\033[1mSSH Keys:\033[0m\r\n")
 	keyCount := 0
 	for rows.Next() {
-		var dbPublicKey, deviceName string
-		if err := rows.Scan(&dbPublicKey, &deviceName); err != nil {
+		var dbPublicKey string
+		if err := rows.Scan(&dbPublicKey); err != nil {
 			continue
 		}
 		keyCount++
@@ -1452,8 +1452,6 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 			currentIndicator = " \033[1;32m← current\033[0m"
 		}
 
-		fmt.Fprintf(s, "  \033[1mDevice:\033[0m %s%s\r\n", deviceName, currentIndicator)
-
 		// Use the current session's key if this is the current key, otherwise use DB key
 		displayKey := dbPublicKey
 		if isCurrent && currentPublicKey != "" {
@@ -1461,9 +1459,9 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 		}
 
 		if displayKey != "" {
-			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m %s\r\n", strings.TrimSpace(displayKey))
+			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m %s%s\r\n", strings.TrimSpace(displayKey), currentIndicator)
 		} else {
-			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m \033[2m(not available)\033[0m\r\n")
+			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m \033[2m(not available)\033[0m%s\r\n", currentIndicator)
 		}
 		fmt.Fprintf(s, "\r\n")
 	}
@@ -1538,8 +1536,8 @@ func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
 
 		// Store this key as unverified in ssh_keys table
 		_, err = ss.server.db.Exec(`
-			INSERT OR REPLACE INTO ssh_keys (user_id, public_key, verified, device_name)
-			VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 0, 'Pending Verification')`,
+			INSERT OR REPLACE INTO ssh_keys (user_id, public_key, verified)
+			VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 0)`,
 			email, publicKey)
 		if err != nil {
 			return fmt.Errorf("failed to store pending key: %v", err)

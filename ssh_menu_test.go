@@ -88,14 +88,6 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	}
 	t.Logf("User alloc created: %s", alloc.AllocID)
 
-	// Update SSH key with proper public key and device name
-	_, err = server.db.Exec(`
-		UPDATE ssh_keys SET device_name = ? WHERE user_id = ?`,
-		"Primary Device", userID)
-	if err != nil {
-		t.Fatalf("Failed to update SSH key: %v", err)
-	}
-
 	// Test authentication directly to see what permissions are returned
 	perms, err := server.AuthenticatePublicKey(nil, signer.PublicKey())
 	if err != nil {
@@ -252,7 +244,6 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 
 // TestSSHMenuInteractiveCommands tests various menu commands
 func TestSSHMenuInteractiveCommands(t *testing.T) {
-
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_menu_cmds_*.db")
 	if err != nil {
@@ -326,13 +317,6 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 		t.Fatalf("Failed to get user alloc: %v", err)
 	}
 	t.Logf("User alloc created: %s", alloc.AllocID)
-
-	_, err = server.db.Exec(`
-		UPDATE ssh_keys SET device_name = ? WHERE user_id = ?`,
-		"Primary Device", userID)
-	if err != nil {
-		t.Fatalf("Failed to update SSH key: %v", err)
-	}
 
 	// Connect to SSH
 	config := &ssh.ClientConfig{
@@ -532,8 +516,8 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 				t.Logf("Failed to get user ID: %v", err)
 			} else {
 				_, err = server.db.Exec(`
-					INSERT INTO ssh_keys (user_id, public_key, verified, device_name)
-					VALUES (?, ?, 1, "Primary Device")`,
+					INSERT INTO ssh_keys (user_id, public_key, verified)
+					VALUES (?, ?, 1)`,
 					userID, publicKeyStr)
 				if err != nil {
 					t.Logf("Failed to store SSH key: %v", err)
