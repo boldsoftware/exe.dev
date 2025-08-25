@@ -6,8 +6,8 @@ User                                exe.dev Service
 ┌─────────────────┐                            ┌─────────────────────────────────┐
 │                 │                            │        docker-01 (-02...) (AWS) │
 │     SSH         │                            │                                 │
-│user.team@exe.dev│                            │  ┌───────────────────────────┐  │
-│                 │                            │  │    user.team container    │  │
+│  user@exe.dev   │                            │  ┌───────────────────────────┐  │
+│                 │                            │  │    user container         │  │
 └─────────────────┘                            │  │        (gVisor)           │  │
          │                                     │  │                           │  │
          │                                     │  │  ┌───────────────────┐    │  │
@@ -50,7 +50,7 @@ exe.dev provides containers/VMs very, very easily over SSH.
 
 Users SSH into exe.dev, which is handled by sshpiper. sshpiper
 talks to exed over a gRPC plugin interface to find out what to
-do with the connection. Connections for "host.team@exe.dev" with
+do with the connection. Connections for "host@exe.dev" with
 appropriate credentials are forwarded onto the container itself.
 Connections for the "exe.dev shell" are forwarded to exed directly.
 
@@ -59,7 +59,7 @@ in the database.
 
 ## HTTP Architecture
 
-For HTTP, connections https://host.team.exe.dev/ are handled by exed directly
+For HTTP, connections https://host.exe.dev/ are handled by exed directly
 and proxied to their containers.
 
 ## Container Management

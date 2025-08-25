@@ -16,10 +16,10 @@ Test HTTP proxying capabilities, authentication flows, and route management.
 
 8. Start an HTTP server on machinename@localhost
 
-9. Connect to it via http://machinename.team.localhost:8080/ . There should be a login flow of some sort that might just be redirections.
+9. Connect to it via http://machinename.localhost:8080/ . There should be a login flow of some sort that might just be redirections.
 
 Note that there should be a confirmation interstitial screen for logging into
-machinename.team using your exe.dev credentials.
+machinename using your exe.dev credentials.
 
 10. Logout on http://localhost:8080/
 
@@ -31,7 +31,7 @@ machinename.team using your exe.dev credentials.
 
 ### HTTP Server Hints
 - In the container, start a simple HTTP server: `python3 -m http.server 8000` or similar
-- Access via browser at http://machinename.team.localhost:8080/
+- Access via browser at http://machinename.localhost:8080/
 - The system should redirect through authentication flows
 
 ### Authentication Hints
