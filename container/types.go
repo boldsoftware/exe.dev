@@ -124,6 +124,9 @@ type CreateContainerRequest struct {
 
 	// Sandbox configuration - allow opting out of sandbox for specific containers
 	DisableSandbox bool `json:"disable_sandbox,omitempty"`
+
+	// Command override: "auto" (default), "none", or custom command string
+	CommandOverride string `json:"command_override,omitempty"`
 }
 
 // BuildRequest represents a request to build a custom Docker image

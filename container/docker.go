@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anmitsu/go-shlex"
 	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh"
 )
@@ -26,6 +28,17 @@ type DockerManager struct {
 
 	mu         sync.RWMutex
 	containers map[string]*Container // containerID -> Container
+}
+
+// ImageMetadata represents the config section of a Docker image inspect result
+type ImageMetadata struct {
+	Config ImageConfig `json:"Config"`
+}
+
+// ImageConfig represents the configuration of a Docker image
+type ImageConfig struct {
+	Cmd        []string `json:"Cmd"`
+	Entrypoint []string `json:"Entrypoint"`
 }
 
 // NewDockerManager creates a new Docker-based container manager
@@ -111,6 +124,109 @@ func (m *DockerManager) discoverContainers(ctx context.Context, dockerHost strin
 	return nil
 }
 
+// isShellCommand checks if a command appears to be a shell based on well-known shell names
+func isShellCommand(cmd []string) bool {
+	if len(cmd) == 0 {
+		return false
+	}
+
+	// Extract the base command name (remove path)
+	command := cmd[0]
+	lastSlash := strings.LastIndex(command, "/")
+	if lastSlash >= 0 {
+		command = command[lastSlash+1:]
+	}
+
+	// List of well-known shells
+	shells := []string{"bash", "sh", "tcsh", "zsh", "dash", "ksh", "fish", "csh"}
+	for _, shell := range shells {
+		if command == shell {
+			return true
+		}
+	}
+	return false
+}
+
+// inspectImageMetadata gets the Command and Entrypoint from a Docker image
+func (m *DockerManager) inspectImageMetadata(ctx context.Context, image string, dockerHost string) (*ImageMetadata, error) {
+	// Expand the image name to full form
+	image = ExpandImageName(image)
+
+	cmd := exec.CommandContext(ctx, "docker", "image", "inspect", image)
+	if dockerHost != "" {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=%s", dockerHost))
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect image %s: %w", image, err)
+	}
+
+	// Docker image inspect returns an array, but we only care about the first element
+	var images []ImageMetadata
+	if err := json.Unmarshal(output, &images); err != nil {
+		return nil, fmt.Errorf("failed to parse image metadata: %w", err)
+	}
+
+	if len(images) == 0 {
+		return nil, fmt.Errorf("no image metadata returned")
+	}
+
+	return &images[0], nil
+}
+
+// determineContainerCommand determines what command to run in the container
+func (m *DockerManager) determineContainerCommand(ctx context.Context, image string, dockerHost string, commandOverride string) ([]string, error) {
+	// Log the image being analyzed
+	slog.Info("Determining container command", "image", image, "command_override", commandOverride)
+
+	switch commandOverride {
+	case "none":
+		slog.Info("Using tail command due to 'none' override", "image", image)
+		return []string{"tail", "-f", "/dev/null"}, nil
+	case "auto":
+		// Inspect the image to get its default command
+		meta, err := m.inspectImageMetadata(ctx, image, dockerHost)
+		if err != nil {
+			slog.Warn("Failed to inspect image, using tail fallback", "image", image, "error", err)
+			return []string{"tail", "-f", "/dev/null"}, nil
+		}
+
+		// Log the image metadata
+		slog.Info("Image metadata", "image", image, "entrypoint", meta.Config.Entrypoint, "cmd", meta.Config.Cmd)
+
+		// Use only the Cmd, ignore Entrypoint
+		effectiveCmd := meta.Config.Cmd
+
+		if len(effectiveCmd) == 0 {
+			slog.Info("Image has no command, using tail", "image", image)
+			return []string{"tail", "-f", "/dev/null"}, nil
+		}
+
+		// Check if it's a shell command
+		if isShellCommand(effectiveCmd) {
+			slog.Info("Image command is a shell, using tail instead", "image", image, "command", effectiveCmd)
+			return []string{"tail", "-f", "/dev/null"}, nil
+		}
+
+		// Use the image's command
+		slog.Info("Using image's native command", "image", image, "command", effectiveCmd)
+		return effectiveCmd, nil
+	default:
+		// Custom command provided - use shell-aware parsing
+		customCmd, err := shlex.Split(commandOverride, true)
+		if err != nil {
+			slog.Warn("Failed to parse custom command, using tail fallback", "image", image, "command", commandOverride, "error", err)
+			return []string{"tail", "-f", "/dev/null"}, nil
+		}
+		if len(customCmd) == 0 {
+			return []string{"tail", "-f", "/dev/null"}, nil
+		}
+		slog.Info("Using custom command override", "image", image, "command", customCmd)
+		return customCmd, nil
+	}
+}
+
 // CreateContainer creates a new Docker container
 func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error) {
 	// Generate SSH keys for this container
@@ -156,7 +272,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	// Set working directory
 	args = append(args, "-w", "/workspace")
 
-	// Add the image and command
+	// Add the image
 	image := req.Image
 	if image == "" {
 		image = "ubuntu:latest"
@@ -164,9 +280,19 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	image = ExpandImageName(image)
 	args = append(args, image)
 
-	// Keep container running - SSH will be setup after container starts
-	// TODO(philip): socat TCP-LISTEN:22,reuseaddr,fork EXEC:"/usr/sbin/sshd -i"
-	args = append(args, "tail", "-f", "/dev/null")
+	// Determine what command to run in the container
+	commandOverride := req.CommandOverride
+	if commandOverride == "" {
+		commandOverride = "auto" // Default behavior
+	}
+
+	containerCmd, err := m.determineContainerCommand(ctx, image, dockerHost, commandOverride)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine container command: %w", err)
+	}
+
+	// Add the determined command
+	args = append(args, containerCmd...)
 
 	// Execute docker run
 	cmd := exec.CommandContext(ctx, "docker", args...)

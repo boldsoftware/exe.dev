@@ -975,10 +975,12 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	var machineName string
 	var image string
 	var size string
+	var command string
 
 	fs.StringVar(&machineName, "name", "", "machine name (auto-generated if not specified)")
 	fs.StringVar(&image, "image", "exeuntu", "container image")
 	fs.StringVar(&size, "size", "medium", "machine size (small, medium, or large)")
+	fs.StringVar(&command, "command", "auto", "container command: auto, none, or a custom command")
 
 	// Capture the output to avoid printing errors to the session
 	var buf bytes.Buffer
@@ -988,14 +990,14 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	parseErr := fs.Parse(args)
 	if parseErr != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", parseErr)
-		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>]\r\n")
+		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
 		return
 	}
 
 	// Check for non-flag arguments - not supported
 	if fs.NArg() > 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Unexpected arguments: %s\033[0m\r\n", strings.Join(fs.Args(), " "))
-		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>]\r\n")
+		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
 		return
 	}
 
@@ -1041,14 +1043,15 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 
 	// Create container request
 	req := &container.CreateContainerRequest{
-		AllocID:       allocID,
-		Name:          machineName,
-		Image:         image,
-		Size:          size,
-		CPURequest:    sizePreset.CPURequest,
-		MemoryRequest: sizePreset.MemoryRequest,
-		StorageSize:   sizePreset.StorageSize,
-		Ephemeral:     false,
+		AllocID:         allocID,
+		Name:            machineName,
+		Image:           image,
+		Size:            size,
+		CPURequest:      sizePreset.CPURequest,
+		MemoryRequest:   sizePreset.MemoryRequest,
+		StorageSize:     sizePreset.StorageSize,
+		Ephemeral:       false,
+		CommandOverride: command,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

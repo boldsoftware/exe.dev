@@ -1,0 +1,44 @@
+# Custom Container Tests for exe.dev
+# This file defines container behavior expectations for e2e testing
+#
+# Format: image_name expected_behavior description
+# 
+# Expected behaviors:
+# - web_server: Should serve HTTP requests (nginx, apache, etc.)
+# - shell: Should provide interactive shell access
+# - service: Should run as a background service
+# - app: Should run application command
+
+# Web servers - should auto-detect and run web server
+nginx:alpine web_server "Nginx web server with Alpine base"
+nginx:latest web_server "Nginx web server latest version"
+apache:latest web_server "Apache HTTP server"
+httpd:alpine web_server "Apache httpd with Alpine"
+
+# Databases and services - should auto-detect and run service
+redis:alpine service "Redis in-memory database"
+redis:latest service "Redis latest version"
+postgres:15 service "PostgreSQL database server"
+mongo:latest service "MongoDB database"
+
+# Application containers - should auto-detect application command  
+node:alpine app "Node.js runtime"
+python:3.9-slim shell "Python interpreter (shell-like)"
+openjdk:11 shell "Java runtime (shell-like)"
+
+# Base OS images - should detect shell and use tail instead
+ubuntu:22.04 shell "Ubuntu base image with bash"
+alpine:latest shell "Alpine Linux with sh"
+debian:bullseye shell "Debian with bash"
+centos:8 shell "CentOS with bash"
+
+# Special cases
+busybox:latest shell "BusyBox with minimal shell"
+scratch app "Empty base image (should fallback to tail)"
+
+# Test cases for command override
+# These demonstrate that --command flag works correctly:
+# new --image=ubuntu:22.04 --command=none          # Forces tail
+# new --image=nginx:alpine --command=none           # Forces tail even for web server  
+# new --image=ubuntu:22.04 --command="python app.py" # Custom command
+# new --image=nginx:alpine --command=auto           # Auto-detect (should use nginx)
