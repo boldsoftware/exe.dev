@@ -21,6 +21,9 @@ Test HTTP proxying capabilities, authentication flows, and route management.
 Note that there should be a confirmation interstitial screen for logging into
 machinename using your exe.dev credentials.
 
+Note also that if you were logged out to begin with, you should end up at the exact
+URL you started at.
+
 10. Logout on http://localhost:8080/
 
 11. Connect again; you should require login; don't log in.

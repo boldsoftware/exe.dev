@@ -1175,9 +1175,13 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 
 	// Prepare template data
 	data := struct {
-		Token string
+		Token       string
+		RedirectURL string
+		ReturnHost  string
 	}{
-		Token: token,
+		Token:       token,
+		RedirectURL: r.URL.Query().Get("redirect"),
+		ReturnHost:  r.URL.Query().Get("return_host"),
 	}
 
 	// Render template
@@ -1322,9 +1326,9 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			// Continue anyway
 		}
 
-		// Check if this is part of a web auth flow with redirect parameters
-		redirectURL := r.URL.Query().Get("redirect")
-		returnHost := r.URL.Query().Get("return_host")
+		// Check if this is part of a web auth flow with redirect parameters (from form for POST)
+		redirectURL := r.FormValue("redirect")
+		returnHost := r.FormValue("return_host")
 		if redirectURL != "" || returnHost != "" {
 			// This is a web auth flow, perform redirect after authentication
 			s.redirectAfterAuth(w, r, userID)
@@ -1368,8 +1372,12 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Show authentication form
-	s.renderTemplate(w, "auth-form.html", nil)
+	// Show authentication form with query parameters
+	data := map[string]interface{}{
+		"RedirectURL": r.URL.Query().Get("redirect"),
+		"ReturnHost":  r.URL.Query().Get("return_host"),
+	}
+	s.renderTemplate(w, "auth-form.html", data)
 }
 
 // handleAuthEmailSubmission handles the email form submission for web auth
@@ -1420,11 +1428,11 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 	verificationURL := fmt.Sprintf("%s://%s/auth/verify?token=%s", scheme, r.Host, token)
 
-	// Add redirect parameters to the verification URL if present
-	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
+	// Add redirect parameters to the verification URL if present (from form values for POST)
+	if redirect := r.FormValue("redirect"); redirect != "" {
 		verificationURL += "&redirect=" + url.QueryEscape(redirect)
 	}
-	if returnHost := r.URL.Query().Get("return_host"); returnHost != "" {
+	if returnHost := r.FormValue("return_host"); returnHost != "" {
 		verificationURL += "&return_host=" + url.QueryEscape(returnHost)
 	}
 
@@ -1435,12 +1443,12 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 	verifyEmailURL := fmt.Sprintf("%s://%s/verify-email?token=%s", scheme2, r.Host, token)
 
-	// Add redirect parameters to the verify-email URL if present
+	// Add redirect parameters to the verify-email URL if present (from form values for POST)
 	// Both params needed: redirect=path, return_host=subdomain for cross-domain auth flow
-	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
+	if redirect := r.FormValue("redirect"); redirect != "" {
 		verifyEmailURL += "&redirect=" + url.QueryEscape(redirect)
 	}
-	if returnHost := r.URL.Query().Get("return_host"); returnHost != "" {
+	if returnHost := r.FormValue("return_host"); returnHost != "" {
 		verifyEmailURL += "&return_host=" + url.QueryEscape(returnHost)
 	}
 
@@ -1885,8 +1893,15 @@ func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, err
 
 // redirectAfterAuth handles redirecting user after successful authentication
 func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userID string) {
+	// Check both URL query params (for GET) and form values (for POST)
 	redirectURL := r.URL.Query().Get("redirect")
+	if redirectURL == "" {
+		redirectURL = r.FormValue("redirect")
+	}
 	returnHost := r.URL.Query().Get("return_host")
+	if returnHost == "" {
+		returnHost = r.FormValue("return_host")
+	}
 
 	if !s.quietMode {
 		slog.Info("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)

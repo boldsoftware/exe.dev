@@ -87,7 +87,9 @@
         <h1>Sign in to exe.dev</h1>
         <p class="subtitle">Enter your email address to receive a sign-in link</p>
 
-        <form method="POST" action="/auth">
+        <form method="POST" action="/auth">{{if .RedirectURL}}
+            <input type="hidden" name="redirect" value="{{.RedirectURL}}">{{end}}{{if .ReturnHost}}
+            <input type="hidden" name="return_host" value="{{.ReturnHost}}">{{end}}
             <div class="form-group">
                 <label for="email">Email address</label>
                 <input type="email" id="email" name="email" required placeholder="you@example.com">

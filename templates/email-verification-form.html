@@ -67,7 +67,9 @@
 
         <p>This will complete your email verification and allow you to proceed with your exe.dev account setup.</p>
 
-        <form method="POST" action="/verify-email">
+        <form method="POST" action="/verify-email">{{if .RedirectURL}}
+            <input type="hidden" name="redirect" value="{{.RedirectURL}}">{{end}}{{if .ReturnHost}}
+            <input type="hidden" name="return_host" value="{{.ReturnHost}}">{{end}}
             <input type="hidden" name="token" value="{{.Token}}">
             <button type="submit" class="button">Confirm Email Verification</button>
         </form>

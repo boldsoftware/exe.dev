@@ -6,3 +6,4 @@ ghuser/whoami.sqlite3
 node_modules/
 sshpiper/sshpiperd
 sshpiper/metrics
+exed
