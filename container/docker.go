@@ -94,7 +94,6 @@ func (m *DockerManager) discoverContainers(ctx context.Context, dockerHost strin
 		container := &Container{
 			ID:         containerInfo.ID,
 			Name:       strings.TrimPrefix(containerInfo.Names, "exe-"),
-			UserID:     labels["user_id"],
 			AllocID:    labels["alloc_id"],
 			Status:     mapDockerStatus(containerInfo.State),
 			Image:      containerInfo.Image,
@@ -131,7 +130,6 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 		"run", "-d",
 		"--name", containerName,
 		"--hostname", fmt.Sprintf("%s.exe.dev", req.Name),
-		"--label", fmt.Sprintf("user_id=%s", req.UserID),
 		"--label", fmt.Sprintf("alloc_id=%s", req.AllocID),
 		"--label", "managed_by=exe",
 		"-p", "0:22", // Expose SSH port 22 to a random host port
@@ -236,7 +234,6 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	container := &Container{
 		ID:         containerID,
 		Name:       req.Name,
-		UserID:     req.UserID,
 		AllocID:    req.AllocID,
 		Status:     StatusRunning,
 		Image:      image,
@@ -261,7 +258,7 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 }
 
 // GetContainer retrieves container information
-func (m *DockerManager) GetContainer(ctx context.Context, userID, containerID string) (*Container, error) {
+func (m *DockerManager) GetContainer(ctx context.Context, allocID, containerID string) (*Container, error) {
 	m.mu.RLock()
 	container, exists := m.containers[containerID]
 	m.mu.RUnlock()
@@ -270,9 +267,9 @@ func (m *DockerManager) GetContainer(ctx context.Context, userID, containerID st
 		return nil, fmt.Errorf("container not found: %s", containerID)
 	}
 
-	// Verify user owns this container
-	if container.UserID != userID {
-		return nil, fmt.Errorf("container not owned by user")
+	// Verify container belongs to this allocation
+	if container.AllocID != allocID {
+		return nil, fmt.Errorf("container not in allocation")
 	}
 
 	// Update status from Docker
@@ -283,14 +280,14 @@ func (m *DockerManager) GetContainer(ctx context.Context, userID, containerID st
 	return container, nil
 }
 
-// ListContainers lists all containers for a user
-func (m *DockerManager) ListContainers(ctx context.Context, userID string) ([]*Container, error) {
+// ListContainers lists all containers for an allocation
+func (m *DockerManager) ListContainers(ctx context.Context, allocID string) ([]*Container, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	var containers []*Container
 	for _, container := range m.containers {
-		if container.UserID == userID {
+		if container.AllocID == allocID {
 			// Update status
 			if err := m.updateContainerStatus(ctx, container); err != nil {
 				log.Printf("Warning: Failed to update container status: %v", err)
@@ -303,8 +300,8 @@ func (m *DockerManager) ListContainers(ctx context.Context, userID string) ([]*C
 }
 
 // StartContainer starts a stopped container
-func (m *DockerManager) StartContainer(ctx context.Context, userID, containerID string) error {
-	container, err := m.GetContainer(ctx, userID, containerID)
+func (m *DockerManager) StartContainer(ctx context.Context, allocID, containerID string) error {
+	container, err := m.GetContainer(ctx, allocID, containerID)
 	if err != nil {
 		return err
 	}
@@ -335,8 +332,8 @@ func (m *DockerManager) StartContainer(ctx context.Context, userID, containerID 
 }
 
 // StopContainer stops a running container
-func (m *DockerManager) StopContainer(ctx context.Context, userID, containerID string) error {
-	container, err := m.GetContainer(ctx, userID, containerID)
+func (m *DockerManager) StopContainer(ctx context.Context, allocID, containerID string) error {
+	container, err := m.GetContainer(ctx, allocID, containerID)
 	if err != nil {
 		return err
 	}
@@ -355,8 +352,8 @@ func (m *DockerManager) StopContainer(ctx context.Context, userID, containerID s
 }
 
 // DeleteContainer deletes a container and its resources
-func (m *DockerManager) DeleteContainer(ctx context.Context, userID, containerID string) error {
-	container, err := m.GetContainer(ctx, userID, containerID)
+func (m *DockerManager) DeleteContainer(ctx context.Context, allocID, containerID string) error {
+	container, err := m.GetContainer(ctx, allocID, containerID)
 	if err != nil {
 		return err
 	}
@@ -437,8 +434,8 @@ func (m *DockerManager) GetBuildStatus(ctx context.Context, buildID string) (*Bu
 }
 
 // GetContainerLogs retrieves container logs
-func (m *DockerManager) GetContainerLogs(ctx context.Context, userID, containerID string, lines int) ([]string, error) {
-	container, err := m.GetContainer(ctx, userID, containerID)
+func (m *DockerManager) GetContainerLogs(ctx context.Context, allocID, containerID string, lines int) ([]string, error) {
+	container, err := m.GetContainer(ctx, allocID, containerID)
 	if err != nil {
 		return nil, err
 	}
@@ -463,8 +460,8 @@ func (m *DockerManager) GetContainerLogs(ctx context.Context, userID, containerI
 }
 
 // ConnectToContainer establishes a connection to a container
-func (m *DockerManager) ConnectToContainer(ctx context.Context, userID, containerID string) (*ContainerConnection, error) {
-	container, err := m.GetContainer(ctx, userID, containerID)
+func (m *DockerManager) ConnectToContainer(ctx context.Context, allocID, containerID string) (*ContainerConnection, error) {
+	container, err := m.GetContainer(ctx, allocID, containerID)
 	if err != nil {
 		return nil, err
 	}
@@ -477,8 +474,8 @@ func (m *DockerManager) ConnectToContainer(ctx context.Context, userID, containe
 }
 
 // ExecuteInContainer executes a command in a container
-func (m *DockerManager) ExecuteInContainer(ctx context.Context, userID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	container, err := m.GetContainer(ctx, userID, containerID)
+func (m *DockerManager) ExecuteInContainer(ctx context.Context, allocID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	container, err := m.GetContainer(ctx, allocID, containerID)
 	if err != nil {
 		return err
 	}
@@ -557,8 +554,8 @@ func (m *DockerManager) Close() error {
 }
 
 // GetContainerDiagnostics returns diagnostic information about a container
-func (m *DockerManager) GetContainerDiagnostics(ctx context.Context, userID, containerName string) (string, error) {
-	containers, err := m.ListContainers(ctx, userID)
+func (m *DockerManager) GetContainerDiagnostics(ctx context.Context, allocID, containerName string) (string, error) {
+	containers, err := m.ListContainers(ctx, allocID)
 	if err != nil {
 		return "", err
 	}

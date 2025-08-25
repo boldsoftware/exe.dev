@@ -18,7 +18,7 @@ type MockContainerManager struct {
 
 // MockExecCall records calls to ExecuteInContainer for testing
 type MockExecCall struct {
-	UserID      string
+	AllocID     string
 	ContainerID string
 	Command     []string
 	Input       string
@@ -35,10 +35,9 @@ func NewMockContainerManager() *MockContainerManager {
 }
 
 // AddContainer adds a pre-configured container for testing
-func (m *MockContainerManager) AddContainer(containerID, name, userID, allocID string) {
+func (m *MockContainerManager) AddContainer(containerID, name, allocID string) {
 	m.containers[containerID] = &container.Container{
 		ID:        containerID,
-		UserID:    userID,
 		Name:      name,
 		AllocID:   allocID,
 		Status:    container.StatusRunning,
@@ -49,11 +48,10 @@ func (m *MockContainerManager) AddContainer(containerID, name, userID, allocID s
 
 // CreateContainer creates a mock container
 func (m *MockContainerManager) CreateContainer(ctx context.Context, req *container.CreateContainerRequest) (*container.Container, error) {
-	containerID := fmt.Sprintf("mock-%s-%s", req.UserID, req.Name)
+	containerID := fmt.Sprintf("mock-%s-%s", req.AllocID, req.Name)
 
 	c := &container.Container{
 		ID:        containerID,
-		UserID:    req.UserID,
 		Name:      req.Name,
 		AllocID:   req.AllocID,
 		Image:     req.Image,
@@ -67,7 +65,7 @@ func (m *MockContainerManager) CreateContainer(ctx context.Context, req *contain
 }
 
 // GetContainer retrieves a mock container
-func (m *MockContainerManager) GetContainer(ctx context.Context, userID, containerID string) (*container.Container, error) {
+func (m *MockContainerManager) GetContainer(ctx context.Context, allocID, containerID string) (*container.Container, error) {
 	c, exists := m.containers[containerID]
 	if !exists {
 		return nil, fmt.Errorf("container not found")
@@ -76,10 +74,10 @@ func (m *MockContainerManager) GetContainer(ctx context.Context, userID, contain
 }
 
 // ListContainers lists mock containers
-func (m *MockContainerManager) ListContainers(ctx context.Context, userID string) ([]*container.Container, error) {
+func (m *MockContainerManager) ListContainers(ctx context.Context, allocID string) ([]*container.Container, error) {
 	var result []*container.Container
 	for _, c := range m.containers {
-		if c.UserID == userID {
+		if c.AllocID == allocID {
 			result = append(result, c)
 		}
 	}
@@ -87,7 +85,7 @@ func (m *MockContainerManager) ListContainers(ctx context.Context, userID string
 }
 
 // StartContainer starts a mock container
-func (m *MockContainerManager) StartContainer(ctx context.Context, userID, containerID string) error {
+func (m *MockContainerManager) StartContainer(ctx context.Context, allocID, containerID string) error {
 	c, exists := m.containers[containerID]
 	if !exists {
 		return fmt.Errorf("container not found")
@@ -97,7 +95,7 @@ func (m *MockContainerManager) StartContainer(ctx context.Context, userID, conta
 }
 
 // StopContainer stops a mock container
-func (m *MockContainerManager) StopContainer(ctx context.Context, userID, containerID string) error {
+func (m *MockContainerManager) StopContainer(ctx context.Context, allocID, containerID string) error {
 	c, exists := m.containers[containerID]
 	if !exists {
 		return fmt.Errorf("container not found")
@@ -110,7 +108,7 @@ func (m *MockContainerManager) StopContainer(ctx context.Context, userID, contai
 }
 
 // DeleteContainer deletes a mock container
-func (m *MockContainerManager) DeleteContainer(ctx context.Context, userID, containerID string) error {
+func (m *MockContainerManager) DeleteContainer(ctx context.Context, allocID, containerID string) error {
 	delete(m.containers, containerID)
 	return nil
 }
@@ -134,12 +132,12 @@ func (m *MockContainerManager) GetBuildStatus(ctx context.Context, buildID strin
 }
 
 // GetContainerLogs gets mock container logs
-func (m *MockContainerManager) GetContainerLogs(ctx context.Context, userID, containerID string, lines int) ([]string, error) {
+func (m *MockContainerManager) GetContainerLogs(ctx context.Context, allocID, containerID string, lines int) ([]string, error) {
 	return []string{"mock log line 1", "mock log line 2"}, nil
 }
 
 // ConnectToContainer creates a mock connection
-func (m *MockContainerManager) ConnectToContainer(ctx context.Context, userID, containerID string) (*container.ContainerConnection, error) {
+func (m *MockContainerManager) ConnectToContainer(ctx context.Context, allocID, containerID string) (*container.ContainerConnection, error) {
 	c, exists := m.containers[containerID]
 	if !exists {
 		return nil, fmt.Errorf("container not found")
@@ -157,7 +155,7 @@ func (m *MockContainerManager) ConnectToContainer(ctx context.Context, userID, c
 }
 
 // ExecuteInContainer simulates command execution
-func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error {
+func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, allocID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// Check if container exists and is running
 	c, exists := m.containers[containerID]
 	if !exists {
@@ -294,7 +292,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 
 		// Record the interactive session
 		call := MockExecCall{
-			UserID:      userID,
+			AllocID:     allocID,
 			ContainerID: containerID,
 			Command:     cmd,
 			Input:       "interactive session",
@@ -352,7 +350,7 @@ func (m *MockContainerManager) ExecuteInContainer(ctx context.Context, userID, c
 
 		// Record the call
 		call := MockExecCall{
-			UserID:      userID,
+			AllocID:     allocID,
 			ContainerID: containerID,
 			Command:     cmd,
 			Input:       "",
@@ -388,6 +386,6 @@ func (m *MockContainerManager) SetContainerStatus(containerID string, status con
 }
 
 // GetContainerDiagnostics returns mock diagnostics for testing
-func (m *MockContainerManager) GetContainerDiagnostics(ctx context.Context, userID, containerName string) (string, error) {
+func (m *MockContainerManager) GetContainerDiagnostics(ctx context.Context, allocID, containerName string) (string, error) {
 	return fmt.Sprintf("Mock diagnostics for container '%s': Status OK", containerName), nil
 }

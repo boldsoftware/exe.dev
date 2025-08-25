@@ -415,7 +415,7 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 	}
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID2, allocID2)
+	mockManager.AddContainer(containerID, machineName, allocID2)
 
 	// Create machine in database
 	_, err = server.db.Exec(`

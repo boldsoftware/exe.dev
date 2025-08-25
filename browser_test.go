@@ -57,7 +57,7 @@ func TestBrowserScenario(t *testing.T) {
 	machineName := "httptest"
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID, allocID)
+	mockManager.AddContainer(containerID, machineName, allocID)
 
 	// Store container in database using the proper createMachine method
 	err = server.createMachine(userID, allocID, machineName, containerID, "")

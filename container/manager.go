@@ -10,26 +10,26 @@ import (
 type Manager interface {
 	// Container lifecycle
 	CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error)
-	GetContainer(ctx context.Context, userID, containerID string) (*Container, error)
-	ListContainers(ctx context.Context, userID string) ([]*Container, error)
-	StartContainer(ctx context.Context, userID, containerID string) error
-	StopContainer(ctx context.Context, userID, containerID string) error
-	DeleteContainer(ctx context.Context, userID, containerID string) error
+	GetContainer(ctx context.Context, allocID, containerID string) (*Container, error)
+	ListContainers(ctx context.Context, allocID string) ([]*Container, error)
+	StartContainer(ctx context.Context, allocID, containerID string) error
+	StopContainer(ctx context.Context, allocID, containerID string) error
+	DeleteContainer(ctx context.Context, allocID, containerID string) error
 
 	// Image building
 	BuildImage(ctx context.Context, req *BuildRequest) (*BuildResult, error)
 	GetBuildStatus(ctx context.Context, buildID string) (*BuildResult, error)
 
 	// Container access
-	GetContainerLogs(ctx context.Context, userID, containerID string, lines int) ([]string, error)
-	ConnectToContainer(ctx context.Context, userID, containerID string) (*ContainerConnection, error)
-	ExecuteInContainer(ctx context.Context, userID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error
+	GetContainerLogs(ctx context.Context, allocID, containerID string, lines int) ([]string, error)
+	ConnectToContainer(ctx context.Context, allocID, containerID string) (*ContainerConnection, error)
+	ExecuteInContainer(ctx context.Context, allocID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error
 
 	// Cleanup and maintenance
 	Close() error
 
 	// Diagnostics
-	GetContainerDiagnostics(ctx context.Context, userID, containerName string) (string, error)
+	GetContainerDiagnostics(ctx context.Context, allocID, containerName string) (string, error)
 }
 
 // Config holds the configuration for the container manager

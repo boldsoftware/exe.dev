@@ -39,9 +39,9 @@ func TestLabelLengthFix(t *testing.T) {
 		// Test that we can create containers with long IDs using the mock
 		ctx := context.Background()
 		req := &container.CreateContainerRequest{
-			UserID: realUserID,
-			Name:   "david",
-			Image:  "ubuntu:22.04",
+			AllocID: "test-alloc",
+			Name:    "david",
+			Image:   "ubuntu:22.04",
 		}
 
 		// This should not fail in the mock (real Docker would test the actual label shortening)

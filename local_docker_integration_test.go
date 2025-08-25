@@ -44,7 +44,6 @@ func TestLocalDockerIntegration(t *testing.T) {
 
 	// Create a container
 	req := &container.CreateContainerRequest{
-		UserID:  "test-user",
 		AllocID: "test-alloc",
 		Name:    "test-container",
 		Image:   "alpine:latest",
@@ -69,7 +68,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 	}
 
 	// List containers
-	containers, err := dockerManager.ListContainers(ctx, "test-user")
+	containers, err := dockerManager.ListContainers(ctx, "test-alloc")
 	if err != nil {
 		t.Fatalf("Failed to list containers: %v", err)
 	}
@@ -78,7 +77,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 	}
 
 	// Clean up - delete the container
-	err = dockerManager.DeleteContainer(ctx, "test-user", createdContainer.ID)
+	err = dockerManager.DeleteContainer(ctx, "test-alloc", createdContainer.ID)
 	if err != nil {
 		t.Logf("Warning: Failed to delete container: %v", err)
 	}

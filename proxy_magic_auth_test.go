@@ -61,7 +61,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	}
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID, allocID)
+	mockManager.AddContainer(containerID, machineName, allocID)
 
 	// Step 1: Simulate initial request to machine.localhost (no auth cookie)
 	t.Logf("Step 1: Initial request to proxy subdomain without auth")
@@ -319,7 +319,7 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 	}
 
 	// Add container to mock manager (using allocID instead of team)
-	mockManager.AddContainer(containerID, machineName, userID2, allocID2)
+	mockManager.AddContainer(containerID, machineName, allocID2)
 
 	// Create proxy auth cookie for user1 (who shouldn't have access to user2's machine)
 	proxyCookieValue, err := server.createAuthCookie(userID1, "testmachine.localhost")

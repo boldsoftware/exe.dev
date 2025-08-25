@@ -62,8 +62,8 @@ func TestContainerSizes(t *testing.T) {
 
 func TestCreateContainerRequestDefaults(t *testing.T) {
 	req := CreateContainerRequest{
-		UserID: "test-user",
-		Name:   "test-container",
+		AllocID: "test-alloc",
+		Name:    "test-container",
 	}
 
 	// Verify the fields exist and can be set

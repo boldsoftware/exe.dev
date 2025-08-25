@@ -357,9 +357,8 @@ func TestRealMachineAccessE2E(t *testing.T) {
 
 	ctx := context.Background()
 	req := &container.CreateContainerRequest{
-		UserID:  userID,
+		AllocID: allocID,
 		Name:    "test-machine",
-		AllocID: "test-alloc",
 		Image:   "ubuntu:22.04",
 	}
 
@@ -370,7 +369,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	}
 	defer func() {
 		// Cleanup
-		server.containerManager.DeleteContainer(context.Background(), userID, createdContainer.ID)
+		server.containerManager.DeleteContainer(context.Background(), allocID, createdContainer.ID)
 	}()
 
 	t.Logf("✅ Container created with ID: %s", createdContainer.ID)
@@ -413,7 +412,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	t.Logf("✅ SSH details retrieved (port: %d, has private key: %t)", sshDetails.Port, sshDetails.PrivateKey != "")
 
 	// Test getting container host port
-	host, port, err := server.GetContainerHostPort(*machine.ContainerID, machine.CreatedByUserID)
+	host, port, err := server.GetContainerHostPort(*machine.ContainerID, machine.AllocID)
 	if err != nil {
 		t.Fatalf("Failed to get container host port: %v", err)
 	}

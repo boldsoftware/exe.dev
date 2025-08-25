@@ -12,13 +12,13 @@ import (
 // GetContainerHostPort gets the host port mapped to the container's SSH port
 // TODO: This information should be stored in the database when the container is created,
 // rather than querying Docker every time. The host and port should be in the machines table.
-func (s *Server) GetContainerHostPort(containerID, userID string) (string, int, error) {
+func (s *Server) GetContainerHostPort(containerID, allocID string) (string, int, error) {
 	if s.containerManager == nil {
 		return "", 0, fmt.Errorf("container manager not available")
 	}
 
 	// Get container details
-	container, err := s.containerManager.GetContainer(context.Background(), userID, containerID)
+	container, err := s.containerManager.GetContainer(context.Background(), allocID, containerID)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to get container: %v", err)
 	}

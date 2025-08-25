@@ -17,12 +17,11 @@ const (
 	StatusUnknown  ContainerStatus = "unknown"
 )
 
-// Container represents a user's container instance
+// Container represents a container instance within an allocation
 type Container struct {
 	ID        string          `json:"id"`
-	UserID    string          `json:"user_id"`
+	AllocID   string          `json:"alloc_id"`
 	Name      string          `json:"name"`
-	AllocID   string          `json:"alloc_id,omitempty"`
 	Image     string          `json:"image"`
 	Status    ContainerStatus `json:"status"`
 	CreatedAt time.Time       `json:"created_at"`
@@ -109,9 +108,8 @@ var ContainerSizes = map[string]ContainerSize{
 
 // CreateContainerRequest represents the parameters for creating a new container
 type CreateContainerRequest struct {
-	UserID     string `json:"user_id"`
+	AllocID    string `json:"alloc_id"`             // Allocation ID for this container
 	Name       string `json:"name"`
-	AllocID    string `json:"alloc_id,omitempty"`   // Allocation ID for this container
 	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"
 	Dockerfile string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
 
@@ -130,7 +128,6 @@ type CreateContainerRequest struct {
 
 // BuildRequest represents a request to build a custom Docker image
 type BuildRequest struct {
-	UserID            string `json:"user_id"`
 	AllocID           string `json:"alloc_id"`
 	Dockerfile        string `json:"dockerfile"`
 	DockerfileContent string `json:"dockerfile_content"`

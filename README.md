@@ -13,7 +13,7 @@ go run ./cmd/exed -dev=local
 With this you can:
 - ssh -p 2222 localhost
 - visit http://localhost:8080
-- visit http://machine.team.localhost:8080
+- visit http://machine.localhost:8080
 - scp -P 2222 junk.txt localhost:junk.txt  (NOTE: it's -P, not -p)
 
 Everything will run locally on docker.

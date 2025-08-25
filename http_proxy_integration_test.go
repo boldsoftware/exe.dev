@@ -50,7 +50,7 @@ func TestHTTPProxyEndToEnd(t *testing.T) {
 	machineName := "httptest"
 
 	// Add container to mock manager
-	mockManager.AddContainer(containerID, machineName, userID, allocID)
+	mockManager.AddContainer(containerID, machineName, allocID)
 
 	// Store container ID in database
 	_, err = server.db.Exec(`

@@ -107,9 +107,8 @@ func TestContainerWithSSH(t *testing.T) {
 
 	// Create container request
 	req := &CreateContainerRequest{
-		UserID:  "test-user",
-		Name:    "ssh-test",
 		AllocID: "test-alloc",
+		Name:    "ssh-test",
 		Image:   "ubuntu:22.04",
 	}
 
@@ -120,7 +119,7 @@ func TestContainerWithSSH(t *testing.T) {
 	}
 	defer func() {
 		// Cleanup
-		manager.DeleteContainer(context.Background(), req.UserID, container.ID)
+		manager.DeleteContainer(context.Background(), req.AllocID, container.ID)
 	}()
 
 	// Verify SSH keys were generated
@@ -149,7 +148,7 @@ func TestContainerWithSSH(t *testing.T) {
 	var sshRunning bool
 	for time.Since(waitStart) < 30*time.Second {
 		var stdout strings.Builder
-		err = manager.ExecuteInContainer(ctx, req.UserID, container.ID,
+		err = manager.ExecuteInContainer(ctx, req.AllocID, container.ID,
 			[]string{"sh", "-c", "ps aux | grep -v grep | grep -E '/sshd.*-D' || true"},
 			nil, &stdout, nil)
 		output := strings.TrimSpace(stdout.String())
@@ -161,7 +160,7 @@ func TestContainerWithSSH(t *testing.T) {
 		}
 		// Check if container is still running
 		var statusOut strings.Builder
-		statusErr := manager.ExecuteInContainer(ctx, req.UserID, container.ID,
+		statusErr := manager.ExecuteInContainer(ctx, req.AllocID, container.ID,
 			[]string{"echo", "alive"},
 			nil, &statusOut, nil)
 		if statusErr != nil {
@@ -176,7 +175,7 @@ func TestContainerWithSSH(t *testing.T) {
 
 	// Test that SSH port is accessible - try both netstat and ss
 	var portOut strings.Builder
-	err = manager.ExecuteInContainer(ctx, req.UserID, container.ID,
+	err = manager.ExecuteInContainer(ctx, req.AllocID, container.ID,
 		[]string{"sh", "-c", "netstat -tuln 2>/dev/null || ss -tuln 2>/dev/null || echo 'No network tools available'"},
 		nil, &portOut, nil)
 	if err != nil {
@@ -193,7 +192,7 @@ func TestContainerWithSSH(t *testing.T) {
 	// Verify SSH key files exist in container - only if SSH daemon is running
 	if sshRunning {
 		var keyFileCheck strings.Builder
-		err = manager.ExecuteInContainer(ctx, req.UserID, container.ID,
+		err = manager.ExecuteInContainer(ctx, req.AllocID, container.ID,
 			[]string{"ls", "-la", "/etc/ssh/ssh_host_ed25519_key", "/etc/ssh/ssh_host_ed25519_key.pub", "/root/.ssh/authorized_keys"},
 			nil, &keyFileCheck, nil)
 		if err != nil {

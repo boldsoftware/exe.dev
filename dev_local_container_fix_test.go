@@ -44,7 +44,6 @@ func TestDevLocalContainerFix(t *testing.T) {
 
 	// Create a container
 	req := &container.CreateContainerRequest{
-		UserID:  "test-user",
 		AllocID: "test-alloc",
 		Name:    "test-container",
 		Image:   "alpine:latest",
@@ -66,7 +65,7 @@ func TestDevLocalContainerFix(t *testing.T) {
 
 	// The key test: verify that we can retrieve the container using GetContainer
 	// This should work even if the Docker container ID would be truncated
-	retrievedContainer, err := dockerManager.GetContainer(ctx, "test-user", createdContainer.ID)
+	retrievedContainer, err := dockerManager.GetContainer(ctx, "test-alloc", createdContainer.ID)
 	if err != nil {
 		t.Fatalf("Failed to retrieve container: %v", err)
 	}
@@ -76,7 +75,7 @@ func TestDevLocalContainerFix(t *testing.T) {
 	}
 
 	// Test that ConnectToContainer works (this was the original failing point)
-	conn, err := dockerManager.ConnectToContainer(ctx, "test-user", createdContainer.ID)
+	conn, err := dockerManager.ConnectToContainer(ctx, "test-alloc", createdContainer.ID)
 	if err != nil {
 		t.Fatalf("Failed to connect to container: %v", err)
 	}
@@ -87,7 +86,7 @@ func TestDevLocalContainerFix(t *testing.T) {
 	t.Logf("Successfully connected to container %s", createdContainer.ID)
 
 	// Clean up - delete the container
-	err = dockerManager.DeleteContainer(ctx, "test-user", createdContainer.ID)
+	err = dockerManager.DeleteContainer(ctx, "test-alloc", createdContainer.ID)
 	if err != nil {
 		t.Logf("Warning: Failed to delete container: %v", err)
 	}

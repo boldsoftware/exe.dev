@@ -33,9 +33,8 @@ func TestDockerExecuteInContainer(t *testing.T) {
 	// Use a unique name to avoid conflicts
 	containerName := fmt.Sprintf("test-ssh-%d", time.Now().UnixNano())
 	req := &CreateContainerRequest{
-		UserID:  "test-user",
-		Name:    containerName,
 		AllocID: "test-alloc",
+		Name:    containerName,
 		Image:   "ubuntu:22.04",
 	}
 
@@ -43,12 +42,12 @@ func TestDockerExecuteInContainer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)
 	}
-	defer manager.DeleteContainer(ctx, "test-user", container.ID)
+	defer manager.DeleteContainer(ctx, "test-alloc", container.ID)
 
 	// Test 1: Simple command execution without PTY
 	t.Run("SimpleExec", func(t *testing.T) {
 		var stdout bytes.Buffer
-		err := manager.ExecuteInContainer(ctx, "test-user", container.ID,
+		err := manager.ExecuteInContainer(ctx, "test-alloc", container.ID,
 			[]string{"echo", "hello"},
 			nil, &stdout, nil)
 		if err != nil {
@@ -64,7 +63,7 @@ func TestDockerExecuteInContainer(t *testing.T) {
 		stdin := strings.NewReader("echo 'interactive test'\nexit\n")
 		var stdout bytes.Buffer
 
-		err := manager.ExecuteInContainer(ctx, "test-user", container.ID,
+		err := manager.ExecuteInContainer(ctx, "test-alloc", container.ID,
 			[]string{"/bin/bash"},
 			stdin, &stdout, nil)
 

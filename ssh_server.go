@@ -881,16 +881,9 @@ func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, boo
 
 // Command handlers for the new SSH server
 func (ss *SSHServer) handleListCommand(s ssh.Session, publicKey, allocID string) {
-	// Get user information
-	user, err := ss.server.getUserByPublicKey(publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return
-	}
-
 	// If container manager is available, get real-time status
 	if ss.server.containerManager != nil {
-		containers, err := ss.server.containerManager.ListContainers(context.Background(), user.UserID)
+		containers, err := ss.server.containerManager.ListContainers(context.Background(), allocID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError listing machines: %v\033[0m\r\n", err)
 			return
@@ -971,7 +964,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		return
 	}
 
-	// Get user information
+	// Get user information - needed for machine creation
 	user, err := ss.server.getUserByPublicKey(publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
@@ -1048,9 +1041,8 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 
 	// Create container request
 	req := &container.CreateContainerRequest{
-		UserID:        user.UserID,
-		Name:          machineName,
 		AllocID:       allocID,
+		Name:          machineName,
 		Image:         image,
 		Size:          size,
 		CPURequest:    sizePreset.CPURequest,
@@ -1119,7 +1111,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		if time.Since(lastContainerCheck) >= containerCheckInterval {
 			lastContainerCheck = time.Now()
 
-			containers, err := ss.server.containerManager.ListContainers(context.Background(), user.UserID)
+			containers, err := ss.server.containerManager.ListContainers(context.Background(), allocID)
 			if err != nil {
 				continue
 			}
@@ -1159,12 +1151,6 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, allocID string
 
 	machineName := args[0]
 
-	// Get user information
-	user, err := ss.server.getUserByPublicKey(publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return
-	}
 
 	if ss.server.containerManager == nil {
 		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
@@ -1187,7 +1173,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, allocID string
 
 	// Start the container
 	ctx := context.Background()
-	err = ss.server.containerManager.StartContainer(ctx, user.UserID, *machine.ContainerID)
+	err = ss.server.containerManager.StartContainer(ctx, machine.AllocID, *machine.ContainerID)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError starting machine: %v\033[0m\r\n", err)
 		return
@@ -1218,12 +1204,6 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, allocID string,
 		return
 	}
 
-	// Get user information
-	user, err := ss.server.getUserByPublicKey(publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return
-	}
 
 	for _, machineName := range args {
 		// Get machine info
@@ -1242,7 +1222,7 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, allocID string,
 
 		// Stop the container
 		ctx := context.Background()
-		err = ss.server.containerManager.StopContainer(ctx, user.UserID, *machine.ContainerID)
+		err = ss.server.containerManager.StopContainer(ctx, machine.AllocID, *machine.ContainerID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError stopping machine %s: %v\033[0m\r\n", machineName, err)
 			continue
@@ -1270,12 +1250,6 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, allocID strin
 
 	machineName := args[0]
 
-	// Get user information
-	user, err := ss.server.getUserByPublicKey(publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return
-	}
 
 	if ss.server.containerManager == nil {
 		// Just delete from database if no container manager
@@ -1314,7 +1288,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, allocID strin
 	// Delete the container if it exists
 	if machine.ContainerID != nil {
 		ctx := context.Background()
-		err = ss.server.containerManager.DeleteContainer(ctx, user.UserID, *machine.ContainerID)
+		err = ss.server.containerManager.DeleteContainer(ctx, machine.AllocID, *machine.ContainerID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;33mWarning: Failed to delete container: %v\033[0m\r\n", err)
 		}

@@ -100,8 +100,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 				ID:      containerID,
 				Name:    machineName,
 				Status:  container.StatusRunning,
-				UserID:  userID,
-				AllocID: "test-alloc",
+				AllocID: allocID,
 			},
 		},
 	}
@@ -170,52 +169,51 @@ func (m *TestMockContainerManager) CreateContainer(ctx context.Context, req *con
 		ID:      "new-container",
 		Name:    req.Name,
 		Status:  container.StatusRunning,
-		UserID:  req.UserID,
 		AllocID: req.AllocID,
 	}, nil
 }
 
-func (m *TestMockContainerManager) ListContainers(ctx context.Context, userID string) ([]*container.Container, error) {
+func (m *TestMockContainerManager) ListContainers(ctx context.Context, allocID string) ([]*container.Container, error) {
 	var result []*container.Container
 	for _, c := range m.containers {
-		if c.UserID == userID {
+		if c.AllocID == allocID {
 			result = append(result, c)
 		}
 	}
 	return result, nil
 }
 
-func (m *TestMockContainerManager) GetContainer(ctx context.Context, userID, containerID string) (*container.Container, error) {
-	if c, ok := m.containers[containerID]; ok && c.UserID == userID {
+func (m *TestMockContainerManager) GetContainer(ctx context.Context, allocID, containerID string) (*container.Container, error) {
+	if c, ok := m.containers[containerID]; ok && c.AllocID == allocID {
 		return c, nil
 	}
 	return nil, fmt.Errorf("container not found")
 }
 
-func (m *TestMockContainerManager) StartContainer(ctx context.Context, userID, containerID string) error {
-	if c, ok := m.containers[containerID]; ok && c.UserID == userID {
+func (m *TestMockContainerManager) StartContainer(ctx context.Context, allocID, containerID string) error {
+	if c, ok := m.containers[containerID]; ok && c.AllocID == allocID {
 		c.Status = container.StatusRunning
 		return nil
 	}
 	return fmt.Errorf("container not found")
 }
 
-func (m *TestMockContainerManager) StopContainer(ctx context.Context, userID, containerID string) error {
-	if c, ok := m.containers[containerID]; ok && c.UserID == userID {
+func (m *TestMockContainerManager) StopContainer(ctx context.Context, allocID, containerID string) error {
+	if c, ok := m.containers[containerID]; ok && c.AllocID == allocID {
 		c.Status = container.StatusStopped
 		return nil
 	}
 	return fmt.Errorf("container not found")
 }
 
-func (m *TestMockContainerManager) DeleteContainer(ctx context.Context, userID, containerID string) error {
+func (m *TestMockContainerManager) DeleteContainer(ctx context.Context, allocID, containerID string) error {
 	delete(m.containers, containerID)
 	return nil
 }
 
-func (m *TestMockContainerManager) ConnectToContainer(ctx context.Context, userID, containerID string) (*container.ContainerConnection, error) {
+func (m *TestMockContainerManager) ConnectToContainer(ctx context.Context, allocID, containerID string) (*container.ContainerConnection, error) {
 	// Return a simple mock connection
-	if c, ok := m.containers[containerID]; ok && c.UserID == userID {
+	if c, ok := m.containers[containerID]; ok && c.AllocID == allocID {
 		return &container.ContainerConnection{
 			Container: c,
 		}, nil
@@ -240,7 +238,7 @@ func (m *TestMockContainerManager) GetBuildStatus(ctx context.Context, buildID s
 	}, nil
 }
 
-func (m *TestMockContainerManager) GetContainerLogs(ctx context.Context, userID, containerID string, lines int) ([]string, error) {
+func (m *TestMockContainerManager) GetContainerLogs(ctx context.Context, allocID, containerID string, lines int) ([]string, error) {
 	return []string{"mock log line 1", "mock log line 2"}, nil
 }
 
@@ -248,11 +246,11 @@ func (m *TestMockContainerManager) Close() error {
 	return nil
 }
 
-func (m *TestMockContainerManager) GetContainerDiagnostics(ctx context.Context, userID, containerName string) (string, error) {
+func (m *TestMockContainerManager) GetContainerDiagnostics(ctx context.Context, allocID, containerName string) (string, error) {
 	return "Mock diagnostics for container " + containerName, nil
 }
 
-func (m *TestMockContainerManager) ExecuteInContainer(ctx context.Context, userID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error {
+func (m *TestMockContainerManager) ExecuteInContainer(ctx context.Context, allocID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// Simple mock execution
 	if len(cmd) > 0 && cmd[0] == "echo" && len(cmd) > 1 {
 		fmt.Fprintln(stdout, strings.Join(cmd[1:], " "))

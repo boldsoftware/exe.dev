@@ -42,9 +42,8 @@ func TestRealContainerSSHSetup(t *testing.T) {
 
 	// Create container request
 	req := &CreateContainerRequest{
-		UserID:        "test-user-ssh",
-		Name:          "ssh-test-container",
 		AllocID:       "test-alloc",
+		Name:          "ssh-test-container",
 		Image:         "ubuntu:22.04",
 		Size:          "small",
 		CPURequest:    "100m",
@@ -92,7 +91,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 
 	// Cleanup
 	defer func() {
-		err := manager.DeleteContainer(ctx, req.UserID, container.ID)
+		err := manager.DeleteContainer(ctx, req.AllocID, container.ID)
 		if err != nil {
 			t.Logf("Failed to delete container: %v", err)
 		}
@@ -106,7 +105,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	// First check if SSH was actually installed in the container
 	// This can fail in memory-constrained environments
 	var checkSSHOutput strings.Builder
-	err = manager.ExecuteInContainer(ctx, req.UserID, container.ID,
+	err = manager.ExecuteInContainer(ctx, req.AllocID, container.ID,
 		[]string{"sh", "-c", "which sshd || echo NO_SSHD"},
 		nil, &checkSSHOutput, nil)
 	if err != nil || strings.Contains(checkSSHOutput.String(), "NO_SSHD") {
@@ -194,7 +193,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 
 	// Also check authorized_keys file for completeness
 	var stdout strings.Builder
-	err = manager.ExecuteInContainer(ctx, req.UserID, container.ID,
+	err = manager.ExecuteInContainer(ctx, req.AllocID, container.ID,
 		[]string{"cat", "/root/.ssh/authorized_keys"},
 		nil, &stdout, nil)
 	if err != nil {

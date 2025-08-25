@@ -84,7 +84,6 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 		Key:      clientSSHPub,
 		Serial:   2,
 		CertType: ssh.UserCert,
-		// Let's include the container-name.team-name here.
 		KeyId:           "exe-user",
 		ValidPrincipals: []string{"root"},
 		ValidAfter:      uint64(time.Now().Add(-1 * time.Hour).Unix()),
