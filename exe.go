@@ -2375,7 +2375,7 @@ func isValidStorageSize(size string) bool {
 	return false
 }
 
-// denylistedMachineNames contains common computer-related five-letter words that are not allowed as machine names
+// denylistedMachineNames contains common computer-related five+ letter words that are not allowed as machine names
 var denylistedMachineNames = map[string]bool{
 	"abort": true, "admin": true, "allow": true, "array": true, "async": true,
 	"audit": true, "block": true, "board": true, "boost": true, "break": true,
@@ -2396,6 +2396,37 @@ var denylistedMachineNames = map[string]bool{
 	"store": true, "style": true, "table": true, "theme": true, "throw": true,
 	"timer": true, "token": true, "tower": true, "trace": true, "trash": true,
 	"trust": true, "users": true, "video": true, "virus": true, "watts": true,
+	"agent": true, "agents": true, "claude": true, "openai": true, "jules": true,
+	"cursor": true, "cline": true, "qwencode": true, "claudecode": true,
+	"editor": true, "terminal": true, "sketch": true, "webterm": true,
+	"daemon": true, "server": true, "client": true, "remote": true, "session": true,
+	"tunnel": true, "bridge": true, "exedev": true,
+	"gateway": true, "router": true, "switch": true, "firewall": true, "cluster": true,
+	"docker": true, "podman": true, "kubernetes": true, "helm": true, "ansible": true,
+	"terraform": true, "vagrant": true, "puppet": true, "consul": true, "vault": true,
+	"nomad": true, "etcd": true, "redis": true, "nginx": true, "apache": true,
+	"traefik": true, "envoy": true, "istio": true, "linkerd": true, "cilium": true,
+	"weave": true, "calico": true, "flannel": true, "zookeeper": true,
+	"kafka": true, "rabbit": true, "zeromq": true,
+	"websocket": true, "telnet": true, "rsync": true, "netcat": true,
+	"socat": true, "screen": true, "byobu": true, "mosh": true,
+	"tmate": true, "gotty": true, "ttyd": true, "shellinabox": true, "wetty": true,
+	"xterm": true, "xtermjs": true, "monaco": true, "codemirror": true, "ace": true,
+	"vscode": true, "neovim": true, "emacs": true, "sublime": true, "atom": true,
+	"bracket": true, "theia": true, "gitpod": true, "codespace": true, "replit": true,
+	"sandbox": true, "container": true, "chroot": true, "namespace": true, "cgroup": true,
+	"systemd": true, "upstart": true, "supervisor": true, "monit": true, "circus": true,
+	"gunicorn": true, "uwsgi": true, "passenger": true, "puma": true, "unicorn": true,
+	"process": true, "thread": true, "worker": true, "queue": true, "scheduler": true,
+	"crontab": true, "systemctl": true, "service": true, "socket": true, "target": true,
+	"volume": true, "overlay": true, "union": true, "btrfs": true,
+	"iptables": true, "netfilter": true, "fail2ban": true, "selinux": true,
+	"apparmor": true, "grsec": true, "hardening": true, "syslog": true,
+	"journald": true, "rsyslog": true, "fluentd": true, "logstash": true, "filebeat": true,
+	"prometheus": true, "grafana": true, "influx": true, "telegraf": true, "collectd": true,
+	"nagios": true, "zabbix": true, "sensu": true, "datadog": true, "newrelic": true,
+	"splunk": true, "elastic": true, "kibana": true, "jaeger": true, "zipkin": true,
+	"opentracing": true, "honeycomb": true, "lightstep": true, "wavefront": true, "signalfx": true,
 }
 
 // isValidMachineName validates machine name format
@@ -2406,7 +2437,8 @@ func (s *Server) isValidMachineName(name string) bool {
 	}
 
 	// Check if name is in denylist
-	if denylistedMachineNames[name] {
+	withoutHyphens := strings.ReplaceAll(name, "-", "")
+	if denylistedMachineNames[withoutHyphens] {
 		return false
 	}
 
