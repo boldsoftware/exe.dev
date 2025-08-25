@@ -208,7 +208,6 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
 		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
 		"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
-		"\033[1mteam\033[0m                    - Team management\r\n" +
 		"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 		"\033[1m?\033[0m                       - Show this help\r\n" +
 		"\033[1mexit\033[0m                    - Exit\r\n\r\n" +

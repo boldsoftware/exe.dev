@@ -234,7 +234,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 
 	// Check for the new help format without sections
 	if !strings.Contains(output, "EXE.DEV") || !strings.Contains(output, "commands") {
-		t.Errorf("Expected help text with 'EXE.DEV commands', got: %s", output)
+		t.Errorf("Expected help text with 'EXE.DEV' and 'commands', got: %s", output)
 	}
 	if !strings.Contains(output, "list") || !strings.Contains(output, "new") {
 		t.Error("Expected help text with machine commands")
@@ -253,7 +253,6 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 
 // TestSSHMenuInteractiveCommands tests various menu commands
 func TestSSHMenuInteractiveCommands(t *testing.T) {
-	t.Skip("Skipping interactive test - complex readline interaction")
 
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_menu_cmds_*.db")
@@ -309,7 +308,6 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 
 	// Set up a registered user
 	email := "test@example.com"
-	teamName := "testteam"
 
 	err = server.createUser(publicKeyStr, email)
 	if err != nil {
@@ -318,14 +316,21 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 
 	// Get user ID and update SSH key
 	var userID string
-	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ?`, publicKeyStr).Scan(&userID)
+	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1`, publicKeyStr).Scan(&userID)
 	if err != nil {
 		t.Fatalf("Failed to get user ID: %v", err)
 	}
 
+	// Get the alloc that was created for the user
+	alloc, err := server.getUserAlloc(userID)
+	if err != nil || alloc == nil {
+		t.Fatalf("Failed to get user alloc: %v", err)
+	}
+	t.Logf("User alloc created: %s", alloc.AllocID)
+
 	_, err = server.db.Exec(`
-		UPDATE ssh_keys SET device_name = ?, default_team = ? WHERE user_id = ?`,
-		"Primary Device", teamName, userID)
+		UPDATE ssh_keys SET device_name = ? WHERE user_id = ?`,
+		"Primary Device", userID)
 	if err != nil {
 		t.Fatalf("Failed to update SSH key: %v", err)
 	}
@@ -408,8 +413,8 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 		expected string
 	}{
 		{"list\n", "No machines found"},
-		{"help\n", "EXE.DEV commands"},
-		{"?\n", "EXE.DEV commands"},
+		{"help\n", "EXE.DEV"},
+		{"?\n", "EXE.DEV"},
 	}
 
 	for _, tc := range commands {
