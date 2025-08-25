@@ -426,20 +426,15 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 
 	// Show the signup content after the animation
 	signupContent := "\r\n\033[1;33mEXE.DEV: get a machine over ssh\033[0m\r\n" +
-		"Signup involves verifying your email and setting up billing.\r\n\r\n" +
-		"\033[1mPlease enter your email address:\033[0m "
+		"To sign up, verify your email and set up billing.\r\n\r\n"
 	fmt.Fprint(s, signupContent)
 
-	// Simple line input with echo for email
-	email := ss.readLineWithEcho(s)
-	if email == "" {
-		fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
-		return
-	}
-
 	// Validate email
+	var email string
 	for !ss.server.isValidEmail(email) {
-		fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
+		if email != "" {
+			fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
+		}
 		fmt.Fprint(s, "\033[1mPlease enter your email address:\033[0m ")
 		email = ss.readLineWithEcho(s)
 		if email == "" {
