@@ -15,10 +15,8 @@ import (
 	"time"
 
 	"exe.dev/container"
-
 	"exe.dev/termfun"
 	"github.com/gliderlabs/ssh"
-
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -1758,7 +1756,7 @@ func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineN
 
 	// Update database
 	_, err = ss.server.db.Exec(`
-		UPDATE machines SET routes = ? 
+		UPDATE machines SET routes = ?
 		WHERE name = ?`,
 		*machine.Routes, machineName)
 	if err != nil {
@@ -1817,7 +1815,7 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machi
 
 	// Update database
 	_, err = ss.server.db.Exec(`
-		UPDATE machines SET routes = ? 
+		UPDATE machines SET routes = ?
 		WHERE name = ?`,
 		*machine.Routes, machineName)
 	if err != nil {
@@ -1849,10 +1847,10 @@ func (ss *SSHServer) getMachine(publicKey, allocID, machineName string) (*Machin
 	// Get the machine
 	var machine Machine
 	err = ss.server.db.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id, 
-		       created_by_user_id, created_at, updated_at, 
+		SELECT id, alloc_id, name, status, image, container_id,
+		       created_by_user_id, created_at, updated_at,
 		       last_started_at, docker_host, routes
-		FROM machines 
+		FROM machines
 		WHERE name = ? AND alloc_id = ?`, machineName, allocID).Scan(
 		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,

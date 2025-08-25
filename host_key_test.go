@@ -91,10 +91,9 @@ func TestSSHHostKeyTable(t *testing.T) {
 	var createdAt, updatedAt string
 
 	err = server.db.QueryRow(`
-		SELECT id, private_key, public_key, fingerprint, created_at, updated_at 
-		FROM ssh_host_key 
+		SELECT id, private_key, public_key, fingerprint, created_at, updated_at
+		FROM ssh_host_key
 		WHERE id = 1`).Scan(&id, &privateKey, &publicKey, &fingerprint, &createdAt, &updatedAt)
-
 	if err != nil {
 		t.Fatalf("Failed to query host key table: %v", err)
 	}

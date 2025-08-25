@@ -46,7 +46,7 @@ func TestBrowserScenario(t *testing.T) {
 
 	// Create alloc for the user
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)

@@ -2000,8 +2000,8 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	// Get user's machines from all teams they belong to
 	machines := []Machine{}
 	machineRows, err := s.db.Query(`
-		SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''), 
-		       COALESCE(m.container_id, ''), m.created_by_user_id, 
+		SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''),
+		       COALESCE(m.container_id, ''), m.created_by_user_id,
 		       m.created_at, m.updated_at, m.last_started_at, m.docker_host
 		FROM machines m
 		JOIN allocs a ON m.alloc_id = a.alloc_id
@@ -2063,7 +2063,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// Clear ALL auth cookies for this user across all domains
 	if userID != "" {
 		_, err := s.db.Exec(`
-			DELETE FROM auth_cookies 
+			DELETE FROM auth_cookies
 			WHERE user_id = ?
 		`, userID)
 		if err != nil {
@@ -2611,9 +2611,9 @@ func (s *Server) getMachinesForAlloc(allocID string) ([]*Machine, error) {
 // getMachinesForUser gets all machines for a user across all their allocs
 func (s *Server) getMachinesForUser(userID string) ([]*Machine, error) {
 	rows, err := s.db.Query(`
-		SELECT m.id, m.alloc_id, m.name, m.status, m.image, m.container_id, m.created_by_user_id, 
+		SELECT m.id, m.alloc_id, m.name, m.status, m.image, m.container_id, m.created_by_user_id,
 		       m.created_at, m.updated_at, m.last_started_at, m.docker_host, m.routes,
-		       m.ssh_server_identity_key, m.ssh_authorized_keys, m.ssh_ca_public_key, 
+		       m.ssh_server_identity_key, m.ssh_authorized_keys, m.ssh_ca_public_key,
 		       m.ssh_host_certificate, m.ssh_client_private_key, m.ssh_port
 		FROM machines m
 		JOIN allocs a ON m.alloc_id = a.alloc_id
@@ -3456,8 +3456,8 @@ func (s *Server) getUserBySSHKey(publicKey ssh.PublicKey) (*User, error) {
 func (s *Server) GetUserByEmail(email string) (*User, error) {
 	var user User
 	err := s.db.QueryRow(`
-		SELECT user_id, email, created_at 
-		FROM users 
+		SELECT user_id, email, created_at
+		FROM users
 		WHERE email = ?
 	`, email).Scan(&user.UserID, &user.Email, &user.CreatedAt)
 	if err != nil {
@@ -3472,8 +3472,8 @@ func (s *Server) GetUserByEmail(email string) (*User, error) {
 // allocateIPsForExistingMachines registers all existing machines with the ipAllocator
 func (s *Server) allocateIPsForExistingMachines() error {
 	rows, err := s.db.Query(`
-		SELECT id, alloc_id, name 
-		FROM machines 
+		SELECT id, alloc_id, name
+		FROM machines
 		ORDER BY alloc_id, name
 	`)
 	if err != nil {

@@ -34,7 +34,7 @@ func TestCreateMachine(t *testing.T) {
 
 	// Create alloc for the user
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
@@ -107,7 +107,7 @@ func TestGetMachineByName(t *testing.T) {
 
 	// Create alloc with all required fields
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
@@ -175,14 +175,14 @@ func TestMachineUniqueConstraint(t *testing.T) {
 
 	// Create allocs
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID1, userID1)
 	if err != nil {
 		t.Fatalf("Failed to create alloc1: %v", err)
 	}
 
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test2@example.com')`, allocID2, userID2)
 	if err != nil {
 		t.Fatalf("Failed to create alloc2: %v", err)
@@ -233,7 +233,7 @@ func TestMachineTimestamps(t *testing.T) {
 
 	// Create alloc with all required fields
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
@@ -316,7 +316,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 
 	// Create alloc with all required fields
 	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) 
+		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
 		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
