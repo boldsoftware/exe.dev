@@ -133,4 +133,30 @@ container/rovol/amd64: Dockerfile.sshd-amd64
 	@docker buildx build --platform linux/amd64 -f Dockerfile.sshd-amd64 --target out --output type=local,dest=./container/rovol/amd64 .
 	@echo "✓ Built container/rovol/amd64"
 
+ghuser/whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't exist
+	@if [ ! -f ghuser/whoami.sqlite3 ]; then \
+		if ! command -v b2 >/dev/null 2>&1; then \
+			echo "${RED}Error: b2 command not found${NC}"; \
+			echo "Please install the Backblaze B2 CLI (e.g. brew install b2-tools)"; \
+			exit 1; \
+		fi; \
+		if ! command -v zstd >/dev/null 2>&1; then \
+			echo "${RED}Error: zstd command not found${NC}"; \
+			echo "Please install zstd (e.g. brew install zstd)"; \
+			exit 1; \
+		fi; \
+		echo "Downloading ghuser/whoami.sqlite3 from Backblaze..."; \
+		export B2_APPLICATION_KEY_ID="004edb881590a7d0000000008"; \
+		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
+		b2 authorize-account >/dev/null 2>&1 && \
+		b2 download-file-by-name bold-exe whoami.sqlite3.zst ghuser/whoami.sqlite3.zst \
+			|| (echo "${RED}Failed to download whoami.sqlite3.zst${NC}" && exit 1); \
+		echo "Decompressing ghuser/whoami.sqlite3.zst..."; \
+		zstd -d ghuser/whoami.sqlite3.zst -o ghuser/whoami.sqlite3 && \
+		rm ghuser/whoami.sqlite3.zst; \
+		echo "✓ Downloaded and decompressed ghuser/whoami.sqlite3"; \
+	else \
+		echo "✓ ghuser/whoami.sqlite3 already exists"; \
+	fi
+
 .DEFAULT_GOAL := help
