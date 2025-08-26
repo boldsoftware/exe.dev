@@ -2,9 +2,8 @@ package exe
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"net"
@@ -40,14 +39,14 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Generate SSH key pair
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		t.Fatalf("Failed to generate private key: %v", err)
+		t.Fatalf("Failed to generate ed25519 key: %v", err)
 	}
 
 	// Save private key to file
-	privKeyPath := filepath.Join(tmpDir, "id_rsa")
-	privKeyFile, err := os.OpenFile(privKeyPath, os.O_CREATE|os.O_WRONLY, 0600)
+	privKeyPath := filepath.Join(tmpDir, "id_ed25519")
+	privKeyFile, err := os.OpenFile(privKeyPath, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		t.Fatalf("Failed to create private key file: %v", err)
 	}
@@ -58,18 +57,18 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}
 
 	// Write private key in PEM format
-	privateKeyDER := x509.MarshalPKCS1PrivateKey(privateKey)
-	privateKeyBlock := &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: privateKeyDER,
+	privateKeyBytes, err := ssh.MarshalPrivateKey(privateKey, "")
+	if err != nil {
+		t.Fatalf("Failed to marshal private key: %v", err)
 	}
-	if err := pem.Encode(privKeyFile, privateKeyBlock); err != nil {
+	if err := pem.Encode(privKeyFile, privateKeyBytes); err != nil {
 		t.Fatalf("Failed to write private key: %v", err)
 	}
 	privKeyFile.Close()
 
 	// Calculate public key for later verification
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
+	t.Logf("Generated public key: %s", publicKeyStr)
 
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_e2e_pty_*.db")
@@ -133,17 +132,25 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Create SSH command with real PTY
+	// Clear SSH_AUTH_SOCK to disable SSH agent
 	cmd := exec.Command("ssh",
 		"-p", fmt.Sprintf("%d", sshPort),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"-o", "IdentitiesOnly=yes",
+		"-o", "IdentityFile="+privKeyPath,
+		"-o", "PreferredAuthentications=publickey",
 		"-o", "PubkeyAuthentication=yes",
 		"-o", "PasswordAuthentication=no",
+		"-o", "KbdInteractiveAuthentication=no",
+		"-o", "ChallengeResponseAuthentication=no",
+		"-o", "IdentityAgent=none",
 		"-i", privKeyPath,
 		"127.0.0.1",
 	)
+	// Disable SSH agent
+	cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
