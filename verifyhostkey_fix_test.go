@@ -33,12 +33,12 @@ func generateTestServerKeyForHostKey(t *testing.T, expectedHostKey string) strin
 	if err != nil {
 		t.Fatalf("Failed to generate server key: %v", err)
 	}
-	
+
 	pemData, err := ssh.MarshalPrivateKey(priv, "test server key")
 	if err != nil {
 		t.Fatalf("Failed to marshal server key: %v", err)
 	}
-	
+
 	return string(pem.EncodeToMemory(pemData))
 }
 
@@ -81,7 +81,7 @@ func TestVerifyHostKeyImplemented(t *testing.T) {
 	mockConn.user = "unknown-key"
 	connID := "test-unique-id" // This matches what mockConnMetadata.UniqueID() returns
 	piper.storeExpectedHostKeyForConnection(connID, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDifferentTestKey test@different")
-	
+
 	// Call the VerifyHostKey handler - this should fail due to key mismatch
 	err = piper.handleVerifyHostKey(mockConn, hostname, netaddr, mockHostKey)
 	if err == nil {

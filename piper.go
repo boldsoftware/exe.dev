@@ -53,10 +53,8 @@ type PiperPlugin struct {
 	keyboardInteractiveMutex sync.RWMutex
 
 	// expectedHostKeys maps connection IDs to their expected host keys for validation
-	expectedHostKeys map[string]*HostKeyMapping
+	expectedHostKeys      map[string]*HostKeyMapping
 	expectedHostKeysMutex sync.RWMutex
-
-
 }
 
 // NewPiperPlugin creates a new piper plugin instance
@@ -74,7 +72,6 @@ func NewPiperPlugin(server *Server, addr string) *PiperPlugin {
 
 	return p
 }
-
 
 // storeExpectedHostKeyForConnection stores the expected host key for a connection with timestamp
 func (p *PiperPlugin) storeExpectedHostKeyForConnection(connID, hostKey string) {
@@ -94,13 +91,13 @@ func (p *PiperPlugin) getExpectedHostKeyForConnection(connID string) (string, bo
 	if !exists {
 		return "", false
 	}
-	
+
 	// Check if mapping has expired (5 minutes)
 	if time.Since(mapping.CreatedAt) > 5*time.Minute {
 		// Don't remove here to avoid lock upgrade, cleanup will handle it
 		return "", false
 	}
-	
+
 	return mapping.HostKey, true
 }
 
@@ -281,9 +278,9 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		Host:     "127.0.0.1", // Use explicit IPv4 instead of localhost
 		Port:     2223,
 		UserName: username, // Use original username, not encoded
-		// Host key validation is handled by VerifyHostKeyCallback  
+		// Host key validation is handled by VerifyHostKeyCallback
 		IgnoreHostKey: false, // Enable host key validation
-		Auth:     libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
+		Auth:          libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
 	}
 
 	slog.Debug("Returning upstream config", "component", "piper-plugin", "host", upstream.Host, "port", upstream.Port, "username", upstream.UserName, "auth_type", "PrivateKey")
@@ -353,7 +350,6 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	if len(sshDetails.PrivateKey) > 50 {
 		slog.Debug("Private key preview", "component", "piper-plugin", "key_preview", sshDetails.PrivateKey[:50])
 	}
-
 
 	// Store the expected host key for this connection if available
 	if sshDetails.HostKey != "" {
@@ -462,20 +458,20 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 	connID := conn.UniqueID()
 	expectedKey, found := p.getExpectedHostKeyForConnection(connID)
 	slog.Debug("Expected key lookup", "component", "piper-plugin", "conn_id", connID, "found", found)
-	
+
 	if found {
 		// This is a machine connection with a stored expected key
 		if strings.TrimSpace(expectedKey) == strings.TrimSpace(receivedKey) {
-			slog.Debug("Host key validation successful for machine", 
+			slog.Debug("Host key validation successful for machine",
 				"component", "piper-plugin", "conn_id", connID, "hostname", hostname)
 			return nil
 		}
 		// Key mismatch for machine connection
-		slog.Debug("Host key validation failed - machine key mismatch", 
+		slog.Debug("Host key validation failed - machine key mismatch",
 			"component", "piper-plugin", "conn_id", connID, "hostname", hostname)
 		return fmt.Errorf("host key validation failed for %s", hostname)
 	}
-	
+
 	// No stored expected key - this is a connection to the main exed server
 	// Validate against the server's host key from the database
 	serverHostKey, err := p.getServerHostKey()
@@ -484,18 +480,18 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 		return fmt.Errorf("host key validation failed for %s", hostname)
 	}
 	slog.Debug("Got server host key", "component", "piper-plugin", "hostname", hostname, "server_key", serverHostKey[:50]+"...")
-	
+
 	if strings.TrimSpace(serverHostKey) == strings.TrimSpace(receivedKey) {
-		slog.Debug("Host key validation successful for exed server", 
+		slog.Debug("Host key validation successful for exed server",
 			"component", "piper-plugin", "hostname", hostname)
 		return nil
 	}
 
 	// Neither machine key nor server key matched
-	slog.Debug("Host key validation failed - no matching key found", 
+	slog.Debug("Host key validation failed - no matching key found",
 		"component", "piper-plugin", "hostname", hostname)
 	return fmt.Errorf("host key validation failed for %s", hostname)
-}// cleanupExpiredMappings runs periodically to remove expired proxy key mappings and keyboard interactive tracking
+} // cleanupExpiredMappings runs periodically to remove expired proxy key mappings and keyboard interactive tracking
 func (p *PiperPlugin) cleanupExpiredMappings() {
 	ticker := time.NewTicker(5 * time.Minute) // Run every 5 minutes
 	defer ticker.Stop()
