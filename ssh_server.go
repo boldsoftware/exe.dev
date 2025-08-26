@@ -298,14 +298,14 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
 func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
-	if os.Getenv("EXE_DEV_NO_BANNER") != "" {
-		return
-	}
-
 	// Skip animation in test mode for faster tests
 	if ss.server.testMode {
 		fmt.Fprint(s, "███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n")
 		fmt.Fprint(s, "╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \r\n\r\n")
+		return
+	}
+
+	if os.Getenv("EXE_DEV_NO_BANNER") != "" {
 		return
 	}
 
