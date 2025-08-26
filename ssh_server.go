@@ -17,6 +17,7 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/termfun"
+	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/customer"
@@ -251,7 +252,11 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 			log.Printf("Command received: %q", line)
 		}
 
-		parts := strings.Fields(strings.TrimSpace(line))
+		parts, err := shlex.Split(strings.TrimSpace(line), true)
+		if err != nil {
+			fmt.Fprintf(s, "Error parsing command: %v\r\n", err)
+			continue
+		}
 		if len(parts) == 0 {
 			continue
 		}

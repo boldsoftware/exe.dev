@@ -35,6 +35,12 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle logout URL
+	if r.URL.Path == "/__exe.dev/logout" {
+		s.handleProxyLogout(w, r)
+		return
+	}
+
 	// Extract machine and team from Host header
 	hostname := r.Host
 	// Remove port if present
@@ -362,6 +368,43 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 		slog.Info("[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
 	}
 	http.Redirect(w, r, finalRedirect, http.StatusTemporaryRedirect)
+}
+
+// handleProxyLogout handles the logout URL /__exe.dev/logout
+func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
+	if !s.quietMode {
+		slog.Info("[REDIRECT] handleProxyLogout called", "host", r.Host)
+	}
+
+	// Get the specific cookie value to delete
+	var cookieValue string
+	cookie, err := r.Cookie("exe-proxy-auth")
+	if err == nil && cookie.Value != "" {
+		cookieValue = cookie.Value
+	}
+
+	// Delete only this specific cookie from the database
+	if cookieValue != "" {
+		_, err := s.db.Exec(`
+			DELETE FROM auth_cookies 
+			WHERE cookie_value = ?
+		`, cookieValue)
+		if err != nil {
+			slog.Error("Failed to delete specific proxy auth cookie from database", "error", err)
+		}
+	}
+
+	// Clear the proxy auth cookie in the browser
+	http.SetCookie(w, &http.Cookie{
+		Name:     "exe-proxy-auth",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+
+	// Redirect to the root path of this proxy domain
+	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
 // Route command handling methods

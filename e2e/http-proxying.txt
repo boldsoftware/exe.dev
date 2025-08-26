@@ -30,6 +30,9 @@ URL you started at.
 
 12. Use the "route" command in the exe.dev shell to make / public. You should be able to access it without auth, then.
 
+13. Use the http://(name).localhost:8080/__exe.dev/logout to test logging out of a specific subhost.
+
+
 ## Hints
 
 ### HTTP Server Hints

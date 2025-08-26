@@ -2,6 +2,7 @@ package exe
 
 import (
 	"database/sql"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -719,4 +720,269 @@ func TestProxyDebugPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProxyLogoutFlow(t *testing.T) {
+	// Create temporary database
+	dbFile := "/tmp/test_proxy_logout_5dd277dc.db"
+	defer os.Remove(dbFile)
+
+	db, err := sql.Open("sqlite", dbFile)
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer db.Close()
+
+	// Use proper migration system
+	err = runMigrations(db)
+	if err != nil {
+		t.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Create a test user
+	userID, err := generateUserID()
+	if err != nil {
+		t.Fatalf("Failed to generate user ID: %v", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, "test-logout@example.com")
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	// Create SSH key for the test user
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
+	if err != nil {
+		t.Fatalf("Failed to create SSH key: %v", err)
+	}
+
+	// Create alloc for test user
+	allocID := "test-alloc-" + userID
+	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	if err != nil {
+		t.Fatalf("Failed to create alloc: %v", err)
+	}
+
+	// Create a test machine with a private route
+	_, err = db.Exec(`
+		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes, 
+						 ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, 
+						 ssh_host_certificate, ssh_client_private_key, ssh_port) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
+		{
+			"name": "default",
+			"port": 80,
+			"methods": "*",
+			"prefix": "/",
+			"policy": "private",
+			"priority": 100
+		}
+	]`, "test-key", "test-keys", "test-ca", "test-cert", "test-client-key", 2222)
+	if err != nil {
+		t.Fatalf("Failed to create test machine: %v", err)
+	}
+
+	server := &Server{
+		quietMode:    true,
+		db:           db,
+		testMode:     true,
+		magicSecrets: make(map[string]*MagicSecret),
+	}
+
+	// Test 1: Logout without authentication should still work (redirect to root)
+	t.Run("logout_without_auth", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/logout", nil)
+		req.Host = "testmachine.localhost"
+		w := httptest.NewRecorder()
+
+		server.ServeHTTP(w, req)
+
+		if w.Code != 307 { // StatusTemporaryRedirect
+			t.Errorf("Expected redirect status 307, got %d", w.Code)
+		}
+
+		// Check redirect location
+		location := w.Header().Get("Location")
+		if location != "/" {
+			t.Errorf("Expected redirect to '/', got '%s'", location)
+		}
+
+		// Check that logout cookie was set
+		cookieFound := false
+		for _, cookie := range w.Result().Cookies() {
+			if cookie.Name == "exe-proxy-auth" && cookie.Value == "" && cookie.MaxAge == -1 {
+				cookieFound = true
+				break
+			}
+		}
+		if !cookieFound {
+			t.Error("Expected logout cookie to be set")
+		}
+	})
+
+	// Test 2: Logout after authentication should clear cookie and database entry
+	t.Run("logout_after_auth", func(t *testing.T) {
+		// First authenticate the user
+		secret, err := server.createMagicSecret(userID, "testmachine", "")
+		if err != nil {
+			t.Fatalf("Failed to create magic secret: %v", err)
+		}
+
+		// Use magic URL to authenticate
+		req1 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret, nil)
+		req1.Host = "testmachine.localhost"
+		w1 := httptest.NewRecorder()
+
+		server.ServeHTTP(w1, req1)
+
+		if w1.Code != 307 {
+			t.Fatalf("Auth should succeed with 307, got %d", w1.Code)
+		}
+
+		// Get the auth cookie that was set
+		var authCookie *http.Cookie
+		for _, cookie := range w1.Result().Cookies() {
+			if cookie.Name == "exe-proxy-auth" {
+				authCookie = cookie
+				break
+			}
+		}
+		if authCookie == nil {
+			t.Fatal("Auth cookie should have been set")
+		}
+
+		// Verify the cookie is valid by checking database
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		if err != nil || count != 1 {
+			t.Fatal("Auth cookie should exist in database")
+		}
+
+		// Now logout
+		req2 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/logout", nil)
+		req2.Host = "testmachine.localhost"
+		req2.AddCookie(authCookie) // Send the auth cookie
+		w2 := httptest.NewRecorder()
+
+		server.ServeHTTP(w2, req2)
+
+		if w2.Code != 307 {
+			t.Errorf("Expected redirect status 307, got %d", w2.Code)
+		}
+
+		// Check redirect location
+		location := w2.Header().Get("Location")
+		if location != "/" {
+			t.Errorf("Expected redirect to '/', got '%s'", location)
+		}
+
+		// Check that logout cookie was set
+		logoutCookieFound := false
+		for _, cookie := range w2.Result().Cookies() {
+			if cookie.Name == "exe-proxy-auth" && cookie.Value == "" && cookie.MaxAge == -1 {
+				logoutCookieFound = true
+				break
+			}
+		}
+		if !logoutCookieFound {
+			t.Error("Expected logout cookie to be set")
+		}
+
+		// Verify the auth cookie was deleted from database
+		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		if err != nil || count != 0 {
+			t.Error("Auth cookie should have been deleted from database")
+		}
+	})
+
+	// Test 3: Logout should only delete the specific cookie, not other cookies for the same user
+	t.Run("logout_preserves_other_sessions", func(t *testing.T) {
+		// Create two separate auth sessions for the same user
+		secret1, err := server.createMagicSecret(userID, "testmachine", "")
+		if err != nil {
+			t.Fatalf("Failed to create magic secret 1: %v", err)
+		}
+
+		secret2, err := server.createMagicSecret(userID, "testmachine", "")
+		if err != nil {
+			t.Fatalf("Failed to create magic secret 2: %v", err)
+		}
+
+		// Auth with first secret to create first session
+		req1 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret1, nil)
+		req1.Host = "testmachine.localhost"
+		w1 := httptest.NewRecorder()
+		server.ServeHTTP(w1, req1)
+
+		// Auth with second secret to create second session
+		req2 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret2, nil)
+		req2.Host = "testmachine.localhost"
+		w2 := httptest.NewRecorder()
+		server.ServeHTTP(w2, req2)
+
+		if w1.Code != 307 || w2.Code != 307 {
+			t.Fatal("Both authentications should succeed")
+		}
+
+		// Get both auth cookies
+		var cookie1, cookie2 *http.Cookie
+		for _, cookie := range w1.Result().Cookies() {
+			if cookie.Name == "exe-proxy-auth" {
+				cookie1 = cookie
+				break
+			}
+		}
+		for _, cookie := range w2.Result().Cookies() {
+			if cookie.Name == "exe-proxy-auth" {
+				cookie2 = cookie
+				break
+			}
+		}
+
+		if cookie1 == nil || cookie2 == nil {
+			t.Fatal("Both auth cookies should have been set")
+		}
+
+		// Verify we have 2 auth cookies in database for this user
+		var count int
+		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		if err != nil || count != 2 {
+			t.Fatalf("Should have 2 auth cookies for user, got %d", count)
+		}
+
+		// Logout using only the first cookie
+		req3 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/logout", nil)
+		req3.Host = "testmachine.localhost"
+		req3.AddCookie(cookie1) // Only send the first cookie
+		w3 := httptest.NewRecorder()
+		server.ServeHTTP(w3, req3)
+
+		if w3.Code != 307 {
+			t.Errorf("Logout should succeed with 307, got %d", w3.Code)
+		}
+
+		// Verify only the first cookie was deleted, second one remains
+		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		if err != nil || count != 1 {
+			t.Errorf("Should have 1 auth cookie remaining for user, got %d", count)
+		}
+
+		// Verify the remaining cookie is the second one
+		var remainingCookie string
+		err = db.QueryRow("SELECT cookie_value FROM auth_cookies WHERE user_id = ?", userID).Scan(&remainingCookie)
+		if err != nil {
+			t.Fatal("Failed to get remaining cookie")
+		}
+		if remainingCookie != cookie2.Value {
+			t.Errorf("Expected remaining cookie to be cookie2, but got different value")
+		}
+
+		// Verify the first cookie was deleted
+		err = db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ?", cookie1.Value).Scan(&count)
+		if err != nil || count != 0 {
+			t.Error("First cookie should have been deleted from database")
+		}
+	})
 }
