@@ -11,7 +11,7 @@ import (
 var (
 	down = flag.Bool("d", false, "turn aliases down instead of up")
 	from = flag.Int("from", 2, "start of address range [0-255]")
-	to   = flag.Int("to", 255, "end (inclusive) of address range [0-255]")
+	to   = flag.Int("to", 10, "end (inclusive) of address range [0-255]; larger ranges can slow down name resolution on your host OS so keep it as low as you can")
 )
 
 // This utility creates a range of loopback IP aliases for 127.0.0.xx.
