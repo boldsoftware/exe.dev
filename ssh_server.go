@@ -53,13 +53,14 @@ func (ss *SSHServer) Start(addr string) error {
 		RequestHandlers:   map[string]ssh.RequestHandler{},
 	}
 
-	// Add host keys from the existing server configuration
-	// The server should already have generated host keys via setupSSHServer
-	if ss.server.sshConfig != nil {
-		// We need to call generateHostKey to ensure the host key is loaded
-		if err := ss.server.generateHostKey(); err != nil {
-			log.Printf("Failed to generate host key: %v", err)
-		}
+	// Transfer the host key from the main server to the gliderlabs SSH server
+	// The main server should have already loaded/generated host keys via setupSSHServer
+	if ss.server.sshHostKey != nil {
+		// Use the stored host key from the main server configuration
+		ss.srv.AddHostKey(ss.server.sshHostKey)
+		log.Printf("Added host key from main server configuration")
+	} else {
+		log.Printf("Warning: No host key found in main server configuration")
 	}
 
 	if ss.server == nil || !ss.server.testMode {

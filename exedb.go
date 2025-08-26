@@ -11,12 +11,14 @@ import (
 	"strconv"
 
 	"exe.dev/container"
+	"golang.org/x/crypto/ssh"
 )
 
 // SSHDetails holds SSH connection information for a machine
 type SSHDetails struct {
 	Port       int
 	PrivateKey string
+	HostKey    string
 	DockerHost *string // DOCKER_HOST value where this container runs
 }
 
@@ -24,10 +26,11 @@ type SSHDetails struct {
 func (s *Server) GetMachineSSHDetails(machineID int) (*SSHDetails, error) {
 	var port sql.NullInt64
 	var privateKey sql.NullString
+	var serverIdentityKey sql.NullString
 	var dockerHost sql.NullString
 
-	query := `SELECT ssh_port, ssh_client_private_key, docker_host FROM machines WHERE id = ?`
-	err := s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &dockerHost)
+	query := `SELECT ssh_port, ssh_client_private_key, ssh_server_identity_key, docker_host FROM machines WHERE id = ?`
+	err := s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query machine SSH details: %v", err)
 	}
@@ -42,7 +45,7 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*SSHDetails, error) {
 		}
 
 		// Re-query after setup
-		err = s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &dockerHost)
+		err = s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost)
 		if err != nil {
 			return nil, fmt.Errorf("failed to re-query machine SSH details after setup: %v", err)
 		}
@@ -57,6 +60,17 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*SSHDetails, error) {
 		return nil, fmt.Errorf("no SSH private key available for machine after setup")
 	}
 
+	// Derive host public key from server identity key if available
+	var hostKey string
+	if serverIdentityKey.Valid && serverIdentityKey.String != "" {
+		// Parse the server identity private key and extract the public key
+		privKey, err := ssh.ParsePrivateKey([]byte(serverIdentityKey.String))
+		if err == nil {
+			hostKey = string(ssh.MarshalAuthorizedKey(privKey.PublicKey()))
+		}
+		// If parsing fails, we'll just use empty host key (fallback to no validation)
+	}
+
 	var dockerHostPtr *string
 	if dockerHost.Valid && dockerHost.String != "" {
 		dockerHostPtr = &dockerHost.String
@@ -65,6 +79,7 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*SSHDetails, error) {
 	return &SSHDetails{
 		Port:       sshPort,
 		PrivateKey: privateKey.String,
+		HostKey:    hostKey,
 		DockerHost: dockerHostPtr,
 	}, nil
 }

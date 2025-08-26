@@ -272,7 +272,7 @@ func TestMachineAccessImplementation(t *testing.T) {
 		CreatedByUserID: "usr1234567890123", // test user ID
 	}
 
-	upstream, err := plugin.handleMachineAccess(machine, "test-fp")
+	upstream, err := plugin.handleMachineAccess(machine, "test-fp", "test-conn-id")
 	if err == nil || upstream != nil {
 		t.Error("Expected error for machine with no ContainerID")
 	} else {
@@ -420,7 +420,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	t.Logf("✅ Container host port retrieved (host: %s, port: %d)", host, port)
 
 	// Test the complete machine access flow
-	upstream, err := plugin.handleMachineAccess(machine, userID)
+	upstream, err := plugin.handleMachineAccess(machine, userID, "test-conn-id")
 	if err != nil {
 		t.Fatalf("Failed to handle machine access: %v", err)
 	}

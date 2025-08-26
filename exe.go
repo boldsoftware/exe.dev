@@ -339,6 +339,7 @@ type Server struct {
 	httpServer          *http.Server
 	httpsServer         *http.Server
 	sshConfig           *ssh.ServerConfig
+	sshHostKey          ssh.Signer
 	certManager         *autocert.Manager
 	wildcardCertManager *porkbun.WildcardCertManager
 
@@ -626,6 +627,7 @@ func (s *Server) generateHostKey() error {
 			slog.Info("Generated and stored new SSH host key", "fingerprint", fingerprint)
 		}
 		s.sshConfig.AddHostKey(signer)
+		s.sshHostKey = signer
 
 	} else if err != nil {
 		return fmt.Errorf("failed to query host key: %w", err)
@@ -641,6 +643,7 @@ func (s *Server) generateHostKey() error {
 			slog.Info("Loaded existing SSH host key", "fingerprint", fingerprint)
 		}
 		s.sshConfig.AddHostKey(signer)
+		s.sshHostKey = signer
 	}
 
 	return nil
