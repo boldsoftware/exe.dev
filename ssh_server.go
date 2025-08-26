@@ -129,14 +129,13 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 	publicKey, _ := s.Context().Value("public_key").(string)
 	registered := s.Context().Value("registered").(string) == "true"
 	// email, _ := s.Context().Value("email").(string) // Currently unused
-	username := s.User()
+	// username := s.User()
 
 	// Get terminal dimensions
 	pty, winCh, isPty := s.Pty()
-	var terminalWidth, terminalHeight int
+	var terminalWidth int
 	if isPty {
 		terminalWidth = pty.Window.Width
-		terminalHeight = pty.Window.Height
 	}
 
 	// Handle window size changes
@@ -144,7 +143,6 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 		go func() {
 			for win := range winCh {
 				terminalWidth = win.Width
-				terminalHeight = win.Height
 			}
 		}()
 	}
@@ -153,16 +151,16 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 	cmd := s.Command()
 	if len(cmd) > 0 {
 		// Handle exec commands
-		ss.handleExec(s, cmd, username, publicKey, registered)
+		ss.handleExec(s, cmd, publicKey, registered)
 		return
 	}
 
 	// Handle interactive shell session
-	ss.handleShell(s, username, publicKey, registered, terminalWidth, terminalHeight)
+	ss.handleShell(s, publicKey, registered, terminalWidth)
 }
 
 // handleShell handles interactive shell sessions with readline
-func (ss *SSHServer) handleShell(s ssh.Session, username, publicKey string, registered bool, terminalWidth, terminalHeight int) {
+func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered bool, terminalWidth int) {
 	// publicKey is already passed as parameter from context
 
 	if !registered {
@@ -277,15 +275,15 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 				fmt.Fprint(s, helpText)
 			}
 		case "list", "ls":
-			ss.handleListCommand(s, publicKey, allocID)
+			ss.handleListCommand(s, allocID)
 		case "new":
 			ss.handleNewCommand(s, publicKey, allocID, args)
 		case "start":
-			ss.handleStartCommand(s, publicKey, allocID, args)
+			ss.handleStartCommand(s, allocID, args)
 		case "stop":
-			ss.handleStopCommand(s, publicKey, allocID, args)
+			ss.handleStopCommand(s, args)
 		case "delete":
-			ss.handleDeleteCommand(s, publicKey, allocID, args)
+			ss.handleDeleteCommand(s, allocID, args)
 		case "logs":
 			ss.handleLogsCommand(s, publicKey, allocID, args)
 		case "route":
@@ -595,7 +593,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 }
 
 // handleExec handles exec commands
-func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, publicKey string, registered bool) {
+func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, registered bool) {
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
@@ -631,13 +629,13 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, username, publicKey
 	case "new":
 		ss.handleNewCommand(s, publicKey, alloc.AllocID, args)
 	case "list", "ls":
-		ss.handleListCommand(s, publicKey, alloc.AllocID)
+		ss.handleListCommand(s, alloc.AllocID)
 	case "start":
-		ss.handleStartCommand(s, publicKey, alloc.AllocID, args)
+		ss.handleStartCommand(s, alloc.AllocID, args)
 	case "stop":
-		ss.handleStopCommand(s, publicKey, alloc.AllocID, args)
+		ss.handleStopCommand(s, args)
 	case "delete":
-		ss.handleDeleteCommand(s, publicKey, alloc.AllocID, args)
+		ss.handleDeleteCommand(s, alloc.AllocID, args)
 	case "logs":
 		ss.handleLogsCommand(s, publicKey, alloc.AllocID, args)
 	case "diag", "diagnostics":
@@ -886,7 +884,7 @@ func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, boo
 }
 
 // Command handlers for the new SSH server
-func (ss *SSHServer) handleListCommand(s ssh.Session, publicKey, allocID string) {
+func (ss *SSHServer) handleListCommand(s ssh.Session, allocID string) {
 	// If container manager is available, get real-time status
 	if ss.server.containerManager != nil {
 		containers, err := ss.server.containerManager.ListContainers(context.Background(), allocID)
@@ -1152,7 +1150,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	fmt.Fprintf(s, "\r\033[K\033[1;31mTimeout: Machine failed to start within 3 minutes\033[0m\r\n")
 }
 
-func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, allocID string, args []string) {
+func (ss *SSHServer) handleStartCommand(s ssh.Session, allocID string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: start <machine-name>\r\n")
@@ -1201,7 +1199,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, publicKey, allocID string
 	fmt.Fprintf(s, "\033[1;32mMachine started!\033[0m Access with \033[1m%s\033[0m\r\n", sshCommand)
 }
 
-func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, allocID string, args []string) {
+func (ss *SSHServer) handleStopCommand(s ssh.Session, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify at least one machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: stop <machine-name> [...]\r\n")
@@ -1249,7 +1247,7 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, publicKey, allocID string,
 	}
 }
 
-func (ss *SSHServer) handleDeleteCommand(s ssh.Session, publicKey, allocID string, args []string) {
+func (ss *SSHServer) handleDeleteCommand(s ssh.Session, allocID string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
 		fmt.Fprintf(s, "Usage: delete <machine-name>\r\n")
