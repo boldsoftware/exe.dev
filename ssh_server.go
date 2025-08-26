@@ -430,14 +430,8 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 
 // handleRegistration handles the registration flow using readline
 func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, terminalWidth int) {
-	// Show the animated welcome first
 	ss.showAnimatedWelcome(s, terminalWidth)
 
-	// For the new SSH server, we'll use default colors
-	// Terminal detection would require implementing the OSC query which is complex
-	grayText := "\033[2m" // Default gray text
-
-	// Show the signup content after the animation
 	signupContent := "\r\n\033[1;33mEXE.DEV: get a machine over ssh\033[0m\r\n" +
 		"To sign up, verify your email and set up billing.\r\n\r\n"
 	fmt.Fprint(s, signupContent)
@@ -495,7 +489,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 		fmt.Fprintf(s, "\033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 	}
 
-	fmt.Fprintf(s, "%sWaiting for email verification...%s\r\n", grayText, "\033[0m")
+	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
 	// Create channels and atomic bool for coordinating with Ctrl+C handler
 	ctrlCChan := make(chan struct{})
@@ -1538,7 +1532,7 @@ func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
 	err := ss.server.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&existingUserID)
 
 	if err == nil {
-		// Email already exists - this is a new device for an existing user
+		// Email already exists - this is a new ssh key for an existing user
 
 		// Store this key as unverified in ssh_keys table
 		_, err = ss.server.db.Exec(`
@@ -1549,7 +1543,7 @@ func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
 			return fmt.Errorf("failed to store pending key: %v", err)
 		}
 
-		// Generate token for new device verification
+		// Generate token for new ssh key verification
 		token := ss.server.generateToken()
 		expires := time.Now().Add(15 * time.Minute)
 
