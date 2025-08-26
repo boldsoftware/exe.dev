@@ -2286,11 +2286,46 @@ func (s *Server) removeUserSession(channel *sshbuf.Channel) {
 // handleListCommand lists user's machines
 func generateRandomContainerName() string {
 	words := []string{
-		"alpha", "beta", "gamma", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet",
-		"kilo", "lima", "mike", "nova", "oscar", "papa", "quebec", "romeo", "sierra", "tango",
-		"uniform", "victor", "whiskey", "xray", "yankee", "zulu", "able", "baker", "charlie",
-		"dog", "easy", "fox", "george", "how", "item", "jig", "king", "love", "neon",
-		"ocean", "pine", "river", "stone", "tree", "wind", "fire", "earth", "moon", "star",
+		// NATO phonetic + military
+		"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet",
+		"kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra", "tango",
+		"uniform", "victor", "whiskey", "xray", "yankee", "zulu",
+
+		// WWII / older phonetics
+		"able", "baker", "dog", "easy", "fox", "george", "how", "item", "jig", "king", "love", "nan",
+		"oboe", "prep", "queen", "roger", "sugar", "tare", "uncle", "victory", "william", "xray",
+		"yoke", "zebra",
+
+		// Nature & elements
+		"earth", "wind", "fire", "water", "stone", "tree", "river", "mountain", "cloud", "storm",
+		"rain", "snow", "ice", "sun", "moon", "star", "comet", "nova", "eclipse", "ocean", "tide",
+
+		// Animals
+		"lion", "tiger", "bear", "wolf", "eagle", "hawk", "falcon", "owl", "otter", "seal", "whale",
+		"shark", "orca", "salmon", "trout", "crane", "heron", "sparrow", "crow", "raven", "fox",
+		"badger", "ferret", "mole", "lynx", "cougar", "panther", "cobra", "viper", "python", "gecko",
+
+		// Colors
+		"red", "blue", "green", "yellow", "purple", "violet", "indigo", "orange", "white", "black",
+		"gray", "silver", "gold", "bronze", "scarlet", "crimson", "azure", "emerald", "jade", "amber",
+
+		// Space & science
+		"asteroid", "nebula", "quasar", "galaxy", "pulsar", "orbit", "photon", "quantum", "fusion",
+		"plasma", "nova", "eclipse", "meteor", "cosmos", "ion", "neutron", "proton", "electron",
+
+		// Tools, tech & retro computing
+		"format", "fdisk", "edit", "tree", "paint", "minesweeper", "fortune", "lynx", "telnet",
+		"gopher", "ping", "traceroute", "router", "switch", "ethernet", "socket", "kernel", "patch",
+		"compile", "linker", "loader", "buffer", "cache", "cookie", "daemon", "kernel", "driver",
+
+		// Random objects
+		"anchor", "beacon", "bridge", "compass", "harbor", "island", "lagoon", "mesa", "valley",
+		"desert", "canyon", "fjord", "reef", "delta", "dune", "grove", "peak", "ridge", "plateau",
+
+		// Misc “fun” filler
+		"sphinx", "obelisk", "phoenix", "griffin", "hydra", "kraken", "unicorn", "pegasus", "chimera",
+		"golem", "djinn", "troll", "sprite", "fairy", "dragon", "wyvern", "cyclops", "satyr", "nymph",
+		"centaur", "minotaur", "harpy", "basilisk", "leviathan",
 	}
 
 	word1 := words[mathrand.Intn(len(words))]
