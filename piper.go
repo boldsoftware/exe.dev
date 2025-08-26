@@ -175,6 +175,31 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 	// Use connection's unique ID to track if we've already shown the message
 	connID := conn.UniqueID()
+	username := conn.User()
+
+	// In local dev mode, check if this is a machine access attempt
+	if p.server.devMode == "local" && username != "" && username != "localexe" {
+		// Try to find a machine with this name
+		var machine Machine
+		err := p.server.db.QueryRow(`
+			SELECT id, alloc_id, name, container_id
+			FROM machines 
+			WHERE name = ?
+		`, username).Scan(&machine.ID, &machine.AllocID, &machine.Name, &machine.ContainerID)
+		
+		if err == nil && machine.ContainerID != nil {
+			// Found a machine - allow access without authentication in dev mode
+			slog.Debug("Local dev mode: allowing passwordless access to machine", 
+				"component", "piper-plugin", "machine_name", machine.Name)
+			
+			// Get first user for dev mode
+			var userID string
+			row := p.server.db.QueryRow("SELECT user_id FROM users LIMIT 1")
+			if err := row.Scan(&userID); err == nil {
+				return p.handleMachineAccess(&machine, userID, connID)
+			}
+		}
+	}
 
 	p.keyboardInteractiveMutex.Lock()
 	alreadyShown := p.keyboardInteractiveShown[connID]
@@ -186,7 +211,7 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 	if !alreadyShown {
 		// First time - send helpful message about setting up SSH keys
 		_, err := client("", "SSH keys are required to access exe.dev.",
-			"Please create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.", false)
+			"("+username+"@localhost) Please create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.", false)
 		if err != nil {
 			slog.Debug("Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
 			return nil, err
@@ -219,6 +244,15 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	if err != nil {
 		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "error", err)
 	}
+	
+	// Special handling for local dev mode - allow any connection as localexe user
+	if p.server.devMode == "local" && conn.User() == "localexe" && userID == "" {
+		// Get the first user from the database for local dev
+		row := p.server.db.QueryRow("SELECT user_id FROM users LIMIT 1")
+		if err := row.Scan(&userID); err == nil {
+			slog.Debug("Using first user for local dev mode", "component", "piper-plugin", "user_id", userID)
+		}
+	}
 
 	// Extract local address for mDNS routing
 	localAddress := conn.GetMeta("local_address")
@@ -248,13 +282,23 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
 
 	// Check if this is a direct machine access attempt
-	if username != "" && registered {
-		slog.Debug("Checking for machine", "component", "piper-plugin", "username", username)
+	// In local dev mode, allow machine access even without registration
+	if username != "" && (registered || p.server.devMode == "local") {
+		// If not registered but in local dev mode, use first user
+		if !registered && p.server.devMode == "local" && userID == "" {
+			row := p.server.db.QueryRow("SELECT user_id FROM users LIMIT 1")
+			if err := row.Scan(&userID); err == nil {
+				slog.Debug("Using first user for local dev machine access", "component", "piper-plugin", "user_id", userID)
+				registered = true // Pretend they're registered for the checks below
+			}
+		}
+		
+		slog.Info("Checking for machine", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered, "devMode", p.server.devMode)
 		if machine := p.server.FindMachineByNameForUser(userID, username); machine != nil {
-			slog.Debug("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
+			slog.Info("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
 			return p.handleMachineAccess(machine, userID, connID)
 		} else {
-			slog.Debug("No machine found with name", "component", "piper-plugin", "username", username)
+			slog.Info("No machine found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 		}
 	}
 
@@ -336,8 +380,14 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 				slog.Debug("Using docker host from tcp format", "component", "piper-plugin", "host", host, "docker_host", dockerHost)
 			}
 		} else if strings.HasPrefix(dockerHost, "ssh://") {
-			// Extract hostname from ssh://hostname
-			host = strings.TrimPrefix(dockerHost, "ssh://")
+			// Extract hostname from ssh://[user@]hostname
+			sshHost := strings.TrimPrefix(dockerHost, "ssh://")
+			// Remove username if present
+			if atIndex := strings.Index(sshHost, "@"); atIndex != -1 {
+				host = sshHost[atIndex+1:]
+			} else {
+				host = sshHost
+			}
 			slog.Debug("Using docker host from ssh format", "component", "piper-plugin", "host", host, "docker_host", dockerHost)
 		} else if dockerHost != "" && !strings.HasPrefix(dockerHost, "unix://") {
 			// Direct hostname
@@ -346,6 +396,15 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 		}
 	}
 	port := sshDetails.Port
+	
+	// In local dev mode with remote docker host via SSH, we use SSH tunneling
+	// so containers are accessible via localhost
+	if p.server.devMode == "local" && sshDetails.DockerHost != nil && strings.HasPrefix(*sshDetails.DockerHost, "ssh://") {
+		host = "localhost"
+		slog.Debug("Using localhost for SSH tunnel in dev mode", "component", "piper-plugin", "original_host", *sshDetails.DockerHost)
+		// SSH tunnel should already be established by container package
+	}
+	
 	slog.Debug("Using database SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "host", host, "port", port)
 
 	// Create upstream configuration for direct SSH to container

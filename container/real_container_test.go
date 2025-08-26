@@ -22,24 +22,16 @@ func TestRealContainerSSHSetup(t *testing.T) {
 		}
 	}()
 
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
-	}
+	SkipIfShort(t)
+
+	// Detect which container backend to use
+	backend := GetTestBackend(t)
+	manager := CreateTestManager(t, backend)
+	defer manager.Close()
 
 	// For testing, we use ubuntu:22.04 directly
-	// Note: This test may fail if Docker has insufficient memory allocated
+	// Note: This test may fail if insufficient memory allocated
 	// (apt-get install openssh-server needs ~512MB during installation)
-
-	config := &Config{
-		DockerHosts:          []string{""},
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "128Mi",
-	}
-
-	manager, err := NewDockerManager(config)
-	if err != nil {
-		t.Fatalf("Failed to create Docker manager: %v", err)
-	}
 
 	// Create container request
 	req := &CreateContainerRequest{
@@ -91,12 +83,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	t.Logf("✅ Container's AuthorizedKeys is correctly a public key")
 
 	// Cleanup
-	defer func() {
-		err := manager.DeleteContainer(ctx, req.AllocID, container.ID)
-		if err != nil {
-			t.Logf("Failed to delete container: %v", err)
-		}
-	}()
+	defer CleanupContainer(t, manager, req.AllocID, container.ID)
 
 	// Wait for SSH setup to complete by checking if SSH port is accessible
 	t.Logf("Waiting for SSH setup to complete...")

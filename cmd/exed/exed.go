@@ -27,6 +27,7 @@ func run() error {
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local Docker), or "test" (test mode)`)
 	dockerHosts := flag.String("docker-hosts", "", "Comma-separated list of DOCKER_HOST values (e.g., 'tcp://host1:2376,tcp://host2:2376')")
+	containerBackend := flag.String("container-backend", "containerd", "Container backend to use: 'docker' or 'containerd' (default: containerd)")
 	mdnsEnabled := flag.Bool("mdns", false, "Enable mDNS registration for dev mode (.local hostnames)")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
 	flag.Parse()
@@ -40,9 +41,17 @@ func run() error {
 	exe.SetupLogger(*devMode)
 	slog.Info("Starting exed server")
 
-	// Parse Docker hosts
+	// Parse container hosts and determine backend
 	var hosts []string
-	if *dockerHosts != "" {
+	
+	// Check for CTR_HOST first - if set, use containerd backend
+	if ctrHost := os.Getenv("CTR_HOST"); ctrHost != "" {
+		// CTR_HOST is set, use containerd backend with the specified host
+		hosts = []string{ctrHost}
+		*containerBackend = "containerd"
+		slog.Info("Using containerd backend from CTR_HOST", "host", ctrHost)
+	} else if *dockerHosts != "" {
+		// Explicit docker hosts specified via flag
 		hosts = strings.Split(*dockerHosts, ",")
 		for i, h := range hosts {
 			hosts[i] = strings.TrimSpace(h)
@@ -58,7 +67,8 @@ func run() error {
 	}
 
 	if len(hosts) == 0 {
-		slog.Warn("No Docker hosts specified, container functionality will be disabled", "suggestion", "Use -docker-hosts flag or set DOCKER_HOST env var")
+		slog.Warn("No container hosts specified, container functionality will be disabled", 
+			"suggestion", "Use -docker-hosts flag, or set DOCKER_HOST/CTR_HOST env var")
 	}
 
 	if *dbPath == "TMP" {
@@ -70,7 +80,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, *fakeHTTPEmail, hosts)
+	server, err := exe.NewServerWithBackend(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, *fakeHTTPEmail, hosts, *containerBackend)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

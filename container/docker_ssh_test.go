@@ -9,24 +9,13 @@ import (
 	"time"
 )
 
-func TestDockerExecuteInContainer(t *testing.T) {
+func TestContainerExecuteInContainer(t *testing.T) {
 	t.Parallel()
-	if testing.Short() {
-		t.Skip("Skipping Docker test in short mode")
-	}
+	SkipIfShort(t)
 
-	// Create a Docker manager with local Docker
-	config := &Config{
-		DockerHosts:          []string{""}, // Local Docker
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "256Mi",
-		DefaultStorageSize:   "1Gi",
-	}
-
-	manager, err := NewDockerManager(config)
-	if err != nil {
-		t.Fatalf("Failed to create Docker manager: %v", err)
-	}
+	// Detect which container backend to use
+	backend := GetTestBackend(t)
+	manager := CreateTestManager(t, backend)
 	defer manager.Close()
 
 	// Create a test container
@@ -43,7 +32,7 @@ func TestDockerExecuteInContainer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)
 	}
-	defer manager.DeleteContainer(ctx, "test-alloc", container.ID)
+	defer CleanupContainer(t, manager, "test-alloc", container.ID)
 
 	// Test 1: Simple command execution without PTY
 	t.Run("SimpleExec", func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,8 +27,9 @@ type DockerManager struct {
 	config *Config
 	hosts  []string // List of DOCKER_HOST values
 
-	mu         sync.RWMutex
-	containers map[string]*Container // containerID -> Container
+	mu            sync.RWMutex
+	containers    map[string]*Container      // containerID -> Container
+	sshCancelFuncs map[string]context.CancelFunc // containerID -> SSH setup cancel func
 }
 
 // ImageMetadata represents the config section of a Docker image inspect result
@@ -48,9 +50,10 @@ func NewDockerManager(config *Config) (*DockerManager, error) {
 	}
 
 	manager := &DockerManager{
-		config:     config,
-		hosts:      config.DockerHosts,
-		containers: make(map[string]*Container),
+		config:         config,
+		hosts:          config.DockerHosts,
+		containers:     make(map[string]*Container),
+		sshCancelFuncs: make(map[string]context.CancelFunc),
 	}
 
 	// Discover existing containers on all hosts with timeout
@@ -249,6 +252,39 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 		"--label", fmt.Sprintf("alloc_id=%s", req.AllocID),
 		"--label", "managed_by=exe",
 		"-p", "0:22", // Expose SSH port 22 to a random host port
+		
+		// Security options - match nerdctl capabilities for consistency
+		// Docker's default capabilities are more permissive than nerdctl,
+		// so we explicitly set the same ones for security and consistency
+		"--cap-drop", "ALL",
+		
+		// Core capabilities for basic operations
+		"--cap-add", "CHOWN",           // Change file ownership (npm, pip, etc.)
+		"--cap-add", "DAC_OVERRIDE",    // Override file permissions (common in build tools)
+		"--cap-add", "FOWNER",          // Bypass permission checks on files you own
+		"--cap-add", "FSETID",          // Set file capabilities
+		"--cap-add", "KILL",            // Kill processes (needed for process managers)
+		"--cap-add", "SETGID",          // Set GID (needed for user switching)
+		"--cap-add", "SETUID",          // Set UID (needed for user switching)
+		"--cap-add", "SETPCAP",         // Transfer capabilities to child processes
+		"--cap-add", "NET_BIND_SERVICE", // Bind to ports < 1024
+		"--cap-add", "SYS_CHROOT",      // Chroot (needed for SSH and some package managers)
+		
+		// PTY and terminal handling
+		"--cap-add", "SYS_TTY_CONFIG",  // PTY control operations (TIOCSCTTY)
+		
+		// Development and debugging
+		"--cap-add", "SYS_PTRACE",      // Debugging with gdb, strace, etc.
+		"--cap-add", "DAC_READ_SEARCH", // Read files for debugging
+		
+		// System operations
+		"--cap-add", "AUDIT_WRITE",     // Write audit logs (SSH, su, sudo)
+		"--cap-add", "SYS_RESOURCE",    // Override resource limits (ulimit)
+		"--cap-add", "IPC_LOCK",        // Lock memory (some databases/crypto)
+		"--cap-add", "IPC_OWNER",       // Bypass IPC ownership checks
+		
+		// Network operations (for development tools)
+		"--cap-add", "NET_RAW",         // Use RAW and PACKET sockets (ping, traceroute)
 	}
 
 	// Add resource limits if specified
@@ -340,13 +376,28 @@ func (m *DockerManager) CreateContainer(ctx context.Context, req *CreateContaine
 	}
 
 	// Configure SSH in the container (asynchronously)
+	// Use a separate context with longer timeout for SSH setup
+	sshCtx, sshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	
+	// Store the cancel func so we can cancel it on container deletion
+	m.mu.Lock()
+	m.sshCancelFuncs[containerID] = sshCancel
+	m.mu.Unlock()
+	
 	go func() {
-		// Use a separate context with longer timeout for SSH setup
-		sshCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
+		defer sshCancel()
+		defer func() {
+			// Clean up the cancel func from the map when done
+			m.mu.Lock()
+			delete(m.sshCancelFuncs, containerID)
+			m.mu.Unlock()
+		}()
 
 		if err := m.setupContainerSSH(sshCtx, containerID, dockerHost, sshKeys); err != nil {
-			log.Printf("Warning: Failed to setup SSH in container: %v", err)
+			// Only log if not cancelled
+			if !errors.Is(err, context.Canceled) {
+				log.Printf("Warning: Failed to setup SSH in container: %v", err)
+			}
 		}
 	}()
 
@@ -483,6 +534,14 @@ func (m *DockerManager) DeleteContainer(ctx context.Context, allocID, containerI
 	if err != nil {
 		return err
 	}
+
+	// Cancel any ongoing SSH setup for this container
+	m.mu.Lock()
+	if cancel, exists := m.sshCancelFuncs[container.ID]; exists {
+		cancel()
+		delete(m.sshCancelFuncs, container.ID)
+	}
+	m.mu.Unlock()
 
 	// Remove container (using -f to force remove even if running)
 	// No need to stop first since -f will handle that
@@ -850,6 +909,10 @@ func (m *DockerManager) setupContainerSSH(ctx context.Context, containerID, dock
 
 	// Copy /exe.dev SSH binaries to the container
 	if err := m.copySSHBinaries(ctx, containerID, dockerHost); err != nil {
+		// Check if context was cancelled
+		if errors.Is(err, context.Canceled) {
+			return context.Canceled
+		}
 		return fmt.Errorf("failed to copy SSH binaries: %w", err)
 	}
 
@@ -890,6 +953,10 @@ PubkeyAuthentication yes
 AuthorizedKeysFile /root/.ssh/authorized_keys
 HostKey /etc/ssh/ssh_host_ed25519_key
 LogLevel INFO
+PermitTTY yes
+PermitUserEnvironment yes
+AcceptEnv LANG LC_*
+UsePAM no
 `
 
 	// Extract server public key from the server identity key for the .pub file

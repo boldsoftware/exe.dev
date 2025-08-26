@@ -34,8 +34,12 @@ type Manager interface {
 
 // Config holds the configuration for the container manager
 type Config struct {
+	// Backend specifies which container runtime to use ("docker" or "containerd")
+	Backend string `json:"backend"`
+
 	// Docker hosts - list of DOCKER_HOST values for remote Docker daemons
-	// Empty string means local Docker daemon
+	// For containerd, these are CONTAINERD_ADDRESS values
+	// Empty string means local daemon
 	DockerHosts []string `json:"docker_hosts"`
 
 	// Default resource limits
@@ -47,7 +51,8 @@ type Config struct {
 // DefaultConfig returns a sensible default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		DockerHosts:          []string{""}, // Default to local Docker
+		Backend:              "docker", // Default to Docker for backward compatibility
+		DockerHosts:          []string{""}, // Default to local daemon
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi",
 		DefaultStorageSize:   "1Gi",
@@ -56,8 +61,31 @@ func DefaultConfig() *Config {
 
 // validateConfig ensures all required fields are present
 func validateConfig(cfg *Config) error {
-	if len(cfg.DockerHosts) == 0 {
-		return fmt.Errorf("at least one Docker host is required")
+	if cfg.DockerHosts == nil || len(cfg.DockerHosts) == 0 {
+		return fmt.Errorf("at least one host is required")
+	}
+	if cfg.Backend == "" {
+		cfg.Backend = "docker" // Default to Docker
+	}
+	if cfg.Backend != "docker" && cfg.Backend != "containerd" {
+		return fmt.Errorf("invalid backend: %s (must be 'docker' or 'containerd')", cfg.Backend)
 	}
 	return nil
+}
+
+// NewManager creates a new container manager based on the configured backend
+func NewManager(cfg *Config) (Manager, error) {
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+
+	switch cfg.Backend {
+	case "docker":
+		return NewDockerManager(cfg)
+	case "containerd":
+		// Use nerdctl for containerd backend (proper networking support)
+		return NewNerdctlManager(cfg)
+	default:
+		return nil, fmt.Errorf("unsupported backend: %s", cfg.Backend)
+	}
 }

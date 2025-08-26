@@ -856,12 +856,9 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 
-	// Check if container is already running (warm pool case)
-	if createdContainer.Status == container.StatusRunning {
-		sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
-		fmt.Fprintf(s, "Ready in ~1s! Access with \033[1m%s\033[0m\r\n\r\n", sshCommand)
-		return
-	}
+	// For containerd, containers report as running immediately but SSH might not be ready
+	// Always show spinner to ensure SSH is actually accessible
+	// TODO: Improve this by checking if SSH is actually ready instead of just container status
 
 	// Show spinner animation while waiting for startup
 	fmt.Fprintf(s, "Waiting for startup... ")
@@ -903,6 +900,17 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 			}
 
 			if containerFound && containerStatus == container.StatusRunning {
+				// For nerdctl/containerd containers, SSH takes a bit longer to be ready
+				// even after the container is running. Wait a bit more to ensure SSH is accessible.
+				// TODO: Properly check SSH availability instead of using a fixed delay
+				if _, isNerdctl := ss.server.containerManager.(*container.NerdctlManager); isNerdctl {
+					// Wait at least 8 seconds total from start to ensure SSH is ready
+					minWaitTime := 8 * time.Second
+					if time.Since(startTime) < minWaitTime {
+						continue
+					}
+				}
+				
 				totalTime := time.Since(startTime)
 				sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
 				fmt.Fprintf(s, "\r\033[KReady in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",

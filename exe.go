@@ -422,6 +422,11 @@ var setStripeKey = sync.OnceFunc(func() {
 
 // NewServer creates a new Server instance with database and container management
 func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer string, dockerHosts []string) (*Server, error) {
+	return NewServerWithBackend(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer, dockerHosts, "docker")
+}
+
+// NewServerWithBackend creates a new Server instance with database and container management using the specified backend
+func NewServerWithBackend(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer string, dockerHosts []string, containerBackend string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -490,6 +495,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEma
 
 	if len(dockerHosts) > 0 {
 		config := &container.Config{
+			Backend:              containerBackend,
 			DockerHosts:          dockerHosts,
 			DefaultCPURequest:    "500m",
 			DefaultMemoryRequest: "1Gi",
@@ -497,12 +503,17 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEma
 		}
 
 		var managerErr error
-		containerManager, managerErr = container.NewDockerManager(config)
+		containerManager, managerErr = container.NewManager(config)
 		if managerErr != nil {
-			if !quietMode {
-				slog.Warn("Failed to initialize container manager, functionality will be disabled", "error", managerErr)
+			// Container manager initialization failure is now fatal - security critical
+			slog.Error("Failed to initialize container manager", "error", managerErr)
+			// If it's a Kata-related error, provide specific guidance
+			if strings.Contains(managerErr.Error(), "Kata runtime") {
+				slog.Error("Kata runtime is required for container security",
+					"details", "All containers must run in Kata VMs for proper isolation",
+					"fix", "Ensure Kata is installed and configured in containerd")
 			}
-			containerManager = nil
+			return nil, managerErr
 		} else {
 			if !quietMode {
 				slog.Info("Machine management enabled", "docker_hosts", dockerHosts)

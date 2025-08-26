@@ -3,34 +3,64 @@ package container
 import "strings"
 
 // ExpandImageName expands short image names to full paths
+// This is the original function that works with Docker
 func ExpandImageName(image string) string {
+	return expandImageNameInternal(image, false)
+}
+
+// ExpandImageNameForContainerd expands image names with full registry paths for containerd/ctr
+func ExpandImageNameForContainerd(image string) string {
+	return expandImageNameInternal(image, true)
+}
+
+// expandImageNameInternal is the internal implementation
+func expandImageNameInternal(image string, forContainerd bool) string {
 	// If no tag is specified, add :latest
 	if !strings.Contains(image, ":") && !strings.Contains(image, "@") {
 		image += ":latest"
 	}
 
 	// Expand common short names
+	var expandedImage string
 	switch {
 	case image == "exeuntu" || image == "exeuntu:latest":
 		// Use the public GitHub Container Registry image from Bold Software org
-		return "ghcr.io/boldsoftware/exeuntu:latest"
+		expandedImage = "ghcr.io/boldsoftware/exeuntu:latest"
 	case image == "ubuntu" || image == "ubuntu:latest":
-		return "ubuntu:22.04"
+		expandedImage = "ubuntu:22.04"
 	case image == "debian" || image == "debian:latest":
-		return "debian:bookworm"
+		expandedImage = "debian:bookworm"
 	case image == "alpine" || image == "alpine:latest":
-		return "alpine:latest"
+		expandedImage = "alpine:latest"
 	case image == "python" || image == "python:latest":
-		return "python:3.11"
+		expandedImage = "python:3.11"
 	case image == "node" || image == "node:latest":
-		return "node:20"
+		expandedImage = "node:20"
 	case image == "golang" || image == "golang:latest":
-		return "golang:1.21"
+		expandedImage = "golang:1.21"
 	case image == "rust" || image == "rust:latest":
-		return "rust:latest"
+		expandedImage = "rust:latest"
+	default:
+		expandedImage = image
 	}
 
-	return image
+	// For containerd, add full registry paths
+	if forContainerd {
+		// If the image doesn't have a registry prefix, add docker.io/library/ or docker.io/
+		if !strings.Contains(expandedImage, "/") {
+			// Simple names like "alpine:latest" -> "docker.io/library/alpine:latest"
+			return "docker.io/library/" + expandedImage
+		}
+		
+		// If it has one slash but no registry domain, add docker.io/
+		parts := strings.SplitN(expandedImage, "/", 2)
+		if len(parts) == 2 && !strings.Contains(parts[0], ".") && !strings.Contains(parts[0], ":") && parts[0] != "localhost" {
+			// e.g., "myuser/myimage" -> "docker.io/myuser/myimage"
+			return "docker.io/" + expandedImage
+		}
+	}
+
+	return expandedImage
 }
 
 // GetDisplayImageName returns a user-friendly display name for an image

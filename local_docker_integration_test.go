@@ -3,29 +3,62 @@ package exe
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"exe.dev/container"
 )
 
-func TestLocalDockerIntegration(t *testing.T) {
+func TestLocalContainerIntegration(t *testing.T) {
 	t.Parallel()
-	// Skip if Docker is not available
-	if os.Getenv("SKIP_DOCKER_TESTS") != "" {
-		t.Skip("Skipping Docker integration test")
+	// Skip if container tests are disabled
+	if os.Getenv("SKIP_CONTAINER_TESTS") != "" {
+		t.Skip("Skipping container integration test")
 	}
 
-	// Create server in local mode
-	server := NewTestServer(t)
+	// Create temporary database file
+	tmpDB, err := os.CreateTemp("", "test_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	defer os.Remove(tmpDB.Name())
+	tmpDB.Close()
+
+	// Determine backend based on environment
+	backend := "docker" // default for backward compatibility
+	hosts := []string{""}
+	
+	if ctrHost := os.Getenv("CTR_HOST"); ctrHost != "" {
+		backend = "containerd"
+		if ctrHost != "local" {
+			hosts = []string{strings.TrimPrefix(ctrHost, "ssh://")}
+		}
+	} else if os.Getenv("USE_CONTAINERD") == "true" {
+		backend = "containerd"
+	}
+	
+	// Create server in local mode with detected backend
+	server, err := NewServerWithBackend(":0", "", ":0", ":0", tmpDB.Name(), "local", hosts, backend)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
 
 	// Verify we have a Docker manager
 	if server.containerManager == nil {
 		t.Fatal("Expected container manager to be initialized in local mode")
 	}
 
-	dockerManager, ok := server.containerManager.(*container.DockerManager)
-	if !ok {
-		t.Fatalf("Expected DockerManager, got %T", server.containerManager)
+	// Verify we have the correct manager type
+	switch backend {
+	case "docker":
+		if _, ok := server.containerManager.(*container.DockerManager); !ok {
+			t.Fatalf("Expected DockerManager, got %T", server.containerManager)
+		}
+	case "containerd":
+		if _, ok := server.containerManager.(*container.NerdctlManager); !ok {
+			t.Fatalf("Expected NerdctlManager, got %T", server.containerManager)
+		}
 	}
 
 	// Test basic container operations
@@ -38,7 +71,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 		Image:   "alpine:latest",
 	}
 
-	createdContainer, err := dockerManager.CreateContainer(ctx, req)
+	createdContainer, err := server.containerManager.CreateContainer(ctx, req)
 	if err != nil {
 		t.Logf("Container creation error (expected if Docker not available): %v", err)
 		// Not a fatal error - Docker might not be available in CI
@@ -57,7 +90,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 	}
 
 	// List containers
-	containers, err := dockerManager.ListContainers(ctx, "test-alloc")
+	containers, err := server.containerManager.ListContainers(ctx, "test-alloc")
 	if err != nil {
 		t.Fatalf("Failed to list containers: %v", err)
 	}
@@ -66,7 +99,7 @@ func TestLocalDockerIntegration(t *testing.T) {
 	}
 
 	// Clean up - delete the container
-	err = dockerManager.DeleteContainer(ctx, "test-alloc", createdContainer.ID)
+	err = server.containerManager.DeleteContainer(ctx, "test-alloc", createdContainer.ID)
 	if err != nil {
 		t.Logf("Warning: Failed to delete container: %v", err)
 	}
