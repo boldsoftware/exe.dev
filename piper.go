@@ -255,6 +255,17 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID string) (*lib
 	// Use SSH details from database instead of querying Docker
 	// The container might be paused/stopped, but we have the port mapping in the database
 	host := "localhost"
+	// In development mode, try to use host.docker.internal if it resolves
+	// This handles the case where we're running inside a container (like Sketch)
+	// and need to connect to Docker-published ports
+	if p.server.devMode == "local" {
+		if _, err := net.LookupHost("host.docker.internal"); err == nil {
+			host = "host.docker.internal"
+			slog.Debug("Using host.docker.internal in dev mode", "component", "piper-plugin", "host", host)
+		} else {
+			slog.Debug("host.docker.internal not available, using localhost", "component", "piper-plugin", "error", err)
+		}
+	}
 	if sshDetails.DockerHost != nil && *sshDetails.DockerHost != "" {
 		// Parse docker host to extract hostname
 		// Formats: tcp://hostname:port, ssh://hostname, or direct hostname
@@ -286,7 +297,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID string) (*lib
 		slog.Debug("Private key preview", "component", "piper-plugin", "key_preview", sshDetails.PrivateKey[:50])
 	}
 	return &libplugin.Upstream{
-		Host:     host, // Container host (from docker_host or localhost)
+		Host:     host, // Container host (from docker_host, host.docker.internal in dev mode, or localhost)
 		Port:     int32(port),
 		UserName: "root", // Containers use root user
 		// TODO(philip): we know their host key, so we could just use it.
