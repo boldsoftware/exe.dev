@@ -2372,6 +2372,7 @@ func isValidStorageSize(size string) bool {
 
 // denylistedMachineNames contains common computer-related five+ letter words that are not allowed as machine names
 var denylistedMachineNames = map[string]bool{
+	"teams": true,
 	"abort": true, "admin": true, "allow": true, "array": true, "async": true,
 	"audit": true, "block": true, "board": true, "boost": true, "break": true,
 	"build": true, "bytes": true, "cable": true, "cache": true, "catch": true,
