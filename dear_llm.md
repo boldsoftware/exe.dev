@@ -6,3 +6,6 @@
 - this is a production service; do not leave comments about "for production, do this..."; finish the job
 - do not overly worry about compatibility; do not create shims to handle compatibility
 - NEVER create defaults for things that are required. If data is missing, either fix the missing data or fail with a clear error explaining what's wrong
+
+There are end to end agent-driven tests in e2e/. See there for details on
+how to run and test things end to end.
