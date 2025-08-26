@@ -344,9 +344,15 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set the proxy auth cookie (different from main site cookie)
+	// Determine cookie name based on request type (terminal vs proxy)
+	cookieName := "exe-proxy-auth"
+	if s.isTerminalRequest(r.Host) {
+		cookieName = "exe-auth"
+	}
+
+	// Set the auth cookie
 	cookie := &http.Cookie{
-		Name:     "exe-proxy-auth",
+		Name:     cookieName,
 		Value:    cookieValue,
 		Path:     "/",
 		HttpOnly: true,

@@ -872,8 +872,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check if this should be handled by the proxy handler
 	isProxy := s.isProxyRequest(r.Host)
+	isTerminal := s.isTerminalRequest(r.Host)
 	if !s.quietMode {
-		slog.Info("[REDIRECT] Main handler routing check", "host", r.Host, "isProxy", isProxy)
+		slog.Info("[REDIRECT] Main handler routing check", "host", r.Host, "isProxy", isProxy, "isTerminal", isTerminal)
+	}
+	if isTerminal {
+		s.handleTerminalRequest(w, r)
+		return
 	}
 	if isProxy {
 		s.handleProxyRequest(w, r)
@@ -945,6 +950,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.handleAuthCallback(w, r)
 			return
 		}
+
 		// Try to serve static file if GET request
 		if r.Method == "GET" && len(path) > 1 {
 			filename := path[1:] // Remove leading slash
@@ -1897,7 +1903,37 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 	}
 
 	if returnHost != "" && redirectURL != "" {
-		if s.isProxyRequest(returnHost) {
+		if s.isTerminalRequest(returnHost) {
+			if !s.quietMode {
+				slog.Info("[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
+			}
+			// Parse hostname to extract machine name
+			hostname := returnHost
+			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
+				hostname = returnHost[:idx]
+			}
+
+			machineName, err := s.parseTerminalHostname(hostname)
+			if err != nil {
+				slog.Error("Failed to parse terminal hostname", "hostname", hostname, "error", err)
+				http.Error(w, "Invalid hostname format", http.StatusBadRequest)
+				return
+			}
+
+			// Create magic secret for the terminal subdomain
+			secret, err := s.createMagicSecret(userID, machineName, redirectURL)
+			if err != nil {
+				slog.Error("Failed to create magic secret", "error", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+
+			// Redirect to terminal subdomain with magic secret
+			magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
+				getScheme(r), returnHost, secret, url.QueryEscape(redirectURL))
+			http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+			return
+		} else if s.isProxyRequest(returnHost) {
 			if !s.quietMode {
 				slog.Info("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
 			}

@@ -1,0 +1,135 @@
+# Terminal Web Interface Test
+
+## Instructions
+
+Test the web terminal interface functionality, including complete authentication flows, terminal session management, and docker exec integration.
+
+### Prerequisites
+
+- Registration must be completed (setup-and-basics.txt)
+- Container must be created and SSH access working (container-creation-ssh.txt)
+- exed and sshpiper must be running
+- Container must be running (not just created)
+
+### Test Steps
+
+#### Terminal Authentication Flow
+
+1. **Access terminal without authentication**
+   - Visit: http://machinename.xterm.localhost:8080/
+   - Expected: Redirect to auth page with correct port in URL
+   - Verify redirect URL contains: `http://localhost:8080/auth?redirect=...&return_host=machinename.xterm.localhost:8080`
+   - This tests the port redirection fix
+
+2. **Complete authentication flow**
+   - Follow the auth redirect from step 1
+   - Complete authentication (email verification or existing session)
+   - Expected: Redirect back to terminal subdomain via magic auth URL
+   - Verify URL pattern: `http://machinename.xterm.localhost:8080/__exe.dev/auth?secret=...&redirect=...`
+   - This tests the terminal-specific auth integration
+
+3. **Verify terminal hostname parsing**
+   - The auth flow should correctly parse "machinename" from "machinename.xterm.localhost"
+   - Should NOT get "invalid machine name" error
+   - This tests the parseTerminalHostname vs parseProxyHostname fix
+
+#### Terminal Interface
+
+4. **Access authenticated terminal page**
+   - After completing auth flow, should land on terminal page
+   - Expected: HTML page with terminal interface loads
+   - Verify page title: "exe.dev Terminal"
+   - Verify message about "Sessions timeout after 10 minutes of inactivity. Use tmux to persist sessions."
+
+5. **Static file serving**
+   - Terminal page should load xterm.js and xterm.css
+   - Check browser dev tools network tab for:
+     - `/static/xterm.js` - should return 200 OK
+     - `/static/xterm.css` - should return 200 OK
+   - This tests static file serving through terminal handler
+
+6. **Terminal connection**
+   - Terminal should automatically connect via WebSocket-like interface
+   - Check browser dev tools network tab for:
+     - `/terminal/events/1` - SSE connection should be established
+   - Expected: Connection status should show "Connected" briefly
+
+#### Terminal Functionality
+
+7. **Basic terminal interaction**
+   - Type commands in the terminal: `echo "Hello from web terminal"`
+   - Expected: Command executes and output appears
+   - Type: `pwd` 
+   - Expected: Shows current directory in container
+
+8. **Terminal session persistence**
+   - Type: `export TEST_VAR="terminal_test"`
+   - Type: `echo $TEST_VAR`
+   - Expected: Shows "terminal_test"
+   - This verifies the session maintains state
+
+9. **Terminal resizing**
+   - Resize browser window
+   - Terminal should resize automatically
+   - Type a long command to verify width adjustment
+
+#### Terminal Session Management
+
+10. **Multiple terminal sessions**
+    - Open new browser tab to same terminal URL: http://machinename.xterm.localhost:8080/?t=2
+    - Both terminals should work independently
+    - Commands in one terminal should not appear in the other
+
+11. **Terminal ID parameter**
+    - Access: http://machinename.xterm.localhost:8080/?t=5
+    - Should create terminal session "5"
+    - Verify separate from default terminal (session "1")
+
+#### Error Handling
+
+12. **Non-existent machine**
+    - Visit: http://nonexistent.xterm.localhost:8080/
+    - Expected: Should complete auth flow but then show "machine not found" error
+    - Should NOT show "invalid machine name" error
+
+13. **Stopped container**
+    - Stop the container: `docker stop machinename`
+    - Try to access terminal
+    - Expected: Should attempt to start container or show appropriate error
+    - Restart container for remaining tests: `docker start machinename`
+
+#### Session Timeout
+
+14. **Inactive session cleanup**
+    - Leave terminal inactive for a few minutes
+    - Note: Full 10-minute timeout test is impractical, but verify:
+      - Sessions are tracked with last activity time
+      - Warning message about tmux is displayed
+
+### Expected Results
+
+- ✅ Auth flow works without "invalid machine name" errors
+- ✅ Port redirection includes correct port numbers
+- ✅ Terminal page loads with proper UI and styling
+- ✅ xterm.js integration works (terminal appears and is interactive)
+- ✅ Commands execute in container via docker exec
+- ✅ Multiple terminal sessions work independently
+- ✅ Terminal resizing works
+- ✅ Session management prevents conflicts
+
+### Common Issues
+
+- **"invalid machine name" error**: Usually indicates parseProxyHostname being called instead of parseTerminalHostname
+- **Port missing in redirect**: getMainDomain() used instead of getMainDomainWithPort()
+- **404 on terminal page**: terminal.html not in static/ directory or not embedded
+- **"machine has no container ID"**: Machine record missing container_id field
+- **"/bin/bash not found"**: Should use /bin/sh for Alpine containers
+- **Static files 404**: Static file routing not working through terminal handler
+
+### Debugging Tips
+
+- Check server logs for [TERMINAL] messages
+- Verify hostname parsing in redirectAfterAuth logs
+- Use browser dev tools to inspect network requests
+- Check database for machine records and container_id values
+- Verify docker container is running: `docker ps`
