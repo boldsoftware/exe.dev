@@ -902,13 +902,14 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, allocID string) {
 		for _, c := range containers {
 			status := string(c.Status)
 			statusColor := ""
-			if c.Status == container.StatusRunning {
+			switch c.Status {
+			case container.StatusRunning:
 				statusColor = "\033[1;32m" // green
 				status = "running"
-			} else if c.Status == container.StatusStopped {
+			case container.StatusStopped:
 				statusColor = "\033[1;31m" // red
 				status = "stopped"
-			} else if c.Status == container.StatusPending {
+			case container.StatusPending:
 				statusColor = "\033[1;33m" // yellow
 				status = "starting"
 			}
@@ -942,16 +943,12 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, allocID string) {
 	fmt.Fprintf(s, "\033[1;36mYour machines:\033[0m\r\n")
 	for _, m := range machines {
 		status := m.Status
-		statusColor := ""
-		if status == "running" {
-			statusColor = "\033[1;32m"
-		} else if status == "stopped" {
-			statusColor = "\033[1;31m"
-		} else if status == "pending" {
-			statusColor = "\033[1;33m"
+		statusColors := map[string]string{
+			"running": "\033[1;32m",
+			"stopped": "\033[1;31m",
+			"pending": "\033[1;33m",
 		}
-
-		fmt.Fprintf(s, "  • \033[1m%s\033[0m - %s%s\033[0m", m.Name, statusColor, status)
+		fmt.Fprintf(s, "  • \033[1m%s\033[0m - %s%s\033[0m", m.Name, statusColors[status], status)
 
 		// Add image info if available
 		if m.Image != "" && m.Image != "exeuntu" && m.Image != "ubuntu" {
