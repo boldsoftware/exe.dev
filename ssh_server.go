@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
+	"net"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -38,9 +40,21 @@ func NewSSHServer(s *Server) *SSHServer {
 
 // Start initializes and starts the SSH server
 func (ss *SSHServer) Start(addr string) error {
+	if addr == "" {
+		return fmt.Errorf("SSH server address cannot be empty")
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return fmt.Errorf("failed to get TCP address")
+	}
+
 	// Initialize the gliderlabs SSH server
 	ss.srv = &ssh.Server{
-		Addr:             addr,
+		Addr:             tcpAddr.String(),
 		Handler:          ss.handleSession,
 		PublicKeyHandler: ss.authenticatePublicKey,
 		ChannelHandlers: map[string]ssh.ChannelHandler{
@@ -61,9 +75,10 @@ func (ss *SSHServer) Start(addr string) error {
 	}
 
 	if ss.server == nil || !ss.server.testMode {
-		log.Printf("Starting SSH server on %s", addr)
+		slog.Info("starting SSH server", "addr", tcpAddr.String(), "ip", tcpAddr.IP.String(), "port", tcpAddr.Port)
 	}
-	return ss.srv.ListenAndServe()
+
+	return ss.srv.Serve(ln)
 }
 
 // Stop gracefully stops the SSH server
