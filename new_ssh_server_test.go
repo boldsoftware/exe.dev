@@ -193,7 +193,7 @@ func TestNewSSHServerInteractiveShell(t *testing.T) {
 
 	output := string(buf[:n])
 	// In test mode the animated welcome is shown quickly
-	if !strings.Contains(output, "███████╗") && !strings.Contains(output, "type ssh to get a server") {
+	if !strings.Contains(output, "EXE.DEV") && !strings.Contains(output, "type ssh to get a server") {
 		t.Errorf("Unexpected initial output: %s", output)
 	}
 
