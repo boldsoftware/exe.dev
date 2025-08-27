@@ -84,7 +84,6 @@ func (bs *billingService) GetBillingInfo(allocID string) (*BillingInfo, error) {
 	err := bs.db.QueryRow(`
 		SELECT billing_email, stripe_customer_id 
 		FROM allocs WHERE alloc_id = ?`, allocID).Scan(&emailNull, &customerIDNull)
-
 	if err != nil {
 		return nil, err
 	}
