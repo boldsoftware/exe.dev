@@ -62,7 +62,7 @@ func TestFadeTextInPlace(t *testing.T) {
 	from := RGB{255, 0, 0}
 	to := RGB{0, 0, 255}
 
-	FadeTextInPlace(&buf, lines, 0, from, to, 100*time.Millisecond, 5)
+	FadeTextInPlace(&buf, lines, from, to, 100*time.Millisecond, 5)
 
 	output := buf.String()
 
@@ -166,7 +166,7 @@ func TestFadeTextInPlaceFrames(t *testing.T) {
 	to := RGB{0, 0, 0}
 	frames := 3
 
-	FadeTextInPlace(&buf, lines, 0, from, to, 30*time.Millisecond, frames)
+	FadeTextInPlace(&buf, lines, from, to, 30*time.Millisecond, frames)
 
 	output := buf.String()
 
@@ -223,7 +223,7 @@ func BenchmarkFadeTextInPlace(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
-		FadeTextInPlace(&buf, lines, 0, from, to, 10*time.Millisecond, 2)
+		FadeTextInPlace(&buf, lines, from, to, 10*time.Millisecond, 2)
 	}
 }
 
@@ -234,7 +234,7 @@ func ExampleFadeTextInPlace() {
 	from := RGB{80, 255, 120}
 	to := RGB{0, 0, 0}
 
-	FadeTextInPlace(&buf, lines, 0, from, to, 50*time.Millisecond, 2)
+	FadeTextInPlace(&buf, lines, from, to, 50*time.Millisecond, 2)
 
 	output := buf.String()
 	if strings.Contains(output, "Example") && strings.Contains(output, "\x1b[38;2;") {

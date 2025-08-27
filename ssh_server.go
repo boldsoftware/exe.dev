@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -129,22 +128,6 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 	// email, _ := s.Context().Value("email").(string) // Currently unused
 	// username := s.User()
 
-	// Get terminal dimensions
-	pty, winCh, isPty := s.Pty()
-	var terminalWidth int
-	if isPty {
-		terminalWidth = pty.Window.Width
-	}
-
-	// Handle window size changes
-	if winCh != nil {
-		go func() {
-			for win := range winCh {
-				terminalWidth = win.Width
-			}
-		}()
-	}
-
 	// Check for exec command
 	cmd := s.Command()
 	if len(cmd) > 0 {
@@ -154,16 +137,16 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 	}
 
 	// Handle interactive shell session
-	ss.handleShell(s, publicKey, registered, terminalWidth)
+	ss.handleShell(s, publicKey, registered)
 }
 
 // handleShell handles interactive shell sessions with readline
-func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered bool, terminalWidth int) {
+func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered bool) {
 	// publicKey is already passed as parameter from context
 
 	if !registered {
 		// Handle registration flow
-		ss.handleRegistration(s, publicKey, terminalWidth)
+		ss.handleRegistration(s, publicKey)
 		return
 	}
 
@@ -299,15 +282,11 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 }
 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
-func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
+func (ss *SSHServer) showAnimatedWelcome(s ssh.Session) {
 	// Skip animation in test mode for faster tests
 	if ss.server.testMode {
 		fmt.Fprint(s, "███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n")
 		fmt.Fprint(s, "╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \r\n\r\n")
-		return
-	}
-
-	if os.Getenv("EXE_DEV_NO_BANNER") != "" {
 		return
 	}
 
@@ -321,28 +300,9 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  ",
 	}
 
-	// Use provided terminal width or default
-	if terminalWidth <= 0 {
-		terminalWidth = 140 // Default reasonable width
-	}
-
-	// Calculate art width (longest line) - count visual characters, not bytes
-	artWidth := len([]rune(asciiArt[0]))
-	leftPadding := (terminalWidth - artWidth) / 2
-	if leftPadding < 0 {
-		leftPadding = 0 // Handle edge case of very narrow terminals
-	}
-
-	// Clear screen and move cursor to top
-	fmt.Fprint(s, "\033[2J\033[H")
-
-	// Add just 2 lines of vertical padding from the top
-	fmt.Fprint(s, "\r\n\r\n")
-
-	// Draw each line with padding centered (initial display in green)
-	padding := strings.Repeat(" ", leftPadding)
+	// Draw each line left-aligned (initial display in green)
 	for i, line := range asciiArt {
-		fmt.Fprintf(s, "%s\033[1;92m%s\033[0m", padding, line)
+		fmt.Fprintf(s, "\033[1;92m%s\033[0m", line)
 		if i < len(asciiArt)-1 {
 			fmt.Fprint(s, "\r\n")
 		}
@@ -360,10 +320,10 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session, terminalWidth int) {
 	to := bg
 
 	// Animate with proper 24-bit colors - more frames for smoother animation
-	termfun.FadeTextInPlace(s, asciiArt, leftPadding, from, to, 900*time.Millisecond, 30)
+	termfun.FadeTextInPlace(s, asciiArt, from, to, 900*time.Millisecond, 30)
 
 	// After animation, cursor is at the last line of the art
-	// Move back to first line and clear everything
+	// Move back to first line and clear the art lines
 	fmt.Fprintf(s, "\033[%dA", len(asciiArt)-1)
 	for i := 0; i < len(asciiArt); i++ {
 		fmt.Fprint(s, "\033[2K") // Clear entire line
@@ -425,8 +385,8 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 }
 
 // handleRegistration handles the registration flow using readline
-func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, terminalWidth int) {
-	ss.showAnimatedWelcome(s, terminalWidth)
+func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
+	ss.showAnimatedWelcome(s)
 
 	signupContent := "\r\n\033[1;33mEXE.DEV: get a machine over ssh\033[0m\r\n" +
 		"To sign up, verify your email and set up billing.\r\n\r\n"

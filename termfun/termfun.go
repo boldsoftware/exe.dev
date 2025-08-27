@@ -99,14 +99,12 @@ func parseColorComponent(s string) float64 {
 	return 0
 }
 
-func FadeTextInPlace(w io.Writer, lines []string, leftPadding int, from, to RGB, dur time.Duration, frames int) {
+func FadeTextInPlace(w io.Writer, lines []string, from, to RGB, dur time.Duration, frames int) {
 	al := RGB{srgbToLinear(from.R), srgbToLinear(from.G), srgbToLinear(from.B)}
 	bl := RGB{srgbToLinear(to.R), srgbToLinear(to.G), srgbToLinear(to.B)}
 
 	tick := time.NewTicker(dur / time.Duration(frames))
 	defer tick.Stop()
-
-	padding := strings.Repeat(" ", leftPadding)
 
 	for i := 0; i <= frames; i++ {
 		t := float64(i) / float64(frames)
@@ -125,8 +123,8 @@ func FadeTextInPlace(w io.Writer, lines []string, leftPadding int, from, to RGB,
 		// For all frames, redraw from the current position
 		// The cursor is already at the start of the art area
 		for j, line := range lines {
-			// Clear line, add padding, then colored text
-			fmt.Fprintf(w, "\r\x1b[2K%s\x1b[38;2;%d;%d;%dm%s\x1b[0m", padding, r, g, b, line)
+			// Clear line, then colored text
+			fmt.Fprintf(w, "\r\x1b[2K\x1b[38;2;%d;%d;%dm%s\x1b[0m", r, g, b, line)
 			if j < len(lines)-1 {
 				fmt.Fprint(w, "\r\n")
 			}
