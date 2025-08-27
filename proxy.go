@@ -247,23 +247,6 @@ func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
 	return userID, true
 }
 
-// isUserAuthorizedForTeam checks if the user is authorized to access the team
-// This function is deprecated - use getAuthenticatedUserID + userHasTeamAccess instead
-func (s *Server) isUserAuthorizedForTeam(r *http.Request, teamName string) bool {
-	userID, authenticated := s.getAuthenticatedUserID(r)
-	if !authenticated {
-		return false
-	}
-
-	// Check if user has access to this team
-	hasAccess, err := s.userHasTeamAccess(userID, teamName)
-	if err != nil {
-		return false
-	}
-
-	return hasAccess
-}
-
 // getMainDomain returns the main domain based on dev mode
 func (s *Server) getMainDomain() string {
 	if s.devMode != "" {
@@ -392,7 +375,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	// Delete only this specific cookie from the database
 	if cookieValue != "" {
 		_, err := s.db.Exec(`
-			DELETE FROM auth_cookies 
+			DELETE FROM auth_cookies
 			WHERE cookie_value = ?
 		`, cookieValue)
 		if err != nil {
@@ -610,7 +593,7 @@ func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName st
 
 	// Update database
 	_, err = s.db.Exec(`
-		UPDATE machines SET routes = ? 
+		UPDATE machines SET routes = ?
 		WHERE name = ?`,
 		*machine.Routes, machineName)
 	if err != nil {
@@ -669,7 +652,7 @@ func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName
 
 	// Update database
 	_, err = s.db.Exec(`
-		UPDATE machines SET routes = ? 
+		UPDATE machines SET routes = ?
 		WHERE name = ?`,
 		*machine.Routes, machineName)
 	if err != nil {
@@ -697,10 +680,10 @@ func (s *Server) getMachineForUser(publicKey, machineName string) (*Machine, err
 	// Get the machine
 	var machine Machine
 	err = s.db.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id, 
-		       created_by_user_id, created_at, updated_at, 
+		SELECT id, alloc_id, name, status, image, container_id,
+		       created_by_user_id, created_at, updated_at,
 		       last_started_at, docker_host, routes
-		FROM machines 
+		FROM machines
 		WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
 		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,

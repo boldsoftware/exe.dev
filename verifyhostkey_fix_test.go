@@ -3,7 +3,6 @@ package exe
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/pem"
 	"os"
 	"testing"
 	"time"
@@ -22,24 +21,6 @@ func generateTestHostKey(t *testing.T, keyName string) []byte {
 		t.Fatalf("Failed to create SSH public key: %v", err)
 	}
 	return pubKey.Marshal()
-}
-
-// generateTestServerKeyForHostKey creates a server private key that will produce the given host key
-func generateTestServerKeyForHostKey(t *testing.T, expectedHostKey string) string {
-	// For simplicity in testing, we'll generate a server key and just assume
-	// the GetMachineSSHDetails will derive the host key correctly
-	// In a real scenario, the server identity key would be what generates the expectedHostKey
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("Failed to generate server key: %v", err)
-	}
-
-	pemData, err := ssh.MarshalPrivateKey(priv, "test server key")
-	if err != nil {
-		t.Fatalf("Failed to marshal server key: %v", err)
-	}
-
-	return string(pem.EncodeToMemory(pemData))
 }
 
 // TestVerifyHostKeyImplemented verifies that our piper plugin now implements the VerifyHostKey method

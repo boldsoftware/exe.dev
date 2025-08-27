@@ -59,15 +59,3 @@ func TestLabelLengthFix(t *testing.T) {
 		t.Logf("Created container ID: %s", createdContainer.ID)
 	})
 }
-
-// Helper function to check if a shortened label contains a meaningful prefix
-func containsPrefix(shortened, original string) bool {
-	// The shortened format is "prefix-hash", so we check if it starts with a reasonable prefix
-	if len(original) <= 46 {
-		return shortened == original // Not shortened
-	}
-
-	// Should start with at least some characters from the original
-	expectedPrefix := original[:46] // Max prefix length we use
-	return len(shortened) >= 46 && shortened[:46] == expectedPrefix
-}

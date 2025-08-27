@@ -3,7 +3,6 @@ package exe
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -705,201 +703,6 @@ const helpText2 = "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 	"\033[1mexit\033[0m                    - Exit\r\n\r\n" +
 	"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
 */
-
-// handleMachineSSH handles direct SSH access to a machine
-
-// SSHSessionChannel wraps a gliderlabs SSH session to implement compatibility with sshbuf.Channel
-type SSHSessionChannel struct {
-	ssh.Session
-	mu     sync.Mutex
-	cond   *sync.Cond
-	buf    []byte
-	closed bool
-	err    error
-	done   chan struct{}
-}
-
-// NewSSHSessionChannel creates a new SSHSessionChannel with buffering support
-func NewSSHSessionChannel(s ssh.Session) *SSHSessionChannel {
-	c := &SSHSessionChannel{
-		Session: s,
-		buf:     make([]byte, 0, 4096),
-		done:    make(chan struct{}),
-	}
-	c.cond = sync.NewCond(&c.mu)
-
-	// Start read loop for buffering
-	go c.readLoop()
-
-	return c
-}
-
-func (c *SSHSessionChannel) readLoop() {
-	defer close(c.done)
-
-	readBuf := make([]byte, 4096)
-	for {
-		n, err := c.Session.Read(readBuf)
-
-		c.mu.Lock()
-		if n > 0 {
-			c.buf = append(c.buf, readBuf[:n]...)
-			c.cond.Signal()
-		}
-		if err != nil {
-			c.err = err
-			c.closed = true
-			c.cond.Broadcast()
-			c.mu.Unlock()
-			return
-		}
-		c.mu.Unlock()
-	}
-}
-
-// Read implements buffered reading for compatibility with sshbuf.Channel
-func (c *SSHSessionChannel) Read(p []byte) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	for len(c.buf) == 0 && !c.closed {
-		c.cond.Wait()
-	}
-
-	if len(c.buf) == 0 && c.closed {
-		if c.err != nil {
-			return 0, c.err
-		}
-		return 0, io.EOF
-	}
-
-	n := copy(p, c.buf)
-	c.buf = c.buf[n:]
-
-	if len(c.buf) == 0 && cap(c.buf) > 8192 {
-		c.buf = make([]byte, 0, 4096)
-	}
-
-	return n, nil
-}
-
-// ReadCtx implements context-aware reading
-func (c *SSHSessionChannel) ReadCtx(ctx context.Context, p []byte) (int, error) {
-	if err := ctx.Err(); err != nil {
-		return 0, err
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Fast path: data already available or channel closed
-	if len(c.buf) > 0 || c.closed {
-		if len(c.buf) == 0 && c.closed {
-			if c.err != nil {
-				return 0, c.err
-			}
-			return 0, io.EOF
-		}
-
-		n := copy(p, c.buf)
-		c.buf = c.buf[n:]
-
-		if len(c.buf) == 0 && cap(c.buf) > 8192 {
-			c.buf = make([]byte, 0, 4096)
-		}
-
-		return n, nil
-	}
-
-	// Wait for data with context cancellation
-	done := make(chan struct{})
-	var n int
-	var err error
-
-	go func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		defer close(done)
-
-		for len(c.buf) == 0 && !c.closed {
-			c.cond.Wait()
-		}
-
-		if len(c.buf) == 0 && c.closed {
-			if c.err != nil {
-				err = c.err
-			} else {
-				err = io.EOF
-			}
-			return
-		}
-
-		n = copy(p, c.buf)
-		c.buf = c.buf[n:]
-
-		if len(c.buf) == 0 && cap(c.buf) > 8192 {
-			c.buf = make([]byte, 0, 4096)
-		}
-	}()
-
-	c.mu.Unlock()
-
-	select {
-	case <-ctx.Done():
-		c.mu.Lock()
-		c.cond.Broadcast()
-		return 0, ctx.Err()
-	case <-done:
-		c.mu.Lock()
-		return n, err
-	}
-}
-
-// Unread puts data back at the front of the buffer
-func (c *SSHSessionChannel) Unread(data []byte) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if len(data) == 0 {
-		return
-	}
-
-	// Prepend the data to the buffer
-	newBuf := make([]byte, len(data)+len(c.buf))
-	copy(newBuf, data)
-	copy(newBuf[len(data):], c.buf)
-	c.buf = newBuf
-
-	// Signal any waiting readers
-	c.cond.Signal()
-}
-
-// Write implements the Write method for compatibility
-func (c *SSHSessionChannel) Write(p []byte) (n int, err error) {
-	return c.Session.Write(p)
-}
-
-// Close implements the Close method for compatibility
-func (c *SSHSessionChannel) Close() error {
-	return c.Session.Close()
-}
-
-// CloseWrite implements the CloseWrite method for compatibility
-func (c *SSHSessionChannel) CloseWrite() error {
-	// gliderlabs SSH doesn't have CloseWrite, so we just return nil
-	return nil
-}
-
-// SendRequest implements the SendRequest method for compatibility
-func (c *SSHSessionChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
-	// Not directly supported in gliderlabs SSH sessions
-	return false, nil
-}
-
-// Stderr implements the Stderr method for compatibility
-func (c *SSHSessionChannel) Stderr() io.ReadWriter {
-	return c.Session.Stderr()
-}
 
 // getEmailVerification retrieves an email verification by public key
 func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, bool) {
@@ -1647,46 +1450,6 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	}
 
 	return nil
-}
-
-// getMachine retrieves a machine for the given user/team/name
-func (ss *SSHServer) getMachine(publicKey, allocID, machineName string) (*Machine, error) {
-	// First verify user has access to the alloc
-	var exists bool
-	err := ss.server.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM allocs a
-			JOIN users u ON a.user_id = u.user_id
-			JOIN ssh_keys sk ON u.user_id = sk.user_id
-			WHERE sk.public_key = ? AND a.alloc_id = ?
-		)`, publicKey, allocID).Scan(&exists)
-	if err != nil {
-		return nil, fmt.Errorf("database error: %v", err)
-	}
-	if !exists {
-		return nil, fmt.Errorf("access denied to allocation '%s'", allocID)
-	}
-
-	// Get the machine
-	var machine Machine
-	err = ss.server.db.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id,
-		       created_by_user_id, created_at, updated_at,
-		       last_started_at, docker_host, routes
-		FROM machines
-		WHERE name = ? AND alloc_id = ?`, machineName, allocID).Scan(
-		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
-		&machine.DockerHost, &machine.Routes)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("machine '%s' not found", machineName)
-		}
-		return nil, fmt.Errorf("database error: %v", err)
-	}
-
-	return &machine, nil
 }
 
 func (ss *SSHServer) showBillingInfo(s ssh.Session, alloc *Alloc) {

@@ -739,28 +739,6 @@ func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data
 	return nil
 }
 
-// sendVerificationEmail sends an email verification link
-func (s *Server) sendVerificationEmail(email, token string) error {
-	subject := "Verify your email - exe.dev"
-	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", s.getBaseURL(), token)
-
-	body := fmt.Sprintf(`Hello,
-
-Please click the link below to verify your email address:
-
-%s
-
-This link will expire in 15 minutes.
-
-Best regards,
-The exe.dev team`, verifyURL)
-
-	if s.devMode != "" && !s.quietMode {
-		fmt.Printf("Verification Link: \n%s\n\n", verifyURL)
-	}
-	return s.sendEmail(email, subject, body)
-}
-
 // logAuthAttempt logs all SSH authentication attempts for debugging
 func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error) {
 	if s.testMode {
@@ -2116,20 +2094,6 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
-// userHasTeamAccess checks if a user has access to a team
-func (s *Server) userHasTeamAccess(userID, teamName string) (bool, error) {
-	var count int
-	err := s.db.QueryRow(`
-		SELECT COUNT(*) FROM team_members tm
-		WHERE tm.user_id = ? AND tm.team_name = ?
-	`, userID, teamName).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-
-	return count > 0, nil
-}
-
 // getScheme returns the request scheme
 func getScheme(r *http.Request) string {
 	if r.TLS != nil {
@@ -2142,52 +2106,6 @@ func getScheme(r *http.Request) string {
 type SSHClient interface {
 	Dial(network, addr string) (net.Conn, error)
 	Close() error
-}
-
-func (s *Server) parsePtyRequest(payload []byte) (cols, rows int) {
-	if len(payload) < 12 { // Minimum size for term string + dimensions
-		return 0, 0
-	}
-
-	// Skip terminal type string (4 bytes length + string)
-	if len(payload) < 4 {
-		return 0, 0
-	}
-	termTypeLen := int(payload[0])<<24 | int(payload[1])<<16 | int(payload[2])<<8 | int(payload[3])
-	if len(payload) < 4+termTypeLen+16 { // 4 + term string + 4*uint32
-		return 0, 0
-	}
-
-	offset := 4 + termTypeLen
-
-	// Extract columns (uint32)
-	cols = int(payload[offset])<<24 | int(payload[offset+1])<<16 | int(payload[offset+2])<<8 | int(payload[offset+3])
-	offset += 4
-
-	// Extract rows (uint32)
-	rows = int(payload[offset])<<24 | int(payload[offset+1])<<16 | int(payload[offset+2])<<8 | int(payload[offset+3])
-
-	return cols, rows
-}
-
-// handleSSHShellWithDimensions provides the guided console management tool with terminal dimensions
-func (s *Server) findContainerByName(userID, containerName string) *container.Container {
-	if s.containerManager == nil {
-		return nil
-	}
-
-	containers, err := s.containerManager.ListContainers(context.Background(), userID)
-	if err != nil {
-		return nil
-	}
-
-	for _, c := range containers {
-		if c.Name == containerName {
-			return c
-		}
-	}
-
-	return nil
 }
 
 // FindMachineByNameForUserAndIP returns the machine associated with the userID, ip pair.
@@ -2256,70 +2174,6 @@ func (s *Server) FindMachineByNameForUser(userID, machineName string) *Machine {
 	}
 
 	return machine
-}
-
-// handleListUserAlloc shows the user's allocation info
-func (s *Server) handleListUserAlloc(channel *sshbuf.Channel, publicKey string) {
-	user, err := s.getUserByPublicKey(publicKey)
-	if err != nil || user == nil {
-		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving user: %v\033[0m\r\n", err)))
-		return
-	}
-
-	alloc, err := s.getUserAlloc(user.UserID)
-	if err != nil {
-		channel.Write([]byte(fmt.Sprintf("\033[1;31mError retrieving allocation: %v\033[0m\r\n", err)))
-		return
-	}
-
-	if alloc == nil {
-		channel.Write([]byte("\033[1;33mNo allocation found\033[0m\r\n"))
-		return
-	}
-
-	channel.Write([]byte("\033[1;36m═══ Your Allocation ═══\033[0m\r\n\r\n"))
-	channel.Write([]byte(fmt.Sprintf("  Type: \033[1m%s\033[0m\r\n", alloc.AllocType)))
-	channel.Write([]byte(fmt.Sprintf("  Region: \033[1m%s\033[0m\r\n", alloc.Region)))
-	channel.Write([]byte(fmt.Sprintf("  Created: %s\r\n", alloc.CreatedAt.Format("Jan 2, 2006"))))
-	channel.Write([]byte(fmt.Sprintf("  Machines: \033[1;36m<name>@exe.dev\033[0m\r\n")))
-
-	// List machines in this alloc
-	machines, err := s.getMachinesForAlloc(alloc.AllocID)
-	if err == nil && len(machines) > 0 {
-		channel.Write([]byte("\r\n  \033[1mMachines:\033[0m\r\n"))
-		for _, m := range machines {
-			statusColor := "\033[1;31m" // red for stopped
-			if m.Status == "running" {
-				statusColor = "\033[1;32m" // green for running
-			}
-			channel.Write([]byte(fmt.Sprintf("    - %s %s[%s]\033[0m\r\n", m.Name, statusColor, m.Status)))
-		}
-	}
-
-	channel.Write([]byte("\r\n\033[2mTo access a machine: ssh <machine>@exe.dev\033[0m\r\n"))
-}
-
-// createUserSession creates a new user session for a channel
-func (s *Server) createUserSession(channel *sshbuf.Channel, userID string, email, teamName, publicKey string, isAdmin bool) {
-	session := &UserSession{
-		UserID:    userID,
-		Email:     email,
-		TeamName:  teamName,
-		IsAdmin:   isAdmin,
-		PublicKey: publicKey,
-		CreatedAt: time.Now(),
-	}
-
-	s.sessionsMu.Lock()
-	s.sessions[channel] = session
-	s.sessionsMu.Unlock()
-}
-
-// removeUserSession removes a user session for a channel
-func (s *Server) removeUserSession(channel *sshbuf.Channel) {
-	s.sessionsMu.Lock()
-	delete(s.sessions, channel)
-	s.sessionsMu.Unlock()
 }
 
 // handleListCommand lists user's machines
@@ -2415,35 +2269,6 @@ func (s *Server) formatSSHConnectionInfo(allocID, machineName string) string {
 	return fmt.Sprintf("ssh %s@exe.dev", machineName)
 }
 
-// isValidStorageSize validates a Kubernetes storage size string (e.g., "10Gi", "100Gi")
-func isValidStorageSize(size string) bool {
-	// Check if it matches pattern: number + unit (Ki, Mi, Gi, Ti)
-	if len(size) < 2 {
-		return false
-	}
-
-	// Extract numeric part
-	i := 0
-	for i < len(size) && (size[i] >= '0' && size[i] <= '9') {
-		i++
-	}
-
-	if i == 0 {
-		return false // No numeric part
-	}
-
-	// Check unit suffix
-	unit := size[i:]
-	validUnits := []string{"Ki", "Mi", "Gi", "Ti"}
-	for _, valid := range validUnits {
-		if unit == valid {
-			return true
-		}
-	}
-
-	return false
-}
-
 // denylistedMachineNames contains common computer-related five+ letter words that are not allowed as machine names
 var denylistedMachineNames = map[string]bool{
 	"teams": true,
@@ -2517,11 +2342,6 @@ func (s *Server) isValidMachineName(name string) bool {
 	return matched
 }
 
-// handleCreateCommandWithStdin creates a new machine with support for stdin Dockerfile and flag-based parameters
-func (s *Server) isValidContainerName(name string) bool {
-	return s.isValidTeamName(name) // Reuse team name validation
-}
-
 // getDefaultRoutesJSON returns the default routes as a JSON string
 func getDefaultRoutesJSON() string {
 	var machine Machine
@@ -2547,25 +2367,6 @@ func (s *Server) createMachine(userID, allocID, name, containerID, image string)
 		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, allocID, name, "pending", image, containerID, userID, routes,
-		"test-identity-key", "test-authorized-keys", "test-ca-key",
-		"test-host-cert", "test-client-key", 2222)
-	return err
-}
-
-// createMachineWithDockerHost stores machine info including docker host in database
-func (s *Server) createMachineWithDockerHost(userID, allocID, name, containerID, image, dockerHost string) error {
-	// Validate machine name
-	if !s.isValidMachineName(name) {
-		return fmt.Errorf("invalid machine name: %s", name)
-	}
-
-	routes := getDefaultRoutesJSON()
-	_, err := s.db.Exec(`
-		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, docker_host, routes,
-		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, allocID, name, "pending", image, containerID, userID, dockerHost, routes,
 		"test-identity-key", "test-authorized-keys", "test-ca-key",
 		"test-host-cert", "test-client-key", 2222)
 	return err
@@ -2623,33 +2424,6 @@ func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, contai
 	return nil
 }
 
-// determineUserShell determines the appropriate shell to use in a container
-func (s *Server) determineUserShell(userFingerprint, containerID string) (string, error) {
-	ctx := context.Background()
-
-	// Get the user's configured shell from passwd database
-	var passwdOut strings.Builder
-	err := s.containerManager.ExecuteInContainer(
-		ctx,
-		userFingerprint,
-		containerID,
-		[]string{"sh", "-c", "getent passwd $(whoami) | cut -d: -f7"},
-		nil,
-		&passwdOut,
-		nil,
-	)
-
-	if err == nil {
-		shell := strings.TrimSpace(passwdOut.String())
-		if shell != "" {
-			return shell, nil
-		}
-	}
-
-	// Fallback to /bin/sh if getent fails
-	return "/bin/sh", nil
-}
-
 // getMachineByName retrieves a machine by name and team
 func (s *Server) getMachineByName(name string) (*Machine, error) {
 	var machine Machine
@@ -2700,146 +2474,6 @@ func (s *Server) getMachinesForAlloc(allocID string) ([]*Machine, error) {
 	return machines, nil
 }
 
-// getMachinesForUser gets all machines for a user across all their allocs
-func (s *Server) getMachinesForUser(userID string) ([]*Machine, error) {
-	rows, err := s.db.Query(`
-		SELECT m.id, m.alloc_id, m.name, m.status, m.image, m.container_id, m.created_by_user_id,
-		       m.created_at, m.updated_at, m.last_started_at, m.docker_host, m.routes,
-		       m.ssh_server_identity_key, m.ssh_authorized_keys, m.ssh_ca_public_key,
-		       m.ssh_host_certificate, m.ssh_client_private_key, m.ssh_port
-		FROM machines m
-		JOIN allocs a ON m.alloc_id = a.alloc_id
-		WHERE a.user_id = ?
-		ORDER BY m.name
-	`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var machines []*Machine
-	for rows.Next() {
-		var m Machine
-		err := rows.Scan(
-			&m.ID, &m.AllocID, &m.Name, &m.Status, &m.Image, &m.ContainerID, &m.CreatedByUserID,
-			&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.DockerHost, &m.Routes,
-			&m.SSHServerIdentityKey, &m.SSHAuthorizedKeys, &m.SSHCAPublicKey, &m.SSHHostCertificate, &m.SSHClientPrivateKey, &m.SSHPort,
-		)
-		if err != nil {
-			return nil, err
-		}
-		machines = append(machines, &m)
-	}
-	return machines, nil
-}
-
-// handleRegistration manages the user registration process with email verification and billing
-// showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
-func (s *Server) showAnimatedWelcome(channel *sshbuf.Channel) {
-	s.showAnimatedWelcomeWithWidth(channel, 0)
-}
-
-// showAnimatedWelcomeWithWidth displays the ASCII art with a beautiful fade-out animation using specified terminal width
-func (s *Server) showAnimatedWelcomeWithWidth(channel *sshbuf.Channel, terminalWidth int) {
-	// Skip animation in test mode for faster tests
-	if s.testMode {
-		channel.Write([]byte("\033[2J\033[H"))
-		channel.Write([]byte("███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗\r\n"))
-		channel.Write([]byte("╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  \r\n\r\n"))
-		return
-	}
-
-	// Detect terminal mode (dark or light)
-	terminalMode := s.detectTerminalMode(channel)
-
-	// Clear any remaining OSC response from the buffer
-	s.clearOSCResponse(channel)
-
-	// Get appropriate colors based on terminal mode
-	colors := s.getTerminalColors(terminalMode)
-
-	// More compact ASCII art that fits better in terminals
-	asciiArt := []string{
-		"███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗",
-		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║",
-		"█████╗   ╚███╔╝ █████╗     ██║  ██║█████╗  ██║   ██║",
-		"██╔══╝   ██╔██╗ ██╔══╝     ██║  ██║██╔══╝  ╚██╗ ██╔╝",
-		"███████╗██╔╝ ██╗███████╗██╗██████╔╝███████╗ ╚████╔╝ ",
-		"╚══════╝╚═╝  ╚═╝╚══════╝╚═╝╚═════╝ ╚══════╝  ╚═══╝  ",
-	}
-
-	// Use provided terminal width or detect it
-	if terminalWidth <= 0 {
-		terminalWidth = s.getTerminalWidth(channel)
-	}
-
-	// Calculate art width (longest line) - count visual characters, not bytes
-	artWidth := s.getVisualWidth(asciiArt[0])
-	leftPadding := (terminalWidth - artWidth) / 2
-	if leftPadding < 0 {
-		leftPadding = 0 // Handle edge case of very narrow terminals
-	}
-
-	// Debug logging without disrupting the display
-	if !s.quietMode {
-		slog.Debug("ASCII art centering", "terminal_width", terminalWidth, "art_width", artWidth, "padding", leftPadding, "mode", terminalMode)
-	}
-
-	// Clear screen and move cursor to top
-	channel.Write([]byte("\033[2J\033[H"))
-
-	// Add some vertical padding to center vertically
-	channel.Write([]byte("\r\n\r\n\r\n\r\n\r\n"))
-
-	// Add 3 additional blank lines above the ASCII art
-	channel.Write([]byte("\r\n\r\n\r\n"))
-
-	// Show the art with fade animation
-	for _, step := range colors.fadeSteps {
-		// Clear the previous art area
-		channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
-
-		// Draw the art with current color
-		for _, line := range asciiArt {
-			padding := strings.Repeat(" ", leftPadding)
-			channel.Write([]byte(fmt.Sprintf("%s%s%s\033[0m\r\n", padding, step.color, line)))
-		}
-
-		// Wait before next step
-		time.Sleep(step.delay)
-	}
-
-	// Move cursor back up and clear the art area completely
-	channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
-	for i := 0; i < len(asciiArt); i++ {
-		channel.Write([]byte("\033[2K\r\n")) // Clear entire line and move to next
-	}
-
-	// Move cursor back to where the art was
-	channel.Write([]byte(fmt.Sprintf("\033[%dA", len(asciiArt))))
-}
-
-// getVisualWidth calculates the actual visual width of a string with Unicode characters
-func (s *Server) getVisualWidth(text string) int {
-	// Convert to runes to count actual characters, not bytes
-	runes := []rune(text)
-	return len(runes)
-}
-
-// getTerminalWidth attempts to determine the terminal width through multiple methods
-func (s *Server) getTerminalWidth(channel *sshbuf.Channel) int {
-	// Method 1: Try to get from environment (SSH often sets this)
-	if cols := os.Getenv("COLUMNS"); cols != "" {
-		if width, err := strconv.Atoi(cols); err == nil && width > 20 {
-			return width
-		}
-	}
-
-	// Method 2: Use the actual terminal width you reported
-	// You mentioned having a 140-character terminal, so let's use that
-	return 140
-}
-
 // isValidEmail performs basic email validation
 func (s *Server) isValidEmail(email string) bool {
 	if email == "" {
@@ -2854,36 +2488,6 @@ func (s *Server) isValidEmail(email string) bool {
 
 	domain := email[atIndex+1:]
 	if !strings.Contains(domain, ".") {
-		return false
-	}
-
-	return true
-}
-
-func (s *Server) updatePromptLine(channel *sshbuf.Channel, prompt, input, feedback string) {
-	// Just show feedback on a new line instead of trying to be clever
-	channel.Write([]byte(fmt.Sprintf("\r\n%s\r\n%s", feedback, prompt)))
-}
-
-// isValidTeamName validates team name format
-func (s *Server) isValidTeamName(teamName string) bool {
-	if len(teamName) < 3 || len(teamName) > 20 {
-		return false
-	}
-
-	for _, char := range teamName {
-		if !((char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') || char == '-') {
-			return false
-		}
-	}
-
-	// Cannot start or end with hyphen
-	if teamName[0] == '-' || teamName[len(teamName)-1] == '-' {
-		return false
-	}
-
-	// Cannot have consecutive hyphens
-	if strings.Contains(teamName, "--") {
 		return false
 	}
 
@@ -3283,21 +2887,6 @@ func (s *Server) createUser(publicKey, email string) error {
 	return tx.Commit()
 }
 
-// Team-related functions have been removed as teams are no longer user-facing.
-// Users now have direct resource allocations (allocs) instead.
-
-// getDefaultTeamForUser - deprecated, teams no longer exist
-func (s *Server) getDefaultTeamForUser(userID string) (string, error) {
-	// Teams no longer exist - return empty string
-	return "", nil
-}
-
-// setDefaultTeamForKey - deprecated, teams no longer exist
-func (s *Server) setDefaultTeamForKey(userID, teamName string) error {
-	// Teams no longer exist - no-op
-	return nil
-}
-
 // Stop gracefully shuts down all servers
 func (s *Server) Stop() error {
 	s.mu.Lock()
@@ -3546,12 +3135,6 @@ func (s *Server) getUserIDByPublicKey(publicKey ssh.PublicKey) (string, error) {
 		return "", fmt.Errorf("database error: %w", err)
 	}
 	return userID, nil
-}
-
-// getUserBySSHKey retrieves a user by their SSH public key
-func (s *Server) getUserBySSHKey(publicKey ssh.PublicKey) (*User, error) {
-	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
-	return s.getUserByPublicKey(publicKeyStr)
 }
 
 // GetUserByEmail retrieves a user by their email address
