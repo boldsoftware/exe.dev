@@ -56,7 +56,7 @@ func DefaultConfig() *Config {
 
 // validateConfig ensures all required fields are present
 func validateConfig(cfg *Config) error {
-	if cfg.DockerHosts == nil || len(cfg.DockerHosts) == 0 {
+	if len(cfg.DockerHosts) == 0 {
 		return fmt.Errorf("at least one Docker host is required")
 	}
 	return nil
