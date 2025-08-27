@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"exe.dev/exedb"
 	_ "modernc.org/sqlite"
 )
 
@@ -365,7 +366,7 @@ func TestMagicAuthFlow(t *testing.T) {
 	defer db.Close()
 
 	// Use proper migration system
-	err = runMigrations(db)
+	err = exedb.RunMigrations(db)
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -739,7 +740,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 	defer db.Close()
 
 	// Use proper migration system
-	err = runMigrations(db)
+	err = exedb.RunMigrations(db)
 	if err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}
