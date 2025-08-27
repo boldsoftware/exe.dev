@@ -190,6 +190,10 @@ jobs:
 
       - name: Push to main
         run: |
+          # Configure git for rebase operations
+          git config --global user.name "Auto-formatter"
+          git config --global user.email "bot@exe.dev"
+
           # Try to rebase onto main and push
           git fetch origin main
 
