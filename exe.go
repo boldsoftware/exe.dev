@@ -891,7 +891,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Handle root path and user dashboard
 	path := r.URL.Path
-	if path == "/" {
+	switch path {
+	case "/":
 		// In production mode, require basic auth for home page
 		if s.devMode == "" {
 			user, pass, ok := r.BasicAuth()
@@ -911,8 +912,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// User not authenticated, serve welcome page
-		path = "/welcome.html"
-	} else if path == "/~" || path == "/~/" {
+		s.serveStaticFile(w, r, "welcome.html")
+		return
+	case "/~", "/~/":
 		// User dashboard - require authentication
 		cookie, err := r.Cookie("exe-auth")
 		if err != nil || cookie.Value == "" {
@@ -930,9 +932,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.handleUserDashboard(w, r, userID)
 		return
-	}
-
-	switch path {
 	case "/health":
 		s.handleHealth(w, r)
 	case "/metrics":
