@@ -13,6 +13,7 @@ import (
 
 // TestRealContainerSSHSetup creates an actual container and verifies the authorized_keys content
 func TestRealContainerSSHSetup(t *testing.T) {
+	t.Parallel()
 	start := time.Now()
 	defer func() {
 		duration := time.Since(start)

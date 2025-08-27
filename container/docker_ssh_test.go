@@ -10,6 +10,7 @@ import (
 )
 
 func TestDockerExecuteInContainer(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping Docker test in short mode")
 	}

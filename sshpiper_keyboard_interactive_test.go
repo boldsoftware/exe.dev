@@ -49,6 +49,7 @@ func (m *mockConnection) UniqueID() string {
 }
 
 func TestKeyboardInteractiveAuthentication(t *testing.T) {
+	t.Parallel()
 	// Create a temporary database
 	tmpDB, err := os.CreateTemp("", "test-*.db")
 	if err != nil {
@@ -109,6 +110,7 @@ func TestKeyboardInteractiveAuthentication(t *testing.T) {
 }
 
 func TestAuthMethodAdvertisement(t *testing.T) {
+	t.Parallel()
 	// Create a temporary database
 	tmpDB, err := os.CreateTemp("", "test-*.db")
 	if err != nil {
@@ -165,6 +167,7 @@ func TestAuthMethodAdvertisement(t *testing.T) {
 }
 
 func TestKeyboardInteractiveNoRetries(t *testing.T) {
+	t.Parallel()
 	// Create a temporary database
 	tmpDB, err := os.CreateTemp("", "test-*.db")
 	if err != nil {

@@ -14,6 +14,8 @@ import (
 
 // TestAuthLogCallback tests that our SSH server properly logs authentication attempts
 func TestAuthLogCallback(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -90,6 +92,8 @@ func TestAuthLogCallback(t *testing.T) {
 
 // TestAuthLogCallbackInServerConfig tests that the AuthLogCallback is properly configured
 func TestAuthLogCallbackInServerConfig(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -128,6 +132,8 @@ func TestAuthLogCallbackInServerConfig(t *testing.T) {
 
 // TestAuthLogSkipsInTestMode verifies logging is disabled in test mode
 func TestAuthLogSkipsInTestMode(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {

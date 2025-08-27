@@ -10,6 +10,7 @@ import (
 // TestMultiDockerHostSSH tests SSH connectivity with multiple docker hosts
 // This test verifies the fix for multi-dockerhost SSH routing
 func TestMultiDockerHostSSH(t *testing.T) {
+	t.Parallel()
 	// This test verifies the fix for multi-dockerhost SSH routing
 
 	// Create test server with database
@@ -84,6 +85,7 @@ func TestMultiDockerHostSSH(t *testing.T) {
 
 // TestDockerHostPersistence tests that docker host information is persisted in the database
 func TestDockerHostPersistence(t *testing.T) {
+	t.Parallel()
 	// This test verifies that docker host information is now properly stored
 
 	// Create test server with database

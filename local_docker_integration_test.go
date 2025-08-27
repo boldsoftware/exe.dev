@@ -9,6 +9,7 @@ import (
 )
 
 func TestLocalDockerIntegration(t *testing.T) {
+	t.Parallel()
 	// Skip if Docker is not available
 	if os.Getenv("SKIP_DOCKER_TESTS") != "" {
 		t.Skip("Skipping Docker integration test")
@@ -84,6 +85,8 @@ func TestLocalDockerIntegration(t *testing.T) {
 }
 
 func TestDevModeString(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		devMode string
 		valid   bool

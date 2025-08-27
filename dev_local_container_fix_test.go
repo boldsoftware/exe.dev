@@ -10,6 +10,7 @@ import (
 
 // TestDevLocalContainerFix tests that the Docker container lookup bug is fixed
 func TestDevLocalContainerFix(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}

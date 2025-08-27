@@ -6,6 +6,8 @@ import (
 )
 
 func TestSSHHostKeyPersistence(t *testing.T) {
+	t.Parallel()
+
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_hostkey_*.db")
 	if err != nil {
@@ -71,6 +73,8 @@ func TestSSHHostKeyPersistence(t *testing.T) {
 }
 
 func TestSSHHostKeyTable(t *testing.T) {
+	t.Parallel()
+
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_hostkey_table_*.db")
 	if err != nil {

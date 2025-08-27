@@ -5,6 +5,8 @@ import (
 )
 
 func TestIsValidStorageSize(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input    string
 		expected bool

@@ -29,6 +29,7 @@ func setupTestServerWithDB(t *testing.T) (*Server, *os.File) {
 
 // TestMultiDockerHostDatabasePersistence tests that docker host information is properly stored and retrieved
 func TestMultiDockerHostDatabasePersistence(t *testing.T) {
+	t.Parallel()
 	// Create test server with database
 	server, tempDB := setupTestServerWithDB(t)
 	defer tempDB.Close()
@@ -104,6 +105,7 @@ func TestMultiDockerHostDatabasePersistence(t *testing.T) {
 
 // TestSSHRoutingWithDockerHost tests that SSH routing uses the correct docker host
 func TestSSHRoutingWithDockerHost(t *testing.T) {
+	t.Parallel()
 	// This test verifies that the piper routing logic correctly extracts
 	// hostnames from DOCKER_HOST values for SSH connections
 
@@ -168,6 +170,7 @@ func TestSSHRoutingWithDockerHost(t *testing.T) {
 
 // TestMultiDockerHostSchemaCompatibility tests backward compatibility with existing machines
 func TestMultiDockerHostSchemaCompatibility(t *testing.T) {
+	t.Parallel()
 	// Create test server with database
 	server, tempDB := setupTestServerWithDB(t)
 	defer tempDB.Close()

@@ -9,6 +9,8 @@ import (
 
 // TestCommandParsing tests that command parsing handles quotes correctly
 func TestCommandParsing(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		command  string
@@ -80,6 +82,8 @@ func TestCommandParsing(t *testing.T) {
 
 // TestSSHCommandParsingIntegration tests that the actual command parsing in the SSH server uses shlex
 func TestSSHCommandParsingIntegration(t *testing.T) {
+	t.Parallel()
+
 	// Test the specific problematic command from the issue
 	command := `new --image=quay.io/jupyter/datascience-notebook --command="start-notebook.py --IdentityProvider.token=''"`
 

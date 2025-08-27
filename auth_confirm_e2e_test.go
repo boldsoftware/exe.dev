@@ -12,6 +12,7 @@ import (
 
 // TestAuthConfirmE2EFlow tests the complete end-to-end flow with the interstitial page
 func TestAuthConfirmE2EFlow(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping E2E integration test in short mode")
 	}

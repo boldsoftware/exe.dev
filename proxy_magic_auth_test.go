@@ -11,6 +11,7 @@ import (
 // TestProxyMagicAuthFlow tests the complete proxy magic authentication flow
 // to debug the infinite redirect issue
 func TestProxyMagicAuthFlow(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -252,6 +253,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 
 // TestProxyMagicAuthUnauthorized tests that authenticated users cannot access machines in other users' allocs
 func TestProxyMagicAuthUnauthorized(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}

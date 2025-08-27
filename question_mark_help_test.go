@@ -6,6 +6,8 @@ import (
 )
 
 func TestQuestionMarkHelp(t *testing.T) {
+	t.Parallel()
+
 	// Test that the help text (without ASCII art) includes the "?" alias
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
 		"\033[1mlist\033[0m           - List your containers\r\n" +
@@ -39,6 +41,8 @@ func TestQuestionMarkHelp(t *testing.T) {
 }
 
 func TestQuestionMarkCommandParsing(t *testing.T) {
+	t.Parallel()
+
 	// Test that the switch statement logic will handle both "help" and "?" correctly
 	// This tests the Go language feature that case "help", "?" works as expected
 

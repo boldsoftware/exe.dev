@@ -8,6 +8,7 @@ import (
 // TestTeamNameSuggestionFromEmail tests the logic for extracting and cleaning
 // team name suggestions from email addresses during registration
 func TestTeamNameSuggestionFromEmail(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		email              string
 		expectedSuggestion string

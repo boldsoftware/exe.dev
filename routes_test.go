@@ -11,6 +11,7 @@ import (
 )
 
 func TestRouteStructs(t *testing.T) {
+	t.Parallel()
 	// Test default routes creation
 	var machine Machine
 	routes := machine.getDefaultRoutes()
@@ -48,6 +49,7 @@ func TestRouteStructs(t *testing.T) {
 }
 
 func TestMachineRoutes(t *testing.T) {
+	t.Parallel()
 	machine := Machine{}
 
 	// Test getting routes when none are set (should return defaults)
@@ -104,6 +106,7 @@ func TestMachineRoutes(t *testing.T) {
 }
 
 func TestProxyHostnameParsing(t *testing.T) {
+	t.Parallel()
 	server := &Server{}
 
 	tests := []struct {
@@ -142,6 +145,7 @@ func TestProxyHostnameParsing(t *testing.T) {
 }
 
 func TestRouteMatching(t *testing.T) {
+	t.Parallel()
 	server := &Server{}
 
 	routes := MachineRoutes{
@@ -201,6 +205,7 @@ func TestRouteMatching(t *testing.T) {
 }
 
 func TestMachineCreationWithRoutes(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_routes_*.db")
 	if err != nil {
@@ -274,6 +279,7 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 }
 
 func TestHandleProxyRequest(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	dbFile := "/tmp/test_proxy.db"
 	defer os.Remove(dbFile)
@@ -406,6 +412,7 @@ func TestHandleProxyRequest(t *testing.T) {
 }
 
 func TestRouteSorting(t *testing.T) {
+	t.Parallel()
 	server := &Server{}
 
 	// Create routes with different priorities
@@ -467,6 +474,7 @@ func (m *mockSession) Write(p []byte) (n int, err error) {
 }
 
 func TestRouteCommandsEndToEnd(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	dbFile := "/tmp/test_route_commands.db"
 	defer os.Remove(dbFile)

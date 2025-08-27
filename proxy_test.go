@@ -12,6 +12,7 @@ import (
 )
 
 func TestProxyRequestRouting(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	dbFile := "/tmp/test_proxy_routing.db"
 	defer os.Remove(dbFile)
@@ -211,6 +212,7 @@ func TestProxyRequestRouting(t *testing.T) {
 }
 
 func TestProxyRequestDetails(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	dbFile := "/tmp/test_proxy_details.db"
 	defer os.Remove(dbFile)
@@ -351,6 +353,7 @@ func TestProxyRequestDetails(t *testing.T) {
 }
 
 func TestMagicAuthFlow(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	dbFile := "/tmp/test_magic_auth.db"
 	defer os.Remove(dbFile)
@@ -566,6 +569,7 @@ func TestMagicAuthFlow(t *testing.T) {
 
 // TestProxyDebugPath tests the debug path handling in dev mode
 func TestProxyDebugPath(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	dbFile := "/tmp/test_proxy_debug.db"
 	defer os.Remove(dbFile)
@@ -723,6 +727,7 @@ func TestProxyDebugPath(t *testing.T) {
 }
 
 func TestProxyLogoutFlow(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	dbFile := "/tmp/test_proxy_logout_5dd277dc.db"
 	defer os.Remove(dbFile)

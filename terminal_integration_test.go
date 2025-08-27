@@ -58,6 +58,7 @@ func TestTerminalRouting(t *testing.T) {
 }
 
 func TestTerminalPageRequiresAuth(t *testing.T) {
+	t.Parallel()
 	// Create test server
 	server, cleanup := setupTestServerWithCleanup(t)
 	defer cleanup()
@@ -85,6 +86,7 @@ func TestTerminalPageRequiresAuth(t *testing.T) {
 }
 
 func TestTerminalStaticFiles(t *testing.T) {
+	t.Parallel()
 	// Create test server
 	server, cleanup := setupTestServerWithCleanup(t)
 	defer cleanup()
@@ -115,6 +117,7 @@ func TestTerminalStaticFiles(t *testing.T) {
 }
 
 func TestTerminalCleanupTimer(t *testing.T) {
+	t.Parallel()
 	// Test that inactive terminals are cleaned up
 	// This is a quick unit test of the cleanup logic
 	oldCleanupTicker := cleanupTicker
@@ -146,6 +149,7 @@ func TestTerminalCleanupTimer(t *testing.T) {
 }
 
 func TestTerminalHostnameParsing(t *testing.T) {
+	t.Parallel()
 	// Create test server
 	server, cleanup := setupTestServerWithCleanup(t)
 	defer cleanup()

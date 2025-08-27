@@ -27,6 +27,7 @@ import (
 // 4. Create a machine
 // 5. List machines to verify it was created
 func TestSSHRegistrationE2EWithPTY(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping e2e PTY test in short mode")
 	}

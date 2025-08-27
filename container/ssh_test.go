@@ -89,6 +89,7 @@ func TestContainerWithSSH(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	config := &Config{
 		DockerHosts:          []string{""},

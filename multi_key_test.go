@@ -11,6 +11,7 @@ import (
 )
 
 func TestMultiKeyAuthentication(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_multikey_*.db")
 	if err != nil {
@@ -186,6 +187,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 }
 
 func TestEmailBySSHKey(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_emailkey_*.db")
 	if err != nil {

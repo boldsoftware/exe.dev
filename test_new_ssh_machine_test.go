@@ -18,6 +18,7 @@ import (
 
 // TestNewSSHServerMachineConnection tests SSH connection to a specific machine
 func TestNewSSHServerMachineConnection(t *testing.T) {
+	t.Parallel()
 	// Create a test server
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_machine_%d.db", time.Now().UnixNano())
 	defer func() {

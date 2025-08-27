@@ -45,6 +45,8 @@ func generateTestServerKeyForHostKey(t *testing.T, expectedHostKey string) strin
 // TestVerifyHostKeyImplemented verifies that our piper plugin now implements the VerifyHostKey method
 // and properly validates host keys instead of accepting all keys.
 func TestVerifyHostKeyImplemented(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -98,6 +100,8 @@ func TestVerifyHostKeyImplemented(t *testing.T) {
 // TestSSHPiperNoVerifyHostKeyError tests that SSH connections through the piper
 // no longer fail with "method VerifyHostKey not implemented"
 func TestSSHPiperNoVerifyHostKeyError(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -131,6 +135,8 @@ func TestSSHPiperNoVerifyHostKeyError(t *testing.T) {
 // TestVerifyHostKeyRejectsUnknownKeys verifies our implementation properly rejects unknown host keys
 // and only accepts keys from machines with stored expected host keys
 func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -200,6 +206,8 @@ func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 
 // TestVerifyHostKeyAcceptsKnownKeys verifies that stored host keys are properly validated
 func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -247,6 +255,8 @@ func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 
 // TestVerifyHostKeyExpiration verifies that expired host keys are rejected
 func TestVerifyHostKeyExpiration(t *testing.T) {
+	t.Parallel()
+
 	// Create test database
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {

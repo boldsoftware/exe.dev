@@ -53,6 +53,7 @@ func (m *MockChannelWithResponse) Stderr() io.ReadWriter {
 }
 
 func TestParseBackgroundColor(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		response string
@@ -131,6 +132,8 @@ func TestParseBackgroundColor(t *testing.T) {
 }
 
 func TestDetectTerminalMode(t *testing.T) {
+	t.Parallel()
+
 	// Create a test server
 	server := &Server{
 		quietMode: true,
@@ -187,6 +190,7 @@ func TestDetectTerminalMode(t *testing.T) {
 }
 
 func TestGetTerminalColors(t *testing.T) {
+	t.Parallel()
 	server := &Server{
 		quietMode: true,
 	}
@@ -233,6 +237,7 @@ func TestGetTerminalColors(t *testing.T) {
 }
 
 func TestGetGrayText(t *testing.T) {
+	t.Parallel()
 	server := &Server{
 		quietMode: true,
 	}
@@ -278,6 +283,7 @@ func TestGetGrayText(t *testing.T) {
 }
 
 func TestClearOSCResponse(t *testing.T) {
+	t.Parallel()
 	server := &Server{
 		quietMode: true,
 	}

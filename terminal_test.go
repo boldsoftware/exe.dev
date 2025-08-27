@@ -145,6 +145,8 @@ var _ ssh.Channel = (*MockSSHChannel)(nil)
 
 // Test simple output formatting
 func TestTerminalFormatting(t *testing.T) {
+	t.Parallel()
+
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
@@ -189,6 +191,8 @@ func TestTerminalFormatting(t *testing.T) {
 
 // TestInteractiveFlow tests what happens when we simulate real SSH interaction
 func TestInteractiveFlow(t *testing.T) {
+	t.Parallel()
+
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
@@ -249,6 +253,8 @@ func TestInteractiveFlow(t *testing.T) {
 
 // TestCumulativeOffsetBug tests if there's a cumulative offset issue
 func TestCumulativeOffsetBug(t *testing.T) {
+	t.Parallel()
+
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
@@ -324,6 +330,8 @@ func TestCumulativeOffsetBug(t *testing.T) {
 
 // TestMixedLineEndingsBug tests the specific mixed line endings issue
 func TestMixedLineEndingsBug(t *testing.T) {
+	t.Parallel()
+
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
@@ -382,6 +390,8 @@ func TestMixedLineEndingsBug(t *testing.T) {
 
 // TestFixedLineEndingsBug tests that the line endings fix works
 func TestFixedLineEndingsBug(t *testing.T) {
+	t.Parallel()
+
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
@@ -435,6 +445,7 @@ func TestFixedLineEndingsBug(t *testing.T) {
 
 // TestReadLineFromChannelBehavior tests the exact behavior of readLineFromChannel
 func TestReadLineFromChannelBehavior(t *testing.T) {
+	t.Parallel()
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
@@ -521,6 +532,7 @@ func TestReadLineFromChannelBehavior(t *testing.T) {
 
 // TestActualSSHTerminalBehavior tests the real SSH scenario that causes problems
 func TestActualSSHTerminalBehavior(t *testing.T) {
+	t.Parallel()
 	term, err := NewTerminalEmulator()
 	if err != nil {
 		t.Skipf("Could not create terminal emulator: %v", err)
@@ -579,6 +591,7 @@ func TestActualSSHTerminalBehavior(t *testing.T) {
 
 // TestRealSSHIntegration tests with actual SSH server and client
 func TestRealSSHIntegration(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping SSH integration test in short mode")
 	}

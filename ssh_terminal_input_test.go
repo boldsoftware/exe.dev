@@ -15,6 +15,7 @@ import (
 // TestSSHTerminalInputDuringRegistration tests that terminal input works correctly during registration
 // This test specifically checks that we can type during the email prompt
 func TestSSHTerminalInputDuringRegistration(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_terminal_input_*.db")
 	if err != nil {
@@ -144,6 +145,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 
 // TestSSHTerminalModes tests that PTY modes are correctly handled
 func TestSSHTerminalModes(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_pty_modes_*.db")
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 
 // TestAuthConfirmInterstitial tests the interstitial confirmation page functionality
 func TestAuthConfirmInterstitial(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}

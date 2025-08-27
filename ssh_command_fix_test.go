@@ -8,6 +8,8 @@ import (
 
 // TestJupyterCommandFix tests the specific fix for the jupyter notebook command
 func TestJupyterCommandFix(t *testing.T) {
+	t.Parallel()
+
 	// This is the exact command from the user's issue
 	problematicCommand := `new --image=quay.io/jupyter/datascience-notebook --command="start-notebook.py --IdentityProvider.token=''"`
 
@@ -44,6 +46,8 @@ func TestJupyterCommandFix(t *testing.T) {
 
 // TestOtherQuotedCommands tests various other quoted command scenarios
 func TestOtherQuotedCommands(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		command  string

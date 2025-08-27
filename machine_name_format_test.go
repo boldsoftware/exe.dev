@@ -7,6 +7,7 @@ import (
 
 // TestMachineNameFormatParsing tests machine name parsing with the new alloc-based system
 func TestMachineNameFormatParsing(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -109,6 +110,8 @@ func TestMachineNameFormatParsing(t *testing.T) {
 
 // TestFormatSSHConnectionInfo tests the SSH connection format with the new naming
 func TestFormatSSHConnectionInfo(t *testing.T) {
+	t.Parallel()
+
 	server := &Server{}
 
 	tests := []struct {

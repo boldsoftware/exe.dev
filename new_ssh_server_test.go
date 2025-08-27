@@ -16,6 +16,7 @@ import (
 
 // TestNewSSHServerBasicConnection tests basic connection to the new SSH server
 func TestNewSSHServerBasicConnection(t *testing.T) {
+	t.Parallel()
 	// Create a test server
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)
@@ -97,6 +98,7 @@ func TestNewSSHServerBasicConnection(t *testing.T) {
 
 // TestNewSSHServerInteractiveShell tests interactive shell with the new SSH server
 func TestNewSSHServerInteractiveShell(t *testing.T) {
+	t.Parallel()
 	// Create a test server
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_shell_%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)
@@ -204,6 +206,7 @@ func TestNewSSHServerInteractiveShell(t *testing.T) {
 
 // TestNewSSHServerWithRegisteredUser tests the new SSH server with a registered user
 func TestNewSSHServerWithRegisteredUser(t *testing.T) {
+	t.Parallel()
 	// Create a test server
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_registered_%d.db", time.Now().UnixNano())
 	defer os.Remove(dbPath)

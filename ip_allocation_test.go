@@ -6,6 +6,8 @@ import (
 )
 
 func TestMDNSAllocator_IPAllocation(t *testing.T) {
+	t.Parallel()
+
 	// Test IP allocation system without actual mDNS registration
 	strategy := NewMDNSAllocator()
 	err := strategy.Start()
@@ -77,6 +79,8 @@ func TestMDNSAllocator_IPAllocation(t *testing.T) {
 }
 
 func TestMDNSAllocator_MachineLimit(t *testing.T) {
+	t.Parallel()
+
 	strategy := NewMDNSAllocator()
 	err := strategy.Start()
 	if err != nil {
@@ -102,6 +106,8 @@ func TestMDNSAllocator_MachineLimit(t *testing.T) {
 }
 
 func TestMDNSAllocator_MultipleTeamsCanShareIP(t *testing.T) {
+	t.Parallel()
+
 	strategy := NewMDNSAllocator()
 	err := strategy.Start()
 	if err != nil {
@@ -141,6 +147,7 @@ func TestMDNSAllocator_MultipleTeamsCanShareIP(t *testing.T) {
 }
 
 func TestMDNSAllocator_SameTeamDifferentMachines(t *testing.T) {
+	t.Parallel()
 	strategy := NewMDNSAllocator()
 	err := strategy.Start()
 	if err != nil {
@@ -185,6 +192,7 @@ func TestMDNSAllocator_SameTeamDifferentMachines(t *testing.T) {
 }
 
 func TestMDNSAllocator_IPSharingBetweenTeams(t *testing.T) {
+	t.Parallel()
 	strategy := NewMDNSAllocator()
 	err := strategy.Start()
 	if err != nil {
@@ -281,6 +289,7 @@ func TestMDNSAllocator_IPSharingBetweenTeams(t *testing.T) {
 }
 
 func TestMDNSAllocator_IPRangeComment(t *testing.T) {
+	t.Parallel()
 	strategy := NewMDNSAllocator()
 	err := strategy.Start()
 	if err != nil {
@@ -315,6 +324,7 @@ func TestMDNSAllocator_IPRangeComment(t *testing.T) {
 }
 
 func TestMDNSAllocator_TeamMachineLimit(t *testing.T) {
+	t.Parallel()
 	strategy := NewMDNSAllocator()
 	err := strategy.Start()
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 
 // TestSSHPiperIntegration tests the new sshpiper architecture end-to-end
 func TestSSHPiperIntegration(t *testing.T) {
+	t.Parallel()
 	t.Run("ExedStartsWithPiperPlugin", func(t *testing.T) {
 		// Create temporary database file
 		tmpDB, err := os.CreateTemp("", "test_*.db")
@@ -135,6 +136,7 @@ func findAvailablePort(t *testing.T) int {
 
 // TestSSHPiperScript tests the sshpiper.sh script
 func TestSSHPiperScript(t *testing.T) {
+	t.Parallel()
 	// Skip if not in a full environment
 	if testing.Short() {
 		t.Skip("Skipping sshpiper script test in short mode")
@@ -201,6 +203,7 @@ func TestSSHPiperScript(t *testing.T) {
 
 // TestSSHPiperConfiguration tests that sshpiper would start with correct config
 func TestSSHPiperConfiguration(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping sshpiper configuration test in short mode")
 	}
@@ -295,6 +298,7 @@ func TestMachineAccessImplementation(t *testing.T) {
 
 // TestRealMachineAccessE2E tests the complete end-to-end machine access via sshpiper with real containers
 func TestRealMachineAccessE2E(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping real machine access E2E test in short mode")
 	}
@@ -467,6 +471,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 
 // TestLegacyContainerSSHSetup tests the SSH setup for containers created before SSH support
 func TestLegacyContainerSSHSetup(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_legacy_*.db")
 	if err != nil {
@@ -551,6 +556,7 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 
 // TestSSHPiperProxyAuthentication tests the complete proxy authentication flow
 func TestSSHPiperProxyAuthentication(t *testing.T) {
+	t.Parallel()
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
 		t.Fatalf("Failed to create temp db: %v", err)
@@ -666,6 +672,7 @@ func (m mockConnMetadata) GetMeta(key string) string {
 
 // TestSSHPiperExedEphemeralProxyAuth tests that exed correctly handles ephemeral proxy authentication
 func TestSSHPiperExedEphemeralProxyAuth(t *testing.T) {
+	t.Parallel()
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
 		t.Fatalf("Failed to create temp db: %v", err)
@@ -782,6 +789,7 @@ func (m mockSSHConnMetadata) LocalAddr() net.Addr {
 
 // TestSSHPiperRealKeyIntegration tests with the actual SSH key from the environment
 func TestSSHPiperRealKeyIntegration(t *testing.T) {
+	t.Parallel()
 	// Read the actual SSH public key
 	pubKeyBytes, err := os.ReadFile("/root/.ssh/id_ed25519.pub")
 	if err != nil {

@@ -6,6 +6,8 @@ import (
 )
 
 func TestRunMainShellWelcomeBehavior(t *testing.T) {
+	t.Parallel()
+
 	// Test the welcome message logic by testing the logic directly
 	// rather than trying to test the interactive shell
 
@@ -50,6 +52,8 @@ func TestRunMainShellWelcomeBehavior(t *testing.T) {
 }
 
 func TestHelpCommandStillWorks(t *testing.T) {
+	t.Parallel()
+
 	// The help command logic in the switch statement now calls:
 	// channel.Write([]byte(helpText))
 	//

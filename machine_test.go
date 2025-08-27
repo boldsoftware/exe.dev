@@ -9,6 +9,7 @@ import (
 )
 
 func TestCreateMachine(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -81,6 +82,7 @@ func TestCreateMachine(t *testing.T) {
 }
 
 func TestGetMachineByName(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -145,6 +147,7 @@ func TestGetMachineByName(t *testing.T) {
 }
 
 func TestMachineUniqueConstraint(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -208,6 +211,7 @@ func TestMachineUniqueConstraint(t *testing.T) {
 }
 
 func TestMachineTimestamps(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -292,6 +296,7 @@ func TestMachineTimestamps(t *testing.T) {
 }
 
 func TestMachineNameValidationIntegration(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -363,6 +368,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 }
 
 func TestGeneratedMachineNamesAreValid(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {

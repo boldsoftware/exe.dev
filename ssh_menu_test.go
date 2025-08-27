@@ -16,6 +16,7 @@ import (
 
 // TestSSHMenuAfterRegistration tests that the menu works after registration
 func TestSSHMenuAfterRegistration(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_menu_*.db")
 	if err != nil {
@@ -244,6 +245,8 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 
 // TestSSHMenuInteractiveCommands tests various menu commands
 func TestSSHMenuInteractiveCommands(t *testing.T) {
+	t.Parallel()
+
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_menu_cmds_*.db")
 	if err != nil {
@@ -422,6 +425,8 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 
 // TestRegistrationToMenuFlow tests the complete flow from registration to menu
 func TestRegistrationToMenuFlow(t *testing.T) {
+	t.Parallel()
+
 	t.Skip("Skipping registration flow test - complex readline interaction")
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_reg_flow_*.db")

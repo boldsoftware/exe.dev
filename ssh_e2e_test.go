@@ -20,6 +20,7 @@ import (
 
 // TestSSHEndToEndSignupFlow tests the complete SSH signup flow using expect
 func TestSSHEndToEndSignupFlow(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
@@ -145,6 +146,7 @@ expect eof
 
 // TestSSHEndToEndCreateFlow tests machine creation through SSH
 func TestSSHEndToEndCreateFlow(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
@@ -325,6 +327,7 @@ expect eof
 
 // TestSSHEndToEndMachineAccess tests direct SSH access to a machine
 func TestSSHEndToEndMachineAccess(t *testing.T) {
+	t.Parallel()
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
@@ -462,6 +465,7 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 
 // TestSSHDirectExecCommands tests direct command execution via SSH
 func TestSSHDirectExecCommands(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_exec_*.db")
 	if err != nil {

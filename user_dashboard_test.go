@@ -18,6 +18,8 @@ func min(a, b int) int {
 }
 
 func TestUserDashboard(t *testing.T) {
+	t.Parallel()
+
 	server, cleanup := setupTestServerWithDatabase(t)
 	defer cleanup()
 
