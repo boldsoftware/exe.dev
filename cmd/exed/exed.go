@@ -60,6 +60,15 @@ func run() error {
 		slog.Warn("No Docker hosts specified, container functionality will be disabled", "suggestion", "Use -docker-hosts flag or set DOCKER_HOST env var")
 	}
 
+	if *dbPath == "TMP" {
+		f, err := os.CreateTemp("", "exe.db")
+		if err != nil {
+			return fmt.Errorf("failed to create temp db file: %w", err)
+		}
+		*dbPath = f.Name()
+		slog.Info("created temporary exe.db", "path", *dbPath)
+	}
+
 	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, hosts)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
