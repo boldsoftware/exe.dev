@@ -21,7 +21,69 @@ permissions:
   actions: write
 
 jobs:
+  commit-validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate commits for WIP and DO NOT SUBMIT
+        run: |
+          set -e
+          set -o pipefail
+
+          base_ref="origin/main"
+          end_ref="HEAD"
+
+          echo "Validating commits in range ${base_ref}..${end_ref}"
+
+          # Get list of commits to check
+          commits=$(git rev-list --reverse "${base_ref}".."${end_ref}" || true)
+
+          if [ -z "$commits" ]; then
+              echo "No commits to validate"
+              exit 0
+          fi
+
+          has_errors=0
+
+          for commit in $commits; do
+              echo "Checking commit $(git log --oneline -n 1 $commit)"
+
+              # Get the commit message (subject + body)
+              subject=$(git log --format="%s" -n 1 "$commit")
+              full_message=$(git log --format="%B" -n 1 "$commit")
+
+              # Check for WIP in subject line (case insensitive)
+              if echo "$subject" | grep -i "WIP" >/dev/null 2>&1; then
+                  echo "❌ ERROR: Commit $commit has 'WIP' in subject line: $subject"
+                  has_errors=1
+              fi
+
+              # Check for "DO NOT SUBMIT" anywhere in the commit message (case insensitive)
+              if echo "$full_message" | grep -i "DO NOT SUBMIT" >/dev/null 2>&1; then
+                  echo "❌ ERROR: Commit $commit contains 'DO NOT SUBMIT' in commit message"
+                  echo "Full message:"
+                  echo "$full_message"
+                  echo "---"
+                  has_errors=1
+              fi
+          done
+
+          if [ $has_errors -eq 1 ]; then
+              echo ""
+              echo "❌ Validation failed! Please fix the above issues and try again."
+              echo "Commits with 'WIP' in the subject line or 'DO NOT SUBMIT' anywhere in the message are not allowed."
+              exit 1
+          fi
+
+          echo "✅ All commits passed validation"
+
   formatting:
+    needs: commit-validation
     runs-on: ubuntu-latest
     permissions:
       contents: write # needed for git push
@@ -64,7 +126,7 @@ jobs:
         run: echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
   test:
-    needs: formatting
+    needs: [commit-validation, formatting]
     runs-on: ubuntu-latest
     permissions:
       contents: read # required by actions/checkout
@@ -117,7 +179,7 @@ jobs:
 
   push-to-main:
     runs-on: ubuntu-latest
-    needs: [formatting, test]
+    needs: [commit-validation, formatting, test]
     permissions:
       contents: write
     steps:
