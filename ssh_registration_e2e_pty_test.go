@@ -81,7 +81,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	tmpDB.Close()
 
 	// Create server
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "dev", nil)
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "local", []string{""})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
