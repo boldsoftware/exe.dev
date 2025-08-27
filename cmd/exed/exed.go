@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -11,6 +12,14 @@ import (
 )
 
 func main() {
+	err := run()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	httpAddr := flag.String("http", ":8080", "HTTP server address")
 	sshAddr := flag.String("ssh", ":2223", "SSH server address")
 	piperAddr := flag.String("piper", ":2224", "Piper plugin gRPC server address")
@@ -23,10 +32,7 @@ func main() {
 
 	// Validate dev mode
 	if *devMode != "" && *devMode != "local" {
-		// Setup basic logging first for error reporting
-		exe.SetupLogger(*devMode)
-		slog.Error("Invalid dev mode", "mode", *devMode, "valid_options", []string{"", "local"})
-		os.Exit(1)
+		return fmt.Errorf(`valid dev modes are "" and "local", got: %q`, *devMode)
 	}
 
 	// Setup structured logging
@@ -56,8 +62,7 @@ func main() {
 
 	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, hosts)
 	if err != nil {
-		slog.Error("Failed to create server", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to create server: %w", err)
 	}
 
 	if *mdnsEnabled {
@@ -65,7 +70,8 @@ func main() {
 	}
 
 	if err := server.Start(); err != nil {
-		slog.Error("Server error", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("server error: %w", err)
 	}
+
+	return nil // unreachable
 }
