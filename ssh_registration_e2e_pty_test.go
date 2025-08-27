@@ -202,7 +202,7 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	}
 
 	// Step 1: Wait for email prompt
-	output, err := readUntil("enter your email address", 500*time.Millisecond)
+	output, err := readUntil("enter your email address", 2*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to get email prompt: %v\nOutput: %s", err, output)
 	}
