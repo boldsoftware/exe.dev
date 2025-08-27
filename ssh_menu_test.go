@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -42,7 +43,8 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	listener.Close()
 
 	// Start SSH server
-	sshServer := NewSSHServer(server)
+	billing := billing.New(server.db)
+	sshServer := NewSSHServer(server, billing)
 	go func() {
 		if err := sshServer.Start(sshAddr); err != nil {
 			t.Logf("SSH server error: %v", err)
@@ -276,7 +278,8 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 	listener.Close()
 
 	// Start SSH server
-	sshServer := NewSSHServer(server)
+	billing := billing.New(server.db)
+	sshServer := NewSSHServer(server, billing)
 	go func() {
 		if err := sshServer.Start(sshAddr); err != nil {
 			t.Logf("SSH server error: %v", err)
@@ -453,7 +456,8 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 	listener.Close()
 
 	// Start SSH server
-	sshServer := NewSSHServer(server)
+	billing := billing.New(server.db)
+	sshServer := NewSSHServer(server, billing)
 	go func() {
 		if err := sshServer.Start(sshAddr); err != nil {
 			t.Logf("SSH server error: %v", err)

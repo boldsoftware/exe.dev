@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing"
 	"github.com/creack/pty"
 	"golang.org/x/crypto/ssh"
 )
@@ -122,7 +123,8 @@ func TestSSHRegistrationE2EWithPTY(t *testing.T) {
 	defer httpServer.Close()
 
 	// Start SSH server
-	sshServer := NewSSHServer(server)
+	billing := billing.New(server.db)
+	sshServer := NewSSHServer(server, billing)
 	go func() {
 		if err := sshServer.Start(fmt.Sprintf("127.0.0.1:%d", sshPort)); err != nil {
 			t.Logf("SSH server error: %v", err)

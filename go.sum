@@ -39,6 +39,18 @@ github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zt
 github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
 github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
+github.com/lestrrat-go/jspointer v0.0.0-20181205001929-82fadba7561c h1:pGh5EFIfczeDHwgMHgfwjhZzL+8/E3uZF6T7vER/W8c=
+github.com/lestrrat-go/jspointer v0.0.0-20181205001929-82fadba7561c/go.mod h1:xw2Gm4Mg+ST9s8fHR1VkUIyOJMJnSloRZlPQB+wyVpY=
+github.com/lestrrat-go/jsref v0.0.0-20181205001954-1b590508f37d h1:1eeFdKL5ySmmYevvKv7iECIc4dTATeKTtBqP4/nXxDk=
+github.com/lestrrat-go/jsref v0.0.0-20181205001954-1b590508f37d/go.mod h1:h+r25adx46+IvUSt/rTTvXNnCDnu3lRTkMPPR/GdCwk=
+github.com/lestrrat-go/jsschema v0.0.0-20181205002244-5c81c58ffcc3 h1:TSKrrGm89gmmVlrG34ZzCIOMNVk5kkSV1P88Dt38DiE=
+github.com/lestrrat-go/jsschema v0.0.0-20181205002244-5c81c58ffcc3/go.mod h1:SVfIykmWQyFuRToBTKQ8AcveWeOunS2phYxA8hJ/6Gg=
+github.com/lestrrat-go/jsval v0.0.0-20181205002323-20277e9befc0 h1:w4rIjeCV/gQpxtn3i1voyF6Hd7v1mRGIB63F7RZOk1U=
+github.com/lestrrat-go/jsval v0.0.0-20181205002323-20277e9befc0/go.mod h1:hazjwMAn+trtmUnjvhIzSIZ0YS+2egAMonQMjDhcC2s=
+github.com/lestrrat-go/pdebug v0.0.0-20180220043849-39f9a71bcabe h1:S7XSBlgc/eI2v47LkPPVa+infH3FuTS4tPJbqCtJovo=
+github.com/lestrrat-go/pdebug v0.0.0-20180220043849-39f9a71bcabe/go.mod h1:zvUY6gZZVL2nu7NM+/3b51Z/hxyFZCZxV0hvfZ3NJlg=
+github.com/lestrrat-go/structinfo v0.0.0-20190212233437-acd51874663b h1:YUFRoeHK/mvRjBR0bBRDC7ZGygYchoQ8j1xMENlObro=
+github.com/lestrrat-go/structinfo v0.0.0-20190212233437-acd51874663b/go.mod h1:s2U6PowV3/Jobkx/S9d0XiPwOzs6niW3DIouw+7nZC8=
 github.com/lmittmann/tint v1.1.2 h1:2CQzrL6rslrsyjqLDwD11bZ5OpLBPU+g3G/r5LSfS8w=
 github.com/lmittmann/tint v1.1.2/go.mod h1:HIS3gSy7qNwGCj+5oRjAutErFBl4BzdQP6cJZ0NfMwE=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
@@ -49,6 +61,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/ncruces/go-strftime v0.1.9 h1:bY0MQC28UADQmHmaF5dgpLmImcShSi2kHU9XLdhx/f4=
 github.com/ncruces/go-strftime v0.1.9/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/prometheus/client_golang v1.23.0 h1:ust4zpdl9r4trLY/gSjlm07PuiBq2ynaXXlptpfy8Uc=
@@ -71,6 +85,8 @@ github.com/stretchr/testify v1.10.0 h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOf
 github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/stripe/stripe-go/v76 v76.25.0 h1:kmDoOTvdQSTQssQzWZQQkgbAR2Q8eXdMWbN/ylNalWA=
 github.com/stripe/stripe-go/v76 v76.25.0/go.mod h1:rw1MxjlAKKcZ+3FOXgTHgwiOa2ya6CPq6ykpJ0Q6Po4=
+github.com/stripe/stripe-mock v0.195.0 h1:w06zN7e9pKmp/DOrGl9c7kazL4hEPSXVF7HFUnGtLGY=
+github.com/stripe/stripe-mock v0.195.0/go.mod h1:bnoqWmozYcRwQjiZ+w/Rm5Mxs76IAPNQFmoPJMxgAXM=
 github.com/tg123/remotesigner v0.0.3 h1:OA+yzMtlUFwkFpawyu0adG0Jq2NJzw8X7mP/+Z4OxuQ=
 github.com/tg123/remotesigner v0.0.3/go.mod h1:vborNv1HjfGLNCFJhUSmcAqqwks4AE1pE8ind6YDuII=
 github.com/urfave/cli/v2 v2.27.7 h1:bH59vdhbjLv3LAvIu6gd0usJHgoTTPhCFib8qqOwXYU=

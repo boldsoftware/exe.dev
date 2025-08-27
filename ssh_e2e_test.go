@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -56,7 +57,8 @@ func TestSSHEndToEndSignupFlow(t *testing.T) {
 
 	// Start SSH server
 	go func() {
-		sshServer := NewSSHServer(server)
+		billing := billing.New(server.db)
+		sshServer := NewSSHServer(server, billing)
 		if err := sshServer.Start(sshAddr); err != nil {
 			t.Logf("SSH server error: %v", err)
 		}
@@ -194,7 +196,8 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 
 	// Start SSH server
 	go func() {
-		sshServer := NewSSHServer(server)
+		billing := billing.New(server.db)
+		sshServer := NewSSHServer(server, billing)
 		if err := sshServer.Start(sshAddr); err != nil {
 			t.Logf("SSH server error: %v", err)
 		}
@@ -362,7 +365,8 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 
 	// Start SSH server
 	go func() {
-		sshServer := NewSSHServer(server)
+		billing := billing.New(server.db)
+		sshServer := NewSSHServer(server, billing)
 		if err := sshServer.Start(sshAddr); err != nil {
 			t.Logf("SSH server error: %v", err)
 		}
@@ -496,7 +500,8 @@ func TestSSHDirectExecCommands(t *testing.T) {
 
 	// Start SSH server
 	go func() {
-		sshServer := NewSSHServer(server)
+		billing := billing.New(server.db)
+		sshServer := NewSSHServer(server, billing)
 		if err := sshServer.Start(sshAddr); err != nil {
 			t.Logf("SSH server error: %v", err)
 		}

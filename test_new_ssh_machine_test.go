@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/container"
 	"golang.org/x/crypto/ssh"
 )
@@ -117,7 +118,8 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 
 	// Start the SSH server
 	go func() {
-		sshServer := NewSSHServer(server)
+		billing := billing.New(server.db)
+		sshServer := NewSSHServer(server, billing)
 		sshServer.Start(addr)
 	}()
 

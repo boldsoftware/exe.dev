@@ -3,6 +3,7 @@ package exe
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -14,27 +15,27 @@ import (
 	"sync/atomic"
 	"time"
 
+	"exe.dev/billing"
 	"exe.dev/container"
 	"exe.dev/termfun"
 	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
-	"github.com/stripe/stripe-go/v76"
-	"github.com/stripe/stripe-go/v76/customer"
-	"github.com/stripe/stripe-go/v76/paymentmethod"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
 
 // SSHServer wraps the gliderlabs SSH server implementation
 type SSHServer struct {
-	server *Server
-	srv    *ssh.Server
+	server  *Server
+	srv     *ssh.Server
+	billing billing.Billing
 }
 
 // NewSSHServer creates a new SSH server using gliderlabs/ssh
-func NewSSHServer(s *Server) *SSHServer {
+func NewSSHServer(s *Server, billing billing.Billing) *SSHServer {
 	return &SSHServer{
-		server: s,
+		server:  s,
+		billing: billing,
 	}
 }
 
@@ -1297,29 +1298,10 @@ func (ss *SSHServer) handleAllocCommand(s ssh.Session, publicKey, allocID string
 	fmt.Fprintf(s, "  Created: %s\r\n\r\n", alloc.CreatedAt.Format("Jan 2, 2006"))
 }
 
-func (ss *SSHServer) handleBillingCommand(s ssh.Session, publicKey string, args []string) {
-	// Get user info
-	user, err := ss.server.getUserByPublicKey(publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Get allocation info
-	alloc, err := ss.server.getUserAlloc(user.UserID)
-	if err != nil || alloc == nil {
-		fmt.Fprintf(s, "\033[1;31mError: No allocation found\033[0m\r\n")
-		return
-	}
-
-	// Check if billing info already exists
-	hasBilling := alloc.StripeCustomerID.Valid && alloc.StripeCustomerID.String != ""
-
-	if hasBilling {
-		ss.showBillingInfo(s, alloc)
-	} else {
-		ss.setupBilling(s, alloc, user.Email)
-	}
+// getMachinesForTeam is obsolete - use getMachinesForAlloc instead
+func (s *Server) getMachinesForTeam(allocID string) ([]*Machine, error) {
+	// This function is kept for backward compatibility but redirects to getMachinesForAlloc
+	return s.getMachinesForAlloc(allocID)
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
@@ -1426,387 +1408,269 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	return nil
 }
 
-func (ss *SSHServer) showBillingInfo(s ssh.Session, alloc *Alloc) {
-	fmt.Fprintf(s, "\r\n\033[1;36mBilling Information:\033[0m\r\n\r\n")
-
-	// Show current billing info
-	if alloc.BillingEmail.Valid {
-		fmt.Fprintf(s, "  Email: \033[1m%s\033[0m\r\n", alloc.BillingEmail.String)
+func (ss *SSHServer) handleRouteList(s ssh.Session, publicKey, teamName, machineName string) {
+	// Get machine
+	machine, err := ss.getMachine(publicKey, teamName, machineName)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
+		return
 	}
-	if alloc.StripeCustomerID.Valid {
-		fmt.Fprintf(s, "  Stripe Customer ID: \033[1m%s\033[0m\r\n", alloc.StripeCustomerID.String)
+
+	// Get routes
+	routes, err := machine.GetRoutes()
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
+		return
 	}
-	fmt.Fprintf(s, "  Status: \033[1;32mConfigured\033[0m\r\n\r\n")
 
-	// Show options
-	fmt.Fprintf(s, "\033[1mOptions:\033[0m\r\n")
-	fmt.Fprintf(s, "  1. Update payment method\r\n")
-	fmt.Fprintf(s, "  2. Update billing email\r\n")
-	fmt.Fprintf(s, "  3. Delete billing info\r\n")
-	fmt.Fprintf(s, "  4. Back to main menu\r\n\r\n")
+	fmt.Fprintf(s, "\r\n\033[1;36mRoutes for machine '%s':\033[0m\r\n\r\n", machineName)
 
-	// Get user choice
-	terminal := term.NewTerminal(s, "Choose an option (1-4): ")
-	for {
-		choice, err := terminal.ReadLine()
-		if err != nil {
-			fmt.Fprintf(s, "\r\nExiting billing menu.\r\n")
-			return
+	if len(routes) == 0 {
+		fmt.Fprintf(s, "No routes configured.\r\n")
+		return
+	}
+
+	for _, route := range routes {
+		methods := strings.Join(route.Methods, ",")
+		ports := make([]string, len(route.Ports))
+		for i, port := range route.Ports {
+			ports[i] = fmt.Sprintf("%d", port)
 		}
+		portList := strings.Join(ports, ",")
 
-		switch strings.TrimSpace(choice) {
-		case "1":
-			ss.updatePaymentMethod(s, alloc)
-			return
-		case "2":
-			ss.updateBillingEmail(s, alloc)
-			return
-		case "3":
-			ss.deleteBillingInfo(s, alloc)
-			return
-		case "4":
-			fmt.Fprintf(s, "\r\nReturning to main menu.\r\n")
-			return
-		default:
-			fmt.Fprintf(s, "\r\nInvalid choice. Please enter 1-4: ")
-			terminal.SetPrompt("Choose an option (1-4): ")
-		}
+		fmt.Fprintf(s, "  \033[1m%s\033[0m (priority %d)\r\n", route.Name, route.Priority)
+		fmt.Fprintf(s, "    Methods: %s\r\n", methods)
+		fmt.Fprintf(s, "    Path prefix: %s\r\n", route.Paths.Prefix)
+		fmt.Fprintf(s, "    Policy: %s\r\n", route.Policy)
+		fmt.Fprintf(s, "    Ports: %s\r\n\r\n", portList)
 	}
 }
 
-func (ss *SSHServer) setupBilling(s ssh.Session, alloc *Alloc, userEmail string) {
-	fmt.Fprintf(s, "\r\n\033[1;33mBilling Setup\033[0m\r\n\r\n")
-	fmt.Fprintf(s, "You need to set up billing information to continue using exe.dev.\r\n\r\n")
+func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineName string, args []string) {
+	// Create a FlagSet for parsing
+	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
+	var name, methodsStr, prefix, policy, portsStr string
+	var priority int
 
-	terminal := term.NewTerminal(s, "")
+	fs.StringVar(&name, "name", "", "route name (auto-generated if not specified)")
+	fs.IntVar(&priority, "priority", -1, "priority (lower = higher priority, defaults to lowest priority)")
+	fs.StringVar(&methodsStr, "methods", "*", "HTTP methods (comma-separated, or '*' for all)")
+	fs.StringVar(&prefix, "prefix", "/", "path prefix to match")
+	fs.StringVar(&policy, "policy", "private", "'public' or 'private'")
+	fs.StringVar(&portsStr, "ports", "80,8000,8080,8888", "allowed ports (comma-separated)")
 
-	// Get billing email
-	terminal.SetPrompt("Billing email (press Enter to use " + userEmail + "): ")
-	billingEmail, err := terminal.ReadLine()
+	// Capture the output to avoid printing errors to the session
+	var buf bytes.Buffer
+	fs.SetOutput(&buf)
+
+	// Parse the flags
+	err := fs.Parse(args)
 	if err != nil {
-		fmt.Fprintf(s, "\r\nBilling setup cancelled.\r\n")
+		fmt.Fprintf(s, "\033[1;31mError parsing flags: %v\033[0m\r\n", err)
 		return
 	}
 
-	if strings.TrimSpace(billingEmail) == "" {
-		billingEmail = userEmail
+	// Generate name if not provided
+	if name == "" {
+		name = ss.server.generateRandomRouteName()
 	}
 
-	// Validate email
-	if !ss.server.isValidEmail(billingEmail) {
-		fmt.Fprintf(s, "\r\n\033[1;31mInvalid email format.\033[0m\r\n")
-		return
-	}
-
-	// Get credit card info
-	fmt.Fprintf(s, "\r\nNow we need to verify your payment method.\r\n")
-	fmt.Fprintf(s, "Please enter a credit card number to verify your payment method.\r\n")
-	fmt.Fprintf(s, "For testing, you can use: \033[1m4242424242424242\033[0m (Visa test card)\r\n\r\n")
-
-	terminal.SetPrompt("Credit card number: ")
-	cardNumber, err := terminal.ReadLine()
+	// Get machine
+	machine, err := ss.getMachine(publicKey, teamName, machineName)
 	if err != nil {
-		fmt.Fprintf(s, "\r\nBilling setup cancelled.\r\n")
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
 	}
 
-	cardNumber = strings.ReplaceAll(strings.TrimSpace(cardNumber), " ", "")
-	if len(cardNumber) < 13 {
-		fmt.Fprintf(s, "\r\n\033[1;31mInvalid card number.\033[0m\r\n")
-		return
-	}
-
-	// Get expiry month
-	terminal.SetPrompt("Expiry month (MM): ")
-	expMonth, err := terminal.ReadLine()
+	// Get existing routes
+	routes, err := machine.GetRoutes()
 	if err != nil {
-		fmt.Fprintf(s, "\r\nBilling setup cancelled.\r\n")
+		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
 		return
 	}
 
-	// Get expiry year
-	terminal.SetPrompt("Expiry year (YYYY): ")
-	expYear, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nBilling setup cancelled.\r\n")
-		return
-	}
-
-	// Get CVC
-	terminal.SetPrompt("CVC: ")
-	cvc, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nBilling setup cancelled.\r\n")
-		return
-	}
-
-	// Create Stripe customer and payment method
-	fmt.Fprintf(s, "\r\nProcessing payment method...\r\n")
-
-	customerID, err := ss.createStripeCustomer(billingEmail, cardNumber, expMonth, expYear, cvc)
-	if err != nil {
-		fmt.Fprintf(s, "\r\n\033[1;31mError setting up billing: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Update allocation with billing info
-	err = ss.updateAllocBilling(alloc.AllocID, customerID, billingEmail)
-	if err != nil {
-		fmt.Fprintf(s, "\r\n\033[1;31mError saving billing info: %v\033[0m\r\n", err)
-		return
-	}
-
-	fmt.Fprintf(s, "\r\n\033[1;32m✓ Billing setup completed successfully!\033[0m\r\n")
-	fmt.Fprintf(s, "Your payment method has been verified and saved.\r\n\r\n")
-}
-
-func (ss *SSHServer) updatePaymentMethod(s ssh.Session, alloc *Alloc) {
-	fmt.Fprintf(s, "\r\n\033[1;33mUpdate Payment Method\033[0m\r\n\r\n")
-
-	terminal := term.NewTerminal(s, "")
-
-	// Get new credit card info
-	fmt.Fprintf(s, "Please enter your new payment method details.\r\n")
-	fmt.Fprintf(s, "For testing, you can use: \033[1m4242424242424242\033[0m (Visa test card)\r\n\r\n")
-
-	terminal.SetPrompt("Credit card number: ")
-	cardNumber, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nUpdate cancelled.\r\n")
-		return
-	}
-
-	cardNumber = strings.ReplaceAll(strings.TrimSpace(cardNumber), " ", "")
-	if len(cardNumber) < 13 {
-		fmt.Fprintf(s, "\r\n\033[1;31mInvalid card number.\033[0m\r\n")
-		return
-	}
-
-	// Get expiry details
-	terminal.SetPrompt("Expiry month (MM): ")
-	expMonth, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nUpdate cancelled.\r\n")
-		return
-	}
-
-	terminal.SetPrompt("Expiry year (YYYY): ")
-	expYear, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nUpdate cancelled.\r\n")
-		return
-	}
-
-	terminal.SetPrompt("CVC: ")
-	cvc, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nUpdate cancelled.\r\n")
-		return
-	}
-
-	fmt.Fprintf(s, "\r\nUpdating payment method...\r\n")
-
-	// Update the payment method in Stripe
-	err = ss.updateStripePaymentMethod(alloc.StripeCustomerID.String, cardNumber, expMonth, expYear, cvc)
-	if err != nil {
-		fmt.Fprintf(s, "\r\n\033[1;31mError updating payment method: %v\033[0m\r\n", err)
-		return
-	}
-
-	fmt.Fprintf(s, "\r\n\033[1;32m✓ Payment method updated successfully!\033[0m\r\n\r\n")
-}
-
-func (ss *SSHServer) updateBillingEmail(s ssh.Session, alloc *Alloc) {
-	fmt.Fprintf(s, "\r\n\033[1;33mUpdate Billing Email\033[0m\r\n\r\n")
-
-	terminal := term.NewTerminal(s, "")
-	terminal.SetPrompt("New billing email: ")
-
-	newEmail, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nUpdate cancelled.\r\n")
-		return
-	}
-
-	newEmail = strings.TrimSpace(newEmail)
-	if !ss.server.isValidEmail(newEmail) {
-		fmt.Fprintf(s, "\r\n\033[1;31mInvalid email format.\033[0m\r\n")
-		return
-	}
-
-	fmt.Fprintf(s, "\r\nUpdating billing email...\r\n")
-
-	// Update in database
-	_, err = ss.server.db.Exec("UPDATE allocs SET billing_email = ? WHERE alloc_id = ?", newEmail, alloc.AllocID)
-	if err != nil {
-		fmt.Fprintf(s, "\r\n\033[1;31mError updating billing email: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Update in Stripe
-	if alloc.StripeCustomerID.Valid {
-		err = ss.updateStripeCustomerEmail(alloc.StripeCustomerID.String, newEmail)
-		if err != nil {
-			fmt.Fprintf(s, "\r\n\033[1;33mWarning: Database updated but Stripe update failed: %v\033[0m\r\n", err)
-		} else {
-			fmt.Fprintf(s, "\r\n\033[1;32m✓ Billing email updated successfully!\033[0m\r\n\r\n")
+	// Set default priority if not specified
+	if priority == -1 {
+		// Find the highest priority number and set this route to be lower priority (higher number)
+		maxPriority := 0
+		for _, route := range routes {
+			if route.Priority > maxPriority {
+				maxPriority = route.Priority
+			}
 		}
+		priority = maxPriority + 10 // Add some gap
+	}
+
+	// Parse methods
+	var methods []string
+	if methodsStr == "*" {
+		methods = []string{"*"}
 	} else {
-		fmt.Fprintf(s, "\r\n\033[1;32m✓ Billing email updated successfully!\033[0m\r\n\r\n")
+		methods = strings.Split(methodsStr, ",")
+		for i, method := range methods {
+			methods[i] = strings.TrimSpace(strings.ToUpper(method))
+		}
 	}
-}
 
-func (ss *SSHServer) deleteBillingInfo(s ssh.Session, alloc *Alloc) {
-	fmt.Fprintf(s, "\r\n\033[1;33mDelete Billing Information\033[0m\r\n\r\n")
-	fmt.Fprintf(s, "\033[1;31mWarning: This will remove all billing information from your account.\033[0m\r\n")
-	fmt.Fprintf(s, "You will need to set up billing again to continue using exe.dev.\r\n\r\n")
+	// Parse ports
+	portStrs := strings.Split(portsStr, ",")
+	var ports []int
+	for _, portStr := range portStrs {
+		portStr = strings.TrimSpace(portStr)
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			fmt.Fprintf(s, "\033[1;31mError: Invalid port '%s': %v\033[0m\r\n", portStr, err)
+			return
+		}
+		ports = append(ports, port)
+	}
 
-	terminal := term.NewTerminal(s, "")
-	terminal.SetPrompt("Are you sure? Type 'yes' to confirm: ")
-
-	confirmation, err := terminal.ReadLine()
-	if err != nil {
-		fmt.Fprintf(s, "\r\nOperation cancelled.\r\n")
+	// Validate policy
+	if policy != "public" && policy != "private" {
+		fmt.Fprintf(s, "\033[1;31mError: Policy must be 'public' or 'private'\033[0m\r\n")
 		return
 	}
 
-	if strings.ToLower(strings.TrimSpace(confirmation)) != "yes" {
-		fmt.Fprintf(s, "\r\nOperation cancelled.\r\n")
+	// Check for duplicate name or priority
+	for _, route := range routes {
+		if route.Name == name {
+			fmt.Fprintf(s, "\033[1;31mError: Route with name '%s' already exists\033[0m\r\n", name)
+			return
+		}
+		if route.Priority == priority {
+			fmt.Fprintf(s, "\033[1;31mError: Route with priority %d already exists\033[0m\r\n", priority)
+			return
+		}
+	}
+
+	// Create new route
+	newRoute := Route{
+		Name:     name,
+		Priority: priority,
+		Methods:  methods,
+		Paths:    PathMatcher{Prefix: prefix},
+		Policy:   policy,
+		Ports:    ports,
+	}
+
+	// Add to routes list
+	routes = append(routes, newRoute)
+
+	// Set routes back on machine
+	err = machine.SetRoutes(routes)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
 		return
 	}
 
-	fmt.Fprintf(s, "\r\nDeleting billing information...\r\n")
-
-	// Clear billing info in database
-	_, err = ss.server.db.Exec("UPDATE allocs SET stripe_customer_id = NULL, billing_email = NULL WHERE alloc_id = ?", alloc.AllocID)
+	// Update database
+	_, err = ss.server.db.Exec(`
+		UPDATE machines SET routes = ?
+		WHERE name = ?`,
+		*machine.Routes, machineName)
 	if err != nil {
-		fmt.Fprintf(s, "\r\n\033[1;31mError deleting billing info: %v\033[0m\r\n", err)
+		fmt.Fprintf(s, "\033[1;31mError saving route: %v\033[0m\r\n", err)
 		return
 	}
 
-	fmt.Fprintf(s, "\r\n\033[1;32m✓ Billing information deleted successfully!\033[0m\r\n")
-	fmt.Fprintf(s, "You can set up billing again using the 'billing' command.\r\n\r\n")
+	fmt.Fprintf(s, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
 }
 
-// Stripe integration helper functions
-func (ss *SSHServer) createStripeCustomer(email, cardNumber, expMonth, expYear, cvc string) (string, error) {
-	// Convert expiry month and year to int64
-	expMonthInt, err := strconv.ParseInt(expMonth, 10, 64)
+func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machineName string, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(s, "\033[1;31mError: Please specify route name\033[0m\r\n")
+		fmt.Fprintf(s, "Usage: route %s remove <name>\r\n", machineName)
+		return
+	}
+
+	routeName := args[0]
+
+	// Get machine
+	machine, err := ss.getMachine(publicKey, teamName, machineName)
 	if err != nil {
-		return "", fmt.Errorf("invalid expiry month: %v", err)
+		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
+		return
 	}
-	expYearInt, err := strconv.ParseInt(expYear, 10, 64)
+
+	// Get existing routes
+	routes, err := machine.GetRoutes()
 	if err != nil {
-		return "", fmt.Errorf("invalid expiry year: %v", err)
+		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
+		return
 	}
 
-	// Create payment method
-	pmParams := &stripe.PaymentMethodParams{
-		Type: stripe.String("card"),
-		Card: &stripe.PaymentMethodCardParams{
-			Number:   stripe.String(cardNumber),
-			ExpMonth: stripe.Int64(expMonthInt),
-			ExpYear:  stripe.Int64(expYearInt),
-			CVC:      stripe.String(cvc),
-		},
+	// Find and remove the route
+	var newRoutes MachineRoutes
+	found := false
+	for _, route := range routes {
+		if route.Name == routeName {
+			found = true
+			continue // Skip this route (delete it)
+		}
+		newRoutes = append(newRoutes, route)
 	}
 
-	pm, err := paymentmethod.New(pmParams)
+	if !found {
+		fmt.Fprintf(s, "\033[1;31mError: Route '%s' not found\033[0m\r\n", routeName)
+		return
+	}
+
+	// Set routes back on machine
+	err = machine.SetRoutes(newRoutes)
 	if err != nil {
-		return "", fmt.Errorf("failed to create payment method: %v", err)
+		fmt.Fprintf(s, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
+		return
 	}
 
-	// Create customer
-	customerParams := &stripe.CustomerParams{
-		Email:         stripe.String(email),
-		PaymentMethod: stripe.String(pm.ID),
-		InvoiceSettings: &stripe.CustomerInvoiceSettingsParams{
-			DefaultPaymentMethod: stripe.String(pm.ID),
-		},
-	}
-
-	cust, err := customer.New(customerParams)
+	// Update database
+	_, err = ss.server.db.Exec(`
+		UPDATE machines SET routes = ?
+		WHERE name = ?`,
+		*machine.Routes, machineName)
 	if err != nil {
-		return "", fmt.Errorf("failed to create customer: %v", err)
+		fmt.Fprintf(s, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
+		return
 	}
 
-	// Attach payment method to customer
-	pmAttachParams := &stripe.PaymentMethodAttachParams{
-		Customer: stripe.String(cust.ID),
-	}
-	_, err = paymentmethod.Attach(pm.ID, pmAttachParams)
-	if err != nil {
-		return "", fmt.Errorf("failed to attach payment method: %v", err)
-	}
-
-	return cust.ID, nil
+	fmt.Fprintf(s, "\033[1;32mRoute '%s' deleted successfully\033[0m\r\n", routeName)
 }
 
-func (ss *SSHServer) updateStripePaymentMethod(customerID, cardNumber, expMonth, expYear, cvc string) error {
-	// Convert expiry month and year to int64
-	expMonthInt, err := strconv.ParseInt(expMonth, 10, 64)
+// getMachine retrieves a machine for the given user/team/name
+func (ss *SSHServer) getMachine(publicKey, allocID, machineName string) (*Machine, error) {
+	// First verify user has access to the alloc
+	var exists bool
+	err := ss.server.db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM allocs a
+			JOIN users u ON a.user_id = u.user_id
+			JOIN ssh_keys sk ON u.user_id = sk.user_id
+			WHERE sk.public_key = ? AND sk.verified = 1 AND a.alloc_id = ?
+		)`, publicKey, allocID).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("invalid expiry month: %v", err)
+		return nil, fmt.Errorf("database error: %v", err)
 	}
-	expYearInt, err := strconv.ParseInt(expYear, 10, 64)
+	if !exists {
+		return nil, fmt.Errorf("access denied to allocation '%s'", allocID)
+	}
+
+	// Get the machine
+	var machine Machine
+	err = ss.server.db.QueryRow(`
+		SELECT id, alloc_id, name, status, image, container_id,
+		       created_by_user_id, created_at, updated_at,
+		       last_started_at, docker_host, routes
+		FROM machines
+		WHERE name = ? AND alloc_id = ?`, machineName, allocID).Scan(
+		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
+		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
+		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
+		&machine.DockerHost, &machine.Routes)
 	if err != nil {
-		return fmt.Errorf("invalid expiry year: %v", err)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("machine '%s' not found", machineName)
+		}
+		return nil, fmt.Errorf("database error: %v", err)
 	}
 
-	// Create new payment method
-	pmParams := &stripe.PaymentMethodParams{
-		Type: stripe.String("card"),
-		Card: &stripe.PaymentMethodCardParams{
-			Number:   stripe.String(cardNumber),
-			ExpMonth: stripe.Int64(expMonthInt),
-			ExpYear:  stripe.Int64(expYearInt),
-			CVC:      stripe.String(cvc),
-		},
-	}
-
-	pm, err := paymentmethod.New(pmParams)
-	if err != nil {
-		return fmt.Errorf("failed to create payment method: %v", err)
-	}
-
-	// Attach to customer
-	pmAttachParams := &stripe.PaymentMethodAttachParams{
-		Customer: stripe.String(customerID),
-	}
-	_, err = paymentmethod.Attach(pm.ID, pmAttachParams)
-	if err != nil {
-		return fmt.Errorf("failed to attach payment method: %v", err)
-	}
-
-	// Update customer default payment method
-	customerUpdateParams := &stripe.CustomerParams{
-		InvoiceSettings: &stripe.CustomerInvoiceSettingsParams{
-			DefaultPaymentMethod: stripe.String(pm.ID),
-		},
-	}
-	_, err = customer.Update(customerID, customerUpdateParams)
-	if err != nil {
-		return fmt.Errorf("failed to update customer default payment method: %v", err)
-	}
-
-	return nil
-}
-
-func (ss *SSHServer) updateStripeCustomerEmail(customerID, email string) error {
-	customerUpdateParams := &stripe.CustomerParams{
-		Email: stripe.String(email),
-	}
-	_, err := customer.Update(customerID, customerUpdateParams)
-	if err != nil {
-		return fmt.Errorf("failed to update customer email: %v", err)
-	}
-	return nil
-}
-
-func (ss *SSHServer) updateAllocBilling(allocID, customerID, billingEmail string) error {
-	_, err := ss.server.db.Exec(
-		"UPDATE allocs SET stripe_customer_id = ?, billing_email = ? WHERE alloc_id = ?",
-		customerID, billingEmail, allocID,
-	)
-	return err
+	return &machine, nil
 }

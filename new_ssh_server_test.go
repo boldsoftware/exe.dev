@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/billing"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -36,8 +37,11 @@ func TestNewSSHServerBasicConnection(t *testing.T) {
 	listener.Close()
 
 	// Start the SSH server in a goroutine
+	billing, cleanup := billing.NewWithMockStripe(t, server.db)
+	defer cleanup()
+
 	go func() {
-		sshServer := NewSSHServer(server)
+		sshServer := NewSSHServer(server, billing)
 		if err := sshServer.Start(addr); err != nil {
 			t.Logf("SSH server error: %v", err)
 		}
@@ -121,7 +125,8 @@ func TestNewSSHServerInteractiveShell(t *testing.T) {
 	// Start the SSH server in a goroutine
 	sshDone := make(chan error, 1)
 	go func() {
-		sshServer := NewSSHServer(server)
+		billing := billing.New(server.db)
+		sshServer := NewSSHServer(server, billing)
 		sshDone <- sshServer.Start(addr)
 	}()
 
@@ -279,7 +284,8 @@ func TestNewSSHServerWithRegisteredUser(t *testing.T) {
 
 	// Start the SSH server
 	go func() {
-		sshServer := NewSSHServer(server)
+		billing := billing.New(server.db)
+		sshServer := NewSSHServer(server, billing)
 		sshServer.Start(addr)
 	}()
 

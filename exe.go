@@ -46,6 +46,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
 
+	"exe.dev/billing"
 	"exe.dev/container"
 	"exe.dev/exedb"
 	"exe.dev/ipallocator"
@@ -309,14 +310,6 @@ type MagicSecret struct {
 	CreatedAt   time.Time
 }
 
-// BillingVerification represents a pending billing verification (in-memory)
-type BillingVerification struct {
-	PublicKeyFingerprint string
-	TeamName             string
-	CompleteChan         chan struct{}
-	CreatedAt            time.Time
-}
-
 // UserSession represents an active SSH user session
 type UserSession struct {
 	UserID    string
@@ -352,12 +345,10 @@ type Server struct {
 	containerManager container.Manager
 
 	// In-memory state for active sessions (these don't need persistence)
-	emailVerificationsMu   sync.RWMutex
-	emailVerifications     map[string]*EmailVerification // token -> email verification
-	billingVerificationsMu sync.RWMutex
-	billingVerifications   map[string]*BillingVerification // user_id -> billing verification
-	magicSecretsMu         sync.RWMutex
-	magicSecrets           map[string]*MagicSecret // secret -> magic secret with expiration
+	emailVerificationsMu sync.RWMutex
+	emailVerifications   map[string]*EmailVerification // token -> email verification
+	magicSecretsMu       sync.RWMutex
+	magicSecrets         map[string]*MagicSecret // secret -> magic secret with expiration
 
 	// User sessions for tracking authenticated users
 	sessionsMu sync.RWMutex
@@ -472,24 +463,23 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	sqlite.RegisterSQLiteMetrics(metricsRegistry)
 
 	s := &Server{
-		httpAddr:             httpAddr,
-		httpsAddr:            httpsAddr,
-		sshAddr:              sshAddr,
-		piperAddr:            piperAddr,
-		BaseURL:              baseURL,
-		db:                   db,
-		containerManager:     containerManager,
-		emailVerifications:   make(map[string]*EmailVerification),
-		billingVerifications: make(map[string]*BillingVerification),
-		magicSecrets:         make(map[string]*MagicSecret),
-		sessions:             make(map[*sshbuf.Channel]*UserSession),
-		postmarkClient:       postmarkClient,
-		stripeKey:            stripeKey,
-		devMode:              devMode,
-		quietMode:            quietMode,
-		testMode:             testing.Testing(),
-		metricsRegistry:      metricsRegistry,
-		sshMetrics:           sshMetrics,
+		httpAddr:           httpAddr,
+		httpsAddr:          httpsAddr,
+		sshAddr:            sshAddr,
+		piperAddr:          piperAddr,
+		BaseURL:            baseURL,
+		db:                 db,
+		containerManager:   containerManager,
+		emailVerifications: make(map[string]*EmailVerification),
+		magicSecrets:       make(map[string]*MagicSecret),
+		sessions:           make(map[*sshbuf.Channel]*UserSession),
+		postmarkClient:     postmarkClient,
+		stripeKey:          stripeKey,
+		devMode:            devMode,
+		quietMode:          quietMode,
+		testMode:           testing.Testing(),
+		metricsRegistry:    metricsRegistry,
+		sshMetrics:         sshMetrics,
 	}
 
 	s.setupHTTPServer()
@@ -2557,7 +2547,8 @@ func (s *Server) Start() error {
 
 	// Start SSH server in a goroutine
 	go func() {
-		sshServer := NewSSHServer(s)
+		billing := billing.New(s.db)
+		sshServer := NewSSHServer(s, billing)
 		if err := sshServer.Start(s.sshAddr); err != nil {
 			slog.Error("SSH server startup failed", "error", err)
 			cancel()
@@ -3289,11 +3280,11 @@ func (s *Server) setupContainerSSH(machineID int) error {
 
 	// Update database with SSH keys
 	_, err = s.db.Exec(`
-                UPDATE machines SET 
-                        ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
-                        ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
-                WHERE id = ?
-        `, sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
+		UPDATE machines SET 
+			ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
+			ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
+		WHERE id = ?
+	`, sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
 		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshKeys.SSHPort, machineID)
 	if err != nil {
 		return fmt.Errorf("failed to update machine SSH keys: %v", err)
