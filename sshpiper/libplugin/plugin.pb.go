@@ -2702,6 +2702,7 @@ var (
 		(*KeyboardInteractivePromptRequest_Question)(nil), // 44: libplugin.KeyboardInteractivePromptRequest.Question
 	}
 )
+
 var file_plugin_proto_depIdxs = []int32{
 	41, // 0: libplugin.ConnMeta.metadata:type_name -> libplugin.ConnMeta.MetadataEntry
 	3,  // 1: libplugin.Upstream.none:type_name -> libplugin.UpstreamNoneAuth
