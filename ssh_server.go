@@ -675,6 +675,37 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	}
 }
 
+/*
+const helpText = "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
+	"\033[1mlist\033[0m                    - List your machines\r\n" +
+	"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
+	"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
+	"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
+	"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
+	"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
+	"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
+	"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
+	"\033[1malloc\033[0m                   - Resource allocation info\r\n" +
+	"\033[1mbilling\033[0m                 - Manage billing and payment info\r\n" +
+	"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
+	"\033[1m?\033[0m                       - Show this help\r\n\r\n" +
+	"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
+
+const helpText2 = "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
+	"\033[1mlist\033[0m                    - List your machines\r\n" +
+	"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
+	"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
+	"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
+	"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
+	"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
+	"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
+	"\033[1mbilling\033[0m                 - Manage billing and payment info\r\n" +
+	"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
+	"\033[1m?\033[0m                       - Show this help\r\n" +
+	"\033[1mexit\033[0m                    - Exit\r\n\r\n" +
+	"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
+*/
+
 // handleMachineSSH handles direct SSH access to a machine
 
 // SSHSessionChannel wraps a gliderlabs SSH session to implement compatibility with sshbuf.Channel
