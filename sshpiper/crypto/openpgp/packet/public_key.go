@@ -102,8 +102,10 @@ func (f *ecdsaKey) byteLen() int {
 	return 1 + len(f.oid) + 2 + len(f.p.bytes)
 }
 
-type kdfHashFunction byte
-type kdfAlgorithm byte
+type (
+	kdfHashFunction byte
+	kdfAlgorithm    byte
+)
 
 // ecdhKdf stores key derivation function parameters
 // used for ECDH encryption. See RFC 6637, Section 9.

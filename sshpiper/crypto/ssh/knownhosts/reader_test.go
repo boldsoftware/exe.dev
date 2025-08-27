@@ -13,5 +13,4 @@ func TestNewFromReader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot read from string: %v", err)
 	}
-
 }

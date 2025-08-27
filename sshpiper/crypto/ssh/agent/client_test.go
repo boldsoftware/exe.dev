@@ -208,7 +208,6 @@ func testAgentInterface(t *testing.T, agent ExtendedAgent, key interface{}, cert
 			t.Fatalf("key not expired")
 		}
 	}
-
 }
 
 func TestMalformedRequests(t *testing.T) {
@@ -235,7 +234,7 @@ func TestMalformedRequests(t *testing.T) {
 		}
 	}
 
-	var testCases = []struct {
+	testCases := []struct {
 		name          string
 		requestBytes  []byte
 		wantServerErr bool

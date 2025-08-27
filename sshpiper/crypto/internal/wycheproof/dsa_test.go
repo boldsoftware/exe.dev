@@ -14,7 +14,6 @@ import (
 func TestDsa(t *testing.T) {
 	// AsnSignatureTestVector
 	type AsnSignatureTestVector struct {
-
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -36,7 +35,6 @@ func TestDsa(t *testing.T) {
 
 	// DsaPublicKey
 	type DsaPublicKey struct {
-
 		// the generator of the multiplicative subgroup
 		G string `json:"g,omitempty"`
 
@@ -58,7 +56,6 @@ func TestDsa(t *testing.T) {
 
 	// DsaTestGroup
 	type DsaTestGroup struct {
-
 		// unenocded DSA public key
 		Key *DsaPublicKey `json:"key,omitempty"`
 
@@ -75,12 +72,10 @@ func TestDsa(t *testing.T) {
 	}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct {
-	}
+	type Notes struct{}
 
 	// Root
 	type Root struct {
-
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

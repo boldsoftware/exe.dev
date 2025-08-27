@@ -11,16 +11,13 @@ import (
 
 func TestRsa(t *testing.T) {
 	// KeyJwk Public key in JWK format
-	type KeyJwk struct {
-	}
+	type KeyJwk struct{}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct {
-	}
+	type Notes struct{}
 
 	// SignatureTestVector
 	type SignatureTestVector struct {
-
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -42,7 +39,6 @@ func TestRsa(t *testing.T) {
 
 	// RsassaPkcs1TestGroup
 	type RsassaPkcs1TestGroup struct {
-
 		// The private exponent
 		D string `json:"d,omitempty"`
 
@@ -75,7 +71,6 @@ func TestRsa(t *testing.T) {
 
 	// Root
 	type Root struct {
-
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

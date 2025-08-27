@@ -226,7 +226,6 @@ func TestAuthorize(t *testing.T) {
 			if !reflect.DeepEqual(auth.Combinations, combs) {
 				t.Errorf("auth.Combinations: %+v\nwant: %+v\n", auth.Combinations, combs)
 			}
-
 		})
 	}
 }
@@ -737,7 +736,6 @@ func TestTLSALPN01ChallengeCert(t *testing.T) {
 	if bytes.Compare(acmeExts[0].Value, extValue) != 0 {
 		t.Errorf("acmeExt.Value = %v; want %v", acmeExts[0].Value, extValue)
 	}
-
 }
 
 func TestTLSChallengeCertOpt(t *testing.T) {

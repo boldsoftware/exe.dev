@@ -524,7 +524,7 @@ func (m *DockerManager) BuildImage(ctx context.Context, req *BuildRequest) (*Bui
 
 	// Write Dockerfile
 	dockerfilePath := fmt.Sprintf("%s/Dockerfile", tmpDir)
-	if err := os.WriteFile(dockerfilePath, []byte(req.DockerfileContent), 0644); err != nil {
+	if err := os.WriteFile(dockerfilePath, []byte(req.DockerfileContent), 0o644); err != nil {
 		return nil, fmt.Errorf("failed to write Dockerfile: %w", err)
 	}
 
@@ -1071,7 +1071,7 @@ func (m *DockerManager) copySSHBinaries(ctx context.Context, containerID, docker
 		destPath := filepath.Join(tmpDir, path)
 
 		if d.IsDir() {
-			return os.MkdirAll(destPath, 0755)
+			return os.MkdirAll(destPath, 0o755)
 		}
 
 		// Read the file from embedded FS
@@ -1081,7 +1081,7 @@ func (m *DockerManager) copySSHBinaries(ctx context.Context, containerID, docker
 		}
 
 		// Write to temp directory
-		return os.WriteFile(destPath, data, 0755)
+		return os.WriteFile(destPath, data, 0o755)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to extract rovol files: %w", err)

@@ -780,7 +780,7 @@ func TestRFC_AuthorizeOrder(t *testing.T) {
 		Expires:     time.Date(2019, 9, 1, 0, 0, 0, 0, time.UTC),
 		NotBefore:   time.Date(2019, 8, 31, 0, 0, 0, 0, time.UTC),
 		NotAfter:    time.Date(2019, 9, 2, 0, 0, 0, 0, time.UTC),
-		Identifiers: []AuthzID{AuthzID{Type: "dns", Value: "example.org"}},
+		Identifiers: []AuthzID{{Type: "dns", Value: "example.org"}},
 		AuthzURLs:   []string{s.url("/authz/1")},
 	}
 	if !reflect.DeepEqual(o, okOrder) {
@@ -824,7 +824,7 @@ func TestRFC_GetOrder(t *testing.T) {
 		Expires:     time.Date(2019, 9, 1, 0, 0, 0, 0, time.UTC),
 		NotBefore:   time.Date(2019, 8, 31, 0, 0, 0, 0, time.UTC),
 		NotAfter:    time.Date(2019, 9, 2, 0, 0, 0, 0, time.UTC),
-		Identifiers: []AuthzID{AuthzID{Type: "dns", Value: "example.org"}},
+		Identifiers: []AuthzID{{Type: "dns", Value: "example.org"}},
 		AuthzURLs:   []string{"/authz/1"},
 		FinalizeURL: "/orders/1/fin",
 		CertURL:     "/orders/1/cert",

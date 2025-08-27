@@ -544,8 +544,10 @@ const ocspResponseWithoutCertHex = "308201d40a0100a08201cd308201c906092b06010505
 	"5a35fca2e054dfa8"
 
 // PKIX nonce extension
-var ocspExtensionOID = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 2}
-var ocspExtensionValueHex = "0403000000"
+var (
+	ocspExtensionOID      = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 2}
+	ocspExtensionValueHex = "0403000000"
+)
 
 const ocspResponseWithCriticalExtensionHex = "308204fe0a0100a08204f7308204f306092b0601050507300101048204e4308204e03081" +
 	"dba003020100a11b3019311730150603550403130e4f43535020526573706f6e64657218" +

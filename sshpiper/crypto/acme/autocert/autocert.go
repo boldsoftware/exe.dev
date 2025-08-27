@@ -1169,7 +1169,7 @@ func validCert(ck certKey, der [][]byte, key crypto.Signer, now time.Time) (leaf
 }
 
 // https://community.letsencrypt.org/t/2022-01-25-issue-with-tls-alpn-01-validation-method/170450
-var letsEncryptFixDeployTime = time.Date(2022, time.January, 26, 00, 48, 0, 0, time.UTC)
+var letsEncryptFixDeployTime = time.Date(2022, time.January, 26, 0o0, 48, 0, 0, time.UTC)
 
 // isRevokedLetsEncrypt returns whether the certificate is likely to be part of
 // a batch of certificates revoked by Let's Encrypt in January 2022. This check

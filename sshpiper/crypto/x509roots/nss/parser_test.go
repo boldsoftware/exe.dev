@@ -102,8 +102,8 @@ func TestParseCertData(t *testing.T) {
 			name: "valid certs",
 			data: validCertdata,
 			output: []*Certificate{
-				&Certificate{X509: testComodo},
-				&Certificate{X509: testTrustcor, Constraints: []Constraint{DistrustAfter(trustcorDistrust)}},
+				{X509: testComodo},
+				{X509: testTrustcor, Constraints: []Constraint{DistrustAfter(trustcorDistrust)}},
 			},
 		},
 		{

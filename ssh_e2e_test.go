@@ -116,7 +116,7 @@ expect eof
 
 	// Write and execute expect script
 	scriptFile := filepath.Join(t.TempDir(), "signup.expect")
-	if err := os.WriteFile(scriptFile, []byte(expectScript), 0755); err != nil {
+	if err := os.WriteFile(scriptFile, []byte(expectScript), 0o755); err != nil {
 		t.Fatalf("Failed to write expect script: %v", err)
 	}
 
@@ -296,7 +296,7 @@ expect eof
 
 	// Write and execute expect script
 	scriptFile := filepath.Join(t.TempDir(), "create.expect")
-	if err := os.WriteFile(scriptFile, []byte(expectScript), 0755); err != nil {
+	if err := os.WriteFile(scriptFile, []byte(expectScript), 0o755); err != nil {
 		t.Fatalf("Failed to write expect script: %v", err)
 	}
 
@@ -649,7 +649,7 @@ func generateSSHKeyFile(path string) error {
 		return err
 	}
 
-	return os.Chmod(path, 0600)
+	return os.Chmod(path, 0o600)
 }
 
 // Helper function to generate SSH key file and return the key
@@ -674,7 +674,7 @@ func generateSSHKeyFileWithKey(path string) (*rsa.PrivateKey, error) {
 		return nil, err
 	}
 
-	if err := os.Chmod(path, 0600); err != nil {
+	if err := os.Chmod(path, 0o600); err != nil {
 		return nil, err
 	}
 

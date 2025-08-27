@@ -13,7 +13,6 @@ import (
 )
 
 func ExampleNewSSHPiperConn() {
-
 	// upstream addr
 	const serverAddr = "127.0.0.1:22"
 
@@ -87,7 +86,6 @@ func dialPiper(piper *PiperConfig, afterConn func(*PiperConn), waiter func(*Pipe
 		defer s.Close()
 
 		p, err := NewSSHPiperConn(s, piper)
-
 		if err != nil {
 			t.Errorf("failed to create piper conn %v", err)
 			return
@@ -104,13 +102,11 @@ func dialPiper(piper *PiperConfig, afterConn func(*PiperConn), waiter func(*Pipe
 }
 
 func TestPiperPasswordToPasswordMap(t *testing.T) {
-
 	const username = "testuser"
 
 	var called bool
 
 	c, err := dialPiper(&PiperConfig{
-
 		PasswordCallback: func(conn ConnMetadata, password []byte, challengeCtx ChallengeContext) (*Upstream, error) {
 			if username != conn.User() {
 				t.Errorf("different username")
@@ -141,7 +137,6 @@ func TestPiperPasswordToPasswordMap(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -164,7 +159,6 @@ func TestPiperMapUsername(t *testing.T) {
 	var called bool
 
 	c, err := dialPiper(&PiperConfig{
-
 		PasswordCallback: func(conn ConnMetadata, password []byte, challengeCtx ChallengeContext) (*Upstream, error) {
 			if username != conn.User() {
 				t.Errorf("different username")
@@ -194,7 +188,6 @@ func TestPiperMapUsername(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -211,7 +204,6 @@ func TestPiperMapUsername(t *testing.T) {
 }
 
 func TestPiperMapPublicKey(t *testing.T) {
-
 	certChecker := CertChecker{
 		IsUserAuthority: func(k PublicKey) bool {
 			return bytes.Equal(k.Marshal(), testPublicKeys["ecdsa"].Marshal())
@@ -243,7 +235,6 @@ func TestPiperMapPublicKey(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -255,7 +246,6 @@ func TestPiperMapPublicKey(t *testing.T) {
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	})
-
 	if err != nil {
 		t.Fatalf("can connect to piper %v", err)
 	}
@@ -281,7 +271,6 @@ func TestPiperMapPasswordToPublicKey(t *testing.T) {
 	var called bool
 
 	c, err := dialPiper(&PiperConfig{
-
 		PasswordCallback: func(conn ConnMetadata, password []byte, challengeCtx ChallengeContext) (*Upstream, error) {
 			if string(password) != "mypassword" {
 				t.Errorf("password not equal")
@@ -293,7 +282,6 @@ func TestPiperMapPasswordToPublicKey(t *testing.T) {
 					return nil, nil
 				},
 				PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
-
 					called = true
 					return certChecker.Authenticate(conn, key)
 				},
@@ -308,7 +296,6 @@ func TestPiperMapPasswordToPublicKey(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -320,7 +307,6 @@ func TestPiperMapPasswordToPublicKey(t *testing.T) {
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	})
-
 	if err != nil {
 		t.Fatalf("can connect to piper %v", err)
 	}
@@ -346,7 +332,6 @@ func TestPiperMapPublicKeyToPassword(t *testing.T) {
 					return nil, nil
 				},
 				PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
-
 					t.Errorf("PublicKeyCallback should not be called")
 					return nil, nil
 				},
@@ -361,7 +346,6 @@ func TestPiperMapPublicKeyToPassword(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -373,7 +357,6 @@ func TestPiperMapPublicKeyToPassword(t *testing.T) {
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	})
-
 	if err != nil {
 		t.Fatalf("can connect to piper %v", err)
 	}
@@ -384,7 +367,6 @@ func TestPiperMapPublicKeyToPassword(t *testing.T) {
 }
 
 func TestPiperServerWithBanner(t *testing.T) {
-
 	const username = "testuser"
 	const mappedname = "mappedname"
 
@@ -419,7 +401,6 @@ func TestPiperServerWithBanner(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -567,7 +548,6 @@ func TestPiperUsernameNotChangedWithinSession(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -581,7 +561,6 @@ func TestPiperUsernameNotChangedWithinSession(t *testing.T) {
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	})
-
 	if err != nil {
 		t.Fatalf("can connect to piper %v", err)
 	}
@@ -597,9 +576,7 @@ func (c fakeChallengerContext) Meta() interface{}          { return fakeChalleng
 func (c fakeChallengerContext) ChallengedUsername() string { return c["user"] }
 
 func TestPiperChallengeContext(t *testing.T) {
-
 	c, err := dialPiper(&PiperConfig{
-
 		CreateChallengeContext: func(conn ServerPreAuthConn) (ChallengeContext, error) {
 			return fakeChallengerContext{}, nil
 		},
@@ -618,7 +595,6 @@ func TestPiperChallengeContext(t *testing.T) {
 				"instruction",
 				[]string{"question1", "question2"},
 				[]bool{true, true})
-
 			if err != nil {
 				return nil, err
 			}
@@ -648,7 +624,6 @@ func TestPiperChallengeContext(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -667,11 +642,9 @@ func TestPiperChallengeContext(t *testing.T) {
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	})
-
 	if err != nil {
 		t.Fatalf("can connect to piper %v", err)
 	}
-
 }
 
 func fakeUpstreamServer(s net.Conn, upstream *ServerConfig, handler serverType, t *testing.T) {
@@ -715,7 +688,6 @@ func dialUpstream(handler serverType, upstream *ServerConfig, t *testing.T) (net
 }
 
 func TestPiperConnMeta(t *testing.T) {
-
 	wait := make(chan int)
 
 	c, err := dialPiper(&PiperConfig{
@@ -730,7 +702,6 @@ func TestPiperConnMeta(t *testing.T) {
 			}, err
 		},
 	}, func(p *PiperConn) {
-
 		if p.DownstreamConnMeta().User() != "down" {
 			t.Errorf("different downstream user")
 		}
@@ -747,7 +718,6 @@ func TestPiperConnMeta(t *testing.T) {
 		Auth:            []AuthMethod{new(noneAuth)},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	})
-
 	if err != nil {
 		t.Fatalf("can connect to piper %v", err)
 	}
@@ -767,7 +737,6 @@ func TestPiperConnMsgHook(t *testing.T) {
 			}, err
 		},
 	}, nil, func(p *PiperConn) {
-
 		p.WaitWithHook(func(msg []byte) (PipePacketHookMethod, []byte, error) {
 			if msg[0] == msgChannelData {
 				m := channelDataMsg{}
@@ -800,7 +769,6 @@ func TestPiperConnMsgHook(t *testing.T) {
 			return PipePacketHookTransform, msg, nil
 		})
 	}, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}
@@ -810,7 +778,6 @@ func TestPiperConnMsgHook(t *testing.T) {
 		Auth:            []AuthMethod{new(noneAuth)},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	})
-
 	if err != nil {
 		t.Fatalf("can connect to piper %v", err)
 	}
@@ -848,11 +815,9 @@ func TestPiperConnMsgHook(t *testing.T) {
 	if !bytes.Equal([]byte(`abcdefg`), res) {
 		t.Fatalf("Read differed from write, wrote: %v, read: %v", data, res)
 	}
-
 }
 
 func TestPiperPipeData(t *testing.T) {
-
 	c, err := dialPiper(&PiperConfig{
 		NoClientAuthCallback: func(conn ConnMetadata, challengeCtx ChallengeContext) (*Upstream, error) {
 			s, err := dialUpstream(simpleEchoHandler, &ServerConfig{NoClientAuth: true}, t)
@@ -864,7 +829,6 @@ func TestPiperPipeData(t *testing.T) {
 			}, err
 		},
 	}, nil, nil, t)
-
 	if err != nil {
 		t.Fatalf("connect dial to piper: %v", err)
 	}

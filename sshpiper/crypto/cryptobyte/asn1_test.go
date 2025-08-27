@@ -223,7 +223,6 @@ func TestReadASN1IntegerSigned(t *testing.T) {
 			var b Builder
 			b.AddASN1Int64WithTag(test.out, tag)
 			result, err := b.Bytes()
-
 			if err != nil {
 				t.Errorf("#%d: AddASN1Int64WithTag failed: %s", i, err)
 				continue
@@ -330,10 +329,10 @@ func TestReadASN1GeneralizedTime(t *testing.T) {
 		ok  bool
 		out time.Time
 	}{
-		{"20100102030405Z", true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"20100102030405Z", true, time.Date(2010, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.UTC)},
 		{"20100102030405", false, time.Time{}},
-		{"20100102030405+0607", true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.FixedZone("", 6*60*60+7*60))},
-		{"20100102030405-0607", true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.FixedZone("", -6*60*60-7*60))},
+		{"20100102030405+0607", true, time.Date(2010, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.FixedZone("", 6*60*60+7*60))},
+		{"20100102030405-0607", true, time.Date(2010, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.FixedZone("", -6*60*60-7*60))},
 		/* These are invalid times. However, the time package normalises times
 		 * and they were accepted in some versions. See #11134. */
 		{"00000100000000Z", false, time.Time{}},
@@ -369,18 +368,18 @@ func TestReadASN1UTCTime(t *testing.T) {
 		ok  bool
 		out time.Time
 	}{
-		{"000102030405Z", true, time.Date(2000, 01, 02, 03, 04, 05, 0, time.UTC)},
-		{"500102030405Z", true, time.Date(1950, 01, 02, 03, 04, 05, 0, time.UTC)},
-		{"490102030405Z", true, time.Date(2049, 01, 02, 03, 04, 05, 0, time.UTC)},
-		{"990102030405Z", true, time.Date(1999, 01, 02, 03, 04, 05, 0, time.UTC)},
-		{"250102030405Z", true, time.Date(2025, 01, 02, 03, 04, 05, 0, time.UTC)},
-		{"750102030405Z", true, time.Date(1975, 01, 02, 03, 04, 05, 0, time.UTC)},
-		{"000102030405+0905", true, time.Date(2000, 01, 02, 03, 04, 05, 0, time.FixedZone("", 9*60*60+5*60))},
-		{"000102030405-0905", true, time.Date(2000, 01, 02, 03, 04, 05, 0, time.FixedZone("", -9*60*60-5*60))},
-		{"0001020304Z", true, time.Date(2000, 01, 02, 03, 04, 0, 0, time.UTC)},
-		{"5001020304Z", true, time.Date(1950, 01, 02, 03, 04, 00, 0, time.UTC)},
-		{"0001020304+0905", true, time.Date(2000, 01, 02, 03, 04, 0, 0, time.FixedZone("", 9*60*60+5*60))},
-		{"0001020304-0905", true, time.Date(2000, 01, 02, 03, 04, 0, 0, time.FixedZone("", -9*60*60-5*60))},
+		{"000102030405Z", true, time.Date(2000, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.UTC)},
+		{"500102030405Z", true, time.Date(1950, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.UTC)},
+		{"490102030405Z", true, time.Date(2049, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.UTC)},
+		{"990102030405Z", true, time.Date(1999, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.UTC)},
+		{"250102030405Z", true, time.Date(2025, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.UTC)},
+		{"750102030405Z", true, time.Date(1975, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.UTC)},
+		{"000102030405+0905", true, time.Date(2000, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.FixedZone("", 9*60*60+5*60))},
+		{"000102030405-0905", true, time.Date(2000, 0o1, 0o2, 0o3, 0o4, 0o5, 0, time.FixedZone("", -9*60*60-5*60))},
+		{"0001020304Z", true, time.Date(2000, 0o1, 0o2, 0o3, 0o4, 0, 0, time.UTC)},
+		{"5001020304Z", true, time.Date(1950, 0o1, 0o2, 0o3, 0o4, 0o0, 0, time.UTC)},
+		{"0001020304+0905", true, time.Date(2000, 0o1, 0o2, 0o3, 0o4, 0, 0, time.FixedZone("", 9*60*60+5*60))},
+		{"0001020304-0905", true, time.Date(2000, 0o1, 0o2, 0o3, 0o4, 0, 0, time.FixedZone("", -9*60*60-5*60))},
 		{"000102030405Z0700", false, time.Time{}},
 		{"000102030405", false, time.Time{}},
 	}

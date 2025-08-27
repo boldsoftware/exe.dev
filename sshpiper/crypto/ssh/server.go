@@ -368,7 +368,8 @@ func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 }
 
 func gssExchangeToken(gssapiConfig *GSSAPIWithMICConfig, token []byte, s *connection,
-	sessionID []byte, userAuthReq userAuthRequestMsg) (authErr error, perms *Permissions, err error) {
+	sessionID []byte, userAuthReq userAuthRequestMsg,
+) (authErr error, perms *Permissions, err error) {
 	gssAPIServer := gssapiConfig.Server
 	defer gssAPIServer.DeleteSecContext()
 	var srcName string

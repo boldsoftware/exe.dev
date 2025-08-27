@@ -131,7 +131,6 @@ func START() {
 	MOVOA(X1, Mem{Base: R12}.Offset(240))
 	MOVOA(X2, Mem{Base: R12}.Offset(256))
 	MOVOA(X0, Mem{Base: R12}.Offset(272))
-
 }
 
 func BYTESATLEAST256() {

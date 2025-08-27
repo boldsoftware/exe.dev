@@ -36,5 +36,7 @@ func TestCompressed(t *testing.T) {
 	}
 }
 
-const compressedHex = "a3013b2d90c4e02b72e25f727e5e496a5e49b11e1700"
-const compressedExpectedHex = "cb1062004d14c8fe636f6e74656e74732e0a"
+const (
+	compressedHex         = "a3013b2d90c4e02b72e25f727e5e496a5e49b11e1700"
+	compressedExpectedHex = "cb1062004d14c8fe636f6e74656e74732e0a"
+)

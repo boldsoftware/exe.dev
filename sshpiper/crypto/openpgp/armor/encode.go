@@ -9,10 +9,12 @@ import (
 	"io"
 )
 
-var armorHeaderSep = []byte(": ")
-var blockEnd = []byte("\n=")
-var newline = []byte("\n")
-var armorEndOfLineOut = []byte("-----\n")
+var (
+	armorHeaderSep    = []byte(": ")
+	blockEnd          = []byte("\n=")
+	newline           = []byte("\n")
+	armorEndOfLineOut = []byte("-----\n")
+)
 
 // writeSlices writes its arguments to the given Writer.
 func writeSlices(out io.Writer, slices ...[]byte) (err error) {

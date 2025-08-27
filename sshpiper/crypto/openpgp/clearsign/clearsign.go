@@ -54,8 +54,10 @@ var endText = []byte("-----BEGIN PGP SIGNATURE-----")
 // end is a marker which denotes the end of the armored signature.
 var end = []byte("\n-----END PGP SIGNATURE-----")
 
-var crlf = []byte("\r\n")
-var lf = byte('\n')
+var (
+	crlf = []byte("\r\n")
+	lf   = byte('\n')
+)
 
 // getLine returns the first \r\n or \n delineated line from the given byte
 // array. The line does not include the \r\n or \n. The remainder of the byte

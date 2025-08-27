@@ -14,18 +14,23 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const edKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBAarftlLeoyf+v+nVchEZII/vna2PCV8FaX4vsF5BX"
-const alternateEdKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIXffBYeYL+WVzVru8npl5JHt2cjlr4ornFTWzoij9sx"
-const ecKeyStr = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNLCu01+wpXe3xB5olXCN4SqU2rQu0qjSRKJO4Bg+JRCPU+ENcgdA5srTU8xYDz/GEa4dzK5ldPw4J/gZgSXCMs="
+const (
+	edKeyStr          = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBAarftlLeoyf+v+nVchEZII/vna2PCV8FaX4vsF5BX"
+	alternateEdKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIXffBYeYL+WVzVru8npl5JHt2cjlr4ornFTWzoij9sx"
+	ecKeyStr          = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNLCu01+wpXe3xB5olXCN4SqU2rQu0qjSRKJO4Bg+JRCPU+ENcgdA5srTU8xYDz/GEa4dzK5ldPw4J/gZgSXCMs="
+)
 
-var ecKey, alternateEdKey, edKey ssh.PublicKey
-var testAddr = &net.TCPAddr{
-	IP:   net.IP{198, 41, 30, 196},
-	Port: 22,
-}
+var (
+	ecKey, alternateEdKey, edKey ssh.PublicKey
+	testAddr                     = &net.TCPAddr{
+		IP:   net.IP{198, 41, 30, 196},
+		Port: 22,
+	}
+)
 
 var testAddr6 = &net.TCPAddr{
-	IP: net.IP{198, 41, 30, 196,
+	IP: net.IP{
+		198, 41, 30, 196,
 		1, 2, 3, 4,
 		1, 2, 3, 4,
 		1, 2, 3, 4,
@@ -186,7 +191,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestHostNamePrecedence(t *testing.T) {
-	var evilAddr = &net.TCPAddr{
+	evilAddr := &net.TCPAddr{
 		IP:   net.IP{66, 66, 66, 66},
 		Port: 22,
 	}

@@ -274,8 +274,10 @@ func TestGetCertificate(t *testing.T) {
 			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
 				// Make a valid certificate issued after the TLS-ALPN-01
 				// revocation window and cache it.
-				s.IssuerName(pkix.Name{Country: []string{"US"},
-					Organization: []string{"Let's Encrypt"}, CommonName: "R3"})
+				s.IssuerName(pkix.Name{
+					Country:      []string{"US"},
+					Organization: []string{"Let's Encrypt"}, CommonName: "R3",
+				})
 				c := s.Start().LeafCert(exampleDomain, "ECDSA",
 					time.Date(2022, time.January, 26, 12, 0, 0, 0, time.UTC),
 					time.Date(2122, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -294,8 +296,10 @@ func TestGetCertificate(t *testing.T) {
 			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
 				// Make a certificate issued during the TLS-ALPN-01
 				// revocation window and cache it.
-				s.IssuerName(pkix.Name{Country: []string{"US"},
-					Organization: []string{"Let's Encrypt"}, CommonName: "R3"})
+				s.IssuerName(pkix.Name{
+					Country:      []string{"US"},
+					Organization: []string{"Let's Encrypt"}, CommonName: "R3",
+				})
 				c := s.Start().LeafCert(exampleDomain, "ECDSA",
 					time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
 					time.Date(2122, time.January, 1, 0, 0, 0, 0, time.UTC),

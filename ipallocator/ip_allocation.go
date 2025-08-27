@@ -322,8 +322,7 @@ func (d *MDNSAllocator) registerServiceUnsafe(machineName, teamName string, ip n
 	return nil
 }
 
-type ProductionIPAllocator struct {
-}
+type ProductionIPAllocator struct{}
 
 var _ IPAllocator = &ProductionIPAllocator{}
 

@@ -1311,13 +1311,15 @@ func TestKeyboardInteractiveAuthEarlyFail(t *testing.T) {
 	serverConfig := &ServerConfig{
 		MaxAuthTries: maxAuthTries,
 		KeyboardInteractiveCallback: func(c ConnMetadata,
-			client KeyboardInteractiveChallenge) (*Permissions, error) {
+			client KeyboardInteractiveChallenge,
+		) (*Permissions, error) {
 			// Fail keyboard-interactive authentication early before
 			// any prompt is sent to client.
 			return nil, errors.New("keyboard-interactive auth failed")
 		},
 		PasswordCallback: func(c ConnMetadata,
-			pass []byte) (*Permissions, error) {
+			pass []byte,
+		) (*Permissions, error) {
 			if string(pass) == clientPassword {
 				return nil, nil
 			}
@@ -1356,12 +1358,14 @@ func TestKeyboardInteractiveAuthEarlyFail(t *testing.T) {
 		Auth: []AuthMethod{
 			RetryableAuthMethod(KeyboardInteractive(func(name,
 				instruction string, questions []string,
-				echos []bool) ([]string, error) {
+				echos []bool,
+			) ([]string, error) {
 				t.Errorf("unexpected call to KeyboardInteractive()")
 				return []string{clientPassword}, nil
 			}), maxAuthTries),
 			RetryableAuthMethod(PasswordCallback(func() (secret string,
-				err error) {
+				err error,
+			) {
 				t.Logf("PasswordCallback()")
 				passwordCallbackCalled = true
 				return clientPassword, nil

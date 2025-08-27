@@ -121,7 +121,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get user ID: %v", err)
 		}
-		
+
 		// Move key from pending_ssh_keys to ssh_keys
 		_, err = server.db.Exec(`
 			INSERT INTO ssh_keys (user_id, public_key)
@@ -130,7 +130,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to verify SSH key: %v", err)
 		}
-		
+
 		// Remove from pending
 		_, err = server.db.Exec(`
 			DELETE FROM pending_ssh_keys WHERE public_key = ?`,

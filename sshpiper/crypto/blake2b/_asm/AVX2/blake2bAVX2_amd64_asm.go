@@ -1105,8 +1105,7 @@ func noinc_AVX() {
 
 // ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~DATA SECTION~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
 
-var (
-	AVX2_iv0_ptr,
+var AVX2_iv0_ptr,
 	AVX2_iv1_ptr,
 	AVX2_c40_ptr,
 	AVX2_c48_ptr,
@@ -1117,7 +1116,6 @@ var (
 	AVX_iv3_ptr,
 	AVX_c40_ptr,
 	AVX_c48_ptr *Mem
-)
 
 func AVX2_iv0_DATA() Mem {
 	if AVX2_iv0_ptr != nil {

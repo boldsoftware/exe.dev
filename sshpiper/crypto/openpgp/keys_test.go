@@ -215,7 +215,6 @@ func TestKeyWithRevokedSubKey(t *testing.T) {
 	if subKey.Sig == nil {
 		t.Fatalf("subkey signature is nil")
 	}
-
 }
 
 func TestSubkeyRevocation(t *testing.T) {
@@ -296,7 +295,6 @@ func TestKeyWithSubKeyAndBadSelfSigOrder(t *testing.T) {
 	if lifetime := subKey.Sig.KeyLifetimeSecs; lifetime != nil {
 		t.Errorf("The signature has a key lifetime (%d), but it should be nil", *lifetime)
 	}
-
 }
 
 func TestKeyUsage(t *testing.T) {

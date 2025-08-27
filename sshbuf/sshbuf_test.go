@@ -157,7 +157,6 @@ func TestReadCtxImmediate(t *testing.T) {
 	ctx := context.Background()
 	buf := make([]byte, 128)
 	n, err := bc.ReadCtx(ctx, buf)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -241,7 +240,6 @@ func TestWrite(t *testing.T) {
 
 	testData := []byte("write test")
 	n, err := bc.Write(testData)
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -14,12 +14,10 @@ import (
 
 func TestRSAOAEPDecrypt(t *testing.T) {
 	// Notes a description of the labels used in the test vectors
-	type Notes struct {
-	}
+	type Notes struct{}
 
 	// RsaesOaepTestVector
 	type RsaesOaepTestVector struct {
-
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -44,7 +42,6 @@ func TestRSAOAEPDecrypt(t *testing.T) {
 
 	// RsaesOaepTestGroup
 	type RsaesOaepTestGroup struct {
-
 		// The private exponent
 		D string `json:"d,omitempty"`
 
@@ -74,7 +71,6 @@ func TestRSAOAEPDecrypt(t *testing.T) {
 
 	// Root
 	type Root struct {
-
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

@@ -545,49 +545,65 @@ var knownHostsParseTests = []struct {
 		"localhost ssh-rsa {RSAPUB}",
 		"",
 
-		"", "", []string{"localhost"}, "",
+		"", "",
+		[]string{"localhost"},
+		"",
 	},
 	{
 		"localhost\tssh-rsa {RSAPUB}",
 		"",
 
-		"", "", []string{"localhost"}, "",
+		"", "",
+		[]string{"localhost"},
+		"",
 	},
 	{
 		"localhost\tssh-rsa {RSAPUB}\tcomment comment",
 		"",
 
-		"", "comment comment", []string{"localhost"}, "",
+		"", "comment comment",
+		[]string{"localhost"},
+		"",
 	},
 	{
 		"localhost\tssh-rsa {RSAPUB}\tcomment comment\n",
 		"",
 
-		"", "comment comment", []string{"localhost"}, "",
+		"", "comment comment",
+		[]string{"localhost"},
+		"",
 	},
 	{
 		"localhost\tssh-rsa {RSAPUB}\tcomment comment\r\n",
 		"",
 
-		"", "comment comment", []string{"localhost"}, "",
+		"", "comment comment",
+		[]string{"localhost"},
+		"",
 	},
 	{
 		"localhost\tssh-rsa {RSAPUB}\tcomment comment\r\nnext line",
 		"",
 
-		"", "comment comment", []string{"localhost"}, "next line",
+		"", "comment comment",
+		[]string{"localhost"},
+		"next line",
 	},
 	{
 		"localhost,[host2:123]\tssh-rsa {RSAPUB}\tcomment comment",
 		"",
 
-		"", "comment comment", []string{"localhost", "[host2:123]"}, "",
+		"", "comment comment",
+		[]string{"localhost", "[host2:123]"},
+		"",
 	},
 	{
 		"@marker \tlocalhost,[host2:123]\tssh-rsa {RSAPUB}",
 		"",
 
-		"marker", "", []string{"localhost", "[host2:123]"}, "",
+		"marker", "",
+		[]string{"localhost", "[host2:123]"},
+		"",
 	},
 	{
 		"@marker \tlocalhost,[host2:123]\tssh-rsa aabbccdd",

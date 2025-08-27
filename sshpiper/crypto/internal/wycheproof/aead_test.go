@@ -17,7 +17,6 @@ import (
 func TestAEAD(t *testing.T) {
 	// AeadTestVector
 	type AeadTestVector struct {
-
 		// additional authenticated data
 		Aad string `json:"aad,omitempty"`
 
@@ -50,12 +49,10 @@ func TestAEAD(t *testing.T) {
 	}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct {
-	}
+	type Notes struct{}
 
 	// AeadTestGroup
 	type AeadTestGroup struct {
-
 		// the IV size in bits
 		IvSize int `json:"ivSize,omitempty"`
 
@@ -70,7 +67,6 @@ func TestAEAD(t *testing.T) {
 
 	// Root
 	type Root struct {
-
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

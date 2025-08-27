@@ -216,7 +216,7 @@ func TestCertTypes(t *testing.T) {
 
 func TestParseConstraints(t *testing.T) {
 	// Test LifetimeSecs
-	var msg = constrainLifetimeAgentMsg{pseudorand.Uint32()}
+	msg := constrainLifetimeAgentMsg{pseudorand.Uint32()}
 	lifetimeSecs, _, _, err := parseConstraints(ssh.Marshal(msg))
 	if err != nil {
 		t.Fatalf("parseConstraints: %v", err)
@@ -238,7 +238,7 @@ func TestParseConstraints(t *testing.T) {
 	var data []byte
 	var expect []ConstraintExtension
 	for i := 0; i < 10; i++ {
-		var ext = ConstraintExtension{
+		ext := ConstraintExtension{
 			ExtensionName:    fmt.Sprintf("name%d", i),
 			ExtensionDetails: []byte(fmt.Sprintf("details: %d", i)),
 		}

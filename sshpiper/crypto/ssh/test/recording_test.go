@@ -72,7 +72,8 @@ MaxAuthTries 1
 var configTmpl = map[string]*template.Template{
 	"default":      template.Must(template.New("").Parse(defaultSSHDConfig)),
 	"MultiAuth":    template.Must(template.New("").Parse(defaultSSHDConfig + multiAuthSshdConfigTail)),
-	"MaxAuthTries": template.Must(template.New("").Parse(defaultSSHDConfig + maxAuthTriesSshdConfigTail))}
+	"MaxAuthTries": template.Must(template.New("").Parse(defaultSSHDConfig + maxAuthTriesSshdConfigTail)),
+}
 
 type server struct {
 	t          *testing.T
@@ -151,9 +152,7 @@ func clientConfig() *ssh.ClientConfig {
 // implementation will always generate fresh random numbers, large parts of the
 // reference connection will always change.
 
-var (
-	update = flag.Bool("update", false, "update golden files on failure")
-)
+var update = flag.Bool("update", false, "update golden files on failure")
 
 func runTestAndUpdateIfNeeded(t *testing.T, name string, run func(t *testing.T, update bool)) {
 	success := t.Run(name, func(t *testing.T) {
@@ -403,7 +402,7 @@ func username() string {
 }
 
 func writeFile(path string, contents []byte) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0o600)
 	if err != nil {
 		panic(err)
 	}

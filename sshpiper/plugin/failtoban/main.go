@@ -21,7 +21,6 @@ import (
 )
 
 func main() {
-
 	libplugin.CreateAndRunPluginTemplate(&libplugin.PluginTemplate{
 		Name:  "failtoban",
 		Usage: "failtoban plugin, block ip after too many auth failures",
@@ -52,7 +51,6 @@ func main() {
 			},
 		},
 		CreateConfig: func(c *cli.Context) (*libplugin.SshPiperPluginConfig, error) {
-
 			maxFailures := c.Int("max-failures")
 			banDuration := c.Duration("ban-duration")
 			logOnly := c.Bool("log-only")
@@ -134,7 +132,6 @@ func main() {
 }
 
 func buildIPSet(cidrs []string) *netipx.IPSet {
-
 	var ipsetBuilder netipx.IPSetBuilder
 
 	for _, cidr := range cidrs {

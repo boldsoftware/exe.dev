@@ -19,9 +19,7 @@ func chacha20Poly1305Open(dst []byte, key []uint32, src, ad []byte) bool
 //go:noescape
 func chacha20Poly1305Seal(dst []byte, key []uint32, src, ad []byte)
 
-var (
-	useAVX2 = cpu.X86.HasAVX2 && cpu.X86.HasBMI2
-)
+var useAVX2 = cpu.X86.HasAVX2 && cpu.X86.HasBMI2
 
 // setupState writes a ChaCha20 input matrix to state. See
 // https://tools.ietf.org/html/rfc7539#section-2.3.

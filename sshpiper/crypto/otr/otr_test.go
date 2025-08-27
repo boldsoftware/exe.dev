@@ -219,7 +219,6 @@ func roundTrip(t *testing.T, alice, bob *Conversation, message []byte, macKeyChe
 
 	for i, msg := range alicesMessage {
 		out, encrypted, _, _, err := bob.Receive(msg)
-
 		if err != nil {
 			t.Errorf("Error generated while processing test message: %s", err.Error())
 		}
@@ -258,7 +257,6 @@ func roundTrip(t *testing.T, alice, bob *Conversation, message []byte, macKeyChe
 
 	for i, msg := range bobsMessage {
 		out, encrypted, _, _, err := alice.Receive(msg)
-
 		if err != nil {
 			t.Errorf("Error generated while processing test message: %s", err.Error())
 		}
@@ -290,7 +288,7 @@ func roundTrip(t *testing.T, alice, bob *Conversation, message []byte, macKeyChe
 func TestConversation(t *testing.T) {
 	alice, bob := setupConversation(t)
 
-	var testMessages = [][]byte{
+	testMessages := [][]byte{
 		[]byte("hello"), []byte("bye"),
 	}
 
@@ -429,7 +427,7 @@ func TestAgainstLibOTR(t *testing.T) {
 
 	out.Write([]byte(QueryMessage))
 	out.Write([]byte("\n"))
-	var expectedText = []byte("test message")
+	expectedText := []byte("test message")
 
 	for {
 		line, isPrefix, err := in.ReadLine()

@@ -19,35 +19,27 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 		}
 		if k.CiphersClientServer == nil {
 			k.CiphersClientServer = []string{"cipher1"}
-
 		}
 		if k.CiphersServerClient == nil {
 			k.CiphersServerClient = []string{"cipher1"}
-
 		}
 		if k.MACsClientServer == nil {
 			k.MACsClientServer = []string{"mac1"}
-
 		}
 		if k.MACsServerClient == nil {
 			k.MACsServerClient = []string{"mac1"}
-
 		}
 		if k.CompressionClientServer == nil {
 			k.CompressionClientServer = []string{"compression1"}
-
 		}
 		if k.CompressionServerClient == nil {
 			k.CompressionServerClient = []string{"compression1"}
-
 		}
 		if k.LanguagesClientServer == nil {
 			k.LanguagesClientServer = []string{"language1"}
-
 		}
 		if k.LanguagesServerClient == nil {
 			k.LanguagesServerClient = []string{"language1"}
-
 		}
 	}
 
@@ -159,7 +151,6 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 			if c.wantErr != serverHasErr || c.wantErr != clientHasErr {
 				t.Fatalf("got client/server error (%v, %v), want hasError %v",
 					clientErr, serverErr, c.wantErr)
-
 			}
 			if c.wantErr {
 				return

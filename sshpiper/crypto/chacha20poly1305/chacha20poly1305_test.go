@@ -84,7 +84,7 @@ func TestRandom(t *testing.T) {
 	// Some random tests to verify Open(Seal) == Plaintext
 	f := func(t *testing.T, nonceSize int) {
 		for i := 0; i < 256; i++ {
-			var nonce = make([]byte, nonceSize)
+			nonce := make([]byte, nonceSize)
 			var key [32]byte
 
 			al := mathrand.Intn(128)
@@ -158,7 +158,7 @@ func benchamarkChaCha20Poly1305Seal(b *testing.B, buf []byte, nonceSize int) {
 	b.SetBytes(int64(len(buf)))
 
 	var key [32]byte
-	var nonce = make([]byte, nonceSize)
+	nonce := make([]byte, nonceSize)
 	var ad [13]byte
 	var out []byte
 
@@ -181,7 +181,7 @@ func benchamarkChaCha20Poly1305Open(b *testing.B, buf []byte, nonceSize int) {
 	b.SetBytes(int64(len(buf)))
 
 	var key [32]byte
-	var nonce = make([]byte, nonceSize)
+	nonce := make([]byte, nonceSize)
 	var ad [13]byte
 	var ct []byte
 	var out []byte

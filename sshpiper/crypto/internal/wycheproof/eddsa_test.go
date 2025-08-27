@@ -11,20 +11,16 @@ import (
 
 func TestEddsa(t *testing.T) {
 	// Jwk the private key in webcrypto format
-	type Jwk struct {
-	}
+	type Jwk struct{}
 
 	// Key unencoded key pair
-	type Key struct {
-	}
+	type Key struct{}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct {
-	}
+	type Notes struct{}
 
 	// SignatureTestVector
 	type SignatureTestVector struct {
-
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -46,7 +42,6 @@ func TestEddsa(t *testing.T) {
 
 	// EddsaTestGroup
 	type EddsaTestGroup struct {
-
 		// the private key in webcrypto format
 		Jwk *Jwk `json:"jwk,omitempty"`
 
@@ -64,7 +59,6 @@ func TestEddsa(t *testing.T) {
 
 	// Root
 	type Root struct {
-
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

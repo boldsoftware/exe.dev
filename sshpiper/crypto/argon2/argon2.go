@@ -234,7 +234,6 @@ func processBlocks(B []block, time, memory, threads uint32, mode int) {
 			wg.Wait()
 		}
 	}
-
 }
 
 func extractKey(B []block, memory, threads, keyLen uint32) []byte {

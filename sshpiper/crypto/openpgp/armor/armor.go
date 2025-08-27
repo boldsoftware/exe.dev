@@ -46,9 +46,11 @@ type Block struct {
 
 var ArmorCorrupt error = errors.StructuralError("armor invalid")
 
-const crc24Init = 0xb704ce
-const crc24Poly = 0x1864cfb
-const crc24Mask = 0xffffff
+const (
+	crc24Init = 0xb704ce
+	crc24Poly = 0x1864cfb
+	crc24Mask = 0xffffff
+)
 
 // crc24 calculates the OpenPGP checksum as specified in RFC 4880, section 6.1
 func crc24(crc uint32, d []byte) uint32 {
@@ -64,9 +66,11 @@ func crc24(crc uint32, d []byte) uint32 {
 	return crc
 }
 
-var armorStart = []byte("-----BEGIN ")
-var armorEnd = []byte("-----END ")
-var armorEndOfLine = []byte("-----")
+var (
+	armorStart     = []byte("-----BEGIN ")
+	armorEnd       = []byte("-----END ")
+	armorEndOfLine = []byte("-----")
+)
 
 // lineReader wraps a line based reader. It watches for the end of an armor
 // block and records the expected CRC value.

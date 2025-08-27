@@ -21,7 +21,6 @@ type Upstream struct {
 // ChallengeContext represents the context for an authentication challenge.
 // It provides methods to retrieve metadata and the username being challenged.
 type ChallengeContext interface {
-
 	// Meta returns the metadata associated with the challenge.
 	// This can be used to store and retrieve additional information
 	// related to the authentication process.
@@ -104,8 +103,10 @@ func (s *PiperConfig) AddHostKey(key Signer) {
 	s.hostKeys = append(s.hostKeys, key)
 }
 
-type upstream struct{ *connection }
-type downstream struct{ *connection }
+type (
+	upstream   struct{ *connection }
+	downstream struct{ *connection }
+)
 
 // PiperConn is a piped SSH connection, linking upstream ssh server and
 // downstream ssh client together. After the piped connection was created,
@@ -364,7 +365,6 @@ func (p *PiperConn) downstreamBannerCallback(conn ConnMetadata) string {
 }
 
 func (p *PiperConn) updateAuthMethods(emptyerr error) error {
-
 	if p.authFailures > p.maxAuthTries && p.maxAuthTries >= 0 {
 		return emptyerr
 	}
@@ -615,7 +615,6 @@ func (c *connection) serverHandshakeNoAuth(config *ServerConfig) (*Permissions, 
 
 	if err := c.transport.waitSession(); err != nil {
 		return nil, err
-
 	}
 	c.sessionID = c.transport.getSessionID()
 

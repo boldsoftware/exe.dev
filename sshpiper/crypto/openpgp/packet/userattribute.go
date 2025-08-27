@@ -34,7 +34,8 @@ func NewUserAttributePhoto(photos ...image.Image) (uat *UserAttribute, err error
 			0x01,       // JPEG
 			0, 0, 0, 0, // 12 reserved octets, must be all zero.
 			0, 0, 0, 0,
-			0, 0, 0, 0}
+			0, 0, 0, 0,
+		}
 		if _, err = buf.Write(data); err != nil {
 			return
 		}
@@ -43,7 +44,8 @@ func NewUserAttributePhoto(photos ...image.Image) (uat *UserAttribute, err error
 		}
 		uat.Contents = append(uat.Contents, &OpaqueSubpacket{
 			SubType:  UserAttrImageSubpacket,
-			Contents: buf.Bytes()})
+			Contents: buf.Bytes(),
+		})
 	}
 	return
 }

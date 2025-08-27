@@ -477,12 +477,16 @@ func TestSignatureV3Message(t *testing.T) {
 	return
 }
 
-const testKey1KeyId = 0xA34D7E18C20C31BB
-const testKey3KeyId = 0x338934250CCC0360
-const testKeyP256KeyId = 0xd44a2c495918513e
+const (
+	testKey1KeyId    = 0xA34D7E18C20C31BB
+	testKey3KeyId    = 0x338934250CCC0360
+	testKeyP256KeyId = 0xd44a2c495918513e
+)
 
-const signedInput = "Signed message\nline 2\nline 3\n"
-const signedTextInput = "Signed message\r\nline 2\r\nline 3\r\n"
+const (
+	signedInput     = "Signed message\nline 2\nline 3\n"
+	signedTextInput = "Signed message\r\nline 2\r\nline 3\r\n"
+)
 
 const recipientUnspecifiedHex = "848c0300000000000000000103ff62d4d578d03cf40c3da998dfe216c074fa6ddec5e31c197c9666ba292830d91d18716a80f699f9d897389a90e6d62d0238f5f07a5248073c0f24920e4bc4a30c2d17ee4e0cae7c3d4aaa4e8dced50e3010a80ee692175fa0385f62ecca4b56ee6e9980aa3ec51b61b077096ac9e800edaf161268593eedb6cc7027ff5cb32745d250010d407a6221ae22ef18469b444f2822478c4d190b24d36371a95cb40087cdd42d9399c3d06a53c0673349bfb607927f20d1e122bde1e2bf3aa6cae6edf489629bcaa0689539ae3b718914d88ededc3b"
 

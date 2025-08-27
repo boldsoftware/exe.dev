@@ -13,10 +13,8 @@ import (
 )
 
 func TestHkdf(t *testing.T) {
-
 	// HkdfTestVector
 	type HkdfTestVector struct {
-
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -46,12 +44,10 @@ func TestHkdf(t *testing.T) {
 	}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct {
-	}
+	type Notes struct{}
 
 	// HkdfTestGroup
 	type HkdfTestGroup struct {
-
 		// the size of the ikm in bits
 		KeySize int               `json:"keySize,omitempty"`
 		Tests   []*HkdfTestVector `json:"tests,omitempty"`
@@ -60,7 +56,6 @@ func TestHkdf(t *testing.T) {
 
 	// Root
 	type Root struct {
-
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

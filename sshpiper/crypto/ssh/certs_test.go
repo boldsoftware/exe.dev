@@ -284,7 +284,7 @@ func TestCertTypes(t *testing.T) {
 		t.Fatalf("unable to create multi algorithm signer SHA512: %v", err)
 	}
 
-	var testVars = []struct {
+	testVars := []struct {
 		name   string
 		signer Signer
 		algo   string
@@ -319,7 +319,6 @@ func TestCertTypes(t *testing.T) {
 
 	for _, m := range testVars {
 		t.Run(m.name, func(t *testing.T) {
-
 			c1, c2, err := netPipe()
 			if err != nil {
 				t.Fatalf("netPipe: %v", err)

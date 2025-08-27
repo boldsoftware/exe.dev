@@ -68,7 +68,8 @@ type getCertificateFunc func(hello *tls.ClientHelloInfo) (*tls.Certificate, erro
 // NewCAServer creates a new ACME test server. The returned CAServer issues
 // certs signed with the CA roots available in the Roots field.
 func NewCAServer(t *testing.T) *CAServer {
-	ca := &CAServer{t: t,
+	ca := &CAServer{
+		t:              t,
 		challengeTypes: []string{"fake-01", "tls-alpn-01", "http-01"},
 		domainAddr:     make(map[string]string),
 		domainGetCert:  make(map[string]getCertificateFunc),

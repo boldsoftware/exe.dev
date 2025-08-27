@@ -235,7 +235,6 @@ func writeAndSign(payload io.WriteCloser, candidateHashes []uint8, signed *Entit
 		// data then we need to stop literalData from closing
 		// encryptedData.
 		w = noOpCloser{w}
-
 	}
 	var epochSeconds uint32
 	if !hints.ModTime.IsZero() {

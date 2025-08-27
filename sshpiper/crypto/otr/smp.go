@@ -23,8 +23,10 @@ func (s smpFailure) Error() string {
 	return string(s)
 }
 
-var smpFailureError = smpFailure("otr: SMP protocol failed")
-var smpSecretMissingError = smpFailure("otr: mutual secret needed")
+var (
+	smpFailureError       = smpFailure("otr: SMP protocol failed")
+	smpSecretMissingError = smpFailure("otr: mutual secret needed")
+)
 
 const smpVersion = 1
 

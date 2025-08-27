@@ -658,7 +658,7 @@ fi
 
 	// Write the script to a temporary file
 	scriptFile := "/tmp/ssh_test_script.sh"
-	err = os.WriteFile(scriptFile, []byte(script), 0755)
+	err = os.WriteFile(scriptFile, []byte(script), 0o755)
 	if err != nil {
 		t.Fatalf("Failed to write test script: %v", err)
 	}

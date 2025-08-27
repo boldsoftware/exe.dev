@@ -127,7 +127,7 @@ func main() {
 		log.Fatalf("failed to format source: %s", err)
 	}
 
-	if err := os.WriteFile(*output, formatted, 0644); err != nil {
+	if err := os.WriteFile(*output, formatted, 0o644); err != nil {
 		log.Fatalf("failed to write to %q: %s", *output, err)
 	}
 }
