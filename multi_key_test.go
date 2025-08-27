@@ -87,11 +87,12 @@ func TestMultiKeyAuthentication(t *testing.T) {
 			t.Errorf("Expected unregistered status for new key")
 		}
 
-		// Add second key as unverified
+		// Add second key as unverified (in pending_ssh_keys table)
+		token := server.generateToken()
 		_, err = server.db.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key, verified)
-			VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 0)`,
-			testEmail, string(ssh.MarshalAuthorizedKey(pubKey2)))
+			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+			VALUES (?, ?, ?, datetime('now', '+15 minutes'))`,
+			token, string(ssh.MarshalAuthorizedKey(pubKey2)), testEmail)
 		if err != nil {
 			t.Fatalf("Failed to add unverified SSH key: %v", err)
 		}
@@ -113,12 +114,29 @@ func TestMultiKeyAuthentication(t *testing.T) {
 
 	// Test 3: Verified second key works
 	t.Run("VerifiedSecondKey", func(t *testing.T) {
-		// Mark second key as verified
+		// Move key from pending to verified (simulate verification)
+		// First get the user ID
+		var userID string
+		err = server.db.QueryRow("SELECT user_id FROM users WHERE email = ?", testEmail).Scan(&userID)
+		if err != nil {
+			t.Fatalf("Failed to get user ID: %v", err)
+		}
+		
+		// Move key from pending_ssh_keys to ssh_keys
 		_, err = server.db.Exec(`
-			UPDATE ssh_keys SET verified = 1 WHERE public_key = ?`,
-			string(ssh.MarshalAuthorizedKey(pubKey2)))
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)`,
+			userID, string(ssh.MarshalAuthorizedKey(pubKey2)))
 		if err != nil {
 			t.Fatalf("Failed to verify SSH key: %v", err)
+		}
+		
+		// Remove from pending
+		_, err = server.db.Exec(`
+			DELETE FROM pending_ssh_keys WHERE public_key = ?`,
+			string(ssh.MarshalAuthorizedKey(pubKey2)))
+		if err != nil {
+			t.Fatalf("Failed to remove from pending: %v", err)
 		}
 
 		// Create team membership for full authentication
@@ -229,8 +247,8 @@ func TestEmailBySSHKey(t *testing.T) {
 
 	// Add verified key
 	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified)
-		VALUES (?, ?, 1)`,
+		INSERT INTO ssh_keys (user_id, public_key)
+		VALUES (?, ?)`,
 		userID, testPublicKey)
 	if err != nil {
 		t.Fatalf("Failed to insert SSH key: %v", err)
@@ -248,12 +266,13 @@ func TestEmailBySSHKey(t *testing.T) {
 		t.Error("Expected verified key")
 	}
 
-	// Add unverified key
+	// Add unverified key (in pending_ssh_keys)
 	unverifiedPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDUnverified..."
+	token := server.generateToken()
 	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified)
-		VALUES (?, ?, 0)`,
-		userID, unverifiedPublicKey)
+		INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+		VALUES (?, ?, ?, datetime('now', '+15 minutes'))`,
+		token, unverifiedPublicKey, testEmail)
 	if err != nil {
 		t.Fatalf("Failed to insert unverified SSH key: %v", err)
 	}

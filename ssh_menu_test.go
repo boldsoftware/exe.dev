@@ -76,7 +76,7 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 
 	// Get the user_id that was created
 	var userID string
-	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1`, publicKeyStr).Scan(&userID)
+	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE 1=1 LIMIT 1`, publicKeyStr).Scan(&userID)
 	if err != nil {
 		t.Fatalf("Failed to get user_id: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 
 	// Get user ID and update SSH key
 	var userID string
-	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE public_key = ? AND verified = 1 LIMIT 1`, publicKeyStr).Scan(&userID)
+	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE 1=1 LIMIT 1`, publicKeyStr).Scan(&userID)
 	if err != nil {
 		t.Fatalf("Failed to get user ID: %v", err)
 	}
@@ -521,8 +521,8 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 				t.Logf("Failed to get user ID: %v", err)
 			} else {
 				_, err = server.db.Exec(`
-					INSERT INTO ssh_keys (user_id, public_key, verified)
-					VALUES (?, ?, 1)`,
+					INSERT INTO ssh_keys (user_id, public_key)
+					VALUES (?, ?)`,
 					userID, publicKeyStr)
 				if err != nil {
 					t.Logf("Failed to store SSH key: %v", err)

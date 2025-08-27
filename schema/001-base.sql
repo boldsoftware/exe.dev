@@ -136,7 +136,6 @@ CREATE TABLE IF NOT EXISTS ssh_keys (
     default_team TEXT, -- Default team for this SSH key
     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_used_at DATETIME,
-    verified BOOLEAN DEFAULT FALSE, -- Whether this key has been verified via email
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (default_team) REFERENCES teams(team_name) ON DELETE SET NULL
 );

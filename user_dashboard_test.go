@@ -43,8 +43,8 @@ func TestUserDashboard(t *testing.T) {
 
 	// Create SSH key for user
 	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified)
-		VALUES (?, ?, 1)
+		INSERT INTO ssh_keys (user_id, public_key)
+		VALUES (?, ?)
 	`, userID, "ssh-rsa dummy-test-key test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to insert SSH key: %v", err)

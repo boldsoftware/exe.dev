@@ -388,7 +388,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	}
 
 	// Add SSH key
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, verified, public_key) VALUES (?, 1, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}

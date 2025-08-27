@@ -1119,9 +1119,9 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 	// Add the SSH key to the verified keys
 	_, err = s.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified)
-		VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1)
-		ON CONFLICT(public_key) DO UPDATE SET verified = 1`,
+		INSERT INTO ssh_keys (user_id, public_key)
+		VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
+		ON CONFLICT(public_key) DO NOTHING`,
 		email, publicKey)
 	if err != nil {
 		slog.Error("Failed to add SSH key", "error", err)
@@ -1258,9 +1258,9 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		publicKey := verification.PublicKey
 		if publicKey != "" {
 			_, err = s.db.Exec(`
-				INSERT INTO ssh_keys (user_id, public_key, verified)
-				VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 1)
-				ON CONFLICT(public_key) DO UPDATE SET verified = 1, user_id = (SELECT user_id FROM users WHERE email = ?)`,
+				INSERT INTO ssh_keys (user_id, public_key)
+				VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
+				ON CONFLICT(public_key) DO UPDATE SET user_id = (SELECT user_id FROM users WHERE email = ?)`,
 				email, publicKey, email)
 			if err != nil {
 				slog.Error("Error storing SSH key during verification", "error", err)
@@ -3068,17 +3068,27 @@ func (s *Server) isPortListening(address string) bool {
 
 // getEmailBySSHKey checks if an SSH key is registered and returns the associated email
 func (s *Server) GetEmailBySSHKey(publicKeyStr string) (email string, verified bool, err error) {
+	// Check if key exists in ssh_keys (all keys there are verified)
 	err = s.db.QueryRow(`
-		SELECT u.email, s.verified
+		SELECT u.email
 		FROM ssh_keys s
 		JOIN users u ON s.user_id = u.user_id
 		WHERE s.public_key = ?`,
-		publicKeyStr).Scan(&email, &verified)
+		publicKeyStr).Scan(&email)
 
 	if err == sql.ErrNoRows {
-		return "", false, nil
+		// Check if key exists in pending_ssh_keys (unverified)
+		err = s.db.QueryRow(`
+			SELECT user_email
+			FROM pending_ssh_keys
+			WHERE public_key = ?`,
+			publicKeyStr).Scan(&email)
+		if err == sql.ErrNoRows {
+			return "", false, nil
+		}
+		return email, false, err // Key exists in pending_ssh_keys, so not verified
 	}
-	return email, verified, err
+	return email, true, err // Key exists in ssh_keys, so verified
 }
 
 // getUserByPublicKey retrieves a user by their SSH public key
@@ -3090,7 +3100,7 @@ func (s *Server) getUserByPublicKey(publicKeyStr string) (*User, error) {
 		SELECT u.user_id, u.email, u.created_at
 		FROM users u
 		JOIN ssh_keys s ON u.user_id = s.user_id
-		WHERE s.public_key = ? AND s.verified = 1`,
+		WHERE s.public_key = ?`,
 		publicKeyStr).Scan(&user.UserID, &user.Email, &user.CreatedAt)
 
 	if err == sql.ErrNoRows {
@@ -3127,8 +3137,8 @@ func (s *Server) createUserWithAlloc(publicKey, email string) error {
 
 	// Add the SSH key to ssh_keys table
 	_, err = tx.Exec(`
-		INSERT INTO ssh_keys (user_id, verified, public_key)
-		VALUES (?, 1, ?)`,
+		INSERT INTO ssh_keys (user_id, public_key)
+		VALUES (?, ?)`,
 		userID, publicKey)
 	if err != nil {
 		return err
@@ -3247,8 +3257,8 @@ func (s *Server) createUser(publicKey, email string) error {
 	// Add the SSH key to ssh_keys table if provided
 	if publicKey != "" {
 		_, err = tx.Exec(`
-			INSERT INTO ssh_keys (user_id, verified, public_key)
-			VALUES (?, 1, ?)`,
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)`,
 			userID, publicKey)
 		if err != nil {
 			return err
@@ -3511,8 +3521,8 @@ func (s *Server) createTestUserWithID(email string) (string, error) {
 
 	// Add the SSH key to ssh_keys table with unique key per user
 	_, err = s.db.Exec(`
-		INSERT INTO ssh_keys (user_id, verified, public_key)
-		VALUES (?, 1, ?)`,
+		INSERT INTO ssh_keys (user_id, public_key)
+		VALUES (?, ?)`,
 		userID, fmt.Sprintf("ssh-rsa dummy-test-key-%s %s", userID, email))
 	if err != nil {
 		return "", err
@@ -3527,7 +3537,7 @@ func (s *Server) getUserIDByPublicKey(publicKey ssh.PublicKey) (string, error) {
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
 	err := s.db.QueryRow(`
 		SELECT user_id FROM ssh_keys
-		WHERE public_key = ? AND verified = 1
+		WHERE public_key = ?
 		LIMIT 1
 	`, publicKeyStr).Scan(&userID)
 	if err != nil {

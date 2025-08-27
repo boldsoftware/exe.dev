@@ -114,7 +114,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	}
 
 	// Add SSH key for test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestProxyRequestDetails(t *testing.T) {
 	}
 
 	// Add SSH key for test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestMagicAuthFlow(t *testing.T) {
 	}
 
 	// Create SSH key for the test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
 		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
@@ -756,7 +756,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 	}
 
 	// Create SSH key for the test user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
 		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)

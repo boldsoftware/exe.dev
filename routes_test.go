@@ -309,7 +309,7 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	// Create SSH key for the user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
 		userID, publicKey)
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
@@ -514,7 +514,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	}
 
 	// Create SSH key for the user
-	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`,
+	_, err = db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
 		userID, publicKey)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)

@@ -58,7 +58,6 @@ CREATE TABLE ssh_keys (
     public_key TEXT UNIQUE NOT NULL, -- Public keys are globally unique to identify users
     added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_used_at DATETIME,
-    verified BOOLEAN DEFAULT FALSE, -- Whether this key has been verified via email
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 

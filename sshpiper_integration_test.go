@@ -880,8 +880,8 @@ func (s *Server) createTestUser(email string) (string, error) {
 
 	// Add SSH key
 	_, err = s.db.Exec(`
-		INSERT OR REPLACE INTO ssh_keys (user_id, public_key, verified)
-		VALUES (?, ?, 1)
+		INSERT OR REPLACE INTO ssh_keys (user_id, public_key)
+		VALUES (?, ?)
 	`, userID, "ssh-rsa dummy-test-key test@example.com")
 	if err != nil {
 		return "", err

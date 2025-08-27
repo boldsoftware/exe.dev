@@ -51,7 +51,7 @@ func TestMachineNameFormatParsing(t *testing.T) {
 	}
 
 	// Add SSH key for user
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key, verified) VALUES (?, ?, 1)`, userID, "dummy-key")
+	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "dummy-key")
 	if err != nil {
 		t.Fatal(err)
 	}

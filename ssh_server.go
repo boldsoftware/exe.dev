@@ -557,9 +557,9 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string, termina
 
 	// Store/update the SSH key as verified
 	_, storeErr := ss.server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key, verified)
-		VALUES (?, ?, 1)
-		ON CONFLICT(public_key) DO UPDATE SET verified = 1, user_id = ?`,
+		INSERT INTO ssh_keys (user_id, public_key)
+		VALUES (?, ?)
+		ON CONFLICT(public_key) DO UPDATE SET user_id = ?`,
 		user.UserID, publicKey, user.UserID)
 	if storeErr != nil {
 		log.Printf("Error storing SSH key: %v", storeErr)
@@ -1424,7 +1424,7 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 	currentPublicKey, _ := s.Context().Value("public_key").(string)
 
 	// Get all public keys for this user
-	rows, err := ss.server.db.Query(`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) AND verified = 1 ORDER BY public_key`, email)
+	rows, err := ss.server.db.Query(`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key`, email)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError retrieving SSH keys: %v\033[0m\r\n", err)
 		return
@@ -1523,14 +1523,7 @@ func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
 	if err == nil {
 		// Email already exists - this is a new ssh key for an existing user
 
-		// Store this key as unverified in ssh_keys table
-		_, err = ss.server.db.Exec(`
-			INSERT OR REPLACE INTO ssh_keys (user_id, public_key, verified)
-			VALUES ((SELECT user_id FROM users WHERE email = ?), ?, 0)`,
-			email, publicKey)
-		if err != nil {
-			return fmt.Errorf("failed to store pending key: %v", err)
-		}
+		// Don't store in ssh_keys yet - only store verified keys there
 
 		// Generate token for new ssh key verification
 		token := ss.server.generateToken()
@@ -1634,7 +1627,7 @@ func (ss *SSHServer) getMachine(publicKey, allocID, machineName string) (*Machin
 			SELECT 1 FROM allocs a
 			JOIN users u ON a.user_id = u.user_id
 			JOIN ssh_keys sk ON u.user_id = sk.user_id
-			WHERE sk.public_key = ? AND sk.verified = 1 AND a.alloc_id = ?
+			WHERE sk.public_key = ? AND a.alloc_id = ?
 		)`, publicKey, allocID).Scan(&exists)
 	if err != nil {
 		return nil, fmt.Errorf("database error: %v", err)
