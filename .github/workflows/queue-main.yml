@@ -24,8 +24,8 @@ jobs:
   formatting:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # needed for git push
-      actions: write    # needed to save caches
+      contents: write # needed for git push
+      actions: write # needed to save caches
     outputs:
       commit_sha: ${{ steps.get_commit.outputs.commit_sha }}
     steps:
@@ -51,10 +51,10 @@ jobs:
           if [ -n "$CHANGES" ]; then
             echo "goimports would change the following files:"
             echo "$CHANGES"
-            
+
             # Apply goimports
             find . -name "*.go" -exec goimports -w {} +
-            
+
             # Configure git and commit changes
             git config --global user.name "Auto-formatter"
             git config --global user.email "bot@exe.dev"
@@ -73,8 +73,8 @@ jobs:
     needs: formatting
     runs-on: ubuntu-latest
     permissions:
-      contents: read    # required by actions/checkout
-      actions: write    # allow cache save from this job too
+      contents: read # required by actions/checkout
+      actions: write # allow cache save from this job too
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,7 +136,7 @@ jobs:
         run: |
           # Try to rebase onto main and push
           git fetch origin main
-          
+
           # Check if we can fast-forward
           if git merge-base --is-ancestor HEAD origin/main; then
             echo "Already up to date with main"
