@@ -9,6 +9,7 @@ import (
 )
 
 func TestBrowserScenario(t *testing.T) {
+	t.Parallel()
 	// This test simulates browser access using foo.localhost subdomains
 	// which work without DNS setup on most systems
 

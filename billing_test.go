@@ -12,6 +12,7 @@ import (
 
 // TestBillingCommandExists tests that the billing command is properly integrated
 func TestBillingCommandExists(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_billing_exists_*.db")
 	if err != nil {
@@ -46,6 +47,7 @@ func TestBillingCommandExists(t *testing.T) {
 
 // TestBillingDatabaseSchema tests that the billing fields exist in the database
 func TestBillingDatabaseSchema(t *testing.T) {
+	t.Parallel()
 	// Create temporary database
 	tmpDB, err := os.CreateTemp("", "test_billing_schema_*.db")
 	if err != nil {
@@ -102,6 +104,7 @@ func TestBillingDatabaseSchema(t *testing.T) {
 
 // TestBillingStripeIntegration tests that Stripe dependencies are available
 func TestBillingStripeIntegration(t *testing.T) {
+	t.Parallel()
 	// Test that we can set and get Stripe key
 	originalKey := stripe.Key
 	testKey := "sk_test_fake_key_for_testing"
@@ -119,6 +122,7 @@ func TestBillingStripeIntegration(t *testing.T) {
 
 // TestBillingFunctionalityCompiles tests that all billing functions compile
 func TestBillingFunctionalityCompiles(t *testing.T) {
+	t.Parallel()
 	// This test ensures that the billing functionality compiles and the functions exist
 	// by testing the overall system can be created with billing support
 
@@ -176,6 +180,7 @@ func TestBillingFunctionalityCompiles(t *testing.T) {
 
 // TestBillingCommandInHelpSystem tests that billing command is documented
 func TestBillingCommandInHelpSystem(t *testing.T) {
+	t.Parallel()
 	// Test that billing command documentation exists by checking the source contains billing help
 	// This is a meta-test that validates the help system includes billing
 

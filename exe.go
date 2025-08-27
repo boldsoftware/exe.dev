@@ -47,6 +47,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"exe.dev/container"
+	"exe.dev/ipallocator"
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
@@ -378,7 +379,7 @@ type Server struct {
 	sshMetrics      *SSHMetrics
 
 	// IP allocation strategy for dev/production modes
-	ipAllocator IPAllocator
+	ipAllocator ipallocator.IPAllocator
 
 	mu       sync.RWMutex
 	stopping bool
@@ -501,7 +502,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 }
 
 // SetIPAllocator enables or disables mDNS functionality for the server
-func (s *Server) SetIPAllocator(allocator IPAllocator) {
+func (s *Server) SetIPAllocator(allocator ipallocator.IPAllocator) {
 	s.ipAllocator = allocator
 }
 

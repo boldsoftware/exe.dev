@@ -1,4 +1,4 @@
-package exe
+package ipallocator
 
 import (
 	"fmt"

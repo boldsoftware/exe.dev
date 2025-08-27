@@ -6,6 +6,7 @@ import (
 )
 
 func TestIsValidContainerName(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -55,6 +56,7 @@ func TestIsValidContainerName(t *testing.T) {
 }
 
 func TestIsValidMachineName(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -125,6 +127,7 @@ func TestIsValidMachineName(t *testing.T) {
 }
 
 func TestMachineNameDenylist(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -179,6 +182,7 @@ func TestMachineNameDenylist(t *testing.T) {
 }
 
 func TestContainerNamesSameAsTeamNames(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {

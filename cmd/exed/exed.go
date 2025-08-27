@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"exe.dev"
+	"exe.dev/ipallocator"
 )
 
 func main() {
@@ -60,7 +61,7 @@ func main() {
 	}
 
 	if *mdnsEnabled {
-		server.SetIPAllocator(exe.NewMDNSAllocator())
+		server.SetIPAllocator(ipallocator.NewMDNSAllocator())
 	}
 
 	if err := server.Start(); err != nil {

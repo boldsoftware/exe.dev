@@ -9,6 +9,7 @@ import (
 )
 
 func TestEmbeddedFiles(t *testing.T) {
+	t.Parallel()
 	// Create temporary database file
 	tmpDB, err := os.CreateTemp("", "test_*.db")
 	if err != nil {
@@ -118,6 +119,7 @@ func TestEmbeddedFiles(t *testing.T) {
 }
 
 func TestEmbeddedSizes(t *testing.T) {
+	t.Parallel()
 	// Verify that embedded files are not empty and have reasonable sizes
 	files := []struct {
 		name    string

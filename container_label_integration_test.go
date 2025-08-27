@@ -9,6 +9,7 @@ import (
 
 // TestLabelLengthFix tests that the original issue values would have caused problems
 func TestLabelLengthFix(t *testing.T) {
+	t.Parallel()
 	// This test documents the Kubernetes label length issue that was fixed
 	// Original error: "metadata.labels: Invalid value: must be no more than 63 characters"
 
