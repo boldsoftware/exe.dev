@@ -33,36 +33,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.mod"
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            **/go.sum
-
-      - name: Install goimports
-        run: go install golang.org/x/tools/cmd/goimports@latest
-
-      - name: Check and fix goimports
+      - name: Install gofumpt v0.8.0
         run: |
-          CHANGES=$(find . -name "*.go" -exec goimports -l {} +)
+          curl -L https://github.com/mvdan/gofumpt/releases/download/v0.8.0/gofumpt_v0.8.0_linux_amd64 -o /tmp/gofumpt
+          chmod +x /tmp/gofumpt
+          sudo mv /tmp/gofumpt /usr/local/bin/gofumpt
+
+      - name: Check and fix gofumpt
+        run: |
+          CHANGES=$(find . -name "*.go" -exec gofumpt -l {} +)
           if [ -n "$CHANGES" ]; then
-            echo "goimports would change the following files:"
+            echo "gofumpt would change the following files:"
             echo "$CHANGES"
 
-            # Apply goimports
-            find . -name "*.go" -exec goimports -w {} +
+            # Apply gofumpt
+            find . -name "*.go" -exec gofumpt -w {} +
 
             # Configure git and commit changes
             git config --global user.name "Auto-formatter"
             git config --global user.email "bot@exe.dev"
             git add .
-            git commit -m "goimports: fix imports"
+            git commit -m "all: fix formatting"
             git push
           else
-            echo "No goimports changes needed"
+            echo "No gofumpt changes needed"
           fi
 
       - name: Get commit SHA
