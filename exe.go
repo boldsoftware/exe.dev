@@ -3311,7 +3311,7 @@ func (s *Server) setupContainerSSH(machineID int) error {
 
 	// Update database with SSH keys
 	_, err = s.db.Exec(`
-		UPDATE machines SET 
+		UPDATE machines SET
 			ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
 			ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
 		WHERE id = ?
