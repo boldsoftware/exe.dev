@@ -477,22 +477,6 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SSH private key is invalid: %v", err)
 	}
-
-	t.Log("✅ SSH private key is valid and parseable")
-
-	t.Log("")
-	t.Log("🎉 END-TO-END MACHINE ACCESS TEST SUCCESSFUL!")
-	t.Log("")
-	t.Log("Components verified:")
-	t.Log("  ✅ Container creation with proper SSH keys")
-	t.Log("  ✅ Database storage of machine and SSH details")
-	t.Log("  ✅ Machine lookup by name and user")
-	t.Log("  ✅ SSH details retrieval from database")
-	t.Log("  ✅ Container port mapping via Docker")
-	t.Log("  ✅ Complete machine access upstream creation")
-	t.Log("  ✅ Valid SSH private key for authentication")
-	t.Log("")
-	t.Log("The sshpiper machine access implementation is WORKING!")
 }
 
 // TestLegacyContainerSSHSetup tests the SSH setup for containers created before SSH support
