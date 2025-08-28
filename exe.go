@@ -374,6 +374,17 @@ type Server struct {
 	stopping bool
 }
 
+var setStripeKey = sync.OnceFunc(func() {
+	stripeKey := os.Getenv("STRIPE_API_KEY")
+	if stripeKey == "" {
+		stripeKey = "sk_test_51QxIgSGWIXq1kJnoiKwEcehJeO68QFsueLGymU9zR5jsJtMup5arFZZlHYaOzG3Bsw2GfnIG9H3Jv8Be10vqK1nW001hUxrS2g"
+		if testing.Testing() {
+			slog.Info("using default Stripe test key")
+		}
+	}
+	stripe.Key = stripeKey
+})
+
 // NewServer creates a new Server instance with database and container management
 func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode string, dockerHosts []string) (*Server, error) {
 	// Initialize database
@@ -402,15 +413,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		slog.Warn("POSTMARK_API_KEY not set, email verification will not work")
 	}
 
-	// Get Stripe key
-	stripeKey := os.Getenv("STRIPE_API_KEY")
-	if stripeKey == "" {
-		stripeKey = "sk_test_51QxIgSGWIXq1kJnoiKwEcehJeO68QFsueLGymU9zR5jsJtMup5arFZZlHYaOzG3Bsw2GfnIG9H3Jv8Be10vqK1nW001hUxrS2g"
-		if !quietMode {
-			slog.Info("Using default Stripe test key")
-		}
-	}
-	stripe.Key = stripeKey
+	setStripeKey()
 	var baseURL string
 	if httpsAddr != "" {
 		// HTTPS is configured, use https://exe.dev
@@ -474,7 +477,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		magicSecrets:       make(map[string]*MagicSecret),
 		sessions:           make(map[*sshbuf.Channel]*UserSession),
 		postmarkClient:     postmarkClient,
-		stripeKey:          stripeKey,
+		stripeKey:          stripe.Key,
 		devMode:            devMode,
 		quietMode:          quietMode,
 		testMode:           testing.Testing(),
