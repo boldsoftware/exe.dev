@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,13 +49,22 @@ func TestSSHPiperIntegration(t *testing.T) {
 		defer server.Stop()
 
 		// Start the server in a goroutine
-
 		go func() {
 			server.Start()
 		}()
 
-		// Wait a bit for server to start
-		time.Sleep(2 * time.Second)
+		// Wait for both SSH and Piper ports to be ready in parallel
+		errc := make(chan error, 2)
+		var wg sync.WaitGroup
+		wg.Go(func() { errc <- waitForPort(sshPort) })
+		wg.Go(func() { errc <- waitForPort(piperPort) })
+		wg.Wait()
+		close(errc)
+		for err := range errc {
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 
 		// Test that the piper plugin gRPC server is listening
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", piperPort), 5*time.Second)
@@ -108,8 +118,11 @@ func TestSSHPiperIntegration(t *testing.T) {
 			plugin.Serve()
 		}()
 
-		// Wait for plugin to start
-		time.Sleep(1 * time.Second)
+		// Wait for plugin port to be ready
+		err = waitForPort(piperPort)
+		if err != nil {
+			t.Fatalf("Piper plugin server failed to start: %v", err)
+		}
 
 		// Test that the plugin server is running
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", piperPort), 5*time.Second)
@@ -132,6 +145,19 @@ func findAvailablePort(t *testing.T) int {
 
 	addr := listener.Addr().(*net.TCPAddr)
 	return addr.Port
+}
+
+// waitForPort waits for the specified port to be listening
+func waitForPort(port int) error {
+	for range 50 {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 100*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+	}
+
+	return fmt.Errorf("port %d failed to become ready", port)
 }
 
 // TestSSHPiperScript tests the sshpiper.sh script
