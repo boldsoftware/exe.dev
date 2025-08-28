@@ -391,7 +391,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 	}
 
 	// Detect if we're running in test mode
-	quietMode := testing.Testing()
+	quietMode := !testing.Testing()
 
 	// Initialize Postmark client
 	postmarkAPIKey := os.Getenv("POSTMARK_API_KEY")
