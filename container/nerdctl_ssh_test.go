@@ -24,26 +24,34 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 		DefaultMemoryRequest: "128Mi",
 	}
 
+	t.Log("Creating nerdctl manager...")
 	manager, err := NewNerdctlManager(config)
 	if err != nil {
 		t.Fatalf("failed to create nerdctl manager: %v", err)
 	}
+	t.Log("Nerdctl manager created successfully")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	// Create a test container
+	t.Log("Creating test container request...")
+	// Use a unique AllocID to avoid network conflicts
+	uniqueID := fmt.Sprintf("test-ssh-%d", time.Now().UnixNano())
 	req := &CreateContainerRequest{
-		AllocID:         "test-ssh-" + time.Now().Format("20060102-150405"),
+		AllocID:         uniqueID,
 		Name:            "sshtest",
 		Image:           "ubuntu:latest",
 		CommandOverride: "",
 	}
 
+	t.Logf("Calling CreateContainer with request: AllocID=%s, Name=%s, Image=%s", 
+		req.AllocID, req.Name, req.Image)
 	container, err := manager.CreateContainer(ctx, req)
 	if err != nil {
 		t.Fatalf("failed to create container: %v", err)
 	}
+	t.Logf("Container created successfully: ID=%s, SSHPort=%d", container.ID, container.SSHPort)
 	defer func() {
 		// Clean up container
 		deleteCtx, deleteCancel := context.WithTimeout(context.Background(), 30*time.Second)
