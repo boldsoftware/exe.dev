@@ -35,6 +35,7 @@ func TestContainerCommandIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Pull the image first to avoid timeouts
 			pullCmd := exec.CommandContext(ctx, "docker", "pull", tt.image)
 			if err := pullCmd.Run(); err != nil {
