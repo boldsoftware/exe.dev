@@ -320,8 +320,8 @@ expect eof
 	// Check for other expect script errors
 	if err != nil {
 		// Only treat certain errors as OK
-		if strings.Contains(string(output), "Machine created successfully") || 
-		   strings.Contains(string(output), "Machine found in list") {
+		if strings.Contains(string(output), "Machine created successfully") ||
+			strings.Contains(string(output), "Machine found in list") {
 			t.Logf("Expect script had exit error but machine was created: %v", err)
 		} else {
 			t.Fatalf("Expect script failed: %v\nOutput: %s", err, output)
