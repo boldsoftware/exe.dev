@@ -76,7 +76,8 @@ func TestSSHEndToEndSignupFlow(t *testing.T) {
 	// Create expect script for signup flow
 	expectScript := fmt.Sprintf(`#!/usr/bin/expect -f
 set timeout 10
-spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s -p %s 127.0.0.1
+set env(SSH_AUTH_SOCK) ""
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -o IdentityFile=%s -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o ChallengeResponseAuthentication=no -o IdentityAgent=none -i %s -p %s 127.0.0.1
 
 # Wait for email prompt
 expect {
@@ -114,7 +115,7 @@ expect {
 }
 
 expect eof
-`, keyFile, strings.Split(sshAddr, ":")[1])
+`, keyFile, keyFile, strings.Split(sshAddr, ":")[1])
 
 	// Write and execute expect script
 	scriptFile := filepath.Join(t.TempDir(), "signup.expect")
@@ -253,12 +254,17 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	// Create expect script for create flow
 	expectScript := fmt.Sprintf(`#!/usr/bin/expect -f
 set timeout 30
-spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s -p %s 127.0.0.1
+set env(SSH_AUTH_SOCK) ""
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes -o IdentityFile=%s -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o ChallengeResponseAuthentication=no -o IdentityAgent=none -i %s -p %s 127.0.0.1
 
 # Wait for menu prompt
 expect {
     "exe.dev" {
-        send "create %s --image=ubuntu\r"
+        send "new --name=%s --image=ubuntu\r"
+    }
+    "enter your email" {
+        puts "ERROR: Authentication failed - got signup prompt instead of menu"
+        exit 2
     }
     timeout {
         puts "Timeout waiting for menu"
@@ -295,7 +301,7 @@ expect {
 # Exit
 send "exit\r"
 expect eof
-`, keyFile, strings.Split(sshAddr, ":")[1], machineName, machineName)
+`, keyFile, keyFile, strings.Split(sshAddr, ":")[1], machineName, machineName)
 
 	// Write and execute expect script
 	scriptFile := filepath.Join(t.TempDir(), "create.expect")
@@ -305,10 +311,21 @@ expect eof
 
 	cmd := exec.Command("expect", scriptFile)
 	output, err := cmd.CombinedOutput()
-	t.Logf("Expect output:\n%s", output)
 
+	// Check for authentication failure
+	if strings.Contains(string(output), "ERROR: Authentication failed") {
+		t.Fatalf("SSH authentication failed - got signup prompt instead of authenticated menu")
+	}
+
+	// Check for other expect script errors
 	if err != nil {
-		t.Logf("Expect script error (might be OK if machine was created): %v", err)
+		// Only treat certain errors as OK
+		if strings.Contains(string(output), "Machine created successfully") || 
+		   strings.Contains(string(output), "Machine found in list") {
+			t.Logf("Expect script had exit error but machine was created: %v", err)
+		} else {
+			t.Fatalf("Expect script failed: %v\nOutput: %s", err, output)
+		}
 	}
 
 	// Verify machine was created in database
@@ -318,13 +335,13 @@ expect eof
 		t.Fatalf("Failed to query machines: %v", err)
 	}
 
-	// The machine might not be created if Docker is not fully functional in CI
+	// Check that machine was actually created
 	if strings.Contains(string(output), "Machine created successfully") || strings.Contains(string(output), "Machine found in list") {
 		if machineCount != 1 {
-			t.Errorf("Expected 1 machine, got %d", machineCount)
+			t.Errorf("Expected 1 machine in database, got %d", machineCount)
 		}
-	} else {
-		t.Logf("Machine creation did not complete (this is OK in CI without Docker)")
+	} else if machineCount > 0 {
+		t.Errorf("Machine exists in database but expect script didn't confirm creation")
 	}
 }
 
