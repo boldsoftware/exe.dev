@@ -31,7 +31,7 @@ func TestIsValidMachineName(t *testing.T) {
 		{"valid with hyphens", "my-app", true},
 		{"valid long name", "very-long-machine-name-twelve", true},
 		{"valid 32 chars", "abcdefghijklmnopqrstuvwxyz123456", true},
-		{"valid 5 chars exactly", "hello", true},
+		{"valid 5 chars exactly", "xezzo", true},
 		{"numbers at end", "app123", true},
 		{"valid longer name", "mymachine", true},
 
