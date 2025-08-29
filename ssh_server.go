@@ -537,7 +537,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
 	fmt.Fprintf(s, "Your account has been successfully created.\r\n\r\n")
-	fmt.Fprintf(s, "%sPress any key continue...%s", "\033[1;36m", "\033[0m")
+	fmt.Fprintf(s, "%sPress any key to continue...%s", "\033[1;36m", "\033[0m")
 
 	// Wait for the goroutine to exit (user presses Enter or any key)
 	<-goroutineDone
