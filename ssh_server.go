@@ -83,6 +83,66 @@ func (ss *SSHServer) Stop() error {
 	return nil
 }
 
+// shouldShowSpinner determines if we should show spinner/progress indicators
+// Based on TTY detection, environment variables, and terminal capabilities
+func (ss *SSHServer) shouldShowSpinner(s ssh.Session) bool {
+	// Check environment variables first
+	env := s.Environ()
+	envMap := make(map[string]string)
+	for _, e := range env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			envMap[parts[0]] = parts[1]
+		}
+	}
+	
+	// Check NO_COLOR - if set (any value), disable colors/spinners
+	if _, hasNoColor := envMap["NO_COLOR"]; hasNoColor {
+		return false
+	}
+	
+	// Check TERM for dumb terminal
+	if term, hasTerm := envMap["TERM"]; hasTerm && term == "dumb" {
+		return false
+	}
+	
+	// Check CI environment variable (implies non-human)
+	if _, hasCI := envMap["CI"]; hasCI {
+		return false
+	}
+	
+	// Check NONINTERACTIVE
+	if _, hasNonInteractive := envMap["NONINTERACTIVE"]; hasNonInteractive {
+		return false
+	}
+	
+	// Check FORCE_COLOR - if set, override and show spinner
+	if _, hasForceColor := envMap["FORCE_COLOR"]; hasForceColor {
+		return true
+	}
+	
+	// Check if we have a PTY allocated
+	// When user runs `ssh localexe new`, there's no PTY by default
+	// But when they run `ssh localexe` (interactive shell), there is a PTY
+	// We want to show spinner for direct commands too, since a human is likely watching
+	_, _, isPty := s.Pty()
+	
+	// If we have a PTY, definitely show spinner (interactive session)
+	if isPty {
+		return true
+	}
+	
+	// No PTY, but could still be a human running a direct command
+	// Check if this looks like it's being piped or redirected
+	// If the command was run directly by a human, we should show the spinner
+	// But if it's being run by a script or piped, we shouldn't
+	
+	// For SSH exec commands without PTY, we default to showing spinner
+	// unless environment suggests otherwise (NO_COLOR, CI, etc already checked above)
+	// This handles the case: ssh localexe new
+	return true
+}
+
 // authenticatePublicKey handles public key authentication
 func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) bool {
 	// Increment auth attempts metric
@@ -856,12 +916,11 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 
-	// For containerd, containers report as running immediately but SSH might not be ready
-	// Always show spinner to ensure SSH is actually accessible
-	// TODO: Improve this by checking if SSH is actually ready instead of just container status
+	// Determine if we should show fancy output (spinners, colors, etc)
+	showSpinner := ss.shouldShowSpinner(s)
 
-	// Show spinner animation while waiting for startup
-	fmt.Fprintf(s, "Waiting for startup... ")
+	// For containerd, containers report as running immediately but SSH might not be ready
+	// TODO: Improve this by checking if SSH is actually ready instead of just container status
 
 	maxWaitTime := 3 * time.Minute
 	containerCheckInterval := 2 * time.Second
@@ -872,13 +931,31 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	// Spinner characters
 	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	spinnerIndex := 0
+	
+	// Determine output stream for spinner
+	// For PTY sessions, use stderr to keep stdout clean
+	// For exec commands without PTY, use stdout so user sees it
+	_, _, isPty := s.Pty()
+	var spinnerOut io.Writer
+	if isPty {
+		spinnerOut = s.Stderr()
+	} else {
+		spinnerOut = s
+	}
+	
+	// Show initial waiting message only for interactive sessions
+	if showSpinner {
+		fmt.Fprintf(spinnerOut, "Waiting for startup... ")
+	}
 
 	for time.Since(startTime) < maxWaitTime {
-		// Show spinner and elapsed time (updates every 100ms)
-		elapsed := time.Since(startTime)
-		spinner := spinners[spinnerIndex%len(spinners)]
-		spinnerIndex++
-		fmt.Fprintf(s, "\r\033[KWaiting for startup... %s (%.1fs)", spinner, elapsed.Seconds())
+		// Show spinner and elapsed time only for interactive sessions
+		if showSpinner {
+			elapsed := time.Since(startTime)
+			spinner := spinners[spinnerIndex%len(spinners)]
+			spinnerIndex++
+			fmt.Fprintf(spinnerOut, "\r\033[KWaiting for startup... %s (%.1fs)", spinner, elapsed.Seconds())
+		}
 
 		// Check container status only every 2 seconds
 		if time.Since(lastContainerCheck) >= containerCheckInterval {
@@ -913,8 +990,14 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 				
 				totalTime := time.Since(startTime)
 				sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
-				fmt.Fprintf(s, "\r\033[KReady in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
-					totalTime.Seconds(), sshCommand)
+				if showSpinner {
+					// Show formatted completion message
+					fmt.Fprintf(spinnerOut, "\r\033[KReady in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
+						totalTime.Seconds(), sshCommand)
+				} else {
+					// Non-interactive session: output clean SSH command to stdout
+					fmt.Fprintf(s, "%s\r\n", sshCommand)
+				}
 				return
 			}
 		}
@@ -923,7 +1006,11 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	}
 
 	// Timed out
-	fmt.Fprintf(s, "\r\033[K\033[1;31mTimeout: Machine failed to start within 3 minutes\033[0m\r\n")
+	if showSpinner {
+		fmt.Fprintf(spinnerOut, "\r\033[K\033[1;31mTimeout: Machine failed to start within 3 minutes\033[0m\r\n")
+	} else {
+		fmt.Fprintf(s.Stderr(), "Error: Machine failed to start within 3 minutes\r\n")
+	}
 }
 
 func (ss *SSHServer) handleStartCommand(s ssh.Session, allocID string, args []string) {
