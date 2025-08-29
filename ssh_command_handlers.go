@@ -1,0 +1,1020 @@
+package exe
+
+import (
+	"bytes"
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"strings"
+	"time"
+
+	"exe.dev/billing"
+	"exe.dev/container"
+	"exe.dev/sqlite"
+	"github.com/google/uuid"
+	"golang.org/x/term"
+)
+
+// NewCommandTree creates a new command tree with all exe.dev commands
+func NewCommandTree(ss *SSHServer) *CommandTree {
+	return &CommandTree{
+		Commands: []*Command{
+			{
+				Name:        "help",
+				Aliases:     []string{"?"},
+				Description: "Show help information",
+				Handler:     ss.handleHelpCommand,
+			},
+			{
+				Name:        "list",
+				Aliases:     []string{"ls"},
+				Description: "List your machines",
+				Handler:     ss.handleListCommand,
+				Usage:       "list",
+			},
+			{
+				Name:        "new",
+				Description: "Create a new machine",
+				Handler:     ss.handleNewCommand,
+				Options: []CommandOption{
+					{
+						Name:        "name",
+						Description: "Machine name (auto-generated if not specified)",
+						Usage:       "--name=<name>",
+					},
+					{
+						Name:        "image",
+						Description: "Container image (default: exeuntu)",
+						Usage:       "--image=<image>",
+					},
+				},
+				Examples: []string{
+					"new                                # just give me a computer",
+					"new --name=m --image=ubuntu:22.04  # custom image and name",
+				},
+			},
+			{
+				Name:        "start",
+				Description: "Start a stopped machine",
+				Handler:     ss.handleStartCommand,
+				Usage:       "start <machine-name>",
+			},
+			{
+				Name:        "stop",
+				Description: "Stop one or more machines",
+				Handler:     ss.handleStopCommand,
+				Usage:       "stop <machine-name> [<machine-name>...]",
+			},
+			{
+				Name:        "delete",
+				Description: "Delete a machine",
+				Handler:     ss.handleDeleteCommand,
+				Usage:       "delete <machine-name>",
+			},
+			{
+				Name:        "logs",
+				Description: "View machine logs",
+				Handler:     ss.handleLogsCommand,
+				Usage:       "logs <machine-name>",
+			},
+			{
+				Name:        "diag",
+				Aliases:     []string{"diagnostics"},
+				Description: "Get machine startup diagnostics",
+				Usage:       "diag <machine-name>",
+				Handler:     ss.handleDiagCommand,
+			},
+			{
+				Name:        "alloc",
+				Description: "Resource allocation info",
+				Handler:     ss.handleAllocCommand,
+				Subcommands: []*Command{
+					{
+						Name:        "info",
+						Description: "Show allocation usage",
+						Usage:       "alloc info",
+						Handler:     ss.handleAllocInfoCommand,
+					},
+				},
+			},
+			{
+				Name:        "billing",
+				Description: "Manage billing and payment info",
+				Handler:     ss.handleBillingCommand,
+				Subcommands: []*Command{
+					{
+						Name:        "setup",
+						Description: "Set up billing information",
+						Usage:       "billing setup",
+						Handler:     ss.handleBillingSetup,
+					},
+					{
+						Name:        "update",
+						Description: "Update billing email address",
+						Usage:       "billing update",
+						Handler:     ss.handleBillingUpdateEmailCommand,
+					},
+					{
+						Name:        "delete",
+						Description: "Delete billing information",
+						Usage:       "billing delete",
+						Handler:     ss.handleBillingDeleteCommand,
+					},
+				},
+			},
+			{
+				Name:        "whoami",
+				Description: "Show your user information including email and all SSH keys. The currently connected key is highlighted.",
+				Usage:       "whoami",
+				Handler:     ss.handleWhoamiCommand,
+			},
+			{
+				Name:        "exit",
+				Description: "Exit",
+				Handler: func(ctx context.Context, cc *CommandContext) error {
+					fmt.Fprint(cc.Output, "Goodbye!\r\n")
+
+					return io.EOF
+				},
+			},
+		},
+	}
+}
+
+func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *CommandContext) error {
+	if len(cc.Args) > 0 {
+		// Help for specific command
+		cmdPath := cc.Args
+		cmd := ss.commands.FindCommand(cmdPath)
+		if cmd == nil {
+			cc.Writeln("No help available for unrecognized command: %s", strings.Join(cmdPath, " "))
+			return nil
+		}
+
+		cmd.Help(cc)
+		return nil
+	}
+
+	// General help
+	cc.Writeln("\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n")
+
+	ss.commands.Help(cc)
+
+	cc.Writeln("\r\nRun \033[1mhelp <command>\033[0m for more details\r\n")
+	return nil
+}
+
+func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) error {
+	// If container manager is available, get real-time status
+	if ss.server.containerManager != nil {
+		containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.AllocID)
+		if err != nil {
+			cc.Write("\033[1;31mError listing machines: %v\033[0m\r\n", err)
+			return fmt.Errorf("listing machines: %w", err)
+		}
+
+		if len(containers) == 0 {
+			cc.Write("No machines found. Create one with 'new'.\r\n")
+			return fmt.Errorf("no machines found")
+		}
+
+		cc.Write("\033[1;36mYour machines:\033[0m\r\n")
+		for _, c := range containers {
+			status := string(c.Status)
+			statusColor := ""
+			switch c.Status {
+			case container.StatusRunning:
+				statusColor = "\033[1;32m" // green
+				status = "running"
+			case container.StatusStopped:
+				statusColor = "\033[1;31m" // red
+				status = "stopped"
+			case container.StatusPending:
+				statusColor = "\033[1;33m" // yellow
+				status = "starting"
+			}
+
+			// Show machine with colored status
+			cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, status)
+
+			// Add image info if available
+			if c.Image != "" && c.Image != "exeuntu" {
+				displayImage := container.GetDisplayImageName(c.Image)
+				cc.Write(" (%s)", displayImage)
+			}
+
+			cc.Write("\r\n")
+		}
+		return nil
+	}
+
+	// Fallback to database if container manager not available
+	machines, err := ss.server.getMachinesForAlloc(ctx, cc.Alloc.AllocID)
+	if err != nil {
+		cc.Write("\033[1;31mError listing machines: %v\033[0m\r\n", err)
+		return fmt.Errorf("listing machines: %w", err)
+	}
+
+	if len(machines) == 0 {
+		cc.Write("No machines found. Create one with 'new'.\r\n")
+		return fmt.Errorf("no machines found")
+	}
+
+	cc.Write("\033[1;36mYour machines:\033[0m\r\n")
+	for _, m := range machines {
+		status := m.Status
+		statusColors := map[string]string{
+			"running": "\033[1;32m",
+			"stopped": "\033[1;31m",
+			"pending": "\033[1;33m",
+		}
+		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", m.Name, statusColors[status], status)
+
+		// Add image info if available
+		if m.Image != "" && m.Image != "exeuntu" && m.Image != "ubuntu" {
+			cc.Write(" (%s)", m.Image)
+		}
+
+		cc.Write("\r\n")
+	}
+	return nil
+}
+
+func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) error {
+	if ss.server.containerManager == nil {
+		cc.Write("\033[1;31mMachine management is not available\033[0m\r\n")
+		return fmt.Errorf("machine management is not available")
+	}
+
+	// Get user information - needed for machine creation
+	user, err := ss.server.getUserByPublicKey(ctx, cc.PublicKey)
+	if err != nil {
+		cc.Write("\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
+		return fmt.Errorf("failed to get user info: %w", err)
+	}
+
+	// Create a FlagSet for parsing
+	fs := flag.NewFlagSet("new", flag.ContinueOnError)
+	var machineName string
+	var image string
+	var size string
+	var command string
+
+	fs.StringVar(&machineName, "name", "", "machine name (auto-generated if not specified)")
+	fs.StringVar(&image, "image", "exeuntu", "container image")
+	fs.StringVar(&size, "size", "medium", "machine size (small, medium, or large)")
+	fs.StringVar(&command, "command", "auto", "container command: auto, none, or a custom command")
+
+	// Capture the output to avoid printing errors to the session
+	var buf bytes.Buffer
+	fs.SetOutput(&buf)
+
+	// Parse the flags
+	parseErr := fs.Parse(cc.Args)
+	if parseErr != nil {
+		cc.Write("\033[1;31mError: %v\033[0m\r\n", parseErr)
+		cc.Write("Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
+		return fmt.Errorf("flag parse error: %w", parseErr)
+	}
+
+	// Check for non-flag arguments - not supported
+	if fs.NArg() > 0 {
+		cc.Write("\033[1;31mError: Unexpected arguments: %s\033[0m\r\n", strings.Join(fs.Args(), " "))
+		cc.Write("Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
+		return fmt.Errorf("unexpected arguments: %q", strings.Join(fs.Args(), " "))
+	}
+
+	// Generate machine name if not provided
+	if machineName == "" {
+		machineName = generateRandomContainerName()
+		// Check if name is already taken
+		_, err := ss.server.getMachineByName(ctx, machineName)
+		if err == nil {
+			// Name exists, try again
+			for range 10 {
+				machineName = generateRandomContainerName()
+				_, err = ss.server.getMachineByName(ctx, machineName)
+				if err != nil {
+					break
+				}
+			}
+		}
+	}
+
+	// Validate machine name (both provided and generated)
+	if !ss.server.isValidMachineName(machineName) {
+		cc.Write("\033[1;31mInvalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 64 characters\033[0m\r\n", machineName)
+		return fmt.Errorf("invalid box name %q", machineName)
+	}
+
+	if _, err := ss.server.getMachineByName(ctx, machineName); err == nil {
+		cc.Write("\033[1;31mBox name %q is not available\033[0m\r\n", machineName)
+		return fmt.Errorf("box name %q is not available", machineName)
+	}
+
+	// Get the display image name
+	displayImage := container.GetDisplayImageName(image)
+	if image == "exeuntu" {
+		displayImage = "boldsoftware/exeuntu"
+	}
+
+	// Show creation message with proper formatting
+	cc.Write("Creating \033[1m%s\033[0m (%s) using image \033[1m%s\033[0m...\r\n",
+		machineName, size, displayImage)
+
+	// Get size preset
+	sizePreset, exists := container.ContainerSizes[size]
+	if !exists {
+		cc.Write("\033[1;31mError: Invalid size '%s'. Valid sizes: micro, small, medium, large, xlarge\033[0m\r\n", size)
+		return fmt.Errorf("invalid container size %q", size)
+	}
+
+	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
+	showSpinner := ss.shouldShowSpinner(cc.SSHSession)
+
+	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
+	// This makes the readline prompt visible in the repl ui.
+	if showSpinner {
+		cc.Write("\r\n\033[1A")
+	}
+
+	// Start timing BEFORE creating container
+	startTime := time.Now()
+
+	// Create channels for progress updates and completion
+	type progressUpdate struct {
+		info container.CreateProgressInfo
+	}
+	progressChan := make(chan progressUpdate, 10)
+	completionChan := make(chan struct {
+		container *container.Container
+		err       error
+	}, 1)
+
+	// Get the alloc to get its IP range
+	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
+	if err != nil {
+		cc.Write("\033[1;31mError: Failed to get allocation info: %v\033[0m\r\n", err)
+		return fmt.Errorf("failed to get alloc info: %w", err)
+	}
+
+	// Create container request with progress callback
+	req := &container.CreateContainerRequest{
+		AllocID:         cc.Alloc.AllocID,
+		IPRange:         alloc.IPRange.String, // Pass the IP range from the alloc
+		Name:            machineName,
+		Image:           image,
+		Size:            size,
+		CPURequest:      sizePreset.CPURequest,
+		MemoryRequest:   sizePreset.MemoryRequest,
+		StorageSize:     sizePreset.StorageSize,
+		Ephemeral:       false,
+		CommandOverride: command,
+	}
+
+	// Add progress callback that sends to channel
+	if showSpinner {
+		req.ProgressCallbackEx = func(info container.CreateProgressInfo) {
+			select {
+			case progressChan <- progressUpdate{info}:
+			default:
+				// Channel full, skip this update
+			}
+		}
+	}
+
+	// Run CreateContainer in a goroutine
+	go func() {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
+
+		createdContainer, err := ss.server.containerManager.CreateContainer(ctx, req)
+		completionChan <- struct {
+			container *container.Container
+			err       error
+		}{createdContainer, err}
+	}()
+
+	// Track current progress state
+	currentStatus := "Initializing"
+	var imageSize int64
+	var downloadedBytes int64
+	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	spinnerIndex := 0
+
+	// Main UI update loop
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	var createdContainer *container.Container
+	var createErr error
+
+	for {
+		select {
+		case update := <-progressChan:
+			// Update current status based on progress
+			imageSize = update.info.ImageBytes
+			downloadedBytes = update.info.DownloadedBytes
+
+			switch update.info.Phase {
+			case container.CreateInit:
+				currentStatus = "Initializing"
+			case container.CreatePull:
+				if imageSize > 0 && downloadedBytes > 0 {
+					// Show download progress in MB
+					curMB := downloadedBytes / (1024 * 1024)
+					totalMB := imageSize / (1024 * 1024)
+					currentStatus = fmt.Sprintf("Pulling image (%d/%dMB)", curMB, totalMB)
+				} else if imageSize > 0 {
+					totalMB := imageSize / (1024 * 1024)
+					currentStatus = fmt.Sprintf("Pulling image (0/%dMB)", totalMB)
+				} else {
+					currentStatus = "Pulling image"
+				}
+			case container.CreateStart:
+				currentStatus = "Starting container"
+			case container.CreateSSH:
+				currentStatus = "Configuring SSH"
+			case container.CreateDone:
+				currentStatus = "Finalizing"
+			}
+
+		case result := <-completionChan:
+			createdContainer = result.container
+			createErr = result.err
+			goto done
+
+		case <-ticker.C:
+			// Update spinner every 100ms
+			if showSpinner {
+				elapsed := time.Since(startTime)
+				spinner := spinners[spinnerIndex%len(spinners)]
+				spinnerIndex++
+				cc.Write("\r\033[K%s %.1fs %s...", spinner, elapsed.Seconds(), currentStatus)
+			}
+		}
+	}
+
+done:
+	// Clear the progress line
+	if showSpinner {
+		cc.Write("\r\033[K")
+	}
+
+	if createErr != nil {
+		guid := uuid.New().String() // for x-ref on support tickets
+		slog.Debug("createContainer error", "error", createErr, "publicKey", cc.PublicKey, "userID", user.UserID, "allocID", cc.Alloc.AllocID, "boxName", machineName, "image", image, "size", size, "guid", guid)
+		if ss.server.devMode != "" {
+			cc.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", createErr)
+		}
+		cc.Write("\033[1;31mSorry, something went wrong. Error ID: %v\033[0m\r\n", guid)
+		return createErr
+	}
+
+	// Store container info in database with SSH keys
+	imageToStore := container.GetDisplayImageName(image)
+	if createdContainer.SSHServerIdentityKey == "" {
+		cc.Write("\033[1;31mError: Container created without SSH keys - this should not happen\033[0m\r\n")
+		return fmt.Errorf("container created without SSH keys - this should not happen")
+	}
+
+	// Container has SSH keys, use the SSH-enabled storage
+	sshKeys := &container.ContainerSSHKeys{
+		ServerIdentityKey: createdContainer.SSHServerIdentityKey,
+		AuthorizedKeys:    createdContainer.SSHAuthorizedKeys,
+		CAPublicKey:       createdContainer.SSHCAPublicKey,
+		HostCertificate:   createdContainer.SSHHostCertificate,
+		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
+		SSHPort:           createdContainer.SSHPort,
+	}
+	if err := ss.server.createMachineWithSSHAndDockerHost(ctx, user.UserID, cc.Alloc.AllocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
+		cc.Write("\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
+	}
+
+	// Container is ready with SSH already configured!
+	// CreateContainer now blocks until SSH is verified, so we can proceed immediately
+
+	totalTime := time.Since(startTime)
+	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, machineName)
+	if showSpinner {
+		// Clear the progress line and show formatted completion message
+		cc.Write("\r\033[K")
+		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\r\n",
+			totalTime.Seconds(), sshCommand)
+	} else {
+		// Non-interactive session: output clean SSH command to stdout
+		cc.Write("%s\r\n", sshCommand)
+	}
+	return nil
+}
+
+func (ss *SSHServer) handleStartCommand(ctx context.Context, cc *CommandContext) error {
+	if len(cc.Args) == 0 {
+		cc.Writeln("\033[1;31mError: Please specify a machine name\033[0m")
+		cc.Writeln("Usage: start <machine-name>")
+		return nil
+	}
+
+	machineName := cc.Args[0]
+
+	if ss.server.containerManager == nil {
+		cc.Writeln("\033[1;31mMachine management is not available\033[0m")
+		return nil
+	}
+
+	// Get machine info
+	machine, err := ss.server.getMachineByName(ctx, machineName)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Machine '%s' not found\033[0m", machineName)
+		return nil
+	}
+
+	if machine.ContainerID == nil {
+		cc.Writeln("\033[1;31mError: Machine '%s' has no container ID\033[0m", machineName)
+		return nil
+	}
+
+	cc.Writeln("Starting \033[1m%s\033[0m...", machineName)
+
+	// Start the container
+	err = ss.server.containerManager.StartContainer(ctx, machine.AllocID, *machine.ContainerID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError starting machine: %v\033[0m", err)
+		return nil
+	}
+
+	// Update database status
+	err = ss.server.db.Exec(ctx, `
+		UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP
+		WHERE name = ?`,
+		machineName)
+	if err != nil {
+		cc.Writeln("\033[1;33mWarning: Failed to update machine status: %v\033[0m", err)
+	}
+
+	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, machineName)
+	cc.Writeln("\033[1;32mMachine started!\033[0m Access with:\r\n\r\n\033[1m%s\033[0m\r\n", sshCommand)
+	return nil
+}
+
+func (ss *SSHServer) handleStopCommand(ctx context.Context, cc *CommandContext) error {
+	if len(cc.Args) == 0 {
+		cc.Writeln("\033[1;31mError: Please specify at least one machine name\033[0m")
+		cc.Writeln("Usage: stop <machine-name> [...]")
+		return nil
+	}
+
+	if ss.server.containerManager == nil {
+		cc.Writeln("\033[1;31mMachine management is not available\033[0m")
+		return nil
+	}
+
+	for _, machineName := range cc.Args {
+		// Get machine info
+		machine, err := ss.server.getMachineByName(ctx, machineName)
+		if err != nil {
+			cc.Writeln("\033[1;31mError: Machine '%s' not found\033[0m", machineName)
+			continue
+		}
+
+		if machine.ContainerID == nil {
+			cc.Writeln("\033[1;31mError: Machine '%s' has no container ID\033[0m", machineName)
+			continue
+		}
+
+		cc.Writeln("Stopping \033[1m%s\033[0m...", machineName)
+
+		// Stop the container
+		ctx := context.Background()
+		err = ss.server.containerManager.StopContainer(ctx, machine.AllocID, *machine.ContainerID)
+		if err != nil {
+			cc.Writeln("\033[1;31mError stopping machine %s: %v\033[0m", machineName, err)
+			continue
+		}
+
+		// Update database status
+		// TODO(banksean): This is from the original location in ssh_server.go, but the query itself
+		// seems like it's missing some extra details (e.g. alloc_id; otherwise I can stop someone else's machine if
+		// it has the same name as mine).
+		err = ss.server.db.Exec(ctx, `
+			UPDATE machines SET status = 'stopped'
+			WHERE name = ?`,
+			machineName)
+		if err != nil {
+			cc.Writeln("\033[1;33mWarning: Failed to update machine status: %v\033[0m", err)
+			return fmt.Errorf("failed to update machine status: %w", err)
+		}
+
+		cc.Writeln("\033[1;32mMachine '%s' stopped\033[0m", machineName)
+	}
+	return nil
+}
+
+func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext) error {
+	if len(cc.Args) == 0 {
+		cc.Writeln("\033[1;31mError: Please specify a machine name\033[0m")
+		cc.Writeln("Usage: delete <machine-name>")
+		return nil
+	}
+
+	machineName := cc.Args[0]
+
+	if ss.server.containerManager == nil {
+		// Just delete from database if no container manager
+		cc.Writeln("Deleting \033[1m%s\033[0m...", machineName)
+
+		err := ss.server.db.Exec(ctx, `
+			DELETE FROM machines
+			WHERE name = ?`,
+			machineName)
+		if err != nil {
+			cc.Writeln("\033[1;31mError deleting machine: %v\033[0m", err)
+			return fmt.Errorf("deleting machine: %w", err)
+		}
+
+		// Deregister from IP allocation strategy if enabled
+		if ss.server.ipAllocator != nil {
+			if allocErr := ss.server.ipAllocator.Deallocate(cc.Alloc.AllocID, machineName); allocErr != nil {
+				// Don't fail the operation if IP deallocation fails
+				cc.Writeln("\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m", allocErr)
+			}
+		}
+
+		cc.Writeln("\033[1;32mMachine '%s' deleted\033[0m", machineName)
+		return nil
+	}
+
+	// Get machine info
+	machine, err := ss.server.getMachineByName(ctx, machineName)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Machine '%s' not found\033[0m", machineName)
+		return fmt.Errorf("machine %q not found: %w", machineName, err)
+	}
+
+	cc.Writeln("Deleting \033[1m%s\033[0m...", machineName)
+
+	// Delete the container if it exists
+	if machine.ContainerID != nil {
+		ctx := context.Background()
+		err = ss.server.containerManager.DeleteContainer(ctx, machine.AllocID, *machine.ContainerID)
+		if err != nil {
+			cc.Writeln("\033[1;33mWarning: Failed to delete container: %v\033[0m", err)
+		}
+	}
+
+	// Delete from database
+	err = ss.server.db.Exec(ctx, `
+		DELETE FROM machines
+		WHERE name = ?`,
+		machineName)
+	if err != nil {
+		cc.Writeln("\033[1;31mError deleting machine from database: %v\033[0m", err)
+		return nil
+	}
+
+	// Deregister from IP allocation strategy if enabled
+	if ss.server.ipAllocator != nil {
+		if allocErr := ss.server.ipAllocator.Deallocate(cc.Alloc.AllocID, machineName); allocErr != nil {
+			// Don't fail the operation if IP deallocation fails
+			cc.Writeln("\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m", allocErr)
+		}
+	}
+
+	cc.Writeln("\033[1;32mMachine '%s' deleted successfully\033[0m", machineName)
+	return nil
+}
+
+func (ss *SSHServer) handleLogsCommand(ctx context.Context, cc *CommandContext) error {
+	if len(cc.Args) == 0 {
+		cc.Writeln("\033[1;31mError: Please specify a machine name\033[0m")
+		cc.Writeln("Usage: logs <machine-name>")
+		return nil
+	}
+
+	machineName := cc.Args[0]
+	cc.Writeln("Fetching logs for machine '%s'...", machineName)
+	cc.Writeln("\033[1;33mNote: Logs not implemented in new server yet\033[0m")
+	return nil
+}
+
+func (ss *SSHServer) handleDiagCommand(ctx context.Context, cc *CommandContext) error {
+	cc.Writeln("\033[1;33mDiagnostics not implemented in new server yet\033[0m")
+	return nil
+}
+
+func (ss *SSHServer) handleAllocCommand(ctx context.Context, cc *CommandContext) error {
+	// If no subcommand, show alloc info
+	if len(cc.Args) == 0 {
+		return ss.handleAllocInfoCommand(ctx, cc)
+	}
+	return fmt.Errorf("alloc subcommand not found: %s", strings.Join(cc.Args, " "))
+}
+
+func (ss *SSHServer) handleAllocInfoCommand(ctx context.Context, cc *CommandContext) error {
+	// Show allocation info
+	user, err := ss.server.getUserByPublicKey(ctx, cc.PublicKey)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get user info: %v\033[0m", err)
+		return nil
+	}
+
+	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
+	if err != nil || alloc == nil {
+		cc.Writeln("\033[1;31mError: No allocation found\033[0m")
+		return nil
+	}
+
+	cc.Writeln("\033[1;36mYour Allocation:\033[0m")
+	cc.Writeln("")
+	cc.Writeln("  ID: \033[1m%s\033[0m", alloc.AllocID)
+	cc.Writeln("  Type: \033[1m%s\033[0m", alloc.AllocType)
+	cc.Writeln("  Region: \033[1m%s\033[0m", alloc.Region)
+	cc.Writeln("  Created: %s", alloc.CreatedAt.Format("Jan 2, 2006"))
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContext) error {
+	// Get billing info to determine if user has billing set up
+	billingInfo, err := ss.billing.GetBillingInfo(ctx, cc.Alloc.AllocID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
+		return err
+	}
+	cc.Writeln("\033[1;36mBilling Information:\033[0m")
+	cc.Writeln("")
+
+	// Show current billing info
+	if billingInfo.Email != "" {
+		cc.Writeln("  Email: \033[1m%s\033[0m", billingInfo.Email)
+	}
+	if billingInfo.StripeCustomerID != "" {
+		cc.Writeln("  Stripe Customer ID: \033[1m%s\033[0m", billingInfo.StripeCustomerID)
+	}
+	if billingInfo.HasBilling {
+		cc.Writeln("  Status: \033[1;32mConfigured\033[0m")
+	} else {
+		cc.Writeln("  Status: \033[1;32mNot Configured\033[0m")
+		cc.Writeln("  run `billing setup` to configure")
+	}
+	return nil
+
+}
+
+func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *CommandContext) error {
+	billingInfo, err := ss.billing.GetBillingInfo(ctx, cc.Alloc.AllocID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
+		return err
+	}
+	return ss.deleteBillingInfo(cc, billingInfo)
+}
+
+func (ss *SSHServer) handleBillingUpdateEmailCommand(ctx context.Context, cc *CommandContext) error {
+	billingInfo, err := ss.billing.GetBillingInfo(ctx, cc.Alloc.AllocID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
+		return err
+	}
+	return ss.updateBillingEmail(cc, billingInfo)
+}
+
+func (ss *SSHServer) handleBillingSetup(ctx context.Context, cc *CommandContext) error {
+	cc.Writeln("\033[1;33mBilling Setup\033[0m")
+	cc.Writeln("")
+	cc.Writeln("You need to set up billing information to continue using exe.dev.")
+	cc.Writeln("")
+
+	// Requires ssh.Session for terminal interaction
+	if cc.SSHSession == nil {
+		cc.Writeln("\033[1;31mError: Interactive billing setup requires SSH session\033[0m")
+		return fmt.Errorf("interactive billing setup requires SSH session")
+	}
+
+	terminal := term.NewTerminal(cc.SSHSession, "")
+
+	// Get billing email
+	terminal.SetPrompt("Billing email (press Enter to use " + cc.User.Email + "): ")
+	billingEmail, err := terminal.ReadLine()
+	if err != nil {
+		cc.Writeln("Billing setup cancelled.")
+		return nil
+	}
+
+	if strings.TrimSpace(billingEmail) == "" {
+		billingEmail = cc.User.Email
+	}
+
+	// Validate email
+	if !ss.billing.ValidateEmail(billingEmail) {
+		cc.Writeln("\033[1;31mInvalid email format.\033[0m")
+		return nil
+	}
+
+	// Get credit card info
+	cc.Writeln("Now we need to verify your payment method.")
+	cc.Writeln("Please enter a credit card number to verify your payment method.")
+	cc.Writeln("For testing, you can use: \033[1m4242424242424242\033[0m (Visa test card)")
+	cc.Writeln("")
+
+	terminal.SetPrompt("Credit card number: ")
+	cardNumber, err := terminal.ReadLine()
+	if err != nil {
+		cc.Writeln("Billing setup cancelled.")
+		return nil
+	}
+
+	cardNumber = strings.ReplaceAll(strings.TrimSpace(cardNumber), " ", "")
+	if len(cardNumber) < 13 {
+		cc.Writeln("\033[1;31mInvalid card number.\033[0m")
+		return nil
+	}
+
+	// Get expiry month
+	terminal.SetPrompt("Expiry month (MM): ")
+	expMonth, err := terminal.ReadLine()
+	if err != nil {
+		cc.Writeln("Billing setup cancelled.")
+		return nil
+	}
+
+	// Get expiry year
+	terminal.SetPrompt("Expiry year (YYYY): ")
+	expYear, err := terminal.ReadLine()
+	if err != nil {
+		cc.Writeln("Billing setup cancelled.")
+		return nil
+	}
+
+	// Get CVC
+	terminal.SetPrompt("CVC: ")
+	cvc, err := terminal.ReadLine()
+	if err != nil {
+		cc.Writeln("Billing setup cancelled.")
+		return nil
+	}
+
+	// Setup billing using the billing service
+	cc.Writeln("Processing payment method...")
+
+	err = ss.billing.SetupBilling(cc.Alloc.AllocID, billingEmail, cardNumber, expMonth, expYear, cvc)
+	if err != nil {
+		cc.Writeln("\033[1;31mError setting up billing: %v\033[0m", err)
+		return nil
+	}
+
+	cc.Writeln("\033[1;32m✓ Billing setup completed successfully!\033[0m")
+	cc.Writeln("Your payment method has been verified and saved.")
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *CommandContext) error {
+	cc.Writeln("\033[1;36mUser Information:\033[0m")
+	cc.Writeln("")
+	cc.Writeln("\033[1mEmail Address:\033[0m %s", cc.User.Email)
+
+	// Get the current session's public key
+	currentPublicKey := ""
+	if cc.SSHSession != nil {
+		if key, ok := cc.SSHSession.Context().Value("public_key").(string); ok {
+			currentPublicKey = key
+		}
+	}
+
+	keyCount := 0
+
+	// Get all public keys for this user
+	err := ss.server.db.Rx(ctx,
+		func(ctx context.Context, rx *sqlite.Rx) error {
+			rows, err := rx.Query(
+				`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key`,
+				cc.User.Email)
+			if err != nil {
+				cc.Writeln("\033[1;31mError retrieving SSH keys: %v\033[0m", err)
+				return nil
+			}
+			defer rows.Close()
+			cc.Writeln("\033[1mSSH Keys:\033[0m")
+			for rows.Next() {
+				var dbPublicKey string
+				if err := rows.Scan(&dbPublicKey); err != nil {
+					continue
+				}
+				keyCount++
+
+				// Check if this is the current key being used
+				isCurrent := strings.TrimSpace(dbPublicKey) == strings.TrimSpace(currentPublicKey)
+				currentIndicator := ""
+				if isCurrent {
+					currentIndicator = " \033[1;32m← current\033[0m"
+				}
+
+				// Use the current session's key if this is the current key, otherwise use DB key
+				displayKey := dbPublicKey
+				if isCurrent && currentPublicKey != "" {
+					displayKey = currentPublicKey
+				}
+
+				if displayKey != "" {
+					cc.Writeln("  \033[1mPublic Key:\033[0m %s%s", strings.TrimSpace(displayKey), currentIndicator)
+				} else {
+					cc.Writeln("  \033[1mPublic Key:\033[0m \033[2m(not available)\033[0m%s", currentIndicator)
+				}
+				cc.Writeln("")
+			}
+
+			return nil
+		})
+	if err != nil {
+		cc.Writeln("\033[1;31mError retrieving SSH keys: %v\033[0m", err)
+		return nil
+	}
+
+	if keyCount == 0 {
+		cc.Writeln("  \033[2mNo SSH keys found\033[0m")
+	}
+
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) updateBillingEmail(cc *CommandContext, billingInfo *billing.BillingInfo) error {
+	cc.Writeln("\033[1;33mUpdate Billing Email\033[0m")
+	cc.Writeln("")
+
+	if cc.SSHSession == nil {
+		cc.Writeln("\033[1;31mError: Interactive billing email update requires SSH session\033[0m")
+		return fmt.Errorf("interactive billing email update requires SSH session")
+	}
+	terminal := term.NewTerminal(cc.SSHSession, "")
+	terminal.SetPrompt("New billing email: ")
+
+	newEmail, err := terminal.ReadLine()
+	if err != nil {
+		cc.Writeln("Update cancelled.")
+		return nil
+	}
+
+	newEmail = strings.TrimSpace(newEmail)
+	if !ss.billing.ValidateEmail(newEmail) {
+		cc.Writeln("\033[1;31mInvalid email format.\033[0m")
+		return nil
+	}
+
+	cc.Writeln("Updating billing email...")
+
+	// Update billing email using billing service
+	err = ss.billing.UpdateBillingEmail(billingInfo.AllocID, billingInfo.StripeCustomerID, newEmail)
+	if err != nil {
+		cc.Writeln("\033[1;31mError updating billing email: %v\033[0m", err)
+		return nil
+	}
+
+	cc.Writeln("\033[1;32m✓ Billing email updated successfully!\033[0m")
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) deleteBillingInfo(cc *CommandContext, billingInfo *billing.BillingInfo) error {
+	cc.Writeln("\033[1;33mDelete Billing Information\033[0m")
+	cc.Writeln("")
+	cc.Writeln("\033[1;31mWarning: This will remove all billing information from your account.\033[0m")
+	cc.Writeln("You will need to set up billing again to continue using exe.dev.")
+	cc.Writeln("")
+
+	if cc.SSHSession == nil {
+		cc.Writeln("\033[1;31mError: Interactive billing deletion requires SSH session\033[0m")
+		return fmt.Errorf("interactive billing deletion requires SSH session")
+
+	}
+	terminal := term.NewTerminal(cc.SSHSession, "")
+	terminal.SetPrompt("Are you sure? Type 'yes' to confirm: ")
+
+	confirmation, err := terminal.ReadLine()
+	if err != nil {
+		cc.Writeln("Operation cancelled.")
+		return nil
+	}
+
+	if strings.ToLower(strings.TrimSpace(confirmation)) != "yes" {
+		cc.Writeln("Operation cancelled.")
+		return nil
+	}
+
+	cc.Writeln("Deleting billing information...")
+
+	// Delete billing info using billing service
+	err = ss.billing.DeleteBillingInfo(billingInfo.AllocID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError deleting billing info: %v\033[0m", err)
+		return nil
+	}
+
+	cc.Writeln("\033[1;32m✓ Billing information deleted successfully!\033[0m")
+	cc.Writeln("You can set up billing again using the 'billing' command.")
+	cc.Writeln("")
+	return nil
+}

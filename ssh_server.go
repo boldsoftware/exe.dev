@@ -1,10 +1,7 @@
 package exe
 
 import (
-	"bytes"
 	"context"
-	"database/sql"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -15,12 +12,10 @@ import (
 	"time"
 
 	"exe.dev/billing"
-	"exe.dev/container"
 	"exe.dev/sqlite"
 	"exe.dev/termfun"
 	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
-	"github.com/google/uuid"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -40,17 +35,21 @@ func (m *minimalConnMetadata) LocalAddr() net.Addr   { return nil }
 
 // SSHServer wraps the gliderlabs SSH server implementation
 type SSHServer struct {
-	server  *Server
-	srv     *ssh.Server
-	billing billing.Billing
+	server   *Server
+	srv      *ssh.Server
+	billing  billing.Billing
+	commands *CommandTree
 }
 
 // NewSSHServer creates a new SSH server using gliderlabs/ssh
 func NewSSHServer(s *Server, billing billing.Billing) *SSHServer {
-	return &SSHServer{
+	ss := &SSHServer{
 		server:  s,
 		billing: billing,
 	}
+	// TODO: untangle this circular reference btw CommandTree and SSHServer.
+	ss.commands = NewCommandTree(ss)
+	return ss
 }
 
 // Start initializes and starts the SSH server
@@ -321,8 +320,21 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
+	ctx := s.Context()
+	// Get user and alloc info for command context
+	user, err := ss.server.getUserByPublicKey(ctx, publicKey)
+	if err != nil {
+		fmt.Fprintf(s, "Authentication error: %v\r\n", err)
+		return
+	}
 
-	// Command loop using term package
+	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
+	if err != nil || alloc == nil {
+		fmt.Fprint(s, "Error: User not associated with any allocation\r\n")
+		return
+	}
+
+	// Command loop using new command system
 	if !ss.server.testMode {
 		log.Printf("Entering command loop")
 	}
@@ -349,42 +361,27 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 			continue
 		}
 
-		cmd := parts[0]
 		args := parts[1:]
 
-		switch cmd {
-		case "exit":
-			fmt.Fprint(s, "Goodbye!\r\n")
+		// Create command context for interactive session
+		cc := &CommandContext{
+			User:       user,
+			Alloc:      alloc,
+			PublicKey:  publicKey,
+			Args:       args,
+			SSHServer:  ss,
+			Output:     s,
+			SSHSession: s,
+			Terminal:   terminal, // Interactive terminal available
+		}
+
+		// Execute command using new system
+		err = ss.commands.ExecuteCommand(ctx, cc, parts)
+		if err == io.EOF {
 			return
-		case "help", "?":
-			// Check if asking for help on a specific command
-			if len(args) > 0 {
-				ss.handleHelpCommand(s, args[0])
-			} else {
-				fmt.Fprint(s, helpText)
-			}
-		case "list", "ls":
-			ss.handleListCommand(s, allocID)
-		case "new":
-			ss.handleNewCommand(s, publicKey, allocID, args)
-		case "start":
-			ss.handleStartCommand(s, allocID, args)
-		case "stop":
-			ss.handleStopCommand(s, args)
-		case "delete":
-			ss.handleDeleteCommand(s, allocID, args)
-		case "logs":
-			ss.handleLogsCommand(s, publicKey, allocID, args)
-		case "route":
-			ss.handleRouteCommand(s, publicKey, allocID, args)
-		case "alloc":
-			ss.handleAllocCommand(s, publicKey, allocID, args)
-		case "billing":
-			ss.handleBillingCommand(s, publicKey, args)
-		case "whoami":
-			ss.handleWhoamiCommand(s, email)
-		default:
-			fmt.Fprint(s, "Unknown command. Type 'help' for available commands.\r\n")
+		}
+		if err != nil {
+			fmt.Fprintf(s, "Error: %v\r\n", err)
 		}
 	}
 }
@@ -662,6 +659,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 
 // handleExec handles exec commands
 func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, registered bool) {
+	log.Printf("handleExec: cmd: %v, registered: %v", cmd, registered)
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
@@ -684,62 +682,24 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		return
 	}
 
-	// Handle the command
 	if len(cmd) == 0 {
 		return
 	}
 
-	command := cmd[0]
-	args := cmd[1:]
+	cc := &CommandContext{
+		User:       user,
+		Alloc:      alloc,
+		PublicKey:  publicKey,
+		Args:       cmd[1:], // Skip the command name itself
+		SSHServer:  ss,
+		Output:     s,
+		SSHSession: s,
+		Terminal:   nil, // No interactive terminal for exec mode
+	}
 
-	// Use the new handlers that work directly with ssh.Session
-	switch command {
-	case "new":
-		ss.handleNewCommand(s, publicKey, alloc.AllocID, args)
-	case "list", "ls":
-		ss.handleListCommand(s, alloc.AllocID)
-	case "start":
-		ss.handleStartCommand(s, alloc.AllocID, args)
-	case "stop":
-		ss.handleStopCommand(s, args)
-	case "delete":
-		ss.handleDeleteCommand(s, alloc.AllocID, args)
-	case "logs":
-		ss.handleLogsCommand(s, publicKey, alloc.AllocID, args)
-	case "diag", "diagnostics":
-		fmt.Fprintf(s, "\033[1;33mDiagnostics not implemented in new server yet\033[0m\r\n")
-	case "route":
-		ss.handleRouteCommand(s, publicKey, alloc.AllocID, args)
-	case "alloc":
-		ss.handleAllocCommand(s, publicKey, alloc.AllocID, args)
-	case "billing":
-		ss.handleBillingCommand(s, publicKey, args)
-	case "whoami":
-		ss.handleWhoamiCommand(s, user.Email)
-	case "help", "?":
-		// Check if asking for help on a specific command
-		if len(args) > 0 {
-			ss.handleHelpCommand(s, args[0])
-		} else {
-			// Show help text directly
-			helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-				"\033[1mlist\033[0m                    - List your machines\r\n" +
-				"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
-				"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
-				"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
-				"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
-				"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
-				"\033[1mdiag <name>\033[0m             - Get machine startup diagnostics\r\n" +
-				"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
-				"\033[1malloc\033[0m                   - Resource allocation info\r\n" +
-				"\033[1mbilling\033[0m                 - Manage billing and payment info\r\n" +
-				"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
-				"\033[1m?\033[0m                       - Show this help\r\n\r\n" +
-				"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
-			fmt.Fprint(s, helpText)
-		}
-	default:
-		fmt.Fprintf(s, "Unknown command: %s\r\nRun 'ssh exe.dev help' for available commands.\r\n", command)
+	err = ss.commands.ExecuteCommand(s.Context(), cc, cmd) // Just the command name
+	if err != nil {
+		fmt.Fprintf(s, "Error: %v\r\n", err)
 	}
 }
 
@@ -756,538 +716,10 @@ func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, boo
 	return nil, false
 }
 
-// Command handlers for the new SSH server
-func (ss *SSHServer) handleListCommand(s ssh.Session, allocID string) {
-	// If container manager is available, get real-time status
-	if ss.server.containerManager != nil {
-		containers, err := ss.server.containerManager.ListContainers(s.Context(), allocID)
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;31mError listing machines: %v\033[0m\r\n", err)
-			return
-		}
-
-		if len(containers) == 0 {
-			fmt.Fprintf(s, "No machines found. Create one with 'new'.\r\n")
-			return
-		}
-
-		fmt.Fprintf(s, "\033[1;36mYour machines:\033[0m\r\n")
-		for _, c := range containers {
-			status := string(c.Status)
-			statusColor := ""
-			switch c.Status {
-			case container.StatusRunning:
-				statusColor = "\033[1;32m" // green
-				status = "running"
-			case container.StatusStopped:
-				statusColor = "\033[1;31m" // red
-				status = "stopped"
-			case container.StatusPending:
-				statusColor = "\033[1;33m" // yellow
-				status = "starting"
-			}
-
-			// Show machine with colored status
-			fmt.Fprintf(s, "  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, status)
-
-			// Add image info if available
-			if c.Image != "" && c.Image != "exeuntu" {
-				displayImage := container.GetDisplayImageName(c.Image)
-				fmt.Fprintf(s, " (%s)", displayImage)
-			}
-
-			fmt.Fprintf(s, "\r\n")
-		}
-		return
-	}
-
-	// Fallback to database if container manager not available
-	machines, err := ss.server.getMachinesForAlloc(s.Context(), allocID)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError listing machines: %v\033[0m\r\n", err)
-		return
-	}
-
-	if len(machines) == 0 {
-		fmt.Fprintf(s, "No machines found. Create one with 'new'.\r\n")
-		return
-	}
-
-	fmt.Fprintf(s, "\033[1;36mYour machines:\033[0m\r\n")
-	for _, m := range machines {
-		status := m.Status
-		statusColors := map[string]string{
-			"running": "\033[1;32m",
-			"stopped": "\033[1;31m",
-			"pending": "\033[1;33m",
-		}
-		fmt.Fprintf(s, "  • \033[1m%s\033[0m - %s%s\033[0m", m.Name, statusColors[status], status)
-
-		// Add image info if available
-		if m.Image != "" && m.Image != "exeuntu" && m.Image != "ubuntu" {
-			fmt.Fprintf(s, " (%s)", m.Image)
-		}
-
-		fmt.Fprintf(s, "\r\n")
-	}
-}
-
-func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, args []string) {
-	if ss.server.containerManager == nil {
-		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
-		return
-	}
-
-	// Get user information - needed for machine creation
-	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Create a FlagSet for parsing
-	fs := flag.NewFlagSet("new", flag.ContinueOnError)
-	var machineName string
-	var image string
-	var size string
-	var command string
-
-	fs.StringVar(&machineName, "name", "", "machine name (auto-generated if not specified)")
-	fs.StringVar(&image, "image", "exeuntu", "container image")
-	fs.StringVar(&size, "size", "medium", "machine size (small, medium, or large)")
-	fs.StringVar(&command, "command", "auto", "container command: auto, none, or a custom command")
-
-	// Capture the output to avoid printing errors to the session
-	var buf bytes.Buffer
-	fs.SetOutput(&buf)
-
-	// Parse the flags
-	parseErr := fs.Parse(args)
-	if parseErr != nil {
-		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", parseErr)
-		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
-		return
-	}
-
-	// Check for non-flag arguments - not supported
-	if fs.NArg() > 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Unexpected arguments: %s\033[0m\r\n", strings.Join(fs.Args(), " "))
-		fmt.Fprintf(s, "Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
-		return
-	}
-
-	// Generate machine name if not provided
-	if machineName == "" {
-		machineName = generateRandomContainerName()
-		// Check if name is already taken
-		_, err := ss.server.getMachineByName(s.Context(), machineName)
-		if err == nil {
-			// Name exists, try again
-			for range 10 {
-				machineName = generateRandomContainerName()
-				_, err = ss.server.getMachineByName(s.Context(), machineName)
-				if err != nil {
-					break
-				}
-			}
-		}
-	}
-
-	// Validate machine name (both provided and generated)
-	if !ss.server.isValidMachineName(machineName) {
-		fmt.Fprintf(s, "\033[1;31mInvalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 64 characters\033[0m\r\n", machineName)
-		return
-	}
-
-	if _, err := ss.server.getMachineByName(s.Context(), machineName); err == nil {
-		fmt.Fprintf(s, "\033[1;31mBox name %q is not available\033[0m\r\n", machineName)
-		return
-	}
-
-	// Get the display image name
-	displayImage := container.GetDisplayImageName(image)
-	if image == "exeuntu" {
-		displayImage = "boldsoftware/exeuntu"
-	}
-
-	// Show creation message with proper formatting
-	fmt.Fprintf(s, "Creating \033[1m%s\033[0m (%s) using image \033[1m%s\033[0m...\r\n",
-		machineName, size, displayImage)
-
-	// Get size preset
-	sizePreset, exists := container.ContainerSizes[size]
-	if !exists {
-		fmt.Fprintf(s, "\033[1;31mError: Invalid size '%s'. Valid sizes: micro, small, medium, large, xlarge\033[0m\r\n", size)
-		return
-	}
-
-	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
-	showSpinner := ss.shouldShowSpinner(s)
-
-	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
-	// This makes the readline prompt visible in the repl ui.
-	if showSpinner {
-		fmt.Fprintf(s, "\r\n\033[1A")
-	}
-
-	// Start timing BEFORE creating container
-	startTime := time.Now()
-
-	// Create channels for progress updates and completion
-	type progressUpdate struct {
-		info container.CreateProgressInfo
-	}
-	progressChan := make(chan progressUpdate, 10)
-	completionChan := make(chan struct {
-		container *container.Container
-		err       error
-	}, 1)
-
-	// Get the alloc to get its IP range
-	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get allocation info: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Create container request with progress callback
-	req := &container.CreateContainerRequest{
-		AllocID:         allocID,
-		IPRange:         alloc.IPRange.String, // Pass the IP range from the alloc
-		Name:            machineName,
-		Image:           image,
-		Size:            size,
-		CPURequest:      sizePreset.CPURequest,
-		MemoryRequest:   sizePreset.MemoryRequest,
-		StorageSize:     sizePreset.StorageSize,
-		Ephemeral:       false,
-		CommandOverride: command,
-	}
-
-	// Add progress callback that sends to channel
-	if showSpinner {
-		req.ProgressCallbackEx = func(info container.CreateProgressInfo) {
-			select {
-			case progressChan <- progressUpdate{info}:
-			default:
-				// Channel full, skip this update
-			}
-		}
-	}
-
-	// Run CreateContainer in a goroutine
-	go func() {
-		ctx, cancel := context.WithTimeout(s.Context(), 5*time.Minute)
-		defer cancel()
-
-		createdContainer, err := ss.server.containerManager.CreateContainer(ctx, req)
-		completionChan <- struct {
-			container *container.Container
-			err       error
-		}{createdContainer, err}
-	}()
-
-	// Track current progress state
-	currentStatus := "Initializing"
-	var imageSize int64
-	var downloadedBytes int64
-	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	spinnerIndex := 0
-
-	// Main UI update loop
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	var createdContainer *container.Container
-	var createErr error
-
-	for {
-		select {
-		case update := <-progressChan:
-			// Update current status based on progress
-			imageSize = update.info.ImageBytes
-			downloadedBytes = update.info.DownloadedBytes
-
-			switch update.info.Phase {
-			case container.CreateInit:
-				currentStatus = "Initializing"
-			case container.CreatePull:
-				if imageSize > 0 && downloadedBytes > 0 {
-					// Show download progress in MB
-					curMB := downloadedBytes / (1024 * 1024)
-					totalMB := imageSize / (1024 * 1024)
-					currentStatus = fmt.Sprintf("Pulling image (%d/%dMB)", curMB, totalMB)
-				} else if imageSize > 0 {
-					totalMB := imageSize / (1024 * 1024)
-					currentStatus = fmt.Sprintf("Pulling image (0/%dMB)", totalMB)
-				} else {
-					currentStatus = "Pulling image"
-				}
-			case container.CreateStart:
-				currentStatus = "Starting container"
-			case container.CreateSSH:
-				currentStatus = "Configuring SSH"
-			case container.CreateDone:
-				currentStatus = "Finalizing"
-			}
-
-		case result := <-completionChan:
-			createdContainer = result.container
-			createErr = result.err
-			goto done
-
-		case <-ticker.C:
-			// Update spinner every 100ms
-			if showSpinner {
-				elapsed := time.Since(startTime)
-				spinner := spinners[spinnerIndex%len(spinners)]
-				spinnerIndex++
-				fmt.Fprintf(s, "\r\033[K%s %.1fs %s...", spinner, elapsed.Seconds(), currentStatus)
-			}
-		}
-	}
-
-done:
-	// Clear the progress line
-	if showSpinner {
-		fmt.Fprintf(s, "\r\033[K")
-	}
-
-	if createErr != nil {
-		guid := uuid.New().String() // for x-ref on support tickets
-		slog.Info("createContainer error", "error", createErr, "publicKey", publicKey, "userID", user.UserID, "allocID", allocID, "boxName", machineName, "image", image, "size", size, "guid", guid)
-		if ss.server.devMode != "" {
-			fmt.Fprintf(s, "\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", createErr)
-		}
-		fmt.Fprintf(s, "\033[1;31mSorry, something went wrong. Error ID: %v\033[0m\r\n", guid)
-		return
-	}
-
-	// Store container info in database with SSH keys
-	imageToStore := container.GetDisplayImageName(image)
-	if createdContainer.SSHServerIdentityKey == "" {
-		fmt.Fprintf(s, "\033[1;31mError: Container created without SSH keys - this should not happen\033[0m\r\n")
-		return
-	}
-
-	// Container has SSH keys, use the SSH-enabled storage
-	sshKeys := &container.ContainerSSHKeys{
-		ServerIdentityKey: createdContainer.SSHServerIdentityKey,
-		AuthorizedKeys:    createdContainer.SSHAuthorizedKeys,
-		CAPublicKey:       createdContainer.SSHCAPublicKey,
-		HostCertificate:   createdContainer.SSHHostCertificate,
-		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
-		SSHPort:           createdContainer.SSHPort,
-	}
-	if err := ss.server.createMachineWithSSHAndDockerHost(s.Context(), user.UserID, allocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
-		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
-	}
-
-	// Container is ready with SSH already configured!
-	// CreateContainer now blocks until SSH is verified, so we can proceed immediately
-
-	totalTime := time.Since(startTime)
-	sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
-	if showSpinner {
-		// Clear the progress line and show formatted completion message
-		fmt.Fprintf(s, "\r\033[K")
-		fmt.Fprintf(s, "Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\r\n",
-			totalTime.Seconds(), sshCommand)
-	} else {
-		// Non-interactive session: output clean SSH command to stdout
-		fmt.Fprintf(s, "%s\r\n", sshCommand)
-	}
-}
-
-func (ss *SSHServer) handleStartCommand(s ssh.Session, allocID string, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
-		fmt.Fprintf(s, "Usage: start <machine-name>\r\n")
-		return
-	}
-
-	machineName := args[0]
-
-	if ss.server.containerManager == nil {
-		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
-		return
-	}
-
-	// Get machine info
-	machine, err := ss.server.getMachineByName(s.Context(), machineName)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
-		return
-	}
-
-	if machine.ContainerID == nil {
-		fmt.Fprintf(s, "\033[1;31mError: Machine '%s' has no container ID\033[0m\r\n", machineName)
-		return
-	}
-
-	fmt.Fprintf(s, "Starting \033[1m%s\033[0m...\r\n", machineName)
-
-	// Start the container
-	err = ss.server.containerManager.StartContainer(s.Context(), machine.AllocID, *machine.ContainerID)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError starting machine: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Update database status
-	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP
-			WHERE name = ?`,
-			machineName)
-		return err
-	})
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
-	}
-
-	sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
-	fmt.Fprintf(s, "\033[1;32mMachine started!\033[0m Access with:\r\n\r\n\033[1m%s\033[0m\r\n", sshCommand)
-}
-
-func (ss *SSHServer) handleStopCommand(s ssh.Session, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Please specify at least one machine name\033[0m\r\n")
-		fmt.Fprintf(s, "Usage: stop <machine-name> [...]\r\n")
-		return
-	}
-
-	if ss.server.containerManager == nil {
-		fmt.Fprintf(s, "\033[1;31mMachine management is not available\033[0m\r\n")
-		return
-	}
-
-	for _, machineName := range args {
-		// Get machine info
-		machine, err := ss.server.getMachineByName(s.Context(), machineName)
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
-			continue
-		}
-
-		if machine.ContainerID == nil {
-			fmt.Fprintf(s, "\033[1;31mError: Machine '%s' has no container ID\033[0m\r\n", machineName)
-			continue
-		}
-
-		fmt.Fprintf(s, "Stopping \033[1m%s\033[0m...\r\n", machineName)
-
-		// Stop the container
-		err = ss.server.containerManager.StopContainer(s.Context(), machine.AllocID, *machine.ContainerID)
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;31mError stopping machine %s: %v\033[0m\r\n", machineName, err)
-			continue
-		}
-
-		// Update database status
-		err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				UPDATE machines SET status = 'stopped'
-				WHERE name = ?`,
-				machineName)
-			return err
-		})
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
-		}
-
-		fmt.Fprintf(s, "\033[1;32mMachine '%s' stopped\033[0m\r\n", machineName)
-	}
-}
-
-func (ss *SSHServer) handleDeleteCommand(s ssh.Session, allocID string, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
-		fmt.Fprintf(s, "Usage: delete <machine-name>\r\n")
-		return
-	}
-
-	machineName := args[0]
-
-	if ss.server.containerManager == nil {
-		// Just delete from database if no container manager
-		fmt.Fprintf(s, "Deleting \033[1m%s\033[0m...\r\n", machineName)
-
-		err := ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				DELETE FROM machines
-				WHERE name = ?`,
-				machineName)
-			return err
-		})
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;31mError deleting machine: %v\033[0m\r\n", err)
-			return
-		}
-
-		// Deregister from IP allocation strategy if enabled
-		if ss.server.ipAllocator != nil {
-			if allocErr := ss.server.ipAllocator.Deallocate(allocID, machineName); allocErr != nil {
-				// Don't fail the operation if IP deallocation fails
-				fmt.Fprintf(s, "\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m\r\n", allocErr)
-			}
-		}
-
-		fmt.Fprintf(s, "\033[1;32mMachine '%s' deleted\033[0m\r\n", machineName)
-		return
-	}
-
-	// Get machine info
-	machine, err := ss.server.getMachineByName(s.Context(), machineName)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
-		return
-	}
-
-	fmt.Fprintf(s, "Deleting \033[1m%s\033[0m...\r\n", machineName)
-
-	// Delete the container if it exists
-	if machine.ContainerID != nil {
-		err = ss.server.containerManager.DeleteContainer(s.Context(), machine.AllocID, *machine.ContainerID)
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;33mWarning: Failed to delete container: %v\033[0m\r\n", err)
-		}
-	}
-
-	// Delete from database
-	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			DELETE FROM machines
-			WHERE name = ?`,
-			machineName)
-		return err
-	})
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError deleting machine from database: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Deregister from IP allocation strategy if enabled
-	if ss.server.ipAllocator != nil {
-		if allocErr := ss.server.ipAllocator.Deallocate(allocID, machineName); allocErr != nil {
-			// Don't fail the operation if IP deallocation fails
-			fmt.Fprintf(s, "\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m\r\n", allocErr)
-		}
-	}
-
-	fmt.Fprintf(s, "\033[1;32mMachine '%s' deleted successfully\033[0m\r\n", machineName)
-}
-
-func (ss *SSHServer) handleLogsCommand(s ssh.Session, publicKey, allocID string, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Please specify a machine name\033[0m\r\n")
-		fmt.Fprintf(s, "Usage: logs <machine-name>\r\n")
-		return
-	}
-
-	machineName := args[0]
-	fmt.Fprintf(s, "Fetching logs for machine '%s'...\r\n", machineName)
-	fmt.Fprintf(s, "\033[1;33mNote: Logs not implemented in new server yet\033[0m\r\n")
+// getMachinesForTeam is obsolete - use getMachinesForAlloc instead
+func (s *Server) getMachinesForTeam(ctx context.Context, allocID string) ([]*Machine, error) {
+	// This function is kept for backward compatibility but redirects to getMachinesForAlloc
+	return s.getMachinesForAlloc(ctx, allocID)
 }
 
 // handleContainerLogs shows logs for a failed container
@@ -1327,167 +759,6 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, ma
 
 func (ss *SSHServer) handleRouteCommand(s ssh.Session, publicKey, allocID string, args []string) {
 	ss.server.handleRouteCommand(s.Context(), s, publicKey, allocID, args)
-}
-
-func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
-	switch command {
-	case "new":
-		helpText := "\r\n\033[1;33mCommand: new\033[0m\r\n\r\n" +
-			"Create a new machine with specified options.\r\n\r\n" +
-			"\033[1mUsage:\033[0m new [options]\r\n\r\n" +
-			"\033[1mOptions:\033[0m\r\n" +
-			"  \033[1m--name=<name>\033[0m     Machine name (auto-generated if not specified)\r\n" +
-			"  \033[1m--image=<image>\033[0m   Container image (default: exeuntu)\r\n\r\n" +
-			"\033[1mExamples:\033[0m\r\n" +
-			"  new                                # just give me a computer\r\n" +
-			"  new --name=m --image=ubuntu:22.04  # custom image and name\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "alloc":
-		allocHelpText := "\r\n\033[1;33mCommand: alloc\033[0m\r\n\r\n" +
-			"Show resource allocation information.\r\n\r\n" +
-			"\033[1mSubcommands:\033[0m\r\n" +
-			"  \033[1malloc info\033[0m              - Show allocation usage\r\n\r\n"
-		fmt.Fprint(s, allocHelpText)
-	case "list", "ls":
-		helpText := "\r\n\033[1;33mCommand: list (or ls)\033[0m\r\n\r\n" +
-			"List all machines in your allocation.\r\n\r\n" +
-			"\033[1mUsage:\033[0m list\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "ssh":
-		helpText := "\r\n\033[1;33mCommand: ssh\033[0m\r\n\r\n" +
-			"SSH into a machine.\r\n\r\n" +
-			"\033[1mUsage:\033[0m ssh <machine-name>\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "start":
-		helpText := "\r\n\033[1;33mCommand: start\033[0m\r\n\r\n" +
-			"Start a stopped machine.\r\n\r\n" +
-			"\033[1mUsage:\033[0m start <machine-name>\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "stop":
-		helpText := "\r\n\033[1;33mCommand: stop\033[0m\r\n\r\n" +
-			"Stop one or more running machines.\r\n\r\n" +
-			"\033[1mUsage:\033[0m stop <machine-name> [<machine-name>...]\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "delete":
-		helpText := "\r\n\033[1;33mCommand: delete\033[0m\r\n\r\n" +
-			"Delete a machine permanently.\r\n\r\n" +
-			"\033[1mUsage:\033[0m delete <machine-name>\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "logs":
-		helpText := "\r\n\033[1;33mCommand: logs\033[0m\r\n\r\n" +
-			"View logs for a machine.\r\n\r\n" +
-			"\033[1mUsage:\033[0m logs <machine-name>\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "route":
-		routeHelpText := "\r\n\033[1;33mCommand: route\033[0m\r\n\r\n" +
-			"Manage HTTP routing rules for a machine.\r\n\r\n" +
-			"\033[1mSubcommands:\033[0m\r\n" +
-			"  \033[1mroute <machine> list\033[0m         - List all routes\r\n" +
-			"  \033[1mroute <machine> add\033[0m          - Add a new route\r\n" +
-			"  \033[1mroute <machine> delete\033[0m       - Delete a route\r\n\r\n"
-		fmt.Fprint(s, routeHelpText)
-	case "diag":
-		helpText := "\r\n\033[1;33mCommand: diag\033[0m\r\n\r\n" +
-			"Get startup diagnostics for a machine.\r\n\r\n" +
-			"\033[1mUsage:\033[0m diag <machine-name>\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "billing":
-		helpText := "\r\n\033[1;33mCommand: billing\033[0m\r\n\r\n" +
-			"Manage your billing information and payment methods.\r\n\r\n" +
-			"If you haven't set up billing yet, this command will guide you through\r\n" +
-			"the setup process including payment method verification.\r\n\r\n" +
-			"If billing is already configured, you can view, update, or delete\r\n" +
-			"your billing information.\r\n\r\n" +
-			"\033[1mUsage:\033[0m billing\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	case "whoami":
-		helpText := "\r\n\033[1;33mCommand: whoami\033[0m\r\n\r\n" +
-			"Show your user information including email and all SSH keys.\r\n" +
-			"The currently connected key is highlighted.\r\n\r\n" +
-			"\033[1mUsage:\033[0m whoami\r\n\r\n"
-		fmt.Fprint(s, helpText)
-	default:
-		fmt.Fprintf(s, "\r\n\033[1;31mNo help available for command: %s\033[0m\r\n\r\n", command)
-		fmt.Fprintf(s, "Run \033[1mhelp\033[0m without arguments to see all available commands.\r\n\r\n")
-	}
-}
-
-func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
-	fmt.Fprintf(s, "\r\n\033[1;36mUser Information:\033[0m\r\n\r\n")
-	fmt.Fprintf(s, "\033[1mEmail Address:\033[0m %s\r\n", email)
-
-	// Get the current session's public key
-	currentPublicKey, _ := s.Context().Value("public_key").(string)
-
-	// Get all public keys for this user
-	var rows *sql.Rows
-	err := ss.server.db.Rx(s.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		var err error
-		rows, err = rx.Query(`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key`, email)
-		return err
-	})
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError retrieving SSH keys: %v\033[0m\r\n", err)
-		return
-	}
-	defer rows.Close()
-
-	fmt.Fprintf(s, "\033[1mSSH Keys:\033[0m\r\n")
-	keyCount := 0
-	for rows.Next() {
-		var dbPublicKey string
-		if err := rows.Scan(&dbPublicKey); err != nil {
-			continue
-		}
-		keyCount++
-
-		// Check if this is the current key being used
-		isCurrent := strings.TrimSpace(dbPublicKey) == strings.TrimSpace(currentPublicKey)
-		currentIndicator := ""
-		if isCurrent {
-			currentIndicator = " \033[1;32m← current\033[0m"
-		}
-
-		// Use the current session's key if this is the current key, otherwise use DB key
-		displayKey := dbPublicKey
-		if isCurrent && currentPublicKey != "" {
-			displayKey = currentPublicKey
-		}
-
-		if displayKey != "" {
-			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m %s%s\r\n", strings.TrimSpace(displayKey), currentIndicator)
-		} else {
-			fmt.Fprintf(s, "  \033[1mPublic Key:\033[0m \033[2m(not available)\033[0m%s\r\n", currentIndicator)
-		}
-		fmt.Fprintf(s, "\r\n")
-	}
-
-	if keyCount == 0 {
-		fmt.Fprintf(s, "  \033[2mNo SSH keys found\033[0m\r\n")
-	}
-
-	fmt.Fprintf(s, "\r\n")
-}
-
-func (ss *SSHServer) handleAllocCommand(s ssh.Session, publicKey, allocID string, args []string) {
-	// Show allocation info
-	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return
-	}
-
-	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
-	if err != nil || alloc == nil {
-		fmt.Fprintf(s, "\033[1;31mError: No allocation found\033[0m\r\n")
-		return
-	}
-
-	fmt.Fprintf(s, "\r\n\033[1;36mYour Allocation:\033[0m\r\n\r\n")
-	fmt.Fprintf(s, "  ID: \033[1m%s\033[0m\r\n", alloc.AllocID)
-	fmt.Fprintf(s, "  Type: \033[1m%s\033[0m\r\n", alloc.AllocType)
-	fmt.Fprintf(s, "  Region: \033[1m%s\033[0m\r\n", alloc.Region)
-	fmt.Fprintf(s, "  Created: %s\r\n\r\n", alloc.CreatedAt.Format("Jan 2, 2006"))
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel

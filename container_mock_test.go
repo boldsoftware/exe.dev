@@ -16,6 +16,8 @@ type MockContainerManager struct {
 	execCalls  []MockExecCall
 }
 
+var _ container.Manager = &MockContainerManager{}
+
 // MockExecCall records calls to ExecuteInContainer for testing
 type MockExecCall struct {
 	AllocID     string
