@@ -128,8 +128,7 @@ func (c *Client) githubUserHasKey(ctx context.Context, login, trimmedKey string)
 //	CREATE TABLE key_userid (keyHash BLOB PRIMARY KEY, userID INTEGER) WITHOUT ROWID;
 //
 // where keyHash is SHA-256(bytes.TrimSpace(ssh.MarshalAuthorizedKey(pk)))[:16]
-// Get the database from backblaze, bucket bold-exe.
-// Ask Josh for credentials if needed.
+// The makefile has targets for cleaning, downloading, and deploying the db.
 func New(token, dbPath string) (*Client, error) {
 	if token == "" {
 		return nil, fmt.Errorf("no GitHub token provided")
@@ -248,6 +247,8 @@ func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
 }
 
 func (c *Client) info(ctx context.Context, dbKey []byte, trimmedKey string) (Info, error) {
+	return Info{}, fmt.Errorf("GitHub integration not complete yet")
+
 	if c.db == nil || c.stmt == nil {
 		return Info{}, fmt.Errorf("client not initialized")
 	}
@@ -280,7 +281,9 @@ func (c *Client) info(ctx context.Context, dbKey []byte, trimmedKey string) (Inf
 	}
 
 	info.IsGitHubUser = true
-	info.Email = user.Email
+	if !isGHProxyEmail(user.Email) {
+		info.Email = user.Email
+	}
 	info.CreditOK = user.CreatedAt.Before(userCreationCutoff) && user.PublicRepos > 0
 
 	return info, nil
@@ -288,3 +291,7 @@ func (c *Client) info(ctx context.Context, dbKey []byte, trimmedKey string) (Inf
 
 // Jan 1, 2025 cutoff for user creation to determine CreditOK
 var userCreationCutoff = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+func isGHProxyEmail(email string) bool {
+	return strings.Contains(email, "users.noreply.github.com")
+}

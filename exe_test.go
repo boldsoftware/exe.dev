@@ -46,7 +46,7 @@ func TestPublicKeyAuthentication(t *testing.T) {
 
 	// Register the user with alloc in the database
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-	if err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
+	if _, err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
@@ -104,12 +104,12 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	// Create a test email verification
 	token := server.generateRegistrationToken()
 	verification := &EmailVerification{
-		PublicKey:        "ssh-rsa test-key",
-		Email:            "test@example.com",
-		Token:            token,
-		VerificationCode: "654321",
-		CompleteChan:     make(chan struct{}),
-		CreatedAt:        time.Now(),
+		PublicKey:    "ssh-rsa test-key",
+		Email:        "test@example.com",
+		Token:        token,
+		PairingCode:  "654321",
+		CompleteChan: make(chan struct{}),
+		CreatedAt:    time.Now(),
 	}
 
 	server.emailVerificationsMu.Lock()
@@ -223,7 +223,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	email := "test@example.com"
 	// Create user with generated user_id
 	publicKey := "ssh-rsa dummy-test-key test@example.com"
-	err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user : %v", err)
 	}
@@ -415,7 +415,7 @@ func TestSSHIdentityKeyForBox(t *testing.T) {
 
 	// Create a test user and alloc
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
-	if err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
+	if _, err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 

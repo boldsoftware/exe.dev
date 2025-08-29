@@ -37,6 +37,7 @@ import (
 	"exe.dev/ctrhosttest"
 	docspkg "exe.dev/docs"
 	"exe.dev/exedb"
+	"exe.dev/ghuser"
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
@@ -53,14 +54,6 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-// User represents an individual user
-type User struct {
-	UserID                  string
-	Email                   string
-	CreatedAt               time.Time
-	DefaultBillingAccountID string
-}
-
 // AllocType defines the resource allocation tier
 type AllocType string
 
@@ -75,17 +68,6 @@ const (
 	RegionAWSUSWest2 Region = "aws-us-west-2" // Default and only region for now
 )
 
-// Alloc represents an allocation of resources for a user
-type Alloc struct {
-	AllocID          string
-	UserID           string
-	AllocType        AllocType
-	Region           Region
-	Ctrhost          string // Container host where this alloc's resources are
-	CreatedAt        time.Time
-	BillingAccountID string
-}
-
 // BoxDisplayInfo represents a box with additional display information
 type BoxDisplayInfo struct {
 	exedb.Box
@@ -96,7 +78,7 @@ type BoxDisplayInfo struct {
 
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
-	User    User
+	User    exedb.User
 	SSHKeys []SSHKey
 	Boxes   []BoxDisplayInfo
 }
@@ -109,12 +91,12 @@ type SSHKey struct {
 
 // EmailVerification represents a pending email verification (in-memory)
 type EmailVerification struct {
-	PublicKey        string
-	Email            string
-	Token            string
-	VerificationCode string
-	CompleteChan     chan struct{}
-	CreatedAt        time.Time
+	PublicKey    string
+	Email        string
+	Token        string
+	PairingCode  string
+	CompleteChan chan struct{}
+	CreatedAt    time.Time
 }
 
 // MagicSecret represents a temporary authentication secret for proxy magic URLs
@@ -182,6 +164,10 @@ type Server struct {
 
 	// User sessions for tracking authenticated users
 	sessions map[*sshbuf.Channel]*UserSession // channel -> user session
+
+	// GitHub keys -> GitHub user info client
+	// For expedited onboarding for existing GitHub users who show up with their GitHub SSH key
+	githubUser *ghuser.Client
 
 	// Email and billing services
 	postmarkClient *postmark.Client
@@ -259,7 +245,7 @@ func runMigrations(dbPath string) error {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, containerdAddresses []string) (*Server, error) {
+func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses []string) (*Server, error) {
 	// Run db migrations with a raw connection (not a pool).
 	err := runMigrations(dbPath)
 	if err != nil {
@@ -288,6 +274,12 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		postmarkClient = postmark.NewClient(postmarkAPIKey, "")
 	} else {
 		slog.Info("POSTMARK_API_KEY not set, email verification will not work")
+	}
+
+	// Initialize GitHub User lookup client
+	ghu, err := ghuser.New(os.Getenv("GITHUB_TOKEN"), ghWhoAmIPath)
+	if err != nil {
+		slog.Warn("failed to create GitHub user key lookup client", "error", err)
 	}
 
 	setStripeKey()
@@ -424,6 +416,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,
 		stripeKey:          stripe.Key,
+		githubUser:         ghu,
 		devMode:            devMode,
 
 		metricsRegistry: metricsRegistry,
@@ -591,8 +584,8 @@ func (s *Server) generateRegistrationToken() string {
 	return txt[:len(txt)/2] // we don't need a super long token, no birthday attacks here, 64 bits is plenty
 }
 
-// generateVerificationCode returns a zero-padded six digit string for anti-phishing checks.
-func (s *Server) generateVerificationCode() string {
+// generatePairingCode returns a zero-padded six digit string for anti-phishing checks.
+func (s *Server) generatePairingCode() string {
 	max := big.NewInt(1_000_000)
 	n, err := crand.Int(crand.Reader, max)
 	if err != nil {
@@ -1121,32 +1114,6 @@ func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]exedb.
 	})
 }
 
-// getAllocsByHost gets all allocations assigned to a specific docker host
-func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc, error) {
-	return withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]*Alloc, error) {
-		allocResults, err := queries.GetAllocsByHost(ctx, ctrhost)
-		if err != nil {
-			return nil, err
-		}
-		var allocs []*Alloc
-		for _, allocResult := range allocResults {
-			a := &Alloc{
-				AllocID:   allocResult.AllocID,
-				UserID:    allocResult.UserID,
-				AllocType: AllocType(allocResult.AllocType),
-				Region:    Region(allocResult.Region),
-				Ctrhost:   allocResult.Ctrhost,
-			}
-			if allocResult.CreatedAt != nil {
-				a.CreatedAt = *allocResult.CreatedAt
-			}
-			a.BillingAccountID = allocResult.BillingAccountID
-			allocs = append(allocs, a)
-		}
-		return allocs, nil
-	})
-}
-
 // getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
 func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.Box, error) {
 	boxResults, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Box, error) {
@@ -1209,7 +1176,9 @@ func (s *Server) syncAllocsWithHosts(ctx context.Context) error {
 // syncAllocsForHost synchronizes allocations for a specific container host
 func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
 	// Get allocations from the database that should be on this host
-	dbAllocs, err := s.getAllocsByHost(ctx, host)
+	dbAllocs, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Alloc, error) {
+		return queries.GetAllocsByHost(ctx, host)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to get allocations from database: %w", err)
 	}
@@ -1221,7 +1190,7 @@ func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
 	}
 
 	// Create maps for easier lookup
-	dbAllocMap := make(map[string]*Alloc)
+	dbAllocMap := make(map[string]*exedb.Alloc)
 	for _, alloc := range dbAllocs {
 		// Truncate allocID to match network naming (max 12 chars)
 		nameLen := len(alloc.AllocID)
@@ -1229,7 +1198,7 @@ func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
 			nameLen = 12
 		}
 		truncatedID := alloc.AllocID[:nameLen]
-		dbAllocMap[truncatedID] = alloc
+		dbAllocMap[truncatedID] = &alloc
 	}
 
 	hostAllocMap := make(map[string]bool)
@@ -1684,8 +1653,8 @@ func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (ema
 }
 
 // getUserByPublicKey retrieves a user by their SSH public key
-func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*User, error) {
-	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*exedb.User, error) {
+	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
 		return queries.GetUserWithSSHKey(ctx, publicKeyStr)
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1694,24 +1663,13 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	if err != nil {
 		return nil, err
 	}
-
-	user := &User{
-		UserID:                  result.UserID,
-		Email:                   result.Email,
-		DefaultBillingAccountID: result.DefaultBillingAccountID,
-	}
-	if result.CreatedAt != nil {
-		user.CreatedAt = *result.CreatedAt
-	}
-	return user, nil
+	return &user, nil
 }
 
-// Note: allocateIPRange function has been removed since we no longer use per-allocation IP ranges.
-// All containers now use the default bridge network with port isolation.
-
 // createUser creates a new user with their resource allocation and default billing account.
-func (s *Server) createUser(ctx context.Context, publicKey, email string) error {
+func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
 	var allocID string
+	var user exedb.User
 
 	// First create the user and allocation in the database
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
@@ -1757,8 +1715,8 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 		// Select a container host for this alloc
 		ctrhost := s.selectCtrhostForNewAlloc()
 
-		// Create alloc for the user (no longer needs IP range)
-		return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
+		// Create alloc for the user
+		err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
 			AllocID:          allocID,
 			UserID:           userID,
 			AllocType:        string(AllocTypeMedium),
@@ -1766,31 +1724,27 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 			Ctrhost:          ctrhost,
 			BillingAccountID: billingAccountID,
 		})
+		if err != nil {
+			return err
+		}
+		user, err = queries.GetUserWithDetails(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return &user, nil
 }
 
 // getUserAlloc gets the alloc for a user (creates one if it doesn't exist)
-func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error) {
-	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Alloc, error) {
+func (s *Server) getUserAlloc(ctx context.Context, userID string) (*exedb.Alloc, error) {
+	alloc, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Alloc, error) {
 		return queries.GetAllocByUserID(ctx, userID)
 	})
-
-	alloc := Alloc{
-		AllocID:   result.AllocID,
-		UserID:    result.UserID,
-		AllocType: AllocType(result.AllocType),
-		Region:    Region(result.Region),
-		Ctrhost:   result.Ctrhost,
-	}
-	if result.CreatedAt != nil {
-		alloc.CreatedAt = *result.CreatedAt
-	}
-	alloc.BillingAccountID = result.BillingAccountID
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// User exists but has no alloc yet - create one
@@ -2074,21 +2028,9 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 }
 
 // GetUserByEmail retrieves a user by their email address
-func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (User, error) {
-		result, err := queries.GetUserByEmail(ctx, email)
-		if err != nil {
-			return User{}, err
-		}
-		user := User{
-			UserID:                  result.UserID,
-			Email:                   result.Email,
-			DefaultBillingAccountID: result.DefaultBillingAccountID,
-		}
-		if result.CreatedAt != nil {
-			user.CreatedAt = *result.CreatedAt
-		}
-		return user, nil
+func (s *Server) GetUserByEmail(ctx context.Context, email string) (*exedb.User, error) {
+	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserByEmail(ctx, email)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

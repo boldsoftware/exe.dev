@@ -21,7 +21,7 @@ func TestUserDashboard(t *testing.T) {
 	email := "test@example.com"
 	publicKey := "ssh-rsa dummy-test-key test@example.com"
 
-	if err := server.createUser(t.Context(), publicKey, email); err != nil {
+	if _, err := server.createUser(t.Context(), publicKey, email); err != nil {
 		t.Fatal(err)
 	}
 	user, err := server.getUserByPublicKey(t.Context(), publicKey)

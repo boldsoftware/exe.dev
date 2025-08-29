@@ -39,7 +39,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	// Test 1: First key registration creates new user
 	t.Run("FirstKeyRegistration", func(t *testing.T) {
 		// Create user with first key
-		err := server.createUser(t.Context(), string(ssh.MarshalAuthorizedKey(pubKey1)), testEmail)
+		_, err := server.createUser(t.Context(), string(ssh.MarshalAuthorizedKey(pubKey1)), testEmail)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -225,7 +225,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	}
 
 	// Create user first
-	err = server.createUser(t.Context(), testPublicKey, testEmail)
+	_, err = server.createUser(t.Context(), testPublicKey, testEmail)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}

@@ -134,7 +134,7 @@ type AllocInfo struct {
 	Type             string
 	Region           string
 	BillingAccountID string
-	CreatedAt        time.Time
+	CreatedAt        *time.Time
 }
 
 // Write is a convenience method for writing to the output.

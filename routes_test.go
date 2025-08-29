@@ -53,7 +53,7 @@ func TestBoxCreationWithRoute(t *testing.T) {
 	allocID := "alloc-test-123"
 
 	// Create user with alloc
-	err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestHandleProxyRequest(t *testing.T) {
 	email := "test@example.com"
 
 	// Create user with alloc
-	err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 	boxName := "web-server"
 
 	// Create user with alloc
-	err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	boxName := "test-server"
 
 	// Create user with alloc
-	err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}

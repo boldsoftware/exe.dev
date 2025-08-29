@@ -416,16 +416,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 		cookieName = "exe-auth"
 	}
 
-	// Set the auth cookie
-	cookie := &http.Cookie{
-		Name:     cookieName,
-		Value:    cookieValue,
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   30 * 24 * 60 * 60, // 30 days
-		Secure:   r.TLS != nil,
-	}
-	http.SetCookie(w, cookie)
+	setAuthCookie(w, r, cookieName, cookieValue)
 
 	// Redirect to the original URL or the redirect from the magic secret
 	finalRedirect := redirectURL

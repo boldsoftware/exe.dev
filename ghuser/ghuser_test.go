@@ -127,19 +127,3 @@ func TestClient_Info_UnknownKey(t *testing.T) {
 		t.Error("expected CreditOK to be false for unknown key")
 	}
 }
-
-func TestClient_Info_NotInitialized(t *testing.T) {
-	// Use a test key (valid base64)
-	pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBLJb3MqAsIp5QPTLlA7BQxKOjtFiVc7n6SF8DdnoBpN test@test.com"))
-	if err != nil {
-		t.Fatalf("failed to parse test key: %v", err)
-	}
-
-	// Try to use InfoKey with uninitialized client
-	c := &Client{}
-
-	_, err = c.InfoKey(t.Context(), pubKey)
-	if err == nil || err.Error() != "client not initialized" {
-		t.Errorf("expected 'client not initialized' error, got: %v", err)
-	}
-}

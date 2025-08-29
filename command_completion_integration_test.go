@@ -3,6 +3,7 @@ package exe
 import (
 	"testing"
 
+	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"github.com/stretchr/testify/assert"
 )
@@ -13,11 +14,11 @@ func TestCompletionIntegration(t *testing.T) {
 	sshServer := NewSSHServer(server, nil) // nil billing for completion testing
 
 	// Create test user and alloc context
-	user := &User{
+	user := &exedb.User{
 		UserID: "test-user",
 		Email:  "test@example.com",
 	}
-	alloc := &Alloc{
+	alloc := &exedb.Alloc{
 		AllocID: "test-alloc",
 	}
 

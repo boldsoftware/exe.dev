@@ -26,7 +26,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 
 	// Create a test user and alloc
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
-	if err := server.createUser(context.Background(), publicKeyStr, "test@example.com"); err != nil {
+	if _, err := server.createUser(context.Background(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 

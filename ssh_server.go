@@ -300,7 +300,7 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 	ss.runMainShellWithReadline(s, publicKey, user)
 }
 
-func (ss *SSHServer) displayWelcomeTip(s ssh.Session, user *User) {
+func (ss *SSHServer) displayWelcomeTip(s ssh.Session, user *exedb.User) {
 	// Check if user has created their first box to determine if we should show the welcome message
 	userEvents := ss.server.allUserEventsBestEffort(s.Context(), user.UserID)
 	hasCreatedBox := userEvents[userEventCreatedBox] > 0
@@ -325,7 +325,7 @@ func (ss *SSHServer) displayWelcomeTip(s ssh.Session, user *User) {
 }
 
 // runMainShellWithReadline implements the main menu using a simple line reader
-func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, user *User) {
+func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, user *exedb.User) {
 	slog.Debug("start runMainShellWithReadline", "public_key", publicKey, "email", user.Email)
 	// Show welcome message, hints, tips, etc.
 	ss.displayWelcomeTip(s, user)
@@ -465,11 +465,13 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session) {
 // readLineWithEcho reads a line with echo (for registration)
 // This uses direct byte reading to avoid buffering issues when transitioning to the menu
 func (ss *SSHServer) readLineWithEcho(s ssh.Session) string {
-	return ss.readLineWithEchoAndDefault(s, "")
+	str, _ := ss.readLineWithEchoAndDefault(s, "")
+	return str
 }
 
-// readLineWithEchoAndDefault reads a line with echo and optionally pre-fills a default value
-func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue string) string {
+// readLineWithEchoAndDefault reads a line with echo and optionally pre-fills a default value.
+// It returns the entered line and a boolean indicating whether the user pressed enter.
+func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue string) (string, bool) {
 	var line []byte
 	buf := make([]byte, 1)
 
@@ -482,7 +484,7 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 	for {
 		n, err := s.Read(buf)
 		if err != nil || n == 0 {
-			return ""
+			return "", false
 		}
 
 		b := buf[0]
@@ -490,9 +492,9 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 		case '\n', '\r':
 			// Enter pressed
 			fmt.Fprint(s, "\r\n")
-			return strings.TrimSpace(string(line))
+			return strings.TrimSpace(string(line)), true
 		case 3: // Ctrl+C
-			return ""
+			return "", false
 		case 127, 8: // Backspace
 			if len(line) > 0 {
 				// Remove last character
@@ -514,57 +516,92 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	ss.showAnimatedWelcome(s)
 
+	// Attempt to identify this as a GitHub user based on their validated public key.
+	ghInfo, err := ss.server.githubUser.InfoString(s.Context(), publicKey)
+	if err != nil {
+		slog.InfoContext(s.Context(), "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
+	}
+
 	signupContent := "\r\n\033[1;33mEXE.DEV: get a machine over ssh\033[0m\r\n" +
 		"To sign up, verify your email and set up billing.\r\n\r\n"
 	fmt.Fprint(s, signupContent)
 
 	// Validate email
 	var email string
+	suggested := ghInfo.Email
 	for !ss.server.isValidEmail(email) {
 		if email != "" {
 			fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
 		}
 		fmt.Fprint(s, "\033[1mPlease enter your email address:\033[0m ")
-		email = ss.readLineWithEcho(s)
-		if email == "" {
+		var pressedEnter bool
+		email, pressedEnter = ss.readLineWithEchoAndDefault(s, suggested)
+		if email == "" || !pressedEnter {
 			fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
 			return
 		}
+		// Only suggest an email the first time around, to avoid being annoying
+		suggested = ""
 	}
 
-	slog.Debug("starting email verification", "email", email)
-	// Start email verification directly without using sshbuf.Channel
-	if err := ss.startEmailVerificationNew(s.Context(), publicKey, email); err != nil {
-		// Log the error for debugging
-		slog.Error("email verification failed", "email", email, "error", err)
-		// Show user-friendly error message
-		if err.Error() == "email service not configured" {
-			fmt.Fprintf(s, "\r\n%sError: Email service is not configured. Cannot send verification email.%s\r\n", "\033[1;31m", "\033[0m")
-			fmt.Fprintf(s, "Please contact support at support@exe.dev\r\n")
-		} else if strings.Contains(err.Error(), "marked as inactive") {
-			fmt.Fprintf(s, "\r\nError: This email address cannot receive emails (blocked by email provider).\r\nPlease try a different email address.\r\n")
-		} else {
-			fmt.Fprintf(s, "\r\nError sending verification email: %v\r\n", err)
+	needsEmailVerification := ghInfo.Email == "" || email != ghInfo.Email
+	needsEmailVerification = true
+	var user *exedb.User
+	if needsEmailVerification {
+		user, err = ss.waitForEmailVerification(s, publicKey, email)
+		if err != nil || user == nil {
+			slog.Error("email verification failed", "email", email, "error", err)
+			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
+			return
 		}
+	} else {
+		// Email matches GitHub's. Rely on their verification; create user directly now.
+		slog.Info("email matches GitHub, skipping verification", "email", email)
+		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey)
+		if err != nil {
+			slog.Error("failed to create user with SSH key during github auto-verification", "error", err)
+			fmt.Fprintf(s, "\r\n\033[1;31minternal error: failed to create user account\033[0m\r\n")
+			return
+		}
+		user = newUser
+		// TODO: handle new device but existing user case!
+	}
+
+	// Get user's alloc for the menu
+	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
+	if err != nil || alloc == nil {
+		slog.Error("user has no allocation after registration", "user_id", user.UserID, "email", user.Email, "error", err)
+		fmt.Fprintf(s, "internal error: no associated alloc found for %v\r\n", user.Email)
+		s.Close()
 		return
 	}
 
-	// Get the verification details for displaying the URL
-	verification, exists := ss.server.getEmailVerification(publicKey)
-	if !exists {
-		fmt.Fprintf(s, "%sError: Verification process failed%s\r\n", "\033[1;31m", "\033[0m")
-		return
+	// Visual feedback that we're entering the menu
+	fmt.Fprintf(s, "\r\n\r\n")
+
+	// Transition directly to the main shell menu
+	// We pass the session directly and let runMainShellWithReadline create its own reader
+	// This avoids issues with partially consumed readers
+	ss.runMainShellWithReadline(s, publicKey, user)
+}
+
+func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, email string) (*exedb.User, error) {
+	slog.Debug("starting email verification", "email", email)
+	verification, err := ss.startEmailVerification(s.Context(), publicKey, email)
+	if err != nil {
+		switch {
+		case err.Error() == "email service not configured":
+			return nil, fmt.Errorf("internal error: email service is not configured")
+		case strings.Contains(err.Error(), "marked as inactive"):
+			return nil, fmt.Errorf("This email address has been blocked by the email provider.\r\nPlease try a different email address.")
+		}
+		return nil, err
 	}
 
 	fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
+	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
 
-	if strings.TrimSpace(verification.VerificationCode) == "" {
-		fmt.Fprint(s, "\033[1;31mInternal error: Empty verification code. Please try again.\033[0m\r\n")
-		return
-	}
-	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.VerificationCode)
-
-	// Only show the verification URL in dev mode
+	// Show the verification URL in dev mode
 	if ss.server.devMode != "" {
 		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", ss.server.getBaseURL(), verification.Token)
 		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
@@ -616,26 +653,22 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		// Signal the goroutine that verification is complete
 		verificationComplete.Store(true)
 	case <-ctrlCChan:
-		fmt.Fprintf(s, "\r\n%sRegistration cancelled.%s\r\n", "\033[1;33m", "\033[0m")
-		return
+		return nil, fmt.Errorf("Registration cancelled")
 	case <-time.After(10 * time.Minute):
-		fmt.Fprintf(s, "%sEmail verification timed out. Please try again.%s\r\n", "\033[1;31m", "\033[0m")
 		verificationComplete.Store(true) // Stop the goroutine
 		<-goroutineDone                  // Wait for goroutine to exit
-		return
+		return nil, fmt.Errorf("Email verification timed out. Please try again.")
 	case <-s.Context().Done():
 		// Session disconnected
 		verificationComplete.Store(true) // Stop the goroutine
-		return
+		return nil, fmt.Errorf("session disconnected")
 	}
 
 	// After successful verification, the user should have been created by the HTTP handler
 	// Get the user to verify it was created
 	user, userErr := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if userErr != nil || user == nil {
-		log.Printf("Error: User not found after verification: %v", userErr)
-		fmt.Fprintf(s, "Error loading user profile. Please try registering again.\r\n")
-		return
+		return nil, fmt.Errorf("internal error: user not found after verification")
 	}
 
 	// Store/update the SSH key as verified - use context.Background() to ensure cleanup completes even if client disconnects
@@ -647,11 +680,9 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		})
 	})
 	if storeErr != nil {
-		log.Printf("Error storing SSH key: %v", storeErr)
-		// Don't fail here, the key might already exist
+		slog.Warn("failed to store SSH key after registration", "user_id", user.UserID, "email", user.Email, "error", storeErr)
+		// Don't fail here, the key might already exist (TODO: is this right??)
 	}
-
-	// TODO: Set the default team for the SSH key if not already set
 
 	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
@@ -660,23 +691,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 
 	// Wait for the goroutine to exit (user presses Enter or any key)
 	<-goroutineDone
-
-	// Get user's alloc for the menu
-	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
-	if err != nil || alloc == nil {
-		slog.Error("user has no allocation after registration", "user_id", user.UserID, "email", user.Email, "error", err)
-		fmt.Fprintf(s, "internal error: no associated alloc found for %v\r\n", user.Email)
-		s.Close()
-		return
-	}
-
-	// Visual feedback that we're entering the menu
-	fmt.Fprintf(s, "\r\n\r\n")
-
-	// Transition directly to the main shell menu
-	// We pass the session directly and let runMainShellWithReadline create its own reader
-	// This avoids issues with partially consumed readers
-	ss.runMainShellWithReadline(s, publicKey, user)
+	return user, nil
 }
 
 // handleExec handles exec commands
@@ -736,19 +751,6 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	}
 }
 
-// getEmailVerification retrieves an email verification by public key
-func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, bool) {
-	s.emailVerificationsMu.RLock()
-	defer s.emailVerificationsMu.RUnlock()
-
-	for _, v := range s.emailVerifications {
-		if strings.TrimSpace(v.PublicKey) == strings.TrimSpace(publicKey) {
-			return v, true
-		}
-	}
-	return nil, false
-}
-
 // handleContainerLogs shows logs for a failed container
 func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, boxName string) {
 	// Show error message about container failure
@@ -780,58 +782,35 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	fmt.Fprintf(s, "  \033[1m%s delete %s\033[0m\r\n", ss.server.formatExeDevConnectionInfo(), boxName)
 }
 
-// startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
-func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, email string) error {
-	// Check if this email already exists
-	err := ss.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
-		_, err := queries.GetUserIDByEmail(ctx, email)
-		return err
+func (ss *SSHServer) startEmailVerification(ctx context.Context, publicKey, email string) (*EmailVerification, error) {
+	// Check whether this email already exists
+	_, err := withRxRes(ss.server, ctx, func(ctx context.Context, q *exedb.Queries) (any, error) {
+		return q.GetUserIDByEmail(ctx, email)
 	})
 
 	if err == nil {
-		// Email already exists - this is a new ssh key for an existing user
+		// Email already exists - this is a new ssh key for an existing user.
+		verif := ss.server.addEmailVerification(publicKey, email)
 
-		// Don't store in ssh_keys yet - only store verified keys there
-
-		// Generate token and verification code for new ssh key verification
-		token := ss.server.generateRegistrationToken()
-		verificationCode := ss.server.generateVerificationCode()
-		expires := time.Now().Add(15 * time.Minute)
-
-		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-			return queries.InsertPendingSSHKey(ctx, exedb.InsertPendingSSHKeyParams{
-				Token:     token,
+		err := ss.server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+			return q.InsertPendingSSHKey(ctx, exedb.InsertPendingSSHKeyParams{
+				Token:     verif.Token,
 				PublicKey: publicKey,
 				UserEmail: email,
-				ExpiresAt: expires,
+				ExpiresAt: time.Now().Add(15 * time.Minute),
 			})
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create verification token: %v", err)
+			return nil, fmt.Errorf("failed to create verification token: %v", err)
 		}
-
-		// Create verification object
-		verification := &EmailVerification{
-			PublicKey:        publicKey,
-			Email:            email,
-			Token:            token,
-			VerificationCode: verificationCode,
-			CompleteChan:     make(chan struct{}),
-			CreatedAt:        time.Now(),
-		}
-
-		// Store verification
-		ss.server.emailVerificationsMu.Lock()
-		ss.server.emailVerifications[token] = verification
-		ss.server.emailVerificationsMu.Unlock()
 
 		// Send new device verification email
-		subject := "New Device Login - EXE.DEV"
+		subject := "New ssh key login - EXE.DEV"
 		body := fmt.Sprintf(`Hello,
 
-A new device is trying to register with your EXE.DEV account email.
+A new ssh key is trying to register with your EXE.DEV account email, with public key:
+
+%s
 
 If this was you, please click the link below to authorize this device:
 
@@ -842,36 +821,18 @@ If you did not attempt to register from a new device, please ignore this email.
 This link will expire in 15 minutes.
 
 Best regards,
-The EXE.DEV team`, ss.server.getBaseURL(), token)
+The EXE.DEV team`, publicKey, ss.server.getBaseURL(), verif.Token)
 
 		if err := ss.server.sendEmail(email, subject, body); err != nil {
-			ss.server.emailVerificationsMu.Lock()
-			delete(ss.server.emailVerifications, token)
-			ss.server.emailVerificationsMu.Unlock()
-			return fmt.Errorf("failed to send verification email: %v", err)
+			ss.server.deleteEmailVerification(verif)
+			return nil, fmt.Errorf("failed to send verification email: %v", err)
 		}
 
-		return nil
+		return verif, nil
 	}
 
 	// New user registration
-	token := ss.server.generateRegistrationToken()
-	verificationCode := ss.server.generateVerificationCode()
-
-	// Create verification object
-	verification := &EmailVerification{
-		PublicKey:        publicKey,
-		Email:            email,
-		Token:            token,
-		VerificationCode: verificationCode,
-		CompleteChan:     make(chan struct{}),
-		CreatedAt:        time.Now(),
-	}
-
-	// Store verification
-	ss.server.emailVerificationsMu.Lock()
-	ss.server.emailVerifications[token] = verification
-	ss.server.emailVerificationsMu.Unlock()
+	verif := ss.server.addEmailVerification(publicKey, email)
 
 	// Send verification email
 	subject := "Welcome to EXE.DEV - Verify Your Email"
@@ -884,20 +845,48 @@ Please click the link below to verify your email address:
 This link will expire in 15 minutes.
 
 Best regards,
-The EXE.DEV team`, ss.server.getBaseURL(), token)
+The EXE.DEV team`, ss.server.getBaseURL(), verif.Token)
 
 	if err := ss.server.sendEmail(email, subject, body); err != nil {
-		ss.server.emailVerificationsMu.Lock()
-		delete(ss.server.emailVerifications, token)
-		ss.server.emailVerificationsMu.Unlock()
-		return fmt.Errorf("failed to send verification email: %v", err)
+		ss.server.deleteEmailVerification(verif)
+		return nil, fmt.Errorf("failed to send verification email: %v", err)
 	}
 
-	return nil
+	return verif, nil
+}
+
+func (s *Server) addEmailVerification(publicKey, email string) *EmailVerification {
+	token := s.generateRegistrationToken()
+	pairingCode := s.generatePairingCode()
+
+	verification := &EmailVerification{
+		PublicKey:    publicKey,
+		Email:        email,
+		Token:        token,
+		PairingCode:  pairingCode,
+		CompleteChan: make(chan struct{}),
+		CreatedAt:    time.Now(),
+	}
+	s.emailVerificationsMu.Lock()
+	defer s.emailVerificationsMu.Unlock()
+	s.emailVerifications[token] = verification
+	return verification
+}
+
+func (s *Server) deleteEmailVerification(verif *EmailVerification) {
+	s.emailVerificationsMu.Lock()
+	defer s.emailVerificationsMu.Unlock()
+	delete(s.emailVerifications, verif.Token)
+}
+
+func (s *Server) lookUpEmailVerification(token string) *EmailVerification {
+	s.emailVerificationsMu.Lock()
+	defer s.emailVerificationsMu.Unlock()
+	return s.emailVerifications[token]
 }
 
 // readLineWithCompletion reads a line from the terminal with tab completion support
-func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User, alloc *Alloc, publicKey string, s ssh.Session) (string, error) {
+func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb.User, alloc *exedb.Alloc, publicKey string, s ssh.Session) (string, error) {
 	// Set up tab completion using AutoCompleteCallback
 	var lastCompletionLine string
 	var lastCompletionPos int

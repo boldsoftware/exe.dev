@@ -70,7 +70,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	email := "test@example.com"
 	publicKey := "ssh-rsa dummy-test-key test@example.com"
 
-	if err := server.createUser(t.Context(), publicKey, email); err != nil {
+	if _, err := server.createUser(t.Context(), publicKey, email); err != nil {
 		t.Fatal(err)
 	}
 	user, err := server.getUserByPublicKey(t.Context(), publicKey)
@@ -161,7 +161,7 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."
 	email := "test@example.com"
-	err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."
 	email := "test-logout@example.com"
 
-	err := server.createUser(t.Context(), publicKey, email)
+	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}

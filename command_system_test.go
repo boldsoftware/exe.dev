@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"exe.dev/billing"
+	"exe.dev/exedb"
 	"exe.dev/exemenu"
 )
 
@@ -24,7 +25,7 @@ func (m *MockOutput) String() string {
 }
 
 // Helper to create test context
-func createTestContext(sshServer *SSHServer, user *User, alloc *Alloc, output *MockOutput, args []string) *exemenu.CommandContext {
+func createTestContext(sshServer *SSHServer, user *exedb.User, alloc *exedb.Alloc, output *MockOutput, args []string) *exemenu.CommandContext {
 	var userInfo *exemenu.UserInfo
 	if user != nil {
 		userInfo = &exemenu.UserInfo{ID: user.UserID, Email: user.Email}
@@ -157,8 +158,8 @@ func TestHelpCommand(t *testing.T) {
 	sshServer := &SSHServer{server: server, billing: billing}
 	sshServer.commands = NewCommandTree(sshServer)
 
-	user := &User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	t.Run("general help", func(t *testing.T) {
 		output := &MockOutput{}
@@ -238,8 +239,8 @@ func TestExecuteCommand(t *testing.T) {
 	sshServer := &SSHServer{server: server, billing: billing}
 	sshServer.commands = NewCommandTree(sshServer)
 
-	user := &User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	t.Run("execute help command", func(t *testing.T) {
 		output := &MockOutput{}
@@ -363,8 +364,8 @@ func TestBillingCommandConditionalBehavior(t *testing.T) {
 	sshServer := &SSHServer{server: server, billing: mockBilling}
 	sshServer.commands = NewCommandTree(sshServer)
 
-	user := &User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	t.Run("billing setup flow when no billing exists", func(t *testing.T) {
 		// Mock billing service to return no billing info
@@ -412,8 +413,8 @@ func TestGetAvailableCommands(t *testing.T) {
 	sshServer := &SSHServer{server: server, billing: billing}
 	sshServer.commands = NewCommandTree(sshServer)
 
-	user := &User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	ctx := createTestContext(sshServer, user, alloc, &MockOutput{}, []string{})
 
@@ -442,8 +443,8 @@ func TestCommandFlagParsing(t *testing.T) {
 	sshServer := &SSHServer{server: server, billing: billing}
 	sshServer.commands = NewCommandTree(sshServer)
 
-	user := &User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	tests := []struct {
 		name         string
@@ -670,8 +671,8 @@ func TestSubcommandFlagParsing(t *testing.T) {
 		},
 	}
 
-	user := &User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	tests := []struct {
 		name         string
@@ -795,8 +796,8 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 	sshServer := &SSHServer{server: server, billing: billing}
 	sshServer.commands = NewCommandTree(sshServer)
 
-	user := &User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	tests := []struct {
 		name        string

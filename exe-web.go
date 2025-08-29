@@ -303,8 +303,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleHealth(w, r)
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
-	case "/containers":
-		s.handleContainers(w, r)
 	case "/about":
 		s.serveStaticFile(w, r, "about.html")
 	case "/jobs":
@@ -506,13 +504,6 @@ func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// handleContainers handles container management requests
-func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	// TODO: Implement container listing/management
-	fmt.Fprintf(w, `{"containers":[],"message":"Box management not yet implemented"}`)
-}
-
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
 	// Look up the pending SSH key to validate token and get info
@@ -680,7 +671,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 
 	if exists {
 		email = verification.Email
-		code = verification.VerificationCode
+		code = verification.PairingCode
 	} else {
 		// Check database for HTTP auth token (without consuming it)
 		row, err := s.checkEmailVerificationToken(r.Context(), token)
@@ -717,8 +708,8 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 
 // handleEmailVerificationHTTP handles web-based email verification
 func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Request) {
-	// Handle GET request - show confirmation form
-	if r.Method == http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
 		token := r.URL.Query().Get("token")
 		if token == "" {
 			http.Error(w, "Missing token parameter", http.StatusBadRequest)
@@ -726,10 +717,9 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 		s.showEmailVerificationForm(w, r, token)
 		return
-	}
-
-	// Handle POST request - complete verification
-	if r.Method != http.MethodPost {
+	case http.MethodPost:
+		// continued below
+	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -746,79 +736,31 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	}
 
 	// First check if this is an SSH session token (in-memory)
-	s.emailVerificationsMu.Lock()
-	v, exists := s.emailVerifications[token]
-	var verification EmailVerification
-	if exists {
-		verification = *v
-	}
-	s.emailVerificationsMu.Unlock()
+	verification := s.lookUpEmailVerification(token)
 
-	if exists {
+	if verification != nil {
 		// This is an SSH session email verification
-		email := verification.Email
-
-		// Create the user if they don't exist
-		user, err := s.getUserByPublicKey(r.Context(), verification.PublicKey)
-		if err != nil || user == nil {
-			slog.Info("User doesn't exist, creating", "email", email, "token", token)
-			// User doesn't exist - create them with their alloc
-			if err := s.createUser(context.Background(), verification.PublicKey, email); err != nil {
-				slog.Error("failed to create user with alloc during email verification", "error", err, "token", token)
-				http.Error(w, "Failed to create user account", http.StatusInternalServerError)
-				return
-			}
-			slog.Info("Created new user", "email", email)
-		} else {
-			slog.Debug("User already exists", "email", email)
-		}
-
-		// Store the SSH key as verified
-		publicKey := verification.PublicKey
-		if publicKey != "" {
-			err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-				return queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
-					Email:     email,
-					PublicKey: publicKey,
-				})
-			})
-			if err != nil {
-				slog.Error("Error storing SSH key during verification", "error", err)
-			}
+		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey)
+		if err != nil {
+			slog.Error("failed to create user with SSH key during email verification", "error", err, "token", token)
+			http.Error(w, "failed to create user account", http.StatusInternalServerError)
+			return
 		}
 
 		// Create HTTP auth cookie for this user
-		userID, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetUserIDByEmail(ctx, email)
-		})
+		cookieValue, err := s.createAuthCookie(context.Background(), user.UserID, r.Host)
 		if err != nil {
-			slog.Error("Failed to get user ID by email during SSH email verification", "error", err)
+			slog.Error("Failed to create auth cookie during SSH email verification", "error", err)
+			// Continue anyway - SSH auth will still work
 		} else {
-			cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
-			if err != nil {
-				slog.Error("Failed to create auth cookie during SSH email verification", "error", err)
-				// Continue anyway - SSH auth will still work
-			} else {
-				// Set the authentication cookie
-				cookie := &http.Cookie{
-					Name:     "exe-auth",
-					Value:    cookieValue,
-					Path:     "/",
-					HttpOnly: true,
-					MaxAge:   30 * 24 * 60 * 60, // 30 days
-					Secure:   r.TLS != nil,
-				}
-				http.SetCookie(w, cookie)
-			}
+			setExeAuthCookie(w, r, cookieValue)
 		}
 
 		// Signal completion to SSH session
 		close(verification.CompleteChan)
 
 		// Clean up email verification
-		s.emailVerificationsMu.Lock()
-		delete(s.emailVerifications, token)
-		s.emailVerificationsMu.Unlock()
+		s.deleteEmailVerification(verification)
 	} else {
 		// Not an SSH token, check database for HTTP auth token
 		// Try to validate as database token
@@ -837,16 +779,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			return
 		}
 
-		// Set the authentication cookie
-		cookie := &http.Cookie{
-			Name:     "exe-auth",
-			Value:    cookieValue,
-			Path:     "/",
-			HttpOnly: true,
-			MaxAge:   30 * 24 * 60 * 60, // 30 days
-			Secure:   r.TLS != nil,
-		}
-		http.SetCookie(w, cookie)
+		setExeAuthCookie(w, r, cookieValue)
 
 		// Clean up the database token (single use)
 		err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
@@ -869,6 +802,37 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 	// Send success response (for SSH registrations or standalone verifications)
 	s.renderTemplate(w, "email-verified.html", nil)
+}
+
+func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string) (*exedb.User, error) {
+	// Create the user if they don't exist
+	user, err := s.getUserByPublicKey(ctx, publicKey)
+	if err != nil || user == nil {
+		slog.Info("User doesn't exist, creating", "email", email)
+		// User doesn't exist - create them with their alloc
+		user, err = s.createUser(context.Background(), publicKey, email)
+		if err != nil {
+			return nil, fmt.Errorf("create user: %w", err)
+		}
+		slog.Info("Created new user", "email", email)
+	} else {
+		slog.Debug("User already exists", "email", email)
+	}
+
+	// Store the SSH key as verified
+	if publicKey != "" {
+		err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
+				Email:     email,
+				PublicKey: publicKey,
+			})
+		})
+		if err != nil {
+			slog.Error("Error storing SSH key during verification", "error", err)
+		}
+	}
+
+	return user, nil
 }
 
 // handleAuth handles the main domain authentication flow
@@ -1037,19 +1001,18 @@ func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email
 
 // handleAuthCallback handles authentication callbacks with magic tokens
 func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
-	var token string
 	var userID string
-	var err error
 
 	// Check if this is an email verification request (/auth/verify?token=...)
 	if strings.HasPrefix(r.URL.Path, "/auth/verify") {
-		token = r.URL.Query().Get("token")
+		token := r.URL.Query().Get("token")
 		if token == "" {
 			http.Error(w, "Missing token parameter", http.StatusBadRequest)
 			return
 		}
 
 		// Validate email verification token
+		var err error
 		userID, err = s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			slog.Info("invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
@@ -1058,13 +1021,14 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Extract token from path /auth/<token>
-		token = strings.TrimPrefix(r.URL.Path, "/auth/")
+		token := strings.TrimPrefix(r.URL.Path, "/auth/")
 		if token == "" {
 			http.Error(w, "Missing authentication token", http.StatusBadRequest)
 			return
 		}
 
 		// Validate the auth token
+		var err error
 		userID, err = s.validateAuthToken(r.Context(), token, "")
 		if err != nil {
 			slog.Error("Invalid auth token in callback", "error", err)
@@ -1081,9 +1045,19 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set the authentication cookie
+	setExeAuthCookie(w, r, cookieValue)
+
+	// Handle redirect after authentication
+	s.redirectAfterAuth(w, r, userID)
+}
+
+func setExeAuthCookie(w http.ResponseWriter, r *http.Request, cookieValue string) {
+	setAuthCookie(w, r, "exe-auth", cookieValue)
+}
+
+func setAuthCookie(w http.ResponseWriter, r *http.Request, domain, cookieValue string) {
 	cookie := &http.Cookie{
-		Name:     "exe-auth",
+		Name:     domain,
 		Value:    cookieValue,
 		Path:     "/",
 		HttpOnly: true,
@@ -1091,9 +1065,6 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		Secure:   r.TLS != nil,
 	}
 	http.SetCookie(w, cookie)
-
-	// Handle redirect after authentication
-	s.redirectAfterAuth(w, r, userID)
 }
 
 // handleAuthConfirm handles the interstitial confirmation page for magic auth
@@ -1431,20 +1402,8 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 // handleUserDashboard renders the user dashboard page
 func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
-	user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (User, error) {
-		result, err := queries.GetUserWithDetails(ctx, userID)
-		if err != nil {
-			return User{}, err
-		}
-		user := User{
-			UserID:                  result.UserID,
-			Email:                   result.Email,
-			DefaultBillingAccountID: result.DefaultBillingAccountID,
-		}
-		if result.CreatedAt != nil {
-			user.CreatedAt = *result.CreatedAt
-		}
-		return user, nil
+	user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserWithDetails(ctx, userID)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1457,7 +1416,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	}
 
 	// Get user's SSH keys
-	sshKeys := []SSHKey{}
+	var sshKeys []SSHKey
 	err = s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
 		publicKeys, err := queries.GetSSHKeysForUser(ctx, user.UserID)
 		if err != nil {
