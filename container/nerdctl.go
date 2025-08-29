@@ -58,8 +58,9 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	// Verify Kata runtime is available on all hosts
+	// Increase timeout to 2 minutes as Kata verification can take time, especially over SSH
 	for _, host := range config.ContainerdAddresses {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		if err := manager.verifyKataRuntime(ctx, host); err != nil {
 			cancel()
 			return nil, fmt.Errorf("CRITICAL: Kata runtime not available on host %s: %w", host, err)
@@ -270,6 +271,35 @@ func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) str
 
 // verifyKataRuntime verifies that Kata runtime is available and properly configured
 func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) error {
+	// First, do a quick check if kata-runtime binary exists
+	// This is much faster than running a container
+	var kataCheckCmd *exec.Cmd
+	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
+		sshHost := host
+		if strings.HasPrefix(sshHost, "ssh://") {
+			sshHost = strings.TrimPrefix(sshHost, "ssh://")
+		}
+		// Always use sudo for remote commands
+		kataCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "kata-runtime", "--version")
+	} else {
+		kataCheckCmd = exec.CommandContext(ctx, "kata-runtime", "--version")
+	}
+	
+	kataOutput, kataErr := kataCheckCmd.Output()
+	if kataErr == nil {
+		// Kata binary exists, now do a quick runtime check
+		// Just check if the runtime is registered with containerd
+		checkArgs := []string{"info", "--format", "json"}
+		infoCmd := m.execNerdctl(ctx, host, checkArgs...)
+		infoOutput, infoErr := infoCmd.Output()
+		
+		if infoErr == nil && strings.Contains(string(infoOutput), "kata") {
+			log.Printf("Kata runtime verified via quick check on %s: %s", host, strings.TrimSpace(string(kataOutput)))
+			return nil
+		}
+	}
+	
+	// Fall back to the full container test if quick check failed or was inconclusive
 	// The most reliable way to check if Kata is available is to try using it
 	// nerdctl info doesn't reliably report available runtimes
 	
@@ -298,25 +328,12 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		outputStr := string(output)
 		if strings.Contains(outputStr, "not found") || strings.Contains(outputStr, "unknown runtime") ||
 		   strings.Contains(outputStr, "kata") || strings.Contains(outputStr, "runtime") {
-			// Also try kata-runtime binary check as additional validation
-			var kataCheckCmd *exec.Cmd
-			if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-				sshHost := host
-				if strings.HasPrefix(sshHost, "ssh://") {
-					sshHost = strings.TrimPrefix(sshHost, "ssh://")
-				}
-				// Always use sudo for remote commands
-				kataCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "kata-runtime", "--version")
-			} else {
-				kataCheckCmd = exec.CommandContext(ctx, "kata-runtime", "--version")
-			}
-			
-			if kataOutput, kataErr := kataCheckCmd.Output(); kataErr != nil {
+			// We already checked kata-runtime binary above, so just report the error
+			if kataErr != nil {
 				return fmt.Errorf("Kata runtime not available: nerdctl test failed (%v) and kata-runtime binary check failed (%v)", err, kataErr)
 			} else {
 				// kata-runtime exists but nerdctl can't use it
-				return fmt.Errorf("Kata runtime binary found (%s) but not usable via nerdctl: %v: %s", 
-					strings.TrimSpace(string(kataOutput)), err, outputStr)
+				return fmt.Errorf("Kata runtime binary found but not usable via nerdctl: %v: %s", err, outputStr)
 			}
 		}
 		// Some other error
@@ -984,23 +1001,17 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 	// We'll use the SSH binaries from /exe.dev that are mounted into the container
 	log.Printf("[SSH-SETUP] Using SSH binaries from /exe.dev mount")
 
-	// Create SSH config files inside the container
-	log.Printf("[SSH-SETUP] Starting directory and user setup commands")
+	// Create minimal directories needed for our SSH setup
+	// Even though we use sshd from /exe.dev, it still requires /var/empty for privilege separation
+	log.Printf("[SSH-SETUP] Creating SSH directories")
 	cmds := [][]string{
-		// First, ensure /etc exists and is writable (some minimal containers might not have it)
-		{"sh", "-c", "mkdir -p /etc && chmod 755 /etc"},
-		// Remove any existing SSH directories that might have wrong permissions
-		{"sh", "-c", "rm -rf /etc/ssh /root/.ssh /run/sshd /var/empty 2>/dev/null || true"},
-		// Create SSH directories with proper ownership and permissions from scratch
+		// Create directory for SSH host keys (referenced in our sshd_config)
 		{"sh", "-c", "mkdir -p /etc/ssh && chmod 755 /etc/ssh"},
+		// Create directory for authorized_keys
 		{"sh", "-c", "mkdir -p /root/.ssh && chmod 700 /root/.ssh"},
-		{"sh", "-c", "mkdir -p /run/sshd && chmod 755 /run/sshd"},
+		// Create /var/empty for sshd privilege separation (required even for /exe.dev/bin/sshd)
 		{"sh", "-c", "mkdir -p /var/empty && chmod 755 /var/empty"},
-		{"sh", "-c", "mkdir -p /usr/lib/ssh && chmod 755 /usr/lib/ssh"},
-		// Create sshd user for privilege separation (required by OpenSSH)
-		// Skip these for now - they're causing issues and the exeuntu image should have sshd user
-		// {"sh", "-c", "grep '^sshd:' /etc/passwd || echo 'sshd:x:22:22:sshd:/var/empty:/bin/false' >> /etc/passwd"},
-		// {"sh", "-c", "grep '^sshd:' /etc/group || echo 'sshd:x:22:' >> /etc/group"},
+		// Note: We don't need /run/sshd or /usr/lib/ssh since we're using /exe.dev/bin/sshd
 	}
 
 	// Execute setup commands
