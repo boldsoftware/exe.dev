@@ -1006,12 +1006,8 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 	log.Printf("[SSH-SETUP] Creating SSH directories")
 	cmds := [][]string{
 		// Create directory for SSH host keys (referenced in our sshd_config)
-		{"sh", "-c", "mkdir -p /etc/ssh && chmod 755 /etc/ssh"},
-		// Create directory for authorized_keys
+		{"sh", "-c", "mkdir -p /etc/ssh /var/empty && chmod 755 /etc/ssh /var/empty"},
 		{"sh", "-c", "mkdir -p /root/.ssh && chmod 700 /root/.ssh"},
-		// Create /var/empty for sshd privilege separation (required even for /exe.dev/bin/sshd)
-		{"sh", "-c", "mkdir -p /var/empty && chmod 755 /var/empty"},
-		// Note: We don't need /run/sshd or /usr/lib/ssh since we're using /exe.dev/bin/sshd
 	}
 
 	// Execute setup commands
