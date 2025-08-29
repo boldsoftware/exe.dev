@@ -363,6 +363,7 @@ type Server struct {
 	// Email and billing services
 	postmarkClient *postmark.Client
 	stripeKey      string
+	fakeHTTPEmail  string // fake HTTP email server URL for sending emails (for e2e tests)
 
 	testMode  bool   // Test mode - skip animations for faster testing
 	devMode   string // Development mode: "" (production) or "local" (Docker) or "test" for test mode
@@ -420,7 +421,7 @@ var setStripeKey = sync.OnceFunc(func() {
 })
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode string, dockerHosts []string) (*Server, error) {
+func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer string, dockerHosts []string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -531,6 +532,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath string, devMode s
 		magicSecrets:       make(map[string]*MagicSecret),
 		sessions:           make(map[*sshbuf.Channel]*UserSession),
 		postmarkClient:     postmarkClient,
+		fakeHTTPEmail:      fakeEmailServer,
 		stripeKey:          stripe.Key,
 		devMode:            devMode,
 		quietMode:          quietMode,
@@ -730,6 +732,14 @@ func (s *Server) getBaseURL() string {
 
 // sendEmail sends an email using the configured email service
 func (s *Server) sendEmail(to, subject, body string) error {
+	// Check if HTTP email server is configured first
+	if s.fakeHTTPEmail != "" {
+		err := s.sendFakeEmail(to, subject, body)
+		if err != nil {
+			slog.Warn("failed to send fake email", "to", to, "subject", subject, "error", err)
+		}
+	}
+
 	// In dev mode, always just log the email
 	if s.devMode != "" {
 		if !s.quietMode {
@@ -758,6 +768,33 @@ func (s *Server) sendEmail(to, subject, body string) error {
 		slog.Info("📧 Email sent successfully", "to", to, "subject", subject)
 	}
 	return err
+}
+
+// sendFakeEmail sends an email to the fake HTTP email server
+func (s *Server) sendFakeEmail(to, subject, body string) error {
+	emailData := map[string]string{
+		"to":      to,
+		"subject": subject,
+		"body":    body,
+	}
+
+	jsonData, err := json.Marshal(emailData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal email data: %w", err)
+	}
+
+	resp, err := http.Post(s.fakeHTTPEmail, "application/json", strings.NewReader(string(jsonData)))
+	if err != nil {
+		return fmt.Errorf("failed to send fake email via HTTP: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("fake email server returned error: %s", resp.Status)
+	}
+
+	slog.Info("fake email sent successfully via HTTP", "to", to, "subject", subject)
+	return nil
 }
 
 // renderTemplate is a helper method that handles template parsing and execution
