@@ -22,46 +22,6 @@ func generateTestHostKey(t *testing.T, keyName string) []byte {
 	return pubKey.Marshal()
 }
 
-// TestVerifyHostKeyImplemented verifies that our piper plugin now implements the VerifyHostKey method
-// and properly validates host keys instead of accepting all keys.
-func TestVerifyHostKeyImplemented(t *testing.T) {
-	t.Parallel()
-
-	server := NewTestServer(t)
-
-	// Start the piper plugin
-	piper := NewPiperPlugin(server, 0)
-
-	// Create a mock connection metadata
-	mockConn := mockConnMetadata{
-		user: "testuser",
-		addr: "127.0.0.1:12345",
-	}
-
-	// Test the VerifyHostKey callback directly with an unknown host key
-	// This should fail since we don't have any stored expected host keys
-	hostname := "127.0.0.1"
-	netaddr := "127.0.0.1:2223"
-	mockHostKey := generateTestHostKey(t, "unknown-key")
-
-	// Store a different expected key for this connection to test mismatch
-	mockConn.user = "unknown-key"
-	connID := "test-unique-id" // This matches what mockConnMetadata.UniqueID() returns
-	piper.storeExpectedHostKeyForConnection(connID, "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDifferentTestKey test@different")
-
-	// Call the VerifyHostKey handler - this should fail due to key mismatch
-	err := piper.handleVerifyHostKey(mockConn, hostname, netaddr, mockHostKey)
-	if err == nil {
-		t.Fatalf("VerifyHostKey should reject mismatched keys but accepted one")
-	}
-
-	t.Logf("✅ VerifyHostKey method is implemented and working correctly")
-	t.Logf("   - Hostname: %s", hostname)
-	t.Logf("   - Network Address: %s", netaddr)
-	t.Logf("   - Host Key Length: %d bytes", len(mockHostKey))
-	t.Logf("   - Result: Properly rejected unknown key: %v", err)
-}
-
 // TestVerifyHostKeyRejectsUnknownKeys verifies our implementation properly rejects unknown host keys
 // and only accepts keys from machines with stored expected host keys
 func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {

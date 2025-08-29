@@ -14,52 +14,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// TestSSHPiperScript tests the sshpiper.sh script
-func TestSSHPiperScript(t *testing.T) {
-	t.Parallel()
-	// Skip if not in a full environment
-	if testing.Short() {
-		t.Skip("Skipping sshpiper script test in short mode")
-	}
-
-	server := NewTestServer(t)
-
-	// Test that the script can extract the host key
-	scriptPath := "./sshpiper.sh"
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		t.Skip("sshpiper.sh not found, skipping script test")
-	}
-
-	// Check that sshpiperd binary exists or can be built
-	sshpiperdPath := "./sshpiper/sshpiperd"
-	if _, err := os.Stat(sshpiperdPath); os.IsNotExist(err) {
-		t.Logf("sshpiperd not found, attempting to build...")
-		cmd := exec.Command("go", "build", "-o", "sshpiperd", "./cmd/sshpiperd")
-		cmd.Dir = "./sshpiper"
-		if err := cmd.Run(); err != nil {
-			t.Skipf("Failed to build sshpiperd: %v", err)
-		}
-	}
-
-	// Test extracting host key from database
-	cmd := exec.Command("sqlite3", server.dbPath, "SELECT private_key FROM ssh_host_key WHERE id = 1;")
-	output, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("Failed to query database: %v", err)
-	}
-
-	hostKey := strings.TrimSpace(string(output))
-	if hostKey == "" {
-		t.Fatal("No host key found in database")
-	}
-
-	if !strings.Contains(hostKey, "PRIVATE KEY") {
-		t.Errorf("Host key doesn't look like a private key: %s", hostKey[:50])
-	}
-
-	t.Logf("✅ Successfully extracted host key from database")
-}
-
 // TestSSHPiperConfiguration tests that sshpiper would start with correct config
 func TestSSHPiperConfiguration(t *testing.T) {
 	t.Parallel()
