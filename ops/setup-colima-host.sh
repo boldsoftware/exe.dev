@@ -6,11 +6,9 @@ COLIMA_PROFILE="exe-ctr-colima"
 COLIMA_CPUS=4
 COLIMA_MEMORY=8
 COLIMA_DISK=100
-COLIMA_VM_TYPE="vz"  # Use VZ with nested virtualization for Kata support
 
 echo "=== Setting up Colima host for exe.dev containerd testing ==="
 
-# Check if colima is installed
 if ! command -v colima &> /dev/null; then
     echo "Error: colima is not installed"
     echo "Install with: brew install colima"
@@ -28,58 +26,36 @@ if pgrep -x "Docker Desktop" > /dev/null 2>&1; then
     fi
 fi
 
-# Check existing Colima profiles
-echo "Checking existing Colima profiles..."
-colima list
 
-# Stop existing profile if running
 if colima list 2>/dev/null | grep -q "^${COLIMA_PROFILE}"; then
+    set -x
     echo "Found existing ${COLIMA_PROFILE} profile"
-    echo "Stopping ${COLIMA_PROFILE}..."
-    echo "Running: colima stop -p ${COLIMA_PROFILE}"
     colima stop -p ${COLIMA_PROFILE} 2>/dev/null || true
-    echo "Deleting ${COLIMA_PROFILE}..."
-    echo "Running: colima delete -p ${COLIMA_PROFILE} --force"
     colima delete -p ${COLIMA_PROFILE} --force 2>/dev/null || true
 fi
 
-# Start Colima with Ubuntu (using vz for virtualization framework)
-echo "Starting Colima with Ubuntu..."
-echo "  Profile: ${COLIMA_PROFILE}"
-echo "  CPUs: ${COLIMA_CPUS}"
-echo "  Memory: ${COLIMA_MEMORY}GB"
-echo "  Disk: ${COLIMA_DISK}GB"
-echo "  VM Type: ${COLIMA_VM_TYPE}"
-
-# Start colima with VZ virtualization framework
-# VZ on Apple Silicon should provide virtualization extensions by default
-echo "Note: Using VZ virtualization framework (may support nested virtualization on Apple Silicon)"
-echo ""
-echo "Starting new Colima profile (this may request your password for VM setup)..."
-echo "Running: colima start -p ${COLIMA_PROFILE} --cpu ${COLIMA_CPUS} --memory ${COLIMA_MEMORY} --disk ${COLIMA_DISK} --vm-type ${COLIMA_VM_TYPE} --runtime containerd"
-echo ""
+set -x
 colima start \
     -p ${COLIMA_PROFILE} \
     --cpu ${COLIMA_CPUS} \
     --memory ${COLIMA_MEMORY} \
     --disk ${COLIMA_DISK} \
-    --vm-type ${COLIMA_VM_TYPE} \
+    --vm-type vz \
+    --nested-virtualization \
     --runtime containerd \
     --kubernetes=false \
     --network-address \
     --arch aarch64
+set +x
 
-echo ""
-echo "Waiting for Colima to be ready..."
-sleep 5
+sleep 5 # Wait for colima to start
 
-# Check if KVM is available in the VM
 echo "Checking for KVM support in VM..."
 if colima ssh -p ${COLIMA_PROFILE} -- ls /dev/kvm 2>/dev/null; then
     echo "✓ KVM is available (/dev/kvm found) - Kata containers should work"
 else
     echo "⚠️  KVM is not available (/dev/kvm not found) - Kata containers won't work"
-    echo "   Note: VZ framework on macOS may not provide full nested virtualization"
+    exit 1
 fi
 
 # Get the VM's SSH details
@@ -136,7 +112,7 @@ else
     colima ssh -p ${COLIMA_PROFILE} -- sudo mkdir -p /data
     
     # Check if /data.img already exists
-    if colima ssh -p ${COLIMA_PROFILE} test -f /data.img; then
+    if colima ssh -p ${COLIMA_PROFILE} -- test -f /data.img; then
         echo "  /data.img already exists, mounting it"
         colima ssh -p ${COLIMA_PROFILE} -- sudo mount -o loop,pquota /data.img /data
     else
@@ -284,44 +260,11 @@ fi
 
 echo ""
 echo "=========================================="
-echo "Setup complete!"
+echo "Done!"
 echo "=========================================="
-echo ""
-echo "Colima VM '${COLIMA_PROFILE}' is now configured with:"
-echo "  - Containerd"
-echo "  - Nydus snapshotter"
-echo "  - XFS data volume at /data"
-echo "  - Ubuntu user with SSH access"
-echo ""
-echo "⚠️  IMPORTANT: Kata Containers limitation on macOS"
-echo "  Kata requires KVM virtualization which is not available in QEMU on macOS."
-echo "  This means containers won't run in secure Kata VMs."
 echo ""
 echo "Connection details:"
 echo "  CTR_HOST=ssh://exe-ctr-colima"
-echo ""
-echo "To use with exed (development mode - NOT SECURE):"
-echo "  export SKIP_KATA_CHECK=true  # Bypass Kata requirement for development"
-echo "  export CTR_USE_SUDO=true"
-echo "  export CTR_HOST=ssh://exe-ctr-colima"
-echo "  go run ./cmd/exed -dev=local"
-echo ""
-echo "For production-like testing with Kata:"
-echo "  Use a real Linux machine or AWS EC2 instance where KVM is available"
-echo ""
-echo "To access the VM directly:"
-echo "  ssh exe-ctr-colima"
-echo "  # or via colima: colima ssh -p ${COLIMA_PROFILE}"
-echo ""
-echo "To test containerd in the VM:"
-echo "  ssh exe-ctr-colima 'sudo ctr -n exe images pull docker.io/library/alpine:latest'"
-echo "  ssh exe-ctr-colima 'sudo nerdctl -n exe run --rm alpine:latest echo \"Hello from Colima\"'"
-echo ""
-echo "To stop the VM:"
-echo "  colima stop -p ${COLIMA_PROFILE}"
-echo ""
-echo "To restart the VM:"
-echo "  colima start -p ${COLIMA_PROFILE}"
 echo ""
 echo "To delete the VM:"
 echo "  colima delete -p ${COLIMA_PROFILE}"
