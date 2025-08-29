@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,24 @@ import (
 // TestNewSSHServerMachineConnection tests SSH connection to a specific machine
 func TestNewSSHServerMachineConnection(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t, "unix:///var/run/docker.sock")
+	// Skip if CTR_HOST is not set (requires container support)
+	if os.Getenv("CTR_HOST") == "" {
+		t.Skip("CTR_HOST not set, skipping machine connection test")
+	}
+	
+	// Create a test server
+	dbPath := fmt.Sprintf("/tmp/test_new_ssh_machine_%d.db", time.Now().UnixNano())
+	defer func() {
+		// Clean up
+		_ = os.Remove(dbPath)
+	}()
+
+	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{os.Getenv("CTR_HOST")})
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	server.quietMode = true
+	server.testMode = true
 
 	// Generate a test SSH key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)

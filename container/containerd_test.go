@@ -9,20 +9,13 @@ import (
 )
 
 func TestContainerdManagerCreation(t *testing.T) {
-	// Skip Kata check for tests
-	oldSkipKata := os.Getenv("SKIP_KATA_CHECK")
-	os.Setenv("SKIP_KATA_CHECK", "true")
-	defer func() {
-		if oldSkipKata == "" {
-			os.Unsetenv("SKIP_KATA_CHECK")
-		} else {
-			os.Setenv("SKIP_KATA_CHECK", oldSkipKata)
-		}
-	}()
+	// Skip if CTR_HOST is not set (e2e test requires containerd)
+	if os.Getenv("CTR_HOST") == "" {
+		t.Skip("CTR_HOST not set, skipping e2e container test")
+	}
 
 	cfg := &Config{
-		Backend:              "containerd",
-		DockerHosts:          []string{""},
+		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi",
 		DefaultStorageSize:   "1Gi",
@@ -38,91 +31,24 @@ func TestContainerdManagerCreation(t *testing.T) {
 	}
 }
 
-func TestDockerManagerCreation(t *testing.T) {
-	cfg := &Config{
-		Backend:              "docker",
-		DockerHosts:          []string{""},
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "256Mi",
-		DefaultStorageSize:   "1Gi",
-	}
 
-	manager, err := NewManager(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create docker manager: %v", err)
-	}
-
-	if _, ok := manager.(*DockerManager); !ok {
-		t.Fatal("Expected DockerManager instance")
-	}
-}
-
-func TestBackendValidation(t *testing.T) {
-	// Skip Kata check for tests
-	oldSkipKata := os.Getenv("SKIP_KATA_CHECK")
-	os.Setenv("SKIP_KATA_CHECK", "true")
-	defer func() {
-		if oldSkipKata == "" {
-			os.Unsetenv("SKIP_KATA_CHECK")
-		} else {
-			os.Setenv("SKIP_KATA_CHECK", oldSkipKata)
-		}
-	}()
-
-	tests := []struct {
-		name    string
-		backend string
-		wantErr bool
-	}{
-		{"Docker backend", "docker", false},
-		{"Containerd backend", "containerd", false},
-		{"Invalid backend", "kubernetes", true},
-		{"Empty backend defaults to docker", "", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &Config{
-				Backend:     tt.backend,
-				DockerHosts: []string{""},
-			}
-
-			_, err := NewManager(cfg)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewManager() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
 
 // TestContainerdIntegration tests basic containerd operations if containerd is available
 func TestContainerdIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+	
+	// Skip if CTR_HOST is not set (e2e test requires containerd)
+	if os.Getenv("CTR_HOST") == "" {
+		t.Skip("CTR_HOST not set, skipping e2e container test")
+	}
 
-	// Skip Kata check for tests
-	oldSkipKata := os.Getenv("SKIP_KATA_CHECK")
-	os.Setenv("SKIP_KATA_CHECK", "true")
-	defer func() {
-		if oldSkipKata == "" {
-			os.Unsetenv("SKIP_KATA_CHECK")
-		} else {
-			os.Setenv("SKIP_KATA_CHECK", oldSkipKata)
-		}
-	}()
-
-	// Check if containerd is available
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	if err := checkContainerdAvailable(ctx); err != nil {
-		t.Skipf("Containerd not available: %v", err)
-	}
-
 	cfg := &Config{
-		Backend:              "containerd",
-		DockerHosts:          []string{""},
+		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi",
 	}

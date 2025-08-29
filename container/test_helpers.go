@@ -49,45 +49,7 @@ func GetTestBackend(t *testing.T) *TestBackend {
 		}
 	}
 	
-	// Check for DOCKER_HOST next
-	if dockerHost := os.Getenv("DOCKER_HOST"); dockerHost != "" {
-		t.Logf("Using docker backend from DOCKER_HOST: %s", dockerHost)
-		return &TestBackend{
-			Backend: "docker",
-			Hosts:   []string{dockerHost},
-		}
-	}
-	
-	// Check if local ctr is available
-	if isCommandAvailable("ctr") {
-		// Verify containerd is actually running
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		
-		cmd := exec.CommandContext(ctx, "ctr", "version")
-		if err := cmd.Run(); err == nil {
-			t.Logf("Using local containerd backend")
-			return &TestBackend{
-				Backend: "containerd",
-				Hosts:   []string{},
-			}
-		}
-	}
-	
-	// Check if local docker is available
-	if isCommandAvailable("docker") {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		
-		cmd := exec.CommandContext(ctx, "docker", "version")
-		if err := cmd.Run(); err == nil {
-			t.Logf("Using local docker backend")
-			return &TestBackend{
-				Backend: "docker",
-				Hosts:   []string{},
-			}
-		}
-	}
+	// Docker support has been removed - only containerd is supported
 	
 	// Skip if SKIP_CONTAINER_TESTS is set
 	if os.Getenv("SKIP_CONTAINER_TESTS") != "" {
@@ -95,15 +57,14 @@ func GetTestBackend(t *testing.T) *TestBackend {
 	}
 	
 	// No backend available
-	t.Skip("No container backend available (set CTR_HOST or DOCKER_HOST, or install docker/containerd locally)")
+	t.Skip("No container backend available (set CTR_HOST for e2e container tests)")
 	return nil
 }
 
 // CreateTestManager creates a Manager instance based on the test backend configuration
 func CreateTestManager(t *testing.T, backend *TestBackend) Manager {
 	config := &Config{
-		Backend:              backend.Backend,
-		DockerHosts:          backend.Hosts,
+		ContainerdAddresses:  backend.Hosts,
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi",
 		DefaultStorageSize:   "1Gi",
@@ -111,12 +72,12 @@ func CreateTestManager(t *testing.T, backend *TestBackend) Manager {
 	
 	if len(backend.Hosts) == 0 {
 		// Local backend
-		config.DockerHosts = []string{""}
+		config.ContainerdAddresses = []string{""}
 	}
 	
 	manager, err := NewManager(config)
 	if err != nil {
-		t.Fatalf("Failed to create %s manager: %v", backend.Backend, err)
+		t.Fatalf("Failed to create containerd manager: %v", err)
 	}
 	
 	return manager

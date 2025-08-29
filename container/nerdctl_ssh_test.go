@@ -19,7 +19,7 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 	}
 
 	config := &Config{
-		DockerHosts:          []string{os.Getenv("CTR_HOST")},
+		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "128Mi",
 	}

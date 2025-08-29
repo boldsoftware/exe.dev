@@ -16,12 +16,9 @@ func TestNerdctlRovolFS(t *testing.T) {
 		t.Skip("CTR_HOST not set, skipping nerdctl RovolFS test")
 	}
 
-	// Skip Kata check for testing
-	os.Setenv("SKIP_KATA_CHECK", "true")
-	defer os.Unsetenv("SKIP_KATA_CHECK")
 
 	config := &Config{
-		DockerHosts:          []string{os.Getenv("CTR_HOST")},
+		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "128Mi",
 	}
@@ -133,12 +130,9 @@ func TestNerdctlRovolFSCleanup(t *testing.T) {
 		t.Skip("CTR_HOST not set, skipping nerdctl RovolFS cleanup test")
 	}
 
-	// Skip Kata check for testing
-	os.Setenv("SKIP_KATA_CHECK", "true")
-	defer os.Unsetenv("SKIP_KATA_CHECK")
 
 	config := &Config{
-		DockerHosts:          []string{os.Getenv("CTR_HOST")},
+		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "128Mi",
 	}
@@ -178,7 +172,7 @@ func TestNerdctlRovolFSCleanup(t *testing.T) {
 
 	// Both paths should exist on the host
 	ctx := context.Background()
-	host := config.DockerHosts[0]
+	host := config.ContainerdAddresses[0]
 
 	for _, path := range []string{rovolPath1, rovolPath2} {
 		var checkCmd *exec.Cmd
@@ -187,12 +181,8 @@ func TestNerdctlRovolFSCleanup(t *testing.T) {
 			if strings.HasPrefix(sshHost, "ssh://") {
 				sshHost = strings.TrimPrefix(sshHost, "ssh://")
 			}
-			useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-			if useSudo {
-				checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "test", "-d", path)
-			} else {
-				checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "test", "-d", path)
-			}
+			// Always use sudo for remote commands
+			checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "test", "-d", path)
 		} else {
 			checkCmd = exec.CommandContext(ctx, "test", "-d", path)
 		}

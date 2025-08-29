@@ -50,32 +50,26 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 
 	manager := &NerdctlManager{
 		config:         config,
-		hosts:          config.DockerHosts, // Reuse DockerHosts for containerd hosts
+		hosts:          config.ContainerdAddresses,
 		containers:     make(map[string]*Container),
 		sshCancelFuncs: make(map[string]context.CancelFunc),
 		sshTunnels:     make(map[string]*exec.Cmd),
 		allocNetworks:  make(map[string]bool),
 	}
 
-	// CRITICAL: Verify Kata runtime is available on all hosts
-	// Skip verification in test mode or if explicitly disabled
-	if os.Getenv("SKIP_KATA_CHECK") != "true" {
-		for _, host := range config.DockerHosts {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Increase timeout for Kata test
-			if err := manager.verifyKataRuntime(ctx, host); err != nil {
-				cancel()
-				// In production, this is a critical error
-				return nil, fmt.Errorf("CRITICAL: Kata runtime not available on host %s: %w (set SKIP_KATA_CHECK=true to bypass for testing only)", host, err)
-			}
+	// Verify Kata runtime is available on all hosts
+	for _, host := range config.ContainerdAddresses {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := manager.verifyKataRuntime(ctx, host); err != nil {
 			cancel()
+			return nil, fmt.Errorf("CRITICAL: Kata runtime not available on host %s: %w", host, err)
 		}
-	} else {
-		log.Printf("WARNING: Kata runtime verification skipped (SKIP_KATA_CHECK=true) - DO NOT USE IN PRODUCTION")
+		cancel()
 	}
 
 	// Prepare RovolFS files on the host (for mounting into containers)
-	if len(config.DockerHosts) > 0 {
-		rovolPath, err := manager.prepareRovolFS(context.Background(), config.DockerHosts[0])
+	if len(config.ContainerdAddresses) > 0 {
+		rovolPath, err := manager.prepareRovolFS(context.Background(), config.ContainerdAddresses[0])
 		if err != nil {
 			log.Printf("Warning: Failed to prepare RovolFS files on host: %v", err)
 			// Continue without RovolFS - containers will use their own SSH binaries
@@ -86,7 +80,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	// Discover existing containers on all hosts with timeout
-	for _, host := range config.DockerHosts {
+	for _, host := range config.ContainerdAddresses {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		if err := manager.discoverContainers(ctx, host); err != nil {
 			log.Printf("Warning: Failed to discover containers on host %s: %v", host, err)
@@ -127,15 +121,12 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 	}
 	
 	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		// For remote hosts, use SSH
-		// Check if we should use sudo based on environment variable
-		useSudo := os.Getenv("CTR_USE_SUDO") == "true"
+		// For remote hosts, use SSH with sudo
+		// Always use sudo for remote containerd/nerdctl commands
 		
 		// Build the remote command as a single string to preserve shell quoting
 		var remoteCmd strings.Builder
-		if useSudo {
-			remoteCmd.WriteString("sudo ")
-		}
+		remoteCmd.WriteString("sudo ")
 		remoteCmd.WriteString("nerdctl --namespace exe")
 		
 		// Special handling for exec commands with sh -c
@@ -230,15 +221,10 @@ func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) str
 			sshHost = strings.TrimPrefix(sshHost, "ssh://")
 		}
 		// First check which config file is being used, then check what VMM it's using
-		useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-		if useSudo {
-			// Get the configured kata config file path from containerd config
-			checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "sh", "-c", 
-				"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
-		} else {
-			checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "sh", "-c",
-				"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
-		}
+		// Always use sudo for remote commands
+		// Get the configured kata config file path from containerd config
+		checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "sh", "-c", 
+			"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
 	} else {
 		checkCmd = exec.CommandContext(ctx, "sh", "-c",
 			"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
@@ -267,12 +253,8 @@ func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) str
 		if strings.HasPrefix(sshHost, "ssh://") {
 			sshHost = strings.TrimPrefix(sshHost, "ssh://")
 		}
-		useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-		if useSudo {
-			nydusCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
-		} else {
-			nydusCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
-		}
+		// Always use sudo for remote commands
+		nydusCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
 	} else {
 		nydusCheckCmd = exec.CommandContext(ctx, "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
 	}
@@ -323,12 +305,8 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 				if strings.HasPrefix(sshHost, "ssh://") {
 					sshHost = strings.TrimPrefix(sshHost, "ssh://")
 				}
-				useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-				if useSudo {
-					kataCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "kata-runtime", "--version")
-				} else {
-					kataCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "kata-runtime", "--version")
-				}
+				// Always use sudo for remote commands
+				kataCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "kata-runtime", "--version")
 			} else {
 				kataCheckCmd = exec.CommandContext(ctx, "kata-runtime", "--version")
 			}
@@ -450,7 +428,12 @@ func (m *NerdctlManager) selectHost() string {
 
 // ensureAllocNetwork ensures a network exists for the allocation
 func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string, host string) (string, error) {
-	networkName := fmt.Sprintf("exe-%s", allocID[:12]) // Limit network name length
+	// Limit network name length, but handle shorter allocIDs
+	nameLen := len(allocID)
+	if nameLen > 12 {
+		nameLen = 12
+	}
+	networkName := fmt.Sprintf("exe-%s", allocID[:nameLen])
 	
 	m.mu.Lock()
 	exists := m.allocNetworks[networkName]
@@ -472,7 +455,12 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 
 	// Allocate a subnet for this allocation
 	// Use 10.X.0.0/24 where X is based on hash of allocID
-	subnetByte := 100 + (allocID[0] % 155) // Range 100-254
+	// Hash the entire allocID to get better distribution
+	hash := 0
+	for _, ch := range allocID {
+		hash = (hash*31 + int(ch)) % 155
+	}
+	subnetByte := 100 + hash // Range 100-254
 	subnet := fmt.Sprintf("10.%d.0.0/24", subnetByte)
 
 	// Create network
@@ -1032,13 +1020,8 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 				}
 				
 				// Build the command as a single string to preserve shell syntax
-				useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-				var fullCmd string
-				if useSudo {
-					fullCmd = fmt.Sprintf("sudo nerdctl --namespace exe exec -u root %s sh -c %q", containerID, shellCmd)
-				} else {
-					fullCmd = fmt.Sprintf("nerdctl --namespace exe exec -u root %s sh -c %q", containerID, shellCmd)
-				}
+				// Always use sudo for remote commands
+				fullCmd := fmt.Sprintf("sudo nerdctl --namespace exe exec -u root %s sh -c %q", containerID, shellCmd)
 				execCmd = exec.CommandContext(ctx, "ssh", sshHost, fullCmd)
 			} else {
 				// Local execution
@@ -1143,13 +1126,8 @@ PasswordAuthentication no
 			}
 			
 			// Build the command as a single string to preserve shell syntax
-			useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-			var fullCmd string
-			if useSudo {
-				fullCmd = fmt.Sprintf("sudo nerdctl --namespace exe exec -u root %s sh -c %q", containerID, writeCmd)
-			} else {
-				fullCmd = fmt.Sprintf("nerdctl --namespace exe exec -u root %s sh -c %q", containerID, writeCmd)
-			}
+			// Always use sudo for remote commands
+			fullCmd := fmt.Sprintf("sudo nerdctl --namespace exe exec -u root %s sh -c %q", containerID, writeCmd)
 			cmd = exec.CommandContext(ctx, "ssh", sshHost, fullCmd)
 		} else {
 			// Local execution
@@ -1265,11 +1243,11 @@ func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID 
 	}
 
 	// Ensure SSH tunnel exists for remote containers when accessed
-	if m.config != nil && len(m.config.DockerHosts) > 0 {
+	if m.config != nil && len(m.config.ContainerdAddresses) > 0 {
 		host := container.DockerHost
-		if host == "" && len(m.config.DockerHosts) > 0 {
+		if host == "" && len(m.config.ContainerdAddresses) > 0 {
 			// If container doesn't have a host set, use the first configured host
-			host = m.config.DockerHosts[0]
+			host = m.config.ContainerdAddresses[0]
 		}
 		
 		if host != "" && host != "local" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
@@ -1628,12 +1606,8 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 		if strings.HasPrefix(sshHost, "ssh://") {
 			sshHost = strings.TrimPrefix(sshHost, "ssh://")
 		}
-		useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-		if useSudo {
-			mkdirCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", remoteDir)
-		} else {
-			mkdirCmd = exec.CommandContext(ctx, "ssh", sshHost, "mkdir", "-p", remoteDir)
-		}
+		// Always use sudo for remote commands
+		mkdirCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", remoteDir)
 	} else {
 		mkdirCmd = exec.CommandContext(ctx, "mkdir", "-p", remoteDir)
 	}
@@ -1662,12 +1636,8 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 				if strings.HasPrefix(sshHost, "ssh://") {
 					sshHost = strings.TrimPrefix(sshHost, "ssh://")
 				}
-				useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-				if useSudo {
-					cmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", remotePath)
-				} else {
-					cmd = exec.CommandContext(ctx, "ssh", sshHost, "mkdir", "-p", remotePath)
-				}
+				// Always use sudo for remote commands
+				cmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", remotePath)
 			} else {
 				cmd = exec.CommandContext(ctx, "mkdir", "-p", remotePath)
 			}
@@ -1695,7 +1665,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 			if strings.HasPrefix(sshHost, "ssh://") {
 				sshHost = strings.TrimPrefix(sshHost, "ssh://")
 			}
-			useSudo := os.Getenv("CTR_USE_SUDO") == "true"
+			// Always use sudo for remote commands
 			
 			// For large files, we need to use a different approach to avoid SSH command line limits
 			// Write the file to a local temp file first, then scp it over
@@ -1724,39 +1694,26 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 			parentDir := filepath.Dir(remotePath)
 			
 			// Move the file to its final location with proper permissions
-			// For SSH with sudo, we need to pass the command as separate arguments to avoid quoting issues
-			if useSudo {
-				// Execute commands separately to avoid complex quoting issues
-				// First create the directory
-				mkdirCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", parentDir)
-				if output, err := mkdirCmd.CombinedOutput(); err != nil {
-					return fmt.Errorf("failed to create directory %s: %w: %s", parentDir, err, output)
-				}
-				
-				// Then move the file
-				mvCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mv", remoteTempPath, remotePath)
-				if output, err := mvCmd.CombinedOutput(); err != nil {
-					// Clean up temp file
-					exec.CommandContext(ctx, "ssh", sshHost, "rm", "-f", remoteTempPath).Run()
-					return fmt.Errorf("failed to move file to %s: %w: %s", remotePath, err, output)
-				}
-				
-				// Finally set permissions - use separate commands to avoid issues
-				chmodCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "chmod", mode, remotePath)
-				if output, err := chmodCmd.CombinedOutput(); err != nil {
-					return fmt.Errorf("failed to chmod file %s: %w: %s", remotePath, err, output)
-				}
-			} else {
-				// Without sudo, we can use a single shell command
-				moveCommand := fmt.Sprintf("mkdir -p '%s' && mv '%s' '%s' && chmod %s '%s'", 
-					parentDir, remoteTempPath, remotePath, mode, remotePath)
-				moveCmd := exec.CommandContext(ctx, "ssh", sshHost, "sh", "-c", moveCommand)
-				if output, err := moveCmd.CombinedOutput(); err != nil {
-					// Try to clean up the temp file
-					cleanupCmd := exec.CommandContext(ctx, "ssh", sshHost, "rm", "-f", remoteTempPath)
-					cleanupCmd.Run()
-					return fmt.Errorf("failed to move file to final location %s: %w: %s", remotePath, err, output)
-				}
+			// Always use sudo for remote file operations
+			// Execute commands separately to avoid complex quoting issues
+			// First create the directory
+			mkdirCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", parentDir)
+			if output, err := mkdirCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w: %s", parentDir, err, output)
+			}
+			
+			// Then move the file
+			mvCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mv", remoteTempPath, remotePath)
+			if output, err := mvCmd.CombinedOutput(); err != nil {
+				// Clean up temp file
+				exec.CommandContext(ctx, "ssh", sshHost, "sudo", "rm", "-f", remoteTempPath).Run()
+				return fmt.Errorf("failed to move file to %s: %w: %s", remotePath, err, output)
+			}
+			
+			// Finally set permissions - use separate commands to avoid issues
+			chmodCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "chmod", mode, remotePath)
+			if output, err := chmodCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to chmod file %s: %w: %s", remotePath, err, output)
 			}
 		} else {
 			// Local copy

@@ -25,9 +25,8 @@ func run() error {
 	piperAddr := flag.String("piper", ":2224", "Piper plugin gRPC server address")
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt)")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
-	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local Docker), or "test" (test mode)`)
-	dockerHosts := flag.String("docker-hosts", "", "Comma-separated list of DOCKER_HOST values (e.g., 'tcp://host1:2376,tcp://host2:2376')")
-	containerBackend := flag.String("container-backend", "containerd", "Container backend to use: 'docker' or 'containerd' (default: containerd)")
+	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
+	containerdAddresses := flag.String("containerd-addresses", "", "Comma-separated list of containerd addresses (e.g., 'ssh://host1,ssh://host2')")
 	mdnsEnabled := flag.Bool("mdns", false, "Enable mDNS registration for dev mode (.local hostnames)")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
 	flag.Parse()
@@ -41,34 +40,27 @@ func run() error {
 	exe.SetupLogger(*devMode)
 	slog.Info("Starting exed server")
 
-	// Parse container hosts and determine backend
-	var hosts []string
+	// Parse containerd addresses
+	var addresses []string
 	
-	// Check for CTR_HOST first - if set, use containerd backend
+	// Check for CTR_HOST first
 	if ctrHost := os.Getenv("CTR_HOST"); ctrHost != "" {
-		// CTR_HOST is set, use containerd backend with the specified host
-		hosts = []string{ctrHost}
-		*containerBackend = "containerd"
-		slog.Info("Using containerd backend from CTR_HOST", "host", ctrHost)
-	} else if *dockerHosts != "" {
-		// Explicit docker hosts specified via flag
-		hosts = strings.Split(*dockerHosts, ",")
-		for i, h := range hosts {
-			hosts[i] = strings.TrimSpace(h)
+		addresses = []string{ctrHost}
+		slog.Info("Using containerd address from CTR_HOST", "host", ctrHost)
+	} else if *containerdAddresses != "" {
+		// Explicit containerd addresses specified via flag
+		addresses = strings.Split(*containerdAddresses, ",")
+		for i, h := range addresses {
+			addresses[i] = strings.TrimSpace(h)
 		}
 	} else if *devMode != "" {
-		// Default to local Docker for dev/test mode
-		hosts = []string{""}
-	} else {
-		// Try to get from environment
-		if dockerHost := os.Getenv("DOCKER_HOST"); dockerHost != "" {
-			hosts = []string{dockerHost}
-		}
+		// Default to local containerd for dev/test mode
+		addresses = []string{""}
 	}
 
-	if len(hosts) == 0 {
-		slog.Warn("No container hosts specified, container functionality will be disabled", 
-			"suggestion", "Use -docker-hosts flag, or set DOCKER_HOST/CTR_HOST env var")
+	if len(addresses) == 0 {
+		slog.Warn("No containerd addresses specified, container functionality will be disabled", 
+			"suggestion", "Use -containerd-addresses flag, or set CTR_HOST env var")
 	}
 
 	if *dbPath == "TMP" {
@@ -80,7 +72,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := exe.NewServerWithBackend(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, *fakeHTTPEmail, hosts, *containerBackend)
+	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, *fakeHTTPEmail, addresses)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

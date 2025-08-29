@@ -24,15 +24,12 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 		t.Skip("CTR_HOST is not a remote SSH host, skipping SSH tunnel test")
 	}
 
-	// Check if CTR_USE_SUDO is set
-	useSudo := os.Getenv("CTR_USE_SUDO") == "true"
-	if !useSudo {
-		t.Log("CTR_USE_SUDO not set to true, may have permission issues")
-	}
+	// Always use sudo for remote commands
+	t.Log("Using sudo for remote containerd commands")
 
 	// Create a test config
 	config := &Config{
-		DockerHosts: []string{remoteHost},
+		ContainerdAddresses: []string{remoteHost},
 		DefaultMemoryRequest: "256Mi",
 		DefaultCPURequest: "100m",
 	}
@@ -181,7 +178,7 @@ func TestSSHTunnelCleanup(t *testing.T) {
 	}
 
 	config := &Config{
-		DockerHosts: []string{remoteHost},
+		ContainerdAddresses: []string{remoteHost},
 	}
 
 	manager, err := NewNerdctlManager(config)

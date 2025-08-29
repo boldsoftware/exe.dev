@@ -421,12 +421,7 @@ var setStripeKey = sync.OnceFunc(func() {
 })
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer string, dockerHosts []string) (*Server, error) {
-	return NewServerWithBackend(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer, dockerHosts, "docker")
-}
-
-// NewServerWithBackend creates a new Server instance with database and container management using the specified backend
-func NewServerWithBackend(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer string, dockerHosts []string, containerBackend string) (*Server, error) {
+func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer string, containerdAddresses []string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -490,13 +485,21 @@ func NewServerWithBackend(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMo
 		return nil, fmt.Errorf("failed to listen on Piper address %q: %w", piperAddr, err)
 	}
 
-	// Initialize container manager with Docker
+	// Initialize container manager with containerd
 	var containerManager container.Manager
 
-	if len(dockerHosts) > 0 {
+	// Check if we have valid containerd addresses (not just empty strings)
+	hasValidAddresses := false
+	for _, addr := range containerdAddresses {
+		if addr != "" {
+			hasValidAddresses = true
+			break
+		}
+	}
+
+	if hasValidAddresses {
 		config := &container.Config{
-			Backend:              containerBackend,
-			DockerHosts:          dockerHosts,
+			ContainerdAddresses:  containerdAddresses,
 			DefaultCPURequest:    "500m",
 			DefaultMemoryRequest: "1Gi",
 			DefaultStorageSize:   "10Gi",
@@ -516,12 +519,12 @@ func NewServerWithBackend(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMo
 			return nil, managerErr
 		} else {
 			if !quietMode {
-				slog.Info("Machine management enabled", "docker_hosts", dockerHosts)
+				slog.Info("Machine management enabled", "containerd_addresses", containerdAddresses)
 			}
 		}
 	} else {
 		if !quietMode {
-			slog.Info("No Docker hosts configured, container functionality disabled")
+			slog.Info("No containerd addresses configured, container functionality disabled")
 		}
 	}
 

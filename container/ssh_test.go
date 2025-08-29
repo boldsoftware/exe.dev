@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -89,15 +90,21 @@ func TestContainerWithSSH(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+	
+	// Skip if CTR_HOST is not set (e2e test requires containerd)
+	if os.Getenv("CTR_HOST") == "" {
+		t.Skip("CTR_HOST not set, skipping e2e container test")
+	}
+	
 	t.Parallel()
 
 	config := &Config{
-		DockerHosts:          []string{""},
+		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "128Mi",
 	}
 
-	manager, err := NewDockerManager(config)
+	manager, err := NewNerdctlManager(config)
 	if err != nil {
 		t.Fatalf("Failed to create Docker manager: %v", err)
 	}
@@ -204,93 +211,3 @@ func TestContainerWithSSH(t *testing.T) {
 	}
 }
 
-// TestSSHPortParsing tests the SSH port parsing logic (legacy test - now uses TestParseDockerPortMapping)
-func TestSSHPortParsing(t *testing.T) {
-	tests := []struct {
-		name     string
-		output   string
-		expected int
-		hasError bool
-	}{
-		{"IPv4 format", "0.0.0.0:32768", 32768, false},
-		{"IPv6 format", "[::]:32769", 32769, false},
-		{"Standard port", "0.0.0.0:22", 22, false},
-		{"Empty output", "", 0, true},
-		{"Invalid format", "invalid", 0, true},
-		{"IPv4 no colon", "32770", 0, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			portStr := strings.TrimSpace(tt.output)
-			if portStr == "" && tt.hasError {
-				return // Expected error case
-			}
-
-			port, err := parseDockerPortMapping(portStr)
-
-			if tt.hasError {
-				if err == nil {
-					t.Errorf("Expected error for input %q, but got none", tt.output)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("Unexpected error for input %q: %v", tt.output, err)
-				return
-			}
-
-			if port != tt.expected {
-				t.Errorf("Expected port %d, got %d", tt.expected, port)
-			}
-		})
-	}
-}
-
-// TestParseDockerPortMapping tests the Docker port mapping parser
-func TestParseDockerPortMapping(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected int
-		hasError bool
-	}{
-		{"IPv4 format", "0.0.0.0:32768", 32768, false},
-		{"IPv6 format", "[::]:32769", 32769, false},
-		{"Standard port", "0.0.0.0:22", 22, false},
-		{"High port IPv6", "[::]:65535", 65535, false},
-		{"Low port IPv4", "127.0.0.1:1024", 1024, false},
-		{"IPv6 with address", "[2001:db8::1]:8080", 8080, false},
-		{"Empty string", "", 0, true},
-		{"Invalid IPv4 format", "invalid", 0, true},
-		{"IPv4 no colon", "32770", 0, true},
-		{"IPv6 malformed", "[::32771", 0, true},
-		{"IPv6 no port", "[::]", 0, true},
-		{"Non-numeric port IPv4", "0.0.0.0:abc", 0, true},
-		{"Non-numeric port IPv6", "[::]:xyz", 0, true},
-		{"Multiple colons IPv4", "0.0.0.0:80:443", 0, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := parseDockerPortMapping(tt.input)
-
-			if tt.hasError {
-				if err == nil {
-					t.Errorf("Expected error for input %q, but got none", tt.input)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("Unexpected error for input %q: %v", tt.input, err)
-				return
-			}
-
-			if result != tt.expected {
-				t.Errorf("Expected port %d for input %q, got %d", tt.expected, tt.input, result)
-			}
-		})
-	}
-}
