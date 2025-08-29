@@ -1069,19 +1069,6 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 		}
 	}
 
-	// Create a minimal sshd_config that includes the base config from /exe.dev
-	// and adds our container-specific host key and authorized_keys
-	sshConfig := `# Container-specific SSH configuration
-# Include base configuration from /exe.dev
-Include /exe.dev/etc/ssh/sshd_config
-
-# Override with container-specific settings
-HostKey /etc/ssh/ssh_host_ed25519_key
-AuthorizedKeysFile /root/.ssh/authorized_keys
-PermitRootLogin yes
-PasswordAuthentication no
-`
-
 	// Extract server public key from the server identity key for the .pub file
 	serverPrivKey, err := ssh.ParsePrivateKey([]byte(sshKeys.ServerIdentityKey))
 	if err != nil {
@@ -1089,22 +1076,22 @@ PasswordAuthentication no
 	}
 	serverPubKey := string(ssh.MarshalAuthorizedKey(serverPrivKey.PublicKey()))
 
-	// Write SSH key files and configuration for public key auth
+	// Write SSH key files for public key auth
+	// The sshd_config from /exe.dev/etc/ssh/sshd_config already points to these paths
 	files := map[string]string{
 		"/etc/ssh/ssh_host_ed25519_key":     sshKeys.ServerIdentityKey,
 		"/etc/ssh/ssh_host_ed25519_key.pub": serverPubKey,
 		"/root/.ssh/authorized_keys":        sshKeys.AuthorizedKeys,
-		"/etc/ssh/sshd_config":              sshConfig,
 	}
 
 	// Use install command to create files with correct permissions in one step
-	log.Printf("[SSH-SETUP] Writing %d SSH configuration files", len(files))
+	log.Printf("[SSH-SETUP] Writing %d SSH key files", len(files))
 	fileIdx := 0
 	for filePath, content := range files {
 		fileIdx++
-		// Set appropriate permissions: private keys 600, public keys and config 644
+		// Set appropriate permissions: private keys 600, public keys 644
 		mode := "600"
-		if strings.HasSuffix(filePath, ".pub") || strings.HasSuffix(filePath, "sshd_config") {
+		if strings.HasSuffix(filePath, ".pub") {
 			mode = "644"
 		}
 		log.Printf("[SSH-SETUP] Writing file %d/%d: %s (mode %s)", fileIdx, len(files), filePath, mode)
@@ -1168,7 +1155,8 @@ PasswordAuthentication no
 	// Start SSH daemon - use nerdctl exec -d to run in detached mode
 	log.Printf("[SSH-SETUP] Starting SSH daemon")
 	// The $ needs to be escaped as \$ when passing through SSH to prevent local expansion
-	sshCmd := fmt.Sprintf("LD_LIBRARY_PATH=/exe.dev/lib:\\$LD_LIBRARY_PATH exec %s -f /etc/ssh/sshd_config", sshdPath)
+	// Use the sshd_config from /exe.dev which has all our settings
+	sshCmd := fmt.Sprintf("LD_LIBRARY_PATH=/exe.dev/lib:\\$LD_LIBRARY_PATH exec %s -f /exe.dev/etc/ssh/sshd_config", sshdPath)
 	log.Printf("[SSH-SETUP] SSH command: %s", sshCmd)
 	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", sshCmd)
 	
