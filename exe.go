@@ -96,7 +96,8 @@ func SetupLogger(devMode string) {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	case "tint":
 		handler = tint.NewHandler(os.Stdout, &tint.Options{
-			Level: level,
+			Level:      level,
+			TimeFormat: "15:04:05",
 		})
 	default: // "text" and any unknown format
 		handler = slog.NewTextHandler(os.Stdout, opts)
