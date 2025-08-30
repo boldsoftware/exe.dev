@@ -2,18 +2,36 @@
 
 EXE.DEV creates machines for you in the cloud, entirely over ssh.
 
-Machines are Docker containers running on AWS EC2 instances. The exed binary acts as the control interface and the ssh/https proxy to the containers.
+Machines are containers running in VMs.
+The exed binary acts as the control interface and the ssh/https proxy to the containers.
 
 ## Local machine setup
 
-Get docker running. The easiest way is installing: https://orbstack.dev/
+Start with the basics:
 
 ```
-brew install tailscale coreutils
+brew install tailscale coreutils colima
 tailscale up
 ```
 
-In your ~/.ssh/config add:
+The underlying technology: containerd + kata + cloud hypervisor + nydus,
+requires linux and requires KVM. There is no software emulation.
+So you need at least an M3 CPU.
+
+Once you have that, run:
+
+```
+./ops/setup-colima-host.sh
+```
+
+After this you can configure your env with:
+
+`export CTR_HOST=ssh://exe-ctr-colima`
+
+For debugging you can `ssh exe-ctr-colima` and you can wipe it
+by running `./ops/reset-colima.sh`.
+
+Then in your ~/.ssh/config add:
 
 ```
 Host localexe

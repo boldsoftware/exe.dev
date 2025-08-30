@@ -4,11 +4,11 @@ Here's a diagram that Claude built from an excalidraw I drew...
 User                                exe.dev Service
                                                            
 ┌─────────────────┐                            ┌─────────────────────────────────┐
-│                 │                            │        docker-01 (-02...) (AWS) │
+│                 │                            │      exe-ctr-01 (-02...) (AWS)  │
 │     SSH         │                            │                                 │
 │  user@exe.dev   │                            │  ┌───────────────────────────┐  │
 │                 │                            │  │    user container         │  │
-└─────────────────┘                            │  │        (gVisor)           │  │
+└─────────────────┘                            │  │       (Kata VM)           │  │
          │                                     │  │                           │  │
          │                                     │  │  ┌───────────────────┐    │  │
          │                                     │  │  │  py -mhttp.server │    │  │
@@ -20,8 +20,7 @@ User                                exe.dev Service
          │                                     │  └───────────────────────────┘  │
          │                                     │                                 │
          │       ┌─────────────────────────┐   │  ┌────────────────────────────┐ │
-         └───────┤      exed-01 (on AWS)   │   │  │        dockerd             │ │
-                 │                         │   │  │   (gvisor backend)         │ │
+         └───────┤      exed-01 (on AWS)   │   │  │        containerd          │ │
                  │  ┌─────────────────┐    │   │  └────────────────────────────┘ │
                  │  │      exed       │    │   │                ║                │
                  │  │                 │    │   │     ┌──────────╨──────────┐     │
@@ -64,6 +63,7 @@ and proxied to their containers.
 
 ## Container Management
 
-Container creation happens in exed. A random docker_host is chosen, and the
-container is created with the gvisor Docker container runtime. Credentials
-for the container are generated and stored in the database.
+Container creation happens in exed. A random containerd host is chosen,
+and the container is created in a VM.
+This is built on containerd + kata + cloud hypervisor + nydus.
+Credentials for the container are generated and stored in the database.
