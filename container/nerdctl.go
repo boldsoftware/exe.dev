@@ -178,15 +178,7 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 	}
 
 	// Use SSH connection pool for better performance
-	if m.sshPool != nil {
-		cmd := m.sshPool.ExecCommand(ctx, host, remoteCmd.String())
-		// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
-		cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
-		return cmd
-	}
-
-	// Fallback to direct SSH if pool is not available
-	cmd := exec.CommandContext(ctx, "ssh", host, remoteCmd.String())
+	cmd := m.sshPool.ExecCommand(ctx, host, remoteCmd.String())
 	// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
 	cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
 	return cmd
@@ -215,14 +207,7 @@ func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args .
 		cmdStr.WriteString(arg)
 	}
 
-	// Use SSH connection pool for better performance
-	if m.sshPool != nil {
-		return m.sshPool.ExecCommand(ctx, host, cmdStr.String())
-	}
-
-	// Fallback to direct SSH if pool is not available
-	sshArgs := append([]string{host, "sudo"}, args...)
-	return exec.CommandContext(ctx, "ssh", sshArgs...)
+	return m.sshPool.ExecCommand(ctx, host, cmdStr.String())
 }
 
 // filterEnv removes specified environment variables from the environment
@@ -988,6 +973,17 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 	}
 	log.Printf("[SSH-SETUP] Using SSH daemon at: %s", sshdPath)
 
+	// Create sshd user for privilege separation if it doesn't exist
+	// OpenSSH requires this user for its privilege separation feature
+	// The home directory /exe.dev/var/empty is pre-created in our rovol
+	log.Printf("[SSH-SETUP] Ensuring sshd user exists for privilege separation")
+	createUserCmd := m.execNerdctl(ctx, host, "exec", "-u", "root", containerID, "sh", "-c",
+		"id sshd >/dev/null 2>&1 || (groupadd -g 65534 nogroup 2>/dev/null || true; useradd -u 105 -g 65534 -c 'sshd privsep' -d /exe.dev/var/empty -s /usr/sbin/nologin sshd)")
+	if output, err := createUserCmd.CombinedOutput(); err != nil {
+		log.Printf("[SSH-SETUP] Warning: Failed to create sshd user: %v, output: %s", err, output)
+		// Continue anyway - some images might have different user management
+	}
+
 	// Start SSH daemon - use nerdctl exec -d to run in detached mode
 	log.Printf("[SSH-SETUP] Starting SSH daemon")
 	// Use the sshd_config from /exe.dev which has all our settings
@@ -1387,9 +1383,7 @@ func (m *NerdctlManager) Close() error {
 	m.mu.Unlock()
 
 	// Close SSH connection pool
-	if m.sshPool != nil {
-		m.sshPool.Close()
-	}
+	m.sshPool.Close()
 
 	return nil
 }
@@ -1435,14 +1429,20 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 	hash := hex.EncodeToString(randomBytes)
 	remoteDir := fmt.Sprintf("/data/exed/rovol-%s", hash)
 
-	// Create the remote directory
-	mkdirCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", remoteDir)
-
+	// Create the remote directory using the SSH pool
+	mkdirCmd := m.sshPool.ExecCommand(ctx, host, "sudo", "mkdir", "-p", remoteDir)
 	if output, err := mkdirCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create remote directory: %w: %s", err, output)
 	}
 
-	// Walk through the embedded filesystem and copy files
+	// Create a temp directory to stage the rovol files locally
+	tempDir, err := os.MkdirTemp("", "rovol-staging-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Walk through the embedded filesystem and recreate it locally
 	err = fs.WalkDir(rovolFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -1452,13 +1452,12 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 			return nil
 		}
 
-		remotePath := filepath.Join(remoteDir, path)
+		localPath := filepath.Join(tempDir, path)
 
 		if d.IsDir() {
-			// Create directory on remote
-			cmd := m.execSSHCommand(ctx, host, "mkdir", "-p", remotePath)
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w", remotePath, err)
+			// Create directory locally
+			if err := os.MkdirAll(localPath, 0755); err != nil {
+				return fmt.Errorf("failed to create local directory %s: %w", localPath, err)
 			}
 			return nil
 		}
@@ -1469,80 +1468,54 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 			return fmt.Errorf("failed to read file %s: %w", path, err)
 		}
 
-		// Determine if file should be executable (for binaries in bin/ and lib/)
-		mode := "644"
+		// Write file locally with proper permissions
+		mode := os.FileMode(0644)
 		if strings.Contains(path, "bin/") || strings.HasSuffix(path, ".so.1") {
-			mode = "755"
+			mode = 0755
 		}
 
-		// Use SSH to transfer files
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-
-		// Host is required
-		if sshHost == "" || strings.HasPrefix(host, "/") {
-			return fmt.Errorf("no valid SSH host provided for file transfer")
-		}
-		// Always use sudo for remote commands
-
-		// For large files, we need to use a different approach to avoid SSH command line limits
-		// Write the file to a local temp file first, then scp it over
-		tempFile, err := os.CreateTemp("", "rovol-*")
-		if err != nil {
-			return fmt.Errorf("failed to create temp file: %w", err)
-		}
-		tempPath := tempFile.Name()
-		defer os.Remove(tempPath)
-
-		if _, err := tempFile.Write(content); err != nil {
-			tempFile.Close()
-			return fmt.Errorf("failed to write temp file: %w", err)
-		}
-		tempFile.Close()
-
-		// Use scp to copy the file to a temp location on the remote host
-		remoteTempPath := fmt.Sprintf("/tmp/rovol-%s", filepath.Base(tempPath))
-		scpCmd := exec.CommandContext(ctx, "scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", tempPath, fmt.Sprintf("%s:%s", sshHost, remoteTempPath))
-		if output, err := scpCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to scp file %s: %w: %s", path, err, output)
-		}
-
-		// Now move the file to its final location with proper permissions
-		// Get parent directory - filepath.Dir should work correctly here
-		parentDir := filepath.Dir(remotePath)
-
-		// Move the file to its final location with proper permissions
-		// Always use sudo for remote file operations
-		// Execute commands separately to avoid complex quoting issues
-		// First create the directory
-		mkdirCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", parentDir)
-		if output, err := mkdirCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w: %s", parentDir, err, output)
-		}
-
-		// Then move the file
-		mvCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mv", remoteTempPath, remotePath)
-		if output, err := mvCmd.CombinedOutput(); err != nil {
-			// Clean up temp file
-			exec.CommandContext(ctx, "ssh", sshHost, "sudo", "rm", "-f", remoteTempPath).Run()
-			return fmt.Errorf("failed to move file to %s: %w: %s", remotePath, err, output)
-		}
-
-		// Finally set permissions - use separate commands to avoid issues
-		chmodCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "chmod", mode, remotePath)
-		if output, err := chmodCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to chmod file %s: %w: %s", remotePath, err, output)
+		if err := os.WriteFile(localPath, content, mode); err != nil {
+			return fmt.Errorf("failed to write file %s: %w", localPath, err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to copy RovolFS files: %w", err)
+		return "", fmt.Errorf("failed to stage files locally: %w", err)
+	}
+
+	// Transfer the entire directory structure using the SSH pool's SCP method
+	// The temp directory has a random suffix, so we need to get just the basename
+	tempBaseName := filepath.Base(tempDir)
+	tempRemotePath := filepath.Join("/tmp", tempBaseName)
+
+	// First copy the temp directory to remote /tmp
+	if err := m.sshPool.SCP(ctx, host, "/tmp", tempDir); err != nil {
+		return "", fmt.Errorf("failed to transfer rovol files: %w", err)
+	}
+
+	// Now move the contents to the final location with sudo
+	moveScript := fmt.Sprintf("sudo cp -rp %s/* %s && sudo rm -rf %s", tempRemotePath, remoteDir, tempRemotePath)
+	moveCmd := m.sshPool.ExecCommand(ctx, host, "sh", "-c", moveScript)
+	if output, err := moveCmd.CombinedOutput(); err != nil {
+		// Try to clean up
+		m.sshPool.ExecCommand(ctx, host, "rm", "-rf", tempRemotePath).Run()
+		return "", fmt.Errorf("failed to move files to final location: %w: %s", err, output)
 	}
 
 	log.Printf("Successfully copied RovolFS files for %s architecture to %s", arch, remoteDir)
+
+	// Create var/empty directory for sshd privilege separation
+	// This directory must exist but remain empty
+	varEmptyDir := filepath.Join(remoteDir, "var", "empty")
+	varEmptyCmd := m.sshPool.ExecCommand(ctx, host, "sudo", "mkdir", "-p", varEmptyDir)
+	if output, err := varEmptyCmd.CombinedOutput(); err != nil {
+		log.Printf("Warning: Failed to create var/empty directory: %v: %s", err, output)
+		// Continue anyway - the directory might already exist
+	} else {
+		log.Printf("Created var/empty directory for sshd privilege separation at %s", varEmptyDir)
+	}
+
 	return remoteDir, nil
 }
 
