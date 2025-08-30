@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/sshpool"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -37,6 +38,7 @@ type NerdctlManager struct {
 	containers    map[string]*Container // containerID -> Container
 	sshTunnels    map[string]*exec.Cmd  // containerID -> SSH tunnel command
 	allocNetworks map[string]bool       // Track which alloc networks exist
+	sshPool       *sshpool.Pool         // Pool of persistent SSH connections
 }
 
 // NewNerdctlManager creates a new nerdctl-based container manager
@@ -51,6 +53,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		containers:    make(map[string]*Container),
 		sshTunnels:    make(map[string]*exec.Cmd),
 		allocNetworks: make(map[string]bool),
+		sshPool:       sshpool.New(),
 	}
 
 	// Verify Kata runtime is available on all hosts
@@ -174,6 +177,15 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 		}
 	}
 
+	// Use SSH connection pool for better performance
+	if m.sshPool != nil {
+		cmd := m.sshPool.ExecCommand(ctx, host, remoteCmd.String())
+		// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
+		cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
+		return cmd
+	}
+	
+	// Fallback to direct SSH if pool is not available
 	cmd := exec.CommandContext(ctx, "ssh", host, remoteCmd.String())
 	// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
 	cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
@@ -195,7 +207,20 @@ func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args .
 		return cmd
 	}
 
-	// Execute via SSH with sudo
+	// Build command with sudo
+	var cmdStr strings.Builder
+	cmdStr.WriteString("sudo")
+	for _, arg := range args {
+		cmdStr.WriteString(" ")
+		cmdStr.WriteString(arg)
+	}
+	
+	// Use SSH connection pool for better performance
+	if m.sshPool != nil {
+		return m.sshPool.ExecCommand(ctx, host, cmdStr.String())
+	}
+	
+	// Fallback to direct SSH if pool is not available
 	sshArgs := append([]string{host, "sudo"}, args...)
 	return exec.CommandContext(ctx, "ssh", sshArgs...)
 }
@@ -1360,6 +1385,11 @@ func (m *NerdctlManager) Close() error {
 	}
 	m.sshTunnels = make(map[string]*exec.Cmd)
 	m.mu.Unlock()
+
+	// Close SSH connection pool
+	if m.sshPool != nil {
+		m.sshPool.Close()
+	}
 
 	return nil
 }
