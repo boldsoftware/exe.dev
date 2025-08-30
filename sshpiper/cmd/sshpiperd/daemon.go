@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/tg123/sshpiper/cmd/sshpiperd/internal/plugin"
 	"github.com/urfave/cli/v2"
@@ -37,8 +36,10 @@ type daemon struct {
 	pluginConfigs         [][]string
 	quit                  chan error
 	pluginsInitialized    atomic.Bool
-	pluginIniSingleFlight singleflight.Group[bool, bool] // K and V are unused
+	pluginIniSingleFlight singleflight.Group[unused, unused]
 }
+
+type unused struct{}
 
 func generateSshKey(keyfile string) error {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -287,13 +288,12 @@ func (d *daemon) tryInitializePlugins() error {
 		return nil // previously initialized successfully
 	}
 
-	const unusedBool = false
-	_, err, _ := d.pluginIniSingleFlight.Do(unusedBool, func() (bool, error) {
+	_, err, _ := d.pluginIniSingleFlight.Do(unused{}, func() (unused, error) {
 		err := d.initializePlugins()
 		if err == nil {
 			d.pluginsInitialized.Store(true)
 		}
-		return unusedBool, err
+		return unused{}, err
 	})
 
 	if err != nil {
@@ -333,7 +333,7 @@ func (d *daemon) run() error {
 	if ok {
 		port = tcpAddr.Port
 	}
-	log.WithFields(logrus.Fields{
+	log.WithFields(log.Fields{
 		"port": port,
 		"addr": d.lis.Addr().String(),
 	}).Info("sshpiperd is listening")

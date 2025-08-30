@@ -39,6 +39,7 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=sshpiper, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("pipes"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Sshpiper().V1beta1().Pipes().Informer()}, nil
+
 	}
 
 	return nil, fmt.Errorf("no informer found for %v", resource)

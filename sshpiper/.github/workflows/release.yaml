@@ -2,16 +2,15 @@ name: Release
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   release:
-    types: [ released ]
+    types: [released]
 
 permissions:
   contents: write
   packages: write
 
 jobs:
-
   draft:
     runs-on: ubuntu-latest
     if: github.event_name != 'release'
@@ -21,7 +20,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Repo SemVer
         uses: lhstrh/action-repo-semver@v1.2.1
@@ -32,7 +31,7 @@ jobs:
       - name: Create draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: | 
+        run: |
           gh release list | grep Draft | grep v${{ steps.repo-semver.outputs.bump }} | cut -f 1 | xargs -r -L 1 gh release delete --yes
           gh release create -d --generate-notes v${{ steps.repo-semver.outputs.bump }}
 
@@ -45,7 +44,7 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-          submodules: 'recursive'     
+          submodules: "recursive"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -64,12 +63,12 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}          
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Go 1.x
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: "stable"
           cache: true
 
       - name: Setup Snap
@@ -78,7 +77,7 @@ jobs:
           sudo snap install snapcraft --classic --revision 11040
           # https://github.com/goreleaser/goreleaser/pull/2117
           mkdir -p $HOME/.cache/snapcraft/download
-          mkdir -p $HOME/.cache/snapcraft/stage-packages   
+          mkdir -p $HOME/.cache/snapcraft/stage-packages
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -90,9 +89,9 @@ jobs:
           # GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SKIP_PUSH: ${{ github.event_name != 'release' }}
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        
+
       - name: Upload binaries to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: | 
+        run: |
           awk '{print "dist/"$2}' dist/checksums.txt | xargs gh release upload ${{github.event.release.name}} dist/checksums.txt

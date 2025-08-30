@@ -65,9 +65,7 @@ func (cp *ChainPlugins) CreateChallengeContext(conn ssh.ServerPreAuthConn) (ssh.
 			UserName: conn.User(),
 			FromAddr: conn.RemoteAddr().String(),
 			UniqId:   uiq.String(),
-			Metadata: map[string]string{
-				"local_address": conn.LocalAddr().String(),
-			},
+			Metadata: make(map[string]string),
 		},
 	}
 
