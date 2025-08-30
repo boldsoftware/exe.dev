@@ -184,7 +184,7 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 		cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
 		return cmd
 	}
-	
+
 	// Fallback to direct SSH if pool is not available
 	cmd := exec.CommandContext(ctx, "ssh", host, remoteCmd.String())
 	// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
@@ -214,12 +214,12 @@ func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args .
 		cmdStr.WriteString(" ")
 		cmdStr.WriteString(arg)
 	}
-	
+
 	// Use SSH connection pool for better performance
 	if m.sshPool != nil {
 		return m.sshPool.ExecCommand(ctx, host, cmdStr.String())
 	}
-	
+
 	// Fallback to direct SSH if pool is not available
 	sshArgs := append([]string{host, "sudo"}, args...)
 	return exec.CommandContext(ctx, "ssh", sshArgs...)
