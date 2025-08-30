@@ -31,7 +31,6 @@ import (
 type NerdctlManager struct {
 	config         *Config
 	hosts          []string // List of containerd host addresses (SSH hostnames or "local")
-	vmmType        string   // VMM type (Cloud Hypervisor, Firecracker, QEMU, unknown)
 	rovolMountPath string   // Path to rovol files on the host (e.g., /data/exed/rovol-<hash>)
 
 	mu             sync.RWMutex
@@ -231,42 +230,6 @@ func isHexString(s string) bool {
 	return true
 }
 
-// detectSnapshotter detects which snapshotter to use based on the system configuration
-// Returns the snapshotter name to use (nydus or overlayfs)
-func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) string {
-	// Check the actual Kata configuration being used by containerd
-	// Get the configured kata config file path from containerd config
-	checkCmd := m.execSSHCommand(ctx, host, "sh", "-c",
-		"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
-
-	configPath, _ := checkCmd.Output()
-	configFile := strings.TrimSpace(string(configPath))
-
-	// Detect which VMM is being used
-	vmmType := "unknown"
-	if strings.Contains(configFile, "fc") || strings.Contains(configFile, "firecracker") {
-		vmmType = "Firecracker"
-	} else if strings.Contains(configFile, "clh") || strings.Contains(configFile, "cloud") {
-		vmmType = "Cloud Hypervisor"
-	} else if strings.Contains(configFile, "qemu") {
-		vmmType = "QEMU"
-	}
-
-	// Store VMM type in manager
-	m.vmmType = vmmType
-
-	// Check if nydus snapshotter is available
-	nydusCheckCmd := m.execSSHCommand(ctx, host, "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
-
-	if err := nydusCheckCmd.Run(); err == nil {
-		log.Printf("Detected %s VMM (config: %s) - nydus snapshotter available, will use nydus", vmmType, configFile)
-		return "nydus"
-	}
-
-	log.Printf("Detected %s VMM (config: %s) - nydus not available, using overlayfs", vmmType, configFile)
-	return "overlayfs"
-}
-
 // verifyKataRuntime verifies that Kata runtime is available and properly configured
 func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) error {
 	// First, do a quick check if kata-runtime binary exists
@@ -291,22 +254,12 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 	// The most reliable way to check if Kata is available is to try using it
 	// nerdctl info doesn't reliably report available runtimes
 
-	// Detect which snapshotter to use
-	snapshotter := m.detectSnapshotter(ctx, host)
-
 	// Try to run a simple test container with Kata runtime
 	testContainerName := fmt.Sprintf("kata-test-%d", time.Now().Unix())
 
-	// Build the test command with appropriate snapshotter
+	// Build the test command with nydus snapshotter
 	// Use --network none to avoid CNI issues during verification
-	var args []string
-	if snapshotter != "" && snapshotter != "overlayfs" {
-		// Use specific snapshotter
-		args = []string{"--snapshotter", snapshotter, "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", testContainerName}
-	} else {
-		args = []string{"run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", testContainerName}
-	}
-	args = append(args, "alpine:latest", "echo", "kata-test")
+	args := []string{"--snapshotter", "nydus", "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", testContainerName, "alpine:latest", "echo", "kata-test"}
 
 	testCmd := m.execNerdctl(ctx, host, args...)
 
@@ -558,27 +511,13 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	sshPort := 10000 + (hash % 10000)
 
-	// Build run command
-	// Detect which snapshotter to use
-	snapshotter := m.detectSnapshotter(ctx, host)
-
-	// Start building args - add snapshotter if needed
-	var runArgs []string
-	if snapshotter != "" && snapshotter != "overlayfs" {
-		runArgs = []string{
-			"--snapshotter", snapshotter,
-			"run", "-d",
-			"--runtime", "io.containerd.kata.v2", // Use Kata for security
-			"--name", containerName,
-			"--network", networkName,
-		}
-	} else {
-		runArgs = []string{
-			"run", "-d",
-			"--runtime", "io.containerd.kata.v2", // Use Kata for security
-			"--name", containerName,
-			"--network", networkName,
-		}
+	// Build run command with nydus snapshotter
+	runArgs := []string{
+		"--snapshotter", "nydus",
+		"run", "-d",
+		"--runtime", "io.containerd.kata.v2", // Use Kata for security
+		"--name", containerName,
+		"--network", networkName,
 	}
 
 	// Add remaining args
@@ -640,13 +579,8 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	// For "auto" with non-exeuntu images, don't add any command - let the image use its default CMD/ENTRYPOINT
 
-	// Pull image first (with appropriate snapshotter)
-	var pullArgs []string
-	if snapshotter != "" && snapshotter != "overlayfs" {
-		pullArgs = []string{"--snapshotter", snapshotter, "pull", image}
-	} else {
-		pullArgs = []string{"pull", image}
-	}
+	// Pull image first with nydus snapshotter
+	pullArgs := []string{"--snapshotter", "nydus", "pull", image}
 	pullCmd := m.execNerdctl(ctx, host, pullArgs...)
 	if output, err := pullCmd.CombinedOutput(); err != nil {
 		if !strings.Contains(string(output), "already exists") {
