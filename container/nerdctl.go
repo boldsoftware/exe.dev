@@ -102,7 +102,7 @@ func containsShC(args []string) bool {
 	return false
 }
 
-// execNerdctl executes a nerdctl command either locally or via SSH on a remote host
+// execNerdctl executes a nerdctl command via SSH on a remote host
 func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...string) *exec.Cmd {
 	// CRITICAL: Block any attempt to override runtime via environment or args
 	// Check if someone is trying to specify a different runtime
@@ -121,66 +121,87 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 		host = strings.TrimPrefix(host, "ssh://")
 	}
 	
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		// For remote hosts, use SSH with sudo
-		// Always use sudo for remote containerd/nerdctl commands
-		
-		// Build the remote command as a single string to preserve shell quoting
-		var remoteCmd strings.Builder
-		remoteCmd.WriteString("sudo ")
-		remoteCmd.WriteString("nerdctl --namespace exe")
-		
-		// Special handling for exec commands with sh -c
-		if len(args) >= 4 && args[0] == "exec" && containsShC(args) {
-			// Find where sh -c starts and properly quote the command
-			shIndex := -1
-			for i, arg := range args {
-				if arg == "sh" && i+1 < len(args) && args[i+1] == "-c" {
-					shIndex = i
-					break
-				}
+	// Host is required - we always use SSH
+	if host == "" || strings.HasPrefix(host, "/") {
+		// Return a command that will fail with a clear error
+		cmd := exec.CommandContext(ctx, "false")
+		cmd.Env = []string{"ERROR=No valid SSH host provided for container operations"}
+		return cmd
+	}
+	
+	// For remote hosts, use SSH with sudo
+	// Always use sudo for remote containerd/nerdctl commands
+	
+	// Build the remote command as a single string to preserve shell quoting
+	var remoteCmd strings.Builder
+	remoteCmd.WriteString("sudo ")
+	remoteCmd.WriteString("nerdctl --namespace exe")
+	
+	// Special handling for exec commands with sh -c
+	if len(args) >= 4 && args[0] == "exec" && containsShC(args) {
+		// Find where sh -c starts and properly quote the command
+		shIndex := -1
+		for i, arg := range args {
+			if arg == "sh" && i+1 < len(args) && args[i+1] == "-c" {
+				shIndex = i
+				break
 			}
-			
-			if shIndex > 0 && shIndex+2 < len(args) {
-				// Add args before sh
-				for i := 0; i < shIndex; i++ {
-					remoteCmd.WriteString(" ")
-					remoteCmd.WriteString(args[i])
-				}
-				// Add sh -c with the command properly quoted
-				remoteCmd.WriteString(" sh -c '")
-				remoteCmd.WriteString(strings.ReplaceAll(args[shIndex+2], "'", "'\\''"))
-				remoteCmd.WriteString("'")
-				// Add any remaining args
-				for i := shIndex + 3; i < len(args); i++ {
-					remoteCmd.WriteString(" ")
-					remoteCmd.WriteString(args[i])
-				}
-			} else {
-				// Fallback to simple concatenation
-				for _, arg := range args {
-					remoteCmd.WriteString(" ")
-					remoteCmd.WriteString(arg)
-				}
+		}
+		
+		if shIndex > 0 && shIndex+2 < len(args) {
+			// Add args before sh
+			for i := 0; i < shIndex; i++ {
+				remoteCmd.WriteString(" ")
+				remoteCmd.WriteString(args[i])
+			}
+			// Add sh -c with the command properly quoted
+			remoteCmd.WriteString(" sh -c '")
+			remoteCmd.WriteString(strings.ReplaceAll(args[shIndex+2], "'", "'\\''"))
+			remoteCmd.WriteString("'")
+			// Add any remaining args
+			for i := shIndex + 3; i < len(args); i++ {
+				remoteCmd.WriteString(" ")
+				remoteCmd.WriteString(args[i])
 			}
 		} else {
-			// Simple concatenation for other commands
+			// Fallback to simple concatenation
 			for _, arg := range args {
 				remoteCmd.WriteString(" ")
 				remoteCmd.WriteString(arg)
 			}
 		}
-		
-		cmd := exec.CommandContext(ctx, "ssh", host, remoteCmd.String())
-		// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
-		cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
-		return cmd
+	} else {
+		// Simple concatenation for other commands
+		for _, arg := range args {
+			remoteCmd.WriteString(" ")
+			remoteCmd.WriteString(arg)
+		}
 	}
-	// For local, run directly with namespace
-	cmd := exec.CommandContext(ctx, "nerdctl", append([]string{"--namespace", "exe"}, args...)...)
+	
+	cmd := exec.CommandContext(ctx, "ssh", host, remoteCmd.String())
 	// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
 	cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
 	return cmd
+}
+
+// execSSHCommand executes a command via SSH on a remote host
+func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
+	// Parse SSH format if present
+	if strings.HasPrefix(host, "ssh://") {
+		host = strings.TrimPrefix(host, "ssh://")
+	}
+	
+	// Host is required - we always use SSH
+	if host == "" || strings.HasPrefix(host, "/") {
+		// Return a command that will fail with a clear error
+		cmd := exec.CommandContext(ctx, "false")
+		cmd.Env = []string{"ERROR=No valid SSH host provided"}
+		return cmd
+	}
+	
+	// Execute via SSH with sudo
+	sshArgs := append([]string{host, "sudo"}, args...)
+	return exec.CommandContext(ctx, "ssh", sshArgs...)
 }
 
 // filterEnv removes specified environment variables from the environment
@@ -215,21 +236,9 @@ func isHexString(s string) bool {
 // Returns the snapshotter name to use (nydus or overlayfs)
 func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) string {
 	// Check the actual Kata configuration being used by containerd
-	var checkCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		// First check which config file is being used, then check what VMM it's using
-		// Always use sudo for remote commands
-		// Get the configured kata config file path from containerd config
-		checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "sh", "-c", 
-			"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
-	} else {
-		checkCmd = exec.CommandContext(ctx, "sh", "-c",
-			"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
-	}
+	// Get the configured kata config file path from containerd config
+	checkCmd := m.execSSHCommand(ctx, host, "sh", "-c", 
+		"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
 	
 	configPath, _ := checkCmd.Output()
 	configFile := strings.TrimSpace(string(configPath))
@@ -248,17 +257,7 @@ func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) str
 	m.vmmType = vmmType
 	
 	// Check if nydus snapshotter is available
-	var nydusCheckCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		// Always use sudo for remote commands
-		nydusCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
-	} else {
-		nydusCheckCmd = exec.CommandContext(ctx, "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
-	}
+	nydusCheckCmd := m.execSSHCommand(ctx, host, "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
 	
 	if err := nydusCheckCmd.Run(); err == nil {
 		log.Printf("Detected %s VMM (config: %s) - nydus snapshotter available, will use nydus", vmmType, configFile)
@@ -273,17 +272,7 @@ func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) str
 func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) error {
 	// First, do a quick check if kata-runtime binary exists
 	// This is much faster than running a container
-	var kataCheckCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		// Always use sudo for remote commands
-		kataCheckCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "kata-runtime", "--version")
-	} else {
-		kataCheckCmd = exec.CommandContext(ctx, "kata-runtime", "--version")
-	}
+	kataCheckCmd := m.execSSHCommand(ctx, host, "kata-runtime", "--version")
 	
 	kataOutput, kataErr := kataCheckCmd.Output()
 	if kataErr == nil {
@@ -436,7 +425,7 @@ func (m *NerdctlManager) parseContainerStatus(status string) ContainerStatus {
 // selectHost selects a host from available hosts (round-robin for now)
 func (m *NerdctlManager) selectHost() string {
 	if len(m.hosts) == 0 {
-		return "local"
+		return ""
 	}
 	// For now, just return the first host
 	// TODO: Implement proper load balancing
@@ -532,16 +521,7 @@ func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, 
 	}
 
 	for _, cmd := range commands {
-		var execCmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			if strings.HasPrefix(host, "ssh://") {
-				host = strings.TrimPrefix(host, "ssh://")
-			}
-			sshArgs := append([]string{host, "sudo"}, cmd...)
-			execCmd = exec.CommandContext(ctx, "ssh", sshArgs...)
-		} else {
-			execCmd = exec.CommandContext(ctx, "sudo", cmd...)
-		}
+		execCmd := m.execSSHCommand(ctx, host, cmd...)
 		
 		// Ignore errors - rules might already exist
 		execCmd.Run()
@@ -639,14 +619,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		if containerExeDevPath != "" {
 			// Remove the parent container directory (not just exe.dev)
 			containerDir := filepath.Dir(containerExeDevPath)
-			cleanupCmd := exec.CommandContext(ctx, "rm", "-rf", containerDir)
-			if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-				sshHost := host
-				if strings.HasPrefix(sshHost, "ssh://") {
-					sshHost = strings.TrimPrefix(sshHost, "ssh://")
-				}
-				cleanupCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "rm", "-rf", containerDir)
-			}
+			cleanupCmd := m.execSSHCommand(ctx, host, "rm", "-rf", containerDir)
 			if err := cleanupCmd.Run(); err != nil {
 				log.Printf("Warning: Failed to clean up container directory %s: %v", containerDir, err)
 			}
@@ -923,7 +896,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	m.mu.Unlock()
 
 	// Set up SSH tunnel if we're using a remote host
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
+	if host != "" && !strings.HasPrefix(host, "/") {
 		if err := m.setupSSHTunnel(containerID, host, sshPort); err != nil {
 			log.Printf("Warning: Failed to set up SSH tunnel for container %s: %v", containerID, err)
 			// Don't fail container creation, just log the warning
@@ -1067,15 +1040,17 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 
 // getHostArch gets the architecture of the host
 func (m *NerdctlManager) getHostArch(ctx context.Context, host string) (string, error) {
-	var cmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		if strings.HasPrefix(host, "ssh://") {
-			host = strings.TrimPrefix(host, "ssh://")
-		}
-		cmd = exec.CommandContext(ctx, "ssh", host, "uname", "-m")
-	} else {
-		cmd = exec.CommandContext(ctx, "uname", "-m")
+	// Parse SSH format if present
+	if strings.HasPrefix(host, "ssh://") {
+		host = strings.TrimPrefix(host, "ssh://")
 	}
+	
+	// Host is required
+	if host == "" || strings.HasPrefix(host, "/") {
+		return "", fmt.Errorf("no valid SSH host provided")
+	}
+	
+	cmd := exec.CommandContext(ctx, "ssh", host, "uname", "-m")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -1108,7 +1083,7 @@ func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID 
 			host = m.config.ContainerdAddresses[0]
 		}
 		
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
+		if host != "" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
 			// Check if tunnel already exists
 			m.mu.RLock()
 			tunnelExists := m.sshTunnels[container.ID] != nil
@@ -1142,7 +1117,7 @@ func (m *NerdctlManager) StartContainer(ctx context.Context, allocID, containerI
 
 	// Restart SSH tunnel if we're using a remote host
 	host := container.DockerHost
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
+	if host != "" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
 		// Check if tunnel already exists
 		m.mu.RLock()
 		tunnelExists := m.sshTunnels[container.ID] != nil
@@ -1209,15 +1184,8 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 	// Clean up container-specific /exe.dev directory
 	containerName := fmt.Sprintf("exe-%s-%s", allocID, container.Name)
 	containerDir := fmt.Sprintf("/data/exed/containers/%s", containerName)
-	cleanupCmd := exec.CommandContext(ctx, "rm", "-rf", containerDir)
 	host := container.DockerHost
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		cleanupCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "rm", "-rf", containerDir)
-	}
+	cleanupCmd := m.execSSHCommand(ctx, host, "rm", "-rf", containerDir)
 	if err := cleanupCmd.Run(); err != nil {
 		log.Printf("Warning: Failed to clean up container directory %s: %v", containerDir, err)
 	} else {
@@ -1476,17 +1444,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 	remoteDir := fmt.Sprintf("/data/exed/rovol-%s", hash)
 
 	// Create the remote directory
-	var mkdirCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		// Always use sudo for remote commands
-		mkdirCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", remoteDir)
-	} else {
-		mkdirCmd = exec.CommandContext(ctx, "mkdir", "-p", remoteDir)
-	}
+	mkdirCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", remoteDir)
 
 	if output, err := mkdirCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create remote directory: %w: %s", err, output)
@@ -1506,17 +1464,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 
 		if d.IsDir() {
 			// Create directory on remote
-			var cmd *exec.Cmd
-			if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-				sshHost := host
-				if strings.HasPrefix(sshHost, "ssh://") {
-					sshHost = strings.TrimPrefix(sshHost, "ssh://")
-				}
-				// Always use sudo for remote commands
-				cmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", remotePath)
-			} else {
-				cmd = exec.CommandContext(ctx, "mkdir", "-p", remotePath)
-			}
+			cmd := m.execSSHCommand(ctx, host, "mkdir", "-p", remotePath)
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", remotePath, err)
 			}
@@ -1535,12 +1483,16 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 			mode = "755"
 		}
 
-		// For remote hosts, use a more reliable transfer method
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			sshHost := host
-			if strings.HasPrefix(sshHost, "ssh://") {
-				sshHost = strings.TrimPrefix(sshHost, "ssh://")
-			}
+		// Use SSH to transfer files
+		sshHost := host
+		if strings.HasPrefix(sshHost, "ssh://") {
+			sshHost = strings.TrimPrefix(sshHost, "ssh://")
+		}
+		
+		// Host is required
+		if sshHost == "" || strings.HasPrefix(host, "/") {
+			return fmt.Errorf("no valid SSH host provided for file transfer")
+		}
 			// Always use sudo for remote commands
 			
 			// For large files, we need to use a different approach to avoid SSH command line limits
@@ -1586,21 +1538,10 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 				return fmt.Errorf("failed to move file to %s: %w: %s", remotePath, err, output)
 			}
 			
-			// Finally set permissions - use separate commands to avoid issues
-			chmodCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "chmod", mode, remotePath)
-			if output, err := chmodCmd.CombinedOutput(); err != nil {
-				return fmt.Errorf("failed to chmod file %s: %w: %s", remotePath, err, output)
-			}
-		} else {
-			// Local copy
-			if err := os.WriteFile(remotePath, content, os.FileMode(0644)); err != nil {
-				return fmt.Errorf("failed to write file %s: %w", remotePath, err)
-			}
-			if mode == "755" {
-				if err := os.Chmod(remotePath, 0755); err != nil {
-					return fmt.Errorf("failed to chmod file %s: %w", remotePath, err)
-				}
-			}
+		// Finally set permissions - use separate commands to avoid issues
+		chmodCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "chmod", mode, remotePath)
+		if output, err := chmodCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to chmod file %s: %w: %s", remotePath, err, output)
 		}
 
 		return nil
@@ -1622,16 +1563,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	log.Printf("Preparing container-specific /exe.dev directory at %s", containerDir)
 	
 	// Create the container directory
-	var mkdirCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		mkdirCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", containerDir)
-	} else {
-		mkdirCmd = exec.CommandContext(ctx, "mkdir", "-p", containerDir)
-	}
+	mkdirCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", containerDir)
 	
 	if output, err := mkdirCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create container directory: %w: %s", err, output)
@@ -1639,20 +1571,9 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	
 	// Use cp with --reflink=always for CoW cloning on XFS
 	// The -a flag preserves attributes and the dot syntax copies contents
-	var cpCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		// For remote hosts, run cp on the remote machine
-		// Using /. at the end copies contents, not the directory itself
-		cpCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "cp", "-a", "--reflink=always", 
-			m.rovolMountPath+"/.", containerDir+"/")
-	} else {
-		cpCmd = exec.CommandContext(ctx, "cp", "-a", "--reflink=always", 
-			m.rovolMountPath+"/.", containerDir+"/")
-	}
+	// Using /. at the end copies contents, not the directory itself
+	cpCmd := m.execSSHCommand(ctx, host, "cp", "-a", "--reflink=always",
+		m.rovolMountPath+"/.", containerDir+"/")
 	
 	log.Printf("Cloning rovol files from %s to %s using CoW", m.rovolMountPath, containerDir)
 	if output, err := cpCmd.CombinedOutput(); err != nil {
@@ -1661,16 +1582,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	
 	// Create var/empty directory for sshd privilege separation
 	varEmptyDir := filepath.Join(containerDir, "var/empty")
-	var mkdirVarEmptyCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		mkdirVarEmptyCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", varEmptyDir)
-	} else {
-		mkdirVarEmptyCmd = exec.CommandContext(ctx, "mkdir", "-p", varEmptyDir)
-	}
+	mkdirVarEmptyCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", varEmptyDir)
 	if output, err := mkdirVarEmptyCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create var/empty directory: %w: %s", err, output)
 	}
@@ -1694,16 +1606,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	
 	// Write authorized_keys - need to create the directory first
 	rootSSHDir := filepath.Join(containerDir, "root/.ssh")
-	var mkdirSSHCmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-		mkdirSSHCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", rootSSHDir)
-	} else {
-		mkdirSSHCmd = exec.CommandContext(ctx, "mkdir", "-p", rootSSHDir)
-	}
+	mkdirSSHCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", rootSSHDir)
 	
 	if output, err := mkdirSSHCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create root .ssh directory: %w: %s", err, output)
@@ -1719,12 +1622,16 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	for relPath, fileInfo := range files {
 		fullPath := filepath.Join(containerDir, relPath)
 		
-		// For remote hosts, we need to write the file via SSH
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			sshHost := host
-			if strings.HasPrefix(sshHost, "ssh://") {
-				sshHost = strings.TrimPrefix(sshHost, "ssh://")
-			}
+		// Write the file via SSH
+		sshHost := host
+		if strings.HasPrefix(sshHost, "ssh://") {
+			sshHost = strings.TrimPrefix(sshHost, "ssh://")
+		}
+		
+		// Host is required
+		if sshHost == "" || strings.HasPrefix(host, "/") {
+			return "", fmt.Errorf("no valid SSH host provided for SSH file write")
+		}
 			
 			// Use base64 encoding to safely transfer the content
 			encodedContent := base64.StdEncoding.EncodeToString([]byte(fileInfo.content))
@@ -1733,23 +1640,9 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 			writeCmd := fmt.Sprintf("echo '%s' | base64 -d | sudo tee '%s' > /dev/null && sudo chmod %s '%s'",
 				encodedContent, fullPath, fileInfo.mode, fullPath)
 			
-			cmd := exec.CommandContext(ctx, "ssh", sshHost, writeCmd)
-			if output, err := cmd.CombinedOutput(); err != nil {
-				return "", fmt.Errorf("failed to write SSH file %s: %w: %s", relPath, err, output)
-			}
-		} else {
-			// Local write
-			if err := os.WriteFile(fullPath, []byte(fileInfo.content), 0600); err != nil {
-				return "", fmt.Errorf("failed to write SSH file %s: %w", relPath, err)
-			}
-			// Set proper permissions
-			modeVal := os.FileMode(0600)
-			if fileInfo.mode == "644" {
-				modeVal = 0644
-			}
-			if err := os.Chmod(fullPath, modeVal); err != nil {
-				return "", fmt.Errorf("failed to chmod SSH file %s: %w", relPath, err)
-			}
+		cmd := exec.CommandContext(ctx, "ssh", sshHost, writeCmd)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to write SSH file %s: %w: %s", relPath, err, output)
 		}
 		
 		log.Printf("Wrote container-specific file: %s (mode %s)", relPath, fileInfo.mode)

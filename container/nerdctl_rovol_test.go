@@ -176,7 +176,7 @@ func TestNerdctlRovolFSCleanup(t *testing.T) {
 
 	for _, path := range []string{rovolPath1, rovolPath2} {
 		var checkCmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
+		if host != "" && !strings.HasPrefix(host, "/") {
 			sshHost := host
 			if strings.HasPrefix(sshHost, "ssh://") {
 				sshHost = strings.TrimPrefix(sshHost, "ssh://")

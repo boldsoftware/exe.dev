@@ -28,20 +28,24 @@ func GetTestBackend(t *testing.T) *TestBackend {
 		// Parse CTR_HOST - supports formats:
 		// - ssh://user@host or ssh://host -> remote containerd via SSH
 		// - user@host or host -> remote containerd via SSH
-		// - /path/to/socket -> local containerd with custom socket
-		// - local or empty -> local containerd
 		
 		host := ctrHost
 		if strings.HasPrefix(ctrHost, "ssh://") {
 			host = strings.TrimPrefix(ctrHost, "ssh://")
 		}
 		
+		// Socket paths are not supported - we require SSH
+		if strings.HasPrefix(host, "/") {
+			t.Skipf("CTR_HOST socket paths are not supported, SSH host required: %s", ctrHost)
+		}
+		
+		if host == "" {
+			t.Skip("CTR_HOST is empty, SSH host required for tests")
+		}
+		
 		t.Logf("Using containerd backend from CTR_HOST: %s", ctrHost)
 		
-		hosts := []string{}
-		if host != "" && host != "local" {
-			hosts = []string{host}
-		}
+		hosts := []string{host}
 		
 		return &TestBackend{
 			Backend: "containerd",

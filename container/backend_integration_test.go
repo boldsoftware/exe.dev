@@ -196,11 +196,6 @@ func TestCTRHostEnvironment(t *testing.T) {
 			ctrHost:  "/var/run/containerd.sock",
 			expected: "/var/run/containerd.sock",
 		},
-		{
-			name:     "Local",
-			ctrHost:  "local",
-			expected: "",
-		},
 	}
 	
 	for _, tc := range testCases {
@@ -230,7 +225,7 @@ func TestRemoteContainerdSSH(t *testing.T) {
 	
 	// This test requires CTR_HOST to be set to a remote host
 	ctrHost := os.Getenv("CTR_HOST")
-	if ctrHost == "" || ctrHost == "local" || strings.HasPrefix(ctrHost, "/") {
+	if ctrHost == "" || strings.HasPrefix(ctrHost, "/") {
 		t.Skip("Test requires CTR_HOST to be set to a remote host (e.g., ssh://exe-docker-12)")
 	}
 	

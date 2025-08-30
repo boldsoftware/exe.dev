@@ -73,7 +73,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 
 	// Check if SSH tunnel was created (only for remote hosts)
 	host := container.DockerHost
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
+	if host != "" && !strings.HasPrefix(host, "/") {
 		// Give the tunnel a moment to establish
 		time.Sleep(2 * time.Second)
 
@@ -152,7 +152,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 	}
 
 	// Check tunnel was re-established for remote hosts
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
+	if host != "" && !strings.HasPrefix(host, "/") {
 		time.Sleep(2 * time.Second)
 		
 		manager.mu.RLock()
@@ -206,7 +206,7 @@ func TestSSHTunnelCleanup(t *testing.T) {
 		_, exists := manager.sshTunnels[container.ID]
 		manager.mu.RUnlock()
 		
-		if !exists && container.DockerHost != "" && container.DockerHost != "local" {
+		if !exists && container.DockerHost != "" {
 			t.Errorf("Tunnel not created for container %d", i)
 		}
 

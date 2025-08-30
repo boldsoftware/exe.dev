@@ -52,6 +52,26 @@ func NewNetworkManager() *NetworkManager {
 	}
 }
 
+// execSSHCommand executes a command via SSH on a remote host
+func (m *NetworkManager) execSSHCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
+	// Parse SSH format if present
+	if strings.HasPrefix(host, "ssh://") {
+		host = strings.TrimPrefix(host, "ssh://")
+	}
+	
+	// Host is required - we always use SSH
+	if host == "" || strings.HasPrefix(host, "/") {
+		// Return a command that will fail with a clear error
+		cmd := exec.CommandContext(ctx, "false")
+		cmd.Env = []string{"ERROR=No valid SSH host provided for network operations"}
+		return cmd
+	}
+	
+	// Execute via SSH with sudo
+	sshArgs := append([]string{host, "sudo"}, args...)
+	return exec.CommandContext(ctx, "ssh", sshArgs...)
+}
+
 // CreateAllocNetwork creates a network namespace and bridge for an allocation
 func (m *NetworkManager) CreateAllocNetwork(ctx context.Context, allocID string, host string) (*NetworkInfo, error) {
 	m.mu.Lock()
@@ -151,7 +171,7 @@ func (m *NetworkManager) setupAllocNetwork(ctx context.Context, info *NetworkInf
 	// Execute commands based on whether we're remote or local
 	for _, c := range commands {
 		var cmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
+		if host != "" && !strings.HasPrefix(host, "/") {
 			// Remote host - run via SSH
 			if strings.HasPrefix(host, "ssh://") {
 				host = strings.TrimPrefix(host, "ssh://")
@@ -202,16 +222,7 @@ func (m *NetworkManager) setupNAT(ctx context.Context, info *NetworkInfo, host s
 	}
 	
 	for _, cmd := range commands {
-		var execCmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			if strings.HasPrefix(host, "ssh://") {
-				host = strings.TrimPrefix(host, "ssh://")
-			}
-			sshArgs := append([]string{host, "sudo"}, cmd...)
-			execCmd = exec.CommandContext(ctx, "ssh", sshArgs...)
-		} else {
-			execCmd = exec.CommandContext(ctx, "sudo", cmd...)
-		}
+		execCmd := m.execSSHCommand(ctx, host, cmd...)
 		
 		if output, err := execCmd.CombinedOutput(); err != nil {
 			log.Printf("Warning: NAT setup command %v failed: %s", cmd, output)
@@ -260,16 +271,7 @@ func (m *NetworkManager) setupSecurityRules(ctx context.Context, info *NetworkIn
 	}
 	
 	for _, cmd := range commands {
-		var execCmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			if strings.HasPrefix(host, "ssh://") {
-				host = strings.TrimPrefix(host, "ssh://")
-			}
-			sshArgs := append([]string{host, "sudo"}, cmd...)
-			execCmd = exec.CommandContext(ctx, "ssh", sshArgs...)
-		} else {
-			execCmd = exec.CommandContext(ctx, "sudo", cmd...)
-		}
+		execCmd := m.execSSHCommand(ctx, host, cmd...)
 		
 		if output, err := execCmd.CombinedOutput(); err != nil {
 			log.Printf("Warning: Security rule %v failed: %s", cmd, output)
@@ -282,15 +284,17 @@ func (m *NetworkManager) setupSecurityRules(ctx context.Context, info *NetworkIn
 
 // getTailscaleInterface finds the Tailscale network interface
 func (m *NetworkManager) getTailscaleInterface(ctx context.Context, host string) string {
-	var cmd *exec.Cmd
-	if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-		if strings.HasPrefix(host, "ssh://") {
-			host = strings.TrimPrefix(host, "ssh://")
-		}
-		cmd = exec.CommandContext(ctx, "ssh", host, "ip", "link", "show")
-	} else {
-		cmd = exec.CommandContext(ctx, "ip", "link", "show")
+	// Parse SSH format if present
+	if strings.HasPrefix(host, "ssh://") {
+		host = strings.TrimPrefix(host, "ssh://")
 	}
+	
+	// Host is required
+	if host == "" || strings.HasPrefix(host, "/") {
+		return ""
+	}
+	
+	cmd := exec.CommandContext(ctx, "ssh", host, "ip", "link", "show")
 	
 	output, err := cmd.Output()
 	if err != nil {
@@ -404,16 +408,7 @@ func (m *NetworkManager) setupPortForwarding(ctx context.Context, netInfo *Netwo
 	}
 	
 	for _, cmd := range commands {
-		var execCmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			if strings.HasPrefix(host, "ssh://") {
-				host = strings.TrimPrefix(host, "ssh://")
-			}
-			sshArgs := append([]string{host, "sudo"}, cmd...)
-			execCmd = exec.CommandContext(ctx, "ssh", sshArgs...)
-		} else {
-			execCmd = exec.CommandContext(ctx, "sudo", cmd...)
-		}
+		execCmd := m.execSSHCommand(ctx, host, cmd...)
 		
 		if output, err := execCmd.CombinedOutput(); err != nil {
 			log.Printf("Warning: Port forwarding setup %v failed: %s", cmd, output)
@@ -448,16 +443,7 @@ func (m *NetworkManager) CleanupAllocNetwork(ctx context.Context, allocID string
 	}
 	
 	for _, cmd := range commands {
-		var execCmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			if strings.HasPrefix(host, "ssh://") {
-				host = strings.TrimPrefix(host, "ssh://")
-			}
-			sshArgs := append([]string{host, "sudo"}, cmd...)
-			execCmd = exec.CommandContext(ctx, "ssh", sshArgs...)
-		} else {
-			execCmd = exec.CommandContext(ctx, "sudo", cmd...)
-		}
+		execCmd := m.execSSHCommand(ctx, host, cmd...)
 		
 		if output, err := execCmd.CombinedOutput(); err != nil {
 			log.Printf("Warning: Cleanup command %v failed: %s", cmd, output)
@@ -492,16 +478,7 @@ func (m *NetworkManager) cleanupNetworkRules(ctx context.Context, info *NetworkI
 	}
 	
 	for _, cmd := range commands {
-		var execCmd *exec.Cmd
-		if host != "" && host != "local" && !strings.HasPrefix(host, "/") {
-			if strings.HasPrefix(host, "ssh://") {
-				host = strings.TrimPrefix(host, "ssh://")
-			}
-			sshArgs := append([]string{host, "sudo"}, cmd...)
-			execCmd = exec.CommandContext(ctx, "ssh", sshArgs...)
-		} else {
-			execCmd = exec.CommandContext(ctx, "sudo", cmd...)
-		}
+		execCmd := m.execSSHCommand(ctx, host, cmd...)
 		
 		// Ignore errors - rules might not exist
 		execCmd.CombinedOutput()
