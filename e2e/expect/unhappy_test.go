@@ -19,6 +19,7 @@ func TestRequiresSSHKey(t *testing.T) {
 	sshCmd := exec.CommandContext(t.Context(), "ssh",
 		"-p", fmt.Sprint(Env.piperd.SSHPort),
 		"-o", "StrictHostKeyChecking=no",
+		"-o", "PubkeyAuthentication=no",
 		"-F", "/dev/null", // don't use any config file -> no ssh keys
 		"localhost",
 	)

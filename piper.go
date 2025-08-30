@@ -232,6 +232,12 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// Use the connection's unique ID
 	connID := conn.UniqueID()
 
+	// Check if key is empty or nil - this happens when client has no keys configured
+	if len(key) == 0 {
+		slog.Debug("No public key provided", "component", "piper-plugin", "user", conn.User())
+		return nil, fmt.Errorf("no public key provided")
+	}
+
 	// Parse the provided key
 	pubKey, err := ssh.ParsePublicKey(key)
 	if err != nil {
