@@ -18,22 +18,22 @@ func TestExpandImageNameForContainerd(t *testing.T) {
 		{"ubuntu:20.04", "docker.io/library/ubuntu:20.04"},
 		{"nginx", "docker.io/library/nginx:latest"},
 		{"nginx:1.25", "docker.io/library/nginx:1.25"},
-		
+
 		// User images get docker.io/ prefix
 		{"myuser/myimage", "docker.io/myuser/myimage:latest"},
 		{"myuser/myimage:v1", "docker.io/myuser/myimage:v1"},
-		
+
 		// Full registry paths are not modified
 		{"docker.io/library/alpine:latest", "docker.io/library/alpine:latest"},
 		{"ghcr.io/user/repo:v1.0", "ghcr.io/user/repo:v1.0"},
 		{"quay.io/user/image:latest", "quay.io/user/image:latest"},
 		{"localhost:5000/myimage:latest", "localhost:5000/myimage:latest"},
-		
+
 		// Special case: exeuntu
 		{"exeuntu", "ghcr.io/boldsoftware/exeuntu:latest"},
 		{"exeuntu:latest", "ghcr.io/boldsoftware/exeuntu:latest"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			result := ExpandImageNameForContainerd(tt.input)

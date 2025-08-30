@@ -29,9 +29,9 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 
 	// Create a test config
 	config := &Config{
-		ContainerdAddresses: []string{remoteHost},
+		ContainerdAddresses:  []string{remoteHost},
 		DefaultMemoryRequest: "256Mi",
-		DefaultCPURequest: "100m",
+		DefaultCPURequest:    "100m",
 	}
 
 	// Create nerdctl manager
@@ -119,7 +119,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 			"-N",
 			"-L", fmt.Sprintf("%d:localhost:%d", container.SSHPort, container.SSHPort),
 		}
-		
+
 		args := tunnel.Args
 		for _, expected := range expectedArgs {
 			found := false
@@ -139,7 +139,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 
 	// Test container stop/start to ensure tunnel is managed correctly
 	t.Log("Testing container stop/start cycle...")
-	
+
 	if err := manager.StopContainer(ctx, req.AllocID, container.ID); err != nil {
 		t.Fatalf("Failed to stop container: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 	// Check tunnel was re-established for remote hosts
 	if host != "" && !strings.HasPrefix(host, "/") {
 		time.Sleep(2 * time.Second)
-		
+
 		manager.mu.RLock()
 		tunnel, exists := manager.sshTunnels[container.ID]
 		manager.mu.RUnlock()
@@ -172,7 +172,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 // TestSSHTunnelCleanup tests that SSH tunnels are properly cleaned up
 func TestSSHTunnelCleanup(t *testing.T) {
 	// This test verifies tunnel cleanup on container deletion
-	remoteHost := os.Getenv("CTR_HOST") 
+	remoteHost := os.Getenv("CTR_HOST")
 	if remoteHost == "" || !strings.HasPrefix(remoteHost, "ssh://") {
 		t.Skip("CTR_HOST not set to remote SSH host, skipping cleanup test")
 	}
@@ -188,7 +188,7 @@ func TestSSHTunnelCleanup(t *testing.T) {
 
 	// Create and delete multiple containers to test cleanup
 	ctx := context.Background()
-	
+
 	for i := 0; i < 3; i++ {
 		req := &CreateContainerRequest{
 			AllocID: fmt.Sprintf("test-cleanup-%d-%d", i, time.Now().Unix()),
@@ -205,7 +205,7 @@ func TestSSHTunnelCleanup(t *testing.T) {
 		manager.mu.RLock()
 		_, exists := manager.sshTunnels[container.ID]
 		manager.mu.RUnlock()
-		
+
 		if !exists && container.DockerHost != "" {
 			t.Errorf("Tunnel not created for container %d", i)
 		}
@@ -219,7 +219,7 @@ func TestSSHTunnelCleanup(t *testing.T) {
 		manager.mu.RLock()
 		_, exists = manager.sshTunnels[container.ID]
 		manager.mu.RUnlock()
-		
+
 		if exists {
 			t.Errorf("Tunnel not cleaned up for deleted container %d", i)
 		}
@@ -249,7 +249,7 @@ func TestSSHTunnelCleanup(t *testing.T) {
 		manager.mu.RLock()
 		tunnelCount := len(manager.sshTunnels)
 		manager.mu.RUnlock()
-		
+
 		if tunnelCount > 0 {
 			t.Errorf("Manager Close() did not clean up all tunnels, %d remaining", tunnelCount)
 		}

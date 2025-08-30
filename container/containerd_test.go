@@ -31,14 +31,12 @@ func TestContainerdManagerCreation(t *testing.T) {
 	}
 }
 
-
-
 // TestContainerdIntegration tests basic containerd operations if containerd is available
 func TestContainerdIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
-	
+
 	// Skip if CTR_HOST is not set (e2e test requires containerd)
 	if os.Getenv("CTR_HOST") == "" {
 		t.Skip("CTR_HOST not set, skipping e2e container test")

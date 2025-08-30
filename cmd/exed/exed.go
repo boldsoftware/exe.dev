@@ -53,9 +53,14 @@ func run() error {
 		for i, h := range addresses {
 			addresses[i] = strings.TrimSpace(h)
 		}
-	} else if *devMode != "" {
-		// Default to local containerd for dev/test mode
-		addresses = []string{""}
+	} else if *devMode == "local" {
+		// In local dev mode, default to ssh://exe-ctr-colima
+		addresses = []string{"ssh://exe-ctr-colima"}
+		slog.Info("Local dev mode: defaulting to ssh://exe-ctr-colima")
+	} else if *devMode == "test" {
+		// Test mode - default to ssh://exe-ctr-colima as well
+		addresses = []string{"ssh://exe-ctr-colima"}
+		slog.Info("Test mode: defaulting to ssh://exe-ctr-colima")
 	}
 
 	if len(addresses) == 0 {

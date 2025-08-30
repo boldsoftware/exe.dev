@@ -16,7 +16,6 @@ func TestNerdctlRovolFS(t *testing.T) {
 		t.Skip("CTR_HOST not set, skipping nerdctl RovolFS test")
 	}
 
-
 	config := &Config{
 		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
 		DefaultCPURequest:    "100m",
@@ -129,7 +128,6 @@ func TestNerdctlRovolFSCleanup(t *testing.T) {
 	if os.Getenv("CTR_HOST") == "" {
 		t.Skip("CTR_HOST not set, skipping nerdctl RovolFS cleanup test")
 	}
-
 
 	config := &Config{
 		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},

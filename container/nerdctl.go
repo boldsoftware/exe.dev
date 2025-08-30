@@ -28,12 +28,11 @@ import (
 // See setupContainerSSH() for critical warnings about exec and stdin handling.
 // NEVER use 'nerdctl exec -i' with stdin redirection - it will cause containers
 // to enter UNKNOWN state with Kata/gVisor runtimes.
-//
 type NerdctlManager struct {
-	config *Config
-	hosts  []string // List of containerd host addresses (SSH hostnames or "local")
-	vmmType string  // VMM type (Cloud Hypervisor, Firecracker, QEMU, unknown)
-	rovolMountPath string // Path to rovol files on the host (e.g., /data/exed/rovol-<hash>)
+	config         *Config
+	hosts          []string // List of containerd host addresses (SSH hostnames or "local")
+	vmmType        string   // VMM type (Cloud Hypervisor, Firecracker, QEMU, unknown)
+	rovolMountPath string   // Path to rovol files on the host (e.g., /data/exed/rovol-<hash>)
 
 	mu             sync.RWMutex
 	containers     map[string]*Container         // containerID -> Container
@@ -115,12 +114,12 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 			}
 		}
 	}
-	
+
 	// Parse SSH format if present
 	if strings.HasPrefix(host, "ssh://") {
 		host = strings.TrimPrefix(host, "ssh://")
 	}
-	
+
 	// Host is required - we always use SSH
 	if host == "" || strings.HasPrefix(host, "/") {
 		// Return a command that will fail with a clear error
@@ -128,15 +127,15 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 		cmd.Env = []string{"ERROR=No valid SSH host provided for container operations"}
 		return cmd
 	}
-	
+
 	// For remote hosts, use SSH with sudo
 	// Always use sudo for remote containerd/nerdctl commands
-	
+
 	// Build the remote command as a single string to preserve shell quoting
 	var remoteCmd strings.Builder
 	remoteCmd.WriteString("sudo ")
 	remoteCmd.WriteString("nerdctl --namespace exe")
-	
+
 	// Special handling for exec commands with sh -c
 	if len(args) >= 4 && args[0] == "exec" && containsShC(args) {
 		// Find where sh -c starts and properly quote the command
@@ -147,7 +146,7 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 				break
 			}
 		}
-		
+
 		if shIndex > 0 && shIndex+2 < len(args) {
 			// Add args before sh
 			for i := 0; i < shIndex; i++ {
@@ -177,7 +176,7 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 			remoteCmd.WriteString(arg)
 		}
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "ssh", host, remoteCmd.String())
 	// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
 	cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
@@ -190,7 +189,7 @@ func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args .
 	if strings.HasPrefix(host, "ssh://") {
 		host = strings.TrimPrefix(host, "ssh://")
 	}
-	
+
 	// Host is required - we always use SSH
 	if host == "" || strings.HasPrefix(host, "/") {
 		// Return a command that will fail with a clear error
@@ -198,7 +197,7 @@ func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args .
 		cmd.Env = []string{"ERROR=No valid SSH host provided"}
 		return cmd
 	}
-	
+
 	// Execute via SSH with sudo
 	sshArgs := append([]string{host, "sudo"}, args...)
 	return exec.CommandContext(ctx, "ssh", sshArgs...)
@@ -237,12 +236,12 @@ func isHexString(s string) bool {
 func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) string {
 	// Check the actual Kata configuration being used by containerd
 	// Get the configured kata config file path from containerd config
-	checkCmd := m.execSSHCommand(ctx, host, "sh", "-c", 
+	checkCmd := m.execSSHCommand(ctx, host, "sh", "-c",
 		"grep 'ConfigPath' /etc/containerd/config.toml | grep kata | cut -d'\"' -f2 | head -1")
-	
+
 	configPath, _ := checkCmd.Output()
 	configFile := strings.TrimSpace(string(configPath))
-	
+
 	// Detect which VMM is being used
 	vmmType := "unknown"
 	if strings.Contains(configFile, "fc") || strings.Contains(configFile, "firecracker") {
@@ -252,18 +251,18 @@ func (m *NerdctlManager) detectSnapshotter(ctx context.Context, host string) str
 	} else if strings.Contains(configFile, "qemu") {
 		vmmType = "QEMU"
 	}
-	
+
 	// Store VMM type in manager
 	m.vmmType = vmmType
-	
+
 	// Check if nydus snapshotter is available
 	nydusCheckCmd := m.execSSHCommand(ctx, host, "test", "-S", "/run/containerd-nydus/containerd-nydus-grpc.sock")
-	
+
 	if err := nydusCheckCmd.Run(); err == nil {
 		log.Printf("Detected %s VMM (config: %s) - nydus snapshotter available, will use nydus", vmmType, configFile)
 		return "nydus"
 	}
-	
+
 	log.Printf("Detected %s VMM (config: %s) - nydus not available, using overlayfs", vmmType, configFile)
 	return "overlayfs"
 }
@@ -273,7 +272,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 	// First, do a quick check if kata-runtime binary exists
 	// This is much faster than running a container
 	kataCheckCmd := m.execSSHCommand(ctx, host, "kata-runtime", "--version")
-	
+
 	kataOutput, kataErr := kataCheckCmd.Output()
 	if kataErr == nil {
 		// Kata binary exists, now do a quick runtime check
@@ -281,23 +280,23 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		checkArgs := []string{"info", "--format", "json"}
 		infoCmd := m.execNerdctl(ctx, host, checkArgs...)
 		infoOutput, infoErr := infoCmd.Output()
-		
+
 		if infoErr == nil && strings.Contains(string(infoOutput), "kata") {
 			log.Printf("Kata runtime verified via quick check on %s: %s", host, strings.TrimSpace(string(kataOutput)))
 			return nil
 		}
 	}
-	
+
 	// Fall back to the full container test if quick check failed or was inconclusive
 	// The most reliable way to check if Kata is available is to try using it
 	// nerdctl info doesn't reliably report available runtimes
-	
+
 	// Detect which snapshotter to use
 	snapshotter := m.detectSnapshotter(ctx, host)
-	
+
 	// Try to run a simple test container with Kata runtime
 	testContainerName := fmt.Sprintf("kata-test-%d", time.Now().Unix())
-	
+
 	// Build the test command with appropriate snapshotter
 	// Use --network none to avoid CNI issues during verification
 	var args []string
@@ -308,15 +307,15 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		args = []string{"run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", testContainerName}
 	}
 	args = append(args, "alpine:latest", "echo", "kata-test")
-	
+
 	testCmd := m.execNerdctl(ctx, host, args...)
-	
+
 	output, err := testCmd.CombinedOutput()
 	if err != nil {
 		// Check if it's because Kata isn't available
 		outputStr := string(output)
 		if strings.Contains(outputStr, "not found") || strings.Contains(outputStr, "unknown runtime") ||
-		   strings.Contains(outputStr, "kata") || strings.Contains(outputStr, "runtime") {
+			strings.Contains(outputStr, "kata") || strings.Contains(outputStr, "runtime") {
 			// We already checked kata-runtime binary above, so just report the error
 			if kataErr != nil {
 				return fmt.Errorf("Kata runtime not available: nerdctl test failed (%v) and kata-runtime binary check failed (%v)", err, kataErr)
@@ -328,12 +327,12 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		// Some other error
 		return fmt.Errorf("failed to verify Kata runtime: %w: %s", err, outputStr)
 	}
-	
+
 	// Check if output contains our test string
 	if !strings.Contains(string(output), "kata-test") {
 		return fmt.Errorf("Kata runtime test container didn't produce expected output: %s", output)
 	}
-	
+
 	log.Printf("Kata runtime successfully verified on %s", host)
 	return nil
 }
@@ -356,7 +355,7 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 
 		var containerInfo struct {
 			ID     string            `json:"ID"`
-			Names  string            `json:"Names"`  // nerdctl returns a single string, not array
+			Names  string            `json:"Names"` // nerdctl returns a single string, not array
 			Labels map[string]string `json:"Labels"`
 			Status string            `json:"Status"`
 			Image  string            `json:"Image"`
@@ -372,16 +371,9 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 			continue
 		}
 
-		// CRITICAL: Check runtime of existing containers
-		runtimeCmd := m.execNerdctl(ctx, host, "inspect", containerInfo.ID, "--format", "{{.Runtime}}")
-		if runtimeOutput, err := runtimeCmd.Output(); err == nil {
-			runtime := strings.TrimSpace(string(runtimeOutput))
-			if runtime != "io.containerd.kata.v2" {
-				log.Printf("SECURITY WARNING: Existing container %s (%s) is using runtime %s instead of Kata!", 
-					containerInfo.ID, containerInfo.Names, runtime)
-				// Continue tracking it but log the security issue
-			}
-		}
+		// Note: Runtime information is not available via nerdctl inspect
+		// We enforce Kata runtime on all new containers created by this manager
+		// Existing containers discovered here may have been created with different settings
 
 		// Extract container name (nerdctl returns a single string)
 		name := containerInfo.Names
@@ -440,11 +432,11 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 		nameLen = 12
 	}
 	networkName := fmt.Sprintf("exe-%s", allocID[:nameLen])
-	
+
 	m.mu.Lock()
 	exists := m.allocNetworks[networkName]
 	m.mu.Unlock()
-	
+
 	if exists {
 		return networkName, nil
 	}
@@ -470,12 +462,12 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 	subnet := fmt.Sprintf("10.%d.0.0/24", subnetByte)
 
 	// Create network
-	createCmd := m.execNerdctl(ctx, host, 
+	createCmd := m.execNerdctl(ctx, host,
 		"network", "create", networkName,
 		"--subnet", subnet,
 		"--driver", "bridge",
 	)
-	
+
 	if output, err := createCmd.CombinedOutput(); err != nil {
 		// Network might already exist, which is fine
 		if !strings.Contains(string(output), "already exists") {
@@ -502,11 +494,11 @@ func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, 
 		// Block access to host from container subnet
 		{"iptables", "-I", "INPUT", "-s", subnet, "-j", "DROP"},
 		{"iptables", "-I", "INPUT", "-s", subnet, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"},
-		
+
 		// Block access to private networks (except container's own subnet)
 		{"iptables", "-I", "FORWARD", "-s", subnet, "-d", "192.168.0.0/16", "-j", "DROP"},
 		{"iptables", "-I", "FORWARD", "-s", subnet, "-d", "172.16.0.0/12", "-j", "DROP"},
-		
+
 		// Block access to metadata service
 		{"iptables", "-I", "FORWARD", "-s", subnet, "-d", "169.254.169.254", "-j", "DROP"},
 	}
@@ -522,7 +514,7 @@ func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, 
 
 	for _, cmd := range commands {
 		execCmd := m.execSSHCommand(ctx, host, cmd...)
-		
+
 		// Ignore errors - rules might already exist
 		execCmd.Run()
 	}
@@ -565,37 +557,37 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		hash = hash*31 + int(b)
 	}
 	sshPort := 10000 + (hash % 10000)
-	
+
 	// Build run command
 	// Detect which snapshotter to use
 	snapshotter := m.detectSnapshotter(ctx, host)
-	
+
 	// Start building args - add snapshotter if needed
 	var runArgs []string
 	if snapshotter != "" && snapshotter != "overlayfs" {
 		runArgs = []string{
 			"--snapshotter", snapshotter,
 			"run", "-d",
-			"--runtime", "io.containerd.kata.v2",  // Use Kata for security
+			"--runtime", "io.containerd.kata.v2", // Use Kata for security
 			"--name", containerName,
 			"--network", networkName,
 		}
 	} else {
 		runArgs = []string{
 			"run", "-d",
-			"--runtime", "io.containerd.kata.v2",  // Use Kata for security
+			"--runtime", "io.containerd.kata.v2", // Use Kata for security
 			"--name", containerName,
 			"--network", networkName,
 		}
 	}
-	
+
 	// Add remaining args
 	runArgs = append(runArgs,
 		"--publish", fmt.Sprintf("%d:22", sshPort), // Publish SSH port
-		"--hostname", req.Name,                       // Set hostname to match the container name
-		"--dns", "8.8.8.8",                          // Google DNS primary
-		"--dns", "8.8.4.4",                          // Google DNS secondary
-		"--dns-search", "exe.dev",                   // Search domain for short names
+		"--hostname", req.Name, // Set hostname to match the container name
+		"--dns", "8.8.8.8", // Google DNS primary
+		"--dns", "8.8.4.4", // Google DNS secondary
+		"--dns-search", "exe.dev", // Search domain for short names
 		"--label", fmt.Sprintf("alloc_id=%s", req.AllocID),
 		"--label", "managed_by=exe",
 		"--restart", "no",
@@ -613,7 +605,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		runArgs = append(runArgs, "-v", fmt.Sprintf("%s:/exe.dev:ro", containerExeDevPath))
 		log.Printf("Mounting container-specific /exe.dev from %s", containerExeDevPath)
 	}
-	
+
 	// Helper function to clean up container-specific directory on failure
 	cleanupContainerDir := func() {
 		if containerExeDevPath != "" {
@@ -633,7 +625,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// Add the image
 	runArgs = append(runArgs, image)
-	
+
 	// Add command if specified
 	// The exeuntu image requires a command because it uses tini which needs arguments
 	if req.CommandOverride != "" && req.CommandOverride != "auto" && req.CommandOverride != "none" {
@@ -664,17 +656,17 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// Create and start container
 	createCmd := m.execNerdctl(ctx, host, runArgs...)
-	
+
 	// Log the command for debugging
 	log.Printf("Creating container with command: %v", createCmd.Args)
-	
+
 	// Debug: Log the exact command being run
 	if len(createCmd.Args) >= 2 && createCmd.Args[0] == "ssh" {
 		log.Printf("DEBUG: SSH command: ssh %s '%s'", createCmd.Args[1], createCmd.Args[2])
 	} else {
 		log.Printf("DEBUG: Direct command: %v", createCmd.Args)
 	}
-	
+
 	// Use CombinedOutput to capture both stdout and stderr
 	output, err := createCmd.CombinedOutput()
 	if err != nil {
@@ -682,7 +674,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		cleanupContainerDir()
 		return nil, fmt.Errorf("failed to create container: %w\nOutput: %s", err, outputStr)
 	}
-	
+
 	// Extract container ID from output - handle both stdout only and mixed output
 	lines := strings.Split(string(output), "\n")
 	containerID := ""
@@ -697,7 +689,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			}
 		}
 	}
-	
+
 	if containerID == "" {
 		return nil, fmt.Errorf("no container ID returned from output: %s", string(output))
 	}
@@ -706,12 +698,12 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Since we're forcing --runtime io.containerd.kata.v2 and already verified Kata works,
 	// we can trust that the container is using Kata. Full verification would require
 	// checking with ctr, but that's complex across SSH boundaries.
-	// 
+	//
 	// The key security enforcement is:
 	// 1. We verified Kata is available during manager initialization
 	// 2. We force --runtime io.containerd.kata.v2 on all container creation
 	// 3. Container creation would fail if Kata wasn't available
-	
+
 	log.Printf("Container %s created with enforced Kata runtime", containerID)
 
 	// Wait for container to reach "Up" status (especially important for Kata/Firecracker)
@@ -720,7 +712,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	maxWaitTime := 30 * time.Second
 	checkInterval := 100 * time.Millisecond
 	lastStatus := ""
-	
+
 	for time.Since(startTime) < maxWaitTime {
 		// Use nerdctl ps to check container status
 		statusCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "{{.State.Status}}")
@@ -730,18 +722,18 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			time.Sleep(checkInterval)
 			continue
 		}
-		
+
 		status := strings.TrimSpace(string(statusOutput))
 		if status != lastStatus {
 			log.Printf("Container %s status: %s (%.1fs elapsed)", containerID, status, time.Since(startTime).Seconds())
 			lastStatus = status
 		}
-		
+
 		if status == "running" {
 			log.Printf("Container %s is Up after %.1fs", containerID, time.Since(startTime).Seconds())
 			break
 		}
-		
+
 		if status == "exited" || status == "dead" {
 			// Container failed to start
 			log.Printf("ERROR: Container %s failed with status: %s", containerID, status)
@@ -749,10 +741,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			cleanupContainerDir()
 			return nil, fmt.Errorf("container failed to start, status: %s", status)
 		}
-		
+
 		time.Sleep(checkInterval)
 	}
-	
+
 	if lastStatus != "running" {
 		log.Printf("ERROR: Container %s did not reach Up status after %.1fs, last status: %s", containerID, maxWaitTime.Seconds(), lastStatus)
 		// Try to get more info about why it's stuck
@@ -766,10 +758,9 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		return nil, fmt.Errorf("container stuck in %s state after %v", lastStatus, maxWaitTime)
 	}
 
-
 	// Quick spin to wait for container to be fully ready (especially for Firecracker)
 	var inspectOutput []byte
-	maxAttempts := 60  // Up to 6 seconds for Firecracker/Kata startup
+	maxAttempts := 60 // Up to 6 seconds for Firecracker/Kata startup
 	for i := 0; i < maxAttempts; i++ {
 		inspectCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "json")
 		inspectOutput, err = inspectCmd.Output()
@@ -783,7 +774,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			cleanupContainerDir()
 			return nil, fmt.Errorf("failed to inspect container after creation: %w", err)
 		}
-		
+
 		// Parse to check status
 		var inspectData struct {
 			State struct {
@@ -848,12 +839,12 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Configure SSH in the container (asynchronously)
 	// After containerd restart, exec should work with kata
 	sshCtx, sshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	
+
 	// Store the cancel func so we can cancel it on container deletion
 	m.mu.Lock()
 	m.sshCancelFuncs[containerID] = sshCancel
 	m.mu.Unlock()
-	
+
 	go func() {
 		defer sshCancel()
 		defer func() {
@@ -907,7 +898,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	return container, nil
 }
-
 
 // setupSSHTunnel sets up an SSH tunnel for accessing container SSH port from localhost
 func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) error {
@@ -969,7 +959,7 @@ func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) e
 // We just need to start sshd
 func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, host, containerName string, sshKeys *ContainerSSHKeys) error {
 	log.Printf("[SSH-SETUP] Starting SSH setup for container %s (name: %s)", containerID, containerName)
-	
+
 	// Check container status before proceeding
 	statusCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "{{.State.Status}}")
 	if statusOut, err := statusCmd.Output(); err == nil {
@@ -978,7 +968,7 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 
 	// Always use sshd from /exe.dev mount
 	sshdPath := "/exe.dev/bin/sshd"
-	
+
 	// Verify that /exe.dev/bin/sshd exists and is executable
 	log.Printf("[SSH-SETUP] Checking for SSH daemon at %s", sshdPath)
 	checkCmd := m.execNerdctl(ctx, host, "exec", "-u", "root", containerID, "test", "-x", sshdPath)
@@ -995,7 +985,7 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 	sshCmd := fmt.Sprintf("exec %s -f /exe.dev/etc/ssh/sshd_config", sshdPath)
 	log.Printf("[SSH-SETUP] SSH command: %s", sshCmd)
 	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", sshCmd)
-	
+
 	// Run the command - it will return quickly since sshd daemonizes
 	if output, err := startCmd.CombinedOutput(); err != nil {
 		log.Printf("[SSH-SETUP] SSH daemon start failed: %v, output: %s", err, output)
@@ -1023,20 +1013,18 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
-	
+
 	if !sshRunning {
 		// Log warning if SSH daemon not detected but don't fail
 		log.Printf("[SSH-SETUP] WARNING: SSH daemon process not detected in container %s after 3 seconds", containerID)
 	}
-	
+
 	// Network configuration is now handled at container creation time using
 	// --hostname, --dns, and --dns-search flags to nerdctl run
 	// This is much cleaner and works properly with the Kata runtime
-	
-	
+
 	return nil
 }
-
 
 // getHostArch gets the architecture of the host
 func (m *NerdctlManager) getHostArch(ctx context.Context, host string) (string, error) {
@@ -1044,12 +1032,12 @@ func (m *NerdctlManager) getHostArch(ctx context.Context, host string) (string, 
 	if strings.HasPrefix(host, "ssh://") {
 		host = strings.TrimPrefix(host, "ssh://")
 	}
-	
+
 	// Host is required
 	if host == "" || strings.HasPrefix(host, "/") {
 		return "", fmt.Errorf("no valid SSH host provided")
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "ssh", host, "uname", "-m")
 
 	output, err := cmd.Output()
@@ -1065,7 +1053,7 @@ func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID 
 	m.mu.RLock()
 	container, exists := m.containers[containerID]
 	m.mu.RUnlock()
-	
+
 	if !exists {
 		return nil, fmt.Errorf("container %s not found", containerID)
 	}
@@ -1082,13 +1070,13 @@ func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID 
 			// If container doesn't have a host set, use the first configured host
 			host = m.config.ContainerdAddresses[0]
 		}
-		
+
 		if host != "" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
 			// Check if tunnel already exists
 			m.mu.RLock()
 			tunnelExists := m.sshTunnels[container.ID] != nil
 			m.mu.RUnlock()
-			
+
 			if !tunnelExists {
 				log.Printf("SSH tunnel not found for container %s, creating one on port %d", container.ID, container.SSHPort)
 				if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
@@ -1122,7 +1110,7 @@ func (m *NerdctlManager) StartContainer(ctx context.Context, allocID, containerI
 		m.mu.RLock()
 		tunnelExists := m.sshTunnels[container.ID] != nil
 		m.mu.RUnlock()
-		
+
 		if !tunnelExists {
 			if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
 				log.Printf("Warning: Failed to set up SSH tunnel for container %s: %v", container.ID, err)
@@ -1228,7 +1216,7 @@ func (m *NerdctlManager) ExecuteInContainer(ctx context.Context, allocID, contai
 	args = append(args, command...)
 
 	cmd := m.execNerdctl(ctx, container.DockerHost, args...)
-	
+
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}
@@ -1354,7 +1342,7 @@ func (m *NerdctlManager) GetContainerDiagnostics(ctx context.Context, allocID, c
 
 	// Run diagnostic commands
 	var diagnostics strings.Builder
-	
+
 	// Get container inspect data
 	inspectCmd := m.execNerdctl(ctx, container.DockerHost, "inspect", container.ID)
 	if output, err := inspectCmd.Output(); err == nil {
@@ -1389,7 +1377,7 @@ func (m *NerdctlManager) Close() error {
 		cancel()
 	}
 	m.sshCancelFuncs = make(map[string]context.CancelFunc)
-	
+
 	// Kill all SSH tunnels
 	for containerID, tunnel := range m.sshTunnels {
 		if err := tunnel.Process.Kill(); err != nil {
@@ -1398,7 +1386,7 @@ func (m *NerdctlManager) Close() error {
 	}
 	m.sshTunnels = make(map[string]*exec.Cmd)
 	m.mu.Unlock()
-	
+
 	return nil
 }
 
@@ -1488,56 +1476,56 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 		if strings.HasPrefix(sshHost, "ssh://") {
 			sshHost = strings.TrimPrefix(sshHost, "ssh://")
 		}
-		
+
 		// Host is required
 		if sshHost == "" || strings.HasPrefix(host, "/") {
 			return fmt.Errorf("no valid SSH host provided for file transfer")
 		}
-			// Always use sudo for remote commands
-			
-			// For large files, we need to use a different approach to avoid SSH command line limits
-			// Write the file to a local temp file first, then scp it over
-			tempFile, err := os.CreateTemp("", "rovol-*")
-			if err != nil {
-				return fmt.Errorf("failed to create temp file: %w", err)
-			}
-			tempPath := tempFile.Name()
-			defer os.Remove(tempPath)
-			
-			if _, err := tempFile.Write(content); err != nil {
-				tempFile.Close()
-				return fmt.Errorf("failed to write temp file: %w", err)
-			}
+		// Always use sudo for remote commands
+
+		// For large files, we need to use a different approach to avoid SSH command line limits
+		// Write the file to a local temp file first, then scp it over
+		tempFile, err := os.CreateTemp("", "rovol-*")
+		if err != nil {
+			return fmt.Errorf("failed to create temp file: %w", err)
+		}
+		tempPath := tempFile.Name()
+		defer os.Remove(tempPath)
+
+		if _, err := tempFile.Write(content); err != nil {
 			tempFile.Close()
-			
-			// Use scp to copy the file to a temp location on the remote host
-			remoteTempPath := fmt.Sprintf("/tmp/rovol-%s", filepath.Base(tempPath))
-			scpCmd := exec.CommandContext(ctx, "scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", tempPath, fmt.Sprintf("%s:%s", sshHost, remoteTempPath))
-			if output, err := scpCmd.CombinedOutput(); err != nil {
-				return fmt.Errorf("failed to scp file %s: %w: %s", path, err, output)
-			}
-			
-			// Now move the file to its final location with proper permissions
-			// Get parent directory - filepath.Dir should work correctly here
-			parentDir := filepath.Dir(remotePath)
-			
-			// Move the file to its final location with proper permissions
-			// Always use sudo for remote file operations
-			// Execute commands separately to avoid complex quoting issues
-			// First create the directory
-			mkdirCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", parentDir)
-			if output, err := mkdirCmd.CombinedOutput(); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w: %s", parentDir, err, output)
-			}
-			
-			// Then move the file
-			mvCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mv", remoteTempPath, remotePath)
-			if output, err := mvCmd.CombinedOutput(); err != nil {
-				// Clean up temp file
-				exec.CommandContext(ctx, "ssh", sshHost, "sudo", "rm", "-f", remoteTempPath).Run()
-				return fmt.Errorf("failed to move file to %s: %w: %s", remotePath, err, output)
-			}
-			
+			return fmt.Errorf("failed to write temp file: %w", err)
+		}
+		tempFile.Close()
+
+		// Use scp to copy the file to a temp location on the remote host
+		remoteTempPath := fmt.Sprintf("/tmp/rovol-%s", filepath.Base(tempPath))
+		scpCmd := exec.CommandContext(ctx, "scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", tempPath, fmt.Sprintf("%s:%s", sshHost, remoteTempPath))
+		if output, err := scpCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to scp file %s: %w: %s", path, err, output)
+		}
+
+		// Now move the file to its final location with proper permissions
+		// Get parent directory - filepath.Dir should work correctly here
+		parentDir := filepath.Dir(remotePath)
+
+		// Move the file to its final location with proper permissions
+		// Always use sudo for remote file operations
+		// Execute commands separately to avoid complex quoting issues
+		// First create the directory
+		mkdirCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mkdir", "-p", parentDir)
+		if output, err := mkdirCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w: %s", parentDir, err, output)
+		}
+
+		// Then move the file
+		mvCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "mv", remoteTempPath, remotePath)
+		if output, err := mvCmd.CombinedOutput(); err != nil {
+			// Clean up temp file
+			exec.CommandContext(ctx, "ssh", sshHost, "sudo", "rm", "-f", remoteTempPath).Run()
+			return fmt.Errorf("failed to move file to %s: %w: %s", remotePath, err, output)
+		}
+
 		// Finally set permissions - use separate commands to avoid issues
 		chmodCmd := exec.CommandContext(ctx, "ssh", sshHost, "sudo", "chmod", mode, remotePath)
 		if output, err := chmodCmd.CombinedOutput(); err != nil {
@@ -1559,34 +1547,34 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, containerID string, sshKeys *ContainerSSHKeys) (string, error) {
 	// Base directory for this container's files
 	containerDir := fmt.Sprintf("/data/exed/containers/%s/exe.dev", containerID)
-	
+
 	log.Printf("Preparing container-specific /exe.dev directory at %s", containerDir)
-	
+
 	// Create the container directory
 	mkdirCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", containerDir)
-	
+
 	if output, err := mkdirCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create container directory: %w: %s", err, output)
 	}
-	
+
 	// Use cp with --reflink=always for CoW cloning on XFS
 	// The -a flag preserves attributes and the dot syntax copies contents
 	// Using /. at the end copies contents, not the directory itself
 	cpCmd := m.execSSHCommand(ctx, host, "cp", "-a", "--reflink=always",
 		m.rovolMountPath+"/.", containerDir+"/")
-	
+
 	log.Printf("Cloning rovol files from %s to %s using CoW", m.rovolMountPath, containerDir)
 	if output, err := cpCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to clone rovol files: %w: %s", err, output)
 	}
-	
+
 	// Create var/empty directory for sshd privilege separation
 	varEmptyDir := filepath.Join(containerDir, "var/empty")
 	mkdirVarEmptyCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", varEmptyDir)
 	if output, err := mkdirVarEmptyCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create var/empty directory: %w: %s", err, output)
 	}
-	
+
 	// Now add the container-specific SSH files
 	// Extract server public key from the server identity key
 	serverPrivKey, err := ssh.ParsePrivateKey([]byte(sshKeys.ServerIdentityKey))
@@ -1594,7 +1582,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 		return "", fmt.Errorf("failed to parse server private key: %w", err)
 	}
 	serverPubKey := string(ssh.MarshalAuthorizedKey(serverPrivKey.PublicKey()))
-	
+
 	// Write SSH key files
 	files := map[string]struct {
 		content string
@@ -1603,51 +1591,51 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 		"etc/ssh/ssh_host_ed25519_key":     {sshKeys.ServerIdentityKey, "600"},
 		"etc/ssh/ssh_host_ed25519_key.pub": {serverPubKey, "644"},
 	}
-	
+
 	// Write authorized_keys - need to create the directory first
 	rootSSHDir := filepath.Join(containerDir, "root/.ssh")
 	mkdirSSHCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", rootSSHDir)
-	
+
 	if output, err := mkdirSSHCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to create root .ssh directory: %w: %s", err, output)
 	}
-	
+
 	// Add authorized_keys to files map
 	files["root/.ssh/authorized_keys"] = struct {
 		content string
 		mode    string
 	}{sshKeys.AuthorizedKeys, "600"}
-	
+
 	// Write each file
 	for relPath, fileInfo := range files {
 		fullPath := filepath.Join(containerDir, relPath)
-		
+
 		// Write the file via SSH
 		sshHost := host
 		if strings.HasPrefix(sshHost, "ssh://") {
 			sshHost = strings.TrimPrefix(sshHost, "ssh://")
 		}
-		
+
 		// Host is required
 		if sshHost == "" || strings.HasPrefix(host, "/") {
 			return "", fmt.Errorf("no valid SSH host provided for SSH file write")
 		}
-			
-			// Use base64 encoding to safely transfer the content
-			encodedContent := base64.StdEncoding.EncodeToString([]byte(fileInfo.content))
-			
-			// Write the file using echo and base64 decode
-			writeCmd := fmt.Sprintf("echo '%s' | base64 -d | sudo tee '%s' > /dev/null && sudo chmod %s '%s'",
-				encodedContent, fullPath, fileInfo.mode, fullPath)
-			
+
+		// Use base64 encoding to safely transfer the content
+		encodedContent := base64.StdEncoding.EncodeToString([]byte(fileInfo.content))
+
+		// Write the file using echo and base64 decode
+		writeCmd := fmt.Sprintf("echo '%s' | base64 -d | sudo tee '%s' > /dev/null && sudo chmod %s '%s'",
+			encodedContent, fullPath, fileInfo.mode, fullPath)
+
 		cmd := exec.CommandContext(ctx, "ssh", sshHost, writeCmd)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return "", fmt.Errorf("failed to write SSH file %s: %w: %s", relPath, err, output)
 		}
-		
+
 		log.Printf("Wrote container-specific file: %s (mode %s)", relPath, fileInfo.mode)
 	}
-	
+
 	log.Printf("Successfully prepared container-specific /exe.dev directory at %s", containerDir)
 	return containerDir, nil
 }

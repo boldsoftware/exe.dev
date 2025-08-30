@@ -2339,10 +2339,8 @@ func (s *Server) formatSSHConnectionInfo(allocID, machineName string) string {
 		}
 	}
 	if s.devMode != "" {
-		if s.sshLn.tcp.Port == 22 {
-			return fmt.Sprintf("ssh %s@localhost", machineName)
-		}
-		return fmt.Sprintf("ssh -p %v %s@localhost", s.sshLn.tcp.Port, machineName)
+		// In dev mode, users connect via sshpiper on port 2222, not directly to exed
+		return fmt.Sprintf("ssh -p 2222 %s@localhost", machineName)
 	}
 	return fmt.Sprintf("ssh %s@exe.dev", machineName)
 }
@@ -3424,22 +3422,6 @@ func (s *Server) setupContainerSSH(machineID int) error {
 	sshKeys, err := container.GenerateContainerSSHKeys()
 	if err != nil {
 		return fmt.Errorf("failed to generate SSH keys: %v", err)
-	}
-
-	// Set up SSH in the running container using the Docker manager's proper setup
-	if s.containerManager != nil {
-		// Use the Docker manager's setupContainerSSH method which properly configures all SSH files
-		dockerManager, ok := s.containerManager.(*container.DockerManager)
-		if ok {
-			ctx := context.Background()
-			err := dockerManager.SetupContainerSSH(ctx, containerID, "", sshKeys)
-			if err != nil {
-				log.Printf("Failed to setup SSH files in container %s: %v", containerID, err)
-				// Continue anyway and update database
-			}
-		} else {
-			log.Printf("Warning: Container manager is not DockerManager, cannot setup SSH files")
-		}
 	}
 
 	// Update database with SSH keys

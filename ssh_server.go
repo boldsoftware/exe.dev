@@ -95,48 +95,48 @@ func (ss *SSHServer) shouldShowSpinner(s ssh.Session) bool {
 			envMap[parts[0]] = parts[1]
 		}
 	}
-	
+
 	// Check NO_COLOR - if set (any value), disable colors/spinners
 	if _, hasNoColor := envMap["NO_COLOR"]; hasNoColor {
 		return false
 	}
-	
+
 	// Check TERM for dumb terminal
 	if term, hasTerm := envMap["TERM"]; hasTerm && term == "dumb" {
 		return false
 	}
-	
+
 	// Check CI environment variable (implies non-human)
 	if _, hasCI := envMap["CI"]; hasCI {
 		return false
 	}
-	
+
 	// Check NONINTERACTIVE
 	if _, hasNonInteractive := envMap["NONINTERACTIVE"]; hasNonInteractive {
 		return false
 	}
-	
+
 	// Check FORCE_COLOR - if set, override and show spinner
 	if _, hasForceColor := envMap["FORCE_COLOR"]; hasForceColor {
 		return true
 	}
-	
+
 	// Check if we have a PTY allocated
 	// When user runs `ssh localexe new`, there's no PTY by default
 	// But when they run `ssh localexe` (interactive shell), there is a PTY
 	// We want to show spinner for direct commands too, since a human is likely watching
 	_, _, isPty := s.Pty()
-	
+
 	// If we have a PTY, definitely show spinner (interactive session)
 	if isPty {
 		return true
 	}
-	
+
 	// No PTY, but could still be a human running a direct command
 	// Check if this looks like it's being piped or redirected
 	// If the command was run directly by a human, we should show the spinner
 	// But if it's being run by a script or piped, we shouldn't
-	
+
 	// For SSH exec commands without PTY, we default to showing spinner
 	// unless environment suggests otherwise (NO_COLOR, CI, etc already checked above)
 	// This handles the case: ssh localexe new
@@ -931,7 +931,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	// Spinner characters
 	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	spinnerIndex := 0
-	
+
 	// Determine output stream for spinner
 	// For PTY sessions, use stderr to keep stdout clean
 	// For exec commands without PTY, use stdout so user sees it
@@ -942,7 +942,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	} else {
 		spinnerOut = s
 	}
-	
+
 	// Show initial waiting message only for interactive sessions
 	if showSpinner {
 		fmt.Fprintf(spinnerOut, "Waiting for startup... ")
@@ -987,7 +987,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 						continue
 					}
 				}
-				
+
 				totalTime := time.Since(startTime)
 				sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
 				if showSpinner {

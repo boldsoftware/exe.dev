@@ -51,7 +51,7 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 			// Simple names like "alpine:latest" -> "docker.io/library/alpine:latest"
 			return "docker.io/library/" + expandedImage
 		}
-		
+
 		// If it has one slash but no registry domain, add docker.io/
 		parts := strings.SplitN(expandedImage, "/", 2)
 		if len(parts) == 2 && !strings.Contains(parts[0], ".") && !strings.Contains(parts[0], ":") && parts[0] != "localhost" {

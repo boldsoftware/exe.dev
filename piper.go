@@ -186,12 +186,12 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 			FROM machines 
 			WHERE name = ?
 		`, username).Scan(&machine.ID, &machine.AllocID, &machine.Name, &machine.ContainerID)
-		
+
 		if err == nil && machine.ContainerID != nil {
 			// Found a machine - allow access without authentication in dev mode
-			slog.Debug("Local dev mode: allowing passwordless access to machine", 
+			slog.Debug("Local dev mode: allowing passwordless access to machine",
 				"component", "piper-plugin", "machine_name", machine.Name)
-			
+
 			// Get first user for dev mode
 			var userID string
 			row := p.server.db.QueryRow("SELECT user_id FROM users LIMIT 1")
@@ -244,7 +244,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	if err != nil {
 		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "error", err)
 	}
-	
+
 	// Special handling for local dev mode - allow any connection as localexe user
 	if p.server.devMode == "local" && conn.User() == "localexe" && userID == "" {
 		// Get the first user from the database for local dev
@@ -292,7 +292,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 				registered = true // Pretend they're registered for the checks below
 			}
 		}
-		
+
 		slog.Info("Checking for machine", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered, "devMode", p.server.devMode)
 		if machine := p.server.FindMachineByNameForUser(userID, username); machine != nil {
 			slog.Info("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
@@ -396,7 +396,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 		}
 	}
 	port := sshDetails.Port
-	
+
 	// In local dev mode with remote docker host via SSH, we use SSH tunneling
 	// so containers are accessible via localhost
 	if p.server.devMode == "local" && sshDetails.DockerHost != nil && strings.HasPrefix(*sshDetails.DockerHost, "ssh://") {
@@ -404,7 +404,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 		slog.Debug("Using localhost for SSH tunnel in dev mode", "component", "piper-plugin", "original_host", *sshDetails.DockerHost)
 		// SSH tunnel should already be established by container package
 	}
-	
+
 	slog.Debug("Using database SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "host", host, "port", port)
 
 	// Create upstream configuration for direct SSH to container

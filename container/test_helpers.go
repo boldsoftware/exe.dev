@@ -18,7 +18,7 @@ type TestBackend struct {
 // GetTestBackend determines which container backend to use based on environment variables
 // Priority:
 // 1. CTR_HOST env var -> use containerd with specified host
-// 2. DOCKER_HOST env var -> use docker with specified host  
+// 2. DOCKER_HOST env var -> use docker with specified host
 // 3. Local ctr available -> use local containerd
 // 4. Local docker available -> use local docker
 // 5. None available -> skip test
@@ -28,38 +28,38 @@ func GetTestBackend(t *testing.T) *TestBackend {
 		// Parse CTR_HOST - supports formats:
 		// - ssh://user@host or ssh://host -> remote containerd via SSH
 		// - user@host or host -> remote containerd via SSH
-		
+
 		host := ctrHost
 		if strings.HasPrefix(ctrHost, "ssh://") {
 			host = strings.TrimPrefix(ctrHost, "ssh://")
 		}
-		
+
 		// Socket paths are not supported - we require SSH
 		if strings.HasPrefix(host, "/") {
 			t.Skipf("CTR_HOST socket paths are not supported, SSH host required: %s", ctrHost)
 		}
-		
+
 		if host == "" {
 			t.Skip("CTR_HOST is empty, SSH host required for tests")
 		}
-		
+
 		t.Logf("Using containerd backend from CTR_HOST: %s", ctrHost)
-		
+
 		hosts := []string{host}
-		
+
 		return &TestBackend{
 			Backend: "containerd",
 			Hosts:   hosts,
 		}
 	}
-	
+
 	// Docker support has been removed - only containerd is supported
-	
+
 	// Skip if SKIP_CONTAINER_TESTS is set
 	if os.Getenv("SKIP_CONTAINER_TESTS") != "" {
 		t.Skip("Skipping container tests (SKIP_CONTAINER_TESTS is set)")
 	}
-	
+
 	// No backend available
 	t.Skip("No container backend available (set CTR_HOST for e2e container tests)")
 	return nil
@@ -73,17 +73,17 @@ func CreateTestManager(t *testing.T, backend *TestBackend) Manager {
 		DefaultMemoryRequest: "256Mi",
 		DefaultStorageSize:   "1Gi",
 	}
-	
+
 	if len(backend.Hosts) == 0 {
 		// Local backend
 		config.ContainerdAddresses = []string{""}
 	}
-	
+
 	manager, err := NewManager(config)
 	if err != nil {
 		t.Fatalf("Failed to create containerd manager: %v", err)
 	}
-	
+
 	return manager
 }
 
@@ -104,7 +104,7 @@ func SkipIfShort(t *testing.T) {
 func CleanupContainer(t *testing.T, manager Manager, allocID, containerID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	if err := manager.DeleteContainer(ctx, allocID, containerID); err != nil {
 		t.Logf("Warning: Failed to delete container %s: %v", containerID, err)
 	}
@@ -114,7 +114,7 @@ func CleanupContainer(t *testing.T, manager Manager, allocID, containerID string
 func WaitForContainerReady(t *testing.T, manager Manager, allocID, containerID string, timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	
+
 	start := time.Now()
 	for {
 		container, err := manager.GetContainer(ctx, allocID, containerID)
@@ -122,11 +122,11 @@ func WaitForContainerReady(t *testing.T, manager Manager, allocID, containerID s
 			t.Logf("Container %s ready after %v", containerID, time.Since(start))
 			return
 		}
-		
+
 		if time.Since(start) > timeout {
 			t.Fatalf("Container %s not ready after %v", containerID, timeout)
 		}
-		
+
 		time.Sleep(100 * time.Millisecond)
 	}
 }

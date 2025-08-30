@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
-	
+
 	"golang.org/x/crypto/ssh"
 )
 
@@ -45,7 +45,7 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 		CommandOverride: "",
 	}
 
-	t.Logf("Calling CreateContainer with request: AllocID=%s, Name=%s, Image=%s", 
+	t.Logf("Calling CreateContainer with request: AllocID=%s, Name=%s, Image=%s",
 		req.AllocID, req.Name, req.Image)
 	container, err := manager.CreateContainer(ctx, req)
 	if err != nil {
@@ -116,20 +116,20 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 			t.Errorf("unexpected output: got %q, want %q", string(output), expectedOutput)
 		}
 	})
-	
+
 	// Test that authorized_keys is properly set
 	t.Run("AuthorizedKeysSetup", func(t *testing.T) {
 		// Check that authorized_keys was set during creation
 		if container.SSHAuthorizedKeys == "" {
 			t.Error("SSHAuthorizedKeys is empty")
 		}
-		
+
 		// Check that it contains the expected public key format
 		if !strings.Contains(container.SSHAuthorizedKeys, "ssh-ed25519") {
 			t.Errorf("authorized_keys does not contain ed25519 key: %s", container.SSHAuthorizedKeys)
 		}
 	})
-	
+
 	// Test that SSH keys are properly generated
 	t.Run("SSHKeysGenerated", func(t *testing.T) {
 		// Check that all SSH key fields are populated

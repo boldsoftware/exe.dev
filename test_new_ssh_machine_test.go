@@ -22,7 +22,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 	if os.Getenv("CTR_HOST") == "" {
 		t.Skip("CTR_HOST not set, skipping machine connection test")
 	}
-	
+
 	// Create a test server
 	dbPath := fmt.Sprintf("/tmp/test_new_ssh_machine_%d.db", time.Now().UnixNano())
 	defer func() {
@@ -30,7 +30,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 		_ = os.Remove(dbPath)
 	}()
 
-	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", []string{os.Getenv("CTR_HOST")})
+	server, err := NewServer(":8080", "", "", ":0", dbPath, "local", "", []string{os.Getenv("CTR_HOST")})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
