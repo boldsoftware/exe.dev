@@ -91,16 +91,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	return manager, nil
 }
 
-// containsShC checks if the args contain sh -c pattern
-func containsShC(args []string) bool {
-	for i := 0; i < len(args)-1; i++ {
-		if args[i] == "sh" && args[i+1] == "-c" {
-			return true
-		}
-	}
-	return false
-}
-
 // execNerdctl executes a nerdctl command via SSH on a remote host
 func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...string) *exec.Cmd {
 	// CRITICAL: Block any attempt to override runtime via environment or args
@@ -131,54 +121,13 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 	// For remote hosts, use SSH with sudo
 	// Always use sudo for remote containerd/nerdctl commands
 
-	// Build the remote command as a single string to preserve shell quoting
-	var remoteCmd strings.Builder
-	remoteCmd.WriteString("sudo ")
-	remoteCmd.WriteString("nerdctl --namespace exe")
-
-	// Special handling for exec commands with sh -c
-	if len(args) >= 4 && args[0] == "exec" && containsShC(args) {
-		// Find where sh -c starts and properly quote the command
-		shIndex := -1
-		for i, arg := range args {
-			if arg == "sh" && i+1 < len(args) && args[i+1] == "-c" {
-				shIndex = i
-				break
-			}
-		}
-
-		if shIndex > 0 && shIndex+2 < len(args) {
-			// Add args before sh
-			for i := 0; i < shIndex; i++ {
-				remoteCmd.WriteString(" ")
-				remoteCmd.WriteString(args[i])
-			}
-			// Add sh -c with the command properly quoted
-			remoteCmd.WriteString(" sh -c '")
-			remoteCmd.WriteString(strings.ReplaceAll(args[shIndex+2], "'", "'\\''"))
-			remoteCmd.WriteString("'")
-			// Add any remaining args
-			for i := shIndex + 3; i < len(args); i++ {
-				remoteCmd.WriteString(" ")
-				remoteCmd.WriteString(args[i])
-			}
-		} else {
-			// Fallback to simple concatenation
-			for _, arg := range args {
-				remoteCmd.WriteString(" ")
-				remoteCmd.WriteString(arg)
-			}
-		}
-	} else {
-		// Simple concatenation for other commands
-		for _, arg := range args {
-			remoteCmd.WriteString(" ")
-			remoteCmd.WriteString(arg)
-		}
-	}
+	// Build the nerdctl command arguments
+	// Now that SSH pool handles quoting properly, we can pass args separately
+	nerdctlArgs := []string{"sudo", "nerdctl", "--namespace", "exe"}
+	nerdctlArgs = append(nerdctlArgs, args...)
 
 	// Use SSH connection pool for better performance
-	cmd := m.sshPool.ExecCommand(ctx, host, remoteCmd.String())
+	cmd := m.sshPool.ExecCommand(ctx, host, nerdctlArgs...)
 	// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
 	cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
 	return cmd
@@ -199,15 +148,9 @@ func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args .
 		return cmd
 	}
 
-	// Build command with sudo
-	var cmdStr strings.Builder
-	cmdStr.WriteString("sudo")
-	for _, arg := range args {
-		cmdStr.WriteString(" ")
-		cmdStr.WriteString(arg)
-	}
-
-	return m.sshPool.ExecCommand(ctx, host, cmdStr.String())
+	// Pass sudo and args as separate arguments so they get properly quoted
+	sudoArgs := append([]string{"sudo"}, args...)
+	return m.sshPool.ExecCommand(ctx, host, sudoArgs...)
 }
 
 // filterEnv removes specified environment variables from the environment
@@ -1495,6 +1438,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 	}
 
 	// Now move the contents to the final location with sudo
+	// We need to use sh -c for the && operator
 	moveScript := fmt.Sprintf("sudo cp -rp %s/* %s && sudo rm -rf %s", tempRemotePath, remoteDir, tempRemotePath)
 	moveCmd := m.sshPool.ExecCommand(ctx, host, "sh", "-c", moveScript)
 	if output, err := moveCmd.CombinedOutput(); err != nil {

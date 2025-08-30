@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,43 @@ type Pool struct {
 	connections map[string]*Connection
 	mu          sync.RWMutex
 	baseDir     string
+}
+
+// shellQuotePattern matches characters that require shell quoting
+// This includes anything that's not alphanumeric or in the safe set: @%+=:,./-
+var shellQuotePattern = regexp.MustCompile(`[^\w@%+=:,./-]`)
+
+// shellQuote escapes a string for safe use as a shell argument
+// It follows POSIX shell quoting rules:
+// - If the string contains no special characters, return as-is
+// - Otherwise, wrap in single quotes and escape any single quotes inside
+func shellQuote(s string) string {
+	if len(s) == 0 {
+		return "''"
+	}
+
+	// Check if the string needs quoting
+	if shellQuotePattern.MatchString(s) {
+		// Escape single quotes by ending the quote, adding an escaped quote, then starting a new quote
+		// This turns: don't => 'don'\''t'
+		return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+	}
+
+	// No special characters, return as-is
+	return s
+}
+
+// shellQuoteCommand quotes multiple arguments and joins them with spaces
+func shellQuoteCommand(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = shellQuote(arg)
+	}
+	return strings.Join(quoted, " ")
 }
 
 // New creates a new SSH connection pool
@@ -209,14 +247,21 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 		return p.execDirectSSH(ctx, host, args...)
 	}
 
-	// Build the command
+	// Build the SSH arguments
 	sshArgs := []string{
 		"-o", fmt.Sprintf("ControlPath=%s", conn.controlPath),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		host,
 	}
-	sshArgs = append(sshArgs, args...)
+
+	// Properly quote and combine all command arguments into a single string
+	// SSH expects the entire remote command as a single argument
+	if len(args) > 0 {
+		// Use proper shell quoting to handle spaces and special characters
+		command := shellQuoteCommand(args)
+		sshArgs = append(sshArgs, command)
+	}
 
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
 	return cmd
@@ -231,7 +276,12 @@ func (p *Pool) execDirectSSH(ctx context.Context, host string, args ...string) *
 		"-o", "UserKnownHostsFile=/dev/null",
 		host,
 	}
-	sshArgs = append(sshArgs, args...)
+
+	// Properly quote and combine all command arguments, same as ExecCommand
+	if len(args) > 0 {
+		command := shellQuoteCommand(args)
+		sshArgs = append(sshArgs, command)
+	}
 
 	return exec.CommandContext(ctx, "ssh", sshArgs...)
 }
