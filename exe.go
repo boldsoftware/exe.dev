@@ -322,11 +322,13 @@ type UserSession struct {
 
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
-	httpLn  *listener
-	httpsLn *listener
-	sshLn   *listener
-	piperLn *listener
-	BaseURL string
+	httpLn     *listener
+	httpsLn    *listener
+	sshLn      *listener
+	pluginLn   *listener
+	adminLn    *listener
+	piperdPort int // what port sshpiperd is listening on, typically 2222
+	BaseURL    string
 
 	// ready indicates that the server is fully ready and serving.
 	// ready must not be waited on prior to calling Start.
@@ -422,7 +424,7 @@ var setStripeKey = sync.OnceFunc(func() {
 })
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEmailServer string, containerdAddresses []string) (*Server, error) {
+func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, containerdAddresses []string) (*Server, error) {
 	// Initialize database
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -480,10 +482,10 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEma
 		return nil, fmt.Errorf("failed to listen on SSH address %q: %w", sshAddr, err)
 	}
 
-	piperLn, err := startListener("piper", piperAddr)
+	pluginLn, err := startListener("plugin", pluginAddr)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to listen on Piper address %q: %w", piperAddr, err)
+		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", pluginAddr, err)
 	}
 
 	// Initialize container manager with containerd
@@ -538,7 +540,8 @@ func NewServer(httpAddr, httpsAddr, sshAddr, piperAddr, dbPath, devMode, fakeEma
 		httpLn:             httpLn,
 		httpsLn:            httpsLn,
 		sshLn:              sshLn,
-		piperLn:            piperLn,
+		pluginLn:           pluginLn,
+		piperdPort:         piperdPort,
 		BaseURL:            baseURL,
 		db:                 db,
 		dbPath:             dbPath,
@@ -2331,18 +2334,21 @@ func generateRandomContainerName() string {
 }
 
 // formatSSHConnectionInfo returns SSH connection info based on dev mode
-func (s *Server) formatSSHConnectionInfo(allocID, machineName string) string {
+func (s *Server) formatSSHConnectionInfo(allocID, boxName string) string {
 	if s.ipAllocator != nil {
-		allocation, err := s.ipAllocator.Allocate(allocID, machineName)
+		allocation, err := s.ipAllocator.Allocate(allocID, boxName)
 		if err == nil && allocation != nil {
 			return fmt.Sprintf("ssh -p 2222 -o ConnectTimeout=1 %s", allocation.Hostname)
 		}
 	}
 	if s.devMode != "" {
-		// In dev mode, users connect via sshpiper on port 2222, not directly to exed
-		return fmt.Sprintf("ssh -p 2222 %s@localhost", machineName)
+		var dashP string
+		if s.piperdPort != 22 {
+			dashP = fmt.Sprintf("-p %v ", s.piperdPort)
+		}
+		return fmt.Sprintf("ssh %s%s@localhost", dashP, boxName)
 	}
-	return fmt.Sprintf("ssh %s@exe.dev", machineName)
+	return fmt.Sprintf("ssh %s@exe.dev", boxName)
 }
 
 // denylistedMachineNames contains common computer-related five+ letter words that are not allowed as machine names
@@ -2513,7 +2519,7 @@ func (s *Server) createMachine(userID, allocID, name, containerID, image string)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, allocID, name, "pending", image, containerID, userID, routes,
 		"test-identity-key", "test-authorized-keys", "test-ca-key",
-		"test-host-cert", "test-client-key", 2222)
+		"test-host-cert", "test-client-key", s.piperdPort)
 	return err
 }
 
@@ -2698,10 +2704,10 @@ func (s *Server) Start() error {
 	}()
 
 	// Start piper plugin server in a goroutine
-	slog.Info("piper plugin server listening", "addr", s.piperLn.addr, "port", s.piperLn.tcp.Port)
+	slog.Info("piper plugin server listening", "addr", s.pluginLn.addr, "port", s.pluginLn.tcp.Port)
 	s.piperPlugin = NewPiperPlugin(s, s.sshLn.tcp.Port)
 	go func() {
-		if err := s.piperPlugin.Serve(s.piperLn.ln); err != nil {
+		if err := s.piperPlugin.Serve(s.pluginLn.ln); err != nil {
 			slog.Error("Piper plugin server startup failed", "error", err)
 			cancel()
 		}
@@ -2744,21 +2750,21 @@ func (s *Server) Start() error {
 	}
 }
 
-// autoStartSSHPiper automatically starts sshpiper.sh in dev mode if port 2222 isn't listening
+// autoStartSSHPiper automatically starts sshpiper.sh in dev mode if that port isn't listening
 func (s *Server) autoStartSSHPiper(ctx context.Context) {
-	// Check if sshpiper is already running on port 2222
-	if s.isPortListening("localhost:2222") {
-		slog.Info("sshpiper already running on port 2222")
+	// Check if sshpiper is already running on the specified port
+	if s.isPortListening(fmt.Sprintf("localhost:%d", s.piperdPort)) {
+		slog.Info("sshpiper already running", "port", s.piperdPort)
 		return
 	}
 
 	// Use the actual piper TCP address
-	if s.piperLn.tcp == nil {
+	if s.pluginLn.tcp == nil {
 		slog.Error("Piper TCP address not available")
 		return
 	}
 
-	piperPluginAddr := fmt.Sprintf("localhost:%d", s.piperLn.tcp.Port)
+	piperPluginAddr := fmt.Sprintf("localhost:%d", s.pluginLn.tcp.Port)
 
 	// First, wait for the piper plugin to be ready
 	if !s.waitForPort(ctx, piperPluginAddr, 30*time.Second) {
@@ -2767,9 +2773,9 @@ func (s *Server) autoStartSSHPiper(ctx context.Context) {
 	}
 
 	// Start sshpiper.sh with the piper plugin port
-	slog.Info("Starting sshpiper.sh automatically in dev mode", "piperPluginPort", s.piperLn.tcp.Port)
+	slog.Info("Starting sshpiper.sh automatically in dev mode", "piperPluginPort", s.pluginLn.tcp.Port)
 
-	cmd := exec.CommandContext(ctx, "./sshpiper.sh", fmt.Sprint(s.piperLn.tcp.Port))
+	cmd := exec.CommandContext(ctx, "./sshpiper.sh", fmt.Sprint(s.pluginLn.tcp.Port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

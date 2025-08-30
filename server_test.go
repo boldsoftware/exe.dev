@@ -21,7 +21,7 @@ func NewTestServer(t *testing.T, dockerhosts ...string) *Server {
 		dockerhosts = []string{""}
 	}
 
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "test", "", dockerhosts)
+	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "test", "", 2222, dockerhosts)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

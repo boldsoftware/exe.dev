@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -31,8 +32,10 @@ import (
 )
 
 var (
-	flagVerbosePiperd = flag.Bool("vp", false, "enable verbose logging from sshpiperd")
-	flagVerboseExed   = flag.Bool("ve", false, "enable verbose logging from exed")
+	flagVerbosePiperd = flag.Bool("vpiperd", false, "enable verbose logging from sshpiperd")
+	flagVerboseExed   = flag.Bool("vexed", false, "enable verbose logging from exed")
+	flagVerbosePorts  = flag.Bool("vports", false, "enable verbose logging about ports")
+	flagVerboseEmail  = flag.Bool("vemail", false, "enable verbose logging from email server")
 )
 
 func TestMain(m *testing.M) {
@@ -57,6 +60,7 @@ func TestMain(m *testing.M) {
 	env, err := setup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "test setup failed: %v\n", err)
+		env.Close()
 		os.Exit(1)
 	}
 	Env = env
@@ -68,6 +72,7 @@ func TestMain(m *testing.M) {
 var Env *testEnv
 
 type testEnv struct {
+	proxy  *tcpProxy
 	exed   exedInstance
 	piperd piperdInstance
 	email  *emailServer
@@ -86,7 +91,14 @@ type piperdInstance struct {
 	SSHPort int
 }
 
+func (e *testEnv) sshPort() int {
+	return e.proxy.tcp.Port
+}
+
 func (e *testEnv) Close() {
+	if e == nil {
+		return
+	}
 	if e.exed.DBPath != "" {
 		os.Remove(e.exed.DBPath)
 	}
@@ -100,28 +112,98 @@ func (e *testEnv) Close() {
 	}
 }
 
+type tcpProxy struct {
+	ln  net.Listener
+	tcp *net.TCPAddr
+	dst atomic.Pointer[net.TCPAddr]
+}
+
+func newTCPProxy() (*tcpProxy, error) {
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return nil, err
+	}
+	tcpAddr := ln.Addr().(*net.TCPAddr)
+	return &tcpProxy{ln: ln, tcp: tcpAddr}, nil
+}
+
+func (p *tcpProxy) serve() error {
+	for {
+		c, err := p.ln.Accept()
+		if err != nil {
+			return err
+		}
+		go func() {
+			dstAddr := p.dst.Load()
+			if dstAddr == nil {
+				fmt.Printf("tcpProxy: no destination address set")
+				return
+			}
+			dst, err := net.Dial("tcp", dstAddr.String())
+			if err != nil {
+				fmt.Printf("tcpProxy: failed to connect to dst %v: %v", dstAddr, err)
+				return
+			}
+			defer c.Close()
+			var wg sync.WaitGroup
+			wg.Go(func() { io.Copy(dst, c) })
+			wg.Go(func() { io.Copy(c, dst) })
+			wg.Wait()
+		}()
+	}
+}
+
 func setup() (*testEnv, error) {
+	env := new(testEnv)
+
+	// We have a circular dependency around ports.
+	// (This is not a problem in production, because we use fixed port numbers.)
+	//
+	// We need to start exed, which needs to know what port sshpiper is listening on,
+	// in order to give correct port numbers out to clients.
+	//
+	// We need to start sshpiper, which needs to know what exed's piper plugin port is.
+	//
+	// To work around this, we start a simple TCP proxy first, which will act as the sshpiper port.
+	// We then forward traffic from the proxy to the actual sshpiper instance.
+	proxy, err := newTCPProxy()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tcp proxy: %w", err)
+	}
+	go proxy.serve()
+	env.proxy = proxy
+	if *flagVerbosePorts {
+		fmt.Printf("proxy: listening on port %v\n", proxy.tcp.Port)
+	}
+
 	// Start email server first so we can pass its URL to exed
 	es, err := newEmailServer()
 	if err != nil {
-		return nil, err
+		return env, err
+	}
+	env.email = es
+	if *flagVerboseEmail {
+		fmt.Printf("email: listening on %v\n", es.port)
 	}
 
 	// TODO: build piperd concurrently with starting exed for faster startup
-	ei, err := startExed(es)
+	ei, err := startExed(es.port, proxy.tcp.Port)
 	if err != nil {
-		return nil, err
+		return env, err
 	}
-	env := &testEnv{
-		exed:  *ei,
-		email: es,
-	}
+	env.exed = *ei
+
 	pi, err := startPiperd(*ei)
 	if err != nil {
-		env.Close()
-		return nil, err
+		return env, err
 	}
 	env.piperd = *pi
+	if *flagVerbosePorts {
+		fmt.Printf("piperd: listening on %v\n", pi.SSHPort)
+	}
+
+	// proxy tcp requests to piperd
+	env.proxy.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: pi.SSHPort})
 
 	return env, nil
 }
@@ -225,7 +307,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	return instance, nil
 }
 
-func startExed(emailServer *emailServer) (*exedInstance, error) {
+func startExed(emailServerPort, piperPort int) (*exedInstance, error) {
 	start := time.Now()
 	fmt.Println("starting exed")
 	dbPath, err := os.CreateTemp("", "exed_test_*.db")
@@ -235,10 +317,14 @@ func startExed(emailServer *emailServer) (*exedInstance, error) {
 	dbPath.Close()
 
 	// Start exed process and capture its output
-	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServer.port)
+	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServerPort)
 	exedCmd := exec.Command("go", "run", "-race", "../.././cmd/exed",
-		"-db="+dbPath.Name(), "-dev=test",
-		"-http=:0", "-ssh=:0", "-piper=:0",
+		"-db="+dbPath.Name(),
+		"-dev=test",
+		"-http=:0",
+		"-ssh=:0",
+		"-piper-plugin=:0",
+		"-piperd-port="+fmt.Sprint(piperPort),
 		"-fake-email-server="+emailServerURL,
 	)
 	exedCmd.Env = append(os.Environ(), "LOG_FORMAT=json", "LOG_LEVEL=debug")
@@ -285,6 +371,9 @@ func startExed(emailServer *emailServer) (*exedInstance, error) {
 			switch entry["msg"] {
 			case "listening":
 				listeningC <- listen{typ: entry["type"].(string), port: int(entry["port"].(float64))}
+				if *flagVerbosePorts {
+					fmt.Printf("exed: listening to %v on port %v\n", entry["type"], entry["port"])
+				}
 			case "server started":
 				startedC <- true
 			}
@@ -306,7 +395,7 @@ ProcessLogs:
 				sshPort = ln.port
 			case "http":
 				httpPort = ln.port
-			case "piper":
+			case "plugin":
 				piperPluginPort = ln.port
 			}
 		case <-startedC:
@@ -390,7 +479,12 @@ func (p *expectPty) want(s string) {
 	}
 }
 
-func (p *expectPty) wantRE(re string) {
+func (p *expectPty) wantf(msg string, args ...any) {
+	p.t.Helper()
+	p.want(fmt.Sprintf(msg, args...))
+}
+
+func (p *expectPty) wantRe(re string) {
 	p.t.Helper()
 	out, err := p.console.Expect(
 		expect.RegexpPattern(re),
@@ -500,6 +594,10 @@ func (es *emailServer) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if *flagVerboseEmail {
+		fmt.Printf("email: received message: %+v\n", email)
+	}
+
 	es.inboxChannel(email.To) <- email
 }
 
@@ -538,11 +636,22 @@ func extractVerificationToken(body string) (string, error) {
 	return matches[0], nil // Return the full URL, not just the token
 }
 
-func sshWithKey(t *testing.T, keyFile string) *expectPty {
+func sshToExeDev(t *testing.T, keyFile string) *expectPty {
+	return sshWithUsername(t, "", keyFile)
+}
+
+func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
+	return sshWithUsername(t, boxname, keyFile)
+}
+
+func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 	pty := makePty(t)
+	if username != "" {
+		username += "@"
+	}
 	sshCmd := exec.CommandContext(t.Context(), "ssh",
 		"-tt",
-		"-p", fmt.Sprint(Env.piperd.SSHPort),
+		"-p", fmt.Sprint(Env.sshPort()),
 		"-o", "IdentityFile="+keyFile,
 		"-o", "IdentityAgent=none",
 		"-o", "StrictHostKeyChecking=no",
@@ -555,8 +664,9 @@ func sshWithKey(t *testing.T, keyFile string) *expectPty {
 		"-o", "ChallengeResponseAuthentication=no",
 		"-o", "IdentitiesOnly=yes",
 
-		"localhost",
+		username+"localhost",
 	)
+	// fmt.Println("RUNNING", sshCmd)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 	pty.attach(sshCmd)
 	if err := sshCmd.Start(); err != nil {

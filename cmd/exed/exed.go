@@ -22,7 +22,8 @@ func main() {
 func run() error {
 	httpAddr := flag.String("http", ":8080", "HTTP server address")
 	sshAddr := flag.String("ssh", ":2223", "SSH server address")
-	piperAddr := flag.String("piper", ":2224", "Piper plugin gRPC server address")
+	pluginAddr := flag.String("piper-plugin", ":2224", "Piper plugin gRPC server address")
+	piperdPort := flag.Int("piperd-port", 2222, "sshpiper listening port")
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt)")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
@@ -77,7 +78,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *piperAddr, *dbPath, *devMode, *fakeHTTPEmail, addresses)
+	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, addresses)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

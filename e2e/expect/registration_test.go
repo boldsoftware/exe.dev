@@ -13,12 +13,12 @@ func TestNewKeyRegistration(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 	keyFile, publicKey := genSSHKey(t)
-	pty := sshWithKey(t, keyFile)
+	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
 	pty.want("Please enter your email")
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
-	pty.wantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")
@@ -26,7 +26,7 @@ func TestNewKeyRegistration(t *testing.T) {
 	pty.want("Press any key to continue")
 	pty.sendLine("")
 	pty.want("commands:") // check that we show help menu on first login
-	pty.wantRE("exe\\.dev.*▶")
+	pty.wantRe("exe\\.dev.*▶")
 	pty.sendLine("whoami")
 	pty.want(email)
 	pty.want(publicKey)
@@ -39,11 +39,11 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	keyFile, publicKey := genSSHKey(t)
 
 	// initial registration
-	pty := sshWithKey(t, keyFile)
+	pty := sshToExeDev(t, keyFile)
 	pty.want("Please enter your email")
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
-	pty.wantRE("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")
@@ -57,7 +57,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.want(publicKey)
 
 	// second login: no re-registration
-	pty = sshWithKey(t, keyFile)
+	pty = sshToExeDev(t, keyFile)
 	pty.want(ps1)
 	pty.sendLine("whoami")
 	pty.want(email)
