@@ -288,3 +288,48 @@ func (p *Pool) CheckHostConnection(ctx context.Context, host string) error {
 
 	return nil
 }
+
+// SCP transfers files to remoteDest on host, preserving their permissions
+// remoteDest is the destination directory, localPaths are the source files or directories
+// If a localPath is a directory, it will be copied recursively
+func (p *Pool) SCP(ctx context.Context, host string, remoteDest string, localPaths ...string) error {
+	if len(localPaths) == 0 {
+		return nil
+	}
+
+	// Parse SSH host if needed
+	sshHost := host
+	if strings.HasPrefix(sshHost, "ssh://") {
+		sshHost = strings.TrimPrefix(sshHost, "ssh://")
+	}
+
+	// Get or create the connection to ensure control socket exists
+	conn, err := p.getConnection(ctx, host)
+	if err != nil {
+		return fmt.Errorf("failed to get SSH connection: %w", err)
+	}
+
+	// Update last used time
+	conn.mu.Lock()
+	conn.lastUsed = time.Now()
+	controlPath := conn.controlPath
+	conn.mu.Unlock()
+
+	// Build scp command with all files at once
+	// scp preserves permissions by default with -p flag
+	scpArgs := []string{
+		"-rp", // Recursive and preserve modification times, access times, and modes
+		"-o", "ControlPath=" + controlPath,
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+	}
+	scpArgs = append(scpArgs, localPaths...)
+	scpArgs = append(scpArgs, fmt.Sprintf("%s:%s", sshHost, remoteDest))
+
+	scpCmd := exec.CommandContext(ctx, "scp", scpArgs...)
+	if output, err := scpCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to scp files to %s: %w: %s", remoteDest, err, output)
+	}
+
+	return nil
+}
