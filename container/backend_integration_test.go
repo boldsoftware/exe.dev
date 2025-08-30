@@ -155,7 +155,6 @@ func TestBackendIntegration(t *testing.T) {
 		err = manager.ExecuteInContainer(ctx, allocID, container.ID,
 			[]string{"echo", "hello from", backend.Backend},
 			nil, &stdout, nil)
-
 		if err != nil {
 			t.Errorf("Failed to execute command: %v", err)
 		}
@@ -263,7 +262,6 @@ func TestRemoteContainerdSSH(t *testing.T) {
 	err = manager.ExecuteInContainer(ctx, "remote-test", container.ID,
 		[]string{"hostname"},
 		nil, &stdout, nil)
-
 	if err != nil {
 		t.Errorf("Failed to execute command on remote container: %v", err)
 	}

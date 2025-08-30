@@ -1534,7 +1534,6 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 
 		return nil
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("failed to copy RovolFS files: %w", err)
 	}

@@ -42,7 +42,7 @@ func run() error {
 
 	// Parse containerd addresses
 	var addresses []string
-	
+
 	// Check for CTR_HOST first
 	if ctrHost := os.Getenv("CTR_HOST"); ctrHost != "" {
 		addresses = []string{ctrHost}
@@ -64,7 +64,7 @@ func run() error {
 	}
 
 	if len(addresses) == 0 {
-		slog.Warn("No containerd addresses specified, container functionality will be disabled", 
+		slog.Warn("No containerd addresses specified, container functionality will be disabled",
 			"suggestion", "Use -containerd-addresses flag, or set CTR_HOST env var")
 	}
 

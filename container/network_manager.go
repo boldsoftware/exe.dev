@@ -400,11 +400,15 @@ func (m *NetworkManager) setupPortForwarding(ctx context.Context, netInfo *Netwo
 	// Forward SSH port from host to container
 	commands := [][]string{
 		// DNAT for incoming connections
-		{"iptables", "-t", "nat", "-A", "PREROUTING", "-p", "tcp", "--dport", fmt.Sprintf("%d", containerInfo.SSHPort),
-			"-j", "DNAT", "--to-destination", fmt.Sprintf("%s:22", containerInfo.IPAddress)},
+		{
+			"iptables", "-t", "nat", "-A", "PREROUTING", "-p", "tcp", "--dport", fmt.Sprintf("%d", containerInfo.SSHPort),
+			"-j", "DNAT", "--to-destination", fmt.Sprintf("%s:22", containerInfo.IPAddress),
+		},
 		// Allow forwarded packets
-		{"iptables", "-A", "FORWARD", "-p", "tcp", "-d", containerInfo.IPAddress.String(), "--dport", "22",
-			"-m", "state", "--state", "NEW,ESTABLISHED,RELATED", "-j", "ACCEPT"},
+		{
+			"iptables", "-A", "FORWARD", "-p", "tcp", "-d", containerInfo.IPAddress.String(), "--dport", "22",
+			"-m", "state", "--state", "NEW,ESTABLISHED,RELATED", "-j", "ACCEPT",
+		},
 	}
 
 	for _, cmd := range commands {
@@ -470,10 +474,14 @@ func (m *NetworkManager) cleanupNetworkRules(ctx context.Context, info *NetworkI
 	// Clean up port forwarding rules for each container
 	for _, containerInfo := range info.Containers {
 		commands = append(commands,
-			[]string{"iptables", "-t", "nat", "-D", "PREROUTING", "-p", "tcp", "--dport", fmt.Sprintf("%d", containerInfo.SSHPort),
-				"-j", "DNAT", "--to-destination", fmt.Sprintf("%s:22", containerInfo.IPAddress)},
-			[]string{"iptables", "-D", "FORWARD", "-p", "tcp", "-d", containerInfo.IPAddress.String(), "--dport", "22",
-				"-m", "state", "--state", "NEW,ESTABLISHED,RELATED", "-j", "ACCEPT"},
+			[]string{
+				"iptables", "-t", "nat", "-D", "PREROUTING", "-p", "tcp", "--dport", fmt.Sprintf("%d", containerInfo.SSHPort),
+				"-j", "DNAT", "--to-destination", fmt.Sprintf("%s:22", containerInfo.IPAddress),
+			},
+			[]string{
+				"iptables", "-D", "FORWARD", "-p", "tcp", "-d", containerInfo.IPAddress.String(), "--dport", "22",
+				"-m", "state", "--state", "NEW,ESTABLISHED,RELATED", "-j", "ACCEPT",
+			},
 		)
 	}
 
@@ -531,7 +539,7 @@ func (m *NetworkManager) WriteCNIConfig(allocID, containerID string) (string, er
 		return "", fmt.Errorf("failed to marshal CNI config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, configJSON, 0644); err != nil {
+	if err := os.WriteFile(configPath, configJSON, 0o644); err != nil {
 		return "", fmt.Errorf("failed to write CNI config: %w", err)
 	}
 
