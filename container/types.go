@@ -17,6 +17,17 @@ const (
 	StatusUnknown  ContainerStatus = "unknown"
 )
 
+// CreateProgress represents the phase of container creation
+type CreateProgress int
+
+const (
+	CreateInit  CreateProgress = iota // nothing has happened yet
+	CreatePull                        // getting the image, when this is set the image bytes should be set
+	CreateStart                       // the image has been pulled the container is about to be started
+	CreateSSH                         // the container has started, now setting up ssh
+	CreateDone                        // process complete
+)
+
 // Container represents a container instance within an allocation
 type Container struct {
 	ID        string          `json:"id"`
@@ -127,6 +138,10 @@ type CreateContainerRequest struct {
 
 	// Command override: "auto" (default), "none", or custom command string
 	CommandOverride string `json:"command_override,omitempty"`
+
+	// Progress callback - called with progress updates during creation
+	// Only called while CreateContainer is blocking, not after it returns
+	ProgressCallback func(progress CreateProgress, imageBytes int64) `json:"-"`
 }
 
 // BuildRequest represents a request to build a custom Docker image

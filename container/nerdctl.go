@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,11 +33,10 @@ type NerdctlManager struct {
 	hosts          []string // List of containerd host addresses (SSH hostnames or "local")
 	rovolMountPath string   // Path to rovol files on the host (e.g., /data/exed/rovol-<hash>)
 
-	mu             sync.RWMutex
-	containers     map[string]*Container         // containerID -> Container
-	sshCancelFuncs map[string]context.CancelFunc // containerID -> SSH setup cancel func
-	sshTunnels     map[string]*exec.Cmd          // containerID -> SSH tunnel command
-	allocNetworks  map[string]bool               // Track which alloc networks exist
+	mu            sync.RWMutex
+	containers    map[string]*Container // containerID -> Container
+	sshTunnels    map[string]*exec.Cmd  // containerID -> SSH tunnel command
+	allocNetworks map[string]bool       // Track which alloc networks exist
 }
 
 // NewNerdctlManager creates a new nerdctl-based container manager
@@ -47,12 +46,11 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	manager := &NerdctlManager{
-		config:         config,
-		hosts:          config.ContainerdAddresses,
-		containers:     make(map[string]*Container),
-		sshCancelFuncs: make(map[string]context.CancelFunc),
-		sshTunnels:     make(map[string]*exec.Cmd),
-		allocNetworks:  make(map[string]bool),
+		config:        config,
+		hosts:         config.ContainerdAddresses,
+		containers:    make(map[string]*Container),
+		sshTunnels:    make(map[string]*exec.Cmd),
+		allocNetworks: make(map[string]bool),
 	}
 
 	// Verify Kata runtime is available on all hosts
@@ -477,6 +475,11 @@ func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, 
 
 // CreateContainer creates a new container using nerdctl
 func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error) {
+	// Call progress callback if provided
+	if req.ProgressCallback != nil {
+		req.ProgressCallback(CreateInit, 0)
+	}
+
 	// Generate SSH keys for this container
 	sshKeys, err := GenerateContainerSSHKeys()
 	if err != nil {
@@ -579,16 +582,68 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	// For "auto" with non-exeuntu images, don't add any command - let the image use its default CMD/ENTRYPOINT
 
-	// Pull image first with nydus snapshotter
-	pullArgs := []string{"--snapshotter", "nydus", "pull", image}
-	pullCmd := m.execNerdctl(ctx, host, pullArgs...)
-	if output, err := pullCmd.CombinedOutput(); err != nil {
-		if !strings.Contains(string(output), "already exists") {
-			log.Printf("Warning: Failed to pull image %s: %v: %s", image, err, output)
+	// Check if image exists locally and get its size
+	var imageSize int64
+	var needsPull bool
+
+	// Try to inspect the image to see if it exists locally
+	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "{{.Size}}")
+	if sizeOutput, err := inspectCmd.Output(); err == nil {
+		// Image exists locally - get its size
+		sizeStr := strings.TrimSpace(string(sizeOutput))
+		if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
+			imageSize = size
+		}
+		needsPull = false
+	} else {
+		// Image doesn't exist locally - need to pull
+		needsPull = true
+
+		// Try to get manifest to determine image size before pulling
+		// Use nerdctl image inspect with --mode=remote to get manifest without pulling
+		manifestCmd := m.execNerdctl(ctx, host, "image", "inspect", "--mode=remote", image, "--format", "{{.Size}}")
+		if manifestOutput, err := manifestCmd.Output(); err == nil {
+			sizeStr := strings.TrimSpace(string(manifestOutput))
+			if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
+				imageSize = size
+			}
+		}
+		// If we couldn't get the size from manifest, imageSize remains 0
+	}
+
+	// Only pull if needed
+	if needsPull {
+		// Report that we're about to pull with the size we determined
+		if req.ProgressCallback != nil {
+			req.ProgressCallback(CreatePull, imageSize)
+		}
+
+		// Pull image with nydus snapshotter
+		pullArgs := []string{"--snapshotter", "nydus", "pull", image}
+		pullCmd := m.execNerdctl(ctx, host, pullArgs...)
+		if output, err := pullCmd.CombinedOutput(); err != nil {
+			if !strings.Contains(string(output), "already exists") {
+				log.Printf("Warning: Failed to pull image %s: %v: %s", image, err, output)
+			}
+		}
+
+		// After pull, try to get the actual size if we didn't have it before
+		if imageSize == 0 {
+			inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "{{.Size}}")
+			if sizeOutput, err := inspectCmd.Output(); err == nil {
+				sizeStr := strings.TrimSpace(string(sizeOutput))
+				if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
+					imageSize = size
+				}
+			}
 		}
 	}
 
 	// Create and start container
+	if req.ProgressCallback != nil {
+		req.ProgressCallback(CreateStart, imageSize)
+	}
+
 	createCmd := m.execNerdctl(ctx, host, runArgs...)
 
 	// Log the command for debugging
@@ -770,31 +825,27 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		}
 	}
 
-	// Configure SSH in the container (asynchronously)
-	// After containerd restart, exec should work with kata
+	// Configure SSH in the container (synchronously - block until ready)
+	if req.ProgressCallback != nil {
+		req.ProgressCallback(CreateSSH, imageSize)
+	}
+
+	// Setup SSH with a timeout
 	sshCtx, sshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer sshCancel()
 
-	// Store the cancel func so we can cancel it on container deletion
-	m.mu.Lock()
-	m.sshCancelFuncs[containerID] = sshCancel
-	m.mu.Unlock()
+	if err := m.setupContainerSSH(sshCtx, containerID, host, req.Name, sshKeys); err != nil {
+		// SSH setup failed - this is critical, so return an error
+		// Clean up the container since it's not usable without SSH
+		m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
+		cleanupContainerDir()
+		return nil, fmt.Errorf("failed to setup SSH in container: %w", err)
+	}
 
-	go func() {
-		defer sshCancel()
-		defer func() {
-			// Clean up the cancel func from the map when done
-			m.mu.Lock()
-			delete(m.sshCancelFuncs, containerID)
-			m.mu.Unlock()
-		}()
-
-		if err := m.setupContainerSSH(sshCtx, containerID, host, req.Name, sshKeys); err != nil {
-			// Only log if not cancelled
-			if !errors.Is(err, context.Canceled) {
-				log.Printf("Warning: Failed to setup SSH in container: %v", err)
-			}
-		}
-	}()
+	// Mark creation as done - SSH is now ready
+	if req.ProgressCallback != nil {
+		req.ProgressCallback(CreateDone, imageSize)
+	}
 
 	// Create container record
 	container := &Container{
@@ -1078,13 +1129,8 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 		return err
 	}
 
-	// Cancel any ongoing SSH setup for this container
-	m.mu.Lock()
-	if cancel, exists := m.sshCancelFuncs[container.ID]; exists {
-		cancel()
-		delete(m.sshCancelFuncs, container.ID)
-	}
 	// Kill any SSH tunnel for this container
+	m.mu.Lock()
 	if tunnel, exists := m.sshTunnels[container.ID]; exists {
 		if err := tunnel.Process.Kill(); err != nil {
 			log.Printf("Warning: Failed to kill SSH tunnel for container %s: %v", container.ID, err)
@@ -1305,14 +1351,8 @@ func (m *NerdctlManager) GetContainerDiagnostics(ctx context.Context, allocID, c
 
 // Close cleans up the manager
 func (m *NerdctlManager) Close() error {
-	// Cancel all ongoing SSH setups and kill tunnels
-	m.mu.Lock()
-	for _, cancel := range m.sshCancelFuncs {
-		cancel()
-	}
-	m.sshCancelFuncs = make(map[string]context.CancelFunc)
-
 	// Kill all SSH tunnels
+	m.mu.Lock()
 	for containerID, tunnel := range m.sshTunnels {
 		if err := tunnel.Process.Kill(); err != nil {
 			log.Printf("Warning: Failed to kill SSH tunnel for container %s: %v", containerID, err)

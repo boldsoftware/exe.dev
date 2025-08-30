@@ -132,15 +132,19 @@ func (ss *SSHServer) shouldShowSpinner(s ssh.Session) bool {
 		return true
 	}
 
-	// No PTY, but could still be a human running a direct command
-	// Check if this looks like it's being piped or redirected
-	// If the command was run directly by a human, we should show the spinner
-	// But if it's being run by a script or piped, we shouldn't
+	// No PTY - this could be:
+	// 1. A direct command like `ssh localexe new` (human might be watching)
+	// 2. Output redirection like `ssh localexe new > file` (no human watching)
+	// 3. Piped output like `ssh localexe new | grep something` (no human watching)
 
-	// For SSH exec commands without PTY, we default to showing spinner
-	// unless environment suggests otherwise (NO_COLOR, CI, etc already checked above)
-	// This handles the case: ssh localexe new
-	return true
+	// Since we can't reliably detect client-side redirection over SSH,
+	// the safest default for non-PTY sessions is to NOT show progress updates.
+	// This prevents messy output in files and pipes.
+	//
+	// Users who want to see progress for direct commands have two options:
+	// 1. Force PTY allocation: `ssh -t localexe new`
+	// 2. Run interactively: `ssh localexe` then `new`
+	return false
 }
 
 // authenticatePublicKey handles public key authentication
@@ -874,7 +878,33 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		return
 	}
 
-	// Create container request
+	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
+	showSpinner := ss.shouldShowSpinner(s)
+
+	// Start timing BEFORE creating container
+	startTime := time.Now()
+
+	// Determine output stream for progress messages
+	_, _, isPty := s.Pty()
+	var progressOut io.Writer
+	if isPty {
+		progressOut = s.Stderr()
+	} else {
+		progressOut = s
+	}
+
+	// Create channels for progress updates and completion
+	type progressUpdate struct {
+		progress   container.CreateProgress
+		imageBytes int64
+	}
+	progressChan := make(chan progressUpdate, 10)
+	completionChan := make(chan struct {
+		container *container.Container
+		err       error
+	}, 1)
+
+	// Create container request with progress callback
 	req := &container.CreateContainerRequest{
 		AllocID:         allocID,
 		Name:            machineName,
@@ -887,12 +917,97 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		CommandOverride: command,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
+	// Add progress callback that sends to channel
+	if showSpinner {
+		req.ProgressCallback = func(progress container.CreateProgress, imageBytes int64) {
+			select {
+			case progressChan <- progressUpdate{progress, imageBytes}:
+			default:
+				// Channel full, skip this update
+			}
+		}
+	}
 
-	createdContainer, err := ss.server.containerManager.CreateContainer(ctx, req)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mFailed to create machine: %v\033[0m\r\n", err)
+	// Run CreateContainer in a goroutine
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		createdContainer, err := ss.server.containerManager.CreateContainer(ctx, req)
+		completionChan <- struct {
+			container *container.Container
+			err       error
+		}{createdContainer, err}
+	}()
+
+	// Track current progress state
+	currentStatus := "Initializing"
+	var imageSize int64
+	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	spinnerIndex := 0
+
+	// Main UI update loop
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	var createdContainer *container.Container
+	var createErr error
+
+	for {
+		select {
+		case update := <-progressChan:
+			// Update current status based on progress
+			switch update.progress {
+			case container.CreateInit:
+				currentStatus = "Initializing"
+			case container.CreatePull:
+				imageSize = update.imageBytes
+				if imageSize > 0 {
+					// Convert bytes to human-readable format
+					var sizeStr string
+					if imageSize < 1024*1024 {
+						sizeStr = fmt.Sprintf("%.1f KB", float64(imageSize)/1024)
+					} else if imageSize < 1024*1024*1024 {
+						sizeStr = fmt.Sprintf("%.1f MB", float64(imageSize)/(1024*1024))
+					} else {
+						sizeStr = fmt.Sprintf("%.1f GB", float64(imageSize)/(1024*1024*1024))
+					}
+					currentStatus = fmt.Sprintf("Pulling image (%s)", sizeStr)
+				} else {
+					currentStatus = "Pulling image"
+				}
+			case container.CreateStart:
+				currentStatus = "Starting container"
+			case container.CreateSSH:
+				currentStatus = "Configuring SSH"
+			case container.CreateDone:
+				currentStatus = "Finalizing"
+			}
+
+		case result := <-completionChan:
+			createdContainer = result.container
+			createErr = result.err
+			goto done
+
+		case <-ticker.C:
+			// Update spinner every 100ms
+			if showSpinner {
+				elapsed := time.Since(startTime)
+				spinner := spinners[spinnerIndex%len(spinners)]
+				spinnerIndex++
+				fmt.Fprintf(progressOut, "\r\033[K%s %.1fs %s...", spinner, elapsed.Seconds(), currentStatus)
+			}
+		}
+	}
+
+done:
+	// Clear the progress line
+	if showSpinner {
+		fmt.Fprintf(progressOut, "\r\033[K")
+	}
+
+	if createErr != nil {
+		fmt.Fprintf(s, "\033[1;31mFailed to create machine: %v\033[0m\r\n", createErr)
 		return
 	}
 
@@ -916,100 +1031,19 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 
-	// Determine if we should show fancy output (spinners, colors, etc)
-	showSpinner := ss.shouldShowSpinner(s)
+	// Container is ready with SSH already configured!
+	// CreateContainer now blocks until SSH is verified, so we can proceed immediately
 
-	// For containerd, containers report as running immediately but SSH might not be ready
-	// TODO: Improve this by checking if SSH is actually ready instead of just container status
-
-	maxWaitTime := 3 * time.Minute
-	containerCheckInterval := 2 * time.Second
-	timerUpdateInterval := 100 * time.Millisecond
-	startTime := time.Now()
-	lastContainerCheck := time.Time{}
-
-	// Spinner characters
-	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	spinnerIndex := 0
-
-	// Determine output stream for spinner
-	// For PTY sessions, use stderr to keep stdout clean
-	// For exec commands without PTY, use stdout so user sees it
-	_, _, isPty := s.Pty()
-	var spinnerOut io.Writer
-	if isPty {
-		spinnerOut = s.Stderr()
-	} else {
-		spinnerOut = s
-	}
-
-	// Show initial waiting message only for interactive sessions
+	totalTime := time.Since(startTime)
+	sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
 	if showSpinner {
-		fmt.Fprintf(spinnerOut, "Waiting for startup... ")
-	}
-
-	for time.Since(startTime) < maxWaitTime {
-		// Show spinner and elapsed time only for interactive sessions
-		if showSpinner {
-			elapsed := time.Since(startTime)
-			spinner := spinners[spinnerIndex%len(spinners)]
-			spinnerIndex++
-			fmt.Fprintf(spinnerOut, "\r\033[KWaiting for startup... %s (%.1fs)", spinner, elapsed.Seconds())
-		}
-
-		// Check container status only every 2 seconds
-		if time.Since(lastContainerCheck) >= containerCheckInterval {
-			lastContainerCheck = time.Now()
-
-			containers, err := ss.server.containerManager.ListContainers(context.Background(), allocID)
-			if err != nil {
-				continue
-			}
-
-			var containerFound bool
-			var containerStatus container.ContainerStatus
-			for _, c := range containers {
-				if c.Name == machineName {
-					containerFound = true
-					containerStatus = c.Status
-					break
-				}
-			}
-
-			if containerFound && containerStatus == container.StatusRunning {
-				// For nerdctl/containerd containers, SSH takes a bit longer to be ready
-				// even after the container is running. Wait a bit more to ensure SSH is accessible.
-				// TODO: Properly check SSH availability instead of using a fixed delay
-				if _, isNerdctl := ss.server.containerManager.(*container.NerdctlManager); isNerdctl {
-					// Wait at least 8 seconds total from start to ensure SSH is ready
-					minWaitTime := 8 * time.Second
-					if time.Since(startTime) < minWaitTime {
-						continue
-					}
-				}
-
-				totalTime := time.Since(startTime)
-				sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
-				if showSpinner {
-					// Show formatted completion message
-					fmt.Fprintf(spinnerOut, "\r\033[KReady in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
-						totalTime.Seconds(), sshCommand)
-				} else {
-					// Non-interactive session: output clean SSH command to stdout
-					fmt.Fprintf(s, "%s\r\n", sshCommand)
-				}
-				return
-			}
-		}
-
-		time.Sleep(timerUpdateInterval)
-	}
-
-	// Timed out
-	if showSpinner {
-		fmt.Fprintf(spinnerOut, "\r\033[K\033[1;31mTimeout: Machine failed to start within 3 minutes\033[0m\r\n")
+		// Clear the progress line and show formatted completion message
+		fmt.Fprintf(progressOut, "\r\033[K")
+		fmt.Fprintf(s, "Ready in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
+			totalTime.Seconds(), sshCommand)
 	} else {
-		fmt.Fprintf(s.Stderr(), "Error: Machine failed to start within 3 minutes\r\n")
+		// Non-interactive session: output clean SSH command to stdout
+		fmt.Fprintf(s, "%s\r\n", sshCommand)
 	}
 }
 
