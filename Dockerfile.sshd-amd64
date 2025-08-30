@@ -27,7 +27,8 @@ WORKDIR /src/openssh-${OPENSSH_VERSION}
 
 # Configure with minimal features, no OpenSSL, using built-in crypto
 # Set rpath and interpreter to use our /exe.dev paths with musl
-ENV CFLAGS="-O2 -fno-strict-aliasing"
+# Use -O1 to avoid compiler crashes and disable stack protector
+ENV CFLAGS="-O1 -fno-strict-aliasing -fno-stack-protector"
 ENV LDFLAGS="-Wl,-rpath,/exe.dev/lib -Wl,--dynamic-linker,/exe.dev/lib/ld-musl-x86_64.so.1"
 RUN ./configure \
       --prefix=/exe.dev \
@@ -37,7 +38,7 @@ RUN ./configure \
       --libexecdir=/exe.dev/bin \
       --sysconfdir=/etc/ssh \
       --with-privsep-user=sshd \
-      --with-privsep-path=/var/empty \
+      --with-privsep-path=/exe.dev/var/empty \
       --without-openssl \
       --without-zlib \
       --without-pam \
@@ -63,9 +64,13 @@ RUN \
   fi
 
 
+# Fix setlinebuf conflict with musl libc
+# This is a known issue with OpenSSH 9.9p1 and Alpine's musl
+RUN sed -i '/#define setlinebuf/d' openbsd-compat/bsd-misc.h
+
 # Build all necessary binaries
-# Use -j2 for faster builds on larger machines
-RUN make -j2
+# Retry on failure to work around intermittent compiler crashes
+RUN make || make || make
 RUN strip --strip-all --remove-section=.comment --remove-section=.note \
       sshd ssh-keygen sshd-session sftp-server
 
@@ -89,8 +94,9 @@ Port 22
 Protocol 2
 
 # Only use Ed25519 host keys (built-in crypto)
-HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /exe.dev/etc/ssh/ssh_host_ed25519_key
 HostKeyAlgorithms ssh-ed25519
+AuthorizedKeysFile /exe.dev/root/.ssh/authorized_keys
 
 # Key exchange using built-in Curve25519
 KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
