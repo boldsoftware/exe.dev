@@ -39,7 +39,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	// Test 1: First key registration creates new user
 	t.Run("FirstKeyRegistration", func(t *testing.T) {
 		// Create user with first key
-		err := server.createUser(context.Background(), string(ssh.MarshalAuthorizedKey(pubKey1)), testEmail)
+		err := server.createUser(t.Context(), string(ssh.MarshalAuthorizedKey(pubKey1)), testEmail)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -51,7 +51,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		}
 
 		// First key should be verified
-		email, verified, err := server.GetEmailBySSHKey(context.Background(), string(ssh.MarshalAuthorizedKey(pubKey1)))
+		email, verified, err := server.GetEmailBySSHKey(t.Context(), string(ssh.MarshalAuthorizedKey(pubKey1)))
 		if err != nil {
 			t.Fatalf("Failed to get email by SSH key: %v", err)
 		}
@@ -144,8 +144,8 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 			tx.Exec("INSERT OR IGNORE INTO teams (team_name) VALUES ('test-team')")
 			tx.Exec(`INSERT OR IGNORE INTO users (user_id, email) VALUES (?, ?)`, userID1, "test1@example.com")
-			tx.Exec(`INSERT OR IGNORE INTO team_members 
-				(user_id, team_name, is_admin) 
+			tx.Exec(`INSERT OR IGNORE INTO team_members
+				(user_id, team_name, is_admin)
 				VALUES (?, 'test-team', 1)`, userID1)
 			return nil
 		})
@@ -216,7 +216,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	testPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC..."
 
 	// Test non-existent key
-	email, verified, err := server.GetEmailBySSHKey(context.Background(), "non-existent")
+	email, verified, err := server.GetEmailBySSHKey(t.Context(), "non-existent")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	}
 
 	// Test existing verified key
-	email, verified, err = server.GetEmailBySSHKey(context.Background(), testPublicKey)
+	email, verified, err = server.GetEmailBySSHKey(t.Context(), testPublicKey)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	}
 
 	// Test unverified key
-	email, verified, err = server.GetEmailBySSHKey(context.Background(), unverifiedPublicKey)
+	email, verified, err = server.GetEmailBySSHKey(t.Context(), unverifiedPublicKey)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

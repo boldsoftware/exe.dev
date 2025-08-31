@@ -42,7 +42,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 	defer manager.Close()
 
 	// Create a test container
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
 	req := &CreateContainerRequest{
@@ -57,7 +57,7 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 	}
 	defer func() {
 		// Clean up: delete the container
-		deleteCtx, deleteCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		deleteCtx, deleteCancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer deleteCancel()
 		if err := manager.DeleteContainer(deleteCtx, req.AllocID, container.ID); err != nil {
 			t.Logf("Warning: Failed to delete test container: %v", err)
@@ -187,7 +187,7 @@ func TestSSHTunnelCleanup(t *testing.T) {
 	}
 
 	// Create and delete multiple containers to test cleanup
-	ctx := context.Background()
+	ctx := t.Context()
 
 	for i := 0; i < 3; i++ {
 		req := &CreateContainerRequest{

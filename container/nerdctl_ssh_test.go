@@ -31,7 +31,7 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 	}
 	t.Log("Nerdctl manager created successfully")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 
 	// Create a test container
@@ -54,7 +54,7 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 	t.Logf("Container created successfully: ID=%s, SSHPort=%d", container.ID, container.SSHPort)
 	defer func() {
 		// Clean up container
-		deleteCtx, deleteCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		deleteCtx, deleteCancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer deleteCancel()
 		if err := manager.DeleteContainer(deleteCtx, req.AllocID, container.ID); err != nil {
 			t.Logf("warning: failed to delete container: %v", err)

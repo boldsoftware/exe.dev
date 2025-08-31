@@ -45,7 +45,7 @@ func TestPublicKeyAuthentication(t *testing.T) {
 
 	// Register the user with alloc in the database
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-	if err := server.createUserWithAlloc(context.Background(), publicKeyStr, "test@example.com"); err != nil {
+	if err := server.createUserWithAlloc(t.Context(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 

@@ -1,7 +1,6 @@
 package container
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -45,7 +44,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 		Ephemeral:     false, // Keep it around long enough to check
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 	container, err := manager.CreateContainer(ctx, req)
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)

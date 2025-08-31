@@ -46,7 +46,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	}
 
 	// Create machine
-	err = server.createMachine(context.Background(), userID, allocID, machineName, containerID, "ubuntu:22.04")
+	err = server.createMachine(t.Context(), userID, allocID, machineName, containerID, "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	w2 := httptest.NewRecorder()
 
 	// First create an auth cookie for the user (simulate successful login)
-	authCookieValue, err := server.createAuthCookie(context.Background(), userID, "localhost")
+	authCookieValue, err := server.createAuthCookie(t.Context(), userID, "localhost")
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 	}
 
 	// Create machine in user2's alloc
-	err = server.createMachine(context.Background(), userID2, allocID2, machineName, containerID, "ubuntu:22.04")
+	err = server.createMachine(t.Context(), userID2, allocID2, machineName, containerID, "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 	mockManager.AddContainer(containerID, machineName, allocID2)
 
 	// Create proxy auth cookie for user1 (who shouldn't have access to user2's machine)
-	proxyCookieValue, err := server.createAuthCookie(context.Background(), userID1, "testmachine.localhost")
+	proxyCookieValue, err := server.createAuthCookie(t.Context(), userID1, "testmachine.localhost")
 	if err != nil {
 		t.Fatalf("Failed to create proxy auth cookie: %v", err)
 	}

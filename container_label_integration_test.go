@@ -1,7 +1,6 @@
 package exe
 
 import (
-	"context"
 	"testing"
 
 	"exe.dev/container"
@@ -38,7 +37,7 @@ func TestLabelLengthFix(t *testing.T) {
 		mockManager := NewMockContainerManager()
 
 		// Test that we can create containers with long IDs using the mock
-		ctx := context.Background()
+		ctx := t.Context()
 		req := &container.CreateContainerRequest{
 			AllocID: "test-alloc",
 			Name:    "david",

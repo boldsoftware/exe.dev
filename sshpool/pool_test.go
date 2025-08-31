@@ -1,7 +1,6 @@
 package sshpool
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -21,7 +20,7 @@ func TestPool(t *testing.T) {
 	pool := New()
 	defer pool.Close()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Test 1: Execute a simple command
 	t.Run("SimpleCommand", func(t *testing.T) {

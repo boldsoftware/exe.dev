@@ -2,7 +2,6 @@ package container
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -18,7 +17,7 @@ func TestBackendIntegration(t *testing.T) {
 	manager := CreateTestManager(t, backend)
 	defer manager.Close()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	allocID := "test-alloc"
 
 	t.Run("CreateAndDeleteContainer", func(t *testing.T) {
@@ -236,7 +235,7 @@ func TestRemoteContainerdSSH(t *testing.T) {
 	manager := CreateTestManager(t, backend)
 	defer manager.Close()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a container on the remote host
 	req := &CreateContainerRequest{

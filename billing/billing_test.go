@@ -27,7 +27,7 @@ func TestWithStripeMock(t *testing.T) {
 	allocID := "test-alloc-" + time.Now().Format("20060102150405")
 
 	// Create user using sqlite.DB transaction
-	err := db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+	err := db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`,
 			userID, "test@example.com")
 		return err
@@ -37,7 +37,7 @@ func TestWithStripeMock(t *testing.T) {
 	}
 
 	// Create allocation using sqlite.DB transaction
-	err = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+	err = db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at)
 				VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'))`,
 			allocID, userID)
@@ -135,7 +135,7 @@ func TestEnvironmentBasedMocking(t *testing.T) {
 	allocID := "test-alloc-env-" + time.Now().Format("20060102150405")
 
 	// Create user using sqlite.DB transaction
-	err := db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+	err := db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`,
 			userID, "test@example.com")
 		return err
@@ -145,7 +145,7 @@ func TestEnvironmentBasedMocking(t *testing.T) {
 	}
 
 	// Create allocation using sqlite.DB transaction
-	err = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+	err = db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at)
 				VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'))`,
 			allocID, userID)

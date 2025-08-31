@@ -42,7 +42,7 @@ func TestContainerdIntegration(t *testing.T) {
 		t.Skip("CTR_HOST not set, skipping e2e container test")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
 	cfg := &Config{

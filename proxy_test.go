@@ -16,7 +16,7 @@ func TestProxyRequestRouting(t *testing.T) {
 
 	// Create test user
 	userID := "usr1234567890123" // test user ID
-	err := server.createUser(context.Background(), userID, "test@example.com")
+	err := server.createUser(t.Context(), userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	}
 
 	// Create a test machine with default routes
-	err = server.createMachine(context.Background(), userID, allocID, "myapp", "container123", "nginx")
+	err = server.createMachine(t.Context(), userID, allocID, "myapp", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestMagicAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	err = server.createUser(context.Background(), userID, "test@example.com")
+	err = server.createUser(t.Context(), userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 1: Request to private route without auth should redirect to auth
 	t.Run("unauthenticated_request_redirects_to_auth", func(t *testing.T) {
 		// First verify the machine exists
-		machine, err := server.getMachineByName(context.Background(), "testmachine")
+		machine, err := server.getMachineByName(t.Context(), "testmachine")
 		if err != nil {
 			t.Fatalf("Test machine not found: %v", err)
 		}
@@ -339,7 +339,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	err = server.createUser(context.Background(), userID, "test-logout@example.com")
+	err = server.createUser(t.Context(), userID, "test-logout@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}

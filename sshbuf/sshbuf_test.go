@@ -132,7 +132,7 @@ func TestReadCtxCancellation(t *testing.T) {
 	}
 	bc := New(mock)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -154,7 +154,7 @@ func TestReadCtxImmediate(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	buf := make([]byte, 128)
 	n, err := bc.ReadCtx(ctx, buf)
 	if err != nil {
@@ -177,7 +177,7 @@ func TestReadCtxTimeout(t *testing.T) {
 	}
 	bc := New(mock)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()
 
 	buf := make([]byte, 128)

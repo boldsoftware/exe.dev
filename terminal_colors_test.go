@@ -303,7 +303,7 @@ func TestClearOSCResponse(t *testing.T) {
 	server.clearOSCResponse(channel)
 
 	// Try to read - should get remaining data after terminator
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 
 	buf := make([]byte, 100)

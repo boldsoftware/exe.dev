@@ -35,7 +35,7 @@ func TestNerdctlRovolFS(t *testing.T) {
 		t.Logf("RovolFS prepared at: %s", manager.rovolMountPath)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
 
 	// Create a test container
@@ -51,7 +51,7 @@ func TestNerdctlRovolFS(t *testing.T) {
 		t.Fatalf("failed to create container: %v", err)
 	}
 	defer func() {
-		deleteCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		deleteCtx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer cancel()
 		if err := manager.DeleteContainer(deleteCtx, req.AllocID, container.ID); err != nil {
 			t.Errorf("failed to delete container: %v", err)
@@ -169,7 +169,7 @@ func TestNerdctlRovolFSCleanup(t *testing.T) {
 	}
 
 	// Both paths should exist on the host
-	ctx := context.Background()
+	ctx := t.Context()
 	host := config.ContainerdAddresses[0]
 
 	for _, path := range []string{rovolPath1, rovolPath2} {

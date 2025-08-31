@@ -20,7 +20,7 @@ func TestGetMachineByName(t *testing.T) {
 	allocID := "test-alloc-id"
 	machineName := "testmachine"
 
-	if err := server.createUser(context.Background(), userID, email); err != nil {
+	if err := server.createUser(t.Context(), userID, email); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
@@ -35,13 +35,13 @@ func TestGetMachineByName(t *testing.T) {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	err = server.createMachine(context.Background(), userID, allocID, machineName, "container-123", "ubuntu:22.04")
+	err = server.createMachine(t.Context(), userID, allocID, machineName, "container-123", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Test getting machine by name (globally unique now)
-	machine, err := server.getMachineByName(context.Background(), machineName)
+	machine, err := server.getMachineByName(t.Context(), machineName)
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestGetMachineByName(t *testing.T) {
 	}
 
 	// Test getting non-existent machine
-	_, err = server.getMachineByName(context.Background(), "nonexistent")
+	_, err = server.getMachineByName(t.Context(), "nonexistent")
 	if err == nil {
 		t.Error("Expected error when getting non-existent machine")
 	}
@@ -60,7 +60,7 @@ func TestGetMachineByName(t *testing.T) {
 	}
 
 	// Test getting machine with empty name
-	_, err = server.getMachineByName(context.Background(), "")
+	_, err = server.getMachineByName(t.Context(), "")
 	if err == nil {
 		t.Error("Expected error when getting machine with empty name")
 	}
@@ -77,10 +77,10 @@ func TestMachineUniqueConstraint(t *testing.T) {
 	allocID2 := "test-alloc-2"
 	machineName := "testmachine"
 
-	if err := server.createUser(context.Background(), userID1, "user1@example.com"); err != nil {
+	if err := server.createUser(t.Context(), userID1, "user1@example.com"); err != nil {
 		t.Fatalf("Failed to create user1: %v", err)
 	}
-	if err := server.createUser(context.Background(), userID2, "user2@example.com"); err != nil {
+	if err := server.createUser(t.Context(), userID2, "user2@example.com"); err != nil {
 		t.Fatalf("Failed to create user2: %v", err)
 	}
 
@@ -106,19 +106,19 @@ func TestMachineUniqueConstraint(t *testing.T) {
 	}
 
 	// Create machine in first alloc
-	err = server.createMachine(context.Background(), userID1, allocID1, machineName, "container-1", "ubuntu:22.04")
+	err = server.createMachine(t.Context(), userID1, allocID1, machineName, "container-1", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create first machine: %v", err)
 	}
 
 	// Try to create machine with same name in different alloc - should fail now (globally unique)
-	err = server.createMachine(context.Background(), userID2, allocID2, machineName, "container-2", "ubuntu:22.04")
+	err = server.createMachine(t.Context(), userID2, allocID2, machineName, "container-2", "ubuntu:22.04")
 	if err == nil {
 		t.Error("Expected error when creating machine with duplicate name (globally unique)")
 	}
 
 	// Create machine with different name should work
-	err = server.createMachine(context.Background(), userID2, allocID2, "differentmachine", "container-3", "ubuntu:22.04")
+	err = server.createMachine(t.Context(), userID2, allocID2, "differentmachine", "container-3", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine with different name: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 	userID := "test-user-id"
 	allocID := "test-alloc-id"
 
-	if err := server.createUser(context.Background(), userID, "test@example.com"); err != nil {
+	if err := server.createUser(t.Context(), userID, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
@@ -169,7 +169,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			containerID := fmt.Sprintf("container-%s", tt.machineName)
-			err := server.createMachine(context.Background(), userID, allocID, tt.machineName, containerID, "ubuntu:22.04")
+			err := server.createMachine(t.Context(), userID, allocID, tt.machineName, containerID, "ubuntu:22.04")
 
 			if tt.shouldFail {
 				if err == nil {

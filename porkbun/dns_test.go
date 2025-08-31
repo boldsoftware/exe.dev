@@ -1,7 +1,6 @@
 package porkbun
 
 import (
-	"context"
 	"os"
 	"testing"
 	"time"
@@ -26,7 +25,7 @@ func TestDNSProviderIntegration(t *testing.T) {
 	t.Log("Running integration test with real Porkbun API...")
 
 	provider := NewDNSProvider(apiKey, secretAPIKey)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Test creating a TXT record
 	recordName := "_acme-challenge-test"
@@ -81,7 +80,7 @@ func TestDNSProviderCreation(t *testing.T) {
 func TestCreateACMEChallengeLogic(t *testing.T) {
 	// Test the challenge creation logic without making actual API calls
 	provider := NewDNSProvider("test-key", "test-secret")
-	ctx := context.Background()
+	ctx := t.Context()
 
 	tests := []struct {
 		domain         string

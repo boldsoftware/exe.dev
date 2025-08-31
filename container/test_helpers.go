@@ -102,7 +102,7 @@ func SkipIfShort(t *testing.T) {
 
 // CleanupContainer ensures a container is deleted after a test
 func CleanupContainer(t *testing.T, manager Manager, allocID, containerID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	if err := manager.DeleteContainer(ctx, allocID, containerID); err != nil {
@@ -112,7 +112,7 @@ func CleanupContainer(t *testing.T, manager Manager, allocID, containerID string
 
 // WaitForContainerReady waits for a container to be in running state
 func WaitForContainerReady(t *testing.T, manager Manager, allocID, containerID string, timeout time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 
 	start := time.Now()

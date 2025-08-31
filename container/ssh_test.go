@@ -110,7 +110,7 @@ func TestContainerWithSSH(t *testing.T) {
 	}
 	defer manager.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 
 	// Create container request
@@ -127,7 +127,7 @@ func TestContainerWithSSH(t *testing.T) {
 	}
 	defer func() {
 		// Cleanup
-		manager.DeleteContainer(context.Background(), req.AllocID, container.ID)
+		manager.DeleteContainer(t.Context(), req.AllocID, container.ID)
 	}()
 
 	// Verify SSH keys were generated

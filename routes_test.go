@@ -213,7 +213,7 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 	allocID := "alloc-test-123"
 
 	// Create user with alloc
-	err := server.createUserWithAlloc(context.Background(), publicKey, email)
+	err := server.createUserWithAlloc(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
@@ -236,13 +236,13 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 		t.Fatalf("Failed to get alloc ID: %v", err)
 	}
 
-	err = server.createMachine(context.Background(), userID, allocID, "test-machine", "container123", "ubuntu")
+	err = server.createMachine(t.Context(), userID, allocID, "test-machine", "container123", "ubuntu")
 	if err != nil {
 		t.Errorf("Failed to create machine: %v", err)
 	}
 
 	// Retrieve the machine and check its routes
-	machine, err := server.getMachineByName(context.Background(), "test-machine")
+	machine, err := server.getMachineByName(t.Context(), "test-machine")
 	if err != nil {
 		t.Errorf("Failed to get machine: %v", err)
 	}
@@ -278,14 +278,14 @@ func TestHandleProxyRequest(t *testing.T) {
 	email := "test@example.com"
 
 	// Create user with alloc
-	err := server.createUserWithAlloc(context.Background(), publicKey, email)
+	err := server.createUserWithAlloc(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
 	// Get userID and allocID for machine creation
 	var userID, allocID string
-	err = server.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		if err := rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID); err != nil {
 			return err
 		}
@@ -296,13 +296,13 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	// Create a test machine with custom routes
-	err = server.createMachine(context.Background(), userID, allocID, "web-server", "container123", "nginx")
+	err = server.createMachine(t.Context(), userID, allocID, "web-server", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Get the machine and add a public API route
-	machine, err := server.getMachineByName(context.Background(), "web-server")
+	machine, err := server.getMachineByName(t.Context(), "web-server")
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	// Update the machine in the database
-	err = server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`UPDATE machines SET routes = ? WHERE name = ? AND alloc_id = ?`,
 			*machine.Routes, "web-server", allocID)
 		return err
@@ -453,14 +453,14 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	machineName := "web-server"
 
 	// Create user with alloc
-	err := server.createUserWithAlloc(context.Background(), publicKey, email)
+	err := server.createUserWithAlloc(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
 	// Get userID and allocID for machine creation
 	var userID, allocID string
-	err = server.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		if err := rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID); err != nil {
 			return err
 		}
@@ -471,7 +471,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	}
 
 	// Create a test machine
-	err = server.createMachine(context.Background(), userID, allocID, machineName, "container123", "nginx")
+	err = server.createMachine(t.Context(), userID, allocID, machineName, "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			sess := &mockSession{}
-			server.handleRouteCommand(context.Background(), sess, publicKey, allocID, test.args)
+			server.handleRouteCommand(t.Context(), sess, publicKey, allocID, test.args)
 			output := sess.output.String()
 
 			// Check expected strings
