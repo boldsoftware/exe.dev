@@ -441,6 +441,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	sshPort := 10000 + (hash % 10000)
 
+	// Determine if this image can auto-start SSH (avoiding the setupContainerSSH step)
+	isExeuntu := image == "ghcr.io/boldsoftware/exeuntu:latest" || strings.HasSuffix(image, "/exeuntu:latest")
+	autoStartSSH := isExeuntu && m.rovolMountPath != ""
+
 	// Build run command with nydus snapshotter
 	runArgs := []string{
 		"--snapshotter", "nydus",
@@ -451,6 +455,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Add remaining args
+	if autoStartSSH {
+		// Run as root so sshd can read its host key when auto-starting
+		runArgs = append(runArgs, "--user", "root")
+	}
 	runArgs = append(runArgs,
 		"--publish", fmt.Sprintf("%d:22", sshPort), // Publish SSH port
 		"--hostname", req.Name, // Set hostname to match the container name
@@ -501,11 +509,16 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		// Parse custom command override
 		cmdParts := strings.Fields(req.CommandOverride)
 		runArgs = append(runArgs, cmdParts...)
-	} else if req.CommandOverride == "none" || image == "ghcr.io/boldsoftware/exeuntu:latest" || strings.HasSuffix(image, "/exeuntu:latest") {
-		// Use a simple sleep command for images that need it (like exeuntu with tini)
-		// This keeps the container running until SSH is set up
-		// Use sleep infinity which is more portable and doesn't require argument quoting
-		runArgs = append(runArgs, "sleep", "infinity")
+	} else if req.CommandOverride == "none" || isExeuntu {
+		if autoStartSSH {
+			// For exeuntu with rovol mount, start sshd in background and keep container running
+			// This way we can debug even if sshd fails
+			debugCmd := fmt.Sprintf("{ %s; } > /tmp/sshd-startup.log 2>&1 & sleep infinity", sshdCmd)
+			runArgs = append(runArgs, "/usr/bin/sh", "-c", debugCmd)
+		} else {
+			// Fall back to sleep infinity for containers without rovol or non-exeuntu
+			runArgs = append(runArgs, "sleep", "infinity")
+		}
 	}
 	// For "auto" with non-exeuntu images, don't add any command - let the image use its default CMD/ENTRYPOINT
 
@@ -621,16 +634,18 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		req.ProgressCallback(CreateSSH, imageSize)
 	}
 
-	// Setup SSH with a timeout
-	sshCtx, sshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer sshCancel()
+	if !autoStartSSH {
+		// Only setup SSH if not auto-started by the container
+		sshCtx, sshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer sshCancel()
 
-	if err := m.setupContainerSSH(sshCtx, containerID, host, req.Name, sshKeys); err != nil {
-		// SSH setup failed - this is critical, so return an error
-		// Clean up the container since it's not usable without SSH
-		m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
-		cleanupContainerDir()
-		return nil, fmt.Errorf("failed to setup SSH in container: %w", err)
+		if err := m.setupContainerSSH(sshCtx, containerID, host, req.Name, sshKeys); err != nil {
+			// SSH setup failed - this is critical, so return an error
+			// Clean up the container since it's not usable without SSH
+			m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
+			cleanupContainerDir()
+			return nil, fmt.Errorf("failed to setup SSH in container: %w", err)
+		}
 	}
 
 	// Mark creation as done - SSH is now ready
@@ -828,23 +843,16 @@ func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) e
 	return nil
 }
 
+// sshdCmd creates the sshd user (for privsev) if necessary then starts sshd.
+const sshdCmd = "id sshd >/dev/null 2>&1" +
+	"|| (groupadd -g 65534 nogroup 2>/dev/null || true; useradd -u 105 -g 65534 -c 'sshd privsep' -d /exe.dev/var/empty -s /usr/sbin/nologin sshd) 2>/dev/null" +
+	"; exec /exe.dev/bin/sshd -f /exe.dev/etc/ssh/sshd_config"
+
 // setupContainerSSH configures SSH inside the container
-// - SSH keys are at /exe.dev/etc/ssh/ and /exe.dev/root/.ssh/
-// - sshd_config is at /exe.dev/etc/ssh/sshd_config
-// - /var/empty is at /exe.dev/var/empty for privilege separation
-// We just need to start sshd (and create the sshd user on some containers).
+// This is used for containers that have an entrypoint already.
 func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, host, containerName string, sshKeys *ContainerSSHKeys) error {
 	log.Printf("[SSH-SETUP] Starting SSH setup for container %s (name: %s)", containerID, containerName)
-	const sshdPath = "/exe.dev/bin/sshd"
-
-	// sshd user creation and SSH daemon start
-	log.Printf("[SSH-SETUP] Creating sshd user and starting SSH daemon")
-	combinedCmd := fmt.Sprintf(
-		"id sshd >/dev/null 2>&1 || (groupadd -g 65534 nogroup 2>/dev/null || true; useradd -u 105 -g 65534 -c 'sshd privsep' -d /exe.dev/var/empty -s /usr/sbin/nologin sshd) 2>/dev/null; exec %s -f /exe.dev/etc/ssh/sshd_config",
-		sshdPath)
-	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", combinedCmd)
-
-	// Run the command - it will return quickly since sshd daemonizes
+	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", sshdCmd)
 	if output, err := startCmd.CombinedOutput(); err != nil {
 		log.Printf("[SSH-SETUP] SSH daemon start failed: %v, output: %s", err, output)
 		// Don't return error - sshd might still be running
