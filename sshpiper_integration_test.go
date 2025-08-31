@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"exe.dev/container"
+	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -74,7 +75,7 @@ func TestMachineAccessImplementation(t *testing.T) {
 	machine.ContainerID = &[]string{"test-container"}[0]
 
 	// This will fail because there's no machine in the database, but it tests the SSH details logic
-	_, err = server.GetMachineSSHDetails(999)
+	_, err = server.GetMachineSSHDetails(t.Context(), 999)
 	if err == nil {
 		t.Error("Expected error for non-existent machine SSH details")
 	} else {
@@ -97,24 +98,16 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	email := "test-e2e@example.com"
 	// teamName no longer used - machines are globally unique
 
-	userID, err := server.createTestUser(email)
-	if err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
+	userID := server.createTestUser(t, email)
 
 	allocID := "test-alloc-" + userID[:8]
-	if err := server.createTestAlloc(allocID, userID); err != nil {
-		t.Fatalf("Failed to create test alloc: %v", err)
-	}
-
-	t.Log("✅ Test user and team created")
+	server.createTestAlloc(t, allocID, userID)
 
 	// Create a real container with SSH
 	if server.containerManager == nil {
 		t.Skip("Container manager not available, skipping real container test")
 	}
 
-	ctx := context.Background()
 	req := &container.CreateContainerRequest{
 		AllocID: allocID,
 		Name:    "test-machine",
@@ -122,13 +115,13 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	}
 
 	t.Log("Creating container with SSH...")
-	createdContainer, err := server.containerManager.CreateContainer(ctx, req)
+	createdContainer, err := server.containerManager.CreateContainer(t.Context(), req)
 	if err != nil {
 		t.Skipf("Failed to create container (Docker not available?): %v", err)
 	}
 	defer func() {
 		// Cleanup
-		server.containerManager.DeleteContainer(context.Background(), allocID, createdContainer.ID)
+		server.containerManager.DeleteContainer(t.Context(), allocID, createdContainer.ID)
 	}()
 
 	t.Logf("✅ Container created with ID: %s", createdContainer.ID)
@@ -145,14 +138,14 @@ func TestRealMachineAccessE2E(t *testing.T) {
 		SSHPort:           createdContainer.SSHPort,
 	}
 
-	if err := server.createMachineWithSSH(userID, allocID, "test-machine", createdContainer.ID, "ubuntu:22.04", sshKeys, createdContainer.SSHPort); err != nil {
+	if err := server.createMachineWithSSH(t.Context(), userID, allocID, "test-machine", createdContainer.ID, "ubuntu:22.04", sshKeys, createdContainer.SSHPort); err != nil {
 		t.Fatalf("Failed to store machine with SSH keys: %v", err)
 	}
 
 	t.Log("✅ Machine stored in database with SSH keys")
 
 	// Test finding the machine
-	machine := server.FindMachineByNameForUser(userID, "test-machine")
+	machine := server.FindMachineByNameForUser(t.Context(), userID, "test-machine")
 	if machine == nil {
 		t.Fatal("Expected to find test machine")
 	}
@@ -160,7 +153,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	t.Logf("✅ Machine found in database (ID: %d)", machine.ID)
 
 	// Test getting SSH details from database
-	sshDetails, err := server.GetMachineSSHDetails(machine.ID)
+	sshDetails, err := server.GetMachineSSHDetails(t.Context(), machine.ID)
 	if err != nil {
 		t.Fatalf("Failed to get SSH details: %v", err)
 	}
@@ -212,23 +205,21 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 	email := "legacy-test@example.com"
 	// teamName no longer used - machines are globally unique
 
-	userID, err := server.createTestUser(email)
-	if err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
-	}
+	userID := server.createTestUser(t, email)
 
 	allocID := "test-alloc-" + userID[:8]
-	if err := server.createTestAlloc(allocID, userID); err != nil {
-		t.Fatalf("Failed to create test alloc: %v", err)
-	}
+	server.createTestAlloc(t, allocID, userID)
 
 	// Create a legacy machine WITHOUT SSH details (simulating old containers)
 	containerID := "legacy-container-123"
-	_, err = server.db.Exec(`
-		INSERT INTO machines (
-			alloc_id, name, status, image, container_id, created_by_user_id
-		) VALUES (?, ?, ?, ?, ?, ?)
-	`, allocID, "legacy-machine", "running", "ubuntu:22.04", containerID, userID)
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (
+				alloc_id, name, status, image, container_id, created_by_user_id
+			) VALUES (?, ?, ?, ?, ?, ?)
+		`, allocID, "legacy-machine", "running", "ubuntu:22.04", containerID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create legacy machine: %v", err)
 	}
@@ -236,13 +227,13 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 	t.Log("✅ Legacy machine created (no SSH data)")
 
 	// Find the machine
-	machine := server.FindMachineByNameForUser(userID, "legacy-machine")
+	machine := server.FindMachineByNameForUser(t.Context(), userID, "legacy-machine")
 	if machine == nil {
 		t.Fatal("Expected to find legacy machine")
 	}
 
 	// Try to get SSH details - this should trigger SSH setup
-	sshDetails, err := server.GetMachineSSHDetails(machine.ID)
+	sshDetails, err := server.GetMachineSSHDetails(t.Context(), machine.ID)
 	if err != nil {
 		// This is expected to fail since we can't actually set up SSH without a real container
 		// But we can verify the error handling
@@ -522,38 +513,47 @@ func TestSSHPiperRealKeyIntegration(t *testing.T) {
 }
 
 // Helper functions for test setup
-func (s *Server) createTestUser(email string) (string, error) {
+func (s *Server) createTestUser(t *testing.T, email string) string {
 	userID, err := generateUserID()
 	if err != nil {
-		return "", err
+		t.Fatal(err)
 	}
 
-	// Create user
-	_, err = s.db.Exec(`
-		INSERT OR REPLACE INTO users (user_id, email)
-		VALUES (?, ?)
-	`, userID, email)
+	// Create user and SSH key
+	err = s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`
+			INSERT OR REPLACE INTO users (user_id, email)
+			VALUES (?, ?)
+		`, userID, email); err != nil {
+			return err
+		}
+		// Add SSH key
+		if _, err := tx.Exec(`
+			INSERT OR REPLACE INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)
+		`, userID, "ssh-rsa dummy-test-key test@example.com"); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		return "", err
+		t.Fatal(err)
 	}
 
-	// Add SSH key
-	_, err = s.db.Exec(`
-		INSERT OR REPLACE INTO ssh_keys (user_id, public_key)
-		VALUES (?, ?)
-	`, userID, "ssh-rsa dummy-test-key test@example.com")
-	if err != nil {
-		return "", err
-	}
-
-	return userID, nil
+	return userID
 }
 
-func (s *Server) createTestAlloc(allocID, ownerUserID string) error {
+func (s *Server) createTestAlloc(t *testing.T, allocID, ownerUserID string) {
+	t.Helper()
 	// Create alloc for user
-	_, err := s.db.Exec(`
-		INSERT OR REPLACE INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')
-	`, allocID, ownerUserID)
-	return err
+	err := s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT OR REPLACE INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')
+		`, allocID, ownerUserID)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }

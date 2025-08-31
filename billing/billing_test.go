@@ -1,12 +1,14 @@
 package billing
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"testing"
 	"time"
 
 	"exe.dev/exedb"
+	"exe.dev/sqlite"
 	"exe.dev/vouch"
 	"github.com/stripe/stripe-go/v76"
 	_ "modernc.org/sqlite"
@@ -25,15 +27,23 @@ func TestWithStripeMock(t *testing.T) {
 	defer os.Remove(tmpDBFile.Name())
 	tmpDBFile.Close()
 
-	db, err := sql.Open("sqlite", tmpDBFile.Name())
+	// First open with sql.DB for migrations
+	sqlDB, err := sql.Open("sqlite", tmpDBFile.Name())
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer sqlDB.Close()
 
-	if err := exedb.RunMigrations(db); err != nil {
+	if err := exedb.RunMigrations(sqlDB); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
+
+	// Now open with sqlite.DB for the billing service
+	db, err := sqlite.New(tmpDBFile.Name(), 5)
+	if err != nil {
+		t.Fatalf("failed to create sqlite.DB: %v", err)
+	}
+	defer db.Close()
 
 	billing, cleanup := NewWithMockStripe(t, db)
 	defer cleanup()
@@ -42,17 +52,23 @@ func TestWithStripeMock(t *testing.T) {
 	userID := "test-user-" + time.Now().Format("20060102150405")
 	allocID := "test-alloc-" + time.Now().Format("20060102150405")
 
-	// Create user
-	_, err = db.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`,
-		userID, "test@example.com")
+	// Create user using sqlite.DB transaction
+	err = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err = tx.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`,
+			userID, "test@example.com")
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	// Create allocation
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at) 
+	// Create allocation using sqlite.DB transaction
+	err = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at) 
 				VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'))`,
-		allocID, userID)
+			allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create test alloc: %v", err)
 	}
@@ -143,15 +159,23 @@ func TestEnvironmentBasedMocking(t *testing.T) {
 	defer os.Remove(tmpDBFile.Name())
 	tmpDBFile.Close()
 
-	db, err := sql.Open("sqlite", tmpDBFile.Name())
+	// First open with sql.DB for migrations
+	sqlDB, err := sql.Open("sqlite", tmpDBFile.Name())
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
-	defer db.Close()
+	defer sqlDB.Close()
 
-	if err := exedb.RunMigrations(db); err != nil {
+	if err := exedb.RunMigrations(sqlDB); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
+
+	// Now open with sqlite.DB for the billing service
+	db, err := sqlite.New(tmpDBFile.Name(), 5)
+	if err != nil {
+		t.Fatalf("failed to create sqlite.DB: %v", err)
+	}
+	defer db.Close()
 
 	// Use standard constructor - should pick up environment variables
 	billing := New(db)
@@ -160,17 +184,23 @@ func TestEnvironmentBasedMocking(t *testing.T) {
 	userID := "test-user-env-" + time.Now().Format("20060102150405")
 	allocID := "test-alloc-env-" + time.Now().Format("20060102150405")
 
-	// Create user
-	_, err = db.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`,
-		userID, "test@example.com")
+	// Create user using sqlite.DB transaction
+	err = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err = tx.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`,
+			userID, "test@example.com")
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	// Create allocation
-	_, err = db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at) 
+	// Create allocation using sqlite.DB transaction
+	err = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at) 
 				VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'))`,
-		allocID, userID)
+			allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create test alloc: %v", err)
 	}

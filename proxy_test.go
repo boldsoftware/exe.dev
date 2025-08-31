@@ -1,10 +1,13 @@
 package exe
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"exe.dev/sqlite"
 )
 
 func TestProxyRequestRouting(t *testing.T) {
@@ -13,26 +16,32 @@ func TestProxyRequestRouting(t *testing.T) {
 
 	// Create test user
 	userID := "usr1234567890123" // test user ID
-	err := server.createUser(userID, "test@example.com")
+	err := server.createUser(context.Background(), userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create alloc for test user
 	allocID := "alloc_" + userID
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key for test user
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
 	// Create a test machine with default routes
-	err = server.createMachine(userID, allocID, "myapp", "container123", "nginx")
+	err = server.createMachine(context.Background(), userID, allocID, "myapp", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
 	}
@@ -128,41 +137,50 @@ func TestMagicAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	err = server.createUser(userID, "test@example.com")
+	err = server.createUser(context.Background(), userID, "test@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create SSH key for the test user
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+			userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
 	// Create alloc for test user
 	allocID := "test-alloc-" + userID
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine with a private route
-	_, err = server.db.Exec(`
-		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
-		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
-		{
-			"name": "default",
-			"policy": "private",
-			"methods": ["*"],
-			"paths": {"prefix": "/"},
-			"priority": 1,
-			"ports": [80]
-		}
-	]`, "test-identity-key", "test-authorized-keys", "test-ca-key", "test-host-cert", "test-client-key", 2222)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
+			                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+			                     ssh_host_certificate, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
+			{
+				"name": "default",
+				"policy": "private",
+				"methods": ["*"],
+				"paths": {"prefix": "/"},
+				"priority": 1,
+				"ports": [80]
+			}
+		]`, "test-identity-key", "test-authorized-keys", "test-ca-key", "test-host-cert", "test-client-key", 2222)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to insert test machine: %v", err)
 	}
@@ -170,7 +188,7 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 1: Request to private route without auth should redirect to auth
 	t.Run("unauthenticated_request_redirects_to_auth", func(t *testing.T) {
 		// First verify the machine exists
-		machine, err := server.getMachineByName("testmachine")
+		machine, err := server.getMachineByName(context.Background(), "testmachine")
 		if err != nil {
 			t.Fatalf("Test machine not found: %v", err)
 		}
@@ -321,41 +339,50 @@ func TestProxyLogoutFlow(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	err = server.createUser(userID, "test-logout@example.com")
+	err = server.createUser(context.Background(), userID, "test-logout@example.com")
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
 	// Create SSH key for the test user
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+			userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
 	// Create alloc for test user
 	allocID := "test-alloc-" + userID
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine with a private route
-	_, err = server.db.Exec(`
-		INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
-						 ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-						 ssh_host_certificate, ssh_client_private_key, ssh_port)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
-		{
-			"name": "default",
-			"port": 80,
-			"methods": "*",
-			"prefix": "/",
-			"policy": "private",
-			"priority": 100
-		}
-	]`, "test-key", "test-keys", "test-ca", "test-cert", "test-client-key", 2222)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
+							 ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+							 ssh_host_certificate, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
+			{
+				"name": "default",
+				"port": 80,
+				"methods": "*",
+				"prefix": "/",
+				"policy": "private",
+				"priority": 100
+			}
+		]`, "test-key", "test-keys", "test-ca", "test-cert", "test-client-key", 2222)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create test machine: %v", err)
 	}
@@ -424,7 +451,9 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 		// Verify the cookie is valid by checking database
 		var count int
-		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		})
 		if err != nil || count != 1 {
 			t.Fatal("Auth cookie should exist in database")
 		}
@@ -460,7 +489,9 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Verify the auth cookie was deleted from database
-		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+		})
 		if err != nil || count != 0 {
 			t.Error("Auth cookie should have been deleted from database")
 		}
@@ -516,7 +547,9 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 		// Verify we have 2 auth cookies in database for this user
 		var count int
-		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		})
 		if err != nil || count != 2 {
 			t.Fatalf("Should have 2 auth cookies for user, got %d", count)
 		}
@@ -533,14 +566,18 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Verify only the first cookie was deleted, second one remains
-		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+		})
 		if err != nil || count != 1 {
 			t.Errorf("Should have 1 auth cookie remaining for user, got %d", count)
 		}
 
 		// Verify the remaining cookie is the second one
 		var remainingCookie string
-		err = server.db.QueryRow("SELECT cookie_value FROM auth_cookies WHERE user_id = ?", userID).Scan(&remainingCookie)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT cookie_value FROM auth_cookies WHERE user_id = ?", userID).Scan(&remainingCookie)
+		})
 		if err != nil {
 			t.Fatal("Failed to get remaining cookie")
 		}
@@ -549,7 +586,9 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Verify the first cookie was deleted
-		err = server.db.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ?", cookie1.Value).Scan(&count)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ?", cookie1.Value).Scan(&count)
+		})
 		if err != nil || count != 0 {
 			t.Error("First cookie should have been deleted from database")
 		}

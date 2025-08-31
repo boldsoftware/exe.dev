@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -50,38 +51,50 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	_, err = server.db.Exec(`
-		INSERT INTO users (user_id, email)
-		VALUES (?, ?)`,
-		userID, email)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO users (user_id, email)
+			VALUES (?, ?)`,
+			userID, email)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Create alloc for user
 	allocID := "test-alloc-" + userID[:8]
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
-		allocID, userID, email)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+			allocID, userID, email)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Add SSH key
-	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key)
-		VALUES (?, ?)`,
-		userID, string(ssh.MarshalAuthorizedKey(publicKey)))
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)`,
+			userID, string(ssh.MarshalAuthorizedKey(publicKey)))
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to add SSH key: %v", err)
 	}
 
 	// Create a machine in the database
-	_, err = server.db.Exec(`
-		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		allocID, machineName, "running", "ubuntu", containerID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID, machineName, "running", "ubuntu", containerID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}

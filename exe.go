@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -34,17 +35,6 @@ import (
 
 	mathrand "math/rand"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/keighl/postmark"
-	"github.com/lmittmann/tint"
-
-	"github.com/stripe/stripe-go/v76"
-	"golang.org/x/crypto/acme/autocert"
-	"golang.org/x/crypto/ssh"
-	_ "modernc.org/sqlite"
-
 	"exe.dev/billing"
 	"exe.dev/container"
 	"exe.dev/exedb"
@@ -52,6 +42,14 @@ import (
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
+	"github.com/keighl/postmark"
+	"github.com/lmittmann/tint"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/stripe/stripe-go/v76"
+	"golang.org/x/crypto/acme/autocert"
+	"golang.org/x/crypto/ssh"
+	_ "modernc.org/sqlite"
 )
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
@@ -348,7 +346,7 @@ type Server struct {
 	piperPlugin *PiperPlugin
 
 	// Database
-	db     *sql.DB
+	db     *sqlite.DB
 	dbPath string
 
 	// Container management
@@ -424,21 +422,34 @@ var setStripeKey = sync.OnceFunc(func() {
 	stripe.Key = stripeKey
 })
 
+func runMigrations(dbPath string) error {
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open database for migrations: %w", err)
+	}
+	defer rawDB.Close()
+	if err := exedb.RunMigrations(rawDB); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	slog.Debug("database migrations complete")
+	return nil
+}
+
 // NewServer creates a new Server instance with database and container management
 func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, containerdAddresses []string) (*Server, error) {
-	// Initialize database
-	db, err := sql.Open("sqlite", dbPath)
+	// Run db migrations with a raw connection (not a pool).
+	err := runMigrations(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
-	slog.Debug("Opened database", "dbPath", dbPath)
-
-	// Run database migrations
-	if err := exedb.RunMigrations(db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	const nReaders = 16
+	db, err := sqlite.New(dbPath, nReaders)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sqlite connection pool: %w", err)
 	}
+
+	slog.Debug("opened database connection pool", "dbPath", dbPath, "nReaders", nReaders)
 
 	// Detect if we're running in test mode
 	quietMode := !testing.Testing()
@@ -657,11 +668,13 @@ func (s *Server) setupSSHServer() {
 
 // generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
 func (s *Server) generateHostKey() error {
-	// Try to load existing host key from database
+	// Try to load existing host key from database - use context.Background() since server startup must complete
 	var privateKeyPEM, publicKeyPEM string
-	err := s.db.QueryRow(`SELECT private_key, public_key FROM ssh_host_key WHERE id = 1`).Scan(&privateKeyPEM, &publicKeyPEM)
+	err := s.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT private_key, public_key FROM ssh_host_key WHERE id = 1`).Scan(&privateKeyPEM, &publicKeyPEM)
+	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		// No existing key, generate a new one
 		privateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
 		if err != nil {
@@ -688,11 +701,14 @@ func (s *Server) generateHostKey() error {
 		// Calculate fingerprint
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
 
-		// Store in database
-		_, err = s.db.Exec(`
-			INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint, created_at, updated_at)
-			VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-			privateKeyPEM, publicKeyPEM, fingerprint)
+		// Store in database - use context.Background() since server startup must complete
+		err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint, created_at, updated_at)
+				VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+				privateKeyPEM, publicKeyPEM, fingerprint)
+			return err
+		})
 		if err != nil {
 			return fmt.Errorf("failed to store host key: %w", err)
 		}
@@ -865,6 +881,10 @@ func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error)
 
 // authenticatePublicKey handles SSH public key authentication
 func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	// Create a 3-second timeout context for authentication operations
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(key))
 
 	var user, remoteAddr string
@@ -881,7 +901,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	slog.Debug("Checking if key is a proxy key")
 	if originalUserKey, localAddress := s.lookupEphemeralProxyKey(key); originalUserKey != nil {
 		slog.Debug("Ephemeral proxy authentication detected", "user", user, "local_address", localAddress)
-		return s.authenticateProxyUserWithLocalAddress(user, originalUserKey, localAddress)
+		return s.authenticateProxyUserWithLocalAddress(ctx, user, originalUserKey, localAddress)
 	} else {
 		slog.Debug("Not a proxy key, treating as direct user connection")
 	}
@@ -889,7 +909,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	slog.Warn("Direct connection to exed - should come via proxy", "remote_addr", remoteAddr)
 
 	// First check if this key is already registered in ssh_keys table
-	email, verified, err := s.GetEmailBySSHKey(publicKeyStr)
+	email, verified, err := s.GetEmailBySSHKey(ctx, publicKeyStr)
 	if err != nil {
 		slog.Error("Database error checking SSH key", "error", err)
 	}
@@ -897,11 +917,15 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	if email != "" && verified {
 		// This is a verified key, check if user has an alloc
 		var userID string
-		err = s.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
+		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
+		})
 		if err == nil {
 			// Check if user has an alloc
 			var allocExists bool
-			err = s.db.QueryRow("SELECT EXISTS(SELECT 1 FROM allocs WHERE user_id = ?)", userID).Scan(&allocExists)
+			err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+				return rx.QueryRow("SELECT EXISTS(SELECT 1 FROM allocs WHERE user_id = ?)", userID).Scan(&allocExists)
+			})
 			if err == nil && allocExists {
 				// User is fully registered with an allocation
 				return &ssh.Permissions{
@@ -985,7 +1009,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Check if user is authenticated
 		if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
-			if userID, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
+			if userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
 				// User is authenticated, redirect to user dashboard
 				s.handleUserDashboard(w, r, userID)
 				return
@@ -1003,7 +1027,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 			return
 		}
-		userID, err := s.validateAuthCookie(cookie.Value, r.Host)
+		userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
 		if err != nil {
 			// Invalid cookie, redirect to auth
 			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
@@ -1095,13 +1119,15 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 	// Look up the pending SSH key to validate token and get info
 	var publicKey, email string
 	var expires time.Time
-	err := s.db.QueryRow(`
+	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT public_key, user_email, expires_at
 		FROM pending_ssh_keys
 		WHERE token = ?`,
-		token).Scan(&publicKey, &email, &expires)
+			token).Scan(&publicKey, &email, &expires)
+	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 		return
 	}
@@ -1113,8 +1139,11 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 
 	// Check if token has expired
 	if time.Now().After(expires) {
-		// Clean up expired token
-		s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+		// Clean up expired token - use context.Background() to ensure cleanup completes even if client disconnects
+		s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+			return err
+		})
 		http.Error(w, "Verification token has expired", http.StatusBadRequest)
 		return
 	}
@@ -1172,13 +1201,15 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	// Look up the pending SSH key
 	var publicKey, email string
 	var expires time.Time
-	err := s.db.QueryRow(`
+	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT public_key, user_email, expires_at
 		FROM pending_ssh_keys
 		WHERE token = ?`,
-		token).Scan(&publicKey, &email, &expires)
+			token).Scan(&publicKey, &email, &expires)
+	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
 		return
 	}
@@ -1191,25 +1222,35 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	// Check if token has expired
 	if time.Now().After(expires) {
 		// Clean up expired token
-		s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+		s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+			return err
+		})
 		http.Error(w, "Verification token has expired", http.StatusBadRequest)
 		return
 	}
 
-	// Add the SSH key to the verified keys
-	_, err = s.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key)
-		VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
-		ON CONFLICT(public_key) DO NOTHING`,
-		email, publicKey)
+	// Add the SSH key to the verified keys and clean up pending key
+	err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		// Add SSH key
+		_, err := tx.Exec(`
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
+			ON CONFLICT(public_key) DO NOTHING`,
+			email, publicKey)
+		if err != nil {
+			return err
+		}
+
+		// Clean up the pending key
+		_, err = tx.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
+		return err
+	})
 	if err != nil {
 		slog.Error("Failed to add SSH key", "error", err)
 		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
 		return
 	}
-
-	// Clean up the pending key
-	s.db.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
 
 	// Signal completion to waiting SSH session
 	s.emailVerificationsMu.Lock()
@@ -1250,7 +1291,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 		isValid = true
 	} else {
 		// Check database for HTTP auth token (without consuming it)
-		_, err := s.checkEmailVerificationToken(token)
+		_, err := s.checkEmailVerificationToken(r.Context(), token)
 		if err == nil {
 			isValid = true
 		}
@@ -1314,15 +1355,18 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		email := verification.Email
 
 		// Create the user if they don't exist
-		user, err := s.getUserByPublicKey(verification.PublicKey)
+		user, err := s.getUserByPublicKey(r.Context(), verification.PublicKey)
 		if err != nil || user == nil {
 			slog.Info("User doesn't exist, creating", "email", email)
 			// User doesn't exist - create them with their alloc
-			if err := s.createUserWithAlloc(verification.PublicKey, email); err != nil {
+			if err := s.createUserWithAlloc(context.Background(), verification.PublicKey, email); err != nil {
 				slog.Error("failed to create user with alloc during email verification", "error", err)
 				s.emailVerificationsMu.Unlock()
 				// Clean up pending registration on failure
-				_, err := s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+				err := s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+					_, err := tx.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+					return err
+				})
 				if err != nil {
 					slog.Error("failed to clean up pending registration", "error", err)
 				}
@@ -1330,7 +1374,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 				return
 			}
 			// Clean up pending registration on success
-			s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+			s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+				_, err := tx.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+				return err
+			})
 			slog.Info("Created new user", "email", email)
 		} else {
 			slog.Debug("User already exists", "email", email)
@@ -1339,11 +1386,14 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Store the SSH key as verified
 		publicKey := verification.PublicKey
 		if publicKey != "" {
-			_, err = s.db.Exec(`
-				INSERT INTO ssh_keys (user_id, public_key)
-				VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
-				ON CONFLICT(public_key) DO UPDATE SET user_id = (SELECT user_id FROM users WHERE email = ?)`,
-				email, publicKey, email)
+			err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+				_, err := tx.Exec(`
+					INSERT INTO ssh_keys (user_id, public_key)
+					VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
+					ON CONFLICT(public_key) DO UPDATE SET user_id = (SELECT user_id FROM users WHERE email = ?)`,
+					email, publicKey, email)
+				return err
+			})
 			if err != nil {
 				slog.Error("Error storing SSH key during verification", "error", err)
 			}
@@ -1351,11 +1401,13 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 		// Create HTTP auth cookie for this user
 		var userID string
-		err = s.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+		err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+		})
 		if err != nil {
 			slog.Error("Failed to get user ID by email during SSH email verification", "error", err)
 		} else {
-			cookieValue, err := s.createAuthCookie(userID, r.Host)
+			cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
 			if err != nil {
 				slog.Error("Failed to create auth cookie during SSH email verification", "error", err)
 				// Continue anyway - SSH auth will still work
@@ -1384,7 +1436,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		s.emailVerificationsMu.Unlock()
 
 		// Try to validate as database token
-		userID, err := s.validateEmailVerificationToken(token)
+		userID, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			slog.Error("Invalid email verification token", "error", err)
 			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
@@ -1392,7 +1444,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Create HTTP auth cookie for this user
-		cookieValue, err := s.createAuthCookie(userID, r.Host)
+		cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
 		if err != nil {
 			slog.Error("Failed to create auth cookie during HTTP email verification", "error", err)
 			http.Error(w, "Failed to create authentication session", http.StatusInternalServerError)
@@ -1411,7 +1463,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		http.SetCookie(w, cookie)
 
 		// Clean up the database token (single use)
-		_, err = s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
+		err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec("DELETE FROM email_verifications WHERE token = ?", token)
+			return err
+		})
 		if err != nil {
 			slog.Error("Failed to cleanup email verification token", "error", err)
 			// Continue anyway
@@ -1439,7 +1494,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	// Check if user already has a valid exe.dev auth cookie
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
-		userID, err := s.validateAuthCookie(cookie.Value, r.Host)
+		userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
 		if err == nil {
 			// User is already authenticated, handle redirect
 			s.redirectAfterAuth(w, r, userID)
@@ -1477,9 +1532,11 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	// Check if user exists
 	var userID string
-	err := s.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
+	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			s.showAuthError(w, r, "No account found with this email address. Please sign up first using SSH: ssh exe.dev")
 			return
 		}
@@ -1492,10 +1549,13 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	token := s.generateRegistrationToken()
 
 	// Store verification in database (reuse existing email_verifications table)
-	_, err = s.db.Exec(`
-		INSERT INTO email_verifications (token, email, user_id, expires_at)
-		VALUES (?, ?, ?, ?)
-	`, token, email, userID, time.Now().Add(24*time.Hour).Format(time.RFC3339))
+	err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO email_verifications (token, email, user_id, expires_at)
+			VALUES (?, ?, ?, ?)
+		`, token, email, userID, time.Now().Add(24*time.Hour).Format(time.RFC3339))
+		return err
+	})
 	if err != nil {
 		slog.Error("Failed to store email verification", "error", err)
 		s.showAuthError(w, r, "Failed to create verification. Please try again.")
@@ -1605,7 +1665,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Validate email verification token
-		userID, err = s.validateEmailVerificationToken(token)
+		userID, err = s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
 			slog.Error("Invalid email verification token", "error", err)
 			http.Error(w, "Invalid or expired verification token", http.StatusUnauthorized)
@@ -1620,7 +1680,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Validate the auth token
-		userID, err = s.validateAuthToken(token, "")
+		userID, err = s.validateAuthToken(r.Context(), token, "")
 		if err != nil {
 			slog.Error("Invalid auth token in callback", "error", err)
 			http.Error(w, "Invalid or expired authentication token", http.StatusUnauthorized)
@@ -1629,7 +1689,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create main domain auth cookie
-	cookieValue, err := s.createAuthCookie(userID, r.Host)
+	cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
 	if err != nil {
 		slog.Error("Failed to create main auth cookie", "error", err)
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
@@ -1755,19 +1815,21 @@ func getDomain(host string) string {
 }
 
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
-func (s *Server) checkEmailVerificationToken(token string) (string, error) {
+func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (string, error) {
 	var userID string
 	var email string
 	var expiresAt string
 
 	// Get verification info and return user_id directly
-	err := s.db.QueryRow(`
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT e.user_id, e.email, e.expires_at
 		FROM email_verifications e
 		WHERE e.token = ?
 	`, token).Scan(&userID, &email, &expiresAt)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("invalid verification token")
 		}
 		return "", fmt.Errorf("database error: %w", err)
@@ -1781,7 +1843,10 @@ func (s *Server) checkEmailVerificationToken(token string) (string, error) {
 
 	if time.Now().After(expTime) {
 		// Clean up expired token
-		s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
+		s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec("DELETE FROM email_verifications WHERE token = ?", token)
+			return err
+		})
 		return "", fmt.Errorf("verification token expired")
 	}
 
@@ -1789,14 +1854,17 @@ func (s *Server) checkEmailVerificationToken(token string) (string, error) {
 }
 
 // validateEmailVerificationToken validates an email verification token, consumes it, and returns the user ID
-func (s *Server) validateEmailVerificationToken(token string) (string, error) {
-	userID, err := s.checkEmailVerificationToken(token)
+func (s *Server) validateEmailVerificationToken(ctx context.Context, token string) (string, error) {
+	userID, err := s.checkEmailVerificationToken(ctx, token)
 	if err != nil {
 		return "", err
 	}
 
-	// Clean up used token
-	s.db.Exec("DELETE FROM email_verifications WHERE token = ?", token)
+	// Clean up used token - use context.Background() to ensure cleanup completes even if client disconnects
+	s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec("DELETE FROM email_verifications WHERE token = ?", token)
+		return err
+	})
 
 	return userID, nil
 }
@@ -1804,7 +1872,7 @@ func (s *Server) validateEmailVerificationToken(token string) (string, error) {
 // Helper functions for authentication and reverse proxy
 
 // createAuthCookie creates a new authentication cookie for the user
-func (s *Server) createAuthCookie(userID, domain string) (string, error) {
+func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (string, error) {
 	// Generate a random cookie value
 	cookieBytes := make([]byte, 32)
 	if _, err := cryptorand.Read(cookieBytes); err != nil {
@@ -1816,10 +1884,13 @@ func (s *Server) createAuthCookie(userID, domain string) (string, error) {
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
 	// Store in database
-	_, err := s.db.Exec(`
-		INSERT INTO auth_cookies (cookie_value, user_id, domain, expires_at)
-		VALUES (?, ?, ?, ?)
-	`, cookieValue, userID, getDomain(domain), expiresAt.Format(time.RFC3339))
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO auth_cookies (cookie_value, user_id, domain, expires_at)
+			VALUES (?, ?, ?, ?)
+		`, cookieValue, userID, getDomain(domain), expiresAt.Format(time.RFC3339))
+		return err
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth cookie: %w", err)
 	}
@@ -1828,18 +1899,20 @@ func (s *Server) createAuthCookie(userID, domain string) (string, error) {
 }
 
 // validateAuthCookie validates an authentication cookie and returns the user_id
-func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) {
+func (s *Server) validateAuthCookie(ctx context.Context, cookieValue, domain string) (string, error) {
 	var userID string
 	var expiresAt string
 
 	// Get auth cookie info
-	err := s.db.QueryRow(`
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT ac.user_id, ac.expires_at
 		FROM auth_cookies ac
 		WHERE ac.cookie_value = ? AND ac.domain = ?
 	`, cookieValue, getDomain(domain)).Scan(&userID, &expiresAt)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("invalid cookie")
 		}
 		return "", fmt.Errorf("database error: %w", err)
@@ -1852,13 +1925,19 @@ func (s *Server) validateAuthCookie(cookieValue, domain string) (string, error) 
 	}
 
 	if time.Now().After(expTime) {
-		// Clean up expired cookie
-		s.db.Exec("DELETE FROM auth_cookies WHERE cookie_value = ?", cookieValue)
+		// Clean up expired cookie - use context.Background() to ensure cleanup completes even if client disconnects
+		s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec("DELETE FROM auth_cookies WHERE cookie_value = ?", cookieValue)
+			return err
+		})
 		return "", fmt.Errorf("cookie expired")
 	}
 
 	// Update last used time
-	s.db.Exec("UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?", cookieValue)
+	s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec("UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?", cookieValue)
+		return err
+	})
 
 	return userID, nil
 }
@@ -1924,20 +2003,22 @@ func (s *Server) cleanupExpiredMagicSecrets() {
 }
 
 // validateAuthToken validates an authentication token and returns the user ID
-func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, error) {
+func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain string) (string, error) {
 	var userID string
 	var subdomain sql.NullString
 	var expiresAt string
 	var usedAt sql.NullString
 
 	// Get auth token info and return user_id directly
-	err := s.db.QueryRow(`
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT at.user_id, at.subdomain, at.expires_at, at.used_at
 		FROM auth_tokens at
 		WHERE at.token = ?
 	`, token).Scan(&userID, &subdomain, &expiresAt, &usedAt)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("invalid token")
 		}
 		return "", fmt.Errorf("database error: %w", err)
@@ -1964,7 +2045,10 @@ func (s *Server) validateAuthToken(token, expectedSubdomain string) (string, err
 	}
 
 	// Mark token as used
-	_, err = s.db.Exec("UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE token = ?", token)
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec("UPDATE auth_tokens SET used_at = CURRENT_TIMESTAMP WHERE token = ?", token)
+		return err
+	})
 	if err != nil {
 		slog.Error("Failed to mark token as used", "error", err)
 	}
@@ -2066,13 +2150,15 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
 	var user User
-	err := s.db.QueryRow(`
+	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT user_id, email, created_at
 		FROM users
 		WHERE user_id = ?
 	`, userID).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "User not found", http.StatusNotFound)
 		} else {
 			slog.Error("Failed to get user info for dashboard", "error", err, "user_id", userID)
@@ -2083,15 +2169,16 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 
 	// Get user's SSH keys
 	sshKeys := []SSHKey{}
-	rows, err := s.db.Query(`
-		SELECT public_key, verified
-		FROM ssh_keys
-		WHERE user_id = ?
-		ORDER BY added_at DESC
-	`, user.UserID)
-	if err != nil {
-		slog.Error("Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
-	} else {
+	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		rows, err := rx.Query(`
+			SELECT public_key, verified
+			FROM ssh_keys
+			WHERE user_id = ?
+			ORDER BY added_at DESC
+		`, user.UserID)
+		if err != nil {
+			return err
+		}
 		defer rows.Close()
 		for rows.Next() {
 			var key SSHKey
@@ -2102,22 +2189,27 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			}
 			sshKeys = append(sshKeys, key)
 		}
+		return nil
+	})
+	if err != nil {
+		slog.Error("Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
 	}
 
 	// Get user's machines from all teams they belong to
 	machines := []Machine{}
-	machineRows, err := s.db.Query(`
-		SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''),
-		       COALESCE(m.container_id, ''), m.created_by_user_id,
-		       m.created_at, m.updated_at, m.last_started_at, m.docker_host
-		FROM machines m
-		JOIN allocs a ON m.alloc_id = a.alloc_id
-		WHERE a.user_id = ?
-		ORDER BY m.updated_at DESC
-	`, user.UserID)
-	if err != nil {
-		slog.Error("Failed to get machines for dashboard", "error", err, "user_id", userID)
-	} else {
+	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		machineRows, err := rx.Query(`
+			SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''),
+			       COALESCE(m.container_id, ''), m.created_by_user_id,
+			       m.created_at, m.updated_at, m.last_started_at, m.docker_host
+			FROM machines m
+			JOIN allocs a ON m.alloc_id = a.alloc_id
+			WHERE a.user_id = ?
+			ORDER BY m.updated_at DESC
+		`, user.UserID)
+		if err != nil {
+			return err
+		}
 		defer machineRows.Close()
 		for machineRows.Next() {
 			var machine Machine
@@ -2144,6 +2236,10 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			}
 			machines = append(machines, machine)
 		}
+		return nil
+	})
+	if err != nil {
+		slog.Error("Failed to get machines for dashboard", "error", err, "user_id", userID)
 	}
 
 	// Prepare template data
@@ -2164,15 +2260,18 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
 		// Get the user ID before deleting
-		userID, _ = s.validateAuthCookie(cookie.Value, r.Host)
+		userID, _ = s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
 	}
 
 	// Clear ALL auth cookies for this user across all domains
 	if userID != "" {
-		_, err := s.db.Exec(`
-			DELETE FROM auth_cookies
-			WHERE user_id = ?
-		`, userID)
+		err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				DELETE FROM auth_cookies
+				WHERE user_id = ?
+			`, userID)
+			return err
+		})
 		if err != nil {
 			slog.Error("Failed to delete user's auth cookies from database", "error", err)
 		}
@@ -2219,11 +2318,11 @@ type SSHClient interface {
 // index with the supplied ip address.
 // See https://docs.google.com/document/d/1WF_Z4F4_viN5Abhxhus6IwOC33yClt7BViA3kNA4GPE/edit?tab=t.0
 // for an more detailed explanation of why this is the case.
-func (s *Server) FindMachineByNameForUserAndIP(userID, ip string) *Machine {
+func (s *Server) FindMachineByNameForUserAndIP(ctx context.Context, userID, ip string) *Machine {
 	slog.Debug("FindMachineByNameForUserAndIP", "user_id", userID, "ip", ip)
 
 	// Get user's alloc
-	alloc, err := s.getUserAlloc(userID)
+	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
 		slog.Debug("FindMachineByNameForUserAndIP no alloc found", "user_id", userID)
 		return nil
@@ -2240,7 +2339,7 @@ func (s *Server) FindMachineByNameForUserAndIP(userID, ip string) *Machine {
 	}
 
 	slog.Debug("FindMachineByNameForUserAndIP found machine", "machine", machineName)
-	machine, err := s.getMachineByName(machineName)
+	machine, err := s.getMachineByName(ctx, machineName)
 	if err == nil {
 		return machine
 	}
@@ -2249,7 +2348,7 @@ func (s *Server) FindMachineByNameForUserAndIP(userID, ip string) *Machine {
 }
 
 // findMachineByNameForUser finds a machine by name that the user has access to
-func (s *Server) FindMachineByNameForUser(userID, machineName string) *Machine {
+func (s *Server) FindMachineByNameForUser(ctx context.Context, userID, machineName string) *Machine {
 	slog.Debug("FindMachineByNameForUser", "user_id", userID, "machine_name", machineName)
 
 	// Machine names are now globally unique, no team prefix
@@ -2259,14 +2358,14 @@ func (s *Server) FindMachineByNameForUser(userID, machineName string) *Machine {
 	}
 
 	// Get user's alloc to verify access
-	alloc, err := s.getUserAlloc(userID)
+	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
 		slog.Debug("FindMachineByNameForUser no alloc found", "user_id", userID)
 		return nil
 	}
 
 	// Check if machine exists and belongs to user's alloc
-	machine, err := s.getMachineByName(machineName)
+	machine, err := s.getMachineByName(ctx, machineName)
 	if err != nil {
 		slog.Debug("Machine not found", "machine", machineName, "error", err)
 		return nil
@@ -2509,61 +2608,70 @@ func getDefaultRoutesJSON() string {
 }
 
 // createMachine stores machine info in database
-func (s *Server) createMachine(userID, allocID, name, containerID, image string) error {
+func (s *Server) createMachine(ctx context.Context, userID, allocID, name, containerID, image string) error {
 	// Validate machine name
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
 	}
 
 	routes := getDefaultRoutesJSON()
-	_, err := s.db.Exec(`
-		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, routes,
-		                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-		                     ssh_host_certificate, ssh_client_private_key, ssh_port)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, allocID, name, "pending", image, containerID, userID, routes,
-		"test-identity-key", "test-authorized-keys", "test-ca-key",
-		"test-host-cert", "test-client-key", s.piperdPort)
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+			                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+			                     ssh_host_certificate, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, name, "pending", image, containerID, userID, routes,
+			"test-identity-key", "test-authorized-keys", "test-ca-key",
+			"test-host-cert", "test-client-key", s.piperdPort)
+		return err
+	})
 	return err
 }
 
 // createMachineWithSSH stores machine info including SSH keys in database
-func (s *Server) createMachineWithSSH(userID, allocID, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+func (s *Server) createMachineWithSSH(ctx context.Context, userID, allocID, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	// Validate machine name
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
 	}
 
 	routes := getDefaultRoutesJSON()
-	_, err := s.db.Exec(`
-		INSERT INTO machines (
-			alloc_id, name, status, image, container_id, created_by_user_id,
-			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			ssh_host_certificate, ssh_client_private_key, ssh_port, routes
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, allocID, name, "running", image, containerID, userID,
-		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, routes)
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (
+				alloc_id, name, status, image, container_id, created_by_user_id,
+				ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+				ssh_host_certificate, ssh_client_private_key, ssh_port, routes
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, name, "running", image, containerID, userID,
+			sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
+			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, routes)
+		return err
+	})
 	return err
 }
 
 // createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
-func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, containerID, image, dockerHost, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+func (s *Server) createMachineWithSSHAndDockerHost(ctx context.Context, userID, allocID, name, containerID, image, dockerHost, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	// Validate machine name
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
 	}
 
 	routes := getDefaultRoutesJSON()
-	_, err := s.db.Exec(`
-		INSERT INTO machines (
-			alloc_id, name, status, image, container_id, created_by_user_id,
-			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, ssh_user, routes
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, allocID, name, "running", image, containerID, userID,
-		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, sshUser, routes)
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (
+				alloc_id, name, status, image, container_id, created_by_user_id,
+				ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+				ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, ssh_user, routes
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, name, "running", image, containerID, userID,
+			sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
+			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, sshUser, routes)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -2580,19 +2688,21 @@ func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, contai
 }
 
 // getMachineByName retrieves a machine by name and team
-func (s *Server) getMachineByName(name string) (*Machine, error) {
+func (s *Server) getMachineByName(ctx context.Context, name string) (*Machine, error) {
 	var machine Machine
-	err := s.db.QueryRow(`
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
 		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
 		FROM machines
 		WHERE name = ?
 	`, name).Scan(
-		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
-		&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort, &machine.SSHUser,
-	)
+			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
+			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
+			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
+			&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort, &machine.SSHUser,
+		)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -2600,31 +2710,37 @@ func (s *Server) getMachineByName(name string) (*Machine, error) {
 }
 
 // getMachinesForAlloc gets all machines for an allocation
-func (s *Server) getMachinesForAlloc(allocID string) ([]*Machine, error) {
-	rows, err := s.db.Query(`
-		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
-		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
-		FROM machines
-		WHERE alloc_id = ?
-		ORDER BY name
-	`, allocID)
+func (s *Server) getMachinesForAlloc(ctx context.Context, allocID string) ([]*Machine, error) {
+	var machines []*Machine
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		rows, err := rx.Query(`
+			SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
+			       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
+			FROM machines
+			WHERE alloc_id = ?
+			ORDER BY name
+		`, allocID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var m Machine
+			err := rows.Scan(
+				&m.ID, &m.AllocID, &m.Name, &m.Status, &m.Image, &m.ContainerID, &m.CreatedByUserID,
+				&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.DockerHost, &m.Routes,
+				&m.SSHServerIdentityKey, &m.SSHAuthorizedKeys, &m.SSHCAPublicKey, &m.SSHHostCertificate, &m.SSHClientPrivateKey, &m.SSHPort,
+			)
+			if err != nil {
+				return err
+			}
+			machines = append(machines, &m)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	defer rows.Close()
-
-	var machines []*Machine
-	for rows.Next() {
-		var m Machine
-		err := rows.Scan(
-			&m.ID, &m.AllocID, &m.Name, &m.Status, &m.Image, &m.ContainerID, &m.CreatedByUserID,
-			&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.DockerHost, &m.Routes,
-			&m.SSHServerIdentityKey, &m.SSHAuthorizedKeys, &m.SSHCAPublicKey, &m.SSHHostCertificate, &m.SSHClientPrivateKey, &m.SSHPort,
-		)
-		if err != nil {
-			return nil, err
-		}
-		machines = append(machines, &m)
 	}
 	return machines, nil
 }
@@ -2732,7 +2848,7 @@ func (s *Server) Start() error {
 		if err := s.ipAllocator.Start(); err != nil {
 			return fmt.Errorf("failed to start IP allocator: %v", err)
 		}
-		if err := s.allocateIPsForExistingMachines(); err != nil {
+		if err := s.allocateIPsForExistingMachines(ctx); err != nil {
 			slog.Warn("Failed to register existing machines with ipAllocator", "error", err)
 		}
 	}
@@ -2831,23 +2947,27 @@ func (s *Server) isPortListening(address string) bool {
 // Database helper methods
 
 // getEmailBySSHKey checks if an SSH key is registered and returns the associated email
-func (s *Server) GetEmailBySSHKey(publicKeyStr string) (email string, verified bool, err error) {
+func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (email string, verified bool, err error) {
 	// Check if key exists in ssh_keys (all keys there are verified)
-	err = s.db.QueryRow(`
+	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT u.email
 		FROM ssh_keys s
 		JOIN users u ON s.user_id = u.user_id
 		WHERE s.public_key = ?`,
-		publicKeyStr).Scan(&email)
+			publicKeyStr).Scan(&email)
+	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		// Check if key exists in pending_ssh_keys (unverified)
-		err = s.db.QueryRow(`
+		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow(`
 			SELECT user_email
 			FROM pending_ssh_keys
 			WHERE public_key = ?`,
-			publicKeyStr).Scan(&email)
-		if err == sql.ErrNoRows {
+				publicKeyStr).Scan(&email)
+		})
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
 		}
 		return email, false, err // Key exists in pending_ssh_keys, so not verified
@@ -2856,92 +2976,84 @@ func (s *Server) GetEmailBySSHKey(publicKeyStr string) (email string, verified b
 }
 
 // getUserByPublicKey retrieves a user by their SSH public key
-func (s *Server) getUserByPublicKey(publicKeyStr string) (*User, error) {
+func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*User, error) {
 	var user User
 
 	// Find user by their SSH public key
-	err := s.db.QueryRow(`
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT u.user_id, u.email, u.created_at
 		FROM users u
 		JOIN ssh_keys s ON u.user_id = s.user_id
 		WHERE s.public_key = ?`,
-		publicKeyStr).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+			publicKeyStr).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return &user, err
 }
 
-// getUserTeams returns all teams a user belongs to
-
 // createUserWithAlloc creates a new user with their resource allocation
-func (s *Server) createUserWithAlloc(publicKey, email string) error {
-	// Start a transaction
-	tx, err := s.db.Begin()
-	if err != nil {
+func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email string) error {
+	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		// Generate user ID
+		userID, err := generateUserID()
+		if err != nil {
+			return err
+		}
+
+		// Create user
+		_, err = tx.Exec(`
+			INSERT INTO users (user_id, email)
+			VALUES (?, ?)`,
+			userID, email)
+		if err != nil {
+			return err
+		}
+
+		// Add the SSH key to ssh_keys table
+		_, err = tx.Exec(`
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)`,
+			userID, publicKey)
+		if err != nil {
+			return err
+		}
+
+		// Generate alloc ID
+		allocID, err := generateAllocID()
+		if err != nil {
+			return err
+		}
+
+		// Select a docker host for this alloc
+		dockerHost := s.selectDockerHostForNewAlloc()
+
+		// Create alloc for the user
+		_, err = tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
 		return err
-	}
-	defer tx.Rollback()
-
-	// Generate user ID
-	userID, err := generateUserID()
-	if err != nil {
-		return err
-	}
-
-	// Create user
-	_, err = tx.Exec(`
-		INSERT INTO users (user_id, email)
-		VALUES (?, ?)`,
-		userID, email)
-	if err != nil {
-		return err
-	}
-
-	// Add the SSH key to ssh_keys table
-	_, err = tx.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key)
-		VALUES (?, ?)`,
-		userID, publicKey)
-	if err != nil {
-		return err
-	}
-
-	// Generate alloc ID
-	allocID, err := generateAllocID()
-	if err != nil {
-		return err
-	}
-
-	// Select a docker host for this alloc
-	dockerHost := s.selectDockerHostForNewAlloc()
-
-	// Create alloc for the user
-	_, err = tx.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
-	if err != nil {
-		return err
-	}
-
-	// Commit transaction
-	return tx.Commit()
+	})
 }
 
 // getUserAlloc gets the alloc for a user (creates one if it doesn't exist)
-func (s *Server) getUserAlloc(userID string) (*Alloc, error) {
+func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error) {
 	var alloc Alloc
-	err := s.db.QueryRow(`
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email
 		FROM allocs
 		WHERE user_id = ?
 		LIMIT 1`,
-		userID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region,
-		&alloc.DockerHost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+			userID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region,
+			&alloc.DockerHost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		// User exists but has no alloc yet - create one
 		allocID, err := generateAllocID()
 		if err != nil {
@@ -2950,22 +3062,27 @@ func (s *Server) getUserAlloc(userID string) (*Alloc, error) {
 
 		// Get user's email for billing
 		var email string
-		err = s.db.QueryRow(`SELECT email FROM users WHERE user_id = ?`, userID).Scan(&email)
+		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow(`SELECT email FROM users WHERE user_id = ?`, userID).Scan(&email)
+		})
 		if err != nil {
 			return nil, err
 		}
 
 		dockerHost := s.selectDockerHostForNewAlloc()
 
-		_, err = s.db.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
+		err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
+			return err
+		})
 		if err != nil {
 			return nil, err
 		}
 
-		return s.getUserAlloc(userID)
+		return s.getUserAlloc(ctx, userID)
 	}
 
 	if err != nil {
@@ -2995,57 +3112,48 @@ func generateAllocID() (string, error) {
 }
 
 // createUser creates a new user (deprecated - use createUserWithAlloc)
-func (s *Server) createUser(publicKey, email string) error {
-	// Start a transaction
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Generate user ID
-	userID, err := generateUserID()
-	if err != nil {
-		return err
-	}
-
-	// Create the user
-	_, err = tx.Exec(`
-		INSERT INTO users (user_id, email)
-		VALUES (?, ?)`,
-		userID, email)
-	if err != nil {
-		return err
-	}
-
-	// Add the SSH key to ssh_keys table if provided
-	if publicKey != "" {
-		_, err = tx.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key)
-			VALUES (?, ?)`,
-			userID, publicKey)
+func (s *Server) createUser(ctx context.Context, publicKey, email string) error {
+	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		// Generate user ID
+		userID, err := generateUserID()
 		if err != nil {
 			return err
 		}
-	}
 
-	// Create an alloc for the user
-	allocID, err := generateAllocID()
-	if err != nil {
+		// Create the user
+		_, err = tx.Exec(`
+			INSERT INTO users (user_id, email)
+			VALUES (?, ?)`,
+			userID, email)
+		if err != nil {
+			return err
+		}
+
+		// Add the SSH key to ssh_keys table if provided
+		if publicKey != "" {
+			_, err = tx.Exec(`
+				INSERT INTO ssh_keys (user_id, public_key)
+				VALUES (?, ?)`,
+				userID, publicKey)
+			if err != nil {
+				return err
+			}
+		}
+
+		// Create an alloc for the user
+		allocID, err := generateAllocID()
+		if err != nil {
+			return err
+		}
+
+		dockerHost := s.selectDockerHostForNewAlloc()
+
+		_, err = tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
 		return err
-	}
-
-	dockerHost := s.selectDockerHostForNewAlloc()
-
-	_, err = tx.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
+	})
 }
 
 // Stop gracefully shuts down all servers
@@ -3112,7 +3220,7 @@ func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) ([]byte, string
 }
 
 // authenticateProxyUser authenticates a user through an ephemeral proxy connection
-func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []byte) (*ssh.Permissions, error) {
+func (s *Server) authenticateProxyUser(ctx context.Context, username string, originalUserKeyBytes []byte) (*ssh.Permissions, error) {
 	// Parse the original user's public key
 	originalUserKey, err := ssh.ParsePublicKey(originalUserKeyBytes)
 	if err != nil {
@@ -3125,21 +3233,21 @@ func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []b
 	slog.Debug("Authenticating original user", "fingerprint", originalFingerprint, "username", username)
 
 	// Look up the user by their original public key
-	email, verified, err := s.GetEmailBySSHKey(originalKeyStr)
+	email, verified, err := s.GetEmailBySSHKey(ctx, originalKeyStr)
 	if err != nil {
 		slog.Error("Database error checking SSH key", "fingerprint", originalFingerprint, "error", err)
 	}
 
 	if email != "" && verified {
 		// This is a verified key, check if user has an alloc
-		user, err := s.GetUserByEmail(email)
-		if err != nil && err != sql.ErrNoRows {
+		user, err := s.GetUserByEmail(ctx, email)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			slog.Error("Database error getting user", "email", email, "error", err)
 		}
 
 		if user != nil {
-			alloc, err := s.getUserAlloc(user.UserID)
-			if err != nil && err != sql.ErrNoRows {
+			alloc, err := s.getUserAlloc(ctx, user.UserID)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				slog.Error("Database error getting alloc for user", "userID", user.UserID, "error", err)
 			}
 
@@ -3185,13 +3293,13 @@ func (s *Server) authenticateProxyUser(username string, originalUserKeyBytes []b
 
 // authenticateProxyUserWithLocalAddress authenticates a user through an ephemeral proxy connection
 // and includes the local address for ipAllocator routing
-func (s *Server) authenticateProxyUserWithLocalAddress(username string, originalUserKeyBytes []byte, localAddress string) (*ssh.Permissions, error) {
+func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, username string, originalUserKeyBytes []byte, localAddress string) (*ssh.Permissions, error) {
 	// Check if this is an IP allocation strategy-based machine access request
 	// TODO: clean up the "127.0.0.1" check here - it's only there to distinguish between exe.local and *.*.exe.local, and Server
 	// shouldn't have to know anything about that.
 	if s.ipAllocator == nil || localAddress == "" || localAddress == "127.0.0.1" {
 		// Fall back to normal proxy authentication
-		return s.authenticateProxyUser(username, originalUserKeyBytes)
+		return s.authenticateProxyUser(ctx, username, originalUserKeyBytes)
 	}
 
 	// Parse the local address to see if it's a machine IP and try to route it based on ipAllocator
@@ -3207,7 +3315,7 @@ func (s *Server) authenticateProxyUserWithLocalAddress(username string, original
 	}
 	originalKeyStr := string(ssh.MarshalAuthorizedKey(originalUserKey))
 
-	email, _, err := s.GetEmailBySSHKey(originalKeyStr)
+	email, _, err := s.GetEmailBySSHKey(ctx, originalKeyStr)
 	if err != nil {
 		return nil, err
 	}
@@ -3215,12 +3323,12 @@ func (s *Server) authenticateProxyUserWithLocalAddress(username string, original
 		return nil, fmt.Errorf("user not found")
 	}
 
-	user, err := s.GetUserByEmail(email)
+	user, err := s.GetUserByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}
 
-	alloc, err := s.getUserAlloc(user.UserID)
+	alloc, err := s.getUserAlloc(ctx, user.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -3231,7 +3339,7 @@ func (s *Server) authenticateProxyUserWithLocalAddress(username string, original
 		// This is a request to access a specific machine with an address known to ipAllocator
 		slog.Debug("ipAllocator-based machine access detected", "alloc", alloc.AllocID, "machine", machineName, "local_address", localAddress)
 
-		perms, err := s.authenticateProxyUser(""+machineName, originalUserKeyBytes)
+		perms, err := s.authenticateProxyUser(ctx, ""+machineName, originalUserKeyBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -3240,7 +3348,7 @@ func (s *Server) authenticateProxyUserWithLocalAddress(username string, original
 	}
 
 	// Fall back to normal proxy authentication
-	return s.authenticateProxyUser(username, originalUserKeyBytes)
+	return s.authenticateProxyUser(ctx, username, originalUserKeyBytes)
 }
 
 // generateUserID creates a new user ID with "usr" prefix + 13 random characters
@@ -3259,20 +3367,23 @@ func (s *Server) createTestUserWithID(email string) (string, error) {
 		return "", err
 	}
 
-	// Create user
-	_, err = s.db.Exec(`
-		INSERT INTO users (user_id, email)
-		VALUES (?, ?)`,
-		userID, email)
-	if err != nil {
-		return "", err
-	}
+	err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		// Create user
+		_, err := tx.Exec(`
+			INSERT INTO users (user_id, email)
+			VALUES (?, ?)`,
+			userID, email)
+		if err != nil {
+			return err
+		}
 
-	// Add the SSH key to ssh_keys table with unique key per user
-	_, err = s.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key)
-		VALUES (?, ?)`,
-		userID, fmt.Sprintf("ssh-rsa dummy-test-key-%s %s", userID, email))
+		// Add the SSH key to ssh_keys table with unique key per user
+		_, err = tx.Exec(`
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)`,
+			userID, fmt.Sprintf("ssh-rsa dummy-test-key-%s %s", userID, email))
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
@@ -3284,13 +3395,15 @@ func (s *Server) createTestUserWithID(email string) (string, error) {
 func (s *Server) getUserIDByPublicKey(publicKey ssh.PublicKey) (string, error) {
 	var userID string
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
-	err := s.db.QueryRow(`
+	err := s.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT user_id FROM ssh_keys
 		WHERE public_key = ?
 		LIMIT 1
 	`, publicKeyStr).Scan(&userID)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("user not found for public key")
 		}
 		return "", fmt.Errorf("database error: %w", err)
@@ -3299,15 +3412,17 @@ func (s *Server) getUserIDByPublicKey(publicKey ssh.PublicKey) (string, error) {
 }
 
 // GetUserByEmail retrieves a user by their email address
-func (s *Server) GetUserByEmail(email string) (*User, error) {
+func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
-	err := s.db.QueryRow(`
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
 		SELECT user_id, email, created_at
 		FROM users
 		WHERE email = ?
 	`, email).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, sql.ErrNoRows
 		}
 		return nil, fmt.Errorf("database error: %w", err)
@@ -3316,29 +3431,35 @@ func (s *Server) GetUserByEmail(email string) (*User, error) {
 }
 
 // allocateIPsForExistingMachines registers all existing machines with the ipAllocator
-func (s *Server) allocateIPsForExistingMachines() error {
-	rows, err := s.db.Query(`
-		SELECT id, alloc_id, name
-		FROM machines
-		ORDER BY alloc_id, name
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to query existing machines: %v", err)
-	}
-	defer rows.Close()
-
+func (s *Server) allocateIPsForExistingMachines(ctx context.Context) error {
 	var machines []*Machine
-	for rows.Next() {
-		machine := &Machine{}
-		err := rows.Scan(&machine.ID, &machine.AllocID, &machine.Name)
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		rows, err := rx.Query(`
+			SELECT id, alloc_id, name
+			FROM machines
+			ORDER BY alloc_id, name
+		`)
 		if err != nil {
-			return fmt.Errorf("failed to scan machine row: %v", err)
+			return fmt.Errorf("failed to query existing machines: %v", err)
 		}
-		machines = append(machines, machine)
-	}
+		defer rows.Close()
 
-	if err = rows.Err(); err != nil {
-		return fmt.Errorf("error iterating machine rows: %v", err)
+		for rows.Next() {
+			machine := &Machine{}
+			err := rows.Scan(&machine.ID, &machine.AllocID, &machine.Name)
+			if err != nil {
+				return fmt.Errorf("failed to scan machine row: %v", err)
+			}
+			machines = append(machines, machine)
+		}
+
+		if err = rows.Err(); err != nil {
+			return fmt.Errorf("error iterating machine rows: %v", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	for _, machine := range machines {
 		_, err := s.ipAllocator.Allocate(machine.AllocID, machine.Name)
@@ -3350,7 +3471,7 @@ func (s *Server) allocateIPsForExistingMachines() error {
 }
 
 // GetMachineSSHDetails retrieves SSH connection details from the machines table
-func (s *Server) GetMachineSSHDetails(machineID int) (*exedb.SSHDetails, error) {
+func (s *Server) GetMachineSSHDetails(ctx context.Context, machineID int) (*exedb.SSHDetails, error) {
 	var port sql.NullInt64
 	var privateKey sql.NullString
 	var serverIdentityKey sql.NullString
@@ -3358,7 +3479,9 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*exedb.SSHDetails, error) 
 	var sshUser sql.NullString
 
 	query := `SELECT ssh_port, ssh_client_private_key, ssh_server_identity_key, docker_host, ssh_user FROM machines WHERE id = ?`
-	err := s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost, &sshUser)
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost, &sshUser)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query machine SSH details: %v", err)
 	}
@@ -3367,13 +3490,15 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*exedb.SSHDetails, error) 
 		// SSH not set up for this machine - this is for containers created before SSH support
 		// TODO: Remove this code once all legacy containers are migrated
 		log.Printf("Machine %d missing SSH setup, initializing SSH on container", machineID)
-		err := s.setupContainerSSH(machineID)
+		err := s.setupContainerSSH(ctx, machineID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to setup SSH on legacy container: %v", err)
 		}
 
 		// Re-query after setup
-		err = s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost)
+		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost)
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to re-query machine SSH details after setup: %v", err)
 		}
@@ -3421,13 +3546,15 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*exedb.SSHDetails, error) 
 
 // setupContainerSSH sets up SSH on a legacy container that was created before SSH support
 // TODO: Remove this method once all legacy containers are migrated to have SSH
-func (s *Server) setupContainerSSH(machineID int) error {
+func (s *Server) setupContainerSSH(ctx context.Context, machineID int) error {
 	// Get machine details
 	var containerID, userFingerprint, teamName, machineName, image string
-	err := s.db.QueryRow(
-		`SELECT container_id, created_by_user_id, team_name, name, image FROM machines WHERE id = ?`,
-		machineID,
-	).Scan(&containerID, &userFingerprint, &teamName, &machineName, &image)
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(
+			`SELECT container_id, created_by_user_id, team_name, name, image FROM machines WHERE id = ?`,
+			machineID,
+		).Scan(&containerID, &userFingerprint, &teamName, &machineName, &image)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to get machine details: %v", err)
 	}
@@ -3443,13 +3570,16 @@ func (s *Server) setupContainerSSH(machineID int) error {
 	}
 
 	// Update database with SSH keys
-	_, err = s.db.Exec(`
-		UPDATE machines SET
-			ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
-			ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
-		WHERE id = ?
-	`, sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshKeys.SSHPort, machineID)
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE machines SET
+				ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
+				ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
+			WHERE id = ?
+		`, sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
+			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshKeys.SSHPort, machineID)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to update machine SSH keys: %v", err)
 	}

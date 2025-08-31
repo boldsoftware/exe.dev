@@ -1,6 +1,7 @@
 package exe
 
 import (
+	"context"
 	"database/sql"
 	"net/http/httptest"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"exe.dev/exedb"
+	"exe.dev/sqlite"
 	_ "modernc.org/sqlite"
 )
 
@@ -215,7 +217,7 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 	allocID := "alloc-test-123"
 
 	// Create user with alloc
-	err := server.createUserWithAlloc(publicKey, email)
+	err := server.createUserWithAlloc(context.Background(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
@@ -223,24 +225,28 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 	// Test creating a machine
 	// Get userID for machine creation
 	var userID string
-	err = server.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+	})
 	if err != nil {
 		t.Fatalf("Failed to get user ID: %v", err)
 	}
 
 	// Get allocID for this user
-	err = server.db.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID).Scan(&allocID)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID).Scan(&allocID)
+	})
 	if err != nil {
 		t.Fatalf("Failed to get alloc ID: %v", err)
 	}
 
-	err = server.createMachine(userID, allocID, "test-machine", "container123", "ubuntu")
+	err = server.createMachine(context.Background(), userID, allocID, "test-machine", "container123", "ubuntu")
 	if err != nil {
 		t.Errorf("Failed to create machine: %v", err)
 	}
 
 	// Retrieve the machine and check its routes
-	machine, err := server.getMachineByName("test-machine")
+	machine, err := server.getMachineByName(context.Background(), "test-machine")
 	if err != nil {
 		t.Errorf("Failed to get machine: %v", err)
 	}
@@ -304,7 +310,11 @@ func TestHandleProxyRequest(t *testing.T) {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
-	server := &Server{db: db, testMode: true}
+	sqliteDB, err := sqlite.New(dbFile, 1)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite wrapper: %v", err)
+	}
+	server := &Server{db: sqliteDB, testMode: true}
 
 	// Create alloc for the user
 	allocID, err := generateAllocID()
@@ -312,19 +322,22 @@ func TestHandleProxyRequest(t *testing.T) {
 		t.Fatalf("Failed to generate alloc ID: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine with custom routes
-	err = server.createMachine(userID, allocID, "web-server", "container123", "nginx")
+	err = server.createMachine(context.Background(), userID, allocID, "web-server", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Get the machine and add a public API route
-	machine, err := server.getMachineByName("web-server")
+	machine, err := server.getMachineByName(context.Background(), "web-server")
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
@@ -481,8 +494,12 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	}
 
 	// Create a test server
+	sqliteDB2, err := sqlite.New(dbFile, 1)
+	if err != nil {
+		t.Fatalf("Failed to create sqlite wrapper: %v", err)
+	}
 	server := &Server{
-		db:       db,
+		db:       sqliteDB2,
 		testMode: true,
 		devMode:  "local",
 	}
@@ -515,13 +532,16 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		t.Fatalf("Failed to generate alloc ID: %v", err)
 	}
 
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'shared', 'us-east', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create a test machine
-	err = server.createMachine(userID, allocID, machineName, "container123", "nginx")
+	err = server.createMachine(context.Background(), userID, allocID, machineName, "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -580,7 +600,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			sess := &mockSession{}
-			server.handleRouteCommand(sess, publicKey, allocID, test.args)
+			server.handleRouteCommand(context.Background(), sess, publicKey, allocID, test.args)
 			output := sess.output.String()
 
 			// Check expected strings

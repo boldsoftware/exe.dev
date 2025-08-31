@@ -1,12 +1,15 @@
 package exe
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"exe.dev/sqlite"
 )
 
 func TestUserDashboard(t *testing.T) {
@@ -24,38 +27,50 @@ func TestUserDashboard(t *testing.T) {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
 
-	_, err = server.db.Exec(`
-		INSERT INTO users (user_id, email)
-		VALUES (?, ?)
-	`, userID, email)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO users (user_id, email)
+			VALUES (?, ?)
+		`, userID, email)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to insert test user: %v", err)
 	}
 
 	// Create SSH key for user
-	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key)
-		VALUES (?, ?)
-	`, userID, "ssh-rsa dummy-test-key test@example.com")
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)
+		`, userID, "ssh-rsa dummy-test-key test@example.com")
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to insert SSH key: %v", err)
 	}
 
 	// Create alloc for the user
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))
-	`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))
+		`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to insert test alloc: %v", err)
 	}
 
 	// Create a test machine
 	machineName := "testmachine"
-	_, err = server.db.Exec(`
-		INSERT INTO machines (alloc_id, name, status, image, created_by_user_id)
-		VALUES (?, ?, ?, ?, ?)
-	`, allocID, machineName, "stopped", "ubuntu:22.04", userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (alloc_id, name, status, image, created_by_user_id)
+			VALUES (?, ?, ?, ?, ?)
+		`, allocID, machineName, "stopped", "ubuntu:22.04", userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to insert test machine: %v", err)
 	}

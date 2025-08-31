@@ -2,6 +2,7 @@
 package exe
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/sqlite"
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
@@ -103,8 +105,12 @@ func (p *PiperPlugin) getExpectedHostKeyForConnection(connID string) (string, bo
 
 // getServerHostKey retrieves the exed server's host key from the database
 func (p *PiperPlugin) getServerHostKey() (string, error) {
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	defer cancel()
 	var publicKey string
-	err := p.server.db.QueryRow("SELECT public_key FROM ssh_host_key WHERE id = 1").Scan(&publicKey)
+	err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow("SELECT public_key FROM ssh_host_key WHERE id = 1").Scan(&publicKey)
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to get server host key: %w", err)
 	}
@@ -173,6 +179,9 @@ func (p *PiperPlugin) handleNextAuthMethods(conn libplugin.ConnMetadata) ([]stri
 func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, client libplugin.KeyboardInteractiveChallenge) (*libplugin.Upstream, error) {
 	slog.Debug("Keyboard interactive auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	defer cancel()
+
 	// Use connection's unique ID to track if we've already shown the message
 	connID := conn.UniqueID()
 	username := conn.User()
@@ -181,11 +190,13 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 	if p.server.devMode == "local" && username != "" && username != "localexe" {
 		// Try to find a machine with this name
 		var machine Machine
-		err := p.server.db.QueryRow(`
-			SELECT id, alloc_id, name, container_id
-			FROM machines 
-			WHERE name = ?
-		`, username).Scan(&machine.ID, &machine.AllocID, &machine.Name, &machine.ContainerID)
+		err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow(`
+				SELECT id, alloc_id, name, container_id
+				FROM machines
+				WHERE name = ?
+			`, username).Scan(&machine.ID, &machine.AllocID, &machine.Name, &machine.ContainerID)
+		})
 
 		if err == nil && machine.ContainerID != nil {
 			// Found a machine - allow access without authentication in dev mode
@@ -194,8 +205,12 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 			// Get first user for dev mode
 			var userID string
-			row := p.server.db.QueryRow("SELECT user_id FROM users LIMIT 1")
-			if err := row.Scan(&userID); err == nil {
+			ctx2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel2()
+			err = p.server.db.Rx(ctx2, func(ctx context.Context, rx *sqlite.Rx) error {
+				return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
+			})
+			if err == nil {
 				return p.handleMachineAccess(&machine, userID, connID)
 			}
 		}
@@ -229,6 +244,9 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byte) (*libplugin.Upstream, error) {
 	slog.Debug("Auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	// Use the connection's unique ID
 	connID := conn.UniqueID()
 
@@ -254,8 +272,10 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// Special handling for local dev mode - allow any connection as localexe user
 	if p.server.devMode == "local" && conn.User() == "localexe" && userID == "" {
 		// Get the first user from the database for local dev
-		row := p.server.db.QueryRow("SELECT user_id FROM users LIMIT 1")
-		if err := row.Scan(&userID); err == nil {
+		err = p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
+		})
+		if err == nil {
 			slog.Debug("Using first user for local dev mode", "component", "piper-plugin", "user_id", userID)
 		}
 	}
@@ -276,7 +296,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	if localAddress != "127.0.0.1" && p.server.ipAllocator != nil { // i.e. they are asking for a host that isn't exe.local.
 		slog.Info("Checking for machine", "component", "piper-plugin", "userID", userID, "localAddress", localAddress)
-		if machine := p.server.FindMachineByNameForUserAndIP(userID, localAddress); machine != nil {
+		if machine := p.server.FindMachineByNameForUserAndIP(ctx, userID, localAddress); machine != nil {
 			slog.Info("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
 			return p.handleMachineAccess(machine, userID, connID)
 		} else {
@@ -292,15 +312,17 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	if username != "" && (registered || p.server.devMode == "local") {
 		// If not registered but in local dev mode, use first user
 		if !registered && p.server.devMode == "local" && userID == "" {
-			row := p.server.db.QueryRow("SELECT user_id FROM users LIMIT 1")
-			if err := row.Scan(&userID); err == nil {
+			err = p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+				return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
+			})
+			if err == nil {
 				slog.Debug("Using first user for local dev machine access", "component", "piper-plugin", "user_id", userID)
 				registered = true // Pretend they're registered for the checks below
 			}
 		}
 
 		slog.Info("Checking for machine", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered, "devMode", p.server.devMode)
-		if machine := p.server.FindMachineByNameForUser(userID, username); machine != nil {
+		if machine := p.server.FindMachineByNameForUser(ctx, userID, username); machine != nil {
 			slog.Info("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
 			return p.handleMachineAccess(machine, userID, connID)
 		} else {
@@ -345,6 +367,9 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 // handleMachineAccess sets up routing to a specific machine container
 func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID string) (*libplugin.Upstream, error) {
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+	defer cancel()
+
 	slog.Debug("handleMachineAccess for machine", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID, "user_id", userID, "conn_id", connID)
 
 	if machine.ContainerID == nil {
@@ -353,7 +378,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	}
 
 	// Get SSH connection details from the database
-	sshDetails, err := p.server.GetMachineSSHDetails(machine.ID)
+	sshDetails, err := p.server.GetMachineSSHDetails(ctx, machine.ID)
 	if err != nil {
 		slog.Debug("Failed to get SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "error", err)
 		return nil, fmt.Errorf("failed to get SSH details for machine %s: %v", machine.Name, err)

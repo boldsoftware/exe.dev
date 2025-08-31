@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -191,7 +192,7 @@ func (c *Client) info(dbKey []byte) (Info, error) {
 	// Note: modernc.org/sqlite requires string for binary comparison
 	var userID int64
 	err := c.stmt.QueryRow(string(dbKey)).Scan(&userID)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return info, nil // IsGitHubUser is false
 	}
 	if err != nil {

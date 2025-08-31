@@ -3,7 +3,9 @@ package exe
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"exe.dev/sqlite"
 
 	"golang.org/x/crypto/ssh"
 
@@ -56,7 +60,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find the machine
-	machine, err := s.getMachineByName(machineName)
+	machine, err := s.getMachineByName(r.Context(), machineName)
 	if err != nil {
 		http.Error(w, "Machine not found", http.StatusNotFound)
 		return
@@ -88,7 +92,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		// User is authenticated, check if they have access to this machine
 		// Machine must belong to user's alloc
-		alloc, err := s.getUserAlloc(userID)
+		alloc, err := s.getUserAlloc(r.Context(), userID)
 		if err != nil || alloc == nil {
 			http.Error(w, "Error checking user allocation", http.StatusInternalServerError)
 			return
@@ -113,7 +117,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		// Show current user info
 		if cookie, err := r.Cookie("exe-proxy-auth"); err == nil && cookie.Value != "" {
-			if userID, err := s.validateAuthCookie(cookie.Value, r.Host); err == nil {
+			if userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
 				fmt.Fprintf(w, "Logged in user: %s\n", userID)
 			} else {
 				fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
@@ -239,7 +243,7 @@ func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
 	}
 
 	// Validate cookie and get user ID
-	userID, err := s.validateAuthCookie(cookie.Value, r.Host)
+	userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
 	if err != nil {
 		return "", false
 	}
@@ -317,7 +321,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create authentication cookie for this subdomain
-	cookieValue, err := s.createAuthCookie(magicSecret.UserID, r.Host)
+	cookieValue, err := s.createAuthCookie(r.Context(), magicSecret.UserID, r.Host)
 	if err != nil {
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
 		return
@@ -370,10 +374,13 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Delete only this specific cookie from the database
 	if cookieValue != "" {
-		_, err := s.db.Exec(`
-			DELETE FROM auth_cookies
-			WHERE cookie_value = ?
-		`, cookieValue)
+		err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				DELETE FROM auth_cookies
+				WHERE cookie_value = ?
+			`, cookieValue)
+			return err
+		})
 		if err != nil {
 			slog.Error("Failed to delete specific proxy auth cookie from database", "error", err)
 		}
@@ -395,7 +402,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 // Route command handling methods
 
 // handleRouteCommand handles route management commands from SSH
-func (s *Server) handleRouteCommand(w io.Writer, publicKey, teamName string, args []string) {
+func (s *Server) handleRouteCommand(ctx context.Context, w io.Writer, publicKey, teamName string, args []string) {
 	// Define route help text
 	routeHelpText := "\r\n\033[1;36mRoute subcommands:\033[0m\r\n\r\n" +
 		"\033[1mroute <machine> list\033[0m           - List all routes\r\n" +
@@ -421,20 +428,20 @@ func (s *Server) handleRouteCommand(w io.Writer, publicKey, teamName string, arg
 
 	switch subCmd {
 	case "list":
-		s.handleRouteList(w, publicKey, teamName, machineName)
+		s.handleRouteList(ctx, w, publicKey, teamName, machineName)
 	case "add":
-		s.handleRouteAdd(w, publicKey, teamName, machineName, subArgs)
+		s.handleRouteAdd(ctx, w, publicKey, teamName, machineName, subArgs)
 	case "remove":
-		s.handleRouteRemove(w, publicKey, teamName, machineName, subArgs)
+		s.handleRouteRemove(ctx, w, publicKey, teamName, machineName, subArgs)
 	default:
 		fmt.Fprintf(w, "\033[1;31mUnknown route command: %s\033[0m\r\n", subCmd)
 		fmt.Fprint(w, routeHelpText)
 	}
 }
 
-func (s *Server) handleRouteList(w io.Writer, publicKey, teamName, machineName string) {
+func (s *Server) handleRouteList(ctx context.Context, w io.Writer, publicKey, teamName, machineName string) {
 	// Get machine
-	machine, err := s.getMachineForUser(publicKey, machineName)
+	machine, err := s.getMachineForUser(ctx, publicKey, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -470,7 +477,7 @@ func (s *Server) handleRouteList(w io.Writer, publicKey, teamName, machineName s
 	}
 }
 
-func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName string, args []string) {
+func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, teamName, machineName string, args []string) {
 	// Create a FlagSet for parsing
 	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
 	var name, methodsStr, prefix, policy, portsStr string
@@ -500,7 +507,7 @@ func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName st
 	}
 
 	// Get machine
-	machine, err := s.getMachineForUser(publicKey, machineName)
+	machine, err := s.getMachineForUser(ctx, publicKey, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -588,10 +595,13 @@ func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName st
 	}
 
 	// Update database
-	_, err = s.db.Exec(`
-		UPDATE machines SET routes = ?
-		WHERE name = ?`,
-		*machine.Routes, machineName)
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE machines SET routes = ?
+			WHERE name = ?`,
+			*machine.Routes, machineName)
+		return err
+	})
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError saving route: %v\033[0m\r\n", err)
 		return
@@ -600,7 +610,7 @@ func (s *Server) handleRouteAdd(w io.Writer, publicKey, teamName, machineName st
 	fmt.Fprintf(w, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
 }
 
-func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName string, args []string) {
+func (s *Server) handleRouteRemove(ctx context.Context, w io.Writer, publicKey, teamName, machineName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(w, "\033[1;31mError: Please specify route name\033[0m\r\n")
 		fmt.Fprintf(w, "Usage: route %s remove <name>\r\n", machineName)
@@ -610,7 +620,7 @@ func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName
 	routeName := args[0]
 
 	// Get machine
-	machine, err := s.getMachineForUser(publicKey, machineName)
+	machine, err := s.getMachineForUser(ctx, publicKey, machineName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -647,10 +657,13 @@ func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName
 	}
 
 	// Update database
-	_, err = s.db.Exec(`
-		UPDATE machines SET routes = ?
-		WHERE name = ?`,
-		*machine.Routes, machineName)
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE machines SET routes = ?
+			WHERE name = ?`,
+			*machine.Routes, machineName)
+		return err
+	})
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
 		return
@@ -660,33 +673,35 @@ func (s *Server) handleRouteRemove(w io.Writer, publicKey, teamName, machineName
 }
 
 // getMachineForUser retrieves a machine for the given user/team/name
-func (s *Server) getMachineForUser(publicKey, machineName string) (*Machine, error) {
+func (s *Server) getMachineForUser(ctx context.Context, publicKey, machineName string) (*Machine, error) {
 	// Get user from public key
-	user, err := s.getUserByPublicKey(publicKey)
+	user, err := s.getUserByPublicKey(ctx, publicKey)
 	if err != nil || user == nil {
 		return nil, fmt.Errorf("user not found")
 	}
 
 	// Get user's alloc
-	alloc, err := s.getUserAlloc(user.UserID)
+	alloc, err := s.getUserAlloc(ctx, user.UserID)
 	if err != nil || alloc == nil {
 		return nil, fmt.Errorf("user has no allocation")
 	}
 
 	// Get the machine
 	var machine Machine
-	err = s.db.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id,
-		       created_by_user_id, created_at, updated_at,
-		       last_started_at, docker_host, routes
-		FROM machines
-		WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
-		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
-		&machine.DockerHost, &machine.Routes)
+	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT id, alloc_id, name, status, image, container_id,
+			       created_by_user_id, created_at, updated_at,
+			       last_started_at, docker_host, routes
+			FROM machines
+			WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
+			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
+			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
+			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
+			&machine.DockerHost, &machine.Routes)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("machine '%s' not found or access denied", machineName)
 		}
 		return nil, fmt.Errorf("database error: %v", err)

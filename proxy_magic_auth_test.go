@@ -1,10 +1,13 @@
 package exe
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"exe.dev/sqlite"
 )
 
 // TestProxyMagicAuthFlow tests the complete proxy magic authentication flow
@@ -34,13 +37,16 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 
 	// Create alloc for user
 	allocID := "test-alloc-" + userID[:8]
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create machine
-	err = server.createMachine(userID, allocID, machineName, containerID, "ubuntu:22.04")
+	err = server.createMachine(context.Background(), userID, allocID, machineName, containerID, "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -82,7 +88,7 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	w2 := httptest.NewRecorder()
 
 	// First create an auth cookie for the user (simulate successful login)
-	authCookieValue, err := server.createAuthCookie(userID, "localhost")
+	authCookieValue, err := server.createAuthCookie(context.Background(), userID, "localhost")
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}
@@ -196,7 +202,12 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 
 	// Debug: Check what's in the database
 	var cookieCount int
-	server.db.QueryRow(`SELECT COUNT(*) FROM auth_cookies WHERE domain = 'localhost'`).Scan(&cookieCount)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT COUNT(*) FROM auth_cookies WHERE domain = 'localhost'`).Scan(&cookieCount)
+	})
+	if err != nil {
+		t.Fatalf("Failed to query cookie count: %v", err)
+	}
 	t.Logf("Step 4 Debug: %d cookies in database for domain 'localhost'", cookieCount)
 
 	// Check if this specific cookie exists
@@ -209,7 +220,9 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 	}
 
 	var dbUserID string
-	err = server.db.QueryRow(`SELECT user_id FROM auth_cookies WHERE cookie_value = ? AND domain = 'localhost'`, proxyCookieValue).Scan(&dbUserID)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM auth_cookies WHERE cookie_value = ? AND domain = 'localhost'`, proxyCookieValue).Scan(&dbUserID)
+	})
 	if err != nil {
 		t.Logf("Step 4 Debug: Cookie lookup failed: %v", err)
 	} else {
@@ -218,8 +231,14 @@ func TestProxyMagicAuthFlow(t *testing.T) {
 
 	// Check alloc access
 	var allocCount int
-	server.db.QueryRow(`SELECT COUNT(*) FROM allocs WHERE user_id = ?`, dbUserID).Scan(&allocCount)
-	t.Logf("Step 4 Debug: User %s has %d allocs", dbUserID, allocCount)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT COUNT(*) FROM allocs WHERE user_id = ?`, dbUserID).Scan(&allocCount)
+	})
+	if err != nil {
+		t.Logf("Step 4 Debug: Alloc lookup failed: %v", err)
+	} else {
+		t.Logf("Step 4 Debug: User %s has %d allocs", dbUserID, allocCount)
+	}
 
 	server.ServeHTTP(w4, req4)
 
@@ -270,22 +289,28 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 
 	// Create alloc for user1
 	allocID1 := "alloc1"
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`,
-		allocID1, userID1, "medium", "aws-us-west-2", "", email1)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID1, userID1, "medium", "aws-us-west-2", "", email1)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc for user1: %v", err)
 	}
 
 	// Create alloc for user2
 	allocID2 := "alloc2"
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`,
-		allocID2, userID2, "medium", "aws-us-west-2", "", email2)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email) VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID2, userID2, "medium", "aws-us-west-2", "", email2)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc for user2: %v", err)
 	}
 
 	// Create machine in user2's alloc
-	err = server.createMachine(userID2, allocID2, machineName, containerID, "ubuntu:22.04")
+	err = server.createMachine(context.Background(), userID2, allocID2, machineName, containerID, "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -294,14 +319,16 @@ func TestProxyMagicAuthUnauthorized(t *testing.T) {
 	mockManager.AddContainer(containerID, machineName, allocID2)
 
 	// Create proxy auth cookie for user1 (who shouldn't have access to user2's machine)
-	proxyCookieValue, err := server.createAuthCookie(userID1, "testmachine.localhost")
+	proxyCookieValue, err := server.createAuthCookie(context.Background(), userID1, "testmachine.localhost")
 	if err != nil {
 		t.Fatalf("Failed to create proxy auth cookie: %v", err)
 	}
 
 	// Verify user1's alloc was created
 	var checkAllocID string
-	err = server.db.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID1).Scan(&checkAllocID)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID1).Scan(&checkAllocID)
+	})
 	if err != nil {
 		t.Fatalf("Failed to verify user1's alloc: %v", err)
 	}

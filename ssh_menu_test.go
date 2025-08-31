@@ -2,6 +2,7 @@ package exe
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -36,21 +38,23 @@ func TestSSHMenuAfterRegistration(t *testing.T) {
 	email := "test@example.com"
 
 	// Create user and team directly
-	err = server.createUser(publicKeyStr, email)
+	err = server.createUser(t.Context(), publicKeyStr, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Get the user_id that was created
 	var userID string
-	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE 1=1 LIMIT 1`, publicKeyStr).Scan(&userID)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM ssh_keys WHERE 1=1 LIMIT 1`, publicKeyStr).Scan(&userID)
+	})
 	if err != nil {
 		t.Fatalf("Failed to get user_id: %v", err)
 	}
 	t.Logf("User created with ID: %s", userID)
 
 	// Get the alloc that was created for the user
-	alloc, err := server.getUserAlloc(userID)
+	alloc, err := server.getUserAlloc(t.Context(), userID)
 	if err != nil || alloc == nil {
 		t.Fatalf("Failed to get user alloc: %v", err)
 	}
@@ -237,20 +241,22 @@ func TestSSHMenuInteractiveCommands(t *testing.T) {
 	// Set up a registered user
 	email := "test@example.com"
 
-	err = server.createUser(publicKeyStr, email)
+	err = server.createUser(t.Context(), publicKeyStr, email)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Get user ID and update SSH key
 	var userID string
-	err = server.db.QueryRow(`SELECT user_id FROM ssh_keys WHERE 1=1 LIMIT 1`, publicKeyStr).Scan(&userID)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT user_id FROM ssh_keys WHERE 1=1 LIMIT 1`, publicKeyStr).Scan(&userID)
+	})
 	if err != nil {
 		t.Fatalf("Failed to get user ID: %v", err)
 	}
 
 	// Get the alloc that was created for the user
-	alloc, err := server.getUserAlloc(userID)
+	alloc, err := server.getUserAlloc(t.Context(), userID)
 	if err != nil || alloc == nil {
 		t.Fatalf("Failed to get user alloc: %v", err)
 	}
@@ -409,7 +415,7 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 		server.emailVerificationsMu.Lock()
 		if v, exists := server.emailVerifications[token]; exists {
 			// Create user
-			err := server.createUser(publicKeyStr, email)
+			err := server.createUser(t.Context(), publicKeyStr, email)
 			if err != nil {
 				t.Logf("Failed to create user: %v", err)
 				verificationComplete <- false
@@ -419,14 +425,19 @@ func TestRegistrationToMenuFlow(t *testing.T) {
 
 			// Get user ID and store SSH key
 			var userID string
-			err = server.db.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+			err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+				return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+			})
 			if err != nil {
 				t.Logf("Failed to get user ID: %v", err)
 			} else {
-				_, err = server.db.Exec(`
-					INSERT INTO ssh_keys (user_id, public_key)
-					VALUES (?, ?)`,
-					userID, publicKeyStr)
+				err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+					_, err := tx.Exec(`
+						INSERT INTO ssh_keys (user_id, public_key)
+						VALUES (?, ?)`,
+						userID, publicKeyStr)
+					return err
+				})
 				if err != nil {
 					t.Logf("Failed to store SSH key: %v", err)
 				}

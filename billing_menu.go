@@ -13,14 +13,14 @@ import (
 
 func (ss *SSHServer) handleBillingCommand(s ssh.Session, publicKey string, args []string) {
 	// Get user info
-	user, err := ss.server.getUserByPublicKey(publicKey)
+	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
 		return
 	}
 
 	// Get allocation info
-	alloc, err := ss.server.getUserAlloc(user.UserID)
+	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
 	if err != nil || alloc == nil {
 		fmt.Fprintf(s, "\033[1;31mError: No allocation found\033[0m\r\n")
 		return

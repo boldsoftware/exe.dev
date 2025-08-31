@@ -2,6 +2,7 @@ package exe
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -65,27 +67,29 @@ func TestSSHEndToEndCreateFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
-	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Create alloc for user
-	allocID := "test-alloc-" + userID[:8]
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
-		allocID, userID, email)
-	if err != nil {
-		t.Fatalf("Failed to create alloc: %v", err)
-	}
-
 	// Mark SSH key as verified
 	publicKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-		userID, string(publicKeyBytes))
+	allocID := "test-alloc-" + userID[:8]
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email); err != nil {
+			return err
+		}
+		// Create alloc for user
+		if _, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+			allocID, userID, email); err != nil {
+			return err
+		}
+		// Mark SSH key as verified
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+			userID, string(publicKeyBytes)); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("Failed to add SSH key: %v", err)
+		t.Fatalf("Failed to create user, alloc and SSH key: %v", err)
 	}
 
 	// Create expect script for create flow
@@ -167,7 +171,9 @@ expect eof
 
 	// Verify machine was created in database
 	var machineCount int
-	err = server.db.QueryRow(`SELECT COUNT(*) FROM machines WHERE name = ?`, machineName).Scan(&machineCount)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT COUNT(*) FROM machines WHERE name = ?`, machineName).Scan(&machineCount)
+	})
 	if err != nil {
 		t.Fatalf("Failed to query machines: %v", err)
 	}
@@ -218,37 +224,41 @@ func TestSSHEndToEndMachineAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
-	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID2, email)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
 	// Create alloc for user2
 	allocID2 := "test-alloc-" + userID2[:8]
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
-		allocID2, userID2, email)
-	if err != nil {
-		t.Fatalf("Failed to create alloc: %v", err)
-	}
-
 	// Add SSH key for this user
 	publicKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-		userID2, string(publicKeyBytes))
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID2, email); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+			allocID2, userID2, email); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+			userID2, string(publicKeyBytes)); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("Failed to add SSH key: %v", err)
+		t.Fatalf("Failed to create user, alloc and SSH key: %v", err)
 	}
 
 	// Add container to mock manager
 	mockManager.AddContainer(containerID, machineName, allocID2)
 
 	// Create machine in database
-	_, err = server.db.Exec(`
-		INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id)
-		VALUES (?, ?, 'running', 'ubuntu:22.04', ?, ?)
-	`, allocID2, machineName, containerID, userID2)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id)
+			VALUES (?, ?, 'running', 'ubuntu:22.04', ?, ?)
+		`, allocID2, machineName, containerID, userID2)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -318,33 +328,32 @@ func TestSSHDirectExecCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
-	_, err = server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email)
-	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Add the SSH key to ssh_keys table and mark it as verified
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-		userID, publicKeyStr)
-	if err != nil {
-		t.Fatalf("Failed to add SSH key: %v", err)
-	}
-
-	// Add a second SSH key to test multiple key display
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-		userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDummykey...")
-	if err != nil {
-		t.Fatalf("Failed to add second SSH key: %v", err)
-	}
-
 	// Create alloc for user
 	allocID := "test-alloc-" + userID[:8]
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
-		allocID, userID, email)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email); err != nil {
+			return err
+		}
+		// Add the SSH key to ssh_keys table and mark it as verified
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+			userID, publicKeyStr); err != nil {
+			return err
+		}
+		// Add a second SSH key to test multiple key display
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
+			userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDummykey..."); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', ?)`,
+			allocID, userID, email); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("Failed to create alloc: %v", err)
+		t.Fatalf("Failed to create user, SSH keys and alloc: %v", err)
 	}
 
 	// Test cases for exec commands

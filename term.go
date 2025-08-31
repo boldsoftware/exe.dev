@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/sqlite"
 	"github.com/creack/pty"
 )
 
@@ -146,7 +148,7 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 	session, exists := terminalSessions[sessionKey]
 	if !exists {
 		// Create new terminal session
-		session, err = s.createTerminalSession(userID, machineName, terminalID)
+		session, err = s.createTerminalSession(r.Context(), userID, machineName, terminalID)
 		if err != nil {
 			terminalSessionsMutex.Unlock()
 			http.Error(w, fmt.Sprintf("Failed to create terminal: %v", err), http.StatusInternalServerError)
@@ -288,7 +290,7 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 }
 
 // createTerminalSession creates a new terminal session for a user's machine
-func (s *Server) createTerminalSession(userID, machineName, terminalID string) (*TerminalSession, error) {
+func (s *Server) createTerminalSession(ctx context.Context, userID, machineName, terminalID string) (*TerminalSession, error) {
 	session := &TerminalSession{
 		EventsClients:     make(map[chan []byte]bool),
 		LastEventClientID: 0,
@@ -298,7 +300,7 @@ func (s *Server) createTerminalSession(userID, machineName, terminalID string) (
 	}
 
 	// Get machine information
-	machine, err := s.getMachineForUserByID(userID, machineName)
+	machine, err := s.getMachineForUserByID(ctx, userID, machineName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get machine: %w", err)
 	}
@@ -307,7 +309,7 @@ func (s *Server) createTerminalSession(userID, machineName, terminalID string) (
 	if machine.Status != "running" {
 		// Try to start the machine if it's stopped
 		if machine.Status == "exited" || machine.Status == "paused" {
-			err = s.startMachine(machine)
+			err = s.startMachine(ctx, machine)
 			if err != nil {
 				return nil, fmt.Errorf("failed to start machine: %w", err)
 			}
@@ -395,31 +397,33 @@ func (s *Server) readFromPtyAndBroadcast(session *TerminalSession) {
 // Helper functions for machine management
 
 // getMachineForUserByID gets a machine for a user using user ID
-func (s *Server) getMachineForUserByID(userID, machineName string) (*Machine, error) {
+func (s *Server) getMachineForUserByID(ctx context.Context, userID, machineName string) (*Machine, error) {
 	// Get user's alloc
-	alloc, err := s.getUserAlloc(userID)
+	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
 		return nil, fmt.Errorf("user has no allocation")
 	}
 
 	// Get the machine using the same pattern as existing code
 	var machine Machine
-	err = s.db.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id, 
-		       created_by_user_id, created_at, updated_at, 
-		       last_started_at, docker_host, routes,
-		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-		       ssh_host_certificate, ssh_client_private_key, ssh_port
-		FROM machines 
-		WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
-		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
-		&machine.DockerHost, &machine.Routes,
-		&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey,
-		&machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort)
+	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT id, alloc_id, name, status, image, container_id,
+			       created_by_user_id, created_at, updated_at,
+			       last_started_at, docker_host, routes,
+			       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+			       ssh_host_certificate, ssh_client_private_key, ssh_port
+			FROM machines
+			WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
+			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
+			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
+			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
+			&machine.DockerHost, &machine.Routes,
+			&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey,
+			&machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("machine '%s' not found or access denied", machineName)
 		}
 		return nil, fmt.Errorf("database error: %v", err)
@@ -429,7 +433,7 @@ func (s *Server) getMachineForUserByID(userID, machineName string) (*Machine, er
 }
 
 // startMachine starts a stopped machine
-func (s *Server) startMachine(machine *Machine) error {
+func (s *Server) startMachine(ctx context.Context, machine *Machine) error {
 	// Use the container management system to start the machine
 	if s.containerManager == nil {
 		return fmt.Errorf("container manager not available")
@@ -439,14 +443,17 @@ func (s *Server) startMachine(machine *Machine) error {
 		return fmt.Errorf("machine has no container ID")
 	}
 
-	err := s.containerManager.StartContainer(context.Background(), machine.AllocID, *machine.ContainerID)
+	err := s.containerManager.StartContainer(ctx, machine.AllocID, *machine.ContainerID)
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	// Update machine status in database
-	_, err = s.db.Exec("UPDATE machines SET status = 'running', updated_at = ? WHERE id = ?",
-		time.Now(), machine.ID)
+	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec("UPDATE machines SET status = 'running', updated_at = ? WHERE id = ?",
+			time.Now(), machine.ID)
+		return err
+	})
 	return err
 }
 
@@ -457,7 +464,7 @@ func (s *Server) getUserIDFromRequest(r *http.Request) (string, error) {
 		return "", fmt.Errorf("no auth cookie")
 	}
 
-	userID, err := s.validateAuthCookie(cookie.Value, r.Host)
+	userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
 	if err != nil {
 		return "", fmt.Errorf("invalid auth cookie")
 	}
@@ -508,7 +515,7 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate auth cookie
-	_, err = s.validateAuthCookie(cookie.Value, r.Host)
+	_, err = s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
 	if err != nil {
 		// Invalid cookie, redirect to auth
 		scheme := getScheme(r)

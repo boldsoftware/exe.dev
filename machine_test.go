@@ -1,9 +1,13 @@
 package exe
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
+
+	"exe.dev/sqlite"
 )
 
 func TestGetMachineByName(t *testing.T) {
@@ -16,25 +20,28 @@ func TestGetMachineByName(t *testing.T) {
 	allocID := "test-alloc-id"
 	machineName := "testmachine"
 
-	if err := server.createUser(userID, email); err != nil {
+	if err := server.createUser(context.Background(), userID, email); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Create alloc with all required fields
-	_, err := server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	err = server.createMachine(userID, allocID, machineName, "container-123", "ubuntu:22.04")
+	err = server.createMachine(context.Background(), userID, allocID, machineName, "container-123", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Test getting machine by name (globally unique now)
-	machine, err := server.getMachineByName(machineName)
+	machine, err := server.getMachineByName(context.Background(), machineName)
 	if err != nil {
 		t.Fatalf("Failed to get machine: %v", err)
 	}
@@ -44,16 +51,16 @@ func TestGetMachineByName(t *testing.T) {
 	}
 
 	// Test getting non-existent machine
-	_, err = server.getMachineByName("nonexistent")
+	_, err = server.getMachineByName(context.Background(), "nonexistent")
 	if err == nil {
 		t.Error("Expected error when getting non-existent machine")
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("Expected sql.ErrNoRows, got %v", err)
 	}
 
 	// Test getting machine with empty name
-	_, err = server.getMachineByName("")
+	_, err = server.getMachineByName(context.Background(), "")
 	if err == nil {
 		t.Error("Expected error when getting machine with empty name")
 	}
@@ -70,42 +77,48 @@ func TestMachineUniqueConstraint(t *testing.T) {
 	allocID2 := "test-alloc-2"
 	machineName := "testmachine"
 
-	if err := server.createUser(userID1, "user1@example.com"); err != nil {
+	if err := server.createUser(context.Background(), userID1, "user1@example.com"); err != nil {
 		t.Fatalf("Failed to create user1: %v", err)
 	}
-	if err := server.createUser(userID2, "user2@example.com"); err != nil {
+	if err := server.createUser(context.Background(), userID2, "user2@example.com"); err != nil {
 		t.Fatalf("Failed to create user2: %v", err)
 	}
 
 	// Create allocs
-	_, err := server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID1, userID1)
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID1, userID1)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc1: %v", err)
 	}
 
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test2@example.com')`, allocID2, userID2)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test2@example.com')`, allocID2, userID2)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc2: %v", err)
 	}
 
 	// Create machine in first alloc
-	err = server.createMachine(userID1, allocID1, machineName, "container-1", "ubuntu:22.04")
+	err = server.createMachine(context.Background(), userID1, allocID1, machineName, "container-1", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create first machine: %v", err)
 	}
 
 	// Try to create machine with same name in different alloc - should fail now (globally unique)
-	err = server.createMachine(userID2, allocID2, machineName, "container-2", "ubuntu:22.04")
+	err = server.createMachine(context.Background(), userID2, allocID2, machineName, "container-2", "ubuntu:22.04")
 	if err == nil {
 		t.Error("Expected error when creating machine with duplicate name (globally unique)")
 	}
 
 	// Create machine with different name should work
-	err = server.createMachine(userID2, allocID2, "differentmachine", "container-3", "ubuntu:22.04")
+	err = server.createMachine(context.Background(), userID2, allocID2, "differentmachine", "container-3", "ubuntu:22.04")
 	if err != nil {
 		t.Fatalf("Failed to create machine with different name: %v", err)
 	}
@@ -119,14 +132,17 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 	userID := "test-user-id"
 	allocID := "test-alloc-id"
 
-	if err := server.createUser(userID, "test@example.com"); err != nil {
+	if err := server.createUser(context.Background(), userID, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Create alloc with all required fields
-	_, err := server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -153,7 +169,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			containerID := fmt.Sprintf("container-%s", tt.machineName)
-			err := server.createMachine(userID, allocID, tt.machineName, containerID, "ubuntu:22.04")
+			err := server.createMachine(context.Background(), userID, allocID, tt.machineName, containerID, "ubuntu:22.04")
 
 			if tt.shouldFail {
 				if err == nil {
@@ -164,7 +180,10 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 					t.Errorf("%s: Expected success but got error: %v", tt.description, err)
 				} else {
 					// Clean up successful creation for next test
-					_, _ = server.db.Exec(`DELETE FROM machines WHERE name = ?`, tt.machineName)
+					server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+						_, _ = tx.Exec(`DELETE FROM machines WHERE name = ?`, tt.machineName)
+						return nil
+					})
 				}
 			}
 		})

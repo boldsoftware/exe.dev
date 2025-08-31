@@ -1,18 +1,18 @@
 package billing
 
 import (
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
 	"github.com/stripe/stripe-mock/embedded"
 	"github.com/stripe/stripe-mock/server"
 )
 
-func NewWithMockStripe(t *testing.T, db *sql.DB) (Billing, func()) {
+func NewWithMockStripe(t *testing.T, db *sqlite.DB) (Billing, func()) {
 	mockServer := newMockStripeServer(t)
 
 	// Create mock stripe client pointing to our in-process server

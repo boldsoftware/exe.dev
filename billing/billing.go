@@ -1,12 +1,14 @@
 package billing
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
+	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
 )
@@ -42,12 +44,12 @@ type Billing interface {
 
 // billingService implements the Billing interface
 type billingService struct {
-	db     *sql.DB
+	db     *sqlite.DB
 	client *client.API
 }
 
 // New creates a new BillingService
-func New(db *sql.DB) Billing {
+func New(db *sqlite.DB) Billing {
 	return &billingService{
 		db:     db,
 		client: createStripeClient(),
@@ -55,7 +57,7 @@ func New(db *sql.DB) Billing {
 }
 
 // NewWithClient creates a new BillingService with custom client
-func NewWithClient(db *sql.DB, stripeClient *client.API) Billing {
+func NewWithClient(db *sqlite.DB, stripeClient *client.API) Billing {
 	return &billingService{
 		db:     db,
 		client: stripeClient,
@@ -81,9 +83,11 @@ func (bs *billingService) GetBillingInfo(allocID string) (*BillingInfo, error) {
 	var billing BillingInfo
 	var emailNull, customerIDNull sql.NullString
 
-	err := bs.db.QueryRow(`
-		SELECT billing_email, stripe_customer_id 
-		FROM allocs WHERE alloc_id = ?`, allocID).Scan(&emailNull, &customerIDNull)
+	err := bs.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT billing_email, stripe_customer_id 
+			FROM allocs WHERE alloc_id = ?`, allocID).Scan(&emailNull, &customerIDNull)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +122,10 @@ func (bs *billingService) UpdatePaymentMethod(customerID, cardNumber, expMonth, 
 // UpdateBillingEmail updates the billing email in database and Stripe
 func (bs *billingService) UpdateBillingEmail(allocID, customerID, newEmail string) error {
 	// Update in database first
-	_, err := bs.db.Exec("UPDATE allocs SET billing_email = ? WHERE alloc_id = ?", newEmail, allocID)
+	err := bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec("UPDATE allocs SET billing_email = ? WHERE alloc_id = ?", newEmail, allocID)
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -133,8 +140,10 @@ func (bs *billingService) UpdateBillingEmail(allocID, customerID, newEmail strin
 
 // DeleteBillingInfo removes billing information from database
 func (bs *billingService) DeleteBillingInfo(allocID string) error {
-	_, err := bs.db.Exec("UPDATE allocs SET stripe_customer_id = NULL, billing_email = NULL WHERE alloc_id = ?", allocID)
-	return err
+	return bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec("UPDATE allocs SET stripe_customer_id = NULL, billing_email = NULL WHERE alloc_id = ?", allocID)
+		return err
+	})
 }
 
 // ValidateEmail validates email format (simple validation)
@@ -259,9 +268,11 @@ func (bs *billingService) updateStripeCustomerEmail(customerID, email string) er
 }
 
 func (bs *billingService) updateAllocBilling(allocID, customerID, billingEmail string) error {
-	_, err := bs.db.Exec(
-		"UPDATE allocs SET stripe_customer_id = ?, billing_email = ? WHERE alloc_id = ?",
-		customerID, billingEmail, allocID,
-	)
-	return err
+	return bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(
+			"UPDATE allocs SET stripe_customer_id = ?, billing_email = ? WHERE alloc_id = ?",
+			customerID, billingEmail, allocID,
+		)
+		return err
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/container"
+	"exe.dev/sqlite"
 	"exe.dev/termfun"
 	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
@@ -224,7 +226,7 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 	}
 
 	// Create user session for registered users
-	user, err := ss.server.getUserByPublicKey(publicKey)
+	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "Error retrieving user info: %v\r\n", err)
 		return
@@ -235,7 +237,7 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 	}
 
 	// Get or create user's alloc
-	alloc, err := ss.server.getUserAlloc(user.UserID)
+	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
 	if err != nil || alloc == nil {
 		fmt.Fprintf(s, "Error: User has no allocation\r\n")
 		return
@@ -486,7 +488,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	}
 
 	// Start email verification directly without using sshbuf.Channel
-	if err := ss.startEmailVerificationNew(publicKey, email); err != nil {
+	if err := ss.startEmailVerificationNew(s.Context(), publicKey, email); err != nil {
 		// Log the error for debugging
 		log.Printf("Email verification failed for %s: %v", email, err)
 		// Show user-friendly error message
@@ -578,19 +580,22 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 
 	// After successful verification, the user should have been created by the HTTP handler
 	// Get the user to verify it was created
-	user, userErr := ss.server.getUserByPublicKey(publicKey)
+	user, userErr := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if userErr != nil || user == nil {
 		log.Printf("Error: User not found after verification: %v", userErr)
 		fmt.Fprintf(s, "Error loading user profile. Please try registering again.\r\n")
 		return
 	}
 
-	// Store/update the SSH key as verified
-	_, storeErr := ss.server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key)
-		VALUES (?, ?)
-		ON CONFLICT(public_key) DO UPDATE SET user_id = ?`,
-		user.UserID, publicKey, user.UserID)
+	// Store/update the SSH key as verified - use context.Background() to ensure cleanup completes even if client disconnects
+	storeErr := ss.server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)
+			ON CONFLICT(public_key) DO UPDATE SET user_id = ?`,
+			user.UserID, publicKey, user.UserID)
+		return err
+	})
 	if storeErr != nil {
 		log.Printf("Error storing SSH key: %v", storeErr)
 		// Don't fail here, the key might already exist
@@ -607,7 +612,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	<-goroutineDone
 
 	// Get user's alloc for the menu
-	alloc, err := ss.server.getUserAlloc(user.UserID)
+	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
 	if err != nil || alloc == nil {
 		fmt.Fprintf(s, "Error: User not associated with any allocation\r\n")
 		return
@@ -634,13 +639,13 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 
 	// Get user and team info
 	// publicKey is already passed as parameter from context
-	user, err := ss.server.getUserByPublicKey(publicKey)
+	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "Authentication error: %v\r\n", err)
 		return
 	}
 
-	alloc, err := ss.server.getUserAlloc(user.UserID)
+	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
 	if err != nil || alloc == nil {
 		fmt.Fprint(s, "Error: User not associated with any allocation\r\n")
 		return
@@ -722,7 +727,7 @@ func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, boo
 func (ss *SSHServer) handleListCommand(s ssh.Session, allocID string) {
 	// If container manager is available, get real-time status
 	if ss.server.containerManager != nil {
-		containers, err := ss.server.containerManager.ListContainers(context.Background(), allocID)
+		containers, err := ss.server.containerManager.ListContainers(s.Context(), allocID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError listing machines: %v\033[0m\r\n", err)
 			return
@@ -764,7 +769,7 @@ func (ss *SSHServer) handleListCommand(s ssh.Session, allocID string) {
 	}
 
 	// Fallback to database if container manager not available
-	machines, err := ss.server.getMachinesForAlloc(allocID)
+	machines, err := ss.server.getMachinesForAlloc(s.Context(), allocID)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError listing machines: %v\033[0m\r\n", err)
 		return
@@ -801,7 +806,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	}
 
 	// Get user information - needed for machine creation
-	user, err := ss.server.getUserByPublicKey(publicKey)
+	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
 		return
@@ -842,12 +847,12 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	if machineName == "" {
 		machineName = generateRandomContainerName()
 		// Check if name is already taken
-		_, err := ss.server.getMachineByName(machineName)
+		_, err := ss.server.getMachineByName(s.Context(), machineName)
 		if err == nil {
 			// Name exists, try again
 			for attempts := 0; attempts < 10; attempts++ {
 				machineName = generateRandomContainerName()
-				_, err = ss.server.getMachineByName(machineName)
+				_, err = ss.server.getMachineByName(s.Context(), machineName)
 				if err != nil {
 					break
 				}
@@ -930,7 +935,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 
 	// Run CreateContainer in a goroutine
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(s.Context(), 5*time.Minute)
 		defer cancel()
 
 		createdContainer, err := ss.server.containerManager.CreateContainer(ctx, req)
@@ -1027,7 +1032,7 @@ done:
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}
-	if err := ss.server.createMachineWithSSHAndDockerHost(user.UserID, allocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
+	if err := ss.server.createMachineWithSSHAndDockerHost(s.Context(), user.UserID, allocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 
@@ -1062,7 +1067,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, allocID string, args []st
 	}
 
 	// Get machine info
-	machine, err := ss.server.getMachineByName(machineName)
+	machine, err := ss.server.getMachineByName(s.Context(), machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
 		return
@@ -1076,18 +1081,20 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, allocID string, args []st
 	fmt.Fprintf(s, "Starting \033[1m%s\033[0m...\r\n", machineName)
 
 	// Start the container
-	ctx := context.Background()
-	err = ss.server.containerManager.StartContainer(ctx, machine.AllocID, *machine.ContainerID)
+	err = ss.server.containerManager.StartContainer(s.Context(), machine.AllocID, *machine.ContainerID)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError starting machine: %v\033[0m\r\n", err)
 		return
 	}
 
 	// Update database status
-	_, err = ss.server.db.Exec(`
-		UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP
-		WHERE name = ?`,
-		machineName)
+	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP
+			WHERE name = ?`,
+			machineName)
+		return err
+	})
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
 	}
@@ -1110,7 +1117,7 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, args []string) {
 
 	for _, machineName := range args {
 		// Get machine info
-		machine, err := ss.server.getMachineByName(machineName)
+		machine, err := ss.server.getMachineByName(s.Context(), machineName)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
 			continue
@@ -1124,18 +1131,20 @@ func (ss *SSHServer) handleStopCommand(s ssh.Session, args []string) {
 		fmt.Fprintf(s, "Stopping \033[1m%s\033[0m...\r\n", machineName)
 
 		// Stop the container
-		ctx := context.Background()
-		err = ss.server.containerManager.StopContainer(ctx, machine.AllocID, *machine.ContainerID)
+		err = ss.server.containerManager.StopContainer(s.Context(), machine.AllocID, *machine.ContainerID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError stopping machine %s: %v\033[0m\r\n", machineName, err)
 			continue
 		}
 
 		// Update database status
-		_, err = ss.server.db.Exec(`
-			UPDATE machines SET status = 'stopped'
-			WHERE name = ?`,
-			machineName)
+		err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				UPDATE machines SET status = 'stopped'
+				WHERE name = ?`,
+				machineName)
+			return err
+		})
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;33mWarning: Failed to update machine status: %v\033[0m\r\n", err)
 		}
@@ -1157,10 +1166,13 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, allocID string, args []s
 		// Just delete from database if no container manager
 		fmt.Fprintf(s, "Deleting \033[1m%s\033[0m...\r\n", machineName)
 
-		_, err := ss.server.db.Exec(`
-			DELETE FROM machines
-			WHERE name = ?`,
-			machineName)
+		err := ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				DELETE FROM machines
+				WHERE name = ?`,
+				machineName)
+			return err
+		})
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;31mError deleting machine: %v\033[0m\r\n", err)
 			return
@@ -1179,7 +1191,7 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, allocID string, args []s
 	}
 
 	// Get machine info
-	machine, err := ss.server.getMachineByName(machineName)
+	machine, err := ss.server.getMachineByName(s.Context(), machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Machine '%s' not found\033[0m\r\n", machineName)
 		return
@@ -1189,18 +1201,20 @@ func (ss *SSHServer) handleDeleteCommand(s ssh.Session, allocID string, args []s
 
 	// Delete the container if it exists
 	if machine.ContainerID != nil {
-		ctx := context.Background()
-		err = ss.server.containerManager.DeleteContainer(ctx, machine.AllocID, *machine.ContainerID)
+		err = ss.server.containerManager.DeleteContainer(s.Context(), machine.AllocID, *machine.ContainerID)
 		if err != nil {
 			fmt.Fprintf(s, "\033[1;33mWarning: Failed to delete container: %v\033[0m\r\n", err)
 		}
 	}
 
 	// Delete from database
-	_, err = ss.server.db.Exec(`
-		DELETE FROM machines
-		WHERE name = ?`,
-		machineName)
+	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			DELETE FROM machines
+			WHERE name = ?`,
+			machineName)
+		return err
+	})
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError deleting machine from database: %v\033[0m\r\n", err)
 		return
@@ -1230,7 +1244,7 @@ func (ss *SSHServer) handleLogsCommand(s ssh.Session, publicKey, allocID string,
 }
 
 func (ss *SSHServer) handleRouteCommand(s ssh.Session, publicKey, allocID string, args []string) {
-	ss.server.handleRouteCommand(s, publicKey, allocID, args)
+	ss.server.handleRouteCommand(s.Context(), s, publicKey, allocID, args)
 }
 
 func (ss *SSHServer) handleHelpCommand(s ssh.Session, command string) {
@@ -1324,7 +1338,12 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 	currentPublicKey, _ := s.Context().Value("public_key").(string)
 
 	// Get all public keys for this user
-	rows, err := ss.server.db.Query(`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key`, email)
+	var rows *sql.Rows
+	err := ss.server.db.Rx(s.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		rows, err = rx.Query(`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key`, email)
+		return err
+	})
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError retrieving SSH keys: %v\033[0m\r\n", err)
 		return
@@ -1370,13 +1389,13 @@ func (ss *SSHServer) handleWhoamiCommand(s ssh.Session, email string) {
 
 func (ss *SSHServer) handleAllocCommand(s ssh.Session, publicKey, allocID string, args []string) {
 	// Show allocation info
-	user, err := ss.server.getUserByPublicKey(publicKey)
+	user, err := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
 		return
 	}
 
-	alloc, err := ss.server.getUserAlloc(user.UserID)
+	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
 	if err != nil || alloc == nil {
 		fmt.Fprintf(s, "\033[1;31mError: No allocation found\033[0m\r\n")
 		return
@@ -1390,16 +1409,18 @@ func (ss *SSHServer) handleAllocCommand(s ssh.Session, publicKey, allocID string
 }
 
 // getMachinesForTeam is obsolete - use getMachinesForAlloc instead
-func (s *Server) getMachinesForTeam(allocID string) ([]*Machine, error) {
+func (s *Server) getMachinesForTeam(ctx context.Context, allocID string) ([]*Machine, error) {
 	// This function is kept for backward compatibility but redirects to getMachinesForAlloc
-	return s.getMachinesForAlloc(allocID)
+	return s.getMachinesForAlloc(ctx, allocID)
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
-func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
+func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, email string) error {
 	// Check if this email already exists
 	var existingUserID string
-	err := ss.server.db.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&existingUserID)
+	err := ss.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&existingUserID)
+	})
 
 	if err == nil {
 		// Email already exists - this is a new ssh key for an existing user
@@ -1410,10 +1431,13 @@ func (ss *SSHServer) startEmailVerificationNew(publicKey, email string) error {
 		token := ss.server.generateToken()
 		expires := time.Now().Add(15 * time.Minute)
 
-		_, err = ss.server.db.Exec(`
-			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
-			VALUES (?, ?, ?, ?)`,
-			token, publicKey, email, expires)
+		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+				VALUES (?, ?, ?, ?)`,
+				token, publicKey, email, expires)
+			return err
+		})
 		if err != nil {
 			return fmt.Errorf("failed to create verification token: %v", err)
 		}
@@ -1501,7 +1525,7 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 
 func (ss *SSHServer) handleRouteList(s ssh.Session, publicKey, teamName, machineName string) {
 	// Get machine
-	machine, err := ss.getMachine(publicKey, teamName, machineName)
+	machine, err := ss.getMachine(s.Context(), publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -1567,7 +1591,7 @@ func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineN
 	}
 
 	// Get machine
-	machine, err := ss.getMachine(publicKey, teamName, machineName)
+	machine, err := ss.getMachine(s.Context(), publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -1655,10 +1679,13 @@ func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineN
 	}
 
 	// Update database
-	_, err = ss.server.db.Exec(`
-		UPDATE machines SET routes = ?
-		WHERE name = ?`,
-		*machine.Routes, machineName)
+	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE machines SET routes = ?
+			WHERE name = ?`,
+			*machine.Routes, machineName)
+		return err
+	})
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError saving route: %v\033[0m\r\n", err)
 		return
@@ -1677,7 +1704,7 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machi
 	routeName := args[0]
 
 	// Get machine
-	machine, err := ss.getMachine(publicKey, teamName, machineName)
+	machine, err := ss.getMachine(s.Context(), publicKey, teamName, machineName)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
@@ -1714,10 +1741,13 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machi
 	}
 
 	// Update database
-	_, err = ss.server.db.Exec(`
-		UPDATE machines SET routes = ?
-		WHERE name = ?`,
-		*machine.Routes, machineName)
+	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE machines SET routes = ?
+			WHERE name = ?`,
+			*machine.Routes, machineName)
+		return err
+	})
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
 		return
@@ -1727,16 +1757,18 @@ func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machi
 }
 
 // getMachine retrieves a machine for the given user/team/name
-func (ss *SSHServer) getMachine(publicKey, allocID, machineName string) (*Machine, error) {
+func (ss *SSHServer) getMachine(ctx context.Context, publicKey, allocID, machineName string) (*Machine, error) {
 	// First verify user has access to the alloc
 	var exists bool
-	err := ss.server.db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM allocs a
-			JOIN users u ON a.user_id = u.user_id
-			JOIN ssh_keys sk ON u.user_id = sk.user_id
-			WHERE sk.public_key = ? AND sk.verified = 1 AND a.alloc_id = ?
-		)`, publicKey, allocID).Scan(&exists)
+	err := ss.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT EXISTS(
+				SELECT 1 FROM allocs a
+				JOIN users u ON a.user_id = u.user_id
+				JOIN ssh_keys sk ON u.user_id = sk.user_id
+				WHERE sk.public_key = ? AND sk.verified = 1 AND a.alloc_id = ?
+			)`, publicKey, allocID).Scan(&exists)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("database error: %v", err)
 	}
@@ -1746,18 +1778,20 @@ func (ss *SSHServer) getMachine(publicKey, allocID, machineName string) (*Machin
 
 	// Get the machine
 	var machine Machine
-	err = ss.server.db.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id,
-		       created_by_user_id, created_at, updated_at,
-		       last_started_at, docker_host, routes
-		FROM machines
-		WHERE name = ? AND alloc_id = ?`, machineName, allocID).Scan(
-		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
-		&machine.DockerHost, &machine.Routes)
+	err = ss.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT id, alloc_id, name, status, image, container_id,
+			       created_by_user_id, created_at, updated_at,
+			       last_started_at, docker_host, routes
+			FROM machines
+			WHERE name = ? AND alloc_id = ?`, machineName, allocID).Scan(
+			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
+			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
+			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
+			&machine.DockerHost, &machine.Routes)
+	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("machine '%s' not found", machineName)
 		}
 		return nil, fmt.Errorf("database error: %v", err)

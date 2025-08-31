@@ -1,7 +1,10 @@
 package exe
 
 import (
+	"context"
 	"testing"
+
+	"exe.dev/sqlite"
 )
 
 // TestMachineNameFormatParsing tests machine name parsing with the new alloc-based system
@@ -15,30 +18,42 @@ func TestMachineNameFormatParsing(t *testing.T) {
 	machineName := "testmachine"
 
 	// Create user
-	_, err := server.db.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`, userID, "test@example.com")
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO users (user_id, email, created_at) VALUES (?, ?, datetime('now'))`, userID, "test@example.com")
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create alloc with all required fields
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create a machine in the alloc
-	_, err = server.db.Exec(`
-		INSERT INTO machines (alloc_id, name, status, image, created_by_user_id, created_at, updated_at)
-		VALUES (?, ?, 'stopped', 'ubuntu', ?, datetime('now'), datetime('now'))
-	`, allocID, machineName, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO machines (alloc_id, name, status, image, created_by_user_id, created_at, updated_at)
+			VALUES (?, ?, 'stopped', 'ubuntu', ?, datetime('now'), datetime('now'))
+		`, allocID, machineName, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Add SSH key for user
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "dummy-key")
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "dummy-key")
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +88,7 @@ func TestMachineNameFormatParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			machine := server.FindMachineByNameForUser(userID, tt.machineName)
+			machine := server.FindMachineByNameForUser(t.Context(), userID, tt.machineName)
 
 			if tt.expectedFound {
 				if machine == nil {

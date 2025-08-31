@@ -1,6 +1,7 @@
 package exe
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -43,7 +45,7 @@ func TestPublicKeyAuthentication(t *testing.T) {
 
 	// Register the user with alloc in the database
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-	if err := server.createUserWithAlloc(publicKeyStr, "test@example.com"); err != nil {
+	if err := server.createUserWithAlloc(context.Background(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
@@ -232,24 +234,30 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	email := "test@example.com"
 	// Create user with generated user_id
 	userID := "usr1234567890123" // test user ID
-	_, err := server.db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email)
+	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email); err != nil {
+			return err
+		}
+		// Add SSH key
+		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com"); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Add SSH key
-	_, err = server.db.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
-	if err != nil {
-		t.Fatalf("Failed to create SSH key: %v", err)
+		t.Fatalf("Failed to create user and SSH key: %v", err)
 	}
 
 	// Create an email verification token
 	token := "test-token-" + time.Now().Format("20060102150405")
 	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
-	_, err = server.db.Exec(`
-		INSERT INTO email_verifications (token, email, user_id, expires_at)
-		VALUES (?, ?, ?, ?)`,
-		token, email, userID, expires)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO email_verifications (token, email, user_id, expires_at)
+			VALUES (?, ?, ?, ?)`,
+			token, email, userID, expires)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create verification token: %v", err)
 	}
@@ -276,7 +284,9 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 
 	// Verify token is still valid (not consumed by GET)
 	var count int
-	err = server.db.QueryRow(`SELECT COUNT(*) FROM email_verifications WHERE token = ?`, token).Scan(&count)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT COUNT(*) FROM email_verifications WHERE token = ?`, token).Scan(&count)
+	})
 	if err != nil {
 		t.Errorf("Error checking token after GET: %v", err)
 	}
@@ -302,7 +312,9 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	}
 
 	// Verify token is consumed
-	err = server.db.QueryRow(`SELECT COUNT(*) FROM email_verifications WHERE token = ?`, token).Scan(&count)
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT COUNT(*) FROM email_verifications WHERE token = ?`, token).Scan(&count)
+	})
 	if err != nil || count != 0 {
 		t.Error("POST request should consume the verification token")
 	}

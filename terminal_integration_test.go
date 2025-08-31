@@ -67,7 +67,7 @@ func TestTerminalStaticFiles(t *testing.T) {
 
 	// Create a test user and auth them
 	userID := "test-user-id"
-	authCookie, err := server.createAuthCookie(userID, "testmachine.xterm.localhost")
+	authCookie, err := server.createAuthCookie(t.Context(), userID, "testmachine.xterm.localhost")
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}

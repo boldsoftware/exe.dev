@@ -1,11 +1,13 @@
 package exe
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
 	"time"
 
+	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -37,7 +39,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 	// Test 1: First key registration creates new user
 	t.Run("FirstKeyRegistration", func(t *testing.T) {
 		// Create user with first key
-		err := server.createUser(string(ssh.MarshalAuthorizedKey(pubKey1)), testEmail)
+		err := server.createUser(context.Background(), string(ssh.MarshalAuthorizedKey(pubKey1)), testEmail)
 		if err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -49,7 +51,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		}
 
 		// First key should be verified
-		email, verified, err := server.GetEmailBySSHKey(string(ssh.MarshalAuthorizedKey(pubKey1)))
+		email, verified, err := server.GetEmailBySSHKey(context.Background(), string(ssh.MarshalAuthorizedKey(pubKey1)))
 		if err != nil {
 			t.Fatalf("Failed to get email by SSH key: %v", err)
 		}
@@ -76,10 +78,13 @@ func TestMultiKeyAuthentication(t *testing.T) {
 
 		// Add second key as unverified (in pending_ssh_keys table)
 		token := server.generateToken()
-		_, err = server.db.Exec(`
-			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
-			VALUES (?, ?, ?, datetime('now', '+15 minutes'))`,
-			token, string(ssh.MarshalAuthorizedKey(pubKey2)), testEmail)
+		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+				VALUES (?, ?, ?, datetime('now', '+15 minutes'))`,
+				token, string(ssh.MarshalAuthorizedKey(pubKey2)), testEmail)
+			return err
+		})
 		if err != nil {
 			t.Fatalf("Failed to add unverified SSH key: %v", err)
 		}
@@ -104,39 +109,46 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		// Move key from pending to verified (simulate verification)
 		// First get the user ID
 		var userID string
-		err = server.db.QueryRow("SELECT user_id FROM users WHERE email = ?", testEmail).Scan(&userID)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow("SELECT user_id FROM users WHERE email = ?", testEmail).Scan(&userID)
+		})
 		if err != nil {
 			t.Fatalf("Failed to get user ID: %v", err)
 		}
 
 		// Move key from pending_ssh_keys to ssh_keys
-		_, err = server.db.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key)
-			VALUES (?, ?)`,
-			userID, string(ssh.MarshalAuthorizedKey(pubKey2)))
+		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			if _, err := tx.Exec(`
+				INSERT INTO ssh_keys (user_id, public_key)
+				VALUES (?, ?)`,
+				userID, string(ssh.MarshalAuthorizedKey(pubKey2))); err != nil {
+				return err
+			}
+			// Remove from pending
+			if _, err := tx.Exec(`
+				DELETE FROM pending_ssh_keys WHERE public_key = ?`,
+				string(ssh.MarshalAuthorizedKey(pubKey2))); err != nil {
+				return err
+			}
+			return nil
+		})
 		if err != nil {
-			t.Fatalf("Failed to verify SSH key: %v", err)
-		}
-
-		// Remove from pending
-		_, err = server.db.Exec(`
-			DELETE FROM pending_ssh_keys WHERE public_key = ?`,
-			string(ssh.MarshalAuthorizedKey(pubKey2)))
-		if err != nil {
-			t.Fatalf("Failed to remove from pending: %v", err)
+			t.Fatalf("Failed to verify SSH key and remove from pending: %v", err)
 		}
 
 		// Create team membership for full authentication
-		server.db.Exec("INSERT OR IGNORE INTO teams (team_name) VALUES ('test-team')")
-		// Get or create user and add to team
 		userID1, err := generateUserID()
 		if err != nil {
 			t.Fatalf("Failed to generate user ID: %v", err)
 		}
-		server.db.Exec(`INSERT OR IGNORE INTO users (user_id, email) VALUES (?, ?)`, userID1, "test1@example.com")
-		server.db.Exec(`INSERT OR IGNORE INTO team_members 
-			(user_id, team_name, is_admin) 
-			VALUES (?, 'test-team', 1)`, userID1)
+		server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			tx.Exec("INSERT OR IGNORE INTO teams (team_name) VALUES ('test-team')")
+			tx.Exec(`INSERT OR IGNORE INTO users (user_id, email) VALUES (?, ?)`, userID1, "test1@example.com")
+			tx.Exec(`INSERT OR IGNORE INTO team_members 
+				(user_id, team_name, is_admin) 
+				VALUES (?, 'test-team', 1)`, userID1)
+			return nil
+		})
 
 		// Now authentication should succeed
 		perms, err := server.AuthenticatePublicKey(nil, pubKey2)
@@ -169,19 +181,24 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		// Create pending key entry
 		token := "test-verification-token"
 		expires := time.Now().Add(15 * time.Minute)
-		_, err = server.db.Exec(`
-			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
-			VALUES (?, ?, ?, ?)`,
-			token, publicKey3, testEmail, expires)
+		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+				VALUES (?, ?, ?, ?)`,
+				token, publicKey3, testEmail, expires)
+			return err
+		})
 		if err != nil {
 			t.Fatalf("Failed to create pending key: %v", err)
 		}
 
 		// Verify the pending key exists
 		var count int
-		err = server.db.QueryRow(`
-			SELECT COUNT(*) FROM pending_ssh_keys WHERE token = ?`,
-			token).Scan(&count)
+		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+			return rx.QueryRow(`
+				SELECT COUNT(*) FROM pending_ssh_keys WHERE token = ?`,
+				token).Scan(&count)
+		})
 		if err != nil {
 			t.Fatalf("Failed to query pending keys: %v", err)
 		}
@@ -199,7 +216,7 @@ func TestEmailBySSHKey(t *testing.T) {
 	testPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC..."
 
 	// Test non-existent key
-	email, verified, err := server.GetEmailBySSHKey("non-existent")
+	email, verified, err := server.GetEmailBySSHKey(context.Background(), "non-existent")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -212,25 +229,28 @@ func TestEmailBySSHKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to generate user ID: %v", err)
 	}
-	_, err = server.db.Exec(`
-		INSERT INTO users (user_id, email)
-		VALUES (?, ?)`,
-		userID, testEmail)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`
+			INSERT INTO users (user_id, email)
+			VALUES (?, ?)`,
+			userID, testEmail); err != nil {
+			return err
+		}
+		// Add verified key
+		if _, err := tx.Exec(`
+			INSERT INTO ssh_keys (user_id, public_key)
+			VALUES (?, ?)`,
+			userID, testPublicKey); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
-	}
-
-	// Add verified key
-	_, err = server.db.Exec(`
-		INSERT INTO ssh_keys (user_id, public_key)
-		VALUES (?, ?)`,
-		userID, testPublicKey)
-	if err != nil {
-		t.Fatalf("Failed to insert SSH key: %v", err)
+		t.Fatalf("Failed to create user and SSH key: %v", err)
 	}
 
 	// Test existing verified key
-	email, verified, err = server.GetEmailBySSHKey(testPublicKey)
+	email, verified, err = server.GetEmailBySSHKey(context.Background(), testPublicKey)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -244,16 +264,19 @@ func TestEmailBySSHKey(t *testing.T) {
 	// Add unverified key (in pending_ssh_keys)
 	unverifiedPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDUnverified..."
 	token := server.generateToken()
-	_, err = server.db.Exec(`
-		INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
-		VALUES (?, ?, ?, datetime('now', '+15 minutes'))`,
-		token, unverifiedPublicKey, testEmail)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+			VALUES (?, ?, ?, datetime('now', '+15 minutes'))`,
+			token, unverifiedPublicKey, testEmail)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to insert unverified SSH key: %v", err)
 	}
 
 	// Test unverified key
-	email, verified, err = server.GetEmailBySSHKey(unverifiedPublicKey)
+	email, verified, err = server.GetEmailBySSHKey(context.Background(), unverifiedPublicKey)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

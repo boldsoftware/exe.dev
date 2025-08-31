@@ -3,6 +3,7 @@ package exedb
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -65,7 +66,7 @@ func RunMigrations(db *sql.DB) error {
 			}
 			executedMigrations[migrationNumber] = true
 		}
-	} else if err != sql.ErrNoRows {
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to check migrations table: %w", err)
 	} else {
 		// Migrations table doesn't exist - executedMigrations remains empty

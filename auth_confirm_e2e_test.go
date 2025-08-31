@@ -1,12 +1,15 @@
 package exe
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"exe.dev/sqlite"
 )
 
 // TestAuthConfirmE2EFlow tests the complete end-to-end flow with the interstitial page
@@ -36,14 +39,20 @@ func TestAuthConfirmE2EFlow(t *testing.T) {
 
 	// Create alloc for user
 	allocID := "test-alloc-" + userID[:8]
-	_, err = server.db.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
 	// Create machine
-	_, err = server.db.Exec(`INSERT INTO machines (alloc_id, name, status, created_by_user_id) VALUES (?, ?, 'stopped', ?)`,
-		allocID, machineName, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`INSERT INTO machines (alloc_id, name, status, created_by_user_id) VALUES (?, ?, 'stopped', ?)`,
+			allocID, machineName, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -57,7 +66,7 @@ func TestAuthConfirmE2EFlow(t *testing.T) {
 
 	t.Log("=== STEP 1: User follows redirect to main domain auth ===")
 	// Create auth cookie for authenticated user
-	cookieValue, err := server.createAuthCookie(userID, "localhost:0")
+	cookieValue, err := server.createAuthCookie(t.Context(), userID, "localhost:0")
 	if err != nil {
 		t.Fatalf("Failed to create auth cookie: %v", err)
 	}

@@ -1,7 +1,10 @@
 package exe
 
 import (
+	"context"
 	"testing"
+
+	"exe.dev/sqlite"
 )
 
 func TestSSHHostKeyTable(t *testing.T) {
@@ -13,10 +16,12 @@ func TestSSHHostKeyTable(t *testing.T) {
 	var privateKey, publicKey, fingerprint string
 	var createdAt, updatedAt string
 
-	err := server.db.QueryRow(`
-		SELECT id, private_key, public_key, fingerprint, created_at, updated_at
-		FROM ssh_host_key
-		WHERE id = 1`).Scan(&id, &privateKey, &publicKey, &fingerprint, &createdAt, &updatedAt)
+	err := server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT id, private_key, public_key, fingerprint, created_at, updated_at
+			FROM ssh_host_key
+			WHERE id = 1`).Scan(&id, &privateKey, &publicKey, &fingerprint, &createdAt, &updatedAt)
+	})
 	if err != nil {
 		t.Fatalf("Failed to query host key table: %v", err)
 	}
@@ -47,9 +52,12 @@ func TestSSHHostKeyTable(t *testing.T) {
 	}
 
 	// Verify the CHECK constraint works (can't insert a second row)
-	_, err = server.db.Exec(`
-		INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint)
-		VALUES (2, 'test', 'test', 'test')`)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint)
+			VALUES (2, 'test', 'test', 'test')`)
+		return err
+	})
 
 	if err == nil {
 		t.Error("Should not be able to insert a second row due to CHECK constraint")

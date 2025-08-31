@@ -1,11 +1,14 @@
 package exe
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
 	"time"
+
+	"exe.dev/sqlite"
 )
 
 func TestBrowserScenario(t *testing.T) {
@@ -31,9 +34,12 @@ func TestBrowserScenario(t *testing.T) {
 	}
 
 	// Create alloc for the user
-	_, err = server.db.Exec(`
-		INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
-		VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))`, allocID, userID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
@@ -46,13 +52,16 @@ func TestBrowserScenario(t *testing.T) {
 	mockManager.AddContainer(containerID, machineName, allocID)
 
 	// Store container in database using the proper createMachine method
-	err = server.createMachine(userID, allocID, machineName, containerID, "")
+	err = server.createMachine(t.Context(), userID, allocID, machineName, containerID, "")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
 	// Update status to running
-	_, err = server.db.Exec(`UPDATE machines SET status = 'running' WHERE name = ?`, machineName)
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`UPDATE machines SET status = 'running' WHERE name = ?`, machineName)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to store machine in database: %v", err)
 	}
