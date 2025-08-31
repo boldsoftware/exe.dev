@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // Connection represents a persistent SSH connection with multiplexing
@@ -30,31 +32,8 @@ type Pool struct {
 	baseDir     string
 }
 
-// shellQuotePattern matches characters that require shell quoting
-// This includes anything that's not alphanumeric or in the safe set: @%+=:,./-
-var shellQuotePattern = regexp.MustCompile(`[^\w@%+=:,./-]`)
-
-// shellQuote escapes a string for safe use as a shell argument
-// It follows POSIX shell quoting rules:
-// - If the string contains no special characters, return as-is
-// - Otherwise, wrap in single quotes and escape any single quotes inside
-func shellQuote(s string) string {
-	if len(s) == 0 {
-		return "''"
-	}
-
-	// Check if the string needs quoting
-	if shellQuotePattern.MatchString(s) {
-		// Escape single quotes by ending the quote, adding an escaped quote, then starting a new quote
-		// This turns: don't => 'don'\''t'
-		return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-	}
-
-	// No special characters, return as-is
-	return s
-}
-
-// shellQuoteCommand quotes multiple arguments and joins them with spaces
+// shellQuoteCommand quotes multiple arguments and joins them with spaces.
+// If args cannot be safely quoted, it returns an empty string.
 func shellQuoteCommand(args []string) string {
 	if len(args) == 0 {
 		return ""
@@ -62,7 +41,14 @@ func shellQuoteCommand(args []string) string {
 
 	quoted := make([]string, len(args))
 	for i, arg := range args {
-		quoted[i] = shellQuote(arg)
+		quotedArg, err := syntax.Quote(arg, syntax.LangBash)
+		if err != nil {
+			// Command contains a NUL byte or something else seriously sketchy.
+			// Play it safe by returning "", and log for debugging purposes
+			slog.Warn("failed to quote command argument", "args", args, "arg", arg, "error", err)
+			return ""
+		}
+		quoted[i] = quotedArg
 	}
 	return strings.Join(quoted, " ")
 }

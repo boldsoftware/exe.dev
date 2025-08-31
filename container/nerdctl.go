@@ -1278,12 +1278,6 @@ func (m *NerdctlManager) GetBackendType() string {
 	return "nerdctl"
 }
 
-// shellQuote quotes a string for safe use in shell commands
-func shellQuote(s string) string {
-	// Use single quotes and escape any single quotes in the string
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
-
 // prepareRovolFS copies the embedded RovolFS files to the host for mounting into containers
 func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (string, error) {
 	// Use cached host architecture (already mapped to Go arch names)
