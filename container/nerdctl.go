@@ -441,9 +441,11 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	sshPort := 10000 + (hash % 10000)
 
-	// Determine if this image can auto-start SSH (avoiding the setupContainerSSH step)
+	// Use exetini for all containers when we have rovol mounted (which contains exetini)
+	// This enables auto-SSH start for all containers
+	useExetini := m.rovolMountPath != ""
+	autoStartSSH := useExetini // When using exetini, SSH auto-starts
 	isExeuntu := image == "ghcr.io/boldsoftware/exeuntu:latest" || strings.HasSuffix(image, "/exeuntu:latest")
-	autoStartSSH := isExeuntu && m.rovolMountPath != ""
 
 	// Build run command with nydus snapshotter
 	runArgs := []string{
@@ -500,27 +502,61 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Cloud Hypervisor doesn't support the dynamic resource allocation that nerdctl's
 	// --memory and --cpus flags trigger. We need to use cgroup parent slices instead.
 
+	// If using exetini, override the entrypoint
+	if useExetini {
+		runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
+	}
+
+	// Get image entrypoint and cmd from manifest if using exetini
+	var imageEntrypoint []string
+	var imageCmd []string
+	if useExetini && req.CommandOverride == "" {
+		// Inspect the image to get its entrypoint and cmd
+		inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "json")
+		if output, err := inspectCmd.Output(); err == nil {
+			var imageConfig struct {
+				Config struct {
+					Entrypoint []string `json:"Entrypoint"`
+					Cmd        []string `json:"Cmd"`
+				} `json:"Config"`
+			}
+			if err := json.Unmarshal(output, &imageConfig); err == nil {
+				imageEntrypoint = imageConfig.Config.Entrypoint
+				imageCmd = imageConfig.Config.Cmd
+				log.Printf("Image %s has entrypoint: %v, cmd: %v", image, imageEntrypoint, imageCmd)
+			}
+		}
+	}
+
 	// Add the image
 	runArgs = append(runArgs, image)
 
 	// Add command if specified
-	// The exeuntu image requires a command because it uses tini which needs arguments
 	if req.CommandOverride != "" && req.CommandOverride != "auto" && req.CommandOverride != "none" {
 		// Parse custom command override
 		cmdParts := strings.Fields(req.CommandOverride)
-		runArgs = append(runArgs, cmdParts...)
-	} else if req.CommandOverride == "none" || isExeuntu {
-		if autoStartSSH {
-			// For exeuntu with rovol mount, start sshd in background and keep container running
-			// This way we can debug even if sshd fails
-			debugCmd := fmt.Sprintf("{ %s; } > /tmp/sshd-startup.log 2>&1 & sleep infinity", sshdCmd)
-			runArgs = append(runArgs, "/usr/bin/sh", "-c", debugCmd)
-		} else {
-			// Fall back to sleep infinity for containers without rovol or non-exeuntu
-			runArgs = append(runArgs, "sleep", "infinity")
+		if useExetini {
+			// When using exetini with custom command, use -g to run in same process group
+			runArgs = append(runArgs, "-g", "--")
 		}
+		runArgs = append(runArgs, cmdParts...)
+	} else if useExetini {
+		// When using exetini, pass through the original entrypoint/cmd
+		if len(imageEntrypoint) > 0 || len(imageCmd) > 0 {
+			// Image has an entrypoint or cmd, use -g to preserve process group
+			runArgs = append(runArgs, "-g", "--")
+			// Add entrypoint first, then cmd
+			runArgs = append(runArgs, imageEntrypoint...)
+			runArgs = append(runArgs, imageCmd...)
+		} else {
+			// No entrypoint or cmd, use sleep infinity
+			runArgs = append(runArgs, "--", "sleep", "infinity")
+		}
+	} else if req.CommandOverride == "none" || isExeuntu {
+		// For containers without exetini that need a command
+		runArgs = append(runArgs, "sleep", "infinity")
 	}
-	// For "auto" with non-exeuntu images, don't add any command - let the image use its default CMD/ENTRYPOINT
+	// If not using exetini and no override, let the image use its default CMD/ENTRYPOINT
 
 	// Check if image exists locally and get its size
 	var imageSize int64
@@ -743,8 +779,10 @@ func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, cont
 			if len(logs) > 0 {
 				log.Printf("Container logs: %s", string(logs))
 			}
-			m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
-			cleanupFunc()
+			// Temporarily keep failed container for debugging
+			log.Printf("DEBUG: Keeping failed container %s for inspection", containerID)
+			// m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
+			// cleanupFunc()
 			return "", fmt.Errorf("container failed to start, status: %s", status)
 		}
 
