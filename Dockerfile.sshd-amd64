@@ -12,7 +12,7 @@ RUN apk add --no-cache \
       musl-dev \
       cmake
 
-# Set up /exe.dev/lib with the musl interpreter so compilation can use it
+# Set up /exe.dev/lib with the interpreter so compilation can use it
 RUN mkdir -p /exe.dev/lib && \
     cp -v /lib/ld-musl-*.so.1 /exe.dev/lib/ && \
     cd /exe.dev/lib && \
@@ -27,7 +27,7 @@ RUN curl -fsSLO https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${O
 WORKDIR /src/openssh-${OPENSSH_VERSION}
 
 # Configure with minimal features, no OpenSSL, using built-in crypto
-# Set rpath and interpreter to use our /exe.dev paths with musl
+# Set rpath and interpreter to use our /exe.dev paths
 # Use -O1 to avoid compiler crashes and disable stack protector
 ENV CFLAGS="-O1 -fno-strict-aliasing -fno-stack-protector"
 ENV LDFLAGS="-Wl,-rpath,/exe.dev/lib -Wl,--dynamic-linker,/exe.dev/lib/ld-musl-x86_64.so.1"
@@ -43,14 +43,15 @@ RUN ./configure \
       --without-openssl \
       --without-zlib \
       --without-pam \
+      --without-shadow \
       --without-libedit \
+      --disable-lastlog \
       --disable-utmp \
       --disable-utmpx \
       --disable-wtmp \
       --disable-wtmpx \
       --disable-pututline \
       --disable-pututxline \
-      --disable-lastlog \
       --disable-security-key \
       --disable-pkcs11 \
       --without-kerberos5 \
@@ -76,7 +77,7 @@ RUN strip --strip-all --remove-section=.comment --remove-section=.note \
       sshd ssh-keygen sshd-session sftp-server
 
 # Create output directory structure
-RUN mkdir -p /out/exe.dev/bin /out/exe.dev/etc/ssh /out/exe.dev/lib
+RUN mkdir -p /out/exe.dev/bin /out/exe.dev/lib
 
 # Copy the built binaries (they already have correct interpreter and rpath)
 RUN cp -v sshd /out/exe.dev/bin/
@@ -86,56 +87,6 @@ RUN cp -v ssh-keygen /out/exe.dev/bin/
 
 # Check that rpath is set correctly
 RUN readelf -d /out/exe.dev/bin/sshd | grep -E 'RPATH|RUNPATH' || echo "No RPATH found"
-
-# Create minimal sshd_config with only built-in crypto algorithms
-RUN cat > /out/exe.dev/etc/ssh/sshd_config <<'EOF'
-# Minimal sshd configuration for exe.dev containers
-# Using only built-in crypto (no OpenSSL dependency)
-Port 22
-Protocol 2
-
-# Only use Ed25519 host keys (built-in crypto)
-HostKey /exe.dev/etc/ssh/ssh_host_ed25519_key
-HostKeyAlgorithms ssh-ed25519
-AuthorizedKeysFile /exe.dev/root/.ssh/authorized_keys
-
-# Key exchange using built-in Curve25519
-KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
-
-# Ciphers using built-in implementations
-Ciphers chacha20-poly1305@openssh.com,aes256-ctr,aes128-ctr
-
-# MACs using built-in implementations
-MACs umac-128-etm@openssh.com,umac-64-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
-
-# Security settings
-PermitRootLogin prohibit-password
-PubkeyAuthentication yes
-PasswordAuthentication yes
-PermitEmptyPasswords no
-ChallengeResponseAuthentication no
-
-# Performance settings
-UseDNS no
-Compression no
-
-# Enable SFTP (binary will be found via PATH or absolute path)
-Subsystem sftp /exe.dev/bin/sftp-server
-
-# Allow agent and port forwarding
-AllowAgentForwarding yes
-AllowTcpForwarding yes
-X11Forwarding yes
-X11UseLocalhost no
-
-# Keep connections alive
-ClientAliveInterval 60
-ClientAliveCountMax 3
-
-# Logging
-SyslogFacility AUTH
-LogLevel INFO
-EOF
 
 # Copy required shared libraries (should be minimal without OpenSSL)
 RUN for bin in /out/exe.dev/bin/*; do \
