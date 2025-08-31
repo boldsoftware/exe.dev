@@ -1319,10 +1319,13 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			slog.Info("User doesn't exist, creating", "email", email)
 			// User doesn't exist - create them with their alloc
 			if err := s.createUserWithAlloc(verification.PublicKey, email); err != nil {
-				slog.Error("Failed to create user with alloc during email verification", "error", err)
+				slog.Error("failed to create user with alloc during email verification", "error", err)
 				s.emailVerificationsMu.Unlock()
 				// Clean up pending registration on failure
-				s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+				_, err := s.db.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
+				if err != nil {
+					slog.Error("failed to clean up pending registration", "error", err)
+				}
 				http.Error(w, "Failed to create user account", http.StatusInternalServerError)
 				return
 			}
