@@ -507,24 +507,28 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
 	}
 
-	// Get image entrypoint and cmd from manifest if using exetini
+	// Get image entrypoint, cmd, and user from manifest
 	var imageEntrypoint []string
 	var imageCmd []string
-	if useExetini && req.CommandOverride == "" {
-		// Inspect the image to get its entrypoint and cmd
-		inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "json")
-		if output, err := inspectCmd.Output(); err == nil {
-			var imageConfig struct {
-				Config struct {
-					Entrypoint []string `json:"Entrypoint"`
-					Cmd        []string `json:"Cmd"`
-				} `json:"Config"`
-			}
-			if err := json.Unmarshal(output, &imageConfig); err == nil {
+	var imageUser string
+
+	// Always inspect the image to get user (needed for SSH), and entrypoint/cmd if using exetini
+	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "json")
+	if output, err := inspectCmd.Output(); err == nil {
+		var imageConfig struct {
+			Config struct {
+				Entrypoint []string `json:"Entrypoint"`
+				Cmd        []string `json:"Cmd"`
+				User       string   `json:"User"`
+			} `json:"Config"`
+		}
+		if err := json.Unmarshal(output, &imageConfig); err == nil {
+			imageUser = imageConfig.Config.User
+			if useExetini && req.CommandOverride == "" {
 				imageEntrypoint = imageConfig.Config.Entrypoint
 				imageCmd = imageConfig.Config.Cmd
-				log.Printf("Image %s has entrypoint: %v, cmd: %v", image, imageEntrypoint, imageCmd)
 			}
+			log.Printf("Image %s has entrypoint: %v, cmd: %v, user: %s", image, imageEntrypoint, imageCmd, imageUser)
 		}
 	}
 
@@ -563,8 +567,8 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	var needsPull bool
 
 	// Try to inspect the image to see if it exists locally
-	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "{{.Size}}")
-	if sizeOutput, err := inspectCmd.Output(); err == nil {
+	inspectSizeCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "{{.Size}}")
+	if sizeOutput, err := inspectSizeCmd.Output(); err == nil {
 		// Image exists locally - get its size
 		sizeStr := strings.TrimSpace(string(sizeOutput))
 		if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
@@ -689,6 +693,11 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		req.ProgressCallback(CreateDone, imageSize)
 	}
 
+	// Default to root user if not specified in image
+	if imageUser == "" {
+		imageUser = "root"
+	}
+
 	// Create container record
 	container := &Container{
 		ID:         containerID,
@@ -707,6 +716,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		SSHHostCertificate:   sshKeys.HostCertificate,
 		SSHClientPrivateKey:  sshKeys.ClientPrivateKey,
 		SSHPort:              sshPort,
+		SSHUser:              imageUser,
 	}
 
 	m.mu.Lock()
@@ -1362,9 +1372,11 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 		return "", fmt.Errorf("failed to transfer rovol files: %w", err)
 	}
 
-	// Now move the contents to the final location with sudo
+	// Now move the contents to the final location with sudo and fix ownership
 	// We need to use sh -c for the && operator
-	moveScript := fmt.Sprintf("sudo cp -rp %s/* %s && sudo rm -rf %s", tempRemotePath, remoteDir, tempRemotePath)
+	// The chown ensures all files are owned by root:root regardless of source ownership
+	moveScript := fmt.Sprintf("sudo cp -rp %s/* %s && sudo chown -R root:root %s && sudo rm -rf %s",
+		tempRemotePath, remoteDir, remoteDir, tempRemotePath)
 	moveCmd := m.sshPool.ExecCommand(ctx, host, "sh", "-c", moveScript)
 	if output, err := moveCmd.CombinedOutput(); err != nil {
 		// Try to clean up
@@ -1397,9 +1409,10 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 
 	// Combine directory creation and CoW clone into a single command for speed
 	// This reduces SSH round-trips significantly
+	// Note: The source files should already be owned by root:root from prepareRovolFS
 	setupCmd := fmt.Sprintf(
-		"mkdir -p %s && cp -a --reflink=always %s/. %s/ && mkdir -p %s",
-		containerDir, m.rovolMountPath, containerDir, filepath.Join(containerDir, "var/empty"))
+		"sudo mkdir -p %s && sudo cp -a --reflink=always %s/. %s/ && sudo chown -R root:root %s && sudo mkdir -p %s",
+		containerDir, m.rovolMountPath, containerDir, containerDir, filepath.Join(containerDir, "var/empty"))
 
 	log.Printf("Setting up container directory with CoW clone from %s to %s", m.rovolMountPath, containerDir)
 	combinedCmd := m.execSSHCommand(ctx, host, "sh", "-c", setupCmd)
@@ -1422,27 +1435,22 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	}{
 		"etc/ssh/ssh_host_ed25519_key":     {sshKeys.ServerIdentityKey, "600"},
 		"etc/ssh/ssh_host_ed25519_key.pub": {serverPubKey, "644"},
+		"etc/ssh/authorized_keys":          {sshKeys.AuthorizedKeys, "644"},
 	}
 
-	// Add authorized_keys to files map
-	files["root/.ssh/authorized_keys"] = struct {
-		content string
-		mode    string
-	}{sshKeys.AuthorizedKeys, "600"}
-
-	// Build a single command to create directories and write all files
+	// Build a single command to write all files
 	// This dramatically reduces SSH round-trips from 4 to 1
 	var writeScript strings.Builder
-	writeScript.WriteString("mkdir -p ")
-	writeScript.WriteString(filepath.Join(containerDir, "root/.ssh"))
+	// Ensure the SSH directory has correct permissions (755 for directory, readable by all)
+	writeScript.WriteString(fmt.Sprintf("sudo chmod 755 '%s'", filepath.Join(containerDir, "etc/ssh")))
 
 	for relPath, fileInfo := range files {
 		fullPath := filepath.Join(containerDir, relPath)
 		// Use base64 encoding to safely transfer the content
 		encodedContent := base64.StdEncoding.EncodeToString([]byte(fileInfo.content))
 
-		// Add command to write and chmod each file
-		writeScript.WriteString(fmt.Sprintf(" && echo '%s' | base64 -d > '%s' && chmod %s '%s'",
+		// Add command to write and chmod each file with sudo
+		writeScript.WriteString(fmt.Sprintf(" && echo '%s' | base64 -d | sudo tee '%s' > /dev/null && sudo chmod %s '%s'",
 			encodedContent, fullPath, fileInfo.mode, fullPath))
 	}
 

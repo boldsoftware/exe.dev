@@ -19,6 +19,7 @@ type SSHDetails struct {
 	PrivateKey string
 	HostKey    string
 	DockerHost *string // DOCKER_HOST value where this container runs
+	User       string  // User to connect as (from Docker image USER directive)
 }
 
 // RunMigrations executes database migrations in order

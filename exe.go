@@ -236,6 +236,7 @@ type Machine struct {
 	SSHHostCertificate   *string // Host certificate for host key validation
 	SSHClientPrivateKey  *string // Private key for connecting to container (PEM format)
 	SSHPort              *int    // SSH port for this container
+	SSHUser              *string // User to connect as (from Docker image USER directive)
 }
 
 // GetRoutes parses and returns the machine's routing configuration
@@ -2544,7 +2545,7 @@ func (s *Server) createMachineWithSSH(userID, allocID, name, containerID, image 
 }
 
 // createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
-func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, containerID, image, dockerHost string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, containerID, image, dockerHost, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
 	// Validate machine name
 	if !s.isValidMachineName(name) {
 		return fmt.Errorf("invalid machine name: %s", name)
@@ -2555,11 +2556,11 @@ func (s *Server) createMachineWithSSHAndDockerHost(userID, allocID, name, contai
 		INSERT INTO machines (
 			alloc_id, name, status, image, container_id, created_by_user_id,
 			ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, routes
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, ssh_user, routes
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, allocID, name, "running", image, containerID, userID,
 		sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, routes)
+		sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, sshUser, routes)
 	if err != nil {
 		return err
 	}
@@ -2580,14 +2581,14 @@ func (s *Server) getMachineByName(name string) (*Machine, error) {
 	var machine Machine
 	err := s.db.QueryRow(`
 		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
-		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
+		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
 		FROM machines
 		WHERE name = ?
 	`, name).Scan(
 		&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
 		&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
 		&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
-		&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort,
+		&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort, &machine.SSHUser,
 	)
 	if err != nil {
 		return nil, err
@@ -3351,9 +3352,10 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*exedb.SSHDetails, error) 
 	var privateKey sql.NullString
 	var serverIdentityKey sql.NullString
 	var dockerHost sql.NullString
+	var sshUser sql.NullString
 
-	query := `SELECT ssh_port, ssh_client_private_key, ssh_server_identity_key, docker_host FROM machines WHERE id = ?`
-	err := s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost)
+	query := `SELECT ssh_port, ssh_client_private_key, ssh_server_identity_key, docker_host, ssh_user FROM machines WHERE id = ?`
+	err := s.db.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost, &sshUser)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query machine SSH details: %v", err)
 	}
@@ -3399,11 +3401,18 @@ func (s *Server) GetMachineSSHDetails(machineID int) (*exedb.SSHDetails, error) 
 		dockerHostPtr = &dockerHost.String
 	}
 
+	// Default to root user if not specified
+	user := "root"
+	if sshUser.Valid && sshUser.String != "" {
+		user = sshUser.String
+	}
+
 	return &exedb.SSHDetails{
 		Port:       sshPort,
 		PrivateKey: privateKey.String,
 		HostKey:    hostKey,
 		DockerHost: dockerHostPtr,
+		User:       user,
 	}, nil
 }
 

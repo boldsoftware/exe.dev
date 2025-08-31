@@ -1027,7 +1027,7 @@ done:
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}
-	if err := ss.server.createMachineWithSSHAndDockerHost(user.UserID, allocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, sshKeys, createdContainer.SSHPort); err != nil {
+	if err := ss.server.createMachineWithSSHAndDockerHost(user.UserID, allocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
 		fmt.Fprintf(s, "\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
 	}
 

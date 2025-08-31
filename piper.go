@@ -429,7 +429,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	return &libplugin.Upstream{
 		Host:     host, // Container host (from docker_host, host.docker.internal in dev mode, or localhost)
 		Port:     int32(port),
-		UserName: "root", // Containers use root user
+		UserName: sshDetails.User, // Use the user from the Docker image USER directive
 		// Host key validation is handled by VerifyHostKeyCallback
 		IgnoreHostKey: false, // Enable host key validation
 		Auth:          libplugin.CreatePrivateKeyAuth([]byte(sshDetails.PrivateKey)),
