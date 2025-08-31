@@ -6,7 +6,7 @@ Protocol 2
 # Only use Ed25519 host keys (built-in crypto)
 HostKey /exe.dev/etc/ssh/ssh_host_ed25519_key
 HostKeyAlgorithms ssh-ed25519
-AuthorizedKeysFile /exe.dev/root/.ssh/authorized_keys
+AuthorizedKeysFile /exe.dev/etc/ssh/authorized_keys
 
 # Key exchange using built-in Curve25519
 KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
@@ -20,7 +20,7 @@ MACs umac-128-etm@openssh.com,umac-64-etm@openssh.com,hmac-sha2-512,hmac-sha2-25
 # Security settings
 PermitRootLogin prohibit-password
 PubkeyAuthentication yes
-PasswordAuthentication yes
+PasswordAuthentication no
 PermitEmptyPasswords no
 ChallengeResponseAuthentication no
 
