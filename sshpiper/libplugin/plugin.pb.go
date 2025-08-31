@@ -7,10 +7,11 @@
 package libplugin
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -2650,55 +2651,57 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
-var file_plugin_proto_goTypes = []interface{}{
-	(AuthMethod)(0),                                   // 0: libplugin.AuthMethod
-	(*ConnMeta)(nil),                                  // 1: libplugin.ConnMeta
-	(*Upstream)(nil),                                  // 2: libplugin.Upstream
-	(*UpstreamNoneAuth)(nil),                          // 3: libplugin.UpstreamNoneAuth
-	(*UpstreamPasswordAuth)(nil),                      // 4: libplugin.UpstreamPasswordAuth
-	(*UpstreamPrivateKeyAuth)(nil),                    // 5: libplugin.UpstreamPrivateKeyAuth
-	(*UpstreamRemoteSignerAuth)(nil),                  // 6: libplugin.UpstreamRemoteSignerAuth
-	(*UpstreamNextPluginAuth)(nil),                    // 7: libplugin.UpstreamNextPluginAuth
-	(*UpstreamRetryCurrentPluginAuth)(nil),            // 8: libplugin.UpstreamRetryCurrentPluginAuth
-	(*StartLogRequest)(nil),                           // 9: libplugin.StartLogRequest
-	(*Log)(nil),                                       // 10: libplugin.Log
-	(*ListCallbackRequest)(nil),                       // 11: libplugin.ListCallbackRequest
-	(*ListCallbackResponse)(nil),                      // 12: libplugin.ListCallbackResponse
-	(*NewConnectionRequest)(nil),                      // 13: libplugin.NewConnectionRequest
-	(*NewConnectionResponse)(nil),                     // 14: libplugin.NewConnectionResponse
-	(*NextAuthMethodsRequest)(nil),                    // 15: libplugin.NextAuthMethodsRequest
-	(*NextAuthMethodsResponse)(nil),                   // 16: libplugin.NextAuthMethodsResponse
-	(*NoneAuthRequest)(nil),                           // 17: libplugin.NoneAuthRequest
-	(*NoneAuthResponse)(nil),                          // 18: libplugin.NoneAuthResponse
-	(*PasswordAuthRequest)(nil),                       // 19: libplugin.PasswordAuthRequest
-	(*PasswordAuthResponse)(nil),                      // 20: libplugin.PasswordAuthResponse
-	(*PublicKeyAuthRequest)(nil),                      // 21: libplugin.PublicKeyAuthRequest
-	(*PublicKeyAuthResponse)(nil),                     // 22: libplugin.PublicKeyAuthResponse
-	(*KeyboardInteractiveUserResponse)(nil),           // 23: libplugin.KeyboardInteractiveUserResponse
-	(*KeyboardInteractivePromptRequest)(nil),          // 24: libplugin.KeyboardInteractivePromptRequest
-	(*KeyboardInteractiveMetaRequest)(nil),            // 25: libplugin.KeyboardInteractiveMetaRequest
-	(*KeyboardInteractiveMetaResponse)(nil),           // 26: libplugin.KeyboardInteractiveMetaResponse
-	(*KeyboardInteractiveFinishRequest)(nil),          // 27: libplugin.KeyboardInteractiveFinishRequest
-	(*KeyboardInteractiveAuthMessage)(nil),            // 28: libplugin.KeyboardInteractiveAuthMessage
-	(*UpstreamAuthFailureNoticeRequest)(nil),          // 29: libplugin.UpstreamAuthFailureNoticeRequest
-	(*UpstreamAuthFailureNoticeResponse)(nil),         // 30: libplugin.UpstreamAuthFailureNoticeResponse
-	(*BannerRequest)(nil),                             // 31: libplugin.BannerRequest
-	(*BannerResponse)(nil),                            // 32: libplugin.BannerResponse
-	(*VerifyHostKeyRequest)(nil),                      // 33: libplugin.VerifyHostKeyRequest
-	(*VerifyHostKeyResponse)(nil),                     // 34: libplugin.VerifyHostKeyResponse
-	(*PipeStartNoticeRequest)(nil),                    // 35: libplugin.PipeStartNoticeRequest
-	(*PipeStartNoticeResponse)(nil),                   // 36: libplugin.PipeStartNoticeResponse
-	(*PipeErrorNoticeRequest)(nil),                    // 37: libplugin.PipeErrorNoticeRequest
-	(*PipeErrorNoticeResponse)(nil),                   // 38: libplugin.PipeErrorNoticeResponse
-	(*PipeCreateErrorNoticeRequest)(nil),              // 39: libplugin.PipeCreateErrorNoticeRequest
-	(*PipeCreateErrorNoticeResponse)(nil),             // 40: libplugin.PipeCreateErrorNoticeResponse
-	nil,                                               // 41: libplugin.ConnMeta.MetadataEntry
-	nil,                                               // 42: libplugin.UpstreamNextPluginAuth.MetaEntry
-	nil,                                               // 43: libplugin.UpstreamRetryCurrentPluginAuth.MetaEntry
-	(*KeyboardInteractivePromptRequest_Question)(nil), // 44: libplugin.KeyboardInteractivePromptRequest.Question
-}
+var (
+	file_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+	file_plugin_proto_msgTypes  = make([]protoimpl.MessageInfo, 44)
+	file_plugin_proto_goTypes   = []interface{}{
+		(AuthMethod)(0),                                   // 0: libplugin.AuthMethod
+		(*ConnMeta)(nil),                                  // 1: libplugin.ConnMeta
+		(*Upstream)(nil),                                  // 2: libplugin.Upstream
+		(*UpstreamNoneAuth)(nil),                          // 3: libplugin.UpstreamNoneAuth
+		(*UpstreamPasswordAuth)(nil),                      // 4: libplugin.UpstreamPasswordAuth
+		(*UpstreamPrivateKeyAuth)(nil),                    // 5: libplugin.UpstreamPrivateKeyAuth
+		(*UpstreamRemoteSignerAuth)(nil),                  // 6: libplugin.UpstreamRemoteSignerAuth
+		(*UpstreamNextPluginAuth)(nil),                    // 7: libplugin.UpstreamNextPluginAuth
+		(*UpstreamRetryCurrentPluginAuth)(nil),            // 8: libplugin.UpstreamRetryCurrentPluginAuth
+		(*StartLogRequest)(nil),                           // 9: libplugin.StartLogRequest
+		(*Log)(nil),                                       // 10: libplugin.Log
+		(*ListCallbackRequest)(nil),                       // 11: libplugin.ListCallbackRequest
+		(*ListCallbackResponse)(nil),                      // 12: libplugin.ListCallbackResponse
+		(*NewConnectionRequest)(nil),                      // 13: libplugin.NewConnectionRequest
+		(*NewConnectionResponse)(nil),                     // 14: libplugin.NewConnectionResponse
+		(*NextAuthMethodsRequest)(nil),                    // 15: libplugin.NextAuthMethodsRequest
+		(*NextAuthMethodsResponse)(nil),                   // 16: libplugin.NextAuthMethodsResponse
+		(*NoneAuthRequest)(nil),                           // 17: libplugin.NoneAuthRequest
+		(*NoneAuthResponse)(nil),                          // 18: libplugin.NoneAuthResponse
+		(*PasswordAuthRequest)(nil),                       // 19: libplugin.PasswordAuthRequest
+		(*PasswordAuthResponse)(nil),                      // 20: libplugin.PasswordAuthResponse
+		(*PublicKeyAuthRequest)(nil),                      // 21: libplugin.PublicKeyAuthRequest
+		(*PublicKeyAuthResponse)(nil),                     // 22: libplugin.PublicKeyAuthResponse
+		(*KeyboardInteractiveUserResponse)(nil),           // 23: libplugin.KeyboardInteractiveUserResponse
+		(*KeyboardInteractivePromptRequest)(nil),          // 24: libplugin.KeyboardInteractivePromptRequest
+		(*KeyboardInteractiveMetaRequest)(nil),            // 25: libplugin.KeyboardInteractiveMetaRequest
+		(*KeyboardInteractiveMetaResponse)(nil),           // 26: libplugin.KeyboardInteractiveMetaResponse
+		(*KeyboardInteractiveFinishRequest)(nil),          // 27: libplugin.KeyboardInteractiveFinishRequest
+		(*KeyboardInteractiveAuthMessage)(nil),            // 28: libplugin.KeyboardInteractiveAuthMessage
+		(*UpstreamAuthFailureNoticeRequest)(nil),          // 29: libplugin.UpstreamAuthFailureNoticeRequest
+		(*UpstreamAuthFailureNoticeResponse)(nil),         // 30: libplugin.UpstreamAuthFailureNoticeResponse
+		(*BannerRequest)(nil),                             // 31: libplugin.BannerRequest
+		(*BannerResponse)(nil),                            // 32: libplugin.BannerResponse
+		(*VerifyHostKeyRequest)(nil),                      // 33: libplugin.VerifyHostKeyRequest
+		(*VerifyHostKeyResponse)(nil),                     // 34: libplugin.VerifyHostKeyResponse
+		(*PipeStartNoticeRequest)(nil),                    // 35: libplugin.PipeStartNoticeRequest
+		(*PipeStartNoticeResponse)(nil),                   // 36: libplugin.PipeStartNoticeResponse
+		(*PipeErrorNoticeRequest)(nil),                    // 37: libplugin.PipeErrorNoticeRequest
+		(*PipeErrorNoticeResponse)(nil),                   // 38: libplugin.PipeErrorNoticeResponse
+		(*PipeCreateErrorNoticeRequest)(nil),              // 39: libplugin.PipeCreateErrorNoticeRequest
+		(*PipeCreateErrorNoticeResponse)(nil),             // 40: libplugin.PipeCreateErrorNoticeResponse
+		nil,                                               // 41: libplugin.ConnMeta.MetadataEntry
+		nil,                                               // 42: libplugin.UpstreamNextPluginAuth.MetaEntry
+		nil,                                               // 43: libplugin.UpstreamRetryCurrentPluginAuth.MetaEntry
+		(*KeyboardInteractivePromptRequest_Question)(nil), // 44: libplugin.KeyboardInteractivePromptRequest.Question
+	}
+)
 var file_plugin_proto_depIdxs = []int32{
 	41, // 0: libplugin.ConnMeta.metadata:type_name -> libplugin.ConnMeta.MetadataEntry
 	3,  // 1: libplugin.Upstream.none:type_name -> libplugin.UpstreamNoneAuth

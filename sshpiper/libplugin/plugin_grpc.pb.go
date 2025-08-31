@@ -8,6 +8,7 @@ package libplugin
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -239,48 +240,60 @@ type SshPiperPluginServer interface {
 }
 
 // UnimplementedSshPiperPluginServer must be embedded to have forward compatible implementations.
-type UnimplementedSshPiperPluginServer struct {
-}
+type UnimplementedSshPiperPluginServer struct{}
 
 func (UnimplementedSshPiperPluginServer) Logs(*StartLogRequest, SshPiperPlugin_LogsServer) error {
 	return status.Errorf(codes.Unimplemented, "method Logs not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) ListCallbacks(context.Context, *ListCallbackRequest) (*ListCallbackResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListCallbacks not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) NewConnection(context.Context, *NewConnectionRequest) (*NewConnectionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewConnection not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) NextAuthMethods(context.Context, *NextAuthMethodsRequest) (*NextAuthMethodsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NextAuthMethods not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) NoneAuth(context.Context, *NoneAuthRequest) (*NoneAuthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NoneAuth not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) PasswordAuth(context.Context, *PasswordAuthRequest) (*PasswordAuthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PasswordAuth not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) PublicKeyAuth(context.Context, *PublicKeyAuthRequest) (*PublicKeyAuthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PublicKeyAuth not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) KeyboardInteractiveAuth(SshPiperPlugin_KeyboardInteractiveAuthServer) error {
 	return status.Errorf(codes.Unimplemented, "method KeyboardInteractiveAuth not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) UpstreamAuthFailureNotice(context.Context, *UpstreamAuthFailureNoticeRequest) (*UpstreamAuthFailureNoticeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpstreamAuthFailureNotice not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) Banner(context.Context, *BannerRequest) (*BannerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Banner not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) VerifyHostKey(context.Context, *VerifyHostKeyRequest) (*VerifyHostKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VerifyHostKey not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) PipeCreateErrorNotice(context.Context, *PipeCreateErrorNoticeRequest) (*PipeCreateErrorNoticeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PipeCreateErrorNotice not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) PipeStartNotice(context.Context, *PipeStartNoticeRequest) (*PipeStartNoticeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PipeStartNotice not implemented")
 }
+
 func (UnimplementedSshPiperPluginServer) PipeErrorNotice(context.Context, *PipeErrorNoticeRequest) (*PipeErrorNoticeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PipeErrorNotice not implemented")
 }
