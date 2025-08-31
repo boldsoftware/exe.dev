@@ -112,9 +112,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 
 // execNerdctl executes a nerdctl command via SSH on a remote host
 func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...string) *exec.Cmd {
-	if strings.HasPrefix(host, "ssh://") {
-		host = strings.TrimPrefix(host, "ssh://")
-	}
+	host = strings.TrimPrefix(host, "ssh://")
 	if host == "" || strings.HasPrefix(host, "/") {
 		panic(fmt.Sprintf("execNerdctl: no valid SSH host provided: %q", host))
 	}
@@ -129,9 +127,7 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 // execSSHCommand executes a command via SSH on a remote host
 func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
 	// Parse SSH format if present
-	if strings.HasPrefix(host, "ssh://") {
-		host = strings.TrimPrefix(host, "ssh://")
-	}
+	host = strings.TrimPrefix(host, "ssh://")
 
 	// Host is required - we always use SSH
 	if host == "" || strings.HasPrefix(host, "/") {
@@ -843,9 +839,7 @@ func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, cont
 func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) error {
 	// Parse SSH host
 	sshHost := host
-	if strings.HasPrefix(sshHost, "ssh://") {
-		sshHost = strings.TrimPrefix(sshHost, "ssh://")
-	}
+	sshHost = strings.TrimPrefix(sshHost, "ssh://")
 
 	// Create SSH tunnel command: ssh -N -L localPort:localhost:remotePort user@host
 	// -N: Don't execute remote command
