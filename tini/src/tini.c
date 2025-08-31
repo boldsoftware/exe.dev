@@ -611,6 +611,126 @@ int reap_zombies(const pid_t child_pid, int* const child_exitcode_ptr) {
 }
 
 
+/* exe.dev addition: Start sshd if /exe.dev/bin/sshd exists */
+#include <pwd.h>
+#include <grp.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+void start_sshd_if_needed() {
+	struct stat st;
+	
+	// Check if /exe.dev/bin/sshd exists
+	if (stat("/exe.dev/bin/sshd", &st) != 0) {
+		// No sshd binary, nothing to do
+		return;
+	}
+	
+	// Check if sshd user exists
+	struct passwd *pw = getpwnam("sshd");
+	if (pw == NULL) {
+		// Need to create sshd user
+		// First ensure /etc exists
+		mkdir("/etc", 0755);
+		
+		// Check if /etc/passwd exists, if not create minimal one
+		int fd = open("/etc/passwd", O_RDWR | O_CREAT | O_APPEND, 0644);
+		if (fd >= 0) {
+			// Check if file is empty (new file)
+			struct stat pst;
+			fstat(fd, &pst);
+			if (pst.st_size == 0) {
+				// Add root entry if file is empty
+				const char *root_entry = "root:x:0:0:root:/root:/bin/sh\n";
+				write(fd, root_entry, strlen(root_entry));
+			}
+			// Add sshd entry
+			const char *sshd_entry = "sshd:x:105:65534:sshd privsep:/exe.dev/var/empty:/usr/sbin/nologin\n";
+			write(fd, sshd_entry, strlen(sshd_entry));
+			close(fd);
+		}
+	}
+	
+	// Check if nogroup exists
+	struct group *gr = getgrnam("nogroup");
+	if (gr == NULL) {
+		// Need to create nogroup
+		int fd = open("/etc/group", O_RDWR | O_CREAT | O_APPEND, 0644);
+		if (fd >= 0) {
+			// Check if file is empty
+			struct stat gst;
+			fstat(fd, &gst);
+			if (gst.st_size == 0) {
+				// Add root group if file is empty
+				const char *root_group = "root:x:0:\n";
+				write(fd, root_group, strlen(root_group));
+			}
+			// Add nogroup entry
+			const char *nogroup_entry = "nogroup:x:65534:\n";
+			write(fd, nogroup_entry, strlen(nogroup_entry));
+			close(fd);
+		}
+	}
+	
+	// Fork to start sshd in background
+	pid_t sshd_pid = fork();
+	if (sshd_pid == 0) {
+		// Child process - exec sshd
+		char *sshd_argv[] = {"/exe.dev/bin/sshd", "-f", "/exe.dev/etc/ssh/sshd_config", NULL};
+		execv("/exe.dev/bin/sshd", sshd_argv);
+		// If exec fails, just exit silently
+		_exit(1);
+	}
+	// Parent continues
+}
+
+/* Check if the command is another init system that should handle PID 1 */
+int is_other_init(char *argv[]) {
+	if (argv == NULL || argv[0] == NULL) {
+		return 0;
+	}
+	
+	// Check if the command itself is an init system
+	const char *init_commands[] = {
+		"/init", "/sbin/init", "systemd", "dumb-init", "tini",
+		"s6-svscan", "s6-overlay-suexec", "s6-rc", "s6-supervise",
+		"runit", "runsvdir", NULL
+	};
+	
+	// Check the program name (argv[0])
+	const char *program = argv[0];
+	
+	// Check for exact matches
+	for (int i = 0; init_commands[i] != NULL; i++) {
+		if (strcmp(program, init_commands[i]) == 0) {
+			return 1;
+		}
+	}
+	
+	// Check for partial matches (basename and prefixes)
+	const char *basename = strrchr(program, '/');
+	if (basename != NULL) {
+		basename++; // Skip the slash
+	} else {
+		basename = program;
+	}
+	
+	// Check for s6- prefix
+	if (strncmp(basename, "s6-", 3) == 0) {
+		return 1;
+	}
+	
+	// Check for common init system names in the path
+	if (strstr(program, "/init") != NULL || 
+	    strstr(program, "systemd") != NULL ||
+	    strstr(program, "runit") != NULL ||
+	    strstr(program, "s6-overlay") != NULL) {
+		return 1;
+	}
+	
+	return 0;
+}
+
 int main(int argc, char *argv[]) {
 	pid_t child_pid;
 
@@ -625,10 +745,26 @@ int main(int argc, char *argv[]) {
 		return parse_exitcode;
 	}
 
+	/* Check if we're wrapping another init system (exe.dev addition) */
+	if (is_other_init(*child_args_ptr)) {
+		// Start sshd in background, then exec the other init directly
+		start_sshd_if_needed();
+		
+		// Exec the other init system - it will become PID 1
+		execvp((*child_args_ptr)[0], *child_args_ptr);
+		
+		// If exec fails, print error and exit
+		PRINT_FATAL("Failed to exec %s: %s", (*child_args_ptr)[0], strerror(errno));
+		return 1;
+	}
+
 	/* Parse environment */
 	if (parse_env()) {
 		return 1;
 	}
+
+	/* Start sshd if /exe.dev/bin/sshd exists (exe.dev addition) */
+	start_sshd_if_needed();
 
 	/* Configure signals */
 	sigset_t parent_sigset, child_sigset;
