@@ -34,6 +34,9 @@ if colima list 2>/dev/null | grep -q "^${COLIMA_PROFILE}"; then
     colima delete -p ${COLIMA_PROFILE} --force 2>/dev/null || true
 fi
 
+# Use a fixed SSH port for stability
+SSH_PORT=22251
+
 set -x
 colima start \
     -p ${COLIMA_PROFILE} \
@@ -45,6 +48,7 @@ colima start \
     --runtime containerd \
     --kubernetes=false \
     --network-address \
+    --ssh-port ${SSH_PORT} \
     --arch aarch64
 set +x
 
@@ -58,16 +62,8 @@ else
     exit 1
 fi
 
-# Get the VM's SSH details
-echo "Getting SSH configuration..."
-COLIMA_SSH_CONFIG=$(colima ssh-config -p ${COLIMA_PROFILE})
-SSH_HOST=$(echo "$COLIMA_SSH_CONFIG" | grep "Hostname" | awk '{print $2}')
-SSH_PORT=$(echo "$COLIMA_SSH_CONFIG" | grep "Port" | awk '{print $2}')
-SSH_USER=$(echo "$COLIMA_SSH_CONFIG" | grep "User" | awk '{print $2}')
-SSH_KEY=$(echo "$COLIMA_SSH_CONFIG" | grep "IdentityFile" | awk '{print $2}')
-
 # Verify we can connect
-echo "Testing SSH connection..."
+echo "Testing colima SSH connection..."
 if ! colima ssh -p ${COLIMA_PROFILE} -- echo "SSH connection successful"; then
     echo "Error: Cannot connect to Colima VM"
     exit 1
@@ -182,6 +178,10 @@ if ! colima ssh -p ${COLIMA_PROFILE} -- bash ~/setup-containerd-clh-nydus.sh; th
     exit 1
 fi
 
+# Save containerd config for restoration after restarts
+echo "Saving containerd configuration for persistence..."
+colima ssh -p ${COLIMA_PROFILE} -- sudo cp /etc/containerd/config.toml /home/ubuntu/containerd-config.toml.backup 2>/dev/null || true
+
 # Clean up temp file
 rm -f /tmp/setup-containerd-clh-nydus-colima.sh
 
@@ -225,37 +225,42 @@ colima ssh -p ${COLIMA_PROFILE} -- sudo sed -i 's/#PasswordAuthentication yes/Pa
 colima ssh -p ${COLIMA_PROFILE} -- sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 colima ssh -p ${COLIMA_PROFILE} -- sudo systemctl restart ssh 2>/dev/null || colima ssh -p ${COLIMA_PROFILE} -- sudo systemctl restart sshd
 
-# Get the actual SSH port from colima
-SSH_PORT=$(colima ssh-config -p ${COLIMA_PROFILE} | grep "Port" | awk '{print $2}')
-SSH_HOST="127.0.0.1"
-
-# Create SSH config entry for easier connection
-echo "Creating SSH config entry..."
-SSH_CONFIG_ENTRY="Host exe-ctr-colima
-    HostName ${SSH_HOST}
+# Create stable SSH config with fixed port
+echo "Creating SSH config entry with fixed port ${SSH_PORT}..."
+SSH_CONFIG_ENTRY="# Added by setup-colima-host.sh
+Host exe-ctr-colima
+    HostName 127.0.0.1
     Port ${SSH_PORT}
     User ubuntu
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     IdentityFile ${SSH_KEY_PRIVATE}"
 
-# Check if config already exists
-if ! grep -q "Host exe-ctr-colima" ~/.ssh/config 2>/dev/null; then
+# Update or add the SSH config entry
+if grep -q "^Host exe-ctr-colima$" ~/.ssh/config 2>/dev/null; then
+    echo "  Updating existing SSH config entry..."
+    # Remove old entry and add new one
+    sed -i.bak '/^Host exe-ctr-colima$/,/^$/d' ~/.ssh/config
+    sed -i.bak '/^# Added by setup-colima-host.sh$/d' ~/.ssh/config
+    sed -i.bak '/^# Added by exe setup scripts$/d' ~/.ssh/config
     echo "" >> ~/.ssh/config
-    echo "# Added by setup-colima-host.sh" >> ~/.ssh/config
     echo "$SSH_CONFIG_ENTRY" >> ~/.ssh/config
-    echo "✓ Added exe-ctr-colima to ~/.ssh/config"
+    rm ~/.ssh/config.bak
 else
-    echo "✓ SSH config entry already exists"
+    echo "  Adding new SSH config entry..."
+    echo "" >> ~/.ssh/config
+    echo "$SSH_CONFIG_ENTRY" >> ~/.ssh/config
 fi
 
-# Test SSH connection
-echo "Testing SSH connection to exe-ctr-colima..."
-if ssh -o ConnectTimeout=5 exe-ctr-colima "echo 'SSH connection successful'" 2>/dev/null; then
-    echo "✓ SSH connection to ubuntu user established"
+echo "✓ SSH config created with stable port ${SSH_PORT}"
+
+# Test the connection
+echo "Testing SSH connection..."
+if timeout 5 ssh -o ConnectTimeout=3 exe-ctr-colima "echo '✓ SSH connection successful'" 2>/dev/null; then
+    echo "✓ SSH to ubuntu@exe-ctr-colima is working"
 else
-    echo "Warning: Could not establish direct SSH connection to ubuntu user"
-    echo "You may need to use: colima ssh -p ${COLIMA_PROFILE}"
+    echo "⚠️  Warning: SSH connection test failed"
+    echo "  You may need to wait a moment for the VM to be ready"
 fi
 
 echo ""
@@ -263,8 +268,17 @@ echo "=========================================="
 echo "Done!"
 echo "=========================================="
 echo ""
-echo "Connection details:"
-echo "  CTR_HOST=ssh://exe-ctr-colima"
+echo "VM setup complete: exe-ctr-colima"
+echo "  SSH Port: ${SSH_PORT} (stable)"
+echo ""
+echo "To start exed:"
+echo "  go run ./cmd/exed -dev=local"
+echo ""
+echo "To reset if containers get stuck:"
+echo "  ./ops/reset-colima.sh"
+echo ""
+echo "To restart the VM:"
+echo "  colima restart -p ${COLIMA_PROFILE}"
 echo ""
 echo "To delete the VM:"
 echo "  colima delete -p ${COLIMA_PROFILE}"

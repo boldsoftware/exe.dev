@@ -5,6 +5,8 @@
 set -e
 
 COLIMA_PROFILE="${1:-exe-ctr-colima}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SSH_PORT=22251  # Fixed port used by setup-colima-host.sh
 
 echo "=== Resetting Colima profile: $COLIMA_PROFILE ==="
 echo ""
@@ -82,9 +84,43 @@ echo "   Containers: $(colima_sudo 'nerdctl --namespace exe ps -a -q | wc -l')"
 echo "   System load: $(colima_exec 'uptime')"
 echo ""
 
+# Check if VM is still running
+if colima status -p ${COLIMA_PROFILE} 2>/dev/null | grep -q "Running"; then
+    echo "9. VM is running with fixed SSH port ${SSH_PORT}"
+    echo "   Testing SSH connection..."
+    if ssh -o ConnectTimeout=3 exe-ctr-colima "echo '   SSH working'" 2>/dev/null; then
+        echo "   ✓ SSH connection verified"
+    else
+        echo "   ⚠️ SSH not working, you may need to check ~/.ssh/config"
+    fi
+else
+    echo "9. VM is not running. Starting it with fixed port..."
+    colima start -p ${COLIMA_PROFILE} --ssh-port ${SSH_PORT}
+    sleep 3
+    echo "   VM started on port ${SSH_PORT}"
+    
+    echo "10. Testing SSH connection..."
+    if ssh -o ConnectTimeout=3 exe-ctr-colima "echo '   SSH working'" 2>/dev/null; then
+        echo "   ✓ SSH connection verified"
+    else
+        echo "   ⚠️ SSH not working, you may need to run ./ops/setup-colima-host.sh"
+    fi
+fi
+
+echo ""
+echo "11. Restoring containerd configuration..."
+# Colima overwrites containerd config on restart, so we need to restore it
+if [ -f "${SCRIPT_DIR}/restore-containerd-config.sh" ]; then
+    "${SCRIPT_DIR}/restore-containerd-config.sh" "${COLIMA_PROFILE}"
+else
+    echo "   ⚠️ Warning: restore-containerd-config.sh not found"
+    echo "   Containerd may not be properly configured for nydus/kata"
+fi
+
+echo ""
 echo "=== Reset complete! ==="
 echo ""
 echo "Tips:"
 echo "- Wait a few seconds for the system to settle"
-echo "- You can now restart exed with: CTR_HOST=ssh://$COLIMA_PROFILE go run ./cmd/exed -dev=local"
+echo "- You can now restart exed with: go run ./cmd/exed -dev=local"
 echo "- If issues persist, you may need to restart colima: colima restart $COLIMA_PROFILE"
