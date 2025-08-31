@@ -33,6 +33,7 @@ type NerdctlManager struct {
 	config         *Config
 	hosts          []string // List of containerd host addresses (SSH hostnames or "local")
 	rovolMountPath string   // Path to rovol files on the host (e.g., /data/exed/rovol-<hash>)
+	hostArch       string   // Cached host architecture (e.g., "arm64", "amd64")
 
 	mu            sync.RWMutex
 	containers    map[string]*Container // containerID -> Container
@@ -67,8 +68,27 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		cancel()
 	}
 
-	// Prepare RovolFS files on the host (for mounting into containers)
+	// Get and cache the host architecture once (it never changes)
 	if len(config.ContainerdAddresses) > 0 {
+		arch, err := manager.getHostArch(context.Background(), config.ContainerdAddresses[0])
+		if err != nil {
+			log.Printf("Warning: Failed to get host architecture: %v", err)
+			// Default to amd64 if we can't determine
+			manager.hostArch = "amd64"
+		} else {
+			// Map architecture names
+			switch arch {
+			case "x86_64":
+				manager.hostArch = "amd64"
+			case "aarch64":
+				manager.hostArch = "arm64"
+			default:
+				manager.hostArch = arch
+			}
+			log.Printf("Host architecture: %s", manager.hostArch)
+		}
+
+		// Prepare RovolFS files on the host (for mounting into containers)
 		rovolPath, err := manager.prepareRovolFS(context.Background(), config.ContainerdAddresses[0])
 		if err != nil {
 			log.Printf("Warning: Failed to prepare RovolFS files on host: %v", err)
@@ -898,11 +918,8 @@ func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) e
 func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, host, containerName string, sshKeys *ContainerSSHKeys) error {
 	log.Printf("[SSH-SETUP] Starting SSH setup for container %s (name: %s)", containerID, containerName)
 
-	// Check container status before proceeding
-	statusCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "{{.State.Status}}")
-	if statusOut, err := statusCmd.Output(); err == nil {
-		log.Printf("[SSH-SETUP] Container status before SSH operations: %s", strings.TrimSpace(string(statusOut)))
-	}
+	// Skip container status check - we just created it, so we know it's running
+	// This saves an SSH round-trip
 
 	// Always use sshd from /exe.dev mount
 	sshdPath := "/exe.dev/bin/sshd"
@@ -916,24 +933,13 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 	}
 	log.Printf("[SSH-SETUP] Using SSH daemon at: %s", sshdPath)
 
-	// Create sshd user for privilege separation if it doesn't exist
-	// OpenSSH requires this user for its privilege separation feature
-	// The home directory /exe.dev/var/empty is pre-created in our rovol
-	log.Printf("[SSH-SETUP] Ensuring sshd user exists for privilege separation")
-	createUserCmd := m.execNerdctl(ctx, host, "exec", "-u", "root", containerID, "sh", "-c",
-		"id sshd >/dev/null 2>&1 || (groupadd -g 65534 nogroup 2>/dev/null || true; useradd -u 105 -g 65534 -c 'sshd privsep' -d /exe.dev/var/empty -s /usr/sbin/nologin sshd)")
-	if output, err := createUserCmd.CombinedOutput(); err != nil {
-		log.Printf("[SSH-SETUP] Warning: Failed to create sshd user: %v, output: %s", err, output)
-		// Continue anyway - some images might have different user management
-	}
-
-	// Start SSH daemon - use nerdctl exec -d to run in detached mode
-	log.Printf("[SSH-SETUP] Starting SSH daemon")
-	// Use the sshd_config from /exe.dev which has all our settings
-	// The binary has rpath set to /exe.dev/lib so no LD_LIBRARY_PATH needed
-	sshCmd := fmt.Sprintf("exec %s -f /exe.dev/etc/ssh/sshd_config", sshdPath)
-	log.Printf("[SSH-SETUP] SSH command: %s", sshCmd)
-	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", sshCmd)
+	// Combine sshd user creation and SSH daemon start into a single command for speed
+	// This reduces SSH round-trips and speeds up container creation
+	log.Printf("[SSH-SETUP] Creating sshd user and starting SSH daemon")
+	combinedCmd := fmt.Sprintf(
+		"id sshd >/dev/null 2>&1 || (groupadd -g 65534 nogroup 2>/dev/null || true; useradd -u 105 -g 65534 -c 'sshd privsep' -d /exe.dev/var/empty -s /usr/sbin/nologin sshd) 2>/dev/null; exec %s -f /exe.dev/etc/ssh/sshd_config",
+		sshdPath)
+	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", combinedCmd)
 
 	// Run the command - it will return quickly since sshd daemonizes
 	if output, err := startCmd.CombinedOutput(); err != nil {
@@ -943,29 +949,30 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 		log.Printf("[SSH-SETUP] SSH daemon started successfully in container %s", containerID)
 	}
 
-	// Spin-wait for sshd to fully daemonize and initialize (max 3 seconds)
+	// Spin-wait for sshd to fully daemonize and initialize (max 1 second)
+	// Reduced from 30 attempts to 10 - SSH should start much faster
 	log.Printf("[SSH-SETUP] Verifying SSH daemon is running")
 	var sshRunning bool
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 10; i++ {
 		verifyCmd := m.execNerdctl(ctx, host, "exec", "-u", "root", containerID, "sh", "-c", "ps aux | grep -v grep | grep -E 'sshd.*listener'")
 		output, err := verifyCmd.CombinedOutput()
 		if err == nil && len(strings.TrimSpace(string(output))) > 0 {
 			sshRunning = true
-			log.Printf("[SSH-SETUP] SSH daemon verified running in container %s", containerID)
+			log.Printf("[SSH-SETUP] SSH daemon verified running in container %s (attempt %d)", containerID, i+1)
 			log.Printf("[SSH-SETUP] SSH process: %s", strings.TrimSpace(string(output)))
 			break
 		}
-		if i == 10 || i == 20 {
-			log.Printf("[SSH-SETUP] Still waiting for SSH daemon (attempt %d/30)", i+1)
+		if i == 5 {
+			log.Printf("[SSH-SETUP] Still waiting for SSH daemon (attempt %d/10)", i+1)
 		}
-		if i < 29 {
+		if i < 9 {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
 	if !sshRunning {
 		// Log warning if SSH daemon not detected but don't fail
-		log.Printf("[SSH-SETUP] WARNING: SSH daemon process not detected in container %s after 3 seconds", containerID)
+		log.Printf("[SSH-SETUP] WARNING: SSH daemon process not detected in container %s after 1 second", containerID)
 	}
 
 	// Network configuration is now handled at container creation time using
@@ -977,17 +984,8 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 
 // getHostArch gets the architecture of the host
 func (m *NerdctlManager) getHostArch(ctx context.Context, host string) (string, error) {
-	// Parse SSH format if present
-	if strings.HasPrefix(host, "ssh://") {
-		host = strings.TrimPrefix(host, "ssh://")
-	}
-
-	// Host is required
-	if host == "" || strings.HasPrefix(host, "/") {
-		return "", fmt.Errorf("no valid SSH host provided")
-	}
-
-	cmd := exec.CommandContext(ctx, "ssh", host, "uname", "-m")
+	// Use SSH pool for better performance
+	cmd := m.sshPool.ExecCommand(ctx, host, "uname", "-m")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -1344,24 +1342,11 @@ func shellQuote(s string) string {
 
 // prepareRovolFS copies the embedded RovolFS files to the host for mounting into containers
 func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (string, error) {
-	// Get the host architecture
-	arch, err := m.getHostArch(ctx, host)
-	if err != nil {
-		return "", fmt.Errorf("failed to get host architecture: %w", err)
-	}
-
-	// Map architecture names
-	switch arch {
-	case "x86_64":
-		arch = "amd64"
-	case "aarch64":
-		arch = "arm64"
-	}
-
+	// Use cached host architecture (already mapped to Go arch names)
 	// Get the RovolFS for the host architecture
-	rovolFS, err := GetRovolFS(arch)
+	rovolFS, err := GetRovolFS(m.hostArch)
 	if err != nil {
-		return "", fmt.Errorf("failed to get RovolFS for %s: %w", arch, err)
+		return "", fmt.Errorf("failed to get RovolFS for %s: %w", m.hostArch, err)
 	}
 
 	// Generate a unique directory name for this instance
@@ -1447,7 +1432,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 		return "", fmt.Errorf("failed to move files to final location: %w: %s", err, output)
 	}
 
-	log.Printf("Successfully copied RovolFS files for %s architecture to %s", arch, remoteDir)
+	log.Printf("Successfully copied RovolFS files for %s architecture to %s", m.hostArch, remoteDir)
 
 	// Create var/empty directory for sshd privilege separation
 	// This directory must exist but remain empty
@@ -1470,29 +1455,16 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 
 	log.Printf("Preparing container-specific /exe.dev directory at %s", containerDir)
 
-	// Create the container directory
-	mkdirCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", containerDir)
+	// Combine directory creation and CoW clone into a single command for speed
+	// This reduces SSH round-trips significantly
+	setupCmd := fmt.Sprintf(
+		"mkdir -p %s && cp -a --reflink=always %s/. %s/ && mkdir -p %s",
+		containerDir, m.rovolMountPath, containerDir, filepath.Join(containerDir, "var/empty"))
 
-	if output, err := mkdirCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to create container directory: %w: %s", err, output)
-	}
-
-	// Use cp with --reflink=always for CoW cloning on XFS
-	// The -a flag preserves attributes and the dot syntax copies contents
-	// Using /. at the end copies contents, not the directory itself
-	cpCmd := m.execSSHCommand(ctx, host, "cp", "-a", "--reflink=always",
-		m.rovolMountPath+"/.", containerDir+"/")
-
-	log.Printf("Cloning rovol files from %s to %s using CoW", m.rovolMountPath, containerDir)
-	if output, err := cpCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to clone rovol files: %w: %s", err, output)
-	}
-
-	// Create var/empty directory for sshd privilege separation
-	varEmptyDir := filepath.Join(containerDir, "var/empty")
-	mkdirVarEmptyCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", varEmptyDir)
-	if output, err := mkdirVarEmptyCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to create var/empty directory: %w: %s", err, output)
+	log.Printf("Setting up container directory with CoW clone from %s to %s", m.rovolMountPath, containerDir)
+	combinedCmd := m.execSSHCommand(ctx, host, "sh", "-c", setupCmd)
+	if output, err := combinedCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to setup container directory: %w: %s", err, output)
 	}
 
 	// Now add the container-specific SSH files
@@ -1512,49 +1484,35 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 		"etc/ssh/ssh_host_ed25519_key.pub": {serverPubKey, "644"},
 	}
 
-	// Write authorized_keys - need to create the directory first
-	rootSSHDir := filepath.Join(containerDir, "root/.ssh")
-	mkdirSSHCmd := m.execSSHCommand(ctx, host, "mkdir", "-p", rootSSHDir)
-
-	if output, err := mkdirSSHCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to create root .ssh directory: %w: %s", err, output)
-	}
-
 	// Add authorized_keys to files map
 	files["root/.ssh/authorized_keys"] = struct {
 		content string
 		mode    string
 	}{sshKeys.AuthorizedKeys, "600"}
 
-	// Write each file
+	// Build a single command to create directories and write all files
+	// This dramatically reduces SSH round-trips from 4 to 1
+	var writeScript strings.Builder
+	writeScript.WriteString("mkdir -p ")
+	writeScript.WriteString(filepath.Join(containerDir, "root/.ssh"))
+
 	for relPath, fileInfo := range files {
 		fullPath := filepath.Join(containerDir, relPath)
-
-		// Write the file via SSH
-		sshHost := host
-		if strings.HasPrefix(sshHost, "ssh://") {
-			sshHost = strings.TrimPrefix(sshHost, "ssh://")
-		}
-
-		// Host is required
-		if sshHost == "" || strings.HasPrefix(host, "/") {
-			return "", fmt.Errorf("no valid SSH host provided for SSH file write")
-		}
-
 		// Use base64 encoding to safely transfer the content
 		encodedContent := base64.StdEncoding.EncodeToString([]byte(fileInfo.content))
 
-		// Write the file using echo and base64 decode
-		writeCmd := fmt.Sprintf("echo '%s' | base64 -d | sudo tee '%s' > /dev/null && sudo chmod %s '%s'",
-			encodedContent, fullPath, fileInfo.mode, fullPath)
-
-		cmd := exec.CommandContext(ctx, "ssh", sshHost, writeCmd)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return "", fmt.Errorf("failed to write SSH file %s: %w: %s", relPath, err, output)
-		}
-
-		log.Printf("Wrote container-specific file: %s (mode %s)", relPath, fileInfo.mode)
+		// Add command to write and chmod each file
+		writeScript.WriteString(fmt.Sprintf(" && echo '%s' | base64 -d > '%s' && chmod %s '%s'",
+			encodedContent, fullPath, fileInfo.mode, fullPath))
 	}
+
+	// Execute the combined command
+	writeCmd := m.execSSHCommand(ctx, host, "sh", "-c", writeScript.String())
+	if output, err := writeCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to write SSH files: %w: %s", err, output)
+	}
+
+	log.Printf("Wrote all container-specific SSH files")
 
 	log.Printf("Successfully prepared container-specific /exe.dev directory at %s", containerDir)
 	return containerDir, nil
