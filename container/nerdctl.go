@@ -1278,7 +1278,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 
 		if d.IsDir() {
 			// Create directory locally
-			if err := os.MkdirAll(localPath, 0755); err != nil {
+			if err := os.MkdirAll(localPath, 0o755); err != nil {
 				return fmt.Errorf("failed to create local directory %s: %w", localPath, err)
 			}
 			return nil
@@ -1291,9 +1291,9 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 		}
 
 		// Write file locally with proper permissions
-		mode := os.FileMode(0644)
+		mode := os.FileMode(0o644)
 		if strings.Contains(path, "bin/") || strings.HasSuffix(path, ".so.1") {
-			mode = 0755
+			mode = 0o755
 		}
 
 		if err := os.WriteFile(localPath, content, mode); err != nil {
