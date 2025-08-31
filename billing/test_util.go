@@ -1,10 +1,13 @@
 package billing
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
@@ -49,4 +52,36 @@ func newMockStripeServer(t *testing.T) *httptest.Server {
 	// Wrap in HTTP test server
 	mockServer := httptest.NewServer(http.HandlerFunc(stubServer.HandleRequest))
 	return mockServer
+}
+
+func NewTestDB(t *testing.T) *sqlite.DB {
+	t.Helper()
+
+	// Create temporary database
+	tmpDBFile, err := os.CreateTemp("", "test_billing_mock_*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp db: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(tmpDBFile.Name()) })
+	tmpDBFile.Close()
+
+	// First open with sql.DB for migrations
+	sqlDB, err := sql.Open("sqlite", tmpDBFile.Name())
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+
+	if err := exedb.RunMigrations(sqlDB); err != nil {
+		t.Fatalf("RunMigrations: %v", err)
+	}
+
+	// Now open with sqlite.DB for the billing service
+	db, err := sqlite.New(tmpDBFile.Name(), 5)
+	if err != nil {
+		t.Fatalf("failed to create sqlite.DB: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	return db
 }

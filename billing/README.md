@@ -16,8 +16,8 @@ import (
 )
 
 func TestFoo(t *testing.T) {
-  // set up prerequisites for 
-  db, _ := sql.Open(...)
+  // set up prerequisites for
+  db := NewTestDB(t)
 
   billing, cleanup := billing.NewWithMockStripe(t, db)
   defer cleanup()
@@ -25,7 +25,7 @@ func TestFoo(t *testing.T) {
   server, _ := NewServer(...)
 
   sshServer := NewSSHServer(server, billing)
-  
+
   // exercise methods on sshServer ...
 }
 ```
