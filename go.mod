@@ -4,6 +4,8 @@ go 1.25.0
 
 replace github.com/tg123/sshpiper => ./sshpiper
 
+replace github.com/Netflix/go-expect => ./deps/go-expect
+
 require (
 	github.com/Netflix/go-expect v0.0.0-20220104043353-73e0943537d2
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
