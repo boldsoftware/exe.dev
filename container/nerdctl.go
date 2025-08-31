@@ -498,11 +498,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Cloud Hypervisor doesn't support the dynamic resource allocation that nerdctl's
 	// --memory and --cpus flags trigger. We need to use cgroup parent slices instead.
 
-	// If using exetini, override the entrypoint
-	if useExetini {
-		runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
-	}
-
 	// Get image entrypoint, cmd, and user from manifest
 	var imageEntrypoint []string
 	var imageCmd []string
@@ -520,11 +515,21 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		}
 		if err := json.Unmarshal(output, &imageConfig); err == nil {
 			imageUser = imageConfig.Config.User
-			if useExetini && req.CommandOverride == "" {
+			// Always extract entrypoint/cmd when using exetini, unless there's a custom command override
+			if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
 				imageEntrypoint = imageConfig.Config.Entrypoint
 				imageCmd = imageConfig.Config.Cmd
 			}
 			log.Printf("Image %s has entrypoint: %v, cmd: %v, user: %s", image, imageEntrypoint, imageCmd, imageUser)
+		}
+	}
+
+	// If using exetini, override the entrypoint and pass image user
+	if useExetini {
+		runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
+		if imageUser != "" {
+			// Pass the image user to exetini via environment variable
+			runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", imageUser))
 		}
 	}
 
