@@ -675,10 +675,15 @@ void start_sshd_if_needed() {
 	// Fork to start sshd in background
 	pid_t sshd_pid = fork();
 	if (sshd_pid == 0) {
-		// Child process - exec sshd
-		char *sshd_argv[] = {"/exe.dev/bin/sshd", "-f", "/exe.dev/etc/ssh/sshd_config", NULL};
+		// Child process - redirect stderr to stdout so logs show up
+		dup2(1, 2);  // Make stderr go to stdout
+		
+		// Run sshd with debug output to stderr (which now goes to stdout)
+		// Use -e to send errors to stderr, -D to stay in foreground
+		char *sshd_argv[] = {"/exe.dev/bin/sshd", "-D", "-e", "-f", "/exe.dev/etc/ssh/sshd_config", NULL};
 		execv("/exe.dev/bin/sshd", sshd_argv);
-		// If exec fails, just exit silently
+		// If exec fails, print error
+		fprintf(stdout, "exetini: Failed to exec sshd: %s\n", strerror(errno));
 		_exit(1);
 	}
 	// Parent continues
