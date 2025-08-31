@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <libgen.h>
+#include <pwd.h>
+#include <grp.h>
 
 #include "tiniConfig.h"
 #include "tiniLicense.h"
@@ -199,6 +201,86 @@ int spawn(const signal_configuration_t* const sigconf_ptr, char* const argv[], i
 		if (restore_signals(sigconf_ptr)) {
 			return 1;
 		}
+
+		// Switch to the image user if EXE_IMAGE_USER is set
+		char *image_user = getenv("EXE_IMAGE_USER");
+		if (image_user != NULL && strlen(image_user) > 0 && strcmp(image_user, "root") != 0) {
+			// Parse user:group or just user
+			char *user_copy = strdup(image_user);
+			char *user_part = user_copy;
+			char *group_part = strchr(user_copy, ':');
+			
+			if (group_part != NULL) {
+				*group_part = '\0';
+				group_part++;
+			}
+			
+			// Try to parse as numeric UID first
+			char *endptr;
+			long uid = strtol(user_part, &endptr, 10);
+			struct passwd *pw = NULL;
+			
+			if (*endptr == '\0' && uid >= 0) {
+				// It's a numeric UID
+				pw = getpwuid((uid_t)uid);
+				if (pw == NULL) {
+					// Create a minimal passwd entry for numeric UID
+					// We'll just use the numeric values directly
+				}
+			} else {
+				// It's a username
+				pw = getpwnam(user_part);
+				if (pw == NULL) {
+					PRINT_WARNING("User '%s' not found, continuing as root", user_part);
+					free(user_copy);
+					goto skip_user_switch;
+				}
+				uid = pw->pw_uid;
+			}
+			
+			// Handle group if specified
+			gid_t gid = (pw != NULL) ? pw->pw_gid : (gid_t)uid;
+			if (group_part != NULL) {
+				long group_id = strtol(group_part, &endptr, 10);
+				if (*endptr == '\0' && group_id >= 0) {
+					// It's a numeric GID
+					gid = (gid_t)group_id;
+				} else {
+					// It's a group name
+					struct group *gr = getgrnam(group_part);
+					if (gr != NULL) {
+						gid = gr->gr_gid;
+					} else {
+						PRINT_WARNING("Group '%s' not found, using default", group_part);
+					}
+				}
+			}
+			
+			// Set supplementary groups if we have a passwd entry
+			if (pw != NULL && initgroups(pw->pw_name, gid) < 0) {
+				PRINT_WARNING("initgroups failed: %s", strerror(errno));
+			}
+			
+			// Set GID first (must be done before UID)
+			if (setgid(gid) < 0) {
+				PRINT_WARNING("setgid(%ld) failed: %s", (long)gid, strerror(errno));
+			}
+			
+			// Set UID
+			if (setuid(uid) < 0) {
+				PRINT_WARNING("setuid(%ld) failed: %s", (long)uid, strerror(errno));
+			} else {
+				PRINT_INFO("Switched to user %s (UID=%ld, GID=%ld)", user_part, (long)uid, (long)gid);
+			}
+			
+			// Set HOME environment variable if we have a passwd entry
+			if (pw != NULL && pw->pw_dir != NULL) {
+				setenv("HOME", pw->pw_dir, 1);
+			}
+			
+			free(user_copy);
+		}
+		skip_user_switch:
 
 		execvp(argv[0], argv);
 
@@ -612,8 +694,6 @@ int reap_zombies(const pid_t child_pid, int* const child_exitcode_ptr) {
 
 
 /* exe.dev addition: Start sshd if /exe.dev/bin/sshd exists */
-#include <pwd.h>
-#include <grp.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
