@@ -9,7 +9,8 @@ RUN apk add --no-cache \
       linux-headers \
       curl \
       tar \
-      musl-dev
+      musl-dev \
+      cmake
 
 # Set up /exe.dev/lib with the musl interpreter so compilation can use it
 RUN mkdir -p /exe.dev/lib && \
@@ -161,5 +162,23 @@ RUN echo "=== Binary sizes ===" && \
     echo "=== Library dependencies ===" && \
     ldd /out/exe.dev/bin/sshd 2>/dev/null || echo "No dynamic dependencies"
 
+# Build our custom tini (exetini) with sshd auto-start
+FROM alpine:3.19 AS tini-build
+
+RUN apk add --no-cache build-base cmake
+
+# Copy tini source (assuming it's in the build context)
+COPY tini /tini
+
+WORKDIR /tini/build
+
+# Configure and build tini with correct interpreter path for /exe.dev/lib
+RUN cmake .. -DCMAKE_INSTALL_PREFIX=/exe.dev -DTINI_MINIMAL=ON \
+    -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath,/exe.dev/lib -Wl,--dynamic-linker,/exe.dev/lib/ld-musl-x86_64.so.1" && \
+    make && \
+    strip --strip-all tini && \
+    mv tini exetini
+
 FROM scratch AS out
 COPY --from=build /out/exe.dev /
+COPY --from=tini-build /tini/build/exetini /bin/
