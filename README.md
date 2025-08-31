@@ -24,10 +24,6 @@ Once you have that, run:
 ./ops/setup-colima-host.sh
 ```
 
-After this you can configure your env with:
-
-`export CTR_HOST=ssh://exe-ctr-colima`
-
 For debugging you can `ssh exe-ctr-colima` and you can wipe it
 by running `./ops/reset-colima.sh`.
 
@@ -49,6 +45,8 @@ Host *.localexe
 
 ## Local Development
 
+After you have setup a local ctr host (see above), run:
+
 ```
 go run ./cmd/exed -dev=local
 ```
@@ -60,7 +58,7 @@ With this you can:
 - visit http://machine.localhost:8080 (run `python -m http.server` in the machine first)
 - scp junk.txt localexe:junk.txt
 
-Everything will run locally on docker.
+Everything will run locally on a colima VM.
 
 ## Production Deployment
 
@@ -108,23 +106,9 @@ The setup script will automatically:
 - Install and configure systemd service for auto-start
 - Set up versioned deployments for easy rollback
 
-## Docker Host Configuration
+## Production Container Host Configuration
 
-In production, you can specify multiple Docker hosts for distributing containers:
-
-```bash
-# Using a single remote Docker host
-./exed -docker-hosts tcp://docker1.example.com:2376
-
-# Using multiple Docker hosts
-./exed -docker-hosts tcp://docker1.example.com:2376,tcp://docker2.example.com:2376
-
-# Or via environment variable
-export DOCKER_HOST=tcp://docker1.example.com:2376
-./exed
-```
-
-For development, it defaults to the local Docker daemon.
+The script `./ops/setup-host-part1.sh` sets up more exe-ctr-NN hosts.
 
 ## Exeuntu Image
 
