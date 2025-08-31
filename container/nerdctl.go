@@ -58,7 +58,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	// Verify Kata runtime is available on all hosts
-	// Increase timeout to 2 minutes as Kata verification can take time, especially over SSH
 	for _, host := range config.ContainerdAddresses {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		if err := manager.verifyKataRuntime(ctx, host); err != nil {
@@ -113,44 +112,18 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 
 // execNerdctl executes a nerdctl command via SSH on a remote host
 func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...string) *exec.Cmd {
-	// CRITICAL: Block any attempt to override runtime via environment or args
-	// Check if someone is trying to specify a different runtime
-	for i, arg := range args {
-		if arg == "--runtime" && i+1 < len(args) {
-			if args[i+1] != "io.containerd.kata.v2" {
-				// Someone is trying to use a non-Kata runtime, override it
-				log.Printf("SECURITY: Blocked attempt to use runtime %s, forcing Kata", args[i+1])
-				args[i+1] = "io.containerd.kata.v2"
-			}
-		}
-	}
-
-	// Parse SSH format if present
 	if strings.HasPrefix(host, "ssh://") {
 		host = strings.TrimPrefix(host, "ssh://")
 	}
-
-	// Host is required - we always use SSH
 	if host == "" || strings.HasPrefix(host, "/") {
-		// Return a command that will fail with a clear error
-		cmd := exec.CommandContext(ctx, "false")
-		cmd.Env = []string{"ERROR=No valid SSH host provided for container operations"}
-		return cmd
+		panic(fmt.Sprintf("execNerdctl: no valid SSH host provided: %q", host))
 	}
 
 	// For remote hosts, use SSH with sudo
-	// Always use sudo for remote containerd/nerdctl commands
-
-	// Build the nerdctl command arguments
-	// Now that SSH pool handles quoting properly, we can pass args separately
 	nerdctlArgs := []string{"sudo", "nerdctl", "--namespace", "exe"}
 	nerdctlArgs = append(nerdctlArgs, args...)
 
-	// Use SSH connection pool for better performance
-	cmd := m.sshPool.ExecCommand(ctx, host, nerdctlArgs...)
-	// Remove any NERDCTL_RUNTIME or CONTAINERD_RUNTIME env vars that might override
-	cmd.Env = filterEnv(os.Environ(), "NERDCTL_RUNTIME", "CONTAINERD_RUNTIME")
-	return cmd
+	return m.sshPool.ExecCommand(ctx, host, nerdctlArgs...)
 }
 
 // execSSHCommand executes a command via SSH on a remote host
@@ -168,27 +141,8 @@ func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args .
 		return cmd
 	}
 
-	// Pass sudo and args as separate arguments so they get properly quoted
 	sudoArgs := append([]string{"sudo"}, args...)
 	return m.sshPool.ExecCommand(ctx, host, sudoArgs...)
-}
-
-// filterEnv removes specified environment variables from the environment
-func filterEnv(environ []string, remove ...string) []string {
-	filtered := make([]string, 0, len(environ))
-	for _, e := range environ {
-		skip := false
-		for _, r := range remove {
-			if strings.HasPrefix(e, r+"=") {
-				skip = true
-				break
-			}
-		}
-		if !skip {
-			filtered = append(filtered, e)
-		}
-	}
-	return filtered
 }
 
 // isHexString checks if a string contains only hexadecimal characters
@@ -656,146 +610,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		return nil, fmt.Errorf("no container ID returned from output: %s", string(output))
 	}
 
-	// CRITICAL: Verify the container is actually using Kata runtime
-	// Since we're forcing --runtime io.containerd.kata.v2 and already verified Kata works,
-	// we can trust that the container is using Kata. Full verification would require
-	// checking with ctr, but that's complex across SSH boundaries.
-	//
-	// The key security enforcement is:
-	// 1. We verified Kata is available during manager initialization
-	// 2. We force --runtime io.containerd.kata.v2 on all container creation
-	// 3. Container creation would fail if Kata wasn't available
-
-	log.Printf("Container %s created with enforced Kata runtime", containerID)
-
-	// Wait for container to reach "Up" status (especially important for Kata/Firecracker)
-	log.Printf("Waiting for container %s to reach Up status...", containerID)
-	startTime := time.Now()
-	maxWaitTime := 30 * time.Second
-	checkInterval := 100 * time.Millisecond
-	lastStatus := ""
-
-	for time.Since(startTime) < maxWaitTime {
-		// Use nerdctl ps to check container status
-		statusCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "{{.State.Status}}")
-		statusOutput, err := statusCmd.Output()
-		if err != nil {
-			log.Printf("Warning: Failed to check container status: %v", err)
-			time.Sleep(checkInterval)
-			continue
-		}
-
-		status := strings.TrimSpace(string(statusOutput))
-		if status != lastStatus {
-			log.Printf("Container %s status: %s (%.1fs elapsed)", containerID, status, time.Since(startTime).Seconds())
-			lastStatus = status
-		}
-
-		if status == "running" {
-			log.Printf("Container %s is Up after %.1fs", containerID, time.Since(startTime).Seconds())
-			break
-		}
-
-		if status == "exited" || status == "dead" {
-			// Container failed to start
-			log.Printf("ERROR: Container %s failed with status: %s", containerID, status)
-			m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
-			cleanupContainerDir()
-			return nil, fmt.Errorf("container failed to start, status: %s", status)
-		}
-
-		time.Sleep(checkInterval)
-	}
-
-	if lastStatus != "running" {
-		log.Printf("ERROR: Container %s did not reach Up status after %.1fs, last status: %s", containerID, maxWaitTime.Seconds(), lastStatus)
-		// Try to get more info about why it's stuck
-		logsCmd := m.execNerdctl(ctx, host, "logs", "--tail", "50", containerID)
-		logs, _ := logsCmd.Output()
-		if len(logs) > 0 {
-			log.Printf("Container logs: %s", string(logs))
-		}
-		m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
-		cleanupContainerDir()
-		return nil, fmt.Errorf("container stuck in %s state after %v", lastStatus, maxWaitTime)
-	}
-
-	// Quick spin to wait for container to be fully ready (especially for Firecracker)
-	var inspectOutput []byte
-	maxAttempts := 60 // Up to 6 seconds for Firecracker/Kata startup
-	for i := 0; i < maxAttempts; i++ {
-		inspectCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "json")
-		inspectOutput, err = inspectCmd.Output()
-		if err != nil && i < maxAttempts-1 {
-			// Container might still be starting (especially with Kata)
-			time.Sleep(100 * time.Millisecond)
-			continue
-		} else if err != nil {
-			// Final attempt failed - clean up the failed container
-			m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
-			cleanupContainerDir()
-			return nil, fmt.Errorf("failed to inspect container after creation: %w", err)
-		}
-
-		// Parse to check status
-		var inspectData struct {
-			State struct {
-				Status string `json:"Status"`
-				Error  string `json:"Error"`
-			} `json:"State"`
-		}
-		if err := json.Unmarshal(inspectOutput, &inspectData); err == nil {
-			if inspectData.State.Status == "running" || inspectData.State.Status == "" {
-				// Container is running or status not yet set (which is ok initially)
-				break
-			}
-			if inspectData.State.Status == "created" || inspectData.State.Status == "unknown" {
-				// Firecracker container might be stuck, wait a bit more
-				if i < maxAttempts-1 {
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-				// Container is stuck in created/unknown state
-				m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
-				cleanupContainerDir()
-				return nil, fmt.Errorf("container stuck in %s state: %s", inspectData.State.Status, inspectData.State.Error)
-			}
-		}
-		break
-	}
-
-	// nerdctl inspect returns a single object, not an array
-	var inspectData struct {
-		NetworkSettings struct {
-			Networks map[string]struct {
-				IPAddress string `json:"IPAddress"`
-			} `json:"Networks"`
-		} `json:"NetworkSettings"`
-		Config struct {
-			Hostname string `json:"Hostname"`
-		} `json:"Config"`
-	}
-
-	if err := json.Unmarshal(inspectOutput, &inspectData); err != nil {
-		return nil, fmt.Errorf("failed to parse inspect data: %w", err)
-	}
-
-	// Get container IP
-	containerIP := ""
-	if inspectData.NetworkSettings.Networks != nil {
-		// Try to get IP from the created network first
-		if netInfo, ok := inspectData.NetworkSettings.Networks[networkName]; ok {
-			containerIP = netInfo.IPAddress
-		}
-		// If not found, try any network
-		if containerIP == "" {
-			for _, netInfo := range inspectData.NetworkSettings.Networks {
-				if netInfo.IPAddress != "" {
-					containerIP = netInfo.IPAddress
-					break
-				}
-			}
-		}
+	// Wait for container to reach "running" status and get its network info
+	containerIP, err := m.waitForContainerRunning(ctx, host, containerID, networkName, cleanupContainerDir)
+	if err != nil {
+		return nil, err
 	}
 
 	// Configure SSH in the container (synchronously - block until ready)
@@ -857,6 +675,107 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	return container, nil
 }
 
+// waitForContainerRunning waits for a container to reach "running" status and returns its IP address
+func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, containerID, networkName string, cleanupFunc func()) (string, error) {
+	startTime := time.Now()
+	const maxWaitTime = 30 * time.Second
+	const checkInterval = 100 * time.Millisecond
+	lastStatus := ""
+
+	// This will hold the final inspect data
+	var inspectData struct {
+		State struct {
+			Status string `json:"Status"`
+			Error  string `json:"Error"`
+		} `json:"State"`
+		NetworkSettings struct {
+			Networks map[string]struct {
+				IPAddress string `json:"IPAddress"`
+			} `json:"Networks"`
+		} `json:"NetworkSettings"`
+		Config struct {
+			Hostname string `json:"Hostname"`
+		} `json:"Config"`
+	}
+
+	for time.Since(startTime) < maxWaitTime {
+		inspectCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "json")
+		inspectOutput, err := inspectCmd.Output()
+		if err != nil {
+			log.Printf("Warning: Failed to inspect container: %v", err)
+			time.Sleep(checkInterval)
+			continue
+		}
+		if err := json.Unmarshal(inspectOutput, &inspectData); err != nil {
+			log.Printf("Warning: Failed to parse inspect data: %v", err)
+			time.Sleep(checkInterval)
+			continue
+		}
+
+		status := inspectData.State.Status
+		if status != lastStatus {
+			log.Printf("Container %s status: %s (%.1fs elapsed)", containerID, status, time.Since(startTime).Seconds())
+			lastStatus = status
+		}
+
+		// Check for terminal states
+		if status == "exited" || status == "dead" {
+			// Container failed to start
+			log.Printf("ERROR: Container %s failed with status: %s, error: %s", containerID, status, inspectData.State.Error)
+			// Try to get container logs for debugging
+			logsCmd := m.execNerdctl(ctx, host, "logs", "--tail", "50", containerID)
+			logs, _ := logsCmd.Output()
+			if len(logs) > 0 {
+				log.Printf("Container logs: %s", string(logs))
+			}
+			m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
+			cleanupFunc()
+			return "", fmt.Errorf("container failed to start, status: %s", status)
+		}
+
+		if status == "running" {
+			break
+		}
+
+		time.Sleep(checkInterval)
+	}
+
+	// Check if we timed out
+	if inspectData.State.Status != "running" {
+		log.Printf("ERROR: Container %s did not reach running status after %.1fs, last status: %s",
+			containerID, maxWaitTime.Seconds(), inspectData.State.Status)
+		// Try to get container logs for debugging
+		logsCmd := m.execNerdctl(ctx, host, "logs", "--tail", "50", containerID)
+		logs, _ := logsCmd.Output()
+		if len(logs) > 0 {
+			log.Printf("Container logs: %s", string(logs))
+		}
+		m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
+		cleanupFunc()
+		return "", fmt.Errorf("container stuck in %s state after %v", inspectData.State.Status, maxWaitTime)
+	}
+
+	// Get container IP
+	containerIP := ""
+	if inspectData.NetworkSettings.Networks != nil {
+		// Try to get IP from the created network first
+		if netInfo, ok := inspectData.NetworkSettings.Networks[networkName]; ok {
+			containerIP = netInfo.IPAddress
+		}
+		// If not found, try any network
+		if containerIP == "" {
+			for _, netInfo := range inspectData.NetworkSettings.Networks {
+				if netInfo.IPAddress != "" {
+					containerIP = netInfo.IPAddress
+					break
+				}
+			}
+		}
+	}
+
+	return containerIP, nil
+}
+
 // setupSSHTunnel sets up an SSH tunnel for accessing container SSH port from localhost
 func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) error {
 	// Parse SSH host
@@ -910,31 +829,15 @@ func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) e
 }
 
 // setupContainerSSH configures SSH inside the container
-// With the new container-specific /exe.dev mount, everything is already in place:
 // - SSH keys are at /exe.dev/etc/ssh/ and /exe.dev/root/.ssh/
 // - sshd_config is at /exe.dev/etc/ssh/sshd_config
-// - var/empty is at /exe.dev/var/empty for privilege separation
-// We just need to start sshd
+// - /var/empty is at /exe.dev/var/empty for privilege separation
+// We just need to start sshd (and create the sshd user on some containers).
 func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, host, containerName string, sshKeys *ContainerSSHKeys) error {
 	log.Printf("[SSH-SETUP] Starting SSH setup for container %s (name: %s)", containerID, containerName)
+	const sshdPath = "/exe.dev/bin/sshd"
 
-	// Skip container status check - we just created it, so we know it's running
-	// This saves an SSH round-trip
-
-	// Always use sshd from /exe.dev mount
-	sshdPath := "/exe.dev/bin/sshd"
-
-	// Verify that /exe.dev/bin/sshd exists and is executable
-	log.Printf("[SSH-SETUP] Checking for SSH daemon at %s", sshdPath)
-	checkCmd := m.execNerdctl(ctx, host, "exec", "-u", "root", containerID, "test", "-x", sshdPath)
-	if err := checkCmd.Run(); err != nil {
-		log.Printf("[SSH-SETUP] ERROR: SSH daemon not found at %s - is /exe.dev mounted?", sshdPath)
-		return fmt.Errorf("SSH daemon not available at %s: %w", sshdPath, err)
-	}
-	log.Printf("[SSH-SETUP] Using SSH daemon at: %s", sshdPath)
-
-	// Combine sshd user creation and SSH daemon start into a single command for speed
-	// This reduces SSH round-trips and speeds up container creation
+	// sshd user creation and SSH daemon start
 	log.Printf("[SSH-SETUP] Creating sshd user and starting SSH daemon")
 	combinedCmd := fmt.Sprintf(
 		"id sshd >/dev/null 2>&1 || (groupadd -g 65534 nogroup 2>/dev/null || true; useradd -u 105 -g 65534 -c 'sshd privsep' -d /exe.dev/var/empty -s /usr/sbin/nologin sshd) 2>/dev/null; exec %s -f /exe.dev/etc/ssh/sshd_config",
@@ -949,9 +852,7 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 		log.Printf("[SSH-SETUP] SSH daemon started successfully in container %s", containerID)
 	}
 
-	// Spin-wait for sshd to fully daemonize and initialize (max 1 second)
-	// Reduced from 30 attempts to 10 - SSH should start much faster
-	log.Printf("[SSH-SETUP] Verifying SSH daemon is running")
+	// Spin-wait for sshd to fully daemonize and initialize
 	var sshRunning bool
 	for i := 0; i < 10; i++ {
 		verifyCmd := m.execNerdctl(ctx, host, "exec", "-u", "root", containerID, "sh", "-c", "ps aux | grep -v grep | grep -E 'sshd.*listener'")
@@ -965,19 +866,12 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 		if i == 5 {
 			log.Printf("[SSH-SETUP] Still waiting for SSH daemon (attempt %d/10)", i+1)
 		}
-		if i < 9 {
-			time.Sleep(100 * time.Millisecond)
-		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	if !sshRunning {
-		// Log warning if SSH daemon not detected but don't fail
 		log.Printf("[SSH-SETUP] WARNING: SSH daemon process not detected in container %s after 1 second", containerID)
 	}
-
-	// Network configuration is now handled at container creation time using
-	// --hostname, --dns, and --dns-search flags to nerdctl run
-	// This is much cleaner and works properly with the Kata runtime
 
 	return nil
 }
