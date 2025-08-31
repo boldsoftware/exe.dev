@@ -264,7 +264,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	}
 
 	// Get user info by public key directly
-	userID, err := p.server.getUserIDByPublicKey(pubKey)
+	userID, err := p.server.getUserIDByPublicKey(ctx, pubKey)
 	if err != nil {
 		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "error", err)
 	}

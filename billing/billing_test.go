@@ -54,7 +54,7 @@ func TestWithStripeMock(t *testing.T) {
 	}
 
 	// Verify billing info was saved
-	billingInfo, err := billing.GetBillingInfo(allocID)
+	billingInfo, err := billing.GetBillingInfo(t.Context(), allocID)
 	if err != nil {
 		t.Fatalf("GetBillingInfo failed: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestWithStripeMock(t *testing.T) {
 	}
 
 	// Verify email was updated
-	updatedInfo, err := billing.GetBillingInfo(allocID)
+	updatedInfo, err := billing.GetBillingInfo(t.Context(), allocID)
 	if err != nil {
 		t.Fatalf("GetBillingInfo failed after email update: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestWithStripeMock(t *testing.T) {
 	}
 
 	// Verify billing info was deleted
-	deletedInfo, err := billing.GetBillingInfo(allocID)
+	deletedInfo, err := billing.GetBillingInfo(t.Context(), allocID)
 	if err != nil {
 		t.Fatalf("GetBillingInfo failed after delete: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestEnvironmentBasedMocking(t *testing.T) {
 	}
 
 	// Verify it worked
-	billingInfo, err := billing.GetBillingInfo(allocID)
+	billingInfo, err := billing.GetBillingInfo(t.Context(), allocID)
 	if err != nil {
 		t.Fatalf("GetBillingInfo failed: %v", err)
 	}

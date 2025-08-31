@@ -661,16 +661,16 @@ func (s *Server) setupSSHServer() {
 	}
 
 	// Load or generate persistent host keys
-	if err := s.generateHostKey(); err != nil {
+	if err := s.generateHostKey(context.Background()); err != nil {
 		slog.Error("Failed to generate host key", "error", err)
 	}
 }
 
 // generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
-func (s *Server) generateHostKey() error {
-	// Try to load existing host key from database - use context.Background() since server startup must complete
+func (s *Server) generateHostKey(ctx context.Context) error {
+	// Try to load existing host key from database
 	var privateKeyPEM, publicKeyPEM string
-	err := s.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`SELECT private_key, public_key FROM ssh_host_key WHERE id = 1`).Scan(&privateKeyPEM, &publicKeyPEM)
 	})
 
@@ -701,8 +701,8 @@ func (s *Server) generateHostKey() error {
 		// Calculate fingerprint
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
 
-		// Store in database - use context.Background() since server startup must complete
-		err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		// Store in database
+		err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			_, err := tx.Exec(`
 				INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint, created_at, updated_at)
 				VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
@@ -3392,10 +3392,10 @@ func (s *Server) createTestUserWithID(email string) (string, error) {
 }
 
 // getUserIDByPublicKey gets user_id from an SSH public key
-func (s *Server) getUserIDByPublicKey(publicKey ssh.PublicKey) (string, error) {
+func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicKey) (string, error) {
 	var userID string
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
-	err := s.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
 		SELECT user_id FROM ssh_keys
 		WHERE public_key = ?

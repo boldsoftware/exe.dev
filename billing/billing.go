@@ -24,7 +24,7 @@ type BillingInfo struct {
 // Billing interface defines the core billing business logic operations
 type Billing interface {
 	// GetBillingInfo retrieves current billing information for an allocation
-	GetBillingInfo(allocID string) (*BillingInfo, error)
+	GetBillingInfo(ctx context.Context, allocID string) (*BillingInfo, error)
 
 	// SetupBilling creates a new Stripe customer and saves billing info
 	SetupBilling(allocID, billingEmail, cardNumber, expMonth, expYear, cvc string) error
@@ -79,13 +79,13 @@ func createStripeClient() *client.API {
 }
 
 // GetBillingInfo retrieves current billing information for an allocation
-func (bs *billingService) GetBillingInfo(allocID string) (*BillingInfo, error) {
+func (bs *billingService) GetBillingInfo(ctx context.Context, allocID string) (*BillingInfo, error) {
 	var billing BillingInfo
 	var emailNull, customerIDNull sql.NullString
 
-	err := bs.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+	err := bs.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
-			SELECT billing_email, stripe_customer_id 
+			SELECT billing_email, stripe_customer_id
 			FROM allocs WHERE alloc_id = ?`, allocID).Scan(&emailNull, &customerIDNull)
 	})
 	if err != nil {

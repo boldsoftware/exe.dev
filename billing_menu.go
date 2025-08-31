@@ -27,7 +27,7 @@ func (ss *SSHServer) handleBillingCommand(s ssh.Session, publicKey string, args 
 	}
 
 	// Get billing info from the billing service
-	billingInfo, err := ss.billing.GetBillingInfo(alloc.AllocID)
+	billingInfo, err := ss.billing.GetBillingInfo(s.Context(), alloc.AllocID)
 	if err != nil {
 		fmt.Fprintf(s, "\033[1;31mError: Failed to get billing info: %v\033[0m\r\n", err)
 		return
