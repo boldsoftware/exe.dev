@@ -28,6 +28,14 @@ const (
 	CreateDone                        // process complete
 )
 
+// CreateProgressInfo contains detailed progress information for container creation
+type CreateProgressInfo struct {
+	Phase           CreateProgress
+	ImageBytes      int64  // Total size of the image
+	DownloadedBytes int64  // Bytes downloaded so far (only valid during CreatePull)
+	Message         string // Optional status message
+}
+
 // Container represents a container instance within an allocation
 type Container struct {
 	ID        string          `json:"id"`
@@ -143,7 +151,12 @@ type CreateContainerRequest struct {
 
 	// Progress callback - called with progress updates during creation
 	// Only called while CreateContainer is blocking, not after it returns
+	// Deprecated: Use ProgressCallbackEx for detailed progress information
 	ProgressCallback func(progress CreateProgress, imageBytes int64) `json:"-"`
+
+	// ProgressCallbackEx - enhanced callback with detailed progress information
+	// If set, this takes precedence over ProgressCallback
+	ProgressCallbackEx func(info CreateProgressInfo) `json:"-"`
 }
 
 // BuildRequest represents a request to build a custom Docker image

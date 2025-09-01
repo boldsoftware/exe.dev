@@ -936,8 +936,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 
 	// Create channels for progress updates and completion
 	type progressUpdate struct {
-		progress   container.CreateProgress
-		imageBytes int64
+		info container.CreateProgressInfo
 	}
 	progressChan := make(chan progressUpdate, 10)
 	completionChan := make(chan struct {
@@ -968,9 +967,9 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 
 	// Add progress callback that sends to channel
 	if showSpinner {
-		req.ProgressCallback = func(progress container.CreateProgress, imageBytes int64) {
+		req.ProgressCallbackEx = func(info container.CreateProgressInfo) {
 			select {
-			case progressChan <- progressUpdate{progress, imageBytes}:
+			case progressChan <- progressUpdate{info}:
 			default:
 				// Channel full, skip this update
 			}
@@ -992,6 +991,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	// Track current progress state
 	currentStatus := "Initializing"
 	var imageSize int64
+	var downloadedBytes int64
 	spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	spinnerIndex := 0
 
@@ -1002,26 +1002,35 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	var createdContainer *container.Container
 	var createErr error
 
+	// Helper to format bytes
+	formatBytes := func(bytes int64) string {
+		if bytes < 1024*1024 {
+			return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+		} else if bytes < 1024*1024*1024 {
+			return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+		} else {
+			return fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
+		}
+	}
+
 	for {
 		select {
 		case update := <-progressChan:
 			// Update current status based on progress
-			switch update.progress {
+			imageSize = update.info.ImageBytes
+			downloadedBytes = update.info.DownloadedBytes
+
+			switch update.info.Phase {
 			case container.CreateInit:
 				currentStatus = "Initializing"
 			case container.CreatePull:
-				imageSize = update.imageBytes
-				if imageSize > 0 {
-					// Convert bytes to human-readable format
-					var sizeStr string
-					if imageSize < 1024*1024 {
-						sizeStr = fmt.Sprintf("%.1f KB", float64(imageSize)/1024)
-					} else if imageSize < 1024*1024*1024 {
-						sizeStr = fmt.Sprintf("%.1f MB", float64(imageSize)/(1024*1024))
-					} else {
-						sizeStr = fmt.Sprintf("%.1f GB", float64(imageSize)/(1024*1024*1024))
-					}
-					currentStatus = fmt.Sprintf("Pulling image (%s)", sizeStr)
+				if imageSize > 0 && downloadedBytes > 0 {
+					// Show download progress with percentage
+					percentage := int((float64(downloadedBytes) / float64(imageSize)) * 100)
+					currentStatus = fmt.Sprintf("Pulling image (%s / %s - %d%%)",
+						formatBytes(downloadedBytes), formatBytes(imageSize), percentage)
+				} else if imageSize > 0 {
+					currentStatus = fmt.Sprintf("Pulling image (%s)", formatBytes(imageSize))
 				} else {
 					currentStatus = "Pulling image"
 				}

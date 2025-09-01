@@ -1,6 +1,7 @@
 package container
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -382,12 +384,215 @@ func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, 
 	return nil
 }
 
+// reportProgress is a helper function to report progress through the appropriate callback
+func reportProgress(req *CreateContainerRequest, phase CreateProgress, imageBytes, downloadedBytes int64, message string) {
+	if req.ProgressCallbackEx != nil {
+		req.ProgressCallbackEx(CreateProgressInfo{
+			Phase:           phase,
+			ImageBytes:      imageBytes,
+			DownloadedBytes: downloadedBytes,
+			Message:         message,
+		})
+	} else if req.ProgressCallback != nil {
+		// Fall back to old callback for backward compatibility
+		req.ProgressCallback(phase, imageBytes)
+	}
+}
+
+// pullProgress tracks the progress of a pull operation
+type pullProgress struct {
+	totalBytes      int64
+	downloadedBytes int64
+	layers          map[string]*layerProgress
+}
+
+// layerProgress tracks progress for a single layer
+type layerProgress struct {
+	status  string
+	current int64
+	total   int64
+}
+
+// parseByteSize parses size strings like "1.2 MiB", "403.0 B", "16.2 MiB"
+func parseByteSize(sizeStr string) int64 {
+	sizeStr = strings.TrimSpace(sizeStr)
+	if sizeStr == "" || sizeStr == "0.0 B" {
+		return 0
+	}
+
+	// Regular expression to match size format
+	re := regexp.MustCompile(`^([\d.]+)\s*([KMGT]i?B|B)$`)
+	matches := re.FindStringSubmatch(sizeStr)
+	if len(matches) != 3 {
+		return 0
+	}
+
+	value, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0
+	}
+
+	unit := matches[2]
+	var multiplier float64 = 1
+	switch unit {
+	case "B":
+		multiplier = 1
+	case "KiB", "KB":
+		multiplier = 1024
+	case "MiB", "MB":
+		multiplier = 1024 * 1024
+	case "GiB", "GB":
+		multiplier = 1024 * 1024 * 1024
+	case "TiB", "TB":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	}
+
+	return int64(value * multiplier)
+}
+
+// parsePullLine parses a line from nerdctl pull output and updates progress
+func parsePullLine(line string, progress *pullProgress) {
+	// We could use containerd's API over a forwarded socket for structured progress, but parsing nerdctl output is simpler to start
+	// Remove ANSI escape codes
+	ansiRe := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	line = ansiRe.ReplaceAllString(line, "")
+
+	// Parse layer download lines like:
+	// layer-sha256:xxx: downloading    |------| 0.0 B/16.2 MiB
+	// layer-sha256:xxx: done           |++++++|
+	layerRe := regexp.MustCompile(`layer-sha256:([a-f0-9]+):\s+(\w+)\s+.*?([\d.]+\s*[KMGT]?i?B)/([\d.]+\s*[KMGT]?i?B)`)
+	if matches := layerRe.FindStringSubmatch(line); len(matches) == 5 {
+		layerID := matches[1][:12] // Use first 12 chars of hash
+		status := matches[2]
+		currentStr := matches[3]
+		totalStr := matches[4]
+
+		if progress.layers == nil {
+			progress.layers = make(map[string]*layerProgress)
+		}
+
+		layer := progress.layers[layerID]
+		if layer == nil {
+			layer = &layerProgress{}
+			progress.layers[layerID] = layer
+		}
+
+		layer.status = status
+		layer.current = parseByteSize(currentStr)
+		layer.total = parseByteSize(totalStr)
+
+		// Update total progress
+		var totalBytes int64
+		var downloadedBytes int64
+		for _, l := range progress.layers {
+			totalBytes += l.total
+			if l.status == "done" {
+				downloadedBytes += l.total
+			} else if l.status == "downloading" {
+				downloadedBytes += l.current
+			}
+		}
+		progress.totalBytes = totalBytes
+		progress.downloadedBytes = downloadedBytes
+		return
+	}
+
+	// Check for "done" status without size info
+	doneRe := regexp.MustCompile(`layer-sha256:([a-f0-9]+):\s+done`)
+	if matches := doneRe.FindStringSubmatch(line); len(matches) == 2 {
+		layerID := matches[1][:12]
+		if progress.layers != nil {
+			if layer := progress.layers[layerID]; layer != nil {
+				layer.status = "done"
+				layer.current = layer.total
+			}
+		}
+
+		// Recalculate total progress
+		var downloadedBytes int64
+		for _, l := range progress.layers {
+			if l.status == "done" {
+				downloadedBytes += l.total
+			} else if l.status == "downloading" {
+				downloadedBytes += l.current
+			}
+		}
+		progress.downloadedBytes = downloadedBytes
+	}
+}
+
+// pullImageWithProgress pulls an image and reports progress through the callback
+func (m *NerdctlManager) pullImageWithProgress(ctx context.Context, host, image string, req *CreateContainerRequest, imageSize int64) error {
+	// Build pull command
+	pullArgs := []string{"--snapshotter", "nydus", "pull", image}
+	pullCmd := m.execNerdctl(ctx, host, pullArgs...)
+
+	// Get stderr pipe for progress output (nerdctl writes progress to stderr)
+	stderr, err := pullCmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	// Start the command
+	if err := pullCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start pull command: %w", err)
+	}
+
+	// Track progress
+	progress := &pullProgress{
+		totalBytes: imageSize,
+		layers:     make(map[string]*layerProgress),
+	}
+
+	// Create a goroutine to read and parse progress
+	progressDone := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		lastReport := time.Now()
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			parsePullLine(line, progress)
+
+			// Rate limit progress reports to max 10 per second
+			if time.Since(lastReport) > 100*time.Millisecond {
+				// Use the imageSize if we have it, otherwise use calculated total
+				totalBytes := imageSize
+				if totalBytes == 0 {
+					totalBytes = progress.totalBytes
+				}
+
+				reportProgress(req, CreatePull, totalBytes, progress.downloadedBytes,
+					fmt.Sprintf("Pulling image: %d/%d bytes", progress.downloadedBytes, totalBytes))
+				lastReport = time.Now()
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			progressDone <- fmt.Errorf("error reading progress: %w", err)
+		} else {
+			progressDone <- nil
+		}
+	}()
+
+	// Wait for command to complete
+	cmdErr := pullCmd.Wait()
+
+	// Wait for progress reading to complete
+	<-progressDone
+
+	// Final progress report
+	if cmdErr == nil {
+		reportProgress(req, CreatePull, imageSize, imageSize, "Image pull complete")
+	}
+
+	return cmdErr
+}
+
 // CreateContainer creates a new container using nerdctl
 func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error) {
 	// Call progress callback if provided
-	if req.ProgressCallback != nil {
-		req.ProgressCallback(CreateInit, 0)
-	}
+	reportProgress(req, CreateInit, 0, 0, "Initializing container creation")
 
 	// Generate SSH keys for this container
 	sshKeys, err := GenerateContainerSSHKeys()
@@ -613,22 +818,23 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Only pull if needed
 	if needsPull {
 		// Report that we're about to pull with the size we determined
-		if req.ProgressCallback != nil {
-			req.ProgressCallback(CreatePull, imageSize)
-		}
+		reportProgress(req, CreatePull, imageSize, 0, "Starting image pull")
 
 		// Use host updater if available, otherwise fall back to direct pull
 		if m.hostUpdater != nil {
+			// TODO: Extend hostUpdater to support progress callbacks
 			if err := m.hostUpdater.EnsureImageOnHost(ctx, host, imageToInspect); err != nil {
 				log.Printf("Warning: Failed to ensure image %s on host: %v", imageToInspect, err)
 			}
 		} else {
-			// Pull image with nydus snapshotter
-			pullArgs := []string{"--snapshotter", "nydus", "pull", imageToInspect}
-			pullCmd := m.execNerdctl(ctx, host, pullArgs...)
-			if output, err := pullCmd.CombinedOutput(); err != nil {
-				if !strings.Contains(string(output), "already exists") {
-					log.Printf("Warning: Failed to pull image %s: %v: %s", imageToInspect, err, output)
+			// Pull image with progress tracking
+			if err := m.pullImageWithProgress(ctx, host, imageToInspect, req, imageSize); err != nil {
+				// Check if it's just an "already exists" error
+				pullCmd := m.execNerdctl(ctx, host, "--snapshotter", "nydus", "pull", imageToInspect)
+				if output, pullErr := pullCmd.CombinedOutput(); pullErr != nil {
+					if !strings.Contains(string(output), "already exists") {
+						log.Printf("Warning: Failed to pull image %s: %v: %s", imageToInspect, err, output)
+					}
 				}
 			}
 		}
@@ -646,9 +852,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Create and start container
-	if req.ProgressCallback != nil {
-		req.ProgressCallback(CreateStart, imageSize)
-	}
+	reportProgress(req, CreateStart, imageSize, 0, "Starting container")
 
 	createCmd := m.execNerdctl(ctx, host, runArgs...)
 
@@ -696,9 +900,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Configure SSH in the container (synchronously - block until ready)
-	if req.ProgressCallback != nil {
-		req.ProgressCallback(CreateSSH, imageSize)
-	}
+	reportProgress(req, CreateSSH, imageSize, 0, "Configuring SSH")
 
 	if !autoStartSSH {
 		// Only setup SSH if not auto-started by the container
@@ -715,9 +917,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Mark creation as done - SSH is now ready
-	if req.ProgressCallback != nil {
-		req.ProgressCallback(CreateDone, imageSize)
-	}
+	reportProgress(req, CreateDone, imageSize, 0, "Container ready")
 
 	// Default to root user if not specified in image
 	if imageUser == "" {
