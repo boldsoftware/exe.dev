@@ -78,6 +78,33 @@ func TestParsePullLine(t *testing.T) {
 	if layer2.total != 1782579 { // 1.7 * 1024 * 1024
 		t.Errorf("Expected total to be 1782579, got %d", layer2.total)
 	}
+
+	// Test index-sha256 format (not just layer-sha256)
+	line4 := "index-sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214: downloading    |------| 0.0 B/6.5 KiB"
+	parsePullLine(line4, progress)
+
+	indexLayer := progress.layers["8feb4d8ca535"]
+	if indexLayer == nil {
+		t.Fatal("Expected index layer to be tracked")
+	}
+	if indexLayer.total != 6656 { // 6.5 * 1024
+		t.Errorf("Expected total to be 6656, got %d", indexLayer.total)
+	}
+
+	// Test manifest-sha256 format
+	line5 := "manifest-sha256:ffa6ff1084ab549bb55a8d6d0d79709f1d1b1e622d0fa267c6aa30de17b26817: downloading    |------| 1.0 KiB/3.5 KiB"
+	parsePullLine(line5, progress)
+
+	manifestLayer := progress.layers["ffa6ff1084ab"]
+	if manifestLayer == nil {
+		t.Fatal("Expected manifest layer to be tracked")
+	}
+	if manifestLayer.current != 1024 {
+		t.Errorf("Expected current to be 1024, got %d", manifestLayer.current)
+	}
+	if manifestLayer.total != 3584 { // 3.5 * 1024
+		t.Errorf("Expected total to be 3584, got %d", manifestLayer.total)
+	}
 }
 
 func TestPullProgressCalculation(t *testing.T) {

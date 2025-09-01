@@ -1002,17 +1002,6 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	var createdContainer *container.Container
 	var createErr error
 
-	// Helper to format bytes
-	formatBytes := func(bytes int64) string {
-		if bytes < 1024*1024 {
-			return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
-		} else if bytes < 1024*1024*1024 {
-			return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
-		} else {
-			return fmt.Sprintf("%.1f GB", float64(bytes)/(1024*1024*1024))
-		}
-	}
-
 	for {
 		select {
 		case update := <-progressChan:
@@ -1025,12 +1014,13 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 				currentStatus = "Initializing"
 			case container.CreatePull:
 				if imageSize > 0 && downloadedBytes > 0 {
-					// Show download progress with percentage
-					percentage := int((float64(downloadedBytes) / float64(imageSize)) * 100)
-					currentStatus = fmt.Sprintf("Pulling image (%s / %s - %d%%)",
-						formatBytes(downloadedBytes), formatBytes(imageSize), percentage)
+					// Show download progress in MB
+					curMB := downloadedBytes / (1024 * 1024)
+					totalMB := imageSize / (1024 * 1024)
+					currentStatus = fmt.Sprintf("Pulling image (%d/%dMB)", curMB, totalMB)
 				} else if imageSize > 0 {
-					currentStatus = fmt.Sprintf("Pulling image (%s)", formatBytes(imageSize))
+					totalMB := imageSize / (1024 * 1024)
+					currentStatus = fmt.Sprintf("Pulling image (0/%dMB)", totalMB)
 				} else {
 					currentStatus = "Pulling image"
 				}

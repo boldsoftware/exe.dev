@@ -133,7 +133,8 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 	}
 
 	// For remote hosts, use SSH with sudo
-	nerdctlArgs := []string{"sudo", "nerdctl", "--namespace", "exe"}
+	// Use stdbuf to ensure unbuffered output for progress tracking
+	nerdctlArgs := []string{"stdbuf", "-o0", "-e0", "sudo", "nerdctl", "--namespace", "exe"}
 	nerdctlArgs = append(nerdctlArgs, args...)
 
 	return m.sshPool.ExecCommand(ctx, host, nerdctlArgs...)
@@ -168,6 +169,14 @@ func isHexString(s string) bool {
 
 // verifyKataRuntime verifies that Kata runtime is available and properly configured
 func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) error {
+	// Ensure nydus directories exist - they're required for the snapshotter
+	// This is needed in case they were deleted or this is a fresh setup
+	mkdirCmd := m.execSSHCommand(ctx, host, "sudo", "mkdir", "-p", "/var/lib/containerd-nydus/snapshots")
+	if err := mkdirCmd.Run(); err != nil {
+		log.Printf("Warning: Failed to create nydus directories: %v", err)
+		// Continue anyway - the directories might already exist
+	}
+
 	// First, do a quick check if kata-runtime binary exists
 	// This is much faster than running a container
 	kataCheckCmd := m.execSSHCommand(ctx, host, "kata-runtime", "--version")
@@ -459,13 +468,15 @@ func parsePullLine(line string, progress *pullProgress) {
 
 	// Parse layer download lines like:
 	// layer-sha256:xxx: downloading    |------| 0.0 B/16.2 MiB
+	// Also matches index-sha256, manifest-sha256, config-sha256
 	// layer-sha256:xxx: done           |++++++|
-	layerRe := regexp.MustCompile(`layer-sha256:([a-f0-9]+):\s+(\w+)\s+.*?([\d.]+\s*[KMGT]?i?B)/([\d.]+\s*[KMGT]?i?B)`)
-	if matches := layerRe.FindStringSubmatch(line); len(matches) == 5 {
-		layerID := matches[1][:12] // Use first 12 chars of hash
+	layerRe := regexp.MustCompile(`(?:layer|index|manifest|config)-sha256:([a-f0-9]+):\s+(\w+)(?:\s+.*?([\d.]+\s*[KMGT]?i?B)/([\d.]+\s*[KMGT]?i?B))?`)
+	if matches := layerRe.FindStringSubmatch(line); len(matches) >= 3 {
+		layerID := matches[1]
+		if len(layerID) > 12 {
+			layerID = layerID[:12] // Use first 12 chars of hash
+		}
 		status := matches[2]
-		currentStr := matches[3]
-		totalStr := matches[4]
 
 		if progress.layers == nil {
 			progress.layers = make(map[string]*layerProgress)
@@ -478,8 +489,15 @@ func parsePullLine(line string, progress *pullProgress) {
 		}
 
 		layer.status = status
-		layer.current = parseByteSize(currentStr)
-		layer.total = parseByteSize(totalStr)
+
+		// Parse size if available (matches[3] and matches[4])
+		if len(matches) == 5 && matches[3] != "" && matches[4] != "" {
+			layer.current = parseByteSize(matches[3])
+			layer.total = parseByteSize(matches[4])
+		} else if status == "done" && layer.total > 0 {
+			// If status is done and we know the total, set current to total
+			layer.current = layer.total
+		}
 
 		// Update total progress
 		var totalBytes int64
@@ -493,30 +511,6 @@ func parsePullLine(line string, progress *pullProgress) {
 			}
 		}
 		progress.totalBytes = totalBytes
-		progress.downloadedBytes = downloadedBytes
-		return
-	}
-
-	// Check for "done" status without size info
-	doneRe := regexp.MustCompile(`layer-sha256:([a-f0-9]+):\s+done`)
-	if matches := doneRe.FindStringSubmatch(line); len(matches) == 2 {
-		layerID := matches[1][:12]
-		if progress.layers != nil {
-			if layer := progress.layers[layerID]; layer != nil {
-				layer.status = "done"
-				layer.current = layer.total
-			}
-		}
-
-		// Recalculate total progress
-		var downloadedBytes int64
-		for _, l := range progress.layers {
-			if l.status == "done" {
-				downloadedBytes += l.total
-			} else if l.status == "downloading" {
-				downloadedBytes += l.current
-			}
-		}
 		progress.downloadedBytes = downloadedBytes
 	}
 }
@@ -719,19 +713,14 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Always inspect the image to get user (needed for SSH), and entrypoint/cmd if using exetini
 	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "json")
 	if output, err := inspectCmd.Output(); err == nil {
-		var imageConfig struct {
-			Config struct {
-				Entrypoint []string `json:"Entrypoint"`
-				Cmd        []string `json:"Cmd"`
-				User       string   `json:"User"`
-			} `json:"Config"`
-		}
-		if err := json.Unmarshal(output, &imageConfig); err == nil {
-			imageUser = imageConfig.Config.User
-			// Always extract entrypoint/cmd when using exetini, unless there's a custom command override
+		cfg, err := parseImageInspectJSON(output)
+		if err != nil {
+			log.Printf("Warning: failed to parse image inspect JSON for %s: %v", image, err)
+		} else {
+			imageUser = cfg.User
 			if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
-				imageEntrypoint = imageConfig.Config.Entrypoint
-				imageCmd = imageConfig.Config.Cmd
+				imageEntrypoint = cfg.Entrypoint
+				imageCmd = cfg.Cmd
 			}
 			log.Printf("Image %s has entrypoint: %v, cmd: %v, user: %s", image, imageEntrypoint, imageCmd, imageUser)
 		}
@@ -753,31 +742,8 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	runArgs = append(runArgs, finalImage)
 
-	// Add command if specified
-	if req.CommandOverride != "" && req.CommandOverride != "auto" && req.CommandOverride != "none" {
-		// Parse custom command override
-		cmdParts := strings.Fields(req.CommandOverride)
-		if useExetini {
-			// When using exetini with custom command, pass -g for process group signaling
-			runArgs = append(runArgs, "-g", "--")
-		}
-		runArgs = append(runArgs, cmdParts...)
-	} else if useExetini {
-		// When using exetini, pass through the original entrypoint/cmd
-		if len(imageEntrypoint) > 0 || len(imageCmd) > 0 {
-			// Pass -g to send signals to process group, then -- to separate tini args from the command
-			runArgs = append(runArgs, "-g", "--")
-			// Add entrypoint first, then cmd
-			runArgs = append(runArgs, imageEntrypoint...)
-			runArgs = append(runArgs, imageCmd...)
-		} else {
-			// No entrypoint or cmd, use sleep infinity
-			runArgs = append(runArgs, "-g", "--", "sleep", "infinity")
-		}
-	} else if req.CommandOverride == "none" || isExeuntu {
-		// For containers without exetini that need a command
-		runArgs = append(runArgs, "sleep", "infinity")
-	}
+	// Add command/entrypoint args after image
+	runArgs = append(runArgs, buildEntrypointAndCmdArgs(useExetini, req.CommandOverride, imageEntrypoint, imageCmd, isExeuntu)...)
 	// If not using exetini and no override, let the image use its default CMD/ENTRYPOINT
 
 	// Check if image exists locally and get its size
@@ -820,21 +786,14 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		// Report that we're about to pull with the size we determined
 		reportProgress(req, CreatePull, imageSize, 0, "Starting image pull")
 
-		// Use host updater if available, otherwise fall back to direct pull
-		if m.hostUpdater != nil {
-			// TODO: Extend hostUpdater to support progress callbacks
-			if err := m.hostUpdater.EnsureImageOnHost(ctx, host, imageToInspect); err != nil {
-				log.Printf("Warning: Failed to ensure image %s on host: %v", imageToInspect, err)
-			}
-		} else {
-			// Pull image with progress tracking
-			if err := m.pullImageWithProgress(ctx, host, imageToInspect, req, imageSize); err != nil {
-				// Check if it's just an "already exists" error
-				pullCmd := m.execNerdctl(ctx, host, "--snapshotter", "nydus", "pull", imageToInspect)
-				if output, pullErr := pullCmd.CombinedOutput(); pullErr != nil {
-					if !strings.Contains(string(output), "already exists") {
-						log.Printf("Warning: Failed to pull image %s: %v: %s", imageToInspect, err, output)
-					}
+		// Always pull with progress tracking so the user sees MB progress
+		// HostUpdater does not currently provide progress callbacks.
+		if err := m.pullImageWithProgress(ctx, host, imageToInspect, req, imageSize); err != nil {
+			// Check if it's just an "already exists" error
+			pullCmd := m.execNerdctl(ctx, host, "--snapshotter", "nydus", "pull", imageToInspect)
+			if output, pullErr := pullCmd.CombinedOutput(); pullErr != nil {
+				if !strings.Contains(string(output), "already exists") {
+					log.Printf("Warning: Failed to pull image %s: %v: %s", imageToInspect, err, output)
 				}
 			}
 		}
