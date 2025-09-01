@@ -36,10 +36,9 @@ type NerdctlManager struct {
 	hostArch       string   // Cached host architecture (e.g., "arm64", "amd64")
 
 	mu            sync.RWMutex
-	containers    map[string]*Container // containerID -> Container
-	sshTunnels    map[string]*exec.Cmd  // containerID -> SSH tunnel command
-	allocNetworks map[string]bool       // Track which alloc networks exist
-	sshPool       *sshpool.Pool         // Pool of persistent SSH connections
+	sshTunnels    map[string]*exec.Cmd // containerID -> SSH tunnel command
+	allocNetworks map[string]bool      // Track which alloc networks exist
+	sshPool       *sshpool.Pool        // Pool of persistent SSH connections
 }
 
 // NewNerdctlManager creates a new nerdctl-based container manager
@@ -51,7 +50,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	manager := &NerdctlManager{
 		config:        config,
 		hosts:         config.ContainerdAddresses,
-		containers:    make(map[string]*Container),
 		sshTunnels:    make(map[string]*exec.Cmd),
 		allocNetworks: make(map[string]bool),
 		sshPool:       sshpool.New(),
@@ -248,29 +246,6 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 		// Note: Runtime information is not available via nerdctl inspect
 		// We enforce Kata runtime on all new containers created by this manager
 		// Existing containers discovered here may have been created with different settings
-
-		// Extract container name (nerdctl returns a single string)
-		name := containerInfo.Names
-
-		// Create container record
-		container := &Container{
-			ID:         containerInfo.ID,
-			Name:       name,
-			AllocID:    containerInfo.Labels["alloc_id"],
-			Status:     m.parseContainerStatus(containerInfo.Status),
-			Image:      containerInfo.Image,
-			PodName:    name,
-			Namespace:  "nerdctl",
-			DockerHost: host,
-		}
-
-		// Extract SSH port from container ports if available
-		// Look for published port mappings in container info
-		// We'll establish tunnels lazily when containers are accessed
-
-		m.mu.Lock()
-		m.containers[containerInfo.ID] = container
-		m.mu.Unlock()
 	}
 
 	return nil
@@ -720,10 +695,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		SSHUser:              imageUser,
 	}
 
-	m.mu.Lock()
-	m.containers[containerID] = container
-	m.mu.Unlock()
-
 	// Set up SSH tunnel if we're using a remote host
 	if host != "" && !strings.HasPrefix(host, "/") {
 		if err := m.setupSSHTunnel(containerID, host, sshPort); err != nil {
@@ -944,40 +915,86 @@ func (m *NerdctlManager) getHostArch(ctx context.Context, host string) (string, 
 	return strings.TrimSpace(string(output)), nil
 }
 
-// GetContainer retrieves container information
+// GetContainer retrieves container information directly from containerd
 func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID string) (*Container, error) {
-	m.mu.RLock()
-	container, exists := m.containers[containerID]
-	m.mu.RUnlock()
+	// Determine which host to query
+	host := ""
+	if m.config != nil && len(m.config.ContainerdAddresses) > 0 {
+		host = m.config.ContainerdAddresses[0]
+	}
 
-	if !exists {
+	// Get container info from containerd
+	inspectCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "json")
+	output, err := inspectCmd.Output()
+	if err != nil {
 		return nil, fmt.Errorf("container %s not found", containerID)
 	}
 
-	// Verify allocID matches
-	if container.AllocID != allocID {
-		return nil, fmt.Errorf("container %s does not belong to allocation %s", containerID, allocID)
+	// Parse container info
+	var inspectData struct {
+		State struct {
+			Status string `json:"Status"`
+		} `json:"State"`
+		Config struct {
+			Labels map[string]string `json:"Labels"`
+			User   string            `json:"User"`
+		} `json:"Config"`
+		NetworkSettings struct {
+			Ports map[string][]struct {
+				HostPort string `json:"HostPort"`
+			} `json:"Ports"`
+		} `json:"NetworkSettings"`
+	}
+
+	if err := json.Unmarshal(output, &inspectData); err != nil {
+		return nil, fmt.Errorf("failed to parse container info: %w", err)
+	}
+
+	// Create container info
+	container := &Container{
+		ID:         containerID,
+		AllocID:    allocID,
+		DockerHost: host,
+		Status:     StatusUnknown,
+	}
+
+	// Set status based on containerd state
+	switch strings.ToLower(inspectData.State.Status) {
+	case "running":
+		container.Status = StatusRunning
+	case "exited", "stopped":
+		container.Status = StatusStopped
+	case "created":
+		container.Status = StatusPending
+	default:
+		container.Status = StatusUnknown
+	}
+
+	// Extract SSH port from published ports
+	if ports, ok := inspectData.NetworkSettings.Ports["22/tcp"]; ok && len(ports) > 0 {
+		if port, err := strconv.Atoi(ports[0].HostPort); err == nil {
+			container.SSHPort = port
+		}
+	}
+
+	// Extract SSH user from config
+	if inspectData.Config.User != "" {
+		container.SSHUser = inspectData.Config.User
+	} else {
+		container.SSHUser = "root"
 	}
 
 	// Ensure SSH tunnel exists for remote containers when accessed
-	if m.config != nil && len(m.config.ContainerdAddresses) > 0 {
-		host := container.DockerHost
-		if host == "" && len(m.config.ContainerdAddresses) > 0 {
-			// If container doesn't have a host set, use the first configured host
-			host = m.config.ContainerdAddresses[0]
-		}
+	if container.Status == StatusRunning && host != "" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
+		// Check if tunnel already exists
+		m.mu.RLock()
+		tunnelExists := m.sshTunnels[container.ID] != nil
+		m.mu.RUnlock()
 
-		if host != "" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
-			// Check if tunnel already exists
-			m.mu.RLock()
-			tunnelExists := m.sshTunnels[container.ID] != nil
-			m.mu.RUnlock()
-
-			if !tunnelExists {
-				log.Printf("SSH tunnel not found for container %s, creating one on port %d", container.ID, container.SSHPort)
-				if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
-					log.Printf("Warning: Failed to set up SSH tunnel for container %s: %v", container.ID, err)
-				}
+		if !tunnelExists {
+			log.Printf("SSH tunnel not found for container %s, creating one on port %d", container.ID, container.SSHPort)
+			if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
+				log.Printf("Warning: Failed to set up SSH tunnel for container %s: %v", container.ID, err)
 			}
 		}
 	}
@@ -1056,10 +1073,6 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 		return fmt.Errorf("failed to delete container: %w: %s", err, output)
 	}
 
-	m.mu.Lock()
-	delete(m.containers, containerID)
-	m.mu.Unlock()
-
 	// Clean up container-specific /exe.dev directory
 	containerName := fmt.Sprintf("exe-%s-%s", allocID, container.Name)
 	containerDir := fmt.Sprintf("/data/exed/containers/%s", containerName)
@@ -1079,14 +1092,52 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 
 // ListContainers lists all containers for an allocation
 func (m *NerdctlManager) ListContainers(ctx context.Context, allocID string) ([]*Container, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	// Determine which host to query
+	host := ""
+	if m.config != nil && len(m.config.ContainerdAddresses) > 0 {
+		host = m.config.ContainerdAddresses[0]
+	}
+
+	// List containers with the alloc_id label
+	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--format", "json", "--filter", fmt.Sprintf("label=alloc_id=%s", allocID))
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	// Parse JSON output
+	type psEntry struct {
+		ID     string `json:"ID"`
+		Names  string `json:"Names"`
+		Image  string `json:"Image"`
+		Status string `json:"Status"`
+	}
+
+	var entries []psEntry
+	if err := json.Unmarshal(output, &entries); err != nil {
+		return nil, fmt.Errorf("failed to parse container list: %w", err)
+	}
 
 	var containers []*Container
-	for _, container := range m.containers {
-		if container.AllocID == allocID {
-			containers = append(containers, container)
+	for _, entry := range entries {
+		container := &Container{
+			ID:         entry.ID,
+			AllocID:    allocID,
+			Name:       strings.TrimPrefix(entry.Names, fmt.Sprintf("exe-%s-", allocID)),
+			Image:      entry.Image,
+			DockerHost: host,
+			Status:     StatusUnknown,
 		}
+
+		// Set status based on containerd state
+		statusStr := strings.ToLower(entry.Status)
+		if strings.Contains(statusStr, "exited") || strings.Contains(statusStr, "stopped") {
+			container.Status = StatusStopped
+		} else if strings.Contains(statusStr, "up") || strings.Contains(statusStr, "running") {
+			container.Status = StatusRunning
+		}
+
+		containers = append(containers, container)
 	}
 
 	return containers, nil
@@ -1216,16 +1267,19 @@ func (m *NerdctlManager) GetBuildStatus(ctx context.Context, buildID string) (*B
 
 // GetContainerDiagnostics retrieves diagnostic information for a container
 func (m *NerdctlManager) GetContainerDiagnostics(ctx context.Context, allocID, containerName string) (string, error) {
-	// Get container by name
+	// Find container by name - query containerd
+	containers, err := m.ListContainers(ctx, allocID)
+	if err != nil {
+		return "", fmt.Errorf("failed to list containers: %w", err)
+	}
+
 	var container *Container
-	m.mu.RLock()
-	for _, c := range m.containers {
-		if c.AllocID == allocID && c.Name == containerName {
+	for _, c := range containers {
+		if c.Name == containerName {
 			container = c
 			break
 		}
 	}
-	m.mu.RUnlock()
 
 	if container == nil {
 		return "", fmt.Errorf("container %s not found in allocation %s", containerName, allocID)
