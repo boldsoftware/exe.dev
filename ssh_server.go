@@ -22,6 +22,7 @@ import (
 	"exe.dev/termfun"
 	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
+	"github.com/google/uuid"
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
@@ -884,7 +885,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		_, err := ss.server.getMachineByName(s.Context(), machineName)
 		if err == nil {
 			// Name exists, try again
-			for attempts := 0; attempts < 10; attempts++ {
+			for range 10 {
 				machineName = generateRandomContainerName()
 				_, err = ss.server.getMachineByName(s.Context(), machineName)
 				if err != nil {
@@ -896,7 +897,12 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 
 	// Validate machine name (both provided and generated)
 	if !ss.server.isValidMachineName(machineName) {
-		fmt.Fprintf(s, "\033[1;31mError: Invalid machine name '%s'. Machine names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 32 characters\033[0m\r\n", machineName)
+		fmt.Fprintf(s, "\033[1;31mInvalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 64 characters\033[0m\r\n", machineName)
+		return
+	}
+
+	if _, err := ss.server.getMachineByName(s.Context(), machineName); err == nil {
+		fmt.Fprintf(s, "\033[1;31mBox name %q is not available\033[0m\r\n", machineName)
 		return
 	}
 
@@ -1046,7 +1052,9 @@ done:
 	}
 
 	if createErr != nil {
-		fmt.Fprintf(s, "\033[1;31mFailed to create machine: %v\033[0m\r\n", createErr)
+		guid := uuid.New().String() // for x-ref on support tickets
+		slog.Debug("createContainer error", "error", createErr, "publicKey", publicKey, "userID", user.UserID, "allocID", allocID, "boxName", machineName, "image", image, "size", size, "guid", guid)
+		fmt.Fprintf(s, "\033[1;31mSorry, something went wrong. Error ID: %v\033[0m\r\n", guid)
 		return
 	}
 

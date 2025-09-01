@@ -719,3 +719,32 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) {
 	}
 	postResp.Body.Close()
 }
+
+// registerForExeDev is a convenience command to register for an exe.dev account.
+// It returns the open pty after registration, the account email, and the private keyFile.
+func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
+	keyFile, publicKey := genSSHKey(t)
+	pty = sshToExeDev(t, keyFile)
+	pty.want(banner)
+
+	pty.want("Please enter your email")
+	email = t.Name() + "@example.com"
+	pty.sendLine(email)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+
+	emailMsg := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, emailMsg)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
+	pty.want("Press any key to continue")
+	pty.sendLine("")
+	pty.want("commands:") // check that we show help menu on first login
+	pty.wantRe("exe\\.dev.*▶")
+
+	pty.sendLine("whoami")
+	pty.want(email)
+	pty.want(publicKey)
+
+	return pty, keyFile, email
+}

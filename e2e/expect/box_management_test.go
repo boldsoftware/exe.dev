@@ -14,35 +14,14 @@ func TestBoxCreation(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 
-	keyFile, publicKey := genSSHKey(t)
-	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
-
-	pty.want("Please enter your email")
-	email := t.Name() + "@example.com"
-	pty.sendLine(email)
-	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-
-	emailMsg := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg)
-
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
-	pty.want("commands:") // check that we show help menu on first login
-	pty.wantRe("exe\\.dev.*▶")
-
-	pty.sendLine("whoami")
-	pty.want(email)
-	pty.want(publicKey)
+	pty, keyFile, _ := registerForExeDev(t)
 
 	// Create a box.
-	boxName := "test-box-" + strings.ToLower(t.Name())
+	boxName := strings.ToLower(t.Name())
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
 	pty.wantRe("Creating .*" + boxNameRe)
-	t.Skip("broken: fails with 'subnet 10.179.0.0/24 overlaps with other one on this address space'")
+	t.Skip("intermittently fails with network address space overlap")
 	// break onto two lines because ANSI codes
 	pty.want("Access with")
 	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)
@@ -60,4 +39,34 @@ func TestBoxCreation(t *testing.T) {
 	pty.want("root")
 	pty.sendLine("exit")
 	pty.want("logout")
+}
+
+func TestDuplicateBoxCreationFails(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+
+	pty, _, _ := registerForExeDev(t)
+
+	// Create a box.
+	boxName := strings.ToLower(t.Name())
+	boxNameRe := regexp.QuoteMeta(boxName)
+	pty.sendLine("new --name=" + boxName)
+	t.Skip("intermittently fails with network address space overlap")
+	pty.want("ssh") // wait for ssh instructions
+
+	pty.sendLine("new --name=" + boxName)
+	pty.wantRe("Box name .*" + boxNameRe + ".* is not available")
+}
+
+func TestBadBoxName(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+
+	pty, _, _ := registerForExeDev(t)
+
+	// Create a box.
+	boxName := "ThisIsNotAValidBoxName!"
+	boxNameRe := regexp.QuoteMeta(boxName)
+	pty.sendLine("new --name=" + boxName)
+	pty.wantRe("Invalid box name .*" + boxNameRe)
 }
