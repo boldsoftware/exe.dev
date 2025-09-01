@@ -926,17 +926,14 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
 	showSpinner := ss.shouldShowSpinner(s)
 
+	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
+	// This makes the readline prompt visible in the repl ui.
+	if showSpinner {
+		fmt.Fprintf(s, "\r\n\033[1A")
+	}
+
 	// Start timing BEFORE creating container
 	startTime := time.Now()
-
-	// Determine output stream for progress messages
-	_, _, isPty := s.Pty()
-	var progressOut io.Writer
-	if isPty {
-		progressOut = s.Stderr()
-	} else {
-		progressOut = s
-	}
 
 	// Create channels for progress updates and completion
 	type progressUpdate struct {
@@ -1048,7 +1045,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 				elapsed := time.Since(startTime)
 				spinner := spinners[spinnerIndex%len(spinners)]
 				spinnerIndex++
-				fmt.Fprintf(progressOut, "\r\033[K%s %.1fs %s...", spinner, elapsed.Seconds(), currentStatus)
+				fmt.Fprintf(s, "\r\033[K%s %.1fs %s...", spinner, elapsed.Seconds(), currentStatus)
 			}
 		}
 	}
@@ -1056,7 +1053,7 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 done:
 	// Clear the progress line
 	if showSpinner {
-		fmt.Fprintf(progressOut, "\r\033[K")
+		fmt.Fprintf(s, "\r\033[K")
 	}
 
 	if createErr != nil {
@@ -1093,7 +1090,7 @@ done:
 	sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
-		fmt.Fprintf(progressOut, "\r\033[K")
+		fmt.Fprintf(s, "\r\033[K")
 		fmt.Fprintf(s, "Ready in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
 			totalTime.Seconds(), sshCommand)
 	} else {
