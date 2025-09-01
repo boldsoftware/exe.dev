@@ -135,7 +135,8 @@ func (tr *TagResolver) refreshStaleTags(ctx context.Context) {
 	// Find tags that need refreshing
 	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		query := `
-			SELECT registry, repository, tag, platform, index_digest, platform_digest, 
+			SELECT registry, repository, tag, platform,
+			       COALESCE(index_digest, ''), COALESCE(platform_digest, ''),
 			       last_checked_at, ttl_seconds
 			FROM tag_resolutions
 			WHERE last_checked_at + ttl_seconds < ?
