@@ -1,6 +1,8 @@
 dist/
 ./exed
 exe.db
+exe.db-wal
+exe.db-shm
 ghuser/whoami.sqlite3*
 .vscode/
 node_modules/
