@@ -17,7 +17,6 @@ Test container creation, SSH access, and basic container operations.
 4. Create a new container using "ssh -p 2222 localhost"
 
 5. SSH into that container (by using ssh -p 2222 name@localhost) and run "id"
-   (docker exec is not the right way to do this)
 
 6. Open up a shell to the new container and check the hostname.
 

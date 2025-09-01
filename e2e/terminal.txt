@@ -2,7 +2,7 @@
 
 ## Instructions
 
-Test the web terminal interface functionality, including complete authentication flows, terminal session management, and docker exec integration.
+Test the web terminal interface functionality, including complete authentication flows, terminal session management, and command exec integration.
 
 ### Prerequisites
 
@@ -93,10 +93,10 @@ Test the web terminal interface functionality, including complete authentication
     - Should NOT show "invalid machine name" error
 
 13. **Stopped container**
-    - Stop the container: `docker stop machinename`
+    - Stop the container: `ssh exe-ctr-colima sudo nerdctl --namespace=exe stop machinename`
     - Try to access terminal
     - Expected: Should attempt to start container or show appropriate error
-    - Restart container for remaining tests: `docker start machinename`
+    - Restart container for remaining tests: `ssh exe-ctr-colima sudo nerdctl --namespace=exe start machinename`
 
 #### Session Timeout
 
@@ -112,7 +112,7 @@ Test the web terminal interface functionality, including complete authentication
 - ✅ Port redirection includes correct port numbers
 - ✅ Terminal page loads with proper UI and styling
 - ✅ xterm.js integration works (terminal appears and is interactive)
-- ✅ Commands execute in container via docker exec
+- ✅ Commands execute in container
 - ✅ Multiple terminal sessions work independently
 - ✅ Terminal resizing works
 - ✅ Session management prevents conflicts
@@ -132,4 +132,3 @@ Test the web terminal interface functionality, including complete authentication
 - Verify hostname parsing in redirectAfterAuth logs
 - Use browser dev tools to inspect network requests
 - Check database for machine records and container_id values
-- Verify docker container is running: `docker ps`

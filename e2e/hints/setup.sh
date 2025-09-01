@@ -5,15 +5,6 @@ set -e
 
 echo "Setting up exed testing environment..."
 
-# Verify docker is working (should already be running)
-if ! docker ps >/dev/null 2>&1; then
-    echo "ERROR: Docker is not running or accessible."
-    echo "Docker should already be running in this environment."
-    echo "Do NOT start dockerd manually - this can cause conflicts."
-    exit 1
-fi
-echo "Docker is running and accessible."
-
 # Create tmux session with windows
 echo "Creating tmux session with windows..."
 tmux new-session -d -s testing

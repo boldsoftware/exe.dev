@@ -36,7 +36,6 @@ Run exed with Go coverage enabled to generate a coverage report:
 
 ### General Testing Hints
 - Use tmux for non-blocking testing as described in tmux.md
-- Always verify Docker is running before starting (`docker ps`)
 - Check service logs using tmux capture-pane commands
 - Wait appropriate times for services to fully start before testing
 
