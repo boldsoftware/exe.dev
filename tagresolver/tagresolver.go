@@ -170,7 +170,6 @@ func (tr *TagResolver) refreshStaleTags(ctx context.Context) {
 		}
 		return nil
 	})
-
 	if err != nil {
 		log.Printf("Failed to query stale tags: %v", err)
 		return
@@ -216,7 +215,6 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 			`, newDigest, now, now, now, imageSize,
 				tag.Registry, tag.Repository, tag.Tag, tag.Platform)
-
 			if err != nil {
 				return err
 			}
@@ -231,7 +229,6 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 
 			return err
 		})
-
 		if err != nil {
 			return fmt.Errorf("failed to update tag resolution: %w", err)
 		}
@@ -260,7 +257,6 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 			`, now, now, tag.Registry, tag.Repository, tag.Tag, tag.Platform)
 			return err
 		})
-
 		if err != nil {
 			return fmt.Errorf("failed to update last checked time: %w", err)
 		}
@@ -357,7 +353,6 @@ func (tr *TagResolver) ResolveTag(ctx context.Context, image string, platform st
 			imageSize, now, now)
 		return err
 	})
-
 	if err != nil {
 		log.Printf("Failed to store tag resolution: %v", err)
 	}
@@ -387,7 +382,6 @@ func (tr *TagResolver) getCachedResolution(ctx context.Context, registry, reposi
 			&lastCheckedUnix, &lastChangedUnix,
 			&ttlSeconds, &res.SeenOnHosts, &res.ImageSize,
 		)
-
 		if err != nil {
 			if strings.Contains(err.Error(), "no rows") {
 				found = false
@@ -400,7 +394,6 @@ func (tr *TagResolver) getCachedResolution(ctx context.Context, registry, reposi
 		found = true
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
