@@ -1779,68 +1779,6 @@ func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineN
 	fmt.Fprintf(s, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
 }
 
-func (ss *SSHServer) handleRouteRemove(s ssh.Session, publicKey, teamName, machineName string, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(s, "\033[1;31mError: Please specify route name\033[0m\r\n")
-		fmt.Fprintf(s, "Usage: route %s remove <name>\r\n", machineName)
-		return
-	}
-
-	routeName := args[0]
-
-	// Get machine
-	machine, err := ss.getMachine(s.Context(), publicKey, teamName, machineName)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Get existing routes
-	routes, err := machine.GetRoutes()
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Find and remove the route
-	var newRoutes MachineRoutes
-	found := false
-	for _, route := range routes {
-		if route.Name == routeName {
-			found = true
-			continue // Skip this route (delete it)
-		}
-		newRoutes = append(newRoutes, route)
-	}
-
-	if !found {
-		fmt.Fprintf(s, "\033[1;31mError: Route '%s' not found\033[0m\r\n", routeName)
-		return
-	}
-
-	// Set routes back on machine
-	err = machine.SetRoutes(newRoutes)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Update database
-	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE machines SET routes = ?
-			WHERE name = ?`,
-			*machine.Routes, machineName)
-		return err
-	})
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	fmt.Fprintf(s, "\033[1;32mRoute '%s' deleted successfully\033[0m\r\n", routeName)
-}
-
 // getMachine retrieves a machine for the given user/team/name
 func (ss *SSHServer) getMachine(ctx context.Context, publicKey, allocID, machineName string) (*Machine, error) {
 	// First verify user has access to the alloc
