@@ -26,6 +26,19 @@ import (
 	"golang.org/x/term"
 )
 
+// minimalConnMetadata implements ssh.ConnMetadata with just the fields we need
+type minimalConnMetadata struct {
+	user       string
+	remoteAddr net.Addr
+}
+
+func (m *minimalConnMetadata) User() string          { return m.user }
+func (m *minimalConnMetadata) SessionID() []byte     { return nil }
+func (m *minimalConnMetadata) ClientVersion() []byte { return nil }
+func (m *minimalConnMetadata) ServerVersion() []byte { return nil }
+func (m *minimalConnMetadata) RemoteAddr() net.Addr  { return m.remoteAddr }
+func (m *minimalConnMetadata) LocalAddr() net.Addr   { return nil }
+
 // SSHServer wraps the gliderlabs SSH server implementation
 type SSHServer struct {
 	server  *Server
@@ -160,8 +173,14 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 		return false
 	}
 
+	// Create a minimal ConnMetadata implementation to pass username to AuthenticatePublicKey
+	connMeta := &minimalConnMetadata{
+		user:       ctx.User(),
+		remoteAddr: ctx.RemoteAddr(),
+	}
+
 	// Use existing authentication logic
-	perms, err := ss.server.AuthenticatePublicKey(nil, goKey)
+	perms, err := ss.server.AuthenticatePublicKey(connMeta, goKey)
 	if err != nil {
 		log.Printf("Authentication failed: %v", err)
 		// Increment failed auth metric
@@ -197,11 +216,26 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 		ss.server.sshMetrics.sessionDuration.WithLabelValues("normal").Observe(duration)
 	}()
 
+	// Check for special container-logs username format
+	username := s.User()
+	if strings.HasPrefix(username, "container-logs:") {
+		// Parse format: "container-logs:<allocID>:<containerID>:<machineName>"
+		parts := strings.Split(username, ":")
+		if len(parts) == 4 {
+			allocID := parts[1]
+			containerID := parts[2]
+			machineName := parts[3]
+
+			// Show container logs
+			ss.handleContainerLogs(s, allocID, containerID, machineName)
+			return
+		}
+	}
+
 	// Get authentication info from context
 	publicKey, _ := s.Context().Value("public_key").(string)
 	registered := s.Context().Value("registered").(string) == "true"
 	// email, _ := s.Context().Value("email").(string) // Currently unused
-	// username := s.User()
 
 	// Check for exec command
 	cmd := s.Command()
@@ -1241,6 +1275,41 @@ func (ss *SSHServer) handleLogsCommand(s ssh.Session, publicKey, allocID string,
 	machineName := args[0]
 	fmt.Fprintf(s, "Fetching logs for machine '%s'...\r\n", machineName)
 	fmt.Fprintf(s, "\033[1;33mNote: Logs not implemented in new server yet\033[0m\r\n")
+}
+
+// handleContainerLogs shows logs for a failed container
+func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, machineName string) {
+	// Show error message about container failure
+	fmt.Fprintf(s, "\033[1;31mContainer '%s' failed to start\033[0m\r\n\r\n", machineName)
+
+	// Get logs if container manager is available
+	if ss.server.containerManager != nil {
+		ctx, cancel := context.WithTimeout(s.Context(), 5*time.Second)
+		defer cancel()
+
+		// Get container logs
+		logs, err := ss.server.containerManager.GetContainerLogs(ctx, allocID, containerID, 100)
+		if err != nil {
+			fmt.Fprintf(s, "\033[1;33mFailed to retrieve container logs: %v\033[0m\r\n", err)
+			return
+		}
+
+		if len(logs) > 0 {
+			fmt.Fprintf(s, "\033[1;36mContainer logs:\033[0m\r\n")
+			fmt.Fprintf(s, "────────────────────────────────────────\r\n")
+			for _, line := range logs {
+				fmt.Fprintf(s, "%s\r\n", line)
+			}
+			fmt.Fprintf(s, "────────────────────────────────────────\r\n\r\n")
+		} else {
+			fmt.Fprintf(s, "\033[1;33mNo logs available\033[0m\r\n")
+		}
+
+		fmt.Fprintf(s, "To delete this failed container, run:\r\n")
+		fmt.Fprintf(s, "  \033[1mdelete %s\033[0m\r\n", machineName)
+	} else {
+		fmt.Fprintf(s, "\033[1;31mContainer manager not available\033[0m\r\n")
+	}
 }
 
 func (ss *SSHServer) handleRouteCommand(s ssh.Session, publicKey, allocID string, args []string) {

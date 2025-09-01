@@ -899,7 +899,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	// Check if this is a proxy connection from sshpiper
 	slog.Debug("Checking if key is a proxy key")
-	if originalUserKey, localAddress := s.lookupEphemeralProxyKey(key); originalUserKey != nil {
+	if originalUserKey, localAddress, isProxy := s.lookupEphemeralProxyKey(key); isProxy {
 		slog.Debug("Ephemeral proxy authentication detected", "user", user, "local_address", localAddress)
 		return s.authenticateProxyUserWithLocalAddress(ctx, user, originalUserKey, localAddress)
 	} else {
@@ -3198,12 +3198,12 @@ func (s *Server) Stop() error {
 // 3. Piper sends proxy key to exed for authentication
 // 4. Exed recognizes proxy key and asks piper plugin for original user key
 // 5. Exed authenticates based on original user key
-func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) ([]byte, string) {
+func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) ([]byte, string, bool) {
 	// Get the original user key from the piper plugin
 	// The piper plugin is always configured when SSH proxy is enabled
 	if s.piperPlugin == nil {
 		slog.Error("Piper plugin not configured but proxy key received")
-		return nil, ""
+		return nil, "", false
 	}
 
 	proxyFingerprint := s.GetPublicKeyFingerprint(proxyKey)
@@ -3212,11 +3212,11 @@ func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) ([]byte, string
 	originalUserKey, localAddress, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
 		slog.Debug("Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
-		return nil, "" // Not a proxy key or expired
+		return nil, "", false // Not a proxy key or expired
 	}
 
 	slog.Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "proxy_fingerprint", proxyFingerprint[:16])
-	return originalUserKey, localAddress
+	return originalUserKey, localAddress, true
 }
 
 // authenticateProxyUser authenticates a user through an ephemeral proxy connection
@@ -3294,6 +3294,23 @@ func (s *Server) authenticateProxyUser(ctx context.Context, username string, ori
 // authenticateProxyUserWithLocalAddress authenticates a user through an ephemeral proxy connection
 // and includes the local address for ipAllocator routing
 func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, username string, originalUserKeyBytes []byte, localAddress string) (*ssh.Permissions, error) {
+	slog.Info("authenticateProxyUserWithLocalAddress", "username", username, "localAddress", localAddress, "keyBytes", len(originalUserKeyBytes))
+
+	// Check for special container-logs username format
+	if strings.HasPrefix(username, "container-logs:") {
+		slog.Info("Detected special container-logs username, bypassing normal auth", "username", username)
+		// This is a special request to show container logs
+		// We don't need to authenticate the user normally, just pass through
+		// The SSH server will handle this specially
+		return &ssh.Permissions{
+			Extensions: map[string]string{
+				"registered": "true",
+				"proxy_user": username,
+				"public_key": "", // Empty key for special log display
+			},
+		}, nil
+	}
+
 	// Check if this is an IP allocation strategy-based machine access request
 	// TODO: clean up the "127.0.0.1" check here - it's only there to distinguish between exe.local and *.*.exe.local, and Server
 	// shouldn't have to know anything about that.

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/container"
 	"exe.dev/sqlite"
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
@@ -375,6 +376,44 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	if machine.ContainerID == nil {
 		slog.Debug("Machine has no container ID", "component", "piper-plugin", "machine_name", machine.Name)
 		return nil, fmt.Errorf("machine %s is not running", machine.Name)
+	}
+
+	// Check if container is actually running
+	if p.server.containerManager != nil {
+		containerInfo, err := p.server.containerManager.GetContainer(ctx, machine.AllocID, *machine.ContainerID)
+		slog.Info("Container status check",
+			"component", "piper-plugin", "machine_name", machine.Name,
+			"container_id", *machine.ContainerID, "error", err,
+			"status", func() string {
+				if err != nil {
+					return "error"
+				}
+				return string(containerInfo.Status)
+			}())
+		if err == nil && containerInfo.Status != container.StatusRunning {
+			// Container exists but isn't running - route to exed to show logs
+			// Use a special username format that exed will recognize
+			slog.Info("Container not running, routing to exed for error display",
+				"component", "piper-plugin", "machine_name", machine.Name, "status", containerInfo.Status)
+
+			// Generate ephemeral proxy key for auth to exed
+			// Pass nil for original key since this is a special case
+			proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(nil, "127.0.0.1")
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate proxy key: %v", err)
+			}
+
+			// Use special username format: "container-logs:<allocID>:<containerID>:<machineName>"
+			specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", machine.AllocID, *machine.ContainerID, machine.Name)
+
+			return &libplugin.Upstream{
+				Host:          "127.0.0.1",
+				Port:          int32(p.exedSSHPort),
+				UserName:      specialUsername,
+				IgnoreHostKey: false,
+				Auth:          libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
+			}, nil
+		}
 	}
 
 	// Get SSH connection details from the database
