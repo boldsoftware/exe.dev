@@ -3000,7 +3000,8 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 // Returns a string like "10.42.1.0/24"
 //
 // TODO: this is inefficient. Implement something with better DB support.
-//       (e.g. generated columns for each octet, then indexes?)
+//
+//	(e.g. generated columns for each octet, then indexes?)
 func (s *Server) allocateIPRange(ctx context.Context, tx *sqlite.Tx, dockerHost string) (string, error) {
 	// Query all existing IP ranges for this docker host
 	rows, err := tx.Query(`
