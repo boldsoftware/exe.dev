@@ -644,11 +644,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	sshPort := 10000 + (hash % 10000)
 
-	// Use exetini for all containers when we have rovol mounted (which contains exetini)
-	// This enables auto-SSH start for all containers
-	useExetini := m.rovolMountPath != ""
-	autoStartSSH := useExetini // When using exetini, SSH auto-starts
-	isExeuntu := image == "ghcr.io/boldsoftware/exeuntu:latest" || strings.HasSuffix(image, "/exeuntu:latest")
+	// Always use exetini for containers. exetini is responsible for handling
+	// special init chaining cases internally.
+	useExetini := true
+	autoStartSSH := true
 
 	// Build run command with nydus snapshotter
 	runArgs := []string{
@@ -679,14 +678,15 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// Prepare container-specific /exe.dev directory with SSH keys
 	var containerExeDevPath string
-	if m.rovolMountPath != "" {
-		containerExeDevPath, err = m.prepareContainerExeDev(ctx, host, containerName, sshKeys)
-		if err != nil {
-			return nil, fmt.Errorf("failed to prepare container /exe.dev: %w", err)
-		}
-		runArgs = append(runArgs, "-v", fmt.Sprintf("%s:/exe.dev:ro", containerExeDevPath))
-		log.Printf("Mounting container-specific /exe.dev from %s", containerExeDevPath)
+	if m.rovolMountPath == "" {
+		return nil, fmt.Errorf("exetini required but /exe.dev rovol mount not available")
 	}
+	containerExeDevPath, err = m.prepareContainerExeDev(ctx, host, containerName, sshKeys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare container /exe.dev: %w", err)
+	}
+	runArgs = append(runArgs, "-v", fmt.Sprintf("%s:/exe.dev:ro", containerExeDevPath))
+	log.Printf("Mounting container-specific /exe.dev from %s", containerExeDevPath)
 
 	// Helper function to clean up container-specific directory on failure
 	cleanupContainerDir := func() {
@@ -710,29 +710,38 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	var imageCmd []string
 	var imageUser string
 
-	// Always inspect the image to get user (needed for SSH), and entrypoint/cmd if using exetini
-	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "json")
-	if output, err := inspectCmd.Output(); err == nil {
-		cfg, err := parseImageInspectJSON(output)
-		if err != nil {
-			log.Printf("Warning: failed to parse image inspect JSON for %s: %v", image, err)
-		} else {
+	// Inspect the image to get user (needed for SSH), and entrypoint/cmd if using exetini
+	// Try local first; if not found, fall back to remote mode
+	tryParseInspect := func(args ...string) bool {
+		inspectCmd := m.execNerdctl(ctx, host, args...)
+		if output, err := inspectCmd.Output(); err == nil {
+			cfg, perr := parseImageInspectJSON(output)
+			if perr != nil {
+				log.Printf("Warning: failed to parse image inspect JSON for %s: %v", image, perr)
+				return false
+			}
 			imageUser = cfg.User
 			if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
 				imageEntrypoint = cfg.Entrypoint
 				imageCmd = cfg.Cmd
 			}
 			log.Printf("Image %s has entrypoint: %v, cmd: %v, user: %s", image, imageEntrypoint, imageCmd, imageUser)
+			return true
 		}
+		return false
+	}
+	ok := tryParseInspect("image", "inspect", image, "--format", "json")
+	if !ok {
+		// Use remote mode to inspect the registry when not present locally
+		_ = tryParseInspect("image", "inspect", "--mode=remote", image, "--format", "json")
 	}
 
 	// If using exetini, override the entrypoint and pass image user
-	if useExetini {
-		runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
-		if imageUser != "" {
-			// Pass the image user to exetini via environment variable
-			runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", imageUser))
-		}
+	// Always use exetini
+	runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
+	if imageUser != "" {
+		// Pass the image user to exetini via environment variable
+		runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", imageUser))
 	}
 
 	// Add the image (use digest version if available)
@@ -741,9 +750,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		finalImage = image
 	}
 	runArgs = append(runArgs, finalImage)
-
-	// Add command/entrypoint args after image
-	runArgs = append(runArgs, buildEntrypointAndCmdArgs(useExetini, req.CommandOverride, imageEntrypoint, imageCmd, isExeuntu)...)
 	// If not using exetini and no override, let the image use its default CMD/ENTRYPOINT
 
 	// Check if image exists locally and get its size
@@ -809,6 +815,27 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			}
 		}
 	}
+
+	// After ensuring the image is available (pulled if needed), if we are using exetini
+	// and no explicit override was provided, we may need to (re)fetch entrypoint/cmd
+	// because earlier local inspect could have failed before the pull.
+	if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
+		if len(imageEntrypoint) == 0 && len(imageCmd) == 0 {
+			// Try local inspect again now that the image should exist
+			inspectCmd2 := m.execNerdctl(ctx, host, "image", "inspect", finalImage, "--format", "json")
+			if output, err := inspectCmd2.Output(); err == nil {
+				if cfg, perr := parseImageInspectJSON(output); perr == nil {
+					imageUser = cfg.User
+					imageEntrypoint = cfg.Entrypoint
+					imageCmd = cfg.Cmd
+					log.Printf("Post-pull inspect: entrypoint=%v cmd=%v user=%s", imageEntrypoint, imageCmd, imageUser)
+				}
+			}
+		}
+	}
+
+	// Now append the command/entrypoint args after the image
+	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, imageEntrypoint, imageCmd, false)...)
 
 	// Create and start container
 	reportProgress(req, CreateStart, imageSize, 0, "Starting container")
