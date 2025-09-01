@@ -516,21 +516,21 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		// Parse custom command override
 		cmdParts := strings.Fields(req.CommandOverride)
 		if useExetini {
-			// When using exetini with custom command, use -g to run in same process group
+			// When using exetini with custom command, pass -g for process group signaling
 			runArgs = append(runArgs, "-g", "--")
 		}
 		runArgs = append(runArgs, cmdParts...)
 	} else if useExetini {
 		// When using exetini, pass through the original entrypoint/cmd
 		if len(imageEntrypoint) > 0 || len(imageCmd) > 0 {
-			// Image has an entrypoint or cmd, use -g to preserve process group
+			// Pass -g to send signals to process group, then -- to separate tini args from the command
 			runArgs = append(runArgs, "-g", "--")
 			// Add entrypoint first, then cmd
 			runArgs = append(runArgs, imageEntrypoint...)
 			runArgs = append(runArgs, imageCmd...)
 		} else {
 			// No entrypoint or cmd, use sleep infinity
-			runArgs = append(runArgs, "--", "sleep", "infinity")
+			runArgs = append(runArgs, "-g", "--", "sleep", "infinity")
 		}
 	} else if req.CommandOverride == "none" || isExeuntu {
 		// For containers without exetini that need a command
