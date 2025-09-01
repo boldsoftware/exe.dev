@@ -11,7 +11,6 @@ import (
 	"log"
 	"log/slog"
 	"net"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1490,12 +1489,6 @@ func (ss *SSHServer) handleAllocCommand(s ssh.Session, publicKey, allocID string
 	fmt.Fprintf(s, "  Created: %s\r\n\r\n", alloc.CreatedAt.Format("Jan 2, 2006"))
 }
 
-// getMachinesForTeam is obsolete - use getMachinesForAlloc instead
-func (s *Server) getMachinesForTeam(ctx context.Context, allocID string) ([]*Machine, error) {
-	// This function is kept for backward compatibility but redirects to getMachinesForAlloc
-	return s.getMachinesForAlloc(ctx, allocID)
-}
-
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
 func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, email string) error {
 	// Check if this email already exists
@@ -1603,177 +1596,6 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	}
 
 	return nil
-}
-
-func (ss *SSHServer) handleRouteList(s ssh.Session, publicKey, teamName, machineName string) {
-	// Get machine
-	machine, err := ss.getMachine(s.Context(), publicKey, teamName, machineName)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Get routes
-	routes, err := machine.GetRoutes()
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	fmt.Fprintf(s, "\r\n\033[1;36mRoutes for machine '%s':\033[0m\r\n\r\n", machineName)
-
-	if len(routes) == 0 {
-		fmt.Fprintf(s, "No routes configured.\r\n")
-		return
-	}
-
-	for _, route := range routes {
-		methods := strings.Join(route.Methods, ",")
-		ports := make([]string, len(route.Ports))
-		for i, port := range route.Ports {
-			ports[i] = fmt.Sprintf("%d", port)
-		}
-		portList := strings.Join(ports, ",")
-
-		fmt.Fprintf(s, "  \033[1m%s\033[0m (priority %d)\r\n", route.Name, route.Priority)
-		fmt.Fprintf(s, "    Methods: %s\r\n", methods)
-		fmt.Fprintf(s, "    Path prefix: %s\r\n", route.Paths.Prefix)
-		fmt.Fprintf(s, "    Policy: %s\r\n", route.Policy)
-		fmt.Fprintf(s, "    Ports: %s\r\n\r\n", portList)
-	}
-}
-
-func (ss *SSHServer) handleRouteAdd(s ssh.Session, publicKey, teamName, machineName string, args []string) {
-	// Create a FlagSet for parsing
-	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
-	var name, methodsStr, prefix, policy, portsStr string
-	var priority int
-
-	fs.StringVar(&name, "name", "", "route name (auto-generated if not specified)")
-	fs.IntVar(&priority, "priority", -1, "priority (lower = higher priority, defaults to lowest priority)")
-	fs.StringVar(&methodsStr, "methods", "*", "HTTP methods (comma-separated, or '*' for all)")
-	fs.StringVar(&prefix, "prefix", "/", "path prefix to match")
-	fs.StringVar(&policy, "policy", "private", "'public' or 'private'")
-	fs.StringVar(&portsStr, "ports", "80,8000,8080,8888", "allowed ports (comma-separated)")
-
-	// Capture the output to avoid printing errors to the session
-	var buf bytes.Buffer
-	fs.SetOutput(&buf)
-
-	// Parse the flags
-	err := fs.Parse(args)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError parsing flags: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Generate name if not provided
-	if name == "" {
-		name = ss.server.generateRandomRouteName()
-	}
-
-	// Get machine
-	machine, err := ss.getMachine(s.Context(), publicKey, teamName, machineName)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Get existing routes
-	routes, err := machine.GetRoutes()
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Set default priority if not specified
-	if priority == -1 {
-		// Find the highest priority number and set this route to be lower priority (higher number)
-		maxPriority := 0
-		for _, route := range routes {
-			if route.Priority > maxPriority {
-				maxPriority = route.Priority
-			}
-		}
-		priority = maxPriority + 10 // Add some gap
-	}
-
-	// Parse methods
-	var methods []string
-	if methodsStr == "*" {
-		methods = []string{"*"}
-	} else {
-		methods = strings.Split(methodsStr, ",")
-		for i, method := range methods {
-			methods[i] = strings.TrimSpace(strings.ToUpper(method))
-		}
-	}
-
-	// Parse ports
-	portStrs := strings.Split(portsStr, ",")
-	var ports []int
-	for _, portStr := range portStrs {
-		portStr = strings.TrimSpace(portStr)
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;31mError: Invalid port '%s': %v\033[0m\r\n", portStr, err)
-			return
-		}
-		ports = append(ports, port)
-	}
-
-	// Validate policy
-	if policy != "public" && policy != "private" {
-		fmt.Fprintf(s, "\033[1;31mError: Policy must be 'public' or 'private'\033[0m\r\n")
-		return
-	}
-
-	// Check for duplicate name or priority
-	for _, route := range routes {
-		if route.Name == name {
-			fmt.Fprintf(s, "\033[1;31mError: Route with name '%s' already exists\033[0m\r\n", name)
-			return
-		}
-		if route.Priority == priority {
-			fmt.Fprintf(s, "\033[1;31mError: Route with priority %d already exists\033[0m\r\n", priority)
-			return
-		}
-	}
-
-	// Create new route
-	newRoute := Route{
-		Name:     name,
-		Priority: priority,
-		Methods:  methods,
-		Paths:    PathMatcher{Prefix: prefix},
-		Policy:   policy,
-		Ports:    ports,
-	}
-
-	// Add to routes list
-	routes = append(routes, newRoute)
-
-	// Set routes back on machine
-	err = machine.SetRoutes(routes)
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Update database
-	err = ss.server.db.Tx(s.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE machines SET routes = ?
-			WHERE name = ?`,
-			*machine.Routes, machineName)
-		return err
-	})
-	if err != nil {
-		fmt.Fprintf(s, "\033[1;31mError saving route: %v\033[0m\r\n", err)
-		return
-	}
-
-	fmt.Fprintf(s, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
 }
 
 // getMachine retrieves a machine for the given user/team/name
