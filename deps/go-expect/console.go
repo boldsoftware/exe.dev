@@ -45,13 +45,14 @@ type ConsoleOpt func(*ConsoleOpts) error
 
 // ConsoleOpts provides additional options on creating a Console.
 type ConsoleOpts struct {
-	Logger          *log.Logger
-	Stdins          []io.Reader
-	Stdouts         []io.Writer
-	Closers         []io.Closer
-	ExpectObservers []ExpectObserver
-	SendObservers   []SendObserver
-	ReadTimeout     *time.Duration
+	Logger            *log.Logger
+	Stdins            []io.Reader
+	Stdouts           []io.Writer
+	Closers           []io.Closer
+	ExpectObservers   []ExpectObserver
+	SendObservers     []SendObserver
+	ReadTimeout       *time.Duration
+	RefreshingTimeout *time.Duration
 }
 
 // ExpectObserver provides an interface for a function callback that will
@@ -131,6 +132,17 @@ func WithSendObserver(observers ...SendObserver) ConsoleOpt {
 func WithDefaultTimeout(timeout time.Duration) ConsoleOpt {
 	return func(opts *ConsoleOpts) error {
 		opts.ReadTimeout = &timeout
+		return nil
+	}
+}
+
+// WithDefaultRefreshingTimeout sets a default refreshing read timeout during Expect statements
+// that refreshes every time new data is received. This is useful for operations
+// where the remote end may be updating progress (like spinners) and you want
+// to keep waiting as long as new data continues to arrive.
+func WithDefaultRefreshingTimeout(timeout time.Duration) ConsoleOpt {
+	return func(opts *ConsoleOpts) error {
+		opts.RefreshingTimeout = &timeout
 		return nil
 	}
 }

@@ -42,7 +42,7 @@ func TestBoxCreation(t *testing.T) {
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
 	pty.wantRe("Creating .*" + boxNameRe)
-	t.Skip("broken: this times out downloading exeuntu, will need to fix")
+	t.Skip("broken: fails with 'subnet 10.179.0.0/24 overlaps with other one on this address space'")
 	// break onto two lines because ANSI codes
 	pty.want("Access with")
 	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)

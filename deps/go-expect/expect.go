@@ -64,6 +64,12 @@ func (c *Console) Expect(opts ...ExpectOpt) (string, error) {
 		readTimeout = options.ReadTimeout
 	}
 
+	refreshingTimeout := c.opts.RefreshingTimeout
+	if options.RefreshingTimeout != nil {
+		refreshingTimeout = options.RefreshingTimeout
+	}
+	lastDataTime := time.Now()
+
 	var matcher Matcher
 	var err error
 
@@ -78,8 +84,15 @@ func (c *Console) Expect(opts ...ExpectOpt) (string, error) {
 	}()
 
 	for {
-		if readTimeout != nil {
-			err = c.passthroughPipe.SetReadDeadline(time.Now().Add(*readTimeout))
+		var timeout time.Time
+		switch {
+		case refreshingTimeout != nil:
+			timeout = lastDataTime.Add(*refreshingTimeout)
+		case readTimeout != nil:
+			timeout = time.Now().Add(*readTimeout)
+		}
+		if !timeout.IsZero() {
+			err = c.passthroughPipe.SetReadDeadline(timeout)
 			if err != nil {
 				return buf.String(), err
 			}
@@ -95,6 +108,8 @@ func (c *Console) Expect(opts ...ExpectOpt) (string, error) {
 			}
 			return buf.String(), err
 		}
+
+		lastDataTime = time.Now()
 
 		c.Logf("expect read: %q", string(r))
 		_, err = runeWriter.WriteRune(r)

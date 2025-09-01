@@ -521,7 +521,7 @@ func (p *expectPty) attach(cmd *exec.Cmd) {
 func makePty(t *testing.T) *expectPty {
 	t.Helper()
 	opts := []expect.ConsoleOpt{
-		expect.WithDefaultTimeout(5 * time.Second),
+		expect.WithDefaultRefreshingTimeout(5 * time.Second),
 	}
 	if testing.Verbose() {
 		opts = append(opts, expect.WithStdout(os.Stdout))

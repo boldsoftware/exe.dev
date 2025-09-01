@@ -35,6 +35,17 @@ func WithTimeout(timeout time.Duration) ExpectOpt {
 	}
 }
 
+// WithRefreshingTimeout sets a read timeout for an Expect statement that
+// refreshes every time new data is received. This is useful for operations
+// where the remote end may be updating progress (like spinners) and you want
+// to keep waiting as long as new data continues to arrive.
+func WithRefreshingTimeout(timeout time.Duration) ExpectOpt {
+	return func(opts *ExpectOpts) error {
+		opts.RefreshingTimeout = &timeout
+		return nil
+	}
+}
+
 // ConsoleCallback is a callback function to execute if a match is found for
 // the chained matcher.
 type ConsoleCallback func(buf *bytes.Buffer) error
@@ -61,8 +72,9 @@ func (eo ExpectOpt) Then(f ConsoleCallback) ExpectOpt {
 
 // ExpectOpts provides additional options on Expect.
 type ExpectOpts struct {
-	Matchers    []Matcher
-	ReadTimeout *time.Duration
+	Matchers          []Matcher
+	ReadTimeout       *time.Duration
+	RefreshingTimeout *time.Duration
 }
 
 // Match sequentially calls Match on all matchers in ExpectOpts and returns the

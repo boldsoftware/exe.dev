@@ -370,6 +370,266 @@ func TestEditor(t *testing.T) {
 	}
 }
 
+func TestExpectRefreshingTimeout(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(50 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(50 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(50 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(50 * time.Millisecond)
+		c.SendLine("done")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	start := time.Now()
+	_, err = c.Expect(String("done"), WithRefreshingTimeout(80*time.Millisecond))
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("Expected no error but got '%s'", err)
+	}
+
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("Expected refreshing timeout to extend beyond 200ms, but completed in %v", elapsed)
+	}
+
+	wg.Wait()
+}
+
+func TestExpectRefreshingTimeoutExpires(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(50 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(200 * time.Millisecond)
+	}()
+
+	start := time.Now()
+	_, err = c.Expect(String("never_comes"), WithRefreshingTimeout(100*time.Millisecond))
+	elapsed := time.Since(start)
+
+	if err == nil || !strings.Contains(err.Error(), "i/o timeout") {
+		t.Errorf("Expected timeout error but got '%s'", err)
+	}
+
+	if elapsed < 150*time.Millisecond || elapsed > 200*time.Millisecond {
+		t.Errorf("Expected timeout around 150ms (50ms + 100ms), but got %v", elapsed)
+	}
+
+	c.Tty().Close()
+	wg.Wait()
+}
+
+func TestExpectRefreshingTimeoutWithSpinner(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		spinner := []string{"|", "/", "-", "\\"}
+		for i := 0; i < 10; i++ {
+			c.Send("\r" + spinner[i%4] + " Processing...")
+			time.Sleep(75 * time.Millisecond)
+		}
+		c.SendLine("\r✓ Complete!")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	start := time.Now()
+	_, err = c.Expect(String("Complete!"), WithRefreshingTimeout(150*time.Millisecond))
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("Expected no error but got '%s'", err)
+	}
+
+	if elapsed < 750*time.Millisecond {
+		t.Errorf("Expected to wait for full spinner cycle (~750ms), but completed in %v", elapsed)
+	}
+
+	wg.Wait()
+}
+
+func TestExpectRefreshingTimeoutOverridesDefault(t *testing.T) {
+	t.Parallel()
+
+	c, err := newTestConsole(t, WithDefaultTimeout(50*time.Millisecond))
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(30 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(30 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(30 * time.Millisecond)
+		c.SendLine("done")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	start := time.Now()
+	_, err = c.Expect(String("done"), WithRefreshingTimeout(100*time.Millisecond))
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("Expected no error but got '%s'", err)
+	}
+
+	if elapsed < 90*time.Millisecond {
+		t.Errorf("Expected to wait at least 90ms with refreshing timeout, but completed in %v", elapsed)
+	}
+
+	wg.Wait()
+}
+
+func TestExpectDefaultRefreshingTimeout(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t, WithDefaultRefreshingTimeout(100*time.Millisecond))
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(50 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(50 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(200 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	start := time.Now()
+	_, err = c.Expect(String("never_comes"))
+	elapsed := time.Since(start)
+
+	if err == nil || !strings.Contains(err.Error(), "i/o timeout") {
+		t.Errorf("Expected timeout error but got '%s'", err)
+	}
+
+	if elapsed < 200*time.Millisecond || elapsed > 350*time.Millisecond {
+		t.Errorf("Expected timeout around 300ms (100ms + 100ms + 100ms), but got %v", elapsed)
+	}
+
+	c.Tty().Close()
+	wg.Wait()
+}
+
+func TestExpectDefaultRefreshingTimeoutWithSpinner(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t, WithDefaultRefreshingTimeout(150*time.Millisecond))
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		spinner := []string{"|", "/", "-", "\\"}
+		for i := 0; i < 10; i++ {
+			c.Send("\r" + spinner[i%4] + " Processing...")
+			time.Sleep(75 * time.Millisecond)
+		}
+		c.SendLine("\r✓ Complete!")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	start := time.Now()
+	_, err = c.Expect(String("Complete!"))
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("Expected no error but got '%s'", err)
+	}
+
+	if elapsed < 750*time.Millisecond {
+		t.Errorf("Expected to wait for full spinner cycle (~750ms), but completed in %v", elapsed)
+	}
+
+	wg.Wait()
+}
+
+func TestExpectDefaultRefreshingTimeoutOverrideByPerCall(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t, WithDefaultRefreshingTimeout(200*time.Millisecond))
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(50 * time.Millisecond)
+		c.Send(".")
+		time.Sleep(200 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	start := time.Now()
+	_, err = c.Expect(String("never_comes"), WithRefreshingTimeout(75*time.Millisecond))
+	elapsed := time.Since(start)
+
+	if err == nil || !strings.Contains(err.Error(), "i/o timeout") {
+		t.Errorf("Expected timeout error but got '%s'", err)
+	}
+
+	if elapsed < 120*time.Millisecond || elapsed > 150*time.Millisecond {
+		t.Errorf("Expected timeout around 125ms (50ms + 75ms), but got %v", elapsed)
+	}
+
+	c.Tty().Close()
+	wg.Wait()
+}
+
 func ExampleConsole_echo() {
 	c, err := NewConsole(WithStdout(os.Stdout))
 	if err != nil {
