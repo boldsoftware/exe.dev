@@ -274,7 +274,7 @@ func (m *NerdctlManager) selectHost() string {
 }
 
 // ensureAllocNetwork ensures a network exists for the allocation
-func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string, host string) (string, error) {
+func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string, ipRange string, host string) (string, error) {
 	// Limit network name length, but handle shorter allocIDs
 	nameLen := len(allocID)
 	if nameLen > 12 {
@@ -300,15 +300,11 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 		return networkName, nil
 	}
 
-	// Allocate a subnet for this allocation
-	// Use 10.X.0.0/24 where X is based on hash of allocID
-	// Hash the entire allocID to get better distribution
-	hash := 0
-	for _, ch := range allocID {
-		hash = (hash*31 + int(ch)) % 155
+	// IP range must be provided from the database
+	if ipRange == "" {
+		return "", fmt.Errorf("no IP range assigned to allocation %s", allocID)
 	}
-	subnetByte := 100 + hash // Range 100-254
-	subnet := fmt.Sprintf("10.%d.0.0/24", subnetByte)
+	subnet := ipRange
 
 	// Create network
 	createCmd := m.execNerdctl(ctx, host,
@@ -399,7 +395,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	image = ExpandImageNameForContainerd(image)
 
 	// Ensure network exists for this allocation
-	networkName, err := m.ensureAllocNetwork(ctx, req.AllocID, host)
+	networkName, err := m.ensureAllocNetwork(ctx, req.AllocID, req.IPRange, host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure network: %w", err)
 	}

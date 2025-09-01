@@ -949,9 +949,17 @@ func (ss *SSHServer) handleNewCommand(s ssh.Session, publicKey, allocID string, 
 		err       error
 	}, 1)
 
+	// Get the alloc to get its IP range
+	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;31mError: Failed to get allocation info: %v\033[0m\r\n", err)
+		return
+	}
+
 	// Create container request with progress callback
 	req := &container.CreateContainerRequest{
 		AllocID:         allocID,
+		IPRange:         alloc.IPRange.String, // Pass the IP range from the alloc
 		Name:            machineName,
 		Image:           image,
 		Size:            size,

@@ -190,6 +190,7 @@ type Alloc struct {
 	AllocType        AllocType
 	Region           Region
 	DockerHost       sql.NullString // Docker host where this alloc's containers run
+	IPRange          sql.NullString // IP range assigned to this alloc (e.g., "10.42.1.0/24")
 	CreatedAt        time.Time
 	StripeCustomerID sql.NullString
 	BillingEmail     sql.NullString
@@ -2995,6 +2996,48 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	return &user, err
 }
 
+// allocateIPRange finds an available IP range for a new alloc
+// Returns a string like "10.42.1.0/24"
+//
+// TODO: this is inefficient. Implement something with better DB support.
+//       (e.g. generated columns for each octet, then indexes?)
+func (s *Server) allocateIPRange(ctx context.Context, tx *sqlite.Tx, dockerHost string) (string, error) {
+	// Query all existing IP ranges for this docker host
+	rows, err := tx.Query(`
+		SELECT ip_range
+		FROM allocs
+		WHERE docker_host = ? AND ip_range IS NOT NULL
+		ORDER BY ip_range`,
+		dockerHost)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	// Collect all used IP ranges
+	usedRanges := make(map[string]bool)
+	for rows.Next() {
+		var ipRange string
+		if err := rows.Scan(&ipRange); err != nil {
+			return "", err
+		}
+		usedRanges[ipRange] = true
+	}
+
+	// Find the first available 10.X.Y.0/24 range
+	// We use 10.42.0.0/16 through 10.99.0.0/16 (58 * 256 = 14,848 possible /24 networks)
+	for x := 42; x <= 99; x++ {
+		for y := 0; y <= 255; y++ {
+			candidate := fmt.Sprintf("10.%d.%d.0/24", x, y)
+			if !usedRanges[candidate] {
+				return candidate, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no available IP ranges (all 14,848 ranges exhausted)")
+}
+
 // createUserWithAlloc creates a new user with their resource allocation
 func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email string) error {
 	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
@@ -3031,11 +3074,17 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 		// Select a docker host for this alloc
 		dockerHost := s.selectDockerHostForNewAlloc()
 
+		// Allocate an IP range for this alloc
+		ipRange, err := s.allocateIPRange(ctx, tx, dockerHost)
+		if err != nil {
+			return fmt.Errorf("failed to allocate IP range: %w", err)
+		}
+
 		// Create alloc for the user
 		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
 		return err
 	})
 }
@@ -3045,12 +3094,12 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 	var alloc Alloc
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
-		SELECT alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email
+		SELECT alloc_id, user_id, alloc_type, region, docker_host, ip_range, created_at, stripe_customer_id, billing_email
 		FROM allocs
 		WHERE user_id = ?
 		LIMIT 1`,
 			userID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region,
-			&alloc.DockerHost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+			&alloc.DockerHost, &alloc.IPRange, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
 	})
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -3072,10 +3121,16 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 		dockerHost := s.selectDockerHostForNewAlloc()
 
 		err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
-				VALUES (?, ?, ?, ?, ?, ?)`,
-				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
+			// Allocate an IP range for this alloc
+			ipRange, err := s.allocateIPRange(ctx, tx, dockerHost)
+			if err != nil {
+				return fmt.Errorf("failed to allocate IP range: %w", err)
+			}
+
+			_, err = tx.Exec(`
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
 			return err
 		})
 		if err != nil {
@@ -3148,10 +3203,16 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 
 		dockerHost := s.selectDockerHostForNewAlloc()
 
+		// Allocate an IP range for this alloc
+		ipRange, err := s.allocateIPRange(ctx, tx, dockerHost)
+		if err != nil {
+			return fmt.Errorf("failed to allocate IP range: %w", err)
+		}
+
 		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, email)
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
 		return err
 	})
 }
