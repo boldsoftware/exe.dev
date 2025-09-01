@@ -42,6 +42,7 @@ import (
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
+	"exe.dev/tagresolver"
 	"github.com/keighl/postmark"
 	"github.com/lmittmann/tint"
 	"github.com/prometheus/client_golang/prometheus"
@@ -352,6 +353,8 @@ type Server struct {
 
 	// Container management
 	containerManager container.Manager
+	tagResolver      *tagresolver.TagResolver
+	hostUpdater      *tagresolver.HostUpdater
 
 	// In-memory state for active sessions (these don't need persistence)
 	emailVerificationsMu sync.RWMutex
@@ -533,11 +536,8 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 					"fix", "Ensure Kata is installed and configured in containerd")
 			}
 			return nil, managerErr
-		} else {
-			if !quietMode {
-				slog.Info("Machine management enabled", "containerd_addresses", containerdAddresses)
-			}
 		}
+		slog.Info("Container manager initialized successfully")
 	} else {
 		if !quietMode {
 			slog.Info("No containerd addresses configured, container functionality disabled")
@@ -549,6 +549,21 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	sshMetrics := NewSSHMetrics(metricsRegistry)
 	sqlite.RegisterSQLiteMetrics(metricsRegistry)
 
+	// Initialize tag resolver and host updater for container image management
+	var tagResolverInstance *tagresolver.TagResolver
+	var hostUpdaterInstance *tagresolver.HostUpdater
+	if containerManager != nil && len(containerdAddresses) > 0 {
+		tagResolverInstance = tagresolver.New(db)
+		hostUpdaterInstance = tagresolver.NewHostUpdater(db, tagResolverInstance, containerdAddresses)
+
+		// Set tag resolver on the container manager if it's a NerdctlManager
+		if nerdctlMgr, ok := containerManager.(*container.NerdctlManager); ok {
+			nerdctlMgr.SetTagResolver(tagResolverInstance)
+			nerdctlMgr.SetHostUpdater(hostUpdaterInstance)
+			slog.Info("Tag resolver configured for image freshness management")
+		}
+	}
+
 	s := &Server{
 		httpLn:             httpLn,
 		httpsLn:            httpsLn,
@@ -559,6 +574,8 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		db:                 db,
 		dbPath:             dbPath,
 		containerManager:   containerManager,
+		tagResolver:        tagResolverInstance,
+		hostUpdater:        hostUpdaterInstance,
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
 		sessions:           make(map[*sshbuf.Channel]*UserSession),
@@ -2842,6 +2859,13 @@ func (s *Server) Start() error {
 		slog.Info(fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
 	}
 
+	// Start tag resolver and host updater for keeping container images fresh
+	if s.tagResolver != nil && s.hostUpdater != nil {
+		slog.Info("Starting tag resolver for image freshness management")
+		s.tagResolver.Start(ctx)
+		s.hostUpdater.Start(ctx)
+	}
+
 	// Register all existing machines with IP allocation strategy
 	if s.ipAllocator != nil {
 		slog.Info("Starting IP allocator...")
@@ -3237,6 +3261,14 @@ func (s *Server) Stop() error {
 		if err := s.httpsServer.Shutdown(ctx); err != nil {
 			slog.Error("HTTPS server shutdown error", "error", err)
 		}
+	}
+
+	// Stop tag resolver and host updater
+	if s.tagResolver != nil {
+		s.tagResolver.Stop()
+	}
+	if s.hostUpdater != nil {
+		s.hostUpdater.Stop()
 	}
 
 	// Close database connection

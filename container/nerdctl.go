@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"exe.dev/sshpool"
+	"exe.dev/tagresolver"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -39,6 +40,20 @@ type NerdctlManager struct {
 	sshTunnels    map[string]*exec.Cmd // containerID -> SSH tunnel command
 	allocNetworks map[string]bool      // Track which alloc networks exist
 	sshPool       *sshpool.Pool        // Pool of persistent SSH connections
+
+	// Tag resolver for image digest management (optional)
+	tagResolver *tagresolver.TagResolver
+	hostUpdater *tagresolver.HostUpdater
+}
+
+// SetTagResolver sets the tag resolver for the manager
+func (m *NerdctlManager) SetTagResolver(resolver *tagresolver.TagResolver) {
+	m.tagResolver = resolver
+}
+
+// SetHostUpdater sets the host updater for the manager
+func (m *NerdctlManager) SetHostUpdater(updater *tagresolver.HostUpdater) {
+	m.hostUpdater = updater
 }
 
 // NewNerdctlManager creates a new nerdctl-based container manager
@@ -394,6 +409,28 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Use the proper image expansion function
 	image = ExpandImageNameForContainerd(image)
 
+	// Resolve tag to digest if we have a tag resolver
+	var imageWithDigest string
+	if m.tagResolver != nil {
+		// Check if image already has a digest
+		if !strings.Contains(image, "@sha256:") {
+			// Construct full platform string (OS/arch)
+			platform := fmt.Sprintf("linux/%s", m.hostArch)
+			resolvedImage, err := m.tagResolver.ResolveTag(ctx, image, platform)
+			if err != nil {
+				log.Printf("Failed to resolve tag %s to digest: %v, using tag directly", image, err)
+				imageWithDigest = image
+			} else {
+				log.Printf("Resolved %s to %s", image, resolvedImage)
+				imageWithDigest = resolvedImage
+			}
+		} else {
+			imageWithDigest = image
+		}
+	} else {
+		imageWithDigest = image
+	}
+
 	// Ensure network exists for this allocation
 	networkName, err := m.ensureAllocNetwork(ctx, req.AllocID, req.IPRange, host)
 	if err != nil {
@@ -504,8 +541,12 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		}
 	}
 
-	// Add the image
-	runArgs = append(runArgs, image)
+	// Add the image (use digest version if available)
+	finalImage := imageWithDigest
+	if finalImage == "" {
+		finalImage = image
+	}
+	runArgs = append(runArgs, finalImage)
 
 	// Add command if specified
 	if req.CommandOverride != "" && req.CommandOverride != "auto" && req.CommandOverride != "none" {
@@ -538,8 +579,14 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	var imageSize int64
 	var needsPull bool
 
+	// Use the digest version for inspection if available
+	imageToInspect := imageWithDigest
+	if imageToInspect == "" {
+		imageToInspect = image
+	}
+
 	// Try to inspect the image to see if it exists locally
-	inspectSizeCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "{{.Size}}")
+	inspectSizeCmd := m.execNerdctl(ctx, host, "image", "inspect", imageToInspect, "--format", "{{.Size}}")
 	if sizeOutput, err := inspectSizeCmd.Output(); err == nil {
 		// Image exists locally - get its size
 		sizeStr := strings.TrimSpace(string(sizeOutput))
@@ -570,12 +617,19 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			req.ProgressCallback(CreatePull, imageSize)
 		}
 
-		// Pull image with nydus snapshotter
-		pullArgs := []string{"--snapshotter", "nydus", "pull", image}
-		pullCmd := m.execNerdctl(ctx, host, pullArgs...)
-		if output, err := pullCmd.CombinedOutput(); err != nil {
-			if !strings.Contains(string(output), "already exists") {
-				log.Printf("Warning: Failed to pull image %s: %v: %s", image, err, output)
+		// Use host updater if available, otherwise fall back to direct pull
+		if m.hostUpdater != nil {
+			if err := m.hostUpdater.EnsureImageOnHost(ctx, host, imageToInspect); err != nil {
+				log.Printf("Warning: Failed to ensure image %s on host: %v", imageToInspect, err)
+			}
+		} else {
+			// Pull image with nydus snapshotter
+			pullArgs := []string{"--snapshotter", "nydus", "pull", imageToInspect}
+			pullCmd := m.execNerdctl(ctx, host, pullArgs...)
+			if output, err := pullCmd.CombinedOutput(); err != nil {
+				if !strings.Contains(string(output), "already exists") {
+					log.Printf("Warning: Failed to pull image %s: %v: %s", imageToInspect, err, output)
+				}
 			}
 		}
 
