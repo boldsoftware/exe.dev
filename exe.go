@@ -2580,8 +2580,8 @@ var denylistedMachineNames = map[string]bool{
 
 // isValidMachineName validates machine name format
 func (s *Server) isValidMachineName(name string) bool {
-	// Must be at least 5 characters and at most 32 characters
-	if len(name) < 5 || len(name) > 32 {
+	// Must be at least 5 characters and at most 64 characters
+	if len(name) < 5 || len(name) > 64 {
 		return false
 	}
 

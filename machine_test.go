@@ -163,7 +163,7 @@ func TestMachineNameValidationIntegration(t *testing.T) {
 		{"with dot", "my.machine", true, "Dot should fail"},
 		{"starts with hyphen", "-machine", true, "Starting with hyphen should fail"},
 		{"ends with hyphen", "machine-", true, "Ending with hyphen should fail"},
-		{"too long", "verylongmachinenamethatexceedslimit12345678901234567890", true, "Name exceeding limit should fail"},
+		{"too long", "verylongmachinenamethatexceedslimit12345678901234567890verylongmachinenamethatexceedslimit12345678901234567890", true, "Name exceeding limit should fail"},
 	}
 
 	for _, tt := range tests {

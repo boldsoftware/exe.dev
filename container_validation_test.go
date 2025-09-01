@@ -43,7 +43,7 @@ func TestIsValidMachineName(t *testing.T) {
 
 		// Invalid names - other format issues
 		{"empty string", "", false},
-		{"too long", "abcdefghijklmnopqrstuvwxyz1234567", false}, // 33 chars
+		{"too long", "abcdefghijklmnopqrstuvwxyz1234567abcdefghijklmnopqrstuvwxyz1234567", false}, // 66 chars
 		{"starts with number", "123app", false},
 		{"starts with hyphen", "-myapp", false},
 		{"ends with hyphen", "myapp-", false},
