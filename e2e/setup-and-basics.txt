@@ -6,7 +6,7 @@ Test basic exed setup, registration, and fundamental commands.
 
 ### Test Setup
 
-1. Verify that `ssh exe-ctr-colima echo hello` works before you start. (The VM runs containerd + kata + cloud hyprvisor + nydus and should be running.)
+1. Verify that `ssh colima-exe-ctr echo hello` works before you start. (The VM runs containerd + kata + cloud hyprvisor + nydus and should be running.)
 
 2. Build and start exed (in dev mode).
 

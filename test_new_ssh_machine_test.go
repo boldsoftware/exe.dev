@@ -30,7 +30,7 @@ func TestNewSSHServerMachineConnection(t *testing.T) {
 		}
 	}
 	if host == "" {
-		t.Skip("CTR_HOST not set and exe-ctr-colima not reachable; skipping machine connection test")
+		t.Skip("CTR_HOST not set and colima-exe-ctr not reachable; skipping machine connection test")
 	}
 
 	server := NewTestServer(t, host)

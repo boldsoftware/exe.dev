@@ -19,7 +19,7 @@ func TestPool(t *testing.T) {
 		if ctr := os.Getenv("CTR_HOST"); ctr != "" {
 			testHost = ctr
 		} else {
-			// As a last resort, auto-detect the local dev host (ssh exe-ctr-colima)
+			// As a last resort, auto-detect the local dev host
 			if detected := ctrhosttest.Detect(nil); detected != "" {
 				testHost = detected
 			}

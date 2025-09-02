@@ -297,6 +297,7 @@ root = "/data/containerd"
 [plugins."io.containerd.metadata.v1.bolt"]
   content_sharing_policy = "shared"
 EOF
+sudo cp /etc/containerd/config.toml /etc/containerd/config.toml.exedev
 
 echo "=== Installing nerdctl ==="
 
@@ -378,6 +379,7 @@ sudo usermod -aG containerd ubuntu
 sudo mkdir -p /etc/systemd/system/containerd.service.d
 cat <<'EOF' | sudo tee /etc/systemd/system/containerd.service.d/override.conf > /dev/null
 [Service]
+ExecStartPre=/bin/sh -c 'if [ -f /etc/containerd/config.toml.exedev ]; then cp -f /etc/containerd/config.toml.exedev /etc/containerd/config.toml; fi'
 ExecStartPost=/bin/sh -c 'sleep 1 && chmod 660 /run/containerd/containerd.sock && chgrp containerd /run/containerd/containerd.sock'
 EOF
 
@@ -419,16 +421,19 @@ sleep 3
 
 # Wait for nydus to register with containerd (proxy plugin can take a moment)
 echo "Waiting for nydus to register with containerd..."
-for i in {1..10}; do
+NYDUS_OK=0
+for i in {1..20}; do
     if sudo ctr plugin ls | grep -q "io.containerd.snapshotter.*nydus.*ok"; then
         echo "  Nydus snapshotter registered successfully"
+        NYDUS_OK=1
         break
-    fi
-    if [ $i -eq 10 ]; then
-        echo "  Warning: Nydus snapshotter registration timeout"
     fi
     sleep 1
 done
+if [ "$NYDUS_OK" -ne 1 ]; then
+    echo "ERROR: Nydus snapshotter not registered with containerd"
+    exit 1
+fi
 
 # Fix socket permissions
 if [ -S /run/containerd/containerd.sock ]; then

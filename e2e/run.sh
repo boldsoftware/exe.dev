@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run sketch with SSH access to exe-ctr-colima using a dedicated key
+# Run sketch with SSH access to colima-exe-ctr using a dedicated key
 
 # This script:
 # 1) Ensures a dedicated key exists at ~/.colima/exe-ctr-colima-ed25519
@@ -8,7 +8,7 @@
 
 set -o pipefail
 
-COLIMA_PROFILE=${COLIMA_PROFILE:-exe-ctr-colima}
+COLIMA_PROFILE=${COLIMA_PROFILE:-exe-ctr}
 SSH_PORT=${SSH_PORT:-}
 KEY_DIR="$HOME/.colima"
 KEY_PATH="$KEY_DIR/exe-ctr-colima-ed25519"
@@ -46,7 +46,7 @@ detect_ssh_port() {
     local port
     while IFS= read -r line; do
       case "$line" in
-        "Host exe-ctr-colima") in_block="yes" ;;
+        "Host colima-exe-ctr") in_block="yes" ;;
         Host\ *) in_block="no" ;;
         *Port\ *) if [ "$in_block" = "yes" ]; then port=$(echo "$line" | awk '{print $2}'); fi ;;
       esac
@@ -64,10 +64,10 @@ detect_ssh_port() {
 }
 
 inject_key_via_ssh() {
-  # Try using existing host SSH config (expected Host exe-ctr-colima)
-  if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes exe-ctr-colima true 2>/dev/null; then
-    log "Injecting pubkey via ssh exe-ctr-colima"
-    ssh exe-ctr-colima 'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; tmp=$(mktemp); cat > "$tmp"; if ! grep -qxF -f "$tmp" ~/.ssh/authorized_keys; then cat "$tmp" >> ~/.ssh/authorized_keys; fi; rm -f "$tmp"; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys' <"${KEY_PATH}.pub"
+  # Try using existing host SSH config (expected Host colima-exe-ctr)
+  if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes colima-exe-ctr true 2>/dev/null; then
+    log "Injecting pubkey via ssh colima-exe-ctr"
+    ssh colima-exe-ctr 'umask 077; mkdir -p ~/.ssh; touch ~/.ssh/authorized_keys; tmp=$(mktemp); cat > "$tmp"; if ! grep -qxF -f "$tmp" ~/.ssh/authorized_keys; then cat "$tmp" >> ~/.ssh/authorized_keys; fi; rm -f "$tmp"; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys' <"${KEY_PATH}.pub"
     return $?
   fi
   return 1
@@ -93,7 +93,7 @@ inject_key() {
     return 0
   fi
   log "ERROR: Could not inject SSH key into ${COLIMA_PROFILE}. Is the VM running and reachable?"
-  log "       Try: ./ops/setup-colima-host.sh or ensure 'ssh exe-ctr-colima' works."
+  log "       Try: ./ops/setup-colima-host.sh or ensure 'ssh colima-exe-ctr' works."
   return 1
 }
 
@@ -115,7 +115,7 @@ cp "$KEY_PATH" "$TEMP_SSH_DIR/id_ed25519"
 chmod 600 "$TEMP_SSH_DIR/id_ed25519"
 
 cat > "$TEMP_SSH_DIR/config" <<EOF
-Host exe-ctr-colima
+Host colima-exe-ctr
     HostName host.docker.internal
     Port ${SSH_PORT}
     User ubuntu
@@ -138,12 +138,12 @@ read -r -d '' PROMPT <<'EOS'
 Goal: Run exed E2E tests end-to-end inside this container.
 
 Do this exactly:
-- Verify SSH to the Colima VM works: ssh exe-ctr-colima "echo ok"
+- Verify SSH to the Colima VM works: ssh colima-exe-ctr "echo ok"
 - go test ./e2e/expect
 - read main-test-prompt.txt and follow the instructions in there.
 EOS
 
 sketch -verbose -one-shot \
   -mount "$TEMP_SSH_DIR:/root/.ssh:ro" \
-  -docker-args "--add-host=host.docker.internal:host-gateway -e CTR_HOST=ssh://exe-ctr-colima" \
+  -docker-args "--add-host=host.docker.internal:host-gateway -e CTR_HOST=ssh://colima-exe-ctr" \
   -prompt "$PROMPT"

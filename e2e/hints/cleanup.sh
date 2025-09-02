@@ -11,8 +11,8 @@ fi
 
 # Stop any containers that were created during testing
 echo "Stopping test containers..."
-ssh exe-ctr-colima sudo nerdctl --namespace=exe ps --filter "name=exe-testtesttestteam-" --format "{{.ID}}" | xargs -r ssh exe-ctr-colima sudo nerdctl stop
-ssh exe-ctr-colima sudo nerdctl --namespace=exe ps -a --filter "name=exe-testtesttestteam-" --format "{{.ID}}" | xargs -r ssh exe-ctr-colima sudo nerdctl rm
+ssh colima-exe-ctr sudo nerdctl --namespace=exe ps --filter "name=exe-testtesttestteam-" --format "{{.ID}}" | xargs -r ssh colima-exe-ctr sudo nerdctl stop
+ssh colima-exe-ctr sudo nerdctl --namespace=exe ps -a --filter "name=exe-testtesttestteam-" --format "{{.ID}}" | xargs -r ssh colima-exe-ctr sudo nerdctl rm
 
 # Clean up SSH keys if desired
 read -p "Remove generated SSH keys? (y/N): " -n 1 -r

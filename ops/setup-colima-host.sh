@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-COLIMA_PROFILE="exe-ctr-colima"
+COLIMA_PROFILE="exe-ctr"
 COLIMA_CPUS=4
 COLIMA_MEMORY=8
 COLIMA_DISK=100
@@ -181,27 +181,27 @@ export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
 # Ensure prerequisites for data volume and tooling
-apt-get update -y
-apt-get install -y parted xfsprogs
+sudo apt-get update -y
+sudo apt-get install -y parted xfsprogs
 
 # Set up data volume as loopback XFS if not mounted
 echo "Setting up data volume (loopback XFS) for Colima..."
 if mount | grep -q "/data"; then
   echo "  /data is already mounted, skipping"
 else
-  mkdir -p /data
+  sudo mkdir -p /data
   if [ -f /data.img ]; then
     echo "  /data.img already exists, mounting it"
-    mount -o loop,pquota /data.img /data
+    sudo mount -o loop,pquota /data.img /data
   else
     echo "  Creating new /data.img file"
-    dd if=/dev/zero of=/data.img bs=1G count=20
-    mkfs.xfs /data.img
-    mount -o loop,pquota /data.img /data
+    sudo dd if=/dev/zero of=/data.img bs=1G count=20
+    sudo mkfs.xfs /data.img
+    sudo mount -o loop,pquota /data.img /data
   fi
   if ! grep -q '/data.img' /etc/fstab; then
     echo "  Adding /data mount to fstab"
-    echo '/data.img /data xfs loop,pquota 0 0' >> /etc/fstab
+    echo '/data.img /data xfs loop,pquota 0 0' | sudo tee -a /etc/fstab >/dev/null
   fi
 fi
 SCRIPT_EOF
@@ -263,7 +263,7 @@ if [[ -d "${PREBAKE_DIR}" ]]; then
         --vm-type vz --nested-virtualization --runtime containerd --kubernetes=false --network-address \
         --ssh-port ${SSH_PORT} --arch aarch64
     set +x
-    echo "Prebaked profile restored and started. Refreshing SSH keys and config..."
+    echo "Prebaked profile restored and started. Updating local SSH config..."
     PREBAKED=1
 else
     if colima list 2>/dev/null | grep -q "^${COLIMA_PROFILE}"; then
@@ -300,80 +300,24 @@ fi
 # Duplicate heavy provisioning block removed: handled in single no-prebake branch above
 echo ""
 echo "=========================================="
-echo "Setting up SSH access with ubuntu user"
+echo "Configuring host SSH using Colima ssh_config"
 echo "=========================================="
 
-# Check if user has an SSH key
-if [ ! -f ~/.ssh/id_ed25519.pub ] && [ ! -f ~/.ssh/id_rsa.pub ]; then
-    echo "Error: No SSH public key found at ~/.ssh/id_ed25519.pub or ~/.ssh/id_rsa.pub"
-    echo "Please generate an SSH key first with: ssh-keygen -t ed25519"
-    exit 1
+# Also ensure ~/.colima/ssh_config is included for all Colima hosts
+mkdir -p "$HOME/.ssh"
+if [ ! -f "$HOME/.ssh/config" ]; then
+  touch "$HOME/.ssh/config"
+  chmod 600 "$HOME/.ssh/config"
 fi
-
-# Determine which key to use (prefer ed25519)
-if [ -f ~/.ssh/id_ed25519.pub ]; then
-    SSH_KEY_FILE=~/.ssh/id_ed25519.pub
-    SSH_KEY_PRIVATE=~/.ssh/id_ed25519
+if ! grep -q ".colima/ssh_config" "$HOME/.ssh/config" 2>/dev/null; then
+  echo "Including ~/.colima/ssh_config in ~/.ssh/config"
+  tmpcfg=$(mktemp)
+  printf "Include ~/.colima/ssh_config\n\n" > "$tmpcfg"
+  cat "$HOME/.ssh/config" >> "$tmpcfg"
+  mv "$tmpcfg" "$HOME/.ssh/config"
+  chmod 600 "$HOME/.ssh/config"
 else
-    SSH_KEY_FILE=~/.ssh/id_rsa.pub
-    SSH_KEY_PRIVATE=~/.ssh/id_rsa
-fi
-
-echo "Using SSH key: $SSH_KEY_FILE"
-
-# Ubuntu user should already exist from earlier setup
-echo "Configuring ubuntu user for SSH access..."
-
-# Set up SSH for ubuntu user
-echo "Setting up SSH access for ubuntu user..."
-colima ssh -p ${COLIMA_PROFILE} -- sudo mkdir -p /home/ubuntu/.ssh
-colima ssh -p ${COLIMA_PROFILE} -- sudo chmod 700 /home/ubuntu/.ssh
-cat "$SSH_KEY_FILE" | colima ssh -p ${COLIMA_PROFILE} -- sudo tee /home/ubuntu/.ssh/authorized_keys > /dev/null
-colima ssh -p ${COLIMA_PROFILE} -- sudo chmod 600 /home/ubuntu/.ssh/authorized_keys
-colima ssh -p ${COLIMA_PROFILE} -- sudo chown -R ubuntu:ubuntu /home/ubuntu/.ssh
-
-# Ensure SSH server is running and configured
-echo "Configuring SSH server..."
-colima ssh -p ${COLIMA_PROFILE} -- sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-colima ssh -p ${COLIMA_PROFILE} -- sudo sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
-colima ssh -p ${COLIMA_PROFILE} -- sudo systemctl restart ssh 2>/dev/null || colima ssh -p ${COLIMA_PROFILE} -- sudo systemctl restart sshd
-
-# Create stable SSH config with fixed port
-echo "Creating SSH config entry with fixed port ${SSH_PORT}..."
-SSH_CONFIG_ENTRY="# Added by setup-colima-host.sh
-Host exe-ctr-colima
-    HostName 127.0.0.1
-    Port ${SSH_PORT}
-    User ubuntu
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-    IdentityFile ${SSH_KEY_PRIVATE}"
-
-# Update or add the SSH config entry
-if grep -q "^Host exe-ctr-colima$" ~/.ssh/config 2>/dev/null; then
-    echo "  Updating existing SSH config entry..."
-    # Remove old entry and add new one
-    sed -i.bak '/^Host exe-ctr-colima$/,/^$/d' ~/.ssh/config
-    sed -i.bak '/^# Added by setup-colima-host.sh$/d' ~/.ssh/config
-    sed -i.bak '/^# Added by exe setup scripts$/d' ~/.ssh/config
-    echo "" >> ~/.ssh/config
-    echo "$SSH_CONFIG_ENTRY" >> ~/.ssh/config
-    rm ~/.ssh/config.bak
-else
-    echo "  Adding new SSH config entry..."
-    echo "" >> ~/.ssh/config
-    echo "$SSH_CONFIG_ENTRY" >> ~/.ssh/config
-fi
-
-echo "✓ SSH config created with stable port ${SSH_PORT}"
-
-# Test the connection
-echo "Testing SSH connection..."
-if timeout 5 ssh -o ConnectTimeout=3 exe-ctr-colima "echo '✓ SSH connection successful'" 2>/dev/null; then
-    echo "✓ SSH to ubuntu@exe-ctr-colima is working"
-else
-    echo "⚠️  Warning: SSH connection test failed"
-    echo "  You may need to wait a moment for the VM to be ready"
+  echo "~/.colima/ssh_config already included"
 fi
 
 echo ""
@@ -381,7 +325,7 @@ echo "=========================================="
 echo "Done!"
 echo "=========================================="
 echo ""
-echo "VM setup complete: exe-ctr-colima"
+echo "VM setup complete: exe-ctr"
 echo "  SSH Port: ${SSH_PORT} (stable)"
 echo ""
 echo "To start exed:"

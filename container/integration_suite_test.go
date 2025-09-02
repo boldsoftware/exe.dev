@@ -18,7 +18,7 @@ import (
 func TestContainerIntegrationSuite(t *testing.T) {
 	host := os.Getenv("CTR_HOST")
 	if host == "" {
-		// Attempt to auto-detect local dev host (ssh exe-ctr-colima)
+		// Attempt to auto-detect local dev host
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
 		host = ctrhosttest.Detect(ctx)
