@@ -1,0 +1,31 @@
+#!/bin/bash
+set -e
+
+# Check if claude is already installed at /usr/local/bin/claude
+if [ -f /usr/local/bin/claude ]; then
+    exec /usr/local/bin/claude "$@"
+fi
+
+# Check if npm is installed
+if ! command -v npm >/dev/null 2>&1; then
+    echo "Installing npm..."
+    NODE_VERSION="22.18.0"
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) NODE_ARCH=x64 ;;
+        aarch64) NODE_ARCH=arm64 ;;
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;;
+    esac
+
+    cd /tmp
+    wget -q -O node.tar.xz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"
+    sudo tar -C /usr/local --strip-components=1 -xJf node.tar.xz
+    rm node.tar.xz
+fi
+
+# Install claude
+echo "Installing Claude Code..."
+npm install -g @anthropic-ai/claude-code
+
+# Execute claude with all arguments
+exec /usr/local/bin/claude "$@"
