@@ -9,18 +9,26 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/ctrhosttest"
 	"golang.org/x/crypto/ssh"
 )
 
 // TestContainerIntegrationSuite combines the heavy containerd-based tests to reduce
 // repeated manager creation and per-test setup/teardown cost.
 func TestContainerIntegrationSuite(t *testing.T) {
-	if os.Getenv("CTR_HOST") == "" {
-		t.Skip("CTR_HOST not set, skipping integration suite")
+	host := os.Getenv("CTR_HOST")
+	if host == "" {
+		// Attempt to auto-detect local dev host (ssh exe-ctr-colima)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		host = ctrhosttest.Detect(ctx)
+		if host == "" {
+			t.Skip("CTR_HOST not set and exe-ctr-colima not reachable; skipping integration suite")
+		}
 	}
 
 	cfg := &Config{
-		ContainerdAddresses:  []string{os.Getenv("CTR_HOST")},
+		ContainerdAddresses:  []string{host},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi",
 		DefaultStorageSize:   "1Gi",

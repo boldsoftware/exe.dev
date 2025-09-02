@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/ctrhosttest"
 	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
@@ -19,12 +20,20 @@ import (
 // TestNewSSHServerMachineConnection tests SSH connection to a specific machine
 func TestNewSSHServerMachineConnection(t *testing.T) {
 	t.Parallel()
-	// Skip if CTR_HOST is not set (requires container support)
-	if os.Getenv("CTR_HOST") == "" {
-		t.Skip("CTR_HOST not set, skipping machine connection test")
+	// Resolve CTR_HOST automatically if not set (dev convenience)
+	host := os.Getenv("CTR_HOST")
+	if host == "" {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		if detected := ctrhosttest.Detect(ctx); detected != "" {
+			host = detected
+		}
+	}
+	if host == "" {
+		t.Skip("CTR_HOST not set and exe-ctr-colima not reachable; skipping machine connection test")
 	}
 
-	server := NewTestServer(t, os.Getenv("CTR_HOST"))
+	server := NewTestServer(t, host)
 
 	// Generate a test SSH key pair
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)

@@ -1,12 +1,15 @@
 package container
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/ctrhosttest"
 )
 
 // findFreeSubnetOnRemote inspects existing nerdctl networks on the remote host
@@ -117,6 +120,14 @@ func cleanupAllocNetwork(t *testing.T, host, allocID string) {
 func WithAllocIPRange(t *testing.T, allocID string) string {
 	t.Helper()
 	host := os.Getenv("CTR_HOST")
+	if host == "" {
+		// Attempt auto-detection for local dev convenience
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		if detected := ctrhosttest.Detect(ctx); detected != "" {
+			host = detected
+		}
+	}
 	if host == "" || strings.HasPrefix(host, "/") {
 		return "" // local/non-remote: leave empty; prod path not under test
 	}

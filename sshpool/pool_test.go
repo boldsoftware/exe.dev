@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/ctrhosttest"
 )
 
 // TestPool tests the SSH connection pool functionality
@@ -16,6 +18,11 @@ func TestPool(t *testing.T) {
 		// Fall back to CTR_HOST when available to make CI easier to configure
 		if ctr := os.Getenv("CTR_HOST"); ctr != "" {
 			testHost = ctr
+		} else {
+			// As a last resort, auto-detect the local dev host (ssh exe-ctr-colima)
+			if detected := ctrhosttest.Detect(nil); detected != "" {
+				testHost = detected
+			}
 		}
 	}
 	if testHost == "" {

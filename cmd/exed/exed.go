@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"exe.dev"
+	"exe.dev/ctrhosttest"
 	"exe.dev/ipallocator"
 )
 
@@ -44,6 +47,14 @@ func run() error {
 	// Parse containerd addresses
 	var addresses []string
 
+	// Local helper to detect a dev containerd host (ssh exe-ctr-colima)
+	execontainerDetect := func() string {
+		// 5s overall timeout for detection
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return ctrhosttest.Detect(ctx)
+	}
+
 	// Check for CTR_HOST first
 	if ctrHost := os.Getenv("CTR_HOST"); ctrHost != "" {
 		addresses = []string{ctrHost}
@@ -54,14 +65,14 @@ func run() error {
 		for i, h := range addresses {
 			addresses[i] = strings.TrimSpace(h)
 		}
-	} else if *devMode == "local" {
-		// In local dev mode, default to ssh://exe-ctr-colima
-		addresses = []string{"ssh://exe-ctr-colima"}
-		slog.Info("Local dev mode: defaulting to ssh://exe-ctr-colima")
-	} else if *devMode == "test" {
-		// Test mode - default to ssh://exe-ctr-colima as well
-		addresses = []string{"ssh://exe-ctr-colima"}
-		slog.Info("Test mode: defaulting to ssh://exe-ctr-colima")
+	} else if *devMode == "local" || *devMode == "test" {
+		// In dev/test mode, auto-detect a usable CTR_HOST (ssh exe-ctr-colima)
+		if detected := execontainerDetect(); detected != "" {
+			addresses = []string{detected}
+			slog.Info("Dev mode: detected containerd host", "host", detected)
+		} else {
+			slog.Warn("Dev mode: could not detect containerd host (ssh exe-ctr-colima)")
+		}
 	}
 
 	if len(addresses) == 0 {

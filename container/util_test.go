@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/ctrhosttest"
 )
 
 // TestBackend represents the container backend configuration for tests
@@ -23,8 +25,18 @@ type TestBackend struct {
 // 4. Local docker available -> use local docker
 // 5. None available -> skip test
 func GetTestBackend(t *testing.T) *TestBackend {
-	// Check for CTR_HOST first (highest priority)
-	if ctrHost := os.Getenv("CTR_HOST"); ctrHost != "" {
+	// Resolve CTR_HOST: environment first, then auto-detect dev host (ssh exe-ctr-colima)
+	ctrHost := os.Getenv("CTR_HOST")
+	if ctrHost == "" {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		if detected := ctrhosttest.Detect(ctx); detected != "" {
+			ctrHost = detected
+			t.Logf("Detected CTR_HOST: %s", ctrHost)
+		}
+	}
+
+	if ctrHost != "" {
 		// Parse CTR_HOST - supports formats:
 		// - ssh://user@host or ssh://host -> remote containerd via SSH
 		// - user@host or host -> remote containerd via SSH

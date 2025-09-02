@@ -157,7 +157,7 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "ServerAliveInterval=30",
 		"-o", "ServerAliveCountMax=3",
-		"-o", "ConnectTimeout=10",
+		"-o", "ConnectTimeout=5",
 		"-N", // No command, just establish connection
 		host,
 	)
@@ -260,6 +260,19 @@ func (p *Pool) isConnectionAlive(conn *Connection) bool {
 
 // ExecCommand executes a command through a pooled SSH connection
 func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
+	// Ensure we have a bounded context to avoid very long DNS waits on invalid hosts.
+	// If caller did not provide a deadline, use a sensible default.
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
+		// Best-effort cancel when command is created; the caller runs the command.
+		// We cannot defer cancel here because the command may outlive this function.
+		// Intentionally not deferring: the command will stop on context expiration.
+		_ = cancel
+	}
 	// Normalize host and check bypass cache
 	normHost := strings.TrimPrefix(host, "ssh://")
 	if until, ok := p.bypassUntil[normHost]; ok {
@@ -283,6 +296,7 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 		"-o", fmt.Sprintf("ControlPath=%s", conn.controlPath),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ConnectTimeout=5",
 		"-o", "LogLevel=ERROR",
 		host,
 	}
@@ -301,11 +315,20 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 
 // execDirectSSH falls back to a direct SSH connection without pooling
 func (p *Pool) execDirectSSH(ctx context.Context, host string, args ...string) *exec.Cmd {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
+		_ = cancel
+	}
 	host = strings.TrimPrefix(host, "ssh://")
 
 	sshArgs := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ConnectTimeout=5",
 		"-o", "LogLevel=ERROR",
 		host,
 	}
