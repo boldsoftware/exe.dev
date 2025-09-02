@@ -31,11 +31,10 @@ func TestBoxCreation(t *testing.T) {
 	pty.wantRe(boxNameRe + ".*running")
 
 	// SSH to it.
-	t.Skip("broken: currently we get Permission denied, haven't debugged why yet")
 	pty = sshToBox(t, boxName, keyFile)
 	pty.want(boxName)
 	pty.sendLine("whoami")
-	pty.want("root")
+	pty.want("exedev")
 	pty.sendLine("exit")
 	pty.want("logout")
 }
