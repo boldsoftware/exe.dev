@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   commit-validation:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
     steps:
@@ -84,7 +84,7 @@ jobs:
 
   formatting:
     needs: commit-validation
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: write # needed for git push
       actions: write # needed to save caches
@@ -127,7 +127,7 @@ jobs:
 
   test:
     needs: [commit-validation, formatting]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read # required by actions/checkout
       actions: write # allow cache save from this job too
@@ -149,36 +149,32 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@latest
 
-      - name: Cache Docker images
-        uses: actions/cache@v3
-        with:
-          path: ~/docker-cache
-          key: docker-images-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
-
-      - name: Load cached Docker images
+      - name: start ephemeral vm
+        id: vm
         run: |
-          if [ -d ~/docker-cache ]; then
-            docker load -i ~/docker-cache/ubuntu-22.04.tar || true
-            docker load -i ~/docker-cache/alpine-latest.tar || true
-          fi
-
-      - name: Pre-pull and save Docker images
-        run: |
-          mkdir -p ~/docker-cache
-          if ! docker image inspect ubuntu:22.04 >/dev/null 2>&1; then
-            docker pull ubuntu:22.04
-          fi
-          if ! docker image inspect alpine:latest >/dev/null 2>&1; then
-            docker pull alpine:latest
-          fi
-          docker save ubuntu:22.04 -o ~/docker-cache/ubuntu-22.04.tar
-          docker save alpine:latest -o ~/docker-cache/alpine-latest.tar
+          set -euo pipefail
+          ./ops/ci-vm-start.sh | tee ci-vm-start.log
+          ENVFILE=$(tail -n1 ci-vm-start.log)
+          echo "envfile=$ENVFILE" >> "$GITHUB_OUTPUT"
+          # Export CTR_HOST for later steps
+          # shellcheck disable=SC1090
+          source "$ENVFILE"
+          echo "CTR_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
+          # Also set TEST_SSH_HOST so sshpool tests can run directly against the same host
+          echo "TEST_SSH_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
 
       - name: Run tests
         run: gotestsum --format testname -- ./...
 
+      - name: destroy ephemeral vm
+        if: always()
+        run: |
+          if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
+            ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
+          fi
+
   push-to-main:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [commit-validation, formatting, test]
     permissions:
       contents: write
