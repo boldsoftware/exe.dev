@@ -172,32 +172,6 @@ provision_fresh_vm() {
     return 1
   fi
 
-  echo "Installing required packages in VM..."
-  colima ssh -p ${COLIMA_PROFILE} -- sudo apt-get update
-  colima ssh -p ${COLIMA_PROFILE} -- sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-      ca-certificates curl gnupg lsb-release apt-transport-https jq build-essential pkg-config libseccomp-dev \
-      wget parted xfsprogs iptables iptables-persistent net-tools less vim
-
-  echo "Setting up data volume..."
-  if colima ssh -p ${COLIMA_PROFILE} -- mount | grep -q "/data"; then
-    echo "  /data is already mounted, skipping data volume setup"
-  else
-    colima ssh -p ${COLIMA_PROFILE} -- sudo mkdir -p /data
-    if colima ssh -p ${COLIMA_PROFILE} -- test -f /data.img; then
-      echo "  /data.img already exists, mounting it"
-      colima ssh -p ${COLIMA_PROFILE} -- sudo mount -o loop,pquota /data.img /data
-    else
-      echo "  Creating new /data.img file"
-      colima ssh -p ${COLIMA_PROFILE} -- sudo dd if=/dev/zero of=/data.img bs=1G count=20
-      colima ssh -p ${COLIMA_PROFILE} -- sudo mkfs.xfs /data.img
-      colima ssh -p ${COLIMA_PROFILE} -- sudo mount -o loop,pquota /data.img /data
-    fi
-    if ! colima ssh -p ${COLIMA_PROFILE} -- grep -q '/data.img' /etc/fstab; then
-      echo "  Adding /data mount to fstab"
-      echo '/data.img /data xfs loop,pquota 0 0' | colima ssh -p ${COLIMA_PROFILE} -- sudo tee -a /etc/fstab > /dev/null
-    fi
-  fi
-
   echo "Creating modified setup script for Colima environment..."
   cat > /tmp/setup-containerd-clh-nydus-colima.sh <<'SCRIPT_EOF'
 #!/bin/bash
@@ -206,8 +180,30 @@ echo "=== Starting setup for Colima VM with Cloud Hypervisor + Nydus ==="
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
-echo "=== Skipping swap setup (not needed for Colima testing) ==="
-echo "=== Data volume already configured at /data ==="
+# Ensure prerequisites for data volume and tooling
+apt-get update -y
+apt-get install -y parted xfsprogs
+
+# Set up data volume as loopback XFS if not mounted
+echo "Setting up data volume (loopback XFS) for Colima..."
+if mount | grep -q "/data"; then
+  echo "  /data is already mounted, skipping"
+else
+  mkdir -p /data
+  if [ -f /data.img ]; then
+    echo "  /data.img already exists, mounting it"
+    mount -o loop,pquota /data.img /data
+  else
+    echo "  Creating new /data.img file"
+    dd if=/dev/zero of=/data.img bs=1G count=20
+    mkfs.xfs /data.img
+    mount -o loop,pquota /data.img /data
+  fi
+  if ! grep -q '/data.img' /etc/fstab; then
+    echo "  Adding /data mount to fstab"
+    echo '/data.img /data xfs loop,pquota 0 0' >> /etc/fstab
+  fi
+fi
 SCRIPT_EOF
   sed -n '79,$p' "${script_dir}/setup-containerd-clh-nydus.sh" | sed 's/systemctl reload containerd/systemctl restart containerd/' >> /tmp/setup-containerd-clh-nydus-colima.sh
 
