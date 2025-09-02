@@ -1091,7 +1091,7 @@ done:
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		fmt.Fprintf(s, "\r\033[K")
-		fmt.Fprintf(s, "Ready in %.1fs! Access with \033[1m%s\033[0m\r\n\r\n",
+		fmt.Fprintf(s, "Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\r\n",
 			totalTime.Seconds(), sshCommand)
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
@@ -1147,7 +1147,7 @@ func (ss *SSHServer) handleStartCommand(s ssh.Session, allocID string, args []st
 	}
 
 	sshCommand := ss.server.formatSSHConnectionInfo(allocID, machineName)
-	fmt.Fprintf(s, "\033[1;32mMachine started!\033[0m Access with \033[1m%s\033[0m\r\n", sshCommand)
+	fmt.Fprintf(s, "\033[1;32mMachine started!\033[0m Access with:\r\n\r\n\033[1m%s\033[0m\r\n", sshCommand)
 }
 
 func (ss *SSHServer) handleStopCommand(s ssh.Session, args []string) {
