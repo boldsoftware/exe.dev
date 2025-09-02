@@ -4,13 +4,13 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'Dockerfile'
+      - 'exeuntu/Dockerfile'
       - '.github/workflows/build-exeuntu.yml'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: boldsoftware/exeuntu
 
 jobs:
   build-and-push:
@@ -46,7 +46,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./
+          context: ./exeuntu
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
