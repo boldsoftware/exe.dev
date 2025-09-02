@@ -1056,7 +1056,7 @@ done:
 
 	if createErr != nil {
 		guid := uuid.New().String() // for x-ref on support tickets
-		slog.Debug("createContainer error", "error", createErr, "publicKey", publicKey, "userID", user.UserID, "allocID", allocID, "boxName", machineName, "image", image, "size", size, "guid", guid)
+		slog.Info("createContainer error", "error", createErr, "publicKey", publicKey, "userID", user.UserID, "allocID", allocID, "boxName", machineName, "image", image, "size", size, "guid", guid)
 		fmt.Fprintf(s, "\033[1;31mSorry, something went wrong. Error ID: %v\033[0m\r\n", guid)
 		return
 	}
