@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -1598,48 +1597,4 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	}
 
 	return nil
-}
-
-// getMachine retrieves a machine for the given user/team/name
-func (ss *SSHServer) getMachine(ctx context.Context, publicKey, allocID, machineName string) (*Machine, error) {
-	// First verify user has access to the alloc
-	var exists bool
-	err := ss.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-			SELECT EXISTS(
-				SELECT 1 FROM allocs a
-				JOIN users u ON a.user_id = u.user_id
-				JOIN ssh_keys sk ON u.user_id = sk.user_id
-				WHERE sk.public_key = ? AND sk.verified = 1 AND a.alloc_id = ?
-			)`, publicKey, allocID).Scan(&exists)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("database error: %v", err)
-	}
-	if !exists {
-		return nil, fmt.Errorf("access denied to allocation '%s'", allocID)
-	}
-
-	// Get the machine
-	var machine Machine
-	err = ss.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-			SELECT id, alloc_id, name, status, image, container_id,
-			       created_by_user_id, created_at, updated_at,
-			       last_started_at, docker_host, routes
-			FROM machines
-			WHERE name = ? AND alloc_id = ?`, machineName, allocID).Scan(
-			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
-			&machine.DockerHost, &machine.Routes)
-	})
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("machine '%s' not found", machineName)
-		}
-		return nil, fmt.Errorf("database error: %v", err)
-	}
-
-	return &machine, nil
 }
