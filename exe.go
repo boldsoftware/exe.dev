@@ -382,6 +382,9 @@ type Server struct {
 	// IP allocation strategy for dev/production modes
 	ipAllocator ipallocator.IPAllocator
 
+	startIPClassB ipClassB
+	startIPClassC ipClassC
+
 	mu       sync.RWMutex
 	stopping bool
 }
@@ -587,6 +590,8 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		testMode:           testing.Testing() || devMode == "test",
 		metricsRegistry:    metricsRegistry,
 		sshMetrics:         sshMetrics,
+		startIPClassB:      newIPClassB(),
+		startIPClassC:      newIPClassC(),
 	}
 
 	s.setupHTTPServer()
@@ -3026,7 +3031,7 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 // TODO: this is inefficient. Implement something with better DB support.
 //
 //	(e.g. generated columns for each octet, then indexes?)
-func (s *Server) allocateIPRange(ctx context.Context, tx *sqlite.Tx, dockerHost string) (string, error) {
+func (s *Server) allocateIPRange(tx *sqlite.Tx, dockerHost string) (string, error) {
 	// Query all existing IP ranges for this docker host
 	rows, err := tx.Query(`
 		SELECT ip_range
@@ -3049,10 +3054,14 @@ func (s *Server) allocateIPRange(ctx context.Context, tx *sqlite.Tx, dockerHost 
 		usedRanges[ipRange] = true
 	}
 
-	// Find the first available 10.X.Y.0/24 range
+	// Find the first available 10.X.Y.0/24 range, starting from a randomized position.
+	// The randomized starting position helps avoid conflicts during tests.
 	// We use 10.42.0.0/16 through 10.99.0.0/16 (58 * 256 = 14,848 possible /24 networks)
-	for x := 42; x <= 99; x++ {
-		for y := 0; y <= 255; y++ {
+	// Start from randomized position to avoid conflicts between exed instances
+	for xIndex := range classBSize {
+		x := s.startIPClassB.get(xIndex)
+		for yIndex := range classCSize {
+			y := s.startIPClassC.get(yIndex)
 			candidate := fmt.Sprintf("10.%d.%d.0/24", x, y)
 			if !usedRanges[candidate] {
 				return candidate, nil
@@ -3100,7 +3109,7 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 		dockerHost := s.selectDockerHostForNewAlloc()
 
 		// Allocate an IP range for this alloc
-		ipRange, err := s.allocateIPRange(ctx, tx, dockerHost)
+		ipRange, err := s.allocateIPRange(tx, dockerHost)
 		if err != nil {
 			return fmt.Errorf("failed to allocate IP range: %w", err)
 		}
@@ -3147,7 +3156,7 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 
 		err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			// Allocate an IP range for this alloc
-			ipRange, err := s.allocateIPRange(ctx, tx, dockerHost)
+			ipRange, err := s.allocateIPRange(tx, dockerHost)
 			if err != nil {
 				return fmt.Errorf("failed to allocate IP range: %w", err)
 			}
@@ -3229,7 +3238,7 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 		dockerHost := s.selectDockerHostForNewAlloc()
 
 		// Allocate an IP range for this alloc
-		ipRange, err := s.allocateIPRange(ctx, tx, dockerHost)
+		ipRange, err := s.allocateIPRange(tx, dockerHost)
 		if err != nil {
 			return fmt.Errorf("failed to allocate IP range: %w", err)
 		}
@@ -3698,3 +3707,24 @@ func (s *Server) setupContainerSSH(ctx context.Context, machineID int) error {
 	log.Printf("SSH setup completed for machine %d", machineID)
 	return nil
 }
+
+const (
+	classBStart = 42
+	classBEnd   = 99
+	classBSize  = classBEnd - classBStart + 1 // 42-99 inclusive = 58 values
+	classCStart = 0
+	classCEnd   = 255
+	classCSize  = classCEnd - classCStart + 1 // 0-255 inclusive = 256 values
+)
+
+// ipClassB represents a Class B (second octet) IP range with randomized starting point
+type ipClassB struct{ base int }
+
+func newIPClassB() ipClassB           { return ipClassB{base: mathrand.Intn(classBSize)} }
+func (cb ipClassB) get(index int) int { return classBStart + ((cb.base + index) % classBSize) }
+
+// ipClassC represents a Class C (third octet) IP range with randomized starting point
+type ipClassC struct{ base int }
+
+func newIPClassC() ipClassC           { return ipClassC{base: mathrand.Intn(classCSize)} }
+func (cc ipClassC) get(index int) int { return classCStart + ((cc.base + index) % classCSize) }

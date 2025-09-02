@@ -14,7 +14,9 @@ func TestIPRangeAllocation(t *testing.T) {
 
 	ctx := t.Context()
 
-	t.Run("FirstAllocationGetsFirstRange", func(t *testing.T) {
+	var firstRange string // Store first allocated range for comparison
+
+	t.Run("FirstAllocationGetsValidRange", func(t *testing.T) {
 		// Create a user with alloc
 		userID := "test-user-1"
 		email := "user1@example.com"
@@ -30,14 +32,27 @@ func TestIPRangeAllocation(t *testing.T) {
 
 			// Allocate IP range
 			dockerHost := "test-host"
-			ipRange, err := server.allocateIPRange(ctx, tx, dockerHost)
+			ipRange, err := server.allocateIPRange(tx, dockerHost)
 			if err != nil {
 				return err
 			}
 
-			// Should get the first available range
-			if ipRange != "10.42.0.0/24" {
-				t.Errorf("Expected first allocation to get 10.42.0.0/24, got %s", ipRange)
+			// Store first range for later comparison
+			firstRange = ipRange
+
+			// Should get a valid range in format 10.X.Y.0/24
+			var x, y int
+			if n, err := fmt.Sscanf(ipRange, "10.%d.%d.0/24", &x, &y); err != nil || n != 2 {
+				t.Errorf("Invalid IP range format: %s", ipRange)
+			} else {
+				// Check X is in valid range (42-99)
+				if x < 42 || x > 99 {
+					t.Errorf("IP range X value out of range: %d in %s", x, ipRange)
+				}
+				// Check Y is in valid range (0-255)
+				if y < 0 || y > 255 {
+					t.Errorf("IP range Y value out of range: %d in %s", y, ipRange)
+				}
 			}
 
 			// Create alloc with the IP range
@@ -68,14 +83,29 @@ func TestIPRangeAllocation(t *testing.T) {
 
 			// Allocate IP range
 			dockerHost := "test-host"
-			ipRange, err := server.allocateIPRange(ctx, tx, dockerHost)
+			ipRange, err := server.allocateIPRange(tx, dockerHost)
 			if err != nil {
 				return err
 			}
 
-			// Should get the second available range
-			if ipRange != "10.42.1.0/24" {
-				t.Errorf("Expected second allocation to get 10.42.1.0/24, got %s", ipRange)
+			// Should get a different range than the first one
+			if ipRange == firstRange {
+				t.Errorf("Second allocation should get different range, but got same as first: %s", ipRange)
+			}
+
+			// Should be valid format
+			var x, y int
+			if n, err := fmt.Sscanf(ipRange, "10.%d.%d.0/24", &x, &y); err != nil || n != 2 {
+				t.Errorf("Invalid IP range format: %s", ipRange)
+			} else {
+				// Check X is in valid range (42-99)
+				if x < 42 || x > 99 {
+					t.Errorf("IP range X value out of range: %d in %s", x, ipRange)
+				}
+				// Check Y is in valid range (0-255)
+				if y < 0 || y > 255 {
+					t.Errorf("IP range Y value out of range: %d in %s", y, ipRange)
+				}
 			}
 
 			// Create alloc with the IP range
@@ -106,14 +136,29 @@ func TestIPRangeAllocation(t *testing.T) {
 
 			// Allocate IP range for a different docker host
 			dockerHost := "different-host"
-			ipRange, err := server.allocateIPRange(ctx, tx, dockerHost)
+			ipRange, err := server.allocateIPRange(tx, dockerHost)
 			if err != nil {
 				return err
 			}
 
-			// Should get the first range again since it's a different host
-			if ipRange != "10.42.0.0/24" {
-				t.Errorf("Expected different host to get 10.42.0.0/24, got %s", ipRange)
+			// Should be able to reuse same range as first allocation since it's a different host
+			if ipRange != firstRange {
+				t.Errorf("Expected different host to reuse first range %s, got %s", firstRange, ipRange)
+			}
+
+			// Should be valid format
+			var x, y int
+			if n, err := fmt.Sscanf(ipRange, "10.%d.%d.0/24", &x, &y); err != nil || n != 2 {
+				t.Errorf("Invalid IP range format: %s", ipRange)
+			} else {
+				// Check X is in valid range (42-99)
+				if x < 42 || x > 99 {
+					t.Errorf("IP range X value out of range: %d in %s", x, ipRange)
+				}
+				// Check Y is in valid range (0-255)
+				if y < 0 || y > 255 {
+					t.Errorf("IP range Y value out of range: %d in %s", y, ipRange)
+				}
 			}
 
 			// Create alloc with the IP range
@@ -144,7 +189,7 @@ func TestIPRangeAllocation(t *testing.T) {
 				}
 
 				// Allocate IP range
-				ipRange, err := server.allocateIPRange(ctx, tx, dockerHost)
+				ipRange, err := server.allocateIPRange(tx, dockerHost)
 				if err != nil {
 					return err
 				}

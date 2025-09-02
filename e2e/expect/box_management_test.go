@@ -21,7 +21,6 @@ func TestBoxCreation(t *testing.T) {
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
 	pty.wantRe("Creating .*" + boxNameRe)
-	t.Skip("intermittently fails with network address space overlap")
 	// break onto two lines because ANSI codes
 	pty.want("Access with")
 	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)
@@ -51,7 +50,6 @@ func TestDuplicateBoxCreationFails(t *testing.T) {
 	boxName := strings.ToLower(t.Name())
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
-	t.Skip("intermittently fails with network address space overlap")
 	pty.want("ssh") // wait for ssh instructions
 
 	pty.sendLine("new --name=" + boxName)
