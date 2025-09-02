@@ -8,42 +8,4 @@ on:
 
 jobs:
   test:
-    runs-on: [self-hosted, linux, x64]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.mod"
-          cache: true
-          cache-dependency-path: "go.sum"
-
-      - name: Warm module cache
-        run: go mod download
-
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@latest
-
-      - name: start ephemeral vm
-        id: vm
-        run: |
-          set -euo pipefail
-          ./ops/ci-vm-start.sh | tee ci-vm-start.log
-          ENVFILE=$(tail -n1 ci-vm-start.log)
-          echo "envfile=$ENVFILE" >> "$GITHUB_OUTPUT"
-          # Export CTR_HOST for later steps
-          # shellcheck disable=SC1090
-          source "$ENVFILE"
-          echo "CTR_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
-          # Also set TEST_SSH_HOST so sshpool tests can run directly against the same host
-          echo "TEST_SSH_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
-
-      - name: Run tests
-        run: gotestsum --format testname -- ./...
-
-      - name: destroy ephemeral vm
-        if: always()
-        run: |
-          if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
-            ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
-          fi
+    uses: ./.github/workflows/_tests.yml
