@@ -114,8 +114,11 @@ func TestContainerWithSSH(t *testing.T) {
 	defer cancel()
 
 	// Create container request
+	ipRange := WithAllocIPRange(t, "test-alloc")
+
 	req := &CreateContainerRequest{
 		AllocID: "test-alloc",
+		IPRange: ipRange,
 		Name:    "ssh-test",
 		Image:   "ubuntu:22.04",
 	}
@@ -199,14 +202,20 @@ func TestContainerWithSSH(t *testing.T) {
 
 	// Verify SSH key files exist in container - only if SSH daemon is running
 	if sshRunning {
+		// exetini configures sshd to read from /exe.dev/etc/ssh. Check those paths first,
+		// then fall back to conventional locations if needed.
 		var keyFileCheck strings.Builder
+		checkCmd := strings.Join([]string{
+			"ls -la /exe.dev/etc/ssh/ssh_host_ed25519_key /exe.dev/etc/ssh/ssh_host_ed25519_key.pub /exe.dev/etc/ssh/authorized_keys",
+			"|| ls -la /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key.pub /root/.ssh/authorized_keys",
+		}, " ")
 		err = manager.ExecuteInContainer(ctx, req.AllocID, container.ID,
-			[]string{"ls", "-la", "/etc/ssh/ssh_host_ed25519_key", "/etc/ssh/ssh_host_ed25519_key.pub", "/root/.ssh/authorized_keys"},
+			[]string{"sh", "-c", checkCmd},
 			nil, &keyFileCheck, nil)
 		if err != nil {
 			t.Errorf("SSH key files not found in container: %v", err)
 		} else {
-			t.Logf("SSH key files found: %s", keyFileCheck.String())
+			t.Logf("SSH key files found:\n%s", keyFileCheck.String())
 		}
 	}
 }

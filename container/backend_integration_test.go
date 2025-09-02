@@ -19,10 +19,12 @@ func TestBackendIntegration(t *testing.T) {
 
 	ctx := t.Context()
 	allocID := "test-alloc"
+	ipRange := WithAllocIPRange(t, allocID)
 
 	t.Run("CreateAndDeleteContainer", func(t *testing.T) {
 		req := &CreateContainerRequest{
 			AllocID: allocID,
+			IPRange: ipRange,
 			Name:    fmt.Sprintf("test-%d", time.Now().UnixNano()),
 			Image:   "alpine:latest",
 		}
@@ -53,6 +55,7 @@ func TestBackendIntegration(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			req := &CreateContainerRequest{
 				AllocID: allocID,
+				IPRange: ipRange,
 				Name:    fmt.Sprintf("list-test-%d-%d", i, time.Now().UnixNano()),
 				Image:   "alpine:latest",
 			}
@@ -93,6 +96,7 @@ func TestBackendIntegration(t *testing.T) {
 	t.Run("StartStopContainer", func(t *testing.T) {
 		req := &CreateContainerRequest{
 			AllocID:         allocID,
+			IPRange:         ipRange,
 			Name:            fmt.Sprintf("startstop-%d", time.Now().UnixNano()),
 			Image:           "alpine:latest",
 			CommandOverride: "sleep 3600", // Long-running command
@@ -136,6 +140,7 @@ func TestBackendIntegration(t *testing.T) {
 	t.Run("ExecuteCommand", func(t *testing.T) {
 		req := &CreateContainerRequest{
 			AllocID: allocID,
+			IPRange: ipRange,
 			Name:    fmt.Sprintf("exec-%d", time.Now().UnixNano()),
 			Image:   "alpine:latest",
 		}
@@ -237,9 +242,15 @@ func TestRemoteContainerdSSH(t *testing.T) {
 
 	ctx := t.Context()
 
-	// Create a container on the remote host
+	// Determine per-alloc IP range using the same policy space as production
+	// by inspecting existing nerdctl networks on the remote host and picking
+	// the first free /24 in 10.42.0.0/16..10.99.255.0/24.
+	ipRange := WithAllocIPRange(t, "remote-test")
+
+	// Create a container on the remote host with explicit per-alloc subnet
 	req := &CreateContainerRequest{
 		AllocID: "remote-test",
+		IPRange: ipRange,
 		Name:    fmt.Sprintf("remote-%d", time.Now().UnixNano()),
 		Image:   "alpine:latest",
 	}

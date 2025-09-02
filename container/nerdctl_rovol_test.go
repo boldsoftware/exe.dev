@@ -39,8 +39,12 @@ func TestNerdctlRovolFS(t *testing.T) {
 	defer cancel()
 
 	// Create a test container
+	allocID := "test-rovol-" + time.Now().Format("20060102-150405")
+	ipRange := WithAllocIPRange(t, allocID)
+
 	req := &CreateContainerRequest{
-		AllocID:         "test-rovol-" + time.Now().Format("20060102-150405"),
+		AllocID:         allocID,
+		IPRange:         ipRange,
 		Name:            "rovol-test",
 		Image:           "ubuntu:latest",
 		CommandOverride: "auto",
@@ -173,19 +177,18 @@ func TestNerdctlRovolFSCleanup(t *testing.T) {
 	host := config.ContainerdAddresses[0]
 
 	for _, path := range []string{rovolPath1, rovolPath2} {
-		var checkCmd *exec.Cmd
+		var err error
 		if host != "" && !strings.HasPrefix(host, "/") {
-			sshHost := host
-			if strings.HasPrefix(sshHost, "ssh://") {
-				sshHost = strings.TrimPrefix(sshHost, "ssh://")
-			}
-			// Always use sudo for remote commands
-			checkCmd = exec.CommandContext(ctx, "ssh", sshHost, "sudo", "test", "-d", path)
+			// Use the manager's SSH pool so we inherit the same SSH options
+			// (StrictHostKeyChecking=no, ControlPath, etc.). This avoids CI
+			// failures due to unknown host keys or missing ControlMaster.
+			checkCmd := manager2.sshPool.ExecCommand(ctx, host, "sudo", "test", "-d", path)
+			err = checkCmd.Run()
 		} else {
-			checkCmd = exec.CommandContext(ctx, "test", "-d", path)
+			err = exec.CommandContext(ctx, "test", "-d", path).Run()
 		}
 
-		if err := checkCmd.Run(); err != nil {
+		if err != nil {
 			t.Errorf("RovolFS path %s does not exist on host", path)
 		} else {
 			t.Logf("RovolFS path %s exists on host", path)

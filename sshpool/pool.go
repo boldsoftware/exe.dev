@@ -30,6 +30,7 @@ type Pool struct {
 	connections map[string]*Connection
 	mu          sync.RWMutex
 	baseDir     string
+	bypassUntil map[string]time.Time
 }
 
 // shellQuoteCommand quotes multiple arguments and joins them with spaces.
@@ -62,6 +63,7 @@ func New() *Pool {
 	pool := &Pool{
 		connections: make(map[string]*Connection),
 		baseDir:     baseDir,
+		bypassUntil: make(map[string]time.Time),
 	}
 
 	// Start a goroutine to periodically clean up stale connections
@@ -97,6 +99,13 @@ func (p *Pool) getConnection(ctx context.Context, host string) (*Connection, err
 	// Normalize the host string
 	host = strings.TrimPrefix(host, "ssh://")
 
+	// If we've recently decided to bypass ControlMaster for this host, bail out early
+	if until, ok := p.bypassUntil[host]; ok {
+		if time.Now().Before(until) {
+			return nil, fmt.Errorf("bypassing ControlMaster for %s until %s", host, until.Format(time.RFC3339))
+		}
+		delete(p.bypassUntil, host)
+	}
 	p.mu.RLock()
 	conn, exists := p.connections[host]
 	p.mu.RUnlock()
@@ -159,9 +168,33 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 		return nil, fmt.Errorf("failed to start SSH master connection to %s: %w", host, err)
 	}
 
-	// Wait a moment for the control socket to be created
+	// Wait for the control socket to be created, but respect the caller's context
+	// so short-lived operations (e.g., 2s timeouts in tests) don't block here.
 	socketCreated := false
-	for i := 0; i < 50; i++ {
+	startWait := time.Now()
+	// Default max wait is 5s, but shrink to the caller's deadline if sooner
+	maxWait := 5 * time.Second
+	if dl, ok := ctx.Deadline(); ok {
+		if remain := time.Until(dl); remain > 0 && remain < maxWait {
+			// Leave a small margin so the caller has time to run the actual command
+			// after the connection is ready.
+			const margin = 250 * time.Millisecond
+			if remain > margin {
+				maxWait = remain - margin
+			} else {
+				maxWait = remain
+			}
+		}
+	}
+
+	for time.Since(startWait) < maxWait {
+		// Allow early exit if the caller cancels
+		select {
+		case <-ctx.Done():
+			break
+		default:
+		}
+
 		if _, err := os.Stat(controlPath); err == nil {
 			socketCreated = true
 			break
@@ -181,6 +214,8 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 	if _, err := os.Stat(controlPath); err != nil {
 		cancel()
 		masterCmd.Process.Kill()
+		// Avoid repeatedly attempting ControlMaster on environments where it doesn't work
+		p.bypassUntil[host] = time.Now().Add(30 * time.Minute)
 		return nil, fmt.Errorf("SSH control socket not created for %s: %w", host, err)
 	}
 
@@ -225,11 +260,21 @@ func (p *Pool) isConnectionAlive(conn *Connection) bool {
 
 // ExecCommand executes a command through a pooled SSH connection
 func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
+	// Normalize host and check bypass cache
+	normHost := strings.TrimPrefix(host, "ssh://")
+	if until, ok := p.bypassUntil[normHost]; ok {
+		if time.Now().Before(until) {
+			return p.execDirectSSH(ctx, host, args...)
+		}
+		delete(p.bypassUntil, normHost)
+	}
+
 	// Get or create connection
 	conn, err := p.getConnection(ctx, host)
 	if err != nil {
 		log.Printf("[SSH-POOL] Failed to get connection to %s: %v", host, err)
-		// Fall back to direct SSH
+		// Fall back to direct SSH and remember to bypass for a while
+		p.bypassUntil[normHost] = time.Now().Add(30 * time.Minute)
 		return p.execDirectSSH(ctx, host, args...)
 	}
 
@@ -238,6 +283,7 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 		"-o", fmt.Sprintf("ControlPath=%s", conn.controlPath),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
 		host,
 	}
 
@@ -260,6 +306,7 @@ func (p *Pool) execDirectSSH(ctx context.Context, host string, args ...string) *
 	sshArgs := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
 		host,
 	}
 
@@ -306,12 +353,16 @@ func (p *Pool) StreamCommand(ctx context.Context, host string, stdin io.Reader, 
 
 // CheckHostConnection verifies that we can connect to a host
 func (p *Pool) CheckHostConnection(ctx context.Context, host string) error {
-	_, err := p.getConnection(ctx, host)
-	if err != nil {
-		return err
+	// Try to ensure a ControlMaster exists; if we're in bypass mode, continue with direct SSH.
+	if _, err := p.getConnection(ctx, host); err != nil {
+		// If we're bypassing ControlMaster for this host, still attempt a direct command via ExecCommand,
+		// which already handles bypass. Only fail fast for other errors.
+		if !strings.Contains(err.Error(), "bypassing ControlMaster") {
+			return err
+		}
 	}
 
-	// Run a simple test command
+	// Run a simple test command using the normal ExecCommand path (handles pooling or bypass)
 	testCmd := p.ExecCommand(ctx, host, "echo", "test")
 	output, err := testCmd.CombinedOutput()
 	if err != nil {

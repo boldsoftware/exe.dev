@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -38,8 +39,10 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 	t.Log("Creating test container request...")
 	// Use a unique AllocID to avoid network conflicts
 	uniqueID := fmt.Sprintf("test-ssh-%d", time.Now().UnixNano())
+	ipRange := WithAllocIPRange(t, uniqueID)
 	req := &CreateContainerRequest{
 		AllocID:         uniqueID,
+		IPRange:         ipRange,
 		Name:            "sshtest",
 		Image:           "ubuntu:latest",
 		CommandOverride: "",
@@ -60,9 +63,6 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 			t.Logf("warning: failed to delete container: %v", err)
 		}
 	}()
-
-	// Give SSH some time to start
-	time.Sleep(10 * time.Second)
 
 	// Test SSH connectivity
 	t.Run("DirectSSHConnection", func(t *testing.T) {
@@ -93,9 +93,32 @@ func TestNerdctlSSHConnectivity(t *testing.T) {
 			sshAddr = fmt.Sprintf("localhost:%d", container.SSHPort)
 		}
 
-		client, err := ssh.Dial("tcp", sshAddr, sshConfig)
-		if err != nil {
-			t.Fatalf("failed to connect via SSH: %v", err)
+		// Wait for the SSH port/tunnel to accept connections instead of sleeping
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			c, err := net.DialTimeout("tcp", sshAddr, 500*time.Millisecond)
+			if err == nil {
+				c.Close()
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("SSH port %s not accepting connections after timeout: %v", sshAddr, err)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// Perform SSH handshake with retries; port readiness does not guarantee sshd readiness
+		var client *ssh.Client
+		handshakeDeadline := time.Now().Add(30 * time.Second)
+		for {
+			client, err = ssh.Dial("tcp", sshAddr, sshConfig)
+			if err == nil {
+				break
+			}
+			if time.Now().After(handshakeDeadline) {
+				t.Fatalf("failed to connect via SSH: %v", err)
+			}
+			time.Sleep(150 * time.Millisecond)
 		}
 		defer client.Close()
 

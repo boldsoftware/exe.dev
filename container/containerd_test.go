@@ -42,7 +42,8 @@ func TestContainerdIntegration(t *testing.T) {
 		t.Skip("CTR_HOST not set, skipping e2e container test")
 	}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	// Allow a bit more time for the first pooled SSH connection and remote ps
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 
 	cfg := &Config{

@@ -200,27 +200,47 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 	// nerdctl info doesn't reliably report available runtimes
 
 	// Try to run a simple test container with Kata runtime
-	testContainerName := fmt.Sprintf("kata-test-%d", time.Now().Unix())
+	testContainerName := fmt.Sprintf("kata-test-%d", time.Now().UnixNano())
 
 	// Build the test command with nydus snapshotter
 	// Use --network none to avoid CNI issues during verification
 	args := []string{"--snapshotter", "nydus", "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", testContainerName, "alpine:latest", "echo", "kata-test"}
 
+	// Best-effort cleanup in case a previous run left the name behind
+	_ = m.execNerdctl(ctx, host, "rm", "-f", testContainerName).Run()
+
 	testCmd := m.execNerdctl(ctx, host, args...)
 
 	output, err := testCmd.CombinedOutput()
 	if err != nil {
-		// Check if it's because Kata isn't available
+		// Check if this is a transient name collision; retry once with a random suffix
 		outputStr := string(output)
+		if strings.Contains(outputStr, "name \"") && strings.Contains(outputStr, "is already used") {
+			// Retry with a unique name
+			retryBytes := make([]byte, 4)
+			_, _ = rand.Read(retryBytes)
+			retryName := fmt.Sprintf("%s-%s", testContainerName, hex.EncodeToString(retryBytes))
+			_ = m.execNerdctl(ctx, host, "rm", "-f", retryName).Run()
+			retryArgs := []string{"--snapshotter", "nydus", "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", retryName, "alpine:latest", "echo", "kata-test"}
+			retryCmd := m.execNerdctl(ctx, host, retryArgs...)
+			if rOut, rErr := retryCmd.CombinedOutput(); rErr == nil {
+				if strings.Contains(string(rOut), "kata-test") {
+					log.Printf("Kata runtime successfully verified on %s (after name collision retry)", host)
+					return nil
+				}
+			}
+			// Fall through to error handling if retry did not succeed
+		}
+
+		// Check if it's because Kata isn't available
 		if strings.Contains(outputStr, "not found") || strings.Contains(outputStr, "unknown runtime") ||
 			strings.Contains(outputStr, "kata") || strings.Contains(outputStr, "runtime") {
 			// We already checked kata-runtime binary above, so just report the error
 			if kataErr != nil {
 				return fmt.Errorf("Kata runtime not available: nerdctl test failed (%v) and kata-runtime binary check failed (%v)", err, kataErr)
-			} else {
-				// kata-runtime exists but nerdctl can't use it
-				return fmt.Errorf("Kata runtime binary found but not usable via nerdctl: %v: %s", err, outputStr)
 			}
+			// kata-runtime exists but nerdctl can't use it
+			return fmt.Errorf("Kata runtime binary found but not usable via nerdctl: %v: %s", err, outputStr)
 		}
 		// Some other error
 		return fmt.Errorf("failed to verify Kata runtime: %w: %s", err, outputStr)
@@ -238,7 +258,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 // discoverContainers discovers existing containers on a host
 func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) error {
 	// List containers with their labels
-	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--format", "json")
+	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--no-trunc", "--format", "json")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to list containers: %w", err)
@@ -637,12 +657,18 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Allocate SSH port first so we can publish it
-	// Use a hash of allocID and name to get a stable port
+	// Use a hash of allocID and name to get a stable port in [10000,19999].
+	// Ensure we never pick a privileged port (<1024).
 	hash := 0
 	for _, b := range []byte(req.AllocID + req.Name) {
 		hash = hash*31 + int(b)
 	}
-	sshPort := 10000 + (hash % 10000)
+	// Make the modulus positive even if hash overflowed negative
+	offset := hash % 10000
+	if offset < 0 {
+		offset = -offset
+	}
+	sshPort := 10000 + offset
 
 	// Always use exetini for containers. exetini is responsible for handling
 	// special init chaining cases internally.
@@ -1334,14 +1360,20 @@ func (m *NerdctlManager) ListContainers(ctx context.Context, allocID string) ([]
 		host = m.config.ContainerdAddresses[0]
 	}
 
-	// List containers with the alloc_id label
-	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--format", "json", "--filter", fmt.Sprintf("label=alloc_id=%s", allocID))
+	// List containers with the alloc_id label. Use --no-trunc so IDs match
+	// the full-length IDs returned at create time.
+	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--no-trunc", "--format", "json", "--filter", fmt.Sprintf("label=alloc_id=%s", allocID))
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	// Parse JSON output
+	// Nerdctl may output nothing if there are no matching containers
+	if strings.TrimSpace(string(output)) == "" {
+		return []*Container{}, nil
+	}
+
+	// Parse JSON output: nerdctl may emit a JSON array or one JSON object per line
 	type psEntry struct {
 		ID     string `json:"ID"`
 		Names  string `json:"Names"`
@@ -1350,8 +1382,29 @@ func (m *NerdctlManager) ListContainers(ctx context.Context, allocID string) ([]
 	}
 
 	var entries []psEntry
-	if err := json.Unmarshal(output, &entries); err != nil {
-		return nil, fmt.Errorf("failed to parse container list: %w", err)
+	data := strings.TrimSpace(string(output))
+	if data == "" {
+		return []*Container{}, nil
+	}
+	if strings.HasPrefix(data, "[") {
+		if err := json.Unmarshal([]byte(data), &entries); err != nil {
+			return nil, fmt.Errorf("failed to parse container list: %w", err)
+		}
+	} else {
+		// NDJSON-style: parse line by line
+		for _, line := range strings.Split(data, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var e psEntry
+			if err := json.Unmarshal([]byte(line), &e); err != nil {
+				// Skip unparsable lines but keep going
+				log.Printf("Warning: skipping unparsable ps line: %v: %s", err, line)
+				continue
+			}
+			entries = append(entries, e)
+		}
 	}
 
 	var containers []*Container
@@ -1694,8 +1747,8 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	// This reduces SSH round-trips significantly
 	// Note: The source files should already be owned by root:root from prepareRovolFS
 	setupCmd := fmt.Sprintf(
-		"sudo mkdir -p %s && sudo cp -a --reflink=always %s/. %s/ && sudo chown -R root:root %s && sudo mkdir -p %s",
-		containerDir, m.rovolMountPath, containerDir, containerDir, filepath.Join(containerDir, "var/empty"))
+		"sudo mkdir -p %s && (sudo cp -a --reflink=auto %s/. %s/ || sudo cp -a %s/. %s/) && sudo chown -R root:root %s && sudo mkdir -p %s",
+		containerDir, m.rovolMountPath, containerDir, m.rovolMountPath, containerDir, containerDir, filepath.Join(containerDir, "var/empty"))
 
 	log.Printf("Setting up container directory with CoW clone from %s to %s", m.rovolMountPath, containerDir)
 	combinedCmd := m.execSSHCommand(ctx, host, "sh", "-c", setupCmd)

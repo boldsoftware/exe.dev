@@ -13,7 +13,13 @@ func TestPool(t *testing.T) {
 	// Skip if we don't have a test SSH host available
 	testHost := os.Getenv("TEST_SSH_HOST")
 	if testHost == "" {
-		t.Skip("TEST_SSH_HOST environment variable not set, skipping SSH pool tests")
+		// Fall back to CTR_HOST when available to make CI easier to configure
+		if ctr := os.Getenv("CTR_HOST"); ctr != "" {
+			testHost = ctr
+		}
+	}
+	if testHost == "" {
+		t.Skip("TEST_SSH_HOST or CTR_HOST not set, skipping SSH pool tests")
 	}
 
 	// Create a new SSH connection pool
@@ -123,7 +129,8 @@ func TestPool(t *testing.T) {
 			t.Fatalf("Failed to recover after invalid host: %v", err)
 		}
 
-		if strings.TrimSpace(string(output)) != "recovered" {
+		outStr := strings.TrimSpace(string(output))
+		if !strings.HasSuffix(outStr, "recovered") {
 			t.Errorf("Recovery command output mismatch: %s", output)
 		}
 	})

@@ -33,8 +33,11 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	// (apt-get install openssh-server needs ~512MB during installation)
 
 	// Create container request
+	ipRange := WithAllocIPRange(t, "test-alloc")
+
 	req := &CreateContainerRequest{
 		AllocID:       "test-alloc",
+		IPRange:       ipRange,
 		Name:          "ssh-test-container",
 		Image:         "ubuntu:22.04",
 		Size:          "small",

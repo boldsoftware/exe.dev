@@ -45,8 +45,11 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
+	allocID := "test-alloc-" + fmt.Sprintf("%d", time.Now().Unix())
+	ipRange := WithAllocIPRange(t, allocID)
 	req := &CreateContainerRequest{
-		AllocID: "test-alloc-" + fmt.Sprintf("%d", time.Now().Unix()),
+		AllocID: allocID,
+		IPRange: ipRange,
 		Name:    "test-ssh-tunnel",
 		Image:   "ubuntu:latest",
 	}
@@ -74,11 +77,21 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 	// Check if SSH tunnel was created (only for remote hosts)
 	host := container.DockerHost
 	if host != "" && !strings.HasPrefix(host, "/") {
-		// Give the tunnel a moment to establish
-		time.Sleep(2 * time.Second)
-
-		// Check if we can connect to the local port
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", container.SSHPort), 5*time.Second)
+		// Wait up to 15s for the tunnel to accept connections instead of a fixed sleep
+		var conn net.Conn
+		var err error
+		addr := fmt.Sprintf("localhost:%d", container.SSHPort)
+		deadline := time.Now().Add(15 * time.Second)
+		for {
+			conn, err = net.DialTimeout("tcp", addr, 500*time.Millisecond)
+			if err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 		if err != nil {
 			// Check if the tunnel process exists
 			manager.mu.RLock()
@@ -153,7 +166,19 @@ func TestNerdctlSSHTunnel(t *testing.T) {
 
 	// Check tunnel was re-established for remote hosts
 	if host != "" && !strings.HasPrefix(host, "/") {
-		time.Sleep(2 * time.Second)
+		// Wait briefly for re-established tunnel
+		addr := fmt.Sprintf("localhost:%d", container.SSHPort)
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			if c, err := net.DialTimeout("tcp", addr, 500*time.Millisecond); err == nil {
+				c.Close()
+				break
+			}
+			if time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 
 		manager.mu.RLock()
 		tunnel, exists := manager.sshTunnels[container.ID]
@@ -190,8 +215,11 @@ func TestSSHTunnelCleanup(t *testing.T) {
 	ctx := t.Context()
 
 	for i := 0; i < 3; i++ {
+		allocID := fmt.Sprintf("test-cleanup-%d-%d", i, time.Now().Unix())
+		ipRange := WithAllocIPRange(t, allocID)
 		req := &CreateContainerRequest{
-			AllocID: fmt.Sprintf("test-cleanup-%d-%d", i, time.Now().Unix()),
+			AllocID: allocID,
+			IPRange: ipRange,
 			Name:    fmt.Sprintf("cleanup-test-%d", i),
 			Image:   "alpine:latest",
 		}
@@ -226,8 +254,11 @@ func TestSSHTunnelCleanup(t *testing.T) {
 	}
 
 	// Test manager Close() cleans up all tunnels
+	allocClose := "test-close-" + fmt.Sprintf("%d", time.Now().Unix())
+	ipRangeClose := WithAllocIPRange(t, allocClose)
 	req := &CreateContainerRequest{
-		AllocID: "test-close-" + fmt.Sprintf("%d", time.Now().Unix()),
+		AllocID: allocClose,
+		IPRange: ipRangeClose,
 		Name:    "close-test",
 		Image:   "alpine:latest",
 	}
