@@ -96,7 +96,8 @@ colima ssh -p ${COLIMA_PROFILE} -- sudo DEBIAN_FRONTEND=noninteractive apt-get i
     parted \
     xfsprogs \
     iptables \
-    iptables-persistent
+    iptables-persistent \
+    net-tools less vim
 
 echo ""
 echo "Setting up data volume..."
