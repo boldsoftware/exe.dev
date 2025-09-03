@@ -267,8 +267,9 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// Get user info by public key directly
 	userID, err := p.server.getUserIDByPublicKey(ctx, pubKey)
 	if err != nil {
-		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "error", err)
+		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "public_key", pubKey, "error", err)
 	}
+	slog.Debug("looked up user for ssh key", "component", "piper-plugin", "public_key", pubKey, "user_id", userID)
 
 	// Special handling for local dev mode - allow any connection as localexe user
 	if p.server.devMode == "local" && conn.User() == "localexe" && userID == "" {
@@ -491,7 +492,7 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	// Store the expected host key for this connection if available
 	if sshDetails.HostKey != "" {
 		p.storeExpectedHostKeyForConnection(connID, sshDetails.HostKey)
-		slog.Debug("Stored expected host key for connection", "component", "piper-plugin", "machine_name", machine.Name, "conn_id", connID)
+		slog.Debug("Stored expected host key for connection", "component", "piper-plugin", "machine_name", machine.Name, "conn_id", connID, "host_key", sshDetails.HostKey)
 	}
 
 	slog.Debug("directing piperd to connect", "host", host, "port", port, "user", sshDetails.User)
@@ -601,12 +602,17 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 		// This is a machine connection with a stored expected key
 		if strings.TrimSpace(expectedKey) == strings.TrimSpace(receivedKey) {
 			slog.Debug("Host key validation successful for machine",
-				"component", "piper-plugin", "conn_id", connID, "hostname", hostname)
+				"component", "piper-plugin",
+				"conn_id", connID, "hostname", hostname,
+			)
 			return nil
 		}
 		// Key mismatch for machine connection
 		slog.Debug("Host key validation failed - machine key mismatch",
-			"component", "piper-plugin", "conn_id", connID, "hostname", hostname)
+			"component", "piper-plugin",
+			"conn_id", connID, "hostname", hostname,
+			"expected_key", expectedKey, "received_key", receivedKey,
+		)
 		return fmt.Errorf("host key validation failed for %s", hostname)
 	}
 
