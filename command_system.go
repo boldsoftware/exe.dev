@@ -3,6 +3,7 @@ package exe
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"strings"
@@ -18,16 +19,11 @@ type Command struct {
 	Aliases     []string
 	Description string
 	Usage       string
-	// TODO(banksean): replace Options with FlagSet
-	Options     []CommandOption
+	FlagSet     *flag.FlagSet
 	Examples    []string
 	Subcommands []*Command
 	Handler     func(context.Context, *CommandContext) error
 	Available   func(ctx *CommandContext) bool // nil means always available
-}
-
-type CommandOption struct {
-	Name, Description, Usage string
 }
 
 func (c *Command) Help(cc *CommandContext) error {
@@ -39,13 +35,21 @@ func (c *Command) Help(cc *CommandContext) error {
 	if c.Usage != "" {
 		cc.Writeln("\r\n\033[1mUsage:\033[0m %s", c.Usage)
 	}
-	if len(c.Options) > 0 {
-		cc.Writeln("\r\n\033[1mOptions:\033[0m")
-		tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
-		for _, opt := range c.Options {
-			fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\t\r\n", opt.Name, opt.Description)
+	if c.FlagSet != nil {
+		hasFlags := false
+		c.FlagSet.VisitAll(func(f *flag.Flag) {
+			if !hasFlags {
+				cc.Writeln("\r\n\033[1mOptions:\033[0m")
+				hasFlags = true
+			}
+		})
+		if hasFlags {
+			tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
+			c.FlagSet.VisitAll(func(f *flag.Flag) {
+				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\t\r\n", f.Name, f.Usage)
+			})
+			tabw.Flush()
 		}
-		tabw.Flush()
 	}
 	if len(c.Examples) > 0 {
 		cc.Writeln("\r\n\033[1mExamples:\033[0m")
@@ -71,6 +75,7 @@ type CommandContext struct {
 	Alloc      *Alloc
 	PublicKey  string
 	Args       []string
+	FlagSet    *flag.FlagSet // parsed flags for this command
 	SSHServer  *SSHServer
 	SSHSession ssh.Session
 
@@ -199,11 +204,35 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		return fmt.Errorf("command not available: %s", strings.Join(commandPath, " "))
 	}
 
-	// Set remaining args in context
-	cc.Args = append(remainingArgs, cc.Args...)
+	// Parse flags if the command has a FlagSet
+	// Combine remaining args with original args for flag parsing
+	allArgs := append(remainingArgs, cc.Args...)
+	// Parse the flags
+	fs := cmd.FlagSet
+	if fs == nil {
+		fs = defaultFlagSet
+	}
+	if err := fs.Parse(allArgs); err != nil {
+		if err == flag.ErrHelp {
+			return cmd.Help(cc)
+		}
+		return fmt.Errorf("flag parsing error: %v", err)
+	}
+	if cmd.FlagSet != nil {
+		// Set the unparsed args as the new Args
+		cc.Args = cmd.FlagSet.Args()
+		// Set the FlagSet in context so handlers can access parsed flags
+		cc.FlagSet = cmd.FlagSet
+	} else {
+		// Set remaining args in context if no flags to parse
+		cc.Args = append(remainingArgs, cc.Args...)
+		cc.FlagSet = nil
+	}
 
 	return cmd.Handler(ctx, cc)
 }
+
+var defaultFlagSet = flag.NewFlagSet("default", flag.ContinueOnError)
 
 // GetAvailableCommands returns commands available to the user
 func (ct *CommandTree) GetAvailableCommands(ctx *CommandContext) []*Command {

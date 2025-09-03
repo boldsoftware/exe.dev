@@ -1,7 +1,6 @@
 package exe
 
 import (
-	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -16,6 +15,16 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/term"
 )
+
+// newCommandFlags creates a FlagSet for the new command
+func newCommandFlags() *flag.FlagSet {
+	fs := flag.NewFlagSet("new", flag.ContinueOnError)
+	fs.String("name", "", "machine name (auto-generated if not specified)")
+	fs.String("image", "exeuntu", "container image")
+	fs.String("size", "medium", "machine size (small, medium, or large)")
+	fs.String("command", "auto", "container command: auto, none, or a custom command")
+	return fs
+}
 
 // NewCommandTree creates a new command tree with all exe.dev commands
 func NewCommandTree(ss *SSHServer) *CommandTree {
@@ -38,18 +47,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				Name:        "new",
 				Description: "Create a new machine",
 				Handler:     ss.handleNewCommand,
-				Options: []CommandOption{
-					{
-						Name:        "name",
-						Description: "Machine name (auto-generated if not specified)",
-						Usage:       "--name=<name>",
-					},
-					{
-						Name:        "image",
-						Description: "Container image (default: exeuntu)",
-						Usage:       "--image=<image>",
-					},
-				},
+				FlagSet:     newCommandFlags(),
 				Examples: []string{
 					"new                                # just give me a computer",
 					"new --name=m --image=ubuntu:22.04  # custom image and name",
@@ -255,35 +253,25 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		return fmt.Errorf("failed to get user info: %w", err)
 	}
 
-	// Create a FlagSet for parsing
-	fs := flag.NewFlagSet("new", flag.ContinueOnError)
-	var machineName string
-	var image string
-	var size string
-	var command string
-
-	fs.StringVar(&machineName, "name", "", "machine name (auto-generated if not specified)")
-	fs.StringVar(&image, "image", "exeuntu", "container image")
-	fs.StringVar(&size, "size", "medium", "machine size (small, medium, or large)")
-	fs.StringVar(&command, "command", "auto", "container command: auto, none, or a custom command")
-
-	// Capture the output to avoid printing errors to the session
-	var buf bytes.Buffer
-	fs.SetOutput(&buf)
-
-	// Parse the flags
-	parseErr := fs.Parse(cc.Args)
-	if parseErr != nil {
-		cc.Write("\033[1;31mError: %v\033[0m\r\n", parseErr)
-		cc.Write("Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
-		return fmt.Errorf("flag parse error: %w", parseErr)
+	// Get flag values from the already-parsed FlagSet
+	var machineName, image, size, command string
+	if cc.FlagSet != nil {
+		machineName = cc.FlagSet.Lookup("name").Value.String()
+		image = cc.FlagSet.Lookup("image").Value.String()
+		size = cc.FlagSet.Lookup("size").Value.String()
+		command = cc.FlagSet.Lookup("command").Value.String()
+	} else {
+		// Default values if no flags were parsed
+		image = "exeuntu"
+		size = "medium"
+		command = "auto"
 	}
 
 	// Check for non-flag arguments - not supported
-	if fs.NArg() > 0 {
-		cc.Write("\033[1;31mError: Unexpected arguments: %s\033[0m\r\n", strings.Join(fs.Args(), " "))
+	if len(cc.Args) > 0 {
+		cc.Write("\033[1;31mError: Unexpected arguments: %s\033[0m\r\n", strings.Join(cc.Args, " "))
 		cc.Write("Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
-		return fmt.Errorf("unexpected arguments: %q", strings.Join(fs.Args(), " "))
+		return fmt.Errorf("unexpected arguments: %q", strings.Join(cc.Args, " "))
 	}
 
 	// Generate machine name if not provided

@@ -2,6 +2,7 @@ package exe
 
 import (
 	"context"
+	"flag"
 	"strings"
 	"testing"
 
@@ -370,4 +371,407 @@ func TestGetAvailableCommands(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestCommandFlagParsing(t *testing.T) {
+	// Create test server and dependencies
+	server := &Server{}
+	billing := &billing.MockService{}
+	sshServer := &SSHServer{server: server, billing: billing}
+	sshServer.commands = NewCommandTree(sshServer)
+
+	user := &User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+
+	tests := []struct {
+		name         string
+		commandPath  []string
+		expectedArgs []string
+		checkFlags   func(t *testing.T, cc *CommandContext)
+	}{
+		{
+			name:         "new command with no flags",
+			commandPath:  []string{"new"},
+			expectedArgs: []string{},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for new command")
+				}
+				// Check default values
+				name := cc.FlagSet.Lookup("name").Value.String()
+				image := cc.FlagSet.Lookup("image").Value.String()
+				size := cc.FlagSet.Lookup("size").Value.String()
+				command := cc.FlagSet.Lookup("command").Value.String()
+
+				if name != "" {
+					t.Errorf("Expected default name to be empty, got %q", name)
+				}
+				if image != "exeuntu" {
+					t.Errorf("Expected default image to be 'exeuntu', got %q", image)
+				}
+				if size != "medium" {
+					t.Errorf("Expected default size to be 'medium', got %q", size)
+				}
+				if command != "auto" {
+					t.Errorf("Expected default command to be 'auto', got %q", command)
+				}
+			},
+		},
+		{
+			name:         "new command with name flag",
+			commandPath:  []string{"new", "--name=test-machine"},
+			expectedArgs: []string{},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for new command")
+				}
+				name := cc.FlagSet.Lookup("name").Value.String()
+				if name != "test-machine" {
+					t.Errorf("Expected name to be 'test-machine', got %q", name)
+				}
+			},
+		},
+		{
+			name:         "new command with multiple flags",
+			commandPath:  []string{"new", "--name=my-machine", "--image=ubuntu:22.04", "--size=large"},
+			expectedArgs: []string{},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for new command")
+				}
+				name := cc.FlagSet.Lookup("name").Value.String()
+				image := cc.FlagSet.Lookup("image").Value.String()
+				size := cc.FlagSet.Lookup("size").Value.String()
+
+				if name != "my-machine" {
+					t.Errorf("Expected name to be 'my-machine', got %q", name)
+				}
+				if image != "ubuntu:22.04" {
+					t.Errorf("Expected image to be 'ubuntu:22.04', got %q", image)
+				}
+				if size != "large" {
+					t.Errorf("Expected size to be 'large', got %q", size)
+				}
+			},
+		},
+		{
+			name:         "new command with flags and remaining args",
+			commandPath:  []string{"new", "--name=test", "arg1", "arg2"},
+			expectedArgs: []string{"arg1", "arg2"},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for new command")
+				}
+				name := cc.FlagSet.Lookup("name").Value.String()
+				if name != "test" {
+					t.Errorf("Expected name to be 'test', got %q", name)
+				}
+			},
+		},
+		{
+			name:         "new command with separated flag value",
+			commandPath:  []string{"new", "--name", "separated-value"},
+			expectedArgs: []string{},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for new command")
+				}
+				name := cc.FlagSet.Lookup("name").Value.String()
+				if name != "separated-value" {
+					t.Errorf("Expected name to be 'separated-value', got %q", name)
+				}
+			},
+		},
+		{
+			name:         "help command has no flags",
+			commandPath:  []string{"help"},
+			expectedArgs: []string{},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				// Help command should not have a FlagSet, so it uses the defaultFlagSet
+				// which means cc.FlagSet should be nil after execution
+				if cc.FlagSet != nil {
+					t.Errorf("Expected FlagSet to be nil for help command, got %v", cc.FlagSet)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a mock handler that captures the CommandContext for inspection
+			var capturedCC *CommandContext
+			mockHandler := func(ctx context.Context, cc *CommandContext) error {
+				capturedCC = cc
+				return nil
+			}
+
+			// Replace the handler for testing
+			cmd := sshServer.commands.FindCommand([]string{tt.commandPath[0]})
+			if cmd == nil {
+				t.Fatalf("Command %s not found", tt.commandPath[0])
+			}
+			originalHandler := cmd.Handler
+			cmd.Handler = mockHandler
+
+			// Execute the command
+			output := &MockOutput{}
+			cc := createTestContext(sshServer, user, alloc, output, nil, []string{})
+			ctx := context.Background()
+
+			err := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
+			if err != nil {
+				t.Errorf("ExecuteCommand() error = %v", err)
+			}
+
+			// Check that the handler was called with the right context
+			if capturedCC == nil {
+				t.Fatal("Handler was not called")
+			}
+
+			// Check remaining args
+			if len(capturedCC.Args) != len(tt.expectedArgs) {
+				t.Errorf("Expected %d args, got %d: %v", len(tt.expectedArgs), len(capturedCC.Args), capturedCC.Args)
+			}
+			for i, expected := range tt.expectedArgs {
+				if i >= len(capturedCC.Args) {
+					t.Errorf("Missing arg %d: expected %q", i, expected)
+				} else if capturedCC.Args[i] != expected {
+					t.Errorf("Arg %d: expected %q, got %q", i, expected, capturedCC.Args[i])
+				}
+			}
+
+			// Check flags
+			tt.checkFlags(t, capturedCC)
+
+			// Restore original handler
+			cmd.Handler = originalHandler
+		})
+	}
+}
+
+func TestSubcommandFlagParsing(t *testing.T) {
+	// Create test server and dependencies
+	server := &Server{}
+	billing := &billing.MockService{}
+	sshServer := &SSHServer{server: server, billing: billing}
+
+	// Create a custom command tree with subcommands that have flags for testing
+	testFlagSet := flag.NewFlagSet("test-sub", flag.ContinueOnError)
+	testFlagSet.String("option", "default", "test option")
+	testFlagSet.Bool("verbose", false, "verbose mode")
+
+	var capturedContext *CommandContext
+	testSubHandler := func(ctx context.Context, cc *CommandContext) error {
+		capturedContext = cc
+		return nil
+	}
+
+	customTree := &CommandTree{
+		Commands: []*Command{
+			{
+				Name:        "parent",
+				Description: "Parent command with subcommands",
+				Handler: func(ctx context.Context, cc *CommandContext) error {
+					return nil
+				},
+				Subcommands: []*Command{
+					{
+						Name:        "sub",
+						Description: "Subcommand with flags",
+						Handler:     testSubHandler,
+						FlagSet:     testFlagSet,
+					},
+					{
+						Name:        "nosub",
+						Description: "Subcommand without flags",
+						Handler:     testSubHandler,
+					},
+				},
+			},
+		},
+	}
+
+	user := &User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+
+	tests := []struct {
+		name         string
+		commandPath  []string
+		expectedArgs []string
+		checkFlags   func(t *testing.T, cc *CommandContext)
+	}{
+		{
+			name:         "subcommand with default flags",
+			commandPath:  []string{"parent", "sub"},
+			expectedArgs: []string{},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for subcommand with flags")
+				}
+				option := cc.FlagSet.Lookup("option").Value.String()
+				verbose := cc.FlagSet.Lookup("verbose").Value.String()
+				if option != "default" {
+					t.Errorf("Expected option to be 'default', got %q", option)
+				}
+				if verbose != "false" {
+					t.Errorf("Expected verbose to be 'false', got %q", verbose)
+				}
+			},
+		},
+		{
+			name:         "subcommand with custom flags",
+			commandPath:  []string{"parent", "sub", "--option=custom", "--verbose"},
+			expectedArgs: []string{},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for subcommand with flags")
+				}
+				option := cc.FlagSet.Lookup("option").Value.String()
+				verbose := cc.FlagSet.Lookup("verbose").Value.String()
+				if option != "custom" {
+					t.Errorf("Expected option to be 'custom', got %q", option)
+				}
+				if verbose != "true" {
+					t.Errorf("Expected verbose to be 'true', got %q", verbose)
+				}
+			},
+		},
+		{
+			name:         "subcommand with flags and remaining args",
+			commandPath:  []string{"parent", "sub", "--option=test", "arg1", "arg2"},
+			expectedArgs: []string{"arg1", "arg2"},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet == nil {
+					t.Fatal("FlagSet should not be nil for subcommand with flags")
+				}
+				option := cc.FlagSet.Lookup("option").Value.String()
+				if option != "test" {
+					t.Errorf("Expected option to be 'test', got %q", option)
+				}
+			},
+		},
+		{
+			name:         "subcommand without flags",
+			commandPath:  []string{"parent", "nosub", "arg1"},
+			expectedArgs: []string{"arg1"},
+			checkFlags: func(t *testing.T, cc *CommandContext) {
+				if cc.FlagSet != nil {
+					t.Errorf("Expected FlagSet to be nil for subcommand without flags, got %v", cc.FlagSet)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			capturedContext = nil // Reset
+			
+			output := &MockOutput{}
+			cc := createTestContext(sshServer, user, alloc, output, nil, []string{})
+			ctx := context.Background()
+
+			err := customTree.ExecuteCommand(ctx, cc, tt.commandPath)
+			if err != nil {
+				t.Errorf("ExecuteCommand() error = %v", err)
+			}
+
+			// Check that the handler was called
+			if capturedContext == nil {
+				t.Fatal("Handler was not called")
+			}
+
+			// Check remaining args
+			if len(capturedContext.Args) != len(tt.expectedArgs) {
+				t.Errorf("Expected %d args, got %d: %v", len(tt.expectedArgs), len(capturedContext.Args), capturedContext.Args)
+			}
+			for i, expected := range tt.expectedArgs {
+				if i >= len(capturedContext.Args) {
+					t.Errorf("Missing arg %d: expected %q", i, expected)
+				} else if capturedContext.Args[i] != expected {
+					t.Errorf("Arg %d: expected %q, got %q", i, expected, capturedContext.Args[i])
+				}
+			}
+
+			// Check flags
+			tt.checkFlags(t, capturedContext)
+		})
+	}
+}
+
+func TestFlagParsingErrorHandling(t *testing.T) {
+	// Create test server and dependencies
+	server := &Server{}
+	billing := &billing.MockService{}
+	sshServer := &SSHServer{server: server, billing: billing}
+	sshServer.commands = NewCommandTree(sshServer)
+
+	user := &User{UserID: "test-user", Email: "test@example.com"}
+	alloc := &Alloc{AllocID: "test-alloc", UserID: "test-user"}
+
+	tests := []struct {
+		name        string
+		commandPath []string
+		expectError bool
+		errorText   string
+	}{
+		{
+			name:        "unknown flag",
+			commandPath: []string{"new", "--unknown-flag=value"},
+			expectError: true,
+			errorText:   "flag parsing error",
+		},
+		{
+			name:        "flag without value",
+			commandPath: []string{"new", "--name"},
+			expectError: true,
+			errorText:   "flag parsing error",
+		},
+		{
+			name:        "valid flags",
+			commandPath: []string{"new", "--name=valid"},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output := &MockOutput{}
+			cc := createTestContext(sshServer, user, alloc, output, nil, []string{})
+			ctx := context.Background()
+
+			// For valid flags test, replace handler with a mock to avoid business logic
+			var originalHandler func(context.Context, *CommandContext) error
+			if !tt.expectError {
+				cmd := sshServer.commands.FindCommand([]string{tt.commandPath[0]})
+				if cmd != nil {
+					originalHandler = cmd.Handler
+					cmd.Handler = func(ctx context.Context, cc *CommandContext) error {
+						return nil // Success
+					}
+				}
+			}
+
+			err := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
+
+			// Restore original handler if we replaced it
+			if originalHandler != nil {
+				cmd := sshServer.commands.FindCommand([]string{tt.commandPath[0]})
+				if cmd != nil {
+					cmd.Handler = originalHandler
+				}
+			}
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorText) {
+					t.Errorf("Expected error containing %q, got %q", tt.errorText, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
 }
