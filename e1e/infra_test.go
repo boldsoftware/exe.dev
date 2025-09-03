@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/ctrhosttest"
 	"exe.dev/vouch"
 	"github.com/Netflix/go-expect"
 	"golang.org/x/crypto/ssh"
@@ -52,6 +53,10 @@ func TestMain(m *testing.M) {
 		return
 	}
 
+	if !testing.Verbose() {
+		slog.SetLogLoggerLevel(slog.LevelWarn)
+	}
+
 	// Skip tests in CI if exe-ctr-colima is not accessible via SSH
 	if os.Getenv("CI") != "" {
 		cmd := exec.Command("ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "exe-ctr-colima", "true")
@@ -64,13 +69,25 @@ func TestMain(m *testing.M) {
 	env, err := setup()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "test setup failed: %v\n", err)
-		env.Close()
+		env.Close(nil)
 		os.Exit(1)
 	}
+
+	// prepare container manager early, for faster cleanup
+	containerManagerC := make(chan container.Manager, 1)
+	go func() {
+		manager, err := env.initContainerManager()
+		containerManagerC <- manager // unblock regardless
+		if err != nil {
+			fmt.Printf("failed to init container manager: %v\n", err)
+			return
+		}
+	}()
+
 	Env = env
 	fmt.Printf("running tests\n")
 	code := m.Run()
-	env.Close()
+	env.Close(<-containerManagerC)
 	os.Exit(code)
 }
 
@@ -103,7 +120,21 @@ func (e *testEnv) sshPort() int {
 	return e.proxy.tcp.Port
 }
 
-func (e *testEnv) Close() {
+func (e *testEnv) initContainerManager() (container.Manager, error) {
+	// Detect container host using same logic as container tests
+	host := ctrhosttest.Detect(context.Background())
+	if host == "" {
+		return nil, fmt.Errorf("no container host available for cleanup")
+	}
+	config := &container.Config{ContainerdAddresses: []string{host}}
+	manager, err := container.NewNerdctlManager(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container manager: %w", err)
+	}
+	return manager, nil
+}
+
+func (e *testEnv) Close(containerManager container.Manager) {
 	if e == nil {
 		return
 	}
@@ -118,16 +149,14 @@ func (e *testEnv) Close() {
 		e.piperd.Cmd.Process.Kill()
 		e.piperd.Cmd.Wait()
 	}
-
-	fmt.Printf("cleaning up containers\n")
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	// Quiet verbose logging from ssh-pool, invoked by package container.
-	if !testing.Verbose() {
-		slog.SetLogLoggerLevel(slog.LevelWarn)
-	}
-	if err := container.CleanupTestContainers(ctx, "e1e-"); err != nil {
-		fmt.Printf("container cleanup failed: %v", err)
+	if containerManager != nil {
+		defer containerManager.Close()
+		fmt.Printf("cleaning up containers\n")
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := container.CleanupTestContainers(ctx, containerManager, "e1e-"); err != nil {
+			fmt.Printf("container cleanup failed: %v", err)
+		}
 	}
 }
 

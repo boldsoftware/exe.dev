@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
-	"exe.dev/ctrhosttest"
 )
 
 // Manager provides container lifecycle management operations
@@ -79,19 +77,7 @@ func NewManager(cfg *Config) (Manager, error) {
 // CleanupTestContainers removes containers with names containing substring.
 // Designed for cleaning up test containers; best effort only.
 // DO NOT USE for prod.
-func CleanupTestContainers(ctx context.Context, substring string) error {
-	// Detect container host using same logic as container tests
-	host := ctrhosttest.Detect(ctx)
-	if host == "" {
-		return fmt.Errorf("no container host available for cleanup")
-	}
-	config := &Config{ContainerdAddresses: []string{host}}
-	manager, err := NewNerdctlManager(config)
-	if err != nil {
-		return fmt.Errorf("failed to create container manager: %w", err)
-	}
-	defer manager.Close()
-
+func CleanupTestContainers(ctx context.Context, manager Manager, substring string) error {
 	containers, err := manager.ListAllContainers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list containers: %w", err)
