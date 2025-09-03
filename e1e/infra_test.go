@@ -36,6 +36,7 @@ var (
 	flagVerboseExed   = flag.Bool("vexed", false, "enable verbose logging from exed")
 	flagVerbosePorts  = flag.Bool("vports", false, "enable verbose logging about ports")
 	flagVerboseEmail  = flag.Bool("vemail", false, "enable verbose logging from email server")
+	flagCinema        = flag.Bool("cinema", false, "enable ASCIIcinema recording for each test")
 )
 
 func TestMain(m *testing.M) {
@@ -76,6 +77,9 @@ type testEnv struct {
 	exed   exedInstance
 	piperd piperdInstance
 	email  *emailServer
+
+	asciinemaMu      sync.Mutex // protects asciinemaWriters
+	asciinemaWriters map[string]*expect.AsciinemaWriter
 }
 
 type exedInstance struct {
@@ -154,7 +158,9 @@ func (p *tcpProxy) serve() error {
 }
 
 func setup() (*testEnv, error) {
-	env := new(testEnv)
+	env := &testEnv{
+		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
+	}
 
 	// We have a circular dependency around ports.
 	// (This is not a problem in production, because we use fixed port numbers.)
@@ -527,12 +533,50 @@ func makePty(t *testing.T) *expectPty {
 	if testing.Verbose() {
 		opts = append(opts, expect.WithStdout(os.Stdout))
 	}
+
+	// Add ASCIIcinema recording if -cinema flag is set
+	var cinemaOpts []expect.ConsoleOpt
+	if *flagCinema {
+		cinemaOpts = cinemaOptsForTest(t)
+	}
+	opts = append(opts, cinemaOpts...)
+
 	sshConsole, err := expect.NewConsole(opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sshConsole.Close() })
 	return &expectPty{t: t, console: sshConsole}
+}
+
+func cinemaOptsForTest(t *testing.T) []expect.ConsoleOpt {
+	testName := t.Name()
+	Env.asciinemaMu.Lock()
+	defer Env.asciinemaMu.Unlock()
+
+	writer, ok := Env.asciinemaWriters[testName]
+	if !ok {
+		// TODO: snake case
+		filename := strings.ReplaceAll(testName, "/", "_") + ".cast"
+
+		const width = 120
+		const height = 40
+		var err error
+		writer, err = expect.NewAsciinemaWriter(filename, width, height)
+		if err != nil {
+			t.Fatalf("failed to create ASCIIcinema writer: %v", err)
+		}
+
+		Env.asciinemaWriters[testName] = writer
+		t.Cleanup(func() {
+			writer.Close()
+			Env.asciinemaMu.Lock()
+			defer Env.asciinemaMu.Unlock()
+			delete(Env.asciinemaWriters, testName)
+		})
+	}
+
+	return []expect.ConsoleOpt{expect.WithAsciinemaWriter(writer)}
 }
 
 type emailMessage struct {

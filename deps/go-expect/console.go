@@ -53,6 +53,8 @@ type ConsoleOpts struct {
 	SendObservers     []SendObserver
 	ReadTimeout       *time.Duration
 	RefreshingTimeout *time.Duration
+	AsciinemaWriter   *AsciinemaWriter
+	AsciinemaFile     string
 }
 
 // ExpectObserver provides an interface for a function callback that will
@@ -147,6 +149,23 @@ func WithDefaultRefreshingTimeout(timeout time.Duration) ConsoleOpt {
 	}
 }
 
+// WithAsciinemaRecording enables ASCIIcinema recording to the specified file.
+// The recording will capture all terminal output and input in ASCIIcast v2 format.
+func WithAsciinemaRecording(filename string) ConsoleOpt {
+	return func(opts *ConsoleOpts) error {
+		opts.AsciinemaFile = filename
+		return nil
+	}
+}
+
+// WithAsciinemaWriter sets a custom AsciinemaWriter for recording.
+func WithAsciinemaWriter(writer *AsciinemaWriter) ConsoleOpt {
+	return func(opts *ConsoleOpts) error {
+		opts.AsciinemaWriter = writer
+		return nil
+	}
+}
+
 // NewConsole returns a new Console with the given options.
 func NewConsole(opts ...ConsoleOpt) (*Console, error) {
 	options := ConsoleOpts{
@@ -171,6 +190,22 @@ func NewConsole(opts ...ConsoleOpt) (*Console, error) {
 	}
 	closers = append(closers, passthroughPipe)
 
+	// Create AsciinemaWriter if recording is enabled
+	if options.AsciinemaFile != "" && options.AsciinemaWriter == nil {
+		// Get terminal dimensions, default to 80x24 if unable to get size
+		width, height := 80, 24
+		if rows, cols, err := pty.Getsize(pts); err == nil {
+			width, height = cols, rows
+		}
+
+		asciinemaWriter, err := NewAsciinemaWriter(options.AsciinemaFile, width, height)
+		if err != nil {
+			return nil, err
+		}
+		options.AsciinemaWriter = asciinemaWriter
+		closers = append(closers, asciinemaWriter)
+	}
+
 	c := &Console{
 		opts:            options,
 		ptm:             ptm,
@@ -178,6 +213,23 @@ func NewConsole(opts ...ConsoleOpt) (*Console, error) {
 		passthroughPipe: passthroughPipe,
 		runeReader:      bufio.NewReaderSize(passthroughPipe, utf8.UTFMax),
 		closers:         closers,
+	}
+
+	// Add AsciinemaWriter integration if recording is enabled
+	if options.AsciinemaWriter != nil {
+		// Add an output writer that captures all terminal output as it flows through
+		outputWriter := &asciinemaOutputWriter{asciinemaWriter: options.AsciinemaWriter}
+		options.Stdouts = append(options.Stdouts, outputWriter)
+		
+		// Add SendObserver to record terminal input
+		options.SendObservers = append(options.SendObservers, func(msg string, num int, err error) {
+			if err == nil && options.AsciinemaWriter != nil {
+				options.AsciinemaWriter.WriteInput(msg)
+			}
+		})
+
+		// Update the console opts to include the new observers and outputs
+		c.opts = options
 	}
 
 	for _, stdin := range options.Stdins {
@@ -252,4 +304,64 @@ func (c *Console) Log(v ...interface{}) {
 // Arguments are handled in the manner of fmt.Printf.
 func (c *Console) Logf(format string, v ...interface{}) {
 	c.opts.Logger.Printf(format, v...)
+}
+
+// StartRecording starts ASCIIcinema recording to the specified file.
+// If recording is already active, this will stop the current recording first.
+func (c *Console) StartRecording(filename string) error {
+	// Stop existing recording if active
+	if c.opts.AsciinemaWriter != nil {
+		err := c.StopRecording()
+		if err != nil {
+			return fmt.Errorf("failed to stop existing recording: %w", err)
+		}
+	}
+
+	// Get terminal dimensions, default to 80x24 if unable to get size
+	width, height := 80, 24
+	if rows, cols, err := pty.Getsize(c.pts); err == nil {
+		width, height = cols, rows
+	}
+
+	// Create new AsciinemaWriter
+	asciinemaWriter, err := NewAsciinemaWriter(filename, width, height)
+	if err != nil {
+		return fmt.Errorf("failed to create asciinema writer: %w", err)
+	}
+
+	c.opts.AsciinemaWriter = asciinemaWriter
+
+	// Add recording observers
+	c.opts.ExpectObservers = append(c.opts.ExpectObservers, func(matchers []Matcher, buf string, err error) {
+		if buf != "" && c.opts.AsciinemaWriter != nil {
+			c.opts.AsciinemaWriter.WriteOutput(buf)
+		}
+	})
+
+	c.opts.SendObservers = append(c.opts.SendObservers, func(msg string, num int, err error) {
+		if err == nil && c.opts.AsciinemaWriter != nil {
+			c.opts.AsciinemaWriter.WriteInput(msg)
+		}
+	})
+
+	// Add to closers so it gets closed when console is closed
+	c.closers = append(c.closers, asciinemaWriter)
+
+	return nil
+}
+
+// StopRecording stops the current ASCIIcinema recording if one is active.
+func (c *Console) StopRecording() error {
+	if c.opts.AsciinemaWriter == nil {
+		return nil // No recording active
+	}
+
+	err := c.opts.AsciinemaWriter.Close()
+	c.opts.AsciinemaWriter = nil
+	return err
+}
+
+// IsRecording returns true if ASCIIcinema recording is currently active.
+func (c *Console) IsRecording() bool {
+	return c.opts.AsciinemaWriter != nil
 }
