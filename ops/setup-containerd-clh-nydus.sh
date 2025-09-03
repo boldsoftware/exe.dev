@@ -93,8 +93,8 @@ sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt
     wget \
     skopeo
 
-# Install containerd from official releases (not apt) for latest version
-CONTAINERD_VERSION="1.7.22"
+# Install containerd from official releases (not apt) for specific version
+CONTAINERD_VERSION="2.1.4"
 ARCH=$(uname -m)
 if [ "$ARCH" = "x86_64" ]; then
     ARCH="amd64"
@@ -119,7 +119,7 @@ sudo chmod +x /usr/local/sbin/runc
 
 echo "=== Installing Kata Containers with Cloud Hypervisor ==="
 
-KATA_VERSION="3.7.0"
+KATA_VERSION="3.20.0"
 if [ "$ARCH" = "amd64" ]; then
     KATA_ARCH="x86_64"
 else
@@ -144,7 +144,7 @@ sudo ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim
 echo "=== Installing Nydus Snapshotter ==="
 
 # Install nydus-snapshotter and nydusd daemon
-NYDUS_VERSION="0.13.14"
+NYDUS_VERSION="0.15.2"
 NYDUSD_VERSION="2.2.5"
 if [ "$ARCH" = "amd64" ]; then
     NYDUS_ARCH="x86_64"
