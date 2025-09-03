@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/url"
 	"os/exec"
+	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -400,9 +402,32 @@ func (g *GrpcPlugin) dialUpstream(uri string) (net.Conn, string, error) {
 		return nil, "", fmt.Errorf("invalid upstream uri, missing address: %s", uri)
 	}
 
-	upstreamConn, err := net.Dial(network, addr)
-	if err != nil {
-		return nil, "", err
+	// This retry loop is exed-specific.
+	// TODO: pull it out into a thing that the plugin decides (retry delays slice?), and then upstream it.
+	retries := []time.Duration{
+		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
+		1 * time.Second, 1 * time.Second,
+		2 * time.Second, 3 * time.Second,
+		5 * time.Second, 8 * time.Second,
+		0, // trailing 0 delay makes loop logic simpler
+	}
+	var upstreamConn net.Conn
+	var connErr error
+	for i, d := range retries {
+		upstreamConn, connErr = net.Dial(network, addr)
+		if connErr == nil {
+			break
+		}
+		if d > 0 {
+			// add jitter to d: multiply by random factor between 0.8 and 1.2
+			jitter := 0.8 + rand.Float64()*0.4
+			d = time.Duration(float64(d) * jitter)
+			log.Debugf("failed to connect to upstream %s (%v), attempt %d, retrying in %v", addr, connErr, i, d.Round(10*time.Millisecond))
+		}
+		time.Sleep(d)
+	}
+	if connErr != nil {
+		return nil, "", connErr
 	}
 
 	return upstreamConn, addr, nil
