@@ -56,7 +56,7 @@ func DefaultConfig() *Config {
 
 // validateConfig ensures all required fields are present
 func validateConfig(cfg *Config) error {
-	if cfg.ContainerdAddresses == nil || len(cfg.ContainerdAddresses) == 0 {
+	if len(cfg.ContainerdAddresses) == 0 {
 		return fmt.Errorf("at least one containerd address is required")
 	}
 	return nil
