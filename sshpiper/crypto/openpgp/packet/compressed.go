@@ -91,12 +91,12 @@ func (cwc compressedWriteCloser) Close() (err error) {
 func SerializeCompressed(w io.WriteCloser, algo CompressionAlgo, cc *CompressionConfig) (literaldata io.WriteCloser, err error) {
 	compressed, err := serializeStreamHeader(w, packetTypeCompressed)
 	if err != nil {
-		return
+		return literaldata, err
 	}
 
 	_, err = compressed.Write([]byte{uint8(algo)})
 	if err != nil {
-		return
+		return literaldata, err
 	}
 
 	level := DefaultCompression
@@ -115,10 +115,10 @@ func SerializeCompressed(w io.WriteCloser, algo CompressionAlgo, cc *Compression
 		err = errors.UnsupportedError("Unsupported compression algorithm: " + s)
 	}
 	if err != nil {
-		return
+		return literaldata, err
 	}
 
 	literaldata = compressedWriteCloser{compressed, compressor}
 
-	return
+	return literaldata, err
 }

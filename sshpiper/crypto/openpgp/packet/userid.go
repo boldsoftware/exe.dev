@@ -67,11 +67,11 @@ func (uid *UserId) parse(r io.Reader) (err error) {
 	// RFC 4880, section 5.11
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return
+		return err
 	}
 	uid.Id = string(b)
 	uid.Name, uid.Comment, uid.Email = parseUserId(uid.Id)
-	return
+	return err
 }
 
 // Serialize marshals uid to w in the form of an OpenPGP packet, including
@@ -155,5 +155,5 @@ func parseUserId(id string) (name, comment, email string) {
 	name = strings.TrimSpace(id[n.start:n.end])
 	comment = strings.TrimSpace(id[c.start:c.end])
 	email = strings.TrimSpace(id[e.start:e.end])
-	return
+	return name, comment, email
 }

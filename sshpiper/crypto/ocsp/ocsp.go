@@ -216,11 +216,11 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo x509.SignatureA
 	}
 
 	if err != nil {
-		return
+		return hashFunc, sigAlgo, err
 	}
 
 	if requestedSigAlgo == 0 {
-		return
+		return hashFunc, sigAlgo, err
 	}
 
 	found := false
@@ -228,12 +228,12 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo x509.SignatureA
 		if details.algo == requestedSigAlgo {
 			if details.pubKeyAlgo != pubType {
 				err = errors.New("x509: requested SignatureAlgorithm does not match private key type")
-				return
+				return hashFunc, sigAlgo, err
 			}
 			sigAlgo.Algorithm, hashFunc = details.oid, details.hash
 			if hashFunc == 0 {
 				err = errors.New("x509: cannot sign with hash function requested")
-				return
+				return hashFunc, sigAlgo, err
 			}
 			found = true
 			break
@@ -244,7 +244,7 @@ func signingParamsForPublicKey(pub interface{}, requestedSigAlgo x509.SignatureA
 		err = errors.New("x509: unknown SignatureAlgorithm")
 	}
 
-	return
+	return hashFunc, sigAlgo, err
 }
 
 // TODO(agl): this is taken from crypto/x509 and so should probably be exported

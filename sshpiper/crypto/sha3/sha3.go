@@ -130,7 +130,7 @@ func (d *state) Write(p []byte) (n int, err error) {
 		}
 	}
 
-	return
+	return n, err
 }
 
 // Read squeezes an arbitrary number of bytes from the sponge.
@@ -154,7 +154,7 @@ func (d *state) Read(out []byte) (n int, err error) {
 		out = out[x:]
 	}
 
-	return
+	return n, err
 }
 
 // Sum applies padding to the hash state and then squeezes out the desired

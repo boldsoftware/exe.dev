@@ -103,5 +103,5 @@ func parseUpstreamFile(data string) (host string, user string, err error) {
 
 	_, _, err = libplugin.SplitHostPortForSSH(host)
 
-	return
+	return host, user, err
 }

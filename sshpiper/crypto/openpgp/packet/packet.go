@@ -33,7 +33,7 @@ func readFull(r io.Reader, buf []byte) (n int, err error) {
 	if err == io.EOF {
 		err = io.ErrUnexpectedEOF
 	}
-	return
+	return n, err
 }
 
 // readLength reads an OpenPGP length from r. See RFC 4880, section 4.2.2.
@@ -41,7 +41,7 @@ func readLength(r io.Reader) (length int64, isPartial bool, err error) {
 	var buf [4]byte
 	_, err = readFull(r, buf[:1])
 	if err != nil {
-		return
+		return length, isPartial, err
 	}
 	switch {
 	case buf[0] < 192:
@@ -50,7 +50,7 @@ func readLength(r io.Reader) (length int64, isPartial bool, err error) {
 		length = int64(buf[0]-192) << 8
 		_, err = readFull(r, buf[0:1])
 		if err != nil {
-			return
+			return length, isPartial, err
 		}
 		length += int64(buf[0]) + 192
 	case buf[0] < 255:
@@ -59,14 +59,14 @@ func readLength(r io.Reader) (length int64, isPartial bool, err error) {
 	default:
 		_, err = readFull(r, buf[0:4])
 		if err != nil {
-			return
+			return length, isPartial, err
 		}
 		length = int64(buf[0])<<24 |
 			int64(buf[1])<<16 |
 			int64(buf[2])<<8 |
 			int64(buf[3])
 	}
-	return
+	return length, isPartial, err
 }
 
 // partialLengthReader wraps an io.Reader and handles OpenPGP partial lengths.
@@ -99,7 +99,7 @@ func (r *partialLengthReader) Read(p []byte) (n int, err error) {
 	if n < int(toRead) && err == io.EOF {
 		err = io.ErrUnexpectedEOF
 	}
-	return
+	return n, err
 }
 
 // partialLengthWriter writes a stream of data using OpenPGP partial lengths.
@@ -193,7 +193,7 @@ func (l *spanReader) Read(p []byte) (n int, err error) {
 	if l.n > 0 && err == io.EOF {
 		err = io.ErrUnexpectedEOF
 	}
-	return
+	return n, err
 }
 
 // readHeader parses a packet header and returns an io.Reader which will return
@@ -202,11 +202,11 @@ func readHeader(r io.Reader) (tag packetType, length int64, contents io.Reader, 
 	var buf [4]byte
 	_, err = io.ReadFull(r, buf[:1])
 	if err != nil {
-		return
+		return tag, length, contents, err
 	}
 	if buf[0]&0x80 == 0 {
 		err = errors.StructuralError("tag byte does not have MSB set")
-		return
+		return tag, length, contents, err
 	}
 	if buf[0]&0x40 == 0 {
 		// Old format packet
@@ -215,26 +215,26 @@ func readHeader(r io.Reader) (tag packetType, length int64, contents io.Reader, 
 		if lengthType == 3 {
 			length = -1
 			contents = r
-			return
+			return tag, length, contents, err
 		}
 		lengthBytes := 1 << lengthType
 		_, err = readFull(r, buf[0:lengthBytes])
 		if err != nil {
-			return
+			return tag, length, contents, err
 		}
 		for i := 0; i < lengthBytes; i++ {
 			length <<= 8
 			length |= int64(buf[i])
 		}
 		contents = &spanReader{r, length}
-		return
+		return tag, length, contents, err
 	}
 
 	// New format packet
 	tag = packetType(buf[0] & 0x3f)
 	length, isPartial, err := readLength(r)
 	if err != nil {
-		return
+		return tag, length, contents, err
 	}
 	if isPartial {
 		contents = &partialLengthReader{
@@ -246,7 +246,7 @@ func readHeader(r io.Reader) (tag packetType, length int64, contents io.Reader, 
 	} else {
 		contents = &spanReader{r, length}
 	}
-	return
+	return tag, length, contents, err
 }
 
 // serializeHeader writes an OpenPGP packet header to w. See RFC 4880, section
@@ -274,7 +274,7 @@ func serializeHeader(w io.Writer, ptype packetType, length int) (err error) {
 	}
 
 	_, err = w.Write(buf[:n])
-	return
+	return err
 }
 
 // serializeStreamHeader writes an OpenPGP packet header to w where the
@@ -285,10 +285,10 @@ func serializeStreamHeader(w io.WriteCloser, ptype packetType) (out io.WriteClos
 	buf[0] = 0x80 | 0x40 | byte(ptype)
 	_, err = w.Write(buf[:])
 	if err != nil {
-		return
+		return out, err
 	}
 	out = &partialLengthWriter{w: w}
-	return
+	return out, err
 }
 
 // Packet represents an OpenPGP packet. Users are expected to try casting
@@ -308,10 +308,10 @@ func consumeAll(r io.Reader) (n int64, err error) {
 		n += int64(m)
 		if err == io.EOF {
 			err = nil
-			return
+			return n, err
 		}
 		if err != nil {
-			return
+			return n, err
 		}
 	}
 }
@@ -344,10 +344,10 @@ func peekVersion(r io.Reader) (bufr *bufio.Reader, ver byte, err error) {
 	bufr = bufio.NewReader(r)
 	var verBuf []byte
 	if verBuf, err = bufr.Peek(1); err != nil {
-		return
+		return bufr, ver, err
 	}
 	ver = verBuf[0]
-	return
+	return bufr, ver, err
 }
 
 // Read reads a single OpenPGP packet from the given io.Reader. If there is an
@@ -355,7 +355,7 @@ func peekVersion(r io.Reader) (bufr *bufio.Reader, ver byte, err error) {
 func Read(r io.Reader) (p Packet, err error) {
 	tag, _, contents, err := readHeader(r)
 	if err != nil {
-		return
+		return p, err
 	}
 
 	switch tag {
@@ -365,7 +365,7 @@ func Read(r io.Reader) (p Packet, err error) {
 		var version byte
 		// Detect signature version
 		if contents, version, err = peekVersion(contents); err != nil {
-			return
+			return p, err
 		}
 		if version < 4 {
 			p = new(SignatureV3)
@@ -385,7 +385,7 @@ func Read(r io.Reader) (p Packet, err error) {
 	case packetTypePublicKey, packetTypePublicSubkey:
 		var version byte
 		if contents, version, err = peekVersion(contents); err != nil {
-			return
+			return p, err
 		}
 		isSubkey := tag == packetTypePublicSubkey
 		if version < 4 {
@@ -416,7 +416,7 @@ func Read(r io.Reader) (p Packet, err error) {
 	if err != nil {
 		consumeAll(contents)
 	}
-	return
+	return p, err
 }
 
 // SignatureType represents the different semantic meanings of an OpenPGP
@@ -527,7 +527,7 @@ func (cipher CipherFunction) new(key []byte) (block cipher.Block) {
 	case CipherAES128, CipherAES192, CipherAES256:
 		block, _ = aes.NewCipher(key)
 	}
-	return
+	return block
 }
 
 // readMPI reads a big integer from r. The bit length returned is the bit
@@ -537,7 +537,7 @@ func readMPI(r io.Reader) (mpi []byte, bitLength uint16, err error) {
 	var buf [2]byte
 	_, err = readFull(r, buf[0:])
 	if err != nil {
-		return
+		return mpi, bitLength, err
 	}
 	bitLength = uint16(buf[0])<<8 | uint16(buf[1])
 	numBytes := (int(bitLength) + 7) / 8
@@ -546,7 +546,7 @@ func readMPI(r io.Reader) (mpi []byte, bitLength uint16, err error) {
 	// According to RFC 4880 3.2. we should check that the MPI has no leading
 	// zeroes (at least when not an encrypted MPI?), but this implementation
 	// does generate leading zeroes, so we keep accepting them.
-	return
+	return mpi, bitLength, err
 }
 
 // writeMPI serializes a big integer to w.
@@ -558,7 +558,7 @@ func writeMPI(w io.Writer, bitLength uint16, mpiBytes []byte) (err error) {
 	if err == nil {
 		_, err = w.Write(mpiBytes)
 	}
-	return
+	return err
 }
 
 // writeBig serializes a *big.Int to w.

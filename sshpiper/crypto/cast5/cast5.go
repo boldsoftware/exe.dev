@@ -35,7 +35,7 @@ func NewCipher(key []byte) (c *Cipher, err error) {
 
 	c = new(Cipher)
 	c.keySchedule(key)
-	return
+	return c, err
 }
 
 func (c *Cipher) BlockSize() int {

@@ -234,7 +234,7 @@ func Decode(pfxData []byte, password string) (privateKey interface{}, certificat
 
 	if len(bags) != 2 {
 		err = errors.New("pkcs12: expected exactly two safe bags in the PFX PDU")
-		return
+		return privateKey, certificate, err
 	}
 
 	for _, bag := range bags {
@@ -277,7 +277,7 @@ func Decode(pfxData []byte, password string) (privateKey interface{}, certificat
 		return nil, nil, errors.New("pkcs12: private key missing")
 	}
 
-	return
+	return privateKey, certificate, err
 }
 
 func getSafeContents(p12Data, password []byte) (bags []safeBag, updatedPassword []byte, err error) {

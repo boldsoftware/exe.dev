@@ -405,12 +405,12 @@ func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMs
 
 	result.KeyExchange, err = findCommon("key exchange", clientKexInit.KexAlgos, serverKexInit.KexAlgos, isClient)
 	if err != nil {
-		return
+		return algs, err
 	}
 
 	result.HostKey, err = findCommon("host key", clientKexInit.ServerHostKeyAlgos, serverKexInit.ServerHostKeyAlgos, isClient)
 	if err != nil {
-		return
+		return algs, err
 	}
 
 	stoc, ctos := &result.Write, &result.Read
@@ -420,36 +420,36 @@ func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMs
 
 	ctos.Cipher, err = findCommon("client to server cipher", clientKexInit.CiphersClientServer, serverKexInit.CiphersClientServer, isClient)
 	if err != nil {
-		return
+		return algs, err
 	}
 
 	stoc.Cipher, err = findCommon("server to client cipher", clientKexInit.CiphersServerClient, serverKexInit.CiphersServerClient, isClient)
 	if err != nil {
-		return
+		return algs, err
 	}
 
 	if !aeadCiphers[ctos.Cipher] {
 		ctos.MAC, err = findCommon("client to server MAC", clientKexInit.MACsClientServer, serverKexInit.MACsClientServer, isClient)
 		if err != nil {
-			return
+			return algs, err
 		}
 	}
 
 	if !aeadCiphers[stoc.Cipher] {
 		stoc.MAC, err = findCommon("server to client MAC", clientKexInit.MACsServerClient, serverKexInit.MACsServerClient, isClient)
 		if err != nil {
-			return
+			return algs, err
 		}
 	}
 
 	ctos.compression, err = findCommon("client to server compression", clientKexInit.CompressionClientServer, serverKexInit.CompressionClientServer, isClient)
 	if err != nil {
-		return
+		return algs, err
 	}
 
 	stoc.compression, err = findCommon("server to client compression", clientKexInit.CompressionServerClient, serverKexInit.CompressionServerClient, isClient)
 	if err != nil {
-		return
+		return algs, err
 	}
 
 	return result, nil

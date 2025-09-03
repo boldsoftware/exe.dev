@@ -33,7 +33,7 @@ func (e *EncryptedKey) parse(r io.Reader) (err error) {
 	var buf [10]byte
 	_, err = readFull(r, buf[:])
 	if err != nil {
-		return
+		return err
 	}
 	if buf[0] != encryptedKeyVersion {
 		return errors.UnsupportedError("unknown EncryptedKey version " + strconv.Itoa(int(buf[0])))
@@ -44,20 +44,20 @@ func (e *EncryptedKey) parse(r io.Reader) (err error) {
 	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly:
 		e.encryptedMPI1.bytes, e.encryptedMPI1.bitLength, err = readMPI(r)
 		if err != nil {
-			return
+			return err
 		}
 	case PubKeyAlgoElGamal:
 		e.encryptedMPI1.bytes, e.encryptedMPI1.bitLength, err = readMPI(r)
 		if err != nil {
-			return
+			return err
 		}
 		e.encryptedMPI2.bytes, e.encryptedMPI2.bitLength, err = readMPI(r)
 		if err != nil {
-			return
+			return err
 		}
 	}
 	_, err = consumeAll(r)
-	return
+	return err
 }
 
 func checksumKeyMaterial(key []byte) uint16 {

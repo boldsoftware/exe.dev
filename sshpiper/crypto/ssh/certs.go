@@ -592,7 +592,7 @@ func (c *Certificate) Verify(data []byte, sig *Signature) error {
 func parseSignatureBody(in []byte) (out *Signature, rest []byte, ok bool) {
 	format, in, ok := parseString(in)
 	if !ok {
-		return
+		return out, rest, ok
 	}
 
 	out = &Signature{
@@ -600,7 +600,7 @@ func parseSignatureBody(in []byte) (out *Signature, rest []byte, ok bool) {
 	}
 
 	if out.Blob, in, ok = parseString(in); !ok {
-		return
+		return out, rest, ok
 	}
 
 	switch out.Format {
@@ -615,12 +615,12 @@ func parseSignatureBody(in []byte) (out *Signature, rest []byte, ok bool) {
 func parseSignature(in []byte) (out *Signature, rest []byte, ok bool) {
 	sigBytes, rest, ok := parseString(in)
 	if !ok {
-		return
+		return out, rest, ok
 	}
 
 	out, trailing, ok := parseSignatureBody(sigBytes)
 	if !ok || len(trailing) > 0 {
 		return nil, nil, false
 	}
-	return
+	return out, rest, ok
 }

@@ -31,13 +31,13 @@ func (r *Reader) Next() (p Packet, err error) {
 	if len(r.q) > 0 {
 		p = r.q[len(r.q)-1]
 		r.q = r.q[:len(r.q)-1]
-		return
+		return p, err
 	}
 
 	for len(r.readers) > 0 {
 		p, err = Read(r.readers[len(r.readers)-1])
 		if err == nil {
-			return
+			return p, err
 		}
 		if err == io.EOF {
 			r.readers = r.readers[:len(r.readers)-1]

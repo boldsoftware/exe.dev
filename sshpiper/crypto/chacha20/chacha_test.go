@@ -143,7 +143,7 @@ func TestSetCounter(t *testing.T) {
 	panics := func(fn func()) (p bool) {
 		defer func() { p = recover() != nil }()
 		fn()
-		return
+		return p
 	}
 	if !panics(func() { s.SetCounter(0) }) {
 		t.Error("counter decreasing should trigger a panic")
@@ -154,7 +154,7 @@ func TestLastBlock(t *testing.T) {
 	panics := func(fn func()) (p bool) {
 		defer func() { p = recover() != nil }()
 		fn()
-		return
+		return p
 	}
 
 	checkLastBlock := func(b []byte) {

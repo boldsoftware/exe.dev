@@ -730,7 +730,7 @@ func parseImageReference(image string) (registry, repository, tag string) {
 			// Just localhost:port with no image? Odd but handle it
 			registry = image
 			repository = ""
-			return
+			return registry, repository, tag
 		}
 
 		// Now extract tag from the remaining part
@@ -740,7 +740,7 @@ func parseImageReference(image string) (registry, repository, tag string) {
 		} else {
 			repository = image
 		}
-		return
+		return registry, repository, tag
 	}
 
 	// Split by colon to separate tag (but watch for registry:port)

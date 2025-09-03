@@ -180,7 +180,7 @@ func (el EntityList) KeysById(id uint64) (keys []Key) {
 			}
 		}
 	}
-	return
+	return keys
 }
 
 // KeysByIdUsage returns the set of keys with the given id that also meet
@@ -217,7 +217,7 @@ func (el EntityList) KeysByIdUsage(id uint64, requiredUsage byte) (keys []Key) {
 
 		keys = append(keys, key)
 	}
-	return
+	return keys
 }
 
 // DecryptionKeys returns all private keys that are valid for decryption.
@@ -229,7 +229,7 @@ func (el EntityList) DecryptionKeys() (keys []Key) {
 			}
 		}
 	}
-	return
+	return keys
 }
 
 // ReadArmoredKeyRing reads one or more public/private keys from an armor keyring file.
@@ -283,7 +283,7 @@ func ReadKeyRing(r io.Reader) (el EntityList, err error) {
 	if len(el) == 0 && err == nil {
 		err = lastUnsupportedError
 	}
-	return
+	return el, err
 }
 
 // readToNextPublicKey reads packets until the start of the entity and leaves
@@ -293,18 +293,18 @@ func readToNextPublicKey(packets *packet.Reader) (err error) {
 	for {
 		p, err = packets.Next()
 		if err == io.EOF {
-			return
+			return err
 		} else if err != nil {
 			if _, ok := err.(errors.UnsupportedError); ok {
 				err = nil
 				continue
 			}
-			return
+			return err
 		}
 
 		if pk, ok := p.(*packet.PublicKey); ok && !pk.IsSubkey {
 			packets.Unread(p)
-			return
+			return err
 		}
 	}
 }
@@ -592,34 +592,34 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error) {
 	err = e.PrivateKey.Serialize(w)
 	if err != nil {
-		return
+		return err
 	}
 	for _, ident := range e.Identities {
 		err = ident.UserId.Serialize(w)
 		if err != nil {
-			return
+			return err
 		}
 		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
 		if err != nil {
-			return
+			return err
 		}
 		err = ident.SelfSignature.Serialize(w)
 		if err != nil {
-			return
+			return err
 		}
 	}
 	for _, subkey := range e.Subkeys {
 		err = subkey.PrivateKey.Serialize(w)
 		if err != nil {
-			return
+			return err
 		}
 		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
 		if err != nil {
-			return
+			return err
 		}
 		err = subkey.Sig.Serialize(w)
 		if err != nil {
-			return
+			return err
 		}
 	}
 	return nil

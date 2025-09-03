@@ -139,7 +139,7 @@ func (x *xof) Read(p []byte) (n int, err error) {
 		if n < blockRemaining {
 			x.offset += copy(p, x.block[x.offset:])
 			x.remaining -= uint64(n)
-			return
+			return n, err
 		}
 		copy(p, x.block[x.offset:])
 		p = p[blockRemaining:]
@@ -174,7 +174,7 @@ func (x *xof) Read(p []byte) (n int, err error) {
 		x.offset = copy(p, x.block[:todo])
 		x.remaining -= uint64(todo)
 	}
-	return
+	return n, err
 }
 
 func (d *digest) initConfig(cfg *[Size]byte) {

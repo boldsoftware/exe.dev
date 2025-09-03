@@ -609,17 +609,17 @@ var bigOne = big.NewInt(1)
 
 func parseString(in []byte) (out, rest []byte, ok bool) {
 	if len(in) < 4 {
-		return
+		return out, rest, ok
 	}
 	length := binary.BigEndian.Uint32(in)
 	in = in[4:]
 	if uint32(len(in)) < length {
-		return
+		return out, rest, ok
 	}
 	out = in[:length]
 	rest = in[length:]
 	ok = true
-	return
+	return out, rest, ok
 }
 
 var (
@@ -630,24 +630,24 @@ var (
 func parseNameList(in []byte) (out []string, rest []byte, ok bool) {
 	contents, rest, ok := parseString(in)
 	if !ok {
-		return
+		return out, rest, ok
 	}
 	if len(contents) == 0 {
 		out = emptyNameList
-		return
+		return out, rest, ok
 	}
 	parts := bytes.Split(contents, comma)
 	out = make([]string, len(parts))
 	for i, part := range parts {
 		out[i] = string(part)
 	}
-	return
+	return out, rest, ok
 }
 
 func parseInt(in []byte) (out *big.Int, rest []byte, ok bool) {
 	contents, rest, ok := parseString(in)
 	if !ok {
-		return
+		return out, rest, ok
 	}
 	out = new(big.Int)
 
@@ -665,7 +665,7 @@ func parseInt(in []byte) (out *big.Int, rest []byte, ok bool) {
 		out.SetBytes(contents)
 	}
 	ok = true
-	return
+	return out, rest, ok
 }
 
 func parseUint32(in []byte) (uint32, []byte, bool) {

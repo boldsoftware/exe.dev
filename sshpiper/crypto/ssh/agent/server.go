@@ -222,7 +222,7 @@ func parseConstraints(constraints []byte) (lifetimeSecs uint32, confirmBeforeUse
 			return 0, false, nil, fmt.Errorf("unknown constraint type: %d", constraints[0])
 		}
 	}
-	return
+	return lifetimeSecs, confirmBeforeUse, extensions, err
 }
 
 func setConstraints(key *AddedKey, constraintBytes []byte) error {

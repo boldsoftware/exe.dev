@@ -120,11 +120,11 @@ type seMDCReader struct {
 func (ser *seMDCReader) Read(buf []byte) (n int, err error) {
 	if ser.error {
 		err = io.ErrUnexpectedEOF
-		return
+		return n, err
 	}
 	if ser.eof {
 		err = io.EOF
-		return
+		return n, err
 	}
 
 	// If we haven't yet filled the trailer buffer then we must do that
@@ -137,16 +137,16 @@ func (ser *seMDCReader) Read(buf []byte) (n int, err error) {
 				n = 0
 				err = io.ErrUnexpectedEOF
 				ser.error = true
-				return
+				return n, err
 			}
 			ser.eof = true
 			n = 0
-			return
+			return n, err
 		}
 
 		if err != nil {
 			n = 0
-			return
+			return n, err
 		}
 	}
 
@@ -162,7 +162,7 @@ func (ser *seMDCReader) Read(buf []byte) (n int, err error) {
 			ser.eof = true
 			err = io.EOF
 		}
-		return
+		return n, err
 	}
 
 	n, err = ser.in.Read(buf[mdcTrailerSize:])
@@ -173,7 +173,7 @@ func (ser *seMDCReader) Read(buf []byte) (n int, err error) {
 	if err == io.EOF {
 		ser.eof = true
 	}
-	return
+	return n, err
 }
 
 // This is a new-format packet tag byte for a type 19 (MDC) packet.
@@ -232,7 +232,7 @@ func (w *seMDCWriter) Close() (err error) {
 
 	_, err = w.w.Write(buf[:])
 	if err != nil {
-		return
+		return err
 	}
 	return w.w.Close()
 }
@@ -261,12 +261,12 @@ func SerializeSymmetricallyEncrypted(w io.Writer, c CipherFunction, key []byte, 
 	writeCloser := noOpCloser{w}
 	ciphertext, err := serializeStreamHeader(writeCloser, packetTypeSymmetricallyEncryptedMDC)
 	if err != nil {
-		return
+		return contents, err
 	}
 
 	_, err = ciphertext.Write([]byte{symmetricallyEncryptedVersion})
 	if err != nil {
-		return
+		return contents, err
 	}
 
 	block := c.new(key)
@@ -274,12 +274,12 @@ func SerializeSymmetricallyEncrypted(w io.Writer, c CipherFunction, key []byte, 
 	iv := make([]byte, blockSize)
 	_, err = config.Random().Read(iv)
 	if err != nil {
-		return
+		return contents, err
 	}
 	s, prefix := NewOCFBEncrypter(block, iv, OCFBNoResync)
 	_, err = ciphertext.Write(prefix)
 	if err != nil {
-		return
+		return contents, err
 	}
 	plaintext := cipher.StreamWriter{S: s, W: ciphertext}
 
@@ -287,5 +287,5 @@ func SerializeSymmetricallyEncrypted(w io.Writer, c CipherFunction, key []byte, 
 	h.Write(iv)
 	h.Write(iv[blockSize-2:])
 	contents = &seMDCWriter{w: plaintext, h: h}
-	return
+	return contents, err
 }

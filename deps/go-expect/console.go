@@ -222,7 +222,7 @@ func NewConsole(opts ...ConsoleOpt) (*Console, error) {
 		// Add an output writer that captures all terminal output as it flows through
 		outputWriter := &asciinemaOutputWriter{asciinemaWriter: options.AsciinemaWriter}
 		options.Stdouts = append(options.Stdouts, outputWriter)
-		
+
 		// Add SendObserver to record terminal input
 		options.SendObservers = append(options.SendObservers, func(msg string, num int, err error) {
 			if err == nil && options.AsciinemaWriter != nil {

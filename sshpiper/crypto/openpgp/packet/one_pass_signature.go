@@ -31,7 +31,7 @@ func (ops *OnePassSignature) parse(r io.Reader) (err error) {
 
 	_, err = readFull(r, buf[:])
 	if err != nil {
-		return
+		return err
 	}
 	if buf[0] != onePassSignatureVersion {
 		err = errors.UnsupportedError("one-pass-signature packet version " + strconv.Itoa(int(buf[0])))
@@ -47,7 +47,7 @@ func (ops *OnePassSignature) parse(r io.Reader) (err error) {
 	ops.PubKeyAlgo = PublicKeyAlgorithm(buf[3])
 	ops.KeyId = binary.BigEndian.Uint64(buf[4:12])
 	ops.IsLast = buf[12] != 0
-	return
+	return err
 }
 
 // Serialize marshals the given OnePassSignature to w.

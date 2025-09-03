@@ -467,22 +467,22 @@ func HashHostname(hostname string) string {
 func decodeHash(encoded string) (hashType string, salt, hash []byte, err error) {
 	if len(encoded) == 0 || encoded[0] != '|' {
 		err = errors.New("knownhosts: hashed host must start with '|'")
-		return
+		return hashType, salt, hash, err
 	}
 	components := strings.Split(encoded, "|")
 	if len(components) != 4 {
 		err = fmt.Errorf("knownhosts: got %d components, want 3", len(components))
-		return
+		return hashType, salt, hash, err
 	}
 
 	hashType = components[1]
 	if salt, err = base64.StdEncoding.DecodeString(components[2]); err != nil {
-		return
+		return hashType, salt, hash, err
 	}
 	if hash, err = base64.StdEncoding.DecodeString(components[3]); err != nil {
-		return
+		return hashType, salt, hash, err
 	}
-	return
+	return hashType, salt, hash, err
 }
 
 func encodeHash(typ string, salt []byte, hash []byte) string {

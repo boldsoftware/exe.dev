@@ -67,7 +67,7 @@ func sliceForAppend(in []byte, n int) (head, tail []byte) {
 		copy(head, in)
 	}
 	tail = head[len(in):]
-	return
+	return head, tail
 }
 
 // Seal appends an encrypted and authenticated copy of message to out, which

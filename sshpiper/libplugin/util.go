@@ -68,7 +68,7 @@ func SplitHostPortForSSH(addr string) (host string, port int, err error) {
 		var parsedPort int64
 		parsedPort, err = strconv.ParseInt(p, 10, 32)
 		if err != nil {
-			return
+			return host, port, err
 		}
 		port = int(parsedPort)
 	} else if host != "" {
@@ -82,7 +82,7 @@ func SplitHostPortForSSH(addr string) (host string, port int, err error) {
 		err = fmt.Errorf("empty addr")
 	}
 
-	return
+	return host, port, err
 }
 
 // DialForSSH is the modified version of net.Dial, would add ":22" automaticlly

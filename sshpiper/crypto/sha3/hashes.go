@@ -100,7 +100,7 @@ func Sum224(data []byte) (digest [28]byte) {
 	h := New224()
 	h.Write(data)
 	h.Sum(digest[:0])
-	return
+	return digest
 }
 
 // Sum256 returns the SHA3-256 digest of the data.
@@ -108,7 +108,7 @@ func Sum256(data []byte) (digest [32]byte) {
 	h := New256()
 	h.Write(data)
 	h.Sum(digest[:0])
-	return
+	return digest
 }
 
 // Sum384 returns the SHA3-384 digest of the data.
@@ -116,7 +116,7 @@ func Sum384(data []byte) (digest [48]byte) {
 	h := New384()
 	h.Write(data)
 	h.Sum(digest[:0])
-	return
+	return digest
 }
 
 // Sum512 returns the SHA3-512 digest of the data.
@@ -124,5 +124,5 @@ func Sum512(data []byte) (digest [64]byte) {
 	h := New512()
 	h.Write(data)
 	h.Sum(digest[:0])
-	return
+	return digest
 }

@@ -164,7 +164,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 
 	_, err = io.ReadFull(r, buf[:2])
 	if err != nil {
-		return
+		return f, err
 	}
 
 	hash, ok := HashIdToHash(buf[1])
@@ -185,7 +185,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	case 1:
 		_, err = io.ReadFull(r, buf[:8])
 		if err != nil {
-			return
+			return f, err
 		}
 		f := func(out, in []byte) {
 			Salted(out, h, in, buf[:8])
@@ -194,7 +194,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	case 3:
 		_, err = io.ReadFull(r, buf[:9])
 		if err != nil {
-			return
+			return f, err
 		}
 		count := decodeCount(buf[8])
 		f := func(out, in []byte) {

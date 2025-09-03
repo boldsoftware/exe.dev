@@ -182,7 +182,7 @@ type recordingConn struct {
 
 func (r *recordingConn) Read(b []byte) (n int, err error) {
 	if n, err = r.Conn.Read(b); n == 0 {
-		return
+		return n, err
 	}
 	b = b[:n]
 
@@ -197,12 +197,12 @@ func (r *recordingConn) Read(b []byte) (n int, err error) {
 		r.flows[l-1] = append(r.flows[l-1], b[:n]...)
 	}
 	r.reading = true
-	return
+	return n, err
 }
 
 func (r *recordingConn) Write(b []byte) (n int, err error) {
 	if n, err = r.Conn.Write(b); n == 0 {
-		return
+		return n, err
 	}
 	b = b[:n]
 
@@ -217,7 +217,7 @@ func (r *recordingConn) Write(b []byte) (n int, err error) {
 		r.flows[l-1] = append(r.flows[l-1], b[:n]...)
 	}
 	r.reading = false
-	return
+	return n, err
 }
 
 // WriteTo writes Go source code to w that contains the recorded traffic.

@@ -246,7 +246,7 @@ func (d *dashEscaper) Write(data []byte) (n int, err error) {
 				// The signature isn't calculated over the dash-escaped text so
 				// the escape is only written to buffered.
 				if _, err = d.buffered.Write(dashEscape); err != nil {
-					return
+					return n, err
 				}
 				d.toHash.Write(d.byteBuf)
 				d.atBeginningOfLine = false
@@ -257,7 +257,7 @@ func (d *dashEscaper) Write(data []byte) (n int, err error) {
 				d.atBeginningOfLine = false
 			}
 			if err = d.buffered.WriteByte(b); err != nil {
-				return
+				return n, err
 			}
 		} else {
 			if b == '\n' {
@@ -267,7 +267,7 @@ func (d *dashEscaper) Write(data []byte) (n int, err error) {
 				// We delay writing CRLF to the hash until the start of the
 				// next line.
 				if err = d.buffered.WriteByte(b); err != nil {
-					return
+					return n, err
 				}
 				d.atBeginningOfLine = true
 			} else {
@@ -276,32 +276,32 @@ func (d *dashEscaper) Write(data []byte) (n int, err error) {
 				if len(d.whitespace) > 0 {
 					d.toHash.Write(d.whitespace)
 					if _, err = d.buffered.Write(d.whitespace); err != nil {
-						return
+						return n, err
 					}
 					d.whitespace = d.whitespace[:0]
 				}
 				d.toHash.Write(d.byteBuf)
 				if err = d.buffered.WriteByte(b); err != nil {
-					return
+					return n, err
 				}
 			}
 		}
 	}
 
 	n = len(data)
-	return
+	return n, err
 }
 
 func (d *dashEscaper) Close() (err error) {
 	if !d.atBeginningOfLine {
 		if err = d.buffered.WriteByte(lf); err != nil {
-			return
+			return err
 		}
 	}
 
 	out, err := armor.Encode(d.buffered, "PGP SIGNATURE", nil)
 	if err != nil {
-		return
+		return err
 	}
 
 	t := d.config.Now()
@@ -314,20 +314,20 @@ func (d *dashEscaper) Close() (err error) {
 		sig.IssuerKeyId = &k.KeyId
 
 		if err = sig.Sign(d.hashers[i], k, d.config); err != nil {
-			return
+			return err
 		}
 		if err = sig.Serialize(out); err != nil {
-			return
+			return err
 		}
 	}
 
 	if err = out.Close(); err != nil {
-		return
+		return err
 	}
 	if err = d.buffered.Flush(); err != nil {
-		return
+		return err
 	}
-	return
+	return err
 }
 
 // Encode returns a WriteCloser which will clear-sign a message with privateKey
@@ -367,22 +367,22 @@ func EncodeMulti(w io.Writer, privateKeys []*packet.PrivateKey, config *packet.C
 	buffered := bufio.NewWriter(w)
 	// start has a \n at the beginning that we don't want here.
 	if _, err = buffered.Write(start[1:]); err != nil {
-		return
+		return plaintext, err
 	}
 	if err = buffered.WriteByte(lf); err != nil {
-		return
+		return plaintext, err
 	}
 	if _, err = buffered.WriteString("Hash: "); err != nil {
-		return
+		return plaintext, err
 	}
 	if _, err = buffered.WriteString(name); err != nil {
-		return
+		return plaintext, err
 	}
 	if err = buffered.WriteByte(lf); err != nil {
-		return
+		return plaintext, err
 	}
 	if err = buffered.WriteByte(lf); err != nil {
-		return
+		return plaintext, err
 	}
 
 	plaintext = &dashEscaper{
@@ -400,7 +400,7 @@ func EncodeMulti(w io.Writer, privateKeys []*packet.PrivateKey, config *packet.C
 		config:      config,
 	}
 
-	return
+	return plaintext, err
 }
 
 // nameOfHash returns the OpenPGP name for the given hash, or the empty string

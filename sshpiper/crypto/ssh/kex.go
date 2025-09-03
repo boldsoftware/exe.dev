@@ -153,17 +153,17 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handshakeMagics, priv AlgorithmSigner, algo string) (result *kexResult, err error) {
 	packet, err := c.readPacket()
 	if err != nil {
-		return
+		return result, err
 	}
 	var kexDHInit kexDHInitMsg
 	if err = Unmarshal(packet, &kexDHInit); err != nil {
-		return
+		return result, err
 	}
 
 	var y *big.Int
 	for {
 		if y, err = rand.Int(randSource, group.pMinus1); err != nil {
-			return
+			return result, err
 		}
 		if y.Sign() > 0 {
 			break
@@ -515,11 +515,11 @@ func (kex *curve25519sha256) Client(c packetConn, rand io.Reader, magics *handsh
 func (kex *curve25519sha256) Server(c packetConn, rand io.Reader, magics *handshakeMagics, priv AlgorithmSigner, algo string) (result *kexResult, err error) {
 	packet, err := c.readPacket()
 	if err != nil {
-		return
+		return result, err
 	}
 	var kexInit kexECDHInitMsg
 	if err = Unmarshal(packet, &kexInit); err != nil {
-		return
+		return result, err
 	}
 
 	if len(kexInit.ClientPubKey) != 32 {
@@ -684,11 +684,11 @@ func (gex *dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshak
 	// Receive GexRequest
 	packet, err := c.readPacket()
 	if err != nil {
-		return
+		return result, err
 	}
 	var kexDHGexRequest kexDHGexRequestMsg
 	if err = Unmarshal(packet, &kexDHGexRequest); err != nil {
-		return
+		return result, err
 	}
 	// We check that the request received is valid and that the MaxBits
 	// requested are at least equal to our supported minimum. This is the same
@@ -727,18 +727,18 @@ func (gex *dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshak
 	// Receive GexInit
 	packet, err = c.readPacket()
 	if err != nil {
-		return
+		return result, err
 	}
 	var kexDHGexInit kexDHGexInitMsg
 	if err = Unmarshal(packet, &kexDHGexInit); err != nil {
-		return
+		return result, err
 	}
 
 	pHalf := new(big.Int).Rsh(p, 1)
 
 	y, err := rand.Int(randSource, pHalf)
 	if err != nil {
-		return
+		return result, err
 	}
 	Y := new(big.Int).Exp(g, y, p)
 

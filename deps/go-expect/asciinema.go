@@ -34,13 +34,13 @@ type AsciinemaWriter struct {
 
 // AsciinemaHeader represents the ASCIIcast v2 header
 type AsciinemaHeader struct {
-	Version   int     `json:"version"`
-	Width     int     `json:"width"`
-	Height    int     `json:"height"`
-	Timestamp *int64  `json:"timestamp,omitempty"`
+	Version   int      `json:"version"`
+	Width     int      `json:"width"`
+	Height    int      `json:"height"`
+	Timestamp *int64   `json:"timestamp,omitempty"`
 	Duration  *float64 `json:"duration,omitempty"`
-	Command   *string `json:"command,omitempty"`
-	Title     *string `json:"title,omitempty"`
+	Command   *string  `json:"command,omitempty"`
+	Title     *string  `json:"title,omitempty"`
 }
 
 // AsciinemaEvent represents a single event in ASCIIcast v2 format
@@ -109,7 +109,7 @@ func (aw *AsciinemaWriter) WriteEvent(eventType, data string) error {
 	}
 
 	elapsed := time.Since(aw.startTime).Seconds()
-	
+
 	event := []interface{}{elapsed, eventType, data}
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
@@ -155,11 +155,11 @@ func (aw *AsciinemaWriter) Close() error {
 	}
 
 	aw.closed = true
-	
+
 	if aw.file != nil {
 		return aw.file.Close()
 	}
-	
+
 	return nil
 }
 

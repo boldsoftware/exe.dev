@@ -55,7 +55,7 @@ func (c *Conversation) startSMP(question string) (tlvs []tlv) {
 	tlvs = append(tlvs, c.generateSMP1(question))
 	c.smp.question = ""
 	c.smp.state = smpState2
-	return
+	return tlvs
 }
 
 func (c *Conversation) resetSMP() {
@@ -73,13 +73,13 @@ func (c *Conversation) processSMP(in tlv) (out tlv, complete bool, err error) {
 			err = smpFailureError
 		}
 		c.resetSMP()
-		return
+		return out, complete, err
 	case tlvTypeSMP1WithQuestion:
 		// We preprocess this into a SMP1 message.
 		nulPos := bytes.IndexByte(data, 0)
 		if nulPos == -1 {
 			err = errors.New("otr: SMP message with question didn't contain a NUL byte")
-			return
+			return out, complete, err
 		}
 		c.smp.question = string(data[:nulPos])
 		data = data[nulPos+1:]
@@ -88,7 +88,7 @@ func (c *Conversation) processSMP(in tlv) (out tlv, complete bool, err error) {
 	numMPIs, data, ok := getU32(data)
 	if !ok || numMPIs > 20 {
 		err = errors.New("otr: corrupt SMP message")
-		return
+		return out, complete, err
 	}
 
 	mpis := make([]*big.Int, numMPIs)
@@ -97,7 +97,7 @@ func (c *Conversation) processSMP(in tlv) (out tlv, complete bool, err error) {
 		mpis[i], data, ok = getMPI(data)
 		if !ok {
 			err = errors.New("otr: corrupt SMP message")
-			return
+			return out, complete, err
 		}
 	}
 
@@ -106,14 +106,14 @@ func (c *Conversation) processSMP(in tlv) (out tlv, complete bool, err error) {
 		if c.smp.state != smpState1 {
 			c.resetSMP()
 			out = c.generateSMPAbort()
-			return
+			return out, complete, err
 		}
 		if c.smp.secret == nil {
 			err = smpSecretMissingError
-			return
+			return out, complete, err
 		}
 		if err = c.processSMP1(mpis); err != nil {
-			return
+			return out, complete, err
 		}
 		c.smp.state = smpState3
 		out = c.generateSMP2()
@@ -121,21 +121,21 @@ func (c *Conversation) processSMP(in tlv) (out tlv, complete bool, err error) {
 		if c.smp.state != smpState2 {
 			c.resetSMP()
 			out = c.generateSMPAbort()
-			return
+			return out, complete, err
 		}
 		if out, err = c.processSMP2(mpis); err != nil {
 			out = c.generateSMPAbort()
-			return
+			return out, complete, err
 		}
 		c.smp.state = smpState4
 	case tlvTypeSMP3:
 		if c.smp.state != smpState3 {
 			c.resetSMP()
 			out = c.generateSMPAbort()
-			return
+			return out, complete, err
 		}
 		if out, err = c.processSMP3(mpis); err != nil {
-			return
+			return out, complete, err
 		}
 		c.smp.state = smpState1
 		c.smp.secret = nil
@@ -144,11 +144,11 @@ func (c *Conversation) processSMP(in tlv) (out tlv, complete bool, err error) {
 		if c.smp.state != smpState4 {
 			c.resetSMP()
 			out = c.generateSMPAbort()
-			return
+			return out, complete, err
 		}
 		if err = c.processSMP4(mpis); err != nil {
 			out = c.generateSMPAbort()
-			return
+			return out, complete, err
 		}
 		c.smp.state = smpState1
 		c.smp.secret = nil
@@ -157,7 +157,7 @@ func (c *Conversation) processSMP(in tlv) (out tlv, complete bool, err error) {
 		panic("unknown SMP message")
 	}
 
-	return
+	return out, complete, err
 }
 
 func (c *Conversation) calcSMPSecret(mutualSecret []byte, weStarted bool) {
@@ -324,7 +324,7 @@ func (c *Conversation) generateSMP2() tlv {
 func (c *Conversation) processSMP2(mpis []*big.Int) (out tlv, err error) {
 	if len(mpis) != 11 {
 		err = errors.New("otr: incorrect number of arguments in SMP2 message")
-		return
+		return out, err
 	}
 	g2b := mpis[0]
 	c2 := mpis[1]
@@ -346,7 +346,7 @@ func (c *Conversation) processSMP2(mpis []*big.Int) (out tlv, err error) {
 	s.SetBytes(hashMPIs(h, 3, r))
 	if c2.Cmp(s) != 0 {
 		err = errors.New("otr: ZKP c2 failed in SMP2 message")
-		return
+		return out, err
 	}
 
 	r.Exp(g, d3, p)
@@ -356,7 +356,7 @@ func (c *Conversation) processSMP2(mpis []*big.Int) (out tlv, err error) {
 	s.SetBytes(hashMPIs(h, 4, r))
 	if c3.Cmp(s) != 0 {
 		err = errors.New("otr: ZKP c3 failed in SMP2 message")
-		return
+		return out, err
 	}
 
 	c.smp.g2 = new(big.Int).Exp(g2b, c.smp.a2, p)
@@ -376,7 +376,7 @@ func (c *Conversation) processSMP2(mpis []*big.Int) (out tlv, err error) {
 	t.SetBytes(hashMPIs(h, 5, s, r))
 	if cp.Cmp(t) != 0 {
 		err = errors.New("otr: ZKP cP failed in SMP2 message")
-		return
+		return out, err
 	}
 
 	var randBuf [16]byte
@@ -440,13 +440,13 @@ func (c *Conversation) processSMP2(mpis []*big.Int) (out tlv, err error) {
 	out.typ = tlvTypeSMP3
 	out.data = appendU32(out.data, 8)
 	out.data = appendMPIs(out.data, pa, qa, cp, d5, d6, ra, cr, d7)
-	return
+	return out, err
 }
 
 func (c *Conversation) processSMP3(mpis []*big.Int) (out tlv, err error) {
 	if len(mpis) != 8 {
 		err = errors.New("otr: incorrect number of arguments in SMP3 message")
-		return
+		return out, err
 	}
 	pa := mpis[0]
 	qa := mpis[1]
@@ -472,7 +472,7 @@ func (c *Conversation) processSMP3(mpis []*big.Int) (out tlv, err error) {
 	t.SetBytes(hashMPIs(h, 6, s, r))
 	if t.Cmp(cp) != 0 {
 		err = errors.New("otr: ZKP cP failed in SMP3 message")
-		return
+		return out, err
 	}
 
 	r.ModInverse(c.smp.qb, p)
@@ -491,7 +491,7 @@ func (c *Conversation) processSMP3(mpis []*big.Int) (out tlv, err error) {
 	t.SetBytes(hashMPIs(h, 7, s, r))
 	if t.Cmp(cr) != 0 {
 		err = errors.New("otr: ZKP cR failed in SMP3 message")
-		return
+		return out, err
 	}
 
 	var randBuf [16]byte
@@ -521,7 +521,7 @@ func (c *Conversation) processSMP3(mpis []*big.Int) (out tlv, err error) {
 		err = smpFailureError
 	}
 
-	return
+	return out, err
 }
 
 func (c *Conversation) processSMP4(mpis []*big.Int) error {

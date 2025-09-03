@@ -62,7 +62,7 @@ func (f *FakeClient) InitSecContext(target string, token []byte, isGSSDelegCreds
 	}
 	f.round++
 	needContinue = f.round < f.maxRound
-	return
+	return outputToken, needContinue, err
 }
 
 func (f *FakeClient) GetMIC(micField []byte) ([]byte, error) {
@@ -98,7 +98,7 @@ func (f *FakeServer) AcceptSecContext(token []byte) (outputToken []byte, srcName
 	f.round++
 	needContinue = f.round < f.maxRound
 	srcName = f.srcName
-	return
+	return outputToken, srcName, needContinue, err
 }
 
 func (f *FakeServer) VerifyMIC(micField []byte, micToken []byte) error {

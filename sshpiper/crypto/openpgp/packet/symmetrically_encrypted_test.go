@@ -33,7 +33,7 @@ func (t *testReader) Read(buf []byte) (n int, err error) {
 	if len(t.data) == 0 {
 		err = io.EOF
 	}
-	return
+	return n, err
 }
 
 func testMDCReader(t *testing.T) {

@@ -50,11 +50,11 @@ func ArmoredDetachSignText(w io.Writer, signer *Entity, message io.Reader, confi
 func armoredDetachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.SignatureType, config *packet.Config) (err error) {
 	out, err := armor.Encode(w, SignatureType, nil)
 	if err != nil {
-		return
+		return err
 	}
 	err = detachSign(out, signer, message, sigType, config)
 	if err != nil {
-		return
+		return err
 	}
 	return out.Close()
 }
@@ -76,13 +76,13 @@ func detachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.S
 
 	h, wrappedHash, err := hashForSignature(sig.Hash, sig.SigType)
 	if err != nil {
-		return
+		return err
 	}
 	io.Copy(wrappedHash, message)
 
 	err = sig.Sign(h, signer.PrivateKey, config)
 	if err != nil {
-		return
+		return err
 	}
 
 	return sig.Serialize(w)
@@ -113,11 +113,11 @@ func SymmetricallyEncrypt(ciphertext io.Writer, passphrase []byte, hints *FileHi
 
 	key, err := packet.SerializeSymmetricKeyEncrypted(ciphertext, passphrase, config)
 	if err != nil {
-		return
+		return plaintext, err
 	}
 	w, err := packet.SerializeSymmetricallyEncrypted(ciphertext, config.Cipher(), key, config)
 	if err != nil {
-		return
+		return plaintext, err
 	}
 
 	literaldata := w
@@ -128,7 +128,7 @@ func SymmetricallyEncrypt(ciphertext io.Writer, passphrase []byte, hints *FileHi
 		}
 		literaldata, err = packet.SerializeCompressed(w, algo, compConfig)
 		if err != nil {
-			return
+			return plaintext, err
 		}
 	}
 
@@ -331,7 +331,7 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 
 	payload, err := packet.SerializeSymmetricallyEncrypted(ciphertext, cipher, symKey, config)
 	if err != nil {
-		return
+		return plaintext, err
 	}
 
 	return writeAndSign(payload, candidateHashes, signed, hints, config)

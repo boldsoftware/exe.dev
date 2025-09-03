@@ -315,7 +315,7 @@ func exchangeVersions(rw io.ReadWriter, versionLine []byte) (them []byte, err er
 		}
 	}
 	if _, err = rw.Write(append(versionLine, '\r', '\n')); err != nil {
-		return
+		return them, err
 	}
 
 	them, err = readVersion(rw)

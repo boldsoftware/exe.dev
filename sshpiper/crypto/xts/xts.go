@@ -54,7 +54,7 @@ var tweakPool = sync.Pool{
 func NewCipher(cipherFunc func([]byte) (cipher.Block, error), key []byte) (c *Cipher, err error) {
 	c = new(Cipher)
 	if c.k1, err = cipherFunc(key[:len(key)/2]); err != nil {
-		return
+		return c, err
 	}
 	c.k2, err = cipherFunc(key[len(key)/2:])
 
@@ -62,7 +62,7 @@ func NewCipher(cipherFunc func([]byte) (cipher.Block, error), key []byte) (c *Ci
 		err = errors.New("xts: cipher does not have a block size of 16")
 	}
 
-	return
+	return c, err
 }
 
 // Encrypt encrypts a sector of plaintext and puts the result into ciphertext.

@@ -88,12 +88,12 @@ func NewSignerPrivateKey(creationTime time.Time, signer crypto.Signer) *PrivateK
 func (pk *PrivateKey) parse(r io.Reader) (err error) {
 	err = (&pk.PublicKey).parse(r)
 	if err != nil {
-		return
+		return err
 	}
 	var buf [1]byte
 	_, err = readFull(r, buf[:])
 	if err != nil {
-		return
+		return err
 	}
 
 	s2kType := buf[0]
@@ -105,13 +105,13 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 	case 254, 255:
 		_, err = readFull(r, buf[:])
 		if err != nil {
-			return
+			return err
 		}
 		pk.cipher = CipherFunction(buf[0])
 		pk.Encrypted = true
 		pk.s2k, err = s2k.Parse(r)
 		if err != nil {
-			return
+			return err
 		}
 		if s2kType == 254 {
 			pk.sha1Checksum = true
@@ -128,20 +128,20 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		pk.iv = make([]byte, blockSize)
 		_, err = readFull(r, pk.iv)
 		if err != nil {
-			return
+			return err
 		}
 	}
 
 	pk.encryptedData, err = io.ReadAll(r)
 	if err != nil {
-		return
+		return err
 	}
 
 	if !pk.Encrypted {
 		return pk.parsePrivateKey(pk.encryptedData)
 	}
 
-	return
+	return err
 }
 
 func mod64kHash(d []byte) uint16 {
@@ -157,7 +157,7 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	buf := bytes.NewBuffer(nil)
 	err = pk.PublicKey.serializeWithoutHeaders(buf)
 	if err != nil {
-		return
+		return err
 	}
 	buf.WriteByte(0 /* no encryption */)
 
@@ -176,7 +176,7 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 		err = errors.InvalidArgumentError("unknown private key type")
 	}
 	if err != nil {
-		return
+		return err
 	}
 
 	ptype := packetTypePrivateKey
@@ -187,15 +187,15 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	}
 	err = serializeHeader(w, ptype, len(contents)+len(privateKeyBytes)+2)
 	if err != nil {
-		return
+		return err
 	}
 	_, err = w.Write(contents)
 	if err != nil {
-		return
+		return err
 	}
 	_, err = w.Write(privateKeyBytes)
 	if err != nil {
-		return
+		return err
 	}
 
 	checksum := mod64kHash(privateKeyBytes)
@@ -204,7 +204,7 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	checksumBytes[1] = byte(checksum)
 	_, err = w.Write(checksumBytes[:])
 
-	return
+	return err
 }
 
 func serializeRSAPrivateKey(w io.Writer, priv *rsa.PrivateKey) error {
@@ -300,15 +300,15 @@ func (pk *PrivateKey) parseRSAPrivateKey(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	d, _, err := readMPI(buf)
 	if err != nil {
-		return
+		return err
 	}
 	p, _, err := readMPI(buf)
 	if err != nil {
-		return
+		return err
 	}
 	q, _, err := readMPI(buf)
 	if err != nil {
-		return
+		return err
 	}
 
 	rsaPriv.D = new(big.Int).SetBytes(d)
@@ -334,7 +334,7 @@ func (pk *PrivateKey) parseDSAPrivateKey(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	x, _, err := readMPI(buf)
 	if err != nil {
-		return
+		return err
 	}
 
 	dsaPriv.X = new(big.Int).SetBytes(x)
@@ -353,7 +353,7 @@ func (pk *PrivateKey) parseElGamalPrivateKey(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	x, _, err := readMPI(buf)
 	if err != nil {
-		return
+		return err
 	}
 
 	priv.X = new(big.Int).SetBytes(x)
@@ -370,7 +370,7 @@ func (pk *PrivateKey) parseECDSAPrivateKey(data []byte) (err error) {
 	buf := bytes.NewBuffer(data)
 	d, _, err := readMPI(buf)
 	if err != nil {
-		return
+		return err
 	}
 
 	pk.PrivateKey = &ecdsa.PrivateKey{

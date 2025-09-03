@@ -159,7 +159,7 @@ func (s *asmState) Read(out []byte) (n int, err error) {
 		if len(out)%s.rate == 0 {
 			klmd(s.function, &s.a, out, s.buf) // len(out) may be 0
 			s.buf = s.buf[:0]
-			return
+			return n, err
 		}
 
 		// write hash into buffer
@@ -183,7 +183,7 @@ func (s *asmState) Read(out []byte) (n int, err error) {
 		// write hash directly into out if possible
 		if len(out)%s.rate == 0 {
 			klmd(s.function|nopad, &s.a, out, nil)
-			return
+			return n, err
 		}
 
 		// write hash into buffer
@@ -193,7 +193,7 @@ func (s *asmState) Read(out []byte) (n int, err error) {
 		}
 		klmd(s.function|nopad, &s.a, s.buf, nil)
 	}
-	return
+	return n, err
 }
 
 // Sum appends the current hash to b and returns the resulting slice.

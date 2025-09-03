@@ -44,7 +44,7 @@ func Encrypt(random io.Reader, pub *PublicKey, msg []byte) (c1, c2 *big.Int, err
 	pLen := (pub.P.BitLen() + 7) / 8
 	if len(msg) > pLen-11 {
 		err = errors.New("elgamal: message too long")
-		return
+		return c1, c2, err
 	}
 
 	// EM = 0x02 || PS || 0x00 || M
@@ -53,7 +53,7 @@ func Encrypt(random io.Reader, pub *PublicKey, msg []byte) (c1, c2 *big.Int, err
 	ps, mm := em[1:len(em)-len(msg)-1], em[len(em)-len(msg):]
 	err = nonZeroRandomBytes(ps, random)
 	if err != nil {
-		return
+		return c1, c2, err
 	}
 	em[len(em)-len(msg)-1] = 0
 	copy(mm, msg)
@@ -62,7 +62,7 @@ func Encrypt(random io.Reader, pub *PublicKey, msg []byte) (c1, c2 *big.Int, err
 
 	k, err := rand.Int(random, pub.P)
 	if err != nil {
-		return
+		return c1, c2, err
 	}
 
 	c1 = new(big.Int).Exp(pub.G, k, pub.P)
@@ -70,7 +70,7 @@ func Encrypt(random io.Reader, pub *PublicKey, msg []byte) (c1, c2 *big.Int, err
 	c2 = s.Mul(s, m)
 	c2.Mod(c2, pub.P)
 
-	return
+	return c1, c2, err
 }
 
 // Decrypt takes two integers, resulting from an ElGamal encryption, and
@@ -114,17 +114,17 @@ func Decrypt(priv *PrivateKey, c1, c2 *big.Int) (msg []byte, err error) {
 func nonZeroRandomBytes(s []byte, rand io.Reader) (err error) {
 	_, err = io.ReadFull(rand, s)
 	if err != nil {
-		return
+		return err
 	}
 
 	for i := 0; i < len(s); i++ {
 		for s[i] == 0 {
 			_, err = io.ReadFull(rand, s[i:i+1])
 			if err != nil {
-				return
+				return err
 			}
 		}
 	}
 
-	return
+	return err
 }
