@@ -84,6 +84,15 @@ func (m *MockContainerManager) ListContainers(ctx context.Context, allocID strin
 	return result, nil
 }
 
+// ListAllContainers lists all mock containers
+func (m *MockContainerManager) ListAllContainers(ctx context.Context) ([]*container.Container, error) {
+	var result []*container.Container
+	for _, c := range m.containers {
+		result = append(result, c)
+	}
+	return result, nil
+}
+
 // StartContainer starts a mock container
 func (m *MockContainerManager) StartContainer(ctx context.Context, allocID, containerID string) error {
 	c, exists := m.containers[containerID]

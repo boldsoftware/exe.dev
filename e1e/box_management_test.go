@@ -4,7 +4,6 @@ package expect
 
 import (
 	"regexp"
-	"strings"
 	"testing"
 
 	"exe.dev/vouch"
@@ -17,7 +16,7 @@ func TestBoxCreation(t *testing.T) {
 	pty, keyFile, _ := registerForExeDev(t)
 
 	// Create a box.
-	boxName := strings.ToLower(t.Name())
+	boxName := boxName(t)
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
 	pty.reject("Sorry")
@@ -52,7 +51,7 @@ func TestDuplicateBoxCreationFails(t *testing.T) {
 	pty, _, _ := registerForExeDev(t)
 
 	// Create a box.
-	boxName := strings.ToLower(t.Name())
+	boxName := boxName(t)
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
 	pty.want("ssh") // wait for ssh instructions

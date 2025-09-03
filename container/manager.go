@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
+
+	"exe.dev/ctrhosttest"
 )
 
 // Manager provides container lifecycle management operations
@@ -12,6 +15,7 @@ type Manager interface {
 	CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error)
 	GetContainer(ctx context.Context, allocID, containerID string) (*Container, error)
 	ListContainers(ctx context.Context, allocID string) ([]*Container, error)
+	ListAllContainers(ctx context.Context) ([]*Container, error)
 	StartContainer(ctx context.Context, allocID, containerID string) error
 	StopContainer(ctx context.Context, allocID, containerID string) error
 	DeleteContainer(ctx context.Context, allocID, containerID string) error
@@ -70,4 +74,39 @@ func NewManager(cfg *Config) (Manager, error) {
 
 	// Use nerdctl for containerd backend
 	return NewNerdctlManager(cfg)
+}
+
+// CleanupTestContainers removes containers with names containing substring.
+// Designed for cleaning up test containers; best effort only.
+// DO NOT USE for prod.
+func CleanupTestContainers(ctx context.Context, substring string) error {
+	// Detect container host using same logic as container tests
+	host := ctrhosttest.Detect(ctx)
+	if host == "" {
+		return fmt.Errorf("no container host available for cleanup")
+	}
+	config := &Config{ContainerdAddresses: []string{host}}
+	manager, err := NewNerdctlManager(config)
+	if err != nil {
+		return fmt.Errorf("failed to create container manager: %w", err)
+	}
+	defer manager.Close()
+
+	containers, err := manager.ListAllContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	for _, container := range containers {
+		if !strings.Contains(container.Name, substring) {
+			continue
+		}
+		if err := manager.DeleteContainer(ctx, container.AllocID, container.ID); err != nil {
+			fmt.Printf("warning: failed to delete container %s: %v\n", container.Name, err)
+		} else {
+			fmt.Printf("deleted container %s\n", container.Name)
+		}
+	}
+
+	return nil
 }

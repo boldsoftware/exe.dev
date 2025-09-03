@@ -1354,15 +1354,22 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 
 // ListContainers lists all containers for an allocation
 func (m *NerdctlManager) ListContainers(ctx context.Context, allocID string) ([]*Container, error) {
+	return m.listContainersWithFilter(ctx, fmt.Sprintf("label=alloc_id=%s", allocID), allocID)
+}
+
+// ListAllContainers lists all containers without filtering by allocation ID
+func (m *NerdctlManager) ListAllContainers(ctx context.Context) ([]*Container, error) {
+	return m.listContainersWithFilter(ctx, "label=alloc_id", "")
+}
+
+func (m *NerdctlManager) listContainersWithFilter(ctx context.Context, filter, allocID string) ([]*Container, error) {
 	// Determine which host to query
 	host := ""
 	if m.config != nil && len(m.config.ContainerdAddresses) > 0 {
 		host = m.config.ContainerdAddresses[0]
 	}
 
-	// List containers with the alloc_id label. Use --no-trunc so IDs match
-	// the full-length IDs returned at create time.
-	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--no-trunc", "--format", "json", "--filter", fmt.Sprintf("label=alloc_id=%s", allocID))
+	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--no-trunc", "--format", "json", "--filter", filter)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list containers: %w", err)

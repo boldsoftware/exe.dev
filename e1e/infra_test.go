@@ -5,6 +5,7 @@ package expect
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -26,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/container"
 	"exe.dev/vouch"
 	"github.com/Netflix/go-expect"
 	"golang.org/x/crypto/ssh"
@@ -65,6 +68,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	Env = env
+	fmt.Printf("running tests\n")
 	code := m.Run()
 	env.Close()
 	os.Exit(code)
@@ -113,6 +117,17 @@ func (e *testEnv) Close() {
 	if e.piperd.Cmd != nil && e.piperd.Cmd.Process != nil {
 		e.piperd.Cmd.Process.Kill()
 		e.piperd.Cmd.Wait()
+	}
+
+	fmt.Printf("cleaning up containers\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	// Quiet verbose logging from ssh-pool, invoked by package container.
+	if !testing.Verbose() {
+		slog.SetLogLoggerLevel(slog.LevelWarn)
+	}
+	if err := container.CleanupTestContainers(ctx, "e1e-"); err != nil {
+		fmt.Printf("container cleanup failed: %v", err)
 	}
 }
 
@@ -768,6 +783,16 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) {
 		t.Errorf("email verification form submission returned status: %d, body: %s", postResp.StatusCode, string(body))
 	}
 	postResp.Body.Close()
+}
+
+// boxName creates a unique test-specific box name with e1e prefix for easy cleanup
+func boxName(t *testing.T) string {
+	t.Helper()
+	// Create unique-ish test-specific box names: "e1e-{timestamp}-{testname}"
+	// This avoids collisions between test runs and makes cleanup easy
+	timestamp := time.Now().Unix() % 10000
+	testName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
+	return fmt.Sprintf("e1e-%d-%s", timestamp, testName)
 }
 
 // registerForExeDev is a convenience command to register for an exe.dev account.
