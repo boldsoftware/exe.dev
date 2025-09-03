@@ -760,7 +760,6 @@ func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContex
 		cc.Writeln("  run `billing setup` to configure")
 	}
 	return nil
-
 }
 
 func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *CommandContext) error {

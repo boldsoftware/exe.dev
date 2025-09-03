@@ -124,7 +124,6 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\t\r\n", nameStr, cmd.Description)
 	}
 	tabw.Flush()
-
 }
 
 // FindCommand finds a command by path (e.g., ["billing", "update"] -> "the 'update' subcommand of 'billing'")
