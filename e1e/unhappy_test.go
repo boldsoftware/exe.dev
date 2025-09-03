@@ -37,3 +37,28 @@ func TestRequiresSSHKey(t *testing.T) {
 	pty.sendLine("")
 	// the exact output varies here, so don't block on receiving an EOF
 }
+
+func TestExeDevRejectsSCP(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+
+	pty := makePty(t)
+
+	sshCmd := exec.CommandContext(t.Context(), "scp",
+		"-P", fmt.Sprint(Env.piperd.SSHPort),
+		"-o", "StrictHostKeyChecking=no",
+		"unhappy_test.go",
+		"localhost:foo.txt",
+	)
+
+	pty.attach(sshCmd)
+
+	err := sshCmd.Start()
+	if err != nil {
+		t.Fatalf("failed to start SSH: %v", err)
+	}
+	t.Cleanup(func() { _ = sshCmd.Wait() })
+
+	pty.reject("subsystem request failed")
+	pty.want("scp/sftp is not supported on the exe.dev server.")
+}

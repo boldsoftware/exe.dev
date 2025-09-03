@@ -852,3 +852,21 @@ func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
 
 	return pty, keyFile, email
 }
+
+// newBox requests a new box from the open repl pty.
+func newBox(t *testing.T, pty *expectPty) string {
+	boxName := boxName(t)
+	boxNameRe := regexp.QuoteMeta(boxName)
+	pty.sendLine("new --name=" + boxName)
+	pty.reject("Sorry")
+	pty.wantRe("Creating .*" + boxNameRe)
+	// break onto two lines because ANSI codes
+	pty.want("Access with")
+	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)
+
+	// Confirm it is there.
+	pty.sendLine("list")
+	pty.want("machines")
+	pty.wantRe(boxNameRe + ".*running.*\n")
+	return boxName
+}

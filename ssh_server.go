@@ -62,8 +62,14 @@ func (ss *SSHServer) Start(ln net.Listener) error {
 		ChannelHandlers: map[string]ssh.ChannelHandler{
 			"session": ssh.DefaultSessionHandler,
 		},
-		SubsystemHandlers: map[string]ssh.SubsystemHandler{},
-		RequestHandlers:   map[string]ssh.RequestHandler{},
+		SubsystemHandlers: map[string]ssh.SubsystemHandler{
+			"sftp": func(s ssh.Session) {
+				fmt.Fprintf(s.Stderr(), "scp/sftp is not supported on the exe.dev server.\r\n")
+				s.Close()
+				s.Exit(1)
+			},
+		},
+		RequestHandlers: map[string]ssh.RequestHandler{},
 	}
 
 	// Transfer the host key from the main server to the gliderlabs SSH server

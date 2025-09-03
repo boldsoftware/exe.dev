@@ -9,30 +9,19 @@ import (
 	"exe.dev/vouch"
 )
 
-func TestBoxCreation(t *testing.T) {
+func TestSSHWorks(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 
 	pty, keyFile, _ := registerForExeDev(t)
 
 	// Create a box.
-	boxName := boxName(t)
+	boxName := newBox(t, pty)
 	boxNameRe := regexp.QuoteMeta(boxName)
-	pty.sendLine("new --name=" + boxName)
-	pty.reject("Sorry")
-	pty.wantRe("Creating .*" + boxNameRe)
-	// break onto two lines because ANSI codes
-	pty.want("Access with")
-	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)
-
-	// Confirm it is there.
-	pty.sendLine("list")
-	pty.want("machines")
-	pty.wantRe(boxNameRe + ".*running")
 
 	// Hang up. (Not necessary, but makes for nicer cinemas. :P)
 	pty.sendLine("exit")
-	pty.want("Goodbye")
+	pty.wantRe("Goodbye.*\n")
 
 	// SSH to it.
 	pty = sshToBox(t, boxName, keyFile)
