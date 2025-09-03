@@ -24,8 +24,8 @@ Once you have that, run:
 ./ops/setup-colima-host.sh
 ```
 
-For debugging you can `ssh exe-ctr-colima` and you can wipe it
-by running `./ops/reset-colima.sh`.
+For debugging you can `ssh colima-exe-ctr` and you can wipe it
+by running the setup script again.
 
 Then in your ~/.ssh/config add:
 
