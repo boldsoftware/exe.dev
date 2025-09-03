@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,7 +86,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	if len(config.ContainerdAddresses) > 0 {
 		arch, err := manager.getHostArch(context.Background(), config.ContainerdAddresses[0])
 		if err != nil {
-			log.Printf("Warning: Failed to get host architecture: %v", err)
+			slog.Warn("Failed to get host architecture", "error", err)
 			// Default to amd64 if we can't determine
 			manager.hostArch = "amd64"
 		} else {
@@ -99,17 +99,17 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 			default:
 				manager.hostArch = arch
 			}
-			log.Printf("Host architecture: %s", manager.hostArch)
+			slog.Info("Host architecture detected", "arch", manager.hostArch)
 		}
 
 		// Prepare RovolFS files on the host (for mounting into containers)
 		rovolPath, err := manager.prepareRovolFS(context.Background(), config.ContainerdAddresses[0])
 		if err != nil {
-			log.Printf("Warning: Failed to prepare RovolFS files on host: %v", err)
+			slog.Warn("Failed to prepare RovolFS files on host", "error", err)
 			// Continue without RovolFS - containers will use their own SSH binaries
 		} else {
 			manager.rovolMountPath = rovolPath
-			log.Printf("RovolFS files prepared at: %s", rovolPath)
+			slog.Info("RovolFS files prepared", "path", rovolPath)
 		}
 	}
 
@@ -117,7 +117,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	for _, host := range config.ContainerdAddresses {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		if err := manager.discoverContainers(ctx, host); err != nil {
-			log.Printf("Warning: Failed to discover containers on host %s: %v", host, err)
+			slog.Warn("Failed to discover containers on host", "host", host, "error", err)
 		}
 		cancel()
 	}
@@ -173,7 +173,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 	// This is needed in case they were deleted or this is a fresh setup
 	mkdirCmd := m.execSSHCommand(ctx, host, "sudo", "mkdir", "-p", "/var/lib/containerd-nydus/snapshots")
 	if err := mkdirCmd.Run(); err != nil {
-		log.Printf("Warning: Failed to create nydus directories: %v", err)
+		slog.Warn("Failed to create nydus directories", "error", err)
 		// Continue anyway - the directories might already exist
 	}
 
@@ -190,7 +190,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		infoOutput, infoErr := infoCmd.Output()
 
 		if infoErr == nil && strings.Contains(string(infoOutput), "kata") {
-			log.Printf("Kata runtime verified via quick check on %s: %s", host, strings.TrimSpace(string(kataOutput)))
+			slog.Info("Kata runtime verified via quick check", "host", host, "version", strings.TrimSpace(string(kataOutput)))
 			return nil
 		}
 	}
@@ -225,7 +225,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 			retryCmd := m.execNerdctl(ctx, host, retryArgs...)
 			if rOut, rErr := retryCmd.CombinedOutput(); rErr == nil {
 				if strings.Contains(string(rOut), "kata-test") {
-					log.Printf("Kata runtime successfully verified on %s (after name collision retry)", host)
+					slog.Info("Kata runtime successfully verified (after name collision retry)", "host", host)
 					return nil
 				}
 			}
@@ -251,7 +251,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		return fmt.Errorf("Kata runtime test container didn't produce expected output: %s", output)
 	}
 
-	log.Printf("Kata runtime successfully verified on %s", host)
+	slog.Info("Kata runtime successfully verified", "host", host)
 	return nil
 }
 
@@ -280,7 +280,7 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 		}
 
 		if err := json.Unmarshal([]byte(line), &containerInfo); err != nil {
-			log.Printf("Warning: Failed to parse container info: %v", err)
+			slog.Warn("Failed to parse container info", "error", err)
 			continue
 		}
 
@@ -372,7 +372,7 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 
 	// Set up iptables rules for this network
 	if err := m.setupNetworkSecurity(ctx, host, subnet); err != nil {
-		log.Printf("Warning: Failed to set up network security for %s: %v", networkName, err)
+		slog.Warn("Failed to set up network security", "network", networkName, "error", err)
 	}
 
 	return networkName, nil
@@ -637,10 +637,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			platform := fmt.Sprintf("linux/%s", m.hostArch)
 			resolvedImage, err := m.tagResolver.ResolveTag(ctx, image, platform)
 			if err != nil {
-				log.Printf("Failed to resolve tag %s to digest: %v, using tag directly", image, err)
+				slog.Warn("Failed to resolve tag to digest, using tag directly", "image", image, "error", err)
 				imageWithDigest = image
 			} else {
-				log.Printf("Resolved %s to %s", image, resolvedImage)
+				slog.Info("Resolved image tag to digest", "from", image, "to", resolvedImage)
 				imageWithDigest = resolvedImage
 			}
 		} else {
@@ -712,7 +712,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		return nil, fmt.Errorf("failed to prepare container /exe.dev: %w", err)
 	}
 	runArgs = append(runArgs, "-v", fmt.Sprintf("%s:/exe.dev:ro", containerExeDevPath))
-	log.Printf("Mounting container-specific /exe.dev from %s", containerExeDevPath)
+	slog.Info("Mounting container-specific /exe.dev", "path", containerExeDevPath)
 
 	// Helper function to clean up container-specific directory on failure
 	cleanupContainerDir := func() {
@@ -721,7 +721,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			containerDir := filepath.Dir(containerExeDevPath)
 			cleanupCmd := m.execSSHCommand(ctx, host, "rm", "-rf", containerDir)
 			if err := cleanupCmd.Run(); err != nil {
-				log.Printf("Warning: Failed to clean up container directory %s: %v", containerDir, err)
+				slog.Warn("Failed to clean up container directory", "dir", containerDir, "error", err)
 			}
 		}
 	}
@@ -743,7 +743,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		if output, err := inspectCmd.Output(); err == nil {
 			cfg, perr := parseImageInspectJSON(output)
 			if perr != nil {
-				log.Printf("Warning: failed to parse image inspect JSON for %s: %v", image, perr)
+				slog.Warn("Failed to parse image inspect JSON", "image", image, "error", perr)
 				return false
 			}
 			imageUser = cfg.User
@@ -751,7 +751,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 				imageEntrypoint = cfg.Entrypoint
 				imageCmd = cfg.Cmd
 			}
-			log.Printf("Image %s has entrypoint: %v, cmd: %v, user: %s", image, imageEntrypoint, imageCmd, imageUser)
+			slog.Info("Image metadata parsed", "image", image, "entrypoint", imageEntrypoint, "cmd", imageCmd, "user", imageUser)
 			return true
 		}
 		return false
@@ -825,7 +825,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			pullCmd := m.execNerdctl(ctx, host, "--snapshotter", "nydus", "pull", imageToInspect)
 			if output, pullErr := pullCmd.CombinedOutput(); pullErr != nil {
 				if !strings.Contains(string(output), "already exists") {
-					log.Printf("Warning: Failed to pull image %s: %v: %s", imageToInspect, err, output)
+					slog.Warn("Failed to pull image", "image", imageToInspect, "error", err, "output", string(output))
 				}
 			}
 		}
@@ -854,7 +854,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 					imageUser = cfg.User
 					imageEntrypoint = cfg.Entrypoint
 					imageCmd = cfg.Cmd
-					log.Printf("Post-pull inspect: entrypoint=%v cmd=%v user=%s", imageEntrypoint, imageCmd, imageUser)
+					slog.Info("Post-pull image metadata", "entrypoint", imageEntrypoint, "cmd", imageCmd, "user", imageUser)
 				}
 			}
 		}
@@ -869,13 +869,13 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	createCmd := m.execNerdctl(ctx, host, runArgs...)
 
 	// Log the command for debugging
-	log.Printf("Creating container with command: %v", createCmd.Args)
+	slog.Info("Creating container", "command", createCmd.Args)
 
 	// Debug: Log the exact command being run
 	if len(createCmd.Args) >= 2 && createCmd.Args[0] == "ssh" {
-		log.Printf("DEBUG: SSH command: ssh %s '%s'", createCmd.Args[1], createCmd.Args[2])
+		slog.Debug("SSH command", "host", createCmd.Args[1], "command", createCmd.Args[2])
 	} else {
-		log.Printf("DEBUG: Direct command: %v", createCmd.Args)
+		slog.Debug("Direct command", "args", createCmd.Args)
 	}
 
 	// Use CombinedOutput to capture both stdout and stderr
@@ -960,12 +960,12 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Set up SSH tunnel if we're using a remote host
 	if host != "" && !strings.HasPrefix(host, "/") {
 		if err := m.setupSSHTunnel(containerID, host, sshPort); err != nil {
-			log.Printf("Warning: Failed to set up SSH tunnel for container %s: %v", containerID, err)
+			slog.Warn("Failed to set up SSH tunnel for container", "container", containerID, "error", err)
 			// Don't fail container creation, just log the warning
 		}
 	}
 
-	log.Printf("Created container %s on host %s with IP %s and SSH port %d", containerID, host, containerIP, sshPort)
+	slog.Info("Created container", "id", containerID, "host", host, "ip", containerIP, "ssh_port", sshPort)
 
 	return container, nil
 }
@@ -997,34 +997,34 @@ func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, cont
 		inspectCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "json")
 		inspectOutput, err := inspectCmd.Output()
 		if err != nil {
-			log.Printf("Warning: Failed to inspect container: %v", err)
+			slog.Warn("Failed to inspect container", "error", err)
 			time.Sleep(checkInterval)
 			continue
 		}
 		if err := json.Unmarshal(inspectOutput, &inspectData); err != nil {
-			log.Printf("Warning: Failed to parse inspect data: %v", err)
+			slog.Warn("Failed to parse inspect data", "error", err)
 			time.Sleep(checkInterval)
 			continue
 		}
 
 		status := inspectData.State.Status
 		if status != lastStatus {
-			log.Printf("Container %s status: %s (%.1fs elapsed)", containerID, status, time.Since(startTime).Seconds())
+			slog.Info("Container status", "id", containerID, "status", status, "elapsed", time.Since(startTime).Seconds())
 			lastStatus = status
 		}
 
 		// Check for terminal states
 		if status == "exited" || status == "dead" {
 			// Container failed to start
-			log.Printf("ERROR: Container %s failed with status: %s, error: %s", containerID, status, inspectData.State.Error)
+			slog.Error("Container failed", "id", containerID, "status", status, "error", inspectData.State.Error)
 			// Try to get container logs for debugging
 			logsCmd := m.execNerdctl(ctx, host, "logs", "--tail", "50", containerID)
 			logs, _ := logsCmd.Output()
 			if len(logs) > 0 {
-				log.Printf("Container logs: %s", string(logs))
+				slog.Info("Container logs", "logs", string(logs))
 			}
 			// Temporarily keep failed container for debugging
-			log.Printf("DEBUG: Keeping failed container %s for inspection", containerID)
+			slog.Debug("Keeping failed container for inspection", "id", containerID)
 			// m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
 			// cleanupFunc()
 			return "", fmt.Errorf("container failed to start, status: %s", status)
@@ -1039,13 +1039,12 @@ func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, cont
 
 	// Check if we timed out
 	if inspectData.State.Status != "running" {
-		log.Printf("ERROR: Container %s did not reach running status after %.1fs, last status: %s",
-			containerID, maxWaitTime.Seconds(), inspectData.State.Status)
+		slog.Error("Container did not reach running status", "id", containerID, "timeout", maxWaitTime.Seconds(), "status", inspectData.State.Status)
 		// Try to get container logs for debugging
 		logsCmd := m.execNerdctl(ctx, host, "logs", "--tail", "50", containerID)
 		logs, _ := logsCmd.Output()
 		if len(logs) > 0 {
-			log.Printf("Container logs: %s", string(logs))
+			slog.Info("Container logs", "logs", string(logs))
 		}
 		m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
 		cleanupFunc()
@@ -1104,14 +1103,14 @@ func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) e
 	m.sshTunnels[containerID] = cmd
 	m.mu.Unlock()
 
-	log.Printf("Started SSH tunnel for container %s: localhost:%d -> %s:%d", containerID, sshPort, sshHost, sshPort)
+	slog.Info("Started SSH tunnel for container", "id", containerID, "local_port", sshPort, "remote_host", sshHost, "remote_port", sshPort)
 
 	// Monitor the tunnel in a goroutine
 	go func() {
 		if err := cmd.Wait(); err != nil {
 			// Only log if not killed intentionally
 			if err.Error() != "signal: killed" {
-				log.Printf("SSH tunnel for container %s exited: %v", containerID, err)
+				slog.Warn("SSH tunnel for container exited", "id", containerID, "error", err)
 			}
 		}
 		// Clean up the tunnel from the map
@@ -1131,13 +1130,13 @@ const sshdCmd = "id sshd >/dev/null 2>&1" +
 // setupContainerSSH configures SSH inside the container
 // This is used for containers that have an entrypoint already.
 func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, host, containerName string, sshKeys *ContainerSSHKeys) error {
-	log.Printf("[SSH-SETUP] Starting SSH setup for container %s (name: %s)", containerID, containerName)
+	slog.Info("Starting SSH setup for container", "id", containerID, "name", containerName)
 	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", sshdCmd)
 	if output, err := startCmd.CombinedOutput(); err != nil {
-		log.Printf("[SSH-SETUP] SSH daemon start failed: %v, output: %s", err, output)
+		slog.Warn("SSH daemon start failed", "error", err, "output", string(output))
 		// Don't return error - sshd might still be running
 	} else {
-		log.Printf("[SSH-SETUP] SSH daemon started successfully in container %s", containerID)
+		slog.Info("SSH daemon started successfully in container", "id", containerID)
 	}
 
 	// Spin-wait for sshd to fully daemonize and initialize
@@ -1147,18 +1146,18 @@ func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, hos
 		output, err := verifyCmd.CombinedOutput()
 		if err == nil && len(strings.TrimSpace(string(output))) > 0 {
 			sshRunning = true
-			log.Printf("[SSH-SETUP] SSH daemon verified running in container %s (attempt %d)", containerID, i+1)
-			log.Printf("[SSH-SETUP] SSH process: %s", strings.TrimSpace(string(output)))
+			slog.Info("SSH daemon verified running in container", "id", containerID, "attempt", i+1)
+			slog.Debug("SSH process", "output", strings.TrimSpace(string(output)))
 			break
 		}
 		if i == 5 {
-			log.Printf("[SSH-SETUP] Still waiting for SSH daemon (attempt %d/10)", i+1)
+			slog.Info("Still waiting for SSH daemon", "attempt", i+1, "total", 10)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	if !sshRunning {
-		log.Printf("[SSH-SETUP] WARNING: SSH daemon process not detected in container %s after 1 second", containerID)
+		slog.Warn("SSH daemon process not detected in container after 1 second", "id", containerID)
 	}
 
 	return nil
@@ -1254,9 +1253,9 @@ func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID 
 		m.mu.RUnlock()
 
 		if !tunnelExists {
-			log.Printf("SSH tunnel not found for container %s, creating one on port %d", container.ID, container.SSHPort)
+			slog.Info("SSH tunnel not found for container, creating one", "id", container.ID, "port", container.SSHPort)
 			if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
-				log.Printf("Warning: Failed to set up SSH tunnel for container %s: %v", container.ID, err)
+				slog.Warn("Failed to set up SSH tunnel for container", "id", container.ID, "error", err)
 			}
 		}
 	}
@@ -1288,7 +1287,7 @@ func (m *NerdctlManager) StartContainer(ctx context.Context, allocID, containerI
 
 		if !tunnelExists {
 			if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
-				log.Printf("Warning: Failed to set up SSH tunnel for container %s: %v", container.ID, err)
+				slog.Warn("Failed to set up SSH tunnel for container", "id", container.ID, "error", err)
 			}
 		}
 	}
@@ -1323,7 +1322,7 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 	m.mu.Lock()
 	if tunnel, exists := m.sshTunnels[container.ID]; exists {
 		if err := tunnel.Process.Kill(); err != nil {
-			log.Printf("Warning: Failed to kill SSH tunnel for container %s: %v", container.ID, err)
+			slog.Warn("Failed to kill SSH tunnel for container", "id", container.ID, "error", err)
 		}
 		delete(m.sshTunnels, container.ID)
 	}
@@ -1341,9 +1340,9 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 	host := container.DockerHost
 	cleanupCmd := m.execSSHCommand(ctx, host, "rm", "-rf", containerDir)
 	if err := cleanupCmd.Run(); err != nil {
-		log.Printf("Warning: Failed to clean up container directory %s: %v", containerDir, err)
+		slog.Warn("Failed to clean up container directory", "dir", containerDir, "error", err)
 	} else {
-		log.Printf("Cleaned up container directory %s", containerDir)
+		slog.Info("Cleaned up container directory", "dir", containerDir)
 	}
 
 	// TODO: Clean up network if this was the last container in the allocation
@@ -1407,7 +1406,7 @@ func (m *NerdctlManager) listContainersWithFilter(ctx context.Context, filter, a
 			var e psEntry
 			if err := json.Unmarshal([]byte(line), &e); err != nil {
 				// Skip unparsable lines but keep going
-				log.Printf("Warning: skipping unparsable ps line: %v: %s", err, line)
+				slog.Warn("Skipping unparsable ps line", "error", err, "line", line)
 				continue
 			}
 			entries = append(entries, e)
@@ -1616,7 +1615,7 @@ func (m *NerdctlManager) Close() error {
 	m.mu.Lock()
 	for containerID, tunnel := range m.sshTunnels {
 		if err := tunnel.Process.Kill(); err != nil {
-			log.Printf("Warning: Failed to kill SSH tunnel for container %s: %v", containerID, err)
+			slog.Warn("Failed to kill SSH tunnel for container", "id", containerID, "error", err)
 		}
 	}
 	m.sshTunnels = make(map[string]*exec.Cmd)
@@ -1727,17 +1726,17 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 		return "", fmt.Errorf("failed to move files to final location: %w: %s", err, output)
 	}
 
-	log.Printf("Successfully copied RovolFS files for %s architecture to %s", m.hostArch, remoteDir)
+	slog.Info("Successfully copied RovolFS files", "arch", m.hostArch, "dir", remoteDir)
 
 	// Create var/empty directory for sshd privilege separation
 	// This directory must exist but remain empty
 	varEmptyDir := filepath.Join(remoteDir, "var", "empty")
 	varEmptyCmd := m.sshPool.ExecCommand(ctx, host, "sudo", "mkdir", "-p", varEmptyDir)
 	if output, err := varEmptyCmd.CombinedOutput(); err != nil {
-		log.Printf("Warning: Failed to create var/empty directory: %v: %s", err, output)
+		slog.Warn("Failed to create var/empty directory", "error", err, "output", string(output))
 		// Continue anyway - the directory might already exist
 	} else {
-		log.Printf("Created var/empty directory for sshd privilege separation at %s", varEmptyDir)
+		slog.Info("Created var/empty directory for sshd privilege separation", "dir", varEmptyDir)
 	}
 
 	return remoteDir, nil
@@ -1748,7 +1747,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	// Base directory for this container's files
 	containerDir := fmt.Sprintf("/data/exed/containers/%s/exe.dev", containerID)
 
-	log.Printf("Preparing container-specific /exe.dev directory at %s", containerDir)
+	slog.Info("Preparing container-specific /exe.dev directory", "dir", containerDir)
 
 	// Combine directory creation and CoW clone into a single command for speed
 	// This reduces SSH round-trips significantly
@@ -1757,7 +1756,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 		"sudo mkdir -p %s && (sudo cp -a --reflink=auto %s/. %s/ || sudo cp -a %s/. %s/) && sudo chown -R root:root %s && sudo mkdir -p %s",
 		containerDir, m.rovolMountPath, containerDir, m.rovolMountPath, containerDir, containerDir, filepath.Join(containerDir, "var/empty"))
 
-	log.Printf("Setting up container directory with CoW clone from %s to %s", m.rovolMountPath, containerDir)
+	slog.Info("Setting up container directory with CoW clone", "from", m.rovolMountPath, "to", containerDir)
 	combinedCmd := m.execSSHCommand(ctx, host, "sh", "-c", setupCmd)
 	if output, err := combinedCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to setup container directory: %w: %s", err, output)
@@ -1803,8 +1802,8 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 		return "", fmt.Errorf("failed to write SSH files: %w: %s", err, output)
 	}
 
-	log.Printf("Wrote all container-specific SSH files")
+	slog.Info("Wrote all container-specific SSH files")
 
-	log.Printf("Successfully prepared container-specific /exe.dev directory at %s", containerDir)
+	slog.Info("Successfully prepared container-specific /exe.dev directory", "dir", containerDir)
 	return containerDir, nil
 }
