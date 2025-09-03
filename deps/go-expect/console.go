@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -38,6 +39,7 @@ type Console struct {
 	passthroughPipe *PassthroughPipe
 	runeReader      *bufio.Reader
 	closers         []io.Closer
+	rejectStrings   []string // persistent rejection rules
 }
 
 // ConsoleOpt allows setting Console options.
@@ -364,4 +366,26 @@ func (c *Console) StopRecording() error {
 // IsRecording returns true if ASCIIcinema recording is currently active.
 func (c *Console) IsRecording() bool {
 	return c.opts.AsciinemaWriter != nil
+}
+
+// AddRejectString adds a string to the persistent rejection rules.
+// Any subsequent Expect calls will immediately fail if this string appears.
+func (c *Console) AddRejectString(s string) {
+	c.rejectStrings = append(c.rejectStrings, s)
+}
+
+// ClearRejectStrings removes all persistent rejection rules.
+func (c *Console) ClearRejectStrings() {
+	c.rejectStrings = nil
+}
+
+// checkPersistentRejections checks if any persistent rejection strings are found in the buffer.
+// Returns an error immediately if any rejection string is found.
+func (c *Console) checkPersistentRejections(buf string) error {
+	for _, rejectStr := range c.rejectStrings {
+		if strings.Contains(buf, rejectStr) {
+			return fmt.Errorf("rejected string %q found in output", rejectStr)
+		}
+	}
+	return nil
 }

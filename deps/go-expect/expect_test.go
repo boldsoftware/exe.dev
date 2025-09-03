@@ -630,6 +630,205 @@ func TestExpectDefaultRefreshingTimeoutOverrideByPerCall(t *testing.T) {
 	wg.Wait()
 }
 
+func TestRejectStringPersistent(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	// Set up rejection rule
+	c.RejectString("error")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.Send("This contains an error message!")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	// The subsequent expect should fail due to persistent rejection
+	_, err = c.ExpectEOF()
+	if err == nil || !strings.Contains(err.Error(), "rejected string \"error\" found in output") {
+		t.Errorf("Expected rejection error but got '%s'", err)
+	}
+
+	wg.Wait()
+}
+
+func TestRejectStringClearedOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	// Set up rejection rule
+	c.RejectString("error")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.Send("success: operation completed")
+		time.Sleep(10 * time.Millisecond)
+		c.Send("error occurred after success")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	// First expect should succeed and clear rejection rules
+	_, err = c.ExpectString("success")
+	if err != nil {
+		t.Errorf("First expect should succeed but got '%s'", err)
+	}
+
+	// Second expect should succeed even though "error" appears (rules cleared)
+	_, err = c.ExpectEOF()
+	if err != nil {
+		t.Errorf("Second expect should succeed (rejection cleared) but got '%s'", err)
+	}
+
+	wg.Wait()
+}
+
+func TestRejectStringFailsFast(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	// Set up rejection rule
+	c.RejectString("error")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.Send("error occurred")
+		time.Sleep(10 * time.Millisecond)
+		c.Send("more output that should not be processed")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	start := time.Now()
+	_, err = c.ExpectString("never_appears")
+	elapsed := time.Since(start)
+
+	if err == nil || !strings.Contains(err.Error(), "rejected string \"error\" found in output") {
+		t.Errorf("Expected rejection error but got '%s'", err)
+	}
+
+	// Should fail quickly, not wait for timeout
+	if elapsed > 100*time.Millisecond {
+		t.Errorf("Expected fast failure but took %v", elapsed)
+	}
+
+	wg.Wait()
+}
+
+func TestRejectStringMultiple(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	// Set up multiple rejection rules
+	c.RejectString("error")
+	c.RejectString("failure")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.Send("Processing... failure occurred")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	_, err = c.ExpectString("success")
+	if err == nil || !strings.Contains(err.Error(), "rejected string \"failure\" found in output") {
+		t.Errorf("Expected rejection error for 'failure' but got '%s'", err)
+	}
+
+	wg.Wait()
+}
+
+func TestRejectStringUsagePattern(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	// This mimics the exact pattern: pty.reject("Sorry"); pty.wantRe("Creating .*")
+	c.RejectString("Sorry")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.Send("Creating e1e-1756860627-testboxcreation (medium) using image boldsoftware/exeuntu...")
+		time.Sleep(10 * time.Millisecond)
+		c.Send("Ready in 2.8s!")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	// This should succeed because "Creating" appears before "Sorry" (which never appears)
+	_, err = c.Expect(RegexpPattern("Creating .*"))
+	if err != nil {
+		t.Errorf("Should succeed when expected pattern appears before rejected string but got '%s'", err)
+	}
+
+	wg.Wait()
+}
+
+func TestRejectStringFailsWhenRejectedStringAppears(t *testing.T) {
+	t.Parallel()
+
+	c, err := NewTestConsole(t)
+	if err != nil {
+		t.Errorf("Expected no error but got'%s'", err)
+	}
+	defer testCloser(t, c)
+
+	// Set up rejection for "Sorry"
+	c.RejectString("Sorry")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.Send("Sorry, that operation failed")
+		time.Sleep(10 * time.Millisecond)
+		c.Tty().Close()
+	}()
+
+	// This should fail immediately when "Sorry" appears
+	_, err = c.Expect(RegexpPattern("Creating .*"))
+	if err == nil || !strings.Contains(err.Error(), "rejected string \"Sorry\" found in output") {
+		t.Errorf("Expected rejection error when 'Sorry' appears but got '%s'", err)
+	}
+
+	wg.Wait()
+}
+
 func ExampleConsole_echo() {
 	c, err := NewConsole(WithStdout(os.Stdout))
 	if err != nil {

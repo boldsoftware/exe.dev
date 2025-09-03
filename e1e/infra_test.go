@@ -486,6 +486,11 @@ func (p *expectPty) want(s string) {
 	}
 }
 
+func (p *expectPty) reject(s string) {
+	p.t.Helper()
+	p.console.RejectString(s)
+}
+
 func (p *expectPty) wantf(msg string, args ...any) {
 	p.t.Helper()
 	p.want(fmt.Sprintf(msg, args...))

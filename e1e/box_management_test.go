@@ -20,6 +20,7 @@ func TestBoxCreation(t *testing.T) {
 	boxName := strings.ToLower(t.Name())
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
+	pty.reject("Sorry")
 	pty.wantRe("Creating .*" + boxNameRe)
 	// break onto two lines because ANSI codes
 	pty.want("Access with")
@@ -30,9 +31,14 @@ func TestBoxCreation(t *testing.T) {
 	pty.want("machines")
 	pty.wantRe(boxNameRe + ".*running")
 
+	// Hang up. (Not necessary, but makes for nicer cinemas. :P)
+	pty.sendLine("exit")
+	pty.want("Goodbye")
+
 	// SSH to it.
 	pty = sshToBox(t, boxName, keyFile)
-	pty.want(boxName)
+	pty.reject("Permission denied") // fail fast on common known failure mode
+	pty.wantRe(boxNameRe + ".*" + regexp.QuoteMeta("$"))
 	pty.sendLine("whoami")
 	pty.want("exedev")
 	pty.sendLine("exit")

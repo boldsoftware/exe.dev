@@ -16,6 +16,7 @@ package expect
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"regexp"
@@ -251,6 +252,28 @@ func All(expectOpts ...ExpectOpt) ExpectOpt {
 	}
 }
 
+// rejectStringMatcher fulfills the Matcher interface to reject strings against a given
+// bytes.Buffer, causing immediate failure when matched.
+type rejectStringMatcher struct {
+	str string
+}
+
+func (rsm *rejectStringMatcher) Match(v interface{}) bool {
+	buf, ok := v.(*bytes.Buffer)
+	if !ok {
+		return false
+	}
+	return strings.Contains(buf.String(), rsm.str)
+}
+
+func (rsm *rejectStringMatcher) Criteria() interface{} {
+	return rsm.str
+}
+
+func (rsm *rejectStringMatcher) Callback(buf *bytes.Buffer) error {
+	return fmt.Errorf("rejected string %q found in output", rsm.str)
+}
+
 // String adds an Expect condition to exit if the content read from Console's
 // tty contains any of the given strings.
 func String(strs ...string) ExpectOpt {
@@ -258,6 +281,24 @@ func String(strs ...string) ExpectOpt {
 		for _, str := range strs {
 			opts.Matchers = append(opts.Matchers, &stringMatcher{
 				str: str,
+			})
+		}
+		return nil
+	}
+}
+
+// RejectString adds an Expect condition to fail immediately if the content read from Console's
+// tty contains any of the given strings.
+func RejectString(strs ...string) ExpectOpt {
+	return func(opts *ExpectOpts) error {
+		for _, str := range strs {
+			opts.Matchers = append(opts.Matchers, &callbackMatcher{
+				f: func(buf *bytes.Buffer) error {
+					return fmt.Errorf("rejected string %q found in output", str)
+				},
+				matcher: &rejectStringMatcher{
+					str: str,
+				},
 			})
 		}
 		return nil

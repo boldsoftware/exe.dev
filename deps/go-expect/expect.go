@@ -35,6 +35,13 @@ func (c *Console) ExpectString(s string) (string, error) {
 	return c.Expect(String(s))
 }
 
+// RejectString sets up a persistent rejection rule for the given string.
+// The rule will cause immediate failure on any subsequent Expect calls if the string appears,
+// until a successful match clears the rejection rules.
+func (c *Console) RejectString(s string) {
+	c.AddRejectString(s)
+}
+
 // ExpectEOF reads from Console's tty until EOF or an error occurs, and returns
 // the buffer read by Console.  We also treat the PTSClosed error as an EOF.
 func (c *Console) ExpectEOF() (string, error) {
@@ -123,8 +130,16 @@ func (c *Console) Expect(opts ...ExpectOpt) (string, error) {
 			return buf.String(), err
 		}
 
+		// Check persistent rejection rules first (fail fast)
+		err = c.checkPersistentRejections(buf.String())
+		if err != nil {
+			return buf.String(), err
+		}
+
 		matcher = options.Match(buf)
 		if matcher != nil {
+			// Clear persistent rejection rules on successful match
+			c.ClearRejectStrings()
 			break
 		}
 	}
