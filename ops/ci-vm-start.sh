@@ -10,6 +10,67 @@ WORKDIR="${WORKDIR:-/var/lib/libvirt/images}"
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"  # or inject via env
 USER_NAME="${USER_NAME:-ubuntu}"
 
+# Cache/snapshot settings (hash of ops/setup-containerd-clh-nydus.sh)
+CACHE_DIR="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
+mkdir -p "${CACHE_DIR}"
+
+hash_file() {
+  local f="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$f" | awk '{print $1}'
+  else
+    shasum -a 256 "$f" | awk '{print $1}'
+  fi
+}
+
+cp_clone_file() {
+  # Clone/copy SRC to DEST efficiently if supported by FS
+  local src="$1"; local dest="$2"
+  mkdir -p "$(dirname "$dest")"
+  # Prefer Linux reflink clone on XFS/Btrfs
+  if cp --reflink=always -a "$src" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  if cp --reflink=auto -a "$src" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  # macOS APFS clone
+  if cp -c "$src" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  # Fallback to regular copy
+  if cp -a "$src" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  # Retry with sudo if permission denied (e.g., copying into/out of /var/lib/libvirt/images)
+  if sudo cp --reflink=always -a "$src" "$dest" 2>/dev/null || \
+     sudo cp --reflink=auto -a "$src" "$dest" 2>/dev/null || \
+     sudo cp -a "$src" "$dest" 2>/dev/null; then
+    # If destination is under user cache, ensure ownership is the invoking user
+    if [[ "$dest" == "$HOME/"* ]]; then
+      sudo chown "$(id -u)":"$(id -g)" "$dest" 2>/dev/null || true
+    fi
+    return 0
+  fi
+  return 1
+}
+
+# Determine path to setup script to hash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETUP_SCRIPT_PATH="${SCRIPT_DIR}/setup-containerd-clh-nydus.sh"
+if [[ ! -f "${SETUP_SCRIPT_PATH}" ]]; then
+  echo "Required setup script not found for hashing: ${SETUP_SCRIPT_PATH}" >&2
+  exit 1
+fi
+SETUP_HASH="$(hash_file "${SETUP_SCRIPT_PATH}")"
+SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH}"
+SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
+LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH}.qcow2"
+SNAPSHOT_AVAILABLE=0
+if [[ -f "${SNAPSHOT_BASE}" ]]; then
+  SNAPSHOT_AVAILABLE=1
+fi
+
 if [[ ! -f "${BASE_IMG}" ]]; then
   echo "Base image not found: ${BASE_IMG}" >&2
   exit 1
@@ -24,8 +85,24 @@ sudo mkdir -p "${WORKDIR}"
 DISK="${WORKDIR}/${NAME}.qcow2"
 SEED="${WORKDIR}/${NAME}-seed.iso"
 
-# 1) Ephemeral COW disk
-sudo qemu-img create -f qcow2 -F qcow2 -b "${BASE_IMG}" "${DISK}" "${DISK_GB}G"
+# 1) Ephemeral COW disk (from snapshot if available)
+BACKING_IMG="${BASE_IMG}"
+if [[ ${SNAPSHOT_AVAILABLE} -eq 1 ]]; then
+  echo "Found snapshot for setup hash: ${SNAPSHOT_DIR}"
+  # Keep a local copy in WORKDIR for qemu access and to avoid permission issues
+  if [[ ! -f "${LOCAL_BASE_COPY}" ]]; then
+    echo "Cloning snapshot base into WORKDIR (reflink if possible)..."
+    cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
+  fi
+  BACKING_IMG="${LOCAL_BASE_COPY}"
+fi
+
+if [[ "${BACKING_IMG}" == "${BASE_IMG}" ]]; then
+  sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}" "${DISK_GB}G"
+else
+  # Size is inherited from backing when provided
+  sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}"
+fi
 
 # 2) Cloud-init seed (NoCloud)
 TMPDIR="$(mktemp -d)"
@@ -154,10 +231,12 @@ for i in $(seq 1 60); do
 done
 ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait || true'
 
-# 6) Prepare containerd + nydus + kata on the VM (similar to setup-colima-host)
-# Create a modified setup script that skips swap/data volume and restarts containerd
-LOCAL_TMP_SCRIPT="$(mktemp)"
-cat > "${LOCAL_TMP_SCRIPT}" <<'SCRIPT_EOF'
+if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
+  echo "No snapshot found; provisioning VM and creating snapshot cache..."
+  # 6) Prepare containerd + nydus + kata on the VM (similar to setup-colima-host)
+  # Create a modified setup script that skips swap/data volume and restarts containerd
+  LOCAL_TMP_SCRIPT="$(mktemp)"
+  cat > "${LOCAL_TMP_SCRIPT}" <<'SCRIPT_EOF'
 #!/bin/bash
 set -euo pipefail
 
@@ -174,24 +253,35 @@ echo "=== Skipping swap and data volume setup for CI VM ==="
 # Continue with the rest of the setup from the original script
 SCRIPT_EOF
 
-# Append containerd+kata+nydus install/config section from the original script, replacing reload with restart
-sed -n '79,$p' "$(dirname "$0")/setup-containerd-clh-nydus.sh" | \
-  sed 's/systemctl reload containerd/systemctl restart containerd/' | \
-  sed -E 's/sudo\s+//g' | \
-  sed 's/KATA_ARCH="x86_64"/KATA_ARCH="amd64"/' | \
-  sed 's/NYDUS_ARCH="x86_64"/NYDUS_ARCH="amd64"/' >> "${LOCAL_TMP_SCRIPT}"
+  # Append containerd+kata+nydus install/config section from the original script, replacing reload with restart
+  sed -n '79,$p' "${SETUP_SCRIPT_PATH}" | \
+    sed 's/systemctl reload containerd/systemctl restart containerd/' | \
+    sed -E 's/sudo\s+//g' | \
+    sed 's/KATA_ARCH="x86_64"/KATA_ARCH="amd64"/' | \
+    sed 's/NYDUS_ARCH="x86_64"/NYDUS_ARCH="amd64"/' >> "${LOCAL_TMP_SCRIPT}"
 
-chmod +x "${LOCAL_TMP_SCRIPT}"
+  chmod +x "${LOCAL_TMP_SCRIPT}"
 
-echo "Copying setup script to VM ${IP}..."
-scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${LOCAL_TMP_SCRIPT}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
-ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
+  echo "Copying setup script to VM ${IP}..."
+  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${LOCAL_TMP_SCRIPT}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
+  ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
 
-echo "Executing setup script on VM ${IP} (raw streaming output)..."
-# Stream exact commands and output directly to CI logs
-ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo /bin/bash -x /root/setup-containerd-clh-nydus.sh"
+  echo "Executing setup script on VM ${IP} (raw streaming output)..."
+  # Stream exact commands and output directly to CI logs
+  ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo /bin/bash -x /root/setup-containerd-clh-nydus.sh"
 
-rm -f "${LOCAL_TMP_SCRIPT}"
+  rm -f "${LOCAL_TMP_SCRIPT}"
+
+  # 6b) Create snapshot cache of the prepared disk (clone, leveraging XFS reflink when available)
+  echo "Creating snapshot cache at ${SNAPSHOT_DIR}..."
+  mkdir -p "${SNAPSHOT_DIR}"
+  # Copy/clone the prepared disk into the snapshot location
+  # Note: This clones the qcow2 backing with current state; safe for reuse with overlays.
+  cp_clone_file "${DISK}" "${SNAPSHOT_BASE}"
+
+  # Also maintain a local copy in WORKDIR for fast reuse within libvirt
+  cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
+fi
 
 # 7) Emit a small envfile for subsequent steps (write to a readable location)
 OUTDIR="${OUTDIR:-$PWD}"
