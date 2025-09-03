@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -83,7 +82,7 @@ func (p *Pool) cleanupStaleConnections() {
 		for host, conn := range p.connections {
 			conn.mu.Lock()
 			if now.Sub(conn.lastUsed) > 10*time.Minute {
-				log.Printf("[SSH-POOL] Closing stale connection to %s", host)
+				slog.Info("[SSH-POOL] Closing stale connection", "host", host)
 				conn.cancel()
 				os.Remove(conn.controlPath)
 				delete(p.connections, host)
@@ -228,7 +227,7 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 	}
 
 	p.connections[host] = conn
-	log.Printf("[SSH-POOL] Established new SSH connection to %s", host)
+	slog.Info("[SSH-POOL] Established new SSH connection", "host", host)
 
 	return conn, nil
 }
@@ -251,7 +250,7 @@ func (p *Pool) isConnectionAlive(conn *Connection) bool {
 
 	output, err := checkCmd.CombinedOutput()
 	if err != nil {
-		log.Printf("[SSH-POOL] Connection to %s appears dead: %v", conn.host, err)
+		slog.Info("[SSH-POOL] Connection appears dead", "host", conn.host, "error", err)
 		return false
 	}
 
@@ -285,7 +284,7 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 	// Get or create connection
 	conn, err := p.getConnection(ctx, host)
 	if err != nil {
-		log.Printf("[SSH-POOL] Failed to get connection to %s: %v", host, err)
+		slog.Info("[SSH-POOL] Failed to get connection", "host", host, "error", err)
 		// Fall back to direct SSH and remember to bypass for a while
 		p.bypassUntil[normHost] = time.Now().Add(30 * time.Minute)
 		return p.execDirectSSH(ctx, host, args...)
@@ -348,7 +347,7 @@ func (p *Pool) Close() {
 	defer p.mu.Unlock()
 
 	for host, conn := range p.connections {
-		log.Printf("[SSH-POOL] Closing connection to %s", host)
+		slog.Info("[SSH-POOL] Closing connection", "host", host)
 		conn.cancel()
 		os.Remove(conn.controlPath)
 	}
