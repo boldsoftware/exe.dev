@@ -90,13 +90,21 @@ pack_profile() {
     echo "Expected Colima/Lima directories missing; cannot prebake" >&2
     return 1
   fi
+  
   # Stop the VM to ensure consistent disk state
-  colima stop -p ${COLIMA_PROFILE} || true
+  # Critical: Must actually stop, not just try to stop
+  echo "Stopping VM for prebake..."
+  if ! colima stop -p ${COLIMA_PROFILE}; then
+    echo "ERROR: Failed to stop VM. Cannot create prebake with running VM." >&2
+    return 1
+  fi
+  
   # Remove ephemeral sockets that cannot be archived
   rm -f "${COLIMA_DIR}/docker.sock" 2>/dev/null || true
   rm -f "${LIMA_INSTANCE_DIR}/ssh.sock" \
         "${LIMA_INSTANCE_DIR}/ha.sock" \
         "${LIMA_INSTANCE_DIR}/guestagent.sock" 2>/dev/null || true
+  
   # Clone both lima instance and colima profile metadata
   echo "Cloning: $LIMA_INSTANCE_DIR -> ${PREBAKE_DIR}/lima"
   cp_clone_dir "$LIMA_INSTANCE_DIR" "${PREBAKE_DIR}/lima"
@@ -160,6 +168,7 @@ cleanup_runtime_state() {
     fi
   fi
 }
+
 
 # Robustly start the Colima profile with our desired settings, with one cleanup retry
 start_profile() {
@@ -287,6 +296,13 @@ if [[ -d "${PREBAKE_DIR}" ]]; then
     SSH_PORT=22251
     cleanup_runtime_state
     start_profile
+    
+    # After restore, containerd might have stale registry/network state
+    # Restart it to ensure clean state for image pulls
+    echo "Restarting containerd after restore..."
+    colima ssh -p ${COLIMA_PROFILE} -- sudo systemctl restart containerd
+    sleep 2
+    
     echo "Prebaked profile restored and started. Updating local SSH config..."
     PREBAKED=1
 else
