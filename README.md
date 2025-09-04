@@ -63,8 +63,8 @@ Everything will run locally on a colima VM.
 To get details on the VM under your box, use commands like:
 
 ```
-ssh exe-ctr-colima sudo nerdctl --namespace=exe ps -a
-ssh exe-ctr-colima sudo nerdctl --namespace=exe logs <container ID>
+ssh colima-exe-ctr sudo nerdctl --namespace=exe ps -a
+ssh colima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
 ```
 
 ## Production Deployment

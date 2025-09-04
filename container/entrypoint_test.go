@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildArgs_WithExetini_ImageEntrypointAndCmd(t *testing.T) {
-	got := buildEntrypointAndCmdArgs(true, "", []string{"docker-entrypoint.sh"}, []string{"node"}, false)
+	got := buildEntrypointAndCmdArgs(true, "", []string{"docker-entrypoint.sh"}, []string{"node"})
 	want := []string{"-g", "--", "docker-entrypoint.sh", "node"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -15,7 +15,7 @@ func TestBuildArgs_WithExetini_ImageEntrypointAndCmd(t *testing.T) {
 }
 
 func TestBuildArgs_WithExetini_NoEntrypointOrCmd(t *testing.T) {
-	got := buildEntrypointAndCmdArgs(true, "", nil, nil, false)
+	got := buildEntrypointAndCmdArgs(true, "", nil, nil)
 	want := []string{"-g", "--", "sleep", "infinity"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -23,7 +23,7 @@ func TestBuildArgs_WithExetini_NoEntrypointOrCmd(t *testing.T) {
 }
 
 func TestBuildArgs_NoExetini_WithOverride(t *testing.T) {
-	got := buildEntrypointAndCmdArgs(false, "echo hi", nil, nil, false)
+	got := buildEntrypointAndCmdArgs(false, "echo hi", nil, nil)
 	want := []string{"echo", "hi"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -31,15 +31,12 @@ func TestBuildArgs_NoExetini_WithOverride(t *testing.T) {
 }
 
 func TestBuildArgs_NoExetini_NoneOrExeuntu(t *testing.T) {
-	got1 := buildEntrypointAndCmdArgs(false, "none", nil, nil, false)
-	got2 := buildEntrypointAndCmdArgs(false, "", nil, nil, true)
+	got1 := buildEntrypointAndCmdArgs(false, "none", nil, nil)
 	want := []string{"sleep", "infinity"}
 	if !reflect.DeepEqual(got1, want) {
 		t.Fatalf("none override: got %v, want %v", got1, want)
 	}
-	if !reflect.DeepEqual(got2, want) {
-		t.Fatalf("exeuntu: got %v, want %v", got2, want)
-	}
+	// No longer testing isExeuntu since that parameter was removed
 }
 
 func TestParseImageInspectJSON_Array(t *testing.T) {

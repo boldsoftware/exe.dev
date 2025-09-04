@@ -16,6 +16,11 @@ type Config struct {
 	DefaultCPURequest    string `json:"default_cpu_request"`
 	DefaultMemoryRequest string `json:"default_memory_request"`
 	DefaultStorageSize   string `json:"default_storage_size"`
+
+	// Optional OCI/Kata annotations to attach to created containers.
+	// Keys and values are passed verbatim. Use this to enable Kata/CLH
+	// snapshot-restore or other runtime-specific behaviors when supported.
+	KataAnnotations map[string]string `json:"kata_annotations"`
 }
 
 // DefaultConfig returns a sensible default configuration

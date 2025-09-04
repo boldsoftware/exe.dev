@@ -25,7 +25,6 @@ type TestBackend struct {
 // 4. Local docker available -> use local docker
 // 5. None available -> skip test
 func GetTestBackend(t *testing.T) *TestBackend {
-	// Resolve CTR_HOST: environment first, then auto-detect dev host (ssh exe-ctr-colima)
 	ctrHost := os.Getenv("CTR_HOST")
 	if ctrHost == "" {
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

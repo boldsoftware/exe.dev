@@ -46,6 +46,14 @@ type NerdctlManager struct {
 	// Tag resolver for image digest management (optional)
 	tagResolver *tagresolver.TagResolver
 	hostUpdater *tagresolver.HostUpdater
+
+	// Cache for nerdctl run --annotation support per host
+	annSupport map[string]bool
+
+	// Cache for image metadata to avoid repeated inspections
+	// Key is "host:image" to handle multiple hosts with potentially different images
+	imageCache   map[string]*ImageConfig
+	imageCacheMu sync.RWMutex
 }
 
 // SetTagResolver sets the tag resolver for the manager
@@ -70,6 +78,8 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		sshTunnels:    make(map[string]*exec.Cmd),
 		allocNetworks: make(map[string]bool),
 		sshPool:       sshpool.New(),
+		annSupport:    make(map[string]bool),
+		imageCache:    make(map[string]*ImageConfig),
 	}
 
 	// Verify Kata runtime is available on all hosts
@@ -134,10 +144,111 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 
 	// For remote hosts, use SSH with sudo
 	// Use stdbuf to ensure unbuffered output for progress tracking
-	nerdctlArgs := []string{"stdbuf", "-o0", "-e0", "sudo", "nerdctl", "--namespace", "exe"}
+	// Force cgroupfs for Kata (avoid nerdctl defaulting to systemd cgroup manager)
+	nerdctlArgs := []string{"stdbuf", "-o0", "-e0", "sudo", "nerdctl", "--namespace", "exe", "--cgroup-manager", "cgroupfs"}
 	nerdctlArgs = append(nerdctlArgs, args...)
 
 	return m.sshPool.ExecCommand(ctx, host, nerdctlArgs...)
+}
+
+// remoteFileExists checks if a file exists on the remote host via SSH
+func (m *NerdctlManager) remoteFileExists(ctx context.Context, host, path string) bool {
+	cmd := m.execSSHCommand(ctx, host, "test", "-f", path)
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
+}
+
+// inspectImage inspects an image and returns its metadata, using cache when available
+func (m *NerdctlManager) inspectImage(ctx context.Context, host, imageRef string) (*ImageConfig, error) {
+	// Check cache first
+	cacheKey := fmt.Sprintf("%s:%s", host, imageRef)
+	m.imageCacheMu.RLock()
+	if cached, ok := m.imageCache[cacheKey]; ok {
+		m.imageCacheMu.RUnlock()
+		slog.Info("Using cached image metadata", "image", imageRef, "user", cached.User)
+		return cached, nil
+	}
+	m.imageCacheMu.RUnlock()
+
+	// Try to inspect by the given reference
+	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", imageRef, "--format", "json")
+	if output, err := inspectCmd.Output(); err == nil {
+		if cfg, perr := parseImageInspectJSON(output); perr == nil {
+			// Cache the result
+			m.imageCacheMu.Lock()
+			m.imageCache[cacheKey] = &cfg
+			m.imageCacheMu.Unlock()
+			slog.Info("Image metadata inspected and cached", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
+			return &cfg, nil
+		}
+		slog.Warn("Failed to parse image inspect JSON", "image", imageRef)
+		return nil, fmt.Errorf("failed to parse image inspect JSON")
+	}
+
+	// If inspection failed and this is an exeuntu image, try to find it by ID
+	// This handles the case where nydus snapshotter causes images to lose their tags
+	if strings.Contains(imageRef, "exeuntu") {
+		slog.Info("Failed to inspect exeuntu image by reference, searching by repository", "image", imageRef)
+
+		// List images and find the exeuntu one
+		listCmd := m.execNerdctl(ctx, host, "image", "ls", "--format", "{{.Repository}}:{{.ID}}")
+		if listOutput, err := listCmd.Output(); err == nil {
+			lines := strings.Split(string(listOutput), "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "exeuntu") {
+					// Extract the ID (after the last colon)
+					parts := strings.Split(line, ":")
+					if len(parts) >= 2 {
+						imageID := parts[len(parts)-1]
+						// Try to inspect by ID
+						inspectByIDCmd := m.execNerdctl(ctx, host, "image", "inspect", imageID, "--format", "json")
+						if output, err := inspectByIDCmd.Output(); err == nil {
+							if cfg, perr := parseImageInspectJSON(output); perr == nil {
+								// Cache both the original reference and the ID
+								m.imageCacheMu.Lock()
+								m.imageCache[cacheKey] = &cfg
+								// Also cache by ID so future lookups by ID are fast
+								m.imageCache[fmt.Sprintf("%s:%s", host, imageID)] = &cfg
+								m.imageCacheMu.Unlock()
+								slog.Info("Image metadata found by ID and cached", "id", imageID, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
+								return &cfg, nil
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to inspect image %s", imageRef)
+}
+
+// supportsAnnotations checks whether nerdctl run supports --annotation on the given host.
+func (m *NerdctlManager) supportsAnnotations(ctx context.Context, host string) bool {
+	host = strings.TrimPrefix(host, "ssh://")
+	m.mu.RLock()
+	v, ok := m.annSupport[host]
+	m.mu.RUnlock()
+	if ok {
+		return v
+	}
+	// Probe once: nerdctl run --help and look for "--annotation"
+	cmd := m.sshPool.ExecCommand(ctx, host, "sudo", "nerdctl", "run", "--help")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Assume not supported on error; cache false to avoid repeated probes
+		m.mu.Lock()
+		m.annSupport[host] = false
+		m.mu.Unlock()
+		return false
+	}
+	supported := strings.Contains(string(out), "--annotation")
+	m.mu.Lock()
+	m.annSupport[host] = supported
+	m.mu.Unlock()
+	return supported
 }
 
 // execSSHCommand executes a command via SSH on a remote host
@@ -272,11 +383,11 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 		}
 
 		var containerInfo struct {
-			ID     string            `json:"ID"`
-			Names  string            `json:"Names"` // nerdctl returns a single string, not array
-			Labels map[string]string `json:"Labels"`
-			Status string            `json:"Status"`
-			Image  string            `json:"Image"`
+			ID     string          `json:"ID"`
+			Names  string          `json:"Names"` // nerdctl returns a single string, not array
+			Labels json.RawMessage `json:"Labels"`
+			Status string          `json:"Status"`
+			Image  string          `json:"Image"`
 		}
 
 		if err := json.Unmarshal([]byte(line), &containerInfo); err != nil {
@@ -284,8 +395,33 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 			continue
 		}
 
+		// Decode Labels which may be a map or a string of comma-separated key=value pairs
+		labels := map[string]string{}
+		if len(containerInfo.Labels) > 0 && string(containerInfo.Labels) != "null" {
+			// Try map[string]string first
+			var m map[string]string
+			if err := json.Unmarshal(containerInfo.Labels, &m); err == nil {
+				labels = m
+			} else {
+				// Try string form: "k=v,k2=v2"
+				var s string
+				if err := json.Unmarshal(containerInfo.Labels, &s); err == nil {
+					s = strings.TrimSpace(s)
+					if s != "" {
+						parts := strings.Split(s, ",")
+						for _, p := range parts {
+							kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
+							if len(kv) == 2 {
+								labels[kv[0]] = kv[1]
+							}
+						}
+					}
+				}
+			}
+		}
+
 		// Only track containers managed by exe
-		if containerInfo.Labels["managed_by"] != "exe" {
+		if labels["managed_by"] != "exe" {
 			continue
 		}
 
@@ -336,32 +472,24 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 		return networkName, nil
 	}
 
-	// Check if network exists
-	checkCmd := m.execNerdctl(ctx, host, "network", "ls", "--format", "{{.Name}}")
-	output, err := checkCmd.Output()
-	if err == nil && strings.Contains(string(output), networkName) {
-		m.mu.Lock()
-		m.allocNetworks[networkName] = true
-		m.mu.Unlock()
-		return networkName, nil
-	}
-
 	// IP range must be provided from the database
 	if ipRange == "" {
 		return "", fmt.Errorf("no IP range assigned to allocation %s", allocID)
 	}
 	subnet := ipRange
 
-	// Create network
+	// Create network (idempotent). Avoid an extra ls call; treat "already exists" as success
 	createCmd := m.execNerdctl(ctx, host,
 		"network", "create", networkName,
 		"--subnet", subnet,
 		"--driver", "bridge",
 	)
-
+	created := true
 	if output, err := createCmd.CombinedOutput(); err != nil {
 		// Network might already exist, which is fine
-		if !strings.Contains(string(output), "already exists") {
+		if strings.Contains(string(output), "already exists") {
+			created = false
+		} else {
 			return "", fmt.Errorf("failed to create network: %w: %s", err, output)
 		}
 	}
@@ -370,9 +498,11 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 	m.allocNetworks[networkName] = true
 	m.mu.Unlock()
 
-	// Set up iptables rules for this network
-	if err := m.setupNetworkSecurity(ctx, host, subnet); err != nil {
-		slog.Warn("Failed to set up network security", "network", networkName, "error", err)
+	// Only attempt to add iptables rules on first creation to reduce SSH round-trips
+	if created {
+		if err := m.setupNetworkSecurity(ctx, host, subnet); err != nil {
+			slog.Warn("Failed to set up network security", "network", networkName, "error", err)
+		}
 	}
 
 	return networkName, nil
@@ -380,36 +510,41 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 
 // setupNetworkSecurity sets up iptables rules to restrict network access
 func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, subnet string) error {
-	// Commands to restrict network access
-	commands := [][]string{
-		// Block access to host from container subnet
-		{"iptables", "-I", "INPUT", "-s", subnet, "-j", "DROP"},
-		{"iptables", "-I", "INPUT", "-s", subnet, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT"},
-
-		// Block access to private networks (except container's own subnet)
-		{"iptables", "-I", "FORWARD", "-s", subnet, "-d", "192.168.0.0/16", "-j", "DROP"},
-		{"iptables", "-I", "FORWARD", "-s", subnet, "-d", "172.16.0.0/12", "-j", "DROP"},
-
-		// Block access to metadata service
-		{"iptables", "-I", "FORWARD", "-s", subnet, "-d", "169.254.169.254", "-j", "DROP"},
+	// Build a single idempotent shell script to minimize SSH round-trips.
+	// Use -C (check) to avoid duplicates, falling back to insert if not present.
+	var b strings.Builder
+	b.WriteString("set -e\n")
+	add := func(args ...string) {
+		// Build: iptables -C <rule> || iptables -I <rule>
+		check := append([]string{"iptables", "-C"}, args...)
+		insert := append([]string{"iptables", "-I"}, args...)
+		b.WriteString(strings.Join(check, " "))
+		b.WriteString(" || ")
+		b.WriteString(strings.Join(insert, " "))
+		b.WriteString("\n")
 	}
 
-	// Find and block Tailscale interface
-	tailscaleIfaces := []string{"tailscale0", "utun"}
-	for _, iface := range tailscaleIfaces {
-		commands = append(commands,
-			[]string{"iptables", "-I", "FORWARD", "-s", subnet, "-o", iface, "-j", "DROP"},
-			[]string{"iptables", "-I", "FORWARD", "-i", iface, "-d", subnet, "-j", "DROP"},
-		)
+	// Block access to host from container subnet, except established
+	add("INPUT", "-s", subnet, "-j", "DROP")
+	add("INPUT", "-s", subnet, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT")
+
+	// Block access to private networks (except container's own subnet)
+	add("FORWARD", "-s", subnet, "-d", "192.168.0.0/16", "-j", "DROP")
+	add("FORWARD", "-s", subnet, "-d", "172.16.0.0/12", "-j", "DROP")
+
+	// Block access to metadata service
+	add("FORWARD", "-s", subnet, "-d", "169.254.169.254", "-j", "DROP")
+
+	// Block Tailscale interfaces if present
+	for _, iface := range []string{"tailscale0", "utun"} {
+		add("FORWARD", "-s", subnet, "-o", iface, "-j", "DROP")
+		add("FORWARD", "-i", iface, "-d", subnet, "-j", "DROP")
 	}
 
-	for _, cmd := range commands {
-		execCmd := m.execSSHCommand(ctx, host, cmd...)
-
-		// Ignore errors - rules might already exist
-		execCmd.Run()
+	cmd := m.execSSHCommand(ctx, host, "sh", "-c", b.String())
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to apply network security rules: %w: %s", err, output)
 	}
-
 	return nil
 }
 
@@ -650,11 +785,56 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		imageWithDigest = image
 	}
 
-	// Ensure network exists for this allocation
-	networkName, err := m.ensureAllocNetwork(ctx, req.AllocID, req.IPRange, host)
-	if err != nil {
-		return nil, fmt.Errorf("failed to ensure network: %w", err)
+	// Always use exetini for containers. exetini is responsible for handling
+	// special init chaining cases internally.
+	useExetini := true
+	autoStartSSH := true
+
+	// Parallelize independent preparations: network ensure and /exe.dev prep
+	var prep struct {
+		wg                  sync.WaitGroup
+		networkName         string
+		containerExeDevPath string
+		errc                chan error
 	}
+	prep.errc = make(chan error, 3)
+
+	// Network ensure
+	prep.wg.Add(1)
+	go func() {
+		defer prep.wg.Done()
+		name, err := m.ensureAllocNetwork(ctx, req.AllocID, req.IPRange, host)
+		if err != nil {
+			prep.errc <- fmt.Errorf("failed to ensure network: %w", err)
+		} else {
+			prep.networkName = name
+		}
+	}()
+
+	// Prepare container-specific /exe.dev directory with SSH keys
+	if m.rovolMountPath == "" {
+		return nil, fmt.Errorf("exetini required but /exe.dev rovol mount not available")
+	}
+	prep.wg.Add(1)
+	go func() {
+		defer prep.wg.Done()
+		path, err := m.prepareContainerExeDev(ctx, host, containerName, sshKeys)
+		if err != nil {
+			prep.errc <- fmt.Errorf("failed to prepare container /exe.dev: %w", err)
+		} else {
+			prep.containerExeDevPath = path
+		}
+	}()
+
+	// We'll inspect the image later, after we know it exists (either locally or after pulling)
+	// This avoids the inefficiency of trying to inspect before the image is available
+
+	// Wait for all
+	prep.wg.Wait()
+	if len(prep.errc) > 0 {
+		return nil, <-prep.errc
+	}
+	// Tag timings aligned with prior markers
 
 	// Allocate SSH port first so we can publish it
 	// Use a hash of allocID and name to get a stable port in [10000,19999].
@@ -670,18 +850,13 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	sshPort := 10000 + offset
 
-	// Always use exetini for containers. exetini is responsible for handling
-	// special init chaining cases internally.
-	useExetini := true
-	autoStartSSH := true
-
 	// Build run command with nydus snapshotter
 	runArgs := []string{
 		"--snapshotter", "nydus",
 		"run", "-d",
 		"--runtime", "io.containerd.kata.v2", // Use Kata for security
 		"--name", containerName,
-		"--network", networkName,
+		"--network", prep.networkName,
 	}
 
 	// Add remaining args
@@ -701,16 +876,66 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		// TEMPORARILY DISABLED: Removing all capability flags to debug issue
 		// TODO: Re-enable after fixing container startup issue
 	)
+	// Optional: add OCI/Kata annotations if supported by nerdctl.
+	// Prefer unified CLH restore annotation when a snapshot is present on host.
+	if m.supportsAnnotations(ctx, host) {
+		// Start from configured annotations (if any)
+		ann := make(map[string]string, len(m.config.KataAnnotations))
+		for k, v := range m.config.KataAnnotations {
+			ann[k] = v
+		}
+
+		const (
+			keySnap    = "io.katacontainers.config.hypervisor.restore_snapshot"
+			keyMem     = "io.katacontainers.config.hypervisor.restore_memory"
+			keyRestore = "io.katacontainers.config.hypervisor.restore"
+		)
+
+		// Guard old pair on file existence
+		if snap, okS := ann[keySnap]; okS {
+			if mem, okM := ann[keyMem]; okM {
+				snapOK := m.remoteFileExists(ctx, host, snap)
+				memOK := m.remoteFileExists(ctx, host, mem)
+				if !snapOK || !memOK {
+					slog.Info("Skipping Kata restore annotations; files missing", "host", host, "snap", snapOK, "mem", memOK)
+					delete(ann, keySnap)
+					delete(ann, keyMem)
+				}
+			}
+		}
+
+		// Prefer the unified restore annotation (source_url=file:///...) when a snapshot directory exists.
+		// If old pair is present, replace it with the unified form.
+		snapDir := "/var/lib/cloud-hypervisor/snapshots"
+		if m.remoteFileExists(ctx, host, filepath.Join(snapDir, "state.json")) &&
+			m.remoteFileExists(ctx, host, filepath.Join(snapDir, "memory-ranges")) {
+			if _, hasRestore := ann[keyRestore]; !hasRestore {
+				// Replace legacy pair with unified restore
+				if _, hasOldSnap := ann[keySnap]; hasOldSnap {
+					delete(ann, keySnap)
+				}
+				if _, hasOldMem := ann[keyMem]; hasOldMem {
+					delete(ann, keyMem)
+				}
+				ann[keyRestore] = "source_url=file:///var/lib/cloud-hypervisor/snapshots"
+				slog.Info("Applying unified Kata restore annotation", "host", host)
+			}
+		}
+
+		if len(ann) > 0 {
+			slog.Info("Applying Kata annotations to nerdctl run", "num", len(ann))
+			for k, v := range ann {
+				runArgs = append(runArgs, "--annotation", fmt.Sprintf("%s=%s", k, v))
+			}
+		} else {
+			slog.Info("No applicable Kata annotations after validation; proceeding without annotations")
+		}
+	} else {
+		slog.Info("WARNING: nerdctl does not support --annotation; skipping Kata annotations", "host", host)
+	}
 
 	// Prepare container-specific /exe.dev directory with SSH keys
-	var containerExeDevPath string
-	if m.rovolMountPath == "" {
-		return nil, fmt.Errorf("exetini required but /exe.dev rovol mount not available")
-	}
-	containerExeDevPath, err = m.prepareContainerExeDev(ctx, host, containerName, sshKeys)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare container /exe.dev: %w", err)
-	}
+	containerExeDevPath := prep.containerExeDevPath
 	runArgs = append(runArgs, "-v", fmt.Sprintf("%s:/exe.dev:ro", containerExeDevPath))
 	slog.Info("Mounting container-specific /exe.dev", "path", containerExeDevPath)
 
@@ -731,52 +956,17 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Cloud Hypervisor doesn't support the dynamic resource allocation that nerdctl's
 	// --memory and --cpus flags trigger. We need to use cgroup parent slices instead.
 
-	// Get image entrypoint, cmd, and user from manifest
+	// Image metadata variables - will be populated after ensuring image exists
+	var imageUser string
 	var imageEntrypoint []string
 	var imageCmd []string
-	var imageUser string
 
-	// Inspect the image to get user (needed for SSH), and entrypoint/cmd if using exetini
-	// Try local first; if not found, fall back to remote mode
-	tryParseInspect := func(args ...string) bool {
-		inspectCmd := m.execNerdctl(ctx, host, args...)
-		if output, err := inspectCmd.Output(); err == nil {
-			cfg, perr := parseImageInspectJSON(output)
-			if perr != nil {
-				slog.Warn("Failed to parse image inspect JSON", "image", image, "error", perr)
-				return false
-			}
-			imageUser = cfg.User
-			if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
-				imageEntrypoint = cfg.Entrypoint
-				imageCmd = cfg.Cmd
-			}
-			slog.Info("Image metadata parsed", "image", image, "entrypoint", imageEntrypoint, "cmd", imageCmd, "user", imageUser)
-			return true
-		}
-		return false
-	}
-	ok := tryParseInspect("image", "inspect", image, "--format", "json")
-	if !ok {
-		// Use remote mode to inspect the registry when not present locally
-		_ = tryParseInspect("image", "inspect", "--mode=remote", image, "--format", "json")
-	}
-
-	// If using exetini, override the entrypoint and pass image user
-	// Always use exetini
-	runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
-	if imageUser != "" {
-		// Pass the image user to exetini via environment variable
-		runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", imageUser))
-	}
-
-	// Add the image (use digest version if available)
+	// Determine final image reference (use digest version if available)
 	finalImage := imageWithDigest
 	if finalImage == "" {
 		finalImage = image
 	}
-	runArgs = append(runArgs, finalImage)
-	// If not using exetini and no override, let the image use its default CMD/ENTRYPOINT
+	// Note: We'll add the image to runArgs later, after setting --entrypoint
 
 	// Check if image exists locally and get its size
 	var imageSize int64
@@ -842,26 +1032,38 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		}
 	}
 
-	// After ensuring the image is available (pulled if needed), if we are using exetini
-	// and no explicit override was provided, we may need to (re)fetch entrypoint/cmd
-	// because earlier local inspect could have failed before the pull.
-	if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
-		if len(imageEntrypoint) == 0 && len(imageCmd) == 0 {
-			// Try local inspect again now that the image should exist
-			inspectCmd2 := m.execNerdctl(ctx, host, "image", "inspect", finalImage, "--format", "json")
-			if output, err := inspectCmd2.Output(); err == nil {
-				if cfg, perr := parseImageInspectJSON(output); perr == nil {
-					imageUser = cfg.User
-					imageEntrypoint = cfg.Entrypoint
-					imageCmd = cfg.Cmd
-					slog.Info("Post-pull image metadata", "entrypoint", imageEntrypoint, "cmd", imageCmd, "user", imageUser)
-				}
-			}
+	// Now that the image definitely exists (either it was already local or we just pulled it),
+	// inspect it to get all metadata (user, entrypoint, cmd)
+	if cfg, err := m.inspectImage(ctx, host, imageToInspect); err == nil {
+		imageUser = cfg.User
+		if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
+			imageEntrypoint = cfg.Entrypoint
+			imageCmd = cfg.Cmd
 		}
+
+		// Also cache by the original image name if different
+		if req.Image != "" && req.Image != imageToInspect {
+			cacheKey := fmt.Sprintf("%s:%s", host, req.Image)
+			m.imageCacheMu.Lock()
+			m.imageCache[cacheKey] = cfg
+			m.imageCacheMu.Unlock()
+		}
+	} else {
+		slog.Warn("Failed to get image metadata", "image", imageToInspect, "error", err)
 	}
 
+	// If using exetini, override the entrypoint and pass image user
+	runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
+	if imageUser != "" {
+		// Pass the image user to exetini via environment variable
+		runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", imageUser))
+	}
+
+	// Add the image to runArgs (must come after --entrypoint but before command args)
+	runArgs = append(runArgs, finalImage)
+
 	// Now append the command/entrypoint args after the image
-	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, imageEntrypoint, imageCmd, false)...)
+	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, imageEntrypoint, imageCmd)...)
 
 	// Create and start container
 	reportProgress(req, CreateStart, imageSize, 0, "Starting container")
@@ -906,7 +1108,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Wait for container to reach "running" status and get its network info
-	containerIP, err := m.waitForContainerRunning(ctx, host, containerID, networkName, cleanupContainerDir)
+	containerIP, err := m.waitForContainerRunning(ctx, host, containerID, prep.networkName, cleanupContainerDir)
 	if err != nil {
 		return nil, err
 	}

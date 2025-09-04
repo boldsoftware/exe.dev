@@ -103,8 +103,6 @@ pack_profile() {
   echo "Cloning: $COLIMA_PROFILE_DIR -> ${PREBAKE_DIR}/colima"
   cp_clone_dir "$COLIMA_PROFILE_DIR" "${PREBAKE_DIR}/colima"
   echo "Prebake image created at: ${PREBAKE_DIR}"
-  # Restart VM for continued setup/use (non-fatal)
-  colima start -p ${COLIMA_PROFILE} || true
 }
 
 restore_profile() {
@@ -163,6 +161,29 @@ cleanup_runtime_state() {
   fi
 }
 
+# Robustly start the Colima profile with our desired settings, with one cleanup retry
+start_profile() {
+  local port
+  port=${SSH_PORT:-22251}
+  set -x
+  if ! colima start -p ${COLIMA_PROFILE} --cpu ${COLIMA_CPUS} --memory ${COLIMA_MEMORY} --disk ${COLIMA_DISK} \
+      --vm-type vz --nested-virtualization --runtime containerd --kubernetes=false --network-address \
+      --ssh-port ${port} --arch aarch64; then
+    set +x
+    echo "First start failed; cleaning runtime state and retrying..."
+    cleanup_runtime_state
+    # Kill any lingering hostagent processes which may hold proxies
+    if command -v pkill >/dev/null 2>&1; then
+      pkill -f "[h]ostagent.*colima.*${COLIMA_PROFILE}" 2>/dev/null || true
+    fi
+    set -x
+    colima start -p ${COLIMA_PROFILE} --cpu ${COLIMA_CPUS} --memory ${COLIMA_MEMORY} --disk ${COLIMA_DISK} \
+      --vm-type vz --nested-virtualization --runtime containerd --kubernetes=false --network-address \
+      --ssh-port ${port} --arch aarch64
+  fi
+  set +x
+}
+
 # Provision a fresh Colima VM with containerd + Kata + Nydus and prepare prebake
 provision_fresh_vm() {
   local script_dir
@@ -205,7 +226,11 @@ else
   fi
 fi
 SCRIPT_EOF
-  sed -n '79,$p' "${script_dir}/setup-containerd-clh-nydus.sh" | sed 's/systemctl reload containerd/systemctl restart containerd/' >> /tmp/setup-containerd-clh-nydus-colima.sh
+  # Append the main setup content starting at the containerd install section,
+  # to avoid the physical-device /data setup (Colima uses loopback /data.img).
+  sed -n '/^echo "=== Installing containerd ==="/,$p' "${script_dir}/setup-containerd-clh-nydus.sh" \
+    | sed 's/systemctl reload containerd/systemctl restart containerd/' \
+    >> /tmp/setup-containerd-clh-nydus-colima.sh
 
   echo "Creating ubuntu user for compatibility with production..."
   colima ssh -p ${COLIMA_PROFILE} -- sudo useradd -m -s /bin/bash ubuntu 2>/dev/null || true
@@ -258,11 +283,7 @@ if [[ -d "${PREBAKE_DIR}" ]]; then
     restore_profile
     SSH_PORT=22251
     cleanup_runtime_state
-    set -x
-    colima start -p ${COLIMA_PROFILE} --cpu ${COLIMA_CPUS} --memory ${COLIMA_MEMORY} --disk ${COLIMA_DISK} \
-        --vm-type vz --nested-virtualization --runtime containerd --kubernetes=false --network-address \
-        --ssh-port ${SSH_PORT} --arch aarch64
-    set +x
+    start_profile
     echo "Prebaked profile restored and started. Updating local SSH config..."
     PREBAKED=1
 else
@@ -275,11 +296,7 @@ else
     fi
     SSH_PORT=22251
     cleanup_runtime_state
-    set -x
-    colima start -p ${COLIMA_PROFILE} --cpu ${COLIMA_CPUS} --memory ${COLIMA_MEMORY} --disk ${COLIMA_DISK} \
-        --vm-type vz --nested-virtualization --runtime containerd --kubernetes=false --network-address \
-        --ssh-port ${SSH_PORT} --arch aarch64
-    set +x
+    start_profile
     sleep 5
     echo "Checking for KVM support in VM..."
     if colima ssh -p ${COLIMA_PROFILE} -- ls /dev/kvm 2>/dev/null; then
@@ -295,6 +312,8 @@ else
     fi
     # Provision containerd + Kata + Nydus on fresh VM and create prebake snapshot
     provision_fresh_vm || exit 1
+    # VM was stopped during prebake; bring it back up now
+    start_profile
 fi
 
 # Duplicate heavy provisioning block removed: handled in single no-prebake branch above

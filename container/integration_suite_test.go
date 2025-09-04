@@ -23,7 +23,7 @@ func TestContainerIntegrationSuite(t *testing.T) {
 		defer cancel()
 		host = ctrhosttest.Detect(ctx)
 		if host == "" {
-			t.Skip("CTR_HOST not set and exe-ctr-colima not reachable; skipping integration suite")
+			t.Skip("CTR_HOST not set and colima-exe-ctr not reachable; skipping integration suite")
 		}
 	}
 

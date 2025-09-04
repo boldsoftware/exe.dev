@@ -45,7 +45,7 @@ func parseImageInspectJSON(data []byte) (ImageConfig, error) {
 // buildEntrypointAndCmdArgs builds args to append after the image reference in nerdctl run.
 // When useExetini is true, returns exetini args (e.g., -g -- ...) with the right command.
 // Otherwise, returns command args or empty to use image defaults.
-func buildEntrypointAndCmdArgs(useExetini bool, override string, imageEntrypoint, imageCmd []string, isExeuntu bool) []string {
+func buildEntrypointAndCmdArgs(useExetini bool, override string, imageEntrypoint, imageCmd []string) []string {
 	// Normalize override values
 	ov := strings.TrimSpace(override)
 
@@ -75,7 +75,7 @@ func buildEntrypointAndCmdArgs(useExetini bool, override string, imageEntrypoint
 	}
 
 	// Not using exetini
-	if ov == "none" || isExeuntu {
+	if ov == "none" {
 		// Ensure the container stays up to allow SSH setup
 		return []string{"sleep", "infinity"}
 	}
