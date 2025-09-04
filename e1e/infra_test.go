@@ -57,12 +57,11 @@ func TestMain(m *testing.M) {
 		slog.SetLogLoggerLevel(slog.LevelWarn)
 	}
 
+	host := ctrhosttest.Detect(context.Background())
 	// Skip tests in CI if exe-ctr-colima is not accessible via SSH
-	if os.Getenv("CI") != "" {
-		if ctrhosttest.Detect(nil) == "" {
-			fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
-			return
-		}
+	if os.Getenv("CI") != "" && host == "" {
+		fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
+		return
 	}
 
 	env, err := setup()
@@ -75,7 +74,7 @@ func TestMain(m *testing.M) {
 	// prepare container manager early, for faster cleanup
 	containerManagerC := make(chan *container.NerdctlManager, 1)
 	go func() {
-		manager, err := env.initContainerManager()
+		manager, err := env.initContainerManager(host)
 		containerManagerC <- manager // unblock regardless
 		if err != nil {
 			fmt.Printf("failed to init container manager: %v\n", err)
@@ -119,12 +118,7 @@ func (e *testEnv) sshPort() int {
 	return e.proxy.tcp.Port
 }
 
-func (e *testEnv) initContainerManager() (*container.NerdctlManager, error) {
-	// Detect container host using same logic as container tests
-	host := ctrhosttest.Detect(context.Background())
-	if host == "" {
-		return nil, fmt.Errorf("no container host available for cleanup")
-	}
+func (e *testEnv) initContainerManager(host string) (*container.NerdctlManager, error) {
 	config := &container.Config{ContainerdAddresses: []string{host}}
 	manager, err := container.NewNerdctlManager(config)
 	if err != nil {
