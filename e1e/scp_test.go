@@ -1,4 +1,4 @@
-package expect
+package e1e
 
 import (
 	"fmt"

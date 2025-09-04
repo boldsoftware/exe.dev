@@ -1,6 +1,6 @@
 // This file provides shared infrastructure for the e2e tests.
 
-package expect
+package e1e
 
 import (
 	"bufio"

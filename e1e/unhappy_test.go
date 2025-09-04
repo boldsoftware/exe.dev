@@ -1,6 +1,6 @@
 // This file tests "unhappy path" scenarios.
 
-package expect
+package e1e
 
 import (
 	"fmt"

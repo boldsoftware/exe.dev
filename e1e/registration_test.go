@@ -1,6 +1,6 @@
 // This file tests registration flows.
 
-package expect
+package e1e
 
 import (
 	"regexp"

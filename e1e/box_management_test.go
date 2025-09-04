@@ -1,6 +1,6 @@
 // This file contains tests for box management functionality.
 
-package expect
+package e1e
 
 import (
 	"regexp"
