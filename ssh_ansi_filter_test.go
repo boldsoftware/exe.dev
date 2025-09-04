@@ -15,7 +15,7 @@ func TestCommandSystemUsesANSIFilterInExecMode(t *testing.T) {
 	var execOutput bytes.Buffer
 	var shellOutput bytes.Buffer
 
-	// Test handleExec uses NewANSIFilterWriter  
+	// Test handleExec uses NewANSIFilterWriter
 	execFilterWriter := NewANSIFilterWriter(&execOutput)
 	shellDirectWriter := &shellOutput
 
@@ -24,8 +24,8 @@ func TestCommandSystemUsesANSIFilterInExecMode(t *testing.T) {
 
 	// Write to exec mode (should filter ANSI)
 	execFilterWriter.Write([]byte(testContentWithANSI))
-	
-	// Write to shell mode (should preserve ANSI)  
+
+	// Write to shell mode (should preserve ANSI)
 	shellDirectWriter.Write([]byte(testContentWithANSI))
 
 	execResult := execOutput.String()
@@ -40,7 +40,7 @@ func TestCommandSystemUsesANSIFilterInExecMode(t *testing.T) {
 		t.Errorf("Exec mode should filter ANSI codes, but found them in: %q", execResult)
 	}
 
-	// Verify shell mode preserves ANSI codes  
+	// Verify shell mode preserves ANSI codes
 	if !strings.Contains(shellResult, "\033[") {
 		t.Errorf("Shell mode should preserve ANSI codes, but they were missing from: %q", shellResult)
 	}
@@ -63,7 +63,7 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 		Handler: func(ctx context.Context, cc *CommandContext) error {
 			// Output content with ANSI codes like a real command would
 			cc.Write("\033[1;32mSuccess:\033[0m Command executed\r\n")
-			cc.Write("Regular text\r\n") 
+			cc.Write("Regular text\r\n")
 			cc.Write("\033[31mError-like text\033[0m\r\n")
 			return nil
 		},
@@ -226,7 +226,7 @@ func TestANSIFilterWriterMultipleWrites(t *testing.T) {
 
 	result := buf.String()
 	expected := "Hello Red World!"
-	
+
 	if result != expected {
 		t.Errorf("Expected %q, got %q", expected, result)
 	}
