@@ -11,7 +11,6 @@ import (
 
 	"exe.dev"
 	"exe.dev/ctrhosttest"
-	"exe.dev/ipallocator"
 )
 
 func main() {
@@ -31,7 +30,6 @@ func run() error {
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
 	containerdAddresses := flag.String("containerd-addresses", "", "Comma-separated list of containerd addresses (e.g., 'ssh://host1,ssh://host2')")
-	mdnsEnabled := flag.Bool("mdns", false, "Enable mDNS registration for dev mode (.local hostnames)")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
 	flag.Parse()
 
@@ -92,10 +90,6 @@ func run() error {
 	server, err := exe.NewServer(*httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, addresses)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
-	}
-
-	if *mdnsEnabled {
-		server.SetIPAllocator(ipallocator.NewMDNSAllocator())
 	}
 
 	if err := server.Start(); err != nil {

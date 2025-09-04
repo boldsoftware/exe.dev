@@ -38,7 +38,6 @@ import (
 	"exe.dev/billing"
 	"exe.dev/container"
 	"exe.dev/exedb"
-	"exe.dev/ipallocator"
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
@@ -379,9 +378,6 @@ type Server struct {
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
 
-	// IP allocation strategy for dev/production modes
-	ipAllocator ipallocator.IPAllocator
-
 	startIPClassB ipClassB
 	startIPClassC ipClassC
 
@@ -606,11 +602,6 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	}()
 
 	return s, nil
-}
-
-// SetIPAllocator enables or disables mDNS functionality for the server
-func (s *Server) SetIPAllocator(allocator ipallocator.IPAllocator) {
-	s.ipAllocator = allocator
 }
 
 // setupHTTPServer configures the HTTP server
@@ -2335,41 +2326,6 @@ type SSHClient interface {
 	Close() error
 }
 
-// FindMachineByNameForUserAndIP returns the machine associated with the userID, ip pair.
-// If the user is somehow associated with more than a single team, this function will return
-// nil, due to the ambiuguity of which of those teams' maps of IP address->machine to
-// index with the supplied ip address.
-// See https://docs.google.com/document/d/1WF_Z4F4_viN5Abhxhus6IwOC33yClt7BViA3kNA4GPE/edit?tab=t.0
-// for an more detailed explanation of why this is the case.
-func (s *Server) FindMachineByNameForUserAndIP(ctx context.Context, userID, ip string) *Machine {
-	slog.Debug("FindMachineByNameForUserAndIP", "user_id", userID, "ip", ip)
-
-	// Get user's alloc
-	alloc, err := s.getUserAlloc(ctx, userID)
-	if err != nil || alloc == nil {
-		slog.Debug("FindMachineByNameForUserAndIP no alloc found", "user_id", userID)
-		return nil
-	}
-
-	if s.ipAllocator == nil {
-		return nil
-	}
-
-	machineName, found := s.ipAllocator.LookupMachine(alloc.AllocID, ip)
-	if !found {
-		slog.Debug("FindMachineByNameForUserAndIP machine not found for alloc", "alloc", alloc.AllocID, "ip", ip)
-		return nil
-	}
-
-	slog.Debug("FindMachineByNameForUserAndIP found machine", "machine", machineName)
-	machine, err := s.getMachineByName(ctx, machineName)
-	if err == nil {
-		return machine
-	}
-
-	return nil
-}
-
 // findMachineByNameForUser finds a machine by name that the user has access to
 func (s *Server) FindMachineByNameForUser(ctx context.Context, userID, machineName string) *Machine {
 	slog.Debug("FindMachineByNameForUser", "user_id", userID, "machine_name", machineName)
@@ -2461,12 +2417,6 @@ func generateRandomContainerName() string {
 
 // formatSSHConnectionInfo returns SSH connection info based on dev mode
 func (s *Server) formatSSHConnectionInfo(allocID, boxName string) string {
-	if s.ipAllocator != nil {
-		allocation, err := s.ipAllocator.Allocate(allocID, boxName)
-		if err == nil && allocation != nil {
-			return fmt.Sprintf("ssh -p 2222 -o ConnectTimeout=1 %s", allocation.Hostname)
-		}
-	}
 	if s.devMode != "" {
 		var dashP string
 		if s.piperdPort != 22 {
@@ -2699,14 +2649,6 @@ func (s *Server) createMachineWithSSHAndDockerHost(ctx context.Context, userID, 
 		return err
 	}
 
-	// Register machine with IP allocation strategy if enabled
-	if s.ipAllocator != nil {
-		if _, allocErr := s.ipAllocator.Allocate(allocID, name); allocErr != nil {
-			slog.Warn("Failed to register machine with IP allocation", "alloc", allocID, "machine", name, "error", allocErr)
-			// Don't fail the whole operation if IP allocation fails
-		}
-	}
-
 	return nil
 }
 
@@ -2869,18 +2811,6 @@ func (s *Server) Start() error {
 		slog.Info("Starting tag resolver for image freshness management")
 		s.tagResolver.Start(ctx)
 		s.hostUpdater.Start(ctx)
-	}
-
-	// Register all existing machines with IP allocation strategy
-	if s.ipAllocator != nil {
-		slog.Info("Starting IP allocator...")
-		// Start IP allocation strategy if enabled
-		if err := s.ipAllocator.Start(); err != nil {
-			return fmt.Errorf("failed to start IP allocator: %v", err)
-		}
-		if err := s.allocateIPsForExistingMachines(ctx); err != nil {
-			slog.Warn("Failed to register existing machines with ipAllocator", "error", err)
-		}
 	}
 
 	// Wait for interrupt signal or startup failure
@@ -3414,60 +3344,6 @@ func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, user
 		}, nil
 	}
 
-	// Check if this is an IP allocation strategy-based machine access request
-	// TODO: clean up the "127.0.0.1" check here - it's only there to distinguish between exe.local and *.*.exe.local, and Server
-	// shouldn't have to know anything about that.
-	if s.ipAllocator == nil || localAddress == "" || localAddress == "127.0.0.1" {
-		// Fall back to normal proxy authentication
-		return s.authenticateProxyUser(ctx, username, originalUserKeyBytes)
-	}
-
-	// Parse the local address to see if it's a machine IP and try to route it based on ipAllocator
-	localIP := net.ParseIP(localAddress)
-	if localIP == nil {
-		return nil, fmt.Errorf("could't parse IP address: %q", localAddress)
-	}
-
-	// Get user's alloc to check machine IPs
-	originalUserKey, _, _, _, err := ssh.ParseAuthorizedKey(originalUserKeyBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse public key: %w", err)
-	}
-	originalKeyStr := string(ssh.MarshalAuthorizedKey(originalUserKey))
-
-	email, _, err := s.GetEmailBySSHKey(ctx, originalKeyStr)
-	if err != nil {
-		return nil, err
-	}
-	if email == "" {
-		return nil, fmt.Errorf("user not found")
-	}
-
-	user, err := s.GetUserByEmail(ctx, email)
-	if err != nil {
-		return nil, err
-	}
-
-	alloc, err := s.getUserAlloc(ctx, user.UserID)
-	if err != nil {
-		return nil, err
-	}
-
-	if mn, ok := s.ipAllocator.LookupMachine(alloc.AllocID, localIP.String()); ok {
-		machineName := mn
-
-		// This is a request to access a specific machine with an address known to ipAllocator
-		slog.Debug("ipAllocator-based machine access detected", "alloc", alloc.AllocID, "machine", machineName, "local_address", localAddress)
-
-		perms, err := s.authenticateProxyUser(ctx, ""+machineName, originalUserKeyBytes)
-		if err != nil {
-			return nil, err
-		}
-
-		return perms, nil
-	}
-
-	// Fall back to normal proxy authentication
 	return s.authenticateProxyUser(ctx, username, originalUserKeyBytes)
 }
 
@@ -3578,16 +3454,7 @@ func (s *Server) allocateIPsForExistingMachines(ctx context.Context) error {
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	for _, machine := range machines {
-		_, err := s.ipAllocator.Allocate(machine.AllocID, machine.Name)
-		if err != nil {
-			return fmt.Errorf("failed to register machine %s (alloc %s): %v", machine.Name, machine.AllocID, err)
-		}
-	}
-	return nil
+	return err
 }
 
 // GetMachineSSHDetails retrieves SSH connection details from the machines table

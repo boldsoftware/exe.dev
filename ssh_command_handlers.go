@@ -622,14 +622,6 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 			return fmt.Errorf("deleting machine: %w", err)
 		}
 
-		// Deregister from IP allocation strategy if enabled
-		if ss.server.ipAllocator != nil {
-			if allocErr := ss.server.ipAllocator.Deallocate(cc.Alloc.AllocID, machineName); allocErr != nil {
-				// Don't fail the operation if IP deallocation fails
-				cc.Writeln("\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m", allocErr)
-			}
-		}
-
 		cc.Writeln("\033[1;32mMachine '%s' deleted\033[0m", machineName)
 		return nil
 	}
@@ -660,14 +652,6 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 	if err != nil {
 		cc.Writeln("\033[1;31mError deleting machine from database: %v\033[0m", err)
 		return nil
-	}
-
-	// Deregister from IP allocation strategy if enabled
-	if ss.server.ipAllocator != nil {
-		if allocErr := ss.server.ipAllocator.Deallocate(cc.Alloc.AllocID, machineName); allocErr != nil {
-			// Don't fail the operation if IP deallocation fails
-			cc.Writeln("\033[1;33mWarning: Failed to deregister machine from IP allocation: %v\033[0m", allocErr)
-		}
 	}
 
 	cc.Writeln("\033[1;32mMachine '%s' deleted successfully\033[0m", machineName)

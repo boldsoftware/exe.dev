@@ -26,7 +26,7 @@ import (
 // proxy key, we can look up the original user's key.
 type ProxyKeyMapping struct {
 	OriginalPublicKey []byte    // The user's original public key (SSH wire format)
-	LocalAddress      string    // The local IP address the client connected to (for mDNS routing)
+	LocalAddress      string    // The local IP address the client connected to
 	CreatedAt         time.Time // When this mapping was created (for expiration)
 }
 
@@ -282,7 +282,6 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		}
 	}
 
-	// Extract local address for mDNS routing
 	localAddress := conn.GetMeta("local_address")
 	if localAddress != "" {
 		localAddress, _, err = net.SplitHostPort(localAddress)
@@ -296,15 +295,6 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		localAddress = "127.0.0.1" // Default fallback
 	}
 
-	if localAddress != "127.0.0.1" && p.server.ipAllocator != nil { // i.e. they are asking for a host that isn't exe.local.
-		slog.Info("Checking for machine", "component", "piper-plugin", "userID", userID, "localAddress", localAddress)
-		if machine := p.server.FindMachineByNameForUserAndIP(ctx, userID, localAddress); machine != nil {
-			slog.Info("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
-			return p.handleMachineAccess(machine, userID, connID)
-		} else {
-			slog.Info("No machine found with name", "component", "piper-plugin", "userID", userID, "localAddress", localAddress)
-		}
-	}
 	registered := userID != ""
 	username := conn.User()
 	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
