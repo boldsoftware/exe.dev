@@ -474,6 +474,14 @@ sudo systemctl enable netfilter-persistent
 
 echo "Network isolation configured"
 
+echo "=== Configuring SSH MaxSessions ==="
+
+# Set SSH MaxSessions to 50 for the machine
+sudo sed -i '/^#*MaxSessions/d' /etc/ssh/sshd_config
+echo "MaxSessions 50" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+sudo systemctl reload ssh
+echo "SSH MaxSessions set to 50"
+
 echo "=== Testing setup ==="
 
 # Check services
