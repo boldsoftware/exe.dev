@@ -19,7 +19,7 @@ type Command struct {
 	Aliases     []string
 	Description string
 	Usage       string
-	FlagSet     *flag.FlagSet
+	FlagSetFunc func() *flag.FlagSet             // Factory to create a new FlagSet for each invocation
 	Examples    []string
 	Subcommands []*Command
 	Handler     func(context.Context, *CommandContext) error
@@ -35,9 +35,10 @@ func (c *Command) Help(cc *CommandContext) error {
 	if c.Usage != "" {
 		cc.Writeln("\r\n\033[1mUsage:\033[0m %s", c.Usage)
 	}
-	if c.FlagSet != nil {
+	if c.FlagSetFunc != nil {
+		fs := c.FlagSetFunc()
 		hasFlags := false
-		c.FlagSet.VisitAll(func(f *flag.Flag) {
+		fs.VisitAll(func(f *flag.Flag) {
 			if !hasFlags {
 				cc.Writeln("\r\n\033[1mOptions:\033[0m")
 				hasFlags = true
@@ -45,7 +46,7 @@ func (c *Command) Help(cc *CommandContext) error {
 		})
 		if hasFlags {
 			tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
-			c.FlagSet.VisitAll(func(f *flag.Flag) {
+			fs.VisitAll(func(f *flag.Flag) {
 				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\t\r\n", f.Name, f.Usage)
 			})
 			tabw.Flush()
@@ -204,13 +205,17 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		return fmt.Errorf("command not available: %s", strings.Join(commandPath, " "))
 	}
 
-	// Parse flags if the command has a FlagSet
+	// Parse flags if the command has a FlagSetFunc
 	// Combine remaining args with original args for flag parsing
 	allArgs := append(remainingArgs, cc.Args...)
-	// Parse the flags
-	fs := cmd.FlagSet
-	if fs == nil {
-		fs = defaultFlagSet
+	// Parse the flags - always use a fresh FlagSet to avoid concurrent access
+	var fs *flag.FlagSet
+	if cmd.FlagSetFunc != nil {
+		// Use the factory function to create a new FlagSet (thread-safe)
+		fs = cmd.FlagSetFunc()
+	} else {
+		// Create a new empty FlagSet for commands without flags
+		fs = flag.NewFlagSet("default", flag.ContinueOnError)
 	}
 	if err := fs.Parse(allArgs); err != nil {
 		if err == flag.ErrHelp {
@@ -218,11 +223,11 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		}
 		return fmt.Errorf("flag parsing error: %v", err)
 	}
-	if cmd.FlagSet != nil {
+	if cmd.FlagSetFunc != nil {
 		// Set the unparsed args as the new Args
-		cc.Args = cmd.FlagSet.Args()
+		cc.Args = fs.Args()
 		// Set the FlagSet in context so handlers can access parsed flags
-		cc.FlagSet = cmd.FlagSet
+		cc.FlagSet = fs
 	} else {
 		// Set remaining args in context if no flags to parse
 		cc.Args = append(remainingArgs, cc.Args...)
@@ -232,7 +237,6 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 	return cmd.Handler(ctx, cc)
 }
 
-var defaultFlagSet = flag.NewFlagSet("default", flag.ContinueOnError)
 
 // GetAvailableCommands returns commands available to the user
 func (ct *CommandTree) GetAvailableCommands(ctx *CommandContext) []*Command {

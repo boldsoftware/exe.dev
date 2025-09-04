@@ -556,9 +556,12 @@ func TestSubcommandFlagParsing(t *testing.T) {
 	sshServer := &SSHServer{server: server, billing: billing}
 
 	// Create a custom command tree with subcommands that have flags for testing
-	testFlagSet := flag.NewFlagSet("test-sub", flag.ContinueOnError)
-	testFlagSet.String("option", "default", "test option")
-	testFlagSet.Bool("verbose", false, "verbose mode")
+	testFlagSetFunc := func() *flag.FlagSet {
+		fs := flag.NewFlagSet("test-sub", flag.ContinueOnError)
+		fs.String("option", "default", "test option")
+		fs.Bool("verbose", false, "verbose mode")
+		return fs
+	}
 
 	var capturedContext *CommandContext
 	testSubHandler := func(ctx context.Context, cc *CommandContext) error {
@@ -579,7 +582,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 						Name:        "sub",
 						Description: "Subcommand with flags",
 						Handler:     testSubHandler,
-						FlagSet:     testFlagSet,
+						FlagSetFunc: testFlagSetFunc,
 					},
 					{
 						Name:        "nosub",

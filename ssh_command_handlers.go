@@ -47,7 +47,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				Name:        "new",
 				Description: "Create a new machine",
 				Handler:     ss.handleNewCommand,
-				FlagSet:     newCommandFlags(),
+				FlagSetFunc: newCommandFlags,
 				Examples: []string{
 					"new                                # just give me a computer",
 					"new --name=m --image=ubuntu:22.04  # custom image and name",
