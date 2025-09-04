@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
-	"net/url"
 	"os/exec"
-	"time"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -366,71 +363,10 @@ func (g *GrpcPlugin) createUpstream(conn ssh.ConnMetadata, challengeCtx ssh.Chal
 		config.Auth = append(config.Auth, ssh.NoneAuth())
 	}
 
-	upstreamConn, addr, err := g.dialUpstream(upstreamUri)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debugf("connecting to upstream %v@%v with auth %v", config.User, upstreamConn.RemoteAddr().String(), auth)
-
 	return &ssh.Upstream{
-		Conn:         upstreamConn,
-		Address:      addr,
+		URI:          upstreamUri,
 		ClientConfig: config,
 	}, nil
-}
-
-func (g *GrpcPlugin) dialUpstream(uri string) (net.Conn, string, error) {
-	var addr string
-	var network string
-
-	if len(uri) == 0 {
-		return nil, "", fmt.Errorf("empty upstream uri")
-	}
-
-	u, err := url.Parse(uri)
-	if err != nil {
-		return nil, "", fmt.Errorf("invalid upstream uri: %w", err)
-	}
-
-	network = u.Scheme
-	addr = u.Host
-	if addr == "" {
-		addr = u.Opaque
-	}
-	if addr == "" {
-		return nil, "", fmt.Errorf("invalid upstream uri, missing address: %s", uri)
-	}
-
-	// This retry loop is exed-specific.
-	// TODO: pull it out into a thing that the plugin decides (retry delays slice?), and then upstream it.
-	retries := []time.Duration{
-		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
-		1 * time.Second, 1 * time.Second,
-		2 * time.Second, 3 * time.Second,
-		5 * time.Second, 8 * time.Second,
-		0, // trailing 0 delay makes loop logic simpler
-	}
-	var upstreamConn net.Conn
-	var connErr error
-	for i, d := range retries {
-		upstreamConn, connErr = net.Dial(network, addr)
-		if connErr == nil {
-			break
-		}
-		if d > 0 {
-			// add jitter to d: multiply by random factor between 0.8 and 1.2
-			jitter := 0.8 + rand.Float64()*0.4
-			d = time.Duration(float64(d) * jitter)
-			log.Debugf("failed to connect to upstream %s (%v), attempt %d, retrying in %v", addr, connErr, i, d.Round(10*time.Millisecond))
-		}
-		time.Sleep(d)
-	}
-	if connErr != nil {
-		return nil, "", connErr
-	}
-
-	return upstreamConn, addr, nil
 }
 
 func (g *GrpcPlugin) NoClientAuthCallback(conn ssh.ConnMetadata, challengeCtx ssh.ChallengeContext) (*ssh.Upstream, error) {
