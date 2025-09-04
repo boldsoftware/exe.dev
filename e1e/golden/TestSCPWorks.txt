@@ -40,7 +40,6 @@ Email Address: TestSCPWorks@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 
-
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testscpworks
 Creating e1e-BOX_TIMESTAMP-testscpworks (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:

@@ -52,14 +52,15 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the box
-	box, err := s.getBoxByName(r.Context(), boxName)
+	// Find the box.
+	// Careful: we aren't checking the team or owner in this look-up, so we must do it below.
+	box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxNamed(ctx, boxName)
+	})
 	if err != nil {
 		http.Error(w, "Box not found", http.StatusNotFound)
 		return
 	}
-
-	// Get the route for the box
 	route := box.GetRoute()
 
 	// Apply authentication based on route share setting
@@ -111,7 +112,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Proxy the request to the container
-	err = s.proxyToContainer(w, r, box, route)
+	err = s.proxyToContainer(w, r, &box, route)
 	if err != nil {
 		slog.Debug("Failed to proxy request", "error", err, "box", boxName)
 		http.Error(w, "Failed to proxy request to container", http.StatusBadGateway)

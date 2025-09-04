@@ -376,16 +376,14 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, u
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal, // Interactive terminal available
-			ShowHidden: ss.server.devMode == "local",
+			DevMode:    ss.server.devMode == "local",
 		}
 
 		// Execute command using new system
-		err = ss.commands.ExecuteCommand(ctx, cc, parts)
-		if err == io.EOF {
+		rc := ss.commands.ExecuteCommand(ctx, cc, parts)
+		if rc == -1 {
+			// EOF
 			return
-		}
-		if err != nil {
-			fmt.Fprintf(s, "Error: %v\r\n", err)
 		}
 	}
 }
@@ -667,11 +665,8 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
-		sshTo := "exe.dev"
-		if ss.server.devMode != "" {
-			sshTo = fmt.Sprintf("-p %v localhost", ss.server.piperdPort)
-		}
-		fmt.Fprintf(s, "Please complete registration by running: ssh %s\r\n", sshTo)
+		sshTo := ss.server.formatExeDevConnectionInfo()
+		fmt.Fprintf(s, "Please complete registration by running: %s\r\n", sshTo)
 		s.Exit(1)
 		return
 	}
@@ -703,12 +698,14 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		Output:     NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
 		SSHSession: s,
 		Terminal:   nil, // No interactive terminal for exec mode
-		ShowHidden: ss.server.devMode == "local",
+		DevMode:    ss.server.devMode == "local",
 	}
 
-	err = ss.commands.ExecuteCommand(s.Context(), cc, cmd) // Just the command name
-	if err != nil {
-		fmt.Fprintf(s, "Error: %v\r\n", err)
+	rc := ss.commands.ExecuteCommand(s.Context(), cc, cmd) // Just the command name
+	slog.Debug("ssh exec command completed", "command", strings.Join(cmd, " "), "rc", rc)
+	if rc > 0 {
+		s.Close()
+		s.Exit(rc)
 	}
 }
 
@@ -731,33 +728,29 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	fmt.Fprintf(s, "\033[1;31mContainer '%s' failed to start\033[0m\r\n\r\n", boxName)
 
 	// Get logs if container manager is available
-	if ss.server.containerManager != nil {
-		ctx, cancel := context.WithTimeout(s.Context(), 5*time.Second)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(s.Context(), 5*time.Second)
+	defer cancel()
 
-		// Get container logs
-		logs, err := ss.server.containerManager.GetContainerLogs(ctx, allocID, containerID, 100)
-		if err != nil {
-			fmt.Fprintf(s, "\033[1;33mFailed to retrieve container logs: %v\033[0m\r\n", err)
-			return
-		}
-
-		if len(logs) > 0 {
-			fmt.Fprintf(s, "\033[1;36mContainer logs:\033[0m\r\n")
-			fmt.Fprintf(s, "────────────────────────────────────────\r\n")
-			for _, line := range logs {
-				fmt.Fprintf(s, "%s\r\n", line)
-			}
-			fmt.Fprintf(s, "────────────────────────────────────────\r\n\r\n")
-		} else {
-			fmt.Fprintf(s, "\033[1;33mNo logs available\033[0m\r\n")
-		}
-
-		fmt.Fprintf(s, "To delete this failed container, run:\r\n")
-		fmt.Fprintf(s, "  \033[1mdelete %s\033[0m\r\n", boxName)
-	} else {
-		fmt.Fprintf(s, "\033[1;31mContainer manager not available\033[0m\r\n")
+	// Get container logs
+	logs, err := ss.server.containerManager.GetContainerLogs(ctx, allocID, containerID, 100)
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;33mFailed to retrieve container logs: %v\033[0m\r\n", err)
+		return
 	}
+
+	if len(logs) > 0 {
+		fmt.Fprintf(s, "\033[1;36mContainer logs:\033[0m\r\n")
+		fmt.Fprintf(s, "────────────────────────────────────────\r\n")
+		for _, line := range logs {
+			fmt.Fprintf(s, "%s\r\n", line)
+		}
+		fmt.Fprintf(s, "────────────────────────────────────────\r\n\r\n")
+	} else {
+		fmt.Fprintf(s, "\033[1;33mNo logs available\033[0m\r\n")
+	}
+
+	fmt.Fprintf(s, "To delete this failed container, run:\r\n")
+	fmt.Fprintf(s, "  \033[1m%s delete %s\033[0m\r\n", ss.server.formatExeDevConnectionInfo(), boxName)
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
@@ -775,7 +768,7 @@ func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, e
 		// Don't store in ssh_keys yet - only store verified keys there
 
 		// Generate token for new ssh key verification
-		token := ss.server.generateToken()
+		token := ss.server.generateRegistrationToken()
 		expires := time.Now().Add(15 * time.Minute)
 
 		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
@@ -833,7 +826,7 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	}
 
 	// New user registration
-	token := ss.server.generateToken()
+	token := ss.server.generateRegistrationToken()
 
 	// Create verification object
 	verification := &EmailVerification{
@@ -890,7 +883,7 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User,
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal,
-			ShowHidden: ss.server.devMode == "local",
+			DevMode:    ss.server.devMode == "local",
 		}
 
 		// Get completions

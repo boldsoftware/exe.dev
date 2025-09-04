@@ -184,12 +184,8 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 1: Request to private route without auth should redirect to auth
 	t.Run("unauthenticated_request_redirects_to_auth", func(t *testing.T) {
 		// First verify the box exists
-		box, err := server.getBoxByName(t.Context(), "testbox")
-		if err != nil {
-			t.Fatalf("Test box not found: %v", err)
-		}
-		if box == nil {
-			t.Fatal("Box is nil")
+		if server.isBoxNameAvailable(t.Context(), "testbox") {
+			t.Fatalf("test box not found")
 		}
 
 		req := httptest.NewRequest("GET", "http://testbox.localhost/", nil)

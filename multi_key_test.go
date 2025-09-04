@@ -77,7 +77,7 @@ func TestMultiKeyAuthentication(t *testing.T) {
 		}
 
 		// Add second key as unverified (in pending_ssh_keys table)
-		token := server.generateToken()
+		token := server.generateRegistrationToken()
 		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 			_, err := tx.Exec(`
 				INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
@@ -263,7 +263,7 @@ func TestEmailBySSHKey(t *testing.T) {
 
 	// Add unverified key (in pending_ssh_keys)
 	unverifiedPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDUnverified..."
-	token := server.generateToken()
+	token := server.generateRegistrationToken()
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
 			INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)

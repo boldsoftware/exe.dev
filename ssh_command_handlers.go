@@ -1,11 +1,15 @@
 package exe
 
 import (
+	"cmp"
 	"context"
+	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,9 +18,17 @@ import (
 	"exe.dev/container"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
-	"github.com/google/uuid"
 	"golang.org/x/term"
 )
+
+// jsonOnlyFlags returns a FlagSet creation function for a FlagSet named name with only the --json flag.
+func jsonOnlyFlags(name string) func() *flag.FlagSet {
+	return func() *flag.FlagSet {
+		fs := flag.NewFlagSet(name, flag.ContinueOnError)
+		fs.Bool("json", false, "output in JSON format")
+		return fs
+	}
+}
 
 // newCommandFlags creates a FlagSet for the new command
 func newCommandFlags() *flag.FlagSet {
@@ -25,6 +37,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("image", "exeuntu", "container image")
 	fs.String("size", "medium", "box size (small, medium, or large)")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
+	fs.Bool("json", false, "output in JSON format")
 	return fs
 }
 
@@ -34,6 +47,7 @@ func routeCommandFlags() *flag.FlagSet {
 	fs.Int("port", 80, "port to expose")
 	fs.Bool("private", false, "make the route private")
 	fs.Bool("public", false, "make the route public")
+	fs.Bool("json", false, "output in JSON format")
 	return fs
 }
 
@@ -52,6 +66,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			Aliases:     []string{"ls"},
 			Description: "List your boxes",
 			Handler:     ss.handleListCommand,
+			FlagSetFunc: jsonOnlyFlags("list"),
 			Usage:       "list",
 		},
 		{
@@ -68,6 +83,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			Name:              "delete",
 			Description:       "Delete a box",
 			Handler:           ss.handleDeleteCommand,
+			FlagSetFunc:       jsonOnlyFlags("delete"),
 			Usage:             "delete <box-name>",
 			HasPositionalArgs: true,
 			CompleterFunc:     CompleteBoxNames,
@@ -77,19 +93,12 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			Hidden:      true,
 			Description: "Resource allocation info",
 			Handler:     ss.handleAllocCommand,
-			Subcommands: []*Command{
-				{
-					Name:        "info",
-					Description: "Show allocation usage",
-					Usage:       "alloc info",
-					Handler:     ss.handleAllocInfoCommand,
-				},
-			},
 		},
 		{
 			Name:        "billing",
 			Description: "Manage billing and payment info",
 			Handler:     ss.handleBillingCommand,
+			FlagSetFunc: jsonOnlyFlags("billing"),
 			Subcommands: []*Command{
 				{
 					Name:        "setup",
@@ -131,19 +140,20 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			Description: "Show your user information including email and all SSH keys.",
 			Usage:       "whoami",
 			Handler:     ss.handleWhoamiCommand,
+			FlagSetFunc: jsonOnlyFlags("whoami"),
 		},
 		{
 			Name:        "browser",
 			Description: "Generate a magic link to access the web UI authenticated as yourself",
 			Usage:       "browser",
 			Handler:     ss.handleBrowserCommand,
+			FlagSetFunc: jsonOnlyFlags("browser"),
 		},
 		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *CommandContext) error {
 				fmt.Fprint(cc.Output, "Goodbye!\r\n")
-
 				return io.EOF
 			},
 		},
@@ -157,7 +167,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 
 	ct := &CommandTree{Commands: commands}
 	if ss.server != nil && ss.server.devMode == "local" {
-		ct.ShowHidden = true
+		ct.DevMode = true
 	}
 	return ct
 }
@@ -188,40 +198,53 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *CommandContext) 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) error {
 	containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.AllocID)
 	if err != nil {
-		cc.Write("\033[1;31mError listing boxes: %v\033[0m\r\n", err)
-		return fmt.Errorf("listing boxes: %w", err)
+		return err
+	}
+
+	if cc.WantJSON() {
+		var boxList []map[string]any
+		for _, c := range containers {
+			box := map[string]any{
+				"box_name": c.Name,
+				"status":   c.Status.String(),
+			}
+			imageName := container.GetDisplayImageName(c.Image)
+			switch imageName {
+			case "exeuntu", "":
+			default:
+				box["image"] = imageName
+			}
+			boxList = append(boxList, box)
+		}
+		cc.WriteJSON(map[string]any{
+			"boxes": boxList,
+		})
+		return nil
 	}
 
 	if len(containers) == 0 {
 		cc.Write("No boxes found. Create one with 'new'.\r\n")
-		return fmt.Errorf("no boxes found")
+		return nil
 	}
 
 	cc.Write("\033[1;36mYour boxes:\033[0m\r\n")
 	for _, c := range containers {
-		status := string(c.Status)
-		statusColor := ""
+		var statusColor string
 		switch c.Status {
 		case container.StatusRunning:
 			statusColor = "\033[1;32m" // green
-			status = "running"
 		case container.StatusStopped:
 			statusColor = "\033[1;31m" // red
-			status = "stopped"
 		case container.StatusPending:
 			statusColor = "\033[1;33m" // yellow
-			status = "starting"
 		}
-
-		// Show box with colored status
-		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, status)
-
-		// Add image info if available
-		if c.Image != "" && c.Image != "exeuntu" {
-			displayImage := container.GetDisplayImageName(c.Image)
-			cc.Write(" (%s)", displayImage)
+		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, c.Status.String())
+		imageName := container.GetDisplayImageName(c.Image)
+		switch imageName {
+		case "exeuntu", "":
+		default:
+			cc.Write(" (%s)", imageName)
 		}
-
 		cc.Write("\r\n")
 	}
 	return nil
@@ -238,7 +261,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	if boxName == "" {
 		for range 10 {
 			randBoxName := generateRandomBoxName()
-			if ss.server.isValidBoxName(randBoxName) && ss.server.isBoxNameAvailable(ctx, randBoxName) {
+			if isValidBoxName(randBoxName) && ss.server.isBoxNameAvailable(ctx, randBoxName) {
 				boxName = randBoxName
 				break
 			}
@@ -246,14 +269,12 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	}
 
 	// Validate box name (both provided and generated)
-	if !ss.server.isValidBoxName(boxName) {
-		cc.Write("\033[1;31mInvalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 64 characters\033[0m\r\n", boxName)
-		return fmt.Errorf("invalid box name %q", boxName)
+	if !isValidBoxName(boxName) {
+		return cc.Errorf("Invalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), and be up to 64 characters", boxName)
 	}
 
 	if !ss.server.isBoxNameAvailable(ctx, boxName) {
-		cc.Write("\033[1;31mBox name %q is not available\033[0m\r\n", boxName)
-		return fmt.Errorf("box name %q is not available", boxName)
+		return cc.Errorf("Box name %q is not available", boxName)
 	}
 
 	// Get the display image name
@@ -312,7 +333,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	startTime := time.Now()
 
 	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
-	showSpinner := ss.shouldShowSpinner(cc.SSHSession)
+	showSpinner := ss.shouldShowSpinner(cc.SSHSession) && !cc.WantJSON()
 
 	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
 	// This makes the readline prompt visible in the repl ui.
@@ -412,9 +433,7 @@ done:
 	}
 
 	if createErr != nil {
-		guid := uuid.New().String() // for x-ref on support tickets
-		slog.Debug("createContainer error", "error", createErr, "publicKey", cc.PublicKey, "userID", user.UserID, "allocID", cc.Alloc.AllocID, "boxName", boxName, "image", image, "size", size, "guid", guid)
-
+		cc.WriteInternalError("new", createErr, "boxName", boxName, "image", image, "size", size)
 		// Clean up the pre-created box entry since container creation failed
 		if err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			queries := exedb.New(tx.Conn())
@@ -422,11 +441,6 @@ done:
 		}); err != nil {
 			slog.Error("Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
 		}
-
-		if ss.server.devMode != "" {
-			cc.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", createErr)
-		}
-		cc.Write("\033[1;31mSorry, something went wrong. Error ID: %v\033[0m\r\n", guid)
 		return createErr
 	}
 
@@ -451,11 +465,21 @@ done:
 	// CreateContainer now blocks until SSH is verified, so we can proceed immediately
 
 	totalTime := time.Since(startTime)
-	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, boxName)
+	sshCommand := ss.server.formatSSHConnectionInfo(boxName)
 	httpsProxyAddr := ss.server.httpsProxyAddress(boxName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
+	}
+
+	if cc.WantJSON() {
+		out := map[string]string{
+			"box_name":    boxName,
+			"ssh_command": sshCommand,
+			"https_url":   httpsProxyAddr,
+		}
+		cc.WriteJSON(out)
+		return nil
 	}
 	if cc.IsInteractive() {
 		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\033[1m%s\033[0m\r\n\r\n",
@@ -468,19 +492,20 @@ done:
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext) error {
-	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify a box name\033[0m")
-		cc.Writeln("Usage: delete <box-name>")
-		return nil
+	if len(cc.Args) != 1 {
+		return cc.Errorf("please specify exactly one box name to delete, got %d", len(cc.Args))
 	}
 
 	boxName := cc.Args[0]
-
-	// Get box info
-	box, err := ss.server.getBoxByName(ctx, boxName)
+	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   boxName,
+			UserID: cc.User.UserID,
+		})
+	})
 	if err != nil {
-		cc.Writeln("\033[1;31mError: Box '%s' not found\033[0m", boxName)
-		return fmt.Errorf("box %q not found: %w", boxName, err)
+		cc.WriteError("Box %q not found", boxName)
+		return nil
 	}
 
 	cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
@@ -490,15 +515,13 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 		ctx := context.Background()
 		err = ss.server.containerManager.DeleteContainer(ctx, box.AllocID, *box.ContainerID)
 		if err != nil {
-			cc.Writeln("\033[1;33mWarning: Failed to delete container: %v\033[0m", err)
+			return err
 		}
 	}
 
 	// Delete from database and track in deleted_boxes
 	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-
-		// Track deletion in deleted_boxes table
 		err := queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
 			ID:      int64(box.ID),
 			AllocID: box.AllocID,
@@ -506,62 +529,65 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 		if err != nil {
 			return fmt.Errorf("tracking deletion: %w", err)
 		}
-
-		// Delete the box
 		return queries.DeleteBox(ctx, box.ID)
 	})
 	if err != nil {
-		cc.Writeln("\033[1;31mError deleting box from database: %v\033[0m", err)
+		cc.WriteInternalError("delete", err, "boxID", box.ID, "boxName", box.Name)
 		return nil
 	}
 
-	cc.Writeln("\033[1;32mBox '%s' deleted successfully\033[0m", boxName)
+	if cc.WantJSON() {
+		result := map[string]string{
+			"box_name": boxName,
+			"status":   "deleted",
+		}
+		cc.WriteJSON(result)
+		return nil
+	}
+	cc.Write("\033[1;32mBox %q deleted successfully\033[0m\r\n", boxName)
 	return nil
 }
 
 func (ss *SSHServer) handleAllocCommand(ctx context.Context, cc *CommandContext) error {
-	// If no subcommand, show alloc info
-	if len(cc.Args) == 0 {
-		return ss.handleAllocInfoCommand(ctx, cc)
-	}
-	return fmt.Errorf("alloc subcommand not found: %s", strings.Join(cc.Args, " "))
-}
-
-func (ss *SSHServer) handleAllocInfoCommand(ctx context.Context, cc *CommandContext) error {
-	// Show allocation info
-	user, err := ss.server.getUserByPublicKey(ctx, cc.PublicKey)
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get user info: %v\033[0m", err)
+	if cc.WantJSON() {
+		allocInfo := map[string]any{
+			"id":      cc.Alloc.AllocID,
+			"type":    cc.Alloc.AllocType,
+			"region":  cc.Alloc.Region,
+			"created": cc.Alloc.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+		cc.WriteJSON(allocInfo)
 		return nil
 	}
-
-	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
-	if err != nil || alloc == nil {
-		cc.Writeln("\033[1;31mError: No allocation found\033[0m")
-		return nil
-	}
-
 	cc.Writeln("\033[1;36mYour Allocation:\033[0m")
 	cc.Writeln("")
-	cc.Writeln("  ID: \033[1m%s\033[0m", alloc.AllocID)
-	cc.Writeln("  Type: \033[1m%s\033[0m", alloc.AllocType)
-	cc.Writeln("  Region: \033[1m%s\033[0m", alloc.Region)
-	cc.Writeln("  Created: %s", alloc.CreatedAt.Format("Jan 2, 2006"))
+	cc.Writeln("  ID: \033[1m%s\033[0m", cc.Alloc.AllocID)
+	cc.Writeln("  Type: \033[1m%s\033[0m", cc.Alloc.AllocType)
+	cc.Writeln("  Region: \033[1m%s\033[0m", cc.Alloc.Region)
+	cc.Writeln("  Created: %s", cc.Alloc.CreatedAt.Format("Jan 2, 2006"))
 	cc.Writeln("")
 	return nil
 }
 
 func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContext) error {
-	// Get billing info to determine if user has billing set up
 	billingInfo, err := ss.billing.GetBillingInfo(ctx, cc.Alloc.AllocID)
 	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
-		return err
+		cc.WriteInternalError("billing", err)
+		return nil
 	}
+
+	if cc.WantJSON() {
+		billing := map[string]any{
+			"configured":         billingInfo.HasBilling,
+			"email":              billingInfo.Email,
+			"stripe_customer_id": billingInfo.StripeCustomerID,
+		}
+		cc.WriteJSON(billing)
+		return nil
+	}
+
 	cc.Writeln("\033[1;36mBilling Information:\033[0m")
 	cc.Writeln("")
-
-	// Show current billing info
 	if billingInfo.Email != "" {
 		cc.Writeln("  Email: \033[1m%s\033[0m", billingInfo.Email)
 	}
@@ -686,68 +712,58 @@ func (ss *SSHServer) handleBillingSetup(ctx context.Context, cc *CommandContext)
 }
 
 func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *CommandContext) error {
-	cc.Writeln("\033[1;36mUser Information:\033[0m")
-	cc.Writeln("")
-	cc.Writeln("\033[1mEmail Address:\033[0m %s", cc.User.Email)
-
-	// Get the current session's public key
-	currentPublicKey := ""
-	if cc.SSHSession != nil {
-		if key, ok := cc.SSHSession.Context().Value("public_key").(string); ok {
-			currentPublicKey = key
-		}
+	type sshKeyRow struct {
+		PublicKey string `json:"public_key"`
+		Current   bool   `json:"current"`
 	}
-
-	keyCount := 0
-
-	// Get all public keys for this user
+	var sshKeys []sshKeyRow
+	ccPubKey := strings.TrimSpace(cc.PublicKey)
 	err := ss.server.db.Rx(ctx,
 		func(ctx context.Context, rx *sqlite.Rx) error {
 			queries := exedb.New(rx.Conn())
 			publicKeys, err := queries.GetSSHKeysForUserByEmail(ctx, cc.User.Email)
 			if err != nil {
-				cc.Writeln("\033[1;31mError retrieving SSH keys: %v\033[0m", err)
-				return nil
+				return err
 			}
-			cc.Writeln("\033[1mSSH Keys:\033[0m")
 			for _, dbPublicKey := range publicKeys {
+				dbPublicKey = strings.TrimSpace(dbPublicKey)
 				if dbPublicKey == "" {
 					continue
 				}
-				keyCount++
-
-				// Check if this is the current key being used
-				isCurrent := strings.TrimSpace(dbPublicKey) == strings.TrimSpace(currentPublicKey)
-				currentIndicator := ""
-				if isCurrent {
-					currentIndicator = " \033[1;32m← current\033[0m"
-				}
-
-				// Use the current session's key if this is the current key, otherwise use DB key
-				displayKey := dbPublicKey
-				if isCurrent && currentPublicKey != "" {
-					displayKey = currentPublicKey
-				}
-
-				if displayKey != "" {
-					cc.Writeln("  \033[1mPublic Key:\033[0m %s%s", strings.TrimSpace(displayKey), currentIndicator)
-				} else {
-					cc.Writeln("  \033[1mPublic Key:\033[0m \033[2m(not available)\033[0m%s", currentIndicator)
-				}
-				cc.Writeln("")
+				isCurrent := dbPublicKey == ccPubKey
+				sshKeys = append(sshKeys, sshKeyRow{PublicKey: dbPublicKey, Current: isCurrent})
 			}
-
 			return nil
-		})
+		},
+	)
 	if err != nil {
-		cc.Writeln("\033[1;31mError retrieving SSH keys: %v\033[0m", err)
+		cc.WriteInternalError("whoami", err)
 		return nil
 	}
 
-	if keyCount == 0 {
-		cc.Writeln("  \033[2mNo SSH keys found\033[0m")
-	}
+	slices.SortFunc(sshKeys, func(a, b sshKeyRow) int {
+		return cmp.Compare(a.PublicKey, b.PublicKey)
+	})
 
+	if cc.WantJSON() {
+		userInfo := map[string]any{
+			"email":    cc.User.Email,
+			"ssh_keys": sshKeys,
+		}
+		cc.WriteJSON(userInfo)
+		return nil
+	}
+	cc.Writeln("\033[1;36mUser Information:\033[0m")
+	cc.Writeln("")
+	cc.Writeln("\033[1mEmail Address:\033[0m %s", cc.User.Email)
+	cc.Writeln("\033[1mSSH Keys:\033[0m")
+	for _, key := range sshKeys {
+		cc.Write("  \033[1mPublic Key:\033[0m %s", key.PublicKey)
+		if key.Current {
+			cc.Write(" \033[1;32m← current\033[0m")
+		}
+		cc.Writeln("")
+	}
 	cc.Writeln("")
 	return nil
 }
@@ -831,24 +847,44 @@ func (ss *SSHServer) deleteBillingInfo(cc *CommandContext, billingInfo *billing.
 }
 
 func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext) error {
-	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify box name\033[0m")
-		cc.Writeln("Usage: route <box-name> [--port=80 --private|--public]")
-		return fmt.Errorf("box name required")
+	if len(cc.Args) != 1 {
+		return cc.Errorf("please specify exactly one box name to route, got %d", len(cc.Args))
 	}
-
 	boxName := cc.Args[0]
 
-	// Get box
-	box, err := ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   boxName,
+			UserID: cc.User.UserID,
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("box %q not found", boxName)
+	}
 	if err != nil {
-		cc.Writeln("\033[1;31mError: %v\033[0m", err)
 		return err
 	}
 
-	// If no flags provided, show current configuration
-	if cc.FlagSet.NFlag() == 0 {
+	// If no flags provided (or only --json), show current configuration
+	explicitFlags := map[string]bool{}
+	cc.FlagSet.Visit(func(f *flag.Flag) {
+		if f.Name == "json" {
+			return // don't count --json as a configuration flag
+		}
+		explicitFlags[f.Name] = true
+	})
+
+	if len(explicitFlags) == 0 {
 		route := box.GetRoute()
+		if cc.WantJSON() {
+			routeInfo := map[string]any{
+				"box_name": boxName,
+				"port":     route.Port,
+				"share":    route.Share,
+			}
+			cc.WriteJSON(routeInfo)
+			return nil
+		}
 		cc.Writeln("")
 		cc.Writeln("\033[1;36mRoute configuration for box '%s':\033[0m", boxName)
 		cc.Writeln("  Port: %d", route.Port)
@@ -862,45 +898,36 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 	privateFlag := cc.FlagSet.Lookup("private")
 	publicFlag := cc.FlagSet.Lookup("public")
 
-	// Determine which flags were explicitly set by the user
-	setFlags := map[string]bool{}
-	cc.FlagSet.Visit(func(f *flag.Flag) {
-		setFlags[f.Name] = true
-	})
-
-	portSet := setFlags["port"]
-	privateSet := setFlags["private"] && privateFlag != nil && privateFlag.Value.String() == "true"
-	publicSet := setFlags["public"] && publicFlag != nil && publicFlag.Value.String() == "true"
+	portSet := explicitFlags["port"]
+	privateSet := explicitFlags["private"] && privateFlag != nil && privateFlag.Value.String() == "true"
+	publicSet := explicitFlags["public"] && publicFlag != nil && publicFlag.Value.String() == "true"
 
 	// Validate: if any flag is set, both --port and one of --private/--public must be set
+	var flagMistake string
 	if portSet || privateSet || publicSet {
-		if !portSet {
-			cc.Writeln("\033[1;31mError: --port is required when setting route configuration\033[0m")
-			return fmt.Errorf("--port is required")
+		switch {
+		case !portSet:
+			flagMistake = "--port is required when setting route configuration"
+		case !privateSet && !publicSet:
+			flagMistake = "either --private or --public is required when setting route configuration"
+		case privateSet && publicSet:
+			flagMistake = "cannot specify both --private and --public"
 		}
-		if !privateSet && !publicSet {
-			cc.Writeln("\033[1;31mError: either --private or --public is required when setting route configuration\033[0m")
-			return fmt.Errorf("--private or --public is required")
-		}
-		if privateSet && publicSet {
-			cc.Writeln("\033[1;31mError: cannot specify both --private and --public\033[0m")
-			return fmt.Errorf("cannot specify both --private and --public")
-		}
+	}
+	if flagMistake != "" {
+		return cc.Errorf("%v", flagMistake)
 	}
 
 	// Parse port
 	portInt, err := strconv.Atoi(portFlag.Value.String())
 	if err != nil || portInt <= 0 || portInt > 65535 {
-		cc.Writeln("\033[1;31mError: --port must be a valid port number (1-65535)\033[0m")
-		return fmt.Errorf("invalid port value: %s", portFlag.Value.String())
+		return cc.Errorf("--port must be a valid port number (1-65535), got %q", portFlag.Value.String())
 	}
 
 	// Determine share mode
-	var share string
+	share := "private"
 	if publicSet {
 		share = "public"
-	} else {
-		share = "private"
 	}
 
 	// Update route configuration
@@ -911,8 +938,8 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 
 	err = box.SetRoute(newRoute)
 	if err != nil {
-		cc.Writeln("\033[1;31mError encoding route: %v\033[0m", err)
-		return err
+		cc.WriteInternalError("route", err, "boxName", boxName, "newRoute", newRoute)
+		return nil
 	}
 
 	// Update database
@@ -925,10 +952,20 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 		})
 	})
 	if err != nil {
-		cc.Writeln("\033[1;31mError saving route: %v\033[0m", err)
+		cc.WriteInternalError("route", err, "boxName", boxName, "newRoute", newRoute)
 		return err
 	}
 
+	if cc.WantJSON() {
+		result := map[string]any{
+			"box_name": boxName,
+			"port":     newRoute.Port,
+			"share":    newRoute.Share,
+			"status":   "updated",
+		}
+		cc.WriteJSON(result)
+		return nil
+	}
 	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
 	cc.Writeln("  Port: %d", newRoute.Port)
 	cc.Writeln("  Share: %s", newRoute.Share)
@@ -937,11 +974,8 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 }
 
 func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *CommandContext) error {
-	cc.Writeln("\033[1;36mGenerating web authentication link...\033[0m")
-	cc.Writeln("")
-
 	// Generate a verification token using the same system as email authentication
-	token := ss.server.generateToken()
+	token := ss.server.generateRegistrationToken()
 
 	// Store verification in database using the existing email verification table
 	err := ss.server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
@@ -953,17 +987,20 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *CommandContex
 		})
 	})
 	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to generate authentication link: %v\033[0m", err)
-		return fmt.Errorf("failed to generate authentication link: %w", err)
+		cc.WriteInternalError("browser", err)
+		return nil
 	}
 
-	// Create the magic link URL using the server's base URL
 	baseURL := ss.server.getBaseURL()
 	magicURL := fmt.Sprintf("%s/auth/verify?token=%s", baseURL, token)
-
-	cc.Writeln("\033[1;32m✓ Magic link generated!\033[0m")
-	cc.Writeln("")
-	cc.Writeln("Click this link to access the exe.dev web interface:")
+	if cc.WantJSON() {
+		magicLink := map[string]string{
+			"magic_link": magicURL,
+		}
+		cc.WriteJSON(magicLink)
+		return nil
+	}
+	cc.Writeln("Use this link to access the exe.dev website:")
 	cc.Writeln("")
 	cc.Writeln("\033[1;36m%s\033[0m", magicURL)
 	cc.Writeln("")

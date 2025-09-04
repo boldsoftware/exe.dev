@@ -15,7 +15,7 @@ import (
 )
 
 // bearerTokenClaim holds a claim that a request originated from a client who has access to
-// a parituclar box's ssh server identitys private key.  The http header is encoded as a
+// a particular box's ssh server identity's private key. The http header is encoded as a
 // {claim}.{signature} string, and would appear in an http header like so:
 //
 // `Authorization: Bearer <base64(json(claim))>.<base64(signature(json(claim)))>`

@@ -763,11 +763,6 @@ func (s *Server) generateRegistrationToken() string {
 	return hex.EncodeToString(bytes)
 }
 
-// generateToken is an alias for generateRegistrationToken
-func (s *Server) generateToken() string {
-	return s.generateRegistrationToken()
-}
-
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
 	if s.devMode != "" {
@@ -2319,34 +2314,24 @@ type SSHClient interface {
 // findBoxByNameForUser finds a box by name that the user has access to
 func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName string) *exedb.Box {
 	slog.Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
-
-	// Box names are now globally unique, no team prefix
-	if strings.Contains(boxName, ".") {
-		// Legacy format not supported
+	if !isValidBoxName(boxName) {
+		slog.Info("invalid box name format", "box", boxName)
 		return nil
 	}
 
-	// Get user's alloc to verify access
-	alloc, err := s.getUserAlloc(ctx, userID)
-	if err != nil || alloc == nil {
-		slog.Debug("FindBoxByNameForUser no alloc found", "user_id", userID)
-		return nil
-	}
-
-	// Check if box exists and belongs to user's alloc
-	box, err := s.getBoxByName(ctx, boxName)
+	// Check if box exists and belongs to the user
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   boxName,
+			UserID: userID,
+		})
+	})
 	if err != nil {
-		slog.Debug("Box not found", "box", boxName, "error", err)
+		slog.Info("FindBoxByNameForUser: box not found", "box", boxName, "error", err)
 		return nil
 	}
 
-	// Verify the box belongs to the user's alloc
-	if box.AllocID != alloc.AllocID {
-		slog.Debug("Box belongs to different alloc", "box", boxName, "box_alloc", box.AllocID, "user_alloc", alloc.AllocID)
-		return nil
-	}
-
-	return box
+	return &box
 }
 
 // handleListCommand lists user's boxes
@@ -2405,8 +2390,8 @@ func generateRandomBoxName() string {
 	return word1 + "-" + word2
 }
 
-// formatSSHConnectionInfo returns SSH connection info based on dev mode
-func (s *Server) formatSSHConnectionInfo(allocID, boxName string) string {
+// formatSSHConnectionInfo returns SSH connection info for box boxName based on dev mode.
+func (s *Server) formatSSHConnectionInfo(boxName string) string {
 	if s.devMode != "" {
 		var dashP string
 		if s.piperdPort != 22 {
@@ -2415,6 +2400,18 @@ func (s *Server) formatSSHConnectionInfo(allocID, boxName string) string {
 		return fmt.Sprintf("ssh %s%s@localhost", dashP, boxName)
 	}
 	return fmt.Sprintf("ssh %s@exe.dev", boxName)
+}
+
+// formatExeDevConnectionInfo returns SSH connection info for the exe.dev server based on dev mode.
+func (s *Server) formatExeDevConnectionInfo() string {
+	if s.devMode != "" {
+		var dashP string
+		if s.piperdPort != 22 {
+			dashP = fmt.Sprintf("-p %v ", s.piperdPort)
+		}
+		return fmt.Sprintf("ssh %slocalhost", dashP)
+	}
+	return "ssh exe.dev"
 }
 
 // httpsProxyAddress returns the HTTPS proxy address for a box.
@@ -2550,7 +2547,7 @@ var denylistedBoxNames = map[string]bool{
 }
 
 // isValidBoxName validates box name format
-func (s *Server) isValidBoxName(name string) bool {
+func isValidBoxName(name string) bool {
 	// Must be at least 5 characters and at most 64 characters
 	if len(name) < 5 || len(name) > 64 {
 		return false
@@ -2567,25 +2564,14 @@ func (s *Server) isValidBoxName(name string) bool {
 	return matched
 }
 
-// getDefaultRouteJSON returns the default route as a JSON string
-func getDefaultRouteJSON() string {
-	var box exedb.Box
-	route := box.GetDefaultRoute()
-	data, err := json.Marshal(route)
-	if err != nil {
-		log.Fatalf("Failed to marshal default route: %v", err)
-	}
-	return string(data)
-}
-
 // preCreateBox creates a box entry before the container is created, returns the box ID
 func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image string) (int, error) {
 	// Validate box name
-	if !s.isValidBoxName(name) {
+	if !isValidBoxName(name) {
 		return 0, fmt.Errorf("invalid box name: %s", name)
 	}
 
-	routes := getDefaultRouteJSON()
+	routes := exedb.DefaultRouteJSON()
 	var boxID int
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
@@ -2632,19 +2618,14 @@ func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containe
 // isBoxNameAvailable checks if a box name is available for use.
 // Errors are translated into false (unavailability).
 func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
-	box, err := s.getBoxByName(ctx, name)
-	return box == nil && errors.Is(err, sql.ErrNoRows)
-}
-
-// getBoxByName retrieves a box by name and team
-func (s *Server) getBoxByName(ctx context.Context, name string) (*exedb.Box, error) {
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.GetBoxByName(ctx, name)
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+		return queries.BoxWithNameExists(ctx, name)
 	})
 	if err != nil {
-		return nil, err
+		slog.Warn("failed to check box name availability", "error", err, "box_name", name)
+		return false
 	}
-	return &box, nil
+	return box == 0
 }
 
 // getBoxesForAlloc gets all boxes for an allocation
@@ -3727,15 +3708,17 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 
 // SSHIdentityKeyForBox implements boxKeyAuthority interface for llmgateway
 func (s *Server) SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error) {
-	box, err := s.getBoxByName(ctx, name)
+	key, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]byte, error) {
+		return queries.SSHKeyForBoxNamed(ctx, name)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to find box %s: %w", name, err)
 	}
-	if len(box.SSHServerIdentityKey) == 0 {
+	if len(key) == 0 {
 		return nil, fmt.Errorf("box %s has no SSH server identity key", name)
 	}
 	// Parse the private key to extract the public key
-	privateKey, err := ssh.ParsePrivateKey(box.SSHServerIdentityKey)
+	privateKey, err := ssh.ParsePrivateKey(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse SSH server identity key for box %s: %w", name, err)
 	}

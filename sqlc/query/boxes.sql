@@ -5,11 +5,19 @@ FROM boxes
 WHERE alloc_id = ?
 ORDER BY name;
 
--- name: GetBoxByName :one
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
-       ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user
-FROM boxes
-WHERE name = ?;
+-- name: BoxWithNameExists :one
+SELECT EXISTS ( SELECT 1 FROM boxes WHERE name = ? );
+
+-- name: BoxWithOwnerNamed :one
+SELECT * FROM boxes WHERE name = ? AND boxes.alloc_id = (SELECT allocs.alloc_id FROM allocs WHERE allocs.user_id = ?);
+
+-- name: SSHKeyForBoxNamed :one
+SELECT ssh_server_identity_key FROM boxes WHERE name = ?;
+
+-- name: BoxNamed :one
+-- This is not a secure API!
+-- Whenever possible, use an alternative method that also checks the alloc/user and/or returns less data.
+SELECT * FROM boxes WHERE name = ?;
 
 -- name: InsertBox :execlastid
 INSERT INTO boxes (

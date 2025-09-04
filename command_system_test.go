@@ -222,9 +222,9 @@ func TestExecuteCommand(t *testing.T) {
 		cc := createTestContext(sshServer, user, alloc, output, []string{})
 		ctx := context.Background()
 
-		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
-		if err != nil {
-			t.Errorf("ExecuteCommand() error = %v", err)
+		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
+		if rc != 0 {
+			t.Errorf("ExecuteCommand() = %d, want 0", rc)
 		}
 
 		result := output.String()
@@ -238,9 +238,9 @@ func TestExecuteCommand(t *testing.T) {
 		cc := createTestContext(sshServer, user, alloc, output, []string{})
 		ctx := context.Background()
 
-		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"?"})
-		if err != nil {
-			t.Errorf("ExecuteCommand() error = %v", err)
+		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"?"})
+		if rc != 0 {
+			t.Errorf("ExecuteCommand() = %d, want 0", rc)
 		}
 
 		result := output.String()
@@ -254,12 +254,13 @@ func TestExecuteCommand(t *testing.T) {
 		cc := createTestContext(sshServer, user, alloc, output, []string{})
 		ctx := context.Background()
 
-		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"nonexistent"})
-		if err == nil {
-			t.Errorf("ExecuteCommand() should return error for nonexistent command")
+		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"nonexistent"})
+		if rc == 0 {
+			t.Errorf("ExecuteCommand() should fail for nonexistent command")
 		}
-		if !strings.Contains(err.Error(), "command not found") {
-			t.Errorf("Error should indicate command not found")
+		result := output.String()
+		if !strings.Contains(result, "internal error") {
+			t.Errorf("Output should indicate internal error for unknown command. Actual output:\n%s\n", result)
 		}
 	})
 
@@ -268,12 +269,13 @@ func TestExecuteCommand(t *testing.T) {
 		cc := createTestContext(sshServer, user, alloc, output, []string{})
 		ctx := context.Background()
 
-		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "nonexistent"})
-		if err == nil {
-			t.Errorf("ExecuteCommand() should return error for nonexistent subcommand")
+		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "nonexistent"})
+		if rc == 0 {
+			t.Errorf("ExecuteCommand() should fail for nonexistent subcommand")
 		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("Error should indicate command not found: %q", err.Error())
+		result := output.String()
+		if !strings.Contains(result, "internal error") {
+			t.Errorf("Output should indicate internal error for unknown subcommand. Actual output:\n%s\n", result)
 		}
 	})
 
@@ -281,14 +283,14 @@ func TestExecuteCommand(t *testing.T) {
 		output := &MockOutput{}
 		cc := createTestContext(sshServer, user, alloc, output, []string{})
 		ctx := context.Background()
-		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
-		if err == nil {
-			t.Errorf("ExecuteCommand() should return error for billing setup without SSH session")
+		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
+		if rc == 0 {
+			t.Errorf("ExecuteCommand() should fail for billing setup without SSH session")
 		}
 
-		// Verify it's the expected error about SSH session
-		if !strings.Contains(err.Error(), "interactive billing setup requires SSH session") {
-			t.Errorf("Expected SSH session error, got: %v", err)
+		result := output.String()
+		if !strings.Contains(result, "Interactive billing setup requires SSH session") {
+			t.Errorf("Expected SSH session error in output, got:\n%s", result)
 		}
 	})
 
@@ -299,18 +301,17 @@ func TestExecuteCommand(t *testing.T) {
 		// parts[1:] creates ["setup"] which becomes cc.Args
 		cc := createTestContext(sshServer, user, alloc, output, []string{"setup"})
 		ctx := context.Background()
-		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
-		if err == nil {
-			t.Errorf("ExecuteCommand() should return error for billing setup without SSH session")
+		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
+		if rc == 0 {
+			t.Errorf("ExecuteCommand() should fail for billing setup without SSH session")
 		}
 
-		// Verify it's the expected error about SSH session, NOT the positional args error
-		if !strings.Contains(err.Error(), "interactive billing setup requires SSH session") {
-			t.Errorf("Expected SSH session error, got: %v", err)
+		result := output.String()
+		if !strings.Contains(result, "Interactive billing setup requires SSH session") {
+			t.Errorf("Expected SSH session error in output, got:\n%s", result)
 		}
-		// Make sure it's NOT the positional args error
-		if strings.Contains(err.Error(), "does not take positional arguments") {
-			t.Errorf("Got positional args error (this is the bug): %v", err)
+		if strings.Contains(result, "does not take positional arguments") {
+			t.Errorf("Got positional args error (this is the bug): %s", result)
 		}
 	})
 
@@ -318,9 +319,9 @@ func TestExecuteCommand(t *testing.T) {
 		output := &MockOutput{}
 		cc := createTestContext(sshServer, user, alloc, output, []string{"whoami"})
 		ctx := context.Background()
-		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
-		if err != nil {
-			t.Errorf("ExecuteCommand() error = %v", err)
+		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
+		if rc != 0 {
+			t.Errorf("ExecuteCommand() = %d, want 0", rc)
 		}
 
 		// Verify args were passed correctly by checking help output for whoami
@@ -557,10 +558,10 @@ func TestCommandFlagParsing(t *testing.T) {
 			cc := createTestContext(sshServer, user, alloc, output, []string{})
 			ctx := context.Background()
 
-			err := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
+			rc := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
 			if tt.expectErr {
-				if err == nil {
-					t.Fatal("ExecuteCommand() should have returned an error")
+				if rc == 0 {
+					t.Fatal("ExecuteCommand() should have failed")
 				}
 				if capturedCC != nil {
 					t.Fatal("Handler should not have been called, but was")
@@ -568,8 +569,8 @@ func TestCommandFlagParsing(t *testing.T) {
 				return
 			}
 
-			if err != nil {
-				t.Errorf("ExecuteCommand() error = %v", err)
+			if rc != 0 {
+				t.Errorf("ExecuteCommand() = %d, want 0", rc)
 			}
 
 			// Check that the handler was called with the right context
@@ -725,10 +726,10 @@ func TestSubcommandFlagParsing(t *testing.T) {
 			cc := createTestContext(sshServer, user, alloc, output, []string{})
 			ctx := context.Background()
 
-			err := customTree.ExecuteCommand(ctx, cc, tt.commandPath)
+			rc := customTree.ExecuteCommand(ctx, cc, tt.commandPath)
 			if tt.expectErr {
-				if err == nil {
-					t.Fatal("ExecuteCommand() should have returned an error")
+				if rc == 0 {
+					t.Fatal("ExecuteCommand() should have failed")
 				}
 				if capturedContext != nil {
 					t.Fatal("Handler should not have been called, but was")
@@ -736,8 +737,8 @@ func TestSubcommandFlagParsing(t *testing.T) {
 				return
 			}
 
-			if err != nil {
-				t.Errorf("ExecuteCommand() error = %v", err)
+			if rc != 0 {
+				t.Errorf("ExecuteCommand() = %d, want 0", rc)
 			}
 
 			// Check that the handler was called
@@ -783,13 +784,13 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 			name:        "unknown flag",
 			commandPath: []string{"new", "--unknown-flag=value"},
 			expectError: true,
-			errorText:   "flag parsing error",
+			errorText:   "internal error",
 		},
 		{
 			name:        "flag without value",
 			commandPath: []string{"new", "--name"},
 			expectError: true,
-			errorText:   "flag parsing error",
+			errorText:   "internal error",
 		},
 		{
 			name:        "valid flags",
@@ -816,7 +817,7 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 				}
 			}
 
-			err := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
+			rc := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
 
 			// Restore original handler if we replaced it
 			if originalHandler != nil {
@@ -827,14 +828,14 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 			}
 
 			if tt.expectError {
-				if err == nil {
-					t.Errorf("Expected error but got none")
-				} else if !strings.Contains(err.Error(), tt.errorText) {
-					t.Errorf("Expected error containing %q, got %q", tt.errorText, err.Error())
+				if rc == 0 {
+					t.Errorf("Expected failure but got success")
+				} else if !strings.Contains(output.String(), tt.errorText) {
+					t.Errorf("Expected output containing %q, got %q", tt.errorText, output.String())
 				}
 			} else {
-				if err != nil {
-					t.Errorf("Expected no error but got: %v", err)
+				if rc != 0 {
+					t.Errorf("Expected success but got exit code %d", rc)
 				}
 			}
 		})

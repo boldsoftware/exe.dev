@@ -40,7 +40,6 @@ Email Address: TestDuplicateBoxCreationFails@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 
-
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testduplicateboxcreationfails
 Creating e1e-BOX_TIMESTAMP-testduplicateboxcreationfails (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:
@@ -50,6 +49,5 @@ http://e1e-BOX_TIMESTAMP-testduplicateboxcreationfails.localhost:EXED_HTTP_PORT
 
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testduplicateboxcreationfails
 Box name "e1e-BOX_TIMESTAMP-testduplicateboxcreationfails" is not available
-Error: box name "e1e-BOX_TIMESTAMP-testduplicateboxcreationfails" is not available
 exe.dev ▶ exit
 Goodbye!

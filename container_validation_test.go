@@ -6,8 +6,6 @@ import (
 
 func TestIsValidMachineName(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
-
 	tests := []struct {
 		name     string
 		input    string
@@ -56,7 +54,7 @@ func TestIsValidMachineName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := server.isValidBoxName(tt.input)
+			result := isValidBoxName(tt.input)
 			if result != tt.expected {
 				t.Errorf("isValidMachineName(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
@@ -66,9 +64,8 @@ func TestIsValidMachineName(t *testing.T) {
 
 func TestMachineNameDenylist(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
 
-	// Test all denylisted machine names
+	// Test some denylisted machine names
 	denylistedWords := []string{
 		"abort", "admin", "allow", "array", "async", "audit", "block", "board", "boost", "break",
 		"build", "bytes", "cable", "cache", "catch", "chain", "check", "chips", "class", "clock",
@@ -84,7 +81,7 @@ func TestMachineNameDenylist(t *testing.T) {
 
 	for _, word := range denylistedWords {
 		t.Run("denylisted word: "+word, func(t *testing.T) {
-			result := server.isValidBoxName(word)
+			result := isValidBoxName(word)
 			if result {
 				t.Errorf("Expected denylisted word %q to be invalid, but it was accepted", word)
 			}
@@ -100,7 +97,7 @@ func TestMachineNameDenylist(t *testing.T) {
 
 	for _, word := range validSimilar {
 		t.Run("valid similar word: "+word, func(t *testing.T) {
-			result := server.isValidBoxName(word)
+			result := isValidBoxName(word)
 			if !result {
 				t.Errorf("Expected word %q to be valid (similar to denylist but not exact match), but it was rejected", word)
 			}

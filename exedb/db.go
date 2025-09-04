@@ -27,6 +27,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.allocExistsForUserStmt, err = db.PrepareContext(ctx, allocExistsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query AllocExistsForUser: %w", err)
 	}
+	if q.boxNamedStmt, err = db.PrepareContext(ctx, boxNamed); err != nil {
+		return nil, fmt.Errorf("error preparing query BoxNamed: %w", err)
+	}
+	if q.boxWithNameExistsStmt, err = db.PrepareContext(ctx, boxWithNameExists); err != nil {
+		return nil, fmt.Errorf("error preparing query BoxWithNameExists: %w", err)
+	}
+	if q.boxWithOwnerNamedStmt, err = db.PrepareContext(ctx, boxWithOwnerNamed); err != nil {
+		return nil, fmt.Errorf("error preparing query BoxWithOwnerNamed: %w", err)
+	}
 	if q.checkTagResolutionExistsStmt, err = db.PrepareContext(ctx, checkTagResolutionExists); err != nil {
 		return nil, fmt.Errorf("error preparing query CheckTagResolutionExists: %w", err)
 	}
@@ -68,9 +77,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAuthTokenInfoStmt, err = db.PrepareContext(ctx, getAuthTokenInfo); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAuthTokenInfo: %w", err)
-	}
-	if q.getBoxByNameStmt, err = db.PrepareContext(ctx, getBoxByName); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxByName: %w", err)
 	}
 	if q.getBoxByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxByNameAndAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByNameAndAlloc: %w", err)
@@ -207,6 +213,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
 	}
+	if q.sSHKeyForBoxNamedStmt, err = db.PrepareContext(ctx, sSHKeyForBoxNamed); err != nil {
+		return nil, fmt.Errorf("error preparing query SSHKeyForBoxNamed: %w", err)
+	}
 	if q.updateAllocBillingStmt, err = db.PrepareContext(ctx, updateAllocBilling); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAllocBilling: %w", err)
 	}
@@ -272,6 +281,21 @@ func (q *Queries) Close() error {
 	if q.allocExistsForUserStmt != nil {
 		if cerr := q.allocExistsForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing allocExistsForUserStmt: %w", cerr)
+		}
+	}
+	if q.boxNamedStmt != nil {
+		if cerr := q.boxNamedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing boxNamedStmt: %w", cerr)
+		}
+	}
+	if q.boxWithNameExistsStmt != nil {
+		if cerr := q.boxWithNameExistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing boxWithNameExistsStmt: %w", cerr)
+		}
+	}
+	if q.boxWithOwnerNamedStmt != nil {
+		if cerr := q.boxWithOwnerNamedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing boxWithOwnerNamedStmt: %w", cerr)
 		}
 	}
 	if q.checkTagResolutionExistsStmt != nil {
@@ -342,11 +366,6 @@ func (q *Queries) Close() error {
 	if q.getAuthTokenInfoStmt != nil {
 		if cerr := q.getAuthTokenInfoStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAuthTokenInfoStmt: %w", cerr)
-		}
-	}
-	if q.getBoxByNameStmt != nil {
-		if cerr := q.getBoxByNameStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxByNameStmt: %w", cerr)
 		}
 	}
 	if q.getBoxByNameAndAllocStmt != nil {
@@ -574,6 +593,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
 		}
 	}
+	if q.sSHKeyForBoxNamedStmt != nil {
+		if cerr := q.sSHKeyForBoxNamedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing sSHKeyForBoxNamedStmt: %w", cerr)
+		}
+	}
 	if q.updateAllocBillingStmt != nil {
 		if cerr := q.updateAllocBillingStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAllocBillingStmt: %w", cerr)
@@ -709,6 +733,9 @@ type Queries struct {
 	db                                     DBTX
 	tx                                     *sql.Tx
 	allocExistsForUserStmt                 *sql.Stmt
+	boxNamedStmt                           *sql.Stmt
+	boxWithNameExistsStmt                  *sql.Stmt
+	boxWithOwnerNamedStmt                  *sql.Stmt
 	checkTagResolutionExistsStmt           *sql.Stmt
 	clearAllocBillingInfoStmt              *sql.Stmt
 	deleteAuthCookieStmt                   *sql.Stmt
@@ -723,7 +750,6 @@ type Queries struct {
 	getAllocsByHostStmt                    *sql.Stmt
 	getAuthCookieInfoStmt                  *sql.Stmt
 	getAuthTokenInfoStmt                   *sql.Stmt
-	getBoxByNameStmt                       *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxIDAndAllocByNameStmt             *sql.Stmt
@@ -769,6 +795,7 @@ type Queries struct {
 	insertTagResolutionWithMetadataStmt    *sql.Stmt
 	insertUserStmt                         *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
+	sSHKeyForBoxNamedStmt                  *sql.Stmt
 	updateAllocBillingStmt                 *sql.Stmt
 	updateAllocBillingEmailStmt            *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
@@ -795,6 +822,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:                                     tx,
 		tx:                                     tx,
 		allocExistsForUserStmt:                 q.allocExistsForUserStmt,
+		boxNamedStmt:                           q.boxNamedStmt,
+		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
+		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
 		checkTagResolutionExistsStmt:           q.checkTagResolutionExistsStmt,
 		clearAllocBillingInfoStmt:              q.clearAllocBillingInfoStmt,
 		deleteAuthCookieStmt:                   q.deleteAuthCookieStmt,
@@ -809,7 +839,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAllocsByHostStmt:                    q.getAllocsByHostStmt,
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
-		getBoxByNameStmt:                       q.getBoxByNameStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxIDAndAllocByNameStmt:             q.getBoxIDAndAllocByNameStmt,
@@ -855,6 +884,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTagResolutionWithMetadataStmt:    q.insertTagResolutionWithMetadataStmt,
 		insertUserStmt:                         q.insertUserStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,
+		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
 		updateAllocBillingStmt:                 q.updateAllocBillingStmt,
 		updateAllocBillingEmailStmt:            q.updateAllocBillingEmailStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,

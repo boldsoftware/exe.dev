@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"exe.dev/accounting"
+	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
@@ -44,13 +45,15 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	server.createTestBox(t, userID, allocID, boxName, containerID, image)
 
 	// Get the box to extract its SSH server identity key for token creation
-	box, err := server.getBoxByName(context.Background(), boxName)
+	key, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) ([]byte, error) {
+		return queries.SSHKeyForBoxNamed(ctx, boxName)
+	})
 	if err != nil {
-		t.Fatalf("Failed to get box: %v", err)
+		t.Fatalf("Failed to get user's SSH key: %v", err)
 	}
 
 	// Parse the SSH server identity key to create bearer token
-	signer, err := ssh.ParsePrivateKey(box.SSHServerIdentityKey)
+	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
 		t.Fatalf("Failed to parse SSH server identity key: %v", err)
 	}

@@ -40,6 +40,5 @@ Email Address: TestNewKeyRegistration@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 
-
 exe.dev ▶ exit
 Goodbye!

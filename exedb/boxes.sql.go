@@ -10,24 +10,14 @@ import (
 	"time"
 )
 
-const deleteBox = `-- name: DeleteBox :exec
-DELETE FROM boxes WHERE id = ?
+const boxNamed = `-- name: BoxNamed :one
+SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user FROM boxes WHERE name = ?
 `
 
-func (q *Queries) DeleteBox(ctx context.Context, id int) error {
-	_, err := q.exec(ctx, q.deleteBoxStmt, deleteBox, id)
-	return err
-}
-
-const getBoxByName = `-- name: GetBoxByName :one
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
-       ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user
-FROM boxes
-WHERE name = ?
-`
-
-func (q *Queries) GetBoxByName(ctx context.Context, name string) (Box, error) {
-	row := q.queryRow(ctx, q.getBoxByNameStmt, getBoxByName, name)
+// This is not a secure API!
+// Whenever possible, use an alternative method that also checks the alloc/user and/or returns less data.
+func (q *Queries) BoxNamed(ctx context.Context, name string) (Box, error) {
+	row := q.queryRow(ctx, q.boxNamedStmt, boxNamed, name)
 	var i Box
 	err := row.Scan(
 		&i.ID,
@@ -48,6 +38,59 @@ func (q *Queries) GetBoxByName(ctx context.Context, name string) (Box, error) {
 		&i.SSHUser,
 	)
 	return i, err
+}
+
+const boxWithNameExists = `-- name: BoxWithNameExists :one
+SELECT EXISTS ( SELECT 1 FROM boxes WHERE name = ? )
+`
+
+func (q *Queries) BoxWithNameExists(ctx context.Context, name string) (int64, error) {
+	row := q.queryRow(ctx, q.boxWithNameExistsStmt, boxWithNameExists, name)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const boxWithOwnerNamed = `-- name: BoxWithOwnerNamed :one
+SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user FROM boxes WHERE name = ? AND boxes.alloc_id = (SELECT allocs.alloc_id FROM allocs WHERE allocs.user_id = ?)
+`
+
+type BoxWithOwnerNamedParams struct {
+	Name   string `db:"name" json:"name"`
+	UserID string `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) BoxWithOwnerNamed(ctx context.Context, arg BoxWithOwnerNamedParams) (Box, error) {
+	row := q.queryRow(ctx, q.boxWithOwnerNamedStmt, boxWithOwnerNamed, arg.Name, arg.UserID)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.AllocID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+	)
+	return i, err
+}
+
+const deleteBox = `-- name: DeleteBox :exec
+DELETE FROM boxes WHERE id = ?
+`
+
+func (q *Queries) DeleteBox(ctx context.Context, id int) error {
+	_, err := q.exec(ctx, q.deleteBoxStmt, deleteBox, id)
+	return err
 }
 
 const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
@@ -387,6 +430,17 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+const sSHKeyForBoxNamed = `-- name: SSHKeyForBoxNamed :one
+SELECT ssh_server_identity_key FROM boxes WHERE name = ?
+`
+
+func (q *Queries) SSHKeyForBoxNamed(ctx context.Context, name string) ([]byte, error) {
+	row := q.queryRow(ctx, q.sSHKeyForBoxNamedStmt, sSHKeyForBoxNamed, name)
+	var ssh_server_identity_key []byte
+	err := row.Scan(&ssh_server_identity_key)
+	return ssh_server_identity_key, err
 }
 
 const updateBoxContainerAndStatus = `-- name: UpdateBoxContainerAndStatus :exec

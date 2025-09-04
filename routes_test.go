@@ -49,9 +49,6 @@ func TestProxyHostnameParsing(t *testing.T) {
 	}
 }
 
-// TestRouteMatching is no longer needed since we have simplified routing
-// All requests to a box go to the same port with the same sharing setting
-
 func TestBoxCreationWithRoute(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
@@ -88,7 +85,12 @@ func TestBoxCreationWithRoute(t *testing.T) {
 	server.createTestBox(t, userID, allocID, "test-box", "container123", "ubuntu")
 
 	// Retrieve the box and check its route
-	box, err := server.getBoxByName(t.Context(), "test-box")
+	box, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   "test-box",
+			UserID: userID,
+		})
+	})
 	if err != nil {
 		t.Errorf("Failed to get box: %v", err)
 	}
@@ -136,7 +138,12 @@ func TestHandleProxyRequest(t *testing.T) {
 	server.createTestBox(t, userID, allocID, "web-server", "container123", "nginx")
 
 	// Get the box and set it to public
-	box, err := server.getBoxByName(t.Context(), "web-server")
+	box, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   "web-server",
+			UserID: userID,
+		})
+	})
 	if err != nil {
 		t.Fatalf("Failed to get box: %v", err)
 	}
@@ -255,6 +262,7 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 		Alloc:     &Alloc{AllocID: allocID},
 		Args:      []string{boxName},
 		Output:    &mockSession{},
+		User:      &User{UserID: userID},
 	}
 
 	// Test showing current route (no flags)
@@ -283,7 +291,12 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 	}
 
 	// Verify the route was updated
-	box, err := server.getBoxByName(t.Context(), boxName)
+	box, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   boxName,
+			UserID: userID,
+		})
+	})
 	if err != nil {
 		t.Errorf("Failed to get box: %v", err)
 	}
@@ -303,7 +316,10 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 	cc.FlagSet.Set("private", "true")
 	err = sshServer.handleRouteCommand(t.Context(), cc)
 	if err == nil {
-		t.Error("Expected error for nonexistent box")
+		t.Fatal("Expected error for nonexistent box")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Unexpected error for nonexistent box: %v", err)
 	}
 }
 
@@ -339,7 +355,12 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	server.createTestBox(t, userID, allocID, boxName, "container123", "nginx")
 
 	// Test 1: Verify default routing (private, port 80)
-	box, err := server.getBoxByName(t.Context(), boxName)
+	box, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   boxName,
+			UserID: userID,
+		})
+	})
 	if err != nil {
 		t.Fatalf("Failed to get box: %v", err)
 	}
@@ -370,6 +391,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 		Alloc:     &Alloc{AllocID: allocID},
 		Args:      []string{boxName},
 		Output:    &mockSession{},
+		User:      &User{UserID: userID},
 	}
 
 	// Set to public port 8080
@@ -382,7 +404,12 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	}
 
 	// Test 4: Verify the route was updated
-	box, err = server.getBoxByName(t.Context(), boxName)
+	box, err = withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:   boxName,
+			UserID: userID,
+		})
+	})
 	if err != nil {
 		t.Fatalf("Failed to get updated box: %v", err)
 	}
@@ -419,7 +446,10 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	cc.FlagSet.Set("public", "true")
 	err = sshServer.handleRouteCommand(t.Context(), cc)
 	if err == nil {
-		t.Error("Expected error for invalid port 99999")
+		t.Fatal("Expected error for invalid port 99999")
+	}
+	if !strings.Contains(err.Error(), "must be a valid port number") {
+		t.Errorf("Unexpected error for invalid port: %v", err)
 	}
 
 	// Test 7: Test missing --private/--public when --port is specified (should fail)
@@ -428,7 +458,10 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	cc.FlagSet.Set("port", "3000")
 	err = sshServer.handleRouteCommand(t.Context(), cc)
 	if err == nil {
-		t.Error("Expected error when --port is specified without --private or --public")
+		t.Fatal("Expected error when --port is specified without --private or --public")
+	}
+	if !strings.Contains(err.Error(), "either --private or --public is required") {
+		t.Errorf("Unexpected error when --port is specified without share: %v", err)
 	}
 
 	// Test 8: Test missing --port when --public is specified (should fail)
@@ -437,7 +470,10 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	cc.FlagSet.Set("public", "true")
 	err = sshServer.handleRouteCommand(t.Context(), cc)
 	if err == nil {
-		t.Error("Expected error when --public is specified without --port")
+		t.Fatal("Expected error when --public is specified without --port")
+	}
+	if !strings.Contains(err.Error(), "--port is required") {
+		t.Errorf("Unexpected error when --public is specified without --port: %v", err)
 	}
 
 	// Test 9: Test both --private and --public specified (should fail)
@@ -448,6 +484,9 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	cc.FlagSet.Set("public", "true")
 	err = sshServer.handleRouteCommand(t.Context(), cc)
 	if err == nil {
-		t.Error("Expected error when both --private and --public are specified")
+		t.Fatal("Expected error when both --private and --public are specified")
+	}
+	if !strings.Contains(err.Error(), "cannot specify both") {
+		t.Errorf("Unexpected error when both --private and --public are specified: %v", err)
 	}
 }

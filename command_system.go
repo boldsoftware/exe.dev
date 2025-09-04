@@ -2,16 +2,19 @@ package exe
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gliderlabs/ssh"
+	"github.com/google/uuid"
 	"golang.org/x/term"
 )
 
@@ -43,7 +46,7 @@ type Command struct {
 func (ct *CommandTree) SubcommandNames(c *Command) []string {
 	var names []string
 	for _, sc := range c.Subcommands {
-		if sc.Hidden && !ct.ShowHidden {
+		if sc.Hidden && !ct.DevMode {
 			continue
 		}
 		names = append(names, sc.Name)
@@ -107,20 +110,92 @@ type CommandContext struct {
 	FlagSet    *flag.FlagSet // parsed flags for this command
 	SSHServer  *SSHServer
 	SSHSession ssh.Session
-	ShowHidden bool // if true, show hidden commands in help and completions
+	DevMode    bool // if true, show hidden commands in help and completions
 
 	// I/O interfaces
 	Output   io.Writer      // where to write output
 	Terminal *term.Terminal // for interactive input (nil for non-interactive)
 }
 
-// Write is a convenience method for writing to the output
-func (ctx *CommandContext) Write(format string, args ...interface{}) {
+// Write is a convenience method for writing to the output.
+// It is a no-op when cc.WantJSON() reports true.
+func (ctx *CommandContext) Write(format string, args ...any) {
+	if ctx.WantJSON() {
+		return
+	}
 	fmt.Fprintf(ctx.Output, format, args...)
 }
 
+// A CommandClientError is an error returned by a command handler to indicate
+// bad input from the user/client.
+type CommandClientError struct {
+	Err error
+}
+
+func (cce CommandClientError) Error() string {
+	return cce.Err.Error()
+}
+
+func (cce CommandClientError) Unwrap() error {
+	return cce.Err
+}
+
+// Errof returns an CommandClientError with a formatted message.
+func (ctx *CommandContext) Errorf(msg string, args ...any) error {
+	return CommandClientError{Err: fmt.Errorf(msg, args...)}
+}
+
+// WriteJSON is a convenience method for json output.
+func (ctx *CommandContext) WriteJSON(x any) {
+	data, err := json.Marshal(x)
+	if err != nil {
+		fmt.Fprintf(ctx.Output, "failed to marshal JSON: %v\r\n", err)
+		return
+	}
+	fmt.Fprintf(ctx.Output, "%s\n", data)
+}
+
+func (ctx *CommandContext) WriteInternalError(cmd string, err error, slogDetails ...any) {
+	if ctx.DevMode {
+		ctx.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", err)
+	}
+	guid := uuid.New().String() // for x-ref on support tickets
+	attrs := []any{
+		"error", err,
+		"command_context", ctx,
+		"guid", guid,
+	}
+	attrs = append(attrs, slogDetails...)
+	slog.Error("ssh command failed unexpectedly", attrs...)
+	ctx.WriteError("%q: internal error, error ID: %s", cmd, guid)
+}
+
+// WantJSON reports whether the --json flag is set.
+func (ctx *CommandContext) WantJSON() bool {
+	if ctx.FlagSet == nil {
+		return false
+	}
+	flag := ctx.FlagSet.Lookup("json")
+	return flag != nil && flag.Value.String() == "true"
+}
+
+// WriteError outputs an error message in either JSON or formatted text
+func (ctx *CommandContext) WriteError(message string, args ...any) {
+	if ctx.WantJSON() {
+		errorOutput := map[string]string{
+			"error": fmt.Sprintf(message, args...),
+		}
+		ctx.WriteJSON(errorOutput)
+		return
+	}
+	ctx.Write("\033[1;31m"+message+"\033[0m\r\n", args...)
+}
+
 // Writeln writes a line with carriage return and newline
-func (ctx *CommandContext) Writeln(format string, args ...interface{}) {
+func (ctx *CommandContext) Writeln(format string, args ...any) {
+	if ctx.WantJSON() {
+		return
+	}
 	fmt.Fprintf(ctx.Output, format+"\r\n", args...)
 }
 
@@ -162,14 +237,14 @@ func ValidateCommand(cmd *Command) error {
 
 // CommandTree holds the root command and provides execution methods
 type CommandTree struct {
-	Commands   []*Command
-	ShowHidden bool // if true, show hidden commands in help and completions
+	Commands []*Command
+	DevMode  bool // if true, show hidden commands in help and completions
 }
 
 func (ct *CommandTree) Help(cc *CommandContext) {
 	tabw := tabwriter.NewWriter(cc.Output, 1, 1, 0, ' ', 0)
 	for _, cmd := range ct.GetAvailableCommands(cc) {
-		if cmd.Hidden && !ct.ShowHidden {
+		if cmd.Hidden && !ct.DevMode {
 			continue
 		}
 		nameStr := cmd.Name
@@ -226,8 +301,26 @@ func findCommandRecursive(cmd *Command, path []string, depth int) *Command {
 	return nil
 }
 
-// ExecuteCommand executes a command with the given context and arguments
-func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, commandPath []string) error {
+// ExecuteCommand executes a command with the given context and arguments.
+// It returns an exit code: 0 for success, >0 for failure, -1 for EOF.
+func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, commandPath []string) int {
+	err := ct.executeCommand(ctx, cc, commandPath)
+	if errors.Is(err, io.EOF) {
+		return -1
+	}
+	if err == nil {
+		return 0
+	}
+	var cce CommandClientError
+	if ok := errors.As(err, &cce); ok {
+		cc.WriteError("%v", err)
+	} else {
+		cc.WriteInternalError(strings.Join(commandPath, " "), err)
+	}
+	return 1
+}
+
+func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, commandPath []string) (err error) {
 	if len(commandPath) == 0 {
 		return errors.New("no command specified")
 	}
@@ -459,7 +552,7 @@ func (ct *CommandTree) completeCommandName(compCtx *CompletionContext, cc *Comma
 	prefix := compCtx.CurrentWord
 
 	for _, cmd := range ct.GetAvailableCommands(cc) {
-		if cmd.Hidden && !ct.ShowHidden {
+		if cmd.Hidden && !ct.DevMode {
 			continue
 		}
 		if strings.HasPrefix(cmd.Name, prefix) {
@@ -482,7 +575,7 @@ func (ct *CommandTree) completeSubcommand(cmd *Command, compCtx *CompletionConte
 	prefix := compCtx.CurrentWord
 
 	for _, subCmd := range cmd.Subcommands {
-		if subCmd.Hidden && !ct.ShowHidden {
+		if subCmd.Hidden && !ct.DevMode {
 			continue
 		}
 		if subCmd.Available == nil || subCmd.Available(cc) {

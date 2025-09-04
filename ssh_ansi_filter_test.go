@@ -82,9 +82,9 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 			Args:   []string{},
 		}
 
-		err := commandTree.ExecuteCommand(context.Background(), execContext, []string{"ansi-test"})
-		if err != nil {
-			t.Fatalf("Command execution failed: %v", err)
+		rc := commandTree.ExecuteCommand(context.Background(), execContext, []string{"ansi-test"})
+		if rc != 0 {
+			t.Fatalf("Command execution failed with exit code %d", rc)
 		}
 
 		result := execOutput.String()
@@ -109,9 +109,9 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 			Args:   []string{},
 		}
 
-		err := commandTree.ExecuteCommand(context.Background(), shellContext, []string{"ansi-test"})
-		if err != nil {
-			t.Fatalf("Command execution failed: %v", err)
+		rc := commandTree.ExecuteCommand(context.Background(), shellContext, []string{"ansi-test"})
+		if rc != 0 {
+			t.Fatalf("Command execution failed with exit code %d", rc)
 		}
 
 		result := shellOutput.String()

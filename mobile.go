@@ -80,15 +80,11 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Check if hostname is valid and available
-	isValid := s.isValidBoxName(hostname)
+	isValid := isValidBoxName(hostname)
 	isAvailable := true
 
 	if isValid {
-		// Check if hostname is already taken
-		box, err := s.getBoxByName(r.Context(), hostname)
-		if err == nil && box != nil {
-			isAvailable = false
-		}
+		isAvailable = s.isBoxNameAvailable(r.Context(), hostname)
 	}
 
 	response := struct {
@@ -157,7 +153,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate verification token
-	token := s.generateToken()
+	token := s.generateRegistrationToken()
 
 	// Store email verification token in database
 	err := s.storeEmailVerification(r.Context(), email, token)

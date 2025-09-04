@@ -17,6 +17,10 @@ const (
 	StatusUnknown  ContainerStatus = "unknown"
 )
 
+func (cs ContainerStatus) String() string {
+	return string(cs)
+}
+
 // CreateProgress represents the phase of container creation
 type CreateProgress int
 

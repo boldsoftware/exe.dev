@@ -1,6 +1,9 @@
 package exedb
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"log"
+)
 
 // Route represents a routing configuration for a box
 type Route struct {
@@ -11,13 +14,13 @@ type Route struct {
 // GetRoute returns the routing configuration for the box
 func (b *Box) GetRoute() Route {
 	if b.Routes == nil || *b.Routes == "" {
-		return b.GetDefaultRoute()
+		return DefaultRoute()
 	}
 
 	var route Route
 	err := json.Unmarshal([]byte(*b.Routes), &route)
 	if err != nil {
-		return b.GetDefaultRoute()
+		return DefaultRoute()
 	}
 
 	return route
@@ -34,10 +37,20 @@ func (b *Box) SetRoute(route Route) error {
 	return nil
 }
 
-// GetDefaultRoute returns the default routing configuration
-func (b *Box) GetDefaultRoute() Route {
+// DefaultRoute returns the default routing configuration
+func DefaultRoute() Route {
 	return Route{
 		Port:  80,
 		Share: "private",
 	}
+}
+
+// DefaultRouteJSON returns the default route as JSON.
+func DefaultRouteJSON() string {
+	route := DefaultRoute()
+	data, err := json.Marshal(route)
+	if err != nil {
+		log.Fatalf("Failed to marshal default route: %v", err)
+	}
+	return string(data)
 }

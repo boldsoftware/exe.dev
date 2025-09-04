@@ -40,7 +40,6 @@ Email Address: TestRegistrationHappensOnce@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 
-
 exe.dev ▶ exit
 Goodbye!
 
@@ -61,7 +60,6 @@ User Information:
 Email Address: TestRegistrationHappensOnce@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-
 
 exe.dev ▶ exit
 Goodbye!
