@@ -19,7 +19,7 @@ type Command struct {
 	Aliases     []string
 	Description string
 	Usage       string
-	FlagSetFunc func() *flag.FlagSet             // Factory to create a new FlagSet for each invocation
+	FlagSetFunc func() *flag.FlagSet // Factory to create a new FlagSet for each invocation
 	Examples    []string
 	Subcommands []*Command
 	Handler     func(context.Context, *CommandContext) error
@@ -236,7 +236,6 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 
 	return cmd.Handler(ctx, cc)
 }
-
 
 // GetAvailableCommands returns commands available to the user
 func (ct *CommandTree) GetAvailableCommands(ctx *CommandContext) []*Command {
