@@ -3166,7 +3166,6 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 		return err
 	})
-
 	if err != nil {
 		return err
 	}
