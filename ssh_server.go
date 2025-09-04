@@ -658,7 +658,11 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
-		fmt.Fprint(s, "Please complete registration by running: ssh exe.dev\r\n")
+		sshTo := "exe.dev"
+		if ss.server.devMode != "" {
+			sshTo = fmt.Sprintf("-p %v localhost", ss.server.piperdPort)
+		}
+		fmt.Fprintf(s, "Please complete registration by running: ssh %s\r\n", sshTo)
 		s.Exit(1)
 		return
 	}
