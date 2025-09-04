@@ -51,7 +51,7 @@ type Container struct {
 	Namespace  string `json:"namespace"`
 	PodName    string `json:"pod_name"`
 	PVCName    string `json:"pvc_name"`
-	DockerHost string `json:"docker_host,omitempty"` // DOCKER_HOST value for remote Docker
+	DockerHost string `json:"docker_host,omitempty"` // Deprecated: Container host URL (kept for backward compatibility)
 
 	// Configuration
 	CPURequest    string `json:"cpu_request"`

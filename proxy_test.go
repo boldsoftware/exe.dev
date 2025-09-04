@@ -24,7 +24,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	// Create alloc for test user
 	allocID := "alloc_" + userID
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'), '', 'test@example.com')`, allocID, userID)
 		return err
 	})
 	if err != nil {
@@ -40,10 +40,10 @@ func TestProxyRequestRouting(t *testing.T) {
 		t.Fatalf("Failed to create SSH key: %v", err)
 	}
 
-	// Create a test machine with default routes
-	err = server.createMachine(t.Context(), userID, allocID, "myapp", "container123", "nginx")
+	// Create a test box with default routes
+	err = server.createBox(t.Context(), userID, allocID, "myapp", "container123", "nginx")
 	if err != nil {
-		t.Fatalf("Failed to create test machine: %v", err)
+		t.Fatalf("Failed to create test box: %v", err)
 	}
 
 	tests := []struct {
@@ -155,21 +155,21 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Create alloc for test user
 	allocID := "test-alloc-" + userID
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'), '', 'test@example.com')`, allocID, userID)
 		return err
 	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	// Create a test machine with a private route
+	// Create a test box with a private route
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
+			INSERT INTO boxes (alloc_id, name, image, container_id, created_by_user_id, routes,
 			                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 			                     ssh_host_certificate, ssh_client_private_key, ssh_port)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, "testbox", "test-image", "test-container-id", userID, `[
 			{
 				"name": "default",
 				"policy": "private",
@@ -182,22 +182,22 @@ func TestMagicAuthFlow(t *testing.T) {
 		return err
 	})
 	if err != nil {
-		t.Fatalf("Failed to insert test machine: %v", err)
+		t.Fatalf("Failed to insert test box: %v", err)
 	}
 
 	// Test 1: Request to private route without auth should redirect to auth
 	t.Run("unauthenticated_request_redirects_to_auth", func(t *testing.T) {
-		// First verify the machine exists
-		machine, err := server.getMachineByName(t.Context(), "testmachine")
+		// First verify the box exists
+		box, err := server.getBoxByName(t.Context(), "testbox")
 		if err != nil {
-			t.Fatalf("Test machine not found: %v", err)
+			t.Fatalf("Test box not found: %v", err)
 		}
-		if machine == nil {
-			t.Fatal("Machine is nil")
+		if box == nil {
+			t.Fatal("Box is nil")
 		}
 
-		req := httptest.NewRequest("GET", "http://testmachine.localhost/", nil)
-		req.Host = "testmachine.localhost"
+		req := httptest.NewRequest("GET", "http://testbox.localhost/", nil)
+		req.Host = "testbox.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -224,14 +224,14 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 2: Magic URL with valid secret should set cookie and redirect
 	t.Run("valid_magic_secret_sets_cookie", func(t *testing.T) {
 		// Create a magic secret
-		secret, err := server.createMagicSecret("test-user-id", "testmachine", "/original-path")
+		secret, err := server.createMagicSecret("test-user-id", "testbox", "/original-path")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
 
 		// Request magic URL
-		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret+"&redirect=/custom-redirect", nil)
-		req.Host = "testmachine.localhost"
+		req := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth?secret="+secret+"&redirect=/custom-redirect", nil)
+		req.Host = "testbox.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -272,8 +272,8 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	// Test 3: Magic URL with invalid secret should return error
 	t.Run("invalid_magic_secret_returns_error", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret=invalid-secret", nil)
-		req.Host = "testmachine.localhost"
+		req := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth?secret=invalid-secret", nil)
+		req.Host = "testbox.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -285,8 +285,8 @@ func TestMagicAuthFlow(t *testing.T) {
 
 	// Test 4: Magic URL without secret should return error
 	t.Run("missing_secret_returns_error", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth", nil)
-		req.Host = "testmachine.localhost"
+		req := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth", nil)
+		req.Host = "testbox.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -299,14 +299,14 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Test 5: Magic secret should be consumed (single use)
 	t.Run("magic_secret_single_use", func(t *testing.T) {
 		// Create a magic secret
-		secret, err := server.createMagicSecret("test-user-id", "testmachine", "/original-path")
+		secret, err := server.createMagicSecret("test-user-id", "testbox", "/original-path")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
 
 		// First request should succeed
-		req1 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret, nil)
-		req1.Host = "testmachine.localhost"
+		req1 := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth?secret="+secret, nil)
+		req1.Host = "testbox.localhost"
 		w1 := httptest.NewRecorder()
 
 		server.ServeHTTP(w1, req1)
@@ -316,8 +316,8 @@ func TestMagicAuthFlow(t *testing.T) {
 		}
 
 		// Second request should fail (secret consumed)
-		req2 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret, nil)
-		req2.Host = "testmachine.localhost"
+		req2 := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth?secret="+secret, nil)
+		req2.Host = "testbox.localhost"
 		w2 := httptest.NewRecorder()
 
 		server.ServeHTTP(w2, req2)
@@ -357,21 +357,21 @@ func TestProxyLogoutFlow(t *testing.T) {
 	// Create alloc for test user
 	allocID := "test-alloc-" + userID
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')`, allocID, userID)
+		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'), '', 'test@example.com')`, allocID, userID)
 		return err
 	})
 	if err != nil {
 		t.Fatalf("Failed to create alloc: %v", err)
 	}
 
-	// Create a test machine with a private route
+	// Create a test box with a private route
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO machines (alloc_id, name, image, container_id, created_by_user_id, docker_host, routes,
+			INSERT INTO boxes (alloc_id, name, image, container_id, created_by_user_id, routes,
 							 ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 							 ssh_host_certificate, ssh_client_private_key, ssh_port)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, "testmachine", "test-image", "test-container-id", userID, "unix:///var/run/docker.sock", `[
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, "testbox", "test-image", "test-container-id", userID, `[
 			{
 				"name": "default",
 				"port": 80,
@@ -384,13 +384,13 @@ func TestProxyLogoutFlow(t *testing.T) {
 		return err
 	})
 	if err != nil {
-		t.Fatalf("Failed to create test machine: %v", err)
+		t.Fatalf("Failed to create test box: %v", err)
 	}
 
 	// Test 1: Logout without authentication should still work (redirect to root)
 	t.Run("logout_without_auth", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/logout", nil)
-		req.Host = "testmachine.localhost"
+		req := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/logout", nil)
+		req.Host = "testbox.localhost"
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -421,14 +421,14 @@ func TestProxyLogoutFlow(t *testing.T) {
 	// Test 2: Logout after authentication should clear cookie and database entry
 	t.Run("logout_after_auth", func(t *testing.T) {
 		// First authenticate the user
-		secret, err := server.createMagicSecret(userID, "testmachine", "")
+		secret, err := server.createMagicSecret(userID, "testbox", "")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
 
 		// Use magic URL to authenticate
-		req1 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret, nil)
-		req1.Host = "testmachine.localhost"
+		req1 := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth?secret="+secret, nil)
+		req1.Host = "testbox.localhost"
 		w1 := httptest.NewRecorder()
 
 		server.ServeHTTP(w1, req1)
@@ -459,8 +459,8 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Now logout
-		req2 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/logout", nil)
-		req2.Host = "testmachine.localhost"
+		req2 := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/logout", nil)
+		req2.Host = "testbox.localhost"
 		req2.AddCookie(authCookie) // Send the auth cookie
 		w2 := httptest.NewRecorder()
 
@@ -500,25 +500,25 @@ func TestProxyLogoutFlow(t *testing.T) {
 	// Test 3: Logout should only delete the specific cookie, not other cookies for the same user
 	t.Run("logout_preserves_other_sessions", func(t *testing.T) {
 		// Create two separate auth sessions for the same user
-		secret1, err := server.createMagicSecret(userID, "testmachine", "")
+		secret1, err := server.createMagicSecret(userID, "testbox", "")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret 1: %v", err)
 		}
 
-		secret2, err := server.createMagicSecret(userID, "testmachine", "")
+		secret2, err := server.createMagicSecret(userID, "testbox", "")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret 2: %v", err)
 		}
 
 		// Auth with first secret to create first session
-		req1 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret1, nil)
-		req1.Host = "testmachine.localhost"
+		req1 := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth?secret="+secret1, nil)
+		req1.Host = "testbox.localhost"
 		w1 := httptest.NewRecorder()
 		server.ServeHTTP(w1, req1)
 
 		// Auth with second secret to create second session
-		req2 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/auth?secret="+secret2, nil)
-		req2.Host = "testmachine.localhost"
+		req2 := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/auth?secret="+secret2, nil)
+		req2.Host = "testbox.localhost"
 		w2 := httptest.NewRecorder()
 		server.ServeHTTP(w2, req2)
 
@@ -555,8 +555,8 @@ func TestProxyLogoutFlow(t *testing.T) {
 		}
 
 		// Logout using only the first cookie
-		req3 := httptest.NewRequest("GET", "http://testmachine.localhost/__exe.dev/logout", nil)
-		req3.Host = "testmachine.localhost"
+		req3 := httptest.NewRequest("GET", "http://testbox.localhost/__exe.dev/logout", nil)
+		req3.Host = "testbox.localhost"
 		req3.AddCookie(cookie1) // Only send the first cookie
 		w3 := httptest.NewRecorder()
 		server.ServeHTTP(w3, req3)

@@ -31,8 +31,8 @@ func TestIPRangeAllocation(t *testing.T) {
 			}
 
 			// Allocate IP range
-			dockerHost := "test-host"
-			ipRange, err := server.allocateIPRange(tx, dockerHost)
+			ctrhost := "test-host"
+			ipRange, err := server.allocateIPRange(tx, ctrhost)
 			if err != nil {
 				return err
 			}
@@ -57,9 +57,9 @@ func TestIPRangeAllocation(t *testing.T) {
 
 			// Create alloc with the IP range
 			_, err = tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
 				VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				"alloc-1", userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
+				"alloc-1", userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 			return err
 		})
 		if err != nil {
@@ -82,8 +82,8 @@ func TestIPRangeAllocation(t *testing.T) {
 			}
 
 			// Allocate IP range
-			dockerHost := "test-host"
-			ipRange, err := server.allocateIPRange(tx, dockerHost)
+			ctrhost := "test-host"
+			ipRange, err := server.allocateIPRange(tx, ctrhost)
 			if err != nil {
 				return err
 			}
@@ -110,9 +110,9 @@ func TestIPRangeAllocation(t *testing.T) {
 
 			// Create alloc with the IP range
 			_, err = tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
 				VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				"alloc-2", userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
+				"alloc-2", userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 			return err
 		})
 		if err != nil {
@@ -134,9 +134,9 @@ func TestIPRangeAllocation(t *testing.T) {
 				return err
 			}
 
-			// Allocate IP range for a different docker host
-			dockerHost := "different-host"
-			ipRange, err := server.allocateIPRange(tx, dockerHost)
+			// Allocate IP range for a different container host
+			ctrhost := "different-host"
+			ipRange, err := server.allocateIPRange(tx, ctrhost)
 			if err != nil {
 				return err
 			}
@@ -163,9 +163,9 @@ func TestIPRangeAllocation(t *testing.T) {
 
 			// Create alloc with the IP range
 			_, err = tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
 				VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				"alloc-3", userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
+				"alloc-3", userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 			return err
 		})
 		if err != nil {
@@ -175,7 +175,7 @@ func TestIPRangeAllocation(t *testing.T) {
 
 	t.Run("AllocateMultipleRanges", func(t *testing.T) {
 		// Test allocating many ranges to ensure the pattern works
-		dockerHost := "bulk-test-host"
+		ctrhost := "bulk-test-host"
 		allocatedRanges := make(map[string]bool)
 
 		for i := 0; i < 100; i++ {
@@ -189,7 +189,7 @@ func TestIPRangeAllocation(t *testing.T) {
 				}
 
 				// Allocate IP range
-				ipRange, err := server.allocateIPRange(tx, dockerHost)
+				ipRange, err := server.allocateIPRange(tx, ctrhost)
 				if err != nil {
 					return err
 				}
@@ -217,9 +217,9 @@ func TestIPRangeAllocation(t *testing.T) {
 
 				// Create alloc with the IP range
 				_, err = tx.Exec(`
-					INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+					INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
 					VALUES (?, ?, ?, ?, ?, ?, ?)`,
-					allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
+					allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 				return err
 			})
 			if err != nil {
@@ -245,7 +245,7 @@ func TestIPRangeAllocation(t *testing.T) {
 			}
 			// Create alloc without IP range (simulating existing data)
 			_, err := tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, billing_email)
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_email)
 				VALUES (?, ?, ?, ?, ?, ?)`,
 				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, "legacy-host", email)
 			return err

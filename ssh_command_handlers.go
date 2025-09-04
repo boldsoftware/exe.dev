@@ -19,9 +19,9 @@ import (
 // newCommandFlags creates a FlagSet for the new command
 func newCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
-	fs.String("name", "", "machine name (auto-generated if not specified)")
+	fs.String("name", "", "box name (auto-generated if not specified)")
 	fs.String("image", "exeuntu", "container image")
-	fs.String("size", "medium", "machine size (small, medium, or large)")
+	fs.String("size", "medium", "box size (small, medium, or large)")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
 	return fs
 }
@@ -40,53 +40,53 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			{
 				Name:        "list",
 				Aliases:     []string{"ls"},
-				Description: "List your machines",
+				Description: "List your boxes",
 				Handler:     ss.handleListCommand,
 				Usage:       "list",
 			},
 			{
 				Name:        "new",
-				Description: "Create a new machine",
+				Description: "Create a new box",
 				Handler:     ss.handleNewCommand,
 				FlagSetFunc: newCommandFlags,
 				Examples: []string{
 					"new                                # just give me a computer",
-					"new --name=m --image=ubuntu:22.04  # custom image and name",
+					"new --name=b --image=ubuntu:22.04  # custom image and name",
 				},
 			},
 			{
 				Name:              "start",
-				Description:       "Start a stopped machine",
+				Description:       "Start a stopped box",
 				Handler:           ss.handleStartCommand,
-				Usage:             "start <machine-name>",
+				Usage:             "start <box-name>",
 				HasPositionalArgs: true,
 			},
 			{
 				Name:              "stop",
-				Description:       "Stop one or more machines",
+				Description:       "Stop one or more box",
 				Handler:           ss.handleStopCommand,
-				Usage:             "stop <machine-name> [<machine-name>...]",
+				Usage:             "stop <box-name> [<box-name>...]",
 				HasPositionalArgs: true,
 			},
 			{
 				Name:              "delete",
-				Description:       "Delete a machine",
+				Description:       "Delete a box",
 				Handler:           ss.handleDeleteCommand,
-				Usage:             "delete <machine-name>",
+				Usage:             "delete <box-name>",
 				HasPositionalArgs: true,
 			},
 			{
 				Name:              "logs",
-				Description:       "View machine logs",
+				Description:       "View box logs",
 				Handler:           ss.handleLogsCommand,
-				Usage:             "logs <machine-name>",
+				Usage:             "logs <box-name>",
 				HasPositionalArgs: true,
 			},
 			{
 				Name:              "diag",
 				Aliases:           []string{"diagnostics"},
-				Description:       "Get machine startup diagnostics",
-				Usage:             "diag <machine-name>",
+				Description:       "Get box startup diagnostics",
+				Usage:             "diag <box-name>",
 				Handler:           ss.handleDiagCommand,
 				HasPositionalArgs: true,
 			},
@@ -175,16 +175,16 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) 
 	if ss.server.containerManager != nil {
 		containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.AllocID)
 		if err != nil {
-			cc.Write("\033[1;31mError listing machines: %v\033[0m\r\n", err)
-			return fmt.Errorf("listing machines: %w", err)
+			cc.Write("\033[1;31mError listing boxes: %v\033[0m\r\n", err)
+			return fmt.Errorf("listing boxes: %w", err)
 		}
 
 		if len(containers) == 0 {
-			cc.Write("No machines found. Create one with 'new'.\r\n")
-			return fmt.Errorf("no machines found")
+			cc.Write("No boxes found. Create one with 'new'.\r\n")
+			return fmt.Errorf("no boxes found")
 		}
 
-		cc.Write("\033[1;36mYour machines:\033[0m\r\n")
+		cc.Write("\033[1;36mYour boxes:\033[0m\r\n")
 		for _, c := range containers {
 			status := string(c.Status)
 			statusColor := ""
@@ -200,7 +200,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) 
 				status = "starting"
 			}
 
-			// Show machine with colored status
+			// Show box with colored status
 			cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, status)
 
 			// Add image info if available
@@ -215,19 +215,19 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) 
 	}
 
 	// Fallback to database if container manager not available
-	machines, err := ss.server.getMachinesForAlloc(ctx, cc.Alloc.AllocID)
+	boxes, err := ss.server.getBoxesForAlloc(ctx, cc.Alloc.AllocID)
 	if err != nil {
-		cc.Write("\033[1;31mError listing machines: %v\033[0m\r\n", err)
-		return fmt.Errorf("listing machines: %w", err)
+		cc.Write("\033[1;31mError listing boxes: %v\033[0m\r\n", err)
+		return fmt.Errorf("listing boxes: %w", err)
 	}
 
-	if len(machines) == 0 {
-		cc.Write("No machines found. Create one with 'new'.\r\n")
-		return fmt.Errorf("no machines found")
+	if len(boxes) == 0 {
+		cc.Write("No boxes found. Create one with 'new'.\r\n")
+		return fmt.Errorf("no boxes found")
 	}
 
-	cc.Write("\033[1;36mYour machines:\033[0m\r\n")
-	for _, m := range machines {
+	cc.Write("\033[1;36mYour boxes:\033[0m\r\n")
+	for _, m := range boxes {
 		status := m.Status
 		statusColors := map[string]string{
 			"running": "\033[1;32m",
@@ -248,11 +248,11 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) 
 
 func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) error {
 	if ss.server.containerManager == nil {
-		cc.Write("\033[1;31mMachine management is not available\033[0m\r\n")
-		return fmt.Errorf("machine management is not available")
+		cc.Write("\033[1;31mBox management is not available\033[0m\r\n")
+		return fmt.Errorf("box management is not available")
 	}
 
-	// Get user information - needed for machine creation
+	// Get user information - needed for box creation
 	user, err := ss.server.getUserByPublicKey(ctx, cc.PublicKey)
 	if err != nil {
 		cc.Write("\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
@@ -260,9 +260,9 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	}
 
 	// Get flag values from the already-parsed FlagSet
-	var machineName, image, size, command string
+	var boxName, image, size, command string
 	if cc.FlagSet != nil {
-		machineName = cc.FlagSet.Lookup("name").Value.String()
+		boxName = cc.FlagSet.Lookup("name").Value.String()
 		image = cc.FlagSet.Lookup("image").Value.String()
 		size = cc.FlagSet.Lookup("size").Value.String()
 		command = cc.FlagSet.Lookup("command").Value.String()
@@ -280,16 +280,16 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		return fmt.Errorf("unexpected arguments: %q", strings.Join(cc.Args, " "))
 	}
 
-	// Generate machine name if not provided
-	if machineName == "" {
-		machineName = generateRandomContainerName()
+	// Generate box name if not provided
+	if boxName == "" {
+		boxName = generateRandomContainerName()
 		// Check if name is already taken
-		_, err := ss.server.getMachineByName(ctx, machineName)
+		_, err := ss.server.getBoxByName(ctx, boxName)
 		if err == nil {
 			// Name exists, try again
 			for range 10 {
-				machineName = generateRandomContainerName()
-				_, err = ss.server.getMachineByName(ctx, machineName)
+				boxName = generateRandomContainerName()
+				_, err = ss.server.getBoxByName(ctx, boxName)
 				if err != nil {
 					break
 				}
@@ -297,15 +297,15 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		}
 	}
 
-	// Validate machine name (both provided and generated)
-	if !ss.server.isValidMachineName(machineName) {
-		cc.Write("\033[1;31mInvalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 64 characters\033[0m\r\n", machineName)
-		return fmt.Errorf("invalid box name %q", machineName)
+	// Validate box name (both provided and generated)
+	if !ss.server.isValidBoxName(boxName) {
+		cc.Write("\033[1;31mInvalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), not use common computer terms, and be up to 64 characters\033[0m\r\n", boxName)
+		return fmt.Errorf("invalid box name %q", boxName)
 	}
 
-	if _, err := ss.server.getMachineByName(ctx, machineName); err == nil {
-		cc.Write("\033[1;31mBox name %q is not available\033[0m\r\n", machineName)
-		return fmt.Errorf("box name %q is not available", machineName)
+	if _, err := ss.server.getBoxByName(ctx, boxName); err == nil {
+		cc.Write("\033[1;31mBox name %q is not available\033[0m\r\n", boxName)
+		return fmt.Errorf("box name %q is not available", boxName)
 	}
 
 	// Get the display image name
@@ -316,7 +316,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 
 	// Show creation message with proper formatting
 	cc.Write("Creating \033[1m%s\033[0m (%s) using image \033[1m%s\033[0m...\r\n",
-		machineName, size, displayImage)
+		boxName, size, displayImage)
 
 	// Get size preset
 	sizePreset, exists := container.ContainerSizes[size]
@@ -358,7 +358,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	req := &container.CreateContainerRequest{
 		AllocID:         cc.Alloc.AllocID,
 		IPRange:         alloc.IPRange.String, // Pass the IP range from the alloc
-		Name:            machineName,
+		Name:            boxName,
 		Image:           image,
 		Size:            size,
 		CPURequest:      sizePreset.CPURequest,
@@ -459,7 +459,7 @@ done:
 
 	if createErr != nil {
 		guid := uuid.New().String() // for x-ref on support tickets
-		slog.Debug("createContainer error", "error", createErr, "publicKey", cc.PublicKey, "userID", user.UserID, "allocID", cc.Alloc.AllocID, "boxName", machineName, "image", image, "size", size, "guid", guid)
+		slog.Debug("createContainer error", "error", createErr, "publicKey", cc.PublicKey, "userID", user.UserID, "allocID", cc.Alloc.AllocID, "boxName", boxName, "image", image, "size", size, "guid", guid)
 		if ss.server.devMode != "" {
 			cc.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", createErr)
 		}
@@ -483,15 +483,15 @@ done:
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}
-	if err := ss.server.createMachineWithSSHAndDockerHost(ctx, user.UserID, cc.Alloc.AllocID, machineName, createdContainer.ID, imageToStore, createdContainer.DockerHost, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
-		cc.Write("\033[1;33mWarning: Failed to store machine info: %v\033[0m\r\n", err)
+	if err := ss.server.createBoxWithSSH(ctx, user.UserID, cc.Alloc.AllocID, boxName, createdContainer.ID, imageToStore, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
+		cc.Write("\033[1;33mWarning: Failed to store box info: %v\033[0m\r\n", err)
 	}
 
 	// Container is ready with SSH already configured!
 	// CreateContainer now blocks until SSH is verified, so we can proceed immediately
 
 	totalTime := time.Since(startTime)
-	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, machineName)
+	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, boxName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
@@ -506,50 +506,50 @@ done:
 
 func (ss *SSHServer) handleStartCommand(ctx context.Context, cc *CommandContext) error {
 	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify a machine name\033[0m")
-		cc.Writeln("Usage: start <machine-name>")
+		cc.Writeln("\033[1;31mError: Please specify a box name\033[0m")
+		cc.Writeln("Usage: start <box-name>")
 		return nil
 	}
 
-	machineName := cc.Args[0]
+	boxName := cc.Args[0]
 
 	if ss.server.containerManager == nil {
 		cc.Writeln("\033[1;31mMachine management is not available\033[0m")
 		return nil
 	}
 
-	// Get machine info
-	machine, err := ss.server.getMachineByName(ctx, machineName)
+	// Get box info
+	box, err := ss.server.getBoxByName(ctx, boxName)
 	if err != nil {
-		cc.Writeln("\033[1;31mError: Machine '%s' not found\033[0m", machineName)
+		cc.Writeln("\033[1;31mError: Box '%s' not found\033[0m", boxName)
 		return nil
 	}
 
-	if machine.ContainerID == nil {
-		cc.Writeln("\033[1;31mError: Machine '%s' has no container ID\033[0m", machineName)
+	if box.ContainerID == nil {
+		cc.Writeln("\033[1;31mError: Box '%s' has no container ID\033[0m", boxName)
 		return nil
 	}
 
-	cc.Writeln("Starting \033[1m%s\033[0m...", machineName)
+	cc.Writeln("Starting \033[1m%s\033[0m...", boxName)
 
 	// Start the container
-	err = ss.server.containerManager.StartContainer(ctx, machine.AllocID, *machine.ContainerID)
+	err = ss.server.containerManager.StartContainer(ctx, box.AllocID, *box.ContainerID)
 	if err != nil {
-		cc.Writeln("\033[1;31mError starting machine: %v\033[0m", err)
+		cc.Writeln("\033[1;31mError starting box: %v\033[0m", err)
 		return nil
 	}
 
 	// Update database status
 	err = ss.server.db.Exec(ctx, `
-		UPDATE machines SET status = 'running', last_started_at = CURRENT_TIMESTAMP
+		UPDATE boxes SET status = 'running', last_started_at = CURRENT_TIMESTAMP
 		WHERE name = ?`,
-		machineName)
+		boxName)
 	if err != nil {
-		cc.Writeln("\033[1;33mWarning: Failed to update machine status: %v\033[0m", err)
+		cc.Writeln("\033[1;33mWarning: Failed to update box status: %v\033[0m", err)
 	}
 
-	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, machineName)
-	cc.Writeln("\033[1;32mMachine started!\033[0m Access with:\r\n\r\n\033[1m%s\033[0m\r\n", sshCommand)
+	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, boxName)
+	cc.Writeln("\033[1;32mBox started!\033[0m Access with:\r\n\r\n\033[1m%s\033[0m\r\n", sshCommand)
 	return nil
 }
 
@@ -565,86 +565,86 @@ func (ss *SSHServer) handleStopCommand(ctx context.Context, cc *CommandContext) 
 		return nil
 	}
 
-	for _, machineName := range cc.Args {
-		// Get machine info
-		machine, err := ss.server.getMachineByName(ctx, machineName)
+	for _, boxName := range cc.Args {
+		// Get box info
+		box, err := ss.server.getBoxByName(ctx, boxName)
 		if err != nil {
-			cc.Writeln("\033[1;31mError: Machine '%s' not found\033[0m", machineName)
+			cc.Writeln("\033[1;31mError: Box '%s' not found\033[0m", boxName)
 			continue
 		}
 
-		if machine.ContainerID == nil {
-			cc.Writeln("\033[1;31mError: Machine '%s' has no container ID\033[0m", machineName)
+		if box.ContainerID == nil {
+			cc.Writeln("\033[1;31mError: Box '%s' has no container ID\033[0m", boxName)
 			continue
 		}
 
-		cc.Writeln("Stopping \033[1m%s\033[0m...", machineName)
+		cc.Writeln("Stopping \033[1m%s\033[0m...", boxName)
 
 		// Stop the container
 		ctx := context.Background()
-		err = ss.server.containerManager.StopContainer(ctx, machine.AllocID, *machine.ContainerID)
+		err = ss.server.containerManager.StopContainer(ctx, box.AllocID, *box.ContainerID)
 		if err != nil {
-			cc.Writeln("\033[1;31mError stopping machine %s: %v\033[0m", machineName, err)
+			cc.Writeln("\033[1;31mError stopping box %s: %v\033[0m", boxName, err)
 			continue
 		}
 
 		// Update database status
 		// TODO(banksean): This is from the original location in ssh_server.go, but the query itself
-		// seems like it's missing some extra details (e.g. alloc_id; otherwise I can stop someone else's machine if
+		// seems like it's missing some extra details (e.g. alloc_id; otherwise I can stop someone else's box if
 		// it has the same name as mine).
 		err = ss.server.db.Exec(ctx, `
-			UPDATE machines SET status = 'stopped'
+			UPDATE boxes SET status = 'stopped'
 			WHERE name = ?`,
-			machineName)
+			boxName)
 		if err != nil {
-			cc.Writeln("\033[1;33mWarning: Failed to update machine status: %v\033[0m", err)
-			return fmt.Errorf("failed to update machine status: %w", err)
+			cc.Writeln("\033[1;33mWarning: Failed to update box status: %v\033[0m", err)
+			return fmt.Errorf("failed to update box status: %w", err)
 		}
 
-		cc.Writeln("\033[1;32mMachine '%s' stopped\033[0m", machineName)
+		cc.Writeln("\033[1;32mBox '%s' stopped\033[0m", boxName)
 	}
 	return nil
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext) error {
 	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify a machine name\033[0m")
-		cc.Writeln("Usage: delete <machine-name>")
+		cc.Writeln("\033[1;31mError: Please specify a box name\033[0m")
+		cc.Writeln("Usage: delete <box-name>")
 		return nil
 	}
 
-	machineName := cc.Args[0]
+	boxName := cc.Args[0]
 
 	if ss.server.containerManager == nil {
 		// Just delete from database if no container manager
-		cc.Writeln("Deleting \033[1m%s\033[0m...", machineName)
+		cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
 
 		err := ss.server.db.Exec(ctx, `
-			DELETE FROM machines
+			DELETE FROM boxes
 			WHERE name = ?`,
-			machineName)
+			boxName)
 		if err != nil {
-			cc.Writeln("\033[1;31mError deleting machine: %v\033[0m", err)
-			return fmt.Errorf("deleting machine: %w", err)
+			cc.Writeln("\033[1;31mError deleting box: %v\033[0m", err)
+			return fmt.Errorf("deleting box: %w", err)
 		}
 
-		cc.Writeln("\033[1;32mMachine '%s' deleted\033[0m", machineName)
+		cc.Writeln("\033[1;32mBox '%s' deleted\033[0m", boxName)
 		return nil
 	}
 
-	// Get machine info
-	machine, err := ss.server.getMachineByName(ctx, machineName)
+	// Get box info
+	box, err := ss.server.getBoxByName(ctx, boxName)
 	if err != nil {
-		cc.Writeln("\033[1;31mError: Machine '%s' not found\033[0m", machineName)
-		return fmt.Errorf("machine %q not found: %w", machineName, err)
+		cc.Writeln("\033[1;31mError: Box '%s' not found\033[0m", boxName)
+		return fmt.Errorf("box %q not found: %w", boxName, err)
 	}
 
-	cc.Writeln("Deleting \033[1m%s\033[0m...", machineName)
+	cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
 
 	// Delete the container if it exists
-	if machine.ContainerID != nil {
+	if box.ContainerID != nil {
 		ctx := context.Background()
-		err = ss.server.containerManager.DeleteContainer(ctx, machine.AllocID, *machine.ContainerID)
+		err = ss.server.containerManager.DeleteContainer(ctx, box.AllocID, *box.ContainerID)
 		if err != nil {
 			cc.Writeln("\033[1;33mWarning: Failed to delete container: %v\033[0m", err)
 		}
@@ -652,27 +652,27 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 
 	// Delete from database
 	err = ss.server.db.Exec(ctx, `
-		DELETE FROM machines
+		DELETE FROM boxes
 		WHERE name = ?`,
-		machineName)
+		boxName)
 	if err != nil {
-		cc.Writeln("\033[1;31mError deleting machine from database: %v\033[0m", err)
+		cc.Writeln("\033[1;31mError deleting box from database: %v\033[0m", err)
 		return nil
 	}
 
-	cc.Writeln("\033[1;32mMachine '%s' deleted successfully\033[0m", machineName)
+	cc.Writeln("\033[1;32mBox '%s' deleted successfully\033[0m", boxName)
 	return nil
 }
 
 func (ss *SSHServer) handleLogsCommand(ctx context.Context, cc *CommandContext) error {
 	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify a machine name\033[0m")
-		cc.Writeln("Usage: logs <machine-name>")
+		cc.Writeln("\033[1;31mError: Please specify a box name\033[0m")
+		cc.Writeln("Usage: logs <box-name>")
 		return nil
 	}
 
-	machineName := cc.Args[0]
-	cc.Writeln("Fetching logs for machine '%s'...", machineName)
+	boxName := cc.Args[0]
+	cc.Writeln("Fetching logs for box '%s'...", boxName)
 	cc.Writeln("\033[1;33mNote: Logs not implemented in new server yet\033[0m")
 	return nil
 }

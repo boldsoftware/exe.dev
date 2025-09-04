@@ -12,8 +12,8 @@ import (
 func TestRouteStructs(t *testing.T) {
 	t.Parallel()
 	// Test default routes creation
-	var machine Machine
-	routes := machine.getDefaultRoutes()
+	var box Box
+	routes := box.getDefaultRoutes()
 
 	if len(routes) != 1 {
 		t.Errorf("Expected 1 default route, got %d", len(routes))
@@ -47,12 +47,12 @@ func TestRouteStructs(t *testing.T) {
 	}
 }
 
-func TestMachineRoutes(t *testing.T) {
+func TestBoxRoutes(t *testing.T) {
 	t.Parallel()
-	machine := Machine{}
+	box := Box{}
 
 	// Test getting routes when none are set (should return defaults)
-	routes, err := machine.GetRoutes()
+	routes, err := box.GetRoutes()
 	if err != nil {
 		t.Errorf("Error getting default routes: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestMachineRoutes(t *testing.T) {
 	}
 
 	// Test setting custom routes
-	customRoutes := MachineRoutes{
+	customRoutes := BoxRoutes{
 		{
 			Name:     "api",
 			Priority: 1,
@@ -80,13 +80,13 @@ func TestMachineRoutes(t *testing.T) {
 		},
 	}
 
-	err = machine.SetRoutes(customRoutes)
+	err = box.SetRoutes(customRoutes)
 	if err != nil {
 		t.Errorf("Error setting routes: %v", err)
 	}
 
 	// Test getting the custom routes back
-	retrievedRoutes, err := machine.GetRoutes()
+	retrievedRoutes, err := box.GetRoutes()
 	if err != nil {
 		t.Errorf("Error getting custom routes: %v", err)
 	}
@@ -109,21 +109,21 @@ func TestProxyHostnameParsing(t *testing.T) {
 	server := &Server{}
 
 	tests := []struct {
-		hostname        string
-		expectedMachine string
-		shouldError     bool
+		hostname    string
+		expectedBox string
+		shouldError bool
 	}{
-		{"test-machine.exe.dev", "test-machine", false},
+		{"test-box.exe.dev", "test-box", false},
 		{"web.localhost", "web", false},
 		{"api.exe.dev", "api", false},
 		{"empty.exe.dev", "empty", false}, // Valid in new format
 		{"invalid.domain.com", "", true},
-		{"machine.with.dots.exe.dev", "", true}, // Too many subdomains
-		{"just-domain.com", "", true},           // Not exe.dev or localhost
+		{"box.with.dots.exe.dev", "", true}, // Too many subdomains
+		{"just-domain.com", "", true},       // Not exe.dev or localhost
 	}
 
 	for _, test := range tests {
-		machine, err := server.parseProxyHostname(test.hostname)
+		box, err := server.parseProxyHostname(test.hostname)
 
 		if test.shouldError {
 			if err == nil {
@@ -137,8 +137,8 @@ func TestProxyHostnameParsing(t *testing.T) {
 			continue
 		}
 
-		if machine != test.expectedMachine {
-			t.Errorf("Expected machine '%s', got '%s'", test.expectedMachine, machine)
+		if box != test.expectedBox {
+			t.Errorf("Expected box '%s', got '%s'", test.expectedBox, box)
 		}
 	}
 }
@@ -147,7 +147,7 @@ func TestRouteMatching(t *testing.T) {
 	t.Parallel()
 	server := &Server{}
 
-	routes := MachineRoutes{
+	routes := BoxRoutes{
 		{
 			Name:     "api",
 			Priority: 1,
@@ -203,7 +203,7 @@ func TestRouteMatching(t *testing.T) {
 	}
 }
 
-func TestMachineCreationWithRoutes(t *testing.T) {
+func TestBoxCreationWithRoutes(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
 
@@ -218,8 +218,8 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
-	// Test creating a machine
-	// Get userID for machine creation
+	// Test creating a box
+	// Get userID for box creation
 	var userID string
 	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
@@ -236,23 +236,23 @@ func TestMachineCreationWithRoutes(t *testing.T) {
 		t.Fatalf("Failed to get alloc ID: %v", err)
 	}
 
-	err = server.createMachine(t.Context(), userID, allocID, "test-machine", "container123", "ubuntu")
+	err = server.createBox(t.Context(), userID, allocID, "test-box", "container123", "ubuntu")
 	if err != nil {
-		t.Errorf("Failed to create machine: %v", err)
+		t.Errorf("Failed to create box: %v", err)
 	}
 
-	// Retrieve the machine and check its routes
-	machine, err := server.getMachineByName(t.Context(), "test-machine")
+	// Retrieve the box and check its routes
+	box, err := server.getBoxByName(t.Context(), "test-box")
 	if err != nil {
-		t.Errorf("Failed to get machine: %v", err)
+		t.Errorf("Failed to get box: %v", err)
 	}
 
-	if machine.Routes == nil {
-		t.Error("Machine routes should not be nil")
+	if box.Routes == nil {
+		t.Error("Box routes should not be nil")
 	} else {
-		routes, err := machine.GetRoutes()
+		routes, err := box.GetRoutes()
 		if err != nil {
-			t.Errorf("Failed to parse machine routes: %v", err)
+			t.Errorf("Failed to parse box routes: %v", err)
 		}
 
 		if len(routes) != 1 {
@@ -283,7 +283,7 @@ func TestHandleProxyRequest(t *testing.T) {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
-	// Get userID and allocID for machine creation
+	// Get userID and allocID for box creation
 	var userID, allocID string
 	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		if err := rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID); err != nil {
@@ -296,18 +296,18 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	// Create a test machine with custom routes
-	err = server.createMachine(t.Context(), userID, allocID, "web-server", "container123", "nginx")
+	err = server.createBox(t.Context(), userID, allocID, "web-server", "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
 
-	// Get the machine and add a public API route
-	machine, err := server.getMachineByName(t.Context(), "web-server")
+	// Get the box and add a public API route
+	box, err := server.getBoxByName(t.Context(), "web-server")
 	if err != nil {
-		t.Fatalf("Failed to get machine: %v", err)
+		t.Fatalf("Failed to get box: %v", err)
 	}
 
-	routes, err := machine.GetRoutes()
+	routes, err := box.GetRoutes()
 	if err != nil {
 		t.Fatalf("Failed to get routes: %v", err)
 	}
@@ -323,19 +323,19 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 	routes = append(routes, publicRoute)
 
-	err = machine.SetRoutes(routes)
+	err = box.SetRoutes(routes)
 	if err != nil {
 		t.Fatalf("Failed to set routes: %v", err)
 	}
 
-	// Update the machine in the database
+	// Update the box in the database
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`UPDATE machines SET routes = ? WHERE name = ? AND alloc_id = ?`,
-			*machine.Routes, "web-server", allocID)
+		_, err := tx.Exec(`UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?`,
+			*box.Routes, "web-server", allocID)
 		return err
 	})
 	if err != nil {
-		t.Fatalf("Failed to update machine routes: %v", err)
+		t.Fatalf("Failed to update box routes: %v", err)
 	}
 
 	tests := []struct {
@@ -347,7 +347,7 @@ func TestHandleProxyRequest(t *testing.T) {
 	}{
 		{"web-server.exe.dev", "GET", "/api/public/status", 200, "public-api"},
 		{"web-server.exe.dev", "GET", "/private/admin", 307, "auth?redirect="}, // Should redirect to auth for private route
-		{"nonexistent.exe.dev", "GET", "/", 404, "Machine not found"},
+		{"nonexistent.exe.dev", "GET", "/", 404, "Box not found"},
 	}
 
 	for _, test := range tests {
@@ -386,7 +386,7 @@ func TestRouteSorting(t *testing.T) {
 	server := &Server{}
 
 	// Create routes with different priorities
-	routes := MachineRoutes{
+	routes := BoxRoutes{
 		{
 			Name:     "low-priority",
 			Priority: 100,
@@ -450,7 +450,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	// Create test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
 	email := "test@example.com"
-	machineName := "web-server"
+	boxName := "web-server"
 
 	// Create user with alloc
 	err := server.createUserWithAlloc(t.Context(), publicKey, email)
@@ -458,7 +458,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
-	// Get userID and allocID for machine creation
+	// Get userID and allocID for box creation
 	var userID, allocID string
 	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		if err := rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID); err != nil {
@@ -470,8 +470,8 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		t.Fatalf("Failed to get user and alloc IDs: %v", err)
 	}
 
-	// Create a test machine
-	err = server.createMachine(t.Context(), userID, allocID, machineName, "container123", "nginx")
+	// Create a test box
+	err = server.createBox(t.Context(), userID, allocID, boxName, "container123", "nginx")
 	if err != nil {
 		t.Fatalf("Failed to create machine: %v", err)
 	}
@@ -485,32 +485,32 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	}{
 		{
 			name:     "list initial routes",
-			args:     []string{machineName, "list"},
-			expected: []string{"Routes for machine", "default", "priority 10", "private"},
+			args:     []string{boxName, "list"},
+			expected: []string{"Routes for box", "default", "priority 10", "private"},
 		},
 		{
 			name:     "add public API route",
-			args:     []string{machineName, "add", "--name=public-api", "--priority=1", "--methods=GET,POST", "--prefix=/api/public", "--policy=public", "--ports=3000"},
+			args:     []string{boxName, "add", "--name=public-api", "--priority=1", "--methods=GET,POST", "--prefix=/api/public", "--policy=public", "--ports=3000"},
 			expected: []string{"Route 'public-api' added successfully"},
 		},
 		{
 			name:     "list routes after adding",
-			args:     []string{machineName, "list"},
+			args:     []string{boxName, "list"},
 			expected: []string{"public-api", "priority 1", "public", "default", "priority 10", "private"},
 		},
 		{
 			name:     "add route with defaults",
-			args:     []string{machineName, "add"},
+			args:     []string{boxName, "add"},
 			expected: []string{"added successfully"},
 		},
 		{
 			name:     "remove public-api route",
-			args:     []string{machineName, "remove", "public-api"},
+			args:     []string{boxName, "remove", "public-api"},
 			expected: []string{"Route 'public-api' removed successfully"},
 		},
 		{
 			name:        "list routes after removing",
-			args:        []string{machineName, "list"},
+			args:        []string{boxName, "list"},
 			expected:    []string{"default"},
 			notExpected: []string{"public-api"},
 		},
@@ -521,7 +521,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 		},
 		{
 			name:     "error on duplicate route name",
-			args:     []string{machineName, "add", "--name=default"},
+			args:     []string{boxName, "add", "--name=default"},
 			expected: []string{"already exists"},
 		},
 	}

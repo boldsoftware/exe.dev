@@ -423,8 +423,8 @@
             <img src="exe.dev.png" alt="exe.dev blowfish logo" class="blowfish-logo">
             
             <div class="info-panel" style="max-width: 100%;">
-                <div class="section-title">Your Machines</div>
-                {{if .Machines}}
+                <div class="section-title">Your Boxes</div>
+                {{if .Boxes}}
                 <div class="machines-table">
                     <div class="table-header">
                         <div class="col-name">Name</div>
@@ -432,7 +432,7 @@
                         <div class="col-connection">Connection</div>
                         <div class="col-image">Image</div>
                     </div>
-                    {{range .Machines}}
+                    {{range .Boxes}}
                     <div class="table-row">
                         <div class="col-name machine-name">{{.Name}}</div>
                         <div class="col-status">
@@ -471,10 +471,6 @@
                 <div class="info-item">
                     <div class="info-label">Public Key</div>
                     <div class="info-value public-key">{{.PublicKey}}</div>
-                    {{if .DeviceName}}
-                    <div class="info-label">Device</div>
-                    <div class="info-value">{{.DeviceName}}</div>
-                    {{end}}
                 </div>
                 {{else}}
                 <div class="info-item no-machines">

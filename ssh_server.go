@@ -223,15 +223,15 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 	// Check for special container-logs username format
 	username := s.User()
 	if strings.HasPrefix(username, "container-logs:") {
-		// Parse format: "container-logs:<allocID>:<containerID>:<machineName>"
+		// Parse format: "container-logs:<allocID>:<containerID>:<boxName>"
 		parts := strings.Split(username, ":")
 		if len(parts) == 4 {
 			allocID := parts[1]
 			containerID := parts[2]
-			machineName := parts[3]
+			boxName := parts[3]
 
 			// Show container logs
-			ss.handleContainerLogs(s, allocID, containerID, machineName)
+			ss.handleContainerLogs(s, allocID, containerID, boxName)
 			return
 		}
 	}
@@ -282,7 +282,7 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 	}
 
 	// Note: Direct container access should never reach this point.
-	// Container connections are handled by the SSH piper plugin via handleMachineAccess,
+	// Container connections are handled by the SSH piper plugin via handleBoxAccess,
 	// which routes directly to the container without involving exed.
 	// If we reach here, the user is connecting to the interactive shell.
 
@@ -297,13 +297,13 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 	}
 
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-		"\033[1mlist\033[0m                    - List your machines\r\n" +
-		"\033[1mnew [args]\033[0m              - Create a new machine\r\n" +
-		"\033[1mstart <name>\033[0m            - Start a machine\r\n" +
-		"\033[1mstop <name> [...]\033[0m       - Stop one or more machines\r\n" +
-		"\033[1mdelete <name>\033[0m           - Delete a machine\r\n" +
-		"\033[1mlogs <name>\033[0m             - View machine logs\r\n" +
-		"\033[1mroute <machine>\033[0m         - Manage machine routes\r\n" +
+		"\033[1mlist\033[0m                    - List your boxes\r\n" +
+		"\033[1mnew [args]\033[0m              - Create a new box\r\n" +
+		"\033[1mstart <name>\033[0m            - Start a box\r\n" +
+		"\033[1mstop <name> [...]\033[0m       - Stop one or more boxes\r\n" +
+		"\033[1mdelete <name>\033[0m           - Delete a box\r\n" +
+		"\033[1mlogs <name>\033[0m             - View box logs\r\n" +
+		"\033[1mroute <box>\033[0m         - Manage box routes\r\n" +
 		"\033[1mbilling\033[0m                 - Manage billing and payment info\r\n" +
 		"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 		"\033[1m?\033[0m                       - Show this help\r\n" +
@@ -516,7 +516,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		}
 	}
 
-	// No longer ask for team name - machines will be named directly under exe.dev
+	// No longer ask for team name - boxes will be named directly under exe.dev
 
 	// Log for debugging
 	if !ss.server.testMode && !ss.server.quietMode {
@@ -721,16 +721,16 @@ func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, boo
 	return nil, false
 }
 
-// getMachinesForTeam is obsolete - use getMachinesForAlloc instead
-func (s *Server) getMachinesForTeam(ctx context.Context, allocID string) ([]*Machine, error) {
-	// This function is kept for backward compatibility but redirects to getMachinesForAlloc
-	return s.getMachinesForAlloc(ctx, allocID)
+// getBoxesForTeam is obsolete - use getBoxesForAlloc instead
+func (s *Server) getBoxesForTeam(ctx context.Context, allocID string) ([]*Box, error) {
+	// This function is kept for backward compatibility but redirects to getBoxesForAlloc
+	return s.getBoxesForAlloc(ctx, allocID)
 }
 
 // handleContainerLogs shows logs for a failed container
-func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, machineName string) {
+func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, boxName string) {
 	// Show error message about container failure
-	fmt.Fprintf(s, "\033[1;31mContainer '%s' failed to start\033[0m\r\n\r\n", machineName)
+	fmt.Fprintf(s, "\033[1;31mContainer '%s' failed to start\033[0m\r\n\r\n", boxName)
 
 	// Get logs if container manager is available
 	if ss.server.containerManager != nil {
@@ -756,7 +756,7 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, ma
 		}
 
 		fmt.Fprintf(s, "To delete this failed container, run:\r\n")
-		fmt.Fprintf(s, "  \033[1mdelete %s\033[0m\r\n", machineName)
+		fmt.Fprintf(s, "  \033[1mdelete %s\033[0m\r\n", boxName)
 	} else {
 		fmt.Fprintf(s, "\033[1;31mContainer manager not available\033[0m\r\n")
 	}

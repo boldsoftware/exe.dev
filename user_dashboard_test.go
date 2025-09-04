@@ -53,8 +53,8 @@ func TestUserDashboard(t *testing.T) {
 	// Create alloc for the user
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, created_at)
-			VALUES (?, ?, 'medium', 'aws-us-west-2', datetime('now'))
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'))
 		`, allocID, userID)
 		return err
 	})
@@ -62,17 +62,17 @@ func TestUserDashboard(t *testing.T) {
 		t.Fatalf("Failed to insert test alloc: %v", err)
 	}
 
-	// Create a test machine
-	machineName := "testmachine"
+	// Create a test box
+	boxName := "testbox"
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO machines (alloc_id, name, status, image, created_by_user_id)
+			INSERT INTO boxes (alloc_id, name, status, image, created_by_user_id)
 			VALUES (?, ?, ?, ?, ?)
-		`, allocID, machineName, "stopped", "ubuntu:22.04", userID)
+		`, allocID, boxName, "stopped", "ubuntu:22.04", userID)
 		return err
 	})
 	if err != nil {
-		t.Fatalf("Failed to insert test machine: %v", err)
+		t.Fatalf("Failed to insert test box: %v", err)
 	}
 
 	// Create test server
@@ -110,9 +110,9 @@ func TestUserDashboard(t *testing.T) {
 		t.Errorf("Expected to find user email %s in dashboard", email)
 	}
 
-	// Check that machine name appears
-	if !strings.Contains(bodyStr, machineName) {
-		t.Errorf("Expected to find machine name %s in dashboard", machineName)
+	// Check that box name appears
+	if !strings.Contains(bodyStr, boxName) {
+		t.Errorf("Expected to find box name %s in dashboard", boxName)
 	}
 
 	// Check that the page has expected elements (title contains EXE.DEV)
@@ -121,8 +121,8 @@ func TestUserDashboard(t *testing.T) {
 		t.Errorf("Expected to find 'EXE.DEV' in page title")
 	}
 
-	// Check for welcome message or machines section
-	if !strings.Contains(bodyStr, "welcome") && !strings.Contains(bodyStr, "Machines") && !strings.Contains(bodyStr, "machines") {
-		t.Errorf("Expected to find welcome message or machines section")
+	// Check for welcome message or boxes section
+	if !strings.Contains(bodyStr, "welcome") && !strings.Contains(bodyStr, "Boxes") && !strings.Contains(bodyStr, "boxes") {
+		t.Errorf("Expected to find welcome message or boxes section")
 	}
 }

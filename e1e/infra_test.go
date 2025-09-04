@@ -871,7 +871,7 @@ func newBox(t *testing.T, pty *expectPty) string {
 
 	// Confirm it is there.
 	pty.sendLine("list")
-	pty.want("machines")
+	pty.want("boxes")
 	pty.wantRe(boxNameRe + ".*running.*\n")
 	return boxName
 }

@@ -187,22 +187,22 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 	connID := conn.UniqueID()
 	username := conn.User()
 
-	// In local dev mode, check if this is a machine access attempt
+	// In local dev mode, check if this is a box access attempt
 	if p.server.devMode == "local" && username != "" && username != "localexe" {
-		// Try to find a machine with this name
-		var machine Machine
+		// Try to find a box with this name
+		var box Box
 		err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 			return rx.QueryRow(`
 				SELECT id, alloc_id, name, container_id
-				FROM machines
+				FROM boxes
 				WHERE name = ?
-			`, username).Scan(&machine.ID, &machine.AllocID, &machine.Name, &machine.ContainerID)
+			`, username).Scan(&box.ID, &box.AllocID, &box.Name, &box.ContainerID)
 		})
 
-		if err == nil && machine.ContainerID != nil {
-			// Found a machine - allow access without authentication in dev mode
-			slog.Debug("Local dev mode: allowing passwordless access to machine",
-				"component", "piper-plugin", "machine_name", machine.Name)
+		if err == nil && box.ContainerID != nil {
+			// Found a box - allow access without authentication in dev mode
+			slog.Debug("Local dev mode: allowing passwordless access to box",
+				"component", "piper-plugin", "box_name", box.Name)
 
 			// Get first user for dev mode
 			var userID string
@@ -212,7 +212,7 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 				return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
 			})
 			if err == nil {
-				return p.handleMachineAccess(&machine, userID, connID)
+				return p.handleBoxAccess(&box, userID, connID)
 			}
 		}
 	}
@@ -299,8 +299,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	username := conn.User()
 	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
 
-	// Check if this is a direct machine access attempt
-	// In local dev mode, allow machine access even without registration
+	// Check if this is a direct box access attempt
+	// In local dev mode, allow box access even without registration
 	if username != "" && (registered || p.server.devMode == "local") {
 		// If not registered but in local dev mode, use first user
 		if !registered && p.server.devMode == "local" && userID == "" {
@@ -308,17 +308,17 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 				return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
 			})
 			if err == nil {
-				slog.Debug("Using first user for local dev machine access", "component", "piper-plugin", "user_id", userID)
+				slog.Debug("Using first user for local dev box access", "component", "piper-plugin", "user_id", userID)
 				registered = true // Pretend they're registered for the checks below
 			}
 		}
 
-		slog.Info("Checking for machine", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered, "devMode", p.server.devMode)
-		if machine := p.server.FindMachineByNameForUser(ctx, userID, username); machine != nil {
-			slog.Info("Found machine, routing to container", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID)
-			return p.handleMachineAccess(machine, userID, connID)
+		slog.Info("Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered, "devMode", p.server.devMode)
+		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
+			slog.Info("Found box, routing to container", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID)
+			return p.handleBoxAccess(box, userID, connID)
 		} else {
-			slog.Info("No machine found with name", "component", "piper-plugin", "username", username, "user_id", userID)
+			slog.Info("No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 		}
 	}
 
@@ -357,31 +357,31 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	return upstream, nil
 }
 
-// handleMachineAccess sets up routing to a specific machine container
-func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID string) (*libplugin.Upstream, error) {
+// handleBoxAccess sets up routing to a specific box container
+func (p *PiperPlugin) handleBoxAccess(box *Box, userID, connID string) (*libplugin.Upstream, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
 
-	slog.Debug("handleMachineAccess for machine", "component", "piper-plugin", "machine_name", machine.Name, "machine_id", machine.ID, "user_id", userID, "conn_id", connID)
+	slog.Debug("handleBoxAccess for box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "user_id", userID, "conn_id", connID)
 
-	if machine.ContainerID == nil {
-		slog.Debug("Machine has no container ID", "component", "piper-plugin", "machine_name", machine.Name)
-		return nil, fmt.Errorf("machine %s is not running", machine.Name)
+	if box.ContainerID == nil {
+		slog.Debug("Box has no container ID", "component", "piper-plugin", "box_name", box.Name)
+		return nil, fmt.Errorf("box %s is not running", box.Name)
 	}
 
 	// Check if container is actually running
 	if p.server.containerManager != nil {
-		containerInfo, err := p.server.containerManager.GetContainer(ctx, machine.AllocID, *machine.ContainerID)
+		containerInfo, err := p.server.containerManager.GetContainer(ctx, box.AllocID, *box.ContainerID)
 		slog.Info("Container status check",
-			"component", "piper-plugin", "machine_name", machine.Name,
-			"container_id", *machine.ContainerID, "error", err,
+			"component", "piper-plugin", "box_name", box.Name,
+			"container_id", *box.ContainerID, "error", err,
 			"status", string(containerInfo.Status),
 		)
 		if err == nil && containerInfo.Status != container.StatusRunning {
 			// Container exists but isn't running - route to exed to show logs
 			// Use a special username format that exed will recognize
 			slog.Info("Container not running, routing to exed for error display",
-				"component", "piper-plugin", "machine_name", machine.Name, "status", containerInfo.Status)
+				"component", "piper-plugin", "box_name", box.Name, "status", containerInfo.Status)
 
 			// Generate ephemeral proxy key for auth to exed
 			// Pass nil for original key since this is a special case
@@ -390,8 +390,8 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 				return nil, fmt.Errorf("failed to generate proxy key: %v", err)
 			}
 
-			// Use special username format: "container-logs:<allocID>:<containerID>:<machineName>"
-			specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", machine.AllocID, *machine.ContainerID, machine.Name)
+			// Use special username format: "container-logs:<allocID>:<containerID>:<boxName>"
+			specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.AllocID, *box.ContainerID, box.Name)
 
 			return &libplugin.Upstream{
 				Host:          "127.0.0.1",
@@ -404,18 +404,18 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	}
 
 	// Get SSH connection details from the database
-	sshDetails, err := p.server.GetMachineSSHDetails(ctx, machine.ID)
+	sshDetails, err := p.server.GetBoxSSHDetails(ctx, box.ID)
 	if err != nil {
-		slog.Debug("Failed to get SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "error", err)
-		return nil, fmt.Errorf("failed to get SSH details for machine %s: %v", machine.Name, err)
+		slog.Debug("Failed to get SSH details for box", "component", "piper-plugin", "box_name", box.Name, "error", err)
+		return nil, fmt.Errorf("failed to get SSH details for box %s: %v", box.Name, err)
 	}
 	slog.Debug("SSH details for machine",
 		"user_id", userID,
 		"conn_id", connID,
 		"component", "piper-plugin",
-		"machine_name", machine.Name,
+		"box_name", box.Name,
 		"port", sshDetails.Port,
-		"docker_host", sshDetails.DockerHost,
+		"ctrhost", sshDetails.Ctrhost,
 		"user", sshDetails.User,
 	)
 
@@ -433,30 +433,30 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 			slog.Debug("host.docker.internal not available, using localhost", "component", "piper-plugin", "error", err)
 		}
 	}
-	if sshDetails.DockerHost != nil && *sshDetails.DockerHost != "" {
+	if sshDetails.Ctrhost != nil && *sshDetails.Ctrhost != "" {
 		// Parse docker host to extract hostname
 		// Formats: tcp://hostname:port, ssh://hostname, or direct hostname
-		dockerHost := *sshDetails.DockerHost
-		if strings.HasPrefix(dockerHost, "tcp://") {
+		ctrhost := *sshDetails.Ctrhost
+		if strings.HasPrefix(ctrhost, "tcp://") {
 			// Extract hostname from tcp://hostname:port
-			parts := strings.Split(strings.TrimPrefix(dockerHost, "tcp://"), ":")
+			parts := strings.Split(strings.TrimPrefix(ctrhost, "tcp://"), ":")
 			if len(parts) > 0 && parts[0] != "" {
 				host = parts[0]
-				slog.Debug("Using docker host from tcp format", "component", "piper-plugin", "host", host, "docker_host", dockerHost)
+				slog.Debug("Using container host from tcp format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
 			}
-		} else if strings.HasPrefix(dockerHost, "ssh://") {
+		} else if strings.HasPrefix(ctrhost, "ssh://") {
 			// Extract hostname from ssh://[user@]hostname
-			sshHost := strings.TrimPrefix(dockerHost, "ssh://")
+			sshHost := strings.TrimPrefix(ctrhost, "ssh://")
 			// Remove username if present
 			if atIndex := strings.Index(sshHost, "@"); atIndex != -1 {
 				host = sshHost[atIndex+1:]
 			} else {
 				host = sshHost
 			}
-			slog.Debug("Using docker host from ssh format", "component", "piper-plugin", "host", host, "docker_host", dockerHost)
-		} else if dockerHost != "" && !strings.HasPrefix(dockerHost, "unix://") {
+			slog.Debug("Using container host from ssh format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
+		} else if ctrhost != "" && !strings.HasPrefix(ctrhost, "unix://") {
 			// Direct hostname
-			host = dockerHost
+			host = ctrhost
 			slog.Debug("Using direct docker host", "component", "piper-plugin", "host", host)
 		}
 	}
@@ -464,13 +464,13 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 
 	// In local dev mode with remote docker host via SSH, we use SSH tunneling
 	// so containers are accessible via localhost
-	if p.server.devMode != "" && sshDetails.DockerHost != nil && strings.HasPrefix(*sshDetails.DockerHost, "ssh://") {
+	if p.server.devMode != "" && sshDetails.Ctrhost != nil && strings.HasPrefix(*sshDetails.Ctrhost, "ssh://") {
 		host = "localhost"
-		slog.Debug("Using localhost for SSH tunnel in dev/test mode", "component", "piper-plugin", "original_host", *sshDetails.DockerHost)
+		slog.Debug("Using localhost for SSH tunnel in dev/test mode", "component", "piper-plugin", "original_host", *sshDetails.Ctrhost)
 		// SSH tunnel should already be established by container package
 	}
 
-	slog.Debug("Using database SSH details for machine", "component", "piper-plugin", "machine_name", machine.Name, "host", host, "port", port)
+	slog.Debug("Using database SSH details for box", "component", "piper-plugin", "box_name", box.Name, "host", host, "port", port)
 
 	// Create upstream configuration for direct SSH to container
 	slog.Debug("Creating upstream to container as root", "component", "piper-plugin", "host", host, "port", port)
@@ -482,12 +482,12 @@ func (p *PiperPlugin) handleMachineAccess(machine *Machine, userID, connID strin
 	// Store the expected host key for this connection if available
 	if sshDetails.HostKey != "" {
 		p.storeExpectedHostKeyForConnection(connID, sshDetails.HostKey)
-		slog.Debug("Stored expected host key for connection", "component", "piper-plugin", "machine_name", machine.Name, "conn_id", connID, "host_key", sshDetails.HostKey)
+		slog.Debug("Stored expected host key for connection", "component", "piper-plugin", "box_name", box.Name, "conn_id", connID, "host_key", sshDetails.HostKey)
 	}
 
 	slog.Debug("directing piperd to connect", "host", host, "port", port, "user", sshDetails.User)
 	return &libplugin.Upstream{
-		Host:     host, // Container host (from docker_host, host.docker.internal in dev mode, or localhost)
+		Host:     host, // Container host (from ctrhost, host.docker.internal in dev mode, or localhost)
 		Port:     int32(port),
 		UserName: sshDetails.User, // Use the user from the Docker image USER directive
 		// Host key validation is handled by VerifyHostKeyCallback
@@ -583,22 +583,22 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 	receivedKey := string(ssh.MarshalAuthorizedKey(pubKey))
 	slog.Debug("Received host key", "component", "piper-plugin", "hostname", hostname, "received_key", receivedKey[:50]+"...")
 
-	// Check if this is a machine connection by looking up stored expected keys
+	// Check if this is a box connection by looking up stored expected keys
 	connID := conn.UniqueID()
 	expectedKey, found := p.getExpectedHostKeyForConnection(connID)
 	slog.Debug("Expected key lookup", "component", "piper-plugin", "conn_id", connID, "found", found)
 
 	if found {
-		// This is a machine connection with a stored expected key
+		// This is a box connection with a stored expected key
 		if strings.TrimSpace(expectedKey) == strings.TrimSpace(receivedKey) {
-			slog.Debug("Host key validation successful for machine",
+			slog.Debug("Host key validation successful for box",
 				"component", "piper-plugin",
 				"conn_id", connID, "hostname", hostname,
 			)
 			return nil
 		}
-		// Key mismatch for machine connection
-		slog.Debug("Host key validation failed - machine key mismatch",
+		// Key mismatch for box connection
+		slog.Debug("Host key validation failed - box key mismatch",
 			"component", "piper-plugin",
 			"conn_id", connID, "hostname", hostname,
 			"expected_key", expectedKey, "received_key", receivedKey,
@@ -621,7 +621,7 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 		return nil
 	}
 
-	// Neither machine key nor server key matched
+	// Neither box key nor server key matched
 	slog.Debug("Host key validation failed - no matching key found",
 		"component", "piper-plugin", "hostname", hostname)
 	return fmt.Errorf("host key validation failed for %s", hostname)

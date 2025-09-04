@@ -56,7 +56,7 @@ func TestIsValidMachineName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := server.isValidMachineName(tt.input)
+			result := server.isValidBoxName(tt.input)
 			if result != tt.expected {
 				t.Errorf("isValidMachineName(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
@@ -84,7 +84,7 @@ func TestMachineNameDenylist(t *testing.T) {
 
 	for _, word := range denylistedWords {
 		t.Run("denylisted word: "+word, func(t *testing.T) {
-			result := server.isValidMachineName(word)
+			result := server.isValidBoxName(word)
 			if result {
 				t.Errorf("Expected denylisted word %q to be invalid, but it was accepted", word)
 			}
@@ -100,7 +100,7 @@ func TestMachineNameDenylist(t *testing.T) {
 
 	for _, word := range validSimilar {
 		t.Run("valid similar word: "+word, func(t *testing.T) {
-			result := server.isValidMachineName(word)
+			result := server.isValidBoxName(word)
 			if !result {
 				t.Errorf("Expected word %q to be valid (similar to denylist but not exact match), but it was rejected", word)
 			}

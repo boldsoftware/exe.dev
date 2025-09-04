@@ -52,51 +52,51 @@ func TestSSHPiperConfiguration(t *testing.T) {
 	}
 }
 
-// TestMachineAccessImplementation tests the machine access functionality
-func TestMachineAccessImplementation(t *testing.T) {
+// TestBoxAccessImplementation tests the box access functionality
+func TestBoxAccessImplementation(t *testing.T) {
 	server := NewTestServer(t)
 
-	// Test machine that doesn't exist
-	machine := &Machine{
+	// Test box that doesn't exist
+	box := &Box{
 		ID:              999,
 		Name:            "nonexistent",
 		ContainerID:     nil,
 		CreatedByUserID: "usr1234567890123", // test user ID
 	}
 
-	upstream, err := server.piperPlugin.handleMachineAccess(machine, "test-fp", "test-conn-id")
+	upstream, err := server.piperPlugin.handleBoxAccess(box, "test-fp", "test-conn-id")
 	if err == nil || upstream != nil {
-		t.Error("Expected error for machine with no ContainerID")
+		t.Error("Expected error for box with no ContainerID")
 	} else {
-		t.Logf("✅ Correctly rejected machine with no container: %v", err)
+		t.Logf("✅ Correctly rejected box with no container: %v", err)
 	}
 
 	// Test getting SSH details (this will fail since no data, but tests the logic)
-	machine.ContainerID = &[]string{"test-container"}[0]
+	box.ContainerID = &[]string{"test-container"}[0]
 
-	// This will fail because there's no machine in the database, but it tests the SSH details logic
-	_, err = server.GetMachineSSHDetails(t.Context(), 999)
+	// This will fail because there's no box in the database, but it tests the SSH details logic
+	_, err = server.GetBoxSSHDetails(t.Context(), 999)
 	if err == nil {
-		t.Error("Expected error for non-existent machine SSH details")
+		t.Error("Expected error for non-existent box SSH details")
 	} else {
-		t.Logf("✅ Correctly failed to get SSH details for non-existent machine: %v", err)
+		t.Logf("✅ Correctly failed to get SSH details for non-existent box: %v", err)
 	}
 
-	t.Log("✅ Machine access implementation logic tested successfully")
+	t.Log("✅ Box access implementation logic tested successfully")
 }
 
-// TestRealMachineAccessE2E tests the complete end-to-end machine access via sshpiper with real containers
-func TestRealMachineAccessE2E(t *testing.T) {
+// TestRealBoxAccessE2E tests the complete end-to-end box access via sshpiper with real containers
+func TestRealBoxAccessE2E(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
-		t.Skip("Skipping real machine access E2E test in short mode")
+		t.Skip("Skipping real box access E2E test in short mode")
 	}
 
 	server := NewTestServer(t)
 
 	// Create test user and team
 	email := "test-e2e@example.com"
-	// teamName no longer used - machines are globally unique
+	// teamName no longer used - boxes are globally unique
 
 	userID := server.createTestUser(t, email)
 
@@ -110,7 +110,7 @@ func TestRealMachineAccessE2E(t *testing.T) {
 
 	req := &container.CreateContainerRequest{
 		AllocID: allocID,
-		Name:    "test-machine",
+		Name:    "test-box",
 		Image:   "ubuntu:22.04",
 	}
 
@@ -138,22 +138,22 @@ func TestRealMachineAccessE2E(t *testing.T) {
 		SSHPort:           createdContainer.SSHPort,
 	}
 
-	if err := server.createMachineWithSSH(t.Context(), userID, allocID, "test-machine", createdContainer.ID, "ubuntu:22.04", sshKeys, createdContainer.SSHPort); err != nil {
-		t.Fatalf("Failed to store machine with SSH keys: %v", err)
+	if err := server.createBoxWithSSH(t.Context(), userID, allocID, "test-box", createdContainer.ID, "ubuntu:22.04", createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
+		t.Fatalf("Failed to store box with SSH keys: %v", err)
 	}
 
-	t.Log("✅ Machine stored in database with SSH keys")
+	t.Log("✅ Box stored in database with SSH keys")
 
-	// Test finding the machine
-	machine := server.FindMachineByNameForUser(t.Context(), userID, "test-machine")
-	if machine == nil {
-		t.Fatal("Expected to find test machine")
+	// Test finding the box
+	box := server.FindBoxByNameForUser(t.Context(), userID, "test-box")
+	if box == nil {
+		t.Fatal("Expected to find test box")
 	}
 
-	t.Logf("✅ Machine found in database (ID: %d)", machine.ID)
+	t.Logf("✅ Box found in database (ID: %d)", box.ID)
 
 	// Test getting SSH details from database
-	sshDetails, err := server.GetMachineSSHDetails(t.Context(), machine.ID)
+	sshDetails, err := server.GetBoxSSHDetails(t.Context(), box.ID)
 	if err != nil {
 		t.Fatalf("Failed to get SSH details: %v", err)
 	}
@@ -161,24 +161,24 @@ func TestRealMachineAccessE2E(t *testing.T) {
 	t.Logf("✅ SSH details retrieved (port: %d, has private key: %t)", sshDetails.Port, sshDetails.PrivateKey != "")
 
 	// Test getting container host port
-	host, port, err := server.GetContainerHostPort(*machine.ContainerID, machine.AllocID)
+	host, port, err := server.GetContainerHostPort(*box.ContainerID, box.AllocID)
 	if err != nil {
 		t.Fatalf("Failed to get container host port: %v", err)
 	}
 
 	t.Logf("✅ Container host port retrieved (host: %s, port: %d)", host, port)
 
-	// Test the complete machine access flow
-	upstream, err := server.piperPlugin.handleMachineAccess(machine, userID, "test-conn-id")
+	// Test the complete box access flow
+	upstream, err := server.piperPlugin.handleBoxAccess(box, userID, "test-conn-id")
 	if err != nil {
-		t.Fatalf("Failed to handle machine access: %v", err)
+		t.Fatalf("Failed to handle box access: %v", err)
 	}
 
 	if upstream == nil {
 		t.Fatal("Expected upstream configuration")
 	}
 
-	t.Logf("✅ Machine access upstream created:")
+	t.Logf("✅ Box access upstream created:")
 	t.Logf("   Host: %s", upstream.Host)
 	t.Logf("   Port: %d", upstream.Port)
 	t.Logf("   User: %s", upstream.UserName)
@@ -203,37 +203,37 @@ func TestLegacyContainerSSHSetup(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
 	email := "legacy-test@example.com"
-	// teamName no longer used - machines are globally unique
+	// teamName no longer used - boxes are globally unique
 
 	userID := server.createTestUser(t, email)
 
 	allocID := "test-alloc-" + userID[:8]
 	server.createTestAlloc(t, allocID, userID)
 
-	// Create a legacy machine WITHOUT SSH details (simulating old containers)
+	// Create a legacy box WITHOUT SSH details (simulating old containers)
 	containerID := "legacy-container-123"
 	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO machines (
+			INSERT INTO boxes (
 				alloc_id, name, status, image, container_id, created_by_user_id
 			) VALUES (?, ?, ?, ?, ?, ?)
-		`, allocID, "legacy-machine", "running", "ubuntu:22.04", containerID, userID)
+		`, allocID, "legacy-box", "running", "ubuntu:22.04", containerID, userID)
 		return err
 	})
 	if err != nil {
-		t.Fatalf("Failed to create legacy machine: %v", err)
+		t.Fatalf("Failed to create legacy box: %v", err)
 	}
 
-	t.Log("✅ Legacy machine created (no SSH data)")
+	t.Log("✅ Legacy box created (no SSH data)")
 
-	// Find the machine
-	machine := server.FindMachineByNameForUser(t.Context(), userID, "legacy-machine")
-	if machine == nil {
-		t.Fatal("Expected to find legacy machine")
+	// Find the box
+	box := server.FindBoxByNameForUser(t.Context(), userID, "legacy-box")
+	if box == nil {
+		t.Fatal("Expected to find legacy box")
 	}
 
 	// Try to get SSH details - this should trigger SSH setup
-	sshDetails, err := server.GetMachineSSHDetails(t.Context(), machine.ID)
+	sshDetails, err := server.GetBoxSSHDetails(t.Context(), box.ID)
 	if err != nil {
 		// This is expected to fail since we can't actually set up SSH without a real container
 		// But we can verify the error handling
@@ -548,8 +548,8 @@ func (s *Server) createTestAlloc(t *testing.T, allocID, ownerUserID string) {
 	// Create alloc for user
 	err := s.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT OR REPLACE INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at, stripe_customer_id, billing_email)
-			VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'), '', 'test@example.com')
+			INSERT OR REPLACE INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email)
+			VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'), '', 'test@example.com')
 		`, allocID, ownerUserID)
 		return err
 	})

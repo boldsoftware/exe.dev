@@ -29,7 +29,7 @@ type TerminalSession struct {
 	LastEventClientID int
 	EventsMutex       sync.Mutex
 	LastActivity      time.Time
-	MachineName       string
+	BoxName           string
 	UserID            string
 }
 
@@ -133,22 +133,22 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get machine name from subdomain
-	machineName, err := s.parseTerminalHostname(r.Host)
+	// Get box name from subdomain
+	boxName, err := s.parseTerminalHostname(r.Host)
 	if err != nil {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}
 
-	// Create session key combining user, machine, and terminal ID
-	sessionKey := fmt.Sprintf("%s:%s:%s", userID, machineName, terminalID)
+	// Create session key combining user, box, and terminal ID
+	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
 
 	// Get or create terminal session
 	terminalSessionsMutex.Lock()
 	session, exists := terminalSessions[sessionKey]
 	if !exists {
 		// Create new terminal session
-		session, err = s.createTerminalSession(r.Context(), userID, machineName, terminalID)
+		session, err = s.createTerminalSession(r.Context(), userID, boxName, terminalID)
 		if err != nil {
 			terminalSessionsMutex.Unlock()
 			http.Error(w, fmt.Sprintf("Failed to create terminal: %v", err), http.StatusInternalServerError)
@@ -225,15 +225,15 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get machine name from subdomain
-	machineName, err := s.parseTerminalHostname(r.Host)
+	// Get box name from subdomain
+	boxName, err := s.parseTerminalHostname(r.Host)
 	if err != nil {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}
 
 	// Create session key
-	sessionKey := fmt.Sprintf("%s:%s:%s", userID, machineName, terminalID)
+	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
 
 	// Find terminal session
 	terminalSessionsMutex.RLock()
@@ -289,34 +289,34 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// createTerminalSession creates a new terminal session for a user's machine
-func (s *Server) createTerminalSession(ctx context.Context, userID, machineName, terminalID string) (*TerminalSession, error) {
+// createTerminalSession creates a new terminal session for a user's box
+func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, terminalID string) (*TerminalSession, error) {
 	session := &TerminalSession{
 		EventsClients:     make(map[chan []byte]bool),
 		LastEventClientID: 0,
 		LastActivity:      time.Now(),
-		MachineName:       machineName,
+		BoxName:           boxName,
 		UserID:            userID,
 	}
 
-	// Get machine information
-	machine, err := s.getMachineForUserByID(ctx, userID, machineName)
+	// Get box information
+	box, err := s.getBoxForUserByID(ctx, userID, boxName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get machine: %w", err)
+		return nil, fmt.Errorf("failed to get box: %w", err)
 	}
 
-	// Check if machine is running
-	if machine.Status != "running" {
-		// Try to start the machine if it's stopped
-		if machine.Status == "exited" || machine.Status == "paused" {
-			err = s.startMachine(ctx, machine)
+	// Check if box is running
+	if box.Status != "running" {
+		// Try to start the box if it's stopped
+		if box.Status == "exited" || box.Status == "paused" {
+			err = s.startBox(ctx, box)
 			if err != nil {
-				return nil, fmt.Errorf("failed to start machine: %w", err)
+				return nil, fmt.Errorf("failed to start box: %w", err)
 			}
-			// Wait a moment for the machine to start
+			// Wait a moment for the box to start
 			time.Sleep(2 * time.Second)
 		} else {
-			return nil, fmt.Errorf("machine is in state %s and cannot be accessed", machine.Status)
+			return nil, fmt.Errorf("box is in state %s and cannot be accessed", box.Status)
 		}
 	}
 
@@ -325,7 +325,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, machineName,
 	// This is a simplified version that creates a pseudo-terminal session
 
 	// Use docker exec to create a shell in the container
-	err = s.createContainerExecSession(session, machine)
+	err = s.createContainerExecSession(session, box)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container session: %w", err)
 	}
@@ -337,13 +337,13 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, machineName,
 }
 
 // createContainerExecSession creates a docker exec session for the terminal
-func (s *Server) createContainerExecSession(session *TerminalSession, machine *Machine) error {
-	if machine.ContainerID == nil {
-		return fmt.Errorf("machine has no container ID")
+func (s *Server) createContainerExecSession(session *TerminalSession, box *Box) error {
+	if box.ContainerID == nil {
+		return fmt.Errorf("box has no container ID")
 	}
 
 	// Create docker exec command
-	cmd := exec.Command("docker", "exec", "-it", *machine.ContainerID, "/bin/sh")
+	cmd := exec.Command("docker", "exec", "-it", *box.ContainerID, "/bin/sh")
 
 	// Create PTY for the command
 	ptyFile, err := pty.Start(cmd)
@@ -394,64 +394,64 @@ func (s *Server) readFromPtyAndBroadcast(session *TerminalSession) {
 	}
 }
 
-// Helper functions for machine management
+// Helper functions for box management
 
-// getMachineForUserByID gets a machine for a user using user ID
-func (s *Server) getMachineForUserByID(ctx context.Context, userID, machineName string) (*Machine, error) {
+// getBoxForUserByID gets a box for a user using user ID
+func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) (*Box, error) {
 	// Get user's alloc
 	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
 		return nil, fmt.Errorf("user has no allocation")
 	}
 
-	// Get the machine using the same pattern as existing code
-	var machine Machine
+	// Get the box using the same pattern as existing code
+	var box Box
 	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
 			SELECT id, alloc_id, name, status, image, container_id,
 			       created_by_user_id, created_at, updated_at,
-			       last_started_at, docker_host, routes,
+			       last_started_at, routes,
 			       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 			       ssh_host_certificate, ssh_client_private_key, ssh_port
-			FROM machines
-			WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
-			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
-			&machine.DockerHost, &machine.Routes,
-			&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey,
-			&machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort)
+			FROM boxes
+			WHERE name = ? AND alloc_id = ?`, boxName, alloc.AllocID).Scan(
+			&box.ID, &box.AllocID, &box.Name, &box.Status,
+			&box.Image, &box.ContainerID, &box.CreatedByUserID,
+			&box.CreatedAt, &box.UpdatedAt, &box.LastStartedAt,
+			&box.Routes,
+			&box.SSHServerIdentityKey, &box.SSHAuthorizedKeys, &box.SSHCAPublicKey,
+			&box.SSHHostCertificate, &box.SSHClientPrivateKey, &box.SSHPort)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("machine '%s' not found or access denied", machineName)
+			return nil, fmt.Errorf("box '%s' not found or access denied", boxName)
 		}
 		return nil, fmt.Errorf("database error: %v", err)
 	}
 
-	return &machine, nil
+	return &box, nil
 }
 
-// startMachine starts a stopped machine
-func (s *Server) startMachine(ctx context.Context, machine *Machine) error {
-	// Use the container management system to start the machine
+// startBox starts a stopped box
+func (s *Server) startBox(ctx context.Context, box *Box) error {
+	// Use the container management system to start the box
 	if s.containerManager == nil {
 		return fmt.Errorf("container manager not available")
 	}
 
-	if machine.ContainerID == nil {
-		return fmt.Errorf("machine has no container ID")
+	if box.ContainerID == nil {
+		return fmt.Errorf("box has no container ID")
 	}
 
-	err := s.containerManager.StartContainer(ctx, machine.AllocID, *machine.ContainerID)
+	err := s.containerManager.StartContainer(ctx, box.AllocID, *box.ContainerID)
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
-	// Update machine status in database
+	// Update box status in database
 	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec("UPDATE machines SET status = 'running', updated_at = ? WHERE id = ?",
-			time.Now(), machine.ID)
+		_, err := tx.Exec("UPDATE boxes SET status = 'running', updated_at = ? WHERE id = ?",
+			time.Now(), box.ID)
 		return err
 	})
 	return err
@@ -482,10 +482,10 @@ func (s *Server) isTerminalRequest(host string) bool {
 
 	// Check for terminal patterns
 	if s.devMode != "" {
-		// Development mode: machine.xterm.localhost
+		// Development mode: box.xterm.localhost
 		return strings.HasSuffix(hostname, ".xterm.localhost")
 	} else {
-		// Production mode: machine.xterm.exe.dev
+		// Production mode: box.xterm.exe.dev
 		return strings.HasSuffix(hostname, ".xterm.exe.dev")
 	}
 }
@@ -550,31 +550,31 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// parseTerminalHostname extracts machine name from terminal hostname
+// parseTerminalHostname extracts box name from terminal hostname
 func (s *Server) parseTerminalHostname(hostname string) (string, error) {
 	// Remove port if present
 	if idx := strings.LastIndex(hostname, ":"); idx > 0 {
 		hostname = hostname[:idx]
 	}
 
-	// Extract machine name from hostname
+	// Extract box name from hostname
 	if s.devMode != "" {
-		// Development: machine.xterm.localhost
+		// Development: box.xterm.localhost
 		if strings.HasSuffix(hostname, ".xterm.localhost") {
-			machineName := strings.TrimSuffix(hostname, ".xterm.localhost")
-			if machineName == "" || strings.Contains(machineName, ".") {
-				return "", fmt.Errorf("invalid machine name")
+			boxName := strings.TrimSuffix(hostname, ".xterm.localhost")
+			if boxName == "" || strings.Contains(boxName, ".") {
+				return "", fmt.Errorf("invalid box name")
 			}
-			return machineName, nil
+			return boxName, nil
 		}
 	} else {
-		// Production: machine.xterm.exe.dev
+		// Production: box.xterm.exe.dev
 		if strings.HasSuffix(hostname, ".xterm.exe.dev") {
-			machineName := strings.TrimSuffix(hostname, ".xterm.exe.dev")
-			if machineName == "" || strings.Contains(machineName, ".") {
-				return "", fmt.Errorf("invalid machine name")
+			boxName := strings.TrimSuffix(hostname, ".xterm.exe.dev")
+			if boxName == "" || strings.Contains(boxName, ".") {
+				return "", fmt.Errorf("invalid box name")
 			}
-			return machineName, nil
+			return boxName, nil
 		}
 	}
 

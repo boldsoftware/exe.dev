@@ -19,7 +19,7 @@ type SSHDetails struct {
 	Port       int
 	PrivateKey string
 	HostKey    string
-	DockerHost *string // DOCKER_HOST value where this container runs
+	Ctrhost    *string // Container host where this container runs
 	User       string  // User to connect as (from Docker image USER directive)
 }
 

@@ -38,8 +38,8 @@ func TestWithStripeMock(t *testing.T) {
 
 	// Create allocation using sqlite.DB transaction
 	err = db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at)
-				VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'))`,
+		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at)
+				VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'))`,
 			allocID, userID)
 		return err
 	})
@@ -146,8 +146,8 @@ func TestEnvironmentBasedMocking(t *testing.T) {
 
 	// Create allocation using sqlite.DB transaction
 	err = db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, created_at)
-				VALUES (?, ?, 'medium', 'aws-us-west-2', '', datetime('now'))`,
+		_, err = tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at)
+				VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'))`,
 			allocID, userID)
 		return err
 	})

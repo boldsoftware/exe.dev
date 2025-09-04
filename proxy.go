@@ -28,7 +28,7 @@ import (
 )
 
 // handleProxyRequest handles requests that should be proxied to containers
-// This handler is called when the Host header matches machine.team.exe.dev or machine.team.localhost
+// This handler is called when the Host header matches box.team.exe.dev or box.team.localhost
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	if !s.quietMode {
 		slog.Info("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
@@ -45,29 +45,29 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract machine and team from Host header
+	// Extract box and team from Host header
 	hostname := r.Host
 	// Remove port if present
 	if idx := strings.LastIndex(hostname, ":"); idx > 0 {
 		hostname = hostname[:idx]
 	}
 
-	// Parse hostname to extract machine name
-	machineName, err := s.parseProxyHostname(hostname)
+	// Parse hostname to extract box name
+	boxName, err := s.parseProxyHostname(hostname)
 	if err != nil {
 		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
 		return
 	}
 
-	// Find the machine
-	machine, err := s.getMachineByName(r.Context(), machineName)
+	// Find the box
+	box, err := s.getBoxByName(r.Context(), boxName)
 	if err != nil {
-		http.Error(w, "Machine not found", http.StatusNotFound)
+		http.Error(w, "Box not found", http.StatusNotFound)
 		return
 	}
 
-	// Get the routes for the machine
-	routes, err := machine.GetRoutes()
+	// Get the routes for the box
+	routes, err := box.GetRoutes()
 	if err != nil {
 		http.Error(w, "Error loading routes", http.StatusInternalServerError)
 		return
@@ -90,16 +90,16 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// User is authenticated, check if they have access to this machine
-		// Machine must belong to user's alloc
+		// User is authenticated, check if they have access to this box
+		// Box must belong to user's alloc
 		alloc, err := s.getUserAlloc(r.Context(), userID)
 		if err != nil || alloc == nil {
 			http.Error(w, "Error checking user allocation", http.StatusInternalServerError)
 			return
 		}
-		if machine.AllocID != alloc.AllocID {
-			// User is authenticated but machine belongs to different alloc
-			http.Error(w, "Forbidden: You do not have access to this machine", http.StatusForbidden)
+		if box.AllocID != alloc.AllocID {
+			// User is authenticated but box belongs to different alloc
+			http.Error(w, "Forbidden: You do not have access to this box", http.StatusForbidden)
 			return
 		}
 	}
@@ -109,7 +109,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		// Show debug info for /__exe.dev/debug in dev mode
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
-		fmt.Fprintf(w, "Machine: %s\n", machineName)
+		fmt.Fprintf(w, "Box: %s\n", boxName)
 		fmt.Fprintf(w, "Matched route: %s (priority %d)\n", matchingRoute.Name, matchingRoute.Priority)
 		fmt.Fprintf(w, "Policy: %s\n", matchingRoute.Policy)
 		fmt.Fprintf(w, "Request method: %s\n", r.Method)
@@ -129,10 +129,10 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Proxy the request to the container
-	err = s.proxyToContainer(w, r, machine, matchingRoute)
+	err = s.proxyToContainer(w, r, box, matchingRoute)
 	if err != nil {
 		if !s.quietMode {
-			slog.Error("Failed to proxy request", "error", err, "machine", machineName)
+			slog.Error("Failed to proxy request", "error", err, "box", boxName)
 		}
 		http.Error(w, "Failed to proxy request to container", http.StatusBadGateway)
 		return
@@ -160,9 +160,9 @@ func (s *Server) isProxyRequest(host string) bool {
 	return false
 }
 
-// parseProxyHostname extracts machine and team names from hostname
-// Supports both machine.team.exe.dev and machine.team.localhost formats
-func (s *Server) parseProxyHostname(hostname string) (machine string, err error) {
+// parseProxyHostname extracts box and team names from hostname
+// Supports both box.team.exe.dev and box.team.localhost formats
+func (s *Server) parseProxyHostname(hostname string) (box string, err error) {
 	// Remove domain suffix based on dev mode
 	expectedDomain := s.getMainDomain()
 	expectedSuffix := "." + expectedDomain
@@ -179,9 +179,9 @@ func (s *Server) parseProxyHostname(hostname string) (machine string, err error)
 		}
 	}
 
-	// The remaining part is just the machine name
+	// The remaining part is just the box name
 	if hostname == "" || strings.Contains(hostname, ".") {
-		return "", fmt.Errorf("invalid machine name")
+		return "", fmt.Errorf("invalid box name")
 	}
 
 	return hostname, nil
@@ -189,9 +189,9 @@ func (s *Server) parseProxyHostname(hostname string) (machine string, err error)
 
 // findMatchingRoute finds the best matching route for the request
 // Routes are matched by priority (lower number = higher priority)
-func (s *Server) findMatchingRoute(routes MachineRoutes, r *http.Request) *Route {
+func (s *Server) findMatchingRoute(routes BoxRoutes, r *http.Request) *Route {
 	// Sort routes by priority (lower number = higher priority)
-	sortedRoutes := make(MachineRoutes, len(routes))
+	sortedRoutes := make(BoxRoutes, len(routes))
 	copy(sortedRoutes, routes)
 
 	// Use Go's sort package with secondary sort by name for consistent ordering
@@ -405,9 +405,9 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRouteCommand(ctx context.Context, w io.Writer, publicKey, teamName string, args []string) {
 	// Define route help text
 	routeHelpText := "\r\n\033[1;36mRoute subcommands:\033[0m\r\n\r\n" +
-		"\033[1mroute <machine> list\033[0m           - List all routes\r\n" +
-		"\033[1mroute <machine> add [flags]\033[0m    - Add a new route\r\n" +
-		"\033[1mroute <machine> remove <name>\033[0m  - Remove a route by name\r\n\r\n" +
+		"\033[1mroute <box> list\033[0m           - List all routes\r\n" +
+		"\033[1mroute <box> add [flags]\033[0m    - Add a new route\r\n" +
+		"\033[1mroute <box> remove <name>\033[0m  - Remove a route by name\r\n\r\n" +
 		"\033[1mAdd flags:\033[0m\r\n" +
 		"  \033[1m--name=<name>\033[0m       Route name (auto-generated if not specified)\r\n" +
 		"  \033[1m--priority=<num>\033[0m    Priority (auto-assigned if not specified)\r\n" +
@@ -417,44 +417,44 @@ func (s *Server) handleRouteCommand(ctx context.Context, w io.Writer, publicKey,
 		"  \033[1m--ports=<ports>\033[0m     Allowed ports (default: '80,8000,8080,8888')\r\n\r\n"
 
 	if len(args) < 2 {
-		fmt.Fprintf(w, "\033[1;31mError: Please specify machine name and subcommand\033[0m\r\n")
+		fmt.Fprintf(w, "\033[1;31mError: Please specify box name and subcommand\033[0m\r\n")
 		fmt.Fprint(w, routeHelpText)
 		return
 	}
 
-	machineName := args[0]
+	boxName := args[0]
 	subCmd := args[1]
 	subArgs := args[2:]
 
 	switch subCmd {
 	case "list":
-		s.handleRouteList(ctx, w, publicKey, teamName, machineName)
+		s.handleRouteList(ctx, w, publicKey, teamName, boxName)
 	case "add":
-		s.handleRouteAdd(ctx, w, publicKey, teamName, machineName, subArgs)
+		s.handleRouteAdd(ctx, w, publicKey, teamName, boxName, subArgs)
 	case "remove":
-		s.handleRouteRemove(ctx, w, publicKey, teamName, machineName, subArgs)
+		s.handleRouteRemove(ctx, w, publicKey, teamName, boxName, subArgs)
 	default:
 		fmt.Fprintf(w, "\033[1;31mUnknown route command: %s\033[0m\r\n", subCmd)
 		fmt.Fprint(w, routeHelpText)
 	}
 }
 
-func (s *Server) handleRouteList(ctx context.Context, w io.Writer, publicKey, teamName, machineName string) {
-	// Get machine
-	machine, err := s.getMachineForUser(ctx, publicKey, machineName)
+func (s *Server) handleRouteList(ctx context.Context, w io.Writer, publicKey, teamName, boxName string) {
+	// Get box
+	box, err := s.getBoxForUser(ctx, publicKey, boxName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
 	}
 
 	// Get routes
-	routes, err := machine.GetRoutes()
+	routes, err := box.GetRoutes()
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
 		return
 	}
 
-	fmt.Fprintf(w, "\r\n\033[1;36mRoutes for machine '%s':\033[0m\r\n\r\n", machineName)
+	fmt.Fprintf(w, "\r\n\033[1;36mRoutes for box '%s':\033[0m\r\n\r\n", boxName)
 
 	if len(routes) == 0 {
 		fmt.Fprintf(w, "No routes configured.\r\n")
@@ -477,7 +477,7 @@ func (s *Server) handleRouteList(ctx context.Context, w io.Writer, publicKey, te
 	}
 }
 
-func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, teamName, machineName string, args []string) {
+func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, teamName, boxName string, args []string) {
 	// Create a FlagSet for parsing
 	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
 	var name, methodsStr, prefix, policy, portsStr string
@@ -506,15 +506,15 @@ func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, tea
 		name = s.generateRandomRouteName()
 	}
 
-	// Get machine
-	machine, err := s.getMachineForUser(ctx, publicKey, machineName)
+	// Get box
+	box, err := s.getBoxForUser(ctx, publicKey, boxName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
 	}
 
 	// Get existing routes
-	routes, err := machine.GetRoutes()
+	routes, err := box.GetRoutes()
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
 		return
@@ -587,8 +587,8 @@ func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, tea
 	// Add to routes list
 	routes = append(routes, newRoute)
 
-	// Set routes back on machine
-	err = machine.SetRoutes(routes)
+	// Set routes back on box
+	err = box.SetRoutes(routes)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
 		return
@@ -597,9 +597,9 @@ func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, tea
 	// Update database
 	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			UPDATE machines SET routes = ?
+			UPDATE boxes SET routes = ?
 			WHERE name = ?`,
-			*machine.Routes, machineName)
+			*box.Routes, boxName)
 		return err
 	})
 	if err != nil {
@@ -610,31 +610,31 @@ func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, tea
 	fmt.Fprintf(w, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
 }
 
-func (s *Server) handleRouteRemove(ctx context.Context, w io.Writer, publicKey, teamName, machineName string, args []string) {
+func (s *Server) handleRouteRemove(ctx context.Context, w io.Writer, publicKey, teamName, boxName string, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(w, "\033[1;31mError: Please specify route name\033[0m\r\n")
-		fmt.Fprintf(w, "Usage: route %s remove <name>\r\n", machineName)
+		fmt.Fprintf(w, "Usage: route %s remove <name>\r\n", boxName)
 		return
 	}
 
 	routeName := args[0]
 
-	// Get machine
-	machine, err := s.getMachineForUser(ctx, publicKey, machineName)
+	// Get box
+	box, err := s.getBoxForUser(ctx, publicKey, boxName)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
 		return
 	}
 
 	// Get existing routes
-	routes, err := machine.GetRoutes()
+	routes, err := box.GetRoutes()
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
 		return
 	}
 
 	// Find and remove the route
-	var newRoutes MachineRoutes
+	var newRoutes BoxRoutes
 	found := false
 	for _, route := range routes {
 		if route.Name == routeName {
@@ -649,8 +649,8 @@ func (s *Server) handleRouteRemove(ctx context.Context, w io.Writer, publicKey, 
 		return
 	}
 
-	// Set routes back on machine
-	err = machine.SetRoutes(newRoutes)
+	// Set routes back on box
+	err = box.SetRoutes(newRoutes)
 	if err != nil {
 		fmt.Fprintf(w, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
 		return
@@ -659,9 +659,9 @@ func (s *Server) handleRouteRemove(ctx context.Context, w io.Writer, publicKey, 
 	// Update database
 	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			UPDATE machines SET routes = ?
+			UPDATE boxes SET routes = ?
 			WHERE name = ?`,
-			*machine.Routes, machineName)
+			*box.Routes, boxName)
 		return err
 	})
 	if err != nil {
@@ -672,8 +672,8 @@ func (s *Server) handleRouteRemove(ctx context.Context, w io.Writer, publicKey, 
 	fmt.Fprintf(w, "\033[1;32mRoute '%s' removed successfully\033[0m\r\n", routeName)
 }
 
-// getMachineForUser retrieves a machine for the given user/team/name
-func (s *Server) getMachineForUser(ctx context.Context, publicKey, machineName string) (*Machine, error) {
+// getBoxForUser retrieves a box for the given user/team/name
+func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*Box, error) {
 	// Get user from public key
 	user, err := s.getUserByPublicKey(ctx, publicKey)
 	if err != nil || user == nil {
@@ -686,28 +686,28 @@ func (s *Server) getMachineForUser(ctx context.Context, publicKey, machineName s
 		return nil, fmt.Errorf("user has no allocation")
 	}
 
-	// Get the machine
-	var machine Machine
+	// Get the box
+	var box Box
 	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
 			SELECT id, alloc_id, name, status, image, container_id,
 			       created_by_user_id, created_at, updated_at,
-			       last_started_at, docker_host, routes
-			FROM machines
-			WHERE name = ? AND alloc_id = ?`, machineName, alloc.AllocID).Scan(
-			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt,
-			&machine.DockerHost, &machine.Routes)
+			       last_started_at, routes
+			FROM boxes
+			WHERE name = ? AND alloc_id = ?`, boxName, alloc.AllocID).Scan(
+			&box.ID, &box.AllocID, &box.Name, &box.Status,
+			&box.Image, &box.ContainerID, &box.CreatedByUserID,
+			&box.CreatedAt, &box.UpdatedAt, &box.LastStartedAt,
+			&box.Routes)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("machine '%s' not found or access denied", machineName)
+			return nil, fmt.Errorf("box '%s' not found or access denied", boxName)
 		}
 		return nil, fmt.Errorf("database error: %v", err)
 	}
 
-	return &machine, nil
+	return &box, nil
 }
 
 // generateRandomRouteName generates a random route name using famous roads
@@ -733,14 +733,14 @@ func (s *Server) generateRandomRouteName() string {
 }
 
 // proxyToContainer proxies the HTTP request to a container via SSH port forwarding
-func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machine *Machine, route *Route) error {
-	// Validate machine has SSH credentials
-	if machine.SSHClientPrivateKey == nil || machine.SSHPort == nil {
-		return fmt.Errorf("machine missing SSH credentials")
+func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *Box, route *Route) error {
+	// Validate box has SSH credentials
+	if box.SSHClientPrivateKey == nil || box.SSHPort == nil {
+		return fmt.Errorf("box missing SSH credentials")
 	}
 
 	// In test mode, skip actual SSH connection if SSH key is fake
-	if s.testMode && (*machine.SSHClientPrivateKey == "test-client-key" || strings.HasPrefix(*machine.SSHClientPrivateKey, "test-")) {
+	if s.testMode && (*box.SSHClientPrivateKey == "test-client-key" || strings.HasPrefix(*box.SSHClientPrivateKey, "test-")) {
 		// For tests, just simulate a successful proxy response
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Test proxy response from route: %s\n", route.Name)
@@ -748,27 +748,41 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, machin
 	}
 
 	// Parse the SSH private key
-	sshKey, err := container.CreateSSHSigner(*machine.SSHClientPrivateKey)
+	sshKey, err := container.CreateSSHSigner(*box.SSHClientPrivateKey)
 	if err != nil {
 		return fmt.Errorf("failed to parse SSH private key: %w", err)
 	}
 
-	// Determine SSH host address
+	// Get the allocation to find the ctrhost
+	var ctrhost string
+	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT ctrhost FROM allocs WHERE alloc_id = ?`, box.AllocID).Scan(&ctrhost)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get allocation ctrhost: %w", err)
+	}
+
+	// Determine SSH host address from the allocation's ctrhost
 	sshHost := "localhost"
-	if machine.DockerHost != nil && *machine.DockerHost != "" {
-		// Extract hostname from docker host URL if available
-		if u, err := url.Parse(*machine.DockerHost); err == nil && u.Host != "" {
-			if host, _, err := net.SplitHostPort(u.Host); err == nil {
-				sshHost = host
-			} else {
-				sshHost = u.Host
+	if ctrhost != "" {
+		// Extract hostname from ctrhost URL if it's a URL format
+		if strings.Contains(ctrhost, "://") {
+			if u, err := url.Parse(ctrhost); err == nil && u.Host != "" {
+				if host, _, err := net.SplitHostPort(u.Host); err == nil {
+					sshHost = host
+				} else {
+					sshHost = u.Host
+				}
 			}
+		} else {
+			// Direct hostname
+			sshHost = ctrhost
 		}
 	}
 
 	// Try each port in the route until one succeeds
 	for _, port := range route.Ports {
-		err = s.proxyViaSSHPortForward(w, r, sshHost, *machine.SSHPort, sshKey, port)
+		err = s.proxyViaSSHPortForward(w, r, sshHost, *box.SSHPort, sshKey, port)
 		if err == nil {
 			return nil // Success!
 		}

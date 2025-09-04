@@ -189,7 +189,7 @@ type Alloc struct {
 	UserID           string
 	AllocType        AllocType
 	Region           Region
-	DockerHost       sql.NullString // Docker host where this alloc's containers run
+	Ctrhost          string         // Container host where this alloc's resources are
 	IPRange          sql.NullString // IP range assigned to this alloc (e.g., "10.42.1.0/24")
 	CreatedAt        time.Time
 	StripeCustomerID sql.NullString
@@ -211,11 +211,11 @@ type Route struct {
 	Ports    []int       `json:"ports"`    // Allowed destination ports. We try all of them until success.
 }
 
-// MachineRoutes represents the complete routing configuration for a machine
-type MachineRoutes []Route
+// BoxRoutes represents the complete routing configuration for a box
+type BoxRoutes []Route
 
-// Machine represents a container/VM
-type Machine struct {
+// Box represents a container/VM
+type Box struct {
 	ID              int
 	AllocID         string
 	Name            string
@@ -226,7 +226,6 @@ type Machine struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	LastStartedAt   *time.Time
-	DockerHost      *string // DOCKER_HOST value where this container runs
 	Routes          *string // JSON-encoded routing configuration
 	// SSH fields for container access
 	SSHServerIdentityKey *string // SSH server private key (PEM format)
@@ -238,35 +237,35 @@ type Machine struct {
 	SSHUser              *string // User to connect as (from Docker image USER directive)
 }
 
-// GetRoutes parses and returns the machine's routing configuration
-func (m *Machine) GetRoutes() (MachineRoutes, error) {
-	if m.Routes == nil || *m.Routes == "" {
-		return m.getDefaultRoutes(), nil
+// GetRoutes parses and returns the box's routing configuration
+func (b *Box) GetRoutes() (BoxRoutes, error) {
+	if b.Routes == nil || *b.Routes == "" {
+		return b.getDefaultRoutes(), nil
 	}
 
-	var routes MachineRoutes
-	err := json.Unmarshal([]byte(*m.Routes), &routes)
+	var routes BoxRoutes
+	err := json.Unmarshal([]byte(*b.Routes), &routes)
 	if err != nil {
-		return m.getDefaultRoutes(), err
+		return b.getDefaultRoutes(), err
 	}
 
 	return routes, nil
 }
 
-// SetRoutes sets the machine's routing configuration
-func (m *Machine) SetRoutes(routes MachineRoutes) error {
+// SetRoutes sets the box's routing configuration
+func (b *Box) SetRoutes(routes BoxRoutes) error {
 	data, err := json.Marshal(routes)
 	if err != nil {
 		return err
 	}
 	routesStr := string(data)
-	m.Routes = &routesStr
+	b.Routes = &routesStr
 	return nil
 }
 
 // getDefaultRoutes returns the default routing configuration
-func (m *Machine) getDefaultRoutes() MachineRoutes {
-	return MachineRoutes{
+func (b *Box) getDefaultRoutes() BoxRoutes {
+	return BoxRoutes{
 		{
 			Name:     "default",
 			Priority: 10,
@@ -280,16 +279,15 @@ func (m *Machine) getDefaultRoutes() MachineRoutes {
 
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
-	User     User
-	SSHKeys  []SSHKey
-	Machines []Machine
+	User    User
+	SSHKeys []SSHKey
+	Boxes   []Box
 }
 
 // SSHKey represents an SSH key for the user page
 type SSHKey struct {
 	UserID    string
 	PublicKey string
-	Verified  bool
 }
 
 // EmailVerification represents a pending email verification (in-memory)
@@ -304,7 +302,7 @@ type EmailVerification struct {
 // MagicSecret represents a temporary authentication secret for proxy magic URLs
 type MagicSecret struct {
 	UserID      string
-	MachineName string // Direct machine name instead of team
+	BoxName     string // Direct box name instead of team
 	RedirectURL string
 	ExpiresAt   time.Time
 	CreatedAt   time.Time
@@ -1137,7 +1135,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	// TODO: Implement container listing/management
-	fmt.Fprintf(w, `{"containers":[],"message":"Machine management not yet implemented"}`)
+	fmt.Fprintf(w, `{"containers":[],"message":"Box management not yet implemented"}`)
 }
 
 // showDeviceVerificationForm shows a confirmation form for device verification
@@ -1797,8 +1795,8 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		hostname = returnHost[:idx]
 	}
 
-	// Parse hostname to get machine name
-	machineName, err := s.parseProxyHostname(hostname)
+	// Parse hostname to get box name
+	boxName, err := s.parseProxyHostname(hostname)
 	if err != nil {
 		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
 		return
@@ -1815,7 +1813,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		ConfirmURL string
 		CancelURL  string
 	}{
-		TeamName:   machineName,
+		TeamName:   boxName,
 		SiteDomain: hostname,
 		ConfirmURL: confirmURL,
 		CancelURL:  cancelURL,
@@ -1969,7 +1967,7 @@ func (s *Server) validateAuthCookie(ctx context.Context, cookieValue, domain str
 }
 
 // createMagicSecret creates a temporary magic secret for proxy authentication
-func (s *Server) createMagicSecret(userID, machineName, redirectURL string) (string, error) {
+func (s *Server) createMagicSecret(userID, boxName, redirectURL string) (string, error) {
 	// Generate a random secret
 	secret := cryptorand.Text()
 
@@ -1982,7 +1980,7 @@ func (s *Server) createMagicSecret(userID, machineName, redirectURL string) (str
 
 	s.magicSecrets[secret] = &MagicSecret{
 		UserID:      userID,
-		MachineName: machineName,
+		BoxName:     boxName,
 		RedirectURL: redirectURL,
 		ExpiresAt:   time.Now().Add(2 * time.Minute),
 		CreatedAt:   time.Now(),
@@ -2103,13 +2101,13 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			if !s.quietMode {
 				slog.Info("[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
 			}
-			// Parse hostname to extract machine name
+			// Parse hostname to extract box name
 			hostname := returnHost
 			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
 				hostname = returnHost[:idx]
 			}
 
-			machineName, err := s.parseTerminalHostname(hostname)
+			boxName, err := s.parseTerminalHostname(hostname)
 			if err != nil {
 				slog.Error("Failed to parse terminal hostname", "hostname", hostname, "error", err)
 				http.Error(w, "Invalid hostname format", http.StatusBadRequest)
@@ -2117,7 +2115,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			}
 
 			// Create magic secret for the terminal subdomain
-			secret, err := s.createMagicSecret(userID, machineName, redirectURL)
+			secret, err := s.createMagicSecret(userID, boxName, redirectURL)
 			if err != nil {
 				slog.Error("Failed to create magic secret", "error", err)
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -2133,13 +2131,13 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			if !s.quietMode {
 				slog.Info("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
 			}
-			// Parse hostname to extract machine and team names
+			// Parse hostname to extract box and team names
 			hostname := returnHost
 			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
 				hostname = returnHost[:idx]
 			}
 
-			machineName, err := s.parseProxyHostname(hostname)
+			boxName, err := s.parseProxyHostname(hostname)
 			if err != nil {
 				slog.Error("Failed to parse proxy hostname", "hostname", hostname, "error", err)
 				http.Error(w, "Invalid hostname format", http.StatusBadRequest)
@@ -2147,7 +2145,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			}
 
 			// Create magic secret for the proxy subdomain
-			secret, err := s.createMagicSecret(userID, machineName, redirectURL)
+			secret, err := s.createMagicSecret(userID, boxName, redirectURL)
 			if err != nil {
 				slog.Error("Failed to create magic secret", "error", err)
 				http.Error(w, "Failed to create authentication secret", http.StatusInternalServerError)
@@ -2197,7 +2195,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	sshKeys := []SSHKey{}
 	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		rows, err := rx.Query(`
-			SELECT public_key, verified
+			SELECT public_key
 			FROM ssh_keys
 			WHERE user_id = ?
 			ORDER BY added_at DESC
@@ -2208,7 +2206,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		defer rows.Close()
 		for rows.Next() {
 			var key SSHKey
-			err := rows.Scan(&key.PublicKey, &key.Verified)
+			err := rows.Scan(&key.PublicKey)
 			if err != nil {
 				slog.Error("Error scanning SSH key", "error", err)
 				continue
@@ -2221,14 +2219,14 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		slog.Error("Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
 	}
 
-	// Get user's machines from all teams they belong to
-	machines := []Machine{}
+	// Get user's boxes from all teams they belong to
+	boxes := []Box{}
 	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		machineRows, err := rx.Query(`
+		boxRows, err := rx.Query(`
 			SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''),
 			       COALESCE(m.container_id, ''), m.created_by_user_id,
-			       m.created_at, m.updated_at, m.last_started_at, m.docker_host
-			FROM machines m
+			       m.created_at, m.updated_at, m.last_started_at
+			FROM boxes m
 			JOIN allocs a ON m.alloc_id = a.alloc_id
 			WHERE a.user_id = ?
 			ORDER BY m.updated_at DESC
@@ -2236,43 +2234,40 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		if err != nil {
 			return err
 		}
-		defer machineRows.Close()
-		for machineRows.Next() {
-			var machine Machine
-			var containerID, image, dockerHost sql.NullString
+		defer boxRows.Close()
+		for boxRows.Next() {
+			var box Box
+			var containerID, image sql.NullString
 			var lastStartedAt sql.NullTime
-			err := machineRows.Scan(&machine.ID, &machine.AllocID, &machine.Name,
-				&machine.Status, &image, &containerID, &machine.CreatedByUserID,
-				&machine.CreatedAt, &machine.UpdatedAt, &lastStartedAt, &dockerHost)
+			err := boxRows.Scan(&box.ID, &box.AllocID, &box.Name,
+				&box.Status, &image, &containerID, &box.CreatedByUserID,
+				&box.CreatedAt, &box.UpdatedAt, &lastStartedAt)
 			if err != nil {
-				slog.Error("Error scanning machine", "error", err)
+				slog.Error("Error scanning box", "error", err)
 				continue
 			}
 			if containerID.Valid {
-				machine.ContainerID = &containerID.String
+				box.ContainerID = &containerID.String
 			}
 			if image.Valid {
-				machine.Image = image.String
+				box.Image = image.String
 			}
 			if lastStartedAt.Valid {
-				machine.LastStartedAt = &lastStartedAt.Time
+				box.LastStartedAt = &lastStartedAt.Time
 			}
-			if dockerHost.Valid {
-				machine.DockerHost = &dockerHost.String
-			}
-			machines = append(machines, machine)
+			boxes = append(boxes, box)
 		}
 		return nil
 	})
 	if err != nil {
-		slog.Error("Failed to get machines for dashboard", "error", err, "user_id", userID)
+		slog.Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
 
 	// Prepare template data
 	data := UserPageData{
-		User:     user,
-		SSHKeys:  sshKeys,
-		Machines: machines,
+		User:    user,
+		SSHKeys: sshKeys,
+		Boxes:   boxes,
 	}
 
 	// Render template
@@ -2338,12 +2333,12 @@ type SSHClient interface {
 	Close() error
 }
 
-// findMachineByNameForUser finds a machine by name that the user has access to
-func (s *Server) FindMachineByNameForUser(ctx context.Context, userID, machineName string) *Machine {
-	slog.Debug("FindMachineByNameForUser", "user_id", userID, "machine_name", machineName)
+// findBoxByNameForUser finds a box by name that the user has access to
+func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName string) *Box {
+	slog.Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
 
-	// Machine names are now globally unique, no team prefix
-	if strings.Contains(machineName, ".") {
+	// Box names are now globally unique, no team prefix
+	if strings.Contains(boxName, ".") {
 		// Legacy format not supported
 		return nil
 	}
@@ -2351,27 +2346,27 @@ func (s *Server) FindMachineByNameForUser(ctx context.Context, userID, machineNa
 	// Get user's alloc to verify access
 	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
-		slog.Debug("FindMachineByNameForUser no alloc found", "user_id", userID)
+		slog.Debug("FindBoxByNameForUser no alloc found", "user_id", userID)
 		return nil
 	}
 
-	// Check if machine exists and belongs to user's alloc
-	machine, err := s.getMachineByName(ctx, machineName)
+	// Check if box exists and belongs to user's alloc
+	box, err := s.getBoxByName(ctx, boxName)
 	if err != nil {
-		slog.Debug("Machine not found", "machine", machineName, "error", err)
+		slog.Debug("Box not found", "box", boxName, "error", err)
 		return nil
 	}
 
-	// Verify the machine belongs to the user's alloc
-	if machine.AllocID != alloc.AllocID {
-		slog.Debug("Machine belongs to different alloc", "machine", machineName, "machine_alloc", machine.AllocID, "user_alloc", alloc.AllocID)
+	// Verify the box belongs to the user's alloc
+	if box.AllocID != alloc.AllocID {
+		slog.Debug("Box belongs to different alloc", "box", boxName, "box_alloc", box.AllocID, "user_alloc", alloc.AllocID)
 		return nil
 	}
 
-	return machine
+	return box
 }
 
-// handleListCommand lists user's machines
+// handleListCommand lists user's boxes
 func generateRandomContainerName() string {
 	words := []string{
 		// NATO phonetic + military
@@ -2439,8 +2434,8 @@ func (s *Server) formatSSHConnectionInfo(allocID, boxName string) string {
 	return fmt.Sprintf("ssh %s@exe.dev", boxName)
 }
 
-// denylistedMachineNames contains common computer-related five+ letter words that are not allowed as machine names
-var denylistedMachineNames = map[string]bool{
+// denylistedBoxNames contains common computer-related five+ letter words that are not allowed as box names
+var denylistedBoxNames = map[string]bool{
 	"teams": true,
 	"abort": true, "admin": true, "allow": true, "array": true, "async": true,
 	"audit": true, "block": true, "board": true, "boost": true, "break": true,
@@ -2563,8 +2558,8 @@ var denylistedMachineNames = map[string]bool{
 	"ssh-add": true, "sshadd": true,
 }
 
-// isValidMachineName validates machine name format
-func (s *Server) isValidMachineName(name string) bool {
+// isValidBoxName validates box name format
+func (s *Server) isValidBoxName(name string) bool {
 	// Must be at least 5 characters and at most 64 characters
 	if len(name) < 5 || len(name) > 64 {
 		return false
@@ -2572,7 +2567,7 @@ func (s *Server) isValidMachineName(name string) bool {
 
 	// Check if name is in denylist
 	withoutHyphens := strings.ReplaceAll(name, "-", "")
-	if denylistedMachineNames[withoutHyphens] {
+	if denylistedBoxNames[withoutHyphens] {
 		return false
 	}
 
@@ -2583,8 +2578,8 @@ func (s *Server) isValidMachineName(name string) bool {
 
 // getDefaultRoutesJSON returns the default routes as a JSON string
 func getDefaultRoutesJSON() string {
-	var machine Machine
-	routes := machine.getDefaultRoutes()
+	var box Box
+	routes := box.getDefaultRoutes()
 	data, err := json.Marshal(routes)
 	if err != nil {
 		log.Fatalf("Failed to marshal default routes: %v", err)
@@ -2592,17 +2587,17 @@ func getDefaultRoutesJSON() string {
 	return string(data)
 }
 
-// createMachine stores machine info in database
-func (s *Server) createMachine(ctx context.Context, userID, allocID, name, containerID, image string) error {
-	// Validate machine name
-	if !s.isValidMachineName(name) {
-		return fmt.Errorf("invalid machine name: %s", name)
+// createBox stores box info in database
+func (s *Server) createBox(ctx context.Context, userID, allocID, name, containerID, image string) error {
+	// Validate box name
+	if !s.isValidBoxName(name) {
+		return fmt.Errorf("invalid box name: %s", name)
 	}
 
 	routes := getDefaultRoutesJSON()
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO machines (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
 			                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
 			                     ssh_host_certificate, ssh_client_private_key, ssh_port)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -2614,47 +2609,24 @@ func (s *Server) createMachine(ctx context.Context, userID, allocID, name, conta
 	return err
 }
 
-// createMachineWithSSH stores machine info including SSH keys in database
-func (s *Server) createMachineWithSSH(ctx context.Context, userID, allocID, name, containerID, image string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
-	// Validate machine name
-	if !s.isValidMachineName(name) {
-		return fmt.Errorf("invalid machine name: %s", name)
+// createBoxWithSSH stores box info including SSH keys in database
+func (s *Server) createBoxWithSSH(ctx context.Context, userID, allocID, name, containerID, image, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	// Validate box name
+	if !s.isValidBoxName(name) {
+		return fmt.Errorf("invalid box name: %s", name)
 	}
 
 	routes := getDefaultRoutesJSON()
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO machines (
+			INSERT INTO boxes (
 				alloc_id, name, status, image, container_id, created_by_user_id,
 				ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-				ssh_host_certificate, ssh_client_private_key, ssh_port, routes
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user, routes
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, allocID, name, "running", image, containerID, userID,
 			sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, routes)
-		return err
-	})
-	return err
-}
-
-// createMachineWithSSHAndDockerHost stores machine info including SSH keys and docker host in database
-func (s *Server) createMachineWithSSHAndDockerHost(ctx context.Context, userID, allocID, name, containerID, image, dockerHost, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
-	// Validate machine name
-	if !s.isValidMachineName(name) {
-		return fmt.Errorf("invalid machine name: %s", name)
-	}
-
-	routes := getDefaultRoutesJSON()
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO machines (
-				alloc_id, name, status, image, container_id, created_by_user_id,
-				ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-				ssh_host_certificate, ssh_client_private_key, ssh_port, docker_host, ssh_user, routes
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, name, "running", image, containerID, userID,
-			sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, dockerHost, sshUser, routes)
+			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, sshUser, routes)
 		return err
 	})
 	if err != nil {
@@ -2664,36 +2636,36 @@ func (s *Server) createMachineWithSSHAndDockerHost(ctx context.Context, userID, 
 	return nil
 }
 
-// getMachineByName retrieves a machine by name and team
-func (s *Server) getMachineByName(ctx context.Context, name string) (*Machine, error) {
-	var machine Machine
+// getBoxByName retrieves a box by name and team
+func (s *Server) getBoxByName(ctx context.Context, name string) (*Box, error) {
+	var box Box
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
+		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
 		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
-		FROM machines
+		FROM boxes
 		WHERE name = ?
 	`, name).Scan(
-			&machine.ID, &machine.AllocID, &machine.Name, &machine.Status,
-			&machine.Image, &machine.ContainerID, &machine.CreatedByUserID,
-			&machine.CreatedAt, &machine.UpdatedAt, &machine.LastStartedAt, &machine.DockerHost, &machine.Routes,
-			&machine.SSHServerIdentityKey, &machine.SSHAuthorizedKeys, &machine.SSHCAPublicKey, &machine.SSHHostCertificate, &machine.SSHClientPrivateKey, &machine.SSHPort, &machine.SSHUser,
+			&box.ID, &box.AllocID, &box.Name, &box.Status,
+			&box.Image, &box.ContainerID, &box.CreatedByUserID,
+			&box.CreatedAt, &box.UpdatedAt, &box.LastStartedAt, &box.Routes,
+			&box.SSHServerIdentityKey, &box.SSHAuthorizedKeys, &box.SSHCAPublicKey, &box.SSHHostCertificate, &box.SSHClientPrivateKey, &box.SSHPort, &box.SSHUser,
 		)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &machine, nil
+	return &box, nil
 }
 
-// getMachinesForAlloc gets all machines for an allocation
-func (s *Server) getMachinesForAlloc(ctx context.Context, allocID string) ([]*Machine, error) {
-	var machines []*Machine
+// getBoxesForAlloc gets all boxes for an allocation
+func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]*Box, error) {
+	var boxes []*Box
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		rows, err := rx.Query(`
-			SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, docker_host, routes,
+			SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
 			       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
-			FROM machines
+			FROM boxes
 			WHERE alloc_id = ?
 			ORDER BY name
 		`, allocID)
@@ -2703,34 +2675,34 @@ func (s *Server) getMachinesForAlloc(ctx context.Context, allocID string) ([]*Ma
 		defer rows.Close()
 
 		for rows.Next() {
-			var m Machine
+			var m Box
 			err := rows.Scan(
 				&m.ID, &m.AllocID, &m.Name, &m.Status, &m.Image, &m.ContainerID, &m.CreatedByUserID,
-				&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.DockerHost, &m.Routes,
+				&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.Routes,
 				&m.SSHServerIdentityKey, &m.SSHAuthorizedKeys, &m.SSHCAPublicKey, &m.SSHHostCertificate, &m.SSHClientPrivateKey, &m.SSHPort,
 			)
 			if err != nil {
 				return err
 			}
-			machines = append(machines, &m)
+			boxes = append(boxes, &m)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return machines, nil
+	return boxes, nil
 }
 
 // getAllocsByHost gets all allocations assigned to a specific docker host
-func (s *Server) getAllocsByHost(ctx context.Context, dockerHost string) ([]*Alloc, error) {
+func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc, error) {
 	var allocs []*Alloc
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		rows, err := rx.Query(`
-			SELECT alloc_id, user_id, alloc_type, region, docker_host, ip_range, created_at, stripe_customer_id, billing_email
+			SELECT alloc_id, user_id, alloc_type, region, ctrhost, ip_range, created_at, stripe_customer_id, billing_email
 			FROM allocs
-			WHERE docker_host = ?
-		`, dockerHost)
+			WHERE ctrhost = ?
+		`, ctrhost)
 		if err != nil {
 			return err
 		}
@@ -2739,7 +2711,7 @@ func (s *Server) getAllocsByHost(ctx context.Context, dockerHost string) ([]*All
 		for rows.Next() {
 			var a Alloc
 			err := rows.Scan(
-				&a.AllocID, &a.UserID, &a.AllocType, &a.Region, &a.DockerHost, &a.IPRange,
+				&a.AllocID, &a.UserID, &a.AllocType, &a.Region, &a.Ctrhost, &a.IPRange,
 				&a.CreatedAt, &a.StripeCustomerID, &a.BillingEmail,
 			)
 			if err != nil {
@@ -3101,14 +3073,14 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 // TODO: this is inefficient. Implement something with better DB support.
 //
 //	(e.g. generated columns for each octet, then indexes?)
-func (s *Server) allocateIPRange(tx *sqlite.Tx, dockerHost string) (string, error) {
-	// Query all existing IP ranges for this docker host
+func (s *Server) allocateIPRange(tx *sqlite.Tx, ctrhost string) (string, error) {
+	// Query all existing IP ranges for this container host
 	rows, err := tx.Query(`
 		SELECT ip_range
 		FROM allocs
-		WHERE docker_host = ? AND ip_range IS NOT NULL
+		WHERE ctrhost = ? AND ip_range IS NOT NULL
 		ORDER BY ip_range`,
-		dockerHost)
+		ctrhost)
 	if err != nil {
 		return "", err
 	}
@@ -3178,20 +3150,20 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 			return err
 		}
 
-		// Select a docker host for this alloc
-		dockerHost := s.selectDockerHostForNewAlloc()
+		// Select a container host for this alloc
+		ctrhost := s.selectCtrhostForNewAlloc()
 
 		// Allocate an IP range for this alloc
-		ipRange, err = s.allocateIPRange(tx, dockerHost)
+		ipRange, err = s.allocateIPRange(tx, ctrhost)
 		if err != nil {
 			return fmt.Errorf("failed to allocate IP range: %w", err)
 		}
 
 		// Create alloc for the user
 		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 		return err
 	})
 
@@ -3218,12 +3190,12 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 	var alloc Alloc
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
-		SELECT alloc_id, user_id, alloc_type, region, docker_host, ip_range, created_at, stripe_customer_id, billing_email
+		SELECT alloc_id, user_id, alloc_type, region, ctrhost, ip_range, created_at, stripe_customer_id, billing_email
 		FROM allocs
 		WHERE user_id = ?
 		LIMIT 1`,
 			userID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region,
-			&alloc.DockerHost, &alloc.IPRange, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+			&alloc.Ctrhost, &alloc.IPRange, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
 	})
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -3242,19 +3214,19 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 			return nil, err
 		}
 
-		dockerHost := s.selectDockerHostForNewAlloc()
+		ctrhost := s.selectCtrhostForNewAlloc()
 
 		err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			// Allocate an IP range for this alloc
-			ipRange, err := s.allocateIPRange(tx, dockerHost)
+			ipRange, err := s.allocateIPRange(tx, ctrhost)
 			if err != nil {
 				return fmt.Errorf("failed to allocate IP range: %w", err)
 			}
 
 			_, err = tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
 				VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
+				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 			return err
 		})
 		if err != nil {
@@ -3271,13 +3243,19 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 	return &alloc, nil
 }
 
-// selectDockerHostForNewAlloc selects the best docker host for a new alloc
-func (s *Server) selectDockerHostForNewAlloc() string {
-	// For now, just use the first configured docker host
-	// In the future, this could do load balancing
-	// For now, just return empty string (local docker)
-	// In future, could query the container manager for available hosts
-	return "" // Local docker
+// selectCtrhostForNewAlloc selects the best container host for a new alloc
+func (s *Server) selectCtrhostForNewAlloc() string {
+	// Get the list of available hosts from the container manager
+	if s.containerManager != nil {
+		hosts := s.containerManager.GetHosts()
+		if len(hosts) > 0 {
+			// For now, just use the first available host
+			// In the future, this could do load balancing
+			return hosts[0]
+		}
+	}
+	// Fallback to "local" if no container manager or no hosts
+	return "local"
 }
 
 // generateAllocID generates a unique allocation ID
@@ -3325,18 +3303,18 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 			return err
 		}
 
-		dockerHost := s.selectDockerHostForNewAlloc()
+		ctrhost := s.selectCtrhostForNewAlloc()
 
 		// Allocate an IP range for this alloc
-		ipRange, err := s.allocateIPRange(tx, dockerHost)
+		ipRange, err := s.allocateIPRange(tx, ctrhost)
 		if err != nil {
 			return fmt.Errorf("failed to allocate IP range: %w", err)
 		}
 
 		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, docker_host, ip_range, billing_email)
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
 		return err
 	})
 }
@@ -3586,78 +3564,81 @@ func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error
 	return &user, nil
 }
 
-// allocateIPsForExistingMachines registers all existing machines with the ipAllocator
-func (s *Server) allocateIPsForExistingMachines(ctx context.Context) error {
-	var machines []*Machine
+// allocateIPsForExistingBoxes registers all existing boxes with the ipAllocator
+func (s *Server) allocateIPsForExistingBoxes(ctx context.Context) error {
+	var boxes []*Box
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		rows, err := rx.Query(`
 			SELECT id, alloc_id, name
-			FROM machines
+			FROM boxes
 			ORDER BY alloc_id, name
 		`)
 		if err != nil {
-			return fmt.Errorf("failed to query existing machines: %v", err)
+			return fmt.Errorf("failed to query existing boxes: %v", err)
 		}
 		defer rows.Close()
 
 		for rows.Next() {
-			machine := &Machine{}
-			err := rows.Scan(&machine.ID, &machine.AllocID, &machine.Name)
+			box := &Box{}
+			err := rows.Scan(&box.ID, &box.AllocID, &box.Name)
 			if err != nil {
-				return fmt.Errorf("failed to scan machine row: %v", err)
+				return fmt.Errorf("failed to scan box row: %v", err)
 			}
-			machines = append(machines, machine)
+			boxes = append(boxes, box)
 		}
 
 		if err = rows.Err(); err != nil {
-			return fmt.Errorf("error iterating machine rows: %v", err)
+			return fmt.Errorf("error iterating box rows: %v", err)
 		}
 		return nil
 	})
 	return err
 }
 
-// GetMachineSSHDetails retrieves SSH connection details from the machines table
-func (s *Server) GetMachineSSHDetails(ctx context.Context, machineID int) (*exedb.SSHDetails, error) {
+// GetBoxSSHDetails retrieves SSH connection details from the boxes table
+func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDetails, error) {
 	var port sql.NullInt64
 	var privateKey sql.NullString
 	var serverIdentityKey sql.NullString
-	var dockerHost sql.NullString
+	var ctrhost sql.NullString
 	var sshUser sql.NullString
 
-	query := `SELECT ssh_port, ssh_client_private_key, ssh_server_identity_key, docker_host, ssh_user FROM machines WHERE id = ?`
+	query := `SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user 
+		FROM boxes m 
+		JOIN allocs a ON m.alloc_id = a.alloc_id 
+		WHERE m.id = ?`
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost, &sshUser)
+		return rx.QueryRow(query, boxID).Scan(&port, &privateKey, &serverIdentityKey, &ctrhost, &sshUser)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to query machine SSH details: %v", err)
+		return nil, fmt.Errorf("failed to query box SSH details: %v", err)
 	}
 
 	if !port.Valid || port.Int64 == 0 || !privateKey.Valid || privateKey.String == "" {
-		// SSH not set up for this machine - this is for containers created before SSH support
+		// SSH not set up for this box - this is for containers created before SSH support
 		// TODO: Remove this code once all legacy containers are migrated
-		log.Printf("Machine %d missing SSH setup, initializing SSH on container", machineID)
-		err := s.setupContainerSSH(ctx, machineID)
+		log.Printf("Box %d missing SSH setup, initializing SSH on container", boxID)
+		err := s.setupContainerSSH(ctx, boxID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to setup SSH on legacy container: %v", err)
 		}
 
 		// Re-query after setup
 		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow(query, machineID).Scan(&port, &privateKey, &serverIdentityKey, &dockerHost)
+			return rx.QueryRow(query, boxID).Scan(&port, &privateKey, &serverIdentityKey, &ctrhost)
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to re-query machine SSH details after setup: %v", err)
+			return nil, fmt.Errorf("failed to re-query box SSH details after setup: %v", err)
 		}
 	}
 
 	sshPort := int(port.Int64)
 	if sshPort <= 0 {
-		return nil, fmt.Errorf("invalid SSH port for machine: %d", sshPort)
+		return nil, fmt.Errorf("invalid SSH port for box: %d", sshPort)
 	}
 
 	if privateKey.String == "" {
-		return nil, fmt.Errorf("no SSH private key available for machine after setup")
+		return nil, fmt.Errorf("no SSH private key available for box after setup")
 	}
 
 	// Derive host public key from server identity key if available
@@ -3671,9 +3652,9 @@ func (s *Server) GetMachineSSHDetails(ctx context.Context, machineID int) (*exed
 		// If parsing fails, we'll just use empty host key (fallback to no validation)
 	}
 
-	var dockerHostPtr *string
-	if dockerHost.Valid && dockerHost.String != "" {
-		dockerHostPtr = &dockerHost.String
+	var ctrhostPtr *string
+	if ctrhost.Valid && ctrhost.String != "" {
+		ctrhostPtr = &ctrhost.String
 	}
 
 	// Default to root user if not specified
@@ -3686,28 +3667,28 @@ func (s *Server) GetMachineSSHDetails(ctx context.Context, machineID int) (*exed
 		Port:       sshPort,
 		PrivateKey: privateKey.String,
 		HostKey:    hostKey,
-		DockerHost: dockerHostPtr,
+		Ctrhost:    ctrhostPtr,
 		User:       user,
 	}, nil
 }
 
 // setupContainerSSH sets up SSH on a legacy container that was created before SSH support
 // TODO: Remove this method once all legacy containers are migrated to have SSH
-func (s *Server) setupContainerSSH(ctx context.Context, machineID int) error {
-	// Get machine details
-	var containerID, userFingerprint, teamName, machineName, image string
+func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
+	// Get box details
+	var containerID, userFingerprint, teamName, boxName, image string
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(
-			`SELECT container_id, created_by_user_id, team_name, name, image FROM machines WHERE id = ?`,
-			machineID,
-		).Scan(&containerID, &userFingerprint, &teamName, &machineName, &image)
+			`SELECT container_id, created_by_user_id, team_name, name, image FROM boxes WHERE id = ?`,
+			boxID,
+		).Scan(&containerID, &userFingerprint, &teamName, &boxName, &image)
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get machine details: %v", err)
+		return fmt.Errorf("failed to get box details: %v", err)
 	}
 
 	if containerID == "" {
-		return fmt.Errorf("machine has no container ID")
+		return fmt.Errorf("box has no container ID")
 	}
 
 	// Generate SSH keys for this container
@@ -3719,19 +3700,19 @@ func (s *Server) setupContainerSSH(ctx context.Context, machineID int) error {
 	// Update database with SSH keys
 	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			UPDATE machines SET
+			UPDATE boxes SET
 				ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
 				ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
 			WHERE id = ?
 		`, sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshKeys.SSHPort, machineID)
+			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshKeys.SSHPort, boxID)
 		return err
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update machine SSH keys: %v", err)
+		return fmt.Errorf("failed to update box SSH keys: %v", err)
 	}
 
-	log.Printf("SSH setup completed for machine %d", machineID)
+	log.Printf("SSH setup completed for box %d", boxID)
 	return nil
 }
 

@@ -105,7 +105,7 @@ func TestTerminalCleanupTimer(t *testing.T) {
 	terminalSessions[sessionKey] = &TerminalSession{
 		EventsClients: make(map[chan []byte]bool),
 		LastActivity:  time.Now().Add(-15 * time.Minute), // 15 minutes ago
-		MachineName:   "test-machine",
+		BoxName:       "test-box",
 		UserID:        "test-user",
 	}
 
