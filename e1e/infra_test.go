@@ -721,10 +721,15 @@ func (es *emailServer) waitForEmail(t *testing.T, email string) emailMessage {
 
 // extractVerificationToken extracts the full verification URL from the email body
 func extractVerificationToken(body string) (string, error) {
-	// Look for the full verification URL pattern
-	re := regexp.MustCompile(`http://[^/]+/verify-email\?token=([a-zA-Z0-9\-_]+)`)
+	// Look for verification URL pattern - can be either verify-email or verify-device
+	// The test environment sometimes reuses accounts, causing device verification emails
+	re := regexp.MustCompile(`http://[^/]+/(verify-email|verify-device)\?token=([a-zA-Z0-9\-_]+)`)
 	matches := re.FindStringSubmatch(body)
 	if len(matches) < 1 {
+		// Log the body content for debugging when extraction fails
+		if *flagVerboseEmail {
+			fmt.Printf("Failed to extract verification URL from body: %q\n", body)
+		}
 		return "", fmt.Errorf("verification URL not found in email body")
 	}
 	return matches[0], nil // Return the full URL, not just the token
