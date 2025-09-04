@@ -233,44 +233,15 @@ ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait || true'
 
 if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
   echo "No snapshot found; provisioning VM and creating snapshot cache..."
-  # 6) Prepare containerd + nydus + kata on the VM (similar to setup-colima-host)
-  # Create a modified setup script that skips swap/data volume and restarts containerd
-  LOCAL_TMP_SCRIPT="$(mktemp)"
-  cat > "${LOCAL_TMP_SCRIPT}" <<'SCRIPT_EOF'
-#!/bin/bash
-set -euo pipefail
-
-echo "=== Starting setup for CI VM with Cloud Hypervisor + Nydus ==="
-
-# Prevent service restarts during package installation
-export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a
-export NEEDRESTART_SUSPEND=1
-
-# Skip swap/data volume setup on this ephemeral CI VM
-echo "=== Skipping swap and data volume setup for CI VM ==="
-
-# Continue with the rest of the setup from the original script
-SCRIPT_EOF
-
-  # Append containerd+kata+nydus install/config section from the original script, replacing reload with restart
-  sed -n '79,$p' "${SETUP_SCRIPT_PATH}" | \
-    sed 's/systemctl reload containerd/systemctl restart containerd/' | \
-    sed -E 's/sudo\s+//g' | \
-    sed 's/KATA_ARCH="x86_64"/KATA_ARCH="amd64"/' | \
-    sed 's/NYDUS_ARCH="x86_64"/NYDUS_ARCH="amd64"/' >> "${LOCAL_TMP_SCRIPT}"
-
-  chmod +x "${LOCAL_TMP_SCRIPT}"
-
+  # 6) Prepare containerd + nydus + kata on the VM
   echo "Copying setup script to VM ${IP}..."
-  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${LOCAL_TMP_SCRIPT}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
+  scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
   ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
 
   echo "Executing setup script on VM ${IP} (raw streaming output)..."
   # Stream exact commands and output directly to CI logs
-  ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo /bin/bash -x /root/setup-containerd-clh-nydus.sh"
-
-  rm -f "${LOCAL_TMP_SCRIPT}"
+  # Set CI environment variable to trigger CI mode in the script
+  ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo CI=1 /bin/bash -x /root/setup-containerd-clh-nydus.sh"
 
   # 6b) Create snapshot cache of the prepared disk (clone, leveraging XFS reflink when available)
   echo "Creating snapshot cache at ${SNAPSHOT_DIR}..."

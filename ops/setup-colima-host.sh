@@ -226,6 +226,9 @@ else
   fi
 fi
 SCRIPT_EOF
+  # Set IS_CI_VM=1 since Colima VMs are ephemeral-like environments
+  echo "IS_CI_VM=1" >> /tmp/setup-containerd-clh-nydus-colima.sh
+  echo "" >> /tmp/setup-containerd-clh-nydus-colima.sh
   # Append the main setup content starting at the containerd install section,
   # to avoid the physical-device /data setup (Colima uses loopback /data.img).
   sed -n '/^echo "=== Installing containerd ==="/,$p' "${script_dir}/setup-containerd-clh-nydus.sh" \

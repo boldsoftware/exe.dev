@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "=== Running setup-containerd-clh-nydus.sh ==="
+
 # Optional verbose tracing: export EXE_DEBUG_SETUP=1
 if [ "${EXE_DEBUG_SETUP:-0}" = "1" ]; then
   set -x
@@ -24,79 +26,88 @@ export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
 
-# Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
-echo "=== Setting up dual swap partitions on NVMe drives ==="
+# Detect if we're in a CI environment (no NVMe drives, ephemeral VM)
+IS_CI_VM=0
+if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ ! -e /dev/nvme0n1 ]; then
+    IS_CI_VM=1
+    echo "=== CI/ephemeral VM detected, skipping swap and data volume setup ==="
+fi
 
-# First NVMe drive
-NVME1="/dev/nvme0n1"
-echo "Setting up 500GB swap on ${NVME1}..."
-sudo parted -s ${NVME1} mklabel gpt
-sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 501GiB
-sudo mkswap ${NVME1}p1
-
-# Second NVMe drive
-NVME2="/dev/nvme1n1"
-echo "Setting up 500GB swap on ${NVME2}..."
-sudo parted -s ${NVME2} mklabel gpt
-sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 501GiB
-sudo mkswap ${NVME2}p1
-
-# Enable both swaps with equal priority for I/O interleaving
-sudo swapon -p 1 ${NVME1}p1
-sudo swapon -p 1 ${NVME2}p1
-
-# Add to fstab with priority
-echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-
-echo "Dual swap setup complete (2x 500GB with equal priority)"
-
-# Setup data volume
-echo "=== Setting up data volume ==="
-DATA_DEVICE=""
-
-# First check if xvdf exists (non-metal instances)
-if [ -e /dev/xvdf ]; then
-    DATA_DEVICE="/dev/xvdf"
-else
-    # On metal instances, find the 250GB NVMe device
-    echo "Looking for 250GB NVMe data volume..."
-    for nvme in /dev/nvme*n1; do
-        if [ -b "$nvme" ]; then
-            SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
-            echo "Checking NVMe device $nvme with size ${SIZE_HR}"
-            
-            SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
-            
-            if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 245 ] && [ "$SIZE_GB" -le 255 ]; then
-                DATA_DEVICE="$nvme"
-                echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
-                break
+if [ $IS_CI_VM -eq 0 ]; then
+    # Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
+    echo "=== Setting up dual swap partitions on NVMe drives ==="
+    
+    # First NVMe drive
+    NVME1="/dev/nvme0n1"
+    echo "Setting up 500GB swap on ${NVME1}..."
+    sudo parted -s ${NVME1} mklabel gpt
+    sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 501GiB
+    sudo mkswap ${NVME1}p1
+    
+    # Second NVMe drive
+    NVME2="/dev/nvme1n1"
+    echo "Setting up 500GB swap on ${NVME2}..."
+    sudo parted -s ${NVME2} mklabel gpt
+    sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 501GiB
+    sudo mkswap ${NVME2}p1
+    
+    # Enable both swaps with equal priority for I/O interleaving
+    sudo swapon -p 1 ${NVME1}p1
+    sudo swapon -p 1 ${NVME2}p1
+    
+    # Add to fstab with priority
+    echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+    echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+    
+    echo "Dual swap setup complete (2x 500GB with equal priority)"
+    
+    # Setup data volume
+    echo "=== Setting up data volume ==="
+    DATA_DEVICE=""
+    
+    # First check if xvdf exists (non-metal instances)
+    if [ -e /dev/xvdf ]; then
+        DATA_DEVICE="/dev/xvdf"
+    else
+        # On metal instances, find the 250GB NVMe device
+        echo "Looking for 250GB NVMe data volume..."
+        for nvme in /dev/nvme*n1; do
+            if [ -b "$nvme" ]; then
+                SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
+                echo "Checking NVMe device $nvme with size ${SIZE_HR}"
+                
+                SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
+                
+                if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 245 ] && [ "$SIZE_GB" -le 255 ]; then
+                    DATA_DEVICE="$nvme"
+                    echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
+                    break
+                fi
             fi
-        fi
-    done
+        done
+    fi
+    
+    if [ -z "$DATA_DEVICE" ]; then
+        echo "ERROR: Could not find data volume (250GB device)"
+        echo "Available block devices:"
+        lsblk
+        exit 1
+    fi
+    
+    echo "Using data device: $DATA_DEVICE"
+    sudo mkfs.xfs $DATA_DEVICE
+    sudo mkdir -p /data
+    sudo mount -o pquota $DATA_DEVICE /data
+    echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
+    sudo xfs_quota -x -c 'state' /data
+    echo "Data volume setup complete"
 fi
-
-if [ -z "$DATA_DEVICE" ]; then
-    echo "ERROR: Could not find data volume (250GB device)"
-    echo "Available block devices:"
-    lsblk
-    exit 1
-fi
-
-echo "Using data device: $DATA_DEVICE"
-sudo mkfs.xfs $DATA_DEVICE
-sudo mkdir -p /data
-sudo mount -o pquota $DATA_DEVICE /data
-echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
-sudo xfs_quota -x -c 'state' /data
-echo "Data volume setup complete"
 
 echo "=== Installing containerd ==="
 
 # Install prerequisites
-sudo DEBIAN_FRONTEND=noninteractive apt-get update
-sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
     ca-certificates \
     curl \
     gnupg \
@@ -107,7 +118,7 @@ sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt
     pkg-config \
     libseccomp-dev \
     wget \
-    skopeo
+    skopeo > /dev/null 2>&1
 
 # Install containerd from official releases (not apt) for specific version
 CONTAINERD_VERSION="2.1.4"
@@ -136,11 +147,8 @@ sudo chmod +x /usr/local/sbin/runc
 echo "=== Installing Kata Containers with Cloud Hypervisor ==="
 
 KATA_VERSION="3.20.0"
-if [ "$ARCH" = "amd64" ]; then
-    KATA_ARCH="x86_64"
-else
-    KATA_ARCH="$ARCH"
-fi
+# Kata uses the same arch naming as we normalized (amd64, arm64)
+KATA_ARCH="$ARCH"
 
 # Download and install Kata
 KATA_URL="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-${KATA_ARCH}.tar.xz"
@@ -162,11 +170,8 @@ echo "=== Installing Nydus Snapshotter ==="
 # Install nydus-snapshotter and nydusd daemon
 NYDUS_VERSION="0.15.2"
 NYDUSD_VERSION="2.2.5"
-if [ "$ARCH" = "amd64" ]; then
-    NYDUS_ARCH="x86_64"
-else
-    NYDUS_ARCH="$ARCH"
-fi
+# Both nydus-snapshotter and nydusd use amd64 naming
+NYDUS_ARCH="$ARCH"
 
 # Download and install nydus-snapshotter
 echo "Installing nydus-snapshotter v${NYDUS_VERSION}..."
@@ -315,7 +320,7 @@ else
   sudo sed -i '/^\[hypervisor\.clh\]/a kernel_params = "memhp_default_state=online"' "$KATA_CFG"
 fi
 
-# Restart containerd to ensure shims pick up the latest config
+# Always restart containerd to ensure shims pick up the latest config
 sudo systemctl restart containerd
 sleep 2
 
@@ -338,14 +343,19 @@ echo "---------------------------------"
 
 echo "=== Configuring containerd with Nydus snapshotter ==="
 
-# Create data directory
-sudo mkdir -p /data/containerd
+# Create data directory (use /var/lib for CI VMs without /data volume)
+if [ $IS_CI_VM -eq 1 ]; then
+    CONTAINERD_ROOT="/var/lib/containerd"
+else
+    CONTAINERD_ROOT="/data/containerd"
+    sudo mkdir -p $CONTAINERD_ROOT
+fi
 
 # Configure containerd with nydus as default snapshotter
 sudo mkdir -p /etc/containerd
-cat <<'EOF' | sudo tee /etc/containerd/config.toml > /dev/null
+cat <<EOF | sudo tee /etc/containerd/config.toml > /dev/null
 version = 2
-root = "/data/containerd"
+root = "$CONTAINERD_ROOT"
 
 [grpc]
   address = "/run/containerd/containerd.sock"
@@ -777,7 +787,7 @@ sudo systemctl enable nydus-snapshotter
 sudo systemctl start nydus-snapshotter
 sleep 2
 
-# Restart containerd to ensure proxy plugin is registered
+# Always restart containerd to ensure proxy plugin is registered
 sudo systemctl restart containerd
 sleep 3
 
@@ -830,7 +840,7 @@ sudo mkdir -p /etc/iptables
 sudo iptables-save | sudo tee /etc/iptables/rules.v4 > /dev/null
 
 # Install iptables-persistent to load rules on boot
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent netfilter-persistent
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y iptables-persistent netfilter-persistent > /dev/null 2>&1
 sudo systemctl enable netfilter-persistent
 
 echo "Network isolation configured"
@@ -1015,7 +1025,11 @@ echo "  • Containerd ${CONTAINERD_VERSION}"
 echo "  • Kata Containers ${KATA_VERSION} with Cloud Hypervisor"
 echo "  • Nydus snapshotter ${NYDUS_VERSION} with nydusd ${NYDUSD_VERSION}"
 echo "  • CNI networking"
-echo "  • Data directory at /data/containerd"
+if [ $IS_CI_VM -eq 1 ]; then
+    echo "  • Data directory at /var/lib/containerd"
+else
+    echo "  • Data directory at /data/containerd"
+fi
 echo "  • Namespace 'exe' created"
 echo ""
 echo "Commands available:"
