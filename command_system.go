@@ -217,6 +217,11 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		// Create a new empty FlagSet for commands without flags
 		fs = flag.NewFlagSet("default", flag.ContinueOnError)
 	}
+
+	// Don't write flag help messages to the server's stdout/stderr, since we send them
+	// to the user instead.
+	fs.SetOutput(io.Discard)
+
 	if err := fs.Parse(allArgs); err != nil {
 		if err == flag.ErrHelp {
 			return cmd.Help(cc)

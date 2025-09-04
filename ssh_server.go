@@ -665,7 +665,6 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 
 // handleExec handles exec commands
 func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, registered bool) {
-	log.Printf("handleExec: cmd: %v, registered: %v", cmd, registered)
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
