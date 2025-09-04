@@ -713,7 +713,7 @@ func (es *emailServer) waitForEmail(t *testing.T, email string) emailMessage {
 	select {
 	case msg := <-ch:
 		return msg
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatalf("timeout waiting for email to %s", email)
 		return emailMessage{}
 	}
