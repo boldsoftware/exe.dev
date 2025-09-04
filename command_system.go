@@ -15,15 +15,16 @@ import (
 
 // Command represents a single command in the command tree
 type Command struct {
-	Name        string
-	Aliases     []string
-	Description string
-	Usage       string
-	FlagSetFunc func() *flag.FlagSet // Factory to create a new FlagSet for each invocation
-	Examples    []string
-	Subcommands []*Command
-	Handler     func(context.Context, *CommandContext) error
-	Available   func(ctx *CommandContext) bool // nil means always available
+	Name              string
+	Aliases           []string
+	Description       string
+	Usage             string
+	FlagSetFunc       func() *flag.FlagSet // Factory to create a new FlagSet for each invocation
+	Examples          []string
+	Subcommands       []*Command
+	HasPositionalArgs bool
+	Handler           func(context.Context, *CommandContext) error
+	Available         func(ctx *CommandContext) bool // nil means always available
 }
 
 func (c *Command) Help(cc *CommandContext) error {
@@ -238,7 +239,9 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		cc.Args = append(remainingArgs, cc.Args...)
 		cc.FlagSet = nil
 	}
-
+	if len(cc.Args) > 0 && !cmd.HasPositionalArgs {
+		return fmt.Errorf("%q command not found, and %q command does not take positional arguments", strings.Join(cc.Args, " "), cmd.Name)
+	}
 	return cmd.Handler(ctx, cc)
 }
 

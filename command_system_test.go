@@ -99,6 +99,11 @@ func TestCommandTree_FindCommand(t *testing.T) {
 			path:    []string{"list", "nonexistent"},
 			wantNil: true,
 		},
+		{
+			name:    "nonexistent sub-subcommand",
+			path:    []string{"billing", "setup", "foo", "bar"},
+			wantNil: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -277,6 +282,20 @@ func TestExecuteCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("execute nonexistent subcommand", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(sshServer, user, alloc, output, nil, []string{})
+		ctx := context.Background()
+
+		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "nonexistent"})
+		if err == nil {
+			t.Errorf("ExecuteCommand() should return error for nonexistent subcommand")
+		}
+		if !strings.Contains(err.Error(), "command not found") {
+			t.Errorf("Error should indicate command not found: %q", err.Error())
+		}
+	})
+
 	t.Run("execute command with args", func(t *testing.T) {
 		output := &MockOutput{}
 		cc := createTestContext(sshServer, user, alloc, output, nil, []string{"whoami"})
@@ -388,6 +407,7 @@ func TestCommandFlagParsing(t *testing.T) {
 		commandPath  []string
 		expectedArgs []string
 		checkFlags   func(t *testing.T, cc *CommandContext)
+		expectErr    bool
 	}{
 		{
 			name:         "new command with no flags",
@@ -467,6 +487,7 @@ func TestCommandFlagParsing(t *testing.T) {
 					t.Errorf("Expected name to be 'test', got %q", name)
 				}
 			},
+			expectErr: true,
 		},
 		{
 			name:         "new command with separated flag value",
@@ -519,6 +540,16 @@ func TestCommandFlagParsing(t *testing.T) {
 			ctx := context.Background()
 
 			err := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
+			if tt.expectErr {
+				if err == nil {
+					t.Fatal("ExecuteCommand() should have returned an error")
+				}
+				if capturedCC != nil {
+					t.Fatal("Handler should not have been called, but was")
+				}
+				return
+			}
+
 			if err != nil {
 				t.Errorf("ExecuteCommand() error = %v", err)
 			}
@@ -579,15 +610,17 @@ func TestSubcommandFlagParsing(t *testing.T) {
 				},
 				Subcommands: []*Command{
 					{
-						Name:        "sub",
-						Description: "Subcommand with flags",
-						Handler:     testSubHandler,
-						FlagSetFunc: testFlagSetFunc,
+						Name:              "sub",
+						Description:       "Subcommand with flags",
+						Handler:           testSubHandler,
+						FlagSetFunc:       testFlagSetFunc,
+						HasPositionalArgs: true,
 					},
 					{
-						Name:        "nosub",
-						Description: "Subcommand without flags",
-						Handler:     testSubHandler,
+						Name:              "nosub",
+						Description:       "Subcommand without flags",
+						Handler:           testSubHandler,
+						HasPositionalArgs: true,
 					},
 				},
 			},
@@ -602,6 +635,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 		commandPath  []string
 		expectedArgs []string
 		checkFlags   func(t *testing.T, cc *CommandContext)
+		expectErr    bool
 	}{
 		{
 			name:         "subcommand with default flags",
@@ -674,6 +708,16 @@ func TestSubcommandFlagParsing(t *testing.T) {
 			ctx := context.Background()
 
 			err := customTree.ExecuteCommand(ctx, cc, tt.commandPath)
+			if tt.expectErr {
+				if err == nil {
+					t.Fatal("ExecuteCommand() should have returned an error")
+				}
+				if capturedContext != nil {
+					t.Fatal("Handler should not have been called, but was")
+				}
+				return
+			}
+
 			if err != nil {
 				t.Errorf("ExecuteCommand() error = %v", err)
 			}
