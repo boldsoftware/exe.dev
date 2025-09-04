@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// prepare container manager early, for faster cleanup
-	containerManagerC := make(chan container.Manager, 1)
+	containerManagerC := make(chan *container.NerdctlManager, 1)
 	go func() {
 		manager, err := env.initContainerManager()
 		containerManagerC <- manager // unblock regardless
@@ -120,7 +120,7 @@ func (e *testEnv) sshPort() int {
 	return e.proxy.tcp.Port
 }
 
-func (e *testEnv) initContainerManager() (container.Manager, error) {
+func (e *testEnv) initContainerManager() (*container.NerdctlManager, error) {
 	// Detect container host using same logic as container tests
 	host := ctrhosttest.Detect(context.Background())
 	if host == "" {
@@ -134,7 +134,7 @@ func (e *testEnv) initContainerManager() (container.Manager, error) {
 	return manager, nil
 }
 
-func (e *testEnv) Close(containerManager container.Manager) {
+func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 	if e == nil {
 		return
 	}

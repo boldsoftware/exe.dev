@@ -351,7 +351,7 @@ type Server struct {
 	dbPath string
 
 	// Container management
-	containerManager container.Manager
+	containerManager *container.NerdctlManager
 	tagResolver      *tagresolver.TagResolver
 	hostUpdater      *tagresolver.HostUpdater
 
@@ -504,7 +504,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	}
 
 	// Initialize container manager with containerd
-	var containerManager container.Manager
+	var containerManager *container.NerdctlManager
 
 	// Check if we have valid containerd addresses (not just empty strings)
 	hasValidAddresses := false
@@ -524,7 +524,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		}
 
 		var managerErr error
-		containerManager, managerErr = container.NewManager(config)
+		containerManager, managerErr = container.NewNerdctlManager(config)
 		if managerErr != nil {
 			// Container manager initialization failure is now fatal - security critical
 			slog.Error("Failed to initialize container manager", "error", managerErr)
@@ -555,12 +555,10 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		tagResolverInstance = tagresolver.New(db)
 		hostUpdaterInstance = tagresolver.NewHostUpdater(db, tagResolverInstance, containerdAddresses)
 
-		// Set tag resolver on the container manager if it's a NerdctlManager
-		if nerdctlMgr, ok := containerManager.(*container.NerdctlManager); ok {
-			nerdctlMgr.SetTagResolver(tagResolverInstance)
-			nerdctlMgr.SetHostUpdater(hostUpdaterInstance)
-			slog.Info("Tag resolver configured for image freshness management")
-		}
+		// Set tag resolver on the container manager
+		containerManager.SetTagResolver(tagResolverInstance)
+		containerManager.SetHostUpdater(hostUpdaterInstance)
+		slog.Info("Tag resolver configured for image freshness management")
 	}
 
 	s := &Server{

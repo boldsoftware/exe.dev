@@ -77,8 +77,8 @@ func GetTestBackend(t *testing.T) *TestBackend {
 	return nil
 }
 
-// CreateTestManager creates a Manager instance based on the test backend configuration
-func CreateTestManager(t *testing.T, backend *TestBackend) Manager {
+// CreateTestManager creates a NerdctlManager instance based on the test backend configuration
+func CreateTestManager(t *testing.T, backend *TestBackend) *NerdctlManager {
 	config := &Config{
 		ContainerdAddresses:  backend.Hosts,
 		DefaultCPURequest:    "100m",
@@ -91,7 +91,7 @@ func CreateTestManager(t *testing.T, backend *TestBackend) Manager {
 		config.ContainerdAddresses = []string{""}
 	}
 
-	manager, err := NewManager(config)
+	manager, err := NewNerdctlManager(config)
 	if err != nil {
 		t.Fatalf("Failed to create containerd manager: %v", err)
 	}
@@ -113,7 +113,7 @@ func SkipIfShort(t *testing.T) {
 }
 
 // CleanupContainer ensures a container is deleted after a test
-func CleanupContainer(t *testing.T, manager Manager, allocID, containerID string) {
+func CleanupContainer(t *testing.T, manager *NerdctlManager, allocID, containerID string) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
@@ -123,7 +123,7 @@ func CleanupContainer(t *testing.T, manager Manager, allocID, containerID string
 }
 
 // WaitForContainerReady waits for a container to be in running state
-func WaitForContainerReady(t *testing.T, manager Manager, allocID, containerID string, timeout time.Duration) {
+func WaitForContainerReady(t *testing.T, manager *NerdctlManager, allocID, containerID string, timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(t.Context(), timeout)
 	defer cancel()
 

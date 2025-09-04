@@ -25,7 +25,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// NerdctlManager implements the Manager interface using nerdctl with containerd
+// NerdctlManager manages containers using nerdctl with containerd
 //
 // ⚠️ IMPORTANT: Kata/gVisor Runtime Considerations ⚠️
 // This manager MUST work with Kata runtime for security isolation.

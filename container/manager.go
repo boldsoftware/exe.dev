@@ -3,36 +3,8 @@ package container
 import (
 	"context"
 	"fmt"
-	"io"
 	"strings"
 )
-
-// Manager provides container lifecycle management operations
-type Manager interface {
-	// Container lifecycle
-	CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error)
-	GetContainer(ctx context.Context, allocID, containerID string) (*Container, error)
-	ListContainers(ctx context.Context, allocID string) ([]*Container, error)
-	ListAllContainers(ctx context.Context) ([]*Container, error)
-	StartContainer(ctx context.Context, allocID, containerID string) error
-	StopContainer(ctx context.Context, allocID, containerID string) error
-	DeleteContainer(ctx context.Context, allocID, containerID string) error
-
-	// Image building
-	BuildImage(ctx context.Context, req *BuildRequest) (*BuildResult, error)
-	GetBuildStatus(ctx context.Context, buildID string) (*BuildResult, error)
-
-	// Container access
-	GetContainerLogs(ctx context.Context, allocID, containerID string, lines int) ([]string, error)
-	ConnectToContainer(ctx context.Context, allocID, containerID string) (*ContainerConnection, error)
-	ExecuteInContainer(ctx context.Context, allocID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer) error
-
-	// Cleanup and maintenance
-	Close() error
-
-	// Diagnostics
-	GetContainerDiagnostics(ctx context.Context, allocID, containerName string) (string, error)
-}
 
 // Config holds the configuration for the container manager
 type Config struct {
@@ -64,20 +36,10 @@ func validateConfig(cfg *Config) error {
 	return nil
 }
 
-// NewManager creates a new container manager using containerd
-func NewManager(cfg *Config) (Manager, error) {
-	if err := validateConfig(cfg); err != nil {
-		return nil, err
-	}
-
-	// Use nerdctl for containerd backend
-	return NewNerdctlManager(cfg)
-}
-
 // CleanupTestContainers removes containers with names containing substring.
 // Designed for cleaning up test containers; best effort only.
 // DO NOT USE for prod.
-func CleanupTestContainers(ctx context.Context, manager Manager, substring string) error {
+func CleanupTestContainers(ctx context.Context, manager *NerdctlManager, substring string) error {
 	containers, err := manager.ListAllContainers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list containers: %w", err)
