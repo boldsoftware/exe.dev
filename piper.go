@@ -180,42 +180,9 @@ func (p *PiperPlugin) handleNextAuthMethods(conn libplugin.ConnMetadata) ([]stri
 func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, client libplugin.KeyboardInteractiveChallenge) (*libplugin.Upstream, error) {
 	slog.Debug("Keyboard interactive auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
-	defer cancel()
-
 	// Use connection's unique ID to track if we've already shown the message
 	connID := conn.UniqueID()
 	username := conn.User()
-
-	// In local dev mode, check if this is a box access attempt
-	if p.server.devMode == "local" && username != "" && username != "localexe" {
-		// Try to find a box with this name
-		var box Box
-		err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow(`
-				SELECT id, alloc_id, name, container_id
-				FROM boxes
-				WHERE name = ?
-			`, username).Scan(&box.ID, &box.AllocID, &box.Name, &box.ContainerID)
-		})
-
-		if err == nil && box.ContainerID != nil {
-			// Found a box - allow access without authentication in dev mode
-			slog.Debug("Local dev mode: allowing passwordless access to box",
-				"component", "piper-plugin", "box_name", box.Name)
-
-			// Get first user for dev mode
-			var userID string
-			ctx2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel2()
-			err = p.server.db.Rx(ctx2, func(ctx context.Context, rx *sqlite.Rx) error {
-				return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
-			})
-			if err == nil {
-				return p.handleBoxAccess(&box, userID, connID)
-			}
-		}
-	}
 
 	p.keyboardInteractiveMutex.Lock()
 	alreadyShown := p.keyboardInteractiveShown[connID]
