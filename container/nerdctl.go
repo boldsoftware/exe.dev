@@ -455,6 +455,25 @@ func (m *NerdctlManager) selectHost() string {
 	return m.hosts[0]
 }
 
+// CreateAlloc creates the network infrastructure for an allocation
+// This should be called during account verification, before any containers are created
+func (m *NerdctlManager) CreateAlloc(ctx context.Context, allocID string, ipRange string) error {
+	// Select a host for the allocation
+	host := m.selectHost()
+	if host == "" {
+		return fmt.Errorf("no container hosts available")
+	}
+
+	// Create the network and wait for it to be ready
+	_, err := m.ensureAllocNetwork(ctx, allocID, ipRange, host)
+	if err != nil {
+		return fmt.Errorf("failed to create allocation network: %w", err)
+	}
+
+	slog.Info("Created allocation network", "allocID", allocID, "ipRange", ipRange)
+	return nil
+}
+
 // ensureAllocNetwork ensures a network exists for the allocation
 func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string, ipRange string, host string) (string, error) {
 	// Limit network name length, but handle shorter allocIDs
@@ -491,6 +510,35 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 			created = false
 		} else {
 			return "", fmt.Errorf("failed to create network: %w: %s", err, output)
+		}
+	}
+
+	// If we just created the network, verify it's ready before proceeding
+	// This helps avoid "Link not found" errors when Kata tries to attach to the network
+	if created {
+		// Verify the network bridge is actually ready
+		// Sometimes there's a delay between network creation and the bridge being fully initialized
+		var verified bool
+		for i := 0; i < 10; i++ {
+			// Use nerdctl network ls to verify the network exists and is ready
+			verifyCmd := m.execNerdctl(ctx, host, "network", "ls", "--format", "{{.Name}}")
+			if output, err := verifyCmd.Output(); err == nil {
+				if strings.Contains(string(output), networkName) {
+					// Also verify the bridge interface exists on the host
+					bridgeCmd := m.execSSHCommand(ctx, host, "ip", "link", "show", "type", "bridge")
+					if bridgeOut, err := bridgeCmd.Output(); err == nil && len(bridgeOut) > 0 {
+						verified = true
+						break
+					}
+				}
+			}
+			// Small delay before retry
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		if !verified {
+			slog.Warn("Network created but verification failed", "network", networkName)
+			// Continue anyway - the network might still work
 		}
 	}
 
@@ -790,26 +838,43 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	useExetini := true
 	autoStartSSH := true
 
-	// Parallelize independent preparations: network ensure and /exe.dev prep
+	// Get the pre-created network name for this allocation
+	nameLen := len(req.AllocID)
+	if nameLen > 12 {
+		nameLen = 12
+	}
+	networkName := fmt.Sprintf("exe-%s", req.AllocID[:nameLen])
+
+	// Verify the network exists (it should have been created during account verification)
+	m.mu.RLock()
+	networkExists := m.allocNetworks[networkName]
+	m.mu.RUnlock()
+
+	if !networkExists {
+		// Network doesn't exist in our cache - try to verify it exists on the host
+		verifyCmd := m.execNerdctl(ctx, host, "network", "ls", "--format", "{{.Name}}")
+		if output, err := verifyCmd.Output(); err == nil {
+			if strings.Contains(string(output), networkName) {
+				// Network exists on host, update our cache
+				m.mu.Lock()
+				m.allocNetworks[networkName] = true
+				m.mu.Unlock()
+				networkExists = true
+			}
+		}
+
+		if !networkExists {
+			return nil, fmt.Errorf("allocation network %s does not exist - was CreateAlloc called during account setup?", networkName)
+		}
+	}
+
+	// Prepare container-specific /exe.dev directory with SSH keys
 	var prep struct {
 		wg                  sync.WaitGroup
-		networkName         string
 		containerExeDevPath string
 		errc                chan error
 	}
-	prep.errc = make(chan error, 3)
-
-	// Network ensure
-	prep.wg.Add(1)
-	go func() {
-		defer prep.wg.Done()
-		name, err := m.ensureAllocNetwork(ctx, req.AllocID, req.IPRange, host)
-		if err != nil {
-			prep.errc <- fmt.Errorf("failed to ensure network: %w", err)
-		} else {
-			prep.networkName = name
-		}
-	}()
+	prep.errc = make(chan error, 1)
 
 	// Prepare container-specific /exe.dev directory with SSH keys
 	if m.rovolMountPath == "" {
@@ -856,7 +921,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		"run", "-d",
 		"--runtime", "io.containerd.kata.v2", // Use Kata for security
 		"--name", containerName,
-		"--network", prep.networkName,
+		"--network", networkName,
 	}
 
 	// Add remaining args
@@ -1108,7 +1173,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Wait for container to reach "running" status and get its network info
-	containerIP, err := m.waitForContainerRunning(ctx, host, containerID, prep.networkName, cleanupContainerDir)
+	containerIP, err := m.waitForContainerRunning(ctx, host, containerID, networkName, cleanupContainerDir)
 	if err != nil {
 		return nil, err
 	}

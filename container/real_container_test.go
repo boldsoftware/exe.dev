@@ -35,6 +35,13 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	// Create container request
 	ipRange := WithAllocIPRange(t, "test-alloc")
 
+	ctx := t.Context()
+
+	// Create the allocation network first
+	if err := manager.CreateAlloc(ctx, "test-alloc", ipRange); err != nil {
+		t.Fatalf("CreateAlloc failed: %v", err)
+	}
+
 	req := &CreateContainerRequest{
 		AllocID:       "test-alloc",
 		IPRange:       ipRange,
@@ -47,7 +54,6 @@ func TestRealContainerSSHSetup(t *testing.T) {
 		Ephemeral:     false, // Keep it around long enough to check
 	}
 
-	ctx := t.Context()
 	container, err := manager.CreateContainer(ctx, req)
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)

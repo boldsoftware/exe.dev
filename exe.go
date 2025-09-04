@@ -3016,7 +3016,10 @@ func (s *Server) allocateIPRange(tx *sqlite.Tx, dockerHost string) (string, erro
 
 // createUserWithAlloc creates a new user with their resource allocation
 func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email string) error {
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+	var allocID, ipRange string
+
+	// First create the user and allocation in the database
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		// Generate user ID
 		userID, err := generateUserID()
 		if err != nil {
@@ -3042,7 +3045,7 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 		}
 
 		// Generate alloc ID
-		allocID, err := generateAllocID()
+		allocID, err = generateAllocID()
 		if err != nil {
 			return err
 		}
@@ -3051,7 +3054,7 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 		dockerHost := s.selectDockerHostForNewAlloc()
 
 		// Allocate an IP range for this alloc
-		ipRange, err := s.allocateIPRange(tx, dockerHost)
+		ipRange, err = s.allocateIPRange(tx, dockerHost)
 		if err != nil {
 			return fmt.Errorf("failed to allocate IP range: %w", err)
 		}
@@ -3063,6 +3066,23 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, dockerHost, ipRange, email)
 		return err
 	})
+
+	if err != nil {
+		return err
+	}
+
+	// After successful database creation, create the network infrastructure
+	// This ensures the network is ready before any containers are created
+	if s.containerManager != nil {
+		if err := s.containerManager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+			// Log the error but don't fail user creation - the network can be created later
+			slog.Error("failed to create allocation network", "allocID", allocID, "error", err)
+			// Note: we could consider rolling back the user creation here, but that would
+			// prevent the user from logging in. Better to let them log in and fix the network later.
+		}
+	}
+
+	return nil
 }
 
 // getUserAlloc gets the alloc for a user (creates one if it doesn't exist)

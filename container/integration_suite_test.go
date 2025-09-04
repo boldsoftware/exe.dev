@@ -47,6 +47,12 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	t.Run("UbuntuSSHAndRovol", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ssh-%d", time.Now().UnixNano())
 		ipRange := WithAllocIPRange(t, allocID)
+
+		// Create the allocation network first
+		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+			t.Fatalf("CreateAlloc failed: %v", err)
+		}
+
 		req := &CreateContainerRequest{
 			AllocID: allocID,
 			IPRange: ipRange,
@@ -127,6 +133,12 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	t.Run("ListContainers", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-list-%d", time.Now().UnixNano())
 		ipRange := WithAllocIPRange(t, allocID)
+
+		// Create the allocation network first
+		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+			t.Fatalf("CreateAlloc failed: %v", err)
+		}
+
 		var created [](*Container)
 		for i := 0; i < 3; i++ {
 			req := &CreateContainerRequest{AllocID: allocID, IPRange: ipRange, Name: fmt.Sprintf("c%d", i), Image: "alpine:latest"}
@@ -156,6 +168,12 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	t.Run("StartStop", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ss-%d", time.Now().UnixNano())
 		ipRange := WithAllocIPRange(t, allocID)
+
+		// Create the allocation network first
+		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+			t.Fatalf("CreateAlloc failed: %v", err)
+		}
+
 		req := &CreateContainerRequest{AllocID: allocID, IPRange: ipRange, Name: "startstop", Image: "alpine:latest", CommandOverride: "sleep 3600"}
 		c, err := manager.CreateContainer(ctx, req)
 		if err != nil {
@@ -176,6 +194,12 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	t.Run("Exec", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-exec-%d", time.Now().UnixNano())
 		ipRange := WithAllocIPRange(t, allocID)
+
+		// Create the allocation network first
+		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+			t.Fatalf("CreateAlloc failed: %v", err)
+		}
+
 		req := &CreateContainerRequest{AllocID: allocID, IPRange: ipRange, Name: "exec", Image: "alpine:latest"}
 		c, err := manager.CreateContainer(ctx, req)
 		if err != nil {
