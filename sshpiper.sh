@@ -32,6 +32,7 @@ done
 echo "Port $PIPER_PLUGIN_PORT is ready"
 
 # Start sshpiper
+cd ./sshpiper && go build -o sshpiperd ./cmd/sshpiperd; cd ..
 exec ./sshpiper/sshpiperd \
     --log-level=DEBUG \
     --drop-hostkeys-message \
