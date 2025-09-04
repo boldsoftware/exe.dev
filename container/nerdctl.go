@@ -474,6 +474,78 @@ func (m *NerdctlManager) CreateAlloc(ctx context.Context, allocID string, ipRang
 	return nil
 }
 
+// GetHosts returns the list of configured container hosts
+func (m *NerdctlManager) GetHosts() []string {
+	return m.hosts
+}
+
+// ListAllocs returns all allocation networks currently on the specified host
+func (m *NerdctlManager) ListAllocs(ctx context.Context, host string) ([]string, error) {
+	// List all networks that match our exe-* naming pattern
+	cmd := m.execNerdctl(ctx, host, "network", "ls", "--format", "{{.Name}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list networks: %w", err)
+	}
+
+	var allocIDs []string
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "exe-") && line != "exe-bridge" {
+			// Extract allocID from network name (exe-<allocID>)
+			allocID := strings.TrimPrefix(line, "exe-")
+			allocIDs = append(allocIDs, allocID)
+		}
+	}
+
+	return allocIDs, nil
+}
+
+// DeleteAlloc removes the network for an allocation that is no longer in the database
+func (m *NerdctlManager) DeleteAlloc(ctx context.Context, allocID string, host string) error {
+	// Limit network name length, but handle shorter allocIDs
+	nameLen := len(allocID)
+	if nameLen > 12 {
+		nameLen = 12
+	}
+	networkName := fmt.Sprintf("exe-%s", allocID[:nameLen])
+
+	// First, remove any containers still using this network
+	// List containers in the network
+	listCmd := m.execNerdctl(ctx, host, "ps", "-a", "--format", "{{.Names}}", "--filter", fmt.Sprintf("network=%s", networkName))
+	if output, err := listCmd.Output(); err == nil {
+		containers := strings.Split(strings.TrimSpace(string(output)), "\n")
+		for _, container := range containers {
+			container = strings.TrimSpace(container)
+			if container != "" {
+				// Force remove the container
+				rmCmd := m.execNerdctl(ctx, host, "rm", "-f", container)
+				if _, err := rmCmd.Output(); err != nil {
+					slog.Warn("Failed to remove container from deleted alloc", "container", container, "error", err)
+				}
+			}
+		}
+	}
+
+	// Delete the network
+	deleteCmd := m.execNerdctl(ctx, host, "network", "rm", networkName)
+	if output, err := deleteCmd.CombinedOutput(); err != nil {
+		// If network doesn't exist, that's fine
+		if !strings.Contains(string(output), "not found") {
+			return fmt.Errorf("failed to delete network: %w: %s", err, output)
+		}
+	}
+
+	// Update our cache
+	m.mu.Lock()
+	delete(m.allocNetworks, networkName)
+	m.mu.Unlock()
+
+	slog.Info("Deleted allocation network", "allocID", allocID, "network", networkName)
+	return nil
+}
+
 // ensureAllocNetwork ensures a network exists for the allocation
 func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string, ipRange string, host string) (string, error) {
 	// Limit network name length, but handle shorter allocIDs
