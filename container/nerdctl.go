@@ -125,7 +125,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 
 	// Discover existing containers on all hosts with timeout
 	for _, host := range config.ContainerdAddresses {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := manager.discoverContainers(ctx, host); err != nil {
 			slog.Warn("Failed to discover containers on host", "host", host, "error", err)
 		}
