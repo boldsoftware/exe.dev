@@ -2722,6 +2722,39 @@ func (s *Server) getMachinesForAlloc(ctx context.Context, allocID string) ([]*Ma
 	return machines, nil
 }
 
+// getAllocsByHost gets all allocations assigned to a specific docker host
+func (s *Server) getAllocsByHost(ctx context.Context, dockerHost string) ([]*Alloc, error) {
+	var allocs []*Alloc
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		rows, err := rx.Query(`
+			SELECT alloc_id, user_id, alloc_type, region, docker_host, ip_range, created_at, stripe_customer_id, billing_email
+			FROM allocs
+			WHERE docker_host = ?
+		`, dockerHost)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var a Alloc
+			err := rows.Scan(
+				&a.AllocID, &a.UserID, &a.AllocType, &a.Region, &a.DockerHost, &a.IPRange,
+				&a.CreatedAt, &a.StripeCustomerID, &a.BillingEmail,
+			)
+			if err != nil {
+				return err
+			}
+			allocs = append(allocs, &a)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return allocs, nil
+}
+
 // isValidEmail performs basic email validation
 func (s *Server) isValidEmail(email string) bool {
 	if email == "" {
@@ -2743,6 +2776,93 @@ func (s *Server) isValidEmail(email string) bool {
 }
 
 // Start starts HTTP, HTTPS (if configured), and SSH servers
+// syncAllocsWithHosts synchronizes allocations between the database and container hosts
+// This ensures that:
+// 1. All allocations in the database have their networks created on hosts
+// 2. Any allocations not in the database are removed from hosts
+func (s *Server) syncAllocsWithHosts(ctx context.Context) error {
+	// Get the list of container hosts
+	hosts := s.containerManager.GetHosts()
+	if len(hosts) == 0 {
+		slog.Warn("No container hosts available for alloc sync")
+		return nil
+	}
+
+	slog.Info("Starting allocation sync with container hosts", "hostCount", len(hosts))
+
+	// Process each host
+	for _, host := range hosts {
+		if err := s.syncAllocsForHost(ctx, host); err != nil {
+			slog.Error("Failed to sync allocations for host", "host", host, "error", err)
+			// Continue with other hosts even if one fails
+		}
+	}
+
+	slog.Info("Allocation sync completed")
+	return nil
+}
+
+// syncAllocsForHost synchronizes allocations for a specific container host
+func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
+	// Get allocations from the database that should be on this host
+	dbAllocs, err := s.getAllocsByHost(ctx, host)
+	if err != nil {
+		return fmt.Errorf("failed to get allocations from database: %w", err)
+	}
+
+	// Get allocations currently on the host
+	hostAllocIDs, err := s.containerManager.ListAllocs(ctx, host)
+	if err != nil {
+		return fmt.Errorf("failed to list allocations on host: %w", err)
+	}
+
+	// Create maps for easier lookup
+	dbAllocMap := make(map[string]*Alloc)
+	for _, alloc := range dbAllocs {
+		// Truncate allocID to match network naming (max 12 chars)
+		nameLen := len(alloc.AllocID)
+		if nameLen > 12 {
+			nameLen = 12
+		}
+		truncatedID := alloc.AllocID[:nameLen]
+		dbAllocMap[truncatedID] = alloc
+	}
+
+	hostAllocMap := make(map[string]bool)
+	for _, allocID := range hostAllocIDs {
+		hostAllocMap[allocID] = true
+	}
+
+	// Create allocations that are in DB but not on host
+	for truncatedID, alloc := range dbAllocMap {
+		if !hostAllocMap[truncatedID] {
+			// Skip allocations without IP ranges
+			if !alloc.IPRange.Valid {
+				slog.Warn("Skipping allocation without IP range", "allocID", alloc.AllocID)
+				continue
+			}
+			slog.Info("Creating missing allocation on host", "allocID", alloc.AllocID, "host", host, "ipRange", alloc.IPRange.String)
+			if err := s.containerManager.CreateAlloc(ctx, alloc.AllocID, alloc.IPRange.String); err != nil {
+				slog.Error("Failed to create allocation on host", "allocID", alloc.AllocID, "host", host, "error", err)
+				// Continue with other allocations
+			}
+		}
+	}
+
+	// Delete allocations that are on host but not in DB
+	for allocID := range hostAllocMap {
+		if _, exists := dbAllocMap[allocID]; !exists {
+			slog.Info("Removing orphaned allocation from host", "allocID", allocID, "host", host)
+			if err := s.containerManager.DeleteAlloc(ctx, allocID, host); err != nil {
+				slog.Error("Failed to delete allocation from host", "allocID", allocID, "host", host, "error", err)
+				// Continue with other allocations
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *Server) Start() error {
 	s.mu.Lock()
 	s.stopping = false
@@ -2816,6 +2936,14 @@ func (s *Server) Start() error {
 
 		slog.Info("SSH server started in local dev mode. Connect with:")
 		slog.Info(fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
+	}
+
+	// Sync allocations with container hosts before accepting connections
+	if s.containerManager != nil {
+		if err := s.syncAllocsWithHosts(ctx); err != nil {
+			slog.Error("Failed to sync allocations with container hosts", "error", err)
+			// Continue anyway - we can sync later
+		}
 	}
 
 	// Start tag resolver and host updater for keeping container images fresh
