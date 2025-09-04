@@ -697,7 +697,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		PublicKey:  publicKey,
 		Args:       cmd[1:], // Skip the command name itself
 		SSHServer:  ss,
-		Output:     s,
+		Output:     NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
 		SSHSession: s,
 		Terminal:   nil, // No interactive terminal for exec mode
 	}
