@@ -59,9 +59,8 @@ func TestMain(m *testing.M) {
 
 	// Skip tests in CI if exe-ctr-colima is not accessible via SSH
 	if os.Getenv("CI") != "" {
-		cmd := exec.Command("ssh", "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "exe-ctr-colima", "true")
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("skipping tests in CI: exe-ctr-colima not accessible via SSH (%v)\n", err)
+		if ctrhosttest.Detect(nil) == "" {
+			fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
 			return
 		}
 	}
