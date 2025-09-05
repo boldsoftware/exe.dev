@@ -507,7 +507,7 @@ func genSSHKey(t *testing.T) (path, publickey string) {
 
 const (
 	ps1    = "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "
-	banner = "EXE.DEV"
+	banner = "~~~ EXE.DEV ~~~"
 )
 
 type expectPty struct {

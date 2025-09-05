@@ -386,7 +386,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 func (ss *SSHServer) showAnimatedWelcome(s ssh.Session) {
 	// Skip animation in test mode for faster tests
 	if ss.server.testMode {
-		fmt.Fprint(s, "EXE.DEV\r\n")
+		fmt.Fprint(s, "~~~ EXE.DEV ~~~\r\n")
 		return
 	}
 
