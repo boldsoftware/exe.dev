@@ -68,7 +68,7 @@ if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
 		--query 'GroupId' \
 		--output text \
 		--region ${REGION})
-	
+
 	# Add rules
 	# Allow SSH from anywhere (for Tailscale and initial setup)
 	aws ec2 authorize-security-group-ingress \
@@ -77,7 +77,7 @@ if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
 		--port 22 \
 		--cidr 0.0.0.0/0 \
 		--region ${REGION}
-	
+
 	# Allow HTTPS from anywhere
 	aws ec2 authorize-security-group-ingress \
 		--group-id ${SG_ID} \
@@ -85,7 +85,7 @@ if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
 		--port 443 \
 		--cidr 0.0.0.0/0 \
 		--region ${REGION}
-	
+
 	# Allow all traffic from within VPC (for internal communication including ping)
 	aws ec2 authorize-security-group-ingress \
 		--group-id ${SG_ID} \
@@ -112,13 +112,13 @@ if ! aws iam get-role --role-name ${INSTANCE_ROLE_NAME} >/dev/null 2>&1; then
 				}
 			]
 		}'
-	
+
 	# Create instance profile
 	aws iam create-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME}
 	aws iam add-role-to-instance-profile \
 		--instance-profile-name ${INSTANCE_PROFILE_NAME} \
 		--role-name ${INSTANCE_ROLE_NAME}
-	
+
 	# Wait for profile to be ready
 	sleep 10
 fi
@@ -128,10 +128,10 @@ echo "Finding latest Ubuntu 24.04 AMI..."
 AMI_ID=$(aws ec2 describe-images \
 	--owners 099720109477 \
 	--filters \
-		"Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*" \
-		"Name=architecture,Values=arm64" \
-		"Name=virtualization-type,Values=hvm" \
-		"Name=state,Values=available" \
+	"Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*" \
+	"Name=architecture,Values=arm64" \
+	"Name=virtualization-type,Values=hvm" \
+	"Name=state,Values=available" \
 	--query 'Images[0].[ImageId]' \
 	--output text \
 	--region ${REGION})
@@ -151,7 +151,8 @@ if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
 fi
 
 # Create user data script with Tailscale setup
-USER_DATA=$(cat <<EOF
+USER_DATA=$(
+	cat <<EOF
 #cloud-config
 users:
   - name: ubuntu
@@ -254,8 +255,8 @@ INSTANCE_ID=$(aws ec2 run-instances \
 	--iam-instance-profile Name=${INSTANCE_PROFILE_NAME} \
 	--user-data "${USER_DATA}" \
 	--block-device-mappings \
-		"DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
-		"DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
+	"DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
+	"DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
 	--tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}}]" \
 	--query 'Instances[0].InstanceId' \
 	--output text \
@@ -280,28 +281,28 @@ echo "Instance is running at ${INSTANCE_IP} (private IP)"
 echo ""
 echo "Waiting for Tailscale to connect..."
 
-MAX_WAIT=300  # 5 minutes
+MAX_WAIT=300 # 5 minutes
 WAIT_INTERVAL=10
 ELAPSED=0
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
-    # Try to SSH to the machine via Tailscale
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
-        echo "✓ Machine is accessible via Tailscale SSH"
-        break
-    fi
-    
-    echo "  Waiting for ${MACHINE_NAME} to be accessible via Tailscale... ($ELAPSED/$MAX_WAIT seconds)"
-    sleep $WAIT_INTERVAL
-    ELAPSED=$((ELAPSED + WAIT_INTERVAL))
+	# Try to SSH to the machine via Tailscale
+	if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
+		echo "✓ Machine is accessible via Tailscale SSH"
+		break
+	fi
+
+	echo "  Waiting for ${MACHINE_NAME} to be accessible via Tailscale... ($ELAPSED/$MAX_WAIT seconds)"
+	sleep $WAIT_INTERVAL
+	ELAPSED=$((ELAPSED + WAIT_INTERVAL))
 done
 
 if [ $ELAPSED -ge $MAX_WAIT ]; then
-    echo "WARNING: Machine is not accessible via Tailscale after ${MAX_WAIT} seconds"
-    echo "You may need to check the Tailscale setup manually"
-    echo "To debug, you can SSH via exed-01:"
-    echo "  ssh exed-01 'ssh ubuntu@${INSTANCE_IP} sudo tail -100 /var/log/cloud-init-output.log'"
-    exit 1
+	echo "WARNING: Machine is not accessible via Tailscale after ${MAX_WAIT} seconds"
+	echo "You may need to check the Tailscale setup manually"
+	echo "To debug, you can SSH via exed-01:"
+	echo "  ssh exed-01 'ssh ubuntu@${INSTANCE_IP} sudo tail -100 /var/log/cloud-init-output.log'"
+	exit 1
 fi
 
 # Copy setup script via Tailscale
@@ -309,8 +310,8 @@ echo "Copying containerd setup script to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	"${SCRIPT_DIR}/setup-containerd-clh-nydus.sh" \
 	"ubuntu@${MACHINE_NAME}:~/"; then
-    echo "ERROR: Failed to copy setup script"
-    exit 1
+	echo "ERROR: Failed to copy setup script"
+	exit 1
 fi
 
 echo ""
@@ -321,10 +322,10 @@ echo "=========================================="
 # Execute the part 2 script
 echo "Executing containerd setup script on ${MACHINE_NAME}..."
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "ubuntu@${MACHINE_NAME}" \
-    'chmod +x setup-containerd-clh-nydus.sh && ./setup-containerd-clh-nydus.sh'; then
-    echo "ERROR: Setup script failed"
-    exit 1
+	"ubuntu@${MACHINE_NAME}" \
+	'chmod +x setup-containerd-clh-nydus.sh && ./setup-containerd-clh-nydus.sh'; then
+	echo "ERROR: Setup script failed"
+	exit 1
 fi
 
 echo ""

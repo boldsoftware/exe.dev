@@ -5,7 +5,7 @@ echo "=== Running setup-containerd-clh-nydus.sh ==="
 
 # Optional verbose tracing: export EXE_DEBUG_SETUP=1
 if [ "${EXE_DEBUG_SETUP:-0}" = "1" ]; then
-  set -x
+	set -x
 fi
 
 # On any error, emit useful diagnostics before exiting
@@ -29,78 +29,78 @@ export NEEDRESTART_SUSPEND=1
 # Detect if we're in a CI environment (no NVMe drives, ephemeral VM)
 IS_CI_VM=0
 if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ ! -e /dev/nvme0n1 ]; then
-    IS_CI_VM=1
-    echo "=== CI/ephemeral VM detected, skipping swap and data volume setup ==="
+	IS_CI_VM=1
+	echo "=== CI/ephemeral VM detected, skipping swap and data volume setup ==="
 fi
 
 if [ $IS_CI_VM -eq 0 ]; then
-    # Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
-    echo "=== Setting up dual swap partitions on NVMe drives ==="
-    
-    # First NVMe drive
-    NVME1="/dev/nvme0n1"
-    echo "Setting up 500GB swap on ${NVME1}..."
-    sudo parted -s ${NVME1} mklabel gpt
-    sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 501GiB
-    sudo mkswap ${NVME1}p1
-    
-    # Second NVMe drive
-    NVME2="/dev/nvme1n1"
-    echo "Setting up 500GB swap on ${NVME2}..."
-    sudo parted -s ${NVME2} mklabel gpt
-    sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 501GiB
-    sudo mkswap ${NVME2}p1
-    
-    # Enable both swaps with equal priority for I/O interleaving
-    sudo swapon -p 1 ${NVME1}p1
-    sudo swapon -p 1 ${NVME2}p1
-    
-    # Add to fstab with priority
-    echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-    echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-    
-    echo "Dual swap setup complete (2x 500GB with equal priority)"
-    
-    # Setup data volume
-    echo "=== Setting up data volume ==="
-    DATA_DEVICE=""
-    
-    # First check if xvdf exists (non-metal instances)
-    if [ -e /dev/xvdf ]; then
-        DATA_DEVICE="/dev/xvdf"
-    else
-        # On metal instances, find the 250GB NVMe device
-        echo "Looking for 250GB NVMe data volume..."
-        for nvme in /dev/nvme*n1; do
-            if [ -b "$nvme" ]; then
-                SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
-                echo "Checking NVMe device $nvme with size ${SIZE_HR}"
-                
-                SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
-                
-                if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 245 ] && [ "$SIZE_GB" -le 255 ]; then
-                    DATA_DEVICE="$nvme"
-                    echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
-                    break
-                fi
-            fi
-        done
-    fi
-    
-    if [ -z "$DATA_DEVICE" ]; then
-        echo "ERROR: Could not find data volume (250GB device)"
-        echo "Available block devices:"
-        lsblk
-        exit 1
-    fi
-    
-    echo "Using data device: $DATA_DEVICE"
-    sudo mkfs.xfs $DATA_DEVICE
-    sudo mkdir -p /data
-    sudo mount -o pquota $DATA_DEVICE /data
-    echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
-    sudo xfs_quota -x -c 'state' /data
-    echo "Data volume setup complete"
+	# Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
+	echo "=== Setting up dual swap partitions on NVMe drives ==="
+
+	# First NVMe drive
+	NVME1="/dev/nvme0n1"
+	echo "Setting up 500GB swap on ${NVME1}..."
+	sudo parted -s ${NVME1} mklabel gpt
+	sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 501GiB
+	sudo mkswap ${NVME1}p1
+
+	# Second NVMe drive
+	NVME2="/dev/nvme1n1"
+	echo "Setting up 500GB swap on ${NVME2}..."
+	sudo parted -s ${NVME2} mklabel gpt
+	sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 501GiB
+	sudo mkswap ${NVME2}p1
+
+	# Enable both swaps with equal priority for I/O interleaving
+	sudo swapon -p 1 ${NVME1}p1
+	sudo swapon -p 1 ${NVME2}p1
+
+	# Add to fstab with priority
+	echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+	echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+
+	echo "Dual swap setup complete (2x 500GB with equal priority)"
+
+	# Setup data volume
+	echo "=== Setting up data volume ==="
+	DATA_DEVICE=""
+
+	# First check if xvdf exists (non-metal instances)
+	if [ -e /dev/xvdf ]; then
+		DATA_DEVICE="/dev/xvdf"
+	else
+		# On metal instances, find the 250GB NVMe device
+		echo "Looking for 250GB NVMe data volume..."
+		for nvme in /dev/nvme*n1; do
+			if [ -b "$nvme" ]; then
+				SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
+				echo "Checking NVMe device $nvme with size ${SIZE_HR}"
+
+				SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
+
+				if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 245 ] && [ "$SIZE_GB" -le 255 ]; then
+					DATA_DEVICE="$nvme"
+					echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
+					break
+				fi
+			fi
+		done
+	fi
+
+	if [ -z "$DATA_DEVICE" ]; then
+		echo "ERROR: Could not find data volume (250GB device)"
+		echo "Available block devices:"
+		lsblk
+		exit 1
+	fi
+
+	echo "Using data device: $DATA_DEVICE"
+	sudo mkfs.xfs $DATA_DEVICE
+	sudo mkdir -p /data
+	sudo mount -o pquota $DATA_DEVICE /data
+	echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
+	sudo xfs_quota -x -c 'state' /data
+	echo "Data volume setup complete"
 fi
 
 echo "=== Installing containerd ==="
@@ -108,25 +108,25 @@ echo "=== Installing containerd ==="
 # Install prerequisites
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release \
-    apt-transport-https \
-    jq \
-    build-essential \
-    pkg-config \
-    libseccomp-dev \
-    wget \
-    skopeo > /dev/null 2>&1
+	ca-certificates \
+	curl \
+	gnupg \
+	lsb-release \
+	apt-transport-https \
+	jq \
+	build-essential \
+	pkg-config \
+	libseccomp-dev \
+	wget \
+	skopeo >/dev/null 2>&1
 
 # Install containerd from official releases (not apt) for specific version
 CONTAINERD_VERSION="2.1.4"
 ARCH=$(uname -m)
 if [ "$ARCH" = "x86_64" ]; then
-    ARCH="amd64"
+	ARCH="amd64"
 elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    ARCH="arm64"
+	ARCH="arm64"
 fi
 
 # Download and install containerd
@@ -195,7 +195,7 @@ rm -rf nydus-static nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
 # Create nydus configuration directory
 sudo mkdir -p /etc/nydus
 # Create proper nydusd configuration
-cat <<'EOF' | sudo tee /etc/nydus/nydusd-config.json > /dev/null
+cat <<'EOF' | sudo tee /etc/nydus/nydusd-config.json >/dev/null
 {
   "device": {
     "backend": {
@@ -227,7 +227,7 @@ sudo mkdir -p /var/lib/containerd-nydus
 sudo mkdir -p /run/containerd-nydus
 
 # Create systemd service for nydus-snapshotter
-cat <<'EOF' | sudo tee /etc/systemd/system/nydus-snapshotter.service > /dev/null
+cat <<'EOF' | sudo tee /etc/systemd/system/nydus-snapshotter.service >/dev/null
 [Unit]
 Description=Nydus snapshotter for containerd
 After=network.target containerd.service
@@ -269,14 +269,14 @@ echo "=== Skipping Kata VM templating; using CLH snapshot/restore path ==="
 # Allow OCI annotations required for CLH restore (permit all to avoid drift)
 KATA_CFG="/etc/kata-containers/configuration-clh.toml"
 if sudo grep -q '^\[runtime\]' "$KATA_CFG"; then
-  # Replace or insert enable_annotations under [runtime]; allow all via regex ".*"
-  if sudo grep -q '^enable_annotations' "$KATA_CFG"; then
-    sudo sed -i 's/^enable_annotations.*/enable_annotations = [".*"]/g' "$KATA_CFG"
-  else
-    sudo sed -i '/^\[runtime\]/a enable_annotations = [".*"]' "$KATA_CFG"
-  fi
+	# Replace or insert enable_annotations under [runtime]; allow all via regex ".*"
+	if sudo grep -q '^enable_annotations' "$KATA_CFG"; then
+		sudo sed -i 's/^enable_annotations.*/enable_annotations = [".*"]/g' "$KATA_CFG"
+	else
+		sudo sed -i '/^\[runtime\]/a enable_annotations = [".*"]' "$KATA_CFG"
+	fi
 else
-  sudo bash -c "cat >> '$KATA_CFG' <<'EOF'
+	sudo bash -c "cat >> '$KATA_CFG' <<'EOF'
 [runtime]
 enable_annotations = [".*"]
 EOF"
@@ -287,20 +287,20 @@ echo "Enabled Kata OCI annotations for CLH restore in $KATA_CFG (enable_annotati
 echo "Tuning Cloud Hypervisor memory defaults (base=256MiB, max=8192MiB, balloon reclaim on)"
 # Update default_memory and default_maxmemory if present; otherwise append under [hypervisor.clh]
 if sudo grep -q '^default_memory' "$KATA_CFG"; then
-  sudo sed -i 's/^default_memory[[:space:]]*=.*/default_memory = 256/' "$KATA_CFG"
+	sudo sed -i 's/^default_memory[[:space:]]*=.*/default_memory = 256/' "$KATA_CFG"
 else
-  sudo sed -i '/^\[hypervisor\.clh\]/a default_memory = 256' "$KATA_CFG"
+	sudo sed -i '/^\[hypervisor\.clh\]/a default_memory = 256' "$KATA_CFG"
 fi
 if sudo grep -q '^default_maxmemory' "$KATA_CFG"; then
-  sudo sed -i 's/^default_maxmemory[[:space:]]*=.*/default_maxmemory = 8192/' "$KATA_CFG"
+	sudo sed -i 's/^default_maxmemory[[:space:]]*=.*/default_maxmemory = 8192/' "$KATA_CFG"
 else
-  sudo sed -i '/^\[hypervisor\.clh\]/a default_maxmemory = 8192' "$KATA_CFG"
+	sudo sed -i '/^\[hypervisor\.clh\]/a default_maxmemory = 8192' "$KATA_CFG"
 fi
 # Enable guest free memory reclaim via balloon
 if sudo grep -q '^reclaim_guest_freed_memory' "$KATA_CFG"; then
-  sudo sed -i 's/^#\?reclaim_guest_freed_memory[[:space:]]*=.*/reclaim_guest_freed_memory = true/' "$KATA_CFG"
+	sudo sed -i 's/^#\?reclaim_guest_freed_memory[[:space:]]*=.*/reclaim_guest_freed_memory = true/' "$KATA_CFG"
 else
-  sudo sed -i '/^\[hypervisor\.clh\]/a reclaim_guest_freed_memory = true' "$KATA_CFG"
+	sudo sed -i '/^\[hypervisor\.clh\]/a reclaim_guest_freed_memory = true' "$KATA_CFG"
 fi
 echo "--- Kata hypervisor.clh memory config ---"
 sudo awk '/^\[hypervisor\.clh\]/{f=1;print;next}/^\[/{f=0}f{print}' "$KATA_CFG" | sed -n '1,80p'
@@ -313,11 +313,11 @@ echo "---------------------------"
 
 # Ensure guest memory hotplug onlines memory by default
 if sudo grep -q '^kernel_params' "$KATA_CFG"; then
-  if ! sudo grep -q 'memhp_default_state=online' "$KATA_CFG"; then
-    sudo sed -i 's/^kernel_params[[:space:]]*=[[:space:]]*"\(.*\)"/kernel_params = "\1 memhp_default_state=online"/' "$KATA_CFG"
-  fi
+	if ! sudo grep -q 'memhp_default_state=online' "$KATA_CFG"; then
+		sudo sed -i 's/^kernel_params[[:space:]]*=[[:space:]]*"\(.*\)"/kernel_params = "\1 memhp_default_state=online"/' "$KATA_CFG"
+	fi
 else
-  sudo sed -i '/^\[hypervisor\.clh\]/a kernel_params = "memhp_default_state=online"' "$KATA_CFG"
+	sudo sed -i '/^\[hypervisor\.clh\]/a kernel_params = "memhp_default_state=online"' "$KATA_CFG"
 fi
 
 # Always restart containerd to ensure shims pick up the latest config
@@ -327,13 +327,13 @@ sleep 2
 # Ensure Cloud Hypervisor API socket is available for snapshots (use Kata+CLH default)
 CLH_CFG="/etc/kata-containers/configuration-clh.toml"
 if sudo grep -q '^\[hypervisor\.clh\]' "$CLH_CFG"; then
-  # Prefer not to override; but if api_socket exists, set to default per-VM path used by Kata+CLH
-  if sudo grep -q '^api_socket' "$CLH_CFG"; then
-    sudo sed -i 's#^api_socket.*#api_socket = "/run/vc/vm/%s/clh-api.sock"#g' "$CLH_CFG"
-  fi
+	# Prefer not to override; but if api_socket exists, set to default per-VM path used by Kata+CLH
+	if sudo grep -q '^api_socket' "$CLH_CFG"; then
+		sudo sed -i 's#^api_socket.*#api_socket = "/run/vc/vm/%s/clh-api.sock"#g' "$CLH_CFG"
+	fi
 else
-  # No hypervisor.clh section; leave defaults
-  true
+	# No hypervisor.clh section; leave defaults
+	true
 fi
 
 # Show the effective hypervisor.clh section for CLH
@@ -345,15 +345,15 @@ echo "=== Configuring containerd with Nydus snapshotter ==="
 
 # Create data directory (use /var/lib for CI VMs without /data volume)
 if [ $IS_CI_VM -eq 1 ]; then
-    CONTAINERD_ROOT="/var/lib/containerd"
+	CONTAINERD_ROOT="/var/lib/containerd"
 else
-    CONTAINERD_ROOT="/data/containerd"
-    sudo mkdir -p $CONTAINERD_ROOT
+	CONTAINERD_ROOT="/data/containerd"
+	sudo mkdir -p $CONTAINERD_ROOT
 fi
 
 # Configure containerd with nydus as default snapshotter
 sudo mkdir -p /etc/containerd
-cat <<EOF | sudo tee /etc/containerd/config.toml > /dev/null
+cat <<EOF | sudo tee /etc/containerd/config.toml >/dev/null
 version = 2
 root = "$CONTAINERD_ROOT"
 
@@ -408,60 +408,60 @@ echo "=== Configuring Cloud Hypervisor snapshot/restore and warm pool ==="
 
 # Install ch-remote if available for this CLH build; fallback is to skip snapshot creation
 install_ch_remote() {
-  if command -v ch-remote >/dev/null 2>&1; then
-    return 0
-  fi
-  # Use a local variable so we don't clobber global ARCH (normalized to amd64/arm64)
-  local CLH_ARCH_RAW
-  CLH_ARCH_RAW=$(uname -m)
-  local SUFFIX=""
-  case "$CLH_ARCH_RAW" in
-    x86_64) SUFFIX="" ;;
-    aarch64|arm64) SUFFIX="-aarch64" ;;
-    *) SUFFIX="" ;;
-  esac
-  # Allow manual override: set EXE_CH_REMOTE_RELEASE to a tag like v47.0
-  if [ -n "${EXE_CH_REMOTE_RELEASE:-}" ]; then
-    CANDIDATES="$EXE_CH_REMOTE_RELEASE"
-  else
-    # Extract version (e.g., 47.0 or 47.0.0) from cloud-hypervisor --version
-    VER=$(/opt/kata/bin/cloud-hypervisor --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){1,2}' | head -n1)
-    if [ -z "$VER" ]; then
-      echo "Warning: cannot detect Cloud Hypervisor version; skipping ch-remote install" >&2
-      return 0
-    fi
-    CANDIDATES="v${VER}"
-    # Add fallback tags: if has patch .0, try vX.Y; if has only X.Y, try vX.Y.0
-    if echo "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-      PATCH=$(echo "$VER" | awk -F. '{print $3}')
-      if [ "$PATCH" = "0" ]; then
-        CANDIDATES="$CANDIDATES v$(echo "$VER" | awk -F. '{print $1"."$2}')"
-      fi
-    elif echo "$VER" | grep -qE '^[0-9]+\.[0-9]+$'; then
-      CANDIDATES="$CANDIDATES v${VER}.0"
-    fi
-  fi
-  TMP=$(mktemp)
-  for REL in $CANDIDATES; do
-    URL="https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/${REL}/ch-remote-static${SUFFIX}"
-    echo "Attempting to download ch-remote from: $URL"
-    if curl -fSL "$URL" -o "$TMP"; then
-      sudo mv "$TMP" /usr/local/bin/ch-remote
-      sudo chmod +x /usr/local/bin/ch-remote
-      return 0
-    else
-      echo "Download failed: $URL" >&2
-    fi
-  done
-  rm -f "$TMP"
-  echo "Warning: failed to download ch-remote (tried: $CANDIDATES, suffix $SUFFIX)" >&2
+	if command -v ch-remote >/dev/null 2>&1; then
+		return 0
+	fi
+	# Use a local variable so we don't clobber global ARCH (normalized to amd64/arm64)
+	local CLH_ARCH_RAW
+	CLH_ARCH_RAW=$(uname -m)
+	local SUFFIX=""
+	case "$CLH_ARCH_RAW" in
+	x86_64) SUFFIX="" ;;
+	aarch64 | arm64) SUFFIX="-aarch64" ;;
+	*) SUFFIX="" ;;
+	esac
+	# Allow manual override: set EXE_CH_REMOTE_RELEASE to a tag like v47.0
+	if [ -n "${EXE_CH_REMOTE_RELEASE:-}" ]; then
+		CANDIDATES="$EXE_CH_REMOTE_RELEASE"
+	else
+		# Extract version (e.g., 47.0 or 47.0.0) from cloud-hypervisor --version
+		VER=$(/opt/kata/bin/cloud-hypervisor --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){1,2}' | head -n1)
+		if [ -z "$VER" ]; then
+			echo "Warning: cannot detect Cloud Hypervisor version; skipping ch-remote install" >&2
+			return 0
+		fi
+		CANDIDATES="v${VER}"
+		# Add fallback tags: if has patch .0, try vX.Y; if has only X.Y, try vX.Y.0
+		if echo "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+			PATCH=$(echo "$VER" | awk -F. '{print $3}')
+			if [ "$PATCH" = "0" ]; then
+				CANDIDATES="$CANDIDATES v$(echo "$VER" | awk -F. '{print $1"."$2}')"
+			fi
+		elif echo "$VER" | grep -qE '^[0-9]+\.[0-9]+$'; then
+			CANDIDATES="$CANDIDATES v${VER}.0"
+		fi
+	fi
+	TMP=$(mktemp)
+	for REL in $CANDIDATES; do
+		URL="https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/${REL}/ch-remote-static${SUFFIX}"
+		echo "Attempting to download ch-remote from: $URL"
+		if curl -fSL "$URL" -o "$TMP"; then
+			sudo mv "$TMP" /usr/local/bin/ch-remote
+			sudo chmod +x /usr/local/bin/ch-remote
+			return 0
+		else
+			echo "Download failed: $URL" >&2
+		fi
+	done
+	rm -f "$TMP"
+	echo "Warning: failed to download ch-remote (tried: $CANDIDATES, suffix $SUFFIX)" >&2
 }
 install_ch_remote || true
 
 # Snapshot builder: create a base CLH snapshot from a minimal Kata sandbox
 SNAP_DIR=/var/lib/cloud-hypervisor/snapshots
 sudo mkdir -p "$SNAP_DIR"
-cat <<'EOF' | sudo tee /usr/local/sbin/exe-clh-snapshot > /dev/null
+cat <<'EOF' | sudo tee /usr/local/sbin/exe-clh-snapshot >/dev/null
 #!/bin/sh
 set -eu
 SNAP_DIR=${SNAP_DIR:-/var/lib/cloud-hypervisor/snapshots}
@@ -547,7 +547,7 @@ sudo chmod +x /usr/local/sbin/exe-clh-snapshot
 
 # Ready pool: maintain a small number of warm Kata sandboxes (sleeping); labeled for visibility
 POOL_SIZE=3
-cat <<'EOF' | sudo tee /usr/local/sbin/exe-kata-pool > /dev/null
+cat <<'EOF' | sudo tee /usr/local/sbin/exe-kata-pool >/dev/null
 #!/bin/sh
 set -eu
 NS="exe"
@@ -593,7 +593,7 @@ exit 0
 EOF
 sudo chmod +x /usr/local/sbin/exe-kata-pool
 
-cat <<'EOF' | sudo tee /etc/systemd/system/exe-clh-snapshot.service > /dev/null
+cat <<'EOF' | sudo tee /etc/systemd/system/exe-clh-snapshot.service >/dev/null
 [Unit]
 Description=Build Cloud Hypervisor base snapshot
 After=containerd.service nydus-snapshotter.service
@@ -608,7 +608,7 @@ TimeoutSec=180
 WantedBy=multi-user.target
 EOF
 
-cat <<'EOF' | sudo tee /etc/systemd/system/exe-kata-pool.service > /dev/null
+cat <<'EOF' | sudo tee /etc/systemd/system/exe-kata-pool.service >/dev/null
 [Unit]
 Description=Maintain a pool of warm Kata sandboxes
 After=containerd.service nydus-snapshotter.service exe-clh-snapshot.service
@@ -624,7 +624,7 @@ ExecStartPost=/bin/sh -c 'systemctl start exe-kata-pool.timer'
 WantedBy=multi-user.target
 EOF
 
-cat <<'EOF' | sudo tee /etc/systemd/system/exe-kata-pool.timer > /dev/null
+cat <<'EOF' | sudo tee /etc/systemd/system/exe-kata-pool.timer >/dev/null
 [Unit]
 Description=Refresh Kata warm pool periodically
 
@@ -647,30 +647,30 @@ echo "=== Installing nerdctl ==="
 # Install nerdctl for easier container management (v2.1.3)
 NERDCTL_VERSION="2.1.3"
 # Map arch to nerdctl naming
-NERDCTL_ARCH="$ARCH"   # ARCH is normalized earlier to amd64/arm64
+NERDCTL_ARCH="$ARCH" # ARCH is normalized earlier to amd64/arm64
 NERDCTL_URL="https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-${NERDCTL_ARCH}.tar.gz"
 echo "Downloading nerdctl from: $NERDCTL_URL"
 TMPD=$(mktemp -d)
 if ! curl -fSL "$NERDCTL_URL" -o "$TMPD/nerdctl.tgz"; then
-  echo "ERROR: failed to download nerdctl from $NERDCTL_URL" >&2
-  rm -rf "$TMPD"
-  exit 1
+	echo "ERROR: failed to download nerdctl from $NERDCTL_URL" >&2
+	rm -rf "$TMPD"
+	exit 1
 fi
 if ! tar -xzf "$TMPD/nerdctl.tgz" -C "$TMPD"; then
-  echo "ERROR: failed to extract nerdctl archive" >&2
-  rm -rf "$TMPD"
-  exit 1
+	echo "ERROR: failed to extract nerdctl archive" >&2
+	rm -rf "$TMPD"
+	exit 1
 fi
 # Find the nerdctl binary within the archive and install
 NC_PATH=""
 if [ -f "$TMPD/nerdctl" ]; then NC_PATH="$TMPD/nerdctl"; fi
 if [ -z "$NC_PATH" ]; then
-  NC_PATH=$(find "$TMPD" -maxdepth 2 -type f -name nerdctl | head -n1 || true)
+	NC_PATH=$(find "$TMPD" -maxdepth 2 -type f -name nerdctl | head -n1 || true)
 fi
 if [ -z "$NC_PATH" ]; then
-  echo "ERROR: nerdctl binary not found in archive" >&2
-  rm -rf "$TMPD"
-  exit 1
+	echo "ERROR: nerdctl binary not found in archive" >&2
+	rm -rf "$TMPD"
+	exit 1
 fi
 sudo install -m 0755 "$NC_PATH" /usr/local/bin/nerdctl
 rm -rf "$TMPD"
@@ -687,7 +687,7 @@ rm cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz
 
 # Configure CNI
 sudo mkdir -p /etc/cni/net.d
-cat <<'EOF' | sudo tee /etc/cni/net.d/10-containerd-net.conflist > /dev/null
+cat <<'EOF' | sudo tee /etc/cni/net.d/10-containerd-net.conflist >/dev/null
 {
   "cniVersion": "1.0.0",
   "name": "containerd-net",
@@ -714,7 +714,7 @@ cat <<'EOF' | sudo tee /etc/cni/net.d/10-containerd-net.conflist > /dev/null
 EOF
 
 # Add kata-bridge network configuration (required for Kata + Cloud Hypervisor networking on ARM64)
-cat <<'EOF' | sudo tee /etc/cni/net.d/10-kata-bridge.conflist > /dev/null
+cat <<'EOF' | sudo tee /etc/cni/net.d/10-kata-bridge.conflist >/dev/null
 {
   "cniVersion": "1.0.0",
   "name": "kata-bridge",
@@ -746,7 +746,7 @@ sudo usermod -aG containerd ubuntu
 
 # Configure containerd socket permissions
 sudo mkdir -p /etc/systemd/system/containerd.service.d
-cat <<'EOF' | sudo tee /etc/systemd/system/containerd.service.d/override.conf > /dev/null
+cat <<'EOF' | sudo tee /etc/systemd/system/containerd.service.d/override.conf >/dev/null
 [Service]
 # Force containerd to use our config file
 ExecStart=
@@ -756,7 +756,7 @@ ExecStartPost=/bin/sh -c 'sleep 1 && chmod 660 /run/containerd/containerd.sock &
 EOF
 
 # Add sudo permissions for container commands
-cat <<'EOF' | sudo tee /etc/sudoers.d/99-containerd > /dev/null
+cat <<'EOF' | sudo tee /etc/sudoers.d/99-containerd >/dev/null
 # Allow ubuntu user to run container commands without password
 ubuntu ALL=(ALL) NOPASSWD: /usr/local/bin/ctr
 ubuntu ALL=(ALL) NOPASSWD: /usr/local/bin/nerdctl
@@ -794,22 +794,22 @@ sleep 3
 echo "Waiting for nydus to register with containerd..."
 NYDUS_OK=0
 for i in {1..20}; do
-  if sudo ctr plugin ls | grep -q "io.containerd.snapshotter.*nydus.*ok"; then
-    echo "  Nydus snapshotter registered successfully"
-    NYDUS_OK=1
-    break
-  fi
-  sleep 1
+	if sudo ctr plugin ls | grep -q "io.containerd.snapshotter.*nydus.*ok"; then
+		echo "  Nydus snapshotter registered successfully"
+		NYDUS_OK=1
+		break
+	fi
+	sleep 1
 done
 if [ "$NYDUS_OK" -ne 1 ]; then
-  echo "ERROR: Nydus snapshotter not registered with containerd"
-  exit 1
+	echo "ERROR: Nydus snapshotter not registered with containerd"
+	exit 1
 fi
 
 # Fix socket permissions
 if [ -S /run/containerd/containerd.sock ]; then
-    sudo chmod 660 /run/containerd/containerd.sock
-    sudo chgrp containerd /run/containerd/containerd.sock
+	sudo chmod 660 /run/containerd/containerd.sock
+	sudo chgrp containerd /run/containerd/containerd.sock
 fi
 
 # Create the exe namespace
@@ -823,10 +823,10 @@ sudo nerdctl -n exe network create bridge --subnet 10.5.0.0/16 2>/dev/null || tr
 
 # Configure iptables rules for network isolation
 # Allow containers to reach internet but not each other or the host
-sudo iptables -I FORWARD -i nerdctl0 -o nerdctl0 -j DROP  # Block container-to-container
-sudo iptables -I INPUT -i nerdctl0 -j DROP  # Block container-to-host
-sudo iptables -I INPUT -i nerdctl0 -p icmp -j ACCEPT  # Allow ICMP for network diagnostics
-sudo iptables -I INPUT -i nerdctl0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT  # Allow established connections
+sudo iptables -I FORWARD -i nerdctl0 -o nerdctl0 -j DROP                                # Block container-to-container
+sudo iptables -I INPUT -i nerdctl0 -j DROP                                              # Block container-to-host
+sudo iptables -I INPUT -i nerdctl0 -p icmp -j ACCEPT                                    # Allow ICMP for network diagnostics
+sudo iptables -I INPUT -i nerdctl0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT # Allow established connections
 
 # Block access to tailscale interface completely
 sudo iptables -I FORWARD -i nerdctl0 -o tailscale0 -j DROP
@@ -837,10 +837,10 @@ sudo iptables -t nat -A POSTROUTING -s 10.5.0.0/16 ! -o nerdctl0 -j MASQUERADE
 
 # Save iptables rules to persist across reboots
 sudo mkdir -p /etc/iptables
-sudo iptables-save | sudo tee /etc/iptables/rules.v4 > /dev/null
+sudo iptables-save | sudo tee /etc/iptables/rules.v4 >/dev/null
 
 # Install iptables-persistent to load rules on boot
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y iptables-persistent netfilter-persistent > /dev/null 2>&1
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y iptables-persistent netfilter-persistent >/dev/null 2>&1
 sudo systemctl enable netfilter-persistent
 
 echo "Network isolation configured"
@@ -849,7 +849,7 @@ echo "=== Configuring SSH MaxSessions ==="
 
 # Set SSH MaxSessions to 50 for the machine
 sudo sed -i '/^#*MaxSessions/d' /etc/ssh/sshd_config
-echo "MaxSessions 50" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+echo "MaxSessions 50" | sudo tee -a /etc/ssh/sshd_config >/dev/null
 sudo systemctl reload ssh
 echo "SSH MaxSessions set to 50"
 
@@ -862,9 +862,9 @@ sudo systemctl is-active nydus-snapshotter >/dev/null 2>&1 && echo "✓ nydus-sn
 
 # Check nydus socket
 if [ -S /run/containerd-nydus/containerd-nydus-grpc.sock ]; then
-    echo "✓ Nydus socket exists"
+	echo "✓ Nydus socket exists"
 else
-    echo "✗ Nydus socket missing"
+	echo "✗ Nydus socket missing"
 fi
 
 # Test nydus snapshotter registration
@@ -872,24 +872,24 @@ echo ""
 echo "Testing nydus snapshotter..."
 # Verify the snapshotter is registered with containerd (no namespace), with a short retry
 nydus_ok_msg() {
-  sudo ctr plugin ls | grep -q "io.containerd.snapshotter.*nydus.*ok"
+	sudo ctr plugin ls | grep -q "io.containerd.snapshotter.*nydus.*ok"
 }
 NYDUS_REGISTERED=0
 if nydus_ok_msg; then
-  NYDUS_REGISTERED=1
+	NYDUS_REGISTERED=1
 else
-  for i in 1 2 3 4 5; do
-    sleep 1
-    if nydus_ok_msg; then
-      NYDUS_REGISTERED=1
-      break
-    fi
-  done
+	for i in 1 2 3 4 5; do
+		sleep 1
+		if nydus_ok_msg; then
+			NYDUS_REGISTERED=1
+			break
+		fi
+	done
 fi
 if [ "$NYDUS_REGISTERED" -eq 1 ]; then
-  echo "✓ Nydus snapshotter registered with containerd"
+	echo "✓ Nydus snapshotter registered with containerd"
 else
-  echo "✗ Nydus snapshotter not registered"
+	echo "✗ Nydus snapshotter not registered"
 fi
 
 # Pre-pull baseline images (digest-resolved) for exe namespace
@@ -897,40 +897,44 @@ echo ""
 echo "Pre-pulling baseline images (exeuntu, ubuntu, alpine) by digest..."
 
 normalize_arch() {
-  local a="$(uname -m)"
-  case "$a" in
-    x86_64) echo amd64;;
-    aarch64|arm64) echo arm64;;
-    *) echo "$a";;
-  esac
+	local a="$(uname -m)"
+	case "$a" in
+	x86_64) echo amd64 ;;
+	aarch64 | arm64) echo arm64 ;;
+	*) echo "$a" ;;
+	esac
 }
 
 resolve_digest_ref() {
-  # $1: canonical ref with tag (e.g., docker.io/library/ubuntu:latest)
-  local ref="$1"
-  local arch; arch=$(normalize_arch)
-  # skopeo selects platform with --override-arch and returns that image's digest
-  local digest
-  if ! digest=$(skopeo inspect --override-os linux --override-arch "$arch" --format '{{.Digest}}' docker://"$ref" 2>/dev/null); then
-    echo ""; return 1
-  fi
-  # Strip tag part and replace with @sha256
-  local name_without_tag="${ref%:*}"
-  echo "${name_without_tag}@${digest}"
+	# $1: canonical ref with tag (e.g., docker.io/library/ubuntu:latest)
+	local ref="$1"
+	local arch
+	arch=$(normalize_arch)
+	# skopeo selects platform with --override-arch and returns that image's digest
+	local digest
+	if ! digest=$(skopeo inspect --override-os linux --override-arch "$arch" --format '{{.Digest}}' docker://"$ref" 2>/dev/null); then
+		echo ""
+		return 1
+	fi
+	# Strip tag part and replace with @sha256
+	local name_without_tag="${ref%:*}"
+	echo "${name_without_tag}@${digest}"
 }
 
 pull_by_digest() {
-  local ref="$1"
-  local resolved
-  if ! resolved=$(resolve_digest_ref "$ref"); then
-    echo "  ! Failed to resolve digest for $ref"; return 1
-  fi
-  if [ -z "$resolved" ]; then
-    echo "  ! Empty digest for $ref"; return 1
-  fi
-  echo "  pulling $resolved"
-  # Use nydus snapshotter
-  sudo nerdctl -n exe --snapshotter nydus pull "$resolved" >/dev/null 2>&1 || return 1
+	local ref="$1"
+	local resolved
+	if ! resolved=$(resolve_digest_ref "$ref"); then
+		echo "  ! Failed to resolve digest for $ref"
+		return 1
+	fi
+	if [ -z "$resolved" ]; then
+		echo "  ! Empty digest for $ref"
+		return 1
+	fi
+	echo "  pulling $resolved"
+	# Use nydus snapshotter
+	sudo nerdctl -n exe --snapshotter nydus pull "$resolved" >/dev/null 2>&1 || return 1
 }
 
 # Image refs to resolve
@@ -964,14 +968,14 @@ sleep 3
 
 # Check if Cloud Hypervisor process is running (do not rely on container name)
 if pgrep -f "/opt/kata/bin/cloud-hypervisor" >/dev/null 2>&1; then
-    echo "✓ Kata + Cloud Hypervisor verified - Cloud Hypervisor process detected!"
-    HYPERVISOR_OK=true
+	echo "✓ Kata + Cloud Hypervisor verified - Cloud Hypervisor process detected!"
+	HYPERVISOR_OK=true
 elif ps aux | grep -v grep | grep -q "qemu-system.*$TEST_CONTAINER"; then
-    echo "✗ QEMU detected instead of Cloud Hypervisor!"
-    HYPERVISOR_OK=false
+	echo "✗ QEMU detected instead of Cloud Hypervisor!"
+	HYPERVISOR_OK=false
 else
-    echo "✗ No hypervisor process detected for test container"
-    HYPERVISOR_OK=false
+	echo "✗ No hypervisor process detected for test container"
+	HYPERVISOR_OK=false
 fi
 
 # Clean up test container
@@ -980,21 +984,21 @@ sudo ctr --namespace exe container rm $TEST_CONTAINER >/dev/null 2>&1 || true
 wait $CTR_PID 2>/dev/null || true
 
 if [ "$HYPERVISOR_OK" = "false" ]; then
-    echo "WARNING: Cloud Hypervisor not properly configured!"
+	echo "WARNING: Cloud Hypervisor not properly configured!"
 fi
 
 # Quick validation: run a kata container with CLH restore annotations (if snapshot exists)
 if [ -f /var/lib/cloud-hypervisor/snapshots/state.json ] && [ -f /var/lib/cloud-hypervisor/snapshots/config.json ]; then
-  echo "✓ Cloud Hypervisor snapshot directory present (state.json, config.json)"
+	echo "✓ Cloud Hypervisor snapshot directory present (state.json, config.json)"
 fi
 
 # Start snapshot creation and warm pool now that images are present
 if ! sudo systemctl start exe-clh-snapshot.service; then
-  echo "✗ exe-clh-snapshot.service failed; last logs:" >&2
-  sudo systemctl -l --no-pager status exe-clh-snapshot.service || true
-  sudo journalctl -n 120 --no-pager -u exe-clh-snapshot.service || true
+	echo "✗ exe-clh-snapshot.service failed; last logs:" >&2
+	sudo systemctl -l --no-pager status exe-clh-snapshot.service || true
+	sudo journalctl -n 120 --no-pager -u exe-clh-snapshot.service || true
 else
-  echo "✓ exe-clh-snapshot.service started"
+	echo "✓ exe-clh-snapshot.service started"
 fi
 # Start pool population via timer (do not block on oneshot service)
 sudo systemctl start exe-kata-pool.timer || true
@@ -1002,19 +1006,19 @@ echo "✓ exe-kata-pool.timer started (pool will populate in background)"
 
 # Measure CLH restore timing using the unified restore annotation, if snapshot files exist
 if [ -f /var/lib/cloud-hypervisor/snapshots/state.json ] && [ -f /var/lib/cloud-hypervisor/snapshots/memory-ranges ]; then
-  echo ""
-  echo "Testing Cloud Hypervisor restore timing (nerdctl + Kata)..."
-  TEST_IMG="${ALPINE_RESOLVED:-docker.io/library/alpine:latest}"
-  start_ms=$(date +%s%3N)
-  if sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 \
-    --annotation io.katacontainers.config.hypervisor.restore=source_url=file:///var/lib/cloud-hypervisor/snapshots \
-    "$TEST_IMG" true >/dev/null 2>&1; then
-    end_ms=$(date +%s%3N)
-    echo "✓ CLH restore test succeeded in $((end_ms-start_ms)) ms"
-  else
-    end_ms=$(date +%s%3N)
-    echo "✗ CLH restore test failed in $((end_ms-start_ms)) ms"
-  fi
+	echo ""
+	echo "Testing Cloud Hypervisor restore timing (nerdctl + Kata)..."
+	TEST_IMG="${ALPINE_RESOLVED:-docker.io/library/alpine:latest}"
+	start_ms=$(date +%s%3N)
+	if sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 \
+		--annotation io.katacontainers.config.hypervisor.restore=source_url=file:///var/lib/cloud-hypervisor/snapshots \
+		"$TEST_IMG" true >/dev/null 2>&1; then
+		end_ms=$(date +%s%3N)
+		echo "✓ CLH restore test succeeded in $((end_ms - start_ms)) ms"
+	else
+		end_ms=$(date +%s%3N)
+		echo "✗ CLH restore test failed in $((end_ms - start_ms)) ms"
+	fi
 fi
 
 echo ""
@@ -1026,9 +1030,9 @@ echo "  • Kata Containers ${KATA_VERSION} with Cloud Hypervisor"
 echo "  • Nydus snapshotter ${NYDUS_VERSION} with nydusd ${NYDUSD_VERSION}"
 echo "  • CNI networking"
 if [ $IS_CI_VM -eq 1 ]; then
-    echo "  • Data directory at /var/lib/containerd"
+	echo "  • Data directory at /var/lib/containerd"
 else
-    echo "  • Data directory at /data/containerd"
+	echo "  • Data directory at /data/containerd"
 fi
 echo "  • Namespace 'exe' created"
 echo ""
