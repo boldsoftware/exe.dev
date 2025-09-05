@@ -2427,7 +2427,7 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 }
 
 // handleListCommand lists user's boxes
-func generateRandomContainerName() string {
+func generateRandomBoxName() string {
 	words := []string{
 		// NATO phonetic + military
 		"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet",
@@ -2701,6 +2701,13 @@ func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containe
 		return err
 	})
 	return err
+}
+
+// isBoxNameAvailable checks if a box name is available for use.
+// Errors are translated into false (unavailability).
+func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
+	box, err := s.getBoxByName(ctx, name)
+	return box == nil && errors.Is(err, sql.ErrNoRows)
 }
 
 // getBoxByName retrieves a box by name and team

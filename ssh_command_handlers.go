@@ -295,17 +295,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 
 	// Generate box name if not provided
 	if boxName == "" {
-		boxName = generateRandomContainerName()
-		// Check if name is already taken
-		_, err := ss.server.getBoxByName(ctx, boxName)
-		if err == nil {
-			// Name exists, try again
-			for range 10 {
-				boxName = generateRandomContainerName()
-				_, err = ss.server.getBoxByName(ctx, boxName)
-				if err != nil {
-					break
-				}
+		for range 10 {
+			randBoxName := generateRandomBoxName()
+			if ss.server.isBoxNameAvailable(ctx, randBoxName) {
+				boxName = randBoxName
+				break
 			}
 		}
 	}
@@ -316,7 +310,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		return fmt.Errorf("invalid box name %q", boxName)
 	}
 
-	if _, err := ss.server.getBoxByName(ctx, boxName); err == nil {
+	if !ss.server.isBoxNameAvailable(ctx, boxName) {
 		cc.Write("\033[1;31mBox name %q is not available\033[0m\r\n", boxName)
 		return fmt.Errorf("box name %q is not available", boxName)
 	}

@@ -44,7 +44,7 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate a random hostname suggestion
-	hostnameSuggestion := generateRandomContainerName()
+	hostnameSuggestion := generateRandomBoxName()
 
 	data := struct {
 		HostnameSuggestion string
