@@ -319,7 +319,7 @@ func TestExecuteCommand(t *testing.T) {
 	t.Run("execute subcommand with args (production scenario)", func(t *testing.T) {
 		output := &MockOutput{}
 		// This reproduces the production scenario where cc.Args contains the second part of the command
-		// User types "billing setup", shlex.Split creates ["billing", "setup"], 
+		// User types "billing setup", shlex.Split creates ["billing", "setup"],
 		// parts[1:] creates ["setup"] which becomes cc.Args
 		cc := createTestContext(sshServer, user, alloc, output, nil, []string{"setup"})
 		ctx := context.Background()
