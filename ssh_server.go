@@ -281,12 +281,6 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 		return
 	}
 
-	// Note: Direct container access should never reach this point.
-	// Container connections are handled by the SSH piper plugin via handleBoxAccess,
-	// which routes directly to the container without involving exed.
-	// If we reach here, the user is connecting to the interactive shell.
-
-	// Run the main shell with readline
 	ss.runMainShellWithReadline(s, publicKey, user.Email, alloc.AllocID, false)
 }
 
@@ -718,12 +712,6 @@ func (s *Server) getEmailVerification(publicKey string) (*EmailVerification, boo
 		}
 	}
 	return nil, false
-}
-
-// getBoxesForTeam is obsolete - use getBoxesForAlloc instead
-func (s *Server) getBoxesForTeam(ctx context.Context, allocID string) ([]*Box, error) {
-	// This function is kept for backward compatibility but redirects to getBoxesForAlloc
-	return s.getBoxesForAlloc(ctx, allocID)
 }
 
 // handleContainerLogs shows logs for a failed container

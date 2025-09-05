@@ -324,7 +324,6 @@ type Server struct {
 	httpsLn    *listener
 	sshLn      *listener
 	pluginLn   *listener
-	adminLn    *listener
 	piperdPort int // what port sshpiperd is listening on, typically 2222
 	BaseURL    string
 
@@ -360,8 +359,7 @@ type Server struct {
 	magicSecrets         map[string]*MagicSecret // secret -> magic secret with expiration
 
 	// User sessions for tracking authenticated users
-	sessionsMu sync.RWMutex
-	sessions   map[*sshbuf.Channel]*UserSession // channel -> user session
+	sessions map[*sshbuf.Channel]*UserSession // channel -> user session
 
 	// Email and billing services
 	postmarkClient *postmark.Client
@@ -2740,11 +2738,7 @@ func (s *Server) isValidEmail(email string) bool {
 	}
 
 	domain := email[atIndex+1:]
-	if !strings.Contains(domain, ".") {
-		return false
-	}
-
-	return true
+	return strings.Contains(domain, ".")
 }
 
 // Start starts HTTP, HTTPS (if configured), and SSH servers
@@ -3493,37 +3487,6 @@ func generateUserID() (string, error) {
 	return "usr" + randomPart[:13], nil
 }
 
-// createTestUserWithID is a helper function for tests to create a user with proper user_id
-func (s *Server) createTestUserWithID(email string) (string, error) {
-	userID, err := generateUserID()
-	if err != nil {
-		return "", err
-	}
-
-	err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		// Create user
-		_, err := tx.Exec(`
-			INSERT INTO users (user_id, email)
-			VALUES (?, ?)`,
-			userID, email)
-		if err != nil {
-			return err
-		}
-
-		// Add the SSH key to ssh_keys table with unique key per user
-		_, err = tx.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key)
-			VALUES (?, ?)`,
-			userID, fmt.Sprintf("ssh-rsa dummy-test-key-%s %s", userID, email))
-		return err
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return userID, nil
-}
-
 // getUserIDByPublicKey gets user_id from an SSH public key
 func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicKey) (string, error) {
 	var userID string
@@ -3561,37 +3524,6 @@ func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 	return &user, nil
-}
-
-// allocateIPsForExistingBoxes registers all existing boxes with the ipAllocator
-func (s *Server) allocateIPsForExistingBoxes(ctx context.Context) error {
-	var boxes []*Box
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		rows, err := rx.Query(`
-			SELECT id, alloc_id, name
-			FROM boxes
-			ORDER BY alloc_id, name
-		`)
-		if err != nil {
-			return fmt.Errorf("failed to query existing boxes: %v", err)
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			box := &Box{}
-			err := rows.Scan(&box.ID, &box.AllocID, &box.Name)
-			if err != nil {
-				return fmt.Errorf("failed to scan box row: %v", err)
-			}
-			boxes = append(boxes, box)
-		}
-
-		if err = rows.Err(); err != nil {
-			return fmt.Errorf("error iterating box rows: %v", err)
-		}
-		return nil
-	})
-	return err
 }
 
 // GetBoxSSHDetails retrieves SSH connection details from the boxes table
