@@ -303,7 +303,6 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 		"\033[1mstop <name> [...]\033[0m       - Stop one or more boxes\r\n" +
 		"\033[1mdelete <name>\033[0m           - Delete a box\r\n" +
 		"\033[1mlogs <name>\033[0m             - View box logs\r\n" +
-		"\033[1mroute <box>\033[0m         - Manage box routes\r\n" +
 		"\033[1mbilling\033[0m                 - Manage billing and payment info\r\n" +
 		"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
 		"\033[1m?\033[0m                       - Show this help\r\n" +
@@ -760,10 +759,6 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	} else {
 		fmt.Fprintf(s, "\033[1;31mContainer manager not available\033[0m\r\n")
 	}
-}
-
-func (ss *SSHServer) handleRouteCommand(s ssh.Session, publicKey, allocID string, args []string) {
-	ss.server.handleRouteCommand(s.Context(), s, publicKey, allocID, args)
 }
 
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
