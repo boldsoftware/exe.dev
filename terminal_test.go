@@ -241,7 +241,6 @@ func TestCumulativeOffsetBug(t *testing.T) {
 	}
 }
 
-
 // TestFixedLineEndingsBug tests that the line endings fix works
 func TestFixedLineEndingsBug(t *testing.T) {
 	t.Parallel()
