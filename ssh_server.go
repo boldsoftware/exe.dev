@@ -360,14 +360,11 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 			continue
 		}
 
-		args := parts[1:]
-
-		// Create command context for interactive session
 		cc := &CommandContext{
 			User:       user,
 			Alloc:      alloc,
 			PublicKey:  publicKey,
-			Args:       args,
+			Args:       []string{}, // ExecuteCommand will determine the real args
 			SSHServer:  ss,
 			Output:     s,
 			SSHSession: s,

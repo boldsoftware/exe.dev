@@ -100,6 +100,11 @@ func TestCommandTree_FindCommand(t *testing.T) {
 			wantNil: true,
 		},
 		{
+			name:     "find billing setup subcommand",
+			path:     []string{"billing", "setup"},
+			wantName: "setup",
+		},
+		{
 			name:    "nonexistent sub-subcommand",
 			path:    []string{"billing", "setup", "foo", "bar"},
 			wantNil: true,
@@ -293,6 +298,43 @@ func TestExecuteCommand(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "command not found") {
 			t.Errorf("Error should indicate command not found: %q", err.Error())
+		}
+	})
+
+	t.Run("execute subcommand", func(t *testing.T) {
+		output := &MockOutput{}
+		cc := createTestContext(sshServer, user, alloc, output, nil, []string{})
+		ctx := context.Background()
+		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
+		if err == nil {
+			t.Errorf("ExecuteCommand() should return error for billing setup without SSH session")
+		}
+
+		// Verify it's the expected error about SSH session
+		if !strings.Contains(err.Error(), "interactive billing setup requires SSH session") {
+			t.Errorf("Expected SSH session error, got: %v", err)
+		}
+	})
+
+	t.Run("execute subcommand with args (production scenario)", func(t *testing.T) {
+		output := &MockOutput{}
+		// This reproduces the production scenario where cc.Args contains the second part of the command
+		// User types "billing setup", shlex.Split creates ["billing", "setup"], 
+		// parts[1:] creates ["setup"] which becomes cc.Args
+		cc := createTestContext(sshServer, user, alloc, output, nil, []string{"setup"})
+		ctx := context.Background()
+		err := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
+		if err == nil {
+			t.Errorf("ExecuteCommand() should return error for billing setup without SSH session")
+		}
+
+		// Verify it's the expected error about SSH session, NOT the positional args error
+		if !strings.Contains(err.Error(), "interactive billing setup requires SSH session") {
+			t.Errorf("Expected SSH session error, got: %v", err)
+		}
+		// Make sure it's NOT the positional args error
+		if strings.Contains(err.Error(), "does not take positional arguments") {
+			t.Errorf("Got positional args error (this is the bug): %v", err)
 		}
 	})
 

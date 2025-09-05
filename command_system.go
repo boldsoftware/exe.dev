@@ -208,8 +208,8 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 	}
 
 	// Parse flags if the command has a FlagSetFunc
-	// Combine remaining args with original args for flag parsing
-	allArgs := append(remainingArgs, cc.Args...)
+	// The remaining command path parts after finding the command are the actual arguments
+	allArgs := remainingArgs
 	// Parse the flags - always use a fresh FlagSet to avoid concurrent access
 	var fs *flag.FlagSet
 	if cmd.FlagSetFunc != nil {
@@ -230,14 +230,13 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		}
 		return fmt.Errorf("flag parsing error: %v", err)
 	}
+	// Set the unparsed args as the new Args
+	cc.Args = fs.Args()
 	if cmd.FlagSetFunc != nil {
-		// Set the unparsed args as the new Args
-		cc.Args = fs.Args()
 		// Set the FlagSet in context so handlers can access parsed flags
 		cc.FlagSet = fs
 	} else {
-		// Set remaining args in context if no flags to parse
-		cc.Args = append(remainingArgs, cc.Args...)
+		// No custom flags, but we still used the default FlagSet for parsing
 		cc.FlagSet = nil
 	}
 	if len(cc.Args) > 0 && !cmd.HasPositionalArgs {
