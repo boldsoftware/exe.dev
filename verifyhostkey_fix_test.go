@@ -9,6 +9,17 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// mockConnMetadata implements libplugin.ConnMetadata for testing
+type mockConnMetadata struct {
+	user string
+	addr string
+}
+
+func (m mockConnMetadata) User() string              { return m.user }
+func (m mockConnMetadata) RemoteAddr() string        { return m.addr }
+func (m mockConnMetadata) UniqueID() string          { return "test-unique-id" }
+func (m mockConnMetadata) GetMeta(key string) string { return "" }
+
 // generateTestHostKey creates a properly formatted SSH public key for testing
 func generateTestHostKey(t *testing.T, keyName string) []byte {
 	_, priv, err := ed25519.GenerateKey(rand.Reader)

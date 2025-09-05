@@ -2,7 +2,6 @@ package exe
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"strings"
 	"testing"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/hinshun/vt10x"
-	"golang.org/x/crypto/ssh"
 )
 
 // TerminalEmulator wraps a VT10x terminal for testing
@@ -102,90 +100,6 @@ func (te *TerminalEmulator) Close() error {
 func (te *TerminalEmulator) SendKeys(keys string) error {
 	_, err := te.pty.Write([]byte(keys))
 	return err
-}
-
-// MockSSHChannel implements ssh.Channel interface for testing
-type MockSSHChannel struct {
-	term   *TerminalEmulator
-	input  bytes.Buffer
-	closed bool
-}
-
-func (m *MockSSHChannel) Read(data []byte) (int, error) {
-	if m.closed {
-		return 0, io.EOF
-	}
-	return m.term.Read(data)
-}
-
-func (m *MockSSHChannel) Write(data []byte) (int, error) {
-	return m.term.Write(data)
-}
-
-func (m *MockSSHChannel) Close() error {
-	m.closed = true
-	return nil
-}
-
-func (m *MockSSHChannel) CloseWrite() error {
-	return nil
-}
-
-func (m *MockSSHChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
-	return false, nil
-}
-
-func (m *MockSSHChannel) Stderr() io.ReadWriter {
-	return m
-}
-
-// Ensure MockSSHChannel implements ssh.Channel
-var _ ssh.Channel = (*MockSSHChannel)(nil)
-
-// Test simple output formatting
-func TestTerminalFormatting(t *testing.T) {
-	t.Parallel()
-
-	term, err := NewTerminalEmulator()
-	if err != nil {
-		t.Skipf("Could not create terminal emulator: %v", err)
-	}
-	defer term.Close()
-
-	// Test different line ending combinations
-	testCases := []struct {
-		name   string
-		output string
-	}{
-		{"simple_line", "Hello World\r\n"},
-		{"multiple_lines", "Line 1\r\nLine 2\r\nLine 3\r\n"},
-		{"carriage_return", "Overwrite\rNew Text\r\n"},
-		{"mixed_endings", "Line 1\nLine 2\r\nLine 3\n"},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Clear terminal
-			term.vt = vt10x.New(vt10x.WithSize(80, 24))
-			term.buffer.Reset()
-
-			// Write test output
-			term.Write([]byte(tc.output))
-			time.Sleep(50 * time.Millisecond)
-
-			screenContent := term.GetScreenContent()
-			rawOutput := term.GetRawOutput()
-
-			t.Logf("Test case: %s", tc.name)
-			t.Logf("Raw output: %q", rawOutput)
-			t.Logf("Screen content:\n%s", screenContent)
-			t.Logf("Screen lines:")
-			lines := strings.Split(screenContent, "\n")
-			for i, line := range lines {
-				t.Logf("  %d: %q", i, line)
-			}
-		})
-	}
 }
 
 // TestInteractiveFlow tests what happens when we simulate real SSH interaction
@@ -327,65 +241,6 @@ func TestCumulativeOffsetBug(t *testing.T) {
 	}
 }
 
-// TestMixedLineEndingsBug tests the specific mixed line endings issue
-func TestMixedLineEndingsBug(t *testing.T) {
-	t.Parallel()
-
-	term, err := NewTerminalEmulator()
-	if err != nil {
-		t.Skipf("Could not create terminal emulator: %v", err)
-	}
-	defer term.Close()
-
-	// This test simulates exactly what happens in practice:
-	// 1. Server sends prompts with \r\n
-	// 2. User types text (echoed back)
-	// 3. User hits Enter (sends \n - just single newline)
-	// 4. Server processes input and responds with \r\n
-
-	sequences := []struct {
-		desc string
-		data string
-	}{
-		{"server prompt", "Email address: "},
-		{"user types (echoed)", "test@example.com"},
-		{"user hits Enter (LF only)", "\n"},              // This is the problem!
-		{"server response", "Got: test@example.com\r\n"}, // Server always uses CRLF
-		{"server prompt 2", "Team name: "},
-		{"user types", "myteam"},
-		{"user hits Enter (LF only)", "\n"},     // Problem again
-		{"server response", "Team: myteam\r\n"}, // Server CRLF
-	}
-
-	for i, seq := range sequences {
-		term.Write([]byte(seq.data))
-		t.Logf("Step %d: %s -> %q", i+1, seq.desc, seq.data)
-	}
-
-	screenContent := term.GetScreenContent()
-	t.Logf("\n=== FINAL SCREEN ===")
-	lines := strings.Split(screenContent, "\n")
-	offsetFound := false
-
-	for i, line := range lines {
-		if len(line) > 0 {
-			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
-			if leadingSpaces > 0 && strings.TrimLeft(line, " ") != "" {
-				t.Logf("Line %d: OFFSET(%d spaces) %q", i, leadingSpaces, line)
-				offsetFound = true
-			} else {
-				t.Logf("Line %d: %q", i, line)
-			}
-		}
-	}
-
-	if offsetFound {
-		t.Log("*** FOUND THE BUG! Mixed \\n vs \\r\\n causes offset issues ***")
-		t.Log("FIX: Ensure either user input generates \\r\\n OR server only uses \\n")
-	} else {
-		t.Log("No offset issues found")
-	}
-}
 
 // TestFixedLineEndingsBug tests that the line endings fix works
 func TestFixedLineEndingsBug(t *testing.T) {
@@ -425,153 +280,13 @@ func TestFixedLineEndingsBug(t *testing.T) {
 
 	screenContent := term.GetScreenContent()
 	lines := strings.Split(screenContent, "\n")
-	offsetFound := false
 
 	for i, line := range lines {
 		if len(line) > 0 {
 			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
 			if leadingSpaces > 0 && strings.TrimLeft(line, " ") != "" {
 				t.Errorf("Line %d: STILL HAS OFFSET(%d spaces) %q", i, leadingSpaces, line)
-				offsetFound = true
 			}
 		}
-	}
-
-	if !offsetFound && testing.Verbose() {
-		t.Log("*** SUCCESS! Line endings fix eliminated all offset issues! ***")
-	}
-}
-
-// TestReadLineFromChannelBehavior tests the exact behavior of readLineFromChannel
-func TestReadLineFromChannelBehavior(t *testing.T) {
-	t.Parallel()
-	term, err := NewTerminalEmulator()
-	if err != nil {
-		t.Skipf("Could not create terminal emulator: %v", err)
-	}
-	defer term.Close()
-
-	// Create a mock SSH channel using our terminal
-	mockChannel := &MockSSHChannel{term: term}
-	server := NewTestServer(t)
-
-	t.Log("=== Testing readLineFromChannel behavior ===")
-
-	// Test 1: What happens when user sends just LF (\n)?
-	t.Log("Test 1: User sends 'test\\n'")
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		// Simulate typing "test" character by character (echoed back)
-		for _, ch := range "test" {
-			mockChannel.term.SendKeys(string(ch))
-		}
-		// Then user presses Enter (sends \n)
-		mockChannel.term.SendKeys("\n")
-	}()
-
-	// This test is for terminal emulation, not for SSHBufferedChannel
-	// Commenting out for now as it's not relevant to Ctrl+C handling
-	// input, err := server.readLineFromChannel(mockChannel)
-	_ = mockChannel
-	_ = server
-	input := "test"
-	err = nil
-	if err != nil {
-		t.Fatalf("readLineFromChannel failed: %v", err)
-	}
-
-	if input != "test" {
-		t.Errorf("Expected input 'test', got %q", input)
-	}
-
-	rawOutput := term.GetRawOutput()
-	t.Logf("Raw output: %q", rawOutput)
-	t.Logf("Length: %d bytes", len(rawOutput))
-
-	// Analyze what was actually sent to terminal
-	for i, b := range []byte(rawOutput) {
-		if b == '\r' {
-			t.Logf("  Byte %d: \\r (0x%02x)", i, b)
-		} else if b == '\n' {
-			t.Logf("  Byte %d: \\n (0x%02x)", i, b)
-		} else if b >= 32 && b <= 126 {
-			t.Logf("  Byte %d: '%c' (0x%02x)", i, b, b)
-		} else {
-			t.Logf("  Byte %d: 0x%02x", i, b)
-		}
-	}
-
-	// Check terminal screen state
-	screenContent := term.GetScreenContent()
-	t.Logf("Screen content: %q", screenContent)
-	lines := strings.Split(screenContent, "\n")
-	for i, line := range lines {
-		if len(line) > 0 {
-			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
-			if leadingSpaces > 0 {
-				t.Logf("Line %d: %d leading spaces: %q", i, leadingSpaces, line)
-			} else {
-				t.Logf("Line %d: %q", i, line)
-			}
-		}
-	}
-}
-
-// TestActualSSHTerminalBehavior tests the real SSH scenario that causes problems
-func TestActualSSHTerminalBehavior(t *testing.T) {
-	t.Parallel()
-	term, err := NewTerminalEmulator()
-	if err != nil {
-		t.Skipf("Could not create terminal emulator: %v", err)
-	}
-	defer term.Close()
-
-	// This test recreates the EXACT scenario that happens in real SSH:
-	// 1. Server sends initial prompt (no newline at end)
-	// 2. User types characters (echoed back)
-	// 3. User hits Enter - SSH client may send just \n
-	// 4. Our readLineFromChannel processes it and sends \r\n
-	// 5. Server continues with next output
-
-	t.Log("=== Simulating ACTUAL SSH interaction ===")
-
-	// Step 1: Server sends prompt (this is how our welcome message works NOW)
-	term.Write([]byte("Welcome to exe.dev!\r\n\r\nTo get started, we need to verify your email address.\r\n\r\nPlease enter your email address: "))
-
-	// Step 2: User types (this gets echoed back by readLineFromChannel)
-	term.Write([]byte("test@example.com"))
-
-	// Step 3: User hits Enter - in real SSH this might be just \n
-	// But our readLineFromChannel now sends \r\n
-	term.Write([]byte("\r\n")) // This is what our fix does
-
-	// Step 4: Server processes and responds
-	term.Write([]byte("Email: test@example.com\r\n"))
-
-	// Step 5: Server continues
-	term.Write([]byte("\r\nVerification email sent!\r\n"))
-
-	screenContent := term.GetScreenContent()
-	t.Logf("Screen content:\n%s", screenContent)
-
-	lines := strings.Split(screenContent, "\n")
-	offsetFound := false
-
-	for i, line := range lines {
-		if len(line) > 0 {
-			leadingSpaces := len(line) - len(strings.TrimLeft(line, " "))
-			if leadingSpaces > 0 && strings.TrimLeft(line, " ") != "" {
-				t.Errorf("Line %d: OFFSET FOUND (%d spaces): %q", i, leadingSpaces, line)
-				offsetFound = true
-			} else {
-				t.Logf("Line %d: OK: %q", i, line)
-			}
-		}
-	}
-
-	if !offsetFound {
-		t.Log("✅ No offset issues found!")
-	} else {
-		t.Log("❌ Offset issues still present - need to investigate further")
 	}
 }
