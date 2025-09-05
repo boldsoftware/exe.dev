@@ -56,8 +56,9 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.want(email)
 	pty.want(publicKey)
 
-	// second login: no re-registration
+	// second login: no re-registration, no banner
 	pty = sshToExeDev(t, keyFile)
+	pty.reject(banner)
 	pty.want(ps1)
 	pty.sendLine("whoami")
 	pty.want(email)
