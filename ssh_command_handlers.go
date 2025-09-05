@@ -60,6 +60,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				Handler:           ss.handleStartCommand,
 				Usage:             "start <box-name>",
 				HasPositionalArgs: true,
+				CompleterFunc:     CompleteBoxNames,
 			},
 			{
 				Name:              "stop",
@@ -67,6 +68,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				Handler:           ss.handleStopCommand,
 				Usage:             "stop <box-name> [<box-name>...]",
 				HasPositionalArgs: true,
+				CompleterFunc:     CompleteBoxNames,
 			},
 			{
 				Name:              "delete",
@@ -74,6 +76,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				Handler:           ss.handleDeleteCommand,
 				Usage:             "delete <box-name>",
 				HasPositionalArgs: true,
+				CompleterFunc:     CompleteBoxNames,
 			},
 			{
 				Name:              "logs",
@@ -81,6 +84,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				Handler:           ss.handleLogsCommand,
 				Usage:             "logs <box-name>",
 				HasPositionalArgs: true,
+				CompleterFunc:     CompleteBoxNames,
 			},
 			{
 				Name:              "diag",
@@ -89,6 +93,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				Usage:             "diag <box-name>",
 				Handler:           ss.handleDiagCommand,
 				HasPositionalArgs: true,
+				CompleterFunc:     CompleteBoxNames,
 			},
 			{
 				Name:        "alloc",

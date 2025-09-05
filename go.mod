@@ -16,6 +16,7 @@ require (
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
 	github.com/lmittmann/tint v1.1.2
 	github.com/prometheus/client_golang v1.23.0
+	github.com/stretchr/testify v1.10.0
 	github.com/stripe/stripe-go/v76 v76.25.0
 	github.com/stripe/stripe-mock v0.195.0
 	github.com/tg123/sshpiper v0.0.0-00010101000000-000000000000
@@ -42,6 +43,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
@@ -59,6 +61,7 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.66.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

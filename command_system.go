@@ -10,9 +10,19 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
 	"golang.org/x/term"
 )
+
+// CompletionContext provides context for tab completion
+type CompletionContext struct {
+	Line        string   // current input line
+	Cursor      int      // cursor position in line
+	Words       []string // parsed words so far
+	CurrentWord string   // word being completed (might be partial)
+	Position    int      // which argument position we're completing (0 = command, 1 = first arg, etc.)
+}
 
 // Command represents a single command in the command tree
 type Command struct {
@@ -25,7 +35,8 @@ type Command struct {
 	Subcommands       []*Command
 	HasPositionalArgs bool
 	Handler           func(context.Context, *CommandContext) error
-	Available         func(ctx *CommandContext) bool // nil means always available
+	Available         func(ctx *CommandContext) bool                     // nil means always available
+	CompleterFunc     func(*CompletionContext, *CommandContext) []string // Custom completion for command arguments
 }
 
 func (c *Command) Help(cc *CommandContext) error {
@@ -198,7 +209,6 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		}
 	}
 	if cmd == nil || cmd.Handler == nil {
-		// I think main doesn't return an error in this case.
 		return fmt.Errorf("command not found: %s", strings.Join(commandPath, " "))
 	}
 
@@ -292,4 +302,239 @@ func (fw *ANSIFilterWriter) Write(p []byte) (n int, err error) {
 	// Return the number of bytes from the original input that were "written"
 	// This maintains the io.Writer contract
 	return len(p), nil
+}
+
+// CompleteCommand provides tab completion for a given input line
+func (ct *CommandTree) CompleteCommand(line string, cursor int, cc *CommandContext) []string {
+	// Parse the line up to cursor position
+	lineUpToCursor := line[:cursor]
+	words, currentWord, position := parseCompletionInput(lineUpToCursor)
+
+	compCtx := &CompletionContext{
+		Line:        line,
+		Cursor:      cursor,
+		Words:       words,
+		CurrentWord: currentWord,
+		Position:    position,
+	}
+
+	if position == 0 {
+		// Completing command name
+		return ct.completeCommandName(compCtx, cc)
+	}
+
+	// Find the command being executed
+	cmd := ct.FindCommand(words[:1])
+	if cmd == nil {
+		return nil
+	}
+
+	// Check if we're completing subcommands
+	if len(cmd.Subcommands) > 0 {
+		// Calculate how many args we have after the main command
+		argsAfterCommand := len(words) - 1
+
+		// Try to find if we've already selected a subcommand
+		if argsAfterCommand > 0 {
+			// Use the shared function to find the deepest subcommand
+			deepestCmd, remainingArgs := ct.findDeepestSubcommand(words)
+			if deepestCmd != nil && len(remainingArgs) == 0 {
+				cmd = deepestCmd
+			} else {
+				// We're still in the process of completing subcommand names
+				return ct.completeSubcommand(cmd, compCtx, cc)
+			}
+		} else {
+			// First argument after command - complete subcommand names
+			return ct.completeSubcommand(cmd, compCtx, cc)
+		}
+	}
+
+	// Check if we're completing a flag
+	if strings.HasPrefix(currentWord, "-") {
+		return ct.completeFlag(cmd, compCtx, cc)
+	}
+
+	// Use custom completer if available
+	if cmd.CompleterFunc != nil {
+		return cmd.CompleterFunc(compCtx, cc)
+	}
+
+	// Default: no completions
+	return nil
+}
+
+// parseCompletionInput parses input line for completion context
+func parseCompletionInput(line string) (words []string, currentWord string, position int) {
+	if strings.TrimSpace(line) == "" {
+		return []string{}, "", 0
+	}
+
+	// Use shlex to parse, but handle incomplete input
+	words, err := shlex.Split(line, true)
+	if err != nil {
+		// If parsing fails, likely due to incomplete quotes, try without quotes
+		words = strings.Fields(line)
+	}
+
+	if len(words) == 0 {
+		return []string{}, "", 0
+	}
+
+	// Check if line ends with whitespace (starting new word) or not (completing current word)
+	if strings.HasSuffix(line, " ") || strings.HasSuffix(line, "\t") {
+		// Starting a new word
+		return words, "", len(words)
+	}
+
+	// Completing current word
+	currentWord = words[len(words)-1]
+	words = words[:len(words)-1]
+	return words, currentWord, len(words)
+}
+
+// completeCommandName completes top-level command names
+func (ct *CommandTree) completeCommandName(compCtx *CompletionContext, cc *CommandContext) []string {
+	var completions []string
+	prefix := compCtx.CurrentWord
+
+	for _, cmd := range ct.GetAvailableCommands(cc) {
+		if strings.HasPrefix(cmd.Name, prefix) {
+			completions = append(completions, cmd.Name)
+		}
+		// Also check aliases
+		for _, alias := range cmd.Aliases {
+			if strings.HasPrefix(alias, prefix) {
+				completions = append(completions, alias)
+			}
+		}
+	}
+
+	return completions
+}
+
+// completeSubcommand completes subcommand names
+func (ct *CommandTree) completeSubcommand(cmd *Command, compCtx *CompletionContext, cc *CommandContext) []string {
+	var completions []string
+	prefix := compCtx.CurrentWord
+
+	for _, subCmd := range cmd.Subcommands {
+		if subCmd.Available == nil || subCmd.Available(cc) {
+			if strings.HasPrefix(subCmd.Name, prefix) {
+				completions = append(completions, subCmd.Name)
+			}
+			// Also check aliases
+			for _, alias := range subCmd.Aliases {
+				if strings.HasPrefix(alias, prefix) {
+					completions = append(completions, alias)
+				}
+			}
+		}
+	}
+
+	return completions
+}
+
+// completeFlag completes flag names
+func (ct *CommandTree) completeFlag(cmd *Command, compCtx *CompletionContext, cc *CommandContext) []string {
+	if cmd.FlagSetFunc == nil {
+		return nil
+	}
+
+	var completions []string
+	prefix := compCtx.CurrentWord
+	flagSet := cmd.FlagSetFunc()
+
+	flagSet.VisitAll(func(f *flag.Flag) {
+		longFlag := "--" + f.Name
+		if strings.HasPrefix(longFlag, prefix) {
+			completions = append(completions, longFlag)
+		}
+		// Add short flag if prefix is short enough
+		if len(prefix) <= 2 && len(f.Name) > 0 {
+			shortFlag := "-" + string(f.Name[0])
+			if strings.HasPrefix(shortFlag, prefix) {
+				completions = append(completions, shortFlag)
+			}
+		}
+	})
+
+	return completions
+}
+
+// findDeepestSubcommand finds the deepest matching subcommand given a path
+// Returns the command and the remaining unconsumed path segments
+func (ct *CommandTree) findDeepestSubcommand(commandPath []string) (*Command, []string) {
+	if len(commandPath) == 0 {
+		return nil, commandPath
+	}
+
+	// Start with the root command
+	cmd := ct.FindCommand(commandPath[:1])
+	if cmd == nil {
+		return nil, commandPath
+	}
+
+	// Walk down the subcommand tree as far as we can go
+	current := cmd
+	consumed := 1
+
+	for consumed < len(commandPath) && len(current.Subcommands) > 0 {
+		nextSegment := commandPath[consumed]
+		found := false
+
+		for _, subCmd := range current.Subcommands {
+			if subCmd.Name == nextSegment {
+				current = subCmd
+				consumed++
+				found = true
+				break
+			}
+			// Check aliases
+			for _, alias := range subCmd.Aliases {
+				if alias == nextSegment {
+					current = subCmd
+					consumed++
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			break
+		}
+	}
+
+	return current, commandPath[consumed:]
+}
+
+// Common completion functions
+
+// CompleteBoxNames provides completion for box names
+func CompleteBoxNames(compCtx *CompletionContext, cc *CommandContext) []string {
+	if cc.SSHServer == nil || cc.SSHServer.server == nil || cc.SSHServer.server.containerManager == nil {
+		return nil
+	}
+
+	// Get user's containers
+	ctx := context.Background() // Use a background context for completion
+	containers, err := cc.SSHServer.server.containerManager.ListContainers(ctx, cc.Alloc.AllocID)
+	if err != nil {
+		return nil
+	}
+
+	var completions []string
+	prefix := compCtx.CurrentWord
+
+	for _, container := range containers {
+		if strings.HasPrefix(container.Name, prefix) {
+			completions = append(completions, container.Name)
+		}
+	}
+
+	return completions
 }

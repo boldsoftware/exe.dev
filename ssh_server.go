@@ -338,8 +338,8 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 		log.Printf("Entering command loop")
 	}
 	for {
-		// Read line using terminal (it handles the prompt)
-		line, err := terminal.ReadLine()
+		// Read line with tab completion
+		line, err := ss.readLineWithCompletion(terminal, user, alloc, publicKey, s)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Fprint(s, "Goodbye!\r\n")
@@ -853,4 +853,73 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 	}
 
 	return nil
+}
+
+// readLineWithCompletion reads a line from the terminal with tab completion support
+func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User, alloc *Alloc, publicKey string, s ssh.Session) (string, error) {
+	// Set up tab completion using AutoCompleteCallback
+	terminal.AutoCompleteCallback = func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
+		// Only handle tab key
+		if key != '\t' {
+			return "", 0, false
+		}
+
+		// Create command context for completion
+		cc := &CommandContext{
+			User:       user,
+			Alloc:      alloc,
+			PublicKey:  publicKey,
+			SSHServer:  ss,
+			Output:     s,
+			SSHSession: s,
+			Terminal:   terminal,
+		}
+
+		// Get completions
+		completions := ss.commands.CompleteCommand(line, pos, cc)
+
+		if len(completions) == 0 {
+			return "", 0, false // No completions, handle tab normally
+		}
+
+		if len(completions) == 1 {
+			// Single completion - auto-complete
+			newLine, newPos := ss.applySingleCompletion(line, pos, completions[0])
+			return newLine, newPos, true
+		}
+
+		// Multiple completions - show options and return original line
+		ss.showCompletions(terminal, completions)
+		return line, pos, true // Don't modify the line, just show completions
+	}
+
+	// Use regular ReadLine with completion enabled
+	return terminal.ReadLine()
+}
+
+// applySingleCompletion applies a single completion to the line
+func (ss *SSHServer) applySingleCompletion(line string, pos int, completion string) (string, int) {
+	// Find the start of the word being completed
+	wordStart := pos
+	for wordStart > 0 && line[wordStart-1] != ' ' && line[wordStart-1] != '\t' {
+		wordStart--
+	}
+
+	// Replace the partial word with the completion + space
+	newLine := line[:wordStart] + completion + " " + line[pos:]
+	newPos := wordStart + len(completion) + 1
+
+	return newLine, newPos
+}
+
+// showCompletions displays multiple completion options
+func (ss *SSHServer) showCompletions(terminal *term.Terminal, completions []string) {
+	terminal.Write([]byte("\r\n"))
+	for i, completion := range completions {
+		terminal.Write([]byte(completion))
+		if i < len(completions)-1 {
+			terminal.Write([]byte("  "))
+		}
+	}
+	terminal.Write([]byte("\r\n"))
 }
