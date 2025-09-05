@@ -2634,6 +2634,62 @@ func (s *Server) createBoxWithSSH(ctx context.Context, userID, allocID, name, co
 	return nil
 }
 
+// preCreateBox creates a box entry before the container is created, returns the box ID
+func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image string) (int, error) {
+	// Validate box name
+	if !s.isValidBoxName(name) {
+		return 0, fmt.Errorf("invalid box name: %s", name)
+	}
+
+	routes := getDefaultRoutesJSON()
+	var boxID int
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		result, err := tx.Exec(`
+			INSERT INTO boxes (
+				alloc_id, name, status, image, container_id, created_by_user_id, routes
+			) VALUES (?, ?, ?, ?, NULL, ?, ?)
+		`, allocID, name, "creating", image, userID, routes)
+		if err != nil {
+			return err
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		boxID = int(id)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return boxID, nil
+}
+
+// updateBoxWithContainer updates a box with container info and SSH keys after container creation
+func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containerID, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			UPDATE boxes SET
+				container_id = ?,
+				status = ?,
+				ssh_server_identity_key = ?,
+				ssh_authorized_keys = ?,
+				ssh_ca_public_key = ?,
+				ssh_host_certificate = ?,
+				ssh_client_private_key = ?,
+				ssh_port = ?,
+				ssh_user = ?
+			WHERE id = ?
+		`, containerID, "running",
+			sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
+			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, sshUser,
+			boxID)
+		return err
+	})
+	return err
+}
+
 // getBoxByName retrieves a box by name and team
 func (s *Server) getBoxByName(ctx context.Context, name string) (*Box, error) {
 	var box Box
@@ -2692,6 +2748,23 @@ func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]*Box, 
 	return boxes, nil
 }
 
+// getAllocByID gets an allocation by its ID
+func (s *Server) getAllocByID(ctx context.Context, allocID string) (*Alloc, error) {
+	var alloc Alloc
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		err := rx.QueryRow(`
+			SELECT alloc_id, user_id, alloc_type, region, ctrhost, ip_range, created_at, stripe_customer_id, billing_email
+			FROM allocs
+			WHERE alloc_id = ?
+		`, allocID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region, &alloc.Ctrhost, &alloc.IPRange, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &alloc, nil
+}
+
 // getAllocsByHost gets all allocations assigned to a specific docker host
 func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc, error) {
 	var allocs []*Alloc
@@ -2723,6 +2796,49 @@ func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc,
 		return nil, err
 	}
 	return allocs, nil
+}
+
+// getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
+func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*Box, error) {
+	var boxes []*Box
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		// Join boxes with allocs to find boxes on this host
+		rows, err := rx.Query(`
+			SELECT 
+				b.id, b.alloc_id, b.name, b.status, b.image, b.container_id, 
+				b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at,
+				b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, 
+				b.ssh_ca_public_key, b.ssh_host_certificate, b.ssh_client_private_key,
+				b.ssh_port, b.ssh_user
+			FROM boxes b
+			INNER JOIN allocs a ON b.alloc_id = a.alloc_id
+			WHERE a.ctrhost = ? AND b.status != 'failed'
+		`, ctrhost)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var b Box
+			err := rows.Scan(
+				&b.ID, &b.AllocID, &b.Name, &b.Status, &b.Image, &b.ContainerID,
+				&b.CreatedByUserID, &b.CreatedAt, &b.UpdatedAt, &b.LastStartedAt,
+				&b.Routes, &b.SSHServerIdentityKey, &b.SSHAuthorizedKeys,
+				&b.SSHCAPublicKey, &b.SSHHostCertificate, &b.SSHClientPrivateKey,
+				&b.SSHPort, &b.SSHUser,
+			)
+			if err != nil {
+				return err
+			}
+			boxes = append(boxes, &b)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return boxes, nil
 }
 
 // isValidEmail performs basic email validation
@@ -2829,6 +2945,226 @@ func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
 	return nil
 }
 
+// syncContainersWithHosts synchronizes containers between the database and container hosts
+// This ensures that:
+// 1. All boxes in the database have their containers running on hosts
+// 2. Containers are restarted if they exist but aren't running
+// 3. Broken containers are marked as failed if their disk is missing
+// 4. Any containers not in the database are removed from hosts
+func (s *Server) syncContainersWithHosts(ctx context.Context) error {
+	// Get the list of container hosts
+	hosts := s.containerManager.GetHosts()
+	if len(hosts) == 0 {
+		slog.Warn("No container hosts available for container sync")
+		return nil
+	}
+
+	slog.Info("Starting container sync with container hosts", "hostCount", len(hosts))
+
+	// Process each host
+	for _, host := range hosts {
+		if err := s.syncContainersForHost(ctx, host); err != nil {
+			slog.Error("Failed to sync containers for host", "host", host, "error", err)
+			// Continue with other hosts even if one fails
+		}
+	}
+
+	slog.Info("Container sync completed")
+	return nil
+}
+
+// syncContainersForHost synchronizes containers for a specific container host
+func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
+	// Get boxes from the database that should be on this host
+	dbBoxes, err := s.getBoxesByHost(ctx, host)
+	if err != nil {
+		return fmt.Errorf("failed to get boxes from database: %w", err)
+	}
+
+	// Get containers currently on the host
+	hostContainers, err := s.containerManager.ListAllContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list containers on host: %w", err)
+	}
+
+	// Create maps for easier lookup
+	dbBoxMap := make(map[string]*Box)
+	for _, box := range dbBoxes {
+		if box.ContainerID != nil && *box.ContainerID != "" {
+			dbBoxMap[*box.ContainerID] = box
+		}
+	}
+
+	// Map of container names to containers for orphan detection
+	hostContainerMap := make(map[string]*container.Container)
+	for _, c := range hostContainers {
+		if c.DockerHost == host {
+			hostContainerMap[c.ID] = c
+		}
+	}
+
+	// Check each box that should have a container
+	for _, box := range dbBoxes {
+		// Skip boxes without container IDs (not yet created)
+		if box.ContainerID == nil || *box.ContainerID == "" {
+			continue
+		}
+
+		containerID := *box.ContainerID
+		hostContainer, exists := hostContainerMap[containerID]
+
+		if !exists {
+			// Container doesn't exist on host but should - check for persistent disk
+			diskPath := fmt.Sprintf("/data/exed/containers/box-%d", box.ID)
+
+			// Use the VerifyDisk method for proper disk validation
+			nerdctlMgr := s.containerManager
+			{
+				diskExists, err := nerdctlMgr.VerifyDisk(ctx, host, box.ID)
+				if err != nil {
+					slog.Error("Failed to verify disk", "box", box.Name, "error", err)
+					continue
+				}
+
+				if !diskExists {
+					// Disk missing - mark box as broken
+					slog.Error("Container disk missing, marking as failed", "box", box.Name, "diskPath", diskPath)
+					if err := s.updateBoxStatus(ctx, box.ID, "failed"); err != nil {
+						slog.Error("Failed to mark box as failed", "box", box.Name, "error", err)
+					}
+				} else {
+					// Disk exists - recreate container
+					slog.Info("Recreating container from persistent disk", "box", box.Name, "boxID", box.ID)
+
+					// Reconstruct SSH keys from the box record
+					var existingSSHKeys *container.ContainerSSHKeys
+					if box.SSHServerIdentityKey != nil && *box.SSHServerIdentityKey != "" {
+						existingSSHKeys = &container.ContainerSSHKeys{
+							ServerIdentityKey: *box.SSHServerIdentityKey,
+							AuthorizedKeys:    *box.SSHAuthorizedKeys,
+							CAPublicKey:       *box.SSHCAPublicKey,
+							HostCertificate:   *box.SSHHostCertificate,
+							ClientPrivateKey:  *box.SSHClientPrivateKey,
+							SSHPort:           *box.SSHPort,
+						}
+						slog.Info("Using existing SSH keys from database for container recreation", "boxID", box.ID)
+					}
+
+					// Create a new container using the existing disk
+					req := &container.CreateContainerRequest{
+						AllocID: box.AllocID,
+						IPRange: "", // Will be filled from alloc info
+						Name:    box.Name,
+						BoxID:   box.ID,
+						Image:   box.Image,
+						// We don't have size info stored, use default
+						Size:            "small",
+						ExistingSSHKeys: existingSSHKeys,
+					}
+
+					// Get alloc to fill in IP range
+					alloc, err := s.getAllocByID(ctx, box.AllocID)
+					if err != nil {
+						slog.Error("Failed to get alloc for container recreation", "box", box.Name, "error", err)
+						continue
+					}
+					req.IPRange = alloc.IPRange.String
+
+					// Recreate the container (CreateContainer will reuse the existing disk)
+					slog.Info("Calling CreateContainer to recreate from disk", "boxID", box.ID, "oldContainerID", containerID)
+					newContainer, err := nerdctlMgr.CreateContainer(ctx, req)
+					if err != nil {
+						slog.Error("Failed to recreate container from disk", "box", box.Name, "error", err)
+						if err := s.updateBoxStatus(ctx, box.ID, "failed"); err != nil {
+							slog.Error("Failed to mark box as failed", "box", box.Name, "error", err)
+						}
+					} else {
+						// Update box with new container ID
+						if err := s.db.Exec(ctx, `UPDATE boxes SET container_id = ?, status = 'running' WHERE id = ?`,
+							newContainer.ID, box.ID); err != nil {
+							slog.Error("Failed to update box with new container ID", "box", box.Name, "error", err)
+						} else {
+							slog.Info("Successfully recreated container from disk",
+								"box", box.Name,
+								"oldContainerID", containerID,
+								"newContainerID", newContainer.ID)
+						}
+					}
+				}
+			}
+		} else if hostContainer.Status != "running" && box.Status == "running" {
+			// Container exists but isn't running when it should be
+			slog.Info("Restarting stopped container", "box", box.Name, "containerID", containerID)
+			if err := s.containerManager.StartContainer(ctx, box.AllocID, containerID); err != nil {
+				slog.Error("Failed to restart container", "box", box.Name, "error", err)
+				if err := s.updateBoxStatus(ctx, box.ID, "stopped"); err != nil {
+					slog.Error("Failed to update box status", "box", box.Name, "error", err)
+				}
+			}
+		} else if hostContainer.Status == "running" && box.Status != "running" {
+			// Update database to reflect actual container state
+			slog.Info("Updating box status to match container", "box", box.Name, "status", hostContainer.Status)
+			if err := s.updateBoxStatus(ctx, box.ID, string(hostContainer.Status)); err != nil {
+				slog.Error("Failed to update box status", "box", box.Name, "error", err)
+			}
+		}
+
+		// Remove from map to track orphans
+		delete(hostContainerMap, containerID)
+	}
+
+	// Handle containers that are on host but not in DB (potential orphans)
+	for containerID, c := range hostContainerMap {
+		// Only process containers managed by exe (check label)
+		if c.AllocID != "" {
+			// Extract box ID from container name if possible for additional verification
+			// Container names are in format: exe-<allocID>-<boxName>
+			// We could potentially recover these if we can find the box ID
+
+			// For now, just log orphaned containers but don't delete immediately
+			// This provides a grace period and allows for manual investigation
+			slog.Warn("Found potentially orphaned container on host - NOT deleting automatically",
+				"containerID", containerID,
+				"name", c.Name,
+				"allocID", c.AllocID,
+				"host", host,
+				"status", c.Status)
+
+			// TODO: In the future, we could:
+			// 1. Track when orphans were first detected
+			// 2. Only delete after a grace period (e.g., 24 hours)
+			// 3. Try to match with recently deleted boxes in deleted_boxes table
+			// 4. Send alerts about orphaned containers
+		}
+	}
+
+	return nil
+}
+
+// updateBoxStatus updates the status of a box in the database
+func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) error {
+	return s.db.Exec(ctx, `
+		UPDATE boxes 
+		SET status = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, boxID)
+}
+
+// syncHost performs complete host synchronization including both allocs and containers
+func (s *Server) syncHost(ctx context.Context, host string) error {
+	// First sync allocations
+	if err := s.syncAllocsForHost(ctx, host); err != nil {
+		return fmt.Errorf("failed to sync allocations: %w", err)
+	}
+
+	// Then sync containers
+	if err := s.syncContainersForHost(ctx, host); err != nil {
+		return fmt.Errorf("failed to sync containers: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Server) Start() error {
 	s.mu.Lock()
 	s.stopping = false
@@ -2904,10 +3240,17 @@ func (s *Server) Start() error {
 		slog.Info(fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
 	}
 
-	// Sync allocations with container hosts before accepting connections
+	// Sync allocations and containers with container hosts before accepting connections
 	if s.containerManager != nil {
+		// First sync allocations (networks)
 		if err := s.syncAllocsWithHosts(ctx); err != nil {
 			slog.Error("Failed to sync allocations with container hosts", "error", err)
+			// Continue anyway - we can sync later
+		}
+
+		// Then sync containers
+		if err := s.syncContainersWithHosts(ctx); err != nil {
+			slog.Error("Failed to sync containers with container hosts", "error", err)
 			// Continue anyway - we can sync later
 		}
 	}

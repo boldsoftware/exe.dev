@@ -52,6 +52,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 		MemoryRequest: "512Mi",
 		StorageSize:   "1Gi",
 		Ephemeral:     false, // Keep it around long enough to check
+		BoxID:         GenerateTestBoxID(),
 	}
 
 	container, err := manager.CreateContainer(ctx, req)

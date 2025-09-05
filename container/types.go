@@ -131,6 +131,7 @@ type CreateContainerRequest struct {
 	AllocID    string `json:"alloc_id"` // Allocation ID for this container
 	IPRange    string `json:"ip_range"` // IP range for this allocation (e.g., "10.42.1.0/24")
 	Name       string `json:"name"`
+	BoxID      int    `json:"box_id"`               // Box ID for persistent disk path
 	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"
 	Dockerfile string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
 
@@ -157,6 +158,10 @@ type CreateContainerRequest struct {
 	// ProgressCallbackEx - enhanced callback with detailed progress information
 	// If set, this takes precedence over ProgressCallback
 	ProgressCallbackEx func(info CreateProgressInfo) `json:"-"`
+
+	// ExistingSSHKeys - when recreating a container, pass the existing SSH keys
+	// to preserve host key continuity
+	ExistingSSHKeys *ContainerSSHKeys `json:"-"`
 }
 
 // BuildRequest represents a request to build a custom Docker image

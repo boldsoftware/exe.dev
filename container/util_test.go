@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
@@ -140,4 +141,13 @@ func WaitForContainerReady(t *testing.T, manager *NerdctlManager, allocID, conta
 
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// GenerateTestBoxID generates a unique BoxID for testing purposes.
+// It uses timestamp and random components to ensure uniqueness across
+// parallel test runs.
+func GenerateTestBoxID() int {
+	// Use timestamp (last 9 digits of nanoseconds) + random component (0-999)
+	// This ensures uniqueness even when tests run in parallel
+	return int(time.Now().UnixNano()%1000000000) + rand.Intn(1000)
 }

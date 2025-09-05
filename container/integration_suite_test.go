@@ -58,6 +58,7 @@ func TestContainerIntegrationSuite(t *testing.T) {
 			IPRange: ipRange,
 			Name:    "sshtest",
 			Image:   "ubuntu:22.04",
+			BoxID:   GenerateTestBoxID(),
 		}
 
 		c, err := manager.CreateContainer(ctx, req)
@@ -141,7 +142,13 @@ func TestContainerIntegrationSuite(t *testing.T) {
 
 		var created [](*Container)
 		for i := 0; i < 3; i++ {
-			req := &CreateContainerRequest{AllocID: allocID, IPRange: ipRange, Name: fmt.Sprintf("c%d", i), Image: "alpine:latest"}
+			req := &CreateContainerRequest{
+				AllocID: allocID,
+				IPRange: ipRange,
+				Name:    fmt.Sprintf("c%d", i),
+				Image:   "alpine:latest",
+				BoxID:   GenerateTestBoxID(),
+			}
 			c, err := manager.CreateContainer(ctx, req)
 			if err != nil {
 				t.Fatalf("Create container %d failed: %v", i, err)
@@ -174,7 +181,14 @@ func TestContainerIntegrationSuite(t *testing.T) {
 			t.Fatalf("CreateAlloc failed: %v", err)
 		}
 
-		req := &CreateContainerRequest{AllocID: allocID, IPRange: ipRange, Name: "startstop", Image: "alpine:latest", CommandOverride: "sleep 3600"}
+		req := &CreateContainerRequest{
+			AllocID:         allocID,
+			IPRange:         ipRange,
+			Name:            "startstop",
+			Image:           "alpine:latest",
+			CommandOverride: "sleep 3600",
+			BoxID:           GenerateTestBoxID(),
+		}
 		c, err := manager.CreateContainer(ctx, req)
 		if err != nil {
 			t.Fatalf("Create failed: %v", err)
@@ -200,7 +214,13 @@ func TestContainerIntegrationSuite(t *testing.T) {
 			t.Fatalf("CreateAlloc failed: %v", err)
 		}
 
-		req := &CreateContainerRequest{AllocID: allocID, IPRange: ipRange, Name: "exec", Image: "alpine:latest"}
+		req := &CreateContainerRequest{
+			AllocID: allocID,
+			IPRange: ipRange,
+			Name:    "exec",
+			Image:   "alpine:latest",
+			BoxID:   GenerateTestBoxID(),
+		}
 		c, err := manager.CreateContainer(ctx, req)
 		if err != nil {
 			t.Fatalf("Create failed: %v", err)

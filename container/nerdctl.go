@@ -3,7 +3,7 @@ package container
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -33,10 +33,9 @@ import (
 // NEVER use 'nerdctl exec -i' with stdin redirection - it will cause containers
 // to enter UNKNOWN state with Kata/gVisor runtimes.
 type NerdctlManager struct {
-	config         *Config
-	hosts          []string // List of containerd host addresses (SSH hostnames or "local")
-	rovolMountPath string   // Path to rovol files on the host (e.g., /data/exed/rovol-<hash>)
-	hostArch       string   // Cached host architecture (e.g., "arm64", "amd64")
+	config   *Config
+	hosts    []string // List of containerd host addresses (SSH hostnames or "local")
+	hostArch string   // Cached host architecture (e.g., "arm64", "amd64")
 
 	mu            sync.RWMutex
 	sshTunnels    map[string]*exec.Cmd // containerID -> SSH tunnel command
@@ -111,16 +110,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 			}
 			slog.Info("Host architecture detected", "arch", manager.hostArch)
 		}
-
-		// Prepare RovolFS files on the host (for mounting into containers)
-		rovolPath, err := manager.prepareRovolFS(context.Background(), config.ContainerdAddresses[0])
-		if err != nil {
-			slog.Warn("Failed to prepare RovolFS files on host", "error", err)
-			// Continue without RovolFS - containers will use their own SSH binaries
-		} else {
-			manager.rovolMountPath = rovolPath
-			slog.Info("RovolFS files prepared", "path", rovolPath)
-		}
 	}
 
 	// Discover existing containers on all hosts with timeout
@@ -153,7 +142,7 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 
 // remoteFileExists checks if a file exists on the remote host via SSH
 func (m *NerdctlManager) remoteFileExists(ctx context.Context, host, path string) bool {
-	cmd := m.execSSHCommand(ctx, host, "test", "-f", path)
+	cmd := m.ExecSSHCommand(ctx, host, "test", "-f", path)
 	if err := cmd.Run(); err != nil {
 		return false
 	}
@@ -251,8 +240,8 @@ func (m *NerdctlManager) supportsAnnotations(ctx context.Context, host string) b
 	return supported
 }
 
-// execSSHCommand executes a command via SSH on a remote host
-func (m *NerdctlManager) execSSHCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
+// ExecSSHCommand executes a command via SSH on a remote host
+func (m *NerdctlManager) ExecSSHCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
 	// Parse SSH format if present
 	host = strings.TrimPrefix(host, "ssh://")
 
@@ -282,7 +271,7 @@ func isHexString(s string) bool {
 func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) error {
 	// Ensure nydus directories exist - they're required for the snapshotter
 	// This is needed in case they were deleted or this is a fresh setup
-	mkdirCmd := m.execSSHCommand(ctx, host, "sudo", "mkdir", "-p", "/var/lib/containerd-nydus/snapshots")
+	mkdirCmd := m.ExecSSHCommand(ctx, host, "sudo", "mkdir", "-p", "/var/lib/containerd-nydus/snapshots")
 	if err := mkdirCmd.Run(); err != nil {
 		slog.Warn("Failed to create nydus directories", "error", err)
 		// Continue anyway - the directories might already exist
@@ -290,7 +279,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 
 	// First, do a quick check if kata-runtime binary exists
 	// This is much faster than running a container
-	kataCheckCmd := m.execSSHCommand(ctx, host, "kata-runtime", "--version")
+	kataCheckCmd := m.ExecSSHCommand(ctx, host, "kata-runtime", "--version")
 
 	kataOutput, kataErr := kataCheckCmd.Output()
 	if kataErr == nil {
@@ -329,7 +318,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		if strings.Contains(outputStr, "name \"") && strings.Contains(outputStr, "is already used") {
 			// Retry with a unique name
 			retryBytes := make([]byte, 4)
-			_, _ = rand.Read(retryBytes)
+			_, _ = cryptorand.Read(retryBytes)
 			retryName := fmt.Sprintf("%s-%s", testContainerName, hex.EncodeToString(retryBytes))
 			_ = m.execNerdctl(ctx, host, "rm", "-f", retryName).Run()
 			retryArgs := []string{"--snapshotter", "nydus", "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", retryName, "alpine:latest", "echo", "kata-test"}
@@ -597,7 +586,7 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 			if output, err := verifyCmd.Output(); err == nil {
 				if strings.Contains(string(output), networkName) {
 					// Also verify the bridge interface exists on the host
-					bridgeCmd := m.execSSHCommand(ctx, host, "ip", "link", "show", "type", "bridge")
+					bridgeCmd := m.ExecSSHCommand(ctx, host, "ip", "link", "show", "type", "bridge")
 					if bridgeOut, err := bridgeCmd.Output(); err == nil && len(bridgeOut) > 0 {
 						verified = true
 						break
@@ -661,7 +650,7 @@ func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, 
 		add("FORWARD", "-i", iface, "-d", subnet, "-j", "DROP")
 	}
 
-	cmd := m.execSSHCommand(ctx, host, "sh", "-c", b.String())
+	cmd := m.ExecSSHCommand(ctx, host, "sh", "-c", b.String())
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to apply network security rules: %w: %s", err, output)
 	}
@@ -859,14 +848,41 @@ func (m *NerdctlManager) pullImageWithProgress(ctx context.Context, host, image 
 }
 
 // CreateContainer creates a new container using nerdctl
+// If a disk already exists for the given BoxID, it will be reused (for container recreation scenarios)
 func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContainerRequest) (*Container, error) {
+	// BoxID is required - it must be explicitly set
+	if req.BoxID == 0 {
+		return nil, fmt.Errorf("BoxID is required and cannot be 0")
+	}
+
+	// Check if we're recreating a container with an existing disk
+	diskExists, _ := m.VerifyDisk(ctx, m.selectHost(), req.BoxID)
+	if diskExists {
+		// If we're NOT recreating (no existing SSH keys), fail if disk already exists
+		// This prevents accidental reuse of box IDs due to bugs
+		if req.ExistingSSHKeys == nil {
+			return nil, fmt.Errorf("disk already exists for box %d - possible box ID reuse bug", req.BoxID)
+		}
+		slog.Info("CreateContainer: Reusing existing disk for box", "boxID", req.BoxID)
+	} else {
+		slog.Info("CreateContainer: Creating new disk for box", "boxID", req.BoxID)
+	}
+
 	// Call progress callback if provided
 	reportProgress(req, CreateInit, 0, 0, "Initializing container creation")
 
-	// Generate SSH keys for this container
-	sshKeys, err := GenerateContainerSSHKeys()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate SSH keys: %w", err)
+	// Use existing SSH keys if provided (for container recreation), otherwise generate new ones
+	var sshKeys *ContainerSSHKeys
+	if req.ExistingSSHKeys != nil {
+		slog.Info("Using existing SSH keys for container recreation", "boxID", req.BoxID)
+		sshKeys = req.ExistingSSHKeys
+	} else {
+		slog.Info("Generating new SSH keys for container", "boxID", req.BoxID)
+		var err error
+		sshKeys, err = GenerateContainerSSHKeys()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate SSH keys: %w", err)
+		}
 	}
 
 	// Select a host
@@ -949,13 +965,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	prep.errc = make(chan error, 1)
 
 	// Prepare container-specific /exe.dev directory with SSH keys
-	if m.rovolMountPath == "" {
-		return nil, fmt.Errorf("exetini required but /exe.dev rovol mount not available")
-	}
 	prep.wg.Add(1)
 	go func() {
 		defer prep.wg.Done()
-		path, err := m.prepareContainerExeDev(ctx, host, containerName, sshKeys)
+		path, err := m.prepareContainerExeDev(ctx, host, req.BoxID, sshKeys)
 		if err != nil {
 			prep.errc <- fmt.Errorf("failed to prepare container /exe.dev: %w", err)
 		} else {
@@ -1008,6 +1021,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		"--dns", "8.8.4.4", // Google DNS secondary
 		"--dns-search", "exe.dev", // Search domain for short names
 		"--label", fmt.Sprintf("alloc_id=%s", req.AllocID),
+		"--label", fmt.Sprintf("box_id=%d", req.BoxID),
 		"--label", "managed_by=exe",
 		"--restart", "no",
 		// TEMPORARILY DISABLED: Removing all capability flags to debug issue
@@ -1081,7 +1095,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		if containerExeDevPath != "" {
 			// Remove the parent container directory (not just exe.dev)
 			containerDir := filepath.Dir(containerExeDevPath)
-			cleanupCmd := m.execSSHCommand(ctx, host, "rm", "-rf", containerDir)
+			cleanupCmd := m.ExecSSHCommand(ctx, host, "rm", "-rf", containerDir)
 			if err := cleanupCmd.Run(); err != nil {
 				slog.Warn("Failed to clean up container directory", "dir", containerDir, "error", err)
 			}
@@ -1550,10 +1564,16 @@ func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID 
 		return nil, fmt.Errorf("failed to parse container info: %w", err)
 	}
 
+	// Extract AllocID from labels if not provided
+	containerAllocID := allocID
+	if containerAllocID == "" && inspectData.Config.Labels != nil {
+		containerAllocID = inspectData.Config.Labels["alloc_id"]
+	}
+
 	// Create container info
 	container := &Container{
 		ID:         containerID,
-		AllocID:    allocID,
+		AllocID:    containerAllocID,
 		DockerHost: host,
 		Status:     StatusUnknown,
 	}
@@ -1667,21 +1687,68 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 	}
 	m.mu.Unlock()
 
+	// Get the box_id from container labels to identify the disk
+	// We need to use json format and parse it
+	inspectCmd := m.execNerdctl(ctx, container.DockerHost, "inspect", container.ID, "--format", "{{json .Config.Labels}}")
+	boxIDOutput, err := inspectCmd.Output()
+	var boxID int
+	if err == nil && len(boxIDOutput) > 0 {
+		// Parse JSON to get box_id
+		var labels map[string]interface{}
+		if err := json.Unmarshal(boxIDOutput, &labels); err == nil {
+			if boxIDValue, ok := labels["box_id"]; ok {
+				if boxIDStr, ok := boxIDValue.(string); ok {
+					if parsed, err := strconv.Atoi(boxIDStr); err == nil {
+						boxID = parsed
+					}
+				}
+			}
+		}
+	}
+
 	// Remove container (force removal even if running)
 	cmd := m.execNerdctl(ctx, container.DockerHost, "rm", "-f", container.ID)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to delete container: %w: %s", err, output)
 	}
 
-	// Clean up container-specific /exe.dev directory
-	containerName := fmt.Sprintf("exe-%s-%s", allocID, container.Name)
-	containerDir := fmt.Sprintf("/data/exed/containers/%s", containerName)
-	host := container.DockerHost
-	cleanupCmd := m.execSSHCommand(ctx, host, "rm", "-rf", containerDir)
-	if err := cleanupCmd.Run(); err != nil {
-		slog.Warn("Failed to clean up container directory", "dir", containerDir, "error", err)
-	} else {
-		slog.Info("Cleaned up container directory", "dir", containerDir)
+	// Move the persistent disk to /data/exed/deleted to preserve it but prevent reuse
+	// This solves the issue where recreating the database (and thus resetting box IDs)
+	// would conflict with existing disks on the container host
+	if boxID > 0 {
+		sourcePath := fmt.Sprintf("/data/exed/containers/box-%d", boxID)
+		deletedPath := fmt.Sprintf("/data/exed/deleted/box-%d", boxID)
+
+		// Check if source disk exists
+		checkCmd := m.ExecSSHCommand(ctx, container.DockerHost, "test", "-d", sourcePath)
+		if err := checkCmd.Run(); err == nil {
+			// Source exists, proceed with move
+			// First create the deleted directory if it doesn't exist
+			mkdirCmd := m.ExecSSHCommand(ctx, container.DockerHost, "mkdir", "-p", "/data/exed/deleted")
+			if err := mkdirCmd.Run(); err != nil {
+				slog.Warn("Failed to create deleted directory", "error", err)
+			}
+
+			// Check if destination already exists (from a previous deletion)
+			checkDestCmd := m.ExecSSHCommand(ctx, container.DockerHost, "test", "-d", deletedPath)
+			if err := checkDestCmd.Run(); err == nil {
+				// Destination exists, append timestamp to make it unique
+				timestamp := time.Now().Format("20060102-150405")
+				deletedPath = fmt.Sprintf("/data/exed/deleted/box-%d-%s", boxID, timestamp)
+				slog.Info("Deleted disk already exists, using timestamped path",
+					"boxID", boxID, "path", deletedPath)
+			}
+
+			// Move the disk to deleted directory
+			mvCmd := m.ExecSSHCommand(ctx, container.DockerHost, "mv", sourcePath, deletedPath)
+			if err := mvCmd.Run(); err != nil {
+				slog.Warn("Failed to move disk to deleted directory",
+					"source", sourcePath, "dest", deletedPath, "error", err)
+			} else {
+				slog.Info("Moved disk to deleted directory",
+					"boxID", boxID, "from", sourcePath, "to", deletedPath)
+			}
+		}
 	}
 
 	// TODO: Clean up network if this was the last container in the allocation
@@ -1724,6 +1791,7 @@ func (m *NerdctlManager) listContainersWithFilter(ctx context.Context, filter, a
 		Names  string `json:"Names"`
 		Image  string `json:"Image"`
 		Status string `json:"Status"`
+		Labels string `json:"Labels"` // nerdctl returns labels as a comma-separated string
 	}
 
 	var entries []psEntry
@@ -1754,10 +1822,23 @@ func (m *NerdctlManager) listContainersWithFilter(ctx context.Context, filter, a
 
 	var containers []*Container
 	for _, entry := range entries {
+		// Extract AllocID from labels if not provided
+		containerAllocID := allocID
+		if containerAllocID == "" && entry.Labels != "" {
+			// Parse labels string to extract alloc_id
+			// Labels are in format: "key1=value1,key2=value2,..."
+			for _, label := range strings.Split(entry.Labels, ",") {
+				if strings.HasPrefix(label, "alloc_id=") {
+					containerAllocID = strings.TrimPrefix(label, "alloc_id=")
+					break
+				}
+			}
+		}
+
 		container := &Container{
 			ID:         entry.ID,
-			AllocID:    allocID,
-			Name:       strings.TrimPrefix(entry.Names, fmt.Sprintf("exe-%s-", allocID)),
+			AllocID:    containerAllocID,
+			Name:       strings.TrimPrefix(entry.Names, fmt.Sprintf("exe-%s-", containerAllocID)),
 			Image:      entry.Image,
 			DockerHost: host,
 			Status:     StatusUnknown,
@@ -1972,7 +2053,7 @@ func (m *NerdctlManager) GetBackendType() string {
 }
 
 // prepareRovolFS copies the embedded RovolFS files to the host for mounting into containers
-func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (string, error) {
+func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string, boxID int) (string, error) {
 	// Use cached host architecture (already mapped to Go arch names)
 	// Get the RovolFS for the host architecture
 	rovolFS, err := GetRovolFS(m.hostArch)
@@ -1980,13 +2061,16 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 		return "", fmt.Errorf("failed to get RovolFS for %s: %w", m.hostArch, err)
 	}
 
-	// Generate a unique directory name for this instance
-	randomBytes := make([]byte, 8)
-	if _, err := rand.Read(randomBytes); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	// Use box ID for rovol directory path
+	remoteDir := fmt.Sprintf("/data/exed/rovol/rovol-%d", boxID)
+
+	// Check if rovol already exists for this box
+	checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", remoteDir)
+	if err := checkCmd.Run(); err == nil {
+		// Rovol already exists for this box, reuse it
+		slog.Info("Reusing existing RovolFS for box", "boxID", boxID, "dir", remoteDir)
+		return remoteDir, nil
 	}
-	hash := hex.EncodeToString(randomBytes)
-	remoteDir := fmt.Sprintf("/data/exed/rovol-%s", hash)
 
 	// Create the remote directory using the SSH pool
 	mkdirCmd := m.sshPool.ExecCommand(ctx, host, "sudo", "mkdir", "-p", remoteDir)
@@ -2081,24 +2165,63 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string) (strin
 	return remoteDir, nil
 }
 
+// VerifyDisk checks if a persistent disk exists for a given box ID
+func (m *NerdctlManager) VerifyDisk(ctx context.Context, host string, boxID int) (bool, error) {
+	diskPath := fmt.Sprintf("/data/exed/containers/box-%d", boxID)
+
+	// Check if directory exists
+	checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", diskPath)
+	if err := checkCmd.Run(); err != nil {
+		return false, nil // Directory doesn't exist
+	}
+
+	// Verify it has expected subdirectories (basic integrity check)
+	verifyCmd := m.ExecSSHCommand(ctx, host, "test", "-d", filepath.Join(diskPath, "exe.dev"))
+	if err := verifyCmd.Run(); err != nil {
+		return false, nil // Directory exists but missing exe.dev subdirectory
+	}
+
+	return true, nil
+}
+
 // prepareContainerExeDev creates a container-specific /exe.dev directory with SSH keys
-func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, containerID string, sshKeys *ContainerSSHKeys) (string, error) {
-	// Base directory for this container's files
-	containerDir := fmt.Sprintf("/data/exed/containers/%s/exe.dev", containerID)
+func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string, boxID int, sshKeys *ContainerSSHKeys) (string, error) {
+	// Base directory for this container's files - use box ID for stable path
+	containerDir := fmt.Sprintf("/data/exed/containers/box-%d/exe.dev", boxID)
 
-	slog.Info("Preparing container-specific /exe.dev directory", "dir", containerDir)
+	slog.Info("Preparing container-specific /exe.dev directory", "dir", containerDir, "boxID", boxID)
 
-	// Combine directory creation and CoW clone into a single command for speed
-	// This reduces SSH round-trips significantly
-	// Note: The source files should already be owned by root:root from prepareRovolFS
-	setupCmd := fmt.Sprintf(
-		"sudo mkdir -p %s && (sudo cp -a --reflink=auto %s/. %s/ || sudo cp -a %s/. %s/) && sudo chown -R root:root %s && sudo mkdir -p %s",
-		containerDir, m.rovolMountPath, containerDir, m.rovolMountPath, containerDir, containerDir, filepath.Join(containerDir, "var/empty"))
+	// Check if disk already exists (for container recreation scenarios)
+	diskExists, err := m.VerifyDisk(ctx, host, boxID)
+	if err != nil {
+		return "", fmt.Errorf("failed to verify disk: %w", err)
+	}
 
-	slog.Info("Setting up container directory with CoW clone", "from", m.rovolMountPath, "to", containerDir)
-	combinedCmd := m.execSSHCommand(ctx, host, "sh", "-c", setupCmd)
-	if output, err := combinedCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to setup container directory: %w: %s", err, output)
+	if diskExists {
+		slog.Info("Disk already exists for box, reusing it", "boxID", boxID, "dir", containerDir)
+		// Disk already exists - DO NOT overwrite SSH keys to preserve host key continuity
+		// The existing keys on disk should match what's in the database
+		// We'll skip the SSH file writing below
+		return containerDir, nil
+	} else {
+		// First ensure the rovol files are prepared for this box
+		rovolPath, err := m.prepareRovolFS(ctx, host, boxID)
+		if err != nil {
+			return "", fmt.Errorf("failed to prepare RovolFS for box %d: %w", boxID, err)
+		}
+
+		// Combine directory creation and CoW clone into a single command for speed
+		// This reduces SSH round-trips significantly
+		// Note: The source files should already be owned by root:root from prepareRovolFS
+		setupCmd := fmt.Sprintf(
+			"sudo mkdir -p %s && (sudo cp -a --reflink=auto %s/. %s/ || sudo cp -a %s/. %s/) && sudo chown -R root:root %s && sudo mkdir -p %s",
+			containerDir, rovolPath, containerDir, rovolPath, containerDir, containerDir, filepath.Join(containerDir, "var/empty"))
+
+		slog.Info("Setting up new container directory with CoW clone", "from", rovolPath, "to", containerDir)
+		combinedCmd := m.ExecSSHCommand(ctx, host, "sh", "-c", setupCmd)
+		if output, err := combinedCmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to setup container directory: %w: %s", err, output)
+		}
 	}
 
 	// Now add the container-specific SSH files
@@ -2136,7 +2259,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host, conta
 	}
 
 	// Execute the combined command
-	writeCmd := m.execSSHCommand(ctx, host, "sh", "-c", writeScript.String())
+	writeCmd := m.ExecSSHCommand(ctx, host, "sh", "-c", writeScript.String())
 	if output, err := writeCmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to write SSH files: %w: %s", err, output)
 	}

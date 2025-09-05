@@ -141,6 +141,11 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 		}
 	}
 
+	// Ensure the base directory exists (in case it was deleted or we're in a new environment)
+	if err := os.MkdirAll(p.baseDir, 0o700); err != nil {
+		return nil, fmt.Errorf("failed to create SSH control directory: %w", err)
+	}
+
 	// Create control socket path
 	controlPath := fmt.Sprintf("%s/%s.sock", p.baseDir, strings.ReplaceAll(host, ":", "_"))
 

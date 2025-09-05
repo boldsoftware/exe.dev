@@ -359,11 +359,23 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		return fmt.Errorf("failed to get alloc info: %w", err)
 	}
 
+	// Pre-create box in database to get its ID
+	imageToStore := container.GetDisplayImageName(image)
+	if image == "exeuntu" {
+		imageToStore = "boldsoftware/exeuntu"
+	}
+	boxID, err := ss.server.preCreateBox(ctx, user.UserID, cc.Alloc.AllocID, boxName, imageToStore)
+	if err != nil {
+		cc.Write("\033[1;31mError: Failed to create box entry: %v\033[0m\r\n", err)
+		return fmt.Errorf("failed to create box entry: %w", err)
+	}
+
 	// Create container request with progress callback
 	req := &container.CreateContainerRequest{
 		AllocID:         cc.Alloc.AllocID,
 		IPRange:         alloc.IPRange.String, // Pass the IP range from the alloc
 		Name:            boxName,
+		BoxID:           boxID,
 		Image:           image,
 		Size:            size,
 		CPURequest:      sizePreset.CPURequest,
@@ -465,6 +477,12 @@ done:
 	if createErr != nil {
 		guid := uuid.New().String() // for x-ref on support tickets
 		slog.Debug("createContainer error", "error", createErr, "publicKey", cc.PublicKey, "userID", user.UserID, "allocID", cc.Alloc.AllocID, "boxName", boxName, "image", image, "size", size, "guid", guid)
+
+		// Clean up the pre-created box entry since container creation failed
+		if err := ss.server.db.Exec(ctx, `DELETE FROM boxes WHERE id = ?`, boxID); err != nil {
+			slog.Error("Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
+		}
+
 		if ss.server.devMode != "" {
 			cc.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", createErr)
 		}
@@ -472,14 +490,13 @@ done:
 		return createErr
 	}
 
-	// Store container info in database with SSH keys
-	imageToStore := container.GetDisplayImageName(image)
+	// Update box with container info and SSH keys
 	if createdContainer.SSHServerIdentityKey == "" {
 		cc.Write("\033[1;31mError: Container created without SSH keys - this should not happen\033[0m\r\n")
 		return fmt.Errorf("container created without SSH keys - this should not happen")
 	}
 
-	// Container has SSH keys, use the SSH-enabled storage
+	// Container has SSH keys, update the box entry
 	sshKeys := &container.ContainerSSHKeys{
 		ServerIdentityKey: createdContainer.SSHServerIdentityKey,
 		AuthorizedKeys:    createdContainer.SSHAuthorizedKeys,
@@ -488,8 +505,8 @@ done:
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}
-	if err := ss.server.createBoxWithSSH(ctx, user.UserID, cc.Alloc.AllocID, boxName, createdContainer.ID, imageToStore, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
-		cc.Write("\033[1;33mWarning: Failed to store box info: %v\033[0m\r\n", err)
+	if err := ss.server.updateBoxWithContainer(ctx, boxID, createdContainer.ID, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
+		cc.Write("\033[1;33mWarning: Failed to update box info: %v\033[0m\r\n", err)
 	}
 
 	// Container is ready with SSH already configured!
@@ -624,10 +641,26 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 		// Just delete from database if no container manager
 		cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
 
-		err := ss.server.db.Exec(ctx, `
-			DELETE FROM boxes
-			WHERE name = ?`,
-			boxName)
+		// Get box info before deleting to track it
+		var boxID int
+		var allocID string
+		err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			// First get the box info
+			err := tx.QueryRow(`SELECT id, alloc_id FROM boxes WHERE name = ?`, boxName).Scan(&boxID, &allocID)
+			if err != nil {
+				return err
+			}
+
+			// Track deletion in deleted_boxes table
+			_, err = tx.Exec(`INSERT INTO deleted_boxes (id, alloc_id) VALUES (?, ?)`, boxID, allocID)
+			if err != nil {
+				return fmt.Errorf("tracking deletion: %w", err)
+			}
+
+			// Delete the box
+			_, err = tx.Exec(`DELETE FROM boxes WHERE id = ?`, boxID)
+			return err
+		})
 		if err != nil {
 			cc.Writeln("\033[1;31mError deleting box: %v\033[0m", err)
 			return fmt.Errorf("deleting box: %w", err)
@@ -655,11 +688,18 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 		}
 	}
 
-	// Delete from database
-	err = ss.server.db.Exec(ctx, `
-		DELETE FROM boxes
-		WHERE name = ?`,
-		boxName)
+	// Delete from database and track in deleted_boxes
+	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		// Track deletion in deleted_boxes table
+		_, err := tx.Exec(`INSERT INTO deleted_boxes (id, alloc_id) VALUES (?, ?)`, box.ID, box.AllocID)
+		if err != nil {
+			return fmt.Errorf("tracking deletion: %w", err)
+		}
+
+		// Delete the box
+		_, err = tx.Exec(`DELETE FROM boxes WHERE id = ?`, box.ID)
+		return err
+	})
 	if err != nil {
 		cc.Writeln("\033[1;31mError deleting box from database: %v\033[0m", err)
 		return nil
