@@ -210,8 +210,8 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 		// Update the database
 		err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			_, err := tx.Exec(`
-				UPDATE tag_resolutions 
-				SET platform_digest = ?, last_checked_at = ?, last_changed_at = ?, 
+				UPDATE tag_resolutions
+				SET platform_digest = ?, last_checked_at = ?, last_changed_at = ?,
 				    updated_at = ?, image_size = ?
 				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 			`, newDigest, now, now, now, imageSize,
@@ -222,7 +222,7 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 
 			// Record history
 			_, err = tx.Exec(`
-				INSERT INTO tag_resolution_history (registry, repository, tag, platform, 
+				INSERT INTO tag_resolution_history (registry, repository, tag, platform,
 				                                   old_digest, new_digest, changed_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?)
 			`, tag.Registry, tag.Repository, tag.Tag, tag.Platform,
@@ -252,7 +252,7 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 		// Just update the last checked time
 		err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			_, err := tx.Exec(`
-				UPDATE tag_resolutions 
+				UPDATE tag_resolutions
 				SET last_checked_at = ?, updated_at = ?
 				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 			`, now, now, tag.Registry, tag.Repository, tag.Tag, tag.Platform)
@@ -335,14 +335,14 @@ func (tr *TagResolver) ResolveTag(ctx context.Context, image string, platform st
 
 	err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO tag_resolutions (registry, repository, tag, platform, 
-			                            platform_digest, last_checked_at, last_changed_at, 
+			INSERT INTO tag_resolutions (registry, repository, tag, platform,
+			                            platform_digest, last_checked_at, last_changed_at,
 			                            ttl_seconds, image_size, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(registry, repository, tag, platform) DO UPDATE SET
 				platform_digest = excluded.platform_digest,
 				last_checked_at = excluded.last_checked_at,
-				last_changed_at = CASE 
+				last_changed_at = CASE
 					WHEN platform_digest != excluded.platform_digest THEN excluded.last_changed_at
 					ELSE last_changed_at
 				END,
@@ -369,7 +369,7 @@ func (tr *TagResolver) getCachedResolution(ctx context.Context, registry, reposi
 
 	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		row := rx.QueryRow(`
-			SELECT registry, repository, tag, platform, 
+			SELECT registry, repository, tag, platform,
 			       COALESCE(index_digest, ''), COALESCE(platform_digest, ''),
 			       last_checked_at, last_changed_at, ttl_seconds, seen_on_hosts, image_size
 			FROM tag_resolutions
@@ -782,7 +782,7 @@ func parseImageReference(image string) (registry, repository, tag string) {
 func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repository, tag, platform string) error {
 	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			UPDATE tag_resolutions 
+			UPDATE tag_resolutions
 			SET seen_on_hosts = seen_on_hosts + 1
 			WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 		`, registry, repository, tag, platform)

@@ -27,7 +27,7 @@ pipes:
   to:
     host: host-password:2222
     username: "user"
-    known_hosts_data: 
+    known_hosts_data:
     # github.com
     - fDF8RjRwTmVveUZHVEVHcEIyZ3A4RGE0WlE4TGNVPXxycVZYNU0rWTJoS0dteFphcVFBb0syRHp1TEE9IHNzaC1lZDI1NTE5IEFBQUFDM056YUMxbFpESTFOVEU1QUFBQUlPTXFxbmtWenJtMFNkRzZVT29xS0xzYWJnSDVDOW9rV2kwZGgybDlHS0psCg==
     - {{ .KnownHostsKey }}
@@ -72,7 +72,7 @@ pipes:
 - from:
     - username: ".*"
       username_regex_match: true
-      authorized_keys: 
+      authorized_keys:
         - {{ .AuthorizedKeys_Simple }}
         - {{ .AuthorizedKeys_Catchall }}
   to:

@@ -23,7 +23,7 @@ pipes:
   to:
     host: host-password:2222
     username: "user"
-    known_hosts_data: 
+    known_hosts_data:
     - fDF8RjRwTmVveUZHVEVHcEIyZ3A4RGE0WlE4TGNVPXxycVZYNU0rWTJoS0dteFphcVFBb0syRHp1TEE9IHNzaC1lZDI1NTE5IEFBQUFDM056YUMxbFpESTFOVEU1QUFBQUlPTXFxbmtWenJtMFNkRzZVT29xS0xzYWJnSDVDOW9rV2kwZGgybDlHS0psCg==
     - fDF8VzRpUUd0VFVyREJwSjM3RnFuOWRwcEdVRE5jPXxEZWFna2RwVHpZZDExdDhYWXlORnlhZmROZ2c9IHNzaC1lZDI1NTE5IEFBQUFDM056YUMxbFpESTFOVEU1QUFBQUlBZnVDSEtWVGpxdXh2dDZDTTZ0ZEc0U0xwMUJ0bi9uT2VISEU1VU96UmRmCg==
 - from:
@@ -37,7 +37,7 @@ pipes:
 - from:
     - username: ".*"
       username_regex_match: true
-      authorized_keys: 
+      authorized_keys:
       - /tmp/private_key1
       - /tmp/private_key2
   to:

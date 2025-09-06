@@ -2755,10 +2755,10 @@ func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*Box, er
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		// Join boxes with allocs to find boxes on this host
 		rows, err := rx.Query(`
-			SELECT 
-				b.id, b.alloc_id, b.name, b.status, b.image, b.container_id, 
+			SELECT
+				b.id, b.alloc_id, b.name, b.status, b.image, b.container_id,
 				b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at,
-				b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, 
+				b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys,
 				b.ssh_ca_public_key, b.ssh_host_certificate, b.ssh_client_private_key,
 				b.ssh_port, b.ssh_user
 			FROM boxes b
@@ -3095,7 +3095,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 // updateBoxStatus updates the status of a box in the database
 func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) error {
 	return s.db.Exec(ctx, `
-		UPDATE boxes 
+		UPDATE boxes
 		SET status = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, status, boxID)
@@ -3828,9 +3828,9 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 	var ctrhost sql.NullString
 	var sshUser sql.NullString
 
-	query := `SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user 
-		FROM boxes m 
-		JOIN allocs a ON m.alloc_id = a.alloc_id 
+	query := `SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user
+		FROM boxes m
+		JOIN allocs a ON m.alloc_id = a.alloc_id
 		WHERE m.id = ?`
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(query, boxID).Scan(&port, &privateKey, &serverIdentityKey, &ctrhost, &sshUser)
