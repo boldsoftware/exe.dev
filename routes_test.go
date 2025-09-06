@@ -236,10 +236,7 @@ func TestBoxCreationWithRoutes(t *testing.T) {
 		t.Fatalf("Failed to get alloc ID: %v", err)
 	}
 
-	err = server.createBox(t.Context(), userID, allocID, "test-box", "container123", "ubuntu")
-	if err != nil {
-		t.Errorf("Failed to create box: %v", err)
-	}
+	server.createTestBox(t, userID, allocID, "test-box", "container123", "ubuntu")
 
 	// Retrieve the box and check its routes
 	box, err := server.getBoxByName(t.Context(), "test-box")
@@ -296,10 +293,7 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	// Create a test machine with custom routes
-	err = server.createBox(t.Context(), userID, allocID, "web-server", "container123", "nginx")
-	if err != nil {
-		t.Fatalf("Failed to create machine: %v", err)
-	}
+	server.createTestBox(t, userID, allocID, "web-server", "container123", "nginx")
 
 	// Get the box and add a public API route
 	box, err := server.getBoxByName(t.Context(), "web-server")
@@ -471,10 +465,7 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	}
 
 	// Create a test box
-	err = server.createBox(t.Context(), userID, allocID, boxName, "container123", "nginx")
-	if err != nil {
-		t.Fatalf("Failed to create machine: %v", err)
-	}
+	server.createTestBox(t, userID, allocID, boxName, "container123", "nginx")
 
 	// Test route commands as string arrays (simulating SSH command parsing)
 	tests := []struct {

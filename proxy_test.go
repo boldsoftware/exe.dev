@@ -41,10 +41,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	}
 
 	// Create a test box with default routes
-	err = server.createBox(t.Context(), userID, allocID, "myapp", "container123", "nginx")
-	if err != nil {
-		t.Fatalf("Failed to create test box: %v", err)
-	}
+	server.createTestBox(t, userID, allocID, "myapp", "container123", "nginx")
 
 	tests := []struct {
 		name           string

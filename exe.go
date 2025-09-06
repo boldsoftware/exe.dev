@@ -2585,55 +2585,6 @@ func getDefaultRoutesJSON() string {
 	return string(data)
 }
 
-// createBox stores box info in database
-func (s *Server) createBox(ctx context.Context, userID, allocID, name, containerID, image string) error {
-	// Validate box name
-	if !s.isValidBoxName(name) {
-		return fmt.Errorf("invalid box name: %s", name)
-	}
-
-	routes := getDefaultRoutesJSON()
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
-			                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			                     ssh_host_certificate, ssh_client_private_key, ssh_port)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, name, "pending", image, containerID, userID, routes,
-			"test-identity-key", "test-authorized-keys", "test-ca-key",
-			"test-host-cert", "test-client-key", s.piperdPort)
-		return err
-	})
-	return err
-}
-
-// createBoxWithSSH stores box info including SSH keys in database
-func (s *Server) createBoxWithSSH(ctx context.Context, userID, allocID, name, containerID, image, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
-	// Validate box name
-	if !s.isValidBoxName(name) {
-		return fmt.Errorf("invalid box name: %s", name)
-	}
-
-	routes := getDefaultRoutesJSON()
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO boxes (
-				alloc_id, name, status, image, container_id, created_by_user_id,
-				ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-				ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user, routes
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, name, "running", image, containerID, userID,
-			sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, sshUser, routes)
-		return err
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // preCreateBox creates a box entry before the container is created, returns the box ID
 func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image string) (int, error) {
 	// Validate box name

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/container"
 	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
 )
@@ -418,5 +419,24 @@ func TestHTTPMetricsInstrumentation(t *testing.T) {
 	// Check that we have standard promhttp metrics
 	if !strings.Contains(bodyStr, "promhttp_metric_handler_requests_total") {
 		t.Error("Expected to find promhttp_metric_handler_requests_total metric")
+	}
+}
+
+// createTestBox is a test helper that generates SSH keys and stores box info in database
+func (s *Server) createTestBox(t *testing.T, userID, allocID, name, containerID, image string) {
+	// Generate SSH keys for testing
+	sshKeys, err := container.GenerateContainerSSHKeys()
+	if err != nil {
+		t.Fatalf("failed to generate SSH keys: %v", err)
+	}
+
+	id, err := s.preCreateBox(t.Context(), userID, allocID, name, image)
+	if err != nil {
+		t.Fatalf("failed to create box with test SSH keys: %v", err)
+	}
+
+	err = s.updateBoxWithContainer(t.Context(), id, containerID, "root", sshKeys, s.piperdPort)
+	if err != nil {
+		t.Fatalf("failed to update box with container ID: %v", err)
 	}
 }
