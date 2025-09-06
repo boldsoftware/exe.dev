@@ -230,8 +230,9 @@ sudo mkdir -p /run/containerd-nydus
 cat <<'EOF' | sudo tee /etc/systemd/system/nydus-snapshotter.service >/dev/null
 [Unit]
 Description=Nydus snapshotter for containerd
-After=network.target containerd.service
-Wants=containerd.service
+After=network-online.target
+Wants=network-online.target
+Before=containerd.service
 
 [Service]
 Type=simple
@@ -319,10 +320,6 @@ if sudo grep -q '^kernel_params' "$KATA_CFG"; then
 else
 	sudo sed -i '/^\[hypervisor\.clh\]/a kernel_params = "memhp_default_state=online"' "$KATA_CFG"
 fi
-
-# Always restart containerd to ensure shims pick up the latest config
-sudo systemctl restart containerd
-sleep 2
 
 # Ensure Cloud Hypervisor API socket is available for snapshots (use Kata+CLH default)
 CLH_CFG="/etc/kata-containers/configuration-clh.toml"
@@ -747,6 +744,11 @@ sudo usermod -aG containerd ubuntu
 # Configure containerd socket permissions
 sudo mkdir -p /etc/systemd/system/containerd.service.d
 cat <<'EOF' | sudo tee /etc/systemd/system/containerd.service.d/override.conf >/dev/null
+[Unit]
+# containerd must start after the proxy snapshotter socket exists
+Requires=nydus-snapshotter.service
+After=nydus-snapshotter.service
+
 [Service]
 # Force containerd to use our config file
 ExecStart=
@@ -778,17 +780,15 @@ sudo install -d -m 0755 -o root -g root /run/kata-containers/template
 
 # Start services
 sudo systemctl daemon-reload
-sudo systemctl enable containerd
-sudo systemctl start containerd
-sleep 2
-
-# Start nydus-snapshotter
 sudo systemctl enable nydus-snapshotter
+sudo systemctl enable containerd
+
+# Start nydus-snapshotter first (it must be running before containerd)
 sudo systemctl start nydus-snapshotter
 sleep 2
 
-# Always restart containerd to ensure proxy plugin is registered
-sudo systemctl restart containerd
+# Now start containerd (which requires nydus-snapshotter)
+sudo systemctl start containerd
 sleep 3
 
 echo "Waiting for nydus to register with containerd..."
