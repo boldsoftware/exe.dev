@@ -10,7 +10,7 @@ The exed binary acts as the control interface and the ssh/https proxy to the con
 Start with the basics:
 
 ```
-brew install tailscale coreutils colima
+brew install tailscale coreutils lima
 tailscale up
 ```
 
@@ -21,11 +21,13 @@ So you need at least an M3 CPU.
 Once you have that, run:
 
 ```
-./ops/setup-colima-host.sh
+./ops/setup-lima-hosts.sh
 ```
 
-For debugging you can `ssh colima-exe-ctr` and you can wipe it
-by running the setup script again.
+This sets up two VMs as ctr-hosts, one for running exed manually
+and another as a ctr-host when running Go tests.
+
+You can fast-wipe the ctr-hosts by running `./ops/reset-lima-hosts.sh`.
 
 Then in your ~/.ssh/config add:
 
@@ -58,13 +60,13 @@ With this you can:
 - visit http://machine.localhost:8080 (run `python -m http.server` in the machine first)
 - scp junk.txt localexe:junk.txt
 
-Everything will run locally on a colima VM.
+Everything will run locally on a lima VM.
 
 To get details on the VM under your box, use commands like:
 
 ```
-ssh colima-exe-ctr sudo nerdctl --namespace=exe ps -a
-ssh colima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
+ssh lima-exe-ctr sudo nerdctl --namespace=exe ps -a
+ssh lima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
 ```
 
 ## Production Deployment
