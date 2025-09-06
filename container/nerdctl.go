@@ -65,6 +65,10 @@ func (m *NerdctlManager) SetHostUpdater(updater *tagresolver.HostUpdater) {
 	m.hostUpdater = updater
 }
 
+func (m *NerdctlManager) Config() Config {
+	return *m.config
+}
+
 // NewNerdctlManager creates a new nerdctl-based container manager
 func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	if err := validateConfig(config); err != nil {

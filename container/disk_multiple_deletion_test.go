@@ -13,8 +13,7 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 	t.Parallel()
 	SkipIfShort(t)
 
-	backend := GetTestBackend(t)
-	manager := CreateTestManager(t, backend)
+	manager := CreateTestManager(t)
 	defer manager.Close()
 
 	ctx := t.Context()

@@ -23,9 +23,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 
 	SkipIfShort(t)
 
-	// Detect which container backend to use
-	backend := GetTestBackend(t)
-	manager := CreateTestManager(t, backend)
+	manager := CreateTestManager(t)
 	defer manager.Close()
 
 	// For testing, we use ubuntu:22.04 directly

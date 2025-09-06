@@ -80,8 +80,8 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 		slog.SetLogLoggerLevel(slog.LevelWarn)
 	}
 
-	ctrHost := ctrhosttest.Detect(context.Background())
-	// Skip tests in CI if exe-ctr-colima is not accessible via SSH
+	ctrHost := ctrhosttest.Detect()
+	// Skip tests in CI if there is no ctr-host
 	if os.Getenv("CI") != "" && ctrHost == "" {
 		fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
 		return

@@ -3,94 +3,25 @@ package container
 import (
 	"context"
 	"math/rand"
-	"os"
 	"os/exec"
-	"strings"
 	"testing"
 	"time"
 
 	"exe.dev/ctrhosttest"
 )
 
-// TestBackend represents the container backend configuration for tests
-type TestBackend struct {
-	Backend string   // "docker" or "containerd"
-	Hosts   []string // List of hosts (empty for local)
-}
-
-// GetTestBackend determines which container backend to use based on environment variables
-// Priority:
-// 1. CTR_HOST env var -> use containerd with specified host
-// 2. DOCKER_HOST env var -> use docker with specified host
-// 3. Local ctr available -> use local containerd
-// 4. Local docker available -> use local docker
-// 5. None available -> skip test
-func GetTestBackend(t *testing.T) *TestBackend {
-	ctrHost := os.Getenv("CTR_HOST")
+// CreateTestManager creates a NerdctlManager instance.
+func CreateTestManager(t *testing.T) *NerdctlManager {
+	ctrHost := ctrhosttest.Detect()
 	if ctrHost == "" {
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-		if detected := ctrhosttest.Detect(ctx); detected != "" {
-			ctrHost = detected
-			t.Logf("Detected CTR_HOST: %s", ctrHost)
-		}
+		t.Skip("cannot reach a ctr-host (set CTR_HOST or run ./ops/setup-lima-hosts.sh)")
 	}
-
-	if ctrHost != "" {
-		// Parse CTR_HOST - supports formats:
-		// - ssh://user@host or ssh://host -> remote containerd via SSH
-		// - user@host or host -> remote containerd via SSH
-
-		host := ctrHost
-		if strings.HasPrefix(ctrHost, "ssh://") {
-			host = strings.TrimPrefix(ctrHost, "ssh://")
-		}
-
-		// Socket paths are not supported - we require SSH
-		if strings.HasPrefix(host, "/") {
-			t.Skipf("CTR_HOST socket paths are not supported, SSH host required: %s", ctrHost)
-		}
-
-		if host == "" {
-			t.Skip("CTR_HOST is empty, SSH host required for tests")
-		}
-
-		t.Logf("Using containerd backend from CTR_HOST: %s", ctrHost)
-
-		hosts := []string{host}
-
-		return &TestBackend{
-			Backend: "containerd",
-			Hosts:   hosts,
-		}
-	}
-
-	// Docker support has been removed - only containerd is supported
-
-	// Skip if SKIP_CONTAINER_TESTS is set
-	if os.Getenv("SKIP_CONTAINER_TESTS") != "" {
-		t.Skip("Skipping container tests (SKIP_CONTAINER_TESTS is set)")
-	}
-
-	// No backend available
-	t.Skip("No container backend available (set CTR_HOST for e2e container tests)")
-	return nil
-}
-
-// CreateTestManager creates a NerdctlManager instance based on the test backend configuration
-func CreateTestManager(t *testing.T, backend *TestBackend) *NerdctlManager {
 	config := &Config{
-		ContainerdAddresses:  backend.Hosts,
+		ContainerdAddresses:  []string{ctrHost},
 		DefaultCPURequest:    "100m",
 		DefaultMemoryRequest: "256Mi",
 		DefaultStorageSize:   "1Gi",
 	}
-
-	if len(backend.Hosts) == 0 {
-		// Local backend
-		config.ContainerdAddresses = []string{""}
-	}
-
 	manager, err := NewNerdctlManager(config)
 	if err != nil {
 		t.Fatalf("Failed to create containerd manager: %v", err)

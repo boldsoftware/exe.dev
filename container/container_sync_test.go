@@ -3,11 +3,9 @@ package container
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
-	"exe.dev/ctrhosttest"
 	"exe.dev/vouch"
 )
 
@@ -20,28 +18,7 @@ import (
 func TestContainerSync(t *testing.T) {
 	vouch.For("david")
 
-	host := os.Getenv("CTR_HOST")
-	if host == "" {
-		// Attempt to auto-detect local dev host
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-		host = ctrhosttest.Detect(ctx)
-		if host == "" {
-			t.Skip("CTR_HOST not set and colima-exe-ctr not reachable; skipping integration test")
-		}
-	}
-
-	cfg := &Config{
-		ContainerdAddresses:  []string{host},
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "256Mi",
-		DefaultStorageSize:   "1Gi",
-	}
-
-	manager, err := NewNerdctlManager(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create nerdctl manager: %v", err)
-	}
+	manager := CreateTestManager(t)
 	defer manager.Close()
 
 	ctx := context.Background()
@@ -53,7 +30,7 @@ func TestContainerSync(t *testing.T) {
 		t.Fatalf("Failed to create allocation: %v", err)
 	}
 	defer func() {
-		if err := manager.DeleteAlloc(ctx, allocID, host); err != nil {
+		if err := manager.DeleteAlloc(ctx, allocID, manager.Config().ContainerdAddresses[0]); err != nil {
 			t.Logf("Warning: failed to delete allocation: %v", err)
 		}
 	}()

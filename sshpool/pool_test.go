@@ -2,7 +2,6 @@ package sshpool
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,21 +11,9 @@ import (
 
 // TestPool tests the SSH connection pool functionality
 func TestPool(t *testing.T) {
-	// Skip if we don't have a test SSH host available
-	testHost := os.Getenv("TEST_SSH_HOST")
+	testHost := ctrhosttest.Detect()
 	if testHost == "" {
-		// Fall back to CTR_HOST when available to make CI easier to configure
-		if ctr := os.Getenv("CTR_HOST"); ctr != "" {
-			testHost = ctr
-		} else {
-			// As a last resort, auto-detect the local dev host
-			if detected := ctrhosttest.Detect(nil); detected != "" {
-				testHost = detected
-			}
-		}
-	}
-	if testHost == "" {
-		t.Skip("TEST_SSH_HOST or CTR_HOST not set, skipping SSH pool tests")
+		t.Skip("no ctr-host, skipping SSH pool tests")
 	}
 
 	// Create a new SSH connection pool

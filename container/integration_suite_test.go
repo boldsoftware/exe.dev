@@ -4,43 +4,20 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"exe.dev/ctrhosttest"
 	"golang.org/x/crypto/ssh"
 )
 
 // TestContainerIntegrationSuite combines the heavy containerd-based tests to reduce
 // repeated manager creation and per-test setup/teardown cost.
 func TestContainerIntegrationSuite(t *testing.T) {
-	host := os.Getenv("CTR_HOST")
-	if host == "" {
-		// Attempt to auto-detect local dev host
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-		host = ctrhosttest.Detect(ctx)
-		if host == "" {
-			t.Skip("CTR_HOST not set and colima-exe-ctr not reachable; skipping integration suite")
-		}
-	}
-
-	cfg := &Config{
-		ContainerdAddresses:  []string{host},
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "256Mi",
-		DefaultStorageSize:   "1Gi",
-	}
-
-	manager, err := NewNerdctlManager(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create nerdctl manager: %v", err)
-	}
+	manager := CreateTestManager(t)
 	defer manager.Close()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
 	// Subtest: Ubuntu container with SSH + rovol checks + SSH handshake

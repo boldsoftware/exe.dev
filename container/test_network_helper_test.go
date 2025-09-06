@@ -1,9 +1,7 @@
 package container
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -119,15 +117,7 @@ func cleanupAllocNetwork(t *testing.T, host, allocID string) {
 // It also registers cleanup to remove the per-alloc network after the test.
 func WithAllocIPRange(t *testing.T, allocID string) string {
 	t.Helper()
-	host := os.Getenv("CTR_HOST")
-	if host == "" {
-		// Attempt auto-detection for local dev convenience
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-		if detected := ctrhosttest.Detect(ctx); detected != "" {
-			host = detected
-		}
-	}
+	host := ctrhosttest.Detect()
 	if host == "" || strings.HasPrefix(host, "/") {
 		return "" // local/non-remote: leave empty; prod path not under test
 	}
