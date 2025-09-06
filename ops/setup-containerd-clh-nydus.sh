@@ -600,6 +600,8 @@ Wants=containerd.service nydus-snapshotter.service
 Type=oneshot
 ExecStart=/usr/local/sbin/exe-clh-snapshot
 TimeoutSec=180
+# Don't block boot completion
+RemainAfterExit=no
 
 [Install]
 WantedBy=multi-user.target
@@ -608,14 +610,16 @@ EOF
 cat <<'EOF' | sudo tee /etc/systemd/system/exe-kata-pool.service >/dev/null
 [Unit]
 Description=Maintain a pool of warm Kata sandboxes
-After=containerd.service nydus-snapshotter.service exe-clh-snapshot.service
-Wants=containerd.service nydus-snapshotter.service exe-clh-snapshot.service
+After=containerd.service nydus-snapshotter.service
+Wants=containerd.service nydus-snapshotter.service
 
 [Service]
-Type=oneshot
+Type=idle
 ExecStart=/usr/local/sbin/exe-kata-pool
-RemainAfterExit=yes
-ExecStartPost=/bin/sh -c 'systemctl start exe-kata-pool.timer'
+# Run after boot is complete, not during
+Nice=10
+# Don't block boot completion
+RemainAfterExit=no
 
 [Install]
 WantedBy=multi-user.target
@@ -635,8 +639,11 @@ WantedBy=timers.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable exe-clh-snapshot.service >/dev/null 2>&1 || true
-sudo systemctl enable exe-kata-pool.service >/dev/null 2>&1 || true
+# Don't enable these services to start at boot - they slow down startup
+# They can be started manually or via timer after boot if needed
+sudo systemctl disable exe-clh-snapshot.service >/dev/null 2>&1 || true
+sudo systemctl disable exe-kata-pool.service >/dev/null 2>&1 || true
+# Keep the timer enabled for periodic refresh after boot
 sudo systemctl enable exe-kata-pool.timer >/dev/null 2>&1 || true
 
 echo "=== Installing nerdctl ==="
@@ -992,17 +999,10 @@ if [ -f /var/lib/cloud-hypervisor/snapshots/state.json ] && [ -f /var/lib/cloud-
 	echo "✓ Cloud Hypervisor snapshot directory present (state.json, config.json)"
 fi
 
-# Start snapshot creation and warm pool now that images are present
-if ! sudo systemctl start exe-clh-snapshot.service; then
-	echo "✗ exe-clh-snapshot.service failed; last logs:" >&2
-	sudo systemctl -l --no-pager status exe-clh-snapshot.service || true
-	sudo journalctl -n 120 --no-pager -u exe-clh-snapshot.service || true
-else
-	echo "✓ exe-clh-snapshot.service started"
-fi
-# Start pool population via timer (do not block on oneshot service)
-sudo systemctl start exe-kata-pool.timer || true
-echo "✓ exe-kata-pool.timer started (pool will populate in background)"
+# Services are installed but not enabled for faster boot
+echo "✓ exe-clh-snapshot.service installed (disabled for faster boot)"
+echo "✓ exe-kata-pool.service installed (disabled for faster boot)"
+echo "✓ exe-kata-pool.timer enabled (will start pool after boot)"
 
 # Measure CLH restore timing using the unified restore annotation, if snapshot files exist
 if [ -f /var/lib/cloud-hypervisor/snapshots/state.json ] && [ -f /var/lib/cloud-hypervisor/snapshots/memory-ranges ]; then
