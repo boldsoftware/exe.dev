@@ -237,6 +237,7 @@ Before=containerd.service
 [Service]
 Type=simple
 Environment="CONTAINERD_ADDRESS=/run/containerd/containerd.sock"
+LimitNOFILE=1048576
 ExecStart=/usr/local/bin/containerd-nydus-grpc \
     --nydusd-config=/etc/nydus/nydusd-config.json \
     --log-level=info \
@@ -643,8 +644,15 @@ sudo systemctl daemon-reload
 # They can be started manually or via timer after boot if needed
 sudo systemctl disable exe-clh-snapshot.service >/dev/null 2>&1 || true
 sudo systemctl disable exe-kata-pool.service >/dev/null 2>&1 || true
-# Keep the timer enabled for periodic refresh after boot
-sudo systemctl enable exe-kata-pool.timer >/dev/null 2>&1 || true
+
+# Skip kata pool timer for CI/Lima environments (not needed for dev/test)
+if [ -n "${CI:-}" ] || [ -n "${SKIP_KATA_POOL_TIMER:-}" ]; then
+	echo "Skipping kata pool timer (CI or SKIP_KATA_POOL_TIMER set)"
+	sudo systemctl disable exe-kata-pool.timer >/dev/null 2>&1 || true
+else
+	# Keep the timer enabled for periodic refresh after boot in production
+	sudo systemctl enable exe-kata-pool.timer >/dev/null 2>&1 || true
+fi
 
 echo "=== Installing nerdctl ==="
 
@@ -758,6 +766,7 @@ After=nydus-snapshotter.service
 
 [Service]
 # Force containerd to use our config file
+LimitNOFILE=1048576
 ExecStart=
 ExecStart=/usr/local/bin/containerd --config /etc/containerd/config.toml
 ExecStartPre=/bin/sh -c 'if [ -f /etc/containerd/config.toml.exedev ]; then cp -f /etc/containerd/config.toml.exedev /etc/containerd/config.toml; fi'
@@ -1002,7 +1011,11 @@ fi
 # Services are installed but not enabled for faster boot
 echo "✓ exe-clh-snapshot.service installed (disabled for faster boot)"
 echo "✓ exe-kata-pool.service installed (disabled for faster boot)"
-echo "✓ exe-kata-pool.timer enabled (will start pool after boot)"
+if [ -n "${CI:-}" ] || [ -n "${SKIP_KATA_POOL_TIMER:-}" ]; then
+	echo "✓ exe-kata-pool.timer disabled (CI/dev environment)"
+else
+	echo "✓ exe-kata-pool.timer enabled (will start pool after boot)"
+fi
 
 # Measure CLH restore timing using the unified restore annotation, if snapshot files exist
 if [ -f /var/lib/cloud-hypervisor/snapshots/state.json ] && [ -f /var/lib/cloud-hypervisor/snapshots/memory-ranges ]; then
