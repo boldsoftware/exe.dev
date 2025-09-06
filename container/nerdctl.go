@@ -542,10 +542,7 @@ func (m *NerdctlManager) DeleteAlloc(ctx context.Context, allocID string, host s
 // ensureAllocNetwork ensures a network exists for the allocation
 func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string, ipRange string, host string) (string, error) {
 	// Limit network name length, but handle shorter allocIDs
-	nameLen := len(allocID)
-	if nameLen > 12 {
-		nameLen = 12
-	}
+	nameLen := min(len(allocID), 12)
 	networkName := fmt.Sprintf("exe-%s", allocID[:nameLen])
 
 	m.mu.Lock()
@@ -1226,7 +1223,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	createCmd := m.execNerdctl(ctx, host, runArgs...)
 
 	// Log the command for debugging
-	slog.Info("Creating container", "command", createCmd.Args)
+	slog.Info("Creating container", "command", createCmd.Args, "boxID", req.BoxID)
 
 	// Debug: Log the exact command being run
 	if len(createCmd.Args) >= 2 && createCmd.Args[0] == "ssh" {
@@ -1240,7 +1237,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	if err != nil {
 		outputStr := string(output)
 		cleanupContainerDir()
-		return nil, fmt.Errorf("failed to create container: %w\nOutput: %s", err, outputStr)
+		return nil, fmt.Errorf("failed to create container for box-%d: %w\noutput: %s", req.BoxID, err, outputStr)
 	}
 
 	// Extract container ID from output - handle both stdout only and mixed output
