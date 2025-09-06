@@ -80,14 +80,14 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 		slog.SetLogLoggerLevel(slog.LevelWarn)
 	}
 
-	host := ctrhosttest.Detect(context.Background())
+	ctrHost := ctrhosttest.Detect(context.Background())
 	// Skip tests in CI if exe-ctr-colima is not accessible via SSH
-	if os.Getenv("CI") != "" && host == "" {
+	if os.Getenv("CI") != "" && ctrHost == "" {
 		fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
 		return
 	}
 
-	env, err := setup()
+	env, err := setup(ctrHost)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "test setup failed: %v\n", err)
 		env.Close(nil)
@@ -97,7 +97,7 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 	// prepare container manager early, for faster cleanup
 	containerManagerC := make(chan *container.NerdctlManager, 1)
 	go func() {
-		manager, err := env.initContainerManager(host)
+		manager, err := env.initContainerManager(ctrHost)
 		containerManagerC <- manager // unblock regardless
 		if err != nil {
 			fmt.Printf("failed to init container manager: %v\n", err)
@@ -217,7 +217,7 @@ func (p *tcpProxy) serve() error {
 	}
 }
 
-func setup() (*testEnv, error) {
+func setup(ctrHost string) (*testEnv, error) {
 	env := &testEnv{
 		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
 	}
@@ -253,7 +253,7 @@ func setup() (*testEnv, error) {
 	}
 
 	// TODO: build piperd concurrently with starting exed for faster startup
-	ei, err := startExed(es.port, proxy.tcp.Port)
+	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port)
 	if err != nil {
 		return env, err
 	}
@@ -374,7 +374,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	return instance, nil
 }
 
-func startExed(emailServerPort, piperPort int) (*exedInstance, error) {
+func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, error) {
 	start := time.Now()
 	fmt.Println("starting exed")
 	dbPath, err := os.CreateTemp("", "exed_test_*.db")
@@ -394,7 +394,12 @@ func startExed(emailServerPort, piperPort int) (*exedInstance, error) {
 		"-piperd-port="+fmt.Sprint(piperPort),
 		"-fake-email-server="+emailServerURL,
 	)
-	exedCmd.Env = append(os.Environ(), "LOG_FORMAT=json", "LOG_LEVEL=debug")
+	exedCmd.Env = append(
+		os.Environ(),
+		"LOG_FORMAT=json",
+		"LOG_LEVEL=debug",
+		"CTR_HOST="+ctrHost,
+	)
 	cmdOut, err := exedCmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
