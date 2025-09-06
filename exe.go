@@ -1371,7 +1371,13 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 	// First check if this is an SSH session token (in-memory)
 	s.emailVerificationsMu.Lock()
-	verification, exists := s.emailVerifications[token]
+	v, exists := s.emailVerifications[token]
+	var verification EmailVerification
+	if exists {
+		verification = *v
+	}
+	s.emailVerificationsMu.Unlock()
+
 	if exists {
 		// This is an SSH session email verification
 		email := verification.Email
@@ -1379,11 +1385,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Create the user if they don't exist
 		user, err := s.getUserByPublicKey(r.Context(), verification.PublicKey)
 		if err != nil || user == nil {
-			slog.Info("User doesn't exist, creating", "email", email)
+			slog.Info("User doesn't exist, creating", "email", email, "token", token)
 			// User doesn't exist - create them with their alloc
 			if err := s.createUserWithAlloc(context.Background(), verification.PublicKey, email); err != nil {
-				slog.Error("failed to create user with alloc during email verification", "error", err)
-				s.emailVerificationsMu.Unlock()
+				slog.Error("failed to create user with alloc during email verification", "error", err, "token", token)
 				// Clean up pending registration on failure
 				err := s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
 					_, err := tx.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
@@ -1451,12 +1456,11 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		close(verification.CompleteChan)
 
 		// Clean up email verification
+		s.emailVerificationsMu.Lock()
 		delete(s.emailVerifications, token)
 		s.emailVerificationsMu.Unlock()
 	} else {
 		// Not an SSH token, check database for HTTP auth token
-		s.emailVerificationsMu.Unlock()
-
 		// Try to validate as database token
 		userID, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
