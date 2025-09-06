@@ -40,6 +40,8 @@ var (
 	flagVerboseExed   = flag.Bool("vexed", false, "enable verbose logging from exed")
 	flagVerbosePorts  = flag.Bool("vports", false, "enable verbose logging about ports")
 	flagVerboseEmail  = flag.Bool("vemail", false, "enable verbose logging from email server")
+	flagVerbosePty    = flag.Bool("vpty", false, "enable verbose logging from pty connections")
+	flagVerboseSlog   = flag.Bool("vslog", false, "enable verbose logging from slogs")
 	flagCinema        = flag.Bool("cinema", false, "enable ASCIIcinema recording for each test")
 )
 
@@ -53,7 +55,28 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	if !testing.Verbose() {
+	if testing.Verbose() {
+		fmt.Print(`
+════════
+-v requested, but these tests generate lots of output, and they run in parallel.
+Having "-v" enable extra logging is overwhelming.
+
+For debug info, use -run to scope to a single test, and add some/all of these flags:
+
+-vpiperd  print sshpiperd logs
+-vexed    print exed logs
+-vports   print port mappings
+-vemail   print email server logs
+-vpty     print pty (ssh) logs
+-vslog    print e1e test binary slogs
+════════
+
+`)
+	}
+
+	if *flagVerboseSlog {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	} else {
 		slog.SetLogLoggerLevel(slog.LevelWarn)
 	}
 
@@ -572,7 +595,7 @@ func makePty(t *testing.T) *expectPty {
 	opts := []expect.ConsoleOpt{
 		expect.WithDefaultRefreshingTimeout(5 * time.Second),
 	}
-	if testing.Verbose() {
+	if *flagVerbosePty {
 		opts = append(opts, expect.WithStdout(os.Stdout))
 	}
 
