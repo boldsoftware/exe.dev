@@ -130,18 +130,32 @@ elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
 fi
 
 # Download and install containerd
-wget -q https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz
+echo "Downloading containerd ${CONTAINERD_VERSION} for ${ARCH}..."
+cd /tmp
+if ! wget --progress=dot:giga --timeout=30 --tries=3 -O containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz; then
+	echo "Error: Failed to download containerd"
+	exit 1
+fi
+echo "Extracting containerd..."
 sudo tar -xzf containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz -C /usr/local
 rm containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz
 
 # Install containerd systemd service
 sudo mkdir -p /usr/local/lib/systemd/system
-sudo curl -L https://raw.githubusercontent.com/containerd/containerd/main/containerd.service -o /usr/local/lib/systemd/system/containerd.service
+echo "Downloading containerd systemd service..."
+if ! sudo curl -L --retry 3 --connect-timeout 30 https://raw.githubusercontent.com/containerd/containerd/main/containerd.service -o /usr/local/lib/systemd/system/containerd.service; then
+	echo "Error: Failed to download containerd systemd service"
+	exit 1
+fi
 sudo systemctl daemon-reload
 
 # Install runc
 RUNC_VERSION="1.1.14"
-sudo wget -q https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH} -O /usr/local/sbin/runc
+echo "Downloading runc ${RUNC_VERSION}..."
+if ! sudo wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH} -O /usr/local/sbin/runc; then
+	echo "Error: Failed to download runc"
+	exit 1
+fi
 sudo chmod +x /usr/local/sbin/runc
 
 echo "=== Installing Kata Containers with Cloud Hypervisor ==="
@@ -153,7 +167,12 @@ KATA_ARCH="$ARCH"
 # Download and install Kata
 KATA_URL="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-${KATA_ARCH}.tar.xz"
 echo "Downloading Kata from: $KATA_URL"
-wget -q $KATA_URL -O kata-static.tar.xz
+echo "Downloading Kata Containers..."
+cd /tmp
+if ! wget --progress=dot:giga --timeout=30 --tries=3 $KATA_URL -O kata-static.tar.xz; then
+	echo "Error: Failed to download Kata Containers"
+	exit 1
+fi
 sudo tar -xf kata-static.tar.xz -C /
 rm kata-static.tar.xz
 
@@ -175,7 +194,12 @@ NYDUS_ARCH="$ARCH"
 
 # Download and install nydus-snapshotter
 echo "Installing nydus-snapshotter v${NYDUS_VERSION}..."
-wget -q https://github.com/containerd/nydus-snapshotter/releases/download/v${NYDUS_VERSION}/nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz
+echo "Downloading Nydus snapshotter ${NYDUS_VERSION}..."
+cd /tmp
+if ! wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/containerd/nydus-snapshotter/releases/download/v${NYDUS_VERSION}/nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz; then
+	echo "Error: Failed to download Nydus snapshotter"
+	exit 1
+fi
 # Extract to temp dir first since binaries are in bin/ subdirectory
 mkdir -p /tmp/nydus-extract
 tar -xzf nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz -C /tmp/nydus-extract
@@ -185,7 +209,12 @@ sudo chmod +x /usr/local/bin/containerd-nydus-grpc
 
 # Download and install nydusd daemon
 echo "Installing nydusd daemon v${NYDUSD_VERSION}..."
-wget -q https://github.com/dragonflyoss/nydus/releases/download/v${NYDUSD_VERSION}/nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
+echo "Downloading Nydus ${NYDUSD_VERSION}..."
+cd /tmp
+if ! wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/dragonflyoss/nydus/releases/download/v${NYDUSD_VERSION}/nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz; then
+	echo "Error: Failed to download Nydus"
+	exit 1
+fi
 tar -xzf nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
 sudo cp nydus-static/nydusd* /usr/local/bin/
 sudo cp nydus-static/nydus-image /usr/local/bin/
@@ -693,7 +722,12 @@ echo "=== Installing CNI plugins for networking ==="
 # Install CNI plugins
 CNI_VERSION="1.5.1"
 sudo mkdir -p /opt/cni/bin
-wget -q https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz
+echo "Downloading CNI plugins ${CNI_VERSION}..."
+cd /tmp
+if ! wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz; then
+	echo "Error: Failed to download CNI plugins"
+	exit 1
+fi
 sudo tar -xzf cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz -C /opt/cni/bin
 rm cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz
 
