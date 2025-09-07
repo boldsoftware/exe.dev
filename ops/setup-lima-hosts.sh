@@ -42,10 +42,12 @@ provision_base_vm() {
 	limactl shell ${LIMA_BASE} -- sudo mount -o loop,pquota /data.img /data
 	echo '/data.img /data xfs loop,pquota 0 0' | limactl shell ${LIMA_BASE} -- sudo tee -a /etc/fstab >/dev/null
 
-	echo "Copying setup script to VM..."
+	echo "Copying setup script and config files to VM..."
 	# Copy to /tmp to avoid read-only filesystem issues
 	limactl shell ${LIMA_BASE} -- cp "${script_dir}/setup-containerd-clh-nydus.sh" /tmp/setup-containerd-clh-nydus.sh
 	limactl shell ${LIMA_BASE} -- chmod +x /tmp/setup-containerd-clh-nydus.sh
+	# Copy the kata configuration file
+	limactl shell ${LIMA_BASE} -- cp "${script_dir}/kata-config-clh.toml" /tmp/kata-config-clh.toml
 
 	echo "=========================================="
 	echo "Starting containerd setup in VM"

@@ -305,12 +305,13 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
 	exit 1
 fi
 
-# Copy setup script via Tailscale
-echo "Copying containerd setup script to ${MACHINE_NAME}..."
+# Copy setup script and config files via Tailscale
+echo "Copying containerd setup script and config files to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	"${SCRIPT_DIR}/setup-containerd-clh-nydus.sh" \
+	"${SCRIPT_DIR}/kata-config-clh.toml" \
 	"ubuntu@${MACHINE_NAME}:~/"; then
-	echo "ERROR: Failed to copy setup script"
+	echo "ERROR: Failed to copy setup script and config files"
 	exit 1
 fi
 

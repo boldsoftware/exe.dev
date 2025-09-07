@@ -3,7 +3,6 @@ set -euo pipefail
 
 echo "=== Running setup-containerd-clh-nydus.sh ==="
 
-# Optional verbose tracing: export EXE_DEBUG_SETUP=1
 if [ "${EXE_DEBUG_SETUP:-0}" = "1" ]; then
 	set -x
 fi
@@ -13,10 +12,8 @@ trap 'rc=$?; echo "ERROR: setup failed at line $LINENO: $BASH_COMMAND (exit $rc)
   echo "--- Service statuses ---"; \
   systemctl -q is-active containerd  && systemctl --no-pager -l status containerd  || true; \
   systemctl -q is-active nydus-snapshotter && systemctl --no-pager -l status nydus-snapshotter || true; \
-  systemctl -q is-active exe-clh-snapshot && systemctl --no-pager -l status exe-clh-snapshot || true; \
-  systemctl -q is-active exe-kata-pool && systemctl --no-pager -l status exe-kata-pool || true; \
   echo "--- Recent logs ---"; \
-  journalctl -n 120 --no-pager -u containerd -u nydus-snapshotter -u exe-clh-snapshot -u exe-kata-pool || true; \
+  journalctl -n 120 --no-pager -u containerd -u nydus-snapshotter || true; \
   exit $rc' ERR
 
 echo "=== Starting clean setup for $(hostname) with Cloud Hypervisor + Nydus ==="
@@ -333,9 +330,26 @@ EOF
 
 echo "=== Configuring Kata for Cloud Hypervisor with virtio-fs-nydus ==="
 
-# Copy the default Cloud Hypervisor configuration and customize it
+# Copy our custom Cloud Hypervisor configuration
 sudo mkdir -p /etc/kata-containers
-sudo cp /opt/kata/share/defaults/kata-containers/configuration-clh.toml /etc/kata-containers/configuration-clh.toml
+
+# Find kata-config-clh.toml in expected locations
+# Priority: script directory, /root (for CI), /tmp (for Lima)
+KATA_CONFIG=""
+for path in "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/kata-config-clh.toml" "/root/kata-config-clh.toml" "/tmp/kata-config-clh.toml"; do
+	if [ -f "$path" ]; then
+		KATA_CONFIG="$path"
+		break
+	fi
+done
+
+if [ -z "$KATA_CONFIG" ]; then
+	echo "ERROR: kata-config-clh.toml not found in script directory, /root, or /tmp"
+	exit 1
+fi
+
+echo "Installing Kata configuration from $KATA_CONFIG"
+sudo cp "$KATA_CONFIG" /etc/kata-containers/configuration-clh.toml
 
 # Create a symlink for default kata configuration to use CLH
 sudo rm -f /etc/kata-containers/configuration.toml
@@ -344,79 +358,6 @@ sudo ln -s /etc/kata-containers/configuration-clh.toml /etc/kata-containers/conf
 # Also update the default in /opt/kata to use CLH instead of QEMU
 sudo rm -f /opt/kata/share/defaults/kata-containers/configuration.toml
 sudo ln -s /etc/kata-containers/configuration-clh.toml /opt/kata/share/defaults/kata-containers/configuration.toml
-
-echo "=== Skipping Kata VM templating; using CLH snapshot/restore path ==="
-
-# Allow OCI annotations required for CLH restore (permit all to avoid drift)
-KATA_CFG="/etc/kata-containers/configuration-clh.toml"
-if sudo grep -q '^\[runtime\]' "$KATA_CFG"; then
-	# Replace or insert enable_annotations under [runtime]; allow all via regex ".*"
-	if sudo grep -q '^enable_annotations' "$KATA_CFG"; then
-		sudo sed -i 's/^enable_annotations.*/enable_annotations = [".*"]/g' "$KATA_CFG"
-	else
-		sudo sed -i '/^\[runtime\]/a enable_annotations = [".*"]' "$KATA_CFG"
-	fi
-else
-	sudo bash -c "cat >> '$KATA_CFG' <<'EOF'
-[runtime]
-enable_annotations = [".*"]
-EOF"
-fi
-echo "Enabled Kata OCI annotations for CLH restore in $KATA_CFG (enable_annotations = [\".*\"])"
-
-# Tune Cloud Hypervisor memory defaults: small base (256MiB) + large headroom, enable balloon reclaim
-echo "Tuning Cloud Hypervisor memory defaults (base=256MiB, max=8192MiB, balloon reclaim on)"
-# Update default_memory and default_maxmemory if present; otherwise append under [hypervisor.clh]
-if sudo grep -q '^default_memory' "$KATA_CFG"; then
-	sudo sed -i 's/^default_memory[[:space:]]*=.*/default_memory = 256/' "$KATA_CFG"
-else
-	sudo sed -i '/^\[hypervisor\.clh\]/a default_memory = 256' "$KATA_CFG"
-fi
-if sudo grep -q '^default_maxmemory' "$KATA_CFG"; then
-	sudo sed -i 's/^default_maxmemory[[:space:]]*=.*/default_maxmemory = 8192/' "$KATA_CFG"
-else
-	sudo sed -i '/^\[hypervisor\.clh\]/a default_maxmemory = 8192' "$KATA_CFG"
-fi
-# Enable guest free memory reclaim via balloon
-if sudo grep -q '^reclaim_guest_freed_memory' "$KATA_CFG"; then
-	sudo sed -i 's/^#\?reclaim_guest_freed_memory[[:space:]]*=.*/reclaim_guest_freed_memory = true/' "$KATA_CFG"
-else
-	sudo sed -i '/^\[hypervisor\.clh\]/a reclaim_guest_freed_memory = true' "$KATA_CFG"
-fi
-echo "--- Kata hypervisor.clh memory config ---"
-sudo awk '/^\[hypervisor\.clh\]/{f=1;print;next}/^\[/{f=0}f{print}' "$KATA_CFG" | sed -n '1,80p'
-echo "----------------------------------------"
-
-# Show effective runtime section for visibility
-echo "--- Kata runtime config ---"
-sudo awk '/^\[runtime\]/{f=1;print;next}/^\[/{f=0}f{print}' "$KATA_CFG"
-echo "---------------------------"
-
-# Ensure guest memory hotplug onlines memory by default
-if sudo grep -q '^kernel_params' "$KATA_CFG"; then
-	if ! sudo grep -q 'memhp_default_state=online' "$KATA_CFG"; then
-		sudo sed -i 's/^kernel_params[[:space:]]*=[[:space:]]*"\(.*\)"/kernel_params = "\1 memhp_default_state=online"/' "$KATA_CFG"
-	fi
-else
-	sudo sed -i '/^\[hypervisor\.clh\]/a kernel_params = "memhp_default_state=online"' "$KATA_CFG"
-fi
-
-# Ensure Cloud Hypervisor API socket is available for snapshots (use Kata+CLH default)
-CLH_CFG="/etc/kata-containers/configuration-clh.toml"
-if sudo grep -q '^\[hypervisor\.clh\]' "$CLH_CFG"; then
-	# Prefer not to override; but if api_socket exists, set to default per-VM path used by Kata+CLH
-	if sudo grep -q '^api_socket' "$CLH_CFG"; then
-		sudo sed -i 's#^api_socket.*#api_socket = "/run/vc/vm/%s/clh-api.sock"#g' "$CLH_CFG"
-	fi
-else
-	# No hypervisor.clh section; leave defaults
-	true
-fi
-
-# Show the effective hypervisor.clh section for CLH
-echo "--- Kata hypervisor.clh config ---"
-sudo awk '/^\[hypervisor\.clh\]/{f=1;print;next}/^\[/{f=0}f{print}' "$CLH_CFG" || true
-echo "---------------------------------"
 
 echo "=== Configuring containerd with Nydus snapshotter ==="
 
@@ -462,6 +403,7 @@ root = "$CONTAINERD_ROOT"
           [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata.options]
             ConfigPath = "/etc/kata-containers/configuration-clh.toml"
     
+    # CNI configuration (not used since we use nerdctl which manages its own networking)
     [plugins."io.containerd.grpc.v1.cri".cni]
       bin_dir = "/opt/cni/bin"
       conf_dir = "/etc/cni/net.d"
@@ -480,264 +422,9 @@ root = "$CONTAINERD_ROOT"
 EOF
 sudo cp /etc/containerd/config.toml /etc/containerd/config.toml.exedev
 
-# Prepare Cloud Hypervisor snapshot/restore support and a ready pool
-echo "=== Configuring Cloud Hypervisor snapshot/restore and warm pool ==="
 
-# Install ch-remote if available for this CLH build; fallback is to skip snapshot creation
-install_ch_remote() {
-	if command -v ch-remote >/dev/null 2>&1; then
-		return 0
-	fi
-	# Use a local variable so we don't clobber global ARCH (normalized to amd64/arm64)
-	local CLH_ARCH_RAW
-	CLH_ARCH_RAW=$(uname -m)
-	local SUFFIX=""
-	case "$CLH_ARCH_RAW" in
-	x86_64) SUFFIX="" ;;
-	aarch64 | arm64) SUFFIX="-aarch64" ;;
-	*) SUFFIX="" ;;
-	esac
-	# Allow manual override: set EXE_CH_REMOTE_RELEASE to a tag like v47.0
-	if [ -n "${EXE_CH_REMOTE_RELEASE:-}" ]; then
-		CANDIDATES="$EXE_CH_REMOTE_RELEASE"
-	else
-		# Extract version (e.g., 47.0 or 47.0.0) from cloud-hypervisor --version
-		VER=$(/opt/kata/bin/cloud-hypervisor --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){1,2}' | head -n1)
-		if [ -z "$VER" ]; then
-			echo "Warning: cannot detect Cloud Hypervisor version; skipping ch-remote install" >&2
-			return 0
-		fi
-		CANDIDATES="v${VER}"
-		# Add fallback tags: if has patch .0, try vX.Y; if has only X.Y, try vX.Y.0
-		if echo "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-			PATCH=$(echo "$VER" | awk -F. '{print $3}')
-			if [ "$PATCH" = "0" ]; then
-				CANDIDATES="$CANDIDATES v$(echo "$VER" | awk -F. '{print $1"."$2}')"
-			fi
-		elif echo "$VER" | grep -qE '^[0-9]+\.[0-9]+$'; then
-			CANDIDATES="$CANDIDATES v${VER}.0"
-		fi
-	fi
-	TMP=$(mktemp)
-	for REL in $CANDIDATES; do
-		URL="https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/${REL}/ch-remote-static${SUFFIX}"
-		echo "Attempting to download ch-remote from: $URL"
-		if curl -fSL "$URL" -o "$TMP"; then
-			sudo mv "$TMP" /usr/local/bin/ch-remote
-			sudo chmod +x /usr/local/bin/ch-remote
-			return 0
-		else
-			echo "Download failed: $URL" >&2
-		fi
-	done
-	rm -f "$TMP"
-	echo "Warning: failed to download ch-remote (tried: $CANDIDATES, suffix $SUFFIX)" >&2
-}
-install_ch_remote || true
 
-# Snapshot builder: create a base CLH snapshot from a minimal Kata sandbox
-SNAP_DIR="$LOCALDIR/cloud-hypervisor/snapshots"
-sudo mkdir -p "$SNAP_DIR"
-cat <<'EOF' | sudo tee /usr/local/sbin/exe-clh-snapshot >/dev/null
-#!/bin/sh
-set -eu
-# Determine LOCALDIR same as parent script
-if [ -d /local ]; then
-	LOCALDIR="/local"
-else
-	LOCALDIR="/var/lib/exelocal"
-fi
-SNAP_DIR=${SNAP_DIR:-$LOCALDIR/cloud-hypervisor/snapshots}
-IMG="docker.io/library/alpine:latest"
-NS="exe"
 
-# Ensure nerdctl exists
-command -v nerdctl >/dev/null 2>&1 || exit 0
-
-# Ensure namespace exists (for nerdctl)
-sudo nerdctl -n "$NS" info >/dev/null 2>&1 || true
-
-name="kata-snap-$$-$(date +%s)"
-sudo nerdctl -n "$NS" --snapshotter nydus run -d --runtime io.containerd.kata.v2 --name "$name" "$IMG" sleep 120 >/dev/null 2>&1 || exit 1
-
-# Determine container ID for this name
-CID="$(sudo nerdctl -n "$NS" inspect -f '{{.ID}}' "$name" 2>/dev/null || true)"
-if [ -z "$CID" ]; then
-  CID="$(sudo nerdctl -n "$NS" ps -a --format '{{.ID}}\t{{.Names}}' | awk -v n="$name" '$2==n{print $1; exit}')"
-fi
-
-sock=""
-# Prefer well-known Kata+CLH defaults first (ID-specific)
-for s in \
-  "/run/vc/vm/${CID}/clh-api.sock" \
-  "/run/kata-containers/${CID}/clh-api.sock" \
-  "/run/vc/vm/${CID}/cloud-hypervisor.sock" \
-  "/run/kata-containers/${CID}/cloud-hypervisor.sock"; do
-  [ -S "$s" ] && sock="$s" && break
-done
-# Fallback: parse any running CLH for --api-socket (don't rely on container name)
-if [ -z "$sock" ]; then
-  clh_line=$(ps aux | grep -v grep | grep "/opt/kata/bin/cloud-hypervisor" | grep -- "--api-socket" || true)
-  [ -n "$clh_line" ] && sock=$(printf "%s" "$clh_line" | sed -n 's/.*--api-socket \([^ ]\+\).*/\1/p' | head -n1)
-fi
-tries=0
-while [ -z "$sock" ] && [ $tries -lt 100 ]; do
-  # Prefer socket under ID-specific directories
-  for s in \
-    "/run/vc/vm/${CID}/clh-api.sock" \
-    "/run/kata-containers/${CID}/clh-api.sock" \
-    "/run/vc/vm/${CID}/cloud-hypervisor.sock" \
-    "/run/kata-containers/${CID}/cloud-hypervisor.sock" \
-    /run/vc/vm/*/clh-api.sock \
-    /run/kata-containers/*/clh-api.sock \
-    /run/vc/vm/*/cloud-hypervisor.sock \
-    /run/kata-containers/*/cloud-hypervisor.sock; do
-    [ -S "$s" ] || continue
-    sock="$s"; break
-  done
-  tries=$((tries + 1))
-  [ -n "$sock" ] || sleep 0.1
-done
-if [ -z "$sock" ]; then
-  echo "No Cloud Hypervisor API socket found for sandbox $name after waiting" >&2
-  exit 1
-fi
-
-mkdir -p "$SNAP_DIR"
-rm -f "$SNAP_DIR/config.json" "$SNAP_DIR/state.json" "$SNAP_DIR/memory-ranges" 2>/dev/null || true
-
-if command -v ch-remote >/dev/null 2>&1; then
-  # Pause VM before snapshot for consistency
-  ch-remote --api-socket "$sock" pause >/dev/null 2>&1 || true
-  # Create a snapshot to the destination directory (CLH expects a file:// URL)
-  ch-remote --api-socket "$sock" snapshot "file://$SNAP_DIR"
-  # Resume VM (best-effort)
-  ch-remote --api-socket "$sock" resume >/dev/null 2>&1 || true
-  # Provide compatibility symlinks for tools expecting base.snapshot/base.mem
-  if [ -f "$SNAP_DIR/state.json" ] && [ -f "$SNAP_DIR/memory-ranges" ]; then
-    ln -sf "$SNAP_DIR/state.json" "$SNAP_DIR/base.snapshot" 2>/dev/null || true
-    ln -sf "$SNAP_DIR/memory-ranges" "$SNAP_DIR/base.mem" 2>/dev/null || true
-  fi
-else
-  echo "ch-remote not found; skipping snapshot creation" >&2
-fi
-
-# Cleanup the builder container
-sudo nerdctl -n "$NS" kill "$name" >/dev/null 2>&1 || true
-sudo nerdctl -n "$NS" rm -f "$name" >/dev/null 2>&1 || true
-EOF
-sudo chmod +x /usr/local/sbin/exe-clh-snapshot
-
-# Ready pool: maintain a small number of warm Kata sandboxes (sleeping); labeled for visibility
-POOL_SIZE=3
-cat <<'EOF' | sudo tee /usr/local/sbin/exe-kata-pool >/dev/null
-#!/bin/sh
-set -eu
-NS="exe"
-IMG="docker.io/library/alpine:latest"
-POOL_SIZE=${POOL_SIZE:-3}
-
-command -v ctr >/dev/null 2>&1 || exit 0
-
-# Ensure namespace exists
-sudo ctr namespace create "$NS" >/dev/null 2>&1 || true
-
-nydus_ok() {
-  sudo ctr plugin ls | grep -Eq "io.containerd.snapshotter.v1[[:space:]]+nydus[[:space:]].*[[:space:]]+ok"
-}
-
-running() {
-  sudo ctr --namespace "$NS" c ls | awk '{print $1}' | grep -E '^exe-pool-' | wc -l | tr -d ' '
-}
-
-mkone() {
-  # Generate a unique name without relying on $RANDOM (dash)
-  suf=$(date +%s%N | tail -c 8)
-  n="exe-pool-${suf}"
-  sudo nerdctl -n "$NS" --snapshotter nydus run -d --runtime io.containerd.kata.v2 --name "$n" "$IMG" sleep 3600 >/dev/null 2>&1 || true
-}
-
-if ! nydus_ok; then
-  # Nydus not ready; let timer retry later without blocking
-  exit 0
-fi
-
-cur=$(running)
-attempts=0
-max_attempts=$((POOL_SIZE * 5))
-while [ "$cur" -lt "$POOL_SIZE" ] && [ "$attempts" -lt "$max_attempts" ]; do
-  mkone || true
-  sleep 1
-  cur=$(running)
-  attempts=$((attempts+1))
-done
-
-exit 0
-EOF
-sudo chmod +x /usr/local/sbin/exe-kata-pool
-
-cat <<'EOF' | sudo tee /etc/systemd/system/exe-clh-snapshot.service >/dev/null
-[Unit]
-Description=Build Cloud Hypervisor base snapshot
-After=containerd.service nydus-snapshotter.service
-Wants=containerd.service nydus-snapshotter.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/exe-clh-snapshot
-TimeoutSec=180
-# Don't block boot completion
-RemainAfterExit=no
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-cat <<'EOF' | sudo tee /etc/systemd/system/exe-kata-pool.service >/dev/null
-[Unit]
-Description=Maintain a pool of warm Kata sandboxes
-After=containerd.service nydus-snapshotter.service
-Wants=containerd.service nydus-snapshotter.service
-
-[Service]
-Type=idle
-ExecStart=/usr/local/sbin/exe-kata-pool
-# Run after boot is complete, not during
-Nice=10
-# Don't block boot completion
-RemainAfterExit=no
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-cat <<'EOF' | sudo tee /etc/systemd/system/exe-kata-pool.timer >/dev/null
-[Unit]
-Description=Refresh Kata warm pool periodically
-
-[Timer]
-OnBootSec=1min
-OnUnitActiveSec=2min
-AccuracySec=10s
-
-[Install]
-WantedBy=timers.target
-EOF
-
-sudo systemctl daemon-reload
-# Don't enable these services to start at boot - they slow down startup
-# They can be started manually or via timer after boot if needed
-sudo systemctl disable exe-clh-snapshot.service >/dev/null 2>&1 || true
-sudo systemctl disable exe-kata-pool.service >/dev/null 2>&1 || true
-
-# Skip kata pool timer for CI/Lima environments (not needed for dev/test)
-if [ -n "${CI:-}" ] || [ -n "${SKIP_KATA_POOL_TIMER:-}" ]; then
-	echo "Skipping kata pool timer (CI or SKIP_KATA_POOL_TIMER set)"
-	sudo systemctl disable exe-kata-pool.timer >/dev/null 2>&1 || true
-else
-	# Keep the timer enabled for periodic refresh after boot in production
-	sudo systemctl enable exe-kata-pool.timer >/dev/null 2>&1 || true
-fi
 
 echo "=== Installing nerdctl ==="
 
@@ -775,7 +462,7 @@ echo "Installed: $(/usr/local/bin/nerdctl -v 2>&1 || echo failed)"
 
 echo "=== Installing CNI plugins for networking ==="
 
-# Install CNI plugins
+# Install CNI plugins (required by nerdctl for its networking)
 CNI_VERSION="1.5.1"
 sudo mkdir -p /opt/cni/bin
 echo "Downloading CNI plugins ${CNI_VERSION}..."
@@ -787,69 +474,8 @@ fi
 sudo tar -xzf cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz -C /opt/cni/bin
 rm cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz
 
-# Configure CNI
-sudo mkdir -p /etc/cni/net.d
-cat <<'EOF' | sudo tee /etc/cni/net.d/10-containerd-net.conflist >/dev/null
-{
-  "cniVersion": "1.0.0",
-  "name": "containerd-net",
-  "plugins": [
-    {
-      "type": "bridge",
-      "bridge": "cni0",
-      "isGateway": true,
-      "ipMasq": true,
-      "ipam": {
-        "type": "host-local",
-        "ranges": [
-          [{"subnet": "10.88.0.0/16"}]
-        ],
-        "routes": [{"dst": "0.0.0.0/0"}]
-      }
-    },
-    {
-      "type": "portmap",
-      "capabilities": {"portMappings": true}
-    }
-  ]
-}
-EOF
-
-# Add kata-bridge network configuration (required for Kata + Cloud Hypervisor networking on ARM64)
-cat <<'EOF' | sudo tee /etc/cni/net.d/10-kata-bridge.conflist >/dev/null
-{
-  "cniVersion": "1.0.0",
-  "name": "kata-bridge",
-  "plugins": [
-    {
-      "type": "bridge",
-      "bridge": "kata0",
-      "isGateway": true,
-      "ipMasq": true,
-      "hairpinMode": true,
-      "ipam": {
-        "type": "host-local",
-        "ranges": [[{ "subnet": "10.44.0.0/24", "gateway": "10.44.0.1" }]],
-        "routes": [{ "dst": "0.0.0.0/0" }]
-      }
-    },
-    { "type": "portmap", "capabilities": { "portMappings": true } },
-    { "type": "firewall", "ingressPolicy": "same-bridge" },
-    { "type": "tuning" }
-  ]
-}
-EOF
-
-# Create kata0 bridge for Kata containers
-echo "=== Creating kata0 bridge for Kata containers ==="
-if ! ip link show kata0 &>/dev/null; then
-    sudo ip link add kata0 type bridge
-    sudo ip addr add 10.44.0.1/24 dev kata0
-    sudo ip link set kata0 up
-    echo "Created kata0 bridge with IP 10.44.0.1/24"
-else
-    echo "kata0 bridge already exists"
-fi
+# Note: We don't configure CNI networks here
+# exe creates per-allocation networks (exe-<allocID>) with subnets from 10.42.0.0/16 - 10.99.0.0/16
 
 echo "=== Setting up containerd permissions ==="
 
@@ -939,35 +565,16 @@ fi
 # Create the exe namespace
 sudo ctr namespace create exe 2>/dev/null || true
 
-echo "=== Configuring network isolation ==="
+echo "=== Configuring network settings ==="
 
-# Pre-create nerdctl bridge network with proper isolation
-# Using a different subnet to avoid conflicts
-sudo nerdctl -n exe network create bridge --subnet 10.5.0.0/16 2>/dev/null || true
+# Enable IP forwarding (required for NAT)
+sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf >/dev/null
 
-# Configure iptables rules for network isolation
-# Allow containers to reach internet but not each other or the host
-sudo iptables -I FORWARD -i nerdctl0 -o nerdctl0 -j DROP                                # Block container-to-container
-sudo iptables -I INPUT -i nerdctl0 -j DROP                                              # Block container-to-host
-sudo iptables -I INPUT -i nerdctl0 -p icmp -j ACCEPT                                    # Allow ICMP for network diagnostics
-sudo iptables -I INPUT -i nerdctl0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT # Allow established connections
+# Note: Network isolation for each alloc is handled by exed when creating allocations
+# Each exe-<allocID> network gets iptables rules via setupNetworkSecurity()
 
-# Block access to tailscale interface completely
-sudo iptables -I FORWARD -i nerdctl0 -o tailscale0 -j DROP
-sudo iptables -I FORWARD -i tailscale0 -o nerdctl0 -j DROP
-
-# Ensure NAT is enabled for internet access
-sudo iptables -t nat -A POSTROUTING -s 10.5.0.0/16 ! -o nerdctl0 -j MASQUERADE
-
-# Save iptables rules to persist across reboots
-sudo mkdir -p /etc/iptables
-sudo iptables-save | sudo tee /etc/iptables/rules.v4 >/dev/null
-
-# Install iptables-persistent to load rules on boot
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y iptables-persistent netfilter-persistent >/dev/null 2>&1
-sudo systemctl enable netfilter-persistent
-
-echo "Network isolation configured"
+echo "Network settings configured"
 
 echo "=== Configuring SSH MaxSessions ==="
 
@@ -1121,39 +728,6 @@ if [ "$HYPERVISOR_OK" = "false" ]; then
 	echo "WARNING: Cloud Hypervisor not properly configured!"
 fi
 
-# Quick validation: run a kata container with CLH restore annotations (if snapshot exists)
-if [ -f "$LOCALDIR/cloud-hypervisor/snapshots/state.json" ] && [ -f "$LOCALDIR/cloud-hypervisor/snapshots/config.json" ]; then
-	echo "✓ Cloud Hypervisor snapshot directory present at $LOCALDIR (state.json, config.json)"
-fi
-
-# Services are installed but not enabled for faster boot
-echo "✓ exe-clh-snapshot.service installed (disabled for faster boot)"
-echo "✓ exe-kata-pool.service installed (disabled for faster boot)"
-if [ -n "${CI:-}" ] || [ -n "${SKIP_KATA_POOL_TIMER:-}" ]; then
-	echo "✓ exe-kata-pool.timer disabled (CI/dev environment)"
-else
-	echo "✓ exe-kata-pool.timer enabled (will start pool after boot)"
-fi
-
-# Measure CLH restore timing using the unified restore annotation, if snapshot files exist
-SNAPSHOT_DIR="$LOCALDIR/cloud-hypervisor/snapshots"
-
-if [ -f "$SNAPSHOT_DIR/state.json" ] && [ -f "$SNAPSHOT_DIR/memory-ranges" ]; then
-	echo ""
-	echo "Testing Cloud Hypervisor restore timing (nerdctl + Kata)..."
-	TEST_IMG="${ALPINE_RESOLVED:-docker.io/library/alpine:latest}"
-	start_ms=$(date +%s%3N)
-	if sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 \
-		--annotation io.katacontainers.config.hypervisor.restore=source_url=file://$SNAPSHOT_DIR \
-		"$TEST_IMG" true >/dev/null 2>&1; then
-		end_ms=$(date +%s%3N)
-		echo "✓ CLH restore test succeeded in $((end_ms - start_ms)) ms"
-	else
-		end_ms=$(date +%s%3N)
-		echo "✗ CLH restore test failed in $((end_ms - start_ms)) ms"
-	fi
-fi
-
 echo ""
 echo "=== Setup complete ==="
 echo ""
@@ -1177,8 +751,8 @@ echo "  sudo nerdctl -n exe --snapshotter nydus <command>         # Use nerdctl 
 echo ""
 echo "Example usage:"
 echo "  sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 alpine:latest sh"
+echo "  sudo ctr -n exe run --runtime io.containerd.kata.v2 --snapshotter nydus docker.io/library/alpine:latest test-container sh"
 echo ""
-echo "For Kata containers with proper networking on ARM64:"
-echo "  sudo nerdctl -n exe run --net kata-bridge --runtime io.containerd.kata.v2 alpine:latest sh"
+echo "Note: Network isolation is configured with iptables rules"
 echo ""
 echo "Note: You may need to log out and back in for group permissions to take effect."

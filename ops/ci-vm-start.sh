@@ -235,9 +235,11 @@ ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait || true'
 if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	echo "No snapshot found; provisioning VM and creating snapshot cache..."
 	# 6) Prepare containerd + nydus + kata on the VM
-	echo "Copying setup script to VM ${IP}..."
+	echo "Copying setup script and config files to VM ${IP}..."
 	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
+	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/kata-config-clh.toml"
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
+	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/kata-config-clh.toml /root/kata-config-clh.toml'
 
 	echo "Executing setup script on VM ${IP} (raw streaming output)..."
 	# Stream exact commands and output directly to CI logs
