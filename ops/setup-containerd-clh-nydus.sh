@@ -33,6 +33,15 @@ if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ ! -e /dev/nvme0n1 ]; th
 	echo "=== CI/ephemeral VM detected, skipping swap and data volume setup ==="
 fi
 
+# Define LOCALDIR based on environment
+# Metal instances with RAID will use /local, others use /var/lib/exelocal
+if [ $IS_CI_VM -eq 0 ]; then
+	LOCALDIR="/local"
+else
+	LOCALDIR="/var/lib/exelocal"
+	sudo mkdir -p "$LOCALDIR"
+fi
+
 if [ $IS_CI_VM -eq 0 ]; then
 	# Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
 	echo "=== Setting up dual swap partitions on NVMe drives ==="
@@ -60,6 +69,46 @@ if [ $IS_CI_VM -eq 0 ]; then
 	echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
 
 	echo "Dual swap setup complete (2x 500GB with equal priority)"
+
+	# Setup RAID 0 XFS volume for /local (Nydus snapshotting)
+	echo "=== Setting up RAID 0 XFS volume for /local (Nydus snapshotting) ==="
+
+	# Install mdadm for RAID management
+	sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm >/dev/null 2>&1
+
+	# Create 500GB partitions on each NVMe drive for /local
+	echo "Creating 500GB partition on ${NVME1} for RAID..."
+	sudo parted -s ${NVME1} mkpart primary 501GiB 1001GiB
+	sudo parted -s ${NVME1} set 2 raid on
+
+	echo "Creating 500GB partition on ${NVME2} for RAID..."
+	sudo parted -s ${NVME2} mkpart primary 501GiB 1001GiB
+	sudo parted -s ${NVME2} set 2 raid on
+
+	# Create RAID 0 array combining both partitions (1TB total)
+	echo "Creating RAID 0 array with both partitions..."
+	sudo mdadm --create /dev/md0 --level=0 --raid-devices=2 ${NVME1}p2 ${NVME2}p2 --force
+
+	# Wait for RAID to be ready
+	sleep 2
+
+	# Create XFS filesystem on the RAID array
+	sudo mkfs.xfs -f /dev/md0
+
+	# Create /local directory
+	sudo mkdir -p /local
+
+	# Mount the RAID array
+	sudo mount /dev/md0 /local
+
+	# Save RAID configuration
+	sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf
+	sudo update-initramfs -u
+
+	# Add to fstab
+	echo "/dev/md0 /local xfs defaults 0 0" | sudo tee -a /etc/fstab
+
+	echo "RAID 0 XFS volume mounted at /local (1TB total)"
 
 	# Setup data volume
 	echo "=== Setting up data volume ==="
@@ -224,7 +273,8 @@ rm -rf nydus-static nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
 # Create nydus configuration directory
 sudo mkdir -p /etc/nydus
 # Create proper nydusd configuration
-cat <<'EOF' | sudo tee /etc/nydus/nydusd-config.json >/dev/null
+NYDUS_CACHE_DIR="$LOCALDIR/nydus/cache"
+cat <<EOF | sudo tee /etc/nydus/nydusd-config.json >/dev/null
 {
   "device": {
     "backend": {
@@ -240,7 +290,7 @@ cat <<'EOF' | sudo tee /etc/nydus/nydusd-config.json >/dev/null
     "cache": {
       "type": "blobcache",
       "config": {
-        "work_dir": "/var/lib/nydus/cache"
+        "work_dir": "$NYDUS_CACHE_DIR"
       }
     }
   },
@@ -251,7 +301,7 @@ cat <<'EOF' | sudo tee /etc/nydus/nydusd-config.json >/dev/null
 EOF
 
 # Create nydus working directories
-sudo mkdir -p /var/lib/nydus/cache
+sudo mkdir -p "$LOCALDIR/nydus/cache"
 sudo mkdir -p /var/lib/containerd-nydus
 sudo mkdir -p /run/containerd-nydus
 
@@ -486,12 +536,18 @@ install_ch_remote() {
 install_ch_remote || true
 
 # Snapshot builder: create a base CLH snapshot from a minimal Kata sandbox
-SNAP_DIR=/var/lib/cloud-hypervisor/snapshots
+SNAP_DIR="$LOCALDIR/cloud-hypervisor/snapshots"
 sudo mkdir -p "$SNAP_DIR"
 cat <<'EOF' | sudo tee /usr/local/sbin/exe-clh-snapshot >/dev/null
 #!/bin/sh
 set -eu
-SNAP_DIR=${SNAP_DIR:-/var/lib/cloud-hypervisor/snapshots}
+# Determine LOCALDIR same as parent script
+if [ -d /local ]; then
+	LOCALDIR="/local"
+else
+	LOCALDIR="/var/lib/exelocal"
+fi
+SNAP_DIR=${SNAP_DIR:-$LOCALDIR/cloud-hypervisor/snapshots}
 IMG="docker.io/library/alpine:latest"
 NS="exe"
 
@@ -539,7 +595,7 @@ while [ -z "$sock" ] && [ $tries -lt 100 ]; do
     [ -S "$s" ] || continue
     sock="$s"; break
   done
-  tries=$((tries+1))
+  tries=$((tries + 1))
   [ -n "$sock" ] || sleep 0.1
 done
 if [ -z "$sock" ]; then
@@ -784,6 +840,17 @@ cat <<'EOF' | sudo tee /etc/cni/net.d/10-kata-bridge.conflist >/dev/null
 }
 EOF
 
+# Create kata0 bridge for Kata containers
+echo "=== Creating kata0 bridge for Kata containers ==="
+if ! ip link show kata0 &>/dev/null; then
+    sudo ip link add kata0 type bridge
+    sudo ip addr add 10.44.0.1/24 dev kata0
+    sudo ip link set kata0 up
+    echo "Created kata0 bridge with IP 10.44.0.1/24"
+else
+    echo "kata0 bridge already exists"
+fi
+
 echo "=== Setting up containerd permissions ==="
 
 # Create containerd group and add ubuntu user
@@ -816,12 +883,16 @@ EOF
 
 echo "=== Starting services ==="
 
-# Enable required kernel modules
+# Enable required kernel modules for Kata
 sudo modprobe vhost_vsock
 sudo modprobe vsock
+# TC modules for tcfilter networking model
 sudo modprobe sch_ingress
 sudo modprobe cls_u32
-echo -e 'vhost_vsock\nvsock\nsch_ingress\ncls_u32' | sudo tee /etc/modules-load.d/kata.conf >/dev/null
+sudo modprobe cls_flower  # Critical for tcfilter - must be loaded!
+sudo modprobe act_mirred
+sudo modprobe tap
+echo -e 'vhost_vsock\nvsock\nsch_ingress\ncls_u32\ncls_flower\nact_mirred\ntap' | sudo tee /etc/modules-load.d/kata.conf >/dev/null
 
 # Create required directories
 sudo install -d -m 0755 -o root -g root /run/kata-containers
@@ -835,24 +906,27 @@ sudo systemctl enable containerd
 
 # Start nydus-snapshotter first (it must be running before containerd)
 sudo systemctl start nydus-snapshotter
-sleep 2
+sleep 5
 
 # Now start containerd (which requires nydus-snapshotter)
 sudo systemctl start containerd
-sleep 3
+sleep 5
 
 echo "Waiting for nydus to register with containerd..."
 NYDUS_OK=0
-for i in {1..20}; do
-	if sudo ctr plugin ls | grep -q "io.containerd.snapshotter.*nydus.*ok"; then
+for i in {1..120}; do
+	# Check if nydus appears in plugin list with "ok" status
+	if sudo ctr plugin ls 2>/dev/null | grep -E "nydus.*ok" >/dev/null 2>&1; then
 		echo "  Nydus snapshotter registered successfully"
 		NYDUS_OK=1
 		break
 	fi
-	sleep 1
+	sleep 2
 done
 if [ "$NYDUS_OK" -ne 1 ]; then
-	echo "ERROR: Nydus snapshotter not registered with containerd"
+	echo "ERROR: Nydus snapshotter not registered with containerd within 2min"
+	echo "Current plugin status:"
+	sudo ctr plugin ls || true
 	exit 1
 fi
 
@@ -900,7 +974,17 @@ echo "=== Configuring SSH MaxSessions ==="
 # Set SSH MaxSessions to 50 for the machine
 sudo sed -i '/^#*MaxSessions/d' /etc/ssh/sshd_config
 echo "MaxSessions 50" | sudo tee -a /etc/ssh/sshd_config >/dev/null
-sudo systemctl reload ssh
+# Handle both regular SSH service and socket-activated SSH
+if systemctl is-active ssh >/dev/null 2>&1; then
+	sudo systemctl reload ssh
+elif systemctl is-active ssh.socket >/dev/null 2>&1; then
+	# Socket-activated SSH - configuration will be picked up on next connection
+	echo "SSH is socket-activated, configuration will apply on next connection"
+elif systemctl is-active sshd >/dev/null 2>&1; then
+	sudo systemctl reload sshd
+else
+	echo "Warning: SSH service not found or not active, skipping reload"
+fi
 echo "SSH MaxSessions set to 50"
 
 echo "=== Testing setup ==="
@@ -1038,8 +1122,8 @@ if [ "$HYPERVISOR_OK" = "false" ]; then
 fi
 
 # Quick validation: run a kata container with CLH restore annotations (if snapshot exists)
-if [ -f /var/lib/cloud-hypervisor/snapshots/state.json ] && [ -f /var/lib/cloud-hypervisor/snapshots/config.json ]; then
-	echo "✓ Cloud Hypervisor snapshot directory present (state.json, config.json)"
+if [ -f "$LOCALDIR/cloud-hypervisor/snapshots/state.json" ] && [ -f "$LOCALDIR/cloud-hypervisor/snapshots/config.json" ]; then
+	echo "✓ Cloud Hypervisor snapshot directory present at $LOCALDIR (state.json, config.json)"
 fi
 
 # Services are installed but not enabled for faster boot
@@ -1052,13 +1136,15 @@ else
 fi
 
 # Measure CLH restore timing using the unified restore annotation, if snapshot files exist
-if [ -f /var/lib/cloud-hypervisor/snapshots/state.json ] && [ -f /var/lib/cloud-hypervisor/snapshots/memory-ranges ]; then
+SNAPSHOT_DIR="$LOCALDIR/cloud-hypervisor/snapshots"
+
+if [ -f "$SNAPSHOT_DIR/state.json" ] && [ -f "$SNAPSHOT_DIR/memory-ranges" ]; then
 	echo ""
 	echo "Testing Cloud Hypervisor restore timing (nerdctl + Kata)..."
 	TEST_IMG="${ALPINE_RESOLVED:-docker.io/library/alpine:latest}"
 	start_ms=$(date +%s%3N)
 	if sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 \
-		--annotation io.katacontainers.config.hypervisor.restore=source_url=file:///var/lib/cloud-hypervisor/snapshots \
+		--annotation io.katacontainers.config.hypervisor.restore=source_url=file://$SNAPSHOT_DIR \
 		"$TEST_IMG" true >/dev/null 2>&1; then
 		end_ms=$(date +%s%3N)
 		echo "✓ CLH restore test succeeded in $((end_ms - start_ms)) ms"
@@ -1078,8 +1164,10 @@ echo "  • Nydus snapshotter ${NYDUS_VERSION} with nydusd ${NYDUSD_VERSION}"
 echo "  • CNI networking"
 if [ $IS_CI_VM -eq 1 ]; then
 	echo "  • Data directory at /var/lib/containerd"
+	echo "  • Local storage at $LOCALDIR"
 else
 	echo "  • Data directory at /data/containerd"
+	echo "  • Local storage at $LOCALDIR (1TB RAID 0)"
 fi
 echo "  • Namespace 'exe' created"
 echo ""
