@@ -27,7 +27,11 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 
 	// Use a specific BoxID for all iterations
 	boxID := GenerateTestBoxID()
-	host := manager.selectHost()
+	host, releaseFn, err := manager.selectHost(ctx, allocID)
+	if err != nil {
+		t.Fatalf("selectHost failed: %v", err)
+	}
+	releaseFn()
 
 	// First deletion - should go to /data/exed/deleted/box-<id>
 	t.Log("=== First container creation and deletion ===")

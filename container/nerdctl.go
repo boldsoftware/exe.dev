@@ -37,6 +37,11 @@ type NerdctlManager struct {
 	hosts    []string // List of containerd host addresses (SSH hostnames or "local")
 	hostArch string   // Cached host architecture (e.g., "arm64", "amd64")
 
+	perHostCreateLimit struct {
+		mu sync.Mutex
+		m  map[string]chan struct{}
+	}
+
 	mu            sync.RWMutex
 	sshTunnels    map[string]*exec.Cmd // containerID -> SSH tunnel command
 	allocNetworks map[string]bool      // Track which alloc networks exist
@@ -438,27 +443,59 @@ func (m *NerdctlManager) parseContainerStatus(status string) ContainerStatus {
 	return StatusStopped
 }
 
+// perHostCreateLimit is the maximum simultaneous create limit.
+//
+// TODO: we need a different limit on easily overloaded, nested KVM
+// setups like lima and production. Figuring out what those limits
+// are is going to require manual experimentation.
+const perHostCreateLimit = 2
+
 // selectHost selects a host from available hosts (round-robin for now)
-func (m *NerdctlManager) selectHost() string {
-	if len(m.hosts) == 0 {
-		return ""
-	}
+func (m *NerdctlManager) selectHost(ctx context.Context, allocID string) (ctrHost string, releaseFn func(), err error) {
 	// For now, just return the first host
-	// TODO: Implement proper load balancing
-	return m.hosts[0]
+	//
+	// TODO: it is *critical* we have a stable mapping of allocID -> hostname.
+	// So much so, that if the host disappears, the allocID should continue
+	// to map to the missing host. The best way forward here is probably having
+	// CreateAlloc return the allocID.
+	_ = allocID // TODO
+	ctrHost = m.hosts[0]
+
+	m.perHostCreateLimit.mu.Lock()
+	if m.perHostCreateLimit.m == nil {
+		m.perHostCreateLimit.m = make(map[string]chan struct{})
+	}
+	ch := m.perHostCreateLimit.m[ctrHost]
+	if ch == nil {
+		ch = make(chan struct{}, perHostCreateLimit)
+		m.perHostCreateLimit.m[ctrHost] = ch
+	}
+	m.perHostCreateLimit.mu.Unlock()
+
+	select {
+	case ch <- struct{}{}:
+	case <-ctx.Done():
+		return "", nil, fmt.Errorf("selectHost: %w", ctx.Err())
+	}
+
+	releaseFn = func() {
+		<-ch
+	}
+	return ctrHost, releaseFn, nil
 }
 
 // CreateAlloc creates the network infrastructure for an allocation
 // This should be called during account verification, before any containers are created
 func (m *NerdctlManager) CreateAlloc(ctx context.Context, allocID string, ipRange string) error {
 	// Select a host for the allocation
-	host := m.selectHost()
-	if host == "" {
-		return fmt.Errorf("no container hosts available")
+	host, releaseFn, err := m.selectHost(ctx, allocID)
+	if err != nil {
+		return err
 	}
+	defer releaseFn()
 
 	// Create the network and wait for it to be ready
-	_, err := m.ensureAllocNetwork(ctx, allocID, ipRange, host)
+	_, err = m.ensureAllocNetwork(ctx, allocID, ipRange, host)
 	if err != nil {
 		return fmt.Errorf("failed to create allocation network: %w", err)
 	}
@@ -856,8 +893,15 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		return nil, fmt.Errorf("BoxID is required and cannot be 0")
 	}
 
+	// Select a host
+	host, releaseFn, err := m.selectHost(ctx, req.AllocID)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseFn()
+
 	// Check if we're recreating a container with an existing disk
-	diskExists, _ := m.VerifyDisk(ctx, m.selectHost(), req.BoxID)
+	diskExists, _ := m.VerifyDisk(ctx, host, req.BoxID)
 	if diskExists {
 		// If we're NOT recreating (no existing SSH keys), fail if disk already exists
 		// This prevents accidental reuse of box IDs due to bugs
@@ -885,9 +929,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			return nil, fmt.Errorf("failed to generate SSH keys: %w", err)
 		}
 	}
-
-	// Select a host
-	host := m.selectHost()
 
 	// Generate container name
 	containerName := fmt.Sprintf("exe-%s-%s", req.AllocID, req.Name)
@@ -1031,59 +1072,14 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Optional: add OCI/Kata annotations if supported by nerdctl.
 	// Prefer unified CLH restore annotation when a snapshot is present on host.
 	if m.supportsAnnotations(ctx, host) {
-		// Start from configured annotations (if any)
-		ann := make(map[string]string, len(m.config.KataAnnotations))
-		for k, v := range m.config.KataAnnotations {
-			ann[k] = v
-		}
+		ann := make(map[string]string)
+		// ann["io.katacontainers.config.hypervisor.kernel_params"] = "agent.hotplug_timeout=10s"
+		ann["io.katacontainers.config.hypervisor.default_vcpus"] = "2"
+		ann["io.katacontainers.config.hypervisor.default_memory"] = "4096"
 
-		const (
-			keySnap    = "io.katacontainers.config.hypervisor.restore_snapshot"
-			keyMem     = "io.katacontainers.config.hypervisor.restore_memory"
-			keyRestore = "io.katacontainers.config.hypervisor.restore"
-		)
-
-		// Guard old pair on file existence
-		if snap, okS := ann[keySnap]; okS {
-			if mem, okM := ann[keyMem]; okM {
-				snapOK := m.remoteFileExists(ctx, host, snap)
-				memOK := m.remoteFileExists(ctx, host, mem)
-				if !snapOK || !memOK {
-					slog.Info("Skipping Kata restore annotations; files missing", "host", host, "snap", snapOK, "mem", memOK)
-					delete(ann, keySnap)
-					delete(ann, keyMem)
-				}
-			}
+		for k, v := range ann {
+			runArgs = append(runArgs, "--annotation", fmt.Sprintf("%s=%s", k, v))
 		}
-
-		// Prefer the unified restore annotation (source_url=file:///...) when a snapshot directory exists.
-		// If old pair is present, replace it with the unified form.
-		snapDir := "/var/lib/cloud-hypervisor/snapshots"
-		if m.remoteFileExists(ctx, host, filepath.Join(snapDir, "state.json")) &&
-			m.remoteFileExists(ctx, host, filepath.Join(snapDir, "memory-ranges")) {
-			if _, hasRestore := ann[keyRestore]; !hasRestore {
-				// Replace legacy pair with unified restore
-				if _, hasOldSnap := ann[keySnap]; hasOldSnap {
-					delete(ann, keySnap)
-				}
-				if _, hasOldMem := ann[keyMem]; hasOldMem {
-					delete(ann, keyMem)
-				}
-				ann[keyRestore] = "source_url=file:///var/lib/cloud-hypervisor/snapshots"
-				slog.Info("Applying unified Kata restore annotation", "host", host)
-			}
-		}
-
-		if len(ann) > 0 {
-			slog.Info("Applying Kata annotations to nerdctl run", "num", len(ann))
-			for k, v := range ann {
-				runArgs = append(runArgs, "--annotation", fmt.Sprintf("%s=%s", k, v))
-			}
-		} else {
-			slog.Info("No applicable Kata annotations after validation; proceeding without annotations")
-		}
-	} else {
-		slog.Info("WARNING: nerdctl does not support --annotation; skipping Kata annotations", "host", host)
 	}
 
 	// Prepare container-specific /exe.dev directory with SSH keys
