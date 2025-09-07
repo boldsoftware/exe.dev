@@ -147,6 +147,13 @@ func (e *testEnv) initContainerManager(host string) (*container.NerdctlManager, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container manager: %w", err)
 	}
+
+	// Prepare RovolFS on the test host
+	ctx := context.Background()
+	if err := manager.PrepareRovol(ctx, host); err != nil {
+		return nil, fmt.Errorf("failed to prepare RovolFS: %w", err)
+	}
+
 	return manager, nil
 }
 

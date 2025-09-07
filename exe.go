@@ -602,6 +602,20 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	s.setupHTTPSServer()
 	s.setupSSHServer()
 
+	// Prepare RovolFS on all hosts during server setup
+	for _, host := range containerdAddresses {
+		if host != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			if err := containerManager.PrepareRovol(ctx, host); err != nil {
+				cancel()
+				slog.Error("Failed to prepare RovolFS on host", "host", host, "error", err)
+				return nil, fmt.Errorf("failed to prepare RovolFS on host %s: %w", host, err)
+			}
+			cancel()
+			slog.Info("Successfully prepared RovolFS on host", "host", host)
+		}
+	}
+
 	s.ready.Add(1) // matched with final done at bottom of Start
 	go func() {
 		s.ready.Wait()

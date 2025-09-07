@@ -27,6 +27,12 @@ func CreateTestManager(t *testing.T) *NerdctlManager {
 		t.Fatalf("Failed to create containerd manager: %v", err)
 	}
 
+	// Prepare RovolFS on the test host
+	ctx := context.Background()
+	if err := manager.PrepareRovol(ctx, ctrHost); err != nil {
+		t.Fatalf("Failed to prepare RovolFS: %v", err)
+	}
+
 	return manager
 }
 

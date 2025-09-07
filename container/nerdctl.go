@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -2049,36 +2050,53 @@ func (m *NerdctlManager) GetBackendType() string {
 	return "nerdctl"
 }
 
-// prepareRovolFS copies the embedded RovolFS files to the host for mounting into containers
-func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string, boxID int) (string, error) {
-	// Use cached host architecture (already mapped to Go arch names)
+// getGitHash returns the git commit hash from build info
+func getGitHash() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" {
+				// Return first 7 characters like git rev-parse --short
+				if len(setting.Value) >= 7 {
+					return setting.Value[:7]
+				}
+				return setting.Value
+			}
+		}
+	}
+	return "unknown"
+}
+
+// PrepareRovol prepares the RovolFS files on a host for later use by containers
+// This should be called once per host during server setup
+func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
 	// Get the RovolFS for the host architecture
 	rovolFS, err := GetRovolFS(m.hostArch)
 	if err != nil {
-		return "", fmt.Errorf("failed to get RovolFS for %s: %w", m.hostArch, err)
+		return fmt.Errorf("failed to get RovolFS for %s: %w", m.hostArch, err)
 	}
 
-	// Use box ID for rovol directory path
-	remoteDir := fmt.Sprintf("/data/exed/rovol/rovol-%d", boxID)
+	// Use git hash for rovol directory path
+	gitHash := getGitHash()
+	remoteDir := fmt.Sprintf("/data/exed/rovol/rovol-%s", gitHash)
 
-	// Check if rovol already exists for this box
+	// Check if rovol already exists for this git hash
 	checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", remoteDir)
 	if err := checkCmd.Run(); err == nil {
-		// Rovol already exists for this box, reuse it
-		slog.Info("Reusing existing RovolFS for box", "boxID", boxID, "dir", remoteDir)
-		return remoteDir, nil
+		// Rovol already exists for this git hash, nothing to do
+		slog.Info("RovolFS already prepared on host", "host", host, "gitHash", gitHash, "dir", remoteDir)
+		return nil
 	}
 
 	// Create the remote directory using the SSH pool
 	mkdirCmd := m.sshPool.ExecCommand(ctx, host, "sudo", "mkdir", "-p", remoteDir)
 	if output, err := mkdirCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to create remote directory: %w: %s", err, output)
+		return fmt.Errorf("failed to create remote directory: %w: %s", err, output)
 	}
 
 	// Create a temp directory to stage the rovol files locally
 	tempDir, err := os.MkdirTemp("", "rovol-staging-*")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tempDir)
 
@@ -2121,7 +2139,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string, boxID 
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to stage files locally: %w", err)
+		return fmt.Errorf("failed to stage files locally: %w", err)
 	}
 
 	// Transfer the entire directory structure using the SSH pool's SCP method
@@ -2131,7 +2149,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string, boxID 
 
 	// First copy the temp directory to remote /tmp
 	if err := m.sshPool.SCP(ctx, host, "/tmp", tempDir); err != nil {
-		return "", fmt.Errorf("failed to transfer rovol files: %w", err)
+		return fmt.Errorf("failed to transfer rovol files: %w", err)
 	}
 
 	// Now move the contents to the final location with sudo and fix ownership
@@ -2143,10 +2161,10 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string, boxID 
 	if output, err := moveCmd.CombinedOutput(); err != nil {
 		// Try to clean up
 		m.sshPool.ExecCommand(ctx, host, "rm", "-rf", tempRemotePath).Run()
-		return "", fmt.Errorf("failed to move files to final location: %w: %s", err, output)
+		return fmt.Errorf("failed to move files to final location: %w: %s", err, output)
 	}
 
-	slog.Info("Successfully copied RovolFS files", "arch", m.hostArch, "dir", remoteDir)
+	slog.Info("Successfully prepared RovolFS on host", "host", host, "arch", m.hostArch, "gitHash", gitHash, "dir", remoteDir)
 
 	// Create var/empty directory for sshd privilege separation
 	// This directory must exist but remain empty
@@ -2159,7 +2177,7 @@ func (m *NerdctlManager) prepareRovolFS(ctx context.Context, host string, boxID 
 		slog.Info("Created var/empty directory for sshd privilege separation", "dir", varEmptyDir)
 	}
 
-	return remoteDir, nil
+	return nil
 }
 
 // VerifyDisk checks if a persistent disk exists for a given box ID
@@ -2201,15 +2219,19 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		// We'll skip the SSH file writing below
 		return containerDir, nil
 	} else {
-		// First ensure the rovol files are prepared for this box
-		rovolPath, err := m.prepareRovolFS(ctx, host, boxID)
-		if err != nil {
-			return "", fmt.Errorf("failed to prepare RovolFS for box %d: %w", boxID, err)
+		// Use the pre-prepared rovol files (prepared during server setup)
+		gitHash := getGitHash()
+		rovolPath := fmt.Sprintf("/data/exed/rovol/rovol-%s", gitHash)
+
+		// Verify the rovol directory exists
+		checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", rovolPath)
+		if err := checkCmd.Run(); err != nil {
+			return "", fmt.Errorf("rovol not prepared for git hash %s on host %s: PrepareRovol should have been called during server setup", gitHash, host)
 		}
 
 		// Combine directory creation and CoW clone into a single command for speed
 		// This reduces SSH round-trips significantly
-		// Note: The source files should already be owned by root:root from prepareRovolFS
+		// Note: The source files should already be owned by root:root from PrepareRovol
 		setupCmd := fmt.Sprintf(
 			"sudo mkdir -p %s && (sudo cp -a --reflink=auto %s/. %s/ || sudo cp -a %s/. %s/) && sudo chown -R root:root %s && sudo mkdir -p %s",
 			containerDir, rovolPath, containerDir, rovolPath, containerDir, containerDir, filepath.Join(containerDir, "var/empty"))
