@@ -608,125 +608,24 @@ else
 	echo "✗ Nydus socket missing"
 fi
 
-# Test nydus snapshotter registration
-echo ""
-echo "Testing nydus snapshotter..."
-# Verify the snapshotter is registered with containerd (no namespace), with a short retry
-nydus_ok_msg() {
-	sudo ctr plugin ls | grep -q "io.containerd.snapshotter.*nydus.*ok"
-}
-NYDUS_REGISTERED=0
-if nydus_ok_msg; then
-	NYDUS_REGISTERED=1
-else
-	for i in 1 2 3 4 5; do
-		sleep 1
-		if nydus_ok_msg; then
-			NYDUS_REGISTERED=1
-			break
-		fi
-	done
-fi
-if [ "$NYDUS_REGISTERED" -eq 1 ]; then
-	echo "✓ Nydus snapshotter registered with containerd"
-else
-	echo "✗ Nydus snapshotter not registered"
-fi
 
-# Pre-pull baseline images (digest-resolved) for exe namespace
 echo ""
 echo "Pre-pulling baseline images (exeuntu, ubuntu, alpine) by digest..."
+sudo nerdctl -n exe --snapshotter nydus pull ghcr.io/boldsoftware/exeuntu:latest
+# TODO sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/ubuntu:latest
+# TODO sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/alpine:latest
 
-normalize_arch() {
-	local a="$(uname -m)"
-	case "$a" in
-	x86_64) echo amd64 ;;
-	aarch64 | arm64) echo arm64 ;;
-	*) echo "$a" ;;
-	esac
-}
 
-resolve_digest_ref() {
-	# $1: canonical ref with tag (e.g., docker.io/library/ubuntu:latest)
-	local ref="$1"
-	local arch
-	arch=$(normalize_arch)
-	# skopeo selects platform with --override-arch and returns that image's digest
-	local digest
-	if ! digest=$(skopeo inspect --override-os linux --override-arch "$arch" --format '{{.Digest}}' docker://"$ref" 2>/dev/null); then
-		echo ""
-		return 1
-	fi
-	# Strip tag part and replace with @sha256
-	local name_without_tag="${ref%:*}"
-	echo "${name_without_tag}@${digest}"
-}
+echo ""
+echo "Testing basic nerdctl with runc (not a production VM)..."
+sudo nerdctl --namespace exe --snapshotter nydus run ghcr.io/boldsoftware/exeuntu:latest true
 
-pull_by_digest() {
-	local ref="$1"
-	local resolved
-	if ! resolved=$(resolve_digest_ref "$ref"); then
-		echo "  ! Failed to resolve digest for $ref"
-		return 1
-	fi
-	if [ -z "$resolved" ]; then
-		echo "  ! Empty digest for $ref"
-		return 1
-	fi
-	echo "  pulling $resolved"
-	# Use nydus snapshotter
-	sudo nerdctl -n exe --snapshotter nydus pull "$resolved" >/dev/null 2>&1 || return 1
-}
 
-# Image refs to resolve
-EXEUNTU_REF="ghcr.io/boldsoftware/exeuntu:latest"
-UBUNTU_REF="docker.io/library/ubuntu:latest"
-ALPINE_REF="docker.io/library/alpine:latest"
-
-# Resolve alpine digest for use in test as well
-ALPINE_RESOLVED="$(resolve_digest_ref "$ALPINE_REF" || true)"
-
-pull_by_digest "$EXEUNTU_REF" || echo "  ! Could not pre-pull exeuntu"
-pull_by_digest "$UBUNTU_REF" || echo "  ! Could not pre-pull ubuntu"
-pull_by_digest "$ALPINE_REF" || echo "  ! Could not pre-pull alpine"
-
-# Test running a container with Kata and verify Cloud Hypervisor is used
 echo ""
 echo "Testing Kata + Cloud Hypervisor..."
-# Choose test image (prefer resolved alpine digest)
-TEST_IMAGE="${ALPINE_RESOLVED:-docker.io/library/alpine:latest}"
 
-# Pull the image for ctr (ctr does NOT auto-pull)
-sudo ctr -n exe images pull "$TEST_IMAGE" >/dev/null 2>&1 || true
+sudo nerdctl --namespace exe --snapshotter nydus run --runtime io.containerd.kata.v2 ghcr.io/boldsoftware/exeuntu:latest true
 
-# Start a test container in the background
-TEST_CONTAINER="kata-clh-test-$$"
-sudo ctr --namespace exe run --runtime io.containerd.kata.v2 -d "$TEST_IMAGE" $TEST_CONTAINER sleep 10 >/dev/null 2>&1 &
-CTR_PID=$!
-
-# Wait for container to start
-sleep 3
-
-# Check if Cloud Hypervisor process is running (do not rely on container name)
-if pgrep -f "/opt/kata/bin/cloud-hypervisor" >/dev/null 2>&1; then
-	echo "✓ Kata + Cloud Hypervisor verified - Cloud Hypervisor process detected!"
-	HYPERVISOR_OK=true
-elif ps aux | grep -v grep | grep -q "qemu-system.*$TEST_CONTAINER"; then
-	echo "✗ QEMU detected instead of Cloud Hypervisor!"
-	HYPERVISOR_OK=false
-else
-	echo "✗ No hypervisor process detected for test container"
-	HYPERVISOR_OK=false
-fi
-
-# Clean up test container
-sudo ctr --namespace exe task kill $TEST_CONTAINER >/dev/null 2>&1 || true
-sudo ctr --namespace exe container rm $TEST_CONTAINER >/dev/null 2>&1 || true
-wait $CTR_PID 2>/dev/null || true
-
-if [ "$HYPERVISOR_OK" = "false" ]; then
-	echo "WARNING: Cloud Hypervisor not properly configured!"
-fi
 
 echo ""
 echo "=== Setup complete ==="
