@@ -305,29 +305,98 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
 	exit 1
 fi
 
-# Setup /data RAID 0 volume on metal instances
+# Setup volumes on metal instances
 echo ""
 echo "=========================================="
-echo "Setting up /data volume"
+echo "Setting up volumes (swap, /local RAID, /data)"
 echo "=========================================="
 
-# Create a script to setup the data volume on the remote machine
-cat <<'RAID_SETUP_SCRIPT' >/tmp/setup-data-volume.sh
+# Create a script to setup the volumes on the remote machine
+cat <<'VOLUME_SETUP_SCRIPT' >/tmp/setup-volumes.sh
 #!/bin/bash
 set -euo pipefail
 
-echo "=== Setting up data volume ==="
+echo "=== Setting up volumes on metal instance ==="
 
 # First check if this is a metal instance (has NVMe drives)
 if [ ! -e /dev/nvme0n1 ]; then
 	echo "Non-metal instance detected, data volume already mounted via xvdf"
+	# Just create /local as a directory for non-metal instances
+	sudo mkdir -p /local
 	exit 0
 fi
 
-# Install mdadm for RAID management
-echo "Installing mdadm for RAID management..."
+# Install required packages
+echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm >/dev/null 2>&1
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm parted xfsprogs >/dev/null 2>&1
+
+# Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
+echo "=== Setting up dual swap partitions on NVMe drives ==="
+
+# First NVMe drive
+NVME1="/dev/nvme0n1"
+echo "Setting up 500GB swap on ${NVME1}..."
+sudo parted -s ${NVME1} mklabel gpt
+sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 501GiB
+sudo mkswap ${NVME1}p1
+
+# Second NVMe drive
+NVME2="/dev/nvme1n1"
+echo "Setting up 500GB swap on ${NVME2}..."
+sudo parted -s ${NVME2} mklabel gpt
+sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 501GiB
+sudo mkswap ${NVME2}p1
+
+# Enable both swaps with equal priority for I/O interleaving
+sudo swapon -p 1 ${NVME1}p1
+sudo swapon -p 1 ${NVME2}p1
+
+# Add to fstab with priority
+echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+
+echo "Dual swap setup complete (2x 500GB with equal priority)"
+
+# Setup RAID 0 XFS volume for /local (Nydus snapshotting)
+echo "=== Setting up RAID 0 XFS volume for /local (Nydus snapshotting) ==="
+
+# Create 500GB partitions on each NVMe drive for /local
+echo "Creating 500GB partition on ${NVME1} for RAID..."
+sudo parted -s ${NVME1} mkpart primary 501GiB 1001GiB
+sudo parted -s ${NVME1} set 2 raid on
+
+echo "Creating 500GB partition on ${NVME2} for RAID..."
+sudo parted -s ${NVME2} mkpart primary 501GiB 1001GiB
+sudo parted -s ${NVME2} set 2 raid on
+
+# Create RAID 0 array combining both partitions (1TB total)
+echo "Creating RAID 0 array with both partitions..."
+sudo mdadm --create /dev/md0 --level=0 --raid-devices=2 ${NVME1}p2 ${NVME2}p2 --force
+
+# Wait for RAID to be ready
+sleep 2
+
+# Create XFS filesystem on the RAID array
+sudo mkfs.xfs -f /dev/md0
+
+# Create /local directory
+sudo mkdir -p /local
+
+# Mount the RAID array
+sudo mount /dev/md0 /local
+
+# Save RAID configuration
+sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf
+sudo update-initramfs -u
+
+# Add to fstab
+echo "/dev/md0 /local xfs defaults 0 0" | sudo tee -a /etc/fstab
+
+echo "RAID 0 XFS volume mounted at /local (1TB total)"
+
+# Setup /data volume
+echo "=== Setting up /data volume ==="
 
 # Find the 250GB NVMe device for data volume
 DATA_DEVICE=""
@@ -361,27 +430,27 @@ sudo mount -o pquota $DATA_DEVICE /data
 echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
 sudo xfs_quota -x -c 'state' /data
 echo "Data volume setup complete"
-RAID_SETUP_SCRIPT
+VOLUME_SETUP_SCRIPT
 
-# Copy and execute the data volume setup script
-echo "Setting up /data volume on ${MACHINE_NAME}..."
+# Copy and execute the volume setup script
+echo "Setting up volumes (swap, /local, /data) on ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-	/tmp/setup-data-volume.sh \
+	/tmp/setup-volumes.sh \
 	"ubuntu@${MACHINE_NAME}:~/"; then
-	echo "ERROR: Failed to copy data volume setup script"
-	rm -f /tmp/setup-data-volume.sh
+	echo "ERROR: Failed to copy volume setup script"
+	rm -f /tmp/setup-volumes.sh
 	exit 1
 fi
 
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	"ubuntu@${MACHINE_NAME}" \
-	'chmod +x ~/setup-data-volume.sh && ~/setup-data-volume.sh'; then
-	echo "ERROR: Data volume setup failed"
-	rm -f /tmp/setup-data-volume.sh
+	'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
+	echo "ERROR: Volume setup failed"
+	rm -f /tmp/setup-volumes.sh
 	exit 1
 fi
 
-rm -f /tmp/setup-data-volume.sh
+rm -f /tmp/setup-volumes.sh
 
 # Copy setup script and config files via Tailscale
 echo "Copying containerd setup script and config files to ${MACHINE_NAME}..."
@@ -393,16 +462,27 @@ if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	exit 1
 fi
 
+# Move files to /root on the remote machine
+echo "Moving files to /root on ${MACHINE_NAME}..."
+if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+	"ubuntu@${MACHINE_NAME}" \
+	'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && \
+	 sudo mv ~/kata-config-clh.toml /root/kata-config-clh.toml && \
+	 sudo chmod +x /root/setup-containerd-clh-nydus.sh'; then
+	echo "ERROR: Failed to move files to /root"
+	exit 1
+fi
+
 echo ""
 echo "=========================================="
 echo "Starting part 2 setup via SSH"
 echo "=========================================="
 
-# Execute the part 2 script
+# Execute the part 2 script from /root
 echo "Executing containerd setup script on ${MACHINE_NAME}..."
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	"ubuntu@${MACHINE_NAME}" \
-	'chmod +x setup-containerd-clh-nydus.sh && ./setup-containerd-clh-nydus.sh'; then
+	'sudo /root/setup-containerd-clh-nydus.sh'; then
 	echo "ERROR: Setup script failed"
 	exit 1
 fi
@@ -414,7 +494,9 @@ echo "=========================================="
 echo "${MACHINE_NAME} is now fully configured with:"
 echo "  - Containerd with Kata Containers (Cloud Hypervisor)"
 echo "  - Nydus snapshotter"
-echo "  - XFS data volume at /data"
+echo "  - 1TB swap (2x 500GB with RAID 0 interleaving)"
+echo "  - 1TB /local XFS volume (RAID 0) for Nydus cache"
+echo "  - 250GB /data XFS volume with project quotas"
 echo ""
 echo "Instance details:"
 echo "  Name: ${MACHINE_NAME}"

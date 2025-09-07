@@ -32,24 +32,29 @@ provision_base_vm() {
 	limactl shell ${LIMA_BASE} -- sudo useradd -m -s /bin/bash ubuntu 2>/dev/null || true
 	echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | limactl shell ${LIMA_BASE} -- sudo tee /etc/sudoers.d/ubuntu >/dev/null
 
-	# Set up data directory
-	echo "Setting up /data directory for Lima..."
+	# Set up data and local directories
+	echo "Setting up /data and /local directories for Lima..."
 	limactl shell ${LIMA_BASE} -- sudo mkdir -p /data
 	limactl shell ${LIMA_BASE} -- sudo chmod 755 /data
+	limactl shell ${LIMA_BASE} -- sudo mkdir -p /local
+	limactl shell ${LIMA_BASE} -- sudo chmod 755 /local
 
 	echo "Copying setup script and config files to VM..."
-	# Copy to /tmp to avoid read-only filesystem issues
+	# Copy to /tmp first to avoid read-only filesystem issues
 	limactl shell ${LIMA_BASE} -- cp "${script_dir}/setup-containerd-clh-nydus.sh" /tmp/setup-containerd-clh-nydus.sh
-	limactl shell ${LIMA_BASE} -- chmod +x /tmp/setup-containerd-clh-nydus.sh
-	# Copy the kata configuration file
 	limactl shell ${LIMA_BASE} -- cp "${script_dir}/kata-config-clh.toml" /tmp/kata-config-clh.toml
+
+	# Move files to /root
+	limactl shell ${LIMA_BASE} -- sudo mv /tmp/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh
+	limactl shell ${LIMA_BASE} -- sudo mv /tmp/kata-config-clh.toml /root/kata-config-clh.toml
+	limactl shell ${LIMA_BASE} -- sudo chmod +x /root/setup-containerd-clh-nydus.sh
 
 	echo "=========================================="
 	echo "Starting containerd setup in VM"
 	echo "=========================================="
 	echo "Running setup script in VM (this will take a few minutes)..."
 	# Set CI environment variable since Lima VMs are ephemeral-like
-	if ! limactl shell ${LIMA_BASE} -- CI=1 bash /tmp/setup-containerd-clh-nydus.sh; then
+	if ! limactl shell ${LIMA_BASE} -- sudo CI=1 /root/setup-containerd-clh-nydus.sh; then
 		echo "Error: Setup script failed"
 		echo "You can debug by running: limactl shell ${LIMA_BASE}"
 		return 1

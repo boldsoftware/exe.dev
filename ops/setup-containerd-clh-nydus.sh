@@ -27,89 +27,13 @@ export NEEDRESTART_SUSPEND=1
 IS_CI_VM=0
 if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ ! -e /dev/nvme0n1 ]; then
 	IS_CI_VM=1
-	echo "=== CI/ephemeral VM detected, skipping swap and data volume setup ==="
+	echo "=== CI/ephemeral VM detected, skipping swap and RAID setup ==="
 fi
 
-# Define LOCALDIR based on environment
-# Metal instances with RAID will use /local, others use /var/lib/exelocal
-if [ $IS_CI_VM -eq 0 ]; then
-	LOCALDIR="/local"
-else
-	LOCALDIR="/var/lib/exelocal"
-	sudo mkdir -p "$LOCALDIR"
-fi
-
-if [ $IS_CI_VM -eq 0 ]; then
-	# Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
-	echo "=== Setting up dual swap partitions on NVMe drives ==="
-
-	# First NVMe drive
-	NVME1="/dev/nvme0n1"
-	echo "Setting up 500GB swap on ${NVME1}..."
-	sudo parted -s ${NVME1} mklabel gpt
-	sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 501GiB
-	sudo mkswap ${NVME1}p1
-
-	# Second NVMe drive
-	NVME2="/dev/nvme1n1"
-	echo "Setting up 500GB swap on ${NVME2}..."
-	sudo parted -s ${NVME2} mklabel gpt
-	sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 501GiB
-	sudo mkswap ${NVME2}p1
-
-	# Enable both swaps with equal priority for I/O interleaving
-	sudo swapon -p 1 ${NVME1}p1
-	sudo swapon -p 1 ${NVME2}p1
-
-	# Add to fstab with priority
-	echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-	echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-
-	echo "Dual swap setup complete (2x 500GB with equal priority)"
-
-	# Setup RAID 0 XFS volume for /local (Nydus snapshotting)
-	echo "=== Setting up RAID 0 XFS volume for /local (Nydus snapshotting) ==="
-
-	# Install mdadm for RAID management
-	sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm >/dev/null 2>&1
-
-	# Create 500GB partitions on each NVMe drive for /local
-	echo "Creating 500GB partition on ${NVME1} for RAID..."
-	sudo parted -s ${NVME1} mkpart primary 501GiB 1001GiB
-	sudo parted -s ${NVME1} set 2 raid on
-
-	echo "Creating 500GB partition on ${NVME2} for RAID..."
-	sudo parted -s ${NVME2} mkpart primary 501GiB 1001GiB
-	sudo parted -s ${NVME2} set 2 raid on
-
-	# Create RAID 0 array combining both partitions (1TB total)
-	echo "Creating RAID 0 array with both partitions..."
-	sudo mdadm --create /dev/md0 --level=0 --raid-devices=2 ${NVME1}p2 ${NVME2}p2 --force
-
-	# Wait for RAID to be ready
-	sleep 2
-
-	# Create XFS filesystem on the RAID array
-	sudo mkfs.xfs -f /dev/md0
-
-	# Create /local directory
-	sudo mkdir -p /local
-
-	# Mount the RAID array
-	sudo mount /dev/md0 /local
-
-	# Save RAID configuration
-	sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf
-	sudo update-initramfs -u
-
-	# Add to fstab
-	echo "/dev/md0 /local xfs defaults 0 0" | sudo tee -a /etc/fstab
-
-	echo "RAID 0 XFS volume mounted at /local (1TB total)"
-
-	# /data volume setup is now handled by setup-host-part1.sh for metal instances
-	# For CI/Lima, /data is just a directory created during VM provisioning
-fi
+# Swap and /local RAID setup is now handled by environment-specific scripts:
+# - setup-host-part1.sh: Sets up swap and RAID 0 XFS mount for /local on metal instances
+# - ci-vm-start.sh: Creates /local as a directory
+# - setup-lima-hosts.sh: Creates /local as a directory
 
 echo "=== Installing containerd ==="
 
@@ -232,7 +156,7 @@ rm -rf nydus-static nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
 # Create nydus configuration directory
 sudo mkdir -p /etc/nydus
 # Create proper nydusd configuration
-NYDUS_CACHE_DIR="$LOCALDIR/nydus/cache"
+NYDUS_CACHE_DIR="/local/nydus/cache"
 cat <<EOF | sudo tee /etc/nydus/nydusd-config.json >/dev/null
 {
   "device": {
@@ -260,7 +184,12 @@ cat <<EOF | sudo tee /etc/nydus/nydusd-config.json >/dev/null
 EOF
 
 # Create nydus working directories
-sudo mkdir -p "$LOCALDIR/nydus/cache"
+# /local should already exist (created by environment-specific setup)
+if [ ! -d /local ]; then
+	echo "ERROR: /local directory does not exist. It should be created by the environment setup script."
+	exit 1
+fi
+sudo mkdir -p "/local/nydus/cache"
 sudo mkdir -p /var/lib/containerd-nydus
 sudo mkdir -p /run/containerd-nydus
 
@@ -295,18 +224,11 @@ echo "=== Configuring Kata for Cloud Hypervisor with virtio-fs-nydus ==="
 # Copy our custom Cloud Hypervisor configuration
 sudo mkdir -p /etc/kata-containers
 
-# Find kata-config-clh.toml in expected locations
-# Priority: script directory, /root (for CI), /tmp (for Lima)
-KATA_CONFIG=""
-for path in "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/kata-config-clh.toml" "/root/kata-config-clh.toml" "/tmp/kata-config-clh.toml"; do
-	if [ -f "$path" ]; then
-		KATA_CONFIG="$path"
-		break
-	fi
-done
-
-if [ -z "$KATA_CONFIG" ]; then
-	echo "ERROR: kata-config-clh.toml not found in script directory, /root, or /tmp"
+# Kata config file must be placed in /root by the calling script
+KATA_CONFIG="/root/kata-config-clh.toml"
+if [ ! -f "$KATA_CONFIG" ]; then
+	echo "ERROR: kata-config-clh.toml not found in /root"
+	echo "The calling script must copy kata-config-clh.toml to /root before running this script"
 	exit 1
 fi
 
@@ -610,13 +532,8 @@ echo "  • Containerd ${CONTAINERD_VERSION}"
 echo "  • Kata Containers ${KATA_VERSION} with Cloud Hypervisor"
 echo "  • Nydus snapshotter ${NYDUS_VERSION} with nydusd ${NYDUSD_VERSION}"
 echo "  • CNI networking"
-if [ $IS_CI_VM -eq 1 ]; then
-	echo "  • Containerd root at /var/lib/containerd"
-	echo "  • Local storage at $LOCALDIR"
-else
-	echo "  • Containerd root at ${CONTAINERD_ROOT}"
-	echo "  • Local storage at $LOCALDIR (1TB RAID 0 on metal)"
-fi
+echo "  • Containerd root at ${CONTAINERD_ROOT}"
+echo "  • Nydus cache at /local"
 echo "  • Namespace 'exe' created"
 echo ""
 echo "Commands available:"

@@ -125,6 +125,8 @@ runcmd:
   - systemctl enable --now qemu-guest-agent
   - mkdir -p /data
   - chmod 755 /data
+  - mkdir -p /local
+  - chmod 755 /local
 EOF
 
 cat >"${TMPDIR}/meta-data" <<EOF
