@@ -672,6 +672,13 @@ func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, 
 		b.WriteString("\n")
 	}
 
+	// Block container-to-container communication within the same allocation
+	// We need to find the bridge name for this subnet
+	b.WriteString(fmt.Sprintf(`BRIDGE=$(ip -4 addr show | grep '%s' | awk '{print $NF}')\n`, subnet))
+	b.WriteString(`if [ -n "$BRIDGE" ]; then\n`)
+	b.WriteString(`  iptables -C FORWARD -i $BRIDGE -o $BRIDGE -j DROP || iptables -I FORWARD 1 -i $BRIDGE -o $BRIDGE -j DROP\n`)
+	b.WriteString(`fi\n`)
+
 	// Block access to host from container subnet, except established
 	add("INPUT", "-s", subnet, "-j", "DROP")
 	add("INPUT", "-s", subnet, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT")
