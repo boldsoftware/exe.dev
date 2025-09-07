@@ -351,6 +351,10 @@ root = "$CONTAINERD_ROOT"
   [plugins."io.containerd.grpc.v1.cri"]
     sandbox_image = "registry.k8s.io/pause:3.9"
     
+    # Registry configuration to use hosts.toml files
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+    
     # Use nydus as the default snapshotter
     [plugins."io.containerd.grpc.v1.cri".containerd]
       snapshotter = "nydus"
@@ -392,6 +396,16 @@ EOF
 sudo cp /etc/containerd/config.toml /etc/containerd/config.toml.exedev
 
 echo "=== Installing nerdctl ==="
+
+# Configure containerd registry hosts for Docker Hub mirror
+# This is used by both containerd and nerdctl
+sudo mkdir -p /etc/containerd/certs.d/docker.io
+cat <<'EOF' | sudo tee /etc/containerd/certs.d/docker.io/hosts.toml >/dev/null
+server = "https://registry-1.docker.io"
+
+[host."https://mirror.gcr.io"]
+  capabilities = ["pull", "resolve"]
+EOF
 
 # Install nerdctl for easier container management (v2.1.3)
 NERDCTL_VERSION="2.1.3"
@@ -576,8 +590,8 @@ fi
 echo ""
 echo "Pre-pulling baseline images (exeuntu, ubuntu, alpine) by digest..."
 sudo nerdctl -n exe --snapshotter nydus pull ghcr.io/boldsoftware/exeuntu:latest
-# TODO sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/ubuntu:latest
-# TODO sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/alpine:latest
+sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/ubuntu:latest
+sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/alpine:latest
 
 echo ""
 echo "Testing basic nerdctl with runc (not a production VM)..."
