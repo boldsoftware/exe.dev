@@ -107,46 +107,8 @@ if [ $IS_CI_VM -eq 0 ]; then
 
 	echo "RAID 0 XFS volume mounted at /local (1TB total)"
 
-	# Setup data volume
-	echo "=== Setting up data volume ==="
-	DATA_DEVICE=""
-
-	# First check if xvdf exists (non-metal instances)
-	if [ -e /dev/xvdf ]; then
-		DATA_DEVICE="/dev/xvdf"
-	else
-		# On metal instances, find the 250GB NVMe device
-		echo "Looking for 250GB NVMe data volume..."
-		for nvme in /dev/nvme*n1; do
-			if [ -b "$nvme" ]; then
-				SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
-				echo "Checking NVMe device $nvme with size ${SIZE_HR}"
-
-				SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
-
-				if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 245 ] && [ "$SIZE_GB" -le 255 ]; then
-					DATA_DEVICE="$nvme"
-					echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
-					break
-				fi
-			fi
-		done
-	fi
-
-	if [ -z "$DATA_DEVICE" ]; then
-		echo "ERROR: Could not find data volume (250GB device)"
-		echo "Available block devices:"
-		lsblk
-		exit 1
-	fi
-
-	echo "Using data device: $DATA_DEVICE"
-	sudo mkfs.xfs $DATA_DEVICE
-	sudo mkdir -p /data
-	sudo mount -o pquota $DATA_DEVICE /data
-	echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
-	sudo xfs_quota -x -c 'state' /data
-	echo "Data volume setup complete"
+	# /data volume setup is now handled by setup-host-part1.sh for metal instances
+	# For CI/Lima, /data is just a directory created during VM provisioning
 fi
 
 echo "=== Installing containerd ==="
@@ -361,10 +323,17 @@ sudo ln -s /etc/kata-containers/configuration-clh.toml /opt/kata/share/defaults/
 
 echo "=== Configuring containerd with Nydus snapshotter ==="
 
-# Create data directory (use /var/lib for CI VMs without /data volume)
+# Determine containerd root directory
+# For CI VMs and other ephemeral environments, use /var/lib
+# For production metal instances, use /data (already mounted)
 if [ $IS_CI_VM -eq 1 ]; then
 	CONTAINERD_ROOT="/var/lib/containerd"
+elif [ -d /data ] && mountpoint -q /data 2>/dev/null; then
+	# Production: /data is a mounted XFS volume
+	CONTAINERD_ROOT="/data/containerd"
+	sudo mkdir -p $CONTAINERD_ROOT
 else
+	# Fallback: /data exists as a directory
 	CONTAINERD_ROOT="/data/containerd"
 	sudo mkdir -p $CONTAINERD_ROOT
 fi
@@ -421,10 +390,6 @@ root = "$CONTAINERD_ROOT"
   content_sharing_policy = "shared"
 EOF
 sudo cp /etc/containerd/config.toml /etc/containerd/config.toml.exedev
-
-
-
-
 
 echo "=== Installing nerdctl ==="
 
@@ -515,7 +480,7 @@ sudo modprobe vsock
 # TC modules for tcfilter networking model
 sudo modprobe sch_ingress
 sudo modprobe cls_u32
-sudo modprobe cls_flower  # Critical for tcfilter - must be loaded!
+sudo modprobe cls_flower # Critical for tcfilter - must be loaded!
 sudo modprobe act_mirred
 sudo modprobe tap
 echo -e 'vhost_vsock\nvsock\nsch_ingress\ncls_u32\ncls_flower\nact_mirred\ntap' | sudo tee /etc/modules-load.d/kata.conf >/dev/null
@@ -608,24 +573,20 @@ else
 	echo "✗ Nydus socket missing"
 fi
 
-
 echo ""
 echo "Pre-pulling baseline images (exeuntu, ubuntu, alpine) by digest..."
 sudo nerdctl -n exe --snapshotter nydus pull ghcr.io/boldsoftware/exeuntu:latest
 # TODO sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/ubuntu:latest
 # TODO sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/alpine:latest
 
-
 echo ""
 echo "Testing basic nerdctl with runc (not a production VM)..."
 sudo nerdctl --namespace exe --snapshotter nydus run ghcr.io/boldsoftware/exeuntu:latest true
-
 
 echo ""
 echo "Testing Kata + Cloud Hypervisor..."
 
 sudo nerdctl --namespace exe --snapshotter nydus run --runtime io.containerd.kata.v2 ghcr.io/boldsoftware/exeuntu:latest true
-
 
 echo ""
 echo "=== Setup complete ==="
@@ -636,11 +597,11 @@ echo "  • Kata Containers ${KATA_VERSION} with Cloud Hypervisor"
 echo "  • Nydus snapshotter ${NYDUS_VERSION} with nydusd ${NYDUSD_VERSION}"
 echo "  • CNI networking"
 if [ $IS_CI_VM -eq 1 ]; then
-	echo "  • Data directory at /var/lib/containerd"
+	echo "  • Containerd root at /var/lib/containerd"
 	echo "  • Local storage at $LOCALDIR"
 else
-	echo "  • Data directory at /data/containerd"
-	echo "  • Local storage at $LOCALDIR (1TB RAID 0)"
+	echo "  • Containerd root at ${CONTAINERD_ROOT}"
+	echo "  • Local storage at $LOCALDIR (1TB RAID 0 on metal)"
 fi
 echo "  • Namespace 'exe' created"
 echo ""

@@ -32,15 +32,10 @@ provision_base_vm() {
 	limactl shell ${LIMA_BASE} -- sudo useradd -m -s /bin/bash ubuntu 2>/dev/null || true
 	echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | limactl shell ${LIMA_BASE} -- sudo tee /etc/sudoers.d/ubuntu >/dev/null
 
-	# Set up data volume as loopback XFS
-	echo "Setting up data volume (loopback XFS) for Lima..."
-	limactl shell ${LIMA_BASE} -- sudo apt-get update -y
-	limactl shell ${LIMA_BASE} -- sudo apt-get install -y parted xfsprogs
+	# Set up data directory
+	echo "Setting up /data directory for Lima..."
 	limactl shell ${LIMA_BASE} -- sudo mkdir -p /data
-	limactl shell ${LIMA_BASE} -- sudo dd if=/dev/zero of=/data.img bs=1G count=20
-	limactl shell ${LIMA_BASE} -- sudo mkfs.xfs /data.img
-	limactl shell ${LIMA_BASE} -- sudo mount -o loop,pquota /data.img /data
-	echo '/data.img /data xfs loop,pquota 0 0' | limactl shell ${LIMA_BASE} -- sudo tee -a /etc/fstab >/dev/null
+	limactl shell ${LIMA_BASE} -- sudo chmod 755 /data
 
 	echo "Copying setup script and config files to VM..."
 	# Copy to /tmp to avoid read-only filesystem issues

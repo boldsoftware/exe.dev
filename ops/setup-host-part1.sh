@@ -305,6 +305,84 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
 	exit 1
 fi
 
+# Setup /data RAID 0 volume on metal instances
+echo ""
+echo "=========================================="
+echo "Setting up /data volume"
+echo "=========================================="
+
+# Create a script to setup the data volume on the remote machine
+cat <<'RAID_SETUP_SCRIPT' >/tmp/setup-data-volume.sh
+#!/bin/bash
+set -euo pipefail
+
+echo "=== Setting up data volume ==="
+
+# First check if this is a metal instance (has NVMe drives)
+if [ ! -e /dev/nvme0n1 ]; then
+	echo "Non-metal instance detected, data volume already mounted via xvdf"
+	exit 0
+fi
+
+# Install mdadm for RAID management
+echo "Installing mdadm for RAID management..."
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm >/dev/null 2>&1
+
+# Find the 250GB NVMe device for data volume
+DATA_DEVICE=""
+echo "Looking for 250GB NVMe data volume..."
+for nvme in /dev/nvme*n1; do
+	if [ -b "$nvme" ]; then
+		SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
+		echo "Checking NVMe device $nvme with size ${SIZE_HR}"
+		
+		SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
+		
+		if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 245 ] && [ "$SIZE_GB" -le 255 ]; then
+			DATA_DEVICE="$nvme"
+			echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
+			break
+		fi
+	fi
+done
+
+if [ -z "$DATA_DEVICE" ]; then
+	echo "ERROR: Could not find data volume (250GB NVMe device)"
+	echo "Available block devices:"
+	lsblk
+	exit 1
+fi
+
+echo "Using data device: $DATA_DEVICE"
+sudo mkfs.xfs -f $DATA_DEVICE
+sudo mkdir -p /data
+sudo mount -o pquota $DATA_DEVICE /data
+echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
+sudo xfs_quota -x -c 'state' /data
+echo "Data volume setup complete"
+RAID_SETUP_SCRIPT
+
+# Copy and execute the data volume setup script
+echo "Setting up /data volume on ${MACHINE_NAME}..."
+if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+	/tmp/setup-data-volume.sh \
+	"ubuntu@${MACHINE_NAME}:~/"; then
+	echo "ERROR: Failed to copy data volume setup script"
+	rm -f /tmp/setup-data-volume.sh
+	exit 1
+fi
+
+if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+	"ubuntu@${MACHINE_NAME}" \
+	'chmod +x ~/setup-data-volume.sh && ~/setup-data-volume.sh'; then
+	echo "ERROR: Data volume setup failed"
+	rm -f /tmp/setup-data-volume.sh
+	exit 1
+fi
+
+rm -f /tmp/setup-data-volume.sh
+
 # Copy setup script and config files via Tailscale
 echo "Copying containerd setup script and config files to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
