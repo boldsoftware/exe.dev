@@ -1,0 +1,94 @@
+package loop_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"shelley.exe.dev/loop"
+	"sketch.dev/llm"
+)
+
+func ExampleLoop() {
+	// Create a simple tool
+	testTool := &llm.Tool{
+		Name:        "greet",
+		Description: "Greets the user with a friendly message",
+		InputSchema: llm.MustSchema(`{"type": "object", "properties": {"name": {"type": "string"}}}`),
+		Run: func(ctx context.Context, input json.RawMessage) llm.ToolOut {
+			var req struct {
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(input, &req); err != nil {
+				return llm.ErrorToolOut(err)
+			}
+			return llm.ToolOut{
+				LLMContent: llm.TextContent(fmt.Sprintf("Hello, %s! Nice to meet you.", req.Name)),
+			}
+		},
+	}
+
+	// Message recording function (in real usage, this would save to database)
+	recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+		roleStr := "user"
+		if message.Role == llm.MessageRoleAssistant {
+			roleStr = "assistant"
+		}
+		fmt.Printf("Recorded %s message with %d content items\n", roleStr, len(message.Content))
+		return nil
+	}
+
+	// Create a loop with initial history
+	initialHistory := []llm.Message{
+		{
+			Role: llm.MessageRoleUser,
+			Content: []llm.Content{
+				{Type: llm.ContentTypeText, Text: "Hello, I'm Alice"},
+			},
+		},
+	}
+
+	// Set up a predictable service for this example
+	service := loop.NewPredictableService()
+	myLoop := loop.NewLoop(service, initialHistory, []*llm.Tool{testTool}, recordMessage)
+	toolCallInput := json.RawMessage(`{"name": "Alice"}`)
+	service.SetResponses([]loop.PredictableResponse{
+		{
+			Content: "I'll greet you properly!",
+			ToolCalls: []loop.PredictableToolCall{
+				{ID: "greet-1", Name: "greet", Input: toolCallInput},
+			},
+			StopReason: llm.StopReasonToolUse,
+			Usage:      llm.Usage{InputTokens: 10, OutputTokens: 5},
+		},
+		{
+			Content:    "Great! I've greeted you successfully.",
+			StopReason: llm.StopReasonStopSequence,
+			Usage:      llm.Usage{InputTokens: 5, OutputTokens: 8},
+		},
+	})
+
+	// Queue a user message
+	myLoop.QueueUserMessage(llm.Message{
+		Role:    llm.MessageRoleUser,
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Please greet me"}},
+	})
+
+	// Run the loop for a short time
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	myLoop.Go(ctx)
+
+	// Check usage
+	usage := myLoop.GetUsage()
+	fmt.Printf("Total usage: %s\n", usage.String())
+
+	// Output:
+	// Recorded user message with 1 content items
+	// Recorded assistant message with 2 content items
+	// Recorded user message with 1 content items
+	// Recorded assistant message with 1 content items
+	// Total usage: in: 15, out: 13
+}

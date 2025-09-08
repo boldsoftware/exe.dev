@@ -1,0 +1,13 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "db/query/"
+    schema: "db/schema/"
+    gen:
+      go:
+        package: "generated"
+        out: "db/generated/"
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        json_tags_case_style: "snake"
