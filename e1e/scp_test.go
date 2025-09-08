@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"testing"
 
 	"exe.dev/vouch"
@@ -43,10 +42,10 @@ func TestSCPWorks(t *testing.T) {
 
 	pty = sshToBox(t, boxName, keyFile)
 	pty.reject("Permission denied")
-	boxNameRe := regexp.QuoteMeta(boxName)
-	pty.wantRe(boxNameRe + ".*" + regexp.QuoteMeta("$"))
+	pty.wantPrompt()
 	pty.sendLine("ls key.txt")
-	pty.wantRe("key.txt.*\n")
-	pty.sendLine("exit")
-	pty.want("logout")
+	pty.want("key.txt")
+	pty.want("\n")
+	pty.wantPrompt()
+	pty.disconnect()
 }

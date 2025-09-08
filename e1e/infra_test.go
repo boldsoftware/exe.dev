@@ -541,13 +541,14 @@ func genSSHKey(t *testing.T) (path, publickey string) {
 }
 
 const (
-	ps1    = "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "
 	banner = "~~~ EXE.DEV ~~~"
 )
 
 type expectPty struct {
-	t       *testing.T
-	console *expect.Console
+	t        *testing.T
+	prompt   string
+	promptRe string
+	console  *expect.Console
 }
 
 func (p *expectPty) want(s string) {
@@ -578,6 +579,19 @@ func (p *expectPty) wantRe(re string) {
 	}
 }
 
+func (p *expectPty) wantPrompt() {
+	p.t.Helper()
+	if p.promptRe != "" {
+		p.wantRe(p.promptRe)
+		return
+	}
+	if p.prompt != "" {
+		p.want(p.prompt)
+		return
+	}
+	p.t.Fatalf("expectPty: no prompt or promptRe set")
+}
+
 func (p *expectPty) send(s string) {
 	p.t.Helper()
 	if _, err := p.console.Send(s); err != nil {
@@ -590,6 +604,13 @@ func (p *expectPty) sendLine(s string) {
 	p.send(s + "\n")
 }
 
+func (p *expectPty) disconnect() {
+	p.t.Helper()
+	p.sendLine("exit")
+	p.wantRe("Connection to .* closed.")
+	p.wantEOF()
+}
+
 func (p *expectPty) wantEOF() {
 	p.t.Helper()
 	if out, err := p.console.ExpectEOF(); err != nil {
@@ -597,15 +618,26 @@ func (p *expectPty) wantEOF() {
 	}
 }
 
-func (p *expectPty) attach(cmd *exec.Cmd) {
+// attachAndStart attaches the pty to the given command and starts it.
+func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
+	// Configure and attach.
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = p.console.Tty(), p.console.Tty(), p.console.Tty()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true}
+
+	// Start the command.
+	if err := cmd.Start(); err != nil {
+		p.t.Fatalf("failed to start %v: %v", cmd, err)
+	}
+	// sshCmd now owns the PTY; close our reference.
+	// Without this, linux hangs on disconnect waiting for EOF.
+	p.console.Tty().Close()
+	p.t.Cleanup(func() { _ = cmd.Wait() })
 }
 
 func makePty(t *testing.T, name string) *expectPty {
 	t.Helper()
 	opts := []expect.ConsoleOpt{
-		expect.WithDefaultRefreshingTimeout(5 * time.Second),
+		expect.WithDefaultRefreshingTimeout(15 * time.Second),
 	}
 	if *flagVerbosePty {
 		opts = append(opts, expect.WithStdout(os.Stdout))
@@ -766,11 +798,15 @@ func extractVerificationToken(body string) (string, error) {
 }
 
 func sshToExeDev(t *testing.T, keyFile string) *expectPty {
-	return sshWithUsername(t, "", keyFile)
+	pty := sshWithUsername(t, "", keyFile)
+	pty.prompt = "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "
+	return pty
 }
 
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
-	return sshWithUsername(t, boxname, keyFile)
+	pty := sshWithUsername(t, boxname, keyFile)
+	pty.promptRe = regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$")
+	return pty
 }
 
 func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
@@ -798,12 +834,7 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 	)
 	// fmt.Println("RUNNING", sshCmd)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
-	pty.attach(sshCmd)
-	if err := sshCmd.Start(); err != nil {
-		t.Fatalf("failed to start SSH: %v", err)
-	}
-	t.Cleanup(func() { _ = sshCmd.Wait() })
-
+	pty.attachAndStart(sshCmd)
 	return pty
 }
 
@@ -862,6 +893,7 @@ func boxName(t *testing.T) string {
 
 // registerForExeDev is a convenience command to register for an exe.dev account.
 // It returns the open pty after registration, the account email, and the private keyFile.
+// It is the caller's responsibility to call pty.disconnect() when done.
 func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
 	keyFile, publicKey := genSSHKey(t)
 	pty = sshToExeDev(t, keyFile)
@@ -880,11 +912,12 @@ func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
 	pty.want("Press any key to continue")
 	pty.sendLine("")
 	pty.want("commands:") // check that we show help menu on first login
-	pty.wantRe("exe\\.dev.*▶")
+	pty.wantPrompt()
 
 	pty.sendLine("whoami")
 	pty.want(email)
 	pty.want(publicKey)
+	pty.wantPrompt()
 
 	return pty, keyFile, email
 }

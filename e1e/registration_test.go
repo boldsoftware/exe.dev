@@ -26,10 +26,11 @@ func TestNewKeyRegistration(t *testing.T) {
 	pty.want("Press any key to continue")
 	pty.sendLine("")
 	pty.want("commands:") // check that we show help menu on first login
-	pty.wantRe("exe\\.dev.*▶")
+	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
 	pty.want(publicKey)
+	pty.disconnect()
 }
 
 func TestRegistrationHappensOnce(t *testing.T) {
@@ -51,16 +52,21 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.want("Press any key to continue")
 	pty.sendLine("")
 	pty.want("commands:") // check that we show help menu on first login
-	pty.want(ps1)
+	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
 	pty.want(publicKey)
+	pty.wantPrompt()
+	pty.disconnect()
 
 	// second login: no re-registration, no banner
 	pty = sshToExeDev(t, keyFile)
 	pty.reject(banner)
-	pty.want(ps1)
+	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
 	pty.want(publicKey)
+	pty.wantPrompt()
+
+	pty.disconnect()
 }

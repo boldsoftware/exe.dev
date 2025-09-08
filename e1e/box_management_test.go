@@ -17,20 +17,17 @@ func TestSSHWorks(t *testing.T) {
 
 	// Create a box.
 	boxName := newBox(t, pty)
-	boxNameRe := regexp.QuoteMeta(boxName)
-
-	// Hang up. (Not necessary, but makes for nicer cinemas. :P)
-	pty.sendLine("exit")
-	pty.wantRe("Goodbye.*\n")
+	pty.disconnect()
 
 	// SSH to it.
 	pty = sshToBox(t, boxName, keyFile)
 	pty.reject("Permission denied") // fail fast on common known failure mode
-	pty.wantRe(boxNameRe + ".*" + regexp.QuoteMeta("$"))
+	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want("exedev")
-	pty.sendLine("exit")
-	pty.want("logout")
+	pty.want("\n") // exedev is also in the prompt! require a newline after it.
+	pty.wantPrompt()
+	pty.disconnect()
 }
 
 func TestDuplicateBoxCreationFails(t *testing.T) {
@@ -47,6 +44,8 @@ func TestDuplicateBoxCreationFails(t *testing.T) {
 
 	pty.sendLine("new --name=" + boxName)
 	pty.wantRe("Box name .*" + boxNameRe + ".* is not available")
+	pty.wantPrompt()
+	pty.disconnect()
 }
 
 func TestBadBoxName(t *testing.T) {
@@ -60,4 +59,6 @@ func TestBadBoxName(t *testing.T) {
 	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
 	pty.wantRe("Invalid box name .*" + boxNameRe)
+	pty.wantPrompt()
+	pty.disconnect()
 }

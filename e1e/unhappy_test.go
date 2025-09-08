@@ -25,18 +25,12 @@ func TestRequiresSSHKey(t *testing.T) {
 		"localhost",
 	)
 
-	pty.attach(sshCmd)
-
-	err := sshCmd.Start()
-	if err != nil {
-		t.Fatalf("failed to start SSH: %v", err)
-	}
-	t.Cleanup(func() { _ = sshCmd.Wait() })
+	pty.attachAndStart(sshCmd)
 
 	pty.want("SSH keys are required to access exe.dev")
 	pty.want("Press Enter to close this connection.")
 	pty.sendLine("")
-	// the exact output varies here, so don't block on receiving an EOF
+	pty.wantEOF()
 }
 
 func TestExeDevRejectsSCP(t *testing.T) {
@@ -52,14 +46,9 @@ func TestExeDevRejectsSCP(t *testing.T) {
 		"localhost:foo.txt",
 	)
 
-	pty.attach(sshCmd)
-
-	err := sshCmd.Start()
-	if err != nil {
-		t.Fatalf("failed to start SSH: %v", err)
-	}
-	t.Cleanup(func() { _ = sshCmd.Wait() })
+	pty.attachAndStart(sshCmd)
 
 	pty.reject("subsystem request failed")
 	pty.want("scp/sftp is not supported on the exe.dev server.")
+	pty.wantEOF()
 }
