@@ -42,7 +42,7 @@ var (
 	flagVerboseEmail  = flag.Bool("vemail", false, "enable verbose logging from email server")
 	flagVerbosePty    = flag.Bool("vpty", false, "enable verbose logging from pty connections")
 	flagVerboseSlog   = flag.Bool("vslog", false, "enable verbose logging from slogs")
-	flagCinema        = flag.Bool("cinema", false, "enable ASCIIcinema recording for each test")
+	flagCinema        = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
 )
 
 func TestMain(m *testing.M) {
