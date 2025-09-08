@@ -58,7 +58,7 @@ func TestMain(m *testing.M) {
 	if testing.Verbose() {
 		fmt.Print(`
 ════════
--v requested, but these tests generate lots of output, and they run in parallel.
+-v requested, but the e1e tests generate lots of output, and they run in parallel.
 Having "-v" enable extra logging is overwhelming.
 
 For debug info, use -run to scope to a single test, and add some/all of these flags:
