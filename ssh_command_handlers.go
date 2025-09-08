@@ -352,13 +352,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		err       error
 	}, 1)
 
-	// Get the alloc to get its IP range
-	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
-	if err != nil {
-		cc.Write("\033[1;31mError: Failed to get allocation info: %v\033[0m\r\n", err)
-		return fmt.Errorf("failed to get alloc info: %w", err)
-	}
-
 	// Pre-create box in database to get its ID
 	imageToStore := container.GetDisplayImageName(image)
 	if image == "exeuntu" {
@@ -373,7 +366,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	// Create container request with progress callback
 	req := &container.CreateContainerRequest{
 		AllocID:         cc.Alloc.AllocID,
-		IPRange:         alloc.IPRange.String, // Pass the IP range from the alloc
 		Name:            boxName,
 		BoxID:           boxID,
 		Image:           image,

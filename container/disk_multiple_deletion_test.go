@@ -18,10 +18,9 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 
 	ctx := t.Context()
 
-	// Create allocation network with unique ID to avoid conflicts
+	// Create allocation with unique ID to avoid conflicts
 	allocID := fmt.Sprintf("test-multi-delete-%d", time.Now().Unix())
-	ipRange := WithAllocIPRange(t, allocID)
-	if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+	if err := manager.CreateAlloc(ctx, allocID); err != nil {
 		t.Fatalf("CreateAlloc failed: %v", err)
 	}
 
@@ -37,7 +36,6 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 	t.Log("=== First container creation and deletion ===")
 	req1 := &CreateContainerRequest{
 		AllocID: allocID,
-		IPRange: ipRange,
 		Name:    "first-container",
 		Image:   "alpine:latest",
 		Size:    "small",
@@ -69,7 +67,6 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 	t.Log("=== Second container creation and deletion ===")
 	req2 := &CreateContainerRequest{
 		AllocID: allocID,
-		IPRange: ipRange,
 		Name:    "second-container",
 		Image:   "alpine:latest",
 		Size:    "small",
@@ -145,7 +142,6 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 
 	req3 := &CreateContainerRequest{
 		AllocID: allocID,
-		IPRange: ipRange,
 		Name:    "third-container",
 		Image:   "alpine:latest",
 		Size:    "small",

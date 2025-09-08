@@ -31,18 +31,15 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	// (apt-get install openssh-server needs ~512MB during installation)
 
 	// Create container request
-	ipRange := WithAllocIPRange(t, "test-alloc")
-
 	ctx := t.Context()
 
-	// Create the allocation network first
-	if err := manager.CreateAlloc(ctx, "test-alloc", ipRange); err != nil {
+	// Create the allocation
+	if err := manager.CreateAlloc(ctx, "test-alloc"); err != nil {
 		t.Fatalf("CreateAlloc failed: %v", err)
 	}
 
 	req := &CreateContainerRequest{
 		AllocID:       "test-alloc",
-		IPRange:       ipRange,
 		Name:          "ssh-test-container",
 		Image:         "ubuntu:22.04",
 		Size:          "small",

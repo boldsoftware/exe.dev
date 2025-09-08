@@ -15,15 +15,14 @@ func TestBoxIDRequired(t *testing.T) {
 	ctx := t.Context()
 
 	allocID := "test-boxid-required"
-	ipRange := WithAllocIPRange(t, allocID)
-	if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+	// No longer need per-allocation IP ranges - all containers use default bridge
+	if err := manager.CreateAlloc(ctx, allocID); err != nil {
 		t.Fatalf("CreateAlloc failed: %v", err)
 	}
 
 	// Try to create a container without BoxID (BoxID = 0)
 	req := &CreateContainerRequest{
 		AllocID: allocID,
-		IPRange: ipRange,
 		Name:    "no-boxid",
 		Image:   "alpine:latest",
 		// BoxID not set, defaults to 0

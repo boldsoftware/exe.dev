@@ -129,7 +129,6 @@ var ContainerSizes = map[string]ContainerSize{
 // CreateContainerRequest represents the parameters for creating a new container
 type CreateContainerRequest struct {
 	AllocID    string `json:"alloc_id"` // Allocation ID for this container
-	IPRange    string `json:"ip_range"` // IP range for this allocation (e.g., "10.42.1.0/24")
 	Name       string `json:"name"`
 	BoxID      int    `json:"box_id"`               // Box ID for persistent disk path
 	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"

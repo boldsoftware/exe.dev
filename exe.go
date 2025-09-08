@@ -189,8 +189,7 @@ type Alloc struct {
 	UserID           string
 	AllocType        AllocType
 	Region           Region
-	Ctrhost          string         // Container host where this alloc's resources are
-	IPRange          sql.NullString // IP range assigned to this alloc (e.g., "10.42.1.0/24")
+	Ctrhost          string // Container host where this alloc's resources are
 	CreatedAt        time.Time
 	StripeCustomerID sql.NullString
 	BillingEmail     sql.NullString
@@ -374,8 +373,6 @@ type Server struct {
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
 
-	startIPClassB ipClassB
-	startIPClassC ipClassC
 
 	mu       sync.RWMutex
 	stopping bool
@@ -594,8 +591,6 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		testMode:           testing.Testing() || devMode == "test",
 		metricsRegistry:    metricsRegistry,
 		sshMetrics:         sshMetrics,
-		startIPClassB:      newIPClassB(),
-		startIPClassC:      newIPClassC(),
 	}
 
 	s.setupHTTPServer()
@@ -2722,10 +2717,10 @@ func (s *Server) getAllocByID(ctx context.Context, allocID string) (*Alloc, erro
 	var alloc Alloc
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		err := rx.QueryRow(`
-			SELECT alloc_id, user_id, alloc_type, region, ctrhost, ip_range, created_at, stripe_customer_id, billing_email
+			SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
 			FROM allocs
 			WHERE alloc_id = ?
-		`, allocID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region, &alloc.Ctrhost, &alloc.IPRange, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+		`, allocID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region, &alloc.Ctrhost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
 		return err
 	})
 	if err != nil {
@@ -2739,7 +2734,7 @@ func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc,
 	var allocs []*Alloc
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		rows, err := rx.Query(`
-			SELECT alloc_id, user_id, alloc_type, region, ctrhost, ip_range, created_at, stripe_customer_id, billing_email
+			SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
 			FROM allocs
 			WHERE ctrhost = ?
 		`, ctrhost)
@@ -2751,7 +2746,7 @@ func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc,
 		for rows.Next() {
 			var a Alloc
 			err := rows.Scan(
-				&a.AllocID, &a.UserID, &a.AllocType, &a.Region, &a.Ctrhost, &a.IPRange,
+				&a.AllocID, &a.UserID, &a.AllocType, &a.Region, &a.Ctrhost,
 				&a.CreatedAt, &a.StripeCustomerID, &a.BillingEmail,
 			)
 			if err != nil {
@@ -2887,13 +2882,9 @@ func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
 	// Create allocations that are in DB but not on host
 	for truncatedID, alloc := range dbAllocMap {
 		if !hostAllocMap[truncatedID] {
-			// Skip allocations without IP ranges
-			if !alloc.IPRange.Valid {
-				slog.Warn("Skipping allocation without IP range", "allocID", alloc.AllocID)
-				continue
-			}
-			slog.Info("Creating missing allocation on host", "allocID", alloc.AllocID, "host", host, "ipRange", alloc.IPRange.String)
-			if err := s.containerManager.CreateAlloc(ctx, alloc.AllocID, alloc.IPRange.String); err != nil {
+			// Create the allocation on the host (now a no-op but kept for compatibility)
+			slog.Info("Creating missing allocation on host", "allocID", alloc.AllocID, "host", host)
+			if err := s.containerManager.CreateAlloc(ctx, alloc.AllocID); err != nil {
 				slog.Error("Failed to create allocation on host", "allocID", alloc.AllocID, "host", host, "error", err)
 				// Continue with other allocations
 			}
@@ -3022,7 +3013,6 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 					// Create a new container using the existing disk
 					req := &container.CreateContainerRequest{
 						AllocID: box.AllocID,
-						IPRange: "", // Will be filled from alloc info
 						Name:    box.Name,
 						BoxID:   box.ID,
 						Image:   box.Image,
@@ -3030,14 +3020,6 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 						Size:            "small",
 						ExistingSSHKeys: existingSSHKeys,
 					}
-
-					// Get alloc to fill in IP range
-					alloc, err := s.getAllocByID(ctx, box.AllocID)
-					if err != nil {
-						slog.Error("Failed to get alloc for container recreation", "box", box.Name, "error", err)
-						continue
-					}
-					req.IPRange = alloc.IPRange.String
 
 					// Recreate the container (CreateContainer will reuse the existing disk)
 					slog.Info("Calling CreateContainer to recreate from disk", "boxID", box.ID, "oldContainerID", containerID)
@@ -3373,56 +3355,12 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	return &user, err
 }
 
-// allocateIPRange finds an available IP range for a new alloc
-// Returns a string like "10.42.1.0/24"
-//
-// TODO: this is inefficient. Implement something with better DB support.
-//
-//	(e.g. generated columns for each octet, then indexes?)
-func (s *Server) allocateIPRange(tx *sqlite.Tx, ctrhost string) (string, error) {
-	// Query all existing IP ranges for this container host
-	rows, err := tx.Query(`
-		SELECT ip_range
-		FROM allocs
-		WHERE ctrhost = ? AND ip_range IS NOT NULL
-		ORDER BY ip_range`,
-		ctrhost)
-	if err != nil {
-		return "", err
-	}
-	defer rows.Close()
-
-	// Collect all used IP ranges
-	usedRanges := make(map[string]bool)
-	for rows.Next() {
-		var ipRange string
-		if err := rows.Scan(&ipRange); err != nil {
-			return "", err
-		}
-		usedRanges[ipRange] = true
-	}
-
-	// Find the first available 10.X.Y.0/24 range, starting from a randomized position.
-	// The randomized starting position helps avoid conflicts during tests.
-	// We use 10.42.0.0/16 through 10.99.0.0/16 (58 * 256 = 14,848 possible /24 networks)
-	// Start from randomized position to avoid conflicts between exed instances
-	for xIndex := range classBSize {
-		x := s.startIPClassB.get(xIndex)
-		for yIndex := range classCSize {
-			y := s.startIPClassC.get(yIndex)
-			candidate := fmt.Sprintf("10.%d.%d.0/24", x, y)
-			if !usedRanges[candidate] {
-				return candidate, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no available IP ranges (all 14,848 ranges exhausted)")
-}
+// Note: allocateIPRange function has been removed since we no longer use per-allocation IP ranges.
+// All containers now use the default bridge network with port isolation.
 
 // createUserWithAlloc creates a new user with their resource allocation
 func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email string) error {
-	var allocID, ipRange string
+	var allocID string
 
 	// First create the user and allocation in the database
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
@@ -3459,31 +3397,23 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 		// Select a container host for this alloc
 		ctrhost := s.selectCtrhostForNewAlloc()
 
-		// Allocate an IP range for this alloc
-		ipRange, err = s.allocateIPRange(tx, ctrhost)
-		if err != nil {
-			return fmt.Errorf("failed to allocate IP range: %w", err)
-		}
-
-		// Create alloc for the user
+		// Create alloc for the user (no longer needs IP range)
 		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_email)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, email)
 		return err
 	})
 	if err != nil {
 		return err
 	}
 
-	// After successful database creation, create the network infrastructure
-	// This ensures the network is ready before any containers are created
+	// After successful database creation, notify the container manager
+	// (CreateAlloc is now a no-op but kept for compatibility)
 	if s.containerManager != nil {
-		if err := s.containerManager.CreateAlloc(ctx, allocID, ipRange); err != nil {
-			// Log the error but don't fail user creation - the network can be created later
-			slog.Error("failed to create allocation network", "allocID", allocID, "error", err)
-			// Note: we could consider rolling back the user creation here, but that would
-			// prevent the user from logging in. Better to let them log in and fix the network later.
+		if err := s.containerManager.CreateAlloc(ctx, allocID); err != nil {
+			// Log the error but don't fail user creation
+			slog.Error("failed to create allocation", "allocID", allocID, "error", err)
 		}
 	}
 
@@ -3495,12 +3425,12 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 	var alloc Alloc
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
-		SELECT alloc_id, user_id, alloc_type, region, ctrhost, ip_range, created_at, stripe_customer_id, billing_email
+		SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
 		FROM allocs
 		WHERE user_id = ?
 		LIMIT 1`,
 			userID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region,
-			&alloc.Ctrhost, &alloc.IPRange, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+			&alloc.Ctrhost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
 	})
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -3522,16 +3452,10 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 		ctrhost := s.selectCtrhostForNewAlloc()
 
 		err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			// Allocate an IP range for this alloc
-			ipRange, err := s.allocateIPRange(tx, ctrhost)
-			if err != nil {
-				return fmt.Errorf("failed to allocate IP range: %w", err)
-			}
-
 			_, err = tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
-				VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_email)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+				allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, email)
 			return err
 		})
 		if err != nil {
@@ -3610,16 +3534,11 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 
 		ctrhost := s.selectCtrhostForNewAlloc()
 
-		// Allocate an IP range for this alloc
-		ipRange, err := s.allocateIPRange(tx, ctrhost)
-		if err != nil {
-			return fmt.Errorf("failed to allocate IP range: %w", err)
-		}
-
+		// Create the allocation (no longer needs IP range)
 		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, ip_range, billing_email)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, ipRange, email)
+			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_email)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, email)
 		return err
 	})
 }
@@ -3959,23 +3878,5 @@ func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
 	return nil
 }
 
-const (
-	classBStart = 42
-	classBEnd   = 99
-	classBSize  = classBEnd - classBStart + 1 // 42-99 inclusive = 58 values
-	classCStart = 0
-	classCEnd   = 255
-	classCSize  = classCEnd - classCStart + 1 // 0-255 inclusive = 256 values
-)
-
-// ipClassB represents a Class B (second octet) IP range with randomized starting point
-type ipClassB struct{ base int }
-
-func newIPClassB() ipClassB           { return ipClassB{base: mathrand.Intn(classBSize)} }
-func (cb ipClassB) get(index int) int { return classBStart + ((cb.base + index) % classBSize) }
-
-// ipClassC represents a Class C (third octet) IP range with randomized starting point
-type ipClassC struct{ base int }
-
-func newIPClassC() ipClassC           { return ipClassC{base: mathrand.Intn(classCSize)} }
-func (cc ipClassC) get(index int) int { return classCStart + ((cc.base + index) % classCSize) }
+// Note: IP range allocation code has been removed since we no longer use per-allocation IP ranges.
+// All containers now use the default bridge network with port isolation.

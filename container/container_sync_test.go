@@ -23,10 +23,9 @@ func TestContainerSync(t *testing.T) {
 
 	ctx := context.Background()
 	allocID := fmt.Sprintf("synctest-%d", time.Now().UnixNano())
-	ipRange := WithAllocIPRange(t, allocID)
 
-	// Create the network for this allocation
-	if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+	// Create the allocation (no longer needs IP range)
+	if err := manager.CreateAlloc(ctx, allocID); err != nil {
 		t.Fatalf("Failed to create allocation: %v", err)
 	}
 	defer func() {
@@ -38,7 +37,6 @@ func TestContainerSync(t *testing.T) {
 	// Test 1: Create a container
 	req := &CreateContainerRequest{
 		AllocID: allocID,
-		IPRange: ipRange,
 		Name:    "synctest",
 		Image:   "ubuntu:latest",
 		BoxID:   GenerateTestBoxID(),

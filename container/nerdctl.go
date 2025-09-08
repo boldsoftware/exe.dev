@@ -484,10 +484,10 @@ func (m *NerdctlManager) selectHost(ctx context.Context, allocID string) (ctrHos
 }
 
 // CreateAlloc is now a no-op since we use a single default bridge network
-// Kept for API compatibility but can be removed in the future
-func (m *NerdctlManager) CreateAlloc(ctx context.Context, allocID string, ipRange string) error {
+// Can be removed entirely in the future
+func (m *NerdctlManager) CreateAlloc(ctx context.Context, allocID string) error {
 	// No longer need to create per-allocation networks
-	// All containers use the default bridge network with iptables isolation
+	// All containers use the default bridge network with port isolation
 	return nil
 }
 

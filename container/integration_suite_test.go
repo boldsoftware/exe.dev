@@ -23,16 +23,14 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Ubuntu container with SSH + rovol checks + SSH handshake
 	t.Run("UbuntuSSHAndRovol", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ssh-%d", time.Now().UnixNano())
-		ipRange := WithAllocIPRange(t, allocID)
 
-		// Create the allocation network first
-		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+		// Create the allocation
+		if err := manager.CreateAlloc(ctx, allocID); err != nil {
 			t.Fatalf("CreateAlloc failed: %v", err)
 		}
 
 		req := &CreateContainerRequest{
 			AllocID: allocID,
-			IPRange: ipRange,
 			Name:    "sshtest",
 			Image:   "ubuntu:22.04",
 			BoxID:   GenerateTestBoxID(),
@@ -110,10 +108,9 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: List containers presence with 3 alpine containers
 	t.Run("ListContainers", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-list-%d", time.Now().UnixNano())
-		ipRange := WithAllocIPRange(t, allocID)
 
-		// Create the allocation network first
-		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+		// Create the allocation
+		if err := manager.CreateAlloc(ctx, allocID); err != nil {
 			t.Fatalf("CreateAlloc failed: %v", err)
 		}
 
@@ -121,8 +118,7 @@ func TestContainerIntegrationSuite(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			req := &CreateContainerRequest{
 				AllocID: allocID,
-				IPRange: ipRange,
-				Name:    fmt.Sprintf("c%d", i),
+					Name:    fmt.Sprintf("c%d", i),
 				Image:   "alpine:latest",
 				BoxID:   GenerateTestBoxID(),
 			}
@@ -151,16 +147,14 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Start/Stop cycle
 	t.Run("StartStop", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ss-%d", time.Now().UnixNano())
-		ipRange := WithAllocIPRange(t, allocID)
 
-		// Create the allocation network first
-		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+		// Create the allocation
+		if err := manager.CreateAlloc(ctx, allocID); err != nil {
 			t.Fatalf("CreateAlloc failed: %v", err)
 		}
 
 		req := &CreateContainerRequest{
 			AllocID:         allocID,
-			IPRange:         ipRange,
 			Name:            "startstop",
 			Image:           "alpine:latest",
 			CommandOverride: "sleep 3600",
@@ -184,16 +178,14 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Exec
 	t.Run("Exec", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-exec-%d", time.Now().UnixNano())
-		ipRange := WithAllocIPRange(t, allocID)
 
-		// Create the allocation network first
-		if err := manager.CreateAlloc(ctx, allocID, ipRange); err != nil {
+		// Create the allocation
+		if err := manager.CreateAlloc(ctx, allocID); err != nil {
 			t.Fatalf("CreateAlloc failed: %v", err)
 		}
 
 		req := &CreateContainerRequest{
 			AllocID: allocID,
-			IPRange: ipRange,
 			Name:    "exec",
 			Image:   "alpine:latest",
 			BoxID:   GenerateTestBoxID(),
