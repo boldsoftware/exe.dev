@@ -4,18 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-)
 
-// ImageConfig captures relevant parts of an image's config
-type ImageConfig struct {
-	Entrypoint []string
-	Cmd        []string
-	User       string
-}
+	"exe.dev/tagresolver"
+)
 
 // parseImageInspectJSON parses nerdctl/docker image inspect JSON.
 // It tolerates both an array of objects (normal) and a single object.
-func parseImageInspectJSON(data []byte) (ImageConfig, error) {
+func parseImageInspectJSON(data []byte) (tagresolver.ImageConfig, error) {
 	// Define the subset of fields we care about
 	type cfg struct {
 		Config struct {
@@ -29,17 +24,17 @@ func parseImageInspectJSON(data []byte) (ImageConfig, error) {
 	var arr []cfg
 	if err := json.Unmarshal(data, &arr); err == nil && len(arr) > 0 {
 		c := arr[0].Config
-		return ImageConfig{Entrypoint: c.Entrypoint, Cmd: c.Cmd, User: c.User}, nil
+		return tagresolver.ImageConfig{Entrypoint: c.Entrypoint, Cmd: c.Cmd, User: c.User}, nil
 	}
 
 	// Try single object form
 	var single cfg
 	if err := json.Unmarshal(data, &single); err == nil {
 		c := single.Config
-		return ImageConfig{Entrypoint: c.Entrypoint, Cmd: c.Cmd, User: c.User}, nil
+		return tagresolver.ImageConfig{Entrypoint: c.Entrypoint, Cmd: c.Cmd, User: c.User}, nil
 	}
 
-	return ImageConfig{}, fmt.Errorf("unrecognized inspect JSON format")
+	return tagresolver.ImageConfig{}, fmt.Errorf("unrecognized inspect JSON format")
 }
 
 // buildEntrypointAndCmdArgs builds args to append after the image reference in nerdctl run.

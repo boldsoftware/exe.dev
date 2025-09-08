@@ -24,6 +24,13 @@ import (
 	"exe.dev/sqlite"
 )
 
+// ImageConfig represents the configuration of a container image
+type ImageConfig struct {
+	Entrypoint []string
+	Cmd        []string
+	User       string
+}
+
 // TagResolver manages image tag to digest resolution
 type TagResolver struct {
 	db         *sqlite.DB
@@ -787,5 +794,95 @@ func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repos
 			WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 		`, registry, repository, tag, platform)
 		return err
+	})
+}
+
+// GetImageMetadata retrieves cached image metadata from the database
+func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repository, tag, platform string) (*ImageConfig, error) {
+	var imageUser, imageEntrypoint, imageCmd *string
+
+	err := tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return tx.QueryRow(`
+			SELECT image_user, image_entrypoint, image_cmd
+			FROM tag_resolutions
+			WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
+		`, registry, repository, tag, platform).Scan(&imageUser, &imageEntrypoint, &imageCmd)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// If any of the metadata fields are null, we don't have cached metadata
+	if imageUser == nil || imageEntrypoint == nil || imageCmd == nil {
+		return nil, nil
+	}
+
+	cfg := &ImageConfig{
+		User: *imageUser,
+	}
+
+	// Parse JSON arrays for entrypoint and cmd
+	if *imageEntrypoint != "" {
+		if err := json.Unmarshal([]byte(*imageEntrypoint), &cfg.Entrypoint); err != nil {
+			log.Printf("Failed to unmarshal entrypoint: %v", err)
+		}
+	}
+
+	if *imageCmd != "" {
+		if err := json.Unmarshal([]byte(*imageCmd), &cfg.Cmd); err != nil {
+			log.Printf("Failed to unmarshal cmd: %v", err)
+		}
+	}
+
+	return cfg, nil
+}
+
+// StoreImageMetadata stores image metadata in the database
+func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, repository, tag, platform string, cfg *ImageConfig) error {
+	// Convert entrypoint and cmd to JSON
+	entrypointJSON, err := json.Marshal(cfg.Entrypoint)
+	if err != nil {
+		return fmt.Errorf("failed to marshal entrypoint: %w", err)
+	}
+
+	cmdJSON, err := json.Marshal(cfg.Cmd)
+	if err != nil {
+		return fmt.Errorf("failed to marshal cmd: %w", err)
+	}
+
+	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		// First check if the record exists
+		var exists bool
+		if err := tx.QueryRow(`
+			SELECT EXISTS(
+				SELECT 1 FROM tag_resolutions 
+				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
+			)
+		`, registry, repository, tag, platform).Scan(&exists); err != nil {
+			return err
+		}
+
+		if exists {
+			// Update existing record
+			_, err := tx.Exec(`
+				UPDATE tag_resolutions
+				SET image_user = ?, image_entrypoint = ?, image_cmd = ?
+				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
+			`, cfg.User, string(entrypointJSON), string(cmdJSON), registry, repository, tag, platform)
+			return err
+		} else {
+			// Insert new record with minimal required fields
+			now := time.Now().Unix()
+			_, err := tx.Exec(`
+				INSERT INTO tag_resolutions (
+					registry, repository, tag, platform,
+					last_checked_at, last_changed_at, ttl_seconds,
+					image_user, image_entrypoint, image_cmd
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, registry, repository, tag, platform, now, now, 21600,
+				cfg.User, string(entrypointJSON), string(cmdJSON))
+			return err
+		}
 	})
 }

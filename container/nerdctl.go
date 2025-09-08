@@ -53,11 +53,6 @@ type NerdctlManager struct {
 
 	// Cache for nerdctl run --annotation support per host
 	annSupport map[string]bool
-
-	// Cache for image metadata to avoid repeated inspections
-	// Key is "host:image" to handle multiple hosts with potentially different images
-	imageCache   map[string]*ImageConfig
-	imageCacheMu sync.RWMutex
 }
 
 // SetTagResolver sets the tag resolver for the manager
@@ -86,7 +81,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		sshTunnels: make(map[string]*exec.Cmd),
 		sshPool:    sshpool.New(),
 		annSupport: make(map[string]bool),
-		imageCache: make(map[string]*ImageConfig),
 	}
 
 	// Verify Kata runtime is available on all hosts
@@ -148,6 +142,45 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 	return m.sshPool.ExecCommand(ctx, host, nerdctlArgs...)
 }
 
+// parseImageReference parses an image reference into registry, repository, and tag components
+func parseImageReference(imageRef string) (registry, repository, tag string) {
+	// Remove digest if present (e.g., image@sha256:...)
+	if idx := strings.Index(imageRef, "@"); idx != -1 {
+		imageRef = imageRef[:idx]
+	}
+
+	// Split by the last colon to separate tag
+	parts := strings.Split(imageRef, ":")
+	if len(parts) > 1 {
+		tag = parts[len(parts)-1]
+		imageRef = strings.Join(parts[:len(parts)-1], ":")
+	} else {
+		tag = "latest"
+	}
+
+	// Determine registry and repository
+	if strings.Contains(imageRef, "/") {
+		firstSlash := strings.Index(imageRef, "/")
+		possibleRegistry := imageRef[:firstSlash]
+
+		// Check if it's a registry (contains dot or colon, or is localhost)
+		if strings.Contains(possibleRegistry, ".") || strings.Contains(possibleRegistry, ":") || possibleRegistry == "localhost" {
+			registry = possibleRegistry
+			repository = imageRef[firstSlash+1:]
+		} else {
+			// No registry specified, default to docker.io
+			registry = "docker.io"
+			repository = imageRef
+		}
+	} else {
+		// No slash, it's a library image on docker.io
+		registry = "docker.io"
+		repository = "library/" + imageRef
+	}
+
+	return registry, repository, tag
+}
+
 // remoteFileExists checks if a file exists on the remote host via SSH
 func (m *NerdctlManager) remoteFileExists(ctx context.Context, host, path string) bool {
 	cmd := m.ExecSSHCommand(ctx, host, "test", "-f", path)
@@ -157,27 +190,34 @@ func (m *NerdctlManager) remoteFileExists(ctx context.Context, host, path string
 	return true
 }
 
-// inspectImage inspects an image and returns its metadata, using cache when available
-func (m *NerdctlManager) inspectImage(ctx context.Context, host, imageRef string) (*ImageConfig, error) {
-	// Check cache first
-	cacheKey := fmt.Sprintf("%s:%s", host, imageRef)
-	m.imageCacheMu.RLock()
-	if cached, ok := m.imageCache[cacheKey]; ok {
-		m.imageCacheMu.RUnlock()
-		slog.Info("Using cached image metadata", "image", imageRef, "user", cached.User)
-		return cached, nil
+// inspectImage inspects an image and returns its metadata, using database cache when available
+func (m *NerdctlManager) inspectImage(ctx context.Context, host, imageRef string) (*tagresolver.ImageConfig, error) {
+	// Check database cache first if we have a tag resolver
+	if m.tagResolver != nil {
+		// Parse the image reference to extract registry, repository, and tag
+		registry, repository, tag := parseImageReference(imageRef)
+		platform := fmt.Sprintf("linux/%s", m.hostArch)
+
+		// Try to get cached metadata from the database
+		if cfg, err := m.tagResolver.GetImageMetadata(ctx, registry, repository, tag, platform); err == nil && cfg != nil {
+			slog.Info("Using cached image metadata from DB", "image", imageRef, "user", cfg.User)
+			return cfg, nil
+		}
 	}
-	m.imageCacheMu.RUnlock()
 
 	// Try to inspect by the given reference
 	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", imageRef, "--format", "json")
 	if output, err := inspectCmd.Output(); err == nil {
 		if cfg, perr := parseImageInspectJSON(output); perr == nil {
-			// Cache the result
-			m.imageCacheMu.Lock()
-			m.imageCache[cacheKey] = &cfg
-			m.imageCacheMu.Unlock()
-			slog.Info("Image metadata inspected and cached", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
+			// Store the result in the database if we have a tag resolver
+			if m.tagResolver != nil {
+				registry, repository, tag := parseImageReference(imageRef)
+				platform := fmt.Sprintf("linux/%s", m.hostArch)
+				if err := m.tagResolver.StoreImageMetadata(ctx, registry, repository, tag, platform, &cfg); err != nil {
+					slog.Warn("Failed to store image metadata in DB", "error", err)
+				}
+			}
+			slog.Info("Image metadata inspected and stored", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
 			return &cfg, nil
 		}
 		slog.Warn("Failed to parse image inspect JSON", "image", imageRef)
@@ -203,13 +243,19 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, host, imageRef string
 						inspectByIDCmd := m.execNerdctl(ctx, host, "image", "inspect", imageID, "--format", "json")
 						if output, err := inspectByIDCmd.Output(); err == nil {
 							if cfg, perr := parseImageInspectJSON(output); perr == nil {
-								// Cache both the original reference and the ID
-								m.imageCacheMu.Lock()
-								m.imageCache[cacheKey] = &cfg
-								// Also cache by ID so future lookups by ID are fast
-								m.imageCache[fmt.Sprintf("%s:%s", host, imageID)] = &cfg
-								m.imageCacheMu.Unlock()
-								slog.Info("Image metadata found by ID and cached", "id", imageID, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
+								// Store both the original reference and the ID in DB
+								if m.tagResolver != nil {
+									registry, repository, tag := parseImageReference(imageRef)
+									platform := fmt.Sprintf("linux/%s", m.hostArch)
+									if err := m.tagResolver.StoreImageMetadata(ctx, registry, repository, tag, platform, &cfg); err != nil {
+										slog.Warn("Failed to store image metadata in DB", "error", err)
+									}
+									// Also store by ID
+									if err := m.tagResolver.StoreImageMetadata(ctx, "local", "id", imageID, platform, &cfg); err != nil {
+										slog.Warn("Failed to store image metadata by ID in DB", "error", err)
+									}
+								}
+								slog.Info("Image metadata found by ID and stored", "id", imageID, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
 								return &cfg, nil
 							}
 						}
@@ -977,14 +1023,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
 			imageEntrypoint = cfg.Entrypoint
 			imageCmd = cfg.Cmd
-		}
-
-		// Also cache by the original image name if different
-		if req.Image != "" && req.Image != imageToInspect {
-			cacheKey := fmt.Sprintf("%s:%s", host, req.Image)
-			m.imageCacheMu.Lock()
-			m.imageCache[cacheKey] = cfg
-			m.imageCacheMu.Unlock()
 		}
 	} else {
 		slog.Warn("Failed to get image metadata", "image", imageToInspect, "error", err)
