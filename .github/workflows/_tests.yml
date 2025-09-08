@@ -47,6 +47,19 @@ jobs:
       - name: Run tests
         run: gotestsum --format testname -- -race ./...
 
+      - name: Generate asciinema recordings artifact
+        run: |
+          go run ./cmd/asciinema-viewer e1e recordings.html
+
+      - name: Upload test recordings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe-dev-recordings-${{ github.sha }}
+          path: recordings.html
+          retention-days: 7
+        continue-on-error: true
+
       - name: destroy ephemeral vm
         if: always()
         run: |

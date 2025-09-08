@@ -644,7 +644,7 @@ func cinemaOptsForTest(t *testing.T) []expect.ConsoleOpt {
 		filename := strings.ReplaceAll(testName, "/", "_") + ".cast"
 
 		const width = 120
-		const height = 40
+		const height = 32
 		var err error
 		writer, err = expect.NewAsciinemaWriter(filename, width, height)
 		if err != nil {
