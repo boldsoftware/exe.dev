@@ -375,8 +375,52 @@ fi
 sudo tar -xzf cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz -C /opt/cni/bin
 rm cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz
 
-# Note: We don't configure CNI networks here
-# exe creates per-allocation networks (exe-<allocID>) with subnets from 10.42.0.0/16 - 10.99.0.0/16
+# Configure default CNI network for nerdctl (without firewall and tuning plugins)
+# This simplifies the network configuration and matches what works on AWS
+sudo mkdir -p /etc/cni/net.d
+cat <<'EOF' | sudo tee /etc/cni/net.d/nerdctl-bridge.conflist >/dev/null
+{
+  "cniVersion": "1.0.0",
+  "name": "bridge",
+  "nerdctlID": "17f29b073143d8cd97b5bbe492bdeffec1c5fee55cc1fe2112c8b9335f8b6121",
+  "nerdctlLabels": {
+    "nerdctl/default-network": "true"
+  },
+  "plugins": [
+    {
+      "type": "bridge",
+      "bridge": "nerdctl0",
+      "isGateway": true,
+      "ipMasq": true,
+      "hairpinMode": true,
+      "ipam": {
+        "ranges": [
+          [
+            {
+              "gateway": "10.4.0.1",
+              "subnet": "10.4.0.0/24"
+            }
+          ]
+        ],
+        "routes": [
+          {
+            "dst": "0.0.0.0/0"
+          }
+        ],
+        "type": "host-local"
+      }
+    },
+    {
+      "type": "portmap",
+      "capabilities": {
+        "portMappings": true
+      }
+    }
+  ]
+}
+EOF
+
+# Note: exe creates per-allocation networks (exe-<allocID>) with subnets from 10.42.0.0/16 - 10.99.0.0/16
 
 echo "=== Setting up containerd permissions ==="
 

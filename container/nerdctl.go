@@ -597,7 +597,8 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 	}
 	subnet := ipRange
 
-	// Create network (idempotent). Avoid an extra ls call; treat "already exists" as success
+	// First try to create the network using nerdctl
+	// This will create the basic network structure
 	createCmd := m.execNerdctl(ctx, host,
 		"network", "create", networkName,
 		"--subnet", subnet,
@@ -610,6 +611,31 @@ func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string,
 			created = false
 		} else {
 			return "", fmt.Errorf("failed to create network: %w: %s", err, output)
+		}
+	}
+
+	// After creating the network, remove the firewall and tuning plugins from the CNI config
+	// These plugins can cause issues on AWS and are not needed for our use case
+	if created {
+		// The CNI config file is typically at /etc/cni/net.d/exe/nerdctl-<networkName>.conflist
+		configPath := fmt.Sprintf("/etc/cni/net.d/exe/nerdctl-%s.conflist", networkName)
+
+		// Read the current config, remove firewall and tuning plugins, and write it back
+		removePluginsScript := fmt.Sprintf(`
+if [ -f "%s" ]; then
+	# Use jq to remove firewall and tuning plugins from the plugins array
+	jq '.plugins = [.plugins[] | select(.type != "firewall" and .type != "tuning")]' "%s" > /tmp/cni-temp.json && \
+	mv /tmp/cni-temp.json "%s"
+fi
+`, configPath, configPath, configPath)
+
+		removeCmd := m.ExecSSHCommand(ctx, host, "bash", "-c", removePluginsScript)
+		if output, err := removeCmd.CombinedOutput(); err != nil {
+			// Log the error but don't fail - the network might still work
+			slog.Warn("Failed to remove firewall/tuning plugins from CNI config",
+				"network", networkName,
+				"error", err,
+				"output", string(output))
 		}
 	}
 
