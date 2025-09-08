@@ -109,10 +109,7 @@ func (hu *HostUpdater) handleTagUpdate(ctx context.Context, update TagUpdate) {
 	// Pull on each host
 	var wg sync.WaitGroup
 	for _, host := range hu.hosts {
-		wg.Add(1)
-		go func(host string) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			if err := hu.pullImageOnHost(ctx, host, imageRef); err != nil {
 				log.Printf("Failed to pull %s on host %s: %v", imageRef, host, err)
 			} else {
@@ -122,7 +119,7 @@ func (hu *HostUpdater) handleTagUpdate(ctx context.Context, update TagUpdate) {
 				hu.resolver.IncrementSeenOnHosts(ctx,
 					update.Registry, update.Repository, update.Tag, update.Platform)
 			}
-		}(host)
+		})
 	}
 
 	// Wait for all pulls to complete
