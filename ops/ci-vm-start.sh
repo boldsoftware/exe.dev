@@ -68,9 +68,10 @@ SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH}"
 SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
 LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH}.qcow2"
 SNAPSHOT_AVAILABLE=0
-if [[ -f "${SNAPSHOT_BASE}" ]]; then
-	SNAPSHOT_AVAILABLE=1
-fi
+# TODO: reenable when snapshots are stable
+#if [[ -f "${SNAPSHOT_BASE}" ]]; then
+#	SNAPSHOT_AVAILABLE=1
+#fi
 
 if [[ ! -f "${BASE_IMG}" ]]; then
 	echo "Base image not found: ${BASE_IMG}" >&2
