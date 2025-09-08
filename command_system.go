@@ -6,11 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"regexp"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/anmitsu/go-shlex"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/gliderlabs/ssh"
 	"golang.org/x/term"
 )
@@ -271,36 +271,21 @@ func (ct *CommandTree) GetAvailableCommands(ctx *CommandContext) []*Command {
 // ANSIFilterWriter wraps an io.Writer and removes ANSI escape sequences
 type ANSIFilterWriter struct {
 	writer io.Writer
-	ansiRe *regexp.Regexp
 }
 
 // NewANSIFilterWriter creates a new FilterWriter that removes ANSI control characters
 func NewANSIFilterWriter(w io.Writer) *ANSIFilterWriter {
-	// This regex matches ANSI escape sequences:
-	// \x1b\[ matches the ESC[ sequence (or \033[)
-	// [0-9;]*[a-zA-Z] matches parameters followed by a command letter
-	// Also matches \x1b\([0-9;]*[a-zA-Z] for some other escape sequences
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\([0-9;]*[a-zA-Z]|\x1b[=>]|\x1b[0-9;]*[a-zA-Z]`)
-
-	return &ANSIFilterWriter{
-		writer: w,
-		ansiRe: ansiRegex,
-	}
+	return &ANSIFilterWriter{writer: w}
 }
 
 // Write implements io.Writer interface
 func (fw *ANSIFilterWriter) Write(p []byte) (n int, err error) {
-	// Remove ANSI escape sequences
-	cleaned := fw.ansiRe.ReplaceAll(p, []byte{})
-
-	// Write the cleaned data to the underlying writer
+	cleaned := []byte(ansi.Strip(string(p)))
 	_, err = fw.writer.Write(cleaned)
 	if err != nil {
 		return 0, err
 	}
-
-	// Return the number of bytes from the original input that were "written"
-	// This maintains the io.Writer contract
+	// Pretend we wrote all the original bytes.
 	return len(p), nil
 }
 
