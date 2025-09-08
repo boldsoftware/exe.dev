@@ -118,7 +118,7 @@ func TestContainerIntegrationSuite(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			req := &CreateContainerRequest{
 				AllocID: allocID,
-					Name:    fmt.Sprintf("c%d", i),
+				Name:    fmt.Sprintf("c%d", i),
 				Image:   "alpine:latest",
 				BoxID:   GenerateTestBoxID(),
 			}

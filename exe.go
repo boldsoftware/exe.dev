@@ -373,7 +373,6 @@ type Server struct {
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
 
-
 	mu       sync.RWMutex
 	stopping bool
 }
