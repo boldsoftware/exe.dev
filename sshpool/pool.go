@@ -27,7 +27,7 @@ type Connection struct {
 // Pool manages persistent SSH connections
 type Pool struct {
 	connections map[string]*Connection
-	mu          sync.RWMutex
+	mu          sync.Mutex
 	baseDir     string
 	bypassUntil map[string]time.Time
 }
@@ -99,15 +99,13 @@ func (p *Pool) getConnection(ctx context.Context, host string) (*Connection, err
 	host = strings.TrimPrefix(host, "ssh://")
 
 	// If we've recently decided to bypass ControlMaster for this host, bail out early
-	if until, ok := p.bypassUntil[host]; ok {
-		if time.Now().Before(until) {
-			return nil, fmt.Errorf("bypassing ControlMaster for %s until %s", host, until.Format(time.RFC3339))
-		}
-		delete(p.bypassUntil, host)
+	if p.shouldBypass(host) {
+		return nil, fmt.Errorf("bypassing ControlMaster for %s", host)
 	}
-	p.mu.RLock()
+
+	p.mu.Lock()
 	conn, exists := p.connections[host]
-	p.mu.RUnlock()
+	p.mu.Unlock()
 
 	if exists {
 		// Check if the connection is still alive
@@ -191,11 +189,12 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 		}
 	}
 
+WaitForSocket:
 	for time.Since(startWait) < maxWait {
 		// Allow early exit if the caller cancels
 		select {
 		case <-ctx.Done():
-			break
+			break WaitForSocket
 		default:
 		}
 
@@ -219,7 +218,7 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 		cancel()
 		masterCmd.Process.Kill()
 		// Avoid repeatedly attempting ControlMaster on environments where it doesn't work
-		p.bypassUntil[host] = time.Now().Add(30 * time.Minute)
+		p.bypassHostLocked(host)
 		return nil, fmt.Errorf("SSH control socket not created for %s: %w", host, err)
 	}
 
@@ -262,6 +261,29 @@ func (p *Pool) isConnectionAlive(conn *Connection) bool {
 	return strings.TrimSpace(string(output)) == "alive"
 }
 
+func (p *Pool) shouldBypass(host string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	until, ok := p.bypassUntil[host]
+	if ok {
+		if time.Now().Before(until) {
+			return true
+		}
+		delete(p.bypassUntil, host) // clean up expired entry
+	}
+	return false
+}
+
+func (p *Pool) bypassHost(host string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.bypassHostLocked(host)
+}
+
+func (p *Pool) bypassHostLocked(host string) {
+	p.bypassUntil[host] = time.Now().Add(30 * time.Minute)
+}
+
 // ExecCommand executes a command through a pooled SSH connection
 func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
 	// Ensure we have a bounded context to avoid very long DNS waits on invalid hosts.
@@ -279,11 +301,9 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 	}
 	// Normalize host and check bypass cache
 	normHost := strings.TrimPrefix(host, "ssh://")
-	if until, ok := p.bypassUntil[normHost]; ok {
-		if time.Now().Before(until) {
-			return p.execDirectSSH(ctx, host, args...)
-		}
-		delete(p.bypassUntil, normHost)
+	shouldBypass := p.shouldBypass(normHost)
+	if shouldBypass {
+		return p.execDirectSSH(ctx, host, args...)
 	}
 
 	// Get or create connection
@@ -291,7 +311,7 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 	if err != nil {
 		slog.Info("[SSH-POOL] Failed to get connection", "host", host, "error", err)
 		// Fall back to direct SSH and remember to bypass for a while
-		p.bypassUntil[normHost] = time.Now().Add(30 * time.Minute)
+		p.bypassHost(normHost)
 		return p.execDirectSSH(ctx, host, args...)
 	}
 
@@ -412,10 +432,7 @@ func (p *Pool) SCP(ctx context.Context, host string, remoteDest string, localPat
 	}
 
 	// Parse SSH host if needed
-	sshHost := host
-	if strings.HasPrefix(sshHost, "ssh://") {
-		sshHost = strings.TrimPrefix(sshHost, "ssh://")
-	}
+	sshHost := strings.TrimPrefix(host, "ssh://")
 
 	// Get or create the connection to ensure control socket exists
 	conn, err := p.getConnection(ctx, host)
