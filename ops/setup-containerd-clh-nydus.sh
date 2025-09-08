@@ -375,7 +375,7 @@ fi
 sudo tar -xzf cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz -C /opt/cni/bin
 rm cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz
 
-# Configure default CNI network for nerdctl (without firewall and tuning plugins)
+# Configure default CNI network for nerdctl with a larger subnet for thousands of containers
 # This simplifies the network configuration and matches what works on AWS
 sudo mkdir -p /etc/cni/net.d
 cat <<'EOF' | sudo tee /etc/cni/net.d/nerdctl-bridge.conflist >/dev/null
@@ -392,13 +392,13 @@ cat <<'EOF' | sudo tee /etc/cni/net.d/nerdctl-bridge.conflist >/dev/null
       "bridge": "nerdctl0",
       "isGateway": true,
       "ipMasq": true,
-      "hairpinMode": true,
+      "hairpinMode": false,
       "ipam": {
         "ranges": [
           [
             {
               "gateway": "10.4.0.1",
-              "subnet": "10.4.0.0/24"
+              "subnet": "10.4.0.0/16"
             }
           ]
         ],
@@ -420,7 +420,7 @@ cat <<'EOF' | sudo tee /etc/cni/net.d/nerdctl-bridge.conflist >/dev/null
 }
 EOF
 
-# Note: exe creates per-allocation networks (exe-<allocID>) with subnets from 10.42.0.0/16 - 10.99.0.0/16
+# Note: All containers now use the default bridge network with port isolation for security
 
 echo "=== Setting up containerd permissions ==="
 
@@ -510,16 +510,101 @@ fi
 # Create the exe namespace
 sudo ctr namespace create exe 2>/dev/null || true
 
-echo "=== Configuring network settings ==="
+echo "=== Configuring network settings and isolation ==="
 
 # Enable IP forwarding (required for NAT)
 sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf >/dev/null
 
-# Note: Network isolation for each alloc is handled by exed when creating allocations
-# Each exe-<allocID> network gets iptables rules via setupNetworkSecurity()
+# Set up network isolation using bridge port isolation
+# This is more efficient than iptables and works better with Kata containers
+CONTAINER_SUBNET="10.4.0.0/16"
+BRIDGE_NAME="nerdctl0"
 
-echo "Network settings configured"
+# Create a script to apply port isolation and minimal iptables rules
+cat <<'ISOLATION_SCRIPT' | sudo tee /usr/local/bin/setup-container-isolation.sh >/dev/null
+#!/bin/bash
+set -e
+
+CONTAINER_SUBNET="10.4.0.0/16"
+BRIDGE_NAME="nerdctl0"
+
+# Wait for bridge to exist (it's created by CNI when first container starts)
+if ip link show $BRIDGE_NAME >/dev/null 2>&1; then
+    # Enable VLAN filtering on the bridge for port isolation
+    if ! ip -d link show $BRIDGE_NAME 2>/dev/null | grep -q "vlan_filtering 1"; then
+        ip link set $BRIDGE_NAME type bridge vlan_filtering 1
+        echo "Enabled VLAN filtering on $BRIDGE_NAME"
+    fi
+    
+    # Apply port isolation to all existing container interfaces
+    for veth in $(bridge link show 2>/dev/null | grep "master $BRIDGE_NAME" | cut -d: -f2 | cut -d@ -f1); do
+        bridge link set dev $veth isolated on flood off mcast_flood off bcast_flood off 2>/dev/null || true
+        echo "Applied port isolation to $veth"
+    done
+fi
+
+# Set up minimal iptables rules for host and network protection
+# Function to add iptables rule if it doesn't exist
+add_rule() {
+    if ! iptables -C "$@" 2>/dev/null; then
+        iptables -A "$@"
+        echo "Added rule: iptables -A $*"
+    fi
+}
+
+# Protect the host from container-initiated connections
+add_rule INPUT -s $CONTAINER_SUBNET -m conntrack --ctstate NEW -j DROP
+add_rule INPUT -s $CONTAINER_SUBNET -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Block containers from accessing private networks and metadata services
+add_rule FORWARD -s $CONTAINER_SUBNET -d 192.168.0.0/16 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 172.16.0.0/12 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.0.0.0/14 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.5.0.0/16 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.6.0.0/15 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.8.0.0/13 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.16.0.0/12 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.32.0.0/11 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.64.0.0/10 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 10.128.0.0/9 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 169.254.169.254/32 -j DROP
+add_rule FORWARD -s $CONTAINER_SUBNET -d 169.254.0.0/16 -j DROP
+
+# Block Tailscale interfaces if they exist
+for iface in tailscale0 utun0 utun1 utun2 utun3; do
+    if ip link show $iface >/dev/null 2>&1; then
+        add_rule FORWARD -s $CONTAINER_SUBNET -o $iface -j DROP
+        add_rule FORWARD -i $iface -d $CONTAINER_SUBNET -j DROP
+    fi
+done
+
+echo "Container isolation rules applied successfully"
+ISOLATION_SCRIPT
+
+sudo chmod +x /usr/local/bin/setup-container-isolation.sh
+
+# Apply the isolation rules now
+sudo /usr/local/bin/setup-container-isolation.sh
+
+# Note: Port isolation for individual containers is now handled by the container manager
+# during container creation, so no monitoring service is needed
+
+# Ensure rules persist across reboots
+if ! grep -q setup-container-isolation /etc/rc.local 2>/dev/null; then
+	if [ ! -f /etc/rc.local ]; then
+		echo '#!/bin/sh -e' | sudo tee /etc/rc.local >/dev/null
+	fi
+	# Add before exit 0 if it exists, otherwise append
+	if grep -q "^exit 0" /etc/rc.local; then
+		sudo sed -i '/^exit 0/i /usr/local/bin/setup-container-isolation.sh' /etc/rc.local
+	else
+		echo '/usr/local/bin/setup-container-isolation.sh' | sudo tee -a /etc/rc.local >/dev/null
+	fi
+	sudo chmod +x /etc/rc.local
+fi
+
+echo "Network settings and isolation configured"
 
 echo "=== Configuring SSH MaxSessions ==="
 

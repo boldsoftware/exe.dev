@@ -43,10 +43,9 @@ type NerdctlManager struct {
 		m  map[string]chan struct{}
 	}
 
-	mu            sync.RWMutex
-	sshTunnels    map[string]*exec.Cmd // containerID -> SSH tunnel command
-	allocNetworks map[string]bool      // Track which alloc networks exist
-	sshPool       *sshpool.Pool        // Pool of persistent SSH connections
+	mu         sync.RWMutex
+	sshTunnels map[string]*exec.Cmd // containerID -> SSH tunnel command
+	sshPool    *sshpool.Pool        // Pool of persistent SSH connections
 
 	// Tag resolver for image digest management (optional)
 	tagResolver *tagresolver.TagResolver
@@ -82,13 +81,12 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	manager := &NerdctlManager{
-		config:        config,
-		hosts:         config.ContainerdAddresses,
-		sshTunnels:    make(map[string]*exec.Cmd),
-		allocNetworks: make(map[string]bool),
-		sshPool:       sshpool.New(),
-		annSupport:    make(map[string]bool),
-		imageCache:    make(map[string]*ImageConfig),
+		config:     config,
+		hosts:      config.ContainerdAddresses,
+		sshTunnels: make(map[string]*exec.Cmd),
+		sshPool:    sshpool.New(),
+		annSupport: make(map[string]bool),
+		imageCache: make(map[string]*ImageConfig),
 	}
 
 	// Verify Kata runtime is available on all hosts
@@ -485,23 +483,11 @@ func (m *NerdctlManager) selectHost(ctx context.Context, allocID string) (ctrHos
 	return ctrHost, releaseFn, nil
 }
 
-// CreateAlloc creates the network infrastructure for an allocation
-// This should be called during account verification, before any containers are created
+// CreateAlloc is now a no-op since we use a single default bridge network
+// Kept for API compatibility but can be removed in the future
 func (m *NerdctlManager) CreateAlloc(ctx context.Context, allocID string, ipRange string) error {
-	// Select a host for the allocation
-	host, releaseFn, err := m.selectHost(ctx, allocID)
-	if err != nil {
-		return err
-	}
-	defer releaseFn()
-
-	// Create the network and wait for it to be ready
-	_, err = m.ensureAllocNetwork(ctx, allocID, ipRange, host)
-	if err != nil {
-		return fmt.Errorf("failed to create allocation network: %w", err)
-	}
-
-	slog.Info("Created allocation network", "allocID", allocID, "ipRange", ipRange)
+	// No longer need to create per-allocation networks
+	// All containers use the default bridge network with iptables isolation
 	return nil
 }
 
@@ -510,224 +496,21 @@ func (m *NerdctlManager) GetHosts() []string {
 	return m.hosts
 }
 
-// ListAllocs returns all allocation networks currently on the specified host
+// ListAllocs is now a no-op since we don't use per-allocation networks
+// Kept for API compatibility but can be removed in the future
 func (m *NerdctlManager) ListAllocs(ctx context.Context, host string) ([]string, error) {
-	// List all networks that match our exe-* naming pattern
-	cmd := m.execNerdctl(ctx, host, "network", "ls", "--format", "{{.Name}}")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list networks: %w", err)
-	}
-
-	var allocIDs []string
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "exe-") && line != "exe-bridge" {
-			// Extract allocID from network name (exe-<allocID>)
-			allocID := strings.TrimPrefix(line, "exe-")
-			allocIDs = append(allocIDs, allocID)
-		}
-	}
-
-	return allocIDs, nil
+	// No longer using per-allocation networks
+	return []string{}, nil
 }
 
-// DeleteAlloc removes the network for an allocation that is no longer in the database
+// DeleteAlloc is now a no-op since we don't use per-allocation networks
+// Kept for API compatibility but can be removed in the future
 func (m *NerdctlManager) DeleteAlloc(ctx context.Context, allocID string, host string) error {
-	// Limit network name length, but handle shorter allocIDs
-	nameLen := len(allocID)
-	if nameLen > 12 {
-		nameLen = 12
-	}
-	networkName := fmt.Sprintf("exe-%s", allocID[:nameLen])
-
-	// First, remove any containers still using this network
-	// List containers in the network
-	listCmd := m.execNerdctl(ctx, host, "ps", "-a", "--format", "{{.Names}}", "--filter", fmt.Sprintf("network=%s", networkName))
-	if output, err := listCmd.Output(); err == nil {
-		containers := strings.Split(strings.TrimSpace(string(output)), "\n")
-		for _, container := range containers {
-			container = strings.TrimSpace(container)
-			if container != "" {
-				// Force remove the container
-				rmCmd := m.execNerdctl(ctx, host, "rm", "-f", container)
-				if _, err := rmCmd.Output(); err != nil {
-					slog.Warn("Failed to remove container from deleted alloc", "container", container, "error", err)
-				}
-			}
-		}
-	}
-
-	// Delete the network
-	deleteCmd := m.execNerdctl(ctx, host, "network", "rm", networkName)
-	if output, err := deleteCmd.CombinedOutput(); err != nil {
-		// If network doesn't exist, that's fine
-		if !strings.Contains(string(output), "not found") {
-			return fmt.Errorf("failed to delete network: %w: %s", err, output)
-		}
-	}
-
-	// Update our cache
-	m.mu.Lock()
-	delete(m.allocNetworks, networkName)
-	m.mu.Unlock()
-
-	slog.Info("Deleted allocation network", "allocID", allocID, "network", networkName)
+	// No longer using per-allocation networks
+	// Container cleanup is handled separately
 	return nil
 }
 
-// ensureAllocNetwork ensures a network exists for the allocation
-func (m *NerdctlManager) ensureAllocNetwork(ctx context.Context, allocID string, ipRange string, host string) (string, error) {
-	// Limit network name length, but handle shorter allocIDs
-	nameLen := min(len(allocID), 12)
-	networkName := fmt.Sprintf("exe-%s", allocID[:nameLen])
-
-	m.mu.Lock()
-	exists := m.allocNetworks[networkName]
-	m.mu.Unlock()
-
-	if exists {
-		return networkName, nil
-	}
-
-	// IP range must be provided from the database
-	if ipRange == "" {
-		return "", fmt.Errorf("no IP range assigned to allocation %s", allocID)
-	}
-	subnet := ipRange
-
-	// First try to create the network using nerdctl
-	// This will create the basic network structure
-	createCmd := m.execNerdctl(ctx, host,
-		"network", "create", networkName,
-		"--subnet", subnet,
-		"--driver", "bridge",
-	)
-	created := true
-	if output, err := createCmd.CombinedOutput(); err != nil {
-		// Network might already exist, which is fine
-		if strings.Contains(string(output), "already exists") {
-			created = false
-		} else {
-			return "", fmt.Errorf("failed to create network: %w: %s", err, output)
-		}
-	}
-
-	// After creating the network, remove the firewall and tuning plugins from the CNI config
-	// These plugins can cause issues on AWS and are not needed for our use case
-	if created {
-		// The CNI config file is typically at /etc/cni/net.d/exe/nerdctl-<networkName>.conflist
-		configPath := fmt.Sprintf("/etc/cni/net.d/exe/nerdctl-%s.conflist", networkName)
-
-		// Read the current config, remove firewall and tuning plugins, and write it back
-		removePluginsScript := fmt.Sprintf(`
-if [ -f "%s" ]; then
-	# Use jq to remove firewall and tuning plugins from the plugins array
-	jq '.plugins = [.plugins[] | select(.type != "firewall" and .type != "tuning")]' "%s" > /tmp/cni-temp.json && \
-	mv /tmp/cni-temp.json "%s"
-fi
-`, configPath, configPath, configPath)
-
-		removeCmd := m.ExecSSHCommand(ctx, host, "bash", "-c", removePluginsScript)
-		if output, err := removeCmd.CombinedOutput(); err != nil {
-			// Log the error but don't fail - the network might still work
-			slog.Warn("Failed to remove firewall/tuning plugins from CNI config",
-				"network", networkName,
-				"error", err,
-				"output", string(output))
-		}
-	}
-
-	// If we just created the network, verify it's ready before proceeding
-	// This helps avoid "Link not found" errors when Kata tries to attach to the network
-	if created {
-		// Verify the network bridge is actually ready
-		// Sometimes there's a delay between network creation and the bridge being fully initialized
-		var verified bool
-		for i := 0; i < 10; i++ {
-			// Use nerdctl network ls to verify the network exists and is ready
-			verifyCmd := m.execNerdctl(ctx, host, "network", "ls", "--format", "{{.Name}}")
-			if output, err := verifyCmd.Output(); err == nil {
-				if strings.Contains(string(output), networkName) {
-					// Also verify the bridge interface exists on the host
-					bridgeCmd := m.ExecSSHCommand(ctx, host, "ip", "link", "show", "type", "bridge")
-					if bridgeOut, err := bridgeCmd.Output(); err == nil && len(bridgeOut) > 0 {
-						verified = true
-						break
-					}
-				}
-			}
-			// Small delay before retry
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		if !verified {
-			slog.Warn("Network created but verification failed", "network", networkName)
-			// Continue anyway - the network might still work
-		}
-	}
-
-	m.mu.Lock()
-	m.allocNetworks[networkName] = true
-	m.mu.Unlock()
-
-	// Only attempt to add iptables rules on first creation to reduce SSH round-trips
-	if created {
-		if err := m.setupNetworkSecurity(ctx, host, subnet); err != nil {
-			slog.Warn("Failed to set up network security", "network", networkName, "error", err)
-		}
-	}
-
-	return networkName, nil
-}
-
-// setupNetworkSecurity sets up iptables rules to restrict network access
-func (m *NerdctlManager) setupNetworkSecurity(ctx context.Context, host string, subnet string) error {
-	// Build a single idempotent shell script to minimize SSH round-trips.
-	// Use -C (check) to avoid duplicates, falling back to insert if not present.
-	var b strings.Builder
-	b.WriteString("set -e\n")
-	add := func(args ...string) {
-		// Build: iptables -C <rule> || iptables -I <rule>
-		check := append([]string{"iptables", "-C"}, args...)
-		insert := append([]string{"iptables", "-I"}, args...)
-		b.WriteString(strings.Join(check, " "))
-		b.WriteString(" || ")
-		b.WriteString(strings.Join(insert, " "))
-		b.WriteString("\n")
-	}
-
-	// Block container-to-container communication within the same allocation
-	// We need to find the bridge name for this subnet
-	b.WriteString(fmt.Sprintf(`BRIDGE=$(ip -4 addr show | grep '%s' | awk '{print $NF}')\n`, subnet))
-	b.WriteString(`if [ -n "$BRIDGE" ]; then\n`)
-	b.WriteString(`  iptables -C FORWARD -i $BRIDGE -o $BRIDGE -j DROP || iptables -I FORWARD 1 -i $BRIDGE -o $BRIDGE -j DROP\n`)
-	b.WriteString(`fi\n`)
-
-	// Block access to host from container subnet, except established
-	add("INPUT", "-s", subnet, "-j", "DROP")
-	add("INPUT", "-s", subnet, "-m", "state", "--state", "ESTABLISHED,RELATED", "-j", "ACCEPT")
-
-	// Block access to private networks (except container's own subnet)
-	add("FORWARD", "-s", subnet, "-d", "192.168.0.0/16", "-j", "DROP")
-	add("FORWARD", "-s", subnet, "-d", "172.16.0.0/12", "-j", "DROP")
-
-	// Block access to metadata service
-	add("FORWARD", "-s", subnet, "-d", "169.254.169.254", "-j", "DROP")
-
-	// Block Tailscale interfaces if present
-	for _, iface := range []string{"tailscale0", "utun"} {
-		add("FORWARD", "-s", subnet, "-o", iface, "-j", "DROP")
-		add("FORWARD", "-i", iface, "-d", subnet, "-j", "DROP")
-	}
-
-	cmd := m.ExecSSHCommand(ctx, host, "sh", "-c", b.String())
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to apply network security rules: %w: %s", err, output)
-	}
-	return nil
-}
 
 // reportProgress is a helper function to report progress through the appropriate callback
 func reportProgress(req *CreateContainerRequest, phase CreateProgress, imageBytes, downloadedBytes int64, message string) {
@@ -1002,35 +785,9 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	useExetini := true
 	autoStartSSH := true
 
-	// Get the pre-created network name for this allocation
-	nameLen := len(req.AllocID)
-	if nameLen > 12 {
-		nameLen = 12
-	}
-	networkName := fmt.Sprintf("exe-%s", req.AllocID[:nameLen])
-
-	// Verify the network exists (it should have been created during account verification)
-	m.mu.RLock()
-	networkExists := m.allocNetworks[networkName]
-	m.mu.RUnlock()
-
-	if !networkExists {
-		// Network doesn't exist in our cache - try to verify it exists on the host
-		verifyCmd := m.execNerdctl(ctx, host, "network", "ls", "--format", "{{.Name}}")
-		if output, err := verifyCmd.Output(); err == nil {
-			if strings.Contains(string(output), networkName) {
-				// Network exists on host, update our cache
-				m.mu.Lock()
-				m.allocNetworks[networkName] = true
-				m.mu.Unlock()
-				networkExists = true
-			}
-		}
-
-		if !networkExists {
-			return nil, fmt.Errorf("allocation network %s does not exist - was CreateAlloc called during account setup?", networkName)
-		}
-	}
+	// Use the default bridge network for all containers
+	// Container isolation is handled by iptables rules configured during setup
+	networkName := "bridge"
 
 	// Prepare container-specific /exe.dev directory with SSH keys
 	var prep struct {
@@ -1354,6 +1111,68 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	return container, nil
 }
 
+// applyPortIsolation applies bridge port isolation to a container's network interface
+// This prevents containers from communicating with each other on the same bridge
+func (m *NerdctlManager) applyPortIsolation(ctx context.Context, host, containerID string) error {
+	// First, ensure the bridge has VLAN filtering enabled
+	enableVlanCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
+		"if ip link show nerdctl0 >/dev/null 2>&1; then "+
+			"if ! ip -d link show nerdctl0 2>/dev/null | grep -q 'vlan_filtering 1'; then "+
+			"sudo ip link set nerdctl0 type bridge vlan_filtering 1; "+
+			"fi; "+
+			"fi")
+	if err := enableVlanCmd.Run(); err != nil {
+		// Log but don't fail - bridge might not exist yet or already configured
+		slog.Debug("Could not enable VLAN filtering", "error", err)
+	}
+
+	// Get the container's PID to find its network namespace
+	pidCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "{{.State.Pid}}")
+	pidOutput, err := pidCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get container PID: %w", err)
+	}
+	pid := strings.TrimSpace(string(pidOutput))
+	if pid == "" || pid == "0" {
+		return fmt.Errorf("container PID not available")
+	}
+
+	// Find the veth interface on the host side that corresponds to this container
+	// The veth pair will be in the container's network namespace, we need to find the host side
+	findVethCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
+		fmt.Sprintf("sudo nsenter -t %s -n ip link show eth0 2>/dev/null | grep -o 'eth0@if[0-9]*' | grep -o '[0-9]*' || true", pid))
+	vethIndexOutput, err := findVethCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to find veth index: %w", err)
+	}
+	vethIndex := strings.TrimSpace(string(vethIndexOutput))
+	if vethIndex == "" {
+		return fmt.Errorf("could not find veth interface index")
+	}
+
+	// Find the corresponding veth interface on the host
+	findHostVethCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
+		fmt.Sprintf("ip link show | grep '^%s:' | cut -d: -f2 | cut -d@ -f1 | tr -d ' '", vethIndex))
+	hostVethOutput, err := findHostVethCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to find host veth: %w", err)
+	}
+	hostVeth := strings.TrimSpace(string(hostVethOutput))
+	if hostVeth == "" {
+		return fmt.Errorf("could not find host veth interface")
+	}
+
+	// Apply port isolation settings to the veth interface
+	isolateCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
+		fmt.Sprintf("sudo bridge link set dev %s isolated on flood off mcast_flood off bcast_flood off 2>/dev/null || true", hostVeth))
+	if err := isolateCmd.Run(); err != nil {
+		return fmt.Errorf("failed to apply port isolation to %s: %w", hostVeth, err)
+	}
+
+	slog.Info("Applied port isolation", "container", containerID, "interface", hostVeth)
+	return nil
+}
+
 // waitForContainerRunning waits for a container to reach "running" status and returns its IP address
 func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, containerID, networkName string, cleanupFunc func()) (string, error) {
 	startTime := time.Now()
@@ -1433,6 +1252,13 @@ func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, cont
 		m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
 		cleanupFunc()
 		return "", fmt.Errorf("container stuck in %s state after %v", inspectData.State.Status, maxWaitTime)
+	}
+
+	// Apply port isolation to the container's network interface
+	// This prevents containers from communicating with each other on the same bridge
+	if err := m.applyPortIsolation(ctx, host, containerID); err != nil {
+		slog.Warn("Failed to apply port isolation", "container", containerID, "error", err)
+		// Continue anyway - the container is running
 	}
 
 	// Get container IP
