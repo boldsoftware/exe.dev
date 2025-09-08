@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>exe.dev - Sign In</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fffff8;
+            background-image: 
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(0,0,0,0.035) 0px,
+                    rgba(0,0,0,0.035) 2px,
+                    transparent 2px,
+                    transparent 4px
+                );
+            background-size: 4px 4px;
+            font-family: Georgia, 'Times New Roman', serif;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .vm-details {
+            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+        }
+        
+        .vm-hostname {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        
+        .vm-description {
+            font-size: 14px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .email-section {
+            margin-bottom: 30px;
+        }
+        
+        .email-label {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            display: block;
+            text-align: center;
+        }
+        
+        .email-input {
+            width: 100%;
+            font-size: 18px;
+            padding: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            text-align: center;
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        
+        .email-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .continue-button {
+            width: 100%;
+            font-size: 20px;
+            padding: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-family: Georgia, 'Times New Roman', serif;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .continue-button:hover {
+            background-color: #45a049;
+        }
+        
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .back-link a {
+            color: #666;
+            text-decoration: none;
+            font-size: 16px;
+        }
+        
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">exe.dev</div>
+            <div class="subtitle">Almost there!</div>
+        </div>
+        
+        {{if .Hostname}}
+        <div class="vm-details">
+            <div class="vm-hostname">{{.Hostname}}.exe.dev</div>
+            {{if .Description}}
+            <div class="vm-description">{{.Description}}</div>
+            {{end}}
+        </div>
+        {{end}}
+        
+        <form method="POST" action="/m/email-auth">
+            <div class="email-section">
+                <label for="email" class="email-label">Enter your email to continue:</label>
+                <input type="email" 
+                       id="email" 
+                       name="email" 
+                       class="email-input" 
+                       placeholder="you@example.com"
+                       required
+                       autofocus>
+            </div>
+            
+            <button type="submit" class="continue-button">Send Verification Code</button>
+        </form>
+        
+        <div class="back-link">
+            <a href="/m">← Back to VM creation</a>
+        </div>
+    </div>
+</body>
+</html>

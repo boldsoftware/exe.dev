@@ -1083,6 +1083,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/logout":
 		s.handleLogout(w, r)
 	default:
+		// Handle mobile UI routes
+		if strings.HasPrefix(path, "/m") {
+			s.handleMobile(w, r)
+			return
+		}
+
 		if strings.HasPrefix(path, "/auth/") {
 			s.handleAuthCallback(w, r)
 			return
@@ -1895,6 +1901,76 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 	}
 
 	// Clean up used token - use context.Background() to ensure cleanup completes even if client disconnects
+	s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec("DELETE FROM email_verifications WHERE token = ?", token)
+		return err
+	})
+
+	return userID, nil
+}
+
+// storeEmailVerification stores an email verification token
+func (s *Server) storeEmailVerification(ctx context.Context, email, token string) error {
+	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		// Check if user exists, create if not
+		var userID string
+		err := tx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
+		if err != nil {
+			// User doesn't exist, create them
+			userID, err = generateUserID()
+			if err != nil {
+				return fmt.Errorf("failed to generate user ID: %w", err)
+			}
+
+			_, err = tx.Exec("INSERT INTO users (user_id, email) VALUES (?, ?)", userID, email)
+			if err != nil {
+				return fmt.Errorf("failed to create user: %w", err)
+			}
+
+			// Create user allocation
+			allocID, err := generateAllocID()
+			if err != nil {
+				return fmt.Errorf("failed to generate alloc ID: %w", err)
+			}
+
+			ctrhost := s.selectCtrhostForNewAlloc()
+			_, err = tx.Exec(`
+				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost)
+				VALUES (?, ?, 'shared', 'default', ?)
+			`, allocID, userID, ctrhost)
+			if err != nil {
+				return fmt.Errorf("failed to create allocation: %w", err)
+			}
+		}
+
+		// Store verification token
+		expiresAt := time.Now().Add(24 * time.Hour)
+		_, err = tx.Exec(`
+			INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at)
+			VALUES (?, ?, ?, ?)
+		`, token, userID, email, expiresAt)
+		return err
+	})
+}
+
+// validateEmailVerificationByCode validates verification using short code
+func (s *Server) validateEmailVerificationByCode(ctx context.Context, code string) (string, error) {
+	var userID string
+	var token string
+
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT user_id, token 
+			FROM email_verifications 
+			WHERE token LIKE ? AND expires_at > datetime('now')
+			LIMIT 1
+		`, code+"%").Scan(&userID, &token)
+	})
+	if err != nil {
+		return "", fmt.Errorf("invalid or expired code")
+	}
+
+	// Consume the token
 	s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec("DELETE FROM email_verifications WHERE token = ?", token)
 		return err

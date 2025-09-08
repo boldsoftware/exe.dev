@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>exe.dev - Create your VM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fffff8;
+            background-image: 
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(0,0,0,0.035) 0px,
+                    rgba(0,0,0,0.035) 2px,
+                    transparent 2px,
+                    transparent 4px
+                );
+            background-size: 4px 4px;
+            font-family: Georgia, 'Times New Roman', serif;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .tagline {
+            font-size: 16px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .form-section {
+            margin-bottom: 30px;
+        }
+        
+        .hostname-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .hostname-label {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .hostname-input-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .hostname-input {
+            font-size: 20px;
+            padding: 12px 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            font-family: 'Courier New', monospace;
+            min-width: 200px;
+            text-align: center;
+        }
+        
+        .hostname-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .hostname-suffix {
+            font-size: 20px;
+            color: #666;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .hostname-status {
+            margin-top: 10px;
+            min-height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .hostname-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .hostname-check {
+            font-size: 14px;
+        }
+        
+        .hostname-available {
+            color: #4CAF50;
+        }
+        
+        .hostname-unavailable {
+            color: #f44336;
+        }
+        
+        .description-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .description-label {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .description-input {
+            width: 100%;
+            font-size: 16px;
+            padding: 12px 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            resize: vertical;
+            min-height: 80px;
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        
+        .description-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .create-button {
+            width: 100%;
+            font-size: 20px;
+            padding: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-family: Georgia, 'Times New Roman', serif;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .create-button:hover {
+            background-color: #45a049;
+        }
+        
+        .create-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        @media (max-width: 480px) {
+            .hostname-input-group {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .hostname-input {
+                min-width: 250px;
+            }
+            
+            .hostname-suffix {
+                margin-top: -5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">exe.dev</div>
+        </div>
+        
+        <form id="create-vm-form" method="POST" action="/m/create-vm">
+            <div class="hostname-section">
+                <label for="hostname" class="hostname-label">Choose your hostname:</label>
+                <div class="hostname-input-group">
+                    <input type="text" 
+                           id="hostname" 
+                           name="hostname" 
+                           class="hostname-input" 
+                           placeholder="{{.HostnameSuggestion}}"
+                           value="{{.HostnameSuggestion}}"
+                           required>
+                    <span class="hostname-suffix">.exe.dev</span>
+                </div>
+                <div class="hostname-status">
+                    <div class="hostname-spinner" id="hostname-spinner"></div>
+                    <div id="hostname-check" class="hostname-check"></div>
+                </div>
+            </div>
+            
+            <div class="description-section">
+                <label for="description" class="description-label">What do you want to build?</label>
+                <textarea id="description" 
+                         name="description" 
+                         class="description-input" 
+                         placeholder="Build a blog..."
+                         rows="3"></textarea>
+            </div>
+            
+            <button type="submit" class="create-button" id="create-button">Create VM</button>
+        </form>
+    </div>
+    
+    <script>
+        // Placeholder text rotation
+        const placeholders = [
+            "Build a blog...",
+            "Run a Jupyter notebook...",
+            "Deploy a web app...",
+            "Set up a database...",
+            "Create an API...",
+            "Launch a game server...",
+            "Build a chatbot...",
+            "Set up CI/CD..."
+        ];
+        
+        let currentPlaceholderIndex = 0;
+        const descriptionInput = document.getElementById('description');
+        
+        function rotatePlaceholder() {
+            if (descriptionInput.value === '' && document.activeElement !== descriptionInput) {
+                currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholders.length;
+                descriptionInput.placeholder = placeholders[currentPlaceholderIndex];
+            }
+        }
+        
+        setInterval(rotatePlaceholder, 2000);
+        
+        // Hostname availability checking
+        const hostnameInput = document.getElementById('hostname');
+        const hostnameCheck = document.getElementById('hostname-check');
+        const hostnameSpinner = document.getElementById('hostname-spinner');
+        const createButton = document.getElementById('create-button');
+        
+        let checkTimeout;
+        
+        function checkHostnameAvailability() {
+            const hostname = hostnameInput.value.trim();
+            
+            if (!hostname) {
+                hostnameCheck.textContent = '';
+                hostnameCheck.className = 'hostname-check';
+                createButton.disabled = true;
+                return;
+            }
+            
+            // Show spinner
+            hostnameSpinner.style.display = 'block';
+            hostnameCheck.textContent = 'Checking...';
+            hostnameCheck.className = 'hostname-check';
+            
+            fetch('/m/check-hostname', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ hostname: hostname })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hostnameSpinner.style.display = 'none';
+                
+                if (data.valid && data.available) {
+                    hostnameCheck.textContent = '✓ ' + data.message;
+                    hostnameCheck.className = 'hostname-check hostname-available';
+                    createButton.disabled = false;
+                } else {
+                    hostnameCheck.textContent = '✗ ' + data.message;
+                    hostnameCheck.className = 'hostname-check hostname-unavailable';
+                    createButton.disabled = true;
+                }
+            })
+            .catch(error => {
+                hostnameSpinner.style.display = 'none';
+                hostnameCheck.textContent = 'Error checking availability';
+                hostnameCheck.className = 'hostname-check hostname-unavailable';
+                createButton.disabled = true;
+            });
+        }
+        
+        hostnameInput.addEventListener('input', function() {
+            clearTimeout(checkTimeout);
+            checkTimeout = setTimeout(checkHostnameAvailability, 500);
+        });
+        
+        // Check initial hostname
+        checkHostnameAvailability();
+    </script>
+</body>
+</html>

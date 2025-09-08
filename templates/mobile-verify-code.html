@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>exe.dev - Verify Code</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fffff8;
+            background-image: 
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(0,0,0,0.035) 0px,
+                    rgba(0,0,0,0.035) 2px,
+                    transparent 2px,
+                    transparent 4px
+                );
+            background-size: 4px 4px;
+            font-family: Georgia, 'Times New Roman', serif;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 30px;
+        }
+        
+        .error-message {
+            background-color: #ffebee;
+            border: 1px solid #f44336;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .code-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .code-label {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .code-input {
+            width: 100%;
+            font-size: 24px;
+            padding: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+        }
+        
+        .code-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .verify-button {
+            width: 100%;
+            font-size: 18px;
+            padding: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-family: Georgia, 'Times New Roman', serif;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .verify-button:hover {
+            background-color: #45a049;
+        }
+        
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .back-link a {
+            color: #666;
+            text-decoration: none;
+            font-size: 16px;
+        }
+        
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">exe.dev</div>
+            <div class="title">Enter verification code</div>
+        </div>
+        
+        {{if .Error}}
+        <div class="error-message">
+            {{.Error}}
+        </div>
+        {{end}}
+        
+        <div class="message">
+            Please enter the verification code from your email.
+        </div>
+        
+        <form method="POST" action="/m/verify-code">
+            <div class="code-section">
+                <label for="code" class="code-label">Verification code:</label>
+                <input type="text" 
+                       id="code" 
+                       name="code" 
+                       class="code-input" 
+                       placeholder="Enter code"
+                       maxlength="8"
+                       required
+                       autofocus>
+            </div>
+            
+            <button type="submit" class="verify-button">Verify Code</button>
+        </form>
+        
+        <div class="back-link">
+            <a href="/m">← Start over</a>
+        </div>
+    </div>
+</body>
+</html>

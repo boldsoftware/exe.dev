@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>exe.dev - Check Your Email</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fffff8;
+            background-image: 
+                repeating-linear-gradient(
+                    0deg,
+                    rgba(0,0,0,0.035) 0px,
+                    rgba(0,0,0,0.035) 2px,
+                    transparent 2px,
+                    transparent 4px
+                );
+            background-size: 4px 4px;
+            font-family: Georgia, 'Times New Roman', serif;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .check-email-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .message {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.5;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .email-highlight {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .or-divider {
+            text-align: center;
+            margin: 30px 0;
+            position: relative;
+        }
+        
+        .or-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background-color: #ddd;
+        }
+        
+        .or-text {
+            background-color: #fffff8;
+            padding: 0 15px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .code-section {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .code-label {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .code-input {
+            width: 100%;
+            font-size: 24px;
+            padding: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+        }
+        
+        .code-input:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+        
+        .verify-button {
+            width: 100%;
+            font-size: 18px;
+            padding: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-family: Georgia, 'Times New Roman', serif;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-bottom: 20px;
+        }
+        
+        .verify-button:hover {
+            background-color: #45a049;
+        }
+        
+        .resend-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .resend-link a {
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .resend-link a:hover {
+            text-decoration: underline;
+        }
+        
+        .dev-link {
+            background-color: rgba(255, 235, 59, 0.2);
+            border: 1px solid #FFC107;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .dev-link a {
+            color: #F57F17;
+            text-decoration: none;
+            font-weight: bold;
+            word-break: break-all;
+        }
+        
+        .dev-link a:hover {
+            text-decoration: underline;
+        }
+        
+        .dev-note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">exe.dev</div>
+            <div class="check-email-icon">📧</div>
+            <div class="title">Check your email</div>
+        </div>
+        
+        <div class="message">
+            We've sent a verification link to<br>
+            <span class="email-highlight">{{.Email}}</span>
+        </div>
+        
+        {{if .DevURL}}
+        <div class="dev-link">
+            <div>Development shortcut:</div>
+            <a href="{{.DevURL}}">Click here to verify</a>
+            <div class="dev-note">This link only appears in dev mode</div>
+        </div>
+        {{end}}
+        
+        <div class="or-divider">
+            <span class="or-text">or enter the code manually</span>
+        </div>
+        
+        <form method="POST" action="/m/verify-code">
+            <div class="code-section">
+                <label for="code" class="code-label">Enter verification code:</label>
+                <input type="text" 
+                       id="code" 
+                       name="code" 
+                       class="code-input" 
+                       placeholder="{{.Code}}"
+                       maxlength="8"
+                       required>
+            </div>
+            
+            <button type="submit" class="verify-button">Verify Code</button>
+        </form>
+        
+        <div class="resend-link">
+            <a href="/m">Resend email</a>
+        </div>
+    </div>
+</body>
+</html>
