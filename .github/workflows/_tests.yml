@@ -45,7 +45,7 @@ jobs:
           echo "TEST_SSH_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
 
       - name: Run tests
-        run: gotestsum --format testname -- ./...
+        run: gotestsum --format testname -- -race ./...
 
       - name: destroy ephemeral vm
         if: always()
