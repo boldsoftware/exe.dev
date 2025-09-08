@@ -1,0 +1,118 @@
+httprr trace v1
+455 1424
+POST https://api.anthropic.com/v1/messages HTTP/1.1
+Host: api.anthropic.com
+User-Agent: Go-http-client/1.1
+Content-Length: 259
+Anthropic-Version: 2023-06-01
+Content-Type: application/json
+
+{
+ "model": "claude-sonnet-4-20250514",
+ "messages": [
+  {
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "Hi, my name is Cornelius",
+     "cache_control": {
+      "type": "ephemeral"
+     }
+    }
+   ]
+  }
+ ],
+ "max_tokens": 8192
+}HTTP/2.0 200 OK
+Anthropic-Organization-Id: 3c473a21-7208-450a-a9f8-80aebda45c1b
+Anthropic-Ratelimit-Input-Tokens-Limit: 200000
+Anthropic-Ratelimit-Input-Tokens-Remaining: 200000
+Anthropic-Ratelimit-Input-Tokens-Reset: 2025-05-24T19:27:38Z
+Anthropic-Ratelimit-Output-Tokens-Limit: 80000
+Anthropic-Ratelimit-Output-Tokens-Remaining: 80000
+Anthropic-Ratelimit-Output-Tokens-Reset: 2025-05-24T19:27:38Z
+Anthropic-Ratelimit-Requests-Limit: 4000
+Anthropic-Ratelimit-Requests-Remaining: 3999
+Anthropic-Ratelimit-Requests-Reset: 2025-05-24T19:27:36Z
+Anthropic-Ratelimit-Tokens-Limit: 280000
+Anthropic-Ratelimit-Tokens-Remaining: 280000
+Anthropic-Ratelimit-Tokens-Reset: 2025-05-24T19:27:38Z
+Cf-Cache-Status: DYNAMIC
+Cf-Ray: 944f30fd0f0a15d4-SJC
+Content-Type: application/json
+Date: Sat, 24 May 2025 19:27:38 GMT
+Request-Id: req_011CPSuX337qwfNzNzGSwG3b
+Server: cloudflare
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+Via: 1.1 google
+X-Robots-Tag: none
+
+{"id":"msg_01L127Hi3H8X613Fh8HojDgk","type":"message","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Hello Cornelius! It's nice to meet you. How are you doing today? Is there anything I can help you with?"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":15,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":30,"service_tier":"standard"}}775 1394
+POST https://api.anthropic.com/v1/messages HTTP/1.1
+Host: api.anthropic.com
+User-Agent: Go-http-client/1.1
+Content-Length: 579
+Anthropic-Version: 2023-06-01
+Content-Type: application/json
+
+{
+ "model": "claude-sonnet-4-20250514",
+ "messages": [
+  {
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "Hi, my name is Cornelius"
+    }
+   ]
+  },
+  {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "text",
+     "text": "Hello Cornelius! It's nice to meet you. How are you doing today? Is there anything I can help you with?"
+    }
+   ]
+  },
+  {
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "What is my name?",
+     "cache_control": {
+      "type": "ephemeral"
+     }
+    }
+   ]
+  }
+ ],
+ "max_tokens": 8192
+}HTTP/2.0 200 OK
+Anthropic-Organization-Id: 3c473a21-7208-450a-a9f8-80aebda45c1b
+Anthropic-Ratelimit-Input-Tokens-Limit: 200000
+Anthropic-Ratelimit-Input-Tokens-Remaining: 200000
+Anthropic-Ratelimit-Input-Tokens-Reset: 2025-05-24T19:27:39Z
+Anthropic-Ratelimit-Output-Tokens-Limit: 80000
+Anthropic-Ratelimit-Output-Tokens-Remaining: 80000
+Anthropic-Ratelimit-Output-Tokens-Reset: 2025-05-24T19:27:40Z
+Anthropic-Ratelimit-Requests-Limit: 4000
+Anthropic-Ratelimit-Requests-Remaining: 3999
+Anthropic-Ratelimit-Requests-Reset: 2025-05-24T19:27:38Z
+Anthropic-Ratelimit-Tokens-Limit: 280000
+Anthropic-Ratelimit-Tokens-Remaining: 280000
+Anthropic-Ratelimit-Tokens-Reset: 2025-05-24T19:27:39Z
+Cf-Cache-Status: DYNAMIC
+Cf-Ray: 944f31098c9e15d4-SJC
+Content-Type: application/json
+Date: Sat, 24 May 2025 19:27:40 GMT
+Request-Id: req_011CPSuXBim8ntiKJDjvFUWG
+Server: cloudflare
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+Via: 1.1 google
+X-Robots-Tag: none
+
+{"id":"msg_01TiEuRrzLgJEfBUNhZ9Am3B","type":"message","role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Your name is Cornelius, as you introduced yourself in your first message."}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":53,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":19,"service_tier":"standard"}}
