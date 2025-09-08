@@ -602,7 +602,7 @@ func (p *expectPty) attach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true}
 }
 
-func makePty(t *testing.T) *expectPty {
+func makePty(t *testing.T, name string) *expectPty {
 	t.Helper()
 	opts := []expect.ConsoleOpt{
 		expect.WithDefaultRefreshingTimeout(5 * time.Second),
@@ -623,6 +623,13 @@ func makePty(t *testing.T) *expectPty {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sshConsole.Close() })
+
+	// Write marker to asciinema recording when new PTY is created
+	if *flagCinema && sshConsole.IsRecording() {
+		box := fmt.Sprintf("\n\n●\r\n● %s\r\n●\r\n\n", name)
+		sshConsole.WriteAsciinemaMarker(box)
+	}
+
 	return &expectPty{t: t, console: sshConsole}
 }
 
@@ -767,10 +774,10 @@ func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 }
 
 func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
-	pty := makePty(t)
 	if username != "" {
 		username += "@"
 	}
+	pty := makePty(t, "ssh "+username+"localhost")
 	sshCmd := exec.CommandContext(t.Context(), "ssh",
 		"-tt",
 		"-F", "/dev/null",

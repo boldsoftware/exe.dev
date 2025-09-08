@@ -14,7 +14,7 @@ func TestRequiresSSHKey(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 
-	pty := makePty(t)
+	pty := makePty(t, "ssh localhost [no keys]")
 
 	sshCmd := exec.CommandContext(t.Context(), "ssh",
 		"-p", fmt.Sprint(Env.piperd.SSHPort),
@@ -42,7 +42,7 @@ func TestExeDevRejectsSCP(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 
-	pty := makePty(t)
+	pty := makePty(t, "scp localhost")
 
 	sshCmd := exec.CommandContext(t.Context(), "scp",
 		"-P", fmt.Sprint(Env.piperd.SSHPort),

@@ -368,6 +368,14 @@ func (c *Console) IsRecording() bool {
 	return c.opts.AsciinemaWriter != nil
 }
 
+// WriteAsciinemaMarker writes a marker to the ASCIIcinema recording if one is active.
+func (c *Console) WriteAsciinemaMarker(text string) error {
+	if c.opts.AsciinemaWriter != nil {
+		return c.opts.AsciinemaWriter.WriteOutput(text)
+	}
+	return nil
+}
+
 // AddRejectString adds a string to the persistent rejection rules.
 // Any subsequent Expect calls will immediately fail if this string appears.
 func (c *Console) AddRejectString(s string) {
