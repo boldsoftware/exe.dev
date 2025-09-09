@@ -942,8 +942,8 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	if m.supportsAnnotations(ctx, host) {
 		ann := make(map[string]string)
 		// ann["io.katacontainers.config.hypervisor.kernel_params"] = "agent.hotplug_timeout=10s"
-		ann["io.katacontainers.config.hypervisor.default_vcpus"] = "2"
-		ann["io.katacontainers.config.hypervisor.default_memory"] = "4096"
+		// ann["io.katacontainers.config.hypervisor.default_vcpus"] = "2"
+		// ann["io.katacontainers.config.hypervisor.default_memory"] = "4096"
 
 		for k, v := range ann {
 			runArgs = append(runArgs, "--annotation", fmt.Sprintf("%s=%s", k, v))
