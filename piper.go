@@ -182,7 +182,6 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 	// Use connection's unique ID to track if we've already shown the message
 	connID := conn.UniqueID()
-	username := conn.User()
 
 	p.keyboardInteractiveMutex.Lock()
 	alreadyShown := p.keyboardInteractiveShown[connID]
@@ -193,8 +192,10 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 	if !alreadyShown {
 		// First time - send helpful message about setting up SSH keys
-		_, err := client("", "SSH keys are required to access exe.dev.",
-			"("+username+"@localhost) Please create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.", false)
+		_, err := client("",
+			"SSH keys are required to access exe.dev.\nPlease create a key with 'ssh-keygen -t ed25519' and try again.\n\nPress Enter to close this connection.",
+			"", false,
+		)
 		if err != nil {
 			slog.Debug("Keyboard interactive challenge failed", "component", "piper-plugin", "error", err)
 			return nil, err
