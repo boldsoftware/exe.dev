@@ -418,7 +418,9 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		select {
 		case update := <-progressChan:
 			// Update current status based on progress
-			imageSize = update.info.ImageBytes
+			if update.info.ImageBytes > 0 {
+				imageSize = update.info.ImageBytes
+			}
 			downloadedBytes = update.info.DownloadedBytes
 
 			switch update.info.Phase {

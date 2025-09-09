@@ -23,6 +23,10 @@ import (
 
 	"exe.dev/sshpool"
 	"exe.dev/tagresolver"
+	"github.com/regclient/regclient"
+	"github.com/regclient/regclient/types/manifest"
+	"github.com/regclient/regclient/types/platform"
+	"github.com/regclient/regclient/types/ref"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -181,17 +185,8 @@ func parseImageReference(imageRef string) (registry, repository, tag string) {
 	return registry, repository, tag
 }
 
-// remoteFileExists checks if a file exists on the remote host via SSH
-func (m *NerdctlManager) remoteFileExists(ctx context.Context, host, path string) bool {
-	cmd := m.ExecSSHCommand(ctx, host, "test", "-f", path)
-	if err := cmd.Run(); err != nil {
-		return false
-	}
-	return true
-}
-
 // inspectImage inspects an image and returns its metadata, using database cache when available
-func (m *NerdctlManager) inspectImage(ctx context.Context, host, imageRef string) (*tagresolver.ImageConfig, error) {
+func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*tagresolver.ImageConfig, error) {
 	// Check database cache first if we have a tag resolver
 	if m.tagResolver != nil {
 		// Parse the image reference to extract registry, repository, and tag
@@ -205,67 +200,84 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, host, imageRef string
 		}
 	}
 
-	// Try to inspect by the given reference
-	inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", imageRef, "--format", "json")
-	if output, err := inspectCmd.Output(); err == nil {
-		if cfg, perr := parseImageInspectJSON(output); perr == nil {
-			// Store the result in the database if we have a tag resolver
-			if m.tagResolver != nil {
-				registry, repository, tag := parseImageReference(imageRef)
-				platform := fmt.Sprintf("linux/%s", m.hostArch)
-				if err := m.tagResolver.StoreImageMetadata(ctx, registry, repository, tag, platform, &cfg); err != nil {
-					slog.Warn("Failed to store image metadata in DB", "error", err)
-				}
-			}
-			slog.Info("Image metadata inspected and stored", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
-			return &cfg, nil
-		}
-		slog.Warn("Failed to parse image inspect JSON", "image", imageRef)
-		return nil, fmt.Errorf("failed to parse image inspect JSON")
+	// Use regclient to inspect the image remotely
+	rc := regclient.New()
+	defer rc.Close(ctx, ref.Ref{})
+
+	// Parse the image reference
+	r, err := ref.New(imageRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse image reference %s: %w", imageRef, err)
 	}
 
-	// If inspection failed and this is an exeuntu image, try to find it by ID
-	// This handles the case where nydus snapshotter causes images to lose their tags
-	if strings.Contains(imageRef, "exeuntu") {
-		slog.Info("Failed to inspect exeuntu image by reference, searching by repository", "image", imageRef)
-
-		// List images and find the exeuntu one
-		listCmd := m.execNerdctl(ctx, host, "image", "ls", "--format", "{{.Repository}}:{{.ID}}")
-		if listOutput, err := listCmd.Output(); err == nil {
-			lines := strings.Split(string(listOutput), "\n")
-			for _, line := range lines {
-				if strings.Contains(line, "exeuntu") {
-					// Extract the ID (after the last colon)
-					parts := strings.Split(line, ":")
-					if len(parts) >= 2 {
-						imageID := parts[len(parts)-1]
-						// Try to inspect by ID
-						inspectByIDCmd := m.execNerdctl(ctx, host, "image", "inspect", imageID, "--format", "json")
-						if output, err := inspectByIDCmd.Output(); err == nil {
-							if cfg, perr := parseImageInspectJSON(output); perr == nil {
-								// Store both the original reference and the ID in DB
-								if m.tagResolver != nil {
-									registry, repository, tag := parseImageReference(imageRef)
-									platform := fmt.Sprintf("linux/%s", m.hostArch)
-									if err := m.tagResolver.StoreImageMetadata(ctx, registry, repository, tag, platform, &cfg); err != nil {
-										slog.Warn("Failed to store image metadata in DB", "error", err)
-									}
-									// Also store by ID
-									if err := m.tagResolver.StoreImageMetadata(ctx, "local", "id", imageID, platform, &cfg); err != nil {
-										slog.Warn("Failed to store image metadata by ID in DB", "error", err)
-									}
-								}
-								slog.Info("Image metadata found by ID and stored", "id", imageID, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
-								return &cfg, nil
-							}
-						}
-					}
-				}
-			}
-		}
+	// Parse the platform
+	platformStr := fmt.Sprintf("linux/%s", m.hostArch)
+	plat, err := platform.Parse(platformStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse platform %s: %w", platformStr, err)
 	}
 
-	return nil, fmt.Errorf("failed to inspect image %s", imageRef)
+	// Get the manifest for the specific platform
+	manifestResp, err := rc.ManifestGet(ctx, r, regclient.WithManifestPlatform(plat))
+	if err != nil {
+		return nil, fmt.Errorf("regclient ManifestGet: %w", err)
+	}
+
+	// Check if this is an OCI image or Docker image manifest
+	var cfg tagresolver.ImageConfig
+	switch mf := manifestResp.(type) {
+	case manifest.Imager:
+		// Get the config blob for this image
+		cd, err := mf.GetConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get config descriptor: %w", err)
+		}
+
+		// Fetch the config blob content
+		configBlob, err := rc.BlobGet(ctx, r, cd)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get config blob: %w", err)
+		}
+		defer configBlob.Close()
+
+		// Read the config content
+		configData, err := io.ReadAll(configBlob)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config blob: %w", err)
+		}
+
+		// Parse the config JSON - OCI/Docker configs have nested config field
+		var configJSON struct {
+			Config struct {
+				Entrypoint []string `json:"Entrypoint"`
+				Cmd        []string `json:"Cmd"`
+				User       string   `json:"User"`
+			} `json:"config"`
+		}
+
+		if err := json.Unmarshal(configData, &configJSON); err != nil {
+			return nil, fmt.Errorf("failed to parse config JSON: %w", err)
+		}
+
+		cfg = tagresolver.ImageConfig{
+			Entrypoint: configJSON.Config.Entrypoint,
+			Cmd:        configJSON.Config.Cmd,
+			User:       configJSON.Config.User,
+		}
+	default:
+		return nil, fmt.Errorf("manifest type %T not supported by regclient", manifestResp)
+	}
+
+	// Store the result in the database if we have a tag resolver
+	if m.tagResolver != nil {
+		registry, repository, tag := parseImageReference(imageRef)
+		platform := fmt.Sprintf("linux/%s", m.hostArch)
+		if err := m.tagResolver.StoreImageMetadata(ctx, registry, repository, tag, platform, &cfg); err != nil {
+			slog.Warn("Failed to store image metadata in DB", "error", err)
+		}
+	}
+	slog.Info("Image metadata inspected and stored", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
+	return &cfg, nil
 }
 
 // supportsAnnotations checks whether nerdctl run supports --annotation on the given host.
@@ -940,11 +952,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Cloud Hypervisor doesn't support the dynamic resource allocation that nerdctl's
 	// --memory and --cpus flags trigger. We need to use cgroup parent slices instead.
 
-	// Image metadata variables - will be populated after ensuring image exists
-	var imageUser string
-	var imageEntrypoint []string
-	var imageCmd []string
-
 	// Determine final image reference (use digest version if available)
 	finalImage := imageWithDigest
 	if finalImage == "" {
@@ -953,7 +960,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Note: We'll add the image to runArgs later, after setting --entrypoint
 
 	// Check if image exists locally and get its size
-	var imageSize int64
 	var needsPull bool
 
 	// Use the digest version for inspection if available
@@ -964,37 +970,20 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// Try to inspect the image to see if it exists locally
 	inspectSizeCmd := m.execNerdctl(ctx, host, "image", "inspect", imageToInspect, "--format", "{{.Size}}")
-	if sizeOutput, err := inspectSizeCmd.Output(); err == nil {
-		// Image exists locally - get its size
-		sizeStr := strings.TrimSpace(string(sizeOutput))
-		if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
-			imageSize = size
-		}
+	if _, err := inspectSizeCmd.Output(); err == nil {
 		needsPull = false
 	} else {
-		// Image doesn't exist locally - need to pull
 		needsPull = true
-
-		// Try to get manifest to determine image size before pulling
-		// Use nerdctl image inspect with --mode=remote to get manifest without pulling
-		manifestCmd := m.execNerdctl(ctx, host, "image", "inspect", "--mode=remote", image, "--format", "{{.Size}}")
-		if manifestOutput, err := manifestCmd.Output(); err == nil {
-			sizeStr := strings.TrimSpace(string(manifestOutput))
-			if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
-				imageSize = size
-			}
-		}
-		// If we couldn't get the size from manifest, imageSize remains 0
 	}
 
 	// Only pull if needed
 	if needsPull {
 		// Report that we're about to pull with the size we determined
-		reportProgress(req, CreatePull, imageSize, 0, "Starting image pull")
+		reportProgress(req, CreatePull, 0, 0, "Starting image pull")
 
 		// Always pull with progress tracking so the user sees MB progress
 		// HostUpdater does not currently provide progress callbacks.
-		if err := m.pullImageWithProgress(ctx, host, imageToInspect, req, imageSize); err != nil {
+		if err := m.pullImageWithProgress(ctx, host, imageToInspect, req, 0); err != nil {
 			// Check if it's just an "already exists" error
 			pullCmd := m.execNerdctl(ctx, host, "--snapshotter", "nydus", "pull", imageToInspect)
 			if output, pullErr := pullCmd.CombinedOutput(); pullErr != nil {
@@ -1003,29 +992,20 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 				}
 			}
 		}
-
-		// After pull, try to get the actual size if we didn't have it before
-		if imageSize == 0 {
-			inspectCmd := m.execNerdctl(ctx, host, "image", "inspect", image, "--format", "{{.Size}}")
-			if sizeOutput, err := inspectCmd.Output(); err == nil {
-				sizeStr := strings.TrimSpace(string(sizeOutput))
-				if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
-					imageSize = size
-				}
-			}
-		}
 	}
 
-	// Now that the image definitely exists (either it was already local or we just pulled it),
-	// inspect it to get all metadata (user, entrypoint, cmd)
-	if cfg, err := m.inspectImage(ctx, host, imageToInspect); err == nil {
+	// Now that the image exists inspect it to get all metadata.
+	var imageUser string
+	var imageEntrypoint []string
+	var imageCmd []string
+	if cfg, err := m.inspectImage(ctx, imageToInspect); err == nil {
 		imageUser = cfg.User
 		if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
 			imageEntrypoint = cfg.Entrypoint
 			imageCmd = cfg.Cmd
 		}
 	} else {
-		slog.Warn("Failed to get image metadata", "image", imageToInspect, "error", err)
+		slog.Error("Failed to get image metadata", "image", imageToInspect, "error", err)
 	}
 
 	// If using exetini, override the entrypoint and pass image user
@@ -1042,7 +1022,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, imageEntrypoint, imageCmd)...)
 
 	// Create and start container
-	reportProgress(req, CreateStart, imageSize, 0, "Starting container")
+	reportProgress(req, CreateStart, 0, 0, "Starting container")
 
 	createCmd := m.execNerdctl(ctx, host, runArgs...)
 
@@ -1090,7 +1070,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Configure SSH in the container (synchronously - block until ready)
-	reportProgress(req, CreateSSH, imageSize, 0, "Configuring SSH")
+	reportProgress(req, CreateSSH, 0, 0, "Configuring SSH")
 
 	if !autoStartSSH {
 		// Only setup SSH if not auto-started by the container
@@ -1107,7 +1087,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Mark creation as done - SSH is now ready
-	reportProgress(req, CreateDone, imageSize, 0, "Container ready")
+	reportProgress(req, CreateDone, 0, 0, "Container ready")
 
 	// Default to root user if not specified in image
 	if imageUser == "" {
