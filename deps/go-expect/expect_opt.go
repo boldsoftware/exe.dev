@@ -16,6 +16,7 @@ package expect
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -144,7 +145,7 @@ func (em *errorMatcher) Match(v interface{}) bool {
 	if !ok {
 		return false
 	}
-	return err == em.err
+	return errors.Is(err, em.err)
 }
 
 func (em *errorMatcher) Criteria() interface{} {
