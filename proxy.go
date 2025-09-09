@@ -114,9 +114,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Proxy the request to the container
 	err = s.proxyToContainer(w, r, box, route)
 	if err != nil {
-		if !s.quietMode {
-			slog.Error("Failed to proxy request", "error", err, "box", boxName)
-		}
+		slog.Debug("Failed to proxy request", "error", err, "box", boxName)
 		http.Error(w, "Failed to proxy request to container", http.StatusBadGateway)
 		return
 	}
@@ -169,8 +167,6 @@ func (s *Server) parseProxyHostname(hostname string) (box string, err error) {
 
 	return hostname, nil
 }
-
-
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
 // Returns (userID, true) if authenticated, ("") if not authenticated
@@ -338,14 +334,6 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
-
-
-
-
-
-
-
-
 // getBoxForUser retrieves a box for the given user/team/name
 func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*Box, error) {
 	// Get user from public key
@@ -384,8 +372,6 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 	return &box, nil
 }
 
-
-
 // proxyToContainer proxies the HTTP request to a container via SSH port forwarding
 func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *Box, route Route) error {
 	// Validate box has SSH credentials
@@ -394,6 +380,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *B
 	}
 
 	// In test mode, skip actual SSH connection and just simulate a successful proxy response.
+	// TODOX(philip): WTF is test mode.
 	if s.testMode {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Test proxy response from port: %d\n", route.Port)
@@ -431,6 +418,11 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *B
 			// Direct hostname
 			sshHost = ctrhost
 		}
+	}
+	// if hotname starst with lima, use localhost, because limactl does some
+	// fancy weird port forwarding
+	if s.devMode != "" && strings.HasPrefix(sshHost, "lima") {
+		sshHost = "localhost"
 	}
 
 	// Try to proxy to the configured port
