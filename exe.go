@@ -1943,8 +1943,8 @@ func (s *Server) validateEmailVerificationByCode(ctx context.Context, code strin
 
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
-			SELECT user_id, token 
-			FROM email_verifications 
+			SELECT user_id, token
+			FROM email_verifications
 			WHERE token LIKE ? AND expires_at > datetime('now')
 			LIMIT 1
 		`, code+"%").Scan(&userID, &token)

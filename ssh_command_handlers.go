@@ -144,13 +144,13 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				},
 			},
 			{
-				Name:        "route",
-				Description: "Configure box routing",
-				Usage:       "route <box-name> [--port=80 --private|--public]",
-				Handler:     ss.handleRouteCommand,
-				FlagSetFunc: routeCommandFlags,
+				Name:              "route",
+				Description:       "Configure box routing",
+				Usage:             "route <box-name> [--port=80 --private|--public]",
+				Handler:           ss.handleRouteCommand,
+				FlagSetFunc:       routeCommandFlags,
 				HasPositionalArgs: true,
-				CompleterFunc: CompleteBoxNames,
+				CompleterFunc:     CompleteBoxNames,
 				Examples: []string{
 					"route mybox                     # show current routing config",
 					"route mybox --port=8080 --private  # expose port 8080 privately",
@@ -1084,20 +1084,20 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 		return nil
 	}
 
-    // Parse flags
-    portFlag := cc.FlagSet.Lookup("port")
-    privateFlag := cc.FlagSet.Lookup("private")
-    publicFlag := cc.FlagSet.Lookup("public")
+	// Parse flags
+	portFlag := cc.FlagSet.Lookup("port")
+	privateFlag := cc.FlagSet.Lookup("private")
+	publicFlag := cc.FlagSet.Lookup("public")
 
-    // Determine which flags were explicitly set by the user
-    setFlags := map[string]bool{}
-    cc.FlagSet.Visit(func(f *flag.Flag) {
-        setFlags[f.Name] = true
-    })
+	// Determine which flags were explicitly set by the user
+	setFlags := map[string]bool{}
+	cc.FlagSet.Visit(func(f *flag.Flag) {
+		setFlags[f.Name] = true
+	})
 
-    portSet := setFlags["port"]
-    privateSet := setFlags["private"] && privateFlag != nil && privateFlag.Value.String() == "true"
-    publicSet := setFlags["public"] && publicFlag != nil && publicFlag.Value.String() == "true"
+	portSet := setFlags["port"]
+	privateSet := setFlags["private"] && privateFlag != nil && privateFlag.Value.String() == "true"
+	publicSet := setFlags["public"] && publicFlag != nil && publicFlag.Value.String() == "true"
 
 	// Validate: if any flag is set, both --port and one of --private/--public must be set
 	if portSet || privateSet || publicSet {

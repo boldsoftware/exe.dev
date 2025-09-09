@@ -215,8 +215,8 @@ func TestHandleProxyRequest(t *testing.T) {
 		expectedStatus int
 		expectedBody   string
 	}{
-		{"web-server.exe.dev", "GET", "/", 200, "port: 80"},                      // Public route should work
-		{"web-server.exe.dev", "GET", "/api/status", 200, "port: 80"},             // All paths go to same port
+		{"web-server.exe.dev", "GET", "/", 200, "port: 80"},           // Public route should work
+		{"web-server.exe.dev", "GET", "/api/status", 200, "port: 80"}, // All paths go to same port
 		{"nonexistent.exe.dev", "GET", "/", 404, "Box not found"},
 	}
 
