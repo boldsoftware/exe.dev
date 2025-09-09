@@ -11,96 +11,49 @@ import (
 
 func TestRouteStructs(t *testing.T) {
 	t.Parallel()
-	// Test default routes creation
+	// Test default route creation
 	var box Box
-	routes := box.getDefaultRoutes()
+	route := box.getDefaultRoute()
 
-	if len(routes) != 1 {
-		t.Errorf("Expected 1 default route, got %d", len(routes))
+	if route.Port != 80 {
+		t.Errorf("Expected default port 80, got %d", route.Port)
 	}
-
-	defaultRoute := routes[0]
-	if defaultRoute.Name != "default" {
-		t.Errorf("Expected route name 'default', got '%s'", defaultRoute.Name)
-	}
-	if defaultRoute.Priority != 10 {
-		t.Errorf("Expected priority 10, got %d", defaultRoute.Priority)
-	}
-	if len(defaultRoute.Methods) != 1 || defaultRoute.Methods[0] != "*" {
-		t.Errorf("Expected methods ['*'], got %v", defaultRoute.Methods)
-	}
-	if defaultRoute.Paths.Prefix != "/" {
-		t.Errorf("Expected path prefix '/', got '%s'", defaultRoute.Paths.Prefix)
-	}
-	if defaultRoute.Policy != "private" {
-		t.Errorf("Expected policy 'private', got '%s'", defaultRoute.Policy)
-	}
-	expectedPorts := []int{80, 8000, 8080, 8888}
-	if len(defaultRoute.Ports) != len(expectedPorts) {
-		t.Errorf("Expected %d ports, got %d", len(expectedPorts), len(defaultRoute.Ports))
-	} else {
-		for i, port := range expectedPorts {
-			if defaultRoute.Ports[i] != port {
-				t.Errorf("Expected port %d, got %d", port, defaultRoute.Ports[i])
-			}
-		}
+	if route.Share != "private" {
+		t.Errorf("Expected default share 'private', got '%s'", route.Share)
 	}
 }
 
-func TestBoxRoutes(t *testing.T) {
+func TestBoxRoute(t *testing.T) {
 	t.Parallel()
 	box := Box{}
 
-	// Test getting routes when none are set (should return defaults)
-	routes, err := box.GetRoutes()
+	// Test getting route when none are set (should return defaults)
+	route := box.GetRoute()
+	if route.Port != 80 {
+		t.Errorf("Expected default port 80, got %d", route.Port)
+	}
+	if route.Share != "private" {
+		t.Errorf("Expected default share 'private', got '%s'", route.Share)
+	}
+
+	// Test setting custom route
+	customRoute := Route{
+		Port:  3000,
+		Share: "public",
+	}
+
+	err := box.SetRoute(customRoute)
 	if err != nil {
-		t.Errorf("Error getting default routes: %v", err)
-	}
-	if len(routes) != 1 {
-		t.Errorf("Expected 1 default route, got %d", len(routes))
+		t.Errorf("Error setting route: %v", err)
 	}
 
-	// Test setting custom routes
-	customRoutes := BoxRoutes{
-		{
-			Name:     "api",
-			Priority: 1,
-			Methods:  []string{"GET", "POST"},
-			Paths:    PathMatcher{Prefix: "/api/"},
-			Policy:   "public",
-			Ports:    []int{3000},
-		},
-		{
-			Name:     "default",
-			Priority: 10,
-			Methods:  []string{"*"},
-			Paths:    PathMatcher{Prefix: "/"},
-			Policy:   "private",
-			Ports:    []int{80},
-		},
+	// Test getting the custom route back
+	retrievedRoute := box.GetRoute()
+	if retrievedRoute.Port != 3000 {
+		t.Errorf("Expected port 3000, got %d", retrievedRoute.Port)
 	}
-
-	err = box.SetRoutes(customRoutes)
-	if err != nil {
-		t.Errorf("Error setting routes: %v", err)
-	}
-
-	// Test getting the custom routes back
-	retrievedRoutes, err := box.GetRoutes()
-	if err != nil {
-		t.Errorf("Error getting custom routes: %v", err)
-	}
-	if len(retrievedRoutes) != 2 {
-		t.Errorf("Expected 2 custom routes, got %d", len(retrievedRoutes))
-	}
-
-	// Check the API route
-	apiRoute := retrievedRoutes[0]
-	if apiRoute.Name != "api" {
-		t.Errorf("Expected route name 'api', got '%s'", apiRoute.Name)
-	}
-	if apiRoute.Policy != "public" {
-		t.Errorf("Expected policy 'public', got '%s'", apiRoute.Policy)
+	if retrievedRoute.Share != "public" {
+		t.Errorf("Expected share 'public', got '%s'", retrievedRoute.Share)
 	}
 }
 
@@ -143,67 +96,10 @@ func TestProxyHostnameParsing(t *testing.T) {
 	}
 }
 
-func TestRouteMatching(t *testing.T) {
-	t.Parallel()
-	server := &Server{}
+// TestRouteMatching is no longer needed since we have simplified routing
+// All requests to a box go to the same port with the same sharing setting
 
-	routes := BoxRoutes{
-		{
-			Name:     "api",
-			Priority: 1,
-			Methods:  []string{"GET", "POST"},
-			Paths:    PathMatcher{Prefix: "/api/"},
-			Policy:   "public",
-			Ports:    []int{3000},
-		},
-		{
-			Name:     "admin",
-			Priority: 5,
-			Methods:  []string{"*"},
-			Paths:    PathMatcher{Prefix: "/admin/"},
-			Policy:   "private",
-			Ports:    []int{80},
-		},
-		{
-			Name:     "default",
-			Priority: 10,
-			Methods:  []string{"*"},
-			Paths:    PathMatcher{Prefix: "/"},
-			Policy:   "private",
-			Ports:    []int{80},
-		},
-	}
-
-	tests := []struct {
-		method        string
-		path          string
-		expectedRoute string
-	}{
-		{"GET", "/api/users", "api"},
-		{"POST", "/api/create", "api"},
-		{"DELETE", "/api/delete", "default"}, // DELETE not in api methods
-		{"GET", "/admin/dashboard", "admin"},
-		{"POST", "/admin/settings", "admin"},
-		{"GET", "/home", "default"},
-		{"POST", "/upload", "default"},
-	}
-
-	for _, test := range tests {
-		req := httptest.NewRequest(test.method, test.path, nil)
-		matchingRoute := server.findMatchingRoute(routes, req)
-
-		if matchingRoute == nil {
-			t.Errorf("No route matched for %s %s", test.method, test.path)
-			continue
-		}
-
-		if matchingRoute.Name != test.expectedRoute {
-			t.Errorf("Expected route '%s' for %s %s, got '%s'", test.expectedRoute, test.method, test.path, matchingRoute.Name)
-		}
-	}
-}
-
-func TestBoxCreationWithRoutes(t *testing.T) {
+func TestBoxCreationWithRoute(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
 
@@ -238,7 +134,7 @@ func TestBoxCreationWithRoutes(t *testing.T) {
 
 	server.createTestBox(t, userID, allocID, "test-box", "container123", "ubuntu")
 
-	// Retrieve the box and check its routes
+	// Retrieve the box and check its route
 	box, err := server.getBoxByName(t.Context(), "test-box")
 	if err != nil {
 		t.Errorf("Failed to get box: %v", err)
@@ -247,21 +143,12 @@ func TestBoxCreationWithRoutes(t *testing.T) {
 	if box.Routes == nil {
 		t.Error("Box routes should not be nil")
 	} else {
-		routes, err := box.GetRoutes()
-		if err != nil {
-			t.Errorf("Failed to parse box routes: %v", err)
+		route := box.GetRoute()
+		if route.Port != 80 {
+			t.Errorf("Expected default port 80, got %d", route.Port)
 		}
-
-		if len(routes) != 1 {
-			t.Errorf("Expected 1 default route, got %d", len(routes))
-		} else {
-			defaultRoute := routes[0]
-			if defaultRoute.Name != "default" {
-				t.Errorf("Expected default route name 'default', got '%s'", defaultRoute.Name)
-			}
-			if defaultRoute.Policy != "private" {
-				t.Errorf("Expected default policy 'private', got '%s'", defaultRoute.Policy)
-			}
+		if route.Share != "private" {
+			t.Errorf("Expected default share 'private', got '%s'", route.Share)
 		}
 	}
 }
@@ -292,34 +179,23 @@ func TestHandleProxyRequest(t *testing.T) {
 		t.Fatalf("Failed to get user and alloc IDs: %v", err)
 	}
 
-	// Create a test machine with custom routes
+	// Create a test box
 	server.createTestBox(t, userID, allocID, "web-server", "container123", "nginx")
 
-	// Get the box and add a public API route
+	// Get the box and set it to public
 	box, err := server.getBoxByName(t.Context(), "web-server")
 	if err != nil {
 		t.Fatalf("Failed to get box: %v", err)
 	}
 
-	routes, err := box.GetRoutes()
-	if err != nil {
-		t.Fatalf("Failed to get routes: %v", err)
-	}
-
-	// Add a public API route
+	// Set a public route
 	publicRoute := Route{
-		Name:     "public-api",
-		Priority: 1,
-		Methods:  []string{"GET"},
-		Paths:    PathMatcher{Prefix: "/api/public/"},
-		Policy:   "public",
-		Ports:    []int{80},
+		Port:  80,
+		Share: "public",
 	}
-	routes = append(routes, publicRoute)
-
-	err = box.SetRoutes(routes)
+	err = box.SetRoute(publicRoute)
 	if err != nil {
-		t.Fatalf("Failed to set routes: %v", err)
+		t.Fatalf("Failed to set route: %v", err)
 	}
 
 	// Update the box in the database
@@ -329,7 +205,7 @@ func TestHandleProxyRequest(t *testing.T) {
 		return err
 	})
 	if err != nil {
-		t.Fatalf("Failed to update box routes: %v", err)
+		t.Fatalf("Failed to update box route: %v", err)
 	}
 
 	tests := []struct {
@@ -339,8 +215,8 @@ func TestHandleProxyRequest(t *testing.T) {
 		expectedStatus int
 		expectedBody   string
 	}{
-		{"web-server.exe.dev", "GET", "/api/public/status", 200, "public-api"},
-		{"web-server.exe.dev", "GET", "/private/admin", 307, "auth?redirect="}, // Should redirect to auth for private route
+		{"web-server.exe.dev", "GET", "/", 200, "port: 80"},                      // Public route should work
+		{"web-server.exe.dev", "GET", "/api/status", 200, "port: 80"},             // All paths go to same port
 		{"nonexistent.exe.dev", "GET", "/", 404, "Box not found"},
 	}
 
@@ -375,58 +251,8 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 }
 
-func TestRouteSorting(t *testing.T) {
-	t.Parallel()
-	server := &Server{}
-
-	// Create routes with different priorities
-	routes := BoxRoutes{
-		{
-			Name:     "low-priority",
-			Priority: 100,
-			Methods:  []string{"*"},
-			Paths:    PathMatcher{Prefix: "/"},
-			Policy:   "private",
-			Ports:    []int{80},
-		},
-		{
-			Name:     "high-priority",
-			Priority: 1,
-			Methods:  []string{"*"},
-			Paths:    PathMatcher{Prefix: "/api/"},
-			Policy:   "public",
-			Ports:    []int{80},
-		},
-		{
-			Name:     "medium-priority",
-			Priority: 50,
-			Methods:  []string{"GET"},
-			Paths:    PathMatcher{Prefix: "/static/"},
-			Policy:   "public",
-			Ports:    []int{80},
-		},
-	}
-
-	// Test that higher priority route (lower number) matches first
-	req := httptest.NewRequest("GET", "/api/test", nil)
-	matchingRoute := server.findMatchingRoute(routes, req)
-
-	if matchingRoute == nil {
-		t.Error("No route matched")
-	} else if matchingRoute.Name != "high-priority" {
-		t.Errorf("Expected 'high-priority' route to match first, got '%s'", matchingRoute.Name)
-	}
-
-	// Test that routes are actually sorted by priority
-	req2 := httptest.NewRequest("POST", "/api/create", nil)
-	matchingRoute2 := server.findMatchingRoute(routes, req2)
-
-	if matchingRoute2 == nil {
-		t.Error("No route matched for POST request")
-	} else if matchingRoute2.Name != "high-priority" {
-		t.Errorf("Expected 'high-priority' route to match for POST, got '%s'", matchingRoute2.Name)
-	}
-}
+// TestRouteSorting is no longer needed since we have simplified routing
+// All requests go to the same port with the same sharing setting
 
 // mockSession implements io.Writer for testing
 type mockSession struct {
@@ -437,7 +263,7 @@ func (m *mockSession) Write(p []byte) (n int, err error) {
 	return m.output.Write(p)
 }
 
-func TestRouteCommandsEndToEnd(t *testing.T) {
+func TestRouteCommandEndToEnd(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
 
@@ -467,76 +293,208 @@ func TestRouteCommandsEndToEnd(t *testing.T) {
 	// Create a test box
 	server.createTestBox(t, userID, allocID, boxName, "container123", "nginx")
 
-	// Test route commands as string arrays (simulating SSH command parsing)
-	tests := []struct {
-		name        string
-		args        []string
-		expected    []string // strings that should be in the output
-		notExpected []string // strings that should NOT be in the output
-	}{
-		{
-			name:     "list initial routes",
-			args:     []string{boxName, "list"},
-			expected: []string{"Routes for box", "default", "priority 10", "private"},
-		},
-		{
-			name:     "add public API route",
-			args:     []string{boxName, "add", "--name=public-api", "--priority=1", "--methods=GET,POST", "--prefix=/api/public", "--policy=public", "--ports=3000"},
-			expected: []string{"Route 'public-api' added successfully"},
-		},
-		{
-			name:     "list routes after adding",
-			args:     []string{boxName, "list"},
-			expected: []string{"public-api", "priority 1", "public", "default", "priority 10", "private"},
-		},
-		{
-			name:     "add route with defaults",
-			args:     []string{boxName, "add"},
-			expected: []string{"added successfully"},
-		},
-		{
-			name:     "remove public-api route",
-			args:     []string{boxName, "remove", "public-api"},
-			expected: []string{"Route 'public-api' removed successfully"},
-		},
-		{
-			name:        "list routes after removing",
-			args:        []string{boxName, "list"},
-			expected:    []string{"default"},
-			notExpected: []string{"public-api"},
-		},
-		{
-			name:     "error on nonexistent machine",
-			args:     []string{"nonexistent", "list"},
-			expected: []string{"not found"},
-		},
-		{
-			name:     "error on duplicate route name",
-			args:     []string{boxName, "add", "--name=default"},
-			expected: []string{"already exists"},
-		},
+	// Create SSH server for testing
+	sshServer := &SSHServer{server: server}
+
+	// Test route command by calling it directly
+	cc := &CommandContext{
+		PublicKey: publicKey,
+		Alloc:     &Alloc{AllocID: allocID},
+		Args:      []string{boxName},
+		Output:    &mockSession{},
 	}
 
-	// Run tests
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			sess := &mockSession{}
-			server.handleRouteCommand(t.Context(), sess, publicKey, allocID, test.args)
-			output := sess.output.String()
+	// Test showing current route (no flags)
+	cc.FlagSet = routeCommandFlags() // Create empty flagset
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err != nil {
+		t.Errorf("Failed to show route: %v", err)
+	}
+	output := cc.Output.(*mockSession).output.String()
+	if !strings.Contains(output, "Port: 80") || !strings.Contains(output, "Share: private") {
+		t.Errorf("Expected default route info, got: %s", output)
+	}
 
-			// Check expected strings
-			for _, expected := range test.expected {
-				if !strings.Contains(output, expected) {
-					t.Errorf("Expected output to contain '%s', got: %s", expected, output)
-				}
-			}
+	// Test setting route to public
+	cc.Output = &mockSession{}
+	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet.Set("port", "8080")
+	cc.FlagSet.Set("public", "true")
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err != nil {
+		t.Errorf("Failed to set route: %v", err)
+	}
+	output = cc.Output.(*mockSession).output.String()
+	if !strings.Contains(output, "updated successfully") {
+		t.Errorf("Expected success message, got: %s", output)
+	}
 
-			// Check strings that should NOT be present
-			for _, notExpected := range test.notExpected {
-				if strings.Contains(output, notExpected) {
-					t.Errorf("Expected output to NOT contain '%s', got: %s", notExpected, output)
-				}
-			}
-		})
+	// Verify the route was updated
+	box, err := server.getBoxByName(t.Context(), boxName)
+	if err != nil {
+		t.Errorf("Failed to get box: %v", err)
+	}
+	route := box.GetRoute()
+	if route.Port != 8080 {
+		t.Errorf("Expected port 8080, got %d", route.Port)
+	}
+	if route.Share != "public" {
+		t.Errorf("Expected share 'public', got '%s'", route.Share)
+	}
+
+	// Test error on nonexistent box
+	cc.Output = &mockSession{}
+	cc.Args = []string{"nonexistent"}
+	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet.Set("port", "80")
+	cc.FlagSet.Set("private", "true")
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err == nil {
+		t.Error("Expected error for nonexistent box")
+	}
+}
+
+// TestSimplifiedRoutingEndToEnd tests the complete simplified routing flow
+func TestSimplifiedRoutingEndToEnd(t *testing.T) {
+	t.Parallel()
+	server := NewTestServer(t)
+
+	// Create test user and alloc
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
+	email := "test@example.com"
+	boxName := "test-server"
+
+	// Create user with alloc
+	err := server.createUserWithAlloc(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user with alloc: %v", err)
+	}
+
+	// Get userID and allocID
+	var userID, allocID string
+	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		if err := rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID); err != nil {
+			return err
+		}
+		return rx.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID).Scan(&allocID)
+	})
+	if err != nil {
+		t.Fatalf("Failed to get user and alloc IDs: %v", err)
+	}
+
+	// Create a test box
+	server.createTestBox(t, userID, allocID, boxName, "container123", "nginx")
+
+	// Test 1: Verify default routing (private, port 80)
+	box, err := server.getBoxByName(t.Context(), boxName)
+	if err != nil {
+		t.Fatalf("Failed to get box: %v", err)
+	}
+
+	route := box.GetRoute()
+	if route.Port != 80 {
+		t.Errorf("Expected default port 80, got %d", route.Port)
+	}
+	if route.Share != "private" {
+		t.Errorf("Expected default share 'private', got '%s'", route.Share)
+	}
+
+	// Test 2: Test proxy request with private route (should redirect to auth)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = boxName + ".exe.dev"
+	w := httptest.NewRecorder()
+	server.handleProxyRequest(w, req)
+
+	// Should redirect for private access without auth
+	if w.Code != 307 {
+		t.Errorf("Expected status 307 for private route without auth, got %d", w.Code)
+	}
+
+	// Test 3: Use route command to set public access on port 8080
+	sshServer := &SSHServer{server: server}
+	cc := &CommandContext{
+		PublicKey: publicKey,
+		Alloc:     &Alloc{AllocID: allocID},
+		Args:      []string{boxName},
+		Output:    &mockSession{},
+	}
+
+	// Set to public port 8080
+	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet.Set("port", "8080")
+	cc.FlagSet.Set("public", "true")
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err != nil {
+		t.Fatalf("Failed to set route: %v", err)
+	}
+
+	// Test 4: Verify the route was updated
+	box, err = server.getBoxByName(t.Context(), boxName)
+	if err != nil {
+		t.Fatalf("Failed to get updated box: %v", err)
+	}
+
+	updatedRoute := box.GetRoute()
+	if updatedRoute.Port != 8080 {
+		t.Errorf("Expected updated port 8080, got %d", updatedRoute.Port)
+	}
+	if updatedRoute.Share != "public" {
+		t.Errorf("Expected updated share 'public', got '%s'", updatedRoute.Share)
+	}
+
+	// Test 5: Test proxy request with public route (should work)
+	req2 := httptest.NewRequest("GET", "/api/test", nil)
+	req2.Host = boxName + ".exe.dev"
+	w2 := httptest.NewRecorder()
+	server.handleProxyRequest(w2, req2)
+
+	// Should work for public access
+	if w2.Code != 200 {
+		t.Errorf("Expected status 200 for public route, got %d", w2.Code)
+	}
+
+	// Check that it proxied to the right port
+	body := w2.Body.String()
+	if !strings.Contains(body, "port: 8080") {
+		t.Errorf("Expected response to contain 'port: 8080', got: %s", body)
+	}
+
+	// Test 6: Test invalid port (should fail)
+	cc.Output = &mockSession{}
+	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet.Set("port", "99999")
+	cc.FlagSet.Set("public", "true")
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err == nil {
+		t.Error("Expected error for invalid port 99999")
+	}
+
+	// Test 7: Test missing --private/--public when --port is specified (should fail)
+	cc.Output = &mockSession{}
+	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet.Set("port", "3000")
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err == nil {
+		t.Error("Expected error when --port is specified without --private or --public")
+	}
+
+	// Test 8: Test missing --port when --public is specified (should fail)
+	cc.Output = &mockSession{}
+	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet.Set("public", "true")
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err == nil {
+		t.Error("Expected error when --public is specified without --port")
+	}
+
+	// Test 9: Test both --private and --public specified (should fail)
+	cc.Output = &mockSession{}
+	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet.Set("port", "80")
+	cc.FlagSet.Set("private", "true")
+	cc.FlagSet.Set("public", "true")
+	err = sshServer.handleRouteCommand(t.Context(), cc)
+	if err == nil {
+		t.Error("Expected error when both --private and --public are specified")
 	}
 }

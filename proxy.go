@@ -2,21 +2,15 @@ package exe
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"database/sql"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"log/slog"
-	mathrand "math/rand"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -66,22 +60,11 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the routes for the box
-	routes, err := box.GetRoutes()
-	if err != nil {
-		http.Error(w, "Error loading routes", http.StatusInternalServerError)
-		return
-	}
+	// Get the route for the box
+	route := box.GetRoute()
 
-	// Find matching route
-	matchingRoute := s.findMatchingRoute(routes, r)
-	if matchingRoute == nil {
-		http.Error(w, "No matching route found", http.StatusNotFound)
-		return
-	}
-
-	// Apply authentication based on route policy
-	if matchingRoute.Policy == "private" {
+	// Apply authentication based on route share setting
+	if route.Share == "private" {
 		// Check if user is authenticated
 		userID, authenticated := s.getAuthenticatedUserID(r)
 		if !authenticated {
@@ -110,8 +93,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
 		fmt.Fprintf(w, "Box: %s\n", boxName)
-		fmt.Fprintf(w, "Matched route: %s (priority %d)\n", matchingRoute.Name, matchingRoute.Priority)
-		fmt.Fprintf(w, "Policy: %s\n", matchingRoute.Policy)
+		fmt.Fprintf(w, "Route port: %d\n", route.Port)
+		fmt.Fprintf(w, "Route share: %s\n", route.Share)
 		fmt.Fprintf(w, "Request method: %s\n", r.Method)
 		fmt.Fprintf(w, "Request path: %s\n", r.URL.Path)
 
@@ -129,7 +112,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Proxy the request to the container
-	err = s.proxyToContainer(w, r, box, matchingRoute)
+	err = s.proxyToContainer(w, r, box, route)
 	if err != nil {
 		if !s.quietMode {
 			slog.Error("Failed to proxy request", "error", err, "box", boxName)
@@ -187,51 +170,7 @@ func (s *Server) parseProxyHostname(hostname string) (box string, err error) {
 	return hostname, nil
 }
 
-// findMatchingRoute finds the best matching route for the request
-// Routes are matched by priority (lower number = higher priority)
-func (s *Server) findMatchingRoute(routes BoxRoutes, r *http.Request) *Route {
-	// Sort routes by priority (lower number = higher priority)
-	sortedRoutes := make(BoxRoutes, len(routes))
-	copy(sortedRoutes, routes)
 
-	// Use Go's sort package with secondary sort by name for consistent ordering
-	sort.Slice(sortedRoutes, func(i, j int) bool {
-		if sortedRoutes[i].Priority == sortedRoutes[j].Priority {
-			return sortedRoutes[i].Name < sortedRoutes[j].Name
-		}
-		return sortedRoutes[i].Priority < sortedRoutes[j].Priority
-	})
-
-	for _, route := range sortedRoutes {
-		if s.routeMatches(&route, r) {
-			return &route
-		}
-	}
-
-	return nil
-}
-
-// routeMatches checks if a route matches the request
-func (s *Server) routeMatches(route *Route, r *http.Request) bool {
-	// Check HTTP method
-	methodMatches := false
-	for _, method := range route.Methods {
-		if method == "*" || method == r.Method {
-			methodMatches = true
-			break
-		}
-	}
-	if !methodMatches {
-		return false
-	}
-
-	// Check path prefix
-	if !strings.HasPrefix(r.URL.Path, route.Paths.Prefix) {
-		return false
-	}
-
-	return true
-}
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
 // Returns (userID, true) if authenticated, ("") if not authenticated
@@ -399,278 +338,13 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
-// Route command handling methods
 
-// handleRouteCommand handles route management commands from SSH
-func (s *Server) handleRouteCommand(ctx context.Context, w io.Writer, publicKey, teamName string, args []string) {
-	// Define route help text
-	routeHelpText := "\r\n\033[1;36mRoute subcommands:\033[0m\r\n\r\n" +
-		"\033[1mroute <box> list\033[0m           - List all routes\r\n" +
-		"\033[1mroute <box> add [flags]\033[0m    - Add a new route\r\n" +
-		"\033[1mroute <box> remove <name>\033[0m  - Remove a route by name\r\n\r\n" +
-		"\033[1mAdd flags:\033[0m\r\n" +
-		"  \033[1m--name=<name>\033[0m       Route name (auto-generated if not specified)\r\n" +
-		"  \033[1m--priority=<num>\033[0m    Priority (auto-assigned if not specified)\r\n" +
-		"  \033[1m--methods=<methods>\033[0m HTTP methods (default: '*' for all)\r\n" +
-		"  \033[1m--prefix=<path>\033[0m     Path prefix to match (default: '/')\r\n" +
-		"  \033[1m--policy=<policy>\033[0m   'public' or 'private' (default: 'private')\r\n" +
-		"  \033[1m--ports=<ports>\033[0m     Allowed ports (default: '80,8000,8080,8888')\r\n\r\n"
 
-	if len(args) < 2 {
-		fmt.Fprintf(w, "\033[1;31mError: Please specify box name and subcommand\033[0m\r\n")
-		fmt.Fprint(w, routeHelpText)
-		return
-	}
 
-	boxName := args[0]
-	subCmd := args[1]
-	subArgs := args[2:]
 
-	switch subCmd {
-	case "list":
-		s.handleRouteList(ctx, w, publicKey, teamName, boxName)
-	case "add":
-		s.handleRouteAdd(ctx, w, publicKey, teamName, boxName, subArgs)
-	case "remove":
-		s.handleRouteRemove(ctx, w, publicKey, teamName, boxName, subArgs)
-	default:
-		fmt.Fprintf(w, "\033[1;31mUnknown route command: %s\033[0m\r\n", subCmd)
-		fmt.Fprint(w, routeHelpText)
-	}
-}
 
-func (s *Server) handleRouteList(ctx context.Context, w io.Writer, publicKey, teamName, boxName string) {
-	// Get box
-	box, err := s.getBoxForUser(ctx, publicKey, boxName)
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
-		return
-	}
 
-	// Get routes
-	routes, err := box.GetRoutes()
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
-		return
-	}
 
-	fmt.Fprintf(w, "\r\n\033[1;36mRoutes for box '%s':\033[0m\r\n\r\n", boxName)
-
-	if len(routes) == 0 {
-		fmt.Fprintf(w, "No routes configured.\r\n")
-		return
-	}
-
-	for _, route := range routes {
-		methods := strings.Join(route.Methods, ",")
-		ports := make([]string, len(route.Ports))
-		for i, port := range route.Ports {
-			ports[i] = fmt.Sprintf("%d", port)
-		}
-		portList := strings.Join(ports, ",")
-
-		fmt.Fprintf(w, "  \033[1m%s\033[0m (priority %d)\r\n", route.Name, route.Priority)
-		fmt.Fprintf(w, "    Methods: %s\r\n", methods)
-		fmt.Fprintf(w, "    Path prefix: %s\r\n", route.Paths.Prefix)
-		fmt.Fprintf(w, "    Policy: %s\r\n", route.Policy)
-		fmt.Fprintf(w, "    Ports: %s\r\n\r\n", portList)
-	}
-}
-
-func (s *Server) handleRouteAdd(ctx context.Context, w io.Writer, publicKey, teamName, boxName string, args []string) {
-	// Create a FlagSet for parsing
-	fs := flag.NewFlagSet("route add", flag.ContinueOnError)
-	var name, methodsStr, prefix, policy, portsStr string
-	var priority int
-
-	fs.StringVar(&name, "name", "", "route name (auto-generated if not specified)")
-	fs.IntVar(&priority, "priority", -1, "priority (lower = higher priority, defaults to lowest priority)")
-	fs.StringVar(&methodsStr, "methods", "*", "HTTP methods (comma-separated, or '*' for all)")
-	fs.StringVar(&prefix, "prefix", "/", "path prefix to match")
-	fs.StringVar(&policy, "policy", "private", "'public' or 'private'")
-	fs.StringVar(&portsStr, "ports", "80,8000,8080,8888", "allowed ports (comma-separated)")
-
-	// Capture the output to avoid printing errors to the session
-	var buf bytes.Buffer
-	fs.SetOutput(&buf)
-
-	// Parse the flags
-	err := fs.Parse(args)
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError parsing flags: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Generate name if not provided
-	if name == "" {
-		name = s.generateRandomRouteName()
-	}
-
-	// Get box
-	box, err := s.getBoxForUser(ctx, publicKey, boxName)
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Get existing routes
-	routes, err := box.GetRoutes()
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Set default priority if not specified
-	if priority == -1 {
-		// Find the highest priority number and set this route to be lower priority (higher number)
-		maxPriority := 0
-		for _, route := range routes {
-			if route.Priority > maxPriority {
-				maxPriority = route.Priority
-			}
-		}
-		priority = maxPriority + 10 // Add some gap
-	}
-
-	// Parse methods
-	var methods []string
-	if methodsStr == "*" {
-		methods = []string{"*"}
-	} else {
-		methods = strings.Split(methodsStr, ",")
-		for i, method := range methods {
-			methods[i] = strings.TrimSpace(strings.ToUpper(method))
-		}
-	}
-
-	// Parse ports
-	portStrs := strings.Split(portsStr, ",")
-	var ports []int
-	for _, portStr := range portStrs {
-		portStr = strings.TrimSpace(portStr)
-		port, err := strconv.Atoi(portStr)
-		if err != nil {
-			fmt.Fprintf(w, "\033[1;31mError: Invalid port '%s': %v\033[0m\r\n", portStr, err)
-			return
-		}
-		ports = append(ports, port)
-	}
-
-	// Validate policy
-	if policy != "public" && policy != "private" {
-		fmt.Fprintf(w, "\033[1;31mError: Policy must be 'public' or 'private'\033[0m\r\n")
-		return
-	}
-
-	// Check for duplicate name or priority
-	for _, route := range routes {
-		if route.Name == name {
-			fmt.Fprintf(w, "\033[1;31mError: Route with name '%s' already exists\033[0m\r\n", name)
-			return
-		}
-		if route.Priority == priority {
-			fmt.Fprintf(w, "\033[1;31mError: Route with priority %d already exists\033[0m\r\n", priority)
-			return
-		}
-	}
-
-	// Create new route
-	newRoute := Route{
-		Name:     name,
-		Priority: priority,
-		Methods:  methods,
-		Paths:    PathMatcher{Prefix: prefix},
-		Policy:   policy,
-		Ports:    ports,
-	}
-
-	// Add to routes list
-	routes = append(routes, newRoute)
-
-	// Set routes back on box
-	err = box.SetRoutes(routes)
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Update database
-	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE boxes SET routes = ?
-			WHERE name = ?`,
-			*box.Routes, boxName)
-		return err
-	})
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError saving route: %v\033[0m\r\n", err)
-		return
-	}
-
-	fmt.Fprintf(w, "\033[1;32mRoute '%s' added successfully\033[0m\r\n", name)
-}
-
-func (s *Server) handleRouteRemove(ctx context.Context, w io.Writer, publicKey, teamName, boxName string, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(w, "\033[1;31mError: Please specify route name\033[0m\r\n")
-		fmt.Fprintf(w, "Usage: route %s remove <name>\r\n", boxName)
-		return
-	}
-
-	routeName := args[0]
-
-	// Get box
-	box, err := s.getBoxForUser(ctx, publicKey, boxName)
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Get existing routes
-	routes, err := box.GetRoutes()
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError parsing routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Find and remove the route
-	var newRoutes BoxRoutes
-	found := false
-	for _, route := range routes {
-		if route.Name == routeName {
-			found = true
-			continue // Skip this route (remove it)
-		}
-		newRoutes = append(newRoutes, route)
-	}
-
-	if !found {
-		fmt.Fprintf(w, "\033[1;31mError: Route '%s' not found\033[0m\r\n", routeName)
-		return
-	}
-
-	// Set routes back on box
-	err = box.SetRoutes(newRoutes)
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError encoding routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	// Update database
-	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE boxes SET routes = ?
-			WHERE name = ?`,
-			*box.Routes, boxName)
-		return err
-	})
-	if err != nil {
-		fmt.Fprintf(w, "\033[1;31mError saving routes: %v\033[0m\r\n", err)
-		return
-	}
-
-	fmt.Fprintf(w, "\033[1;32mRoute '%s' removed successfully\033[0m\r\n", routeName)
-}
 
 // getBoxForUser retrieves a box for the given user/team/name
 func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*Box, error) {
@@ -710,40 +384,19 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 	return &box, nil
 }
 
-// generateRandomRouteName generates a random route name using famous roads
-func (s *Server) generateRandomRouteName() string {
-	roads := []string{
-		"abbey", "baker", "broadway", "canal", "champs", "downing", "embassy", "fleet",
-		"grand", "hollywood", "imperial", "kings", "lombard", "madison", "oxford", "piccadilly",
-		"regent", "sunset", "times", "victoria", "wall", "westminster", "bourbon", "castro",
-		"fifth", "harvard", "melrose", "newbury", "rodeo", "ventura", "wilshire", "sunset",
-		"michigan", "pennsylvania", "massachusetts", "connecticut", "california", "florida",
-		"bourbon", "royal", "chartres", "dauphine", "magazine", "esplanade", "canal", "poydras",
-	}
 
-	road1 := roads[mathrand.Intn(len(roads))]
-	road2 := roads[mathrand.Intn(len(roads))]
-
-	// Avoid duplicates in the same name
-	for road2 == road1 {
-		road2 = roads[mathrand.Intn(len(roads))]
-	}
-
-	return fmt.Sprintf("%s-%s", road1, road2)
-}
 
 // proxyToContainer proxies the HTTP request to a container via SSH port forwarding
-func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *Box, route *Route) error {
+func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *Box, route Route) error {
 	// Validate box has SSH credentials
 	if box.SSHClientPrivateKey == nil || box.SSHPort == nil {
 		return fmt.Errorf("box missing SSH credentials")
 	}
 
 	// In test mode, skip actual SSH connection and just simulate a successful proxy response.
-	// Because hey, why test the actual code with tests when you can make up some bs instead?
 	if s.testMode {
 		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "Test proxy response from route: %s\n", route.Name)
+		fmt.Fprintf(w, "Test proxy response from port: %d\n", route.Port)
 		return nil
 	}
 
@@ -780,18 +433,13 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *B
 		}
 	}
 
-	// Try each port in the route until one succeeds
-	for _, port := range route.Ports {
-		err = s.proxyViaSSHPortForward(w, r, sshHost, *box.SSHPort, sshKey, port)
-		if err == nil {
-			return nil // Success!
-		}
-		if !s.quietMode {
-			slog.Debug("Failed to proxy via port, trying next", "port", port, "error", err)
-		}
+	// Try to proxy to the configured port
+	err = s.proxyViaSSHPortForward(w, r, sshHost, *box.SSHPort, sshKey, route.Port)
+	if err != nil {
+		return fmt.Errorf("failed to proxy to port %d: %w", route.Port, err)
 	}
 
-	return fmt.Errorf("failed to proxy to any port in route: %v", route.Ports)
+	return nil
 }
 
 // proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly

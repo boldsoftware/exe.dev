@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +24,15 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("image", "exeuntu", "container image")
 	fs.String("size", "medium", "box size (small, medium, or large)")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
+	return fs
+}
+
+// routeCommandFlags creates a FlagSet for the route command
+func routeCommandFlags() *flag.FlagSet {
+	fs := flag.NewFlagSet("route", flag.ContinueOnError)
+	fs.Int("port", 80, "port to expose")
+	fs.Bool("private", false, "make the route private")
+	fs.Bool("public", false, "make the route public")
 	return fs
 }
 
@@ -131,6 +141,21 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 						Usage:       "billing delete",
 						Handler:     ss.handleBillingDeleteCommand,
 					},
+				},
+			},
+			{
+				Name:        "route",
+				Description: "Configure box routing",
+				Usage:       "route <box-name> [--port=80 --private|--public]",
+				Handler:     ss.handleRouteCommand,
+				FlagSetFunc: routeCommandFlags,
+				HasPositionalArgs: true,
+				CompleterFunc: CompleteBoxNames,
+				Examples: []string{
+					"route mybox                     # show current routing config",
+					"route mybox --port=8080 --private  # expose port 8080 privately",
+					"route mybox --port=80 --public     # expose port 80 publicly",
+					"route mybox --port=3000 --public   # expose port 3000 publicly",
 				},
 			},
 			{
@@ -1028,6 +1053,109 @@ func (ss *SSHServer) deleteBillingInfo(cc *CommandContext, billingInfo *billing.
 
 	cc.Writeln("\033[1;32m✓ Billing information deleted successfully!\033[0m")
 	cc.Writeln("You can set up billing again using the 'billing' command.")
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext) error {
+	if len(cc.Args) == 0 {
+		cc.Writeln("\033[1;31mError: Please specify box name\033[0m")
+		cc.Writeln("Usage: route <box-name> [--port=80 --private|--public]")
+		return fmt.Errorf("box name required")
+	}
+
+	boxName := cc.Args[0]
+
+	// Get box
+	box, err := ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: %v\033[0m", err)
+		return err
+	}
+
+	// If no flags provided, show current configuration
+	if cc.FlagSet.NFlag() == 0 {
+		route := box.GetRoute()
+		cc.Writeln("")
+		cc.Writeln("\033[1;36mRoute configuration for box '%s':\033[0m", boxName)
+		cc.Writeln("  Port: %d", route.Port)
+		cc.Writeln("  Share: %s", route.Share)
+		cc.Writeln("")
+		return nil
+	}
+
+    // Parse flags
+    portFlag := cc.FlagSet.Lookup("port")
+    privateFlag := cc.FlagSet.Lookup("private")
+    publicFlag := cc.FlagSet.Lookup("public")
+
+    // Determine which flags were explicitly set by the user
+    setFlags := map[string]bool{}
+    cc.FlagSet.Visit(func(f *flag.Flag) {
+        setFlags[f.Name] = true
+    })
+
+    portSet := setFlags["port"]
+    privateSet := setFlags["private"] && privateFlag != nil && privateFlag.Value.String() == "true"
+    publicSet := setFlags["public"] && publicFlag != nil && publicFlag.Value.String() == "true"
+
+	// Validate: if any flag is set, both --port and one of --private/--public must be set
+	if portSet || privateSet || publicSet {
+		if !portSet {
+			cc.Writeln("\033[1;31mError: --port is required when setting route configuration\033[0m")
+			return fmt.Errorf("--port is required")
+		}
+		if !privateSet && !publicSet {
+			cc.Writeln("\033[1;31mError: either --private or --public is required when setting route configuration\033[0m")
+			return fmt.Errorf("--private or --public is required")
+		}
+		if privateSet && publicSet {
+			cc.Writeln("\033[1;31mError: cannot specify both --private and --public\033[0m")
+			return fmt.Errorf("cannot specify both --private and --public")
+		}
+	}
+
+	// Parse port
+	portInt, err := strconv.Atoi(portFlag.Value.String())
+	if err != nil || portInt <= 0 || portInt > 65535 {
+		cc.Writeln("\033[1;31mError: --port must be a valid port number (1-65535)\033[0m")
+		return fmt.Errorf("invalid port value: %s", portFlag.Value.String())
+	}
+
+	// Determine share mode
+	var share string
+	if publicSet {
+		share = "public"
+	} else {
+		share = "private"
+	}
+
+	// Update route configuration
+	newRoute := Route{
+		Port:  portInt,
+		Share: share,
+	}
+
+	err = box.SetRoute(newRoute)
+	if err != nil {
+		cc.Writeln("\033[1;31mError encoding route: %v\033[0m", err)
+		return err
+	}
+
+	// Update database
+	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?`,
+			*box.Routes, boxName, cc.Alloc.AllocID)
+		return err
+	})
+	if err != nil {
+		cc.Writeln("\033[1;31mError saving route: %v\033[0m", err)
+		return err
+	}
+
+	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
+	cc.Writeln("  Port: %d", newRoute.Port)
+	cc.Writeln("  Share: %s", newRoute.Share)
 	cc.Writeln("")
 	return nil
 }

@@ -217,9 +217,9 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		return fmt.Errorf("command not available: %s", strings.Join(commandPath, " "))
 	}
 
-	// Parse flags if the command has a FlagSetFunc
-	// The remaining command path parts after finding the command are the actual arguments
-	allArgs := remainingArgs
+    // Parse flags if the command has a FlagSetFunc
+    // The remaining command path parts after finding the command are the actual arguments
+    allArgs := remainingArgs
 	// Parse the flags - always use a fresh FlagSet to avoid concurrent access
 	var fs *flag.FlagSet
 	if cmd.FlagSetFunc != nil {
@@ -234,12 +234,44 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 	// to the user instead.
 	fs.SetOutput(io.Discard)
 
-	if err := fs.Parse(allArgs); err != nil {
-		if err == flag.ErrHelp {
-			return cmd.Help(cc)
-		}
-		return fmt.Errorf("flag parsing error: %v", err)
-	}
+    // Allow flags to be interspersed with positional args by moving flags first
+    if len(allArgs) > 0 {
+        var flagArgs []string
+        var posArgs []string
+        for i := 0; i < len(allArgs); i++ {
+            a := allArgs[i]
+            // Terminator: everything after -- is positional
+            if a == "--" {
+                posArgs = append(posArgs, allArgs[i+1:]...)
+                break
+            }
+            // Treat args starting with '-' as flags
+            if strings.HasPrefix(a, "-") {
+                flagArgs = append(flagArgs, a)
+                // If next token looks like a value (doesn't start with '-') and current
+                // flag didn't include '=', treat it as the value for this flag.
+                if !strings.Contains(a, "=") && i+1 < len(allArgs) && !strings.HasPrefix(allArgs[i+1], "-") {
+                    flagArgs = append(flagArgs, allArgs[i+1])
+                    i++
+                }
+                continue
+            }
+            // Positional argument
+            posArgs = append(posArgs, a)
+        }
+        // Recombine: flags first, then positionals
+        combined := make([]string, 0, len(flagArgs)+len(posArgs))
+        combined = append(combined, flagArgs...)
+        combined = append(combined, posArgs...)
+        allArgs = combined
+    }
+
+    if err := fs.Parse(allArgs); err != nil {
+        if err == flag.ErrHelp {
+            return cmd.Help(cc)
+        }
+        return fmt.Errorf("flag parsing error: %v", err)
+    }
 	// Set the unparsed args as the new Args
 	cc.Args = fs.Args()
 	if cmd.FlagSetFunc != nil {

@@ -195,23 +195,11 @@ type Alloc struct {
 	BillingEmail     sql.NullString
 }
 
-// PathMatcher defines how to match request paths
-type PathMatcher struct {
-	Prefix string `json:"prefix,omitempty"` // Match paths with this prefix
-}
-
-// Route defines access rules for HTTP requests
+// Route represents the routing configuration for a box
 type Route struct {
-	Name     string      `json:"name"`     // Unique name for this route
-	Priority int         `json:"priority"` // Lower numbers = higher priority
-	Methods  []string    `json:"methods"`  // HTTP methods ("*" for all)
-	Paths    PathMatcher `json:"paths"`    // Path matching rules
-	Policy   string      `json:"policy"`   // "public" or "private"
-	Ports    []int       `json:"ports"`    // Allowed destination ports. We try all of them until success.
+	Port  int    `json:"port"`  // Port to expose (default 80)
+	Share string `json:"share"` // "private" or "public" (default "private")
 }
-
-// BoxRoutes represents the complete routing configuration for a box
-type BoxRoutes []Route
 
 // Box represents a container/VM
 type Box struct {
@@ -237,23 +225,24 @@ type Box struct {
 }
 
 // GetRoutes parses and returns the box's routing configuration
-func (b *Box) GetRoutes() (BoxRoutes, error) {
+// GetRoute returns the routing configuration for the box
+func (b *Box) GetRoute() Route {
 	if b.Routes == nil || *b.Routes == "" {
-		return b.getDefaultRoutes(), nil
+		return b.getDefaultRoute()
 	}
 
-	var routes BoxRoutes
-	err := json.Unmarshal([]byte(*b.Routes), &routes)
+	var route Route
+	err := json.Unmarshal([]byte(*b.Routes), &route)
 	if err != nil {
-		return b.getDefaultRoutes(), err
+		return b.getDefaultRoute()
 	}
 
-	return routes, nil
+	return route
 }
 
-// SetRoutes sets the box's routing configuration
-func (b *Box) SetRoutes(routes BoxRoutes) error {
-	data, err := json.Marshal(routes)
+// SetRoute sets the box's routing configuration
+func (b *Box) SetRoute(route Route) error {
+	data, err := json.Marshal(route)
 	if err != nil {
 		return err
 	}
@@ -262,17 +251,11 @@ func (b *Box) SetRoutes(routes BoxRoutes) error {
 	return nil
 }
 
-// getDefaultRoutes returns the default routing configuration
-func (b *Box) getDefaultRoutes() BoxRoutes {
-	return BoxRoutes{
-		{
-			Name:     "default",
-			Priority: 10,
-			Methods:  []string{"*"},
-			Paths:    PathMatcher{Prefix: "/"},
-			Policy:   "private",
-			Ports:    []int{80, 8000, 8080, 8888},
-		},
+// getDefaultRoute returns the default routing configuration
+func (b *Box) getDefaultRoute() Route {
+	return Route{
+		Port:  80,
+		Share: "private",
 	}
 }
 
@@ -2662,13 +2645,13 @@ func (s *Server) isValidBoxName(name string) bool {
 	return matched
 }
 
-// getDefaultRoutesJSON returns the default routes as a JSON string
-func getDefaultRoutesJSON() string {
+// getDefaultRouteJSON returns the default route as a JSON string
+func getDefaultRouteJSON() string {
 	var box Box
-	routes := box.getDefaultRoutes()
-	data, err := json.Marshal(routes)
+	route := box.getDefaultRoute()
+	data, err := json.Marshal(route)
 	if err != nil {
-		log.Fatalf("Failed to marshal default routes: %v", err)
+		log.Fatalf("Failed to marshal default route: %v", err)
 	}
 	return string(data)
 }
@@ -2680,7 +2663,7 @@ func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image 
 		return 0, fmt.Errorf("invalid box name: %s", name)
 	}
 
-	routes := getDefaultRoutesJSON()
+	routes := getDefaultRouteJSON()
 	var boxID int
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		result, err := tx.Exec(`
