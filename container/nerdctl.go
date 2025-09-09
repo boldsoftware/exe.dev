@@ -927,8 +927,15 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		"--label", fmt.Sprintf("box_id=%d", req.BoxID),
 		"--label", "managed_by=exe",
 		"--restart", "no",
-		// TEMPORARILY DISABLED: Removing all capability flags to debug issue
-		// TODO: Re-enable after fixing container startup issue
+
+		// Each containers has its own VM, so no need for container-level isolation.
+		"--cap-add=SYS_ADMIN",
+		"--cap-add=NET_ADMIN",
+		"--cap-add=NET_RAW",
+		"--cap-add=SYS_PTRACE",
+		"--cap-add=DAC_OVERRIDE",
+		"--cap-add=SETUID",
+		"--cap-add=SETGID",
 	)
 	// Optional: add OCI/Kata annotations if supported by nerdctl.
 	// Prefer unified CLH restore annotation when a snapshot is present on host.
