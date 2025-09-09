@@ -139,7 +139,7 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 	// For remote hosts, use SSH with sudo
 	// Use stdbuf to ensure unbuffered output for progress tracking
 	// Force cgroupfs for Kata (avoid nerdctl defaulting to systemd cgroup manager)
-	nerdctlArgs := []string{"stdbuf", "-o0", "-e0", "sudo", "nerdctl", "--namespace", "exe", "--cgroup-manager", "cgroupfs"}
+	nerdctlArgs := []string{"sudo", "nerdctl", "--namespace", "exe", "--cgroup-manager", "cgroupfs"}
 	nerdctlArgs = append(nerdctlArgs, args...)
 
 	return m.sshPool.ExecCommand(ctx, host, nerdctlArgs...)
@@ -863,12 +863,22 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	})
 	prep.wg.Go(func() {
 		// Try to inspect the image to see if it exists locally
-		inspectSizeCmd := m.execNerdctl(ctx, host, "image", "inspect", imageWithDigest, "--format", "{{.Size}}")
-		if _, err := inspectSizeCmd.Output(); err == nil {
-			prep.needsPull = false
-		} else {
+		// This is surprisingly hard. The command I have is the best I have found.
+		cmd := m.sshPool.ExecCommand(ctx, host, "sudo", "ctr", "--namespace=exe", "images", "ls", "-q", "name=="+imageWithDigest)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			slog.Error("ctr images ls failed", "err", err, "out", string(out))
 			prep.needsPull = true
+			return
 		}
+		if got := strings.TrimSpace(string(out)); got != imageWithDigest {
+			if got != "" {
+				slog.Error("ctr images ls unexpected output", "out", got, "imageWithDigest", imageWithDigest)
+			}
+			prep.needsPull = true
+			return
+		}
+		prep.needsPull = false
 	})
 	prep.wg.Go(func() {
 		cfg, err := m.inspectImage(ctx, imageWithDigest)
