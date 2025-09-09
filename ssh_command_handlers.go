@@ -89,23 +89,6 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				CompleterFunc:     CompleteBoxNames,
 			},
 			{
-				Name:              "logs",
-				Description:       "View box logs",
-				Handler:           ss.handleLogsCommand,
-				Usage:             "logs <box-name>",
-				HasPositionalArgs: true,
-				CompleterFunc:     CompleteBoxNames,
-			},
-			{
-				Name:              "diag",
-				Aliases:           []string{"diagnostics"},
-				Description:       "Get box startup diagnostics",
-				Usage:             "diag <box-name>",
-				Handler:           ss.handleDiagCommand,
-				HasPositionalArgs: true,
-				CompleterFunc:     CompleteBoxNames,
-			},
-			{
 				Name:        "alloc",
 				Description: "Resource allocation info",
 				Handler:     ss.handleAllocCommand,
@@ -722,24 +705,6 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 	}
 
 	cc.Writeln("\033[1;32mBox '%s' deleted successfully\033[0m", boxName)
-	return nil
-}
-
-func (ss *SSHServer) handleLogsCommand(ctx context.Context, cc *CommandContext) error {
-	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify a box name\033[0m")
-		cc.Writeln("Usage: logs <box-name>")
-		return nil
-	}
-
-	boxName := cc.Args[0]
-	cc.Writeln("Fetching logs for box '%s'...", boxName)
-	cc.Writeln("\033[1;33mNote: Logs not implemented in new server yet\033[0m")
-	return nil
-}
-
-func (ss *SSHServer) handleDiagCommand(ctx context.Context, cc *CommandContext) error {
-	cc.Writeln("\033[1;33mDiagnostics not implemented in new server yet\033[0m")
 	return nil
 }
 

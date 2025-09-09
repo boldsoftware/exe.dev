@@ -39,7 +39,7 @@ func TestCompletionIntegration(t *testing.T) {
 			name:     "complete command names",
 			line:     "l",
 			cursor:   1,
-			expected: []string{"list", "ls", "logs"},
+			expected: []string{"list", "ls"},
 		},
 		{
 			name:     "complete start command",
@@ -57,7 +57,7 @@ func TestCompletionIntegration(t *testing.T) {
 			name:     "complete with space - list commands",
 			line:     "",
 			cursor:   0,
-			expected: []string{"help", "?", "list", "ls", "new", "start", "stop", "delete", "logs", "diag", "diagnostics", "alloc", "billing", "whoami", "exit"},
+			expected: []string{"help", "?", "list", "ls", "new", "start", "stop", "delete", "alloc", "billing", "whoami", "exit"},
 		},
 		{
 			name:     "complete start with space - should use box completer (but no containers in test)",
