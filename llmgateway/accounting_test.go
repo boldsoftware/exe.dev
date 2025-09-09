@@ -1,4 +1,4 @@
-package llmproxy
+package llmgateway
 
 import (
 	"bytes"
@@ -24,7 +24,17 @@ type mockAccountant struct {
 	usageCredits []UsageCredit
 }
 
-var _ accountant = &mockAccountant{}
+// ApplyNewUserCredits implements accountant.
+func (m *mockAccountant) ApplyNewUserCredits(ctx context.Context, billingAccountID string) any {
+	panic("unimplemented")
+}
+
+// HasNewUserCredits implements accountant.
+func (m *mockAccountant) HasNewUserCredits(ctx context.Context, billingAccountID string) (bool, any) {
+	panic("unimplemented")
+}
+
+var _ Accountant = &mockAccountant{}
 
 func (m *mockAccountant) GetUserBalance(ctx context.Context, BillingAccountID string) (float64, error) {
 	if m.balanceErr != nil || m.balance != 0 {

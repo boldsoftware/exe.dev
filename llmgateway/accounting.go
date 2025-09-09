@@ -1,4 +1,4 @@
-package llmproxy
+package llmgateway
 
 // This file contains functions, types and constants to help exed check and track
 // how many tokens i.e. credits a client has consumed with each request that exed
@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -61,16 +61,20 @@ type Usage struct {
 	CostUSD                  float64 `json:"cost_usd"`
 }
 
-// accountant handles credit balance checking and usage debiting
-type accountant interface {
+// Accountant handles credit balance checking and usage debiting
+type Accountant interface {
 	// GetUserBalance retrieves the current credit balance for a user
-	GetUserBalance(ctx context.Context, BillingAccountID string) (float64, error)
+	GetUserBalance(ctx context.Context, billingAccountID string) (float64, error)
 
 	// DebitUsage records a usage debit for a user
 	DebitUsage(ctx context.Context, debit UsageDebit) error
 
 	// DebitUsage records a usage credit for a user
 	CreditUsage(ctx context.Context, credit UsageCredit) error
+
+	HasNewUserCredits(ctx context.Context, billingAccountID string) (bool, any)
+
+	ApplyNewUserCredits(ctx context.Context, billingAccountID string) any
 }
 
 // Prometheus metrics for accounting
@@ -136,18 +140,18 @@ func RegisterAccountingMetrics(registry *prometheus.Registry) {
 // accountingTransport wraps http transactions to check and track the client's credit usage
 type accountingTransport struct {
 	http.RoundTripper
-	accountant       accountant
+	accountant       Accountant
 	BillingAccountID string
 	baseURL          string
 	apiType          string    // "antmsgs" or "gemmsgs"
 	testDebitDone    chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 }
 
-func (a *accountingTransport) checkCredits(ctx context.Context, BillingAccountID string) error {
+func (a *accountingTransport) checkCredits(ctx context.Context, billingAccountID string) error {
 	// Get the current balance for the user
-	balance, err := a.accountant.GetUserBalance(ctx, BillingAccountID)
+	balance, err := a.accountant.GetUserBalance(ctx, billingAccountID)
 	if err != nil {
-		log.Printf("Error checking user balance: %v", err)
+		slog.Error("accountingTransport.checkCredits: GetUserBalance failed", "error", err)
 		// Fallback to allowing the request if we can't check balance
 		return nil
 	}
@@ -163,7 +167,7 @@ func (a *accountingTransport) checkCredits(ctx context.Context, BillingAccountID
 func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	// TODO: restore latency measurements
 	if err := a.checkCredits(r.Context(), a.BillingAccountID); err != nil {
-		log.Printf("accountingTransport checkCredits err: %v", err)
+		slog.Error("accountingTransport.RoundTrip: checkCredits failed", "error", err)
 		// Increment the requests counter with status="payment_required"
 		requestsCounter.WithLabelValues("payment_required", a.apiType).Inc()
 		return &http.Response{
@@ -257,7 +261,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 
 		// If token counts are zero, set a minimal token count to avoid accounting errors
 		if promptTokens == 0 && completionTokens == 0 {
-			log.Printf("openai response has zero token counts, using defaults")
+			slog.Debug("openai response has zero token counts, using defaults")
 			promptTokens = 1
 			completionTokens = 1
 		}
@@ -293,7 +297,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 
 		// If token counts are zero, set a minimal token count to avoid accounting errors
 		if promptTokens == 0 && candidatesTokens == 0 {
-			log.Printf("gemini response has zero token counts, using defaults")
+			slog.Debug("gemini response has zero token counts, using defaults")
 			promptTokens = 1
 			candidatesTokens = 1
 		}
@@ -327,7 +331,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		if err := a.accountant.DebitUsage(ctx, usageDebit); err != nil {
-			log.Printf("accountingTransport couldn't debit usage: %v", err)
+			slog.Error("accountingTransport.modifyResponse: couldn't debit usage", "error", err)
 		}
 		if a.testDebitDone != nil {
 			a.testDebitDone <- true

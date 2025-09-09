@@ -1,4 +1,4 @@
-package llmproxy
+package llmgateway
 
 // TotalUsageCostUSD calculates the total cost in USD for all usage across models
 func TotalUsageCostUSD(usages map[string]Usage) float64 {
