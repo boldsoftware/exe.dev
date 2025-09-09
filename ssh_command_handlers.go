@@ -605,9 +605,6 @@ func (ss *SSHServer) handleStopCommand(ctx context.Context, cc *CommandContext) 
 		}
 
 		// Update database status
-		// TODO(banksean): This is from the original location in ssh_server.go, but the query itself
-		// seems like it's missing some extra details (e.g. alloc_id; otherwise I can stop someone else's box if
-		// it has the same name as mine).
 		err = ss.server.db.Exec(ctx, `
 			UPDATE boxes SET status = 'stopped'
 			WHERE name = ?`,

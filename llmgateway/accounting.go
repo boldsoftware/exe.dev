@@ -37,7 +37,6 @@ type UsageDebit struct {
 	MessageID        string    `json:"message_id"`
 	BillingAccountID string    `json:"billing_account_id"`
 	Created          time.Time `json:"created"`
-	// TODO(banksean): add MachineKey so we can at least record the pk of the machine that made the request.
 }
 
 // UsageCredit represents a credit purchase by a user
