@@ -34,7 +34,6 @@ import (
 //
 // ⚠️ IMPORTANT: Kata/gVisor Runtime Considerations ⚠️
 // This manager MUST work with Kata runtime for security isolation.
-// See setupContainerSSH() for critical warnings about exec and stdin handling.
 // NEVER use 'nerdctl exec -i' with stdin redirection - it will cause containers
 // to enter UNKNOWN state with Kata/gVisor runtimes.
 type NerdctlManager struct {
@@ -837,11 +836,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		imageWithDigest = image
 	}
 
-	// Always use exetini for containers. exetini is responsible for handling
-	// special init chaining cases internally.
-	useExetini := true
-	autoStartSSH := true
-
 	// Use the default bridge network for all containers
 	// Container isolation is handled by iptables rules configured during setup
 	networkName := "bridge"
@@ -851,30 +845,50 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		wg                  sync.WaitGroup
 		containerExeDevPath string
 		errc                chan error
+		needsPull           bool
+		imageUser           string
+		imageEntrypoint     []string
+		imageCmd            []string
 	}
-	prep.errc = make(chan error, 1)
+	prep.errc = make(chan error, 3)
 
 	// Prepare container-specific /exe.dev directory with SSH keys
-	prep.wg.Add(1)
-	go func() {
-		defer prep.wg.Done()
+	prep.wg.Go(func() {
 		path, err := m.prepareContainerExeDev(ctx, host, req.BoxID, sshKeys)
 		if err != nil {
 			prep.errc <- fmt.Errorf("failed to prepare container /exe.dev: %w", err)
 		} else {
 			prep.containerExeDevPath = path
 		}
-	}()
-
-	// We'll inspect the image later, after we know it exists (either locally or after pulling)
-	// This avoids the inefficiency of trying to inspect before the image is available
+	})
+	prep.wg.Go(func() {
+		// Try to inspect the image to see if it exists locally
+		inspectSizeCmd := m.execNerdctl(ctx, host, "image", "inspect", imageWithDigest, "--format", "{{.Size}}")
+		if _, err := inspectSizeCmd.Output(); err == nil {
+			prep.needsPull = false
+		} else {
+			prep.needsPull = true
+		}
+	})
+	prep.wg.Go(func() {
+		cfg, err := m.inspectImage(ctx, imageWithDigest)
+		if err != nil {
+			// Do not use errc here as we can continue without this info.
+			slog.Error("Failed to get image metadata", "image", imageWithDigest, "error", err)
+			return
+		}
+		prep.imageUser = cfg.User
+		if req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none" {
+			prep.imageEntrypoint = cfg.Entrypoint
+			prep.imageCmd = cfg.Cmd
+		}
+	})
 
 	// Wait for all
 	prep.wg.Wait()
 	if len(prep.errc) > 0 {
 		return nil, <-prep.errc
 	}
-	// Tag timings aligned with prior markers
 
 	// Allocate SSH port first so we can publish it
 	// Use a hash of allocID and name to get a stable port in [10000,19999].
@@ -899,11 +913,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		"--network", networkName,
 	}
 
+	// Run as root so sshd can read its host key when auto-starting
+	runArgs = append(runArgs, "--user", "root")
+
 	// Add remaining args
-	if autoStartSSH {
-		// Run as root so sshd can read its host key when auto-starting
-		runArgs = append(runArgs, "--user", "root")
-	}
 	runArgs = append(runArgs,
 		"--publish", fmt.Sprintf("%d:22", sshPort), // Publish SSH port
 		"--hostname", req.Name, // Set hostname to match the container name
@@ -952,91 +965,41 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Cloud Hypervisor doesn't support the dynamic resource allocation that nerdctl's
 	// --memory and --cpus flags trigger. We need to use cgroup parent slices instead.
 
-	// Determine final image reference (use digest version if available)
-	finalImage := imageWithDigest
-	if finalImage == "" {
-		finalImage = image
-	}
-	// Note: We'll add the image to runArgs later, after setting --entrypoint
-
-	// Check if image exists locally and get its size
-	var needsPull bool
-
-	// Use the digest version for inspection if available
-	imageToInspect := imageWithDigest
-	if imageToInspect == "" {
-		imageToInspect = image
-	}
-
-	// Try to inspect the image to see if it exists locally
-	inspectSizeCmd := m.execNerdctl(ctx, host, "image", "inspect", imageToInspect, "--format", "{{.Size}}")
-	if _, err := inspectSizeCmd.Output(); err == nil {
-		needsPull = false
-	} else {
-		needsPull = true
-	}
-
-	// Only pull if needed
-	if needsPull {
+	if prep.needsPull {
 		// Report that we're about to pull with the size we determined
 		reportProgress(req, CreatePull, 0, 0, "Starting image pull")
 
 		// Always pull with progress tracking so the user sees MB progress
 		// HostUpdater does not currently provide progress callbacks.
-		if err := m.pullImageWithProgress(ctx, host, imageToInspect, req, 0); err != nil {
+		if err := m.pullImageWithProgress(ctx, host, imageWithDigest, req, 0); err != nil {
 			// Check if it's just an "already exists" error
-			pullCmd := m.execNerdctl(ctx, host, "--snapshotter", "nydus", "pull", imageToInspect)
+			pullCmd := m.execNerdctl(ctx, host, "--snapshotter", "nydus", "pull", imageWithDigest)
 			if output, pullErr := pullCmd.CombinedOutput(); pullErr != nil {
 				if !strings.Contains(string(output), "already exists") {
-					slog.Warn("Failed to pull image", "image", imageToInspect, "error", err, "output", string(output))
+					slog.Warn("Failed to pull image", "image", imageWithDigest, "error", err, "output", string(output))
 				}
 			}
 		}
 	}
 
-	// Now that the image exists inspect it to get all metadata.
-	var imageUser string
-	var imageEntrypoint []string
-	var imageCmd []string
-	if cfg, err := m.inspectImage(ctx, imageToInspect); err == nil {
-		imageUser = cfg.User
-		if useExetini && (req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none") {
-			imageEntrypoint = cfg.Entrypoint
-			imageCmd = cfg.Cmd
-		}
-	} else {
-		slog.Error("Failed to get image metadata", "image", imageToInspect, "error", err)
-	}
-
 	// If using exetini, override the entrypoint and pass image user
 	runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
-	if imageUser != "" {
+	if prep.imageUser != "" {
 		// Pass the image user to exetini via environment variable
-		runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", imageUser))
+		runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", prep.imageUser))
 	}
 
 	// Add the image to runArgs (must come after --entrypoint but before command args)
-	runArgs = append(runArgs, finalImage)
+	runArgs = append(runArgs, imageWithDigest)
 
 	// Now append the command/entrypoint args after the image
-	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, imageEntrypoint, imageCmd)...)
+	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, prep.imageEntrypoint, prep.imageCmd)...)
 
 	// Create and start container
 	reportProgress(req, CreateStart, 0, 0, "Starting container")
+	slog.Info("Creating container", "command", runArgs, "boxID", req.BoxID)
 
 	createCmd := m.execNerdctl(ctx, host, runArgs...)
-
-	// Log the command for debugging
-	slog.Info("Creating container", "command", createCmd.Args, "boxID", req.BoxID)
-
-	// Debug: Log the exact command being run
-	if len(createCmd.Args) >= 2 && createCmd.Args[0] == "ssh" {
-		slog.Debug("SSH command", "host", createCmd.Args[1], "command", createCmd.Args[2])
-	} else {
-		slog.Debug("Direct command", "args", createCmd.Args)
-	}
-
-	// Use CombinedOutput to capture both stdout and stderr
 	output, err := createCmd.CombinedOutput()
 	if err != nil {
 		outputStr := string(output)
@@ -1064,34 +1027,18 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 
 	// Wait for container to reach "running" status and get its network info
+	reportProgress(req, CreateSSH, 0, 0, "Waiting for container") // TODO: rename CreateSSH
 	containerIP, err := m.waitForContainerRunning(ctx, host, containerID, networkName, cleanupContainerDir)
 	if err != nil {
 		return nil, err
-	}
-
-	// Configure SSH in the container (synchronously - block until ready)
-	reportProgress(req, CreateSSH, 0, 0, "Configuring SSH")
-
-	if !autoStartSSH {
-		// Only setup SSH if not auto-started by the container
-		sshCtx, sshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer sshCancel()
-
-		if err := m.setupContainerSSH(sshCtx, containerID, host, req.Name, sshKeys); err != nil {
-			// SSH setup failed - this is critical, so return an error
-			// Clean up the container since it's not usable without SSH
-			m.execNerdctl(ctx, host, "rm", "-f", containerID).Run()
-			cleanupContainerDir()
-			return nil, fmt.Errorf("failed to setup SSH in container: %w", err)
-		}
 	}
 
 	// Mark creation as done - SSH is now ready
 	reportProgress(req, CreateDone, 0, 0, "Container ready")
 
 	// Default to root user if not specified in image
-	if imageUser == "" {
-		imageUser = "root"
+	if prep.imageUser == "" {
+		prep.imageUser = "root"
 	}
 
 	// Create container record
@@ -1112,7 +1059,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		SSHHostCertificate:   sshKeys.HostCertificate,
 		SSHClientPrivateKey:  sshKeys.ClientPrivateKey,
 		SSHPort:              sshPort,
-		SSHUser:              imageUser,
+		SSHUser:              prep.imageUser,
 	}
 
 	// Set up SSH tunnel if we're using a remote host
@@ -1345,47 +1292,6 @@ func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) e
 		delete(m.sshTunnels, containerID)
 		m.mu.Unlock()
 	}()
-
-	return nil
-}
-
-// sshdCmd creates the sshd user (for privsev) if necessary then starts sshd.
-const sshdCmd = "id sshd >/dev/null 2>&1" +
-	"|| (groupadd -g 65534 nogroup 2>/dev/null || true; useradd -u 105 -g 65534 -c 'sshd privsep' -d /exe.dev/var/empty -s /usr/sbin/nologin sshd) 2>/dev/null" +
-	"; exec /exe.dev/bin/sshd -f /exe.dev/etc/ssh/sshd_config"
-
-// setupContainerSSH configures SSH inside the container
-// This is used for containers that have an entrypoint already.
-func (m *NerdctlManager) setupContainerSSH(ctx context.Context, containerID, host, containerName string, sshKeys *ContainerSSHKeys) error {
-	slog.Info("Starting SSH setup for container", "id", containerID, "name", containerName)
-	startCmd := m.execNerdctl(ctx, host, "exec", "-d", "-u", "root", containerID, "sh", "-c", sshdCmd)
-	if output, err := startCmd.CombinedOutput(); err != nil {
-		slog.Warn("SSH daemon start failed", "error", err, "output", string(output))
-		// Don't return error - sshd might still be running
-	} else {
-		slog.Info("SSH daemon started successfully in container", "id", containerID)
-	}
-
-	// Spin-wait for sshd to fully daemonize and initialize
-	var sshRunning bool
-	for i := 0; i < 10; i++ {
-		verifyCmd := m.execNerdctl(ctx, host, "exec", "-u", "root", containerID, "sh", "-c", "ps aux | grep -v grep | grep -E 'sshd.*listener'")
-		output, err := verifyCmd.CombinedOutput()
-		if err == nil && len(strings.TrimSpace(string(output))) > 0 {
-			sshRunning = true
-			slog.Info("SSH daemon verified running in container", "id", containerID, "attempt", i+1)
-			slog.Debug("SSH process", "output", strings.TrimSpace(string(output)))
-			break
-		}
-		if i == 5 {
-			slog.Info("Still waiting for SSH daemon", "attempt", i+1, "total", 10)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	if !sshRunning {
-		slog.Warn("SSH daemon process not detected in container after 1 second", "id", containerID)
-	}
 
 	return nil
 }
