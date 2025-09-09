@@ -8,7 +8,8 @@
     "clean": "rm -rf dist/*",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "generate-types": "cd .. && go run ./cmd/go2ts.go -o ui/src/generated-types.ts"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -24,6 +25,7 @@
     "eslint": "^9.35.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.43.0"
   }
 }

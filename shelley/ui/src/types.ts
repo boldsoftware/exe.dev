@@ -1,21 +1,17 @@
-export interface Conversation {
-  conversation_id: string;
-  slug?: string;
-  created_at: string;
-  updated_at: string;
+// Types for Shelley UI
+import { Conversation as GeneratedConversation, Message as GeneratedMessage, Usage as GeneratedUsage, MessageType as GeneratedMessageType } from './generated-types';
+
+// Re-export generated types
+export type Conversation = GeneratedConversation;
+export type Usage = GeneratedUsage;
+export type MessageType = GeneratedMessageType;
+
+// Extend the generated Message type with parsed data
+export interface Message extends Omit<GeneratedMessage, 'type'> {
+  type: MessageType;
 }
 
-export interface Message {
-  message_id: string;
-  conversation_id: string;
-  type: 'user' | 'agent' | 'tool';
-  llm_data?: unknown;
-  user_data?: unknown;
-  usage_data?: unknown;
-  created_at: string;
-}
-
-// Go backend struct format (capitalized field names)
+// Go backend LLM struct format (capitalized field names)
 export interface LLMMessage {
   Role: number; // 0 = user, 1 = assistant
   Content: LLMContent[];
@@ -24,7 +20,7 @@ export interface LLMMessage {
 
 export interface LLMContent {
   ID: string;
-  Type: number; // 2 = text, etc.
+  Type: number; // 2 = text, 3 = tool_use, 4 = tool_result, 5 = thinking
   Text?: string;
   ToolName?: string;
   ToolInput?: unknown;
@@ -42,6 +38,7 @@ export interface LLMContent {
   Cache?: boolean;
 }
 
+// API types
 export interface Model {
   id: string;
   ready: boolean;
