@@ -808,7 +808,6 @@ func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repositor
 			WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 		`, registry, repository, tag, platform).Scan(&imageUser, &imageEntrypoint, &imageCmd)
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -856,7 +855,7 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 		var exists bool
 		if err := tx.QueryRow(`
 			SELECT EXISTS(
-				SELECT 1 FROM tag_resolutions 
+				SELECT 1 FROM tag_resolutions
 				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 			)
 		`, registry, repository, tag, platform).Scan(&exists); err != nil {
