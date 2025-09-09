@@ -20,6 +20,7 @@ func TestRequiresSSHKey(t *testing.T) {
 		"-p", fmt.Sprint(Env.piperd.SSHPort),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "PubkeyAuthentication=no",
+		"-o", "UserKnownHostsFile=/dev/null",
 		"-F", "/dev/null", // don't use any config file -> no ssh keys
 		"localhost",
 	)
