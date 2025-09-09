@@ -56,13 +56,13 @@ func (m *llmGateway) boxKeyAuth(ctx context.Context, r *http.Request) (string, e
 	}
 
 	authHeader = strings.TrimPrefix(authHeader, "Bearer ")
-	
+
 	// Decode base64 token
 	tokenBytes, err := base64.StdEncoding.DecodeString(authHeader)
 	if err != nil {
 		return "", fmt.Errorf("decoding base64 bearer token: %w", err)
 	}
-	
+
 	tok := &boxKeyBearerToken{}
 	if err := json.Unmarshal(tokenBytes, tok); err != nil {
 		return "", fmt.Errorf("unmarshaling bearer token: %w", err)
