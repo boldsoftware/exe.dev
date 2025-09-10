@@ -347,7 +347,6 @@ var toolCallInfoKey toolCallInfoKeyType
 
 type ToolCallInfo struct {
 	ToolUseID string
-	Convo     *Convo
 }
 
 func ToolCallInfoFromContext(ctx context.Context) ToolCallInfo {
@@ -484,7 +483,7 @@ func (c *Convo) ToolResultContents(ctx context.Context, resp *llm.Response) ([]l
 			toolUseCtx, cancel := c.newToolUseContext(ctx, part.ID)
 			defer cancel()
 			// TODO: move this into newToolUseContext?
-			toolUseCtx = context.WithValue(toolUseCtx, toolCallInfoKey, ToolCallInfo{ToolUseID: part.ID, Convo: c})
+			toolUseCtx = context.WithValue(toolUseCtx, toolCallInfoKey, ToolCallInfo{ToolUseID: part.ID})
 			toolOut := tool.Run(toolUseCtx, part.ToolInput)
 			if errors.Is(toolOut.Error, ErrDoNotRespond) {
 				return

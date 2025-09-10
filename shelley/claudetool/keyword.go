@@ -10,17 +10,32 @@ import (
 	"strings"
 
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/llm/conversation"
 )
 
-// The Keyword tool provides keyword search.
-// TODO: use an embedding model + re-ranker or otherwise do something nicer than this kludge.
-// TODO: if we can get this fast enough, do it on the fly while the user is typing their prompt.
-var Keyword = &llm.Tool{
-	Name:        keywordName,
-	Description: keywordDescription,
-	InputSchema: llm.MustSchema(keywordInputSchema),
-	Run:         keywordRun,
+// LLMServiceProvider defines the interface for getting LLM services
+type LLMServiceProvider interface {
+	GetService(modelID string) (llm.Service, error)
+	GetAvailableModels() []string
+}
+
+// KeywordTool provides keyword search functionality
+type KeywordTool struct {
+	llmProvider LLMServiceProvider
+}
+
+// NewKeywordTool creates a new keyword tool with the given LLM provider
+func NewKeywordTool(provider LLMServiceProvider) *KeywordTool {
+	return &KeywordTool{llmProvider: provider}
+}
+
+// Tool returns the LLM tool definition
+func (k *KeywordTool) Tool() *llm.Tool {
+	return &llm.Tool{
+		Name:        keywordName,
+		Description: keywordDescription,
+		InputSchema: llm.MustSchema(keywordInputSchema),
+		Run:         k.keywordRun,
+	}
 }
 
 const (
@@ -83,7 +98,8 @@ func FindRepoRoot(wd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func keywordRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
+// keywordRun is the main implementation using the LLM provider
+func (k *KeywordTool) keywordRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
 	var input keywordInput
 	if err := json.Unmarshal(m, &input); err != nil {
 		return llm.ErrorToolOut(err)
@@ -127,10 +143,16 @@ func keywordRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
 		keep = keep[:len(keep)-1]
 	}
 
-	info := conversation.ToolCallInfoFromContext(ctx)
-	convo := info.Convo.SubConvo()
-	convo.SystemPrompt = strings.TrimSpace(keywordSystemPrompt)
-	convo.PromptCaching = false
+	// Select the best available LLM service
+	llmService, err := k.selectBestLLM(k.llmProvider)
+	if err != nil {
+		return llm.ErrorfToolOut("failed to get LLM service: %w", err)
+	}
+
+	// Create the filtering request
+	system := []llm.SystemContent{
+		{Type: "text", Text: strings.TrimSpace(keywordSystemPrompt)},
+	}
 
 	initialMessage := llm.Message{
 		Role: llm.MessageRoleUser,
@@ -141,7 +163,12 @@ func keywordRun(ctx context.Context, m json.RawMessage) llm.ToolOut {
 		},
 	}
 
-	resp, err := convo.SendMessage(initialMessage)
+	req := &llm.Request{
+		Messages: []llm.Message{initialMessage},
+		System:   system,
+	}
+
+	resp, err := llmService.Do(ctx, req)
 	if err != nil {
 		return llm.ErrorfToolOut("failed to send relevance filtering message: %w", err)
 	}
@@ -179,4 +206,25 @@ func ripgrep(ctx context.Context, wd string, terms []string) (string, error) {
 	}
 	outStr := string(out)
 	return outStr, nil
+}
+
+// selectBestLLM selects the best available LLM service for keyword search
+func (k *KeywordTool) selectBestLLM(provider LLMServiceProvider) (llm.Service, error) {
+	// Preferred models in order of preference for keyword search (fast, cheap models preferred)
+	preferredModels := []string{"gpt-5-thinking-mini", "gpt5-mini", "claude-sonnet-3.5", "qwen3-coder-fireworks", "predictable"}
+
+	for _, model := range preferredModels {
+		svc, err := provider.GetService(model)
+		if err == nil {
+			return svc, nil
+		}
+	}
+
+	// If no preferred model is available, try any available model
+	available := provider.GetAvailableModels()
+	if len(available) > 0 {
+		return provider.GetService(available[0])
+	}
+
+	return nil, fmt.Errorf("no LLM services available")
 }

@@ -17,9 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"shelley.exe.dev/claudetool/bashkit"
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/llm/conversation"
-	"sketch.dev/claudetool/bashkit"
 )
 
 // PermissionCallback is a function type for checking if a command is allowed to run
@@ -35,6 +34,8 @@ type BashTool struct {
 	Timeouts *Timeouts
 	// Pwd is the working directory for the tool
 	Pwd string
+	// LLMProvider provides access to LLM services for tool validation
+	LLMProvider LLMServiceProvider
 }
 
 const (
@@ -434,13 +435,14 @@ func (b *BashTool) installTool(ctx context.Context, cmd string) error {
 	if packageManager == "" {
 		return fmt.Errorf("no known package manager found in PATH")
 	}
-	info := conversation.ToolCallInfoFromContext(ctx)
-	if info.Convo == nil {
-		return fmt.Errorf("no conversation context available for tool installation")
+	// Use LLM to validate and get package name
+	if b.LLMProvider == nil {
+		return fmt.Errorf("no LLM provider available for tool validation")
 	}
-	subConvo := info.Convo.SubConvo()
-	subConvo.Hidden = true
-	subConvo.SystemPrompt = "You are an expert in software developer tools."
+	llmService, err := b.selectBestLLM()
+	if err != nil {
+		return fmt.Errorf("failed to get LLM service for tool validation: %w", err)
+	}
 
 	query := fmt.Sprintf(`Do you know this command/package/tool? Is it legitimate, clearly non-harmful, and commonly used? Can it be installed with package manager %s?
 
@@ -449,7 +451,18 @@ Command: %s
 - YES: Respond ONLY with the package name used to install it
 - NO or UNSURE: Respond ONLY with the word NO`, packageManager, cmd)
 
-	resp, err := subConvo.SendUserTextMessage(query)
+	req := &llm.Request{
+		Messages: []llm.Message{{
+			Role:    llm.MessageRoleUser,
+			Content: []llm.Content{llm.StringContent(query)},
+		}},
+		System: []llm.SystemContent{{
+			Type: "text",
+			Text: "You are an expert in software developer tools.",
+		}},
+	}
+
+	resp, err := llmService.Do(ctx, req)
 	if err != nil {
 		return fmt.Errorf("failed to validate tool with LLM: %w", err)
 	}
@@ -469,6 +482,11 @@ Command: %s
 		return fmt.Errorf("no package name provided for tool %s", cmd)
 	}
 
+	return b.installPackage(ctx, cmd, packageName, packageManager)
+}
+
+// installPackage handles the actual package installation
+func (b *BashTool) installPackage(ctx context.Context, cmd, packageName, packageManager string) error {
 	// Install the package (with update command first if needed)
 	// TODO: these invocations create zombies when we are PID 1.
 	// We should give them the same zombie-reaping treatment as above,
@@ -538,4 +556,29 @@ Command: %s
 
 	slog.InfoContext(ctx, "tool installation successful", "tool", cmd, "package", packageName)
 	return nil
+}
+
+// selectBestLLM selects the best available LLM service for bash tool validation
+func (b *BashTool) selectBestLLM() (llm.Service, error) {
+	if b.LLMProvider == nil {
+		return nil, fmt.Errorf("no LLM provider available")
+	}
+
+	// Preferred models in order of preference for tool validation (fast, cheap models preferred)
+	preferredModels := []string{"gpt-5-thinking-mini", "gpt5-mini", "claude-sonnet-3.5", "qwen3-coder-fireworks", "predictable"}
+
+	for _, model := range preferredModels {
+		svc, err := b.LLMProvider.GetService(model)
+		if err == nil {
+			return svc, nil
+		}
+	}
+
+	// If no preferred model is available, try any available model
+	available := b.LLMProvider.GetAvailableModels()
+	if len(available) > 0 {
+		return b.LLMProvider.GetService(available[0])
+	}
+
+	return nil, fmt.Errorf("no LLM services available")
 }

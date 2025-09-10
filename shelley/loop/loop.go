@@ -13,7 +13,8 @@ import (
 // MessageRecordFunc is called to record new messages to persistent storage
 type MessageRecordFunc func(ctx context.Context, message llm.Message, usage llm.Usage) error
 
-// Loop manages a conversation with an LLM including tool execution and message recording
+// Loop manages a conversation turn with an LLM including tool execution and message recording.
+// Notably, when the turn ends, the "Loop" is over. TODO: maybe rename to Turn?
 type Loop struct {
 	llm           llm.Service
 	tools         []*llm.Tool

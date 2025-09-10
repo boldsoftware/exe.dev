@@ -87,7 +87,7 @@ func runServe(global GlobalConfig, args []string) {
 	// Initialize LLM service manager (no auto-detection)
 	llmManager := server.NewLLMServiceManager(logger)
 
-	tools := setupTools()
+	tools := setupTools(llmManager)
 
 	// Create and start server
 	svr := server.NewServer(database, llmManager, tools, logger)
@@ -115,9 +115,12 @@ func runPrompt(global GlobalConfig, args []string) {
 	database := setupDatabase(global.DBPath, logger)
 	defer database.Close()
 
-	// Initialize LLM service
+	// Initialize LLM service for the main conversation
 	llmService := setupLLMService(global.Model, logger)
-	tools := setupTools()
+
+	// Initialize LLM service manager for tools (same as HTTP server)
+	llmManager := server.NewLLMServiceManager(logger)
+	tools := setupTools(llmManager)
 	ctx := context.Background()
 
 	var conversationID string
@@ -424,15 +427,20 @@ func runModels(global GlobalConfig, args []string) {
 	}
 }
 
-func setupTools() []*llm.Tool {
-	bashTool := &claudetool.BashTool{Pwd: "/"}
+func setupTools(llmProvider claudetool.LLMServiceProvider) []*llm.Tool {
+	bashTool := &claudetool.BashTool{
+		Pwd:              "/",
+		LLMProvider:      llmProvider,
+		EnableJITInstall: claudetool.EnableBashToolJITInstall,
+	}
 	patchTool := &claudetool.PatchTool{}
+	keywordTool := claudetool.NewKeywordTool(llmProvider)
 
 	return []*llm.Tool{
 		claudetool.Think,
 		bashTool.Tool(),
 		patchTool.Tool(),
-		claudetool.Keyword,
+		keywordTool.Tool(),
 	}
 }
 
