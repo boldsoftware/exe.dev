@@ -27,7 +27,7 @@ func TestNewKeyRegistration(t *testing.T) {
 	pty.want("Registration complete")
 	pty.want("Press any key to continue")
 	pty.sendLine("")
-	pty.want("commands:") // check that we show help menu on first login
+	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -54,7 +54,9 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.want("Registration complete")
 	pty.want("Press any key to continue")
 	pty.sendLine("")
-	pty.want("commands:") // check that we show help menu on first login
+	// Check that we show welcome message for first login.
+	pty.want("Welcome to EXE.DEV!")
+	pty.want("To create your first box, run:")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -62,9 +64,14 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.wantPrompt()
 	pty.disconnect()
 
-	// second login: no re-registration, no banner
+	// second login: no re-registration, but should still show welcome since user hasn't created boxes
 	pty = sshToExeDev(t, keyFile)
 	pty.reject(banner)
+	pty.reject("Please enter your email")
+	// No registration flow, no welcome message
+	// but should still hint about how to create boxes,
+	// because they haven't yet.
+	pty.want("To create your first box, run:")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)

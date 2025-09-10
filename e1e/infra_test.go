@@ -1041,7 +1041,7 @@ func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
 	pty.want("Registration complete")
 	pty.want("Press any key to continue")
 	pty.sendLine("")
-	pty.want("commands:") // check that we show help menu on first login
+	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
 	pty.wantPrompt()
 
 	pty.sendLine("whoami")

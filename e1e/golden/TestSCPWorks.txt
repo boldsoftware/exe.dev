@@ -27,21 +27,13 @@ Your account has been successfully created.
 Press any key to continue...
 
 
-EXE.DEV commands:
+Welcome to EXE.DEV!
 
-list                    - List your boxes
-new [args]              - Create a new box
-start <name>            - Start a box
-stop <name> [...]       - Stop one or more boxes
-delete <name>           - Delete a box
-logs <name>             - View box logs
-billing                 - Manage billing and payment info
-whoami                  - Show your email and SSH keys
-?                       - Show this help
-exit                    - Exit
+To create your first box, run:
 
-Run help <command> for more details
+  new
 
+Or type `help` to see a list of commands.
 exe.dev ▶ whoami
 User Information:
 

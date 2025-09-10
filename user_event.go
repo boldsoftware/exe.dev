@@ -1,0 +1,102 @@
+package exe
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"log/slog"
+
+	"exe.dev/sqlite"
+)
+
+const (
+	userEventCreatedBox = "created_box"
+	userEventUsedREPL   = "used_repl"
+)
+
+// recordUserEvent increments the number of times userID has experienced event.
+func (s *Server) recordUserEvent(ctx context.Context, userID, event string) error {
+	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return s.recordUserEventTx(tx, userID, event)
+	})
+}
+
+// recordUserEventTx increments the number of times userID has experienced event, within transaction tx.
+func (s *Server) recordUserEventTx(tx *sqlite.Tx, userID, event string) error {
+	_, err := tx.Exec(`
+		INSERT INTO user_events (user_id, event, count, first_occurred_at, last_occurred_at)
+		VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		ON CONFLICT(user_id, event) DO UPDATE SET
+			count = count + 1,
+			last_occurred_at = CURRENT_TIMESTAMP
+	`, userID, event)
+	return err
+}
+
+// recordUserEventBestEffort increments the number of times userID has experienced event, logging on error.
+func (s *Server) recordUserEventBestEffort(ctx context.Context, userID, event string) {
+	err := s.recordUserEvent(ctx, userID, event)
+	if err != nil {
+		slog.Warn("recordUserEventBestEffort database error", "userID", userID, "event", event, "error", err)
+	}
+}
+
+// userEventCount returns the number of times userID has experienced event.
+func (s *Server) userEventCount(ctx context.Context, userID, event string) (int, error) {
+	var count int
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`
+			SELECT COALESCE(count, 0) FROM user_events WHERE user_id = ? AND event = ?
+		`, userID, event).Scan(&count)
+	})
+	if err != nil && errors.Is(err, sql.ErrNoRows) {
+		return 0, nil // Event hasn't occurred yet
+	}
+	return count, err
+}
+
+// userHasEvent reports whether userID has experienced event.
+func (s *Server) userHasEvent(ctx context.Context, userID, event string) (bool, error) {
+	count, err := s.userEventCount(ctx, userID, event)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// userHasEventBestEffort reports whether userID has experienced event, returning false on error.
+func (s *Server) userHasEventBestEffort(ctx context.Context, userID, event string) bool {
+	count, err := s.userEventCount(ctx, userID, event)
+	if err != nil {
+		slog.Warn("userHasEventDefaultNo database error", "userID", userID, "event", event, "error", err)
+		return false
+	}
+	return count > 0
+}
+
+func (s *Server) allUserEventsBestEffort(ctx context.Context, userID string) map[string]int {
+	events := make(map[string]int)
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		rows, err := rx.Query(`
+			SELECT event, count FROM user_events WHERE user_id = ?
+		`, userID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var event string
+			var count int
+			if err := rows.Scan(&event, &count); err != nil {
+				return err
+			}
+			events[event] = count
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		slog.Warn("allUserEventsBestEffort database error", "userID", userID, "error", err)
+		return nil
+	}
+	return events
+}

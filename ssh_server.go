@@ -280,41 +280,40 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 		return
 	}
 
-	ss.runMainShellWithReadline(s, publicKey, user, false)
+	ss.runMainShellWithReadline(s, publicKey, user)
+}
+
+func (ss *SSHServer) displayWelcomeTip(s ssh.Session, user *User) {
+	// Check if user has created their first box to determine if we should show the welcome message
+	userEvents := ss.server.allUserEventsBestEffort(s.Context(), user.UserID)
+	hasCreatedBox := userEvents[userEventCreatedBox] > 0
+	hasUsedRepl := userEvents[userEventUsedREPL] > 0
+
+	line := func(msg string, args ...any) {
+		fmt.Fprintf(s, msg+"\r\n", args...)
+	}
+
+	line("")
+	if !hasUsedRepl {
+		line("Welcome to EXE.DEV!")
+		line("")
+	}
+	if !hasCreatedBox {
+		line("To create your first box, run:")
+		line("")
+		line("  new")
+		line("")
+		line("Or type `help` to see a list of commands.")
+	}
 }
 
 // runMainShellWithReadline implements the main menu using a simple line reader
-func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, user *User, showWelcome bool) {
-	if !ss.server.testMode {
-		log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", user.Email, showWelcome)
-	}
+func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, user *User) {
+	slog.Debug("start runMainShellWithReadline", "public_key", publicKey, "email", user.Email)
+	// Show welcome message, hints, tips, etc.
+	ss.displayWelcomeTip(s, user)
 
-	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
-		"\033[1mlist\033[0m                    - List your boxes\r\n" +
-		"\033[1mnew [args]\033[0m              - Create a new box\r\n" +
-		"\033[1mstart <name>\033[0m            - Start a box\r\n" +
-		"\033[1mstop <name> [...]\033[0m       - Stop one or more boxes\r\n" +
-		"\033[1mdelete <name>\033[0m           - Delete a box\r\n" +
-		"\033[1mlogs <name>\033[0m             - View box logs\r\n" +
-		"\033[1mbilling\033[0m                 - Manage billing and payment info\r\n" +
-		"\033[1mwhoami\033[0m                  - Show your email and SSH keys\r\n" +
-		"\033[1m?\033[0m                       - Show this help\r\n" +
-		"\033[1mexit\033[0m                    - Exit\r\n\r\n" +
-		"Run \033[1mhelp <command>\033[0m for more details\r\n\r\n"
-
-	// Show welcome message
-	if showWelcome {
-		if !ss.server.testMode {
-			log.Printf("Showing welcome banner")
-		}
-		fmt.Fprint(s, helpText)
-		if !ss.server.testMode {
-			log.Printf("Welcome banner sent, length: %d bytes", len(helpText))
-		}
-	} else {
-		// No welcome for registered users.
-		// They can figure it out.
-	}
+	ss.server.recordUserEventBestEffort(s.Context(), user.UserID, userEventUsedREPL)
 
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
@@ -645,7 +644,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
 	// This avoids issues with partially consumed readers
-	ss.runMainShellWithReadline(s, publicKey, user, true)
+	ss.runMainShellWithReadline(s, publicKey, user)
 }
 
 // handleExec handles exec commands

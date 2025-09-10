@@ -29,6 +29,12 @@ func TestSSHWorks(t *testing.T) {
 	pty.want("\n") // exedev is also in the prompt! require a newline after it.
 	pty.wantPrompt()
 	pty.disconnect()
+
+	pty = sshToExeDev(t, keyFile)
+	// They've created a box, so stop hinting about it.
+	pty.reject("To create your first box, run:")
+	pty.wantPrompt()
+	pty.disconnect()
 }
 
 func TestDuplicateBoxCreationFails(t *testing.T) {

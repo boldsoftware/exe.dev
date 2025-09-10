@@ -2670,6 +2670,7 @@ func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image 
 			return err
 		}
 		boxID = int(id)
+		s.recordUserEventTx(tx, userID, userEventCreatedBox)
 		return nil
 	})
 	if err != nil {
