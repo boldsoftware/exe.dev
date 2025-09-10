@@ -308,6 +308,9 @@ func (s *PredictableService) handleSpecialCommand(text string) *llm.Response {
 					toolArgs = "This is a predictable thought"
 				}
 				toolInput = json.RawMessage(fmt.Sprintf(`{"thoughts": "%s"}`, toolArgs))
+			case "error":
+				// Special tool that will cause an error for testing error rendering
+				toolInput = json.RawMessage(`{"will_fail": true}`)
 			default:
 				toolInput = json.RawMessage(fmt.Sprintf(`{"input": "%s"}`, toolArgs))
 			}

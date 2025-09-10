@@ -133,9 +133,61 @@ function ChatInterface({ conversationId, onOpenDrawer }: ChatInterfaceProps) {
       );
     }
 
-    return messages.map((message) => (
-      <MessageComponent key={message.message_id} message={message} />
-    ));
+    // Build tool use map from all messages
+    const toolUseMap: Record<string, {name: string, input: any}> = {};
+    messages.forEach(message => {
+      if (message.llm_data) {
+        try {
+          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
+          if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
+            llmData.Content.forEach((content: any) => {
+              if (content && content.Type === 5 && content.ID && content.ToolName) { // tool_use
+                toolUseMap[content.ID] = {
+                  name: content.ToolName,
+                  input: content.ToolInput
+                };
+              }
+            });
+          }
+        } catch (err) {
+          console.error('Failed to parse message LLM data for tool mapping:', err);
+        }
+      }
+    });
+
+    // Filter out agent messages that only contain tool use + generic text
+    const shouldHideMessage = (message: Message) => {
+      if (message.type !== 'agent') return false;
+      
+      try {
+        const llmData = message.llm_data ? (typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data) : null;
+        if (!llmData?.Content) return false;
+        
+        // Check if message only contains:
+        // 1. Generic "I'll use the X tool now" text
+        // 2. Tool use content
+        const hasToolUse = llmData.Content.some((c: any) => c.Type === 5);
+        if (!hasToolUse) return false;
+        
+        const textContent = llmData.Content.filter((c: any) => c.Type === 2).map((c: any) => c.Text).join(' ').trim();
+        const isGenericToolText = textContent.match(/^I'll use the \w+ tool now\.?$/);
+        
+        return isGenericToolText !== null;
+      } catch (err) {
+        console.error('Failed to parse message for hiding logic:', err);
+        return false;
+      }
+    };
+
+    return messages
+      .filter(message => !shouldHideMessage(message))
+      .map((message) => (
+        <MessageComponent 
+          key={message.message_id} 
+          message={message} 
+          toolUseMap={toolUseMap}
+        />
+      ));
   };
 
   return (
