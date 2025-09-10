@@ -629,10 +629,18 @@ func (s *Server) setupSSHServer() {
 // generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
 func (s *Server) generateHostKey(ctx context.Context) error {
 	// Try to load existing host key from database
-	var privateKeyPEM, publicKeyPEM string
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT private_key, public_key FROM ssh_host_key WHERE id = 1`).Scan(&privateKeyPEM, &publicKeyPEM)
-	})
+	hostKey, err := func() (exedb.GetSSHHostKeyRow, error) {
+		var result exedb.GetSSHHostKeyRow
+		err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			queries := exedb.New(rx.Conn())
+			var queryErr error
+			result, queryErr = queries.GetSSHHostKey(ctx)
+			return queryErr
+		})
+		return result, err
+	}()
+	privateKeyPEM := hostKey.PrivateKey
+	publicKeyPEM := hostKey.PublicKey
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// No existing key, generate a new one
@@ -870,10 +878,16 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	if email != "" && verified {
 		// This is a verified key, check if user has an alloc
-		var userID string
-		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
-		})
+		userID, err := func() (string, error) {
+			var result string
+			err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+				queries := exedb.New(rx.Conn())
+				var queryErr error
+				result, queryErr = queries.GetUserIDByEmail(ctx, email)
+				return queryErr
+			})
+			return result, err
+		}()
 		if err == nil {
 			// Check if user has an alloc
 			var allocExists bool

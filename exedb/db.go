@@ -27,6 +27,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesForAllocStmt, err = db.PrepareContext(ctx, getBoxesForAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesForAlloc: %w", err)
 	}
+	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
+	}
+	if q.getUserIDByEmailStmt, err = db.PrepareContext(ctx, getUserIDByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserIDByEmail: %w", err)
+	}
 	return &q, nil
 }
 
@@ -35,6 +41,16 @@ func (q *Queries) Close() error {
 	if q.getBoxesForAllocStmt != nil {
 		if cerr := q.getBoxesForAllocStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesForAllocStmt: %w", cerr)
+		}
+	}
+	if q.getSSHHostKeyStmt != nil {
+		if cerr := q.getSSHHostKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
+		}
+	}
+	if q.getUserIDByEmailStmt != nil {
+		if cerr := q.getUserIDByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserIDByEmailStmt: %w", cerr)
 		}
 	}
 	return err
@@ -77,6 +93,8 @@ type Queries struct {
 	db                   DBTX
 	tx                   *sql.Tx
 	getBoxesForAllocStmt *sql.Stmt
+	getSSHHostKeyStmt    *sql.Stmt
+	getUserIDByEmailStmt *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -84,5 +102,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:                   tx,
 		tx:                   tx,
 		getBoxesForAllocStmt: q.getBoxesForAllocStmt,
+		getSSHHostKeyStmt:    q.getSSHHostKeyStmt,
+		getUserIDByEmailStmt: q.getUserIDByEmailStmt,
 	}
 }

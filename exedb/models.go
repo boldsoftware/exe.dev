@@ -145,3 +145,11 @@ type User struct {
 	Email     string     `db:"email" json:"email"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
+
+type UserEvent struct {
+	UserID          string     `db:"user_id" json:"user_id"`
+	Event           string     `db:"event" json:"event"`
+	Count           int64      `db:"count" json:"count"`
+	FirstOccurredAt *time.Time `db:"first_occurred_at" json:"first_occurred_at"`
+	LastOccurredAt  *time.Time `db:"last_occurred_at" json:"last_occurred_at"`
+}
