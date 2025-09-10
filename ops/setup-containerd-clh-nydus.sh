@@ -50,6 +50,7 @@ sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt
 	pkg-config \
 	libseccomp-dev \
 	wget \
+	net-tools \
 	skopeo >/dev/null 2>&1
 
 # Install containerd from official releases (not apt) for specific version
@@ -645,13 +646,18 @@ sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/ubuntu:latest
 sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/alpine:latest
 
 echo ""
-echo "Testing basic nerdctl with runc (not a production VM)..."
-sudo nerdctl --namespace exe --snapshotter nydus run ghcr.io/boldsoftware/exeuntu:latest true
+echo "Testing container/VM infrastructure piece by piece..."
 
-echo ""
-echo "Testing Kata + Cloud Hypervisor..."
+set -x
+sudo nerdctl -n exe run alpine true
+sudo nerdctl -n exe --snapshotter nydus run alpine true
+sudo nerdctl -n exe run --net none --runtime io.containerd.kata.v2 alpine true
+sudo nerdctl -n exe run --runtime io.containerd.kata.v2 alpine true
+sudo nerdctl -n exe --snapshotter nydus run --runtime io.containerd.kata.v2 alpine true
+set +x
 
-sudo nerdctl --namespace exe --snapshotter nydus run --runtime io.containerd.kata.v2 ghcr.io/boldsoftware/exeuntu:latest true
+echo "VMs work!"
+
 
 echo ""
 echo "=== Setup complete ==="
