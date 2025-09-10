@@ -14,7 +14,7 @@ func TestCLICommands(t *testing.T) {
 
 	// Build the binary for testing
 	binary := filepath.Join(tempDir, "shelley")
-	cmd := exec.Command("go", "build", "-o", binary, "main.go")
+	cmd := exec.Command("go", "build", "-o", binary, ".")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build binary: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestCLIWithPredictableService(t *testing.T) {
 
 	// Build the binary for testing
 	binary := filepath.Join(tempDir, "shelley")
-	cmd := exec.Command("go", "build", "-o", binary, "main.go")
+	cmd := exec.Command("go", "build", "-o", binary, ".")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build binary: %v", err)
 	}
@@ -112,8 +112,8 @@ func TestCLIWithPredictableService(t *testing.T) {
 		if !strings.Contains(outputStr, "Created conversation:") {
 			t.Errorf("Expected conversation creation message, got: %s", outputStr)
 		}
-		if !strings.Contains(outputStr, "Using predictable LLM service") {
-			t.Errorf("Expected predictable service message, got: %s", outputStr)
+		if !strings.Contains(outputStr, "Using specified model") {
+			t.Errorf("Expected specified model message, got: %s", outputStr)
 		}
 
 		// Extract conversation ID from output
@@ -182,7 +182,7 @@ func TestCLIWithPredictableService(t *testing.T) {
 			t.Fatalf("Model selection test failed: %v, output: %s", err, string(output))
 		}
 
-		if !strings.Contains(string(output), "Using predictable LLM service") {
+		if !strings.Contains(string(output), "Using specified model") {
 			t.Errorf("Expected predictable service to be used")
 		}
 	})

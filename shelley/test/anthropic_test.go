@@ -84,7 +84,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		reqBody, _ := json.Marshal(chatReq)
 
 		resp, err := http.Post(
-			testServer.URL+"/conversation/"+conv.ConversationID+"/chat",
+			testServer.URL+"/api/conversation/"+conv.ConversationID+"/chat",
 			"application/json",
 			bytes.NewReader(reqBody),
 		)
@@ -101,7 +101,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		time.Sleep(5 * time.Second)
 
 		// Check messages
-		msgResp, err := http.Get(testServer.URL + "/conversation/" + conv.ConversationID)
+		msgResp, err := http.Get(testServer.URL + "/api/conversation/" + conv.ConversationID)
 		if err != nil {
 			t.Fatalf("Failed to get conversation: %v", err)
 		}
@@ -183,7 +183,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		reqBody, _ := json.Marshal(chatReq)
 
 		resp, err := http.Post(
-			testServer.URL+"/conversation/"+conv.ConversationID+"/chat",
+			testServer.URL+"/api/conversation/"+conv.ConversationID+"/chat",
 			"application/json",
 			bytes.NewReader(reqBody),
 		)
@@ -200,7 +200,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		time.Sleep(8 * time.Second)
 
 		// Check messages
-		msgResp, err := http.Get(testServer.URL + "/conversation/" + conv.ConversationID)
+		msgResp, err := http.Get(testServer.URL + "/api/conversation/" + conv.ConversationID)
 		if err != nil {
 			t.Fatalf("Failed to get conversation: %v", err)
 		}
@@ -258,7 +258,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		}
 
 		// Test stream endpoint
-		resp, err := http.Get(testServer.URL + "/conversation/" + conv.ConversationID + "/stream")
+		resp, err := http.Get(testServer.URL + "/api/conversation/" + conv.ConversationID + "/stream")
 		if err != nil {
 			t.Fatalf("Failed to get stream: %v", err)
 		}
