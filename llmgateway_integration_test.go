@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/accounting"
 	"exe.dev/llmgateway"
 	"exe.dev/sqlite"
 	"golang.org/x/crypto/ssh"
@@ -178,8 +179,8 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 type mockAccountant struct {
 	balance      float64
 	balanceErr   error
-	usageDebits  []llmgateway.UsageDebit
-	usageCredits []llmgateway.UsageCredit
+	usageDebits  []accounting.UsageDebit
+	usageCredits []accounting.UsageCredit
 }
 
 func (m *mockAccountant) GetUserBalance(ctx context.Context, billingAccountID string) (float64, error) {
@@ -189,12 +190,12 @@ func (m *mockAccountant) GetUserBalance(ctx context.Context, billingAccountID st
 	return m.balance, nil
 }
 
-func (m *mockAccountant) DebitUsage(ctx context.Context, debit llmgateway.UsageDebit) error {
+func (m *mockAccountant) DebitUsage(ctx context.Context, debit accounting.UsageDebit) error {
 	m.usageDebits = append(m.usageDebits, debit)
 	return nil
 }
 
-func (m *mockAccountant) CreditUsage(ctx context.Context, credit llmgateway.UsageCredit) error {
+func (m *mockAccountant) CreditUsage(ctx context.Context, credit accounting.UsageCredit) error {
 	m.usageCredits = append(m.usageCredits, credit)
 	return nil
 }

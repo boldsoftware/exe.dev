@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"exe.dev/accounting"
 )
 
 // llmGateway is a proxy for API calls to various LLM services.
@@ -18,7 +20,7 @@ import (
 type llmGateway struct {
 	now             func() time.Time
 	mux             http.ServeMux
-	accountant      Accountant
+	accountant      accounting.Accountant
 	boxKeyAuthority boxKeyAuthority
 }
 
@@ -27,7 +29,7 @@ type boxKeyAuthority interface {
 	SSHIdentityKeyForBox(ctx context.Context, name string) (string, error)
 }
 
-func NewGateway(accountant Accountant, boxKeyAuthority boxKeyAuthority) *llmGateway {
+func NewGateway(accountant accounting.Accountant, boxKeyAuthority boxKeyAuthority) *llmGateway {
 	ret := &llmGateway{
 		now:             time.Now,
 		mux:             *http.NewServeMux(),

@@ -20,61 +20,9 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/accounting"
 	"github.com/prometheus/client_golang/prometheus"
 )
-
-const (
-	Claude35Sonnet = "claude-3-5-sonnet-20241022"
-	Claude35Haiku  = "claude-3-5-haiku-20241022"
-	Claude37Sonnet = "claude-3-7-sonnet-20250219"
-	Claude4Sonnet  = "claude-sonnet-4-20250514"
-	Claude4Opus    = "claude-opus-4-20250514"
-)
-
-type UsageDebit struct {
-	Usage
-	Model            string    `json:"model"`
-	MessageID        string    `json:"message_id"`
-	BillingAccountID string    `json:"billing_account_id"`
-	Created          time.Time `json:"created"`
-}
-
-// UsageCredit represents a credit purchase by a user
-type UsageCredit struct {
-	ID               int64     `json:"id,omitempty"`
-	BillingAccountID string    `json:"billing_account_id"`
-	Amount           float64   `json:"amount"`
-	Created          time.Time `json:"created"`
-	PaymentMethod    string    `json:"payment_method"`
-	PaymentID        string    `json:"payment_id"`
-	Status           string    `json:"status"`
-	Data             any       `json:"data,omitempty"` // Additional data specific to payment method
-}
-
-// Usage represents billing and rate-limit usage.
-type Usage struct {
-	InputTokens              uint64  `json:"input_tokens"`
-	CacheCreationInputTokens uint64  `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     uint64  `json:"cache_read_input_tokens"`
-	OutputTokens             uint64  `json:"output_tokens"`
-	CostUSD                  float64 `json:"cost_usd"`
-}
-
-// Accountant handles credit balance checking and usage debiting
-type Accountant interface {
-	// GetUserBalance retrieves the current credit balance for a user
-	GetUserBalance(ctx context.Context, billingAccountID string) (float64, error)
-
-	// DebitUsage records a usage debit for a user
-	DebitUsage(ctx context.Context, debit UsageDebit) error
-
-	// DebitUsage records a usage credit for a user
-	CreditUsage(ctx context.Context, credit UsageCredit) error
-
-	HasNewUserCredits(ctx context.Context, billingAccountID string) (bool, any)
-
-	ApplyNewUserCredits(ctx context.Context, billingAccountID string) any
-}
 
 // Prometheus metrics for accounting
 var (
@@ -139,7 +87,7 @@ func RegisterAccountingMetrics(registry *prometheus.Registry) {
 // accountingTransport wraps http transactions to check and track the client's credit usage
 type accountingTransport struct {
 	http.RoundTripper
-	accountant       Accountant
+	accountant       accounting.Accountant
 	BillingAccountID string
 	baseURL          string
 	apiType          string    // "antmsgs" or "gemmsgs"
@@ -228,7 +176,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		buf = decoded
 	}
 
-	usageDebit := UsageDebit{BillingAccountID: a.BillingAccountID, Created: time.Now()}
+	usageDebit := accounting.UsageDebit{BillingAccountID: a.BillingAccountID, Created: time.Now()}
 	// Usage, Model, MessageID to be filled in below
 
 	switch a.apiType {
@@ -265,7 +213,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			completionTokens = 1
 		}
 
-		usage := Usage{
+		usage := accounting.Usage{
 			InputTokens:  uint64(promptTokens),
 			OutputTokens: uint64(completionTokens),
 		}
@@ -301,7 +249,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			candidatesTokens = 1
 		}
 
-		usage := Usage{
+		usage := accounting.Usage{
 			InputTokens:  uint64(promptTokens),
 			OutputTokens: uint64(candidatesTokens),
 		}
@@ -321,7 +269,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		return fmt.Errorf("unknown API type: %s", a.apiType)
 	}
 
-	uc := UsageCost(usageDebit.Model, usageDebit.Usage)
+	uc := accounting.UsageCost(usageDebit.Model, usageDebit.Usage)
 	usageDebit.Usage.CostUSD = uc.USD()
 	resp.Header.Add("Skaband-Cost-Microcents", fmt.Sprint(uc))
 
@@ -351,9 +299,9 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 
 // anthropicResponseUsageInfo extracts usage-relevant information from an Anthropic response.
 type anthropicResponseUsageInfo struct {
-	ID    string `json:"id"`
-	Model string `json:"model"`
-	Usage Usage  `json:"usage"`
+	ID    string           `json:"id"`
+	Model string           `json:"model"`
+	Usage accounting.Usage `json:"usage"`
 }
 
 // openaiResponseUsageInfo extracts usage-relevant information from an openai-compatible response.

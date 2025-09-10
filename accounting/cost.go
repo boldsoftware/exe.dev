@@ -1,4 +1,36 @@
-package llmgateway
+package accounting
+
+// This file contains helpers for calculating the costs associated with
+// different kinds of metered usage.
+
+const (
+	Claude35Sonnet = "claude-3-5-sonnet-20241022"
+	Claude35Haiku  = "claude-3-5-haiku-20241022"
+	Claude37Sonnet = "claude-3-7-sonnet-20250219"
+	Claude4Sonnet  = "claude-sonnet-4-20250514"
+	Claude4Opus    = "claude-opus-4-20250514"
+)
+
+type microCents uint64 // millionths of a cent
+
+func (mc microCents) USD() float64 {
+	return float64(mc) / 100_000_000.0 // 100 * 1M
+}
+
+// UsageCost calculates the cost in USD for a specific usage and model
+func UsageCost(model string, usage Usage) microCents {
+	cpm, ok := modelCost[model]
+	if !ok {
+		// Default to Sonnet pricing if model not found
+		cpm = modelCost[Claude35Sonnet]
+	}
+
+	uc := usage.InputTokens*cpm.Input +
+		usage.OutputTokens*cpm.Output +
+		usage.CacheReadInputTokens*cpm.CacheRead +
+		usage.CacheCreationInputTokens*cpm.CacheCreation
+	return microCents(uc)
+}
 
 // TotalUsageCostUSD calculates the total cost in USD for all usage across models
 func TotalUsageCostUSD(usages map[string]Usage) float64 {
@@ -88,25 +120,4 @@ var modelCost = map[string]centsPer1MTokens{
 		CacheRead: 2,   // $0.025
 		Output:    200, // $2
 	},
-}
-
-type microCents uint64 // millionths of a cent
-
-func (mc microCents) USD() float64 {
-	return float64(mc) / 100_000_000.0 // 100 * 1M
-}
-
-// UsageCost calculates the cost in USD for a specific usage and model
-func UsageCost(model string, usage Usage) microCents {
-	cpm, ok := modelCost[model]
-	if !ok {
-		// Default to Sonnet pricing if model not found
-		cpm = modelCost[Claude35Sonnet]
-	}
-
-	uc := usage.InputTokens*cpm.Input +
-		usage.OutputTokens*cpm.Output +
-		usage.CacheReadInputTokens*cpm.CacheRead +
-		usage.CacheCreationInputTokens*cpm.CacheCreation
-	return microCents(uc)
 }
