@@ -30,3 +30,17 @@ func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (string, e
 	err := row.Scan(&user_id)
 	return user_id, err
 }
+
+const insertUser = `-- name: InsertUser :exec
+INSERT INTO users (user_id, email) VALUES (?, ?)
+`
+
+type InsertUserParams struct {
+	UserID string `db:"user_id" json:"user_id"`
+	Email  string `db:"email" json:"email"`
+}
+
+func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
+	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email)
+	return err
+}

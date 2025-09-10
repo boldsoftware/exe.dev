@@ -19,3 +19,27 @@ func (q *Queries) AllocExistsForUser(ctx context.Context, userID string) (int64,
 	err := row.Scan(&column_1)
 	return column_1, err
 }
+
+const insertAlloc = `-- name: InsertAlloc :exec
+INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type InsertAllocParams struct {
+	AllocID   string `db:"alloc_id" json:"alloc_id"`
+	UserID    string `db:"user_id" json:"user_id"`
+	AllocType string `db:"alloc_type" json:"alloc_type"`
+	Region    string `db:"region" json:"region"`
+	Ctrhost   string `db:"ctrhost" json:"ctrhost"`
+}
+
+func (q *Queries) InsertAlloc(ctx context.Context, arg InsertAllocParams) error {
+	_, err := q.exec(ctx, q.insertAllocStmt, insertAlloc,
+		arg.AllocID,
+		arg.UserID,
+		arg.AllocType,
+		arg.Region,
+		arg.Ctrhost,
+	)
+	return err
+}

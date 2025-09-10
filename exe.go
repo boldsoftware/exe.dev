@@ -1216,20 +1216,18 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 
 	// Add the SSH key to the verified keys and clean up pending key
-	err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
 		// Add SSH key
-		_, err := tx.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key)
-			VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
-			ON CONFLICT(public_key) DO NOTHING`,
-			email, publicKey)
+		err := queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
+			Email:     email,
+			PublicKey: publicKey,
+		})
 		if err != nil {
 			return err
 		}
 
 		// Clean up the pending key
-		_, err = tx.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
-		return err
+		return queries.DeletePendingSSHKeyByToken(ctx, token)
 	})
 	if err != nil {
 		slog.Error("Failed to add SSH key", "error", err)
@@ -1452,9 +1450,8 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		http.SetCookie(w, cookie)
 
 		// Clean up the database token (single use)
-		err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec("DELETE FROM email_verifications WHERE token = ?", token)
-			return err
+		err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteEmailVerificationByToken(ctx, token)
 		})
 		if err != nil {
 			slog.Error("Failed to cleanup email verification token", "error", err)
@@ -1519,8 +1516,10 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 
 	// Check if user exists
 	var userID string
-	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
+	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = queries.GetUserIDByEmail(ctx, email)
+		return err
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1536,12 +1535,13 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	token := s.generateRegistrationToken()
 
 	// Store verification in database (reuse existing email_verifications table)
-	err = s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO email_verifications (token, email, user_id, expires_at)
-			VALUES (?, ?, ?, ?)
-		`, token, email, userID, time.Now().Add(24*time.Hour).Format(time.RFC3339))
-		return err
+	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertEmailVerification(ctx, exedb.InsertEmailVerificationParams{
+			Token:     token,
+			Email:     email,
+			UserID:    userID,
+			ExpiresAt: time.Now().Add(24 * time.Hour),
+		})
 	})
 	if err != nil {
 		slog.Error("Failed to store email verification", "error", err)
@@ -1804,16 +1804,17 @@ func getDomain(host string) string {
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
 func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (string, error) {
 	var userID string
-	var email string
-	var expiresAt string
+	var expiresAt time.Time
 
 	// Get verification info and return user_id directly
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT e.user_id, e.email, e.expires_at
-		FROM email_verifications e
-		WHERE e.token = ?
-	`, token).Scan(&userID, &email, &expiresAt)
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		row, err := queries.GetEmailVerificationByToken(ctx, token)
+		if err != nil {
+			return err
+		}
+		userID = row.UserID
+		expiresAt = row.ExpiresAt
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1823,16 +1824,10 @@ func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) 
 	}
 
 	// Check if token has expired
-	expTime, err := time.Parse(time.RFC3339, expiresAt)
-	if err != nil {
-		return "", fmt.Errorf("invalid expiration time: %w", err)
-	}
-
-	if time.Now().After(expTime) {
+	if time.Now().After(expiresAt) {
 		// Clean up expired token
-		s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec("DELETE FROM email_verifications WHERE token = ?", token)
-			return err
+		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteEmailVerificationByToken(ctx, token)
 		})
 		return "", fmt.Errorf("verification token expired")
 	}
@@ -1858,18 +1853,20 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 
 // storeEmailVerification stores an email verification token
 func (s *Server) storeEmailVerification(ctx context.Context, email, token string) error {
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		// Check if user exists, create if not
-		var userID string
-		err := tx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&userID)
-		if err != nil {
+		userID, err := queries.GetUserIDByEmail(ctx, email)
+		if errors.Is(err, sql.ErrNoRows) {
 			// User doesn't exist, create them
 			userID, err = generateUserID()
 			if err != nil {
 				return fmt.Errorf("failed to generate user ID: %w", err)
 			}
 
-			_, err = tx.Exec("INSERT INTO users (user_id, email) VALUES (?, ?)", userID, email)
+			err = queries.InsertUser(ctx, exedb.InsertUserParams{
+				UserID: userID,
+				Email:  email,
+			})
 			if err != nil {
 				return fmt.Errorf("failed to create user: %w", err)
 			}
@@ -1881,22 +1878,28 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 			}
 
 			ctrhost := s.selectCtrhostForNewAlloc()
-			_, err = tx.Exec(`
-				INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost)
-				VALUES (?, ?, 'shared', 'default', ?)
-			`, allocID, userID, ctrhost)
+			err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
+				AllocID:   allocID,
+				UserID:    userID,
+				AllocType: "shared",
+				Region:    "default",
+				Ctrhost:   ctrhost,
+			})
 			if err != nil {
 				return fmt.Errorf("failed to create allocation: %w", err)
 			}
+		} else if err != nil {
+			return fmt.Errorf("failed to check user: %w", err)
 		}
 
 		// Store verification token
 		expiresAt := time.Now().Add(24 * time.Hour)
-		_, err = tx.Exec(`
-			INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at)
-			VALUES (?, ?, ?, ?)
-		`, token, userID, email, expiresAt)
-		return err
+		return queries.InsertOrReplaceEmailVerification(ctx, exedb.InsertOrReplaceEmailVerificationParams{
+			Token:     token,
+			UserID:    userID,
+			Email:     email,
+			ExpiresAt: expiresAt,
+		})
 	})
 }
 
@@ -1941,12 +1944,13 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
 	// Store in database
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO auth_cookies (cookie_value, user_id, domain, expires_at)
-			VALUES (?, ?, ?, ?)
-		`, cookieValue, userID, getDomain(domain), expiresAt.Format(time.RFC3339))
-		return err
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
+			CookieValue: cookieValue,
+			UserID:      userID,
+			Domain:      getDomain(domain),
+			ExpiresAt:   expiresAt,
+		})
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to store auth cookie: %w", err)
@@ -1958,15 +1962,20 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 // validateAuthCookie validates an authentication cookie and returns the user_id
 func (s *Server) validateAuthCookie(ctx context.Context, cookieValue, domain string) (string, error) {
 	var userID string
-	var expiresAt string
+	var expiresAt time.Time
 
 	// Get auth cookie info
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT ac.user_id, ac.expires_at
-		FROM auth_cookies ac
-		WHERE ac.cookie_value = ? AND ac.domain = ?
-	`, cookieValue, getDomain(domain)).Scan(&userID, &expiresAt)
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		row, err := queries.GetAuthCookieInfo(ctx, exedb.GetAuthCookieInfoParams{
+			CookieValue: cookieValue,
+			Domain:      getDomain(domain),
+		})
+		if err != nil {
+			return err
+		}
+		userID = row.UserID
+		expiresAt = row.ExpiresAt
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1976,24 +1985,17 @@ func (s *Server) validateAuthCookie(ctx context.Context, cookieValue, domain str
 	}
 
 	// Check if cookie has expired
-	expTime, err := time.Parse(time.RFC3339, expiresAt)
-	if err != nil {
-		return "", fmt.Errorf("invalid expiration time: %w", err)
-	}
-
-	if time.Now().After(expTime) {
+	if time.Now().After(expiresAt) {
 		// Clean up expired cookie - use context.Background() to ensure cleanup completes even if client disconnects
-		s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec("DELETE FROM auth_cookies WHERE cookie_value = ?", cookieValue)
-			return err
+		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteAuthCookie(ctx, cookieValue)
 		})
 		return "", fmt.Errorf("cookie expired")
 	}
 
 	// Update last used time
-	s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec("UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?", cookieValue)
-		return err
+	s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateAuthCookieLastUsed(ctx, cookieValue)
 	})
 
 	return userID, nil
