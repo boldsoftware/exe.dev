@@ -12,6 +12,7 @@ import (
 func TestSCPWorks(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
 
 	pty, keyFile, _ := registerForExeDev(t)
 	boxName := newBox(t, pty)

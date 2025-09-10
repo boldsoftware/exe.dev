@@ -1056,3 +1056,12 @@ NextLine:
 	outText := strings.Join(lines, "\n") + "\n"
 	return outText, nil
 }
+
+var didRunTest sync.Map // map[string]bool
+
+func e1eTestsOnlyRunOnce(t *testing.T) {
+	prev, _ := didRunTest.Swap(t.Name(), true)
+	if didRun, ok := prev.(bool); ok && didRun {
+		t.Fatal("e1e tests don't work with -count > 1. use a bash loop. if this makes you sad, talk to josh.")
+	}
+}

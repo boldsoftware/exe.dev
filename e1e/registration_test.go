@@ -12,6 +12,8 @@ import (
 func TestNewKeyRegistration(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
@@ -36,6 +38,7 @@ func TestNewKeyRegistration(t *testing.T) {
 func TestRegistrationHappensOnce(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
 
 	keyFile, publicKey := genSSHKey(t)
 
