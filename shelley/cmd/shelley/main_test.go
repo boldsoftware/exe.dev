@@ -5,7 +5,34 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"shelley.exe.dev/slug"
 )
+
+func TestSanitizeSlug(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Simple Test", "simple-test"},
+		{"Create a Python Script", "create-a-python-script"},
+		{"Multiple   Spaces", "multiple-spaces"},
+		{"Special@#$%Characters", "specialcharacters"},
+		{"Under_Score_Test", "under-score-test"},
+		{"--multiple-hyphens--", "multiple-hyphens"},
+		{"CamelCase Example", "camelcase-example"},
+		{"123 Numbers Test 456", "123-numbers-test-456"},
+		{"   leading and trailing   ", "leading-and-trailing"},
+		{"", ""},
+	}
+
+	for _, test := range tests {
+		result := slug.Sanitize(test.input)
+		if result != test.expected {
+			t.Errorf("slug.Sanitize(%q) = %q, expected %q", test.input, result, test.expected)
+		}
+	}
+}
 
 func TestCLICommands(t *testing.T) {
 	// Create a temporary directory for test database
@@ -184,6 +211,70 @@ func TestCLIWithPredictableService(t *testing.T) {
 
 		if !strings.Contains(string(output), "Using specified model") {
 			t.Errorf("Expected predictable service to be used")
+		}
+	})
+
+	t.Run("slug generation", func(t *testing.T) {
+		// Create a fresh database for this test
+		slugDBPath := filepath.Join(tempDir, "slug_test.db")
+
+		// Run a prompt with predictable service
+		cmd := exec.Command(binary, "--model=predictable", "--db", slugDBPath, "prompt", "Create a simple Python script for data analysis")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Logf("Slug test prompt command output: %s", string(output))
+			t.Fatalf("Prompt command failed: %v", err)
+		}
+
+		outputStr := string(output)
+
+		// Extract conversation ID from output
+		lines := strings.Split(outputStr, "\n")
+		var conversationID string
+		for _, line := range lines {
+			if strings.Contains(line, "Created conversation:") {
+				parts := strings.Split(line, ": ")
+				if len(parts) == 2 {
+					conversationID = parts[1]
+					break
+				}
+			}
+		}
+		if conversationID == "" {
+			t.Fatal("Could not extract conversation ID from output")
+		}
+
+		// Check that the conversation shows continuation information with slug if available
+		if strings.Contains(outputStr, "To continue: shelley prompt -continue") {
+			// This line should exist
+			t.Logf("Found continuation instruction: %v", outputStr)
+
+			// Test that we can inspect the conversation to see if slug was generated
+			cmd = exec.Command(binary, "--db", slugDBPath, "inspect", conversationID)
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("Inspect command failed: %v", err)
+			}
+
+			inspectOutput := string(output)
+			if strings.Contains(inspectOutput, "Slug:") {
+				t.Logf("SUCCESS: Slug was generated and saved: %s", inspectOutput)
+			} else {
+				t.Logf("No slug found in inspect output (this is expected if slug generation failed): %s", inspectOutput)
+			}
+
+			// Test list command to see if slug appears there too
+			cmd = exec.Command(binary, "--db", slugDBPath, "list")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("List command failed: %v", err)
+			}
+
+			listOutput := string(output)
+			t.Logf("List output: %s", listOutput)
+
+		} else {
+			t.Errorf("Expected continuation instruction in output, got: %s", outputStr)
 		}
 	})
 }

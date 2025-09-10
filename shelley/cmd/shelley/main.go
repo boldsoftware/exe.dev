@@ -16,6 +16,7 @@ import (
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/server"
+	"shelley.exe.dev/slug"
 )
 
 type GlobalConfig struct {
@@ -238,6 +239,33 @@ func runPrompt(global GlobalConfig, args []string) {
 		os.Exit(1)
 	}
 
+	// Start slug generation for new conversations in parallel (only if this is not a continuation)
+	var slugDone chan struct{}
+	if *continueID == "" {
+		slugDone = make(chan struct{})
+
+		go func() {
+			defer close(slugDone)
+			slugCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			_, err := slug.GenerateSlug(slugCtx, llmManager, database, logger, conversationID, promptText)
+			if err != nil {
+				logger.Warn("Failed to generate slug", "error", err)
+			}
+		}()
+	}
+
+	// Wait for slug generation if it was started
+	if slugDone != nil {
+		select {
+		case <-slugDone:
+			// Slug generation completed (successfully or with error)
+		case <-time.After(10 * time.Second):
+			// Timeout waiting for slug, continue without it
+			logger.Debug("Timeout waiting for slug generation")
+		}
+	}
 	// Get conversation details to show continuation info
 	conv, err := database.GetConversationByID(ctx, conversationID)
 	if err != nil {
@@ -246,6 +274,7 @@ func runPrompt(global GlobalConfig, args []string) {
 	} else {
 		// Show conversation ID and continuation command
 		fmt.Printf("Conversation completed: %s\n", conversationID)
+		// Check if slug was generated and use it, otherwise use conversation ID
 		if conv.Slug != nil && *conv.Slug != "" {
 			fmt.Printf("To continue: shelley prompt -continue %s \"<your message>\"\n", *conv.Slug)
 		} else {
