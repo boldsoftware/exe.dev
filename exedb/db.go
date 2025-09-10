@@ -27,8 +27,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesForAllocStmt, err = db.PrepareContext(ctx, getBoxesForAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesForAlloc: %w", err)
 	}
+	if q.getFirstUserIDStmt, err = db.PrepareContext(ctx, getFirstUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetFirstUserID: %w", err)
+	}
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
+	}
+	if q.getSSHHostPublicKeyStmt, err = db.PrepareContext(ctx, getSSHHostPublicKey); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHHostPublicKey: %w", err)
 	}
 	if q.getUserIDByEmailStmt, err = db.PrepareContext(ctx, getUserIDByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDByEmail: %w", err)
@@ -43,9 +49,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxesForAllocStmt: %w", cerr)
 		}
 	}
+	if q.getFirstUserIDStmt != nil {
+		if cerr := q.getFirstUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getFirstUserIDStmt: %w", cerr)
+		}
+	}
 	if q.getSSHHostKeyStmt != nil {
 		if cerr := q.getSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
+		}
+	}
+	if q.getSSHHostPublicKeyStmt != nil {
+		if cerr := q.getSSHHostPublicKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHHostPublicKeyStmt: %w", cerr)
 		}
 	}
 	if q.getUserIDByEmailStmt != nil {
@@ -90,19 +106,23 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                   DBTX
-	tx                   *sql.Tx
-	getBoxesForAllocStmt *sql.Stmt
-	getSSHHostKeyStmt    *sql.Stmt
-	getUserIDByEmailStmt *sql.Stmt
+	db                      DBTX
+	tx                      *sql.Tx
+	getBoxesForAllocStmt    *sql.Stmt
+	getFirstUserIDStmt      *sql.Stmt
+	getSSHHostKeyStmt       *sql.Stmt
+	getSSHHostPublicKeyStmt *sql.Stmt
+	getUserIDByEmailStmt    *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                   tx,
-		tx:                   tx,
-		getBoxesForAllocStmt: q.getBoxesForAllocStmt,
-		getSSHHostKeyStmt:    q.getSSHHostKeyStmt,
-		getUserIDByEmailStmt: q.getUserIDByEmailStmt,
+		db:                      tx,
+		tx:                      tx,
+		getBoxesForAllocStmt:    q.getBoxesForAllocStmt,
+		getFirstUserIDStmt:      q.getFirstUserIDStmt,
+		getSSHHostKeyStmt:       q.getSSHHostKeyStmt,
+		getSSHHostPublicKeyStmt: q.getSSHHostPublicKeyStmt,
+		getUserIDByEmailStmt:    q.getUserIDByEmailStmt,
 	}
 }

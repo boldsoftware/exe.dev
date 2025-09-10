@@ -24,3 +24,14 @@ func (q *Queries) GetSSHHostKey(ctx context.Context) (GetSSHHostKeyRow, error) {
 	err := row.Scan(&i.PrivateKey, &i.PublicKey)
 	return i, err
 }
+
+const getSSHHostPublicKey = `-- name: GetSSHHostPublicKey :one
+SELECT public_key FROM ssh_host_key WHERE id = 1
+`
+
+func (q *Queries) GetSSHHostPublicKey(ctx context.Context) (string, error) {
+	row := q.queryRow(ctx, q.getSSHHostPublicKeyStmt, getSSHHostPublicKey)
+	var public_key string
+	err := row.Scan(&public_key)
+	return public_key, err
+}

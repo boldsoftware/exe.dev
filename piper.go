@@ -109,10 +109,16 @@ func (p *PiperPlugin) getExpectedHostKeyForConnection(connID string) (string, bo
 func (p *PiperPlugin) getServerHostKey() (string, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
-	var publicKey string
-	err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow("SELECT public_key FROM ssh_host_key WHERE id = 1").Scan(&publicKey)
-	})
+	publicKey, err := func() (string, error) {
+		var result string
+		err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+			queries := exedb.New(rx.Conn())
+			var queryErr error
+			result, queryErr = queries.GetSSHHostPublicKey(ctx)
+			return queryErr
+		})
+		return result, err
+	}()
 	if err != nil {
 		return "", fmt.Errorf("failed to get server host key: %w", err)
 	}
@@ -243,9 +249,16 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// Special handling for local dev mode - allow any connection as localexe user
 	if p.server.devMode == "local" && conn.User() == "localexe" && userID == "" {
 		// Get the first user from the database for local dev
-		err = p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
-		})
+		userID, err = func() (string, error) {
+			var result string
+			err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+				queries := exedb.New(rx.Conn())
+				var queryErr error
+				result, queryErr = queries.GetFirstUserID(ctx)
+				return queryErr
+			})
+			return result, err
+		}()
 		if err == nil {
 			slog.Debug("Using first user for local dev mode", "component", "piper-plugin", "user_id", userID)
 		}
@@ -273,9 +286,16 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	if username != "" && (registered || p.server.devMode == "local") {
 		// If not registered but in local dev mode, use first user
 		if !registered && p.server.devMode == "local" && userID == "" {
-			err = p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-				return rx.QueryRow("SELECT user_id FROM users LIMIT 1").Scan(&userID)
-			})
+			userID, err = func() (string, error) {
+				var result string
+				err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+					queries := exedb.New(rx.Conn())
+					var queryErr error
+					result, queryErr = queries.GetFirstUserID(ctx)
+					return queryErr
+				})
+				return result, err
+			}()
 			if err == nil {
 				slog.Debug("Using first user for local dev box access", "component", "piper-plugin", "user_id", userID)
 				registered = true // Pretend they're registered for the checks below
