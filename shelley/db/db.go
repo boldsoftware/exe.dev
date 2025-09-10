@@ -3,6 +3,7 @@ package db
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"embed"
 	"encoding/json"
@@ -19,6 +20,16 @@ import (
 
 //go:embed schema/*.sql
 var schemaFS embed.FS
+
+// generateConversationID generates a conversation ID in the format "cXXXXXX"
+// where X are random alphanumeric characters
+func generateConversationID() (string, error) {
+	text := rand.Text()
+	if len(text) < 6 {
+		return "", fmt.Errorf("rand.Text() returned insufficient characters: %d", len(text))
+	}
+	return "c" + text[:6], nil
+}
 
 // DB wraps the database connection and provides high-level operations
 type DB struct {
@@ -134,7 +145,10 @@ func (db *DB) WithTx(ctx context.Context, fn func(*generated.Queries) error) err
 
 // CreateConversation creates a new conversation with an optional slug
 func (db *DB) CreateConversation(ctx context.Context, slug *string, userInitiated bool) (*generated.Conversation, error) {
-	conversationID := uuid.New().String()
+	conversationID, err := generateConversationID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate conversation ID: %w", err)
+	}
 	conversation, err := db.Queries.CreateConversation(ctx, generated.CreateConversationParams{
 		ConversationID: conversationID,
 		Slug:           slug,

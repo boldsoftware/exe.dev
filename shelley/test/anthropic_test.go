@@ -54,7 +54,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 		claudetool.Think,
 		bashTool.Tool(),
 		patchTool.Tool(),
-		claudetool.Keyword,
+		// KeywordTool requires an LLM provider, skip for this test
 		// TODO: Add todo tools when needed
 	}
 
