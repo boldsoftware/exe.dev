@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -32,6 +33,7 @@ import (
 	"exe.dev/ctrhosttest"
 	"exe.dev/vouch"
 	"github.com/Netflix/go-expect"
+	ansiterm "github.com/veops/go-ansiterm"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -122,6 +124,9 @@ type testEnv struct {
 
 	asciinemaMu      sync.Mutex // protects asciinemaWriters
 	asciinemaWriters map[string]*expect.AsciinemaWriter
+
+	canonicalizeMu sync.Mutex
+	canonicalize   map[string]string // maps non-deterministic strings to deterministic ones
 }
 
 type exedInstance struct {
@@ -155,6 +160,35 @@ func (e *testEnv) initContainerManager(host string) (*container.NerdctlManager, 
 	}
 
 	return manager, nil
+}
+
+func (t *testEnv) addCanonicalization(in any, canon string) {
+	t.canonicalizeMu.Lock()
+	defer t.canonicalizeMu.Unlock()
+	key := fmt.Sprint(in)
+	val, ok := t.canonicalize[key]
+	if ok {
+		if val != canon {
+			panic(fmt.Sprintf("conflicting canonicalization for %q: %q vs %q", key, val, canon))
+		}
+		return
+	}
+	t.canonicalize[key] = canon
+}
+
+func (t *testEnv) canonicalizeString(s string) string {
+	t.canonicalizeMu.Lock()
+	defer t.canonicalizeMu.Unlock()
+	kv := make([]string, 0, len(t.canonicalize)*2)
+	for k, v := range t.canonicalize {
+		kv = append(kv, k, v)
+	}
+	s = strings.NewReplacer(kv...).Replace(s)
+	// now canonicalize some other stuff using regexps :/
+	s = regexp.MustCompile(`\(boldsoftware/exeuntu@sha256:[a-f0-9]{64}\)`).ReplaceAllString(s, `(boldsoftware/exeuntu@sha256:IMAGE_HASH)`)
+	s = regexp.MustCompile(`Ready in [0-9.]+s!`).ReplaceAllString(s, `Ready in ELAPSED_TIME!`)
+	s = regexp.MustCompile(`(?m)^.*?@localhost: Permission denied`).ReplaceAllString(s, `USER@localhost: Permission denied`)
+	return s
 }
 
 func (e *testEnv) Close(containerManager *container.NerdctlManager) {
@@ -227,6 +261,7 @@ func (p *tcpProxy) serve() error {
 func setup(ctrHost string) (*testEnv, error) {
 	env := &testEnv{
 		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
+		canonicalize:     make(map[string]string),
 	}
 
 	// We have a circular dependency around ports.
@@ -245,6 +280,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 	go proxy.serve()
 	env.proxy = proxy
+	env.addCanonicalization(proxy.tcp.Port, "SSH_PORT")
 	if *flagVerbosePorts {
 		fmt.Printf("proxy: listening on port %v\n", proxy.tcp.Port)
 	}
@@ -255,6 +291,7 @@ func setup(ctrHost string) (*testEnv, error) {
 		return env, err
 	}
 	env.email = es
+	env.addCanonicalization(es.port, "EMAIL_SERVER_PORT")
 	if *flagVerboseEmail {
 		fmt.Printf("email: listening on %v\n", es.port)
 	}
@@ -265,12 +302,16 @@ func setup(ctrHost string) (*testEnv, error) {
 		return env, err
 	}
 	env.exed = *ei
+	env.addCanonicalization(ei.SSHPort, "EXED_SSH_PORT")
+	env.addCanonicalization(ei.HTTPPort, "EXED_HTTP_PORT")
+	env.addCanonicalization(ei.PiperPluginPort, "EXED_PIPER_PLUGIN_PORT")
 
 	pi, err := startPiperd(*ei)
 	if err != nil {
 		return env, err
 	}
 	env.piperd = *pi
+	env.addCanonicalization(pi.SSHPort, "PIPERD_PORT")
 	if *flagVerbosePorts {
 		fmt.Printf("piperd: listening on %v\n", pi.SSHPort)
 	}
@@ -536,7 +577,7 @@ func genSSHKey(t *testing.T) (path, publickey string) {
 		t.Fatalf("failed to create SSH public key: %v", err)
 	}
 	pubStr := strings.TrimSuffix(string(ssh.MarshalAuthorizedKey(sshPublicKey)), "\n")
-
+	Env.addCanonicalization(pubStr, "SSH_PUBKEY")
 	return privKeyPath, pubStr
 }
 
@@ -673,12 +714,13 @@ func cinemaOptsForTest(t *testing.T) []expect.ConsoleOpt {
 	writer, ok := Env.asciinemaWriters[testName]
 	if !ok {
 		// TODO: snake case
-		filename := strings.ReplaceAll(testName, "/", "_") + ".cast"
+		baseName := strings.ReplaceAll(testName, "/", "_")
+		castFile := baseName + ".cast"
 
 		const width = 120
 		const height = 32
 		var err error
-		writer, err = expect.NewAsciinemaWriter(filename, width, height)
+		writer, err = expect.NewAsciinemaWriter(castFile, width, height)
 		if err != nil {
 			t.Fatalf("failed to create ASCIIcinema writer: %v", err)
 		}
@@ -686,6 +728,9 @@ func cinemaOptsForTest(t *testing.T) []expect.ConsoleOpt {
 		Env.asciinemaWriters[testName] = writer
 		t.Cleanup(func() {
 			writer.Close()
+			if err := writeAsciinemaToText(castFile, baseName); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to write asciinema->text file: %v\n", err)
+			}
 			Env.asciinemaMu.Lock()
 			defer Env.asciinemaMu.Unlock()
 			delete(Env.asciinemaWriters, testName)
@@ -693,6 +738,27 @@ func cinemaOptsForTest(t *testing.T) []expect.ConsoleOpt {
 	}
 
 	return []expect.ConsoleOpt{expect.WithAsciinemaWriter(writer)}
+}
+
+func writeAsciinemaToText(castFile, baseName string) error {
+	// Convert asciinema -> text
+	castData, err := os.ReadFile(castFile)
+	if err != nil {
+		return fmt.Errorf("failed to read cast file %s: %w", castFile, err)
+	}
+
+	text, err := asciinemaToText(castData)
+	if err != nil {
+		return fmt.Errorf("failed to convert %s to text: %v\n", castFile, err)
+	}
+	text = Env.canonicalizeString(text)
+
+	textFile := filepath.Join("golden", baseName+".txt")
+	if err := os.WriteFile(textFile, []byte(text), 0o600); err != nil {
+		return fmt.Errorf("failed to write text file %s: %w", textFile, err)
+	}
+
+	return nil
 }
 
 type emailMessage struct {
@@ -866,6 +932,7 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) {
 		t.Fatalf("failed to extract token from HTML form: %s", string(htmlBody))
 	}
 	token := matches[1]
+	Env.addCanonicalization(token, "EMAIL_VERIFICATION_TOKEN")
 
 	// Submit the form data as POST request (simulating clicking the confirm button)
 	formData := url.Values{"token": {token}}
@@ -886,9 +953,10 @@ func boxName(t *testing.T) string {
 	t.Helper()
 	// Create unique-ish test-specific box names: "e1e-{timestamp}-{testname}"
 	// This avoids collisions between test runs and makes cleanup easy
-	timestamp := time.Now().Unix() % 10000
+	timestamp := time.Now().Unix() % 100_000
 	testName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
-	return fmt.Sprintf("e1e-%d-%s", timestamp, testName)
+	Env.addCanonicalization(timestamp, "BOX_TIMESTAMP")
+	return fmt.Sprintf("e1e-%05d-%s", timestamp, testName)
 }
 
 // registerForExeDev is a convenience command to register for an exe.dev account.
@@ -938,4 +1006,53 @@ func newBox(t *testing.T, pty *expectPty) string {
 	pty.want("boxes")
 	pty.wantRe(boxNameRe + ".*running.*\n")
 	return boxName
+}
+
+func asciinemaToText(castData []byte) (string, error) {
+	// asciicinema has a size header, but we ignore it.
+	// this isn't safe in general, but it makes sense for us, in our context.
+	// width and height should both be generous for consistency and to avoid losing scrollback.
+	screen := ansiterm.NewScreen(1024, 16384)
+	stream := ansiterm.InitByteStream(screen, false)
+	stream.Attach(screen)
+
+	// discard header
+	_, castLines, ok := bytes.Cut(castData, []byte("\n"))
+	if !ok {
+		return "", fmt.Errorf("failed to cut header from cast data")
+	}
+	dec := json.NewDecoder(bytes.NewReader(castLines))
+NextLine:
+	for {
+		var ev []any
+		err := dec.Decode(&ev)
+		switch {
+		case errors.Is(err, os.ErrClosed) || errors.Is(err, io.EOF):
+			break NextLine
+		case err != nil:
+			return "", fmt.Errorf("failed to decode event: %w", err)
+		}
+		if len(ev) != 3 {
+			continue
+		}
+		if typ, _ := ev[1].(string); typ == "o" {
+			if data, _ := ev[2].(string); data != "" {
+				stream.Feed([]byte(data))
+			}
+		}
+	}
+
+	lines := screen.Display()
+	for lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	// Some ptys like to use a bunch of trailing spaces followed by a series of \b,
+	// in order to "clear" the line.
+	// This varies by OS, because of course it does.
+	// Canonicalize by trimming all trailing spaces.
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " ")
+	}
+	outText := strings.Join(lines, "\n") + "\n"
+	return outText, nil
 }

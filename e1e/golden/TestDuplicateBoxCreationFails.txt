@@ -1,0 +1,64 @@
+
+
+●
+● ssh localhost
+●
+
+Warning: Permanently added '[localhost]:SSH_PORT' (ED25519) to the list of known hosts.
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a machine over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: TestDuplicateBoxCreationFails@example.com
+Verification email sent to TestDuplicateBoxCreationFails@example.com.
+
+Please click the link in your email to verify your account:
+http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+EXE.DEV commands:
+
+list                    - List your boxes
+new [args]              - Create a new box
+start <name>            - Start a box
+stop <name> [...]       - Stop one or more boxes
+delete <name>           - Delete a box
+logs <name>             - View box logs
+billing                 - Manage billing and payment info
+whoami                  - Show your email and SSH keys
+?                       - Show this help
+exit                    - Exit
+
+Run help <command> for more details
+
+exe.dev ▶ whoami
+User Information:
+
+Email Address: TestDuplicateBoxCreationFails@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+
+
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testduplicateboxcreationfails
+Creating e1e-BOX_TIMESTAMP-testduplicateboxcreationfails (medium) using image boldsoftware/exeuntu...
+Ready in ELAPSED_TIME! Access with:
+
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testduplicateboxcreationfails@localhost
+
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testduplicateboxcreationfails
+Box name "e1e-BOX_TIMESTAMP-testduplicateboxcreationfails" is not available
+Error: box name "e1e-BOX_TIMESTAMP-testduplicateboxcreationfails" is not available
+exe.dev ▶ exit
+Goodbye!
+Connection to localhost closed.

@@ -47,6 +47,17 @@ jobs:
       - name: Run tests
         run: gotestsum --format testname -- -race ./...
 
+      - name: Check golden files unchanged
+        run: |
+          if [ -n "$(git status --porcelain e1e/golden/)" ]; then
+            echo "❌ Golden files were modified by tests:"
+            git status --porcelain e1e/golden/
+            echo
+            echo "Diff:"
+            git diff e1e/golden/
+            exit 1
+          fi
+
       - name: Generate asciinema recordings artifact
         run: |
           go run ./cmd/asciinema-viewer e1e recordings.html

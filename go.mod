@@ -9,6 +9,7 @@ replace github.com/Netflix/go-expect => ./deps/go-expect
 require (
 	github.com/Netflix/go-expect v0.0.0-20220104043353-73e0943537d2
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
+	github.com/charmbracelet/x/ansi v0.10.1
 	github.com/creack/pty v1.1.24
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/google/uuid v1.6.0
@@ -20,6 +21,7 @@ require (
 	github.com/stripe/stripe-go/v76 v76.25.0
 	github.com/stripe/stripe-mock v0.195.0
 	github.com/tg123/sshpiper v0.0.0-00010101000000-000000000000
+	github.com/veops/go-ansiterm v0.0.5
 	golang.org/x/crypto v0.41.0
 	golang.org/x/term v0.34.0
 	google.golang.org/grpc v1.75.0
@@ -30,7 +32,6 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/x/ansi v0.10.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect

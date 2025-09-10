@@ -1,0 +1,9 @@
+
+
+●
+● scp localhost
+●
+
+Warning: Permanently added '[localhost]:PIPERD_PORT' (ED25519) to the list of known hosts.
+scp/sftp is not supported on the exe.dev server.
+scp: Connection closed
