@@ -101,14 +101,16 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 	return manager
 }
 
-// GetService returns the LLM service for the given model ID
+// GetService returns the LLM service for the given model ID, wrapped with logging
 func (m *LLMServiceManager) GetService(modelID string) (llm.Service, error) {
 	if factory, ok := m.factories[modelID]; ok {
 		svc, err := factory()
 		if err != nil {
 			return nil, err
 		}
-		return svc, nil
+		// Wrap the service with logging
+		loggedSvc := NewLoggingLLMService(svc, m.logger, modelID)
+		return loggedSvc, nil
 	}
 	return nil, fmt.Errorf("unsupported model: %s", modelID)
 }

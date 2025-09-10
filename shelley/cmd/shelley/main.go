@@ -356,13 +356,7 @@ func setupLLMService(modelFlag string, logger *slog.Logger) llm.Service {
 		modelID = "qwen3-coder-fireworks"
 	}
 
-	// Predictable shortcut
-	if modelID == "predictable" {
-		logger.Info("Using predictable LLM service")
-		return loop.NewPredictableServiceWithTestResponses()
-	}
-
-	// Create service via manager without auto-detection
+	// Always use the service manager to ensure consistent logging
 	llmManager := server.NewLLMServiceManager(logger)
 	svc, err := llmManager.GetService(modelID)
 	if err != nil {
