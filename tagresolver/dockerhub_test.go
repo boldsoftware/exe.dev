@@ -49,6 +49,10 @@ func TestDockerHubUbuntuResolution(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := tr.ResolveTag(ctx, tc.image, tc.platform)
 			if err != nil {
+				// Check if this is a rate limiting error (HTTP 429)
+				if strings.Contains(err.Error(), "429") {
+					t.Skipf("Skipping test due to Docker Hub rate limiting: %v", err)
+				}
 				t.Fatalf("Failed to resolve %s: %v", tc.image, err)
 			}
 
@@ -112,6 +116,10 @@ func TestGetManifestDigestDirectly(t *testing.T) {
 	// Test getManifestDigest directly
 	digest, size, err := tr.getManifestDigest(ctx, "docker.io", "library/ubuntu", "22.04", "linux/amd64")
 	if err != nil {
+		// Check if this is a rate limiting error (HTTP 429)
+		if strings.Contains(err.Error(), "429") {
+			t.Skipf("Skipping test due to Docker Hub rate limiting: %v", err)
+		}
 		t.Fatalf("Failed to get manifest digest: %v", err)
 	}
 
