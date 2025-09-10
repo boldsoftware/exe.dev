@@ -129,6 +129,11 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	return manager, nil
 }
 
+// DataPath returns a path under /data with the configured isolation subdirectory
+func (m *NerdctlManager) DataPath(path string) string {
+	return fmt.Sprintf("/data/%s/%s", m.config.DataSubdir, strings.TrimPrefix(path, "/"))
+}
+
 // execNerdctl executes a nerdctl command via SSH on a remote host
 func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...string) *exec.Cmd {
 	host = strings.TrimPrefix(host, "ssh://")
@@ -1513,15 +1518,15 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 	// This solves the issue where recreating the database (and thus resetting box IDs)
 	// would conflict with existing disks on the container host
 	if boxID > 0 {
-		sourcePath := fmt.Sprintf("/data/exed/containers/box-%d", boxID)
-		deletedPath := fmt.Sprintf("/data/exed/deleted/box-%d", boxID)
+		sourcePath := m.DataPath(fmt.Sprintf("exed/containers/box-%d", boxID))
+		deletedPath := m.DataPath(fmt.Sprintf("exed/deleted/box-%d", boxID))
 
 		// Check if source disk exists
 		checkCmd := m.ExecSSHCommand(ctx, container.DockerHost, "test", "-d", sourcePath)
 		if err := checkCmd.Run(); err == nil {
 			// Source exists, proceed with move
 			// First create the deleted directory if it doesn't exist
-			mkdirCmd := m.ExecSSHCommand(ctx, container.DockerHost, "mkdir", "-p", "/data/exed/deleted")
+			mkdirCmd := m.ExecSSHCommand(ctx, container.DockerHost, "mkdir", "-p", m.DataPath("exed/deleted"))
 			if err := mkdirCmd.Run(); err != nil {
 				slog.Warn("Failed to create deleted directory", "error", err)
 			}
@@ -1531,7 +1536,7 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 			if err := checkDestCmd.Run(); err == nil {
 				// Destination exists, append timestamp to make it unique
 				timestamp := time.Now().Format("20060102-150405")
-				deletedPath = fmt.Sprintf("/data/exed/deleted/box-%d-%s", boxID, timestamp)
+				deletedPath = m.DataPath(fmt.Sprintf("exed/deleted/box-%d-%s", boxID, timestamp))
 				slog.Info("Deleted disk already exists, using timestamped path",
 					"boxID", boxID, "path", deletedPath)
 			}
@@ -1876,7 +1881,7 @@ func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
 
 	// Use git hash for rovol directory path
 	gitHash := getGitHash()
-	remoteDir := fmt.Sprintf("/data/exed/rovol/rovol-%s", gitHash)
+	remoteDir := m.DataPath(fmt.Sprintf("exed/rovol/rovol-%s", gitHash))
 
 	// Check if rovol already exists for this git hash
 	checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", remoteDir)
@@ -1981,7 +1986,7 @@ func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
 
 // VerifyDisk checks if a persistent disk exists for a given box ID
 func (m *NerdctlManager) VerifyDisk(ctx context.Context, host string, boxID int) (bool, error) {
-	diskPath := fmt.Sprintf("/data/exed/containers/box-%d", boxID)
+	diskPath := m.DataPath(fmt.Sprintf("exed/containers/box-%d", boxID))
 
 	// Check if directory exists
 	checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", diskPath)
@@ -2001,7 +2006,7 @@ func (m *NerdctlManager) VerifyDisk(ctx context.Context, host string, boxID int)
 // prepareContainerExeDev creates a container-specific /exe.dev directory with SSH keys
 func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string, boxID int, sshKeys *ContainerSSHKeys) (string, error) {
 	// Base directory for this container's files - use box ID for stable path
-	containerDir := fmt.Sprintf("/data/exed/containers/box-%d/exe.dev", boxID)
+	containerDir := m.DataPath(fmt.Sprintf("exed/containers/box-%d/exe.dev", boxID))
 
 	slog.Info("Preparing container-specific /exe.dev directory", "dir", containerDir, "boxID", boxID)
 
@@ -2020,7 +2025,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 	} else {
 		// Use the pre-prepared rovol files (prepared during server setup)
 		gitHash := getGitHash()
-		rovolPath := fmt.Sprintf("/data/exed/rovol/rovol-%s", gitHash)
+		rovolPath := m.DataPath(fmt.Sprintf("exed/rovol/rovol-%s", gitHash))
 
 		// Verify the rovol directory exists
 		checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", rovolPath)

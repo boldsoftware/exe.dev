@@ -56,7 +56,7 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 	}
 
 	// Verify the disk was moved to /data/exed/deleted/box-<id>
-	firstDeletedPath := fmt.Sprintf("/data/exed/deleted/box-%d", boxID)
+	firstDeletedPath := manager.DataPath(fmt.Sprintf("exed/deleted/box-%d", boxID))
 	checkFirstCmd := manager.ExecSSHCommand(ctx, host, "test", "-d", firstDeletedPath)
 	if err := checkFirstCmd.Run(); err != nil {
 		t.Fatalf("First deleted disk not found at %s", firstDeletedPath)
@@ -95,7 +95,7 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 	}
 
 	// Find the timestamped second deletion
-	lsCmd := manager.ExecSSHCommand(ctx, host, "ls", "-la", "/data/exed/deleted/")
+	lsCmd := manager.ExecSSHCommand(ctx, host, "ls", "-la", manager.DataPath("exed/deleted/"))
 	output, err := lsCmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to list deleted directory: %v", err)
@@ -162,7 +162,7 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 	}
 
 	// List directory again and verify we have 3 deleted disks
-	lsCmd2 := manager.ExecSSHCommand(ctx, host, "ls", "/data/exed/deleted/")
+	lsCmd2 := manager.ExecSSHCommand(ctx, host, "ls", manager.DataPath("exed/deleted/"))
 	output2, err := lsCmd2.Output()
 	if err != nil {
 		t.Fatalf("Failed to list deleted directory: %v", err)
@@ -189,7 +189,7 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 
 	// Clean up test artifacts
 	cleanupCmd := manager.ExecSSHCommand(ctx, host, "rm", "-rf",
-		fmt.Sprintf("/data/exed/deleted/box-%d*", boxID))
+		manager.DataPath(fmt.Sprintf("exed/deleted/box-%d*", boxID)))
 	_ = cleanupCmd.Run()
 
 	t.Log("✅ Multiple deletions with same box ID work correctly")

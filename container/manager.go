@@ -21,6 +21,9 @@ type Config struct {
 	// Keys and values are passed verbatim. Use this to enable Kata/CLH
 	// snapshot-restore or other runtime-specific behaviors when supported.
 	KataAnnotations map[string]string `json:"kata_annotations"`
+
+	// DataSubdir is the subdirectory under /data for container isolation
+	DataSubdir string `json:"data_subdir"`
 }
 
 // DefaultConfig returns a sensible default configuration

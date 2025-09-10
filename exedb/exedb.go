@@ -1,6 +1,8 @@
 package exedb
 
 import (
+	"context"
+	crand "crypto/rand"
 	"database/sql"
 	"embed"
 	"errors"
@@ -9,6 +11,8 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+
+	"exe.dev/sqlite"
 )
 
 //go:embed schema/*.sql
@@ -109,4 +113,46 @@ func executeMigration(db *sql.DB, filename string) error {
 	}
 
 	return nil
+}
+
+// InitDataSubdir ensures data_subdir is set in db's server_meta,
+// creating a random subdirectory name if it doesn't exist.
+func InitDataSubdir(db *sqlite.DB) (string, error) {
+	var dataSubdir string
+
+	// Use a transaction to read and potentially write
+	err := db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		// Try to get existing data_subdir
+		err := tx.QueryRow("SELECT value FROM server_meta WHERE key = ?", "data_subdir").Scan(&dataSubdir)
+		if err == nil {
+			if dataSubdir == "" {
+				return fmt.Errorf("data_subdir is empty in server_meta")
+			}
+			slog.Debug("using existing data_subdir", "subdir", dataSubdir)
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to query data_subdir from server_meta: %w", err)
+		}
+
+		// Not found. Create one.
+		dataSubdir = crand.Text()
+		_, err = tx.Exec(`
+				INSERT INTO server_meta (key, value, updated_at)
+				VALUES (?, ?, CURRENT_TIMESTAMP)
+				ON CONFLICT(key) DO UPDATE SET
+					value = excluded.value,
+					updated_at = CURRENT_TIMESTAMP
+			`, "data_subdir", dataSubdir)
+		if err != nil {
+			return fmt.Errorf("failed to set data_subdir in server_meta: %w", err)
+		}
+
+		slog.Info("initialized new data_subdir", "subdir", dataSubdir)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return dataSubdir, nil
 }

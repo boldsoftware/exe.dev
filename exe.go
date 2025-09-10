@@ -356,6 +356,9 @@ type Server struct {
 	metricsRegistry *prometheus.Registry
 	sshMetrics      *SSHMetrics
 
+	// Data isolation
+	dataSubdir string // subdirectory under /data for container isolation
+
 	mu       sync.RWMutex
 	stopping bool
 }
@@ -429,6 +432,13 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 
 	slog.Debug("opened database connection pool", "dbPath", dbPath, "nReaders", nReaders)
 
+	// Initialize data subdirectory for container isolation
+	dataSubdir, err := exedb.InitDataSubdir(db)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize data subdir: %w", err)
+	}
+
 	// Detect if we're running in test mode
 	quietMode := !testing.Testing()
 
@@ -496,6 +506,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 			DefaultCPURequest:    "500m",
 			DefaultMemoryRequest: "1Gi",
 			DefaultStorageSize:   "10Gi",
+			DataSubdir:           dataSubdir,
 		}
 
 		// Optional: load OCI/Kata annotations from environment as JSON
@@ -573,6 +584,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		testMode:           testing.Testing() || devMode == "test",
 		metricsRegistry:    metricsRegistry,
 		sshMetrics:         sshMetrics,
+		dataSubdir:         dataSubdir,
 	}
 
 	s.setupHTTPServer()
@@ -601,6 +613,11 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	}()
 
 	return s, nil
+}
+
+// DataPath returns a path under /data with the server's isolation subdirectory
+func (s *Server) DataPath(path string) string {
+	return fmt.Sprintf("/data/%s/%s", s.dataSubdir, strings.TrimPrefix(path, "/"))
 }
 
 // setupHTTPServer configures the HTTP server
@@ -3033,7 +3050,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 
 		if !exists {
 			// Container doesn't exist on host but should - check for persistent disk
-			diskPath := fmt.Sprintf("/data/exed/containers/box-%d", box.ID)
+			diskPath := s.DataPath(fmt.Sprintf("exed/containers/box-%d", box.ID))
 
 			// Use the VerifyDisk method for proper disk validation
 			nerdctlMgr := s.containerManager
