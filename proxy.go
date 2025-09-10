@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/container"
+	"exe.dev/exedb"
 )
 
 // handleProxyRequest handles requests that should be proxied to containers
@@ -323,7 +324,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // getBoxForUser retrieves a box for the given user/team/name
-func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*Box, error) {
+func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*exedb.Box, error) {
 	// Get user from public key
 	user, err := s.getUserByPublicKey(ctx, publicKey)
 	if err != nil || user == nil {
@@ -337,7 +338,7 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 	}
 
 	// Get the box
-	var box Box
+	var box exedb.Box
 	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
 			SELECT id, alloc_id, name, status, image, container_id,
@@ -361,9 +362,9 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 }
 
 // proxyToContainer proxies the HTTP request to a container via SSH port forwarding
-func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *Box, route Route) error {
+func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *exedb.Box, route exedb.Route) error {
 	// Validate box has SSH credentials
-	if box.SSHClientPrivateKey == nil || box.SSHPort == nil {
+	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil {
 		return fmt.Errorf("box missing SSH credentials")
 	}
 
@@ -376,7 +377,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *B
 	}
 
 	// Parse the SSH private key
-	sshKey, err := container.CreateSSHSigner(*box.SSHClientPrivateKey)
+	sshKey, err := container.CreateSSHSigner(string(box.SSHClientPrivateKey))
 	if err != nil {
 		return fmt.Errorf("failed to parse SSH private key: %w", err)
 	}
@@ -414,7 +415,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *B
 	}
 
 	// Try to proxy to the configured port
-	err = s.proxyViaSSHPortForward(w, r, sshHost, *box.SSHPort, sshKey, route.Port)
+	err = s.proxyViaSSHPortForward(w, r, sshHost, int(*box.SSHPort), sshKey, route.Port)
 	if err != nil {
 		return fmt.Errorf("failed to proxy to port %d: %w", route.Port, err)
 	}

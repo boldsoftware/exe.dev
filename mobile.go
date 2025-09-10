@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"exe.dev/exedb"
 )
 
 // handleMobile handles the mobile UI flow at /m using a mux for cleaner routing
@@ -311,7 +313,7 @@ func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get user's boxes
-	var boxes []*Box
+	var boxes []exedb.Box
 	if alloc != nil {
 		boxes, err = s.getBoxesForAlloc(r.Context(), alloc.AllocID)
 		if err != nil {
@@ -321,10 +323,16 @@ func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Convert []exedb.Box to []*exedb.Box
+	boxPtrs := make([]*exedb.Box, len(boxes))
+	for i := range boxes {
+		boxPtrs[i] = &boxes[i]
+	}
+
 	data := struct {
-		Boxes []*Box
+		Boxes []*exedb.Box
 	}{
-		Boxes: boxes,
+		Boxes: boxPtrs,
 	}
 
 	s.renderTemplate(w, "mobile-vm-list.html", data)

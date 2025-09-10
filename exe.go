@@ -195,75 +195,11 @@ type Alloc struct {
 	BillingEmail     sql.NullString
 }
 
-// Route represents the routing configuration for a box
-type Route struct {
-	Port  int    `json:"port"`  // Port to expose (default 80)
-	Share string `json:"share"` // "private" or "public" (default "private")
-}
-
-// Box represents a container/VM
-type Box struct {
-	ID              int
-	AllocID         string
-	Name            string
-	Status          string
-	Image           string
-	ContainerID     *string
-	CreatedByUserID string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	LastStartedAt   *time.Time
-	Routes          *string // JSON-encoded routing configuration
-	// SSH fields for container access
-	SSHServerIdentityKey *string // SSH server private key (PEM format)
-	SSHAuthorizedKeys    *string // User certificate for authorized_keys (client auth)
-	SSHCAPublicKey       *string // CA public key for mutual auth
-	SSHHostCertificate   *string // Host certificate for host key validation
-	SSHClientPrivateKey  *string // Private key for connecting to container (PEM format)
-	SSHPort              *int    // SSH port for this container
-	SSHUser              *string // User to connect as (from Docker image USER directive)
-}
-
-// GetRoutes parses and returns the box's routing configuration
-// GetRoute returns the routing configuration for the box
-func (b *Box) GetRoute() Route {
-	if b.Routes == nil || *b.Routes == "" {
-		return b.getDefaultRoute()
-	}
-
-	var route Route
-	err := json.Unmarshal([]byte(*b.Routes), &route)
-	if err != nil {
-		return b.getDefaultRoute()
-	}
-
-	return route
-}
-
-// SetRoute sets the box's routing configuration
-func (b *Box) SetRoute(route Route) error {
-	data, err := json.Marshal(route)
-	if err != nil {
-		return err
-	}
-	routesStr := string(data)
-	b.Routes = &routesStr
-	return nil
-}
-
-// getDefaultRoute returns the default routing configuration
-func (b *Box) getDefaultRoute() Route {
-	return Route{
-		Port:  80,
-		Share: "private",
-	}
-}
-
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
 	User    User
 	SSHKeys []SSHKey
-	Boxes   []Box
+	Boxes   []exedb.Box
 }
 
 // SSHKey represents an SSH key for the user page
@@ -2280,7 +2216,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	}
 
 	// Get user's boxes from all teams they belong to
-	boxes := []Box{}
+	boxes := []exedb.Box{}
 	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		boxRows, err := rx.Query(`
 			SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''),
@@ -2296,7 +2232,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		}
 		defer boxRows.Close()
 		for boxRows.Next() {
-			var box Box
+			var box exedb.Box
 			var containerID, image sql.NullString
 			var lastStartedAt sql.NullTime
 			err := boxRows.Scan(&box.ID, &box.AllocID, &box.Name,
@@ -2394,7 +2330,7 @@ type SSHClient interface {
 }
 
 // findBoxByNameForUser finds a box by name that the user has access to
-func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName string) *Box {
+func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName string) *exedb.Box {
 	slog.Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
 
 	// Box names are now globally unique, no team prefix
@@ -2638,8 +2574,8 @@ func (s *Server) isValidBoxName(name string) bool {
 
 // getDefaultRouteJSON returns the default route as a JSON string
 func getDefaultRouteJSON() string {
-	var box Box
-	route := box.getDefaultRoute()
+	var box exedb.Box
+	route := box.GetDefaultRoute()
 	data, err := json.Marshal(route)
 	if err != nil {
 		log.Fatalf("Failed to marshal default route: %v", err)
@@ -2712,8 +2648,8 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 }
 
 // getBoxByName retrieves a box by name and team
-func (s *Server) getBoxByName(ctx context.Context, name string) (*Box, error) {
-	var box Box
+func (s *Server) getBoxByName(ctx context.Context, name string) (*exedb.Box, error) {
+	var box exedb.Box
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
 		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
@@ -2734,33 +2670,15 @@ func (s *Server) getBoxByName(ctx context.Context, name string) (*Box, error) {
 }
 
 // getBoxesForAlloc gets all boxes for an allocation
-func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]*Box, error) {
-	var boxes []*Box
+func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]exedb.Box, error) {
+	var boxes []exedb.Box
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		rows, err := rx.Query(`
-			SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
-			       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port
-			FROM boxes
-			WHERE alloc_id = ?
-			ORDER BY name
-		`, allocID)
+		queries := exedb.New(rx.Conn())
+		exedbBoxes, err := queries.GetBoxesForAlloc(ctx, allocID)
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var m Box
-			err := rows.Scan(
-				&m.ID, &m.AllocID, &m.Name, &m.Status, &m.Image, &m.ContainerID, &m.CreatedByUserID,
-				&m.CreatedAt, &m.UpdatedAt, &m.LastStartedAt, &m.Routes,
-				&m.SSHServerIdentityKey, &m.SSHAuthorizedKeys, &m.SSHCAPublicKey, &m.SSHHostCertificate, &m.SSHClientPrivateKey, &m.SSHPort,
-			)
-			if err != nil {
-				return err
-			}
-			boxes = append(boxes, &m)
-		}
+		boxes = exedbBoxes
 		return nil
 	})
 	if err != nil {
@@ -2820,8 +2738,8 @@ func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc,
 }
 
 // getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
-func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*Box, error) {
-	var boxes []*Box
+func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.Box, error) {
+	var boxes []*exedb.Box
 	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		// Join boxes with allocs to find boxes on this host
 		rows, err := rx.Query(`
@@ -2841,7 +2759,7 @@ func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*Box, er
 		defer rows.Close()
 
 		for rows.Next() {
-			var b Box
+			var b exedb.Box
 			err := rows.Scan(
 				&b.ID, &b.AllocID, &b.Name, &b.Status, &b.Image, &b.ContainerID,
 				&b.CreatedByUserID, &b.CreatedAt, &b.UpdatedAt, &b.LastStartedAt,
@@ -3005,7 +2923,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 	}
 
 	// Create maps for easier lookup
-	dbBoxMap := make(map[string]*Box)
+	dbBoxMap := make(map[string]*exedb.Box)
 	for _, box := range dbBoxes {
 		if box.ContainerID != nil && *box.ContainerID != "" {
 			dbBoxMap[*box.ContainerID] = box
@@ -3055,14 +2973,14 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 
 					// Reconstruct SSH keys from the box record
 					var existingSSHKeys *container.ContainerSSHKeys
-					if box.SSHServerIdentityKey != nil && *box.SSHServerIdentityKey != "" {
+					if len(box.SSHServerIdentityKey) > 0 {
 						existingSSHKeys = &container.ContainerSSHKeys{
-							ServerIdentityKey: *box.SSHServerIdentityKey,
+							ServerIdentityKey: string(box.SSHServerIdentityKey),
 							AuthorizedKeys:    *box.SSHAuthorizedKeys,
 							CAPublicKey:       *box.SSHCAPublicKey,
 							HostCertificate:   *box.SSHHostCertificate,
-							ClientPrivateKey:  *box.SSHClientPrivateKey,
-							SSHPort:           *box.SSHPort,
+							ClientPrivateKey:  string(box.SSHClientPrivateKey),
+							SSHPort:           int(*box.SSHPort),
 						}
 						slog.Info("Using existing SSH keys from database for container recreation", "boxID", box.ID)
 					}
@@ -3893,11 +3811,11 @@ func (s *Server) SSHIdentityKeyForBox(ctx context.Context, name string) (string,
 	if err != nil {
 		return "", fmt.Errorf("failed to find box %s: %w", name, err)
 	}
-	if box.SSHServerIdentityKey == nil || *box.SSHServerIdentityKey == "" {
+	if len(box.SSHServerIdentityKey) == 0 {
 		return "", fmt.Errorf("box %s has no SSH server identity key", name)
 	}
 	// Parse the private key to extract the public key
-	privateKey, err := ssh.ParsePrivateKey([]byte(*box.SSHServerIdentityKey))
+	privateKey, err := ssh.ParsePrivateKey(box.SSHServerIdentityKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse SSH server identity key for box %s: %w", name, err)
 	}

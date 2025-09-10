@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/creack/pty"
 )
@@ -337,7 +338,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, ter
 }
 
 // createContainerExecSession creates a docker exec session for the terminal
-func (s *Server) createContainerExecSession(session *TerminalSession, box *Box) error {
+func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box) error {
 	if box.ContainerID == nil {
 		return fmt.Errorf("box has no container ID")
 	}
@@ -397,7 +398,7 @@ func (s *Server) readFromPtyAndBroadcast(session *TerminalSession) {
 // Helper functions for box management
 
 // getBoxForUserByID gets a box for a user using user ID
-func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) (*Box, error) {
+func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) (*exedb.Box, error) {
 	// Get user's alloc
 	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
@@ -405,7 +406,7 @@ func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) 
 	}
 
 	// Get the box using the same pattern as existing code
-	var box Box
+	var box exedb.Box
 	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`
 			SELECT id, alloc_id, name, status, image, container_id,
@@ -433,7 +434,7 @@ func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) 
 }
 
 // startBox starts a stopped box
-func (s *Server) startBox(ctx context.Context, box *Box) error {
+func (s *Server) startBox(ctx context.Context, box *exedb.Box) error {
 	// Use the container management system to start the box
 	if s.containerManager == nil {
 		return fmt.Errorf("container manager not available")

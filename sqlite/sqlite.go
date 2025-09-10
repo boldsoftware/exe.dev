@@ -430,6 +430,11 @@ func (rx *Rx) QueryRow(query string, args ...interface{}) *Row {
 	return &Row{err: err, rows: rows}
 }
 
+// Conn returns the underlying sql.Conn for use with external libraries like sqlc
+func (rx *Rx) Conn() *sql.Conn {
+	return rx.conn
+}
+
 // Row is equivalent to *sql.Row, but we provide a more useful error.
 type Row struct {
 	err  error

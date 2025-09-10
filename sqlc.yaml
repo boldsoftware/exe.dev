@@ -1,0 +1,27 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "sqlc/query/"
+    schema: "exedb/schema/"
+    gen:
+      go:
+        package: "exedb"
+        out: "exedb/"
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        json_tags_case_style: "snake"
+        sql_package: "database/sql"
+        emit_db_tags: true
+        emit_prepared_queries: true
+        overrides:
+          - column: "boxes.id"
+            go_type: "int"
+        rename:
+          ssh_server_identity_key: "SSHServerIdentityKey"
+          ssh_authorized_keys: "SSHAuthorizedKeys"
+          ssh_ca_public_key: "SSHCAPublicKey"
+          ssh_host_certificate: "SSHHostCertificate"
+          ssh_client_private_key: "SSHClientPrivateKey"
+          ssh_port: "SSHPort"
+          ssh_user: "SSHUser"

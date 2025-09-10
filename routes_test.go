@@ -6,14 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
 
 func TestRouteStructs(t *testing.T) {
 	t.Parallel()
 	// Test default route creation
-	var box Box
-	route := box.getDefaultRoute()
+	var box exedb.Box
+	route := box.GetDefaultRoute()
 
 	if route.Port != 80 {
 		t.Errorf("Expected default port 80, got %d", route.Port)
@@ -25,7 +26,7 @@ func TestRouteStructs(t *testing.T) {
 
 func TestBoxRoute(t *testing.T) {
 	t.Parallel()
-	box := Box{}
+	box := exedb.Box{}
 
 	// Test getting route when none are set (should return defaults)
 	route := box.GetRoute()
@@ -37,7 +38,7 @@ func TestBoxRoute(t *testing.T) {
 	}
 
 	// Test setting custom route
-	customRoute := Route{
+	customRoute := exedb.Route{
 		Port:  3000,
 		Share: "public",
 	}
@@ -189,7 +190,7 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	// Set a public route
-	publicRoute := Route{
+	publicRoute := exedb.Route{
 		Port:  80,
 		Share: "public",
 	}

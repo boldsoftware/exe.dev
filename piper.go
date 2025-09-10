@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
@@ -326,7 +327,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 }
 
 // handleBoxAccess sets up routing to a specific box container
-func (p *PiperPlugin) handleBoxAccess(box *Box, userID, connID string) (*libplugin.Upstream, error) {
+func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*libplugin.Upstream, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
 

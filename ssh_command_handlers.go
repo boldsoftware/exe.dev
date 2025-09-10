@@ -12,6 +12,7 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/container"
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/google/uuid"
 	"golang.org/x/term"
@@ -1090,7 +1091,7 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 	}
 
 	// Update route configuration
-	newRoute := Route{
+	newRoute := exedb.Route{
 		Port:  portInt,
 		Share: share,
 	}

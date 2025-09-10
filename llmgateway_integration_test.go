@@ -49,7 +49,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	}
 
 	// Parse the SSH server identity key to create bearer token
-	signer, err := ssh.ParsePrivateKey([]byte(*box.SSHServerIdentityKey))
+	signer, err := ssh.ParsePrivateKey(box.SSHServerIdentityKey)
 	if err != nil {
 		t.Fatalf("Failed to parse SSH server identity key: %v", err)
 	}

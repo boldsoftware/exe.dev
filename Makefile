@@ -10,7 +10,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy setup-vm clean run-dev
+.PHONY: help build test deploy setup-vm clean run-dev sqlc
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -103,6 +103,11 @@ fmt: ## Format Go code
 	@echo "Formatting code..."
 	@go fmt ./...
 	@echo "✓ Format complete"
+
+sqlc: ## Generate sqlc code from SQL queries
+	@echo "Generating sqlc code..."
+	@sqlc generate
+	@echo "✓ sqlc generation complete"
 
 vet: ## Run go vet
 	@echo "Running go vet..."
