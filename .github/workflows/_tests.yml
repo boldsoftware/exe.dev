@@ -45,7 +45,13 @@ jobs:
           echo "TEST_SSH_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
 
       - name: Run tests
-        run: gotestsum --format testname -- -race ./...
+        run: |
+          # Create temp directory for e1e logs
+          E1E_LOG_DIR=$(mktemp -d)
+          export E1E_LOG_DIR
+          echo "E1E_LOG_DIR=$E1E_LOG_DIR" >> "$GITHUB_ENV"
+
+          gotestsum --format testname -- -race ./...
 
       - name: Check golden files unchanged
         run: |
@@ -68,6 +74,15 @@ jobs:
         with:
           name: exe-dev-recordings-${{ github.sha }}
           path: recordings.html
+          retention-days: 7
+        continue-on-error: true
+
+      - name: Upload e1e test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe-dev-e1e-logs-${{ github.sha }}
+          path: ${{ env.E1E_LOG_DIR }}
           retention-days: 7
         continue-on-error: true
 

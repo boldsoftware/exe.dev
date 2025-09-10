@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -58,9 +59,9 @@ func CleanupTestContainers(ctx context.Context, manager *NerdctlManager, substri
 			continue
 		}
 		if err := manager.DeleteContainer(ctx, container.AllocID, container.ID); err != nil {
-			fmt.Printf("warning: failed to delete container %s: %v\n", container.Name, err)
+			slog.Warn("failed to delete container", "name", container.Name, "error", err)
 		} else {
-			fmt.Printf("deleted container %s\n", container.Name)
+			slog.Info("deleted container", "name", container.Name)
 		}
 	}
 

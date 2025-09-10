@@ -4,6 +4,7 @@ package e1e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"testing"
 
@@ -24,6 +25,7 @@ func TestRequiresSSHKey(t *testing.T) {
 		"-F", "/dev/null", // don't use any config file -> no ssh keys
 		"localhost",
 	)
+	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 
 	pty.attachAndStart(sshCmd)
 

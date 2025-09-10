@@ -57,6 +57,12 @@ func TestMain(m *testing.M) {
 		return
 	}
 
+	err := initLogging()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to init logging: %v\n", err)
+		os.Exit(1)
+	}
+
 	if testing.Verbose() {
 		fmt.Print(`
 ════════
@@ -76,12 +82,6 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 `)
 	}
 
-	if *flagVerboseSlog {
-		slog.SetLogLoggerLevel(slog.LevelDebug)
-	} else {
-		slog.SetLogLoggerLevel(slog.LevelWarn)
-	}
-
 	ctrHost := ctrhosttest.Detect()
 	// Skip tests in CI if there is no ctr-host
 	if os.Getenv("CI") != "" && ctrHost == "" {
@@ -91,7 +91,7 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 
 	env, err := setup(ctrHost)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "test setup failed: %v\n", err)
+		slog.Error("test setup failed", "error", err)
 		env.Close(nil)
 		os.Exit(1)
 	}
@@ -102,16 +102,78 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 		manager, err := env.initContainerManager(ctrHost)
 		containerManagerC <- manager // unblock regardless
 		if err != nil {
-			fmt.Printf("failed to init container manager: %v\n", err)
+			slog.Error("failed to init container manager", "error", err)
 			return
 		}
 	}()
 
 	Env = env
-	fmt.Printf("running tests\n")
+	slog.Info("running tests")
 	code := m.Run()
 	env.Close(<-containerManagerC)
+
+	for _, f := range logFiles {
+		if f == nil {
+			continue
+		}
+		err := f.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to close log file %v: %v\n", f.Name(), err)
+		}
+	}
 	os.Exit(code)
+}
+
+var logFiles = map[string]*os.File{
+	"sshpiperd": nil,
+	"exed":      nil,
+	"e1e":       nil,
+}
+
+func logFileFor(name string) *os.File {
+	f, ok := logFiles[name]
+	if !ok || f == nil {
+		return os.Stdout
+	}
+	return f
+}
+
+func initLogging() error {
+	e1eLogDir := os.Getenv("E1E_LOG_DIR")
+	if e1eLogDir == "" {
+		level := slog.LevelWarn
+		if *flagVerboseSlog {
+			level = slog.LevelDebug
+		}
+		// Default: Plain text logging to stdout
+		handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: level,
+		})
+		slog.SetDefault(slog.New(handler))
+		return nil
+	}
+	// Log to files. (We're probably in CI.)
+	if err := os.MkdirAll(e1eLogDir, 0o700); err != nil {
+		return fmt.Errorf("failed to create E1E_LOG_DIR %s: %w", e1eLogDir, err)
+	}
+	for name := range logFiles {
+		logPath := filepath.Join(e1eLogDir, name+".log")
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			return fmt.Errorf("failed to open log file %s: %w", logPath, err)
+		}
+		logFiles[name] = logFile
+	}
+	handler := slog.NewJSONHandler(logFiles["e1e"], &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(handler))
+	// auto-enable all verbose flags except:
+	// - pty, which is accessible via the .cast files
+	// - slog, which is already verbose by setting log level to debug above
+	*flagVerbosePiperd = true
+	*flagVerboseExed = true
+	*flagVerbosePorts = true
+	*flagVerboseEmail = true
+	return nil
 }
 
 var Env *testEnv
@@ -208,11 +270,11 @@ func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 	}
 	if containerManager != nil {
 		defer containerManager.Close()
-		fmt.Printf("cleaning up containers\n")
+		slog.Info("cleaning up containers")
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := container.CleanupTestContainers(ctx, containerManager, "e1e-"); err != nil {
-			fmt.Printf("container cleanup failed: %v", err)
+			slog.Error("container cleanup failed", "error", err)
 		}
 	}
 }
@@ -241,12 +303,12 @@ func (p *tcpProxy) serve() error {
 		go func() {
 			dstAddr := p.dst.Load()
 			if dstAddr == nil {
-				fmt.Printf("tcpProxy: no destination address set")
+				slog.Error("tcpProxy: no destination address set")
 				return
 			}
 			dst, err := net.Dial("tcp", dstAddr.String())
 			if err != nil {
-				fmt.Printf("tcpProxy: failed to connect to dst %v: %v", dstAddr, err)
+				slog.Error("tcpProxy: failed to connect to dst", "address", dstAddr, "error", err)
 				return
 			}
 			defer c.Close()
@@ -282,7 +344,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	env.proxy = proxy
 	env.addCanonicalization(proxy.tcp.Port, "SSH_PORT")
 	if *flagVerbosePorts {
-		fmt.Printf("proxy: listening on port %v\n", proxy.tcp.Port)
+		slog.Info("proxy listening", "port", proxy.tcp.Port)
 	}
 
 	// Start email server first so we can pass its URL to exed
@@ -293,7 +355,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	env.email = es
 	env.addCanonicalization(es.port, "EMAIL_SERVER_PORT")
 	if *flagVerboseEmail {
-		fmt.Printf("email: listening on %v\n", es.port)
+		slog.Info("email server listening", "port", es.port)
 	}
 
 	// TODO: build piperd concurrently with starting exed for faster startup
@@ -313,7 +375,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	env.piperd = *pi
 	env.addCanonicalization(pi.SSHPort, "PIPERD_PORT")
 	if *flagVerbosePorts {
-		fmt.Printf("piperd: listening on %v\n", pi.SSHPort)
+		slog.Info("piperd listening", "port", pi.SSHPort)
 	}
 
 	// proxy tcp requests to piperd
@@ -324,7 +386,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	start := time.Now()
-	fmt.Println("starting piperd")
+	slog.Info("starting piperd")
 	tmpFile, err := os.CreateTemp("", "sshpiperd_test_key_*.pem")
 	if err != nil {
 		return nil, err
@@ -370,7 +432,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 			tee.Write(line)
 			tee.Write([]byte("\n"))
 			if *flagVerbosePiperd {
-				fmt.Println("piperd:", string(line))
+				fmt.Fprintln(logFileFor("sshpiperd"), string(line))
 			}
 			teeMu.Unlock()
 			// Parse JSON log line
@@ -418,13 +480,13 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 		SSHPort: sshPort,
 	}
 
-	fmt.Printf("started piperd, elapsed=%v\n", time.Since(start).Truncate(100*time.Millisecond))
+	slog.Info("started piperd", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
 }
 
 func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, error) {
 	start := time.Now()
-	fmt.Println("starting exed")
+	slog.Info("starting exed")
 	dbPath, err := os.CreateTemp("", "exed_test_*.db")
 	if err != nil {
 		return nil, err
@@ -475,7 +537,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, e
 			tee.Write(line)
 			tee.Write([]byte("\n"))
 			if *flagVerboseExed {
-				fmt.Println("exed:", string(line))
+				fmt.Fprintln(logFileFor("exed"), string(line))
 			}
 			teeMu.Unlock()
 			// Parse JSON log line
@@ -492,7 +554,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, e
 			case "listening":
 				listeningC <- listen{typ: entry["type"].(string), port: int(entry["port"].(float64))}
 				if *flagVerbosePorts {
-					fmt.Printf("exed: listening to %v on port %v\n", entry["type"], entry["port"])
+					slog.Info("exed listening", "type", entry["type"], "port", entry["port"])
 				}
 			case "server started":
 				startedC <- true
@@ -539,7 +601,7 @@ ProcessLogs:
 		PiperPluginPort: piperPluginPort,
 	}
 
-	fmt.Printf("started exed, elapsed=%v\n", time.Since(start).Truncate(100*time.Millisecond))
+	slog.Info("started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
 }
 
@@ -822,7 +884,7 @@ func (es *emailServer) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if *flagVerboseEmail {
-		fmt.Printf("email: received message: %+v\n", email)
+		slog.Info("email received", "to", email.To, "subject", email.Subject, "body", email.Body)
 	}
 
 	es.inboxChannel(email.To) <- email
