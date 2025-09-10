@@ -31,7 +31,6 @@ func NewTestServer(t *testing.T, dockerhosts ...string) *Server {
 
 	server.testMode = true
 
-
 	go server.Start()
 	server.ready.Wait()
 
