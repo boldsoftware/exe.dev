@@ -3887,6 +3887,24 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 	}, nil
 }
 
+// SSHIdentityKeyForBox implements boxKeyAuthority interface for llmgateway
+func (s *Server) SSHIdentityKeyForBox(ctx context.Context, name string) (string, error) {
+	box, err := s.getBoxByName(ctx, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to find box %s: %w", name, err)
+	}
+	if box.SSHServerIdentityKey == nil || *box.SSHServerIdentityKey == "" {
+		return "", fmt.Errorf("box %s has no SSH server identity key", name)
+	}
+	// Parse the private key to extract the public key
+	privateKey, err := ssh.ParsePrivateKey([]byte(*box.SSHServerIdentityKey))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse SSH server identity key for box %s: %w", name, err)
+	}
+	// Return the public key in authorized_keys format
+	return string(ssh.MarshalAuthorizedKey(privateKey.PublicKey())), nil
+}
+
 // setupContainerSSH sets up SSH on a legacy container that was created before SSH support
 // TODO: Remove this method once all legacy containers are migrated to have SSH
 func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {

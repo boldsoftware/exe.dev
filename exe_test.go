@@ -440,3 +440,81 @@ func (s *Server) createTestBox(t *testing.T, userID, allocID, name, containerID,
 		t.Fatalf("failed to update box with container ID: %v", err)
 	}
 }
+
+func TestSSHIdentityKeyForBox(t *testing.T) {
+	server := NewTestServer(t)
+
+	// Create a test user and alloc
+	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
+	if err := server.createUserWithAlloc(t.Context(), publicKeyStr, "test@example.com"); err != nil {
+		t.Fatalf("Failed to create user with alloc: %v", err)
+	}
+
+	// Get the user to find their alloc
+	var userID, allocID string
+	err := server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		return rx.QueryRow(`SELECT u.user_id, a.alloc_id FROM users u JOIN allocs a ON u.user_id = a.user_id WHERE u.email = ?`, "test@example.com").Scan(&userID, &allocID)
+	})
+	if err != nil {
+		t.Fatalf("Failed to get user and alloc: %v", err)
+	}
+
+	boxName := "test-box"
+	containerID := "container-123"
+	image := "ubuntu:latest"
+
+	t.Run("box exists and has SSH keys", func(t *testing.T) {
+		server.createTestBox(t, userID, allocID, boxName, containerID, image)
+
+		// Test successful retrieval
+		publicKey, err := server.SSHIdentityKeyForBox(t.Context(), boxName)
+		if err != nil {
+			t.Fatalf("SSHIdentityKeyForBox failed: %v", err)
+		}
+
+		if publicKey == "" {
+			t.Fatal("Expected non-empty public key")
+		}
+
+		// Verify the public key format (should start with ssh-ed25519)
+		if !strings.HasPrefix(publicKey, "ssh-ed25519 ") {
+			t.Errorf("Expected public key to start with 'ssh-ed25519 ', got: %s", publicKey[:20])
+		}
+	})
+
+	t.Run("box does not exist", func(t *testing.T) {
+		_, err = server.SSHIdentityKeyForBox(t.Context(), "nonexistent-box")
+		if err == nil {
+			t.Error("Expected error for nonexistent box")
+		}
+		if !strings.Contains(err.Error(), "failed to find box nonexistent-box") {
+			t.Errorf("Expected 'failed to find box' error, got: %v", err)
+		}
+	})
+
+	t.Run("box exists but has no SSH key", func(t *testing.T) {
+		boxNameNoSSH := "box-no-ssh"
+		id, err := server.preCreateBox(t.Context(), userID, allocID, boxNameNoSSH, image)
+		if err != nil {
+			t.Fatalf("Failed to create box without SSH: %v", err)
+		}
+
+		// Update box with container but no SSH keys
+		err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`UPDATE boxes SET container_id = ? WHERE id = ?`, containerID+"-no-ssh", id)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("Failed to update box container ID: %v", err)
+		}
+
+		// Should fail because no SSH server identity key
+		_, err = server.SSHIdentityKeyForBox(t.Context(), boxNameNoSSH)
+		if err == nil {
+			t.Error("Expected error for box without SSH key")
+		}
+		if !strings.Contains(err.Error(), "has no SSH server identity key") {
+			t.Errorf("Expected 'has no SSH server identity key' error, got: %v", err)
+		}
+	})
+}
