@@ -15,7 +15,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/server"
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 type GlobalConfig struct {
@@ -380,6 +380,9 @@ func runModels(global GlobalConfig, args []string) {
         {ID: "qwen3-coder-fireworks", Provider: "Fireworks", EnvVars: []string{"FIREWORKS_API_KEY"}, Description: "Qwen3 Coder 480B on Fireworks (default)"},
         {ID: "openai-gpt4", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4.1 family"},
         {ID: "openai-gpt4-turbo", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4o family"},
+        {ID: "gpt-5-thinking", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking model (alias: gpt-5)"},
+        {ID: "gpt-5-thinking-mini", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking mini model (alias: gpt-5-mini)"},
+        {ID: "gpt-5-thinking-nano", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking nano model (alias: gpt-5-nano)"},
         {ID: "claude-sonnet-3.5", Provider: "Anthropic", EnvVars: []string{"ANTHROPIC_API_KEY"}, Description: "Claude Sonnet"},
         {ID: "predictable", Provider: "Built-in", EnvVars: []string{}, Description: "Deterministic test model (no API key)"},
     }

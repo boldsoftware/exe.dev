@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"testing"
 
-	"sketch.dev/llm"
-	"sketch.dev/llm/gem/gemini"
+	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/gem/gemini"
 )
 
 func TestBuildGeminiRequest(t *testing.T) {

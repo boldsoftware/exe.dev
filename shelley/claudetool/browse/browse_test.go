@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 func TestToolCreation(t *testing.T) {

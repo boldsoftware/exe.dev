@@ -18,7 +18,7 @@ import (
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 // ScreenshotDir is the directory where screenshots are stored

@@ -17,9 +17,9 @@ import (
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/loop"
-	"sketch.dev/llm"
-	"sketch.dev/llm/ant"
-	"sketch.dev/llm/oai"
+	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/ant"
+	"shelley.exe.dev/llm/oai"
 )
 
 // LLMServiceManager manages multiple LLM services
@@ -56,6 +56,29 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
         return &oai.Service{Model: oai.DefaultModel, APIKey: apiKey}, nil
     }
     manager.factories["openai-gpt4-turbo"] = manager.factories["openai-gpt4"]
+
+    // OpenAI GPT-5 series (env required)
+    manager.factories["gpt-5-thinking"] = func() (llm.Service, error) {
+        apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
+        if apiKey == "" {
+            return nil, fmt.Errorf("gpt-5-thinking requires %s env var", oai.OpenAIAPIKeyEnv)
+        }
+        return &oai.Service{Model: oai.GPT5, APIKey: apiKey}, nil
+    }
+    manager.factories["gpt-5-thinking-mini"] = func() (llm.Service, error) {
+        apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
+        if apiKey == "" {
+            return nil, fmt.Errorf("gpt-5-thinking-mini requires %s env var", oai.OpenAIAPIKeyEnv)
+        }
+        return &oai.Service{Model: oai.GPT5Mini, APIKey: apiKey}, nil
+    }
+    manager.factories["gpt-5-thinking-nano"] = func() (llm.Service, error) {
+        apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
+        if apiKey == "" {
+            return nil, fmt.Errorf("gpt-5-thinking-nano requires %s env var", oai.OpenAIAPIKeyEnv)
+        }
+        return &oai.Service{Model: oai.GPT5Nano, APIKey: apiKey}, nil
+    }
 
     // Fireworks Qwen3 Coder (env required)
     manager.factories["qwen3-coder-fireworks"] = func() (llm.Service, error) {

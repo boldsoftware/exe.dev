@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 func TestPatchTool_BasicOperations(t *testing.T) {

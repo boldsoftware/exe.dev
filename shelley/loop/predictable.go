@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 // PredictableService is an LLM service that returns predictable responses for testing

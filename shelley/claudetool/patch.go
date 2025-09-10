@@ -14,9 +14,9 @@ import (
 	"strings"
 
 	"github.com/pkg/diff"
+	"shelley.exe.dev/llm"
 	"sketch.dev/claudetool/editbuf"
 	"sketch.dev/claudetool/patchkit"
-	"sketch.dev/llm"
 )
 
 // PatchCallback defines the signature for patch tool callbacks.

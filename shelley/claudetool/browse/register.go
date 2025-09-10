@@ -3,7 +3,7 @@ package browse
 import (
 	"context"
 
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 // RegisterBrowserTools returns all browser tools ready to be added to an agent.

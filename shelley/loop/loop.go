@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 // MessageRecordFunc is called to record new messages to persistent storage

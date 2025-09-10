@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/ant"
 	"sketch.dev/httprr"
-	"sketch.dev/llm"
-	"sketch.dev/llm/ant"
 )
 
 func TestBasicConvo(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/sashabaranov/go-openai"
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 const (
@@ -258,15 +258,22 @@ var (
 	}
 
 	GPT5 = Model{
-		UserName:  "gpt5",
+		UserName:  "gpt-5-thinking",
 		ModelName: "gpt-5",
 		URL:       OpenAIURL,
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
 
 	GPT5Mini = Model{
-		UserName:  "gpt5mini",
+		UserName:  "gpt-5-thinking-mini",
 		ModelName: "gpt-5-mini",
+		URL:       OpenAIURL,
+		APIKeyEnv: OpenAIAPIKeyEnv,
+	}
+
+	GPT5Nano = Model{
+		UserName:  "gpt-5-thinking-nano",
+		ModelName: "gpt-5-nano",
 		URL:       OpenAIURL,
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
@@ -307,6 +314,7 @@ var ModelsRegistry = []Model{
 	GPT4oMini,
 	GPT5,
 	GPT5Mini,
+	GPT5Nano,
 	O3,
 	O4Mini,
 	Gemini25Flash,
@@ -511,7 +519,7 @@ func (m Model) requiresMaxCompletionTokens() bool {
 
 	// GPT-5 series models also require max_completion_tokens
 	switch m.ModelName {
-	case "gpt-5", "gpt-5-mini":
+	case "gpt-5", "gpt-5-mini", "gpt-5-nano":
 		return true
 	default:
 		return false
@@ -735,7 +743,7 @@ func (s *Service) TokenContextWindow() int {
 		return 256000 // 256k native context for Qwen3-Coder
 	case "gpt-oss-20b", "gpt-oss-120b":
 		return 128000
-	case "gpt-5", "gpt-5-mini":
+	case "gpt-5", "gpt-5-mini", "gpt-5-nano":
 		return 256000
 	default:
 		// Default for unknown models

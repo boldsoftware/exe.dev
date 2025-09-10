@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 func TestLoopWithClaudeTools(t *testing.T) {

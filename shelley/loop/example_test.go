@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
-	"sketch.dev/llm"
 )
 
 func ExampleLoop() {

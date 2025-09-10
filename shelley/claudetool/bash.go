@@ -17,9 +17,9 @@ import (
 	"syscall"
 	"time"
 
+	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/conversation"
 	"sketch.dev/claudetool/bashkit"
-	"sketch.dev/llm"
-	"sketch.dev/llm/conversation"
 )
 
 // PermissionCallback is a function type for checking if a command is allowed to run

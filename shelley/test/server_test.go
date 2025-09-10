@@ -16,9 +16,9 @@ import (
 	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
+	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/server"
-	"sketch.dev/llm"
 )
 
 func TestServerEndToEnd(t *testing.T) {

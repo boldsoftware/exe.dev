@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"sketch.dev/llm"
-	"sketch.dev/llm/ant"
+	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/ant"
 )
 
 // TestLoopWithClaude tests the loop with actual Claude API if key is available

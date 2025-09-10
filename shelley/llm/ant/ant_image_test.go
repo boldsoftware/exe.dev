@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 func TestAnthropicImageToolResult(t *testing.T) {

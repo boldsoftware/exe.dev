@@ -14,7 +14,7 @@ import (
 	"go.skia.org/infra/go/go2ts"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 func main() {

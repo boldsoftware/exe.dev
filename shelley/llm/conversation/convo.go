@@ -15,7 +15,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/richardlehane/crock32"
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 	"sketch.dev/skribe"
 )
 

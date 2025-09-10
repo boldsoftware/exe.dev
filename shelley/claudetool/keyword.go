@@ -9,8 +9,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"sketch.dev/llm"
-	"sketch.dev/llm/conversation"
+	"shelley.exe.dev/llm"
+	"shelley.exe.dev/llm/conversation"
 )
 
 // The Keyword tool provides keyword search.

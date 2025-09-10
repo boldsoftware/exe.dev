@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"sketch.dev/llm"
+	"shelley.exe.dev/llm"
 )
 
 // The Think tool provides space to think.
