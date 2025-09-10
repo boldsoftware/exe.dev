@@ -492,9 +492,7 @@ func (s *Server) isTerminalRequest(host string) bool {
 
 // handleTerminalRequest handles requests to terminal subdomains
 func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
-	if !s.quietMode {
-		slog.Info("[TERMINAL] Terminal request", "host", r.Host, "path", r.URL.Path)
-	}
+	slog.Debug("[TERMINAL] Terminal request", "host", r.Host, "path", r.URL.Path)
 
 	// Handle magic auth URL first (before authentication check)
 	if r.URL.Path == "/__exe.dev/auth" {

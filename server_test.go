@@ -30,7 +30,7 @@ func NewTestServer(t *testing.T, dockerhosts ...string) *Server {
 	})
 
 	server.testMode = true
-	server.quietMode = true
+
 
 	go server.Start()
 	server.ready.Wait()

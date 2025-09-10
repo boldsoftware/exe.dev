@@ -350,7 +350,6 @@ type Server struct {
 
 	testMode  bool   // Test mode - skip animations for faster testing
 	devMode   string // Development mode: "" (production) or "local" (Docker) or "test" for test mode
-	quietMode bool   // Quiet mode - suppress log output (for tests)
 
 	// Metrics
 	metricsRegistry *prometheus.Registry
@@ -440,15 +439,15 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	}
 
 	// Detect if we're running in test mode
-	quietMode := !testing.Testing()
+
 
 	// Initialize Postmark client
 	postmarkAPIKey := os.Getenv("POSTMARK_API_KEY")
 	var postmarkClient *postmark.Client
 	if postmarkAPIKey != "" {
 		postmarkClient = postmark.NewClient(postmarkAPIKey, "")
-	} else if !quietMode {
-		slog.Warn("POSTMARK_API_KEY not set, email verification will not work")
+	} else {
+		slog.Info("POSTMARK_API_KEY not set, email verification will not work")
 	}
 
 	setStripeKey()
@@ -538,9 +537,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		}
 		slog.Info("Container manager initialized successfully")
 	} else {
-		if !quietMode {
-			slog.Info("No containerd addresses configured, container functionality disabled")
-		}
+		slog.Debug("No containerd addresses configured, container functionality disabled")
 	}
 
 	// Initialize metrics
@@ -580,7 +577,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		fakeHTTPEmail:      fakeEmailServer,
 		stripeKey:          stripe.Key,
 		devMode:            devMode,
-		quietMode:          quietMode,
+
 		testMode:           testing.Testing() || devMode == "test",
 		metricsRegistry:    metricsRegistry,
 		sshMetrics:         sshMetrics,
@@ -663,9 +660,7 @@ func (s *Server) setupHTTPSServer() {
 		}
 	} else {
 		// Fall back to regular autocert for non-wildcard certificates
-		if !s.quietMode {
-			slog.Info("Using standard autocert (no wildcard support)", "note", "Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates")
-		}
+		slog.Info("Using standard autocert (no wildcard support)", "note", "Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates")
 		s.certManager = &autocert.Manager{
 			Cache:      autocert.DirCache("certs"),
 			Prompt:     autocert.AcceptTOS,
@@ -743,9 +738,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 			return fmt.Errorf("failed to store host key: %w", err)
 		}
 
-		if !s.quietMode {
-			slog.Info("Generated and stored new SSH host key", "fingerprint", fingerprint)
-		}
+		slog.Debug("Generated and stored new SSH host key", "fingerprint", fingerprint)
 		s.sshConfig.AddHostKey(signer)
 		s.sshHostKey = signer
 
@@ -759,9 +752,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 		}
 
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
-		if !s.quietMode {
-			slog.Info("Loaded existing SSH host key", "fingerprint", fingerprint)
-		}
+		slog.Debug("Loaded existing SSH host key", "fingerprint", fingerprint)
 		s.sshConfig.AddHostKey(signer)
 		s.sshHostKey = signer
 	}
@@ -807,9 +798,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	// In dev mode, always just log the email
 	if s.devMode != "" {
-		if !s.quietMode {
-			slog.Info("📧 DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
-		}
+		slog.Info("📧 DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
 		return nil
 	}
 
@@ -1004,16 +993,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: Wake up containers on HTTP request
-	if !s.quietMode {
-		slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr, "host", r.Host)
-	}
+	slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr, "host", r.Host)
 
 	// Check if this should be handled by the proxy handler
 	isProxy := s.isProxyRequest(r.Host)
 	isTerminal := s.isTerminalRequest(r.Host)
-	if !s.quietMode {
-		slog.Info("[REDIRECT] Main handler routing check", "host", r.Host, "isProxy", isProxy, "isTerminal", isTerminal)
-	}
+	slog.Debug("[REDIRECT] Main handler routing check", "host", r.Host, "isProxy", isProxy, "isTerminal", isTerminal)
 	if isTerminal {
 		s.handleTerminalRequest(w, r)
 		return
@@ -1528,9 +1513,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 // handleAuth handles the main domain authentication flow
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
-	if !s.quietMode {
-		slog.Info("[REDIRECT] handleAuth called", "method", r.Method, "url", r.URL.String(), "host", r.Host)
-	}
+	slog.Debug("[REDIRECT] handleAuth called", "method", r.Method, "url", r.URL.String(), "host", r.Host)
 	// Check if user already has a valid exe.dev auth cookie
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
@@ -2178,15 +2161,11 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 		returnHost = r.FormValue("return_host")
 	}
 
-	if !s.quietMode {
-		slog.Info("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
-	}
+	slog.Debug("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
 
 	if returnHost != "" && redirectURL != "" {
 		if s.isTerminalRequest(returnHost) {
-			if !s.quietMode {
-				slog.Info("[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
-			}
+			slog.Debug("[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
 			// Parse hostname to extract box name
 			hostname := returnHost
 			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
@@ -2214,9 +2193,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
 			return
 		} else if s.isProxyRequest(returnHost) {
-			if !s.quietMode {
-				slog.Info("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
-			}
+			slog.Debug("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
 			// Parse hostname to extract box and team names
 			hostname := returnHost
 			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
@@ -2240,9 +2217,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 
 			// Redirect to confirmation page with magic secret
 			confirmURL := fmt.Sprintf("/auth/confirm?secret=%s&return_host=%s", secret, url.QueryEscape(returnHost))
-			if !s.quietMode {
-				slog.Info("[REDIRECT] redirectAfterAuth creating confirmation URL", "confirmURL", confirmURL)
-			}
+			slog.Debug("[REDIRECT] redirectAfterAuth creating confirmation URL", "confirmURL", confirmURL)
 			http.Redirect(w, r, confirmURL, http.StatusTemporaryRedirect)
 			return
 		}
@@ -3203,9 +3178,7 @@ func (s *Server) Start() error {
 	// Start HTTP server in a goroutine if configured
 	if s.httpLn.ln != nil {
 		go func() {
-			if !s.quietMode {
-				slog.Info("HTTP server starting", "addr", s.httpLn)
-			}
+			slog.Debug("HTTP server starting", "addr", s.httpLn)
 			if err := s.httpServer.Serve(s.httpLn.ln); err != nil && err != http.ErrServerClosed {
 				slog.Error("HTTP server startup failed", "error", err)
 				cancel()
@@ -3652,9 +3625,7 @@ func (s *Server) Stop() error {
 		s.db.Close()
 	}
 
-	if !s.quietMode {
-		log.Println("Servers stopped")
-	}
+	slog.Debug("Servers stopped")
 	return nil
 }
 

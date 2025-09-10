@@ -189,9 +189,7 @@ func TestDetectTerminalMode(t *testing.T) {
 
 func TestGetTerminalColors(t *testing.T) {
 	t.Parallel()
-	server := &Server{
-		quietMode: true,
-	}
+	server := &Server{}
 
 	t.Run("Dark mode colors", func(t *testing.T) {
 		colors := server.getTerminalColors(TerminalModeDark)
@@ -236,9 +234,7 @@ func TestGetTerminalColors(t *testing.T) {
 
 func TestGetGrayText(t *testing.T) {
 	t.Parallel()
-	server := &Server{
-		quietMode: true,
-	}
+	server := &Server{}
 
 	tests := []struct {
 		name     string
@@ -282,9 +278,7 @@ func TestGetGrayText(t *testing.T) {
 
 func TestClearOSCResponse(t *testing.T) {
 	t.Parallel()
-	server := &Server{
-		quietMode: true,
-	}
+	server := &Server{}
 
 	// Create mock channel with leftover OSC response
 	leftoverResponse := []byte("leftover\033\\more")

@@ -24,9 +24,7 @@ import (
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches box.team.exe.dev or box.team.localhost
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
-	if !s.quietMode {
-		slog.Info("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
-	}
+	slog.Debug("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
 	// Handle magic URL for authentication
 	if r.URL.Path == "/__exe.dev/auth" {
 		s.handleMagicAuth(w, r)
@@ -224,9 +222,7 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 		authURL = fmt.Sprintf("%s://%s%s&return_host=%s", scheme, mainDomain, authURL, url.QueryEscape(r.Host))
 	}
 
-	if !s.quietMode {
-		slog.Info("[REDIRECT] redirectToAuth", "from", r.Host+r.URL.Path, "to", authURL)
-	}
+	slog.Debug("[REDIRECT] redirectToAuth", "from", r.Host+r.URL.Path, "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
@@ -236,9 +232,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	secret := r.URL.Query().Get("secret")
 	redirectURL := r.URL.Query().Get("redirect")
 
-	if !s.quietMode {
-		slog.Info("[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:min(10, len(secret))]+"...", "redirect", redirectURL)
-	}
+	slog.Debug("[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:min(10, len(secret))]+"...", "redirect", redirectURL)
 
 	if secret == "" {
 		http.Error(w, "Missing secret parameter", http.StatusBadRequest)
@@ -248,9 +242,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	// Validate and consume the magic secret
 	magicSecret, err := s.validateMagicSecret(secret)
 	if err != nil {
-		if !s.quietMode {
-			slog.Error("[REDIRECT] Magic secret validation failed", "error", err)
-		}
+		slog.Debug("[REDIRECT] Magic secret validation failed", "error", err)
 		http.Error(w, "Invalid or expired secret", http.StatusUnauthorized)
 		return
 	}
@@ -288,17 +280,13 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 		finalRedirect = "/" // Default fallback
 	}
 
-	if !s.quietMode {
-		slog.Info("[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
-	}
+	slog.Debug("[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
 	http.Redirect(w, r, finalRedirect, http.StatusTemporaryRedirect)
 }
 
 // handleProxyLogout handles the logout URL /__exe.dev/logout
 func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
-	if !s.quietMode {
-		slog.Info("[REDIRECT] handleProxyLogout called", "host", r.Host)
-	}
+	slog.Debug("[REDIRECT] handleProxyLogout called", "host", r.Host)
 
 	// Get the specific cookie value to delete
 	var cookieValue string
@@ -477,9 +465,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.Transport = transport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		if !s.quietMode {
-			slog.Debug("HTTP proxy error", "error", err, "target_port", targetPort)
-		}
+		slog.Debug("HTTP proxy error", "error", err, "target_port", targetPort)
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 	}
 

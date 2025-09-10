@@ -508,8 +508,8 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// No longer ask for team name - boxes will be named directly under exe.dev
 
 	// Log for debugging
-	if !ss.server.testMode && !ss.server.quietMode {
-		log.Printf("Starting email verification for %s", email)
+	if !ss.server.testMode {
+		slog.Debug("Starting email verification", "email", email)
 	}
 
 	// Start email verification directly without using sshbuf.Channel
