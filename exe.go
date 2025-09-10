@@ -547,6 +547,22 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	return s, nil
 }
 
+// withRx executes a function with a read-only database transaction and exedb queries
+func (s *Server) withRx(ctx context.Context, fn func(context.Context, *exedb.Queries) error) error {
+	return s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		queries := exedb.New(rx.Conn())
+		return fn(ctx, queries)
+	})
+}
+
+// withTx executes a function with a read-write database transaction and exedb queries
+func (s *Server) withTx(ctx context.Context, fn func(context.Context, *exedb.Queries) error) error {
+	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return fn(ctx, queries)
+	})
+}
+
 // DataPath returns a path under /data with the server's isolation subdirectory
 func (s *Server) DataPath(path string) string {
 	return fmt.Sprintf("/data/%s/%s", s.dataSubdir, strings.TrimPrefix(path, "/"))
@@ -631,8 +647,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 	// Try to load existing host key from database
 	hostKey, err := func() (exedb.GetSSHHostKeyRow, error) {
 		var result exedb.GetSSHHostKeyRow
-		err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			queries := exedb.New(rx.Conn())
+		err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			var queryErr error
 			result, queryErr = queries.GetSSHHostKey(ctx)
 			return queryErr
@@ -880,8 +895,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		// This is a verified key, check if user has an alloc
 		userID, err := func() (string, error) {
 			var result string
-			err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-				queries := exedb.New(rx.Conn())
+			err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 				var queryErr error
 				result, queryErr = queries.GetUserIDByEmail(ctx, email)
 				return queryErr
@@ -2686,8 +2700,7 @@ func (s *Server) getBoxByName(ctx context.Context, name string) (*exedb.Box, err
 // getBoxesForAlloc gets all boxes for an allocation
 func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]exedb.Box, error) {
 	var boxes []exedb.Box
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		exedbBoxes, err := queries.GetBoxesForAlloc(ctx, allocID)
 		if err != nil {
 			return err

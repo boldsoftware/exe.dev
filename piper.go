@@ -15,7 +15,6 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/exedb"
-	"exe.dev/sqlite"
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
@@ -111,8 +110,7 @@ func (p *PiperPlugin) getServerHostKey() (string, error) {
 	defer cancel()
 	publicKey, err := func() (string, error) {
 		var result string
-		err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			queries := exedb.New(rx.Conn())
+		err := p.server.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			var queryErr error
 			result, queryErr = queries.GetSSHHostPublicKey(ctx)
 			return queryErr
@@ -251,8 +249,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		// Get the first user from the database for local dev
 		userID, err = func() (string, error) {
 			var result string
-			err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-				queries := exedb.New(rx.Conn())
+			err := p.server.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 				var queryErr error
 				result, queryErr = queries.GetFirstUserID(ctx)
 				return queryErr
@@ -288,8 +285,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		if !registered && p.server.devMode == "local" && userID == "" {
 			userID, err = func() (string, error) {
 				var result string
-				err := p.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-					queries := exedb.New(rx.Conn())
+				err := p.server.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 					var queryErr error
 					result, queryErr = queries.GetFirstUserID(ctx)
 					return queryErr
