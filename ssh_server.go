@@ -280,13 +280,13 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 		return
 	}
 
-	ss.runMainShellWithReadline(s, publicKey, user.Email, alloc.AllocID, false)
+	ss.runMainShellWithReadline(s, publicKey, user, false)
 }
 
 // runMainShellWithReadline implements the main menu using a simple line reader
-func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, allocID string, showWelcome bool) {
+func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, user *User, showWelcome bool) {
 	if !ss.server.testMode {
-		log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", email, showWelcome)
+		log.Printf("runMainShellWithReadline called - email: %s, showWelcome: %v", user.Email, showWelcome)
 	}
 
 	helpText := "\r\n\033[1;33mEXE.DEV\033[0m commands:\r\n\r\n" +
@@ -319,12 +319,6 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey, email, a
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
 	ctx := s.Context()
-	// Get user and alloc info for command context
-	user, err := ss.server.getUserByPublicKey(ctx, publicKey)
-	if err != nil {
-		fmt.Fprintf(s, "Authentication error: %v\r\n", err)
-		return
-	}
 
 	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
 	if err != nil || alloc == nil {
@@ -649,7 +643,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
 	// This avoids issues with partially consumed readers
-	ss.runMainShellWithReadline(s, publicKey, user.Email, alloc.AllocID, true)
+	ss.runMainShellWithReadline(s, publicKey, user, true)
 }
 
 // handleExec handles exec commands
