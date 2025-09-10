@@ -633,7 +633,9 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Get user's alloc for the menu
 	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
 	if err != nil || alloc == nil {
-		fmt.Fprintf(s, "Error: User not associated with any allocation\r\n")
+		slog.Error("user has no allocation after registration", "user_id", user.UserID, "email", user.Email, "error", err)
+		fmt.Fprintf(s, "internal error: no associated alloc found for %v\r\n", user.Email)
+		s.Close()
 		return
 	}
 
