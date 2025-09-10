@@ -563,6 +563,28 @@ func (s *Server) withTx(ctx context.Context, fn func(context.Context, *exedb.Que
 	})
 }
 
+// withTxRes executes a function with a read-write database transaction and exedb queries, returning a value
+func withTxRes[T any](s *Server, ctx context.Context, fn func(context.Context, *exedb.Queries) (T, error)) (T, error) {
+	var result T
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		result, err = fn(ctx, queries)
+		return err
+	})
+	return result, err
+}
+
+// withRxRes executes a function with a read-only database transaction and exedb queries, returning a value
+func withRxRes[T any](s *Server, ctx context.Context, fn func(context.Context, *exedb.Queries) (T, error)) (T, error) {
+	var result T
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		result, err = fn(ctx, queries)
+		return err
+	})
+	return result, err
+}
+
 // DataPath returns a path under /data with the server's isolation subdirectory
 func (s *Server) DataPath(path string) string {
 	return fmt.Sprintf("/data/%s/%s", s.dataSubdir, strings.TrimPrefix(path, "/"))
@@ -645,15 +667,9 @@ func (s *Server) setupSSHServer() {
 // generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
 func (s *Server) generateHostKey(ctx context.Context) error {
 	// Try to load existing host key from database
-	hostKey, err := func() (exedb.GetSSHHostKeyRow, error) {
-		var result exedb.GetSSHHostKeyRow
-		err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			var queryErr error
-			result, queryErr = queries.GetSSHHostKey(ctx)
-			return queryErr
-		})
-		return result, err
-	}()
+	hostKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
+		return queries.GetSSHHostKey(ctx)
+	})
 	privateKeyPEM := hostKey.PrivateKey
 	publicKeyPEM := hostKey.PublicKey
 
@@ -893,22 +909,13 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 	if email != "" && verified {
 		// This is a verified key, check if user has an alloc
-		userID, err := func() (string, error) {
-			var result string
-			err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-				var queryErr error
-				result, queryErr = queries.GetUserIDByEmail(ctx, email)
-				return queryErr
-			})
-			return result, err
-		}()
+		userID, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+			return queries.GetUserIDByEmail(ctx, email)
+		})
 		if err == nil {
 			// Check if user has an alloc
-			var allocExists int64
-			err = s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-				var err error
-				allocExists, err = queries.AllocExistsForUser(ctx, userID)
-				return err
+			allocExists, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+				return queries.AllocExistsForUser(ctx, userID)
 			})
 			if err == nil && allocExists > 0 {
 				// User is fully registered with an allocation
@@ -1103,11 +1110,8 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
 	// Look up the pending SSH key to validate token and get info
-	var result exedb.GetPendingSSHKeyByTokenRow
-	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		result, err = queries.GetPendingSSHKeyByToken(ctx, token)
-		return err
+	result, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.GetPendingSSHKeyByTokenRow, error) {
+		return queries.GetPendingSSHKeyByToken(ctx, token)
 	})
 	publicKey := result.PublicKey
 	email := result.UserEmail
@@ -1184,11 +1188,8 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 
 	// Look up the pending SSH key
-	var result exedb.GetPendingSSHKeyByTokenRow
-	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		result, err = queries.GetPendingSSHKeyByToken(ctx, token)
-		return err
+	result, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.GetPendingSSHKeyByTokenRow, error) {
+		return queries.GetPendingSSHKeyByToken(ctx, token)
 	})
 	publicKey := result.PublicKey
 	email := result.UserEmail
@@ -1388,11 +1389,8 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Create HTTP auth cookie for this user
-		var userID string
-		err = s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-			var err error
-			userID, err = queries.GetUserIDByEmail(ctx, email)
-			return err
+		userID, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+			return queries.GetUserIDByEmail(ctx, email)
 		})
 		if err != nil {
 			slog.Error("Failed to get user ID by email during SSH email verification", "error", err)
@@ -1517,11 +1515,8 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Check if user exists
-	var userID string
-	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		userID, err = queries.GetUserIDByEmail(ctx, email)
-		return err
+	userID, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetUserIDByEmail(ctx, email)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2202,18 +2197,19 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 // handleUserDashboard renders the user dashboard page
 func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
-	var user User
-	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+	user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (User, error) {
 		result, err := queries.GetUserWithDetails(ctx, userID)
 		if err != nil {
-			return err
+			return User{}, err
 		}
-		user.UserID = result.UserID
-		user.Email = result.Email
+		user := User{
+			UserID: result.UserID,
+			Email:  result.Email,
+		}
 		if result.CreatedAt != nil {
 			user.CreatedAt = *result.CreatedAt
 		}
-		return nil
+		return user, nil
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2676,11 +2672,8 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 
 // getBoxByName retrieves a box by name and team
 func (s *Server) getBoxByName(ctx context.Context, name string) (*exedb.Box, error) {
-	var box exedb.Box
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		box, err = queries.GetBoxByName(ctx, name)
-		return err
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.GetBoxByName(ctx, name)
 	})
 	if err != nil {
 		return nil, err
@@ -2690,29 +2683,19 @@ func (s *Server) getBoxByName(ctx context.Context, name string) (*exedb.Box, err
 
 // getBoxesForAlloc gets all boxes for an allocation
 func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]exedb.Box, error) {
-	var boxes []exedb.Box
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		exedbBoxes, err := queries.GetBoxesForAlloc(ctx, allocID)
-		if err != nil {
-			return err
-		}
-		boxes = exedbBoxes
-		return nil
+	return withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Box, error) {
+		return queries.GetBoxesForAlloc(ctx, allocID)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return boxes, nil
 }
 
 // getAllocsByHost gets all allocations assigned to a specific docker host
 func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc, error) {
-	var allocs []*Alloc
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+	return withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]*Alloc, error) {
 		allocResults, err := queries.GetAllocsByHost(ctx, ctrhost)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		var allocs []*Alloc
 		for _, allocResult := range allocResults {
 			a := &Alloc{
 				AllocID:   allocResult.AllocID,
@@ -2732,12 +2715,8 @@ func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc,
 			}
 			allocs = append(allocs, a)
 		}
-		return nil
+		return allocs, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	return allocs, nil
 }
 
 // getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
@@ -3710,18 +3689,19 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 
 // GetUserByEmail retrieves a user by their email address
 func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	var user User
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (User, error) {
 		result, err := queries.GetUserByEmail(ctx, email)
 		if err != nil {
-			return err
+			return User{}, err
 		}
-		user.UserID = result.UserID
-		user.Email = result.Email
+		user := User{
+			UserID: result.UserID,
+			Email:  result.Email,
+		}
 		if result.CreatedAt != nil {
 			user.CreatedAt = *result.CreatedAt
 		}
-		return nil
+		return user, nil
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

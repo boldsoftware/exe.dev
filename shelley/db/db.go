@@ -141,6 +141,17 @@ func (db *DB) WithTx(ctx context.Context, fn func(*generated.Queries) error) err
 	return tx.Commit()
 }
 
+// WithTxRes runs a function within a database transaction and returns a value
+func WithTxRes[T any](db *DB, ctx context.Context, fn func(*generated.Queries) (T, error)) (T, error) {
+	var result T
+	err := db.WithTx(ctx, func(queries *generated.Queries) error {
+		var err error
+		result, err = fn(queries)
+		return err
+	})
+	return result, err
+}
+
 // Conversation methods (moved from ConversationService)
 
 // CreateConversation creates a new conversation with an optional slug
