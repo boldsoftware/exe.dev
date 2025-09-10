@@ -685,12 +685,12 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
 
 		// Store in database
-		err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint, created_at, updated_at)
-				VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-				privateKeyPEM, publicKeyPEM, fingerprint)
-			return err
+		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.UpsertSSHHostKey(ctx, exedb.UpsertSSHHostKeyParams{
+				PrivateKey:  privateKeyPEM,
+				PublicKey:   publicKeyPEM,
+				Fingerprint: fingerprint,
+			})
 		})
 		if err != nil {
 			return fmt.Errorf("failed to store host key: %w", err)
@@ -904,11 +904,13 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		}()
 		if err == nil {
 			// Check if user has an alloc
-			var allocExists bool
-			err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-				return rx.QueryRow("SELECT EXISTS(SELECT 1 FROM allocs WHERE user_id = ?)", userID).Scan(&allocExists)
+			var allocExists int64
+			err = s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+				var err error
+				allocExists, err = queries.AllocExistsForUser(ctx, userID)
+				return err
 			})
-			if err == nil && allocExists {
+			if err == nil && allocExists > 0 {
 				// User is fully registered with an allocation
 				return &ssh.Permissions{
 					Extensions: map[string]string{
@@ -1101,15 +1103,15 @@ func (s *Server) handleContainers(w http.ResponseWriter, r *http.Request) {
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
 	// Look up the pending SSH key to validate token and get info
-	var publicKey, email string
-	var expires time.Time
-	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT public_key, user_email, expires_at
-		FROM pending_ssh_keys
-		WHERE token = ?`,
-			token).Scan(&publicKey, &email, &expires)
+	var result exedb.GetPendingSSHKeyByTokenRow
+	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		result, err = queries.GetPendingSSHKeyByToken(ctx, token)
+		return err
 	})
+	publicKey := result.PublicKey
+	email := result.UserEmail
+	expires := result.ExpiresAt
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
@@ -1124,9 +1126,8 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 	// Check if token has expired
 	if time.Now().After(expires) {
 		// Clean up expired token - use context.Background() to ensure cleanup completes even if client disconnects
-		s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec("DELETE FROM pending_ssh_keys WHERE token = ?", token)
-			return err
+		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeletePendingSSHKeyByToken(ctx, token)
 		})
 		http.Error(w, "Verification token has expired", http.StatusBadRequest)
 		return

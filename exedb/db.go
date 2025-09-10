@@ -24,11 +24,20 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
+	if q.allocExistsForUserStmt, err = db.PrepareContext(ctx, allocExistsForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query AllocExistsForUser: %w", err)
+	}
+	if q.deletePendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, deletePendingSSHKeyByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePendingSSHKeyByToken: %w", err)
+	}
 	if q.getBoxesForAllocStmt, err = db.PrepareContext(ctx, getBoxesForAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesForAlloc: %w", err)
 	}
 	if q.getFirstUserIDStmt, err = db.PrepareContext(ctx, getFirstUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetFirstUserID: %w", err)
+	}
+	if q.getPendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, getPendingSSHKeyByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyByToken: %w", err)
 	}
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
@@ -39,11 +48,24 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserIDByEmailStmt, err = db.PrepareContext(ctx, getUserIDByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDByEmail: %w", err)
 	}
+	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
+	}
 	return &q, nil
 }
 
 func (q *Queries) Close() error {
 	var err error
+	if q.allocExistsForUserStmt != nil {
+		if cerr := q.allocExistsForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing allocExistsForUserStmt: %w", cerr)
+		}
+	}
+	if q.deletePendingSSHKeyByTokenStmt != nil {
+		if cerr := q.deletePendingSSHKeyByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePendingSSHKeyByTokenStmt: %w", cerr)
+		}
+	}
 	if q.getBoxesForAllocStmt != nil {
 		if cerr := q.getBoxesForAllocStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesForAllocStmt: %w", cerr)
@@ -52,6 +74,11 @@ func (q *Queries) Close() error {
 	if q.getFirstUserIDStmt != nil {
 		if cerr := q.getFirstUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getFirstUserIDStmt: %w", cerr)
+		}
+	}
+	if q.getPendingSSHKeyByTokenStmt != nil {
+		if cerr := q.getPendingSSHKeyByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingSSHKeyByTokenStmt: %w", cerr)
 		}
 	}
 	if q.getSSHHostKeyStmt != nil {
@@ -67,6 +94,11 @@ func (q *Queries) Close() error {
 	if q.getUserIDByEmailStmt != nil {
 		if cerr := q.getUserIDByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserIDByEmailStmt: %w", cerr)
+		}
+	}
+	if q.upsertSSHHostKeyStmt != nil {
+		if cerr := q.upsertSSHHostKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertSSHHostKeyStmt: %w", cerr)
 		}
 	}
 	return err
@@ -106,23 +138,31 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                      DBTX
-	tx                      *sql.Tx
-	getBoxesForAllocStmt    *sql.Stmt
-	getFirstUserIDStmt      *sql.Stmt
-	getSSHHostKeyStmt       *sql.Stmt
-	getSSHHostPublicKeyStmt *sql.Stmt
-	getUserIDByEmailStmt    *sql.Stmt
+	db                             DBTX
+	tx                             *sql.Tx
+	allocExistsForUserStmt         *sql.Stmt
+	deletePendingSSHKeyByTokenStmt *sql.Stmt
+	getBoxesForAllocStmt           *sql.Stmt
+	getFirstUserIDStmt             *sql.Stmt
+	getPendingSSHKeyByTokenStmt    *sql.Stmt
+	getSSHHostKeyStmt              *sql.Stmt
+	getSSHHostPublicKeyStmt        *sql.Stmt
+	getUserIDByEmailStmt           *sql.Stmt
+	upsertSSHHostKeyStmt           *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                      tx,
-		tx:                      tx,
-		getBoxesForAllocStmt:    q.getBoxesForAllocStmt,
-		getFirstUserIDStmt:      q.getFirstUserIDStmt,
-		getSSHHostKeyStmt:       q.getSSHHostKeyStmt,
-		getSSHHostPublicKeyStmt: q.getSSHHostPublicKeyStmt,
-		getUserIDByEmailStmt:    q.getUserIDByEmailStmt,
+		db:                             tx,
+		tx:                             tx,
+		allocExistsForUserStmt:         q.allocExistsForUserStmt,
+		deletePendingSSHKeyByTokenStmt: q.deletePendingSSHKeyByTokenStmt,
+		getBoxesForAllocStmt:           q.getBoxesForAllocStmt,
+		getFirstUserIDStmt:             q.getFirstUserIDStmt,
+		getPendingSSHKeyByTokenStmt:    q.getPendingSSHKeyByTokenStmt,
+		getSSHHostKeyStmt:              q.getSSHHostKeyStmt,
+		getSSHHostPublicKeyStmt:        q.getSSHHostPublicKeyStmt,
+		getUserIDByEmailStmt:           q.getUserIDByEmailStmt,
+		upsertSSHHostKeyStmt:           q.upsertSSHHostKeyStmt,
 	}
 }
