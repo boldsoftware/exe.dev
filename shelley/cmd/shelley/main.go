@@ -492,8 +492,13 @@ func runModels(global GlobalConfig, args []string) {
 }
 
 func setupTools(llmProvider claudetool.LLMServiceProvider) []*llm.Tool {
+	wd, err := os.Getwd()
+	if err != nil {
+		// Fallback to "/" if we can't get working directory
+		wd = "/"
+	}
 	bashTool := &claudetool.BashTool{
-		Pwd:              "/",
+		Pwd:              wd,
 		LLMProvider:      llmProvider,
 		EnableJITInstall: claudetool.EnableBashToolJITInstall,
 	}
