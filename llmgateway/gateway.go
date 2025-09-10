@@ -64,6 +64,11 @@ func (m *llmGateway) handleRequest(w http.ResponseWriter, r *http.Request) {
 	httpError(w, r, "actual proxy methods not yet implemented", http.StatusNotImplemented)
 }
 
+// ServeHTTP implements http.Handler
+func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	m.mux.ServeHTTP(w, r)
+}
+
 func httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) {
 	http.Error(w, errstr, code)
 	slog.Error("llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr)
