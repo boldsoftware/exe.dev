@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,6 +80,9 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 		}
 		return &oai.Service{Model: oai.GPT5Nano, APIKey: apiKey}, nil
 	}
+
+	// Aliases for convenience
+	manager.factories["gpt5-mini"] = manager.factories["gpt-5-thinking-mini"]
 
 	// Fireworks Qwen3 Coder (env required)
 	manager.factories["qwen3-coder-fireworks"] = func() (llm.Service, error) {
@@ -378,6 +382,38 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 		},
 	}
 
+	// Check if this is the first message and generate slug if needed
+	messageCount, err := s.db.Queries.CountMessagesInConversation(ctx, conversationID)
+	if err != nil {
+		s.logger.Error("Failed to count messages", "conversationID", conversationID, "error", err)
+		// Continue processing even if we can't generate a slug
+	} else {
+		if messageCount == 0 {
+			// This is the first message, generate slug in parallel
+			go func() {
+				slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+
+				slug, err := s.GenerateSlugForConversation(slugCtx, req.Message)
+				if err != nil {
+					s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
+					return
+				}
+
+				// Update conversation with the generated slug
+				_, err = s.db.Queries.UpdateConversationSlug(slugCtx, generated.UpdateConversationSlugParams{
+					ConversationID: conversationID,
+					Slug:           &slug,
+				})
+				if err != nil {
+					s.logger.Error("Failed to update conversation slug", "conversationID", conversationID, "slug", slug, "error", err)
+				} else {
+					s.logger.Info("Generated slug for conversation", "conversationID", conversationID, "slug", slug)
+				}
+			}()
+		}
+	}
+
 	// Queue user message
 	manager.loop.QueueUserMessage(userMessage)
 
@@ -624,6 +660,116 @@ func (cm *ConversationManager) unsubscribe(id string) {
 		close(ch)
 		delete(cm.subscribers, id)
 	}
+}
+
+// GenerateSlugForConversation generates a human-readable slug for a conversation based on the first user message
+func (s *Server) GenerateSlugForConversation(ctx context.Context, userMessage string) (string, error) {
+	// Try gpt5-mini first, fall back to other models if not available
+	var llmService llm.Service
+	var err error
+
+	// Preferred models in order of preference
+	preferredModels := []string{"gpt5-mini", "gpt-5-thinking-mini", "claude-sonnet-3.5", "qwen3-coder-fireworks", "predictable"}
+
+	for _, model := range preferredModels {
+		llmService, err = s.llmManager.GetService(model)
+		if err == nil {
+			break
+		}
+		s.logger.Debug("Model not available for slug generation", "model", model, "error", err)
+	}
+
+	if llmService == nil {
+		return "", fmt.Errorf("no suitable model available for slug generation")
+	}
+
+	// Create a focused prompt for slug generation
+	slugPrompt := fmt.Sprintf(`Generate a short, descriptive slug (2-6 words, lowercase, hyphen-separated) for a conversation that starts with this user message:
+
+%s
+
+The slug should:
+- Be concise and descriptive
+- Use only lowercase letters, numbers, and hyphens
+- Capture the main topic or intent
+- Be suitable as a filename or URL path
+
+Respond with only the slug, nothing else.`, userMessage)
+
+	message := llm.Message{
+		Role: llm.MessageRoleUser,
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: slugPrompt},
+		},
+	}
+
+	request := &llm.Request{
+		Messages: []llm.Message{message},
+	}
+
+	// Make LLM request with timeout
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	response, err := llmService.Do(ctxWithTimeout, request)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate slug: %w", err)
+	}
+
+	// Extract text from response
+	if len(response.Content) == 0 {
+		return "", fmt.Errorf("empty response from LLM")
+	}
+
+	slug := strings.TrimSpace(response.Content[0].Text)
+
+	// Clean and validate the slug
+	slug = SanitizeSlug(slug)
+	if slug == "" {
+		return "", fmt.Errorf("generated slug is empty after sanitization")
+	}
+
+	// Ensure uniqueness by checking database
+	originalSlug := slug
+	counter := 1
+	for {
+		_, err := s.db.GetConversationBySlug(ctx, slug)
+		if err != nil {
+			// Slug is available
+			break
+		}
+		// Slug exists, try with counter
+		counter++
+		slug = fmt.Sprintf("%s-%d", originalSlug, counter)
+	}
+
+	return slug, nil
+}
+
+// SanitizeSlug cleans a string to be a valid slug
+func SanitizeSlug(input string) string {
+	// Convert to lowercase
+	slug := strings.ToLower(input)
+
+	// Replace spaces and underscores with hyphens
+	slug = regexp.MustCompile(`[\s_]+`).ReplaceAllString(slug, "-")
+
+	// Remove non-alphanumeric characters except hyphens
+	slug = regexp.MustCompile(`[^a-z0-9-]+`).ReplaceAllString(slug, "")
+
+	// Remove multiple consecutive hyphens
+	slug = regexp.MustCompile(`-+`).ReplaceAllString(slug, "-")
+
+	// Remove leading/trailing hyphens
+	slug = strings.Trim(slug, "-")
+
+	// Limit length
+	if len(slug) > 60 {
+		slug = slug[:60]
+		slug = strings.Trim(slug, "-")
+	}
+
+	return slug
 }
 
 // Cleanup removes inactive conversation managers

@@ -124,13 +124,17 @@ func runPrompt(global GlobalConfig, args []string) {
 	var history []llm.Message
 
 	if *continueID != "" {
-		// Continue existing conversation
-		conversationID = *continueID
-		_, err := database.GetConversationByID(ctx, conversationID)
+		// Continue existing conversation - try by ID first, then by slug
+		conv, err := database.GetConversationByID(ctx, *continueID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: conversation not found: %s\n", err)
-			os.Exit(1)
+			// Try by slug if ID lookup failed
+			conv, err = database.GetConversationBySlug(ctx, *continueID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: conversation not found by ID or slug '%s': %s\n", *continueID, err)
+				os.Exit(1)
+			}
 		}
+		conversationID = conv.ConversationID
 
 		// Load message history (use high limit to get all messages)
 		messages, err := database.ListMessagesByConversationPaginated(ctx, conversationID, 1000, 0)
@@ -250,12 +254,12 @@ func runInspect(global GlobalConfig, args []string) {
 	fs.Parse(args)
 
 	if len(fs.Args()) != 1 {
-		fmt.Fprintf(os.Stderr, "Error: conversation ID is required\n")
+		fmt.Fprintf(os.Stderr, "Error: conversation ID or slug is required\n")
 		fs.Usage()
 		os.Exit(1)
 	}
 
-	conversationID := fs.Args()[0]
+	conversationIDOrSlug := fs.Args()[0]
 
 	logger := setupLogging(global.Debug)
 	database := setupDatabase(global.DBPath, logger)
@@ -263,15 +267,19 @@ func runInspect(global GlobalConfig, args []string) {
 
 	ctx := context.Background()
 
-	// Get conversation details
-	conversation, err := database.GetConversationByID(ctx, conversationID)
+	// Get conversation details - try by ID first, then by slug
+	conversation, err := database.GetConversationByID(ctx, conversationIDOrSlug)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
+		// Try by slug if ID lookup failed
+		conversation, err = database.GetConversationBySlug(ctx, conversationIDOrSlug)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: conversation not found by ID or slug '%s': %s\n", conversationIDOrSlug, err)
+			os.Exit(1)
+		}
 	}
 
 	// Get messages (use high limit to get all messages)
-	messages, err := database.ListMessagesByConversationPaginated(ctx, conversationID, 1000, 0)
+	messages, err := database.ListMessagesByConversationPaginated(ctx, conversation.ConversationID, 1000, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading messages: %s\n", err)
 		os.Exit(1)

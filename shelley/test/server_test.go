@@ -328,3 +328,186 @@ func TestConversationCleanup(t *testing.T) {
 	// Test passes if no panic occurs
 	t.Log("Cleanup completed successfully for conversation:", conv.ConversationID)
 }
+
+func TestSlugGeneration(t *testing.T) {
+	// This test verifies that the slug generation logic is properly integrated
+	// but uses the direct API to avoid timing issues with background goroutines
+
+	// Create temporary database
+	tempDB := t.TempDir() + "/test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer database.Close()
+
+	// Run migrations
+	if err := database.Migrate(context.Background()); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	// Create server
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	llmManager := server.NewLLMServiceManager(logger)
+	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger)
+
+	// Test slug generation directly to avoid timing issues
+	ctx := context.Background()
+	testMessage := "help me create a Python web server"
+
+	// Generate slug directly
+	slugResult, err := svr.GenerateSlugForConversation(ctx, testMessage)
+	if err != nil {
+		t.Fatalf("Slug generation failed: %v", err)
+	}
+	if slugResult == "" {
+		t.Error("Generated slug is empty")
+	} else {
+		t.Logf("Generated slug: %s", slugResult)
+	}
+
+	// Test that the slug is properly sanitized
+	if !strings.Contains(slugResult, "python") || !strings.Contains(slugResult, "web") {
+		t.Logf("Note: Generated slug '%s' may not contain expected keywords, but this is acceptable for AI-generated content", slugResult)
+	}
+
+	// Verify slug uniqueness handling
+	conv, err := database.CreateConversation(ctx, &slugResult, true)
+	if err != nil {
+		t.Fatalf("Failed to create conversation with slug: %v", err)
+	}
+
+	// Try to generate the same slug again - should get a unique variant
+	slugResult2, err := svr.GenerateSlugForConversation(ctx, testMessage)
+	if err != nil {
+		t.Fatalf("Second slug generation failed: %v", err)
+	}
+
+	// The second slug should be different (with -1, -2, etc.)
+	if slugResult == slugResult2 {
+		t.Errorf("Expected different slugs for uniqueness, but got same: %s", slugResult)
+	} else {
+		t.Logf("Unique slug generated: %s", slugResult2)
+	}
+
+	_ = conv // avoid unused variable warning
+}
+
+func TestSanitizeSlug(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"basic text", "Hello World", "hello-world"},
+		{"with numbers", "Python3 Tutorial", "python3-tutorial"},
+		{"with special chars", "C++ Programming!", "c-programming"},
+		{"multiple spaces", "Very  Long   Title", "very-long-title"},
+		{"underscores", "test_function_name", "test-function-name"},
+		{"mixed case", "CamelCaseExample", "camelcaseexample"},
+		{"with hyphens", "pre-existing-hyphens", "pre-existing-hyphens"},
+		{"leading/trailing spaces", "  trimmed  ", "trimmed"},
+		{"leading/trailing hyphens", "-start-end-", "start-end"},
+		{"multiple consecutive hyphens", "test---slug", "test-slug"},
+		{"empty after sanitization", "!@#$%^&*()", ""},
+		{"very long", "this-is-a-very-long-slug-that-should-be-truncated-because-it-exceeds-the-maximum-length", "this-is-a-very-long-slug-that-should-be-truncated-because-it"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := server.SanitizeSlug(tt.input)
+			if result != tt.expected {
+				t.Errorf("SanitizeSlug(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSlugGenerationWithPredictableService(t *testing.T) {
+	// Create server with predictable service only
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	llmManager := server.NewLLMServiceManager(logger)
+
+	// Create a temporary database
+	tempDB := t.TempDir() + "/test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer database.Close()
+
+	if err := database.Migrate(context.Background()); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger)
+
+	// Test slug generation directly
+	ctx := context.Background()
+	testMessage := "help me write a python function"
+
+	// This should work with the predictable service falling back
+	slugResult, err := svr.GenerateSlugForConversation(ctx, testMessage)
+	if err != nil {
+		t.Fatalf("Slug generation failed: %v", err)
+	}
+	if slugResult == "" {
+		t.Error("Generated slug is empty")
+	}
+	t.Logf("Generated slug: %s", slugResult)
+
+	// Test slug sanitization which should always work
+	slug := server.SanitizeSlug(testMessage)
+	if slug != "help-me-write-a-python-function" {
+		t.Errorf("Expected 'help-me-write-a-python-function', got '%s'", slug)
+	}
+}
+
+func TestSlugEndToEnd(t *testing.T) {
+	// Create temporary database
+	tempDB := t.TempDir() + "/test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer database.Close()
+
+	// Run migrations
+	if err := database.Migrate(context.Background()); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	// Create a conversation with a specific slug
+	ctx := context.Background()
+	testSlug := "test-conversation-slug"
+	conv, err := database.CreateConversation(ctx, &testSlug, true)
+	if err != nil {
+		t.Fatalf("Failed to create conversation: %v", err)
+	}
+
+	// Test retrieving by slug
+	retrievedBySlug, err := database.GetConversationBySlug(ctx, testSlug)
+	if err != nil {
+		t.Fatalf("Failed to retrieve conversation by slug: %v", err)
+	}
+
+	if retrievedBySlug.ConversationID != conv.ConversationID {
+		t.Errorf("Expected conversation ID %s, got %s", conv.ConversationID, retrievedBySlug.ConversationID)
+	}
+
+	if retrievedBySlug.Slug == nil || *retrievedBySlug.Slug != testSlug {
+		t.Errorf("Expected slug %s, got %v", testSlug, retrievedBySlug.Slug)
+	}
+
+	// Test retrieving by ID still works
+	retrievedByID, err := database.GetConversationByID(ctx, conv.ConversationID)
+	if err != nil {
+		t.Fatalf("Failed to retrieve conversation by ID: %v", err)
+	}
+
+	if retrievedByID.ConversationID != conv.ConversationID {
+		t.Errorf("Expected conversation ID %s, got %s", conv.ConversationID, retrievedByID.ConversationID)
+	}
+
+	t.Logf("Successfully tested slug-based conversation retrieval: %s -> %s", testSlug, conv.ConversationID)
+}

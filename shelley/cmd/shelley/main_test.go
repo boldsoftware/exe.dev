@@ -59,8 +59,8 @@ func TestCLICommands(t *testing.T) {
 		if err == nil {
 			t.Fatal("Expected inspect command to fail when no ID provided")
 		}
-		if !strings.Contains(string(output), "conversation ID is required") {
-			t.Errorf("Expected 'conversation ID is required' error, got: %s", string(output))
+		if !strings.Contains(string(output), "conversation ID or slug is required") {
+			t.Errorf("Expected 'conversation ID or slug is required' error, got: %s", string(output))
 		}
 	})
 
