@@ -3930,5 +3930,3 @@ func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
 	return nil
 }
 
-// Note: IP range allocation code has been removed since we no longer use per-allocation IP ranges.
-// All containers now use the default bridge network with port isolation.
