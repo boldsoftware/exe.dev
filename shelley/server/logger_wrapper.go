@@ -63,6 +63,7 @@ func (l *LoggingLLMService) Do(ctx context.Context, request *llm.Request) (*llm.
 			}
 		}
 
+		// TODO(philip): Log a tiny bit of the last "message" sent with the request...
 		l.logger.Info("LLM request completed", logAttrs...)
 	}
 

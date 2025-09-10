@@ -826,7 +826,7 @@ func (s *Server) Start(port string) error {
 	// Start server in goroutine
 	serverErrCh := make(chan error, 1)
 	go func() {
-		s.logger.Info("Server starting", "addr", httpServer.Addr)
+		s.logger.Info("Server starting", "addr", httpServer.Addr, "url", "http://localhost:"+port)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			serverErrCh <- err
 		}
