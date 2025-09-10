@@ -22,6 +22,7 @@ func (i MessageRole) String() string {
 	}
 	return _MessageRole_name[_MessageRole_index[i]:_MessageRole_index[i+1]]
 }
+
 func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
@@ -44,6 +45,7 @@ func (i ContentType) String() string {
 	}
 	return _ContentType_name[_ContentType_index[i]:_ContentType_index[i+1]]
 }
+
 func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
@@ -65,6 +67,7 @@ func (i ToolChoiceType) String() string {
 	}
 	return _ToolChoiceType_name[_ToolChoiceType_index[i]:_ToolChoiceType_index[i+1]]
 }
+
 func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.

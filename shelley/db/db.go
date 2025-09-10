@@ -41,7 +41,7 @@ func New(cfg Config) (*DB, error) {
 	if cfg.DSN != ":memory:" {
 		dir := filepath.Dir(cfg.DSN)
 		if dir != "." && dir != "" {
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return nil, fmt.Errorf("failed to create database directory: %w", err)
 			}
 		}

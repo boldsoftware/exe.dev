@@ -13,9 +13,9 @@ import (
 	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
+	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/server"
-	"shelley.exe.dev/llm"
 )
 
 type GlobalConfig struct {
@@ -29,7 +29,7 @@ func main() {
 	var global GlobalConfig
 	flag.StringVar(&global.DBPath, "db", "shelley.db", "Path to SQLite database file")
 	flag.BoolVar(&global.Debug, "debug", false, "Enable debug logging")
-    flag.StringVar(&global.Model, "model", "qwen3-coder-fireworks", "LLM model to use (default: qwen3-coder-fireworks; use 'predictable' for testing)")
+	flag.StringVar(&global.Model, "model", "qwen3-coder-fireworks", "LLM model to use (default: qwen3-coder-fireworks; use 'predictable' for testing)")
 
 	// Custom usage function
 	flag.Usage = func() {
@@ -37,11 +37,11 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Global flags:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(flag.CommandLine.Output(), "\nCommands:\n")
-        fmt.Fprintf(flag.CommandLine.Output(), "  serve [flags]                 Start the web server\n")
-        fmt.Fprintf(flag.CommandLine.Output(), "  prompt [flags] <text>         Run a single conversation loop\n")
-        fmt.Fprintf(flag.CommandLine.Output(), "  list [flags]                 List conversations\n")
-        fmt.Fprintf(flag.CommandLine.Output(), "  inspect [flags] <id>          Show a conversation\n")
-        fmt.Fprintf(flag.CommandLine.Output(), "  models                        List supported models and env requirements\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  serve [flags]                 Start the web server\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  prompt [flags] <text>         Run a single conversation loop\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  list [flags]                 List conversations\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  inspect [flags] <id>          Show a conversation\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  models                        List supported models and env requirements\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\nUse '%s <command> -h' for command-specific help\n", os.Args[0])
 	}
 
@@ -55,22 +55,22 @@ func main() {
 	}
 
 	command := args[0]
-    switch command {
-    case "serve":
-        runServe(global, args[1:])
-    case "prompt":
-        runPrompt(global, args[1:])
-    case "list":
-        runList(global, args[1:])
-    case "inspect":
-        runInspect(global, args[1:])
-    case "models":
-        runModels(global, args[1:])
-    default:
-        fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
-        flag.Usage()
-        os.Exit(1)
-    }
+	switch command {
+	case "serve":
+		runServe(global, args[1:])
+	case "prompt":
+		runPrompt(global, args[1:])
+	case "list":
+		runList(global, args[1:])
+	case "inspect":
+		runInspect(global, args[1:])
+	case "models":
+		runModels(global, args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
+		flag.Usage()
+		os.Exit(1)
+	}
 }
 
 func runServe(global GlobalConfig, args []string) {
@@ -84,8 +84,8 @@ func runServe(global GlobalConfig, args []string) {
 
 	logger.Info("Starting Shelley", "port", *port, "db", global.DBPath)
 
-    // Initialize LLM service manager (no auto-detection)
-    llmManager := server.NewLLMServiceManager(logger)
+	// Initialize LLM service manager (no auto-detection)
+	llmManager := server.NewLLMServiceManager(logger)
 
 	tools := setupTools()
 
@@ -159,25 +159,25 @@ func runPrompt(global GlobalConfig, args []string) {
 		fmt.Printf("Created conversation: %s\n", conversationID)
 	}
 
-    // Set up message recording + console printing
-    recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
-        // Persist to DB
-        msgType := getMessageType(message)
-        if _, err := database.CreateMessage(ctx, db.CreateMessageParams{
-            ConversationID: conversationID,
-            Type:           msgType,
-            LLMData:        message,
-            UserData:       nil,
-            UsageData:      usage,
-        }); err != nil {
-            // Log DB failure but continue to print to console
-            fmt.Fprintf(os.Stderr, "Failed to record message: %v\n", err)
-        }
+	// Set up message recording + console printing
+	recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+		// Persist to DB
+		msgType := getMessageType(message)
+		if _, err := database.CreateMessage(ctx, db.CreateMessageParams{
+			ConversationID: conversationID,
+			Type:           msgType,
+			LLMData:        message,
+			UserData:       nil,
+			UsageData:      usage,
+		}); err != nil {
+			// Log DB failure but continue to print to console
+			fmt.Fprintf(os.Stderr, "Failed to record message: %v\n", err)
+		}
 
-        // Print to console as messages occur
-        printMessageToConsole(message)
-        return nil
-    }
+		// Print to console as messages occur
+		printMessageToConsole(message)
+		return nil
+	}
 
 	// Create loop with LLM service
 	l := loop.NewLoop(llmService, history, tools, recordMessage)
@@ -339,81 +339,81 @@ func setupDatabase(dbPath string, logger *slog.Logger) *db.DB {
 }
 
 func setupLLMService(modelFlag string, logger *slog.Logger) llm.Service {
-    // Default model if none provided
-    modelID := strings.TrimSpace(modelFlag)
-    if modelID == "" {
-        modelID = "qwen3-coder-fireworks"
-    }
+	// Default model if none provided
+	modelID := strings.TrimSpace(modelFlag)
+	if modelID == "" {
+		modelID = "qwen3-coder-fireworks"
+	}
 
-    // Predictable shortcut
-    if modelID == "predictable" {
-        logger.Info("Using predictable LLM service")
-        return loop.NewPredictableServiceWithTestResponses()
-    }
+	// Predictable shortcut
+	if modelID == "predictable" {
+		logger.Info("Using predictable LLM service")
+		return loop.NewPredictableServiceWithTestResponses()
+	}
 
-    // Create service via manager without auto-detection
-    llmManager := server.NewLLMServiceManager(logger)
-    svc, err := llmManager.GetService(modelID)
-    if err != nil {
-        // Provide a helpful message with env hints
-        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-        fmt.Fprintf(os.Stderr, "Tip: run 'shelley models' to see required env vars.\n")
-        os.Exit(1)
-    }
-    logger.Info("Using specified model", "model", modelID)
-    return svc
+	// Create service via manager without auto-detection
+	llmManager := server.NewLLMServiceManager(logger)
+	svc, err := llmManager.GetService(modelID)
+	if err != nil {
+		// Provide a helpful message with env hints
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Tip: run 'shelley models' to see required env vars.\n")
+		os.Exit(1)
+	}
+	logger.Info("Using specified model", "model", modelID)
+	return svc
 }
 
 // runModels prints supported models, readiness, and required env variables
 func runModels(global GlobalConfig, args []string) {
-    logger := setupLogging(global.Debug)
-    _ = logger
+	logger := setupLogging(global.Debug)
+	_ = logger
 
-    type modelInfo struct {
-        ID          string
-        Provider    string
-        EnvVars     []string
-        Description string
-    }
+	type modelInfo struct {
+		ID          string
+		Provider    string
+		EnvVars     []string
+		Description string
+	}
 
-    models := []modelInfo{
-        {ID: "qwen3-coder-fireworks", Provider: "Fireworks", EnvVars: []string{"FIREWORKS_API_KEY"}, Description: "Qwen3 Coder 480B on Fireworks (default)"},
-        {ID: "openai-gpt4", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4.1 family"},
-        {ID: "openai-gpt4-turbo", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4o family"},
-        {ID: "gpt-5-thinking", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking model (alias: gpt-5)"},
-        {ID: "gpt-5-thinking-mini", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking mini model (alias: gpt-5-mini)"},
-        {ID: "gpt-5-thinking-nano", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking nano model (alias: gpt-5-nano)"},
-        {ID: "claude-sonnet-3.5", Provider: "Anthropic", EnvVars: []string{"ANTHROPIC_API_KEY"}, Description: "Claude Sonnet"},
-        {ID: "predictable", Provider: "Built-in", EnvVars: []string{}, Description: "Deterministic test model (no API key)"},
-    }
+	models := []modelInfo{
+		{ID: "qwen3-coder-fireworks", Provider: "Fireworks", EnvVars: []string{"FIREWORKS_API_KEY"}, Description: "Qwen3 Coder 480B on Fireworks (default)"},
+		{ID: "openai-gpt4", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4.1 family"},
+		{ID: "openai-gpt4-turbo", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4o family"},
+		{ID: "gpt-5-thinking", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking model (alias: gpt-5)"},
+		{ID: "gpt-5-thinking-mini", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking mini model (alias: gpt-5-mini)"},
+		{ID: "gpt-5-thinking-nano", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking nano model (alias: gpt-5-nano)"},
+		{ID: "claude-sonnet-3.5", Provider: "Anthropic", EnvVars: []string{"ANTHROPIC_API_KEY"}, Description: "Claude Sonnet"},
+		{ID: "predictable", Provider: "Built-in", EnvVars: []string{}, Description: "Deterministic test model (no API key)"},
+	}
 
-    fmt.Println("Supported models:")
-    for _, m := range models {
-        ready := true
-        missing := []string{}
-        for _, env := range m.EnvVars {
-            if os.Getenv(env) == "" {
-                ready = false
-                missing = append(missing, env)
-            }
-        }
-        status := "ready"
-        if !ready {
-            status = "not ready"
-        }
-        fmt.Printf("- %s [%s] - %s\n", m.ID, m.Provider, status)
-        if m.Description != "" {
-            fmt.Printf("  %s\n", m.Description)
-        }
-        if len(m.EnvVars) > 0 {
-            fmt.Printf("  Required env: %s\n", strings.Join(m.EnvVars, ", "))
-            if len(missing) > 0 {
-                fmt.Printf("  Missing: %s\n", strings.Join(missing, ", "))
-            }
-        } else {
-            fmt.Printf("  Required env: none\n")
-        }
-    }
+	fmt.Println("Supported models:")
+	for _, m := range models {
+		ready := true
+		missing := []string{}
+		for _, env := range m.EnvVars {
+			if os.Getenv(env) == "" {
+				ready = false
+				missing = append(missing, env)
+			}
+		}
+		status := "ready"
+		if !ready {
+			status = "not ready"
+		}
+		fmt.Printf("- %s [%s] - %s\n", m.ID, m.Provider, status)
+		if m.Description != "" {
+			fmt.Printf("  %s\n", m.Description)
+		}
+		if len(m.EnvVars) > 0 {
+			fmt.Printf("  Required env: %s\n", strings.Join(m.EnvVars, ", "))
+			if len(missing) > 0 {
+				fmt.Printf("  Missing: %s\n", strings.Join(missing, ", "))
+			}
+		} else {
+			fmt.Printf("  Required env: none\n")
+		}
+	}
 }
 
 func setupTools() []*llm.Tool {
@@ -474,72 +474,77 @@ func getMessageContentPreview(message llm.Message) string {
 
 // printMessageToConsole prints a readable representation of a message to stdout, as it occurs.
 func printMessageToConsole(message llm.Message) {
-    // Determine label
-    label := ""
-    if message.Role == llm.MessageRoleAssistant {
-        label = "Assistant"
-    } else if message.Role == llm.MessageRoleUser {
-        // Distinguish between actual user input vs tool results (which are sent back as a user message)
-        hasToolResult := false
-        for _, c := range message.Content {
-            if c.Type == llm.ContentTypeToolResult {
-                hasToolResult = true
-                break
-            }
-        }
-        if hasToolResult {
-            label = "Tool Result"
-        } else {
-            label = "You"
-        }
-    } else {
-        label = "Message"
-    }
+	// Determine label
+	label := ""
+	if message.Role == llm.MessageRoleAssistant {
+		label = "Assistant"
+	} else if message.Role == llm.MessageRoleUser {
+		// Distinguish between actual user input vs tool results (which are sent back as a user message)
+		hasToolResult := false
+		for _, c := range message.Content {
+			if c.Type == llm.ContentTypeToolResult {
+				hasToolResult = true
+				break
+			}
+		}
+		if hasToolResult {
+			label = "Tool Result"
+		} else {
+			label = "You"
+		}
+	} else {
+		label = "Message"
+	}
 
-    // Build output lines
-    var lines []string
-    for _, c := range message.Content {
-        switch c.Type {
-        case llm.ContentTypeText:
-            if strings.TrimSpace(c.Text) != "" {
-                lines = append(lines, c.Text)
-            }
-        case llm.ContentTypeToolUse:
-            // Show a concise tool call line
-            input := strings.TrimSpace(string(c.ToolInput))
-            if len(input) > 200 {
-                input = input[:200] + "..."
-            }
-            lines = append(lines, fmt.Sprintf("-> Tool call: %s %s", c.ToolName, input))
-        case llm.ContentTypeToolResult:
-            // Show a concise tool result line
-            var parts []string
-            for _, tr := range c.ToolResult {
-                if tr.Type == llm.ContentTypeText && strings.TrimSpace(tr.Text) != "" {
-                    parts = append(parts, tr.Text)
-                }
-            }
-            text := strings.Join(parts, "\n")
-            if text == "" {
-                if c.ToolError {
-                    text = "[error]"
-                } else {
-                    text = "[ok]"
-                }
-            }
-            lines = append(lines, fmt.Sprintf("<- Tool result%s\n%s", func() string { if c.ToolError { return " (error)" }; return "" }(), text))
-        case llm.ContentTypeThinking:
-            // Skip hidden thinking by default
-            continue
-        default:
-            // Fallback for unknown content types
-            lines = append(lines, fmt.Sprintf("[%s]", c.Type.String()))
-        }
-    }
+	// Build output lines
+	var lines []string
+	for _, c := range message.Content {
+		switch c.Type {
+		case llm.ContentTypeText:
+			if strings.TrimSpace(c.Text) != "" {
+				lines = append(lines, c.Text)
+			}
+		case llm.ContentTypeToolUse:
+			// Show a concise tool call line
+			input := strings.TrimSpace(string(c.ToolInput))
+			if len(input) > 200 {
+				input = input[:200] + "..."
+			}
+			lines = append(lines, fmt.Sprintf("-> Tool call: %s %s", c.ToolName, input))
+		case llm.ContentTypeToolResult:
+			// Show a concise tool result line
+			var parts []string
+			for _, tr := range c.ToolResult {
+				if tr.Type == llm.ContentTypeText && strings.TrimSpace(tr.Text) != "" {
+					parts = append(parts, tr.Text)
+				}
+			}
+			text := strings.Join(parts, "\n")
+			if text == "" {
+				if c.ToolError {
+					text = "[error]"
+				} else {
+					text = "[ok]"
+				}
+			}
+			lines = append(lines, fmt.Sprintf("<- Tool result%s\n%s", func() string {
+				if c.ToolError {
+					return " (error)"
+				}
+				return ""
+			}(), text))
+		case llm.ContentTypeThinking:
+			// Skip hidden thinking by default
+			continue
+		default:
+			// Fallback for unknown content types
+			lines = append(lines, fmt.Sprintf("[%s]", c.Type.String()))
+		}
+	}
 
-    out := strings.TrimSpace(strings.Join(lines, "\n"))
-    if out == "" {
-        out = "(no content)"
-    }
-    fmt.Printf("%s: \n%s\n\n", label, out)
+	out := strings.TrimSpace(strings.Join(lines, "\n"))
+	if out == "" {
+		out = "(no content)"
+	}
+	fmt.Printf("%s: \n%s\n\n", label, out)
 }

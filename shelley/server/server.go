@@ -16,112 +16,112 @@ import (
 
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
-	"shelley.exe.dev/loop"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/llm/ant"
 	"shelley.exe.dev/llm/oai"
+	"shelley.exe.dev/loop"
 )
 
 // LLMServiceManager manages multiple LLM services
 type LLMServiceManager struct {
-    // factories maps model IDs to service constructors.
-    factories map[string]func() (llm.Service, error)
-    logger    *slog.Logger
+	// factories maps model IDs to service constructors.
+	factories map[string]func() (llm.Service, error)
+	logger    *slog.Logger
 }
 
 // NewLLMServiceManager creates a new LLM service manager
 func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
-    manager := &LLMServiceManager{
-        factories: make(map[string]func() (llm.Service, error)),
-        logger:    logger,
-    }
+	manager := &LLMServiceManager{
+		factories: make(map[string]func() (llm.Service, error)),
+		logger:    logger,
+	}
 
-    // Anthropic Claude (env required)
-    manager.factories["claude-sonnet-3.5"] = func() (llm.Service, error) {
-        apiKey := os.Getenv("ANTHROPIC_API_KEY")
-        if apiKey == "" {
-            return nil, fmt.Errorf("claude-sonnet-3.5 requires ANTHROPIC_API_KEY env var")
-        }
-        return &ant.Service{APIKey: apiKey, Model: ant.DefaultModel}, nil
-    }
-    // Backward-compat alias
-    manager.factories["claude-sonnet-4.1"] = manager.factories["claude-sonnet-3.5"]
+	// Anthropic Claude (env required)
+	manager.factories["claude-sonnet-3.5"] = func() (llm.Service, error) {
+		apiKey := os.Getenv("ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			return nil, fmt.Errorf("claude-sonnet-3.5 requires ANTHROPIC_API_KEY env var")
+		}
+		return &ant.Service{APIKey: apiKey, Model: ant.DefaultModel}, nil
+	}
+	// Backward-compat alias
+	manager.factories["claude-sonnet-4.1"] = manager.factories["claude-sonnet-3.5"]
 
-    // OpenAI (env required)
-    manager.factories["openai-gpt4"] = func() (llm.Service, error) {
-        apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-        if apiKey == "" {
-            return nil, fmt.Errorf("openai-gpt4 requires %s env var", oai.OpenAIAPIKeyEnv)
-        }
-        return &oai.Service{Model: oai.DefaultModel, APIKey: apiKey}, nil
-    }
-    manager.factories["openai-gpt4-turbo"] = manager.factories["openai-gpt4"]
+	// OpenAI (env required)
+	manager.factories["openai-gpt4"] = func() (llm.Service, error) {
+		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
+		if apiKey == "" {
+			return nil, fmt.Errorf("openai-gpt4 requires %s env var", oai.OpenAIAPIKeyEnv)
+		}
+		return &oai.Service{Model: oai.DefaultModel, APIKey: apiKey}, nil
+	}
+	manager.factories["openai-gpt4-turbo"] = manager.factories["openai-gpt4"]
 
-    // OpenAI GPT-5 series (env required)
-    manager.factories["gpt-5-thinking"] = func() (llm.Service, error) {
-        apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-        if apiKey == "" {
-            return nil, fmt.Errorf("gpt-5-thinking requires %s env var", oai.OpenAIAPIKeyEnv)
-        }
-        return &oai.Service{Model: oai.GPT5, APIKey: apiKey}, nil
-    }
-    manager.factories["gpt-5-thinking-mini"] = func() (llm.Service, error) {
-        apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-        if apiKey == "" {
-            return nil, fmt.Errorf("gpt-5-thinking-mini requires %s env var", oai.OpenAIAPIKeyEnv)
-        }
-        return &oai.Service{Model: oai.GPT5Mini, APIKey: apiKey}, nil
-    }
-    manager.factories["gpt-5-thinking-nano"] = func() (llm.Service, error) {
-        apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-        if apiKey == "" {
-            return nil, fmt.Errorf("gpt-5-thinking-nano requires %s env var", oai.OpenAIAPIKeyEnv)
-        }
-        return &oai.Service{Model: oai.GPT5Nano, APIKey: apiKey}, nil
-    }
+	// OpenAI GPT-5 series (env required)
+	manager.factories["gpt-5-thinking"] = func() (llm.Service, error) {
+		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
+		if apiKey == "" {
+			return nil, fmt.Errorf("gpt-5-thinking requires %s env var", oai.OpenAIAPIKeyEnv)
+		}
+		return &oai.Service{Model: oai.GPT5, APIKey: apiKey}, nil
+	}
+	manager.factories["gpt-5-thinking-mini"] = func() (llm.Service, error) {
+		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
+		if apiKey == "" {
+			return nil, fmt.Errorf("gpt-5-thinking-mini requires %s env var", oai.OpenAIAPIKeyEnv)
+		}
+		return &oai.Service{Model: oai.GPT5Mini, APIKey: apiKey}, nil
+	}
+	manager.factories["gpt-5-thinking-nano"] = func() (llm.Service, error) {
+		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
+		if apiKey == "" {
+			return nil, fmt.Errorf("gpt-5-thinking-nano requires %s env var", oai.OpenAIAPIKeyEnv)
+		}
+		return &oai.Service{Model: oai.GPT5Nano, APIKey: apiKey}, nil
+	}
 
-    // Fireworks Qwen3 Coder (env required)
-    manager.factories["qwen3-coder-fireworks"] = func() (llm.Service, error) {
-        apiKey := os.Getenv(oai.FireworksAPIKeyEnv)
-        if apiKey == "" {
-            return nil, fmt.Errorf("qwen3-coder-fireworks requires %s env var", oai.FireworksAPIKeyEnv)
-        }
-        return &oai.Service{Model: oai.Qwen3CoderFireworks, APIKey: apiKey}, nil
-    }
+	// Fireworks Qwen3 Coder (env required)
+	manager.factories["qwen3-coder-fireworks"] = func() (llm.Service, error) {
+		apiKey := os.Getenv(oai.FireworksAPIKeyEnv)
+		if apiKey == "" {
+			return nil, fmt.Errorf("qwen3-coder-fireworks requires %s env var", oai.FireworksAPIKeyEnv)
+		}
+		return &oai.Service{Model: oai.Qwen3CoderFireworks, APIKey: apiKey}, nil
+	}
 
-    // Predictable (no envs)
-    manager.factories["predictable"] = func() (llm.Service, error) {
-        return loop.NewPredictableServiceWithTestResponses(), nil
-    }
+	// Predictable (no envs)
+	manager.factories["predictable"] = func() (llm.Service, error) {
+		return loop.NewPredictableServiceWithTestResponses(), nil
+	}
 
-    return manager
+	return manager
 }
 
 // GetService returns the LLM service for the given model ID
 func (m *LLMServiceManager) GetService(modelID string) (llm.Service, error) {
-    if factory, ok := m.factories[modelID]; ok {
-        svc, err := factory()
-        if err != nil {
-            return nil, err
-        }
-        return svc, nil
-    }
-    return nil, fmt.Errorf("unsupported model: %s", modelID)
+	if factory, ok := m.factories[modelID]; ok {
+		svc, err := factory()
+		if err != nil {
+			return nil, err
+		}
+		return svc, nil
+	}
+	return nil, fmt.Errorf("unsupported model: %s", modelID)
 }
 
 // GetAvailableModels returns a list of available model IDs
 func (m *LLMServiceManager) GetAvailableModels() []string {
-    var models []string
-    for model := range m.factories {
-        models = append(models, model)
-    }
-    return models
+	var models []string
+	for model := range m.factories {
+		models = append(models, model)
+	}
+	return models
 }
 
 // HasModel reports whether the manager knows about a model ID
 func (m *LLMServiceManager) HasModel(modelID string) bool {
-    _, ok := m.factories[modelID]
-    return ok
+	_, ok := m.factories[modelID]
+	return ok
 }
 
 // Server manages the HTTP API and active conversations
@@ -156,49 +156,49 @@ func NewServer(database *db.DB, llmManager *LLMServiceManager, tools []*llm.Tool
 
 // RegisterRoutes registers HTTP routes on the given mux
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
-    // API routes
-    mux.HandleFunc("/api/conversations", s.handleConversations)
-    mux.HandleFunc("/api/conversation/", s.handleConversation)
-    mux.HandleFunc("/api/models", s.handleModels)
+	// API routes
+	mux.HandleFunc("/api/conversations", s.handleConversations)
+	mux.HandleFunc("/api/conversation/", s.handleConversation)
+	mux.HandleFunc("/api/models", s.handleModels)
 
-    // Serve static files from ui/dist with conservative caching to avoid stale assets
-    mux.Handle("/", s.staticHandler("ui/dist/"))
+	// Serve static files from ui/dist with conservative caching to avoid stale assets
+	mux.Handle("/", s.staticHandler("ui/dist/"))
 }
 
 // staticHandler serves files from a directory and disables caching for HTML/CSS/JS to avoid stale bundles
 func (s *Server) staticHandler(dir string) http.Handler {
-    fs := http.FileServer(http.Dir(dir))
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".html") || strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
-            w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-            w.Header().Set("Pragma", "no-cache")
-            w.Header().Set("Expires", "0")
-        }
-        fs.ServeHTTP(w, r)
-    })
+	fs := http.FileServer(http.Dir(dir))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".html") || strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		}
+		fs.ServeHTTP(w, r)
+	})
 }
 
 // handleModels returns available models and whether they are ready (i.e., envs present)
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-    type ModelInfo struct {
-        ID    string `json:"id"`
-        Ready bool   `json:"ready"`
-    }
+	type ModelInfo struct {
+		ID    string `json:"id"`
+		Ready bool   `json:"ready"`
+	}
 
-    models := s.llmManager.GetAvailableModels()
-    var out []ModelInfo
-    for _, id := range models {
-        _, err := s.llmManager.GetService(id)
-        out = append(out, ModelInfo{ID: id, Ready: err == nil})
-    }
+	models := s.llmManager.GetAvailableModels()
+	var out []ModelInfo
+	for _, id := range models {
+		_, err := s.llmManager.GetService(id)
+		out = append(out, ModelInfo{ID: id, Ready: err == nil})
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(out)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 // handleConversations handles GET /conversations and POST /conversations
@@ -346,11 +346,11 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Get LLM service for the requested model
-    modelID := req.Model
-    if modelID == "" {
-        // Default to Qwen3 Coder on Fireworks
-        modelID = "qwen3-coder-fireworks"
-    }
+	modelID := req.Model
+	if modelID == "" {
+		// Default to Qwen3 Coder on Fireworks
+		modelID = "qwen3-coder-fireworks"
+	}
 
 	llmService, err := s.llmManager.GetService(modelID)
 	if err != nil {
@@ -518,31 +518,31 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 	// The message service will handle JSON marshalling
 
 	// Create message
-    _, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
-        ConversationID: conversationID,
-        Type:           messageType,
-        LLMData:        message,
-        UserData:       nil,
-        UsageData:      usage,
-    })
-    if err != nil {
-        return fmt.Errorf("failed to create message: %w", err)
-    }
+	_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
+		ConversationID: conversationID,
+		Type:           messageType,
+		LLMData:        message,
+		UserData:       nil,
+		UsageData:      usage,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create message: %w", err)
+	}
 
-    // Update conversation's last updated timestamp for correct ordering
-    if err := s.db.Queries.UpdateConversationTimestamp(ctx, conversationID); err != nil {
-        s.logger.Warn("Failed to update conversation timestamp", "conversationID", conversationID, "error", err)
-    }
+	// Update conversation's last updated timestamp for correct ordering
+	if err := s.db.Queries.UpdateConversationTimestamp(ctx, conversationID); err != nil {
+		s.logger.Warn("Failed to update conversation timestamp", "conversationID", conversationID, "error", err)
+	}
 
-    // Touch active manager activity time if present
-    s.mu.Lock()
-    if mgr, ok := s.activeConversations[conversationID]; ok {
-        mgr.lastActivity = time.Now()
-    }
-    s.mu.Unlock()
+	// Touch active manager activity time if present
+	s.mu.Lock()
+	if mgr, ok := s.activeConversations[conversationID]; ok {
+		mgr.lastActivity = time.Now()
+	}
+	s.mu.Unlock()
 
-    // Notify subscribers
-    go s.notifySubscribers(ctx, conversationID)
+	// Notify subscribers
+	go s.notifySubscribers(ctx, conversationID)
 
 	return nil
 }

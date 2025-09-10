@@ -149,28 +149,28 @@ func (l *Loop) Go(ctx context.Context) error {
 // ProcessOneTurn processes queued messages through one complete turn (user message + assistant response)
 // It stops after the assistant responds, regardless of whether tools were called
 func (l *Loop) ProcessOneTurn(ctx context.Context) error {
-    if l.llm == nil {
-        return fmt.Errorf("no LLM service configured")
-    }
+	if l.llm == nil {
+		return fmt.Errorf("no LLM service configured")
+	}
 
-    // Process any queued messages first
-    l.mu.Lock()
-    if len(l.messageQueue) > 0 {
-        // Add queued messages to history and record user messages for parity with Go()
-        for _, msg := range l.messageQueue {
-            l.history = append(l.history, msg)
-            if msg.Role == llm.MessageRoleUser {
-                if err := l.recordMessage(ctx, msg, llm.Usage{}); err != nil {
-                    l.logger.Error("failed to record user message", "error", err)
-                }
-            }
-        }
-        l.messageQueue = nil
-    }
-    l.mu.Unlock()
+	// Process any queued messages first
+	l.mu.Lock()
+	if len(l.messageQueue) > 0 {
+		// Add queued messages to history and record user messages for parity with Go()
+		for _, msg := range l.messageQueue {
+			l.history = append(l.history, msg)
+			if msg.Role == llm.MessageRoleUser {
+				if err := l.recordMessage(ctx, msg, llm.Usage{}); err != nil {
+					l.logger.Error("failed to record user message", "error", err)
+				}
+			}
+		}
+		l.messageQueue = nil
+	}
+	l.mu.Unlock()
 
-    // Process one LLM request and response
-    return l.processLLMRequest(ctx)
+	// Process one LLM request and response
+	return l.processLLMRequest(ctx)
 }
 
 // processLLMRequest sends a request to the LLM and handles the response
