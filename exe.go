@@ -2701,23 +2701,6 @@ func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]exedb.
 	return boxes, nil
 }
 
-// getAllocByID gets an allocation by its ID
-func (s *Server) getAllocByID(ctx context.Context, allocID string) (*Alloc, error) {
-	var alloc Alloc
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		err := rx.QueryRow(`
-			SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
-			FROM allocs
-			WHERE alloc_id = ?
-		`, allocID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region, &alloc.Ctrhost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &alloc, nil
-}
-
 // getAllocsByHost gets all allocations assigned to a specific docker host
 func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc, error) {
 	var allocs []*Alloc
