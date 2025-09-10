@@ -20,6 +20,19 @@ func (q *Queries) GetFirstUserID(ctx context.Context) (string, error) {
 	return user_id, err
 }
 
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT user_id, email, created_at
+FROM users
+WHERE email = ?
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, email)
+	var i User
+	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	return i, err
+}
+
 const getUserIDByEmail = `-- name: GetUserIDByEmail :one
 SELECT user_id FROM users WHERE email = ?
 `
@@ -29,6 +42,19 @@ func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (string, e
 	var user_id string
 	err := row.Scan(&user_id)
 	return user_id, err
+}
+
+const getUserWithDetails = `-- name: GetUserWithDetails :one
+SELECT user_id, email, created_at
+FROM users
+WHERE user_id = ?
+`
+
+func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, error) {
+	row := q.queryRow(ctx, q.getUserWithDetailsStmt, getUserWithDetails, userID)
+	var i User
+	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	return i, err
 }
 
 const insertUser = `-- name: InsertUser :exec

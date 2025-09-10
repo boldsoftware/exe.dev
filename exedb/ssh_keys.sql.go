@@ -9,6 +9,50 @@ import (
 	"context"
 )
 
+const getEmailBySSHKey = `-- name: GetEmailBySSHKey :one
+SELECT u.email
+FROM ssh_keys s
+JOIN users u ON s.user_id = u.user_id
+WHERE s.public_key = ?
+`
+
+func (q *Queries) GetEmailBySSHKey(ctx context.Context, publicKey string) (string, error) {
+	row := q.queryRow(ctx, q.getEmailBySSHKeyStmt, getEmailBySSHKey, publicKey)
+	var email string
+	err := row.Scan(&email)
+	return email, err
+}
+
+const getSSHKeysForUser = `-- name: GetSSHKeysForUser :many
+SELECT public_key
+FROM ssh_keys
+WHERE user_id = ?
+ORDER BY added_at DESC
+`
+
+func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.query(ctx, q.getSSHKeysForUserStmt, getSSHKeysForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var public_key string
+		if err := rows.Scan(&public_key); err != nil {
+			return nil, err
+		}
+		items = append(items, public_key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertSSHKeyForEmailUser = `-- name: InsertSSHKeyForEmailUser :exec
 INSERT INTO ssh_keys (user_id, public_key)
 VALUES ((SELECT user_id FROM users WHERE email = ?), ?)

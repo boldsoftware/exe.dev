@@ -9,6 +9,39 @@ import (
 	"context"
 )
 
+const getBoxByName = `-- name: GetBoxByName :one
+SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
+       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
+FROM boxes
+WHERE name = ?
+`
+
+func (q *Queries) GetBoxByName(ctx context.Context, name string) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByNameStmt, getBoxByName, name)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.AllocID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHCAPublicKey,
+		&i.SSHHostCertificate,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+	)
+	return i, err
+}
+
 const getBoxesForAlloc = `-- name: GetBoxesForAlloc :many
 SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
        ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user

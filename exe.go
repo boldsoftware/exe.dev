@@ -1184,15 +1184,15 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 
 	// Look up the pending SSH key
-	var publicKey, email string
-	var expires time.Time
-	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT public_key, user_email, expires_at
-		FROM pending_ssh_keys
-		WHERE token = ?`,
-			token).Scan(&publicKey, &email, &expires)
+	var result exedb.GetPendingSSHKeyByTokenRow
+	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		result, err = queries.GetPendingSSHKeyByToken(ctx, token)
+		return err
 	})
+	publicKey := result.PublicKey
+	email := result.UserEmail
+	expires := result.ExpiresAt
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
@@ -1389,8 +1389,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 		// Create HTTP auth cookie for this user
 		var userID string
-		err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
+		err = s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+			var err error
+			userID, err = queries.GetUserIDByEmail(ctx, email)
+			return err
 		})
 		if err != nil {
 			slog.Error("Failed to get user ID by email during SSH email verification", "error", err)
@@ -2201,12 +2203,17 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, userID string) {
 	// Get user info
 	var user User
-	err := s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT user_id, email, created_at
-		FROM users
-		WHERE user_id = ?
-	`, userID).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+	err := s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		result, err := queries.GetUserWithDetails(ctx, userID)
+		if err != nil {
+			return err
+		}
+		user.UserID = result.UserID
+		user.Email = result.Email
+		if result.CreatedAt != nil {
+			user.CreatedAt = *result.CreatedAt
+		}
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2220,24 +2227,13 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 
 	// Get user's SSH keys
 	sshKeys := []SSHKey{}
-	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		rows, err := rx.Query(`
-			SELECT public_key
-			FROM ssh_keys
-			WHERE user_id = ?
-			ORDER BY added_at DESC
-		`, user.UserID)
+	err = s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		publicKeys, err := queries.GetSSHKeysForUser(ctx, user.UserID)
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var key SSHKey
-			err := rows.Scan(&key.PublicKey)
-			if err != nil {
-				slog.Error("Error scanning SSH key", "error", err)
-				continue
-			}
+		for _, publicKey := range publicKeys {
+			key := SSHKey{PublicKey: publicKey}
 			sshKeys = append(sshKeys, key)
 		}
 		return nil
@@ -2681,18 +2677,10 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 // getBoxByName retrieves a box by name and team
 func (s *Server) getBoxByName(ctx context.Context, name string) (*exedb.Box, error) {
 	var box exedb.Box
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
-		       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
-		FROM boxes
-		WHERE name = ?
-	`, name).Scan(
-			&box.ID, &box.AllocID, &box.Name, &box.Status,
-			&box.Image, &box.ContainerID, &box.CreatedByUserID,
-			&box.CreatedAt, &box.UpdatedAt, &box.LastStartedAt, &box.Routes,
-			&box.SSHServerIdentityKey, &box.SSHAuthorizedKeys, &box.SSHCAPublicKey, &box.SSHHostCertificate, &box.SSHClientPrivateKey, &box.SSHPort, &box.SSHUser,
-		)
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		box, err = queries.GetBoxByName(ctx, name)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -2720,27 +2708,29 @@ func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]exedb.
 // getAllocsByHost gets all allocations assigned to a specific docker host
 func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc, error) {
 	var allocs []*Alloc
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		rows, err := rx.Query(`
-			SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
-			FROM allocs
-			WHERE ctrhost = ?
-		`, ctrhost)
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		allocResults, err := queries.GetAllocsByHost(ctx, ctrhost)
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var a Alloc
-			err := rows.Scan(
-				&a.AllocID, &a.UserID, &a.AllocType, &a.Region, &a.Ctrhost,
-				&a.CreatedAt, &a.StripeCustomerID, &a.BillingEmail,
-			)
-			if err != nil {
-				return err
+		for _, allocResult := range allocResults {
+			a := &Alloc{
+				AllocID:   allocResult.AllocID,
+				UserID:    allocResult.UserID,
+				AllocType: AllocType(allocResult.AllocType),
+				Region:    Region(allocResult.Region),
+				Ctrhost:   allocResult.Ctrhost,
 			}
-			allocs = append(allocs, &a)
+			if allocResult.CreatedAt != nil {
+				a.CreatedAt = *allocResult.CreatedAt
+			}
+			if allocResult.StripeCustomerID != nil {
+				a.StripeCustomerID = sql.NullString{String: *allocResult.StripeCustomerID, Valid: true}
+			}
+			if allocResult.BillingEmail != nil {
+				a.BillingEmail = sql.NullString{String: *allocResult.BillingEmail, Valid: true}
+			}
+			allocs = append(allocs, a)
 		}
 		return nil
 	})
@@ -3295,13 +3285,9 @@ func (s *Server) isPortListening(address string) bool {
 // getEmailBySSHKey checks if an SSH key is registered and returns the associated email
 func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (email string, verified bool, err error) {
 	// Check if key exists in ssh_keys (all keys there are verified)
-	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT u.email
-		FROM ssh_keys s
-		JOIN users u ON s.user_id = u.user_id
-		WHERE s.public_key = ?`,
-			publicKeyStr).Scan(&email)
+	err = s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		email, err = queries.GetEmailBySSHKey(ctx, publicKeyStr)
+		return err
 	})
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -3725,12 +3711,17 @@ func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicK
 // GetUserByEmail retrieves a user by their email address
 func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	var user User
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT user_id, email, created_at
-		FROM users
-		WHERE email = ?
-	`, email).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		result, err := queries.GetUserByEmail(ctx, email)
+		if err != nil {
+			return err
+		}
+		user.UserID = result.UserID
+		user.Email = result.Email
+		if result.CreatedAt != nil {
+			user.CreatedAt = *result.CreatedAt
+		}
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

@@ -20,6 +20,44 @@ func (q *Queries) AllocExistsForUser(ctx context.Context, userID string) (int64,
 	return column_1, err
 }
 
+const getAllocsByHost = `-- name: GetAllocsByHost :many
+SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
+FROM allocs
+WHERE ctrhost = ?
+`
+
+func (q *Queries) GetAllocsByHost(ctx context.Context, ctrhost string) ([]Alloc, error) {
+	rows, err := q.query(ctx, q.getAllocsByHostStmt, getAllocsByHost, ctrhost)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Alloc{}
+	for rows.Next() {
+		var i Alloc
+		if err := rows.Scan(
+			&i.AllocID,
+			&i.UserID,
+			&i.AllocType,
+			&i.Region,
+			&i.Ctrhost,
+			&i.CreatedAt,
+			&i.StripeCustomerID,
+			&i.BillingEmail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertAlloc = `-- name: InsertAlloc :exec
 INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost)
 VALUES (?, ?, ?, ?, ?)
