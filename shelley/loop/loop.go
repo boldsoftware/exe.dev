@@ -13,6 +13,16 @@ import (
 // MessageRecordFunc is called to record new messages to persistent storage
 type MessageRecordFunc func(ctx context.Context, message llm.Message, usage llm.Usage) error
 
+// Config contains all configuration needed to create a Loop
+type Config struct {
+	LLM           llm.Service
+	History       []llm.Message
+	Tools         []*llm.Tool
+	RecordMessage MessageRecordFunc
+	Logger        *slog.Logger
+	System        []llm.SystemContent
+}
+
 // Loop manages a conversation turn with an LLM including tool execution and message recording.
 // Notably, when the turn ends, the "Loop" is over. TODO: maybe rename to Turn?
 type Loop struct {
@@ -27,37 +37,29 @@ type Loop struct {
 	system        []llm.SystemContent
 }
 
-// NewLoop creates a new Loop instance
-func NewLoop(llmService llm.Service, history []llm.Message, tools []*llm.Tool, recordMessage MessageRecordFunc) *Loop {
+// NewLoop creates a new Loop instance with the provided configuration
+func NewLoop(config Config) *Loop {
+	logger := config.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &Loop{
-		llm:           llmService,
-		history:       history,
-		tools:         tools,
-		recordMessage: recordMessage,
+		llm:           config.LLM,
+		history:       config.History,
+		tools:         config.Tools,
+		recordMessage: config.RecordMessage,
 		messageQueue:  make([]llm.Message, 0),
-		logger:        slog.Default(),
+		logger:        logger,
+		system:        config.System,
 	}
 }
 
-// SetLLM sets the LLM service to use
+// SetLLM updates the LLM service (used by server for per-request service selection)
 func (l *Loop) SetLLM(service llm.Service) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.llm = service
-}
-
-// SetSystem sets the system messages
-func (l *Loop) SetSystem(system []llm.SystemContent) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.system = system
-}
-
-// SetLogger sets a custom logger
-func (l *Loop) SetLogger(logger *slog.Logger) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.logger = logger
 }
 
 // QueueUserMessage adds a user message to the queue to be processed

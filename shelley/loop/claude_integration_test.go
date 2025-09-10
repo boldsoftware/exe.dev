@@ -17,17 +17,19 @@ func TestLoopWithClaude(t *testing.T) {
 		t.Skip("Skipping Claude integration test - ANTHROPIC_API_KEY not set")
 	}
 
-	// Create a simple conversation
-	loop := NewLoop(NewPredictableService(), []llm.Message{}, []*llm.Tool{}, func(ctx context.Context, message llm.Message, usage llm.Usage) error {
-		// In a real app, this would save to database
-		t.Logf("Recorded %s message: %s", message.Role, message.Content[0].Text)
-		return nil
-	})
-
-	// Set up Claude service
-	loop.SetLLM(&ant.Service{
-		APIKey: apiKey,
-		Model:  ant.Claude35Haiku, // Use cheaper model for testing
+	// Create a simple conversation with Claude service
+	loop := NewLoop(Config{
+		LLM: &ant.Service{
+			APIKey: apiKey,
+			Model:  ant.Claude35Haiku, // Use cheaper model for testing
+		},
+		History: []llm.Message{},
+		Tools:   []*llm.Tool{},
+		RecordMessage: func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			// In a real app, this would save to database
+			t.Logf("Recorded %s message: %s", message.Role, message.Content[0].Text)
+			return nil
+		},
 	})
 
 	// Queue a simple user message

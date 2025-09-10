@@ -526,10 +526,13 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 	}
 
 	// Create loop with history (temporarily use predictable service, will be overridden per request)
-	// TODO: Refactor to properly handle LLM service selection
-	convLoop := loop.NewLoop(loop.NewPredictableService(), history, s.tools, recordMessage)
-	// Note: LLM service will be set per request in the chat handler
-	convLoop.SetLogger(s.logger.With("conversationID", conversationID))
+	convLoop := loop.NewLoop(loop.Config{
+		LLM:           loop.NewPredictableService(),
+		History:       history,
+		Tools:         s.tools,
+		RecordMessage: recordMessage,
+		Logger:        s.logger.With("conversationID", conversationID),
+	})
 
 	// Create manager
 	manager := &ConversationManager{

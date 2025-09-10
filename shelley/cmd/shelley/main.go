@@ -196,9 +196,27 @@ func runPrompt(global GlobalConfig, args []string) {
 		return nil
 	}
 
-	// Create loop with LLM service
-	l := loop.NewLoop(llmService, history, tools, recordMessage)
-	l.SetLogger(logger)
+	// Generate system prompt
+	systemPrompt, err := GenerateSystemPrompt()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating system prompt: %s\n", err)
+		os.Exit(1)
+	}
+
+	system := []llm.SystemContent{}
+	if systemPrompt != "" {
+		system = []llm.SystemContent{{Type: "text", Text: systemPrompt}}
+	}
+
+	// Create loop with configuration
+	l := loop.NewLoop(loop.Config{
+		LLM:           llmService,
+		History:       history,
+		Tools:         tools,
+		RecordMessage: recordMessage,
+		Logger:        logger,
+		System:        system,
+	})
 
 	// Add the user prompt
 	l.QueueUserMessage(llm.Message{
@@ -210,11 +228,11 @@ func runPrompt(global GlobalConfig, args []string) {
 	})
 
 	// Run one complete turn with timeout
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
 	// Process one complete turn (user message + assistant response)
-	err := l.ProcessOneTurn(ctx)
+	err = l.ProcessOneTurn(timeoutCtx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error running conversation: %s\n", err)
 		os.Exit(1)

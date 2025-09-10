@@ -20,7 +20,12 @@ func TestNewLoop(t *testing.T) {
 		return nil
 	}
 
-	loop := NewLoop(NewPredictableService(), history, tools, recordFunc)
+	loop := NewLoop(Config{
+		LLM:           NewPredictableService(),
+		History:       history,
+		Tools:         tools,
+		RecordMessage: recordFunc,
+	})
 	if loop == nil {
 		t.Fatal("NewLoop returned nil")
 	}
@@ -35,7 +40,11 @@ func TestNewLoop(t *testing.T) {
 }
 
 func TestQueueUserMessage(t *testing.T) {
-	loop := NewLoop(NewPredictableService(), []llm.Message{}, []*llm.Tool{}, nil)
+	loop := NewLoop(Config{
+		LLM:     NewPredictableService(),
+		History: []llm.Message{},
+		Tools:   []*llm.Tool{},
+	})
 
 	message := llm.Message{
 		Role:    llm.MessageRoleUser,
@@ -202,7 +211,12 @@ func TestLoopWithPredictableService(t *testing.T) {
 
 	service := NewPredictableService()
 	service.AddSimpleResponse("Hello there!")
-	loop := NewLoop(service, []llm.Message{}, []*llm.Tool{}, recordFunc)
+	loop := NewLoop(Config{
+		LLM:           service,
+		History:       []llm.Message{},
+		Tools:         []*llm.Tool{},
+		RecordMessage: recordFunc,
+	})
 
 	// Queue a user message
 	userMessage := llm.Message{
@@ -249,10 +263,6 @@ func TestLoopWithTools(t *testing.T) {
 		},
 	}
 
-	loop := NewLoop(NewPredictableService(), []llm.Message{}, []*llm.Tool{testTool}, func(ctx context.Context, message llm.Message, usage llm.Usage) error {
-		return nil
-	})
-
 	service := NewPredictableService()
 	toolInput := json.RawMessage(`{"input": "test data"}`)
 	service.SetResponses([]PredictableResponse{
@@ -269,7 +279,14 @@ func TestLoopWithTools(t *testing.T) {
 		},
 	})
 
-	loop.SetLLM(service)
+	loop := NewLoop(Config{
+		LLM:     service,
+		History: []llm.Message{},
+		Tools:   []*llm.Tool{testTool},
+		RecordMessage: func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			return nil
+		},
+	})
 
 	// Queue a user message
 	userMessage := llm.Message{
@@ -302,7 +319,11 @@ func TestGetHistory(t *testing.T) {
 		{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}}},
 	}
 
-	loop := NewLoop(NewPredictableService(), initialHistory, []*llm.Tool{}, nil)
+	loop := NewLoop(Config{
+		LLM:     NewPredictableService(),
+		History: initialHistory,
+		Tools:   []*llm.Tool{},
+	})
 
 	history := loop.GetHistory()
 	if len(history) != 1 {
@@ -360,7 +381,12 @@ func TestLoopWithKeywordTool(t *testing.T) {
 		},
 	}
 
-	loop := NewLoop(service, []llm.Message{}, tools, recordMessage)
+	loop := NewLoop(Config{
+		LLM:           service,
+		History:       []llm.Message{},
+		Tools:         tools,
+		RecordMessage: recordMessage,
+	})
 
 	// Send a user message that will trigger the keyword tool
 	userMessage := llm.Message{
@@ -437,7 +463,12 @@ func TestLoopWithActualKeywordTool(t *testing.T) {
 		},
 	}
 
-	loop := NewLoop(service, []llm.Message{}, tools, recordMessage)
+	loop := NewLoop(Config{
+		LLM:           service,
+		History:       []llm.Message{},
+		Tools:         tools,
+		RecordMessage: recordMessage,
+	})
 
 	// Send a user message that will trigger the keyword tool
 	userMessage := llm.Message{

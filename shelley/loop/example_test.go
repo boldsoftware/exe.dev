@@ -51,7 +51,12 @@ func ExampleLoop() {
 
 	// Set up a predictable service for this example
 	service := loop.NewPredictableService()
-	myLoop := loop.NewLoop(service, initialHistory, []*llm.Tool{testTool}, recordMessage)
+	myLoop := loop.NewLoop(loop.Config{
+		LLM:           service,
+		History:       initialHistory,
+		Tools:         []*llm.Tool{testTool},
+		RecordMessage: recordMessage,
+	})
 	toolCallInput := json.RawMessage(`{"name": "Alice"}`)
 	service.SetResponses([]loop.PredictableResponse{
 		{

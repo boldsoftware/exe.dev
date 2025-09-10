@@ -22,7 +22,6 @@ func TestLoopWithClaudeTools(t *testing.T) {
 		// TODO: Add actual tools when needed
 	}
 
-	loop := NewLoop(NewPredictableService(), []llm.Message{}, tools, recordFunc)
 	service := NewPredictableService()
 
 	// Set up responses for a todo workflow
@@ -43,7 +42,13 @@ func TestLoopWithClaudeTools(t *testing.T) {
 		},
 	})
 
-	loop.SetLLM(service)
+	// Create loop with the configured service
+	loop := NewLoop(Config{
+		LLM:           service,
+		History:       []llm.Message{},
+		Tools:         tools,
+		RecordMessage: recordFunc,
+	})
 
 	// Queue a user message
 	userMessage := llm.Message{
@@ -109,13 +114,16 @@ func TestLoopWithClaudeTools(t *testing.T) {
 }
 
 func TestLoopContextCancellation(t *testing.T) {
-	loop := NewLoop(NewPredictableService(), []llm.Message{}, []*llm.Tool{}, func(ctx context.Context, message llm.Message, usage llm.Usage) error {
-		return nil
-	})
-
 	service := NewPredictableService()
 	service.AddSimpleResponse("Hello!")
-	loop.SetLLM(service)
+	loop := NewLoop(Config{
+		LLM:     service,
+		History: []llm.Message{},
+		Tools:   []*llm.Tool{},
+		RecordMessage: func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			return nil
+		},
+	})
 
 	// Cancel context immediately
 	ctx, cancel := context.WithCancel(context.Background())
@@ -128,15 +136,20 @@ func TestLoopContextCancellation(t *testing.T) {
 }
 
 func TestLoopSystemMessages(t *testing.T) {
-	loop := NewLoop(NewPredictableService(), []llm.Message{}, []*llm.Tool{}, func(ctx context.Context, message llm.Message, usage llm.Usage) error {
-		return nil
-	})
-
 	// Set system messages
 	system := []llm.SystemContent{
 		{Text: "You are a helpful assistant.", Type: "text"},
 	}
-	loop.SetSystem(system)
+
+	loop := NewLoop(Config{
+		LLM:     NewPredictableService(),
+		History: []llm.Message{},
+		Tools:   []*llm.Tool{},
+		System:  system,
+		RecordMessage: func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			return nil
+		},
+	})
 
 	// The system messages are stored and would be passed to LLM
 	loop.mu.Lock()

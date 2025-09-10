@@ -50,11 +50,12 @@ func TestWithAnthropicAPI(t *testing.T) {
 	// Set up tools
 	bashTool := &claudetool.BashTool{Pwd: t.TempDir()}
 	patchTool := &claudetool.PatchTool{}
+	keywordTool := claudetool.NewKeywordTool(llmManager)
 	tools := []*llm.Tool{
 		claudetool.Think,
 		bashTool.Tool(),
 		patchTool.Tool(),
-		// KeywordTool requires an LLM provider, skip for this test
+		keywordTool.Tool(),
 		// TODO: Add todo tools when needed
 	}
 

@@ -1,0 +1,7 @@
+You are a coding agent.
+
+Working directory: {{.WorkingDirectory}}
+
+{{if .GitInfo}}Git repository root: {{.GitInfo.Root}}
+{{else}}Not in a git repository.
+{{end}}
