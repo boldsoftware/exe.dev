@@ -38,11 +38,14 @@ function Message({ message, toolUseMap }: MessageProps) {
   const currentToolUse = llmMessage ? getToolUseInfo(llmMessage.Content) : null;
 
   // Convert Go struct Type field (number) to string type
-  // Based on llm/llm.go ContentType constants:
+  // Based on llm/llm.go constants (iota continues across types in same const block):
+  // MessageRoleUser = 0, MessageRoleAssistant = 1,
   // ContentTypeText = 2, ContentTypeThinking = 3, ContentTypeRedactedThinking = 4, 
   // ContentTypeToolUse = 5, ContentTypeToolResult = 6
   const getContentType = (type: number): string => {
     switch (type) {
+      case 0: return 'message_role_user';    // Should not occur in Content, but handle gracefully
+      case 1: return 'message_role_assistant'; // Should not occur in Content, but handle gracefully
       case 2: return 'text';
       case 3: return 'thinking';
       case 4: return 'redacted_thinking';
@@ -56,6 +59,19 @@ function Message({ message, toolUseMap }: MessageProps) {
     const contentType = getContentType(content.Type);
 
     switch (contentType) {
+      case 'message_role_user':
+      case 'message_role_assistant':
+        // These shouldn't occur in Content objects, but display as text if they do
+        return (
+          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded p-2 text-sm">
+            <div className="text-orange-800 dark:text-orange-200 font-mono">
+              [Unexpected message role content: {contentType}]
+            </div>
+            <div className="text-gray-700 dark:text-gray-300 mt-1">
+              {content.Text || JSON.stringify(content)}
+            </div>
+          </div>
+        );
       case 'text':
         return (
           <div className="whitespace-pre-wrap break-words">
@@ -199,9 +215,52 @@ function Message({ message, toolUseMap }: MessageProps) {
         // Hide thinking content by default in main flow, but could be made expandable
         return null;
       default:
+        // For unknown content types, show the type and try to display useful content
+        const displayText = content.Text || content.Data || '';
+        const hasMediaType = content.MediaType;
+        const hasOtherData = Object.keys(content).some(key => 
+          key !== 'Type' && key !== 'ID' && content[key as keyof typeof content]
+        );
+        
         return (
-          <div className="text-gray-500 dark:text-gray-400 italic">
-            [Unsupported content type: {contentType}]
+          <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-3">
+            <div className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-mono">
+              Unknown content type: {contentType} (value: {content.Type})
+            </div>
+            
+            {/* Show media content if available */}
+            {hasMediaType && (
+              <div className="mb-2">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Media Type: {content.MediaType}</div>
+                {content.MediaType?.startsWith('image/') && content.Data && (
+                  <img 
+                    src={`data:${content.MediaType};base64,${content.Data}`}
+                    alt="Tool output image"
+                    className="max-w-full h-auto rounded border"
+                    style={{ maxHeight: '300px' }}
+                  />
+                )}
+              </div>
+            )}
+            
+            {/* Show text content if available */}
+            {displayText && (
+              <div className="text-sm whitespace-pre-wrap break-words text-gray-700 dark:text-gray-300">
+                {displayText}
+              </div>
+            )}
+            
+            {/* Show raw JSON for debugging if no text content */}
+            {!displayText && hasOtherData && (
+              <details className="text-xs">
+                <summary className="text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                  Show raw content
+                </summary>
+                <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs overflow-x-auto">
+                  {JSON.stringify(content, null, 2)}
+                </pre>
+              </details>
+            )}
           </div>
         );
     }

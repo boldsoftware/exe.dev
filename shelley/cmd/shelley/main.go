@@ -588,8 +588,30 @@ func printMessageToConsole(message llm.Message) {
 			// Skip hidden thinking by default
 			continue
 		default:
-			// Fallback for unknown content types
-			lines = append(lines, fmt.Sprintf("[%s]", c.Type.String()))
+			// Fallback for unknown content types - show type and any available content
+			var parts []string
+			parts = append(parts, fmt.Sprintf("[%s]", c.Type.String()))
+
+			// Show text content if available
+			if c.Text != "" {
+				parts = append(parts, c.Text)
+			}
+
+			// Show media content info if available
+			if c.MediaType != "" {
+				if c.MediaType == "image/jpeg" || c.MediaType == "image/png" {
+					parts = append(parts, fmt.Sprintf("[Image: %s]", c.MediaType))
+				} else {
+					parts = append(parts, fmt.Sprintf("[Media: %s]", c.MediaType))
+				}
+			}
+
+			// Show tool data if this is a tool-related unknown type
+			if c.ToolName != "" {
+				parts = append(parts, fmt.Sprintf("Tool: %s", c.ToolName))
+			}
+
+			lines = append(lines, strings.Join(parts, " "))
 		}
 	}
 
