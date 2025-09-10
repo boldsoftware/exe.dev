@@ -24,6 +24,16 @@ type GlobalConfig struct {
 	Model  string
 }
 
+// Message emoji constants
+const (
+	// User messages: person emoji
+	userEmoji = "👤"
+	// Assistant messages: robot emoji
+	assistantEmoji = "🤖"
+	// Tool messages: wrench emoji
+	toolEmoji = "🔧"
+)
+
 func main() {
 	// Define global flags
 	var global GlobalConfig
@@ -210,7 +220,20 @@ func runPrompt(global GlobalConfig, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Conversation completed: %s\n", conversationID)
+	// Get conversation details to show continuation info
+	conv, err := database.GetConversationByID(ctx, conversationID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not fetch conversation details: %s\n", err)
+		fmt.Printf("Conversation completed: %s\n", conversationID)
+	} else {
+		// Show conversation ID and continuation command
+		fmt.Printf("Conversation completed: %s\n", conversationID)
+		if conv.Slug != nil && *conv.Slug != "" {
+			fmt.Printf("To continue: shelley prompt -continue %s \"<your message>\"\n", *conv.Slug)
+		} else {
+			fmt.Printf("To continue: shelley prompt -continue %s \"<your message>\"\n", conversationID)
+		}
+	}
 }
 
 func runList(global GlobalConfig, args []string) {
@@ -484,10 +507,10 @@ func getMessageContentPreview(message llm.Message) string {
 
 // printMessageToConsole prints a readable representation of a message to stdout, as it occurs.
 func printMessageToConsole(message llm.Message) {
-	// Determine label
-	label := ""
+	// Determine emoji prefix based on message role and content
+	var emojiPrefix string
 	if message.Role == llm.MessageRoleAssistant {
-		label = "Assistant"
+		emojiPrefix = assistantEmoji
 	} else if message.Role == llm.MessageRoleUser {
 		// Distinguish between actual user input vs tool results (which are sent back as a user message)
 		hasToolResult := false
@@ -498,12 +521,12 @@ func printMessageToConsole(message llm.Message) {
 			}
 		}
 		if hasToolResult {
-			label = "Tool Result"
+			emojiPrefix = toolEmoji
 		} else {
-			label = "You"
+			emojiPrefix = userEmoji
 		}
 	} else {
-		label = "Message"
+		emojiPrefix = "" // Default for other message types
 	}
 
 	// Build output lines
@@ -556,5 +579,7 @@ func printMessageToConsole(message llm.Message) {
 	if out == "" {
 		out = "(no content)"
 	}
-	fmt.Printf("%s: \n%s\n\n", label, out)
+	// Print with emoji prefix and timestamp
+	timestamp := time.Now().Format("15:04:05")
+	fmt.Printf("%s [%s] %s\n\n", emojiPrefix, timestamp, out)
 }
