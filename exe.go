@@ -3929,4 +3929,3 @@ func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
 	log.Printf("SSH setup completed for box %d", boxID)
 	return nil
 }
-
