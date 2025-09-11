@@ -81,6 +81,8 @@ function App() {
     );
   }
 
+  const currentConversation = conversations.find(conv => conv.conversation_id === currentConversationId);
+
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 flex relative">
       {/* Conversations drawer */}
@@ -99,6 +101,8 @@ function App() {
           <ChatInterface
             conversationId={currentConversationId}
             onOpenDrawer={() => setDrawerOpen(true)}
+            onNewConversation={createNewConversation}
+            currentConversation={currentConversation}
           />
         ) : (
           <div className="h-full flex items-center justify-center">

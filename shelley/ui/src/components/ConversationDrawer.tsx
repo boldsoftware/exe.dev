@@ -39,8 +39,8 @@ function ConversationDrawer({
     if (conversation.slug) {
       return conversation.slug;
     }
-    // Truncate conversation ID for preview
-    return `${conversation.conversation_id.substring(0, 8)}...`;
+    // Show full conversation ID
+    return conversation.conversation_id;
   };
 
   return (
@@ -103,7 +103,7 @@ function ConversationDrawer({
                     `}
                   >
                     <div className="flex flex-col space-y-1">
-                      <div className="font-medium text-sm truncate">
+                      <div className="font-medium text-sm break-all">
                         {getConversationPreview(conversation)}
                       </div>
                       <div className={`text-xs ${

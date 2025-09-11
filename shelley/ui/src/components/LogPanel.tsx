@@ -61,11 +61,11 @@ const LogPanel: React.FC = () => {
 
   const getLevelColor = (level: string) => {
     switch (level.toLowerCase()) {
-      case 'error': return 'text-red-600';
-      case 'warn': return 'text-yellow-600';
-      case 'info': return 'text-blue-600';
-      case 'debug': return 'text-gray-500';
-      default: return 'text-gray-700';
+      case 'error': return 'text-red-400';
+      case 'warn': return 'text-yellow-400';
+      case 'info': return 'text-blue-400';
+      case 'debug': return 'text-gray-400';
+      default: return 'text-gray-300';
     }
   };
 
@@ -81,20 +81,20 @@ const LogPanel: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-3 border-b border-gray-200 bg-gray-50">
+      <div className="p-3 border-b border-gray-600 bg-gray-800">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-800">Server Logs</h3>
+          <h3 className="text-sm font-semibold text-gray-200">Server Logs</h3>
           <div className={`w-2 h-2 rounded-full ${
-            connected ? 'bg-green-500' : 'bg-red-500'
+            connected ? 'bg-green-400' : 'bg-red-400'
           }`} title={connected ? 'Connected' : 'Disconnected'} />
         </div>
       </div>
       <div 
         ref={logContentRef}
-        className="flex-1 p-3 overflow-auto text-xs leading-relaxed font-mono bg-white"
+        className="flex-1 p-3 overflow-auto text-xs leading-relaxed font-mono bg-gray-900"
       >
         {logs.length === 0 ? (
-          <div className="text-gray-600">
+          <div className="text-gray-400">
             {connected ? 'No logs yet...' : 'Connecting to log stream...'}
           </div>
         ) : (
@@ -108,11 +108,11 @@ const LogPanel: React.FC = () => {
                 <span className={`${getLevelColor(log.level)} uppercase font-semibold mr-2 text-xs`}>
                   {log.level}
                 </span>
-                <span className="text-gray-800 mr-2">
+                <span className="text-gray-200 mr-2">
                   {log.message}
                 </span>
                 {fieldsStr && (
-                  <span className="text-gray-600 text-xs">
+                  <span className="text-gray-400 text-xs">
                     {fieldsStr}
                   </span>
                 )}

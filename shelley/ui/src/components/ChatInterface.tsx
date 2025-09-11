@@ -1,21 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, Model } from '../types';
+import { Message, Model, Conversation } from '../types';
 import { api } from '../services/api';
 import MessageComponent from './Message';
 import MessageInput from './MessageInput';
+import Modal from './Modal';
 
 interface ChatInterfaceProps {
   conversationId: string;
   onOpenDrawer: () => void;
+  onNewConversation: () => void;
+  currentConversation?: Conversation;
 }
 
-function ChatInterface({ conversationId, onOpenDrawer }: ChatInterfaceProps) {
+function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, currentConversation }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('qwen3-coder-fireworks');
+  const [showConfigModal, setShowConfigModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -121,6 +125,15 @@ function ChatInterface({ conversationId, onOpenDrawer }: ChatInterfaceProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const getDisplayTitle = () => {
+    if (currentConversation?.slug) {
+      // Truncate if too long (more than ~30 characters)
+      const slug = currentConversation.slug;
+      return slug.length > 30 ? `${slug.substring(0, 27)}...` : slug;
+    }
+    return 'Shelley';
+  };
+
   const renderMessages = () => {
     if (messages.length === 0) {
       return (
@@ -204,23 +217,35 @@ function ChatInterface({ conversationId, onOpenDrawer }: ChatInterfaceProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <h1 className="text-lg font-semibold">Shelley</h1>
+          
+          <h1 className="text-lg font-semibold truncate" title={currentConversation?.slug || 'Shelley'}>
+            {getDisplayTitle()}
+          </h1>
         </div>
         
-        {/* Model selector */}
         <div className="flex items-center space-x-2">
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="text-sm bg-gray-100 dark:bg-gray-700 border dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
-            disabled={sending}
+          {/* Gear icon for settings */}
+          <button
+            onClick={() => setShowConfigModal(true)}
+            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            aria-label="Settings"
           >
-            {models.map((model) => (
-              <option key={model.id} value={model.id} disabled={!model.ready}>
-                {model.id} {!model.ready ? '(not ready)' : ''}
-              </option>
-            ))}
-          </select>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          
+          {/* Green + icon in circle for new conversation */}
+          <button
+            onClick={onNewConversation}
+            className="w-8 h-8 bg-green-600 hover:bg-green-700 text-white rounded-full flex items-center justify-center transition-colors"
+            aria-label="New conversation"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -257,6 +282,34 @@ function ChatInterface({ conversationId, onOpenDrawer }: ChatInterfaceProps) {
 
       {/* Message input */}
       <MessageInput onSend={sendMessage} disabled={sending || loading} />
+      
+      {/* Configuration Modal */}
+      <Modal
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        title="Configuration"
+      >
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="model-select" className="block text-sm font-medium mb-2">
+              Model
+            </label>
+            <select
+              id="model-select"
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full bg-gray-100 dark:bg-gray-700 border dark:border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={sending}
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.id} disabled={!model.ready}>
+                  {model.id} {!model.ready ? '(not ready)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

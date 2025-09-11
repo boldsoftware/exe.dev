@@ -135,8 +135,8 @@ function Message({ message, toolUseMap }: MessageProps) {
         
         // Get tool information from the toolUseMap or fallback to content
         const toolInfo = toolUseId && toolUseMap && toolUseMap[toolUseId];
-        const toolName = toolInfo?.name || content.ToolName || 'Unknown Tool';
-        const toolInput = toolInfo?.input;
+        const toolName = (toolInfo && typeof toolInfo === 'object' && toolInfo.name) || content.ToolName || 'Unknown Tool';
+        const toolInput = (toolInfo && typeof toolInfo === 'object') ? toolInfo.input : undefined;
         
         return (
           <details className={`border rounded-lg my-2 ${
