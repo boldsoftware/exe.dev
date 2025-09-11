@@ -950,7 +950,6 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 	}
 	pty := makePty(t, "ssh "+username+"localhost")
 	sshCmd := exec.CommandContext(t.Context(), "ssh",
-		"-tt",
 		"-F", "/dev/null",
 		"-p", fmt.Sprint(Env.sshPort()),
 		"-o", "IdentityFile="+keyFile,
