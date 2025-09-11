@@ -79,3 +79,32 @@ SELECT id, alloc_id, name, status, image, container_id,
        last_started_at, routes
 FROM boxes
 WHERE name = ? AND alloc_id = ?;
+
+-- name: GetBoxWithSSHByNameAndAlloc :one
+SELECT id, alloc_id, name, status, image, container_id,
+       created_by_user_id, created_at, updated_at,
+       last_started_at, routes,
+       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+       ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
+FROM boxes
+WHERE name = ? AND alloc_id = ?;
+
+-- name: DeleteBox :exec
+DELETE FROM boxes WHERE id = ?;
+
+-- name: UpdateBoxStatusRunning :exec
+UPDATE boxes SET status = 'running', last_started_at = CURRENT_TIMESTAMP
+WHERE name = ?;
+
+-- name: UpdateBoxStatusStopped :exec
+UPDATE boxes SET status = 'stopped'
+WHERE name = ?;
+
+-- name: GetBoxIDAndAllocByName :one
+SELECT id, alloc_id FROM boxes WHERE name = ?;
+
+-- name: UpdateBoxRoutes :exec
+UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?;
+
+-- name: UpdateBoxStatusRunningByID :exec
+UPDATE boxes SET status = 'running', updated_at = ? WHERE id = ?;

@@ -27,6 +27,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.allocExistsForUserStmt, err = db.PrepareContext(ctx, allocExistsForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query AllocExistsForUser: %w", err)
 	}
+	if q.checkTagResolutionExistsStmt, err = db.PrepareContext(ctx, checkTagResolutionExists); err != nil {
+		return nil, fmt.Errorf("error preparing query CheckTagResolutionExists: %w", err)
+	}
+	if q.clearAllocBillingInfoStmt, err = db.PrepareContext(ctx, clearAllocBillingInfo); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllocBillingInfo: %w", err)
+	}
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
 	}
@@ -36,6 +42,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAuthCookiesByUserIDStmt, err = db.PrepareContext(ctx, deleteAuthCookiesByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookiesByUserID: %w", err)
 	}
+	if q.deleteBoxStmt, err = db.PrepareContext(ctx, deleteBox); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBox: %w", err)
+	}
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
@@ -44,6 +53,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAllUserEventsStmt, err = db.PrepareContext(ctx, getAllUserEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllUserEvents: %w", err)
+	}
+	if q.getAllocBillingInfoStmt, err = db.PrepareContext(ctx, getAllocBillingInfo); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllocBillingInfo: %w", err)
 	}
 	if q.getAllocByUserIDStmt, err = db.PrepareContext(ctx, getAllocByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllocByUserID: %w", err)
@@ -66,8 +78,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxDetailsForSetupStmt, err = db.PrepareContext(ctx, getBoxDetailsForSetup); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxDetailsForSetup: %w", err)
 	}
+	if q.getBoxIDAndAllocByNameStmt, err = db.PrepareContext(ctx, getBoxIDAndAllocByName); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxIDAndAllocByName: %w", err)
+	}
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
+	}
+	if q.getBoxWithSSHByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxWithSSHByNameAndAlloc); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxWithSSHByNameAndAlloc: %w", err)
 	}
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
@@ -99,6 +117,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getFirstUserIDStmt, err = db.PrepareContext(ctx, getFirstUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetFirstUserID: %w", err)
 	}
+	if q.getImageMetadataStmt, err = db.PrepareContext(ctx, getImageMetadata); err != nil {
+		return nil, fmt.Errorf("error preparing query GetImageMetadata: %w", err)
+	}
 	if q.getPendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, getPendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyByToken: %w", err)
 	}
@@ -113,6 +134,18 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getSSHKeysForUserStmt, err = db.PrepareContext(ctx, getSSHKeysForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUser: %w", err)
+	}
+	if q.getSSHKeysForUserByEmailStmt, err = db.PrepareContext(ctx, getSSHKeysForUserByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSSHKeysForUserByEmail: %w", err)
+	}
+	if q.getTagResolutionStmt, err = db.PrepareContext(ctx, getTagResolution); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTagResolution: %w", err)
+	}
+	if q.getTagResolutionsByAgeStmt, err = db.PrepareContext(ctx, getTagResolutionsByAge); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTagResolutionsByAge: %w", err)
+	}
+	if q.getTagsNeedingRefreshStmt, err = db.PrepareContext(ctx, getTagsNeedingRefresh); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTagsNeedingRefresh: %w", err)
 	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
@@ -132,6 +165,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserWithSSHKeyStmt, err = db.PrepareContext(ctx, getUserWithSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithSSHKey: %w", err)
 	}
+	if q.incrementSeenOnHostsStmt, err = db.PrepareContext(ctx, incrementSeenOnHosts); err != nil {
+		return nil, fmt.Errorf("error preparing query IncrementSeenOnHosts: %w", err)
+	}
 	if q.insertAllocStmt, err = db.PrepareContext(ctx, insertAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAlloc: %w", err)
 	}
@@ -141,11 +177,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertBoxStmt, err = db.PrepareContext(ctx, insertBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertBox: %w", err)
 	}
+	if q.insertDeletedBoxStmt, err = db.PrepareContext(ctx, insertDeletedBox); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertDeletedBox: %w", err)
+	}
 	if q.insertEmailVerificationStmt, err = db.PrepareContext(ctx, insertEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertEmailVerification: %w", err)
 	}
 	if q.insertOrReplaceEmailVerificationStmt, err = db.PrepareContext(ctx, insertOrReplaceEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertOrReplaceEmailVerification: %w", err)
+	}
+	if q.insertPendingSSHKeyStmt, err = db.PrepareContext(ctx, insertPendingSSHKey); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertPendingSSHKey: %w", err)
 	}
 	if q.insertSSHKeyStmt, err = db.PrepareContext(ctx, insertSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKey: %w", err)
@@ -153,11 +195,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertSSHKeyForEmailUserStmt, err = db.PrepareContext(ctx, insertSSHKeyForEmailUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKeyForEmailUser: %w", err)
 	}
+	if q.insertTagResolutionHistoryStmt, err = db.PrepareContext(ctx, insertTagResolutionHistory); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTagResolutionHistory: %w", err)
+	}
+	if q.insertTagResolutionWithMetadataStmt, err = db.PrepareContext(ctx, insertTagResolutionWithMetadata); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertTagResolutionWithMetadata: %w", err)
+	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
 	}
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
+	}
+	if q.updateAllocBillingStmt, err = db.PrepareContext(ctx, updateAllocBilling); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateAllocBilling: %w", err)
+	}
+	if q.updateAllocBillingEmailStmt, err = db.PrepareContext(ctx, updateAllocBillingEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateAllocBillingEmail: %w", err)
 	}
 	if q.updateAuthCookieLastUsedStmt, err = db.PrepareContext(ctx, updateAuthCookieLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthCookieLastUsed: %w", err)
@@ -171,14 +225,44 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxContainerIDAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerIDAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxContainerIDAndStatus: %w", err)
 	}
+	if q.updateBoxRoutesStmt, err = db.PrepareContext(ctx, updateBoxRoutes); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxRoutes: %w", err)
+	}
 	if q.updateBoxSSHDetailsStmt, err = db.PrepareContext(ctx, updateBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxSSHDetails: %w", err)
 	}
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
 	}
+	if q.updateBoxStatusRunningStmt, err = db.PrepareContext(ctx, updateBoxStatusRunning); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxStatusRunning: %w", err)
+	}
+	if q.updateBoxStatusRunningByIDStmt, err = db.PrepareContext(ctx, updateBoxStatusRunningByID); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxStatusRunningByID: %w", err)
+	}
+	if q.updateBoxStatusStoppedStmt, err = db.PrepareContext(ctx, updateBoxStatusStopped); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxStatusStopped: %w", err)
+	}
+	if q.updateTagResolutionCheckedStmt, err = db.PrepareContext(ctx, updateTagResolutionChecked); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTagResolutionChecked: %w", err)
+	}
+	if q.updateTagResolutionDigestStmt, err = db.PrepareContext(ctx, updateTagResolutionDigest); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTagResolutionDigest: %w", err)
+	}
+	if q.updateTagResolutionMetadataStmt, err = db.PrepareContext(ctx, updateTagResolutionMetadata); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTagResolutionMetadata: %w", err)
+	}
+	if q.updateTagResolutionTTLStmt, err = db.PrepareContext(ctx, updateTagResolutionTTL); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTagResolutionTTL: %w", err)
+	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
+	}
+	if q.upsertSSHKeyForUserStmt, err = db.PrepareContext(ctx, upsertSSHKeyForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertSSHKeyForUser: %w", err)
+	}
+	if q.upsertTagResolutionStmt, err = db.PrepareContext(ctx, upsertTagResolution); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertTagResolution: %w", err)
 	}
 	return &q, nil
 }
@@ -188,6 +272,16 @@ func (q *Queries) Close() error {
 	if q.allocExistsForUserStmt != nil {
 		if cerr := q.allocExistsForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing allocExistsForUserStmt: %w", cerr)
+		}
+	}
+	if q.checkTagResolutionExistsStmt != nil {
+		if cerr := q.checkTagResolutionExistsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing checkTagResolutionExistsStmt: %w", cerr)
+		}
+	}
+	if q.clearAllocBillingInfoStmt != nil {
+		if cerr := q.clearAllocBillingInfoStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllocBillingInfoStmt: %w", cerr)
 		}
 	}
 	if q.deleteAuthCookieStmt != nil {
@@ -205,6 +299,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteAuthCookiesByUserIDStmt: %w", cerr)
 		}
 	}
+	if q.deleteBoxStmt != nil {
+		if cerr := q.deleteBoxStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxStmt: %w", cerr)
+		}
+	}
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
@@ -218,6 +317,11 @@ func (q *Queries) Close() error {
 	if q.getAllUserEventsStmt != nil {
 		if cerr := q.getAllUserEventsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAllUserEventsStmt: %w", cerr)
+		}
+	}
+	if q.getAllocBillingInfoStmt != nil {
+		if cerr := q.getAllocBillingInfoStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllocBillingInfoStmt: %w", cerr)
 		}
 	}
 	if q.getAllocByUserIDStmt != nil {
@@ -255,9 +359,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxDetailsForSetupStmt: %w", cerr)
 		}
 	}
+	if q.getBoxIDAndAllocByNameStmt != nil {
+		if cerr := q.getBoxIDAndAllocByNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxIDAndAllocByNameStmt: %w", cerr)
+		}
+	}
 	if q.getBoxSSHDetailsStmt != nil {
 		if cerr := q.getBoxSSHDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
+		}
+	}
+	if q.getBoxWithSSHByNameAndAllocStmt != nil {
+		if cerr := q.getBoxWithSSHByNameAndAllocStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxWithSSHByNameAndAllocStmt: %w", cerr)
 		}
 	}
 	if q.getBoxesByHostStmt != nil {
@@ -310,6 +424,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getFirstUserIDStmt: %w", cerr)
 		}
 	}
+	if q.getImageMetadataStmt != nil {
+		if cerr := q.getImageMetadataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getImageMetadataStmt: %w", cerr)
+		}
+	}
 	if q.getPendingSSHKeyByTokenStmt != nil {
 		if cerr := q.getPendingSSHKeyByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPendingSSHKeyByTokenStmt: %w", cerr)
@@ -333,6 +452,26 @@ func (q *Queries) Close() error {
 	if q.getSSHKeysForUserStmt != nil {
 		if cerr := q.getSSHKeysForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserStmt: %w", cerr)
+		}
+	}
+	if q.getSSHKeysForUserByEmailStmt != nil {
+		if cerr := q.getSSHKeysForUserByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSSHKeysForUserByEmailStmt: %w", cerr)
+		}
+	}
+	if q.getTagResolutionStmt != nil {
+		if cerr := q.getTagResolutionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTagResolutionStmt: %w", cerr)
+		}
+	}
+	if q.getTagResolutionsByAgeStmt != nil {
+		if cerr := q.getTagResolutionsByAgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTagResolutionsByAgeStmt: %w", cerr)
+		}
+	}
+	if q.getTagsNeedingRefreshStmt != nil {
+		if cerr := q.getTagsNeedingRefreshStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTagsNeedingRefreshStmt: %w", cerr)
 		}
 	}
 	if q.getUserByEmailStmt != nil {
@@ -365,6 +504,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserWithSSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.incrementSeenOnHostsStmt != nil {
+		if cerr := q.incrementSeenOnHostsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing incrementSeenOnHostsStmt: %w", cerr)
+		}
+	}
 	if q.insertAllocStmt != nil {
 		if cerr := q.insertAllocStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertAllocStmt: %w", cerr)
@@ -380,6 +524,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertBoxStmt: %w", cerr)
 		}
 	}
+	if q.insertDeletedBoxStmt != nil {
+		if cerr := q.insertDeletedBoxStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertDeletedBoxStmt: %w", cerr)
+		}
+	}
 	if q.insertEmailVerificationStmt != nil {
 		if cerr := q.insertEmailVerificationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertEmailVerificationStmt: %w", cerr)
@@ -388,6 +537,11 @@ func (q *Queries) Close() error {
 	if q.insertOrReplaceEmailVerificationStmt != nil {
 		if cerr := q.insertOrReplaceEmailVerificationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertOrReplaceEmailVerificationStmt: %w", cerr)
+		}
+	}
+	if q.insertPendingSSHKeyStmt != nil {
+		if cerr := q.insertPendingSSHKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertPendingSSHKeyStmt: %w", cerr)
 		}
 	}
 	if q.insertSSHKeyStmt != nil {
@@ -400,6 +554,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertSSHKeyForEmailUserStmt: %w", cerr)
 		}
 	}
+	if q.insertTagResolutionHistoryStmt != nil {
+		if cerr := q.insertTagResolutionHistoryStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTagResolutionHistoryStmt: %w", cerr)
+		}
+	}
+	if q.insertTagResolutionWithMetadataStmt != nil {
+		if cerr := q.insertTagResolutionWithMetadataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertTagResolutionWithMetadataStmt: %w", cerr)
+		}
+	}
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
@@ -408,6 +572,16 @@ func (q *Queries) Close() error {
 	if q.recordUserEventStmt != nil {
 		if cerr := q.recordUserEventStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
+		}
+	}
+	if q.updateAllocBillingStmt != nil {
+		if cerr := q.updateAllocBillingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateAllocBillingStmt: %w", cerr)
+		}
+	}
+	if q.updateAllocBillingEmailStmt != nil {
+		if cerr := q.updateAllocBillingEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateAllocBillingEmailStmt: %w", cerr)
 		}
 	}
 	if q.updateAuthCookieLastUsedStmt != nil {
@@ -430,6 +604,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxContainerIDAndStatusStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxRoutesStmt != nil {
+		if cerr := q.updateBoxRoutesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxRoutesStmt: %w", cerr)
+		}
+	}
 	if q.updateBoxSSHDetailsStmt != nil {
 		if cerr := q.updateBoxSSHDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxSSHDetailsStmt: %w", cerr)
@@ -440,9 +619,54 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
 		}
 	}
+	if q.updateBoxStatusRunningStmt != nil {
+		if cerr := q.updateBoxStatusRunningStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxStatusRunningStmt: %w", cerr)
+		}
+	}
+	if q.updateBoxStatusRunningByIDStmt != nil {
+		if cerr := q.updateBoxStatusRunningByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxStatusRunningByIDStmt: %w", cerr)
+		}
+	}
+	if q.updateBoxStatusStoppedStmt != nil {
+		if cerr := q.updateBoxStatusStoppedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxStatusStoppedStmt: %w", cerr)
+		}
+	}
+	if q.updateTagResolutionCheckedStmt != nil {
+		if cerr := q.updateTagResolutionCheckedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTagResolutionCheckedStmt: %w", cerr)
+		}
+	}
+	if q.updateTagResolutionDigestStmt != nil {
+		if cerr := q.updateTagResolutionDigestStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTagResolutionDigestStmt: %w", cerr)
+		}
+	}
+	if q.updateTagResolutionMetadataStmt != nil {
+		if cerr := q.updateTagResolutionMetadataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTagResolutionMetadataStmt: %w", cerr)
+		}
+	}
+	if q.updateTagResolutionTTLStmt != nil {
+		if cerr := q.updateTagResolutionTTLStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTagResolutionTTLStmt: %w", cerr)
+		}
+	}
 	if q.upsertSSHHostKeyStmt != nil {
 		if cerr := q.upsertSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertSSHHostKeyStmt: %w", cerr)
+		}
+	}
+	if q.upsertSSHKeyForUserStmt != nil {
+		if cerr := q.upsertSSHKeyForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertSSHKeyForUserStmt: %w", cerr)
+		}
+	}
+	if q.upsertTagResolutionStmt != nil {
+		if cerr := q.upsertTagResolutionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertTagResolutionStmt: %w", cerr)
 		}
 	}
 	return err
@@ -485,12 +709,16 @@ type Queries struct {
 	db                                     DBTX
 	tx                                     *sql.Tx
 	allocExistsForUserStmt                 *sql.Stmt
+	checkTagResolutionExistsStmt           *sql.Stmt
+	clearAllocBillingInfoStmt              *sql.Stmt
 	deleteAuthCookieStmt                   *sql.Stmt
 	deleteAuthCookieByValueStmt            *sql.Stmt
 	deleteAuthCookiesByUserIDStmt          *sql.Stmt
+	deleteBoxStmt                          *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	getAllUserEventsStmt                   *sql.Stmt
+	getAllocBillingInfoStmt                *sql.Stmt
 	getAllocByUserIDStmt                   *sql.Stmt
 	getAllocsByHostStmt                    *sql.Stmt
 	getAuthCookieInfoStmt                  *sql.Stmt
@@ -498,7 +726,9 @@ type Queries struct {
 	getBoxByNameStmt                       *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
+	getBoxIDAndAllocByNameStmt             *sql.Stmt
 	getBoxSSHDetailsStmt                   *sql.Stmt
+	getBoxWithSSHByNameAndAllocStmt        *sql.Stmt
 	getBoxesByHostStmt                     *sql.Stmt
 	getBoxesForAllocStmt                   *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
@@ -509,33 +739,55 @@ type Queries struct {
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
 	getFirstUserIDStmt                     *sql.Stmt
+	getImageMetadataStmt                   *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
 	getSSHHostKeyStmt                      *sql.Stmt
 	getSSHHostPublicKeyStmt                *sql.Stmt
 	getSSHKeysForUserStmt                  *sql.Stmt
+	getSSHKeysForUserByEmailStmt           *sql.Stmt
+	getTagResolutionStmt                   *sql.Stmt
+	getTagResolutionsByAgeStmt             *sql.Stmt
+	getTagsNeedingRefreshStmt              *sql.Stmt
 	getUserByEmailStmt                     *sql.Stmt
 	getUserEventCountStmt                  *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
 	getUserWithSSHKeyStmt                  *sql.Stmt
+	incrementSeenOnHostsStmt               *sql.Stmt
 	insertAllocStmt                        *sql.Stmt
 	insertAuthCookieStmt                   *sql.Stmt
 	insertBoxStmt                          *sql.Stmt
+	insertDeletedBoxStmt                   *sql.Stmt
 	insertEmailVerificationStmt            *sql.Stmt
 	insertOrReplaceEmailVerificationStmt   *sql.Stmt
+	insertPendingSSHKeyStmt                *sql.Stmt
 	insertSSHKeyStmt                       *sql.Stmt
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
+	insertTagResolutionHistoryStmt         *sql.Stmt
+	insertTagResolutionWithMetadataStmt    *sql.Stmt
 	insertUserStmt                         *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
+	updateAllocBillingStmt                 *sql.Stmt
+	updateAllocBillingEmailStmt            *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
 	updateAuthTokenUsedAtStmt              *sql.Stmt
 	updateBoxContainerAndStatusStmt        *sql.Stmt
 	updateBoxContainerIDAndStatusStmt      *sql.Stmt
+	updateBoxRoutesStmt                    *sql.Stmt
 	updateBoxSSHDetailsStmt                *sql.Stmt
 	updateBoxStatusStmt                    *sql.Stmt
+	updateBoxStatusRunningStmt             *sql.Stmt
+	updateBoxStatusRunningByIDStmt         *sql.Stmt
+	updateBoxStatusStoppedStmt             *sql.Stmt
+	updateTagResolutionCheckedStmt         *sql.Stmt
+	updateTagResolutionDigestStmt          *sql.Stmt
+	updateTagResolutionMetadataStmt        *sql.Stmt
+	updateTagResolutionTTLStmt             *sql.Stmt
 	upsertSSHHostKeyStmt                   *sql.Stmt
+	upsertSSHKeyForUserStmt                *sql.Stmt
+	upsertTagResolutionStmt                *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -543,12 +795,16 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		db:                                     tx,
 		tx:                                     tx,
 		allocExistsForUserStmt:                 q.allocExistsForUserStmt,
+		checkTagResolutionExistsStmt:           q.checkTagResolutionExistsStmt,
+		clearAllocBillingInfoStmt:              q.clearAllocBillingInfoStmt,
 		deleteAuthCookieStmt:                   q.deleteAuthCookieStmt,
 		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
 		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
+		deleteBoxStmt:                          q.deleteBoxStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
+		getAllocBillingInfoStmt:                q.getAllocBillingInfoStmt,
 		getAllocByUserIDStmt:                   q.getAllocByUserIDStmt,
 		getAllocsByHostStmt:                    q.getAllocsByHostStmt,
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
@@ -556,7 +812,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByNameStmt:                       q.getBoxByNameStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
+		getBoxIDAndAllocByNameStmt:             q.getBoxIDAndAllocByNameStmt,
 		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
+		getBoxWithSSHByNameAndAllocStmt:        q.getBoxWithSSHByNameAndAllocStmt,
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
 		getBoxesForAllocStmt:                   q.getBoxesForAllocStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
@@ -567,32 +825,54 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
 		getFirstUserIDStmt:                     q.getFirstUserIDStmt,
+		getImageMetadataStmt:                   q.getImageMetadataStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
 		getSSHHostPublicKeyStmt:                q.getSSHHostPublicKeyStmt,
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
+		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
+		getTagResolutionStmt:                   q.getTagResolutionStmt,
+		getTagResolutionsByAgeStmt:             q.getTagResolutionsByAgeStmt,
+		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
 		getUserByEmailStmt:                     q.getUserByEmailStmt,
 		getUserEventCountStmt:                  q.getUserEventCountStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
 		getUserWithSSHKeyStmt:                  q.getUserWithSSHKeyStmt,
+		incrementSeenOnHostsStmt:               q.incrementSeenOnHostsStmt,
 		insertAllocStmt:                        q.insertAllocStmt,
 		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
 		insertBoxStmt:                          q.insertBoxStmt,
+		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
 		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
+		insertPendingSSHKeyStmt:                q.insertPendingSSHKeyStmt,
 		insertSSHKeyStmt:                       q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
+		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
+		insertTagResolutionWithMetadataStmt:    q.insertTagResolutionWithMetadataStmt,
 		insertUserStmt:                         q.insertUserStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,
+		updateAllocBillingStmt:                 q.updateAllocBillingStmt,
+		updateAllocBillingEmailStmt:            q.updateAllocBillingEmailStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:              q.updateAuthTokenUsedAtStmt,
 		updateBoxContainerAndStatusStmt:        q.updateBoxContainerAndStatusStmt,
 		updateBoxContainerIDAndStatusStmt:      q.updateBoxContainerIDAndStatusStmt,
+		updateBoxRoutesStmt:                    q.updateBoxRoutesStmt,
 		updateBoxSSHDetailsStmt:                q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                    q.updateBoxStatusStmt,
+		updateBoxStatusRunningStmt:             q.updateBoxStatusRunningStmt,
+		updateBoxStatusRunningByIDStmt:         q.updateBoxStatusRunningByIDStmt,
+		updateBoxStatusStoppedStmt:             q.updateBoxStatusStoppedStmt,
+		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
+		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
+		updateTagResolutionMetadataStmt:        q.updateTagResolutionMetadataStmt,
+		updateTagResolutionTTLStmt:             q.updateTagResolutionTTLStmt,
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
+		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
+		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,
 	}
 }

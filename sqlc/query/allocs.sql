@@ -18,3 +18,16 @@ LIMIT 1;
 
 -- name: GetCtrhostByAllocID :one
 SELECT ctrhost FROM allocs WHERE alloc_id = ?;
+
+-- name: GetAllocBillingInfo :one
+SELECT billing_email, stripe_customer_id
+FROM allocs WHERE alloc_id = ?;
+
+-- name: UpdateAllocBillingEmail :exec
+UPDATE allocs SET billing_email = ? WHERE alloc_id = ?;
+
+-- name: ClearAllocBillingInfo :exec
+UPDATE allocs SET stripe_customer_id = NULL, billing_email = NULL WHERE alloc_id = ?;
+
+-- name: UpdateAllocBilling :exec
+UPDATE allocs SET stripe_customer_id = ?, billing_email = ? WHERE alloc_id = ?;

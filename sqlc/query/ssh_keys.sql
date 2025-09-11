@@ -26,3 +26,11 @@ SELECT u.user_id, u.email, u.created_at
 FROM users u
 JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?;
+
+-- name: UpsertSSHKeyForUser :exec
+INSERT INTO ssh_keys (user_id, public_key)
+VALUES (?, ?)
+ON CONFLICT(public_key) DO UPDATE SET user_id = VALUES(user_id);
+
+-- name: GetSSHKeysForUserByEmail :many
+SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key;

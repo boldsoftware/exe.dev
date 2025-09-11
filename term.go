@@ -405,23 +405,19 @@ func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) 
 		return nil, fmt.Errorf("user has no allocation")
 	}
 
-	// Get the box using the same pattern as existing code
+	// Get the box using sqlc
 	var box exedb.Box
 	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-			SELECT id, alloc_id, name, status, image, container_id,
-			       created_by_user_id, created_at, updated_at,
-			       last_started_at, routes,
-			       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			       ssh_host_certificate, ssh_client_private_key, ssh_port
-			FROM boxes
-			WHERE name = ? AND alloc_id = ?`, boxName, alloc.AllocID).Scan(
-			&box.ID, &box.AllocID, &box.Name, &box.Status,
-			&box.Image, &box.ContainerID, &box.CreatedByUserID,
-			&box.CreatedAt, &box.UpdatedAt, &box.LastStartedAt,
-			&box.Routes,
-			&box.SSHServerIdentityKey, &box.SSHAuthorizedKeys, &box.SSHCAPublicKey,
-			&box.SSHHostCertificate, &box.SSHClientPrivateKey, &box.SSHPort)
+		queries := exedb.New(rx.Conn())
+		result, err := queries.GetBoxWithSSHByNameAndAlloc(ctx, exedb.GetBoxWithSSHByNameAndAllocParams{
+			Name:    boxName,
+			AllocID: alloc.AllocID,
+		})
+		if err != nil {
+			return err
+		}
+		box = result
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -451,9 +447,12 @@ func (s *Server) startBox(ctx context.Context, box *exedb.Box) error {
 
 	// Update box status in database
 	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec("UPDATE boxes SET status = 'running', updated_at = ? WHERE id = ?",
-			time.Now(), box.ID)
-		return err
+		queries := exedb.New(tx.Conn())
+		now := time.Now()
+		return queries.UpdateBoxStatusRunningByID(ctx, exedb.UpdateBoxStatusRunningByIDParams{
+			UpdatedAt: &now,
+			ID:        box.ID,
+		})
 	})
 	return err
 }

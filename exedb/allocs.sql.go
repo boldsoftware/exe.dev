@@ -20,6 +20,32 @@ func (q *Queries) AllocExistsForUser(ctx context.Context, userID string) (int64,
 	return column_1, err
 }
 
+const clearAllocBillingInfo = `-- name: ClearAllocBillingInfo :exec
+UPDATE allocs SET stripe_customer_id = NULL, billing_email = NULL WHERE alloc_id = ?
+`
+
+func (q *Queries) ClearAllocBillingInfo(ctx context.Context, allocID string) error {
+	_, err := q.exec(ctx, q.clearAllocBillingInfoStmt, clearAllocBillingInfo, allocID)
+	return err
+}
+
+const getAllocBillingInfo = `-- name: GetAllocBillingInfo :one
+SELECT billing_email, stripe_customer_id
+FROM allocs WHERE alloc_id = ?
+`
+
+type GetAllocBillingInfoRow struct {
+	BillingEmail     *string `db:"billing_email" json:"billing_email"`
+	StripeCustomerID *string `db:"stripe_customer_id" json:"stripe_customer_id"`
+}
+
+func (q *Queries) GetAllocBillingInfo(ctx context.Context, allocID string) (GetAllocBillingInfoRow, error) {
+	row := q.queryRow(ctx, q.getAllocBillingInfoStmt, getAllocBillingInfo, allocID)
+	var i GetAllocBillingInfoRow
+	err := row.Scan(&i.BillingEmail, &i.StripeCustomerID)
+	return i, err
+}
+
 const getAllocByUserID = `-- name: GetAllocByUserID :one
 SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
 FROM allocs
@@ -115,5 +141,34 @@ func (q *Queries) InsertAlloc(ctx context.Context, arg InsertAllocParams) error 
 		arg.Ctrhost,
 		arg.BillingEmail,
 	)
+	return err
+}
+
+const updateAllocBilling = `-- name: UpdateAllocBilling :exec
+UPDATE allocs SET stripe_customer_id = ?, billing_email = ? WHERE alloc_id = ?
+`
+
+type UpdateAllocBillingParams struct {
+	StripeCustomerID *string `db:"stripe_customer_id" json:"stripe_customer_id"`
+	BillingEmail     *string `db:"billing_email" json:"billing_email"`
+	AllocID          string  `db:"alloc_id" json:"alloc_id"`
+}
+
+func (q *Queries) UpdateAllocBilling(ctx context.Context, arg UpdateAllocBillingParams) error {
+	_, err := q.exec(ctx, q.updateAllocBillingStmt, updateAllocBilling, arg.StripeCustomerID, arg.BillingEmail, arg.AllocID)
+	return err
+}
+
+const updateAllocBillingEmail = `-- name: UpdateAllocBillingEmail :exec
+UPDATE allocs SET billing_email = ? WHERE alloc_id = ?
+`
+
+type UpdateAllocBillingEmailParams struct {
+	BillingEmail *string `db:"billing_email" json:"billing_email"`
+	AllocID      string  `db:"alloc_id" json:"alloc_id"`
+}
+
+func (q *Queries) UpdateAllocBillingEmail(ctx context.Context, arg UpdateAllocBillingEmailParams) error {
+	_, err := q.exec(ctx, q.updateAllocBillingEmailStmt, updateAllocBillingEmail, arg.BillingEmail, arg.AllocID)
 	return err
 }

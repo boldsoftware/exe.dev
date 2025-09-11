@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+const deleteBox = `-- name: DeleteBox :exec
+DELETE FROM boxes WHERE id = ?
+`
+
+func (q *Queries) DeleteBox(ctx context.Context, id int) error {
+	_, err := q.exec(ctx, q.deleteBoxStmt, deleteBox, id)
+	return err
+}
+
 const getBoxByName = `-- name: GetBoxByName :one
 SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
        ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
@@ -113,6 +122,22 @@ func (q *Queries) GetBoxDetailsForSetup(ctx context.Context, id int) (GetBoxDeta
 	return i, err
 }
 
+const getBoxIDAndAllocByName = `-- name: GetBoxIDAndAllocByName :one
+SELECT id, alloc_id FROM boxes WHERE name = ?
+`
+
+type GetBoxIDAndAllocByNameRow struct {
+	ID      int    `db:"id" json:"id"`
+	AllocID string `db:"alloc_id" json:"alloc_id"`
+}
+
+func (q *Queries) GetBoxIDAndAllocByName(ctx context.Context, name string) (GetBoxIDAndAllocByNameRow, error) {
+	row := q.queryRow(ctx, q.getBoxIDAndAllocByNameStmt, getBoxIDAndAllocByName, name)
+	var i GetBoxIDAndAllocByNameRow
+	err := row.Scan(&i.ID, &i.AllocID)
+	return i, err
+}
+
 const getBoxSSHDetails = `-- name: GetBoxSSHDetails :one
 SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user
 FROM boxes m
@@ -136,6 +161,47 @@ func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetail
 		&i.SSHClientPrivateKey,
 		&i.SSHServerIdentityKey,
 		&i.Ctrhost,
+		&i.SSHUser,
+	)
+	return i, err
+}
+
+const getBoxWithSSHByNameAndAlloc = `-- name: GetBoxWithSSHByNameAndAlloc :one
+SELECT id, alloc_id, name, status, image, container_id,
+       created_by_user_id, created_at, updated_at,
+       last_started_at, routes,
+       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
+       ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
+FROM boxes
+WHERE name = ? AND alloc_id = ?
+`
+
+type GetBoxWithSSHByNameAndAllocParams struct {
+	Name    string `db:"name" json:"name"`
+	AllocID string `db:"alloc_id" json:"alloc_id"`
+}
+
+func (q *Queries) GetBoxWithSSHByNameAndAlloc(ctx context.Context, arg GetBoxWithSSHByNameAndAllocParams) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxWithSSHByNameAndAllocStmt, getBoxWithSSHByNameAndAlloc, arg.Name, arg.AllocID)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.AllocID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHCAPublicKey,
+		&i.SSHHostCertificate,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
 		&i.SSHUser,
 	)
 	return i, err
@@ -333,7 +399,7 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 }
 
 const updateBoxContainerAndStatus = `-- name: UpdateBoxContainerAndStatus :exec
-UPDATE boxes SET
+UPDATE boxes SET 
     container_id = ?,
     status = ?,
     ssh_server_identity_key = ?,
@@ -389,6 +455,21 @@ func (q *Queries) UpdateBoxContainerIDAndStatus(ctx context.Context, arg UpdateB
 	return err
 }
 
+const updateBoxRoutes = `-- name: UpdateBoxRoutes :exec
+UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?
+`
+
+type UpdateBoxRoutesParams struct {
+	Routes  *string `db:"routes" json:"routes"`
+	Name    string  `db:"name" json:"name"`
+	AllocID string  `db:"alloc_id" json:"alloc_id"`
+}
+
+func (q *Queries) UpdateBoxRoutes(ctx context.Context, arg UpdateBoxRoutesParams) error {
+	_, err := q.exec(ctx, q.updateBoxRoutesStmt, updateBoxRoutes, arg.Routes, arg.Name, arg.AllocID)
+	return err
+}
+
 const updateBoxSSHDetails = `-- name: UpdateBoxSSHDetails :exec
 UPDATE boxes SET
     ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
@@ -432,5 +513,39 @@ type UpdateBoxStatusParams struct {
 
 func (q *Queries) UpdateBoxStatus(ctx context.Context, arg UpdateBoxStatusParams) error {
 	_, err := q.exec(ctx, q.updateBoxStatusStmt, updateBoxStatus, arg.Status, arg.ID)
+	return err
+}
+
+const updateBoxStatusRunning = `-- name: UpdateBoxStatusRunning :exec
+UPDATE boxes SET status = 'running', last_started_at = CURRENT_TIMESTAMP
+WHERE name = ?
+`
+
+func (q *Queries) UpdateBoxStatusRunning(ctx context.Context, name string) error {
+	_, err := q.exec(ctx, q.updateBoxStatusRunningStmt, updateBoxStatusRunning, name)
+	return err
+}
+
+const updateBoxStatusRunningByID = `-- name: UpdateBoxStatusRunningByID :exec
+UPDATE boxes SET status = 'running', updated_at = ? WHERE id = ?
+`
+
+type UpdateBoxStatusRunningByIDParams struct {
+	UpdatedAt *time.Time `db:"updated_at" json:"updated_at"`
+	ID        int        `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxStatusRunningByID(ctx context.Context, arg UpdateBoxStatusRunningByIDParams) error {
+	_, err := q.exec(ctx, q.updateBoxStatusRunningByIDStmt, updateBoxStatusRunningByID, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateBoxStatusStopped = `-- name: UpdateBoxStatusStopped :exec
+UPDATE boxes SET status = 'stopped'
+WHERE name = ?
+`
+
+func (q *Queries) UpdateBoxStatusStopped(ctx context.Context, name string) error {
+	_, err := q.exec(ctx, q.updateBoxStatusStoppedStmt, updateBoxStatusStopped, name)
 	return err
 }

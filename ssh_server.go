@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"exe.dev/termfun"
 	"github.com/anmitsu/go-shlex"
@@ -607,12 +608,11 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 
 	// Store/update the SSH key as verified - use context.Background() to ensure cleanup completes even if client disconnects
 	storeErr := ss.server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key)
-			VALUES (?, ?)
-			ON CONFLICT(public_key) DO UPDATE SET user_id = ?`,
-			user.UserID, publicKey, user.UserID)
-		return err
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertSSHKeyForUser(ctx, exedb.UpsertSSHKeyForUserParams{
+			UserID:    user.UserID,
+			PublicKey: publicKey,
+		})
 	})
 	if storeErr != nil {
 		log.Printf("Error storing SSH key: %v", storeErr)
@@ -747,9 +747,10 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 // startEmailVerificationNew is a version of startEmailVerification that doesn't depend on sshbuf.Channel
 func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, email string) error {
 	// Check if this email already exists
-	var existingUserID string
 	err := ss.server.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow("SELECT user_id FROM users WHERE email = ?", email).Scan(&existingUserID)
+		queries := exedb.New(rx.Conn())
+		_, err := queries.GetUserIDByEmail(ctx, email)
+		return err
 	})
 
 	if err == nil {
@@ -762,11 +763,13 @@ func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, e
 		expires := time.Now().Add(15 * time.Minute)
 
 		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
-				VALUES (?, ?, ?, ?)`,
-				token, publicKey, email, expires)
-			return err
+			queries := exedb.New(tx.Conn())
+			return queries.InsertPendingSSHKey(ctx, exedb.InsertPendingSSHKeyParams{
+				Token:     token,
+				PublicKey: publicKey,
+				UserEmail: email,
+				ExpiresAt: expires,
+			})
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create verification token: %v", err)

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
@@ -84,9 +85,18 @@ func (bs *billingService) GetBillingInfo(ctx context.Context, allocID string) (*
 	var emailNull, customerIDNull sql.NullString
 
 	err := bs.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-			SELECT billing_email, stripe_customer_id
-			FROM allocs WHERE alloc_id = ?`, allocID).Scan(&emailNull, &customerIDNull)
+		queries := exedb.New(rx.Conn())
+		result, err := queries.GetAllocBillingInfo(ctx, allocID)
+		if err != nil {
+			return err
+		}
+		if result.BillingEmail != nil {
+			emailNull = sql.NullString{String: *result.BillingEmail, Valid: true}
+		}
+		if result.StripeCustomerID != nil {
+			customerIDNull = sql.NullString{String: *result.StripeCustomerID, Valid: true}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -123,8 +133,11 @@ func (bs *billingService) UpdatePaymentMethod(customerID, cardNumber, expMonth, 
 func (bs *billingService) UpdateBillingEmail(allocID, customerID, newEmail string) error {
 	// Update in database first
 	err := bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec("UPDATE allocs SET billing_email = ? WHERE alloc_id = ?", newEmail, allocID)
-		return err
+		queries := exedb.New(tx.Conn())
+		return queries.UpdateAllocBillingEmail(ctx, exedb.UpdateAllocBillingEmailParams{
+			BillingEmail: &newEmail,
+			AllocID:      allocID,
+		})
 	})
 	if err != nil {
 		return err
@@ -141,8 +154,8 @@ func (bs *billingService) UpdateBillingEmail(allocID, customerID, newEmail strin
 // DeleteBillingInfo removes billing information from database
 func (bs *billingService) DeleteBillingInfo(allocID string) error {
 	return bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec("UPDATE allocs SET stripe_customer_id = NULL, billing_email = NULL WHERE alloc_id = ?", allocID)
-		return err
+		queries := exedb.New(tx.Conn())
+		return queries.ClearAllocBillingInfo(ctx, allocID)
 	})
 }
 
@@ -269,10 +282,11 @@ func (bs *billingService) updateStripeCustomerEmail(customerID, email string) er
 
 func (bs *billingService) updateAllocBilling(allocID, customerID, billingEmail string) error {
 	return bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(
-			"UPDATE allocs SET stripe_customer_id = ?, billing_email = ? WHERE alloc_id = ?",
-			customerID, billingEmail, allocID,
-		)
-		return err
+		queries := exedb.New(tx.Conn())
+		return queries.UpdateAllocBilling(ctx, exedb.UpdateAllocBillingParams{
+			StripeCustomerID: &customerID,
+			BillingEmail:     &billingEmail,
+			AllocID:          allocID,
+		})
 	})
 }

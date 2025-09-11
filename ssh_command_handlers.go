@@ -476,7 +476,10 @@ done:
 		slog.Debug("createContainer error", "error", createErr, "publicKey", cc.PublicKey, "userID", user.UserID, "allocID", cc.Alloc.AllocID, "boxName", boxName, "image", image, "size", size, "guid", guid)
 
 		// Clean up the pre-created box entry since container creation failed
-		if err := ss.server.db.Exec(ctx, `DELETE FROM boxes WHERE id = ?`, boxID); err != nil {
+		if err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			queries := exedb.New(tx.Conn())
+			return queries.DeleteBox(ctx, boxID)
+		}); err != nil {
 			slog.Error("Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
 		}
 
@@ -559,10 +562,10 @@ func (ss *SSHServer) handleStartCommand(ctx context.Context, cc *CommandContext)
 	}
 
 	// Update database status
-	err = ss.server.db.Exec(ctx, `
-		UPDATE boxes SET status = 'running', last_started_at = CURRENT_TIMESTAMP
-		WHERE name = ?`,
-		boxName)
+	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.UpdateBoxStatusRunning(ctx, boxName)
+	})
 	if err != nil {
 		cc.Writeln("\033[1;33mWarning: Failed to update box status: %v\033[0m", err)
 	}
@@ -608,10 +611,10 @@ func (ss *SSHServer) handleStopCommand(ctx context.Context, cc *CommandContext) 
 		}
 
 		// Update database status
-		err = ss.server.db.Exec(ctx, `
-			UPDATE boxes SET status = 'stopped'
-			WHERE name = ?`,
-			boxName)
+		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			queries := exedb.New(tx.Conn())
+			return queries.UpdateBoxStatusStopped(ctx, boxName)
+		})
 		if err != nil {
 			cc.Writeln("\033[1;33mWarning: Failed to update box status: %v\033[0m", err)
 			return fmt.Errorf("failed to update box status: %w", err)
@@ -639,21 +642,27 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 		var boxID int
 		var allocID string
 		err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			queries := exedb.New(tx.Conn())
+
 			// First get the box info
-			err := tx.QueryRow(`SELECT id, alloc_id FROM boxes WHERE name = ?`, boxName).Scan(&boxID, &allocID)
+			result, err := queries.GetBoxIDAndAllocByName(ctx, boxName)
 			if err != nil {
 				return err
 			}
+			boxID = result.ID
+			allocID = result.AllocID
 
 			// Track deletion in deleted_boxes table
-			_, err = tx.Exec(`INSERT INTO deleted_boxes (id, alloc_id) VALUES (?, ?)`, boxID, allocID)
+			err = queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
+				ID:      int64(boxID),
+				AllocID: allocID,
+			})
 			if err != nil {
 				return fmt.Errorf("tracking deletion: %w", err)
 			}
 
 			// Delete the box
-			_, err = tx.Exec(`DELETE FROM boxes WHERE id = ?`, boxID)
-			return err
+			return queries.DeleteBox(ctx, boxID)
 		})
 		if err != nil {
 			cc.Writeln("\033[1;31mError deleting box: %v\033[0m", err)
@@ -684,15 +693,19 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 
 	// Delete from database and track in deleted_boxes
 	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
 		// Track deletion in deleted_boxes table
-		_, err := tx.Exec(`INSERT INTO deleted_boxes (id, alloc_id) VALUES (?, ?)`, box.ID, box.AllocID)
+		err := queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
+			ID:      int64(box.ID),
+			AllocID: box.AllocID,
+		})
 		if err != nil {
 			return fmt.Errorf("tracking deletion: %w", err)
 		}
 
 		// Delete the box
-		_, err = tx.Exec(`DELETE FROM boxes WHERE id = ?`, box.ID)
-		return err
+		return queries.DeleteBox(ctx, box.ID)
 	})
 	if err != nil {
 		cc.Writeln("\033[1;31mError deleting box from database: %v\033[0m", err)
@@ -887,18 +900,15 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *CommandContext
 	// Get all public keys for this user
 	err := ss.server.db.Rx(ctx,
 		func(ctx context.Context, rx *sqlite.Rx) error {
-			rows, err := rx.Query(
-				`SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key`,
-				cc.User.Email)
+			queries := exedb.New(rx.Conn())
+			publicKeys, err := queries.GetSSHKeysForUserByEmail(ctx, cc.User.Email)
 			if err != nil {
 				cc.Writeln("\033[1;31mError retrieving SSH keys: %v\033[0m", err)
 				return nil
 			}
-			defer rows.Close()
 			cc.Writeln("\033[1mSSH Keys:\033[0m")
-			for rows.Next() {
-				var dbPublicKey string
-				if err := rows.Scan(&dbPublicKey); err != nil {
+			for _, dbPublicKey := range publicKeys {
+				if dbPublicKey == "" {
 					continue
 				}
 				keyCount++
@@ -1104,9 +1114,12 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 
 	// Update database
 	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?`,
-			*box.Routes, boxName, cc.Alloc.AllocID)
-		return err
+		queries := exedb.New(tx.Conn())
+		return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
+			Routes:  box.Routes,
+			Name:    boxName,
+			AllocID: cc.Alloc.AllocID,
+		})
 	})
 	if err != nil {
 		cc.Writeln("\033[1;31mError saving route: %v\033[0m", err)

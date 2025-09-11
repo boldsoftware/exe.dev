@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
 
@@ -141,39 +142,26 @@ func (tr *TagResolver) refreshStaleTags(ctx context.Context) {
 
 	// Find tags that need refreshing
 	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		query := `
-			SELECT registry, repository, tag, platform,
-			       COALESCE(index_digest, ''), COALESCE(platform_digest, ''),
-			       last_checked_at, ttl_seconds
-			FROM tag_resolutions
-			WHERE last_checked_at + ttl_seconds < ?
-			ORDER BY last_checked_at ASC
-			LIMIT 10
-		`
-
-		rows, err := rx.Query(query, now)
+		queries := exedb.New(rx.Conn())
+		results, err := queries.GetTagsNeedingRefresh(ctx, exedb.GetTagsNeedingRefreshParams{
+			LastCheckedAt: now,
+			Limit:         10,
+		})
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
 
-		for rows.Next() {
-			var tr TagResolution
-			var lastCheckedUnix int64
-			var ttlSeconds int64
-
-			err := rows.Scan(
-				&tr.Registry, &tr.Repository, &tr.Tag, &tr.Platform,
-				&tr.IndexDigest, &tr.PlatformDigest,
-				&lastCheckedUnix, &ttlSeconds,
-			)
-			if err != nil {
-				log.Printf("Failed to scan tag resolution: %v", err)
-				continue
+		for _, result := range results {
+			tr := TagResolution{
+				Registry:       result.Registry,
+				Repository:     result.Repository,
+				Tag:            result.Tag,
+				Platform:       result.Platform,
+				IndexDigest:    result.IndexDigest,
+				PlatformDigest: result.PlatformDigest,
+				LastCheckedAt:  time.Unix(result.LastCheckedAt, 0),
+				TTL:            time.Duration(result.TtlSeconds) * time.Second,
 			}
-
-			tr.LastCheckedAt = time.Unix(lastCheckedUnix, 0)
-			tr.TTL = time.Duration(ttlSeconds) * time.Second
 			toRefresh = append(toRefresh, tr)
 		}
 		return nil
@@ -216,26 +204,33 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 
 		// Update the database
 		err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				UPDATE tag_resolutions
-				SET platform_digest = ?, last_checked_at = ?, last_changed_at = ?,
-				    updated_at = ?, image_size = ?
-				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-			`, newDigest, now, now, now, imageSize,
-				tag.Registry, tag.Repository, tag.Tag, tag.Platform)
+			queries := exedb.New(tx.Conn())
+
+			err := queries.UpdateTagResolutionDigest(ctx, exedb.UpdateTagResolutionDigestParams{
+				PlatformDigest: &newDigest,
+				LastCheckedAt:  now,
+				LastChangedAt:  now,
+				UpdatedAt:      now,
+				ImageSize:      &imageSize,
+				Registry:       tag.Registry,
+				Repository:     tag.Repository,
+				Tag:            tag.Tag,
+				Platform:       tag.Platform,
+			})
 			if err != nil {
 				return err
 			}
 
 			// Record history
-			_, err = tx.Exec(`
-				INSERT INTO tag_resolution_history (registry, repository, tag, platform,
-				                                   old_digest, new_digest, changed_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`, tag.Registry, tag.Repository, tag.Tag, tag.Platform,
-				tag.PlatformDigest, newDigest, now)
-
-			return err
+			return queries.InsertTagResolutionHistory(ctx, exedb.InsertTagResolutionHistoryParams{
+				Registry:   tag.Registry,
+				Repository: tag.Repository,
+				Tag:        tag.Tag,
+				Platform:   tag.Platform,
+				OldDigest:  &tag.PlatformDigest,
+				NewDigest:  newDigest,
+				ChangedAt:  now,
+			})
 		})
 		if err != nil {
 			return fmt.Errorf("failed to update tag resolution: %w", err)
@@ -258,12 +253,15 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 	} else {
 		// Just update the last checked time
 		err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				UPDATE tag_resolutions
-				SET last_checked_at = ?, updated_at = ?
-				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-			`, now, now, tag.Registry, tag.Repository, tag.Tag, tag.Platform)
-			return err
+			queries := exedb.New(tx.Conn())
+			return queries.UpdateTagResolutionChecked(ctx, exedb.UpdateTagResolutionCheckedParams{
+				LastCheckedAt: now,
+				UpdatedAt:     now,
+				Registry:      tag.Registry,
+				Repository:    tag.Repository,
+				Tag:           tag.Tag,
+				Platform:      tag.Platform,
+			})
 		})
 		if err != nil {
 			return fmt.Errorf("failed to update last checked time: %w", err)
@@ -341,25 +339,20 @@ func (tr *TagResolver) ResolveTag(ctx context.Context, image string, platform st
 	}
 
 	err = tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO tag_resolutions (registry, repository, tag, platform,
-			                            platform_digest, last_checked_at, last_changed_at,
-			                            ttl_seconds, image_size, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(registry, repository, tag, platform) DO UPDATE SET
-				platform_digest = excluded.platform_digest,
-				last_checked_at = excluded.last_checked_at,
-				last_changed_at = CASE
-					WHEN platform_digest != excluded.platform_digest THEN excluded.last_changed_at
-					ELSE last_changed_at
-				END,
-				ttl_seconds = excluded.ttl_seconds,
-				image_size = excluded.image_size,
-				updated_at = excluded.updated_at
-		`, registry, repository, tag, platform, digest, now, now,
-			int64(ttl.Seconds()),
-			imageSize, now, now)
-		return err
+		queries := exedb.New(tx.Conn())
+		return queries.UpsertTagResolution(ctx, exedb.UpsertTagResolutionParams{
+			Registry:       registry,
+			Repository:     repository,
+			Tag:            tag,
+			Platform:       platform,
+			PlatformDigest: &digest,
+			LastCheckedAt:  now,
+			LastChangedAt:  now,
+			TtlSeconds:     int64(ttl.Seconds()),
+			ImageSize:      &imageSize,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		})
 	})
 	if err != nil {
 		log.Printf("Failed to store tag resolution: %v", err)
@@ -375,21 +368,13 @@ func (tr *TagResolver) getCachedResolution(ctx context.Context, registry, reposi
 	var found bool
 
 	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		row := rx.QueryRow(`
-			SELECT registry, repository, tag, platform,
-			       COALESCE(index_digest, ''), COALESCE(platform_digest, ''),
-			       last_checked_at, last_changed_at, ttl_seconds, seen_on_hosts, image_size
-			FROM tag_resolutions
-			WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-		`, registry, repository, tag, platform)
-
-		var ttlSeconds int64
-		err := row.Scan(
-			&res.Registry, &res.Repository, &res.Tag, &res.Platform,
-			&res.IndexDigest, &res.PlatformDigest,
-			&lastCheckedUnix, &lastChangedUnix,
-			&ttlSeconds, &res.SeenOnHosts, &res.ImageSize,
-		)
+		queries := exedb.New(rx.Conn())
+		result, err := queries.GetTagResolution(ctx, exedb.GetTagResolutionParams{
+			Registry:   registry,
+			Repository: repository,
+			Tag:        tag,
+			Platform:   platform,
+		})
 		if err != nil {
 			if strings.Contains(err.Error(), "no rows") {
 				found = false
@@ -398,7 +383,19 @@ func (tr *TagResolver) getCachedResolution(ctx context.Context, registry, reposi
 			return err
 		}
 
-		res.TTL = time.Duration(ttlSeconds) * time.Second
+		res.Registry = result.Registry
+		res.Repository = result.Repository
+		res.Tag = result.Tag
+		res.Platform = result.Platform
+		res.IndexDigest = result.IndexDigest
+		res.PlatformDigest = result.PlatformDigest
+		res.LastCheckedAt = time.Unix(result.LastCheckedAt, 0)
+		res.LastChangedAt = time.Unix(result.LastChangedAt, 0)
+		res.TTL = time.Duration(result.TtlSeconds) * time.Second
+		res.SeenOnHosts = int(result.SeenOnHosts)
+		res.ImageSize = result.ImageSize
+		lastCheckedUnix = result.LastCheckedAt
+		lastChangedUnix = result.LastChangedAt
 		found = true
 		return nil
 	})
@@ -788,12 +785,13 @@ func parseImageReference(image string) (registry, repository, tag string) {
 // IncrementSeenOnHosts increments the seen_on_hosts counter for a resolution
 func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repository, tag, platform string) error {
 	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE tag_resolutions
-			SET seen_on_hosts = seen_on_hosts + 1
-			WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-		`, registry, repository, tag, platform)
-		return err
+		queries := exedb.New(tx.Conn())
+		return queries.IncrementSeenOnHosts(ctx, exedb.IncrementSeenOnHostsParams{
+			Registry:   registry,
+			Repository: repository,
+			Tag:        tag,
+			Platform:   platform,
+		})
 	})
 }
 
@@ -801,12 +799,21 @@ func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repos
 func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repository, tag, platform string) (*ImageConfig, error) {
 	var imageUser, imageEntrypoint, imageCmd *string
 
-	err := tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		return tx.QueryRow(`
-			SELECT image_user, image_entrypoint, image_cmd
-			FROM tag_resolutions
-			WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-		`, registry, repository, tag, platform).Scan(&imageUser, &imageEntrypoint, &imageCmd)
+	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		queries := exedb.New(rx.Conn())
+		result, err := queries.GetImageMetadata(ctx, exedb.GetImageMetadataParams{
+			Registry:   registry,
+			Repository: repository,
+			Tag:        tag,
+			Platform:   platform,
+		})
+		if err != nil {
+			return err
+		}
+		imageUser = result.ImageUser
+		imageEntrypoint = result.ImageEntrypoint
+		imageCmd = result.ImageCmd
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -851,37 +858,58 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 	}
 
 	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
 		// First check if the record exists
-		var exists bool
-		if err := tx.QueryRow(`
-			SELECT EXISTS(
-				SELECT 1 FROM tag_resolutions
-				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-			)
-		`, registry, repository, tag, platform).Scan(&exists); err != nil {
+		existsInt, err := queries.CheckTagResolutionExists(ctx, exedb.CheckTagResolutionExistsParams{
+			Registry:   registry,
+			Repository: repository,
+			Tag:        tag,
+			Platform:   platform,
+		})
+		if err != nil {
 			return err
 		}
+		exists := existsInt > 0
 
 		if exists {
 			// Update existing record
-			_, err := tx.Exec(`
-				UPDATE tag_resolutions
-				SET image_user = ?, image_entrypoint = ?, image_cmd = ?
-				WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-			`, cfg.User, string(entrypointJSON), string(cmdJSON), registry, repository, tag, platform)
-			return err
+			userStr := cfg.User
+			entrypointStr := string(entrypointJSON)
+			cmdStr := string(cmdJSON)
+			now := time.Now().Unix()
+			return queries.UpdateTagResolutionMetadata(ctx, exedb.UpdateTagResolutionMetadataParams{
+				ImageUser:       &userStr,
+				ImageEntrypoint: &entrypointStr,
+				ImageCmd:        &cmdStr,
+				UpdatedAt:       now,
+				Registry:        registry,
+				Repository:      repository,
+				Tag:             tag,
+				Platform:        platform,
+			})
 		} else {
 			// Insert new record with minimal required fields
 			now := time.Now().Unix()
-			_, err := tx.Exec(`
-				INSERT INTO tag_resolutions (
-					registry, repository, tag, platform,
-					last_checked_at, last_changed_at, ttl_seconds,
-					image_user, image_entrypoint, image_cmd
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`, registry, repository, tag, platform, now, now, 21600,
-				cfg.User, string(entrypointJSON), string(cmdJSON))
-			return err
+			userStr := cfg.User
+			entrypointStr := string(entrypointJSON)
+			cmdStr := string(cmdJSON)
+			return queries.InsertTagResolutionWithMetadata(ctx, exedb.InsertTagResolutionWithMetadataParams{
+				Registry:        registry,
+				Repository:      repository,
+				Tag:             tag,
+				Platform:        platform,
+				IndexDigest:     nil,
+				PlatformDigest:  nil,
+				ImageUser:       &userStr,
+				ImageEntrypoint: &entrypointStr,
+				ImageCmd:        &cmdStr,
+				LastCheckedAt:   now,
+				LastChangedAt:   now,
+				TtlSeconds:      21600,
+				CreatedAt:       now,
+				UpdatedAt:       now,
+			})
 		}
 	})
 }

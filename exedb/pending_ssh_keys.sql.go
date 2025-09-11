@@ -48,3 +48,25 @@ func (q *Queries) GetPendingSSHKeyEmailByPublicKey(ctx context.Context, publicKe
 	err := row.Scan(&user_email)
 	return user_email, err
 }
+
+const insertPendingSSHKey = `-- name: InsertPendingSSHKey :exec
+INSERT INTO pending_ssh_keys (token, public_key, user_email, expires_at)
+VALUES (?, ?, ?, ?)
+`
+
+type InsertPendingSSHKeyParams struct {
+	Token     string    `db:"token" json:"token"`
+	PublicKey string    `db:"public_key" json:"public_key"`
+	UserEmail string    `db:"user_email" json:"user_email"`
+	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
+}
+
+func (q *Queries) InsertPendingSSHKey(ctx context.Context, arg InsertPendingSSHKeyParams) error {
+	_, err := q.exec(ctx, q.insertPendingSSHKeyStmt, insertPendingSSHKey,
+		arg.Token,
+		arg.PublicKey,
+		arg.UserEmail,
+		arg.ExpiresAt,
+	)
+	return err
+}

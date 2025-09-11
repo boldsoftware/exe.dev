@@ -53,6 +53,33 @@ func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]strin
 	return items, nil
 }
 
+const getSSHKeysForUserByEmail = `-- name: GetSSHKeysForUserByEmail :many
+SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key
+`
+
+func (q *Queries) GetSSHKeysForUserByEmail(ctx context.Context, email string) ([]string, error) {
+	rows, err := q.query(ctx, q.getSSHKeysForUserByEmailStmt, getSSHKeysForUserByEmail, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var public_key string
+		if err := rows.Scan(&public_key); err != nil {
+			return nil, err
+		}
+		items = append(items, public_key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserIDBySSHKey = `-- name: GetUserIDBySSHKey :one
 SELECT user_id FROM ssh_keys WHERE public_key = ?
 `
@@ -105,5 +132,21 @@ type InsertSSHKeyForEmailUserParams struct {
 
 func (q *Queries) InsertSSHKeyForEmailUser(ctx context.Context, arg InsertSSHKeyForEmailUserParams) error {
 	_, err := q.exec(ctx, q.insertSSHKeyForEmailUserStmt, insertSSHKeyForEmailUser, arg.Email, arg.PublicKey)
+	return err
+}
+
+const upsertSSHKeyForUser = `-- name: UpsertSSHKeyForUser :exec
+INSERT INTO ssh_keys (user_id, public_key)
+VALUES (?, ?)
+ON CONFLICT(public_key) DO UPDATE SET user_id = VALUES(user_id)
+`
+
+type UpsertSSHKeyForUserParams struct {
+	UserID    string `db:"user_id" json:"user_id"`
+	PublicKey string `db:"public_key" json:"public_key"`
+}
+
+func (q *Queries) UpsertSSHKeyForUser(ctx context.Context, arg UpsertSSHKeyForUserParams) error {
+	_, err := q.exec(ctx, q.upsertSSHKeyForUserStmt, upsertSSHKeyForUser, arg.UserID, arg.PublicKey)
 	return err
 }
