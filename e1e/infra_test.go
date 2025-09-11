@@ -277,6 +277,7 @@ func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 			slog.Error("container cleanup failed", "error", err)
 		}
 	}
+	e.proxy.close()
 }
 
 type tcpProxy struct {
@@ -301,6 +302,7 @@ func (p *tcpProxy) serve() error {
 			return err
 		}
 		go func() {
+			defer c.Close()
 			dstAddr := p.dst.Load()
 			if dstAddr == nil {
 				slog.Error("tcpProxy: no destination address set")
@@ -311,12 +313,17 @@ func (p *tcpProxy) serve() error {
 				slog.Error("tcpProxy: failed to connect to dst", "address", dstAddr, "error", err)
 				return
 			}
-			defer c.Close()
 			var wg sync.WaitGroup
 			wg.Go(func() { io.Copy(dst, c) })
 			wg.Go(func() { io.Copy(c, dst) })
 			wg.Wait()
 		}()
+	}
+}
+
+func (p *tcpProxy) close() {
+	if p.ln != nil {
+		p.ln.Close()
 	}
 }
 
