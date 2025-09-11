@@ -487,6 +487,8 @@ done:
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
+	}
+	if cc.IsInteractive() {
 		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\033[1m%s\033[0m\r\n\r\n",
 			totalTime.Seconds(), sshCommand, httpsProxyAddr)
 	} else {
