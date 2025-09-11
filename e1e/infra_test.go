@@ -943,15 +943,18 @@ func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	return pty
 }
 
-func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
-	if username != "" {
-		username += "@"
+func usernameAt(username string) string {
+	if username == "" {
+		return ""
 	}
-	pty := makePty(t, "ssh "+username+"localhost")
-	sshCmd := exec.CommandContext(t.Context(), "ssh",
+	return username + "@"
+}
+
+func baseSSHArgs(username, keyFile string) []string {
+	return []string{
 		"-F", "/dev/null",
 		"-p", fmt.Sprint(Env.sshPort()),
-		"-o", "IdentityFile="+keyFile,
+		"-o", "IdentityFile=" + keyFile,
 		"-o", "IdentityAgent=none",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -963,8 +966,14 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 		"-o", "ChallengeResponseAuthentication=no",
 		"-o", "IdentitiesOnly=yes",
 
-		username+"localhost",
-	)
+		usernameAt(username) + "localhost",
+	}
+}
+
+func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
+	pty := makePty(t, "ssh "+usernameAt(username)+"localhost")
+	sshArgs := baseSSHArgs(username, keyFile)
+	sshCmd := exec.CommandContext(t.Context(), "ssh", sshArgs...)
 	// fmt.Println("RUNNING", sshCmd)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 	pty.attachAndStart(sshCmd)
