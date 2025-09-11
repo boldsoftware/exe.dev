@@ -15,11 +15,14 @@ env:
   WELCOME_IMAGE_NAME: boldsoftware/exeuntu-welcome
 
 jobs:
-  build-and-push:
+  build-base:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tags: ${{ steps.meta-base.outputs.tags }}
 
     steps:
       - name: Checkout repository
@@ -42,6 +45,40 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push base Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./exeuntu
+          file: ./exeuntu/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-base.outputs.tags }}
+          labels: ${{ steps.meta-base.outputs.labels }}
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
+
+  build-welcome:
+    runs-on: ubuntu-latest
+    needs: build-base
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Extract metadata for welcome image
         id: meta-welcome
         uses: docker/metadata-action@v5
@@ -54,18 +91,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Build and push base Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./exeuntu
-          file: ./exeuntu/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta-base.outputs.tags }}
-          labels: ${{ steps.meta-base.outputs.labels }}
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
 
       - name: Build and push welcome Docker image
         uses: docker/build-push-action@v5
