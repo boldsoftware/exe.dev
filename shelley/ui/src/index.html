@@ -20,6 +20,64 @@
         }
     </script>
     <style>
+        /* Default mobile-first styles - full viewport */
+        #root {
+            height: 100vh;
+            width: 100%;
+        }
+        
+        /* Mobile-sized container for desktop development only */
+        @media (min-width: 768px) {
+            body {
+                background: #f3f4f6;
+                padding: 10px;
+                margin: 0;
+            }
+            .dark body {
+                background: #111827;
+            }
+            #root {
+                max-width: 414px;
+                height: 700px; /* More laptop-friendly height */
+                margin: 0 auto;
+                border: 1px solid #d1d5db;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+                background: white;
+                width: 414px; /* Fixed width for desktop */
+            }
+            .dark #root {
+                border-color: #374151;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+                background: #1f2937;
+            }
+            
+            /* Force mobile behavior inside container */
+            #root .lg\:hidden {
+                display: block !important;
+            }
+            /* Fix drawer positioning - make it absolute within container, not fixed to viewport */
+            #root .lg\:relative {
+                position: absolute !important;
+            }
+            /* Make sure root container has relative positioning for absolute children */
+            #root {
+                position: relative !important;
+            }
+            /* Override viewport-based heights to use container height instead */
+            #root .h-screen {
+                height: 100% !important;
+            }
+            #root .h-full {
+                height: 100% !important;
+            }
+            /* Only override drawer translation when it's supposed to be hidden */
+            #root [class*="-translate-x-full"].lg\:translate-x-0:not(.translate-x-0) {
+                transform: translateX(-100%) !important;
+            }
+        }
+        
         /* Custom scrollbar styles */
         .scrollbar-thin {
             scrollbar-width: thin;
