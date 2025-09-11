@@ -1,0 +1,58 @@
+#!/bin/bash
+# Script to prepare systemd for container execution
+
+# Create necessary directories
+mkdir -p /run/systemd /run/lock /tmp /var/lib/systemd
+
+# Set up cgroup filesystem for systemd
+if [[ -w /sys/fs/cgroup ]]; then
+    # Check if cgroup2 is already mounted by looking for controller files
+    if [[ ! -f /sys/fs/cgroup/cgroup.controllers ]]; then
+        echo "Mounting cgroup2 filesystem..."
+        # Mount cgroup2 - this should work with the tmpfs setup
+        if mount -t cgroup2 none /sys/fs/cgroup 2>/dev/null; then
+            echo "Cgroup2 filesystem mounted successfully"
+        else
+            echo "Warning: Failed to mount cgroup2, trying cgroup1..."
+            # Fallback to cgroup1 if cgroup2 fails
+            mount -t cgroup -o all cgroup /sys/fs/cgroup 2>/dev/null || true
+        fi
+    else
+        echo "Cgroup2 filesystem already ready"
+    fi
+    
+    # Final check
+    if [[ -f /sys/fs/cgroup/cgroup.controllers ]]; then
+        echo "Cgroup2 is properly set up"
+    elif [[ -d /sys/fs/cgroup/systemd ]]; then
+        echo "Cgroup1 is set up (legacy mode)"
+    else
+        echo "Warning: cgroup setup incomplete, systemd may have issues"
+    fi
+else
+    echo "Warning: /sys/fs/cgroup not writable, systemd will have limited functionality"
+    # If we can't write to cgroup, try to work around it by
+    # creating a mock cgroup structure in a writable location
+    mkdir -p /run/systemd/cgroup
+fi
+
+# Ensure machine-id exists and is valid
+if [[ ! -f /etc/machine-id ]] || [[ ! -s /etc/machine-id ]]; then
+    # Try to generate a proper machine ID
+    if systemd-machine-id-setup 2>/dev/null; then
+        echo "Generated systemd machine ID"
+    else
+        # Fallback to creating a simple machine ID
+        echo "container-$(date +%s)-$(hostname)" | tr -d '\n-' | head -c 32 > /etc/machine-id
+        echo "Created fallback machine ID"
+    fi
+fi
+
+# Make machine-id immutable in container to prevent systemd complaints
+chattr +i /etc/machine-id 2>/dev/null || true
+
+# Mark as container environment
+export container=docker
+
+# Set up a minimal environment for systemd
+echo "Container systemd environment prepared"

@@ -1,16 +1,18 @@
-name: Build and Push Exeuntu Image
+name: Build and Push Exeuntu Images
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'exeuntu/Dockerfile'
+      - 'exeuntu/Dockerfile.welcome'
       - '.github/workflows/build-exeuntu.yml'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: boldsoftware/exeuntu
+  BASE_IMAGE_NAME: boldsoftware/exeuntu
+  WELCOME_IMAGE_NAME: boldsoftware/exeuntu-welcome
 
 jobs:
   build-and-push:
@@ -30,11 +32,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      - name: Extract metadata for base image
+        id: meta-base
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata for welcome image
+        id: meta-welcome
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.WELCOME_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
@@ -43,13 +55,28 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
+      - name: Build and push base Docker image
         uses: docker/build-push-action@v5
         with:
           context: ./exeuntu
+          file: ./exeuntu/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta-base.outputs.tags }}
+          labels: ${{ steps.meta-base.outputs.labels }}
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
+
+      - name: Build and push welcome Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./exeuntu
+          file: ./exeuntu/Dockerfile.welcome
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-welcome.outputs.tags }}
+          labels: ${{ steps.meta-welcome.outputs.labels }}
+          cache-from: type=gha,scope=welcome
+          cache-to: type=gha,mode=max,scope=welcome
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}
