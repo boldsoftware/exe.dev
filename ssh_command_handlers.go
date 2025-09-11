@@ -257,39 +257,17 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		return fmt.Errorf("box management is not available")
 	}
 
-	// Get user information - needed for box creation
-	user, err := ss.server.getUserByPublicKey(ctx, cc.PublicKey)
-	if err != nil {
-		cc.Write("\033[1;31mError: Failed to get user info: %v\033[0m\r\n", err)
-		return fmt.Errorf("failed to get user info: %w", err)
-	}
-
-	// Get flag values from the already-parsed FlagSet
-	var boxName, image, size, command string
-	if cc.FlagSet != nil {
-		boxName = cc.FlagSet.Lookup("name").Value.String()
-		image = cc.FlagSet.Lookup("image").Value.String()
-		size = cc.FlagSet.Lookup("size").Value.String()
-		command = cc.FlagSet.Lookup("command").Value.String()
-	} else {
-		// Default values if no flags were parsed
-		image = "exeuntu"
-		size = "medium"
-		command = "auto"
-	}
-
-	// Check for non-flag arguments - not supported
-	if len(cc.Args) > 0 {
-		cc.Write("\033[1;31mError: Unexpected arguments: %s\033[0m\r\n", strings.Join(cc.Args, " "))
-		cc.Write("Usage: new [--name=<name>] [--image=<image>] [--size=<size>] [--command=<auto|none|command>]\r\n")
-		return fmt.Errorf("unexpected arguments: %q", strings.Join(cc.Args, " "))
-	}
+	user := cc.User
+	boxName := cc.FlagSet.Lookup("name").Value.String()
+	image := cc.FlagSet.Lookup("image").Value.String()
+	size := cc.FlagSet.Lookup("size").Value.String()
+	command := cc.FlagSet.Lookup("command").Value.String()
 
 	// Generate box name if not provided
 	if boxName == "" {
 		for range 10 {
 			randBoxName := generateRandomBoxName()
-			if ss.server.isBoxNameAvailable(ctx, randBoxName) {
+			if ss.server.isValidBoxName(randBoxName) && ss.server.isBoxNameAvailable(ctx, randBoxName) {
 				boxName = randBoxName
 				break
 			}
@@ -324,18 +302,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		return fmt.Errorf("invalid container size %q", size)
 	}
 
-	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
-	showSpinner := ss.shouldShowSpinner(cc.SSHSession)
-
-	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
-	// This makes the readline prompt visible in the repl ui.
-	if showSpinner {
-		cc.Write("\r\n\033[1A")
-	}
-
-	// Start timing BEFORE creating container
-	startTime := time.Now()
-
 	// Create channels for progress updates and completion
 	type progressUpdate struct {
 		info container.CreateProgressInfo
@@ -369,6 +335,18 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 		StorageSize:     sizePreset.StorageSize,
 		Ephemeral:       false,
 		CommandOverride: command,
+	}
+
+	// Start timing BEFORE creating container
+	startTime := time.Now()
+
+	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
+	showSpinner := ss.shouldShowSpinner(cc.SSHSession)
+
+	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
+	// This makes the readline prompt visible in the repl ui.
+	if showSpinner {
+		cc.Write("\r\n\033[1A")
 	}
 
 	// Add progress callback that sends to channel
