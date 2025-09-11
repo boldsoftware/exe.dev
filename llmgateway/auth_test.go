@@ -72,10 +72,7 @@ func TestNewBearerToken_And_BearerTokenAuth(t *testing.T) {
 	duration := 10 * time.Minute
 
 	// Create bearer token
-	token, err := NewBearerToken(boxName, startTime, duration, keyPair.sshPrivateKey)
-	if err != nil {
-		t.Fatalf("Failed to create bearer token: %v", err)
-	}
+	token := NewBearerToken(boxName, startTime, duration)
 
 	// Verify token fields
 	if token.BoxName != boxName {
@@ -87,7 +84,11 @@ func TestNewBearerToken_And_BearerTokenAuth(t *testing.T) {
 	if token.Duration != duration {
 		t.Errorf("Expected Duration %v, got %v", duration, token.Duration)
 	}
-	if len(token.Signature) == 0 {
+	sig, err := token.Sign(keyPair.sshPrivateKey)
+	if err != nil {
+		t.Fatalf("Failed to sign bearer token: %v", err)
+	}
+	if len(sig) == 0 {
 		t.Error("Expected non-empty signature")
 	}
 
@@ -106,7 +107,7 @@ func TestNewBearerToken_And_BearerTokenAuth(t *testing.T) {
 	}
 
 	// Encode token for Authorization header
-	tokenEncoded, err := token.Encode()
+	tokenEncoded, err := token.Encode(keyPair.sshPrivateKey)
 	if err != nil {
 		t.Fatalf("Failed to encode token: %v", err)
 	}
@@ -134,10 +135,7 @@ func TestBearerTokenAuth_ExpiredToken(t *testing.T) {
 	startTime := time.Now().Add(-10 * time.Minute)
 	duration := 5 * time.Minute
 
-	token, err := NewBearerToken(boxName, startTime, duration, keyPair.sshPrivateKey)
-	if err != nil {
-		t.Fatalf("Failed to create bearer token: %v", err)
-	}
+	token := NewBearerToken(boxName, startTime, duration)
 
 	// Create mock authority
 	mockAuth := &mockBoxKeyAuthority{
@@ -153,12 +151,13 @@ func TestBearerTokenAuth_ExpiredToken(t *testing.T) {
 	}
 
 	// Create request with expired token
-	tokenEncoded, _ := token.Encode()
+	tokenEncoded, _ := token.Encode(keyPair.sshPrivateKey)
 	req := httptest.NewRequest("POST", "http://example.com/api/test", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenEncoded)
+	t.Logf("tokenEncoded: %q", tokenEncoded)
 
 	// Test authentication should fail
-	_, err = proxy.boxKeyAuth(context.Background(), req)
+	_, err := proxy.boxKeyAuth(context.Background(), req)
 	if err == nil {
 		t.Error("Expected authentication to fail for expired token")
 	}
@@ -203,7 +202,7 @@ func TestBearerTokenAuth_InvalidBase64(t *testing.T) {
 	if err == nil {
 		t.Error("Expected authentication to fail for invalid base64")
 	}
-	if !strings.Contains(err.Error(), "decoding base64 bearer token") {
+	if !strings.Contains(err.Error(), "invalid bearer token") {
 		t.Errorf("Expected base64 decode error, got: %v", err)
 	}
 }
@@ -216,10 +215,7 @@ func TestBearerTokenAuth_InvalidSignature(t *testing.T) {
 	// Create token with one key
 	startTime := time.Now()
 	duration := 10 * time.Minute
-	token, err := NewBearerToken(boxName, startTime, duration, keyPair.sshPrivateKey)
-	if err != nil {
-		t.Fatalf("Failed to create bearer token: %v", err)
-	}
+	token := NewBearerToken(boxName, startTime, duration)
 
 	// Create mock authority with different key
 	mockAuth := &mockBoxKeyAuthority{
@@ -234,14 +230,14 @@ func TestBearerTokenAuth_InvalidSignature(t *testing.T) {
 	}
 
 	// Create request
-	tokenEncoded, _ := token.Encode()
+	tokenEncoded, _ := token.Encode(keyPair.sshPrivateKey)
 	req := httptest.NewRequest("POST", "http://example.com/api/test", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenEncoded)
 
 	// Test authentication should fail
-	_, err = proxy.boxKeyAuth(context.Background(), req)
+	_, err := proxy.boxKeyAuth(context.Background(), req)
 	if err == nil {
-		t.Error("Expected authentication to fail for invalid signature")
+		t.Fatal("Expected authentication to fail for invalid signature")
 	}
 	if !strings.Contains(err.Error(), "verifying signature") {
 		t.Errorf("Expected signature verification error, got: %v", err)

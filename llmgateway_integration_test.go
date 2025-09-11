@@ -58,13 +58,10 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	// Generate bearer token using box's SSH server identity key
 	startTime := time.Now()
 	duration := 10 * time.Minute
-	token, err := llmgateway.NewBearerToken(boxName, startTime, duration, signer)
-	if err != nil {
-		t.Fatalf("Failed to create bearer token: %v", err)
-	}
+	token := llmgateway.NewBearerToken(boxName, startTime, duration)
 
 	// Encode token for Authorization header
-	tokenEncoded, err := token.Encode()
+	tokenEncoded, err := token.Encode(signer)
 	if err != nil {
 		t.Fatalf("Failed to encode bearer token: %v", err)
 	}

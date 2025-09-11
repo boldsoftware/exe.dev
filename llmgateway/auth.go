@@ -13,59 +13,97 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-type boxKeyBearerToken struct {
+// bearerTokenClaim holds a claim that a request originated from a client who has access to
+// a parituclar box's ssh server identitys private key.  The http header is encoded as a
+// {claim}.{signature} string, and would appear in an http header like so:
+//
+// `Authorization: Bearer <base64(json(claim))>.<base64(signature(json(claim)))>`
+//
+// The json format of the claim is defined by type bearerTokenClaim's json encoding
+// struct tags.
+type bearerTokenClaim struct {
+	BoxName   string        `json:"box_name"`
 	StartTime time.Time     `json:"start_time"`
 	Duration  time.Duration `json:"duration"`
-	BoxName   string        `json:"box_name"`
-	Signature []byte        `json:"signature"`
 }
 
-func NewBearerToken(boxName string, startTime time.Time, duration time.Duration, signer ssh.Signer) (*boxKeyBearerToken, error) {
-	ret := &boxKeyBearerToken{
+// NewBearerToken returns a new, unsigned BearerToken.
+func NewBearerToken(boxName string, startTime time.Time, duration time.Duration) *bearerTokenClaim {
+	ret := &bearerTokenClaim{
 		BoxName:   boxName,
 		StartTime: startTime,
 		Duration:  duration,
 	}
 
-	sig, err := signer.Sign(rand.Reader, ret.claim())
+	return ret
+}
+
+// DecodeBearerToken decodes the value from a "Authorization: Bearer {value}"
+// http header, and returns a decoded bearer claim, its decoded signature or
+// an error if any decoding steps fail.
+func DecodeBearerToken(token string) (*bearerTokenClaim, []byte, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return nil, nil, fmt.Errorf("invalid bearer token")
+	}
+	claimBytes, err := base64.StdEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, nil, fmt.Errorf("decoding bearer token claim: %w", err)
+	}
+	ret := &bearerTokenClaim{}
+	if err := json.Unmarshal(claimBytes, ret); err != nil {
+		return nil, nil, fmt.Errorf("unmarshaling bearer token: %w", err)
+	}
+	sigBytes, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, nil, fmt.Errorf("decoding bearer token signature: %w", err)
+	}
+
+	return ret, sigBytes, nil
+}
+
+func (b *bearerTokenClaim) Sign(signer ssh.Signer) ([]byte, error) {
+	claimBytes, err := json.Marshal(b)
+	if err != nil {
+		return nil, err
+	}
+	sig, err := signer.Sign(rand.Reader, claimBytes)
 	if err != nil {
 		return nil, fmt.Errorf("signing: %w", err)
 	}
-	ret.Signature = sig.Blob
-	return ret, nil
+	return sig.Blob, nil
 }
 
-// This is the value you should validate b.Signature against.
-func (b *boxKeyBearerToken) claim() []byte {
-	return fmt.Appendf(nil, "%v,%v,%v", b.StartTime.Format(time.RFC822Z), b.Duration.Milliseconds(), b.BoxName)
-}
-
-// Encode returns the base64-encoded token suitable for Authorization header
-func (b *boxKeyBearerToken) Encode() (string, error) {
+// Encode returns the base64-encoded token suitable for an "Authorization: Bearer {value}"
+// http header.  Returns an error if marshaling or signing fail.
+func (b *bearerTokenClaim) Encode(signer ssh.Signer) (string, error) {
 	jsonBytes, err := json.Marshal(b)
 	if err != nil {
-		return "", fmt.Errorf("marshaling token: %w", err)
+		return "", fmt.Errorf("Encode marshaling claim: %w", err)
 	}
-	return base64.StdEncoding.EncodeToString(jsonBytes), nil
+
+	sig, err := b.Sign(signer)
+	if err != nil {
+		return "", fmt.Errorf("Encode signing claim: %w", err)
+	}
+
+	claimStr := base64.StdEncoding.EncodeToString(jsonBytes)
+	sigStr := base64.StdEncoding.EncodeToString(sig)
+
+	return claimStr + "." + sigStr, nil
 }
 
 func (m *llmGateway) boxKeyAuth(ctx context.Context, r *http.Request) (string, error) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
+	bearerTokenString := r.Header.Get("Authorization")
+	if bearerTokenString == "" {
 		return "", fmt.Errorf("no authorization header provided")
 	}
 
-	authHeader = strings.TrimPrefix(authHeader, "Bearer ")
+	bearerTokenString = strings.TrimPrefix(bearerTokenString, "Bearer ")
 
-	// Decode base64 token
-	tokenBytes, err := base64.StdEncoding.DecodeString(authHeader)
+	tok, sigBytes, err := DecodeBearerToken(bearerTokenString)
 	if err != nil {
-		return "", fmt.Errorf("decoding base64 bearer token: %w", err)
-	}
-
-	tok := &boxKeyBearerToken{}
-	if err := json.Unmarshal(tokenBytes, tok); err != nil {
-		return "", fmt.Errorf("unmarshaling bearer token: %w", err)
+		return "", fmt.Errorf("boxKeyAuth: %w", err)
 	}
 
 	// Get the SSH public key for this box
@@ -84,9 +122,13 @@ func (m *llmGateway) boxKeyAuth(ctx context.Context, r *http.Request) (string, e
 	expectedFormat := sshPublicKey.Type()
 	sig := &ssh.Signature{
 		Format: expectedFormat,
-		Blob:   tok.Signature,
+		Blob:   sigBytes,
 	}
-	if err := sshPublicKey.Verify(tok.claim(), sig); err != nil {
+	claimBytes, err := json.Marshal(tok)
+	if err != nil {
+		return "", fmt.Errorf("unmarshling claim bytes: %w", err)
+	}
+	if err := sshPublicKey.Verify(claimBytes, sig); err != nil {
 		return "", fmt.Errorf("verifying signature: %w", err)
 	}
 
