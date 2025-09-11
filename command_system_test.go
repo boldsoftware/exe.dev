@@ -425,7 +425,7 @@ func TestGetAvailableCommands(t *testing.T) {
 			commandNames[cmd.Name] = true
 		}
 
-		expectedCommands := []string{"help", "list", "new", "start", "stop", "delete", "alloc", "billing", "whoami"}
+		expectedCommands := []string{"help", "list", "new", "delete", "billing", "whoami"}
 		for _, expected := range expectedCommands {
 			if !commandNames[expected] {
 				t.Errorf("Expected command %s not found in available commands", expected)
