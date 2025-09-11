@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -408,14 +409,14 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 			sshHost = ctrhost
 		}
 	}
-	// if hotname starst with lima, use localhost, because limactl does some
+	// if hostname starts with lima, use localhost, because limactl does some
 	// fancy weird port forwarding
 	if s.devMode != "" && strings.HasPrefix(sshHost, "lima") {
 		sshHost = "localhost"
 	}
 
 	// Try to proxy to the configured port
-	err = s.proxyViaSSHPortForward(w, r, sshHost, int(*box.SSHPort), sshKey, route.Port)
+	err = s.proxyViaSSHPortForward(w, r, sshHost, box, sshKey, route.Port)
 	if err != nil {
 		return fmt.Errorf("failed to proxy to port %d: %w", route.Port, err)
 	}
@@ -424,10 +425,10 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 }
 
 // proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
-func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, sshPort int, sshKey ssh.Signer, targetPort int) error {
+func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *exedb.Box, sshKey ssh.Signer, targetPort int) error {
 	// Create SSH client config
 	sshConfig := &ssh.ClientConfig{
-		User: "root",
+		User: *box.SSHUser,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshKey),
 		},
@@ -436,10 +437,36 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Connect to SSH server
-	sshAddr := fmt.Sprintf("%s:%d", sshHost, sshPort)
-	sshConn, err := ssh.Dial("tcp", sshAddr, sshConfig)
-	if err != nil {
-		return fmt.Errorf("failed to connect to SSH server %s: %w", sshAddr, err)
+	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
+
+	retries := []time.Duration{
+		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
+		1 * time.Second, 1 * time.Second,
+		2 * time.Second, 3 * time.Second,
+		0, // trailing 0 delay makes loop logic simpler
+	}
+	start := time.Now()
+	var sshConn *ssh.Client
+	var dialErrs error
+	for i, wait := range retries {
+		slog.Debug("proxy dialing ssh using config", "attempt", i, "user", sshConfig.User, "private_key", sshKey, "timeout", sshConfig.Timeout)
+		var err error
+		sshConn, err = ssh.Dial("tcp", sshAddr, sshConfig)
+		if err == nil {
+			break
+		}
+		dialErrs = errors.Join(dialErrs, err)
+		slog.Info("failed to connect to SSH server", "attempt", i, "error", err, "elapsed", time.Since(start).Round(10*time.Millisecond).String())
+		if wait > 0 {
+			// add jitter to d: multiply by random factor between 0.8 and 1.2
+			jitter := 0.8 + rand.Float64()*0.4
+			wait = time.Duration(float64(wait) * jitter)
+			time.Sleep(wait)
+		}
+	}
+
+	if sshConn == nil {
+		return fmt.Errorf("failed to connect to SSH server %s: %w", sshAddr, dialErrs)
 	}
 	defer sshConn.Close()
 
