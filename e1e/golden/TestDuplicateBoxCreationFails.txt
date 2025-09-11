@@ -46,6 +46,7 @@ Creating e1e-BOX_TIMESTAMP-testduplicateboxcreationfails (medium) using image bo
 Ready in ELAPSED_TIME! Access with:
 
 ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testduplicateboxcreationfails@localhost
+http://e1e-BOX_TIMESTAMP-testduplicateboxcreationfails.localhost:EXED_HTTP_PORT
 
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testduplicateboxcreationfails
 Box name "e1e-BOX_TIMESTAMP-testduplicateboxcreationfails" is not available

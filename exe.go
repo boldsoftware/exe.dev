@@ -2401,6 +2401,14 @@ func (s *Server) formatSSHConnectionInfo(allocID, boxName string) string {
 	return fmt.Sprintf("ssh %s@exe.dev", boxName)
 }
 
+// httpsProxyAddress returns the HTTPS proxy address for a box.
+func (s *Server) httpsProxyAddress(boxName string) string {
+	if s.devMode != "" {
+		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpLn.tcp.Port)
+	}
+	return fmt.Sprintf("https://%s.exe.dev", boxName)
+}
+
 // denylistedBoxNames contains common computer-related five+ letter words that are not allowed as box names
 var denylistedBoxNames = map[string]bool{
 	"teams": true,

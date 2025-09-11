@@ -46,6 +46,7 @@ Creating e1e-BOX_TIMESTAMP-testsshworks (medium) using image boldsoftware/exeunt
 Ready in ELAPSED_TIME! Access with:
 
 ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testsshworks@localhost
+http://e1e-BOX_TIMESTAMP-testsshworks.localhost:EXED_HTTP_PORT
 
 exe.dev ▶ list
 Your boxes:

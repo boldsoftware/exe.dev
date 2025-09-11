@@ -499,14 +499,15 @@ done:
 
 	totalTime := time.Since(startTime)
 	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, boxName)
+	httpsProxyAddr := ss.server.httpsProxyAddress(boxName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
-		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\r\n",
-			totalTime.Seconds(), sshCommand)
+		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\033[1m%s\033[0m\r\n\r\n",
+			totalTime.Seconds(), sshCommand, httpsProxyAddr)
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
-		cc.Write("%s\r\n", sshCommand)
+		cc.Write("%s\r\n%s\r\n", sshCommand, httpsProxyAddr)
 	}
 	return nil
 }
