@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Configuration
 REGION="us-west-2"
 AZ="us-west-2b"
-INSTANCE_TYPE="m7gd.metal"
+INSTANCE_TYPE="m5d.metal"
 ROOT_VOLUME_SIZE="50"
 DATA_VOLUME_SIZE="250"
 SECURITY_GROUP_NAME="exe-ctr-sg"
@@ -128,8 +128,8 @@ echo "Finding latest Ubuntu 24.04 AMI..."
 AMI_ID=$(aws ec2 describe-images \
 	--owners 099720109477 \
 	--filters \
-	"Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-arm64-server-*" \
-	"Name=architecture,Values=arm64" \
+	"Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" \
+	"Name=architecture,Values=x86_64" \
 	"Name=virtualization-type,Values=hvm" \
 	"Name=state,Values=available" \
 	--query 'Images[0].[ImageId]' \
@@ -331,48 +331,74 @@ echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm parted xfsprogs >/dev/null 2>&1
 
-# Setup 500GB swap on each NVMe drive with equal priority for I/O interleaving
-echo "=== Setting up dual swap partitions on NVMe drives ==="
+# Setup 225GB swap on each of the 4 NVMe drives with equal priority for I/O interleaving
+echo "=== Setting up quad swap partitions on NVMe drives ==="
 
 # First NVMe drive
 NVME1="/dev/nvme0n1"
-echo "Setting up 500GB swap on ${NVME1}..."
+echo "Setting up 225GB swap on ${NVME1}..."
 sudo parted -s ${NVME1} mklabel gpt
-sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 501GiB
+sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 226GiB
 sudo mkswap ${NVME1}p1
 
 # Second NVMe drive
 NVME2="/dev/nvme1n1"
-echo "Setting up 500GB swap on ${NVME2}..."
+echo "Setting up 225GB swap on ${NVME2}..."
 sudo parted -s ${NVME2} mklabel gpt
-sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 501GiB
+sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 226GiB
 sudo mkswap ${NVME2}p1
 
-# Enable both swaps with equal priority for I/O interleaving
+# Third NVMe drive
+NVME3="/dev/nvme2n1"
+echo "Setting up 225GB swap on ${NVME3}..."
+sudo parted -s ${NVME3} mklabel gpt
+sudo parted -s ${NVME3} mkpart primary linux-swap 1MiB 226GiB
+sudo mkswap ${NVME3}p1
+
+# Fourth NVMe drive
+NVME4="/dev/nvme3n1"
+echo "Setting up 225GB swap on ${NVME4}..."
+sudo parted -s ${NVME4} mklabel gpt
+sudo parted -s ${NVME4} mkpart primary linux-swap 1MiB 226GiB
+sudo mkswap ${NVME4}p1
+
+# Enable all swaps with equal priority for I/O interleaving
 sudo swapon -p 1 ${NVME1}p1
 sudo swapon -p 1 ${NVME2}p1
+sudo swapon -p 1 ${NVME3}p1
+sudo swapon -p 1 ${NVME4}p1
 
 # Add to fstab with priority
 echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
 echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+echo "${NVME3}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+echo "${NVME4}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
 
-echo "Dual swap setup complete (2x 500GB with equal priority)"
+echo "Quad swap setup complete (4x 225GB with equal priority, 900GB total)"
 
 # Setup RAID 0 XFS volume for /local (Nydus snapshotting)
 echo "=== Setting up RAID 0 XFS volume for /local (Nydus snapshotting) ==="
 
-# Create 500GB partitions on each NVMe drive for /local
-echo "Creating 500GB partition on ${NVME1} for RAID..."
-sudo parted -s ${NVME1} mkpart primary 501GiB 1001GiB
+# Create remaining space partitions on each NVMe drive for /local
+echo "Creating partition on ${NVME1} for RAID..."
+sudo parted -s ${NVME1} mkpart primary 226GiB 100%
 sudo parted -s ${NVME1} set 2 raid on
 
-echo "Creating 500GB partition on ${NVME2} for RAID..."
-sudo parted -s ${NVME2} mkpart primary 501GiB 1001GiB
+echo "Creating partition on ${NVME2} for RAID..."
+sudo parted -s ${NVME2} mkpart primary 226GiB 100%
 sudo parted -s ${NVME2} set 2 raid on
 
-# Create RAID 0 array combining both partitions (1TB total)
-echo "Creating RAID 0 array with both partitions..."
-sudo mdadm --create /dev/md0 --level=0 --raid-devices=2 ${NVME1}p2 ${NVME2}p2 --force
+echo "Creating partition on ${NVME3} for RAID..."
+sudo parted -s ${NVME3} mkpart primary 226GiB 100%
+sudo parted -s ${NVME3} set 2 raid on
+
+echo "Creating partition on ${NVME4} for RAID..."
+sudo parted -s ${NVME4} mkpart primary 226GiB 100%
+sudo parted -s ${NVME4} set 2 raid on
+
+# Create RAID 0 array combining all 4 partitions (~2.7TB total)
+echo "Creating RAID 0 array with all 4 partitions..."
+sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 ${NVME1}p2 ${NVME2}p2 ${NVME3}p2 ${NVME4}p2 --force
 
 # Wait for RAID to be ready
 sleep 2
@@ -393,7 +419,7 @@ sudo update-initramfs -u
 # Add to fstab
 echo "/dev/md0 /local xfs defaults 0 0" | sudo tee -a /etc/fstab
 
-echo "RAID 0 XFS volume mounted at /local (1TB total)"
+echo "RAID 0 XFS volume mounted at /local (~2.7TB total)"
 
 # Setup /data volume
 echo "=== Setting up /data volume ==="
@@ -494,8 +520,8 @@ echo "=========================================="
 echo "${MACHINE_NAME} is now fully configured with:"
 echo "  - Containerd with Kata Containers (Cloud Hypervisor)"
 echo "  - Nydus snapshotter"
-echo "  - 1TB swap (2x 500GB with RAID 0 interleaving)"
-echo "  - 1TB /local XFS volume (RAID 0) for Nydus cache"
+echo "  - 900GB swap (4x 225GB with equal priority for I/O interleaving)"
+echo "  - ~2.7TB /local XFS volume (RAID 0 across 4 disks) for Nydus cache"
 echo "  - 250GB /data XFS volume with project quotas"
 echo ""
 echo "Instance details:"
