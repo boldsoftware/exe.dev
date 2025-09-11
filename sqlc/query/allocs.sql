@@ -9,3 +9,12 @@ VALUES (?, ?, ?, ?, ?, ?);
 SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
 FROM allocs
 WHERE ctrhost = ?;
+
+-- name: GetAllocByUserID :one
+SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
+FROM allocs
+WHERE user_id = ?
+LIMIT 1;
+
+-- name: GetCtrhostByAllocID :one
+SELECT ctrhost FROM allocs WHERE alloc_id = ?;

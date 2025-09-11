@@ -30,6 +30,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
 	}
+	if q.deleteAuthCookieByValueStmt, err = db.PrepareContext(ctx, deleteAuthCookieByValue); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAuthCookieByValue: %w", err)
+	}
 	if q.deleteAuthCookiesByUserIDStmt, err = db.PrepareContext(ctx, deleteAuthCookiesByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookiesByUserID: %w", err)
 	}
@@ -38,6 +41,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deletePendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, deletePendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingSSHKeyByToken: %w", err)
+	}
+	if q.getAllUserEventsStmt, err = db.PrepareContext(ctx, getAllUserEvents); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllUserEvents: %w", err)
+	}
+	if q.getAllocByUserIDStmt, err = db.PrepareContext(ctx, getAllocByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetAllocByUserID: %w", err)
 	}
 	if q.getAllocsByHostStmt, err = db.PrepareContext(ctx, getAllocsByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllocsByHost: %w", err)
@@ -51,8 +60,26 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxByNameStmt, err = db.PrepareContext(ctx, getBoxByName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByName: %w", err)
 	}
+	if q.getBoxByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxByNameAndAlloc); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxByNameAndAlloc: %w", err)
+	}
+	if q.getBoxDetailsForSetupStmt, err = db.PrepareContext(ctx, getBoxDetailsForSetup); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxDetailsForSetup: %w", err)
+	}
+	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
+	}
+	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
+	}
 	if q.getBoxesForAllocStmt, err = db.PrepareContext(ctx, getBoxesForAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesForAlloc: %w", err)
+	}
+	if q.getBoxesForUserDashboardStmt, err = db.PrepareContext(ctx, getBoxesForUserDashboard); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxesForUserDashboard: %w", err)
+	}
+	if q.getCtrhostByAllocIDStmt, err = db.PrepareContext(ctx, getCtrhostByAllocID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCtrhostByAllocID: %w", err)
 	}
 	if q.getEmailBySSHKeyStmt, err = db.PrepareContext(ctx, getEmailBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBySSHKey: %w", err)
@@ -63,6 +90,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailVerificationByEmailStmt, err = db.PrepareContext(ctx, getEmailVerificationByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByEmail: %w", err)
 	}
+	if q.getEmailVerificationByPartialTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByPartialToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetEmailVerificationByPartialToken: %w", err)
+	}
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
 	}
@@ -71,6 +101,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getPendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, getPendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyByToken: %w", err)
+	}
+	if q.getPendingSSHKeyEmailByPublicKeyStmt, err = db.PrepareContext(ctx, getPendingSSHKeyEmailByPublicKey); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyEmailByPublicKey: %w", err)
 	}
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
@@ -84,11 +117,20 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
+	if q.getUserEventCountStmt, err = db.PrepareContext(ctx, getUserEventCount); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserEventCount: %w", err)
+	}
 	if q.getUserIDByEmailStmt, err = db.PrepareContext(ctx, getUserIDByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDByEmail: %w", err)
 	}
+	if q.getUserIDBySSHKeyStmt, err = db.PrepareContext(ctx, getUserIDBySSHKey); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserIDBySSHKey: %w", err)
+	}
 	if q.getUserWithDetailsStmt, err = db.PrepareContext(ctx, getUserWithDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithDetails: %w", err)
+	}
+	if q.getUserWithSSHKeyStmt, err = db.PrepareContext(ctx, getUserWithSSHKey); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserWithSSHKey: %w", err)
 	}
 	if q.insertAllocStmt, err = db.PrepareContext(ctx, insertAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAlloc: %w", err)
@@ -105,11 +147,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertOrReplaceEmailVerificationStmt, err = db.PrepareContext(ctx, insertOrReplaceEmailVerification); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertOrReplaceEmailVerification: %w", err)
 	}
+	if q.insertSSHKeyStmt, err = db.PrepareContext(ctx, insertSSHKey); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertSSHKey: %w", err)
+	}
 	if q.insertSSHKeyForEmailUserStmt, err = db.PrepareContext(ctx, insertSSHKeyForEmailUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKeyForEmailUser: %w", err)
 	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
+	}
+	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
+		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
 	}
 	if q.updateAuthCookieLastUsedStmt, err = db.PrepareContext(ctx, updateAuthCookieLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthCookieLastUsed: %w", err)
@@ -122,6 +170,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateBoxContainerIDAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerIDAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxContainerIDAndStatus: %w", err)
+	}
+	if q.updateBoxSSHDetailsStmt, err = db.PrepareContext(ctx, updateBoxSSHDetails); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxSSHDetails: %w", err)
+	}
+	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
 	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
@@ -141,6 +195,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteAuthCookieStmt: %w", cerr)
 		}
 	}
+	if q.deleteAuthCookieByValueStmt != nil {
+		if cerr := q.deleteAuthCookieByValueStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAuthCookieByValueStmt: %w", cerr)
+		}
+	}
 	if q.deleteAuthCookiesByUserIDStmt != nil {
 		if cerr := q.deleteAuthCookiesByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAuthCookiesByUserIDStmt: %w", cerr)
@@ -154,6 +213,16 @@ func (q *Queries) Close() error {
 	if q.deletePendingSSHKeyByTokenStmt != nil {
 		if cerr := q.deletePendingSSHKeyByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePendingSSHKeyByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getAllUserEventsStmt != nil {
+		if cerr := q.getAllUserEventsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllUserEventsStmt: %w", cerr)
+		}
+	}
+	if q.getAllocByUserIDStmt != nil {
+		if cerr := q.getAllocByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getAllocByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.getAllocsByHostStmt != nil {
@@ -176,9 +245,39 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxByNameStmt: %w", cerr)
 		}
 	}
+	if q.getBoxByNameAndAllocStmt != nil {
+		if cerr := q.getBoxByNameAndAllocStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxByNameAndAllocStmt: %w", cerr)
+		}
+	}
+	if q.getBoxDetailsForSetupStmt != nil {
+		if cerr := q.getBoxDetailsForSetupStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxDetailsForSetupStmt: %w", cerr)
+		}
+	}
+	if q.getBoxSSHDetailsStmt != nil {
+		if cerr := q.getBoxSSHDetailsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
+		}
+	}
+	if q.getBoxesByHostStmt != nil {
+		if cerr := q.getBoxesByHostStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxesByHostStmt: %w", cerr)
+		}
+	}
 	if q.getBoxesForAllocStmt != nil {
 		if cerr := q.getBoxesForAllocStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesForAllocStmt: %w", cerr)
+		}
+	}
+	if q.getBoxesForUserDashboardStmt != nil {
+		if cerr := q.getBoxesForUserDashboardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxesForUserDashboardStmt: %w", cerr)
+		}
+	}
+	if q.getCtrhostByAllocIDStmt != nil {
+		if cerr := q.getCtrhostByAllocIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCtrhostByAllocIDStmt: %w", cerr)
 		}
 	}
 	if q.getEmailBySSHKeyStmt != nil {
@@ -196,6 +295,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEmailVerificationByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getEmailVerificationByPartialTokenStmt != nil {
+		if cerr := q.getEmailVerificationByPartialTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getEmailVerificationByPartialTokenStmt: %w", cerr)
+		}
+	}
 	if q.getEmailVerificationByTokenStmt != nil {
 		if cerr := q.getEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByTokenStmt: %w", cerr)
@@ -209,6 +313,11 @@ func (q *Queries) Close() error {
 	if q.getPendingSSHKeyByTokenStmt != nil {
 		if cerr := q.getPendingSSHKeyByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPendingSSHKeyByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getPendingSSHKeyEmailByPublicKeyStmt != nil {
+		if cerr := q.getPendingSSHKeyEmailByPublicKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingSSHKeyEmailByPublicKeyStmt: %w", cerr)
 		}
 	}
 	if q.getSSHHostKeyStmt != nil {
@@ -231,14 +340,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getUserEventCountStmt != nil {
+		if cerr := q.getUserEventCountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserEventCountStmt: %w", cerr)
+		}
+	}
 	if q.getUserIDByEmailStmt != nil {
 		if cerr := q.getUserIDByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserIDByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getUserIDBySSHKeyStmt != nil {
+		if cerr := q.getUserIDBySSHKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserIDBySSHKeyStmt: %w", cerr)
+		}
+	}
 	if q.getUserWithDetailsStmt != nil {
 		if cerr := q.getUserWithDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserWithDetailsStmt: %w", cerr)
+		}
+	}
+	if q.getUserWithSSHKeyStmt != nil {
+		if cerr := q.getUserWithSSHKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserWithSSHKeyStmt: %w", cerr)
 		}
 	}
 	if q.insertAllocStmt != nil {
@@ -266,6 +390,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertOrReplaceEmailVerificationStmt: %w", cerr)
 		}
 	}
+	if q.insertSSHKeyStmt != nil {
+		if cerr := q.insertSSHKeyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertSSHKeyStmt: %w", cerr)
+		}
+	}
 	if q.insertSSHKeyForEmailUserStmt != nil {
 		if cerr := q.insertSSHKeyForEmailUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertSSHKeyForEmailUserStmt: %w", cerr)
@@ -274,6 +403,11 @@ func (q *Queries) Close() error {
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
+		}
+	}
+	if q.recordUserEventStmt != nil {
+		if cerr := q.recordUserEventStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing recordUserEventStmt: %w", cerr)
 		}
 	}
 	if q.updateAuthCookieLastUsedStmt != nil {
@@ -294,6 +428,16 @@ func (q *Queries) Close() error {
 	if q.updateBoxContainerIDAndStatusStmt != nil {
 		if cerr := q.updateBoxContainerIDAndStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxContainerIDAndStatusStmt: %w", cerr)
+		}
+	}
+	if q.updateBoxSSHDetailsStmt != nil {
+		if cerr := q.updateBoxSSHDetailsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxSSHDetailsStmt: %w", cerr)
+		}
+	}
+	if q.updateBoxStatusStmt != nil {
+		if cerr := q.updateBoxStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
 		}
 	}
 	if q.upsertSSHHostKeyStmt != nil {
@@ -338,81 +482,117 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                                   DBTX
-	tx                                   *sql.Tx
-	allocExistsForUserStmt               *sql.Stmt
-	deleteAuthCookieStmt                 *sql.Stmt
-	deleteAuthCookiesByUserIDStmt        *sql.Stmt
-	deleteEmailVerificationByTokenStmt   *sql.Stmt
-	deletePendingSSHKeyByTokenStmt       *sql.Stmt
-	getAllocsByHostStmt                  *sql.Stmt
-	getAuthCookieInfoStmt                *sql.Stmt
-	getAuthTokenInfoStmt                 *sql.Stmt
-	getBoxByNameStmt                     *sql.Stmt
-	getBoxesForAllocStmt                 *sql.Stmt
-	getEmailBySSHKeyStmt                 *sql.Stmt
-	getEmailByUserIDStmt                 *sql.Stmt
-	getEmailVerificationByEmailStmt      *sql.Stmt
-	getEmailVerificationByTokenStmt      *sql.Stmt
-	getFirstUserIDStmt                   *sql.Stmt
-	getPendingSSHKeyByTokenStmt          *sql.Stmt
-	getSSHHostKeyStmt                    *sql.Stmt
-	getSSHHostPublicKeyStmt              *sql.Stmt
-	getSSHKeysForUserStmt                *sql.Stmt
-	getUserByEmailStmt                   *sql.Stmt
-	getUserIDByEmailStmt                 *sql.Stmt
-	getUserWithDetailsStmt               *sql.Stmt
-	insertAllocStmt                      *sql.Stmt
-	insertAuthCookieStmt                 *sql.Stmt
-	insertBoxStmt                        *sql.Stmt
-	insertEmailVerificationStmt          *sql.Stmt
-	insertOrReplaceEmailVerificationStmt *sql.Stmt
-	insertSSHKeyForEmailUserStmt         *sql.Stmt
-	insertUserStmt                       *sql.Stmt
-	updateAuthCookieLastUsedStmt         *sql.Stmt
-	updateAuthTokenUsedAtStmt            *sql.Stmt
-	updateBoxContainerAndStatusStmt      *sql.Stmt
-	updateBoxContainerIDAndStatusStmt    *sql.Stmt
-	upsertSSHHostKeyStmt                 *sql.Stmt
+	db                                     DBTX
+	tx                                     *sql.Tx
+	allocExistsForUserStmt                 *sql.Stmt
+	deleteAuthCookieStmt                   *sql.Stmt
+	deleteAuthCookieByValueStmt            *sql.Stmt
+	deleteAuthCookiesByUserIDStmt          *sql.Stmt
+	deleteEmailVerificationByTokenStmt     *sql.Stmt
+	deletePendingSSHKeyByTokenStmt         *sql.Stmt
+	getAllUserEventsStmt                   *sql.Stmt
+	getAllocByUserIDStmt                   *sql.Stmt
+	getAllocsByHostStmt                    *sql.Stmt
+	getAuthCookieInfoStmt                  *sql.Stmt
+	getAuthTokenInfoStmt                   *sql.Stmt
+	getBoxByNameStmt                       *sql.Stmt
+	getBoxByNameAndAllocStmt               *sql.Stmt
+	getBoxDetailsForSetupStmt              *sql.Stmt
+	getBoxSSHDetailsStmt                   *sql.Stmt
+	getBoxesByHostStmt                     *sql.Stmt
+	getBoxesForAllocStmt                   *sql.Stmt
+	getBoxesForUserDashboardStmt           *sql.Stmt
+	getCtrhostByAllocIDStmt                *sql.Stmt
+	getEmailBySSHKeyStmt                   *sql.Stmt
+	getEmailByUserIDStmt                   *sql.Stmt
+	getEmailVerificationByEmailStmt        *sql.Stmt
+	getEmailVerificationByPartialTokenStmt *sql.Stmt
+	getEmailVerificationByTokenStmt        *sql.Stmt
+	getFirstUserIDStmt                     *sql.Stmt
+	getPendingSSHKeyByTokenStmt            *sql.Stmt
+	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
+	getSSHHostKeyStmt                      *sql.Stmt
+	getSSHHostPublicKeyStmt                *sql.Stmt
+	getSSHKeysForUserStmt                  *sql.Stmt
+	getUserByEmailStmt                     *sql.Stmt
+	getUserEventCountStmt                  *sql.Stmt
+	getUserIDByEmailStmt                   *sql.Stmt
+	getUserIDBySSHKeyStmt                  *sql.Stmt
+	getUserWithDetailsStmt                 *sql.Stmt
+	getUserWithSSHKeyStmt                  *sql.Stmt
+	insertAllocStmt                        *sql.Stmt
+	insertAuthCookieStmt                   *sql.Stmt
+	insertBoxStmt                          *sql.Stmt
+	insertEmailVerificationStmt            *sql.Stmt
+	insertOrReplaceEmailVerificationStmt   *sql.Stmt
+	insertSSHKeyStmt                       *sql.Stmt
+	insertSSHKeyForEmailUserStmt           *sql.Stmt
+	insertUserStmt                         *sql.Stmt
+	recordUserEventStmt                    *sql.Stmt
+	updateAuthCookieLastUsedStmt           *sql.Stmt
+	updateAuthTokenUsedAtStmt              *sql.Stmt
+	updateBoxContainerAndStatusStmt        *sql.Stmt
+	updateBoxContainerIDAndStatusStmt      *sql.Stmt
+	updateBoxSSHDetailsStmt                *sql.Stmt
+	updateBoxStatusStmt                    *sql.Stmt
+	upsertSSHHostKeyStmt                   *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                                   tx,
-		tx:                                   tx,
-		allocExistsForUserStmt:               q.allocExistsForUserStmt,
-		deleteAuthCookieStmt:                 q.deleteAuthCookieStmt,
-		deleteAuthCookiesByUserIDStmt:        q.deleteAuthCookiesByUserIDStmt,
-		deleteEmailVerificationByTokenStmt:   q.deleteEmailVerificationByTokenStmt,
-		deletePendingSSHKeyByTokenStmt:       q.deletePendingSSHKeyByTokenStmt,
-		getAllocsByHostStmt:                  q.getAllocsByHostStmt,
-		getAuthCookieInfoStmt:                q.getAuthCookieInfoStmt,
-		getAuthTokenInfoStmt:                 q.getAuthTokenInfoStmt,
-		getBoxByNameStmt:                     q.getBoxByNameStmt,
-		getBoxesForAllocStmt:                 q.getBoxesForAllocStmt,
-		getEmailBySSHKeyStmt:                 q.getEmailBySSHKeyStmt,
-		getEmailByUserIDStmt:                 q.getEmailByUserIDStmt,
-		getEmailVerificationByEmailStmt:      q.getEmailVerificationByEmailStmt,
-		getEmailVerificationByTokenStmt:      q.getEmailVerificationByTokenStmt,
-		getFirstUserIDStmt:                   q.getFirstUserIDStmt,
-		getPendingSSHKeyByTokenStmt:          q.getPendingSSHKeyByTokenStmt,
-		getSSHHostKeyStmt:                    q.getSSHHostKeyStmt,
-		getSSHHostPublicKeyStmt:              q.getSSHHostPublicKeyStmt,
-		getSSHKeysForUserStmt:                q.getSSHKeysForUserStmt,
-		getUserByEmailStmt:                   q.getUserByEmailStmt,
-		getUserIDByEmailStmt:                 q.getUserIDByEmailStmt,
-		getUserWithDetailsStmt:               q.getUserWithDetailsStmt,
-		insertAllocStmt:                      q.insertAllocStmt,
-		insertAuthCookieStmt:                 q.insertAuthCookieStmt,
-		insertBoxStmt:                        q.insertBoxStmt,
-		insertEmailVerificationStmt:          q.insertEmailVerificationStmt,
-		insertOrReplaceEmailVerificationStmt: q.insertOrReplaceEmailVerificationStmt,
-		insertSSHKeyForEmailUserStmt:         q.insertSSHKeyForEmailUserStmt,
-		insertUserStmt:                       q.insertUserStmt,
-		updateAuthCookieLastUsedStmt:         q.updateAuthCookieLastUsedStmt,
-		updateAuthTokenUsedAtStmt:            q.updateAuthTokenUsedAtStmt,
-		updateBoxContainerAndStatusStmt:      q.updateBoxContainerAndStatusStmt,
-		updateBoxContainerIDAndStatusStmt:    q.updateBoxContainerIDAndStatusStmt,
-		upsertSSHHostKeyStmt:                 q.upsertSSHHostKeyStmt,
+		db:                                     tx,
+		tx:                                     tx,
+		allocExistsForUserStmt:                 q.allocExistsForUserStmt,
+		deleteAuthCookieStmt:                   q.deleteAuthCookieStmt,
+		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
+		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
+		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
+		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
+		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
+		getAllocByUserIDStmt:                   q.getAllocByUserIDStmt,
+		getAllocsByHostStmt:                    q.getAllocsByHostStmt,
+		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
+		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
+		getBoxByNameStmt:                       q.getBoxByNameStmt,
+		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
+		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
+		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
+		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
+		getBoxesForAllocStmt:                   q.getBoxesForAllocStmt,
+		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
+		getCtrhostByAllocIDStmt:                q.getCtrhostByAllocIDStmt,
+		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
+		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
+		getEmailVerificationByEmailStmt:        q.getEmailVerificationByEmailStmt,
+		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
+		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
+		getFirstUserIDStmt:                     q.getFirstUserIDStmt,
+		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
+		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
+		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
+		getSSHHostPublicKeyStmt:                q.getSSHHostPublicKeyStmt,
+		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
+		getUserByEmailStmt:                     q.getUserByEmailStmt,
+		getUserEventCountStmt:                  q.getUserEventCountStmt,
+		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
+		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
+		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
+		getUserWithSSHKeyStmt:                  q.getUserWithSSHKeyStmt,
+		insertAllocStmt:                        q.insertAllocStmt,
+		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
+		insertBoxStmt:                          q.insertBoxStmt,
+		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
+		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
+		insertSSHKeyStmt:                       q.insertSSHKeyStmt,
+		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
+		insertUserStmt:                         q.insertUserStmt,
+		recordUserEventStmt:                    q.recordUserEventStmt,
+		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,
+		updateAuthTokenUsedAtStmt:              q.updateAuthTokenUsedAtStmt,
+		updateBoxContainerAndStatusStmt:        q.updateBoxContainerAndStatusStmt,
+		updateBoxContainerIDAndStatusStmt:      q.updateBoxContainerIDAndStatusStmt,
+		updateBoxSSHDetailsStmt:                q.updateBoxSSHDetailsStmt,
+		updateBoxStatusStmt:                    q.updateBoxStatusStmt,
+		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 	}
 }

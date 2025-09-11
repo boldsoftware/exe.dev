@@ -18,3 +18,9 @@ VALUES (?, ?, ?, ?);
 SELECT user_id, token
 FROM email_verifications
 WHERE email = ?;
+
+-- name: GetEmailVerificationByPartialToken :one
+SELECT user_id, token
+FROM email_verifications
+WHERE token LIKE ? AND expires_at > datetime('now')
+LIMIT 1;

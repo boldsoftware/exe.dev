@@ -53,6 +53,45 @@ func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]strin
 	return items, nil
 }
 
+const getUserIDBySSHKey = `-- name: GetUserIDBySSHKey :one
+SELECT user_id FROM ssh_keys WHERE public_key = ?
+`
+
+func (q *Queries) GetUserIDBySSHKey(ctx context.Context, publicKey string) (string, error) {
+	row := q.queryRow(ctx, q.getUserIDBySSHKeyStmt, getUserIDBySSHKey, publicKey)
+	var user_id string
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
+const getUserWithSSHKey = `-- name: GetUserWithSSHKey :one
+SELECT u.user_id, u.email, u.created_at
+FROM users u
+JOIN ssh_keys s ON u.user_id = s.user_id
+WHERE s.public_key = ?
+`
+
+func (q *Queries) GetUserWithSSHKey(ctx context.Context, publicKey string) (User, error) {
+	row := q.queryRow(ctx, q.getUserWithSSHKeyStmt, getUserWithSSHKey, publicKey)
+	var i User
+	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	return i, err
+}
+
+const insertSSHKey = `-- name: InsertSSHKey :exec
+INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)
+`
+
+type InsertSSHKeyParams struct {
+	UserID    string `db:"user_id" json:"user_id"`
+	PublicKey string `db:"public_key" json:"public_key"`
+}
+
+func (q *Queries) InsertSSHKey(ctx context.Context, arg InsertSSHKeyParams) error {
+	_, err := q.exec(ctx, q.insertSSHKeyStmt, insertSSHKey, arg.UserID, arg.PublicKey)
+	return err
+}
+
 const insertSSHKeyForEmailUser = `-- name: InsertSSHKeyForEmailUser :exec
 INSERT INTO ssh_keys (user_id, public_key)
 VALUES ((SELECT user_id FROM users WHERE email = ?), ?)

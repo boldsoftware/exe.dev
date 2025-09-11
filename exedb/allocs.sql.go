@@ -20,6 +20,29 @@ func (q *Queries) AllocExistsForUser(ctx context.Context, userID string) (int64,
 	return column_1, err
 }
 
+const getAllocByUserID = `-- name: GetAllocByUserID :one
+SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
+FROM allocs
+WHERE user_id = ?
+LIMIT 1
+`
+
+func (q *Queries) GetAllocByUserID(ctx context.Context, userID string) (Alloc, error) {
+	row := q.queryRow(ctx, q.getAllocByUserIDStmt, getAllocByUserID, userID)
+	var i Alloc
+	err := row.Scan(
+		&i.AllocID,
+		&i.UserID,
+		&i.AllocType,
+		&i.Region,
+		&i.Ctrhost,
+		&i.CreatedAt,
+		&i.StripeCustomerID,
+		&i.BillingEmail,
+	)
+	return i, err
+}
+
 const getAllocsByHost = `-- name: GetAllocsByHost :many
 SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
 FROM allocs
@@ -56,6 +79,17 @@ func (q *Queries) GetAllocsByHost(ctx context.Context, ctrhost string) ([]Alloc,
 		return nil, err
 	}
 	return items, nil
+}
+
+const getCtrhostByAllocID = `-- name: GetCtrhostByAllocID :one
+SELECT ctrhost FROM allocs WHERE alloc_id = ?
+`
+
+func (q *Queries) GetCtrhostByAllocID(ctx context.Context, allocID string) (string, error) {
+	row := q.queryRow(ctx, q.getCtrhostByAllocIDStmt, getCtrhostByAllocID, allocID)
+	var ctrhost string
+	err := row.Scan(&ctrhost)
+	return ctrhost, err
 }
 
 const insertAlloc = `-- name: InsertAlloc :exec

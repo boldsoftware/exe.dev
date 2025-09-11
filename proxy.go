@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/sqlite"
-
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/container"
@@ -298,12 +296,8 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Delete only this specific cookie from the database
 	if cookieValue != "" {
-		err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Exec(`
-				DELETE FROM auth_cookies
-				WHERE cookie_value = ?
-			`, cookieValue)
-			return err
+		err := s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeleteAuthCookieByValue(ctx, cookieValue)
 		})
 		if err != nil {
 			slog.Error("Failed to delete specific proxy auth cookie from database", "error", err)
@@ -338,18 +332,11 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 	}
 
 	// Get the box
-	var box exedb.Box
-	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-			SELECT id, alloc_id, name, status, image, container_id,
-			       created_by_user_id, created_at, updated_at,
-			       last_started_at, routes
-			FROM boxes
-			WHERE name = ? AND alloc_id = ?`, boxName, alloc.AllocID).Scan(
-			&box.ID, &box.AllocID, &box.Name, &box.Status,
-			&box.Image, &box.ContainerID, &box.CreatedByUserID,
-			&box.CreatedAt, &box.UpdatedAt, &box.LastStartedAt,
-			&box.Routes)
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxByNameAndAllocRow, error) {
+		return queries.GetBoxByNameAndAlloc(ctx, exedb.GetBoxByNameAndAllocParams{
+			Name:    boxName,
+			AllocID: alloc.AllocID,
+		})
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -358,7 +345,21 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 		return nil, fmt.Errorf("database error: %v", err)
 	}
 
-	return &box, nil
+	// Convert to exedb.Box
+	exeBox := &exedb.Box{
+		ID:              box.ID,
+		AllocID:         box.AllocID,
+		Name:            box.Name,
+		Status:          box.Status,
+		Image:           box.Image,
+		ContainerID:     box.ContainerID,
+		CreatedByUserID: box.CreatedByUserID,
+		CreatedAt:       box.CreatedAt,
+		UpdatedAt:       box.UpdatedAt,
+		LastStartedAt:   box.LastStartedAt,
+		Routes:          box.Routes,
+	}
+	return exeBox, nil
 }
 
 // proxyToContainer proxies the HTTP request to a container via SSH port forwarding
@@ -383,9 +384,8 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	}
 
 	// Get the allocation to find the ctrhost
-	var ctrhost string
-	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT ctrhost FROM allocs WHERE alloc_id = ?`, box.AllocID).Scan(&ctrhost)
+	ctrhost, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetCtrhostByAllocID(ctx, box.AllocID)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get allocation ctrhost: %w", err)

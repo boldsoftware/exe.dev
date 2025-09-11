@@ -37,6 +37,25 @@ func (q *Queries) GetEmailVerificationByEmail(ctx context.Context, email string)
 	return i, err
 }
 
+const getEmailVerificationByPartialToken = `-- name: GetEmailVerificationByPartialToken :one
+SELECT user_id, token
+FROM email_verifications
+WHERE token LIKE ? AND expires_at > datetime('now')
+LIMIT 1
+`
+
+type GetEmailVerificationByPartialTokenRow struct {
+	UserID string `db:"user_id" json:"user_id"`
+	Token  string `db:"token" json:"token"`
+}
+
+func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token string) (GetEmailVerificationByPartialTokenRow, error) {
+	row := q.queryRow(ctx, q.getEmailVerificationByPartialTokenStmt, getEmailVerificationByPartialToken, token)
+	var i GetEmailVerificationByPartialTokenRow
+	err := row.Scan(&i.UserID, &i.Token)
+	return i, err
+}
+
 const getEmailVerificationByToken = `-- name: GetEmailVerificationByToken :one
 SELECT user_id, email, expires_at
 FROM email_verifications

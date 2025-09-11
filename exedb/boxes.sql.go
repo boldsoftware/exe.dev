@@ -7,6 +7,7 @@ package exedb
 
 import (
 	"context"
+	"time"
 )
 
 const getBoxByName = `-- name: GetBoxByName :one
@@ -40,6 +41,158 @@ func (q *Queries) GetBoxByName(ctx context.Context, name string) (Box, error) {
 		&i.SSHUser,
 	)
 	return i, err
+}
+
+const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
+SELECT id, alloc_id, name, status, image, container_id,
+       created_by_user_id, created_at, updated_at,
+       last_started_at, routes
+FROM boxes
+WHERE name = ? AND alloc_id = ?
+`
+
+type GetBoxByNameAndAllocParams struct {
+	Name    string `db:"name" json:"name"`
+	AllocID string `db:"alloc_id" json:"alloc_id"`
+}
+
+type GetBoxByNameAndAllocRow struct {
+	ID              int        `db:"id" json:"id"`
+	AllocID         string     `db:"alloc_id" json:"alloc_id"`
+	Name            string     `db:"name" json:"name"`
+	Status          string     `db:"status" json:"status"`
+	Image           string     `db:"image" json:"image"`
+	ContainerID     *string    `db:"container_id" json:"container_id"`
+	CreatedByUserID string     `db:"created_by_user_id" json:"created_by_user_id"`
+	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt       *time.Time `db:"updated_at" json:"updated_at"`
+	LastStartedAt   *time.Time `db:"last_started_at" json:"last_started_at"`
+	Routes          *string    `db:"routes" json:"routes"`
+}
+
+func (q *Queries) GetBoxByNameAndAlloc(ctx context.Context, arg GetBoxByNameAndAllocParams) (GetBoxByNameAndAllocRow, error) {
+	row := q.queryRow(ctx, q.getBoxByNameAndAllocStmt, getBoxByNameAndAlloc, arg.Name, arg.AllocID)
+	var i GetBoxByNameAndAllocRow
+	err := row.Scan(
+		&i.ID,
+		&i.AllocID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+	)
+	return i, err
+}
+
+const getBoxDetailsForSetup = `-- name: GetBoxDetailsForSetup :one
+SELECT container_id, created_by_user_id, name, image
+FROM boxes WHERE id = ?
+`
+
+type GetBoxDetailsForSetupRow struct {
+	ContainerID     *string `db:"container_id" json:"container_id"`
+	CreatedByUserID string  `db:"created_by_user_id" json:"created_by_user_id"`
+	Name            string  `db:"name" json:"name"`
+	Image           string  `db:"image" json:"image"`
+}
+
+func (q *Queries) GetBoxDetailsForSetup(ctx context.Context, id int) (GetBoxDetailsForSetupRow, error) {
+	row := q.queryRow(ctx, q.getBoxDetailsForSetupStmt, getBoxDetailsForSetup, id)
+	var i GetBoxDetailsForSetupRow
+	err := row.Scan(
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.Name,
+		&i.Image,
+	)
+	return i, err
+}
+
+const getBoxSSHDetails = `-- name: GetBoxSSHDetails :one
+SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user
+FROM boxes m
+JOIN allocs a ON m.alloc_id = a.alloc_id
+WHERE m.id = ?
+`
+
+type GetBoxSSHDetailsRow struct {
+	SSHPort              *int64  `db:"ssh_port" json:"ssh_port"`
+	SSHClientPrivateKey  []byte  `db:"ssh_client_private_key" json:"ssh_client_private_key"`
+	SSHServerIdentityKey []byte  `db:"ssh_server_identity_key" json:"ssh_server_identity_key"`
+	Ctrhost              string  `db:"ctrhost" json:"ctrhost"`
+	SSHUser              *string `db:"ssh_user" json:"ssh_user"`
+}
+
+func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetailsRow, error) {
+	row := q.queryRow(ctx, q.getBoxSSHDetailsStmt, getBoxSSHDetails, id)
+	var i GetBoxSSHDetailsRow
+	err := row.Scan(
+		&i.SSHPort,
+		&i.SSHClientPrivateKey,
+		&i.SSHServerIdentityKey,
+		&i.Ctrhost,
+		&i.SSHUser,
+	)
+	return i, err
+}
+
+const getBoxesByHost = `-- name: GetBoxesByHost :many
+SELECT
+    b.id, b.alloc_id, b.name, b.status, b.image, b.container_id,
+    b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at,
+    b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys,
+    b.ssh_ca_public_key, b.ssh_host_certificate, b.ssh_client_private_key,
+    b.ssh_port, b.ssh_user
+FROM boxes b
+INNER JOIN allocs a ON b.alloc_id = a.alloc_id
+WHERE a.ctrhost = ? AND b.status != 'failed'
+`
+
+func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, error) {
+	rows, err := q.query(ctx, q.getBoxesByHostStmt, getBoxesByHost, ctrhost)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Box{}
+	for rows.Next() {
+		var i Box
+		if err := rows.Scan(
+			&i.ID,
+			&i.AllocID,
+			&i.Name,
+			&i.Status,
+			&i.Image,
+			&i.ContainerID,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastStartedAt,
+			&i.Routes,
+			&i.SSHServerIdentityKey,
+			&i.SSHAuthorizedKeys,
+			&i.SSHCAPublicKey,
+			&i.SSHHostCertificate,
+			&i.SSHClientPrivateKey,
+			&i.SSHPort,
+			&i.SSHUser,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getBoxesForAlloc = `-- name: GetBoxesForAlloc :many
@@ -78,6 +231,63 @@ func (q *Queries) GetBoxesForAlloc(ctx context.Context, allocID string) ([]Box, 
 			&i.SSHClientPrivateKey,
 			&i.SSHPort,
 			&i.SSHUser,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBoxesForUserDashboard = `-- name: GetBoxesForUserDashboard :many
+SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, '') as image,
+       COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
+       m.created_at, m.updated_at, m.last_started_at
+FROM boxes m
+JOIN allocs a ON m.alloc_id = a.alloc_id
+WHERE a.user_id = ?
+ORDER BY m.updated_at DESC
+`
+
+type GetBoxesForUserDashboardRow struct {
+	ID              int        `db:"id" json:"id"`
+	AllocID         string     `db:"alloc_id" json:"alloc_id"`
+	Name            string     `db:"name" json:"name"`
+	Status          string     `db:"status" json:"status"`
+	Image           string     `db:"image" json:"image"`
+	ContainerID     string     `db:"container_id" json:"container_id"`
+	CreatedByUserID string     `db:"created_by_user_id" json:"created_by_user_id"`
+	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt       *time.Time `db:"updated_at" json:"updated_at"`
+	LastStartedAt   *time.Time `db:"last_started_at" json:"last_started_at"`
+}
+
+func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, userID string) ([]GetBoxesForUserDashboardRow, error) {
+	rows, err := q.query(ctx, q.getBoxesForUserDashboardStmt, getBoxesForUserDashboard, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBoxesForUserDashboardRow{}
+	for rows.Next() {
+		var i GetBoxesForUserDashboardRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AllocID,
+			&i.Name,
+			&i.Status,
+			&i.Image,
+			&i.ContainerID,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastStartedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -176,5 +386,51 @@ type UpdateBoxContainerIDAndStatusParams struct {
 
 func (q *Queries) UpdateBoxContainerIDAndStatus(ctx context.Context, arg UpdateBoxContainerIDAndStatusParams) error {
 	_, err := q.exec(ctx, q.updateBoxContainerIDAndStatusStmt, updateBoxContainerIDAndStatus, arg.ContainerID, arg.ID)
+	return err
+}
+
+const updateBoxSSHDetails = `-- name: UpdateBoxSSHDetails :exec
+UPDATE boxes SET
+    ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
+    ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
+WHERE id = ?
+`
+
+type UpdateBoxSSHDetailsParams struct {
+	SSHServerIdentityKey []byte  `db:"ssh_server_identity_key" json:"ssh_server_identity_key"`
+	SSHAuthorizedKeys    *string `db:"ssh_authorized_keys" json:"ssh_authorized_keys"`
+	SSHCAPublicKey       *string `db:"ssh_ca_public_key" json:"ssh_ca_public_key"`
+	SSHHostCertificate   *string `db:"ssh_host_certificate" json:"ssh_host_certificate"`
+	SSHClientPrivateKey  []byte  `db:"ssh_client_private_key" json:"ssh_client_private_key"`
+	SSHPort              *int64  `db:"ssh_port" json:"ssh_port"`
+	ID                   int     `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxSSHDetails(ctx context.Context, arg UpdateBoxSSHDetailsParams) error {
+	_, err := q.exec(ctx, q.updateBoxSSHDetailsStmt, updateBoxSSHDetails,
+		arg.SSHServerIdentityKey,
+		arg.SSHAuthorizedKeys,
+		arg.SSHCAPublicKey,
+		arg.SSHHostCertificate,
+		arg.SSHClientPrivateKey,
+		arg.SSHPort,
+		arg.ID,
+	)
+	return err
+}
+
+const updateBoxStatus = `-- name: UpdateBoxStatus :exec
+UPDATE boxes
+SET status = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type UpdateBoxStatusParams struct {
+	Status string `db:"status" json:"status"`
+	ID     int    `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxStatus(ctx context.Context, arg UpdateBoxStatusParams) error {
+	_, err := q.exec(ctx, q.updateBoxStatusStmt, updateBoxStatus, arg.Status, arg.ID)
 	return err
 }

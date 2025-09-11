@@ -1350,22 +1350,9 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			// User doesn't exist - create them with their alloc
 			if err := s.createUserWithAlloc(context.Background(), verification.PublicKey, email); err != nil {
 				slog.Error("failed to create user with alloc during email verification", "error", err, "token", token)
-				// Clean up pending registration on failure
-				err := s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-					_, err := tx.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
-					return err
-				})
-				if err != nil {
-					slog.Error("failed to clean up pending registration", "error", err)
-				}
 				http.Error(w, "Failed to create user account", http.StatusInternalServerError)
 				return
 			}
-			// Clean up pending registration on success
-			s.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-				_, err := tx.Exec("DELETE FROM pending_registrations WHERE token = ?", token)
-				return err
-			})
 			slog.Info("Created new user", "email", email)
 		} else {
 			slog.Debug("User already exists", "email", email)
@@ -1898,25 +1885,22 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 
 // validateEmailVerificationByCode validates verification using short code
 func (s *Server) validateEmailVerificationByCode(ctx context.Context, code string) (string, error) {
-	var userID string
-	var token string
-
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-			SELECT user_id, token
-			FROM email_verifications
-			WHERE token LIKE ? AND expires_at > datetime('now')
-			LIMIT 1
-		`, code+"%").Scan(&userID, &token)
+	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetEmailVerificationByPartialTokenRow, error) {
+		return queries.GetEmailVerificationByPartialToken(ctx, code+"%")
 	})
 	if err != nil {
 		return "", fmt.Errorf("invalid or expired code")
 	}
 
+	userID := result.UserID
+	token := result.Token
 	// Consume the token
-	s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.DeleteEmailVerificationByToken(ctx, token)
 	})
+	if err != nil {
+		slog.Error("Failed to delete email verification token", "error", err)
+	}
 
 	return userID, nil
 }
@@ -2220,46 +2204,32 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		slog.Error("Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
 	}
 
-	// Get user's boxes from all teams they belong to
-	boxes := []exedb.Box{}
-	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		boxRows, err := rx.Query(`
-			SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, ''),
-			       COALESCE(m.container_id, ''), m.created_by_user_id,
-			       m.created_at, m.updated_at, m.last_started_at
-			FROM boxes m
-			JOIN allocs a ON m.alloc_id = a.alloc_id
-			WHERE a.user_id = ?
-			ORDER BY m.updated_at DESC
-		`, user.UserID)
-		if err != nil {
-			return err
-		}
-		defer boxRows.Close()
-		for boxRows.Next() {
-			var box exedb.Box
-			var containerID, image sql.NullString
-			var lastStartedAt sql.NullTime
-			err := boxRows.Scan(&box.ID, &box.AllocID, &box.Name,
-				&box.Status, &image, &containerID, &box.CreatedByUserID,
-				&box.CreatedAt, &box.UpdatedAt, &lastStartedAt)
-			if err != nil {
-				slog.Error("Error scanning box", "error", err)
-				continue
-			}
-			if containerID.Valid {
-				box.ContainerID = &containerID.String
-			}
-			if image.Valid {
-				box.Image = image.String
-			}
-			if lastStartedAt.Valid {
-				box.LastStartedAt = &lastStartedAt.Time
-			}
-			boxes = append(boxes, box)
-		}
-		return nil
+	// Get user's boxes
+	boxResults, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxesForUserDashboardRow, error) {
+		return queries.GetBoxesForUserDashboard(ctx, user.UserID)
 	})
+	if err != nil {
+		slog.Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
+	}
+
+	// Convert to Box format
+	boxes := make([]exedb.Box, len(boxResults))
+	for i, result := range boxResults {
+		boxes[i] = exedb.Box{
+			ID:              result.ID,
+			AllocID:         result.AllocID,
+			Name:            result.Name,
+			Status:          result.Status,
+			Image:           result.Image,
+			CreatedByUserID: result.CreatedByUserID,
+			CreatedAt:       result.CreatedAt,
+			UpdatedAt:       result.UpdatedAt,
+			LastStartedAt:   result.LastStartedAt,
+		}
+		if result.ContainerID != "" {
+			boxes[i].ContainerID = &result.ContainerID
+		}
+	}
 	if err != nil {
 		slog.Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
@@ -2594,19 +2564,21 @@ func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image 
 	routes := getDefaultRouteJSON()
 	var boxID int
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		result, err := tx.Exec(`
-			INSERT INTO boxes (
-				alloc_id, name, status, image, container_id, created_by_user_id, routes
-			) VALUES (?, ?, ?, ?, NULL, ?, ?)
-		`, allocID, name, "creating", image, userID, routes)
-		if err != nil {
-			return err
-		}
-		id, err := result.LastInsertId()
+		queries := exedb.New(tx.Conn())
+		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
+			AllocID:         allocID,
+			Name:            name,
+			Status:          "creating",
+			Image:           image,
+			CreatedByUserID: userID,
+			Routes:          &routes,
+		})
 		if err != nil {
 			return err
 		}
 		boxID = int(id)
+
+		// Record user event
 		s.recordUserEventTx(tx, userID, userEventCreatedBox)
 		return nil
 	})
@@ -2619,26 +2591,20 @@ func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image 
 
 // updateBoxWithContainer updates a box with container info and SSH keys after container creation
 func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containerID, sshUser string, sshKeys *container.ContainerSSHKeys, sshPort int) error {
-	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE boxes SET
-				container_id = ?,
-				status = ?,
-				ssh_server_identity_key = ?,
-				ssh_authorized_keys = ?,
-				ssh_ca_public_key = ?,
-				ssh_host_certificate = ?,
-				ssh_client_private_key = ?,
-				ssh_port = ?,
-				ssh_user = ?
-			WHERE id = ?
-		`, containerID, "running",
-			sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshPort, sshUser,
-			boxID)
-		return err
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateBoxContainerAndStatus(ctx, exedb.UpdateBoxContainerAndStatusParams{
+			ContainerID:          &containerID,
+			Status:               "running",
+			SSHServerIdentityKey: []byte(sshKeys.ServerIdentityKey),
+			SSHAuthorizedKeys:    &sshKeys.AuthorizedKeys,
+			SSHCAPublicKey:       &sshKeys.CAPublicKey,
+			SSHHostCertificate:   &sshKeys.HostCertificate,
+			SSHClientPrivateKey:  []byte(sshKeys.ClientPrivateKey),
+			SSHPort:              func() *int64 { p := int64(sshPort); return &p }(),
+			SSHUser:              &sshUser,
+			ID:                   boxID,
+		})
 	})
-	return err
 }
 
 // isBoxNameAvailable checks if a box name is available for use.
@@ -2699,43 +2665,17 @@ func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc,
 
 // getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
 func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.Box, error) {
-	var boxes []*exedb.Box
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		// Join boxes with allocs to find boxes on this host
-		rows, err := rx.Query(`
-			SELECT
-				b.id, b.alloc_id, b.name, b.status, b.image, b.container_id,
-				b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at,
-				b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys,
-				b.ssh_ca_public_key, b.ssh_host_certificate, b.ssh_client_private_key,
-				b.ssh_port, b.ssh_user
-			FROM boxes b
-			INNER JOIN allocs a ON b.alloc_id = a.alloc_id
-			WHERE a.ctrhost = ? AND b.status != 'failed'
-		`, ctrhost)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var b exedb.Box
-			err := rows.Scan(
-				&b.ID, &b.AllocID, &b.Name, &b.Status, &b.Image, &b.ContainerID,
-				&b.CreatedByUserID, &b.CreatedAt, &b.UpdatedAt, &b.LastStartedAt,
-				&b.Routes, &b.SSHServerIdentityKey, &b.SSHAuthorizedKeys,
-				&b.SSHCAPublicKey, &b.SSHHostCertificate, &b.SSHClientPrivateKey,
-				&b.SSHPort, &b.SSHUser,
-			)
-			if err != nil {
-				return err
-			}
-			boxes = append(boxes, &b)
-		}
-		return nil
+	boxResults, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Box, error) {
+		return queries.GetBoxesByHost(ctx, ctrhost)
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Convert results to Box pointers
+	boxes := make([]*exedb.Box, len(boxResults))
+	for i := range boxResults {
+		boxes[i] = &boxResults[i]
 	}
 	return boxes, nil
 }
@@ -3033,11 +2973,12 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 
 // updateBoxStatus updates the status of a box in the database
 func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) error {
-	return s.db.Exec(ctx, `
-		UPDATE boxes
-		SET status = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, status, boxID)
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateBoxStatus(ctx, exedb.UpdateBoxStatusParams{
+			Status: status,
+			ID:     boxID,
+		})
+	})
 }
 
 // syncHost performs complete host synchronization including both allocs and containers
@@ -3253,12 +3194,8 @@ func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (ema
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// Check if key exists in pending_ssh_keys (unverified)
-		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow(`
-			SELECT user_email
-			FROM pending_ssh_keys
-			WHERE public_key = ?`,
-				publicKeyStr).Scan(&email)
+		email, err = withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+			return queries.GetPendingSSHKeyEmailByPublicKey(ctx, publicKeyStr)
 		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", false, nil
@@ -3270,22 +3207,24 @@ func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (ema
 
 // getUserByPublicKey retrieves a user by their SSH public key
 func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*User, error) {
-	var user User
-
-	// Find user by their SSH public key
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT u.user_id, u.email, u.created_at
-		FROM users u
-		JOIN ssh_keys s ON u.user_id = s.user_id
-		WHERE s.public_key = ?`,
-			publicKeyStr).Scan(&user.UserID, &user.Email, &user.CreatedAt)
+	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserWithSSHKey(ctx, publicKeyStr)
 	})
-
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return &user, err
+	if err != nil {
+		return nil, err
+	}
+
+	user := &User{
+		UserID: result.UserID,
+		Email:  result.Email,
+	}
+	if result.CreatedAt != nil {
+		user.CreatedAt = *result.CreatedAt
+	}
+	return user, nil
 }
 
 // Note: allocateIPRange function has been removed since we no longer use per-allocation IP ranges.
@@ -3304,19 +3243,20 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 		}
 
 		// Create user
-		_, err = tx.Exec(`
-			INSERT INTO users (user_id, email)
-			VALUES (?, ?)`,
-			userID, email)
+		queries := exedb.New(tx.Conn())
+		err = queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: userID,
+			Email:  email,
+		})
 		if err != nil {
 			return err
 		}
 
 		// Add the SSH key to ssh_keys table
-		_, err = tx.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key)
-			VALUES (?, ?)`,
-			userID, publicKey)
+		err = queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
+			UserID:    userID,
+			PublicKey: publicKey,
+		})
 		if err != nil {
 			return err
 		}
@@ -3331,11 +3271,14 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 		ctrhost := s.selectCtrhostForNewAlloc()
 
 		// Create alloc for the user (no longer needs IP range)
-		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_email)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, email)
-		return err
+		return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
+			AllocID:      allocID,
+			UserID:       userID,
+			AllocType:    string(AllocTypeMedium),
+			Region:       string(RegionAWSUSWest2),
+			Ctrhost:      ctrhost,
+			BillingEmail: &email,
+		})
 	})
 	if err != nil {
 		return err
@@ -3355,16 +3298,26 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 
 // getUserAlloc gets the alloc for a user (creates one if it doesn't exist)
 func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error) {
-	var alloc Alloc
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email
-		FROM allocs
-		WHERE user_id = ?
-		LIMIT 1`,
-			userID).Scan(&alloc.AllocID, &alloc.UserID, &alloc.AllocType, &alloc.Region,
-			&alloc.Ctrhost, &alloc.CreatedAt, &alloc.StripeCustomerID, &alloc.BillingEmail)
+	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Alloc, error) {
+		return queries.GetAllocByUserID(ctx, userID)
 	})
+
+	alloc := Alloc{
+		AllocID:   result.AllocID,
+		UserID:    result.UserID,
+		AllocType: AllocType(result.AllocType),
+		Region:    Region(result.Region),
+		Ctrhost:   result.Ctrhost,
+	}
+	if result.CreatedAt != nil {
+		alloc.CreatedAt = *result.CreatedAt
+	}
+	if result.StripeCustomerID != nil {
+		alloc.StripeCustomerID = sql.NullString{String: *result.StripeCustomerID, Valid: true}
+	}
+	if result.BillingEmail != nil {
+		alloc.BillingEmail = sql.NullString{String: *result.BillingEmail, Valid: true}
+	}
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// User exists but has no alloc yet - create one
@@ -3435,6 +3388,8 @@ func generateAllocID() (string, error) {
 // createUser creates a new user (deprecated - use createUserWithAlloc)
 func (s *Server) createUser(ctx context.Context, publicKey, email string) error {
 	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
 		// Generate user ID
 		userID, err := generateUserID()
 		if err != nil {
@@ -3442,20 +3397,20 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 		}
 
 		// Create the user
-		_, err = tx.Exec(`
-			INSERT INTO users (user_id, email)
-			VALUES (?, ?)`,
-			userID, email)
+		err = queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: userID,
+			Email:  email,
+		})
 		if err != nil {
 			return err
 		}
 
 		// Add the SSH key to ssh_keys table if provided
 		if publicKey != "" {
-			_, err = tx.Exec(`
-				INSERT INTO ssh_keys (user_id, public_key)
-				VALUES (?, ?)`,
-				userID, publicKey)
+			err = queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
+				UserID:    userID,
+				PublicKey: publicKey,
+			})
 			if err != nil {
 				return err
 			}
@@ -3470,11 +3425,14 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) error 
 		ctrhost := s.selectCtrhostForNewAlloc()
 
 		// Create the allocation (no longer needs IP range)
-		_, err = tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_email)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			allocID, userID, AllocTypeMedium, RegionAWSUSWest2, ctrhost, email)
-		return err
+		return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
+			AllocID:      allocID,
+			UserID:       userID,
+			AllocType:    string(AllocTypeMedium),
+			Region:       string(RegionAWSUSWest2),
+			Ctrhost:      ctrhost,
+			BillingEmail: &email,
+		})
 	})
 }
 
@@ -3653,14 +3611,9 @@ func generateUserID() (string, error) {
 
 // getUserIDByPublicKey gets user_id from an SSH public key
 func (s *Server) getUserIDByPublicKey(ctx context.Context, publicKey ssh.PublicKey) (string, error) {
-	var userID string
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`
-		SELECT user_id FROM ssh_keys
-		WHERE public_key = ?
-		LIMIT 1
-	`, publicKeyStr).Scan(&userID)
+	userID, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetUserIDBySSHKey(ctx, publicKeyStr)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -3698,24 +3651,14 @@ func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error
 
 // GetBoxSSHDetails retrieves SSH connection details from the boxes table
 func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDetails, error) {
-	var port sql.NullInt64
-	var privateKey sql.NullString
-	var serverIdentityKey sql.NullString
-	var ctrhost sql.NullString
-	var sshUser sql.NullString
-
-	query := `SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user
-		FROM boxes m
-		JOIN allocs a ON m.alloc_id = a.alloc_id
-		WHERE m.id = ?`
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(query, boxID).Scan(&port, &privateKey, &serverIdentityKey, &ctrhost, &sshUser)
+	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxSSHDetailsRow, error) {
+		return queries.GetBoxSSHDetails(ctx, boxID)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to query box SSH details: %v", err)
 	}
 
-	if !port.Valid || port.Int64 == 0 || !privateKey.Valid || privateKey.String == "" {
+	if result.SSHPort == nil || *result.SSHPort == 0 || len(result.SSHClientPrivateKey) == 0 {
 		// SSH not set up for this box - this is for containers created before SSH support
 		// TODO: Remove this code once all legacy containers are migrated
 		log.Printf("Box %d missing SSH setup, initializing SSH on container", boxID)
@@ -3725,50 +3668,46 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 		}
 
 		// Re-query after setup
-		err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow(query, boxID).Scan(&port, &privateKey, &serverIdentityKey, &ctrhost)
+		result, err = withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxSSHDetailsRow, error) {
+			return queries.GetBoxSSHDetails(ctx, boxID)
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to re-query box SSH details after setup: %v", err)
 		}
 	}
 
-	sshPort := int(port.Int64)
-	if sshPort <= 0 {
-		return nil, fmt.Errorf("invalid SSH port for box: %d", sshPort)
+	if result.SSHPort == nil || *result.SSHPort <= 0 {
+		return nil, fmt.Errorf("invalid SSH port for box: %v", result.SSHPort)
 	}
+	sshPort := int(*result.SSHPort)
 
-	if privateKey.String == "" {
+	if len(result.SSHClientPrivateKey) == 0 {
 		return nil, fmt.Errorf("no SSH private key available for box after setup")
 	}
+	privateKeyStr := string(result.SSHClientPrivateKey)
 
 	// Derive host public key from server identity key if available
 	var hostKey string
-	if serverIdentityKey.Valid && serverIdentityKey.String != "" {
+	if len(result.SSHServerIdentityKey) > 0 {
 		// Parse the server identity private key and extract the public key
-		privKey, err := ssh.ParsePrivateKey([]byte(serverIdentityKey.String))
+		privKey, err := ssh.ParsePrivateKey(result.SSHServerIdentityKey)
 		if err == nil {
 			hostKey = string(ssh.MarshalAuthorizedKey(privKey.PublicKey()))
 		}
 		// If parsing fails, we'll just use empty host key (fallback to no validation)
 	}
 
-	var ctrhostPtr *string
-	if ctrhost.Valid && ctrhost.String != "" {
-		ctrhostPtr = &ctrhost.String
-	}
-
 	// Default to root user if not specified
 	user := "root"
-	if sshUser.Valid && sshUser.String != "" {
-		user = sshUser.String
+	if result.SSHUser != nil && *result.SSHUser != "" {
+		user = *result.SSHUser
 	}
 
 	return &exedb.SSHDetails{
 		Port:       sshPort,
-		PrivateKey: privateKey.String,
+		PrivateKey: privateKeyStr,
 		HostKey:    hostKey,
-		Ctrhost:    ctrhostPtr,
+		Ctrhost:    &result.Ctrhost,
 		User:       user,
 	}, nil
 }
@@ -3795,15 +3734,16 @@ func (s *Server) SSHIdentityKeyForBox(ctx context.Context, name string) (string,
 // TODO: Remove this method once all legacy containers are migrated to have SSH
 func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
 	// Get box details
-	var containerID, userFingerprint, teamName, boxName, image string
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(
-			`SELECT container_id, created_by_user_id, team_name, name, image FROM boxes WHERE id = ?`,
-			boxID,
-		).Scan(&containerID, &userFingerprint, &teamName, &boxName, &image)
+	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxDetailsForSetupRow, error) {
+		return queries.GetBoxDetailsForSetup(ctx, boxID)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get box details: %v", err)
+	}
+
+	containerID := ""
+	if result.ContainerID != nil {
+		containerID = *result.ContainerID
 	}
 
 	if containerID == "" {
@@ -3817,15 +3757,16 @@ func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
 	}
 
 	// Update database with SSH keys
-	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			UPDATE boxes SET
-				ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
-				ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
-			WHERE id = ?
-		`, sshKeys.ServerIdentityKey, sshKeys.AuthorizedKeys, sshKeys.CAPublicKey,
-			sshKeys.HostCertificate, sshKeys.ClientPrivateKey, sshKeys.SSHPort, boxID)
-		return err
+	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateBoxSSHDetails(ctx, exedb.UpdateBoxSSHDetailsParams{
+			SSHServerIdentityKey: []byte(sshKeys.ServerIdentityKey),
+			SSHAuthorizedKeys:    &sshKeys.AuthorizedKeys,
+			SSHCAPublicKey:       &sshKeys.CAPublicKey,
+			SSHHostCertificate:   &sshKeys.HostCertificate,
+			SSHClientPrivateKey:  []byte(sshKeys.ClientPrivateKey),
+			SSHPort:              func() *int64 { p := int64(sshKeys.SSHPort); return &p }(),
+			ID:                   boxID,
+		})
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update box SSH keys: %v", err)

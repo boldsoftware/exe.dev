@@ -37,3 +37,14 @@ func (q *Queries) GetPendingSSHKeyByToken(ctx context.Context, token string) (Ge
 	err := row.Scan(&i.PublicKey, &i.UserEmail, &i.ExpiresAt)
 	return i, err
 }
+
+const getPendingSSHKeyEmailByPublicKey = `-- name: GetPendingSSHKeyEmailByPublicKey :one
+SELECT user_email FROM pending_ssh_keys WHERE public_key = ?
+`
+
+func (q *Queries) GetPendingSSHKeyEmailByPublicKey(ctx context.Context, publicKey string) (string, error) {
+	row := q.queryRow(ctx, q.getPendingSSHKeyEmailByPublicKeyStmt, getPendingSSHKeyEmailByPublicKey, publicKey)
+	var user_email string
+	err := row.Scan(&user_email)
+	return user_email, err
+}
