@@ -243,6 +243,7 @@ func main() {
 			}
 
 			quit := make(chan error)
+			d.quit = quit
 
 			allowedproxyaddresses := ctx.StringSlice("allowed-proxy-addresses")
 
@@ -259,7 +260,7 @@ func main() {
 				}
 			}
 
-			var pluginConfigs [][]string
+			var pluginsArgs [][]string
 
 			args := ctx.Args().Slice()
 
@@ -312,19 +313,19 @@ func main() {
 					continue
 				}
 
-				pluginConfigs = append(pluginConfigs, args)
+				pluginsArgs = append(pluginsArgs, args)
 			}
 
-			if len(pluginConfigs) == 0 {
+			if len(pluginsArgs) == 0 {
 				return fmt.Errorf("no plugins configured")
 			}
 
-			d.setPluginConfigs(pluginConfigs, quit)
+			d.setPluginsArgs(pluginsArgs)
 
-			// Best effort plug-in initialization.
-			// If this fails, we will retry on incoming connection(s).
-			if err := d.tryInitializePlugins(); err != nil {
-				log.Warnf("startup %s", err)
+			// Best effort eager plug-in initialization.
+			// If this fails, we will retry on each accepted incoming connection.
+			if err := d.initializePlugins(); err != nil {
+				log.Warnf("on startup: %v", err)
 			}
 
 			d.recorddir = ctx.String("screen-recording-dir")

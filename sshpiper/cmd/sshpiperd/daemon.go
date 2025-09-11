@@ -11,14 +11,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tg123/sshpiper/cmd/sshpiperd/internal/plugin"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/crypto/ssh"
-	"tailscale.com/util/singleflight"
 )
 
 type daemon struct {
@@ -32,14 +30,22 @@ type daemon struct {
 	filterHostkeysReqeust bool
 	replyPing             bool
 
-	// Plugin initialization fields.
-	pluginConfigs         [][]string
-	quit                  chan error
-	pluginsInitialized    atomic.Bool
-	pluginIniSingleFlight singleflight.Group[unused, unused]
+	// quit tracks and propagates exit errors from plugins.
+	quit chan error
+
+	// pendingPlugins holds configurations for plugins
+	// that have not yet been initialized and installed.
+	// It is set to nil once all plugins have been initialized and installed.
+	pendingPlugins []*pluginConfig
 }
 
-type unused struct{}
+type pluginConfig struct {
+	// command line args to start the plugin.
+	args []string
+	// plugin is set once initialized.
+	// any given plugin is initialized exactly once.
+	plugin *plugin.GrpcPlugin
+}
 
 func generateSshKey(keyfile string) error {
 	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
@@ -232,98 +238,80 @@ func (d *daemon) install(plugins ...*plugin.GrpcPlugin) error {
 	return m.InstallPiperConfig(d.config)
 }
 
-func (d *daemon) setPluginConfigs(configs [][]string, quit chan error) {
-	d.pluginConfigs = configs
-	d.quit = quit
-}
+// startPlugin starts a plugin from args.
+// The caller is responsible for ensuring len(args) > 0.
+// Plugin exit errors will be sent to quit channel.
+func startPlugin(args []string, quit chan error) (*plugin.GrpcPlugin, error) {
+	var p *plugin.GrpcPlugin
 
-func (d *daemon) initializePlugins() error {
-	var plugins []*plugin.GrpcPlugin
+	switch args[0] {
+	case "grpc":
+		log.Info("starting net grpc plugin: ")
 
-	for _, args := range d.pluginConfigs {
-		var p *plugin.GrpcPlugin
+		grpcplugin, err := createNetGrpcPlugin(args)
+		if err != nil {
+			return nil, err
+		}
 
-		switch args[0] {
-		case "grpc":
-			log.Info("starting net grpc plugin: ")
+		p = grpcplugin
 
-			grpcplugin, err := createNetGrpcPlugin(args)
-			if err != nil {
-				return err
-			}
-
-			p = grpcplugin
-
-		default:
-			cmdplugin, err := createCmdPlugin(args)
-			if err != nil {
-				return err
-			}
-
-			go func() {
-				d.quit <- <-cmdplugin.Quit
-			}()
-
-			p = &cmdplugin.GrpcPlugin
+	default:
+		cmdplugin, err := createCmdPlugin(args)
+		if err != nil {
+			return nil, err
 		}
 
 		go func() {
-			if err := p.RecvLogs(log.StandardLogger().Out); err != nil {
-				log.Errorf("plugin %v recv logs error: %v", p.Name, err)
-			}
+			quit <- <-cmdplugin.Quit
 		}()
 
-		plugins = append(plugins, p)
+		p = &cmdplugin.GrpcPlugin
 	}
 
+	go func() {
+		if err := p.RecvLogs(log.StandardLogger().Out); err != nil {
+			log.Errorf("plugin %v recv logs error: %v", p.Name, err)
+		}
+	}()
+
+	return p, nil
+}
+
+// setPluginsArgs sets the pending plugins to be started (with the given args).
+func (d *daemon) setPluginsArgs(configs [][]string) {
+	d.pendingPlugins = make([]*pluginConfig, len(configs))
+	for i := range d.pendingPlugins {
+		d.pendingPlugins[i] = &pluginConfig{args: configs[i]}
+	}
+}
+
+func (d *daemon) initializePlugins() error {
+	// Start any plugins that haven't started yet.
+	for _, rp := range d.pendingPlugins {
+		if rp.plugin != nil {
+			// already started, skip
+			continue
+		}
+		p, err := startPlugin(rp.args, d.quit)
+		if err != nil {
+			return fmt.Errorf("failed to start plugin (%q): %v", rp.args, err)
+		}
+		// mark as started, to prevent future retries
+		rp.plugin = p
+	}
+
+	// All plugins have started. Install them.
+	var plugins []*plugin.GrpcPlugin
+	for _, rp := range d.pendingPlugins {
+		plugins = append(plugins, rp.plugin)
+	}
 	if err := d.install(plugins...); err != nil {
 		return err
 	}
+
+	// Clear pending plugins, so the "fully started and installed?" fast path succeeds.
+	d.pendingPlugins = nil
 	return nil
-}
-
-// tryInitializePlugins attempts a single-flighted plugin initialization.
-func (d *daemon) tryInitializePlugins() error {
-	if d.pluginsInitialized.Load() {
-		return nil // previously initialized successfully
-	}
-
-	_, err, _ := d.pluginIniSingleFlight.Do(unused{}, func() (unused, error) {
-		err := d.initializePlugins()
-		if err == nil {
-			d.pluginsInitialized.Store(true)
-		}
-		return unused{}, err
-	})
-
-	if err != nil {
-		return fmt.Errorf("plugin initialization failed: %w", err)
-	}
-	return nil
-}
-
-// lazyPluginListener wraps a net.Listener to initialize plugins on first connection
-type lazyPluginListener struct {
-	net.Listener
-	daemon *daemon
-}
-
-func (l *lazyPluginListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	if l.daemon.pluginsInitialized.Load() {
-		return conn, nil
-	}
-
-	if err := l.daemon.tryInitializePlugins(); err != nil {
-		log.Errorf("%s", err)
-		conn.Close()
-		return nil, err
-	}
-
-	return conn, nil
 }
 
 func (d *daemon) run() error {
@@ -338,17 +326,19 @@ func (d *daemon) run() error {
 		"addr": d.lis.Addr().String(),
 	}).Info("sshpiperd is listening")
 
-	// Wrap the listener with lazy plugin initialization
-	lazyListener := &lazyPluginListener{
-		Listener: d.lis,
-		daemon:   d,
-	}
-
 	for {
-		conn, err := lazyListener.Accept()
+		conn, err := d.lis.Accept()
 		if err != nil {
 			log.Debugf("failed to accept connection: %v", err)
 			continue
+		}
+		if len(d.pendingPlugins) > 0 {
+			err := d.initializePlugins()
+			if err != nil {
+				log.Errorf("on accept: %v", err)
+				conn.Close()
+				continue
+			}
 		}
 
 		log.Debugf("connection accepted: %v", conn.RemoteAddr())
