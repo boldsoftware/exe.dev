@@ -145,7 +145,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			},
 			{
 				Name:        "whoami",
-				Description: "Show your user information including email and all SSH keys. The currently connected key is highlighted.",
+				Description: "Show your user information including email and all SSH keys.",
 				Usage:       "whoami",
 				Handler:     ss.handleWhoamiCommand,
 			},
