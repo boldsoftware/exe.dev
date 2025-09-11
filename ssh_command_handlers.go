@@ -133,6 +133,12 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			Handler:     ss.handleWhoamiCommand,
 		},
 		{
+			Name:        "browser",
+			Description: "Generate a magic link to access the web UI authenticated as yourself",
+			Usage:       "browser",
+			Handler:     ss.handleBrowserCommand,
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *CommandContext) error {
@@ -1000,6 +1006,42 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
 	cc.Writeln("  Port: %d", newRoute.Port)
 	cc.Writeln("  Share: %s", newRoute.Share)
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *CommandContext) error {
+	cc.Writeln("\033[1;36mGenerating web authentication link...\033[0m")
+	cc.Writeln("")
+
+	// Generate a verification token using the same system as email authentication
+	token := ss.server.generateToken()
+
+	// Store verification in database using the existing email verification table
+	err := ss.server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertEmailVerification(ctx, exedb.InsertEmailVerificationParams{
+			Token:     token,
+			Email:     cc.User.Email,
+			UserID:    cc.User.UserID,
+			ExpiresAt: time.Now().Add(15 * time.Minute), // 15 minute expiry
+		})
+	})
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to generate authentication link: %v\033[0m", err)
+		return fmt.Errorf("failed to generate authentication link: %w", err)
+	}
+
+	// Create the magic link URL using the server's base URL
+	baseURL := ss.server.getBaseURL()
+	magicURL := fmt.Sprintf("%s/auth/verify?token=%s", baseURL, token)
+
+	cc.Writeln("\033[1;32m✓ Magic link generated!\033[0m")
+	cc.Writeln("")
+	cc.Writeln("Click this link to access the exe.dev web interface:")
+	cc.Writeln("")
+	cc.Writeln("\033[1;36m%s\033[0m", magicURL)
+	cc.Writeln("")
+	cc.Writeln("\033[2mThis link will expire in 15 minutes.\033[0m")
 	cc.Writeln("")
 	return nil
 }
