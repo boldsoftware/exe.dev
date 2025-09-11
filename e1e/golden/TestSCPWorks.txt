@@ -4,7 +4,6 @@
 ● ssh localhost
 ●
 
-Warning: Permanently added '[localhost]:SSH_PORT' (ED25519) to the list of known hosts.
 ~~~ EXE.DEV ~~~
 
 EXE.DEV: get a machine over ssh
@@ -57,7 +56,6 @@ Your boxes:
 ● ssh e1e-BOX_TIMESTAMP-testscpworks@localhost
 ●
 
-Warning: Permanently added '[localhost]:SSH_PORT' (ED25519) to the list of known hosts.
 To run a command as administrator (user "root"), use "sudo <command>".
 See "man sudo_root" for details.
 
@@ -65,4 +63,3 @@ exedev@e1e-BOX_TIMESTAMP-testscpworks:~$ ls key.txt
 key.txt
 exedev@e1e-BOX_TIMESTAMP-testscpworks:~$ exit
 logout
-Connection to localhost closed.

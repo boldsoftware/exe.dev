@@ -717,7 +717,6 @@ func (p *expectPty) sendLine(s string) {
 func (p *expectPty) disconnect() {
 	p.t.Helper()
 	p.sendLine("exit")
-	p.wantRe("Connection to .* closed.")
 	p.wantEOF()
 }
 
@@ -956,7 +955,7 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 		"-o", "IdentityAgent=none",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
-
+		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
 		"-o", "PreferredAuthentications=publickey",
 		"-o", "PubkeyAuthentication=yes",
 		"-o", "PasswordAuthentication=no",

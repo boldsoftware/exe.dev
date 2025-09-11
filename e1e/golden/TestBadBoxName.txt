@@ -4,7 +4,6 @@
 ● ssh localhost
 ●
 
-Warning: Permanently added '[localhost]:SSH_PORT' (ED25519) to the list of known hosts.
 ~~~ EXE.DEV ~~~
 
 EXE.DEV: get a machine over ssh
@@ -47,4 +46,3 @@ Invalid box name "ThisIsNotAValidBoxName!". Box names must be at least 5 charact
 Error: invalid box name "ThisIsNotAValidBoxName!"
 exe.dev ▶ exit
 Goodbye!
-Connection to localhost closed.
