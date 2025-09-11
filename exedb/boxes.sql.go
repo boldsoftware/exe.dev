@@ -123,7 +123,7 @@ func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, er
 }
 
 const updateBoxContainerAndStatus = `-- name: UpdateBoxContainerAndStatus :exec
-UPDATE boxes SET 
+UPDATE boxes SET
     container_id = ?,
     status = ?,
     ssh_server_identity_key = ?,
