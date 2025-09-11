@@ -27,6 +27,7 @@ type CompletionContext struct {
 // Command represents a single command in the command tree
 type Command struct {
 	Name              string
+	Hidden            bool // if true, command is hidden from help and completions
 	Aliases           []string
 	Description       string
 	Usage             string
@@ -75,6 +76,9 @@ func (c *Command) Help(cc *CommandContext) error {
 		cc.Writeln("\r\n\033[1mSubcommands:\033[0m")
 		tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
 		for _, sub := range c.Subcommands {
+			if sub.Hidden {
+				continue
+			}
 			fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\t\r\n", sub.Name, sub.Description)
 		}
 		tabw.Flush()
@@ -136,6 +140,9 @@ type CommandTree struct {
 func (ct *CommandTree) Help(cc *CommandContext) {
 	tabw := tabwriter.NewWriter(cc.Output, 1, 1, 0, ' ', 0)
 	for _, cmd := range ct.GetAvailableCommands(cc) {
+		if cmd.Hidden {
+			continue
+		}
 		nameStr := cmd.Name
 		if len(cmd.Aliases) > 0 {
 			nameStr = fmt.Sprintf("%s (%s)", cmd.Name, strings.Join(cmd.Aliases, ","))
@@ -416,6 +423,9 @@ func (ct *CommandTree) completeCommandName(compCtx *CompletionContext, cc *Comma
 	prefix := compCtx.CurrentWord
 
 	for _, cmd := range ct.GetAvailableCommands(cc) {
+		if cmd.Hidden {
+			continue
+		}
 		if strings.HasPrefix(cmd.Name, prefix) {
 			completions = append(completions, cmd.Name)
 		}
@@ -436,6 +446,9 @@ func (ct *CommandTree) completeSubcommand(cmd *Command, compCtx *CompletionConte
 	prefix := compCtx.CurrentWord
 
 	for _, subCmd := range cmd.Subcommands {
+		if subCmd.Hidden {
+			continue
+		}
 		if subCmd.Available == nil || subCmd.Available(cc) {
 			if strings.HasPrefix(subCmd.Name, prefix) {
 				completions = append(completions, subCmd.Name)
