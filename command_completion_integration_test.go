@@ -42,10 +42,10 @@ func TestCompletionIntegration(t *testing.T) {
 			expected: []string{"list", "ls"},
 		},
 		{
-			name:     "complete start command",
-			line:     "star",
-			cursor:   4,
-			expected: []string{"start"},
+			name:     "complete delete command",
+			line:     "del",
+			cursor:   3,
+			expected: []string{"delete"},
 		},
 		{
 			name:     "complete help command",
@@ -57,12 +57,12 @@ func TestCompletionIntegration(t *testing.T) {
 			name:     "complete with space - list commands",
 			line:     "",
 			cursor:   0,
-			expected: []string{"help", "?", "list", "ls", "new", "start", "stop", "delete", "alloc", "billing", "whoami", "exit"},
+			expected: []string{"help", "?", "list", "ls", "new", "delete", "alloc", "billing", "route", "whoami", "exit"},
 		},
 		{
-			name:     "complete start with space - should use box completer (but no containers in test)",
-			line:     "start ",
-			cursor:   6,
+			name:     "complete delete with space - should use box completer (but no containers in test)",
+			line:     "delete ",
+			cursor:   7,
 			expected: nil, // No containers available in test mode
 		},
 	}
@@ -78,7 +78,7 @@ func TestCompletionIntegration(t *testing.T) {
 					// Just check that we have a reasonable number of completions
 					assert.True(t, len(result) >= 10, "Should have multiple command completions")
 					// Check that expected commands are in the result
-					for _, expected := range []string{"list", "start", "help", "new"} {
+					for _, expected := range []string{"list", "delete", "help", "new"} {
 						assert.Contains(t, result, expected)
 					}
 				} else {
@@ -108,11 +108,11 @@ func TestApplySingleCompletion(t *testing.T) {
 	}{
 		{
 			name:         "complete at end of word",
-			line:         "star",
-			pos:          4,
-			completion:   "start",
-			expectedLine: "start ",
-			expectedPos:  6,
+			line:         "del",
+			pos:          3,
+			completion:   "delete",
+			expectedLine: "delete ",
+			expectedPos:  7,
 		},
 		{
 			name:         "complete partial word",
@@ -124,11 +124,11 @@ func TestApplySingleCompletion(t *testing.T) {
 		},
 		{
 			name:         "complete with existing text after",
-			line:         "start my existing text",
-			pos:          8, // cursor at end of "my"
+			line:         "delete my existing text",
+			pos:          9, // cursor at end of "my"
 			completion:   "mybox",
-			expectedLine: "start mybox  existing text",
-			expectedPos:  12,
+			expectedLine: "delete mybox  existing text",
+			expectedPos:  13,
 		},
 	}
 

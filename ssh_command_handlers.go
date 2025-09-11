@@ -66,22 +66,6 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 				},
 			},
 			{
-				Name:              "start",
-				Description:       "Start a stopped box",
-				Handler:           ss.handleStartCommand,
-				Usage:             "start <box-name>",
-				HasPositionalArgs: true,
-				CompleterFunc:     CompleteBoxNames,
-			},
-			{
-				Name:              "stop",
-				Description:       "Stop one or more box",
-				Handler:           ss.handleStopCommand,
-				Usage:             "stop <box-name> [<box-name>...]",
-				HasPositionalArgs: true,
-				CompleterFunc:     CompleteBoxNames,
-			},
-			{
 				Name:              "delete",
 				Description:       "Delete a box",
 				Handler:           ss.handleDeleteCommand,
@@ -523,105 +507,6 @@ done:
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
 		cc.Write("%s\r\n", sshCommand)
-	}
-	return nil
-}
-
-func (ss *SSHServer) handleStartCommand(ctx context.Context, cc *CommandContext) error {
-	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify a box name\033[0m")
-		cc.Writeln("Usage: start <box-name>")
-		return nil
-	}
-
-	boxName := cc.Args[0]
-
-	if ss.server.containerManager == nil {
-		cc.Writeln("\033[1;31mMachine management is not available\033[0m")
-		return nil
-	}
-
-	// Get box info
-	box, err := ss.server.getBoxByName(ctx, boxName)
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Box '%s' not found\033[0m", boxName)
-		return nil
-	}
-
-	if box.ContainerID == nil {
-		cc.Writeln("\033[1;31mError: Box '%s' has no container ID\033[0m", boxName)
-		return nil
-	}
-
-	cc.Writeln("Starting \033[1m%s\033[0m...", boxName)
-
-	// Start the container
-	err = ss.server.containerManager.StartContainer(ctx, box.AllocID, *box.ContainerID)
-	if err != nil {
-		cc.Writeln("\033[1;31mError starting box: %v\033[0m", err)
-		return nil
-	}
-
-	// Update database status
-	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpdateBoxStatusRunning(ctx, boxName)
-	})
-	if err != nil {
-		cc.Writeln("\033[1;33mWarning: Failed to update box status: %v\033[0m", err)
-	}
-
-	sshCommand := ss.server.formatSSHConnectionInfo(cc.Alloc.AllocID, boxName)
-	cc.Writeln("\033[1;32mBox started!\033[0m Access with:\r\n\r\n\033[1m%s\033[0m\r\n", sshCommand)
-	return nil
-}
-
-func (ss *SSHServer) handleStopCommand(ctx context.Context, cc *CommandContext) error {
-	if len(cc.Args) == 0 {
-		cc.Writeln("\033[1;31mError: Please specify at least one machine name\033[0m")
-		cc.Writeln("Usage: stop <machine-name> [...]")
-		return nil
-	}
-
-	if ss.server.containerManager == nil {
-		cc.Writeln("\033[1;31mMachine management is not available\033[0m")
-		return nil
-	}
-
-	for _, boxName := range cc.Args {
-		// Get box info
-		box, err := ss.server.getBoxByName(ctx, boxName)
-		if err != nil {
-			cc.Writeln("\033[1;31mError: Box '%s' not found\033[0m", boxName)
-			continue
-		}
-
-		if box.ContainerID == nil {
-			cc.Writeln("\033[1;31mError: Box '%s' has no container ID\033[0m", boxName)
-			continue
-		}
-
-		cc.Writeln("Stopping \033[1m%s\033[0m...", boxName)
-
-		// Stop the container
-		ctx := context.Background()
-		err = ss.server.containerManager.StopContainer(ctx, box.AllocID, *box.ContainerID)
-		if err != nil {
-			cc.Writeln("\033[1;31mError stopping box %s: %v\033[0m", boxName, err)
-			continue
-		}
-
-		// Update database status
-		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-			return queries.UpdateBoxStatusStopped(ctx, boxName)
-		})
-		if err != nil {
-			cc.Writeln("\033[1;33mWarning: Failed to update box status: %v\033[0m", err)
-			return fmt.Errorf("failed to update box status: %w", err)
-		}
-
-		cc.Writeln("\033[1;32mBox '%s' stopped\033[0m", boxName)
 	}
 	return nil
 }
