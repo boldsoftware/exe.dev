@@ -47,6 +47,7 @@ func TestExeDevRejectsSCP(t *testing.T) {
 		"unhappy_test.go",
 		"localhost:foo.txt",
 	)
+	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 
 	pty.attachAndStart(sshCmd)
 
