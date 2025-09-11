@@ -91,7 +91,9 @@ func runServe(global GlobalConfig, args []string) {
 	port := fs.String("port", "9000", "Port to listen on")
 	fs.Parse(args)
 
-	logger := setupLogging(global.Debug)
+	// Create log buffer first
+	logBuffer := server.NewLogBuffer(1000) // Keep last 1000 log entries
+	logger := setupLoggingWithBuffer(global.Debug, logBuffer)
 
 	// Build UI first before starting server
 	if err := buildUI(logger); err != nil {
@@ -110,7 +112,7 @@ func runServe(global GlobalConfig, args []string) {
 	tools := setupTools(llmManager)
 
 	// Create and start server
-	svr := server.NewServer(database, llmManager, tools, logger)
+	svr := server.NewServer(database, llmManager, tools, logger, logBuffer)
 	if err := svr.Start(*port); err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)
@@ -408,6 +410,25 @@ func setupLogging(debug bool) *slog.Logger {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
+	slog.SetDefault(logger)
+	return logger
+}
+
+func setupLoggingWithBuffer(debug bool, logBuffer *server.LogBuffer) *slog.Logger {
+	logLevel := slog.LevelInfo
+	if debug {
+		logLevel = slog.LevelDebug
+	}
+
+	// Create the base handler
+	baseHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	})
+
+	// Wrap with buffered handler
+	bufferedHandler := server.NewBufferedLogHandler(baseHandler, logBuffer)
+
+	logger := slog.New(bufferedHandler)
 	slog.SetDefault(logger)
 	return logger
 }

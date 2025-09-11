@@ -21,36 +21,74 @@
     </script>
     <style>
         /* Default mobile-first styles - full viewport */
+        #app-container {
+            height: 100vh;
+            width: 100%;
+        }
         #root {
             height: 100vh;
             width: 100%;
         }
+        .log-panel {
+            display: none !important;
+        }
         
-        /* Mobile-sized container for desktop development only */
+        /* Desktop layout with mobile simulator and log panel */
         @media (min-width: 768px) {
             body {
                 background: #f3f4f6;
                 padding: 10px;
                 margin: 0;
+                height: 100vh;
+                box-sizing: border-box;
             }
             .dark body {
                 background: #111827;
             }
-            #root {
-                max-width: 414px;
-                height: 700px; /* More laptop-friendly height */
+            
+            /* Desktop layout container */
+            .desktop-container {
+                display: flex;
+                gap: 16px;
+                max-width: 1400px;
                 margin: 0 auto;
+                height: calc(100vh - 20px);
+            }
+            
+            /* Mobile simulator frame */
+            #root {
+                width: 414px !important;
+                height: 100% !important;
                 border: 1px solid #d1d5db;
                 border-radius: 12px;
                 overflow: hidden;
                 box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
                 background: white;
-                width: 414px; /* Fixed width for desktop */
+                flex-shrink: 0;
             }
             .dark #root {
                 border-color: #374151;
                 box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
                 background: #1f2937;
+            }
+            
+            /* Log panel */
+            .log-panel {
+                display: flex !important;
+                flex: 1;
+                min-width: 400px;
+                border: 1px solid #d1d5db;
+                border-radius: 12px;
+                background: white;
+                color: #1f2937;
+                font-family: 'Consolas', 'Monaco', 'Lucida Console', monospace;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .dark .log-panel {
+                border-color: #374151;
+                background: #f9fafb;
+                color: #374151;
             }
             
             /* Force mobile behavior inside container */
@@ -98,7 +136,13 @@
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-    <div id="root"></div>
+    <div id="app-container" class="desktop-container">
+        <div id="root"></div>
+        <div id="log-panel" class="log-panel">
+            <div id="log-content"></div>
+        </div>
+    </div>
+    
     <script src="main.js"></script>
 </body>
 </html>

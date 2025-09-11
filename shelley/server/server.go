@@ -115,6 +115,46 @@ func (m *LLMServiceManager) GetService(modelID string) (llm.Service, error) {
 	return nil, fmt.Errorf("unsupported model: %s", modelID)
 }
 
+// handleLogsStream handles GET /api/logs/stream
+func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Set up SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Send current logs
+	currentLogs := s.logBuffer.GetAll()
+	data, _ := json.Marshal(currentLogs)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	w.(http.Flusher).Flush()
+
+	// Subscribe to new log entries
+	subscriptionID := fmt.Sprintf("%d", time.Now().UnixNano())
+	updateChan := make(chan LogEntry, 10)
+	s.logBuffer.Subscribe(subscriptionID, updateChan)
+	defer s.logBuffer.Unsubscribe(subscriptionID)
+
+	// Listen for updates or context cancellation
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case entry := <-updateChan:
+			data, _ := json.Marshal([]LogEntry{entry})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			w.(http.Flusher).Flush()
+		}
+	}
+}
+
 // GetAvailableModels returns a list of available model IDs
 func (m *LLMServiceManager) GetAvailableModels() []string {
 	var models []string
@@ -138,6 +178,7 @@ type Server struct {
 	activeConversations map[string]*ConversationManager
 	mu                  sync.RWMutex
 	logger              *slog.Logger
+	logBuffer           *LogBuffer
 }
 
 // ConversationManager manages a single active conversation
@@ -150,13 +191,14 @@ type ConversationManager struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager *LLMServiceManager, tools []*llm.Tool, logger *slog.Logger) *Server {
+func NewServer(database *db.DB, llmManager *LLMServiceManager, tools []*llm.Tool, logger *slog.Logger, logBuffer *LogBuffer) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
 		tools:               tools,
 		activeConversations: make(map[string]*ConversationManager),
 		logger:              logger,
+		logBuffer:           logBuffer,
 	}
 }
 
@@ -166,6 +208,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations", s.handleConversations)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
 	mux.HandleFunc("/api/models", s.handleModels)
+	mux.HandleFunc("/api/logs/stream", s.handleLogsStream)
 
 	// Serve static files from ui/dist with conservative caching to avoid stale assets
 	mux.Handle("/", s.staticHandler("ui/dist/"))
