@@ -10,7 +10,9 @@ RUN apk add --no-cache \
       curl \
       tar \
       musl-dev \
-      cmake
+      cmake \
+      autoconf \
+      automake
 
 # Set up /exe.dev/lib with the interpreter so compilation can use it
 RUN mkdir -p /exe.dev/lib && \
@@ -84,6 +86,11 @@ RUN cp -v sshd /out/exe.dev/bin/
 RUN cp -v sshd-session /out/exe.dev/bin/
 RUN cp -v sftp-server /out/exe.dev/bin/
 RUN cp -v ssh-keygen /out/exe.dev/bin/
+
+# Build dtach using our shared script
+COPY build-dtach.sh /build-dtach.sh
+RUN /build-dtach.sh amd64
+RUN cp -v /src/dtach/dtach-*/dtach /out/exe.dev/bin/
 
 # Check that rpath is set correctly
 RUN readelf -d /out/exe.dev/bin/sshd | grep -E 'RPATH|RUNPATH' || echo "No RPATH found"
