@@ -91,6 +91,7 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			},
 			{
 				Name:        "alloc",
+				Hidden:      true,
 				Description: "Resource allocation info",
 				Handler:     ss.handleAllocCommand,
 				Subcommands: []*Command{
