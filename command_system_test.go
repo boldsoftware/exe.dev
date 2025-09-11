@@ -272,7 +272,7 @@ func TestExecuteCommand(t *testing.T) {
 		if err == nil {
 			t.Errorf("ExecuteCommand() should return error for nonexistent subcommand")
 		}
-		if !strings.Contains(err.Error(), "command not found") {
+		if !strings.Contains(err.Error(), "not found") {
 			t.Errorf("Error should indicate command not found: %q", err.Error())
 		}
 	})

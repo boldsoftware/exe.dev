@@ -40,6 +40,17 @@ type Command struct {
 	CompleterFunc     func(*CompletionContext, *CommandContext) []string // Custom completion for command arguments
 }
 
+func (c *Command) SubcommandNames() []string {
+	var names []string
+	for _, sc := range c.Subcommands {
+		if sc.Hidden {
+			continue
+		}
+		names = append(names, sc.Name)
+	}
+	return names
+}
+
 func (c *Command) Help(cc *CommandContext) error {
 	cc.Writeln("\r\n\033[1;33mCommand: %s\033[0m", c.Name)
 	if len(c.Aliases) > 0 {
@@ -305,7 +316,10 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 		cc.FlagSet = nil
 	}
 	if len(cc.Args) > 0 && !cmd.HasPositionalArgs {
-		return fmt.Errorf("%q command not found, and %q command does not take positional arguments", strings.Join(cc.Args, " "), cmd.Name)
+		if len(cmd.Subcommands) > 0 {
+			return fmt.Errorf(`%q subcommand %q not found, valid %q subcommands are: %s`, commandPath[0], cc.Args[0], commandPath[0], strings.Join(cmd.SubcommandNames(), ", "))
+		}
+		return fmt.Errorf("%q command has no subcommands and does not take positional arguments", cmd.Name)
 	}
 	return cmd.Handler(ctx, cc)
 }
