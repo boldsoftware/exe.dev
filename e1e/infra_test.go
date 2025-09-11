@@ -33,6 +33,7 @@ import (
 	"exe.dev/ctrhosttest"
 	"exe.dev/vouch"
 	"github.com/Netflix/go-expect"
+	"github.com/charmbracelet/x/ansi"
 	ansiterm "github.com/veops/go-ansiterm"
 	"golang.org/x/crypto/ssh"
 )
@@ -935,6 +936,21 @@ func sshToExeDev(t *testing.T, keyFile string) *expectPty {
 	pty := sshWithUsername(t, "", keyFile)
 	pty.prompt = "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "
 	return pty
+}
+
+func runExeDevSSHCommand(t *testing.T, keyFile string, args ...string) ([]byte, error) {
+	sshArgs := baseSSHArgs("", keyFile)
+	sshArgs = append(sshArgs, args...)
+	sshCmd := exec.CommandContext(t.Context(), "ssh", sshArgs...)
+	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
+	out, err := sshCmd.CombinedOutput()
+	if strings.Contains(string(out), "\r") {
+		t.Errorf("ssh output contains \\r, did REPL formatting sneak through? raw output:\n%q", string(out))
+	}
+	if ansi.Strip(string(out)) != string(out) {
+		t.Errorf("ssh output contains ANSI escape codes, did REPL formatting sneak through? raw output:\n%q", string(out))
+	}
+	return out, err
 }
 
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
