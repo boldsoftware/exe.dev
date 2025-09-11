@@ -91,3 +91,90 @@ func (q *Queries) GetBoxesForAlloc(ctx context.Context, allocID string) ([]Box, 
 	}
 	return items, nil
 }
+
+const insertBox = `-- name: InsertBox :execlastid
+INSERT INTO boxes (
+    alloc_id, name, status, image, container_id, created_by_user_id, routes
+) VALUES (?, ?, ?, ?, NULL, ?, ?)
+`
+
+type InsertBoxParams struct {
+	AllocID         string  `db:"alloc_id" json:"alloc_id"`
+	Name            string  `db:"name" json:"name"`
+	Status          string  `db:"status" json:"status"`
+	Image           string  `db:"image" json:"image"`
+	CreatedByUserID string  `db:"created_by_user_id" json:"created_by_user_id"`
+	Routes          *string `db:"routes" json:"routes"`
+}
+
+func (q *Queries) InsertBox(ctx context.Context, arg InsertBoxParams) (int64, error) {
+	result, err := q.exec(ctx, q.insertBoxStmt, insertBox,
+		arg.AllocID,
+		arg.Name,
+		arg.Status,
+		arg.Image,
+		arg.CreatedByUserID,
+		arg.Routes,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+const updateBoxContainerAndStatus = `-- name: UpdateBoxContainerAndStatus :exec
+UPDATE boxes SET 
+    container_id = ?,
+    status = ?,
+    ssh_server_identity_key = ?,
+    ssh_authorized_keys = ?,
+    ssh_ca_public_key = ?,
+    ssh_host_certificate = ?,
+    ssh_client_private_key = ?,
+    ssh_port = ?,
+    ssh_user = ?
+WHERE id = ?
+`
+
+type UpdateBoxContainerAndStatusParams struct {
+	ContainerID          *string `db:"container_id" json:"container_id"`
+	Status               string  `db:"status" json:"status"`
+	SSHServerIdentityKey []byte  `db:"ssh_server_identity_key" json:"ssh_server_identity_key"`
+	SSHAuthorizedKeys    *string `db:"ssh_authorized_keys" json:"ssh_authorized_keys"`
+	SSHCAPublicKey       *string `db:"ssh_ca_public_key" json:"ssh_ca_public_key"`
+	SSHHostCertificate   *string `db:"ssh_host_certificate" json:"ssh_host_certificate"`
+	SSHClientPrivateKey  []byte  `db:"ssh_client_private_key" json:"ssh_client_private_key"`
+	SSHPort              *int64  `db:"ssh_port" json:"ssh_port"`
+	SSHUser              *string `db:"ssh_user" json:"ssh_user"`
+	ID                   int     `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxContainerAndStatus(ctx context.Context, arg UpdateBoxContainerAndStatusParams) error {
+	_, err := q.exec(ctx, q.updateBoxContainerAndStatusStmt, updateBoxContainerAndStatus,
+		arg.ContainerID,
+		arg.Status,
+		arg.SSHServerIdentityKey,
+		arg.SSHAuthorizedKeys,
+		arg.SSHCAPublicKey,
+		arg.SSHHostCertificate,
+		arg.SSHClientPrivateKey,
+		arg.SSHPort,
+		arg.SSHUser,
+		arg.ID,
+	)
+	return err
+}
+
+const updateBoxContainerIDAndStatus = `-- name: UpdateBoxContainerIDAndStatus :exec
+UPDATE boxes SET container_id = ?, status = 'running' WHERE id = ?
+`
+
+type UpdateBoxContainerIDAndStatusParams struct {
+	ContainerID *string `db:"container_id" json:"container_id"`
+	ID          int     `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateBoxContainerIDAndStatus(ctx context.Context, arg UpdateBoxContainerIDAndStatusParams) error {
+	_, err := q.exec(ctx, q.updateBoxContainerIDAndStatusStmt, updateBoxContainerIDAndStatus, arg.ContainerID, arg.ID)
+	return err
+}

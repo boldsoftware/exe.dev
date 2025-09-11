@@ -16,3 +16,6 @@ WHERE user_id = ?;
 SELECT user_id, email, created_at
 FROM users
 WHERE email = ?;
+
+-- name: GetEmailByUserID :one
+SELECT email FROM users WHERE user_id = ?;

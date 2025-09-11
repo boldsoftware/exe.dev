@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const getEmailByUserID = `-- name: GetEmailByUserID :one
+SELECT email FROM users WHERE user_id = ?
+`
+
+func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, error) {
+	row := q.queryRow(ctx, q.getEmailByUserIDStmt, getEmailByUserID, userID)
+	var email string
+	err := row.Scan(&email)
+	return email, err
+}
+
 const getFirstUserID = `-- name: GetFirstUserID :one
 SELECT user_id FROM users LIMIT 1
 `

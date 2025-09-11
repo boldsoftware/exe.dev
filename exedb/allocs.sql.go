@@ -59,16 +59,17 @@ func (q *Queries) GetAllocsByHost(ctx context.Context, ctrhost string) ([]Alloc,
 }
 
 const insertAlloc = `-- name: InsertAlloc :exec
-INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_email)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertAllocParams struct {
-	AllocID   string `db:"alloc_id" json:"alloc_id"`
-	UserID    string `db:"user_id" json:"user_id"`
-	AllocType string `db:"alloc_type" json:"alloc_type"`
-	Region    string `db:"region" json:"region"`
-	Ctrhost   string `db:"ctrhost" json:"ctrhost"`
+	AllocID      string  `db:"alloc_id" json:"alloc_id"`
+	UserID       string  `db:"user_id" json:"user_id"`
+	AllocType    string  `db:"alloc_type" json:"alloc_type"`
+	Region       string  `db:"region" json:"region"`
+	Ctrhost      string  `db:"ctrhost" json:"ctrhost"`
+	BillingEmail *string `db:"billing_email" json:"billing_email"`
 }
 
 func (q *Queries) InsertAlloc(ctx context.Context, arg InsertAllocParams) error {
@@ -78,6 +79,7 @@ func (q *Queries) InsertAlloc(ctx context.Context, arg InsertAllocParams) error 
 		arg.AllocType,
 		arg.Region,
 		arg.Ctrhost,
+		arg.BillingEmail,
 	)
 	return err
 }

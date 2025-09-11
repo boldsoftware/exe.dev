@@ -12,3 +12,6 @@ DELETE FROM auth_cookies WHERE cookie_value = ?;
 
 -- name: UpdateAuthCookieLastUsed :exec
 UPDATE auth_cookies SET last_used_at = CURRENT_TIMESTAMP WHERE cookie_value = ?;
+
+-- name: DeleteAuthCookiesByUserID :exec
+DELETE FROM auth_cookies WHERE user_id = ?;

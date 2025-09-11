@@ -19,6 +19,15 @@ func (q *Queries) DeleteAuthCookie(ctx context.Context, cookieValue string) erro
 	return err
 }
 
+const deleteAuthCookiesByUserID = `-- name: DeleteAuthCookiesByUserID :exec
+DELETE FROM auth_cookies WHERE user_id = ?
+`
+
+func (q *Queries) DeleteAuthCookiesByUserID(ctx context.Context, userID string) error {
+	_, err := q.exec(ctx, q.deleteAuthCookiesByUserIDStmt, deleteAuthCookiesByUserID, userID)
+	return err
+}
+
 const getAuthCookieInfo = `-- name: GetAuthCookieInfo :one
 SELECT user_id, expires_at
 FROM auth_cookies

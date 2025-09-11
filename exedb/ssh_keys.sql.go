@@ -56,7 +56,7 @@ func (q *Queries) GetSSHKeysForUser(ctx context.Context, userID string) ([]strin
 const insertSSHKeyForEmailUser = `-- name: InsertSSHKeyForEmailUser :exec
 INSERT INTO ssh_keys (user_id, public_key)
 VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
-ON CONFLICT(public_key) DO NOTHING
+ON CONFLICT(public_key) DO UPDATE SET user_id = (SELECT user_id FROM users WHERE email = ?)
 `
 
 type InsertSSHKeyForEmailUserParams struct {
