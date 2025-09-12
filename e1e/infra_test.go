@@ -953,6 +953,18 @@ func runExeDevSSHCommand(t *testing.T, keyFile string, args ...string) ([]byte, 
 	return out, err
 }
 
+func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.Cmd {
+	sshArgs := baseSSHArgs(boxname, keyFile)
+	sshArgs = append(sshArgs, args...)
+	sshCmd := exec.CommandContext(t.Context(), "ssh", sshArgs...)
+	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
+	return sshCmd
+}
+
+func runBoxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) ([]byte, error) {
+	return boxSSHCommand(t, boxname, keyFile, args...).CombinedOutput()
+}
+
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	pty := sshWithUsername(t, boxname, keyFile)
 	pty.promptRe = regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$")
