@@ -15,6 +15,12 @@ func ExpandImageNameForContainerd(image string) string {
 
 // expandImageNameInternal is the internal implementation
 func expandImageNameInternal(image string, forContainerd bool) string {
+	// Handle local development case: sha256:{hash} -> local-dev@sha256:{hash}
+	// This allows developers to reference locally built images by digest
+	if strings.HasPrefix(image, "sha256:") {
+		return image
+	}
+
 	// If no tag is specified, add :latest
 	if !strings.Contains(image, ":") && !strings.Contains(image, "@") {
 		image += ":latest"
@@ -65,6 +71,15 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 
 // GetDisplayImageName returns a user-friendly display name for an image
 func GetDisplayImageName(image string) string {
+	// Handle local development images
+	if strings.HasPrefix(image, "sha256:") {
+		hash := strings.TrimPrefix(image, "sha256:")
+		if len(hash) > 12 {
+			hash = hash[:12]
+		}
+		return "local:" + hash
+	}
+
 	// Remove registry prefix for cleaner display
 	parts := strings.Split(image, "/")
 	if len(parts) > 1 {

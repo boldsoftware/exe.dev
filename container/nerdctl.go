@@ -191,6 +191,11 @@ func parseImageReference(imageRef string) (registry, repository, tag string) {
 
 // inspectImage inspects an image and returns its metadata, using database cache when available
 func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*tagresolver.ImageConfig, error) {
+	// For domain-less sha256: refs, use containerd directly instead of regclient
+	if strings.HasPrefix(imageRef, "sha256:") {
+		return m.inspectImageLocal(ctx, imageRef)
+	}
+
 	// Check database cache first if we have a tag resolver
 	if m.tagResolver != nil {
 		// Parse the image reference to extract registry, repository, and tag
@@ -987,7 +992,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Cloud Hypervisor doesn't support the dynamic resource allocation that nerdctl's
 	// --memory and --cpus flags trigger. We need to use cgroup parent slices instead.
 
-	if prep.needsPull {
+	if prep.needsPull && !strings.HasPrefix(imageWithDigest, "sha256:") {
 		// Report that we're about to pull with the size we determined
 		reportProgress(req, CreatePull, 0, 0, "Starting image pull")
 
@@ -2091,4 +2096,50 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 
 	slog.Info("Successfully prepared container-specific /exe.dev directory", "dir", containerDir)
 	return containerDir, nil
+}
+
+// inspectImageLocal inspects a domain-less sha256: image ref using containerd directly
+func (m *NerdctlManager) inspectImageLocal(ctx context.Context, imageRef string) (*tagresolver.ImageConfig, error) {
+	// Extract the actual image reference from sha256:...
+	if !strings.HasPrefix(imageRef, "sha256:") {
+		return nil, fmt.Errorf("not a sha256: image: %s", imageRef)
+	}
+
+	// Use the first host to inspect the image (they should all have the same image)
+	host := ""
+	if len(m.hosts) > 0 {
+		host = m.hosts[0]
+	}
+
+	// Use nerdctl to inspect the image directly from containerd
+	// nerdctl image inspect provides the OCI config
+	inspectCmd := m.ExecSSHCommand(ctx, host, "nerdctl", "--namespace=exe", "image", "inspect", imageRef, "--format", "json")
+	output, err := inspectCmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to inspect local image %s: %w", imageRef, err)
+	}
+
+	// Parse the ctr inspect output
+	var inspectResult struct {
+		Config struct {
+			Config struct {
+				Entrypoint []string `json:"Entrypoint"`
+				Cmd        []string `json:"Cmd"`
+				User       string   `json:"User"`
+			} `json:"config"`
+		} `json:"config"`
+	}
+
+	if err := json.Unmarshal(output, &inspectResult); err != nil {
+		return nil, fmt.Errorf("failed to parse image inspect output: %w", err)
+	}
+
+	cfg := &tagresolver.ImageConfig{
+		Entrypoint: inspectResult.Config.Config.Entrypoint,
+		Cmd:        inspectResult.Config.Config.Cmd,
+		User:       inspectResult.Config.Config.User,
+	}
+
+	slog.Info("Inspected local image", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
+	return cfg, nil
 }

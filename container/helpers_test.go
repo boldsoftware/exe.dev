@@ -32,6 +32,9 @@ func TestExpandImageNameForContainerd(t *testing.T) {
 		// Special case: exeuntu
 		{"exeuntu", "ghcr.io/boldsoftware/exeuntu:latest"},
 		{"exeuntu:latest", "ghcr.io/boldsoftware/exeuntu:latest"},
+
+		// Special case: sha256
+		{"sha256:decafbad", "sha256:decafbad"},
 	}
 
 	for _, tt := range tests {
