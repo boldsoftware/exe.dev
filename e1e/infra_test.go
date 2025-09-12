@@ -1021,10 +1021,10 @@ func boxName(t *testing.T) string {
 	t.Helper()
 	// Create unique-ish test-specific box names: "e1e-{timestamp}-{testname}"
 	// This avoids collisions between test runs and makes cleanup easy
-	timestamp := time.Now().Unix() % 100_000
+	timestamp := fmt.Sprintf("%05d", time.Now().Unix()%100_000)
 	testName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
 	Env.addCanonicalization(timestamp, "BOX_TIMESTAMP")
-	return fmt.Sprintf("e1e-%05d-%s", timestamp, testName)
+	return fmt.Sprintf("e1e-%s-%s", timestamp, testName)
 }
 
 // registerForExeDev is a convenience command to register for an exe.dev account.
