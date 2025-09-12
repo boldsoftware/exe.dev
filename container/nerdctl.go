@@ -1314,6 +1314,7 @@ func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) e
 				slog.Warn("SSH tunnel for container exited", "id", containerID, "error", err)
 			}
 		}
+		slog.Debug("SSH tunnel for container exited cleanly", "id", containerID, "local_port", sshPort)
 		// Clean up the tunnel from the map
 		m.mu.Lock()
 		delete(m.sshTunnels, containerID)
