@@ -88,6 +88,7 @@ limactl create --tty=false --name=${LIMA_BASE} \
 	--vm-type=vz \
 	--cpus=${CPUS} \
 	--memory=${MEMORY} \
+	--network=vzNAT \
 	--disk=${DISK} \
 	--set ".nestedVirtualization=true" \
 	template://ubuntu-24.04
