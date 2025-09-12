@@ -5,14 +5,12 @@ on:
     branches: [ main ]
     paths:
       - 'exeuntu/Dockerfile'
-      - 'exeuntu/Dockerfile.welcome'
       - '.github/workflows/build-exeuntu.yml'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   BASE_IMAGE_NAME: boldsoftware/exeuntu
-  WELCOME_IMAGE_NAME: boldsoftware/exeuntu-welcome
 
 jobs:
   build-images:
@@ -42,16 +40,6 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Extract metadata for welcome image
-        id: meta-welcome
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.WELCOME_IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -67,16 +55,3 @@ jobs:
           labels: ${{ steps.meta-base.outputs.labels }}
           cache-from: type=gha,scope=base
           cache-to: type=gha,mode=max,scope=base
-
-      - name: Build and push welcome Docker image
-        id: build-welcome
-        uses: docker/build-push-action@v5
-        with:
-          context: ./exeuntu
-          file: ./exeuntu/Dockerfile.welcome
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta-welcome.outputs.tags }}
-          labels: ${{ steps.meta-welcome.outputs.labels }}
-          cache-from: type=gha,scope=welcome
-          cache-to: type=gha,mode=max,scope=welcome
