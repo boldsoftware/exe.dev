@@ -132,6 +132,22 @@ func (ctx *CommandContext) IsInteractive() bool {
 	return ctx.Terminal != nil
 }
 
+// ValidateCommand validates a command's configuration to catch common mistakes
+func ValidateCommand(cmd *Command) error {
+	if cmd.HasPositionalArgs && len(cmd.Subcommands) > 0 {
+		return fmt.Errorf("command %q cannot have both positional arguments and subcommands", cmd.Name)
+	}
+
+	// Recursively validate subcommands
+	for _, subCmd := range cmd.Subcommands {
+		if err := ValidateCommand(subCmd); err != nil {
+			return fmt.Errorf("in subcommand of %q: %w", cmd.Name, err)
+		}
+	}
+
+	return nil
+}
+
 // CommandTree holds the root command and provides execution methods
 type CommandTree struct {
 	Commands []*Command

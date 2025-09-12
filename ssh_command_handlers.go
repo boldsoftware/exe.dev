@@ -39,111 +39,117 @@ func routeCommandFlags() *flag.FlagSet {
 
 // NewCommandTree creates a new command tree with all exe.dev commands
 func NewCommandTree(ss *SSHServer) *CommandTree {
-	return &CommandTree{
-		Commands: []*Command{
-			{
-				Name:              "help",
-				Aliases:           []string{"?"},
-				Description:       "Show help information",
-				Handler:           ss.handleHelpCommand,
-				HasPositionalArgs: true,
+	commands := []*Command{
+		{
+			Name:              "help",
+			Aliases:           []string{"?"},
+			Description:       "Show help information",
+			Handler:           ss.handleHelpCommand,
+			HasPositionalArgs: true,
+		},
+		{
+			Name:        "list",
+			Aliases:     []string{"ls"},
+			Description: "List your boxes",
+			Handler:     ss.handleListCommand,
+			Usage:       "list",
+		},
+		{
+			Name:        "new",
+			Description: "Create a new box",
+			Handler:     ss.handleNewCommand,
+			FlagSetFunc: newCommandFlags,
+			Examples: []string{
+				"new                                # just give me a computer",
+				"new --name=b --image=ubuntu:22.04  # custom image and name",
 			},
-			{
-				Name:        "list",
-				Aliases:     []string{"ls"},
-				Description: "List your boxes",
-				Handler:     ss.handleListCommand,
-				Usage:       "list",
-			},
-			{
-				Name:        "new",
-				Description: "Create a new box",
-				Handler:     ss.handleNewCommand,
-				FlagSetFunc: newCommandFlags,
-				Examples: []string{
-					"new                                # just give me a computer",
-					"new --name=b --image=ubuntu:22.04  # custom image and name",
-				},
-			},
-			{
-				Name:              "delete",
-				Description:       "Delete a box",
-				Handler:           ss.handleDeleteCommand,
-				Usage:             "delete <box-name>",
-				HasPositionalArgs: true,
-				CompleterFunc:     CompleteBoxNames,
-			},
-			{
-				Name:        "alloc",
-				Hidden:      true,
-				Description: "Resource allocation info",
-				Handler:     ss.handleAllocCommand,
-				Subcommands: []*Command{
-					{
-						Name:        "info",
-						Description: "Show allocation usage",
-						Usage:       "alloc info",
-						Handler:     ss.handleAllocInfoCommand,
-					},
-				},
-			},
-			{
-				Name:        "billing",
-				Description: "Manage billing and payment info",
-				Handler:     ss.handleBillingCommand,
-				Subcommands: []*Command{
-					{
-						Name:        "setup",
-						Description: "Set up billing information",
-						Usage:       "billing setup",
-						Handler:     ss.handleBillingSetup,
-					},
-					{
-						Name:        "update",
-						Description: "Update billing email address",
-						Usage:       "billing update",
-						Handler:     ss.handleBillingUpdateEmailCommand,
-					},
-					{
-						Name:        "delete",
-						Description: "Delete billing information",
-						Usage:       "billing delete",
-						Handler:     ss.handleBillingDeleteCommand,
-					},
-				},
-			},
-			{
-				Name:              "route",
-				Description:       "Configure box routing",
-				Usage:             "route <box-name> [--port=80 --private|--public]",
-				Handler:           ss.handleRouteCommand,
-				FlagSetFunc:       routeCommandFlags,
-				HasPositionalArgs: true,
-				CompleterFunc:     CompleteBoxNames,
-				Examples: []string{
-					"route mybox                     # show current routing config",
-					"route mybox --port=8080 --private  # expose port 8080 privately",
-					"route mybox --port=80 --public     # expose port 80 publicly",
-					"route mybox --port=3000 --public   # expose port 3000 publicly",
-				},
-			},
-			{
-				Name:        "whoami",
-				Description: "Show your user information including email and all SSH keys.",
-				Usage:       "whoami",
-				Handler:     ss.handleWhoamiCommand,
-			},
-			{
-				Name:        "exit",
-				Description: "Exit",
-				Handler: func(ctx context.Context, cc *CommandContext) error {
-					fmt.Fprint(cc.Output, "Goodbye!\r\n")
-
-					return io.EOF
+		},
+		{
+			Name:              "delete",
+			Description:       "Delete a box",
+			Handler:           ss.handleDeleteCommand,
+			Usage:             "delete <box-name>",
+			HasPositionalArgs: true,
+			CompleterFunc:     CompleteBoxNames,
+		},
+		{
+			Name:        "alloc",
+			Hidden:      true,
+			Description: "Resource allocation info",
+			Handler:     ss.handleAllocCommand,
+			Subcommands: []*Command{
+				{
+					Name:        "info",
+					Description: "Show allocation usage",
+					Usage:       "alloc info",
+					Handler:     ss.handleAllocInfoCommand,
 				},
 			},
 		},
+		{
+			Name:        "billing",
+			Description: "Manage billing and payment info",
+			Handler:     ss.handleBillingCommand,
+			Subcommands: []*Command{
+				{
+					Name:        "setup",
+					Description: "Set up billing information",
+					Usage:       "billing setup",
+					Handler:     ss.handleBillingSetup,
+				},
+				{
+					Name:        "update",
+					Description: "Update billing email address",
+					Usage:       "billing update",
+					Handler:     ss.handleBillingUpdateEmailCommand,
+				},
+				{
+					Name:        "delete",
+					Description: "Delete billing information",
+					Usage:       "billing delete",
+					Handler:     ss.handleBillingDeleteCommand,
+				},
+			},
+		},
+		{
+			Name:              "route",
+			Description:       "Configure box routing",
+			Usage:             "route <box-name> [--port=80 --private|--public]",
+			Handler:           ss.handleRouteCommand,
+			FlagSetFunc:       routeCommandFlags,
+			HasPositionalArgs: true,
+			CompleterFunc:     CompleteBoxNames,
+			Examples: []string{
+				"route mybox                     # show current routing config",
+				"route mybox --port=8080 --private  # expose port 8080 privately",
+				"route mybox --port=80 --public     # expose port 80 publicly",
+				"route mybox --port=3000 --public   # expose port 3000 publicly",
+			},
+		},
+		{
+			Name:        "whoami",
+			Description: "Show your user information including email and all SSH keys.",
+			Usage:       "whoami",
+			Handler:     ss.handleWhoamiCommand,
+		},
+		{
+			Name:        "exit",
+			Description: "Exit",
+			Handler: func(ctx context.Context, cc *CommandContext) error {
+				fmt.Fprint(cc.Output, "Goodbye!\r\n")
+
+				return io.EOF
+			},
+		},
 	}
+
+	for _, cmd := range commands {
+		if err := ValidateCommand(cmd); err != nil {
+			panic(fmt.Errorf("invalid command configuration: %w", err))
+		}
+	}
+
+	return &CommandTree{Commands: commands}
 }
 
 func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *CommandContext) error {

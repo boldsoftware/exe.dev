@@ -840,3 +840,100 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		command     *Command
+		expectError bool
+		errorText   string
+	}{
+		{
+			name: "valid command with positional args only",
+			command: &Command{
+				Name:              "test",
+				HasPositionalArgs: true,
+				Handler:           func(context.Context, *CommandContext) error { return nil },
+			},
+			expectError: false,
+		},
+		{
+			name: "valid command with subcommands only",
+			command: &Command{
+				Name: "test",
+				Subcommands: []*Command{
+					{
+						Name:    "sub",
+						Handler: func(context.Context, *CommandContext) error { return nil },
+					},
+				},
+				Handler: func(context.Context, *CommandContext) error { return nil },
+			},
+			expectError: false,
+		},
+		{
+			name: "valid command with neither positional args nor subcommands",
+			command: &Command{
+				Name:    "test",
+				Handler: func(context.Context, *CommandContext) error { return nil },
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid command with both positional args and subcommands",
+			command: &Command{
+				Name:              "test",
+				HasPositionalArgs: true,
+				Subcommands: []*Command{
+					{
+						Name:    "sub",
+						Handler: func(context.Context, *CommandContext) error { return nil },
+					},
+				},
+				Handler: func(context.Context, *CommandContext) error { return nil },
+			},
+			expectError: true,
+			errorText:   "cannot have both positional arguments and subcommands",
+		},
+		{
+			name: "invalid subcommand with both positional args and subcommands",
+			command: &Command{
+				Name: "parent",
+				Subcommands: []*Command{
+					{
+						Name:              "invalid-sub",
+						HasPositionalArgs: true,
+						Subcommands: []*Command{
+							{
+								Name:    "nested",
+								Handler: func(context.Context, *CommandContext) error { return nil },
+							},
+						},
+						Handler: func(context.Context, *CommandContext) error { return nil },
+					},
+				},
+				Handler: func(context.Context, *CommandContext) error { return nil },
+			},
+			expectError: true,
+			errorText:   "in subcommand of \"parent\": command \"invalid-sub\" cannot have both positional arguments and subcommands",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateCommand(tt.command)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				} else if !strings.Contains(err.Error(), tt.errorText) {
+					t.Errorf("Expected error containing %q, got %q", tt.errorText, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+				}
+			}
+		})
+	}
+}
