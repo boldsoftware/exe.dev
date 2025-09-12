@@ -92,3 +92,9 @@ jobs:
           if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
             ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
           fi
+
+      # Please don't delete this.
+      # It is useful to uncomment it to test stuff in CI
+      # without fear of accidentally merging it.
+      # - name: Always fail
+      #   run: exit 1
