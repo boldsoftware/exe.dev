@@ -17,18 +17,8 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: "go.mod"
-          cache: true
-          cache-dependency-path: "go.sum"
-
-      - name: Warm module cache
-        run: go mod download
-
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@latest
+      - name: Set PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
       - name: start ephemeral vm
         id: vm
