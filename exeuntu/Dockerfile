@@ -44,4 +44,13 @@ ENV EXEUNTU=1
 COPY claude /usr/bin/claude
 RUN chmod +x /usr/bin/claude
 
+# Add gateway token generator script
+COPY generate-gateway-token /usr/local/bin/generate-gateway-token
+RUN chmod +x /usr/local/bin/generate-gateway-token
+
+# Add claude settings file
+COPY claude-settings.json /home/exedev/.claude.json
+RUN chown exedev:exedev /home/exedev/.claude.json && \
+	chmod 600 /home/exedev/.claude.json
+
 USER exedev

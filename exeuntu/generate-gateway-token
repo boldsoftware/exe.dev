@@ -1,0 +1,15 @@
+#!/bin/bash
+set -e
+
+# Generate a claim for gateway authentication with the hostname, current date, and a long expiration time (in miliseconds).
+# This claim is good for ~25 hours (90000000 ms).
+CLAIM="{\"host_name\":\"$HOSTNAME\",\"created_at\":\"$(date -R)\",\"duration\":90000000}"
+
+# Sign the claim using the SSH host key and output the signature in a single line, suitable
+# for use as a Bearer token value in an Authorization: http header.
+SIGNATURE=$(echo -n "$CLAIM" | \
+  sudo ssh-keygen -Y sign -f /exe.dev/etc/ssh/ssh_host_ed25519_key -n file -q | \
+  sed '/-----BEGIN SSH SIGNATURE-----/d; /-----END SSH SIGNATURE-----/d' | \
+  tr -d '\n'“)
+
+echo "$(echo $CLAIM | base64 -w 0).$SIGNATURE"
