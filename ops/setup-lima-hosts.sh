@@ -39,15 +39,32 @@ provision_base_vm() {
 	limactl shell ${LIMA_BASE} -- sudo mkdir -p /local
 	limactl shell ${LIMA_BASE} -- sudo chmod 755 /local
 
+	# Download dependencies locally if not cached
+	VM_ARCH="arm64"
+	echo "Ensuring dependencies are downloaded for $VM_ARCH..."
+	"${script_dir}/download-ctr-host.sh" "$VM_ARCH"
+
 	echo "Copying setup script and config files to VM..."
 	# Copy to /tmp first to avoid read-only filesystem issues
 	limactl shell ${LIMA_BASE} -- cp "${script_dir}/setup-containerd-clh-nydus.sh" /tmp/setup-containerd-clh-nydus.sh
 	limactl shell ${LIMA_BASE} -- cp "${script_dir}/kata-config-clh.toml" /tmp/kata-config-clh.toml
 
+	# Copy pre-downloaded tarballs to VM
+	echo "Copying pre-downloaded dependencies to VM..."
+	CACHE_DIR="$HOME/.cache/exedops"
+	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/*.tar; do
+		if [ -f "$file" ]; then
+			basename=$(basename "$file")
+			echo "  Copying $basename..."
+			limactl shell ${LIMA_BASE} -- cp "$file" /tmp/$basename
+		fi
+	done
+
 	# Move files to /root
 	limactl shell ${LIMA_BASE} -- sudo mv /tmp/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh
 	limactl shell ${LIMA_BASE} -- sudo mv /tmp/kata-config-clh.toml /root/kata-config-clh.toml
 	limactl shell ${LIMA_BASE} -- sudo chmod +x /root/setup-containerd-clh-nydus.sh
+	limactl shell ${LIMA_BASE} -- sudo bash -c 'mv /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.tgz /tmp/*.tar /tmp/*.service /tmp/runc-* /root/ 2>/dev/null || true'
 
 	echo "=========================================="
 	echo "Starting containerd setup in VM"

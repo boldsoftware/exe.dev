@@ -63,32 +63,20 @@ elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
 fi
 
 # Download and install containerd
-echo "Downloading containerd ${CONTAINERD_VERSION} for ${ARCH}..."
+echo "Installing containerd ${CONTAINERD_VERSION} for ${ARCH}..."
 cd /tmp
-if ! wget --progress=dot:giga --timeout=30 --tries=3 -O containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz; then
-	echo "Error: Failed to download containerd"
-	exit 1
-fi
 echo "Extracting containerd..."
-sudo tar -xzf containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz -C /usr/local
-rm containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz
+sudo tar -xzf /root/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz -C /usr/local
 
 # Install containerd systemd service
 sudo mkdir -p /usr/local/lib/systemd/system
-echo "Downloading containerd systemd service..."
-if ! sudo curl -L --retry 3 --connect-timeout 30 https://raw.githubusercontent.com/containerd/containerd/main/containerd.service -o /usr/local/lib/systemd/system/containerd.service; then
-	echo "Error: Failed to download containerd systemd service"
-	exit 1
-fi
+sudo cp /root/containerd.service /usr/local/lib/systemd/system/containerd.service
 sudo systemctl daemon-reload
 
 # Install runc
 RUNC_VERSION="1.1.14"
-echo "Downloading runc ${RUNC_VERSION}..."
-if ! sudo wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH} -O /usr/local/sbin/runc; then
-	echo "Error: Failed to download runc"
-	exit 1
-fi
+echo "Installing runc ${RUNC_VERSION}..."
+sudo cp /root/runc-${RUNC_VERSION}.${ARCH} /usr/local/sbin/runc
 sudo chmod +x /usr/local/sbin/runc
 
 echo "=== Installing Kata Containers with Cloud Hypervisor ==="
@@ -98,16 +86,9 @@ KATA_VERSION="3.20.0"
 KATA_ARCH="$ARCH"
 
 # Download and install Kata
-KATA_URL="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-${KATA_ARCH}.tar.xz"
-echo "Downloading Kata from: $KATA_URL"
-echo "Downloading Kata Containers..."
+echo "Installing Kata Containers ${KATA_VERSION}..."
 cd /tmp
-if ! wget --progress=dot:giga --timeout=30 --tries=3 $KATA_URL -O kata-static.tar.xz; then
-	echo "Error: Failed to download Kata Containers"
-	exit 1
-fi
-sudo tar -xf kata-static.tar.xz -C /
-rm kata-static.tar.xz
+sudo tar -xf /root/kata-static-${KATA_VERSION}-${KATA_ARCH}.tar.xz -C /
 
 # Ensure Cloud Hypervisor is executable
 sudo chmod +x /opt/kata/bin/cloud-hypervisor
@@ -127,32 +108,22 @@ NYDUS_ARCH="$ARCH"
 
 # Download and install nydus-snapshotter
 echo "Installing nydus-snapshotter v${NYDUS_VERSION}..."
-echo "Downloading Nydus snapshotter ${NYDUS_VERSION}..."
 cd /tmp
-if ! wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/containerd/nydus-snapshotter/releases/download/v${NYDUS_VERSION}/nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz; then
-	echo "Error: Failed to download Nydus snapshotter"
-	exit 1
-fi
 # Extract to temp dir first since binaries are in bin/ subdirectory
 mkdir -p /tmp/nydus-extract
-tar -xzf nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz -C /tmp/nydus-extract
+tar -xzf /root/nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz -C /tmp/nydus-extract
 sudo mv /tmp/nydus-extract/bin/* /usr/local/bin/
-rm -rf /tmp/nydus-extract nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz
+rm -rf /tmp/nydus-extract
 sudo chmod +x /usr/local/bin/containerd-nydus-grpc
 
 # Download and install nydusd daemon
 echo "Installing nydusd daemon v${NYDUSD_VERSION}..."
-echo "Downloading Nydus ${NYDUSD_VERSION}..."
 cd /tmp
-if ! wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/dragonflyoss/nydus/releases/download/v${NYDUSD_VERSION}/nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz; then
-	echo "Error: Failed to download Nydus"
-	exit 1
-fi
-tar -xzf nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
+tar -xzf /root/nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
 sudo cp nydus-static/nydusd* /usr/local/bin/
 sudo cp nydus-static/nydus-image /usr/local/bin/
 sudo chmod +x /usr/local/bin/nydusd* /usr/local/bin/nydus-image
-rm -rf nydus-static nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
+rm -rf nydus-static
 
 # Create nydus configuration directory
 sudo mkdir -p /etc/nydus
@@ -334,15 +305,9 @@ EOF
 NERDCTL_VERSION="2.1.3"
 # Map arch to nerdctl naming
 NERDCTL_ARCH="$ARCH" # ARCH is normalized earlier to amd64/arm64
-NERDCTL_URL="https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-${NERDCTL_ARCH}.tar.gz"
-echo "Downloading nerdctl from: $NERDCTL_URL"
+echo "Installing nerdctl ${NERDCTL_VERSION}..."
 TMPD=$(mktemp -d)
-if ! curl -fSL "$NERDCTL_URL" -o "$TMPD/nerdctl.tgz"; then
-	echo "ERROR: failed to download nerdctl from $NERDCTL_URL" >&2
-	rm -rf "$TMPD"
-	exit 1
-fi
-if ! tar -xzf "$TMPD/nerdctl.tgz" -C "$TMPD"; then
+if ! tar -xzf "/root/nerdctl-${NERDCTL_VERSION}-linux-${NERDCTL_ARCH}.tar.gz" -C "$TMPD"; then
 	echo "ERROR: failed to extract nerdctl archive" >&2
 	rm -rf "$TMPD"
 	exit 1
@@ -367,14 +332,9 @@ echo "=== Installing CNI plugins for networking ==="
 # Install CNI plugins (required by nerdctl for its networking)
 CNI_VERSION="1.5.1"
 sudo mkdir -p /opt/cni/bin
-echo "Downloading CNI plugins ${CNI_VERSION}..."
+echo "Installing CNI plugins ${CNI_VERSION}..."
 cd /tmp
-if ! wget --progress=dot:giga --timeout=30 --tries=3 https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz; then
-	echo "Error: Failed to download CNI plugins"
-	exit 1
-fi
-sudo tar -xzf cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz -C /opt/cni/bin
-rm cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz
+sudo tar -xzf /root/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz -C /opt/cni/bin
 
 # Configure default CNI network for nerdctl with a larger subnet for thousands of containers
 # This simplifies the network configuration and matches what works on AWS
@@ -640,10 +600,40 @@ else
 fi
 
 echo ""
-echo "Pre-pulling baseline images (exeuntu, ubuntu, alpine) by digest..."
-sudo nerdctl -n exe --snapshotter nydus pull ghcr.io/boldsoftware/exeuntu:latest
-sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/ubuntu:latest
-sudo nerdctl -n exe --snapshotter nydus pull docker.io/library/alpine:latest
+echo "Loading baseline images (exeuntu, ubuntu, alpine)..."
+
+# Images to load
+IMAGES=(
+	"ghcr.io/boldsoftware/exeuntu:latest"
+	"docker.io/library/ubuntu:latest"
+	"docker.io/library/alpine:latest"
+)
+
+for image in "${IMAGES[@]}"; do
+	image_base=$(echo "$image" | sed 's|/|_|g' | sed 's|:|_|g')
+	base_tar="/root/${image_base}-${ARCH}.tar"
+
+	if [ -f "$base_tar" ]; then
+		echo "Loading $image from cache..."
+		sudo ctr -n exe images import "$base_tar"
+		# If the image is not visible to nerdctl after import, try nerdctl load, then fall back to pull
+		if ! sudo nerdctl -n exe image inspect "$image" >/dev/null 2>&1; then
+			echo "Image not visible to nerdctl after import; trying nerdctl load..."
+			if sudo nerdctl -n exe load -i "$base_tar" >/dev/null 2>&1 &&
+				sudo nerdctl -n exe image inspect "$image" >/dev/null 2>&1; then
+				echo "✓ $image loaded via nerdctl (skip pull)"
+			else
+				echo "Image still not found; pulling $image to complete setup..."
+				sudo nerdctl -n exe --snapshotter nydus pull "$image"
+			fi
+		else
+			echo "✓ $image imported from cache (skip pull)"
+		fi
+	else
+		echo "Pulling $image from registry..."
+		sudo nerdctl -n exe --snapshotter nydus pull "$image"
+	fi
+done
 
 echo ""
 echo "Testing container/VM infrastructure piece by piece..."
@@ -657,7 +647,6 @@ sudo nerdctl -n exe --snapshotter nydus run --runtime io.containerd.kata.v2 alpi
 set +x
 
 echo "VMs work!"
-
 
 echo ""
 echo "=== Setup complete ==="

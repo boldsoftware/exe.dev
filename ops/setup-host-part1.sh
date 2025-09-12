@@ -478,6 +478,10 @@ fi
 
 rm -f /tmp/setup-volumes.sh
 
+# Download dependencies locally if not cached
+echo "Ensuring dependencies are downloaded for amd64..."
+"${SCRIPT_DIR}/download-ctr-host.sh" "amd64"
+
 # Copy setup script and config files via Tailscale
 echo "Copying containerd setup script and config files to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
@@ -488,13 +492,25 @@ if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	exit 1
 fi
 
+# Copy pre-downloaded tarballs to remote machine
+echo "Copying pre-downloaded dependencies to ${MACHINE_NAME}..."
+CACHE_DIR="$HOME/.cache/exedops"
+for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/*.tar; do
+	if [ -f "$file" ]; then
+		basename=$(basename "$file")
+		echo "  Copying $basename..."
+		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$file" "ubuntu@${MACHINE_NAME}:~/$basename"
+	fi
+done
+
 # Move files to /root on the remote machine
 echo "Moving files to /root on ${MACHINE_NAME}..."
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	"ubuntu@${MACHINE_NAME}" \
 	'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && \
 	 sudo mv ~/kata-config-clh.toml /root/kata-config-clh.toml && \
-	 sudo chmod +x /root/setup-containerd-clh-nydus.sh'; then
+	 sudo chmod +x /root/setup-containerd-clh-nydus.sh && \
+	 sudo mv ~/*.tar.gz ~/*.tar.xz ~/*.tgz ~/*.tar ~/*.service ~/runc-* /root/ 2>/dev/null || true'; then
 	echo "ERROR: Failed to move files to /root"
 	exit 1
 fi

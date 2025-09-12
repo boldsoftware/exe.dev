@@ -240,11 +240,39 @@ ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait || true'
 if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	echo "No snapshot found; provisioning VM and creating snapshot cache..."
 	# 6) Prepare containerd + nydus + kata on the VM
+
+	# Detect VM architecture
+	VM_ARCH=$(ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'uname -m')
+	if [ "$VM_ARCH" = "x86_64" ]; then
+		VM_ARCH="amd64"
+	elif [ "$VM_ARCH" = "aarch64" ] || [ "$VM_ARCH" = "arm64" ]; then
+		VM_ARCH="arm64"
+	fi
+	echo "VM architecture: $VM_ARCH"
+
+	# Download dependencies locally if not cached
+	echo "Ensuring dependencies are downloaded for $VM_ARCH..."
+
+	"${SCRIPT_DIR}/download-ctr-host.sh" "$VM_ARCH"
+
 	echo "Copying setup script and config files to VM ${IP}..."
 	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
 	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/kata-config-clh.toml"
+
+	# Copy pre-downloaded tarballs to VM
+	echo "Copying pre-downloaded dependencies to VM ${IP}..."
+	CACHE_DIR="$HOME/.cache/exedops"
+	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/*.tar; do
+		if [ -f "$file" ]; then
+			basename=$(basename "$file")
+			echo "  Copying $basename..."
+			scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$file" "${USER_NAME}@${IP}:~/$basename"
+		fi
+	done
+
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/kata-config-clh.toml /root/kata-config-clh.toml'
+	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/*.tar.gz ~/*.tar.xz ~/*.tgz ~/*.tar ~/*.service ~/runc-* /root/ 2>/dev/null || true'
 
 	echo "Executing setup script on VM ${IP} (raw streaming output)..."
 	# Stream exact commands and output directly to CI logs
