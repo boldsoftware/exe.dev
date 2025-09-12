@@ -5,6 +5,10 @@ build-exeuntu: ## Build the exeuntu Docker image locally
 	@docker build -t ghcr.io/boldsoftware/exeuntu:latest .
 	@echo "✓ Image built locally as ghcr.io/boldsoftware/exeuntu:latest"
 
+push-local-exeuntu: build-exeuntu ## Build and push exeuntu image to local lima-exe-ctr
+	@echo "Loading image into lima-exe-ctr..."
+	@docker save ghcr.io/boldsoftware/exeuntu:latest | ssh lima-exe-ctr 'sudo nerdctl --namespace=exe load'
+
 build-exeuntu-welcome: build-exeuntu ## Build the exeuntu-welcome Docker image locally
 	@echo "Building exeuntu-welcome Docker image..."
 	@docker build -f Dockerfile.welcome -t ghcr.io/boldsoftware/exeuntu-welcome:latest .
