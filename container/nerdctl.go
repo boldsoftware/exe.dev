@@ -948,14 +948,19 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		"--label", "managed_by=exe",
 		"--restart", "no",
 
-		// Each containers has its own VM, so no need for container-level isolation.
-		"--cap-add=SYS_ADMIN",
-		"--cap-add=NET_ADMIN",
-		"--cap-add=NET_RAW",
-		"--cap-add=SYS_PTRACE",
-		"--cap-add=DAC_OVERRIDE",
-		"--cap-add=SETUID",
-		"--cap-add=SETGID",
+		// Each containers has its own VM, so no need for container-level isolation,
+		// so we allow all privileges. 
+		// --privileged doesn't work and gives errors like the following.
+		// Sorry, something went wrong. Error ID: 518e9577-528c-45f8-b752-a27838b9be7c
+		// Error: failed to create container for box-5: exit status 1 output: time="2025-09-12T11:10:54-07:00" level=fatal msg="failed to create shim task: failed to hotplug block device &{File:/dev/loop0 Format:raw ID:drive-b85b559a5c9c9342 MmioAddr: SCSIAddr: NvdimmID: VirtPath:/dev/vda DevNo: PCIPath: Index:0 ShareRW:false ReadOnly:false Pmem:false Swap:false} error: 500  reason: [\"Error from API\",\"The disk could not be added to the VM\",\"Error from device manager\",\"Failed to parse disk image format\",\"failed to fill whole buffer\"]"
+		"--cap-add=ALL",
+		"--security-opt", "seccomp=unconfined",
+		"--security-opt", "apparmor=unconfined",
+		"--cgroupns", "private",
+		"--tmpfs", "/run",
+		"--tmpfs", "/run/lock",
+		"--tmpfs", "/tmp",
+		"--tmpfs", "/sys/fs/cgroup:rw",
 	)
 	// Optional: add OCI/Kata annotations if supported by nerdctl.
 	// Prefer unified CLH restore annotation when a snapshot is present on host.
