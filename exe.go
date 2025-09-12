@@ -2981,21 +2981,6 @@ func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) 
 	})
 }
 
-// syncHost performs complete host synchronization including both allocs and containers
-func (s *Server) syncHost(ctx context.Context, host string) error {
-	// First sync allocations
-	if err := s.syncAllocsForHost(ctx, host); err != nil {
-		return fmt.Errorf("failed to sync allocations: %w", err)
-	}
-
-	// Then sync containers
-	if err := s.syncContainersForHost(ctx, host); err != nil {
-		return fmt.Errorf("failed to sync containers: %w", err)
-	}
-
-	return nil
-}
-
 func (s *Server) Start() error {
 	s.mu.Lock()
 	s.stopping = false
