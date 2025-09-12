@@ -2122,12 +2122,10 @@ func (m *NerdctlManager) inspectImageLocal(ctx context.Context, imageRef string)
 	// Parse the ctr inspect output
 	var inspectResult struct {
 		Config struct {
-			Config struct {
-				Entrypoint []string `json:"Entrypoint"`
-				Cmd        []string `json:"Cmd"`
-				User       string   `json:"User"`
-			} `json:"config"`
-		} `json:"config"`
+			Entrypoint []string `json:"Entrypoint"`
+			Cmd        []string `json:"Cmd"`
+			User       string   `json:"User"`
+		} `json:"Config"`
 	}
 
 	if err := json.Unmarshal(output, &inspectResult); err != nil {
@@ -2135,9 +2133,9 @@ func (m *NerdctlManager) inspectImageLocal(ctx context.Context, imageRef string)
 	}
 
 	cfg := &tagresolver.ImageConfig{
-		Entrypoint: inspectResult.Config.Config.Entrypoint,
-		Cmd:        inspectResult.Config.Config.Cmd,
-		User:       inspectResult.Config.Config.User,
+		Entrypoint: inspectResult.Config.Entrypoint,
+		Cmd:        inspectResult.Config.Cmd,
+		User:       inspectResult.Config.User,
 	}
 
 	slog.Info("Inspected local image", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
