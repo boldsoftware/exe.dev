@@ -54,6 +54,7 @@ UPDATE tag_resolutions
 SET ttl_seconds = ?, updated_at = ?
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?;
 
+-- name: GetImageMetadata :one
 SELECT image_user, image_login_user, image_entrypoint, image_cmd, image_labels
 FROM tag_resolutions
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?

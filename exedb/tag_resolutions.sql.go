@@ -432,7 +432,6 @@ func (q *Queries) UpdateTagResolutionMetadata(ctx context.Context, arg UpdateTag
 		arg.ImageEntrypoint,
 		arg.ImageCmd,
 		arg.ImageLabels,
-		arg.ImageLabels,
 		arg.UpdatedAt,
 		arg.Registry,
 		arg.Repository,
