@@ -121,17 +121,18 @@ func (q *Queries) InsertSSHKey(ctx context.Context, arg InsertSSHKeyParams) erro
 
 const insertSSHKeyForEmailUser = `-- name: InsertSSHKeyForEmailUser :exec
 INSERT INTO ssh_keys (user_id, public_key)
-VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
-ON CONFLICT(public_key) DO UPDATE SET user_id = (SELECT user_id FROM users WHERE email = ?)
+SELECT u.user_id, ? as public_key
+FROM users u WHERE u.email = ?
+ON CONFLICT(public_key) DO UPDATE SET user_id = excluded.user_id
 `
 
 type InsertSSHKeyForEmailUserParams struct {
-	Email     string `db:"email" json:"email"`
 	PublicKey string `db:"public_key" json:"public_key"`
+	Email     string `db:"email" json:"email"`
 }
 
 func (q *Queries) InsertSSHKeyForEmailUser(ctx context.Context, arg InsertSSHKeyForEmailUserParams) error {
-	_, err := q.exec(ctx, q.insertSSHKeyForEmailUserStmt, insertSSHKeyForEmailUser, arg.Email, arg.PublicKey)
+	_, err := q.exec(ctx, q.insertSSHKeyForEmailUserStmt, insertSSHKeyForEmailUser, arg.PublicKey, arg.Email)
 	return err
 }
 

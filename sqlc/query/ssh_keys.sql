@@ -1,7 +1,8 @@
 -- name: InsertSSHKeyForEmailUser :exec
 INSERT INTO ssh_keys (user_id, public_key)
-VALUES ((SELECT user_id FROM users WHERE email = ?), ?)
-ON CONFLICT(public_key) DO UPDATE SET user_id = (SELECT user_id FROM users WHERE email = ?);
+SELECT u.user_id, ? as public_key
+FROM users u WHERE u.email = ?
+ON CONFLICT(public_key) DO UPDATE SET user_id = excluded.user_id;
 
 -- name: GetSSHKeysForUser :many
 SELECT public_key
