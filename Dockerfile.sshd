@@ -2,6 +2,7 @@
 
 FROM alpine:3.19 AS build
 ARG OPENSSH_VERSION=9.9p1
+ARG BUSYBOX_VERSION=1.36.1
 
 # Install build dependencies (no OpenSSL needed!)
 RUN apk add --no-cache \
@@ -9,6 +10,7 @@ RUN apk add --no-cache \
       linux-headers \
       curl \
       tar \
+      bzip2 \
       musl-dev \
       cmake \
       autoconf \
@@ -32,6 +34,8 @@ WORKDIR /src/openssh-${OPENSSH_VERSION}
 # Set rpath and interpreter to use our /exe.dev paths
 # Use -O1 to avoid compiler crashes and disable stack protector
 ENV CFLAGS="-O1 -fno-strict-aliasing -fno-stack-protector"
+# Ensure OpenSSH fallback shell is /exe.dev/bin/sh
+ENV CPPFLAGS="-U_PATH_BSHELL -D_PATH_BSHELL=\"/exe.dev/bin/sh\""
 ENV LDFLAGS="-Wl,-rpath,/exe.dev/lib -Wl,--dynamic-linker,/exe.dev/lib/ld-musl-aarch64.so.1"
 RUN ./configure \
       --prefix=/exe.dev \
@@ -86,6 +90,29 @@ RUN cp -v sshd /out/exe.dev/bin/
 RUN cp -v sshd-session /out/exe.dev/bin/
 RUN cp -v sftp-server /out/exe.dev/bin/
 RUN cp -v ssh-keygen /out/exe.dev/bin/
+
+# Build BusyBox from source for a capable shell and install as /exe.dev/bin/sh
+WORKDIR /src
+RUN curl -fsSLO https://busybox.net/downloads/busybox-${BUSYBOX_VERSION}.tar.bz2 \
+    && tar xjf busybox-${BUSYBOX_VERSION}.tar.bz2
+WORKDIR /src/busybox-${BUSYBOX_VERSION}
+RUN make defconfig && \
+    sed -i 's/^CONFIG_STATIC=y/# CONFIG_STATIC is not set/' .config || true && \
+    if grep -q '^# CONFIG_STATIC is not set' .config; then :; else echo '# CONFIG_STATIC is not set' >> .config; fi && \
+    sed -i 's/^# CONFIG_FEATURE_SH_STANDALONE is not set/CONFIG_FEATURE_SH_STANDALONE=y/' .config || \
+      (grep -q '^CONFIG_FEATURE_SH_STANDALONE=y' .config || echo 'CONFIG_FEATURE_SH_STANDALONE=y' >> .config) && \
+    sed -i 's/^# CONFIG_ASH is not set/CONFIG_ASH=y/' .config || \
+      (grep -q '^CONFIG_ASH=y' .config || echo 'CONFIG_ASH=y' >> .config) && \
+    sed -i 's/^# CONFIG_SH_IS_ASH is not set/CONFIG_SH_IS_ASH=y/' .config || \
+      (grep -q '^CONFIG_SH_IS_ASH=y' .config || echo 'CONFIG_SH_IS_ASH=y' >> .config) && \
+    sed -i 's/^# CONFIG_ASH_BASH_COMPAT is not set/CONFIG_ASH_BASH_COMPAT=y/' .config || true && \
+    sed -i 's/^# CONFIG_ASH_JOB_CONTROL is not set/CONFIG_ASH_JOB_CONTROL=y/' .config || true && \
+    yes "" | make oldconfig && \
+    make busybox && \
+    strip --strip-all busybox && \
+    apk add --no-cache patchelf && \
+    cp -v busybox /out/exe.dev/bin/sh && \
+    patchelf --set-interpreter /exe.dev/lib/ld-musl-aarch64.so.1 /out/exe.dev/bin/sh
 
 # Build dtach using our shared script
 COPY build-dtach.sh /build-dtach.sh
