@@ -2605,8 +2605,6 @@ func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containe
 			Status:               "running",
 			SSHServerIdentityKey: []byte(sshKeys.ServerIdentityKey),
 			SSHAuthorizedKeys:    &sshKeys.AuthorizedKeys,
-			SSHCAPublicKey:       &sshKeys.CAPublicKey,
-			SSHHostCertificate:   &sshKeys.HostCertificate,
 			SSHClientPrivateKey:  []byte(sshKeys.ClientPrivateKey),
 			SSHPort:              func() *int64 { p := int64(sshPort); return &p }(),
 			SSHUser:              &sshUser,
@@ -2885,8 +2883,6 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 						existingSSHKeys = &container.ContainerSSHKeys{
 							ServerIdentityKey: string(box.SSHServerIdentityKey),
 							AuthorizedKeys:    *box.SSHAuthorizedKeys,
-							CAPublicKey:       *box.SSHCAPublicKey,
-							HostCertificate:   *box.SSHHostCertificate,
 							ClientPrivateKey:  string(box.SSHClientPrivateKey),
 							SSHPort:           int(*box.SSHPort),
 						}
@@ -3754,8 +3750,6 @@ func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
 		return queries.UpdateBoxSSHDetails(ctx, exedb.UpdateBoxSSHDetailsParams{
 			SSHServerIdentityKey: []byte(sshKeys.ServerIdentityKey),
 			SSHAuthorizedKeys:    &sshKeys.AuthorizedKeys,
-			SSHCAPublicKey:       &sshKeys.CAPublicKey,
-			SSHHostCertificate:   &sshKeys.HostCertificate,
 			SSHClientPrivateKey:  []byte(sshKeys.ClientPrivateKey),
 			SSHPort:              func() *int64 { p := int64(sshKeys.SSHPort); return &p }(),
 			ID:                   boxID,

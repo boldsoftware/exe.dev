@@ -65,8 +65,6 @@ type Container struct {
 	// SSH key material for container access
 	SSHServerIdentityKey string `json:"-"`                  // SSH server private key (PEM) - not exposed in JSON
 	SSHAuthorizedKeys    string `json:"-"`                  // User certificate for authorized_keys - not exposed in JSON
-	SSHCAPublicKey       string `json:"-"`                  // CA public key for mutual auth - not exposed in JSON
-	SSHHostCertificate   string `json:"-"`                  // Host certificate for host key validation - not exposed in JSON
 	SSHClientPrivateKey  string `json:"-"`                  // Private key for connecting to container - not exposed in JSON
 	SSHPort              int    `json:"ssh_port,omitempty"` // SSH port exposed for this container
 	SSHUser              string `json:"ssh_user,omitempty"` // User to connect as (from Docker image USER directive)

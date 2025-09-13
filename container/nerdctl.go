@@ -1085,8 +1085,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		// SSH key material
 		SSHServerIdentityKey: sshKeys.ServerIdentityKey,
 		SSHAuthorizedKeys:    sshKeys.AuthorizedKeys,
-		SSHCAPublicKey:       sshKeys.CAPublicKey,
-		SSHHostCertificate:   sshKeys.HostCertificate,
 		SSHClientPrivateKey:  sshKeys.ClientPrivateKey,
 		SSHPort:              sshPort,
 	}

@@ -77,17 +77,7 @@ func TestSSHKeyGeneration(t *testing.T) {
 		}
 	})
 
-	// Test CA public key format
-	t.Run("CAPublicKey", func(t *testing.T) {
-		pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(keys.CAPublicKey))
-		if err != nil {
-			t.Fatalf("failed to parse CA public key: %v", err)
-		}
-
-		if pubKey.Type() != "ssh-ed25519" {
-			t.Errorf("unexpected CA key type: got %q, want %q", pubKey.Type(), "ssh-ed25519")
-		}
-	})
+	// CA public key removed - no longer needed
 }
 
 // TestMarshalPrivateKeyFormat checks the exact format issue

@@ -57,7 +57,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 
 	t.Logf("Container created: %s", container.ID)
 	t.Logf("Container SSH keys - AuthorizedKeys: %s", container.SSHAuthorizedKeys)
-	t.Logf("Container SSH keys - HostCertificate: %s", container.SSHHostCertificate)
+	// HostCertificate field removed
 
 	// Validate the SSH keys from the container
 	clientPrivKey, err := ssh.ParsePrivateKey([]byte(container.SSHClientPrivateKey))

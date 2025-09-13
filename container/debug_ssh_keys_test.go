@@ -19,8 +19,6 @@ func TestDebugSSHKeyGeneration(t *testing.T) {
 	t.Logf("ServerIdentityKey (first 100 chars): %s", sshKeys.ServerIdentityKey[:100])
 	t.Logf("AuthorizedKeys: %s", sshKeys.AuthorizedKeys)
 	t.Logf("ClientPrivateKey (first 100 chars): %s", sshKeys.ClientPrivateKey[:100])
-	t.Logf("CAPublicKey: %s", sshKeys.CAPublicKey)
-	t.Logf("HostCertificate: %s", sshKeys.HostCertificate)
 
 	// Test that the private key can be parsed
 	clientPrivKey, err := ssh.ParsePrivateKey([]byte(sshKeys.ClientPrivateKey))

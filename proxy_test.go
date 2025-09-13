@@ -162,11 +162,10 @@ func TestMagicAuthFlow(t *testing.T) {
 	// Create a test box with a private route
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO boxes (alloc_id, name, image, container_id, created_by_user_id, routes,
-			                     ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-			                     ssh_host_certificate, ssh_client_private_key, ssh_port)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, "testbox", "test-image", "test-container-id", userID, `[
+			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+			                     ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, "testbox", "running", "test-image", "test-container-id", userID, `[
 			{
 				"name": "default",
 				"policy": "private",
@@ -175,7 +174,7 @@ func TestMagicAuthFlow(t *testing.T) {
 				"priority": 1,
 				"ports": [80]
 			}
-		]`, "test-identity-key", "test-authorized-keys", "test-ca-key", "test-host-cert", "test-client-key", 2222)
+		]`, "test-identity-key", "test-authorized-keys", "test-client-key", 2222)
 		return err
 	})
 	if err != nil {
@@ -364,11 +363,10 @@ func TestProxyLogoutFlow(t *testing.T) {
 	// Create a test box with a private route
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO boxes (alloc_id, name, image, container_id, created_by_user_id, routes,
-							 ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-							 ssh_host_certificate, ssh_client_private_key, ssh_port)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, "testbox", "test-image", "test-container-id", userID, `[
+			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+							 ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, allocID, "testbox", "running", "test-image", "test-container-id", userID, `[
 			{
 				"name": "default",
 				"port": 80,
@@ -377,7 +375,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 				"policy": "private",
 				"priority": 100
 			}
-		]`, "test-key", "test-keys", "test-ca", "test-cert", "test-client-key", 2222)
+		]`, "test-key", "test-keys", "test-client-key", 2222)
 		return err
 	})
 	if err != nil {

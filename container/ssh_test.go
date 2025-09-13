@@ -19,12 +19,6 @@ func TestGenerateContainerSSHKeys(t *testing.T) {
 	if sshKeys.AuthorizedKeys == "" {
 		t.Error("AuthorizedKeys is empty")
 	}
-	if sshKeys.CAPublicKey == "" {
-		t.Error("CAPublicKey is empty")
-	}
-	if sshKeys.HostCertificate == "" {
-		t.Error("HostCertificate is empty")
-	}
 	if sshKeys.ClientPrivateKey == "" {
 		t.Error("ClientPrivateKey is empty")
 	}
@@ -43,12 +37,6 @@ func TestGenerateContainerSSHKeys(t *testing.T) {
 	// Verify public keys start with expected prefixes
 	if !strings.HasPrefix(sshKeys.AuthorizedKeys, "ssh-ed25519") {
 		t.Error("AuthorizedKeys not in ed25519 public key format")
-	}
-	if !strings.HasPrefix(sshKeys.CAPublicKey, "ssh-ed25519") {
-		t.Error("CAPublicKey not in ed25519 format")
-	}
-	if !strings.HasPrefix(sshKeys.HostCertificate, "ssh-ed25519-cert-v01@openssh.com") {
-		t.Error("HostCertificate not in certificate format")
 	}
 }
 

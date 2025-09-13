@@ -469,8 +469,6 @@ done:
 	sshKeys := &container.ContainerSSHKeys{
 		ServerIdentityKey: createdContainer.SSHServerIdentityKey,
 		AuthorizedKeys:    createdContainer.SSHAuthorizedKeys,
-		CAPublicKey:       createdContainer.SSHCAPublicKey,
-		HostCertificate:   createdContainer.SSHHostCertificate,
 		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
 		SSHPort:           createdContainer.SSHPort,
 	}

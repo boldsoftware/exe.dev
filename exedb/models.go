@@ -51,8 +51,6 @@ type Box struct {
 	Routes               *string    `db:"routes" json:"routes"`
 	SSHServerIdentityKey []byte     `db:"ssh_server_identity_key" json:"ssh_server_identity_key"`
 	SSHAuthorizedKeys    *string    `db:"ssh_authorized_keys" json:"ssh_authorized_keys"`
-	SSHCAPublicKey       *string    `db:"ssh_ca_public_key" json:"ssh_ca_public_key"`
-	SSHHostCertificate   *string    `db:"ssh_host_certificate" json:"ssh_host_certificate"`
 	SSHClientPrivateKey  []byte     `db:"ssh_client_private_key" json:"ssh_client_private_key"`
 	SSHPort              *int64     `db:"ssh_port" json:"ssh_port"`
 	SSHUser              *string    `db:"ssh_user" json:"ssh_user"`

@@ -21,7 +21,7 @@ func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 
 const getBoxByName = `-- name: GetBoxByName :one
 SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
-       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
+       ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user
 FROM boxes
 WHERE name = ?
 `
@@ -43,8 +43,6 @@ func (q *Queries) GetBoxByName(ctx context.Context, name string) (Box, error) {
 		&i.Routes,
 		&i.SSHServerIdentityKey,
 		&i.SSHAuthorizedKeys,
-		&i.SSHCAPublicKey,
-		&i.SSHHostCertificate,
 		&i.SSHClientPrivateKey,
 		&i.SSHPort,
 		&i.SSHUser,
@@ -170,8 +168,8 @@ const getBoxWithSSHByNameAndAlloc = `-- name: GetBoxWithSSHByNameAndAlloc :one
 SELECT id, alloc_id, name, status, image, container_id,
        created_by_user_id, created_at, updated_at,
        last_started_at, routes,
-       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key,
-       ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
+       ssh_server_identity_key, ssh_authorized_keys,
+       ssh_client_private_key, ssh_port, ssh_user
 FROM boxes
 WHERE name = ? AND alloc_id = ?
 `
@@ -198,8 +196,6 @@ func (q *Queries) GetBoxWithSSHByNameAndAlloc(ctx context.Context, arg GetBoxWit
 		&i.Routes,
 		&i.SSHServerIdentityKey,
 		&i.SSHAuthorizedKeys,
-		&i.SSHCAPublicKey,
-		&i.SSHHostCertificate,
 		&i.SSHClientPrivateKey,
 		&i.SSHPort,
 		&i.SSHUser,
@@ -212,8 +208,7 @@ SELECT
     b.id, b.alloc_id, b.name, b.status, b.image, b.container_id,
     b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at,
     b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys,
-    b.ssh_ca_public_key, b.ssh_host_certificate, b.ssh_client_private_key,
-    b.ssh_port, b.ssh_user
+    b.ssh_client_private_key, b.ssh_port, b.ssh_user
 FROM boxes b
 INNER JOIN allocs a ON b.alloc_id = a.alloc_id
 WHERE a.ctrhost = ? AND b.status != 'failed'
@@ -242,8 +237,6 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 			&i.Routes,
 			&i.SSHServerIdentityKey,
 			&i.SSHAuthorizedKeys,
-			&i.SSHCAPublicKey,
-			&i.SSHHostCertificate,
 			&i.SSHClientPrivateKey,
 			&i.SSHPort,
 			&i.SSHUser,
@@ -263,7 +256,7 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 
 const getBoxesForAlloc = `-- name: GetBoxesForAlloc :many
 SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
-       ssh_server_identity_key, ssh_authorized_keys, ssh_ca_public_key, ssh_host_certificate, ssh_client_private_key, ssh_port, ssh_user
+       ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user
 FROM boxes
 WHERE alloc_id = ?
 ORDER BY name
@@ -292,8 +285,6 @@ func (q *Queries) GetBoxesForAlloc(ctx context.Context, allocID string) ([]Box, 
 			&i.Routes,
 			&i.SSHServerIdentityKey,
 			&i.SSHAuthorizedKeys,
-			&i.SSHCAPublicKey,
-			&i.SSHHostCertificate,
 			&i.SSHClientPrivateKey,
 			&i.SSHPort,
 			&i.SSHUser,
@@ -404,8 +395,6 @@ UPDATE boxes SET
     status = ?,
     ssh_server_identity_key = ?,
     ssh_authorized_keys = ?,
-    ssh_ca_public_key = ?,
-    ssh_host_certificate = ?,
     ssh_client_private_key = ?,
     ssh_port = ?,
     ssh_user = ?
@@ -417,8 +406,6 @@ type UpdateBoxContainerAndStatusParams struct {
 	Status               string  `db:"status" json:"status"`
 	SSHServerIdentityKey []byte  `db:"ssh_server_identity_key" json:"ssh_server_identity_key"`
 	SSHAuthorizedKeys    *string `db:"ssh_authorized_keys" json:"ssh_authorized_keys"`
-	SSHCAPublicKey       *string `db:"ssh_ca_public_key" json:"ssh_ca_public_key"`
-	SSHHostCertificate   *string `db:"ssh_host_certificate" json:"ssh_host_certificate"`
 	SSHClientPrivateKey  []byte  `db:"ssh_client_private_key" json:"ssh_client_private_key"`
 	SSHPort              *int64  `db:"ssh_port" json:"ssh_port"`
 	SSHUser              *string `db:"ssh_user" json:"ssh_user"`
@@ -431,8 +418,6 @@ func (q *Queries) UpdateBoxContainerAndStatus(ctx context.Context, arg UpdateBox
 		arg.Status,
 		arg.SSHServerIdentityKey,
 		arg.SSHAuthorizedKeys,
-		arg.SSHCAPublicKey,
-		arg.SSHHostCertificate,
 		arg.SSHClientPrivateKey,
 		arg.SSHPort,
 		arg.SSHUser,
@@ -472,16 +457,14 @@ func (q *Queries) UpdateBoxRoutes(ctx context.Context, arg UpdateBoxRoutesParams
 
 const updateBoxSSHDetails = `-- name: UpdateBoxSSHDetails :exec
 UPDATE boxes SET
-    ssh_server_identity_key = ?, ssh_authorized_keys = ?, ssh_ca_public_key = ?,
-    ssh_host_certificate = ?, ssh_client_private_key = ?, ssh_port = ?
+    ssh_server_identity_key = ?, ssh_authorized_keys = ?,
+    ssh_client_private_key = ?, ssh_port = ?
 WHERE id = ?
 `
 
 type UpdateBoxSSHDetailsParams struct {
 	SSHServerIdentityKey []byte  `db:"ssh_server_identity_key" json:"ssh_server_identity_key"`
 	SSHAuthorizedKeys    *string `db:"ssh_authorized_keys" json:"ssh_authorized_keys"`
-	SSHCAPublicKey       *string `db:"ssh_ca_public_key" json:"ssh_ca_public_key"`
-	SSHHostCertificate   *string `db:"ssh_host_certificate" json:"ssh_host_certificate"`
 	SSHClientPrivateKey  []byte  `db:"ssh_client_private_key" json:"ssh_client_private_key"`
 	SSHPort              *int64  `db:"ssh_port" json:"ssh_port"`
 	ID                   int     `db:"id" json:"id"`
@@ -491,8 +474,6 @@ func (q *Queries) UpdateBoxSSHDetails(ctx context.Context, arg UpdateBoxSSHDetai
 	_, err := q.exec(ctx, q.updateBoxSSHDetailsStmt, updateBoxSSHDetails,
 		arg.SSHServerIdentityKey,
 		arg.SSHAuthorizedKeys,
-		arg.SSHCAPublicKey,
-		arg.SSHHostCertificate,
 		arg.SSHClientPrivateKey,
 		arg.SSHPort,
 		arg.ID,
