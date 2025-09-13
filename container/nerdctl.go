@@ -261,6 +261,8 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*ta
 				Entrypoint []string `json:"Entrypoint"`
 				Cmd        []string `json:"Cmd"`
 				User       string   `json:"User"`
+				Labels     map[string]string `json:"Labels,omitempty"`
+				ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
 			} `json:"config"`
 		}
 
@@ -272,6 +274,8 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*ta
 			Entrypoint: configJSON.Config.Entrypoint,
 			Cmd:        configJSON.Config.Cmd,
 			User:       configJSON.Config.User,
+			Labels:     configJSON.Config.Labels,
+			ExposedPorts: configJSON.Config.ExposedPorts,
 		}
 	default:
 		return nil, fmt.Errorf("manifest type %T not supported by regclient", manifestResp)

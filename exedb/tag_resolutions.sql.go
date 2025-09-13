@@ -36,7 +36,7 @@ func (q *Queries) CheckTagResolutionExists(ctx context.Context, arg CheckTagReso
 }
 
 const getImageMetadata = `-- name: GetImageMetadata :one
-SELECT image_user, image_entrypoint, image_cmd
+SELECT image_user, image_login_user, image_entrypoint, image_cmd
 FROM tag_resolutions
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 LIMIT 1
@@ -51,6 +51,7 @@ type GetImageMetadataParams struct {
 
 type GetImageMetadataRow struct {
 	ImageUser       *string `db:"image_user" json:"image_user"`
+	ImageLoginUser  *string `db:"image_login_user" json:"image_login_user"`
 	ImageEntrypoint *string `db:"image_entrypoint" json:"image_entrypoint"`
 	ImageCmd        *string `db:"image_cmd" json:"image_cmd"`
 }
@@ -63,7 +64,12 @@ func (q *Queries) GetImageMetadata(ctx context.Context, arg GetImageMetadataPara
 		arg.Platform,
 	)
 	var i GetImageMetadataRow
-	err := row.Scan(&i.ImageUser, &i.ImageEntrypoint, &i.ImageCmd)
+	err := row.Scan(
+		&i.ImageUser,
+		&i.ImageLoginUser,
+		&i.ImageEntrypoint,
+		&i.ImageCmd,
+	)
 	return i, err
 }
 
@@ -122,7 +128,7 @@ func (q *Queries) GetTagResolution(ctx context.Context, arg GetTagResolutionPara
 
 const getTagResolutionsByAge = `-- name: GetTagResolutionsByAge :many
 SELECT registry, repository, tag, platform,
-       COALESCE(index_digest, '') as index_digest,
+       COALESCE(index_digest, '') as index_digest, 
        COALESCE(platform_digest, '') as platform_digest,
        last_checked_at, ttl_seconds,
        COALESCE(image_size, 0) as image_size
@@ -290,10 +296,10 @@ const insertTagResolutionWithMetadata = `-- name: InsertTagResolutionWithMetadat
 INSERT INTO tag_resolutions (
     registry, repository, tag, platform,
     index_digest, platform_digest,
-    image_user, image_entrypoint, image_cmd,
+    image_user, image_login_user, image_entrypoint, image_cmd,
     last_checked_at, last_changed_at, ttl_seconds,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertTagResolutionWithMetadataParams struct {
@@ -304,6 +310,7 @@ type InsertTagResolutionWithMetadataParams struct {
 	IndexDigest     *string `db:"index_digest" json:"index_digest"`
 	PlatformDigest  *string `db:"platform_digest" json:"platform_digest"`
 	ImageUser       *string `db:"image_user" json:"image_user"`
+	ImageLoginUser  *string `db:"image_login_user" json:"image_login_user"`
 	ImageEntrypoint *string `db:"image_entrypoint" json:"image_entrypoint"`
 	ImageCmd        *string `db:"image_cmd" json:"image_cmd"`
 	LastCheckedAt   int64   `db:"last_checked_at" json:"last_checked_at"`
@@ -322,6 +329,7 @@ func (q *Queries) InsertTagResolutionWithMetadata(ctx context.Context, arg Inser
 		arg.IndexDigest,
 		arg.PlatformDigest,
 		arg.ImageUser,
+		arg.ImageLoginUser,
 		arg.ImageEntrypoint,
 		arg.ImageCmd,
 		arg.LastCheckedAt,
@@ -396,12 +404,13 @@ func (q *Queries) UpdateTagResolutionDigest(ctx context.Context, arg UpdateTagRe
 
 const updateTagResolutionMetadata = `-- name: UpdateTagResolutionMetadata :exec
 UPDATE tag_resolutions
-SET image_user = ?, image_entrypoint = ?, image_cmd = ?, updated_at = ?
+SET image_user = ?, image_login_user = ?, image_entrypoint = ?, image_cmd = ?, updated_at = ?
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 `
 
 type UpdateTagResolutionMetadataParams struct {
 	ImageUser       *string `db:"image_user" json:"image_user"`
+	ImageLoginUser  *string `db:"image_login_user" json:"image_login_user"`
 	ImageEntrypoint *string `db:"image_entrypoint" json:"image_entrypoint"`
 	ImageCmd        *string `db:"image_cmd" json:"image_cmd"`
 	UpdatedAt       int64   `db:"updated_at" json:"updated_at"`
@@ -414,6 +423,7 @@ type UpdateTagResolutionMetadataParams struct {
 func (q *Queries) UpdateTagResolutionMetadata(ctx context.Context, arg UpdateTagResolutionMetadataParams) error {
 	_, err := q.exec(ctx, q.updateTagResolutionMetadataStmt, updateTagResolutionMetadata,
 		arg.ImageUser,
+		arg.ImageLoginUser,
 		arg.ImageEntrypoint,
 		arg.ImageCmd,
 		arg.UpdatedAt,

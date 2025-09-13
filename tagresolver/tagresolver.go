@@ -27,9 +27,11 @@ import (
 
 // ImageConfig represents the configuration of a container image
 type ImageConfig struct {
-	Entrypoint []string
-	Cmd        []string
-	User       string
+	Entrypoint   []string
+	Cmd          []string
+	User         string
+	Labels       map[string]string
+	ExposedPorts map[string]struct{}
 }
 
 // TagResolver manages image tag to digest resolution
@@ -797,7 +799,7 @@ func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repos
 
 // GetImageMetadata retrieves cached image metadata from the database
 func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repository, tag, platform string) (*ImageConfig, error) {
-	var imageUser, imageEntrypoint, imageCmd *string
+	var imageUser, imageLoginUser, imageEntrypoint, imageCmd *string
 
 	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		queries := exedb.New(rx.Conn())
@@ -811,6 +813,7 @@ func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repositor
 			return err
 		}
 		imageUser = result.ImageUser
+		imageLoginUser = result.ImageLoginUser
 		imageEntrypoint = result.ImageEntrypoint
 		imageCmd = result.ImageCmd
 		return nil
@@ -824,8 +827,18 @@ func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repositor
 		return nil, nil
 	}
 
+	// Determine SSH user: use login user if available, otherwise fall back to image user
+	sshUser := ""
+	if imageLoginUser != nil && *imageLoginUser != "" {
+		sshUser = *imageLoginUser
+	} else if imageUser != nil && *imageUser != "" {
+		sshUser = *imageUser
+	} else {
+		sshUser = "root" // Final fallback
+	}
+
 	cfg := &ImageConfig{
-		User: *imageUser,
+		User: sshUser,
 	}
 
 	// Parse JSON arrays for entrypoint and cmd
@@ -892,6 +905,11 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 			// Insert new record with minimal required fields
 			now := time.Now().Unix()
 			userStr := cfg.User
+			loginUser := cfg.Labels["exe.dev/login-user"]
+			// If no login user is set, use the docker image user
+			if loginUser == "" {
+				loginUser = cfg.User
+			}
 			entrypointStr := string(entrypointJSON)
 			cmdStr := string(cmdJSON)
 			return queries.InsertTagResolutionWithMetadata(ctx, exedb.InsertTagResolutionWithMetadataParams{
@@ -902,6 +920,7 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 				IndexDigest:     nil,
 				PlatformDigest:  nil,
 				ImageUser:       &userStr,
+				ImageLoginUser:  &loginUser,
 				ImageEntrypoint: &entrypointStr,
 				ImageCmd:        &cmdStr,
 				LastCheckedAt:   now,

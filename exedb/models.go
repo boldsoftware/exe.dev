@@ -127,6 +127,7 @@ type TagResolution struct {
 	ImageUser       *string `db:"image_user" json:"image_user"`
 	ImageEntrypoint *string `db:"image_entrypoint" json:"image_entrypoint"`
 	ImageCmd        *string `db:"image_cmd" json:"image_cmd"`
+	ImageLoginUser  *string `db:"image_login_user" json:"image_login_user"`
 }
 
 type TagResolutionHistory struct {

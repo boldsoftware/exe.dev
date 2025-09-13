@@ -55,7 +55,7 @@ SET ttl_seconds = ?, updated_at = ?
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?;
 
 -- name: GetImageMetadata :one
-SELECT image_user, image_entrypoint, image_cmd
+SELECT image_user, image_login_user, image_entrypoint, image_cmd
 FROM tag_resolutions
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
 LIMIT 1;
@@ -68,17 +68,17 @@ SELECT EXISTS(
 
 -- name: UpdateTagResolutionMetadata :exec
 UPDATE tag_resolutions
-SET image_user = ?, image_entrypoint = ?, image_cmd = ?, updated_at = ?
+SET image_user = ?, image_login_user = ?, image_entrypoint = ?, image_cmd = ?, updated_at = ?
 WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?;
 
 -- name: InsertTagResolutionWithMetadata :exec
 INSERT INTO tag_resolutions (
     registry, repository, tag, platform,
     index_digest, platform_digest,
-    image_user, image_entrypoint, image_cmd,
+    image_user, image_login_user, image_entrypoint, image_cmd,
     last_checked_at, last_changed_at, ttl_seconds,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTagResolution :one
 SELECT registry, repository, tag, platform,
