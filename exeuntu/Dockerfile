@@ -113,5 +113,6 @@ RUN go build -o webserver main.go && rm -rf ~/.cache
 # It would be better if you could indicate that via an env variable or something.
 COPY init-wrapper.sh /usr/local/bin/init
 
+LABEL "exe.dev/login-user"="exedev"
 USER root
 CMD ["/usr/local/bin/init"]
