@@ -258,10 +258,10 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*ta
 		// Parse the config JSON - OCI/Docker configs have nested config field
 		var configJSON struct {
 			Config struct {
-				Entrypoint []string `json:"Entrypoint"`
-				Cmd        []string `json:"Cmd"`
-				User       string   `json:"User"`
-				Labels     map[string]string `json:"Labels,omitempty"`
+				Entrypoint   []string            `json:"Entrypoint"`
+				Cmd          []string            `json:"Cmd"`
+				User         string              `json:"User"`
+				Labels       map[string]string   `json:"Labels,omitempty"`
 				ExposedPorts map[string]struct{} `json:"ExposedPorts,omitempty"`
 			} `json:"config"`
 		}
@@ -271,10 +271,10 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*ta
 		}
 
 		cfg = tagresolver.ImageConfig{
-			Entrypoint: configJSON.Config.Entrypoint,
-			Cmd:        configJSON.Config.Cmd,
-			User:       configJSON.Config.User,
-			Labels:     configJSON.Config.Labels,
+			Entrypoint:   configJSON.Config.Entrypoint,
+			Cmd:          configJSON.Config.Cmd,
+			User:         configJSON.Config.User,
+			Labels:       configJSON.Config.Labels,
 			ExposedPorts: configJSON.Config.ExposedPorts,
 		}
 	default:
@@ -860,9 +860,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		containerExeDevPath string
 		errc                chan error
 		needsPull           bool
-		imageUser           string
-		imageEntrypoint     []string
-		imageCmd            []string
+		imageConfig         tagresolver.ImageConfig
 	}
 	prep.errc = make(chan error, 3)
 
@@ -901,11 +899,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			slog.Error("Failed to get image metadata", "image", imageWithDigest, "error", err)
 			return
 		}
-		prep.imageUser = cfg.User
-		if req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none" {
-			prep.imageEntrypoint = cfg.Entrypoint
-			prep.imageCmd = cfg.Cmd
-		}
+		prep.imageConfig = *cfg
 	})
 
 	// Wait for all
@@ -1020,16 +1014,21 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// If using exetini, override the entrypoint and pass image user
 	runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")
-	if prep.imageUser != "" {
+	if prep.imageConfig.User != "" {
 		// Pass the image user to exetini via environment variable
-		runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", prep.imageUser))
+		runArgs = append(runArgs, "--env", fmt.Sprintf("EXE_IMAGE_USER=%s", prep.imageConfig.User))
 	}
 
 	// Add the image to runArgs (must come after --entrypoint but before command args)
 	runArgs = append(runArgs, imageWithDigest)
 
 	// Now append the command/entrypoint args after the image
-	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, prep.imageEntrypoint, prep.imageCmd)...)
+	var imageEntrypoint, imageCmd []string
+	if req.CommandOverride == "" || req.CommandOverride == "auto" || req.CommandOverride == "none" {
+		imageEntrypoint = prep.imageConfig.Entrypoint
+		imageCmd = prep.imageConfig.Cmd
+	}
+	runArgs = append(runArgs, buildEntrypointAndCmdArgs(true, req.CommandOverride, imageEntrypoint, imageCmd)...)
 
 	// Create and start container
 	reportProgress(req, CreateStart, 0, 0, "Starting container")
@@ -1072,11 +1071,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Mark creation as done - SSH is now ready
 	reportProgress(req, CreateDone, 0, 0, "Container ready")
 
-	// Default to root user if not specified in image
-	if prep.imageUser == "" {
-		prep.imageUser = "root"
-	}
-
 	// Create container record
 	container := &Container{
 		ID:         containerID,
@@ -1095,7 +1089,15 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		SSHHostCertificate:   sshKeys.HostCertificate,
 		SSHClientPrivateKey:  sshKeys.ClientPrivateKey,
 		SSHPort:              sshPort,
-		SSHUser:              prep.imageUser,
+	}
+
+	// Default to root user if not specified in image
+	if loginUser := prep.imageConfig.Labels["exe.dev/login-user"]; loginUser != "" {
+		container.SSHUser = loginUser
+	} else if prep.imageConfig.User != "" {
+		container.SSHUser = prep.imageConfig.User
+	} else {
+		container.SSHUser = "root"
 	}
 
 	// Set up SSH tunnel if we're using a remote host

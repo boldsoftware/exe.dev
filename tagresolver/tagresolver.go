@@ -799,7 +799,7 @@ func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repos
 
 // GetImageMetadata retrieves cached image metadata from the database
 func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repository, tag, platform string) (*ImageConfig, error) {
-	var imageUser, imageLoginUser, imageEntrypoint, imageCmd *string
+	var imageUser, imageEntrypoint, imageCmd, imageLabels *string
 
 	err := tr.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		queries := exedb.New(rx.Conn())
@@ -813,9 +813,9 @@ func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repositor
 			return err
 		}
 		imageUser = result.ImageUser
-		imageLoginUser = result.ImageLoginUser
 		imageEntrypoint = result.ImageEntrypoint
 		imageCmd = result.ImageCmd
+		imageLabels = result.ImageLabels
 		return nil
 	})
 	if err != nil {
@@ -823,22 +823,12 @@ func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repositor
 	}
 
 	// If any of the metadata fields are null, we don't have cached metadata
-	if imageUser == nil || imageEntrypoint == nil || imageCmd == nil {
+	if imageUser == nil || imageEntrypoint == nil || imageCmd == nil || imageLabels == nil {
 		return nil, nil
 	}
 
-	// Determine SSH user: use login user if available, otherwise fall back to image user
-	sshUser := ""
-	if imageLoginUser != nil && *imageLoginUser != "" {
-		sshUser = *imageLoginUser
-	} else if imageUser != nil && *imageUser != "" {
-		sshUser = *imageUser
-	} else {
-		sshUser = "root" // Final fallback
-	}
-
 	cfg := &ImageConfig{
-		User: sshUser,
+		User: *imageUser,
 	}
 
 	// Parse JSON arrays for entrypoint and cmd
@@ -851,6 +841,12 @@ func (tr *TagResolver) GetImageMetadata(ctx context.Context, registry, repositor
 	if *imageCmd != "" {
 		if err := json.Unmarshal([]byte(*imageCmd), &cfg.Cmd); err != nil {
 			log.Printf("Failed to unmarshal cmd: %v", err)
+		}
+	}
+
+	if *imageLabels != "" {
+		if err := json.Unmarshal([]byte(*imageLabels), &cfg.Labels); err != nil {
+			log.Printf("Failed to unmarshal labels: %v", err)
 		}
 	}
 
@@ -870,6 +866,11 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 		return fmt.Errorf("failed to marshal cmd: %w", err)
 	}
 
+	labelsJSON, err := json.Marshal(cfg.Labels)
+	if err != nil {
+		return fmt.Errorf("failed to marshal labels: %w", err)
+	}
+
 	return tr.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 
@@ -885,16 +886,17 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 		}
 		exists := existsInt > 0
 
+		now := time.Now().Unix()
+		entrypointStr := string(entrypointJSON)
+		cmdStr := string(cmdJSON)
+		labelsStr := string(labelsJSON)
 		if exists {
 			// Update existing record
-			userStr := cfg.User
-			entrypointStr := string(entrypointJSON)
-			cmdStr := string(cmdJSON)
-			now := time.Now().Unix()
 			return queries.UpdateTagResolutionMetadata(ctx, exedb.UpdateTagResolutionMetadataParams{
-				ImageUser:       &userStr,
+				ImageUser:       &cfg.User,
 				ImageEntrypoint: &entrypointStr,
 				ImageCmd:        &cmdStr,
+				ImageLabels:     &labelsStr,
 				UpdatedAt:       now,
 				Registry:        registry,
 				Repository:      repository,
@@ -903,15 +905,6 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 			})
 		} else {
 			// Insert new record with minimal required fields
-			now := time.Now().Unix()
-			userStr := cfg.User
-			loginUser := cfg.Labels["exe.dev/login-user"]
-			// If no login user is set, use the docker image user
-			if loginUser == "" {
-				loginUser = cfg.User
-			}
-			entrypointStr := string(entrypointJSON)
-			cmdStr := string(cmdJSON)
 			return queries.InsertTagResolutionWithMetadata(ctx, exedb.InsertTagResolutionWithMetadataParams{
 				Registry:        registry,
 				Repository:      repository,
@@ -919,10 +912,10 @@ func (tr *TagResolver) StoreImageMetadata(ctx context.Context, registry, reposit
 				Platform:        platform,
 				IndexDigest:     nil,
 				PlatformDigest:  nil,
-				ImageUser:       &userStr,
-				ImageLoginUser:  &loginUser,
+				ImageUser:       &cfg.User,
 				ImageEntrypoint: &entrypointStr,
 				ImageCmd:        &cmdStr,
+				ImageLabels:     &labelsStr,
 				LastCheckedAt:   now,
 				LastChangedAt:   now,
 				TtlSeconds:      21600,
