@@ -130,7 +130,7 @@ func (q *Queries) GetTagResolution(ctx context.Context, arg GetTagResolutionPara
 
 const getTagResolutionsByAge = `-- name: GetTagResolutionsByAge :many
 SELECT registry, repository, tag, platform,
-       COALESCE(index_digest, '') as index_digest,
+       COALESCE(index_digest, '') as index_digest, 
        COALESCE(platform_digest, '') as platform_digest,
        last_checked_at, ttl_seconds,
        COALESCE(image_size, 0) as image_size

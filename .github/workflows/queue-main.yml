@@ -106,9 +106,6 @@ jobs:
           # Apply gofumpt
           find . -name "*.go" -exec gofumpt -w {} +
 
-          # Strip trailing whitespace from Go files
-          find . -name "*.go" -exec sed -i 's/[[:space:]]*$//' {} +
-
           # Check if anything changed and commit if so
           if ! git diff --quiet; then
             git config --global user.name "Auto-formatter"
