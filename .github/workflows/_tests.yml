@@ -51,8 +51,6 @@ jobs:
           # shellcheck disable=SC1090
           source "$ENVFILE"
           echo "CTR_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
-          # Also set TEST_SSH_HOST so sshpool tests can run directly against the same host
-          echo "TEST_SSH_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
 
       - name: Run tests
         run: |
