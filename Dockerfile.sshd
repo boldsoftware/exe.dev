@@ -82,7 +82,7 @@ RUN sed -i '/#define setlinebuf/d' openbsd-compat/bsd-misc.h
 # Retry on failure to work around intermittent compiler crashes
 RUN make || make || make
 RUN strip --strip-all --remove-section=.comment --remove-section=.note \
-      sshd ssh-keygen sshd-session sftp-server
+      sshd sshd-session sftp-server
 
 # Create output directory structure
 RUN mkdir -p /out/exe.dev/bin /out/exe.dev/lib
@@ -91,7 +91,6 @@ RUN mkdir -p /out/exe.dev/bin /out/exe.dev/lib
 RUN cp -v sshd /out/exe.dev/bin/
 RUN cp -v sshd-session /out/exe.dev/bin/
 RUN cp -v sftp-server /out/exe.dev/bin/
-RUN cp -v ssh-keygen /out/exe.dev/bin/
 
 # Build BusyBox from source for a capable shell and install as /exe.dev/bin/sh
 WORKDIR /src
