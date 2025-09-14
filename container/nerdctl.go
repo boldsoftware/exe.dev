@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	cryptorand "crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -15,7 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1869,20 +1870,52 @@ func (m *NerdctlManager) GetBackendType() string {
 	return "nerdctl"
 }
 
-// getGitHash returns the git commit hash from build info
-func getGitHash() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, setting := range info.Settings {
-			if setting.Key == "vcs.revision" {
-				// Return first 7 characters like git rev-parse --short
-				if len(setting.Value) >= 7 {
-					return setting.Value[:7]
-				}
-				return setting.Value
-			}
-		}
+// getRovolHash walks the embedded rovol FS for the given arch and returns
+// the first half (32 hex chars) of a SHA-256 over path names and file contents.
+func getRovolHash(arch string) (string, error) {
+	rovolFS, err := GetRovolFS(arch)
+	if err != nil {
+		return "", fmt.Errorf("failed to get rovol FS: %w", err)
 	}
-	return "unknown"
+
+	// Collect all file paths to ensure deterministic ordering
+	var files []string
+	if err := fs.WalkDir(rovolFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == "." {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	}); err != nil {
+		return "", fmt.Errorf("failed walking rovol FS: %w", err)
+	}
+
+	sort.Strings(files)
+
+	h := sha256.New()
+	for _, p := range files {
+		// Hash the path and a separator to avoid ambiguity
+		io.WriteString(h, p)
+		h.Write([]byte{0})
+		content, err := fs.ReadFile(rovolFS, p)
+		if err != nil {
+			return "", fmt.Errorf("failed to read %s: %w", p, err)
+		}
+		h.Write(content)
+		h.Write([]byte{0})
+	}
+
+	sum := hex.EncodeToString(h.Sum(nil))
+	if len(sum) < 32 {
+		return "", fmt.Errorf("unexpected short sha256 hex: %q", sum)
+	}
+	return sum[:32], nil
 }
 
 // PrepareRovol prepares the RovolFS files on a host for later use by containers
@@ -1894,15 +1927,18 @@ func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
 		return fmt.Errorf("failed to get RovolFS for %s: %w", m.hostArch, err)
 	}
 
-	// Use git hash for rovol directory path
-	gitHash := getGitHash()
-	remoteDir := m.DataPath(fmt.Sprintf("exed/rovol/rovol-%s", gitHash))
+	// Use content hash for rovol directory path
+	rovolHash, err := getRovolHash(m.hostArch)
+	if err != nil {
+		return fmt.Errorf("failed to compute rovol hash: %w", err)
+	}
+	remoteDir := m.DataPath(fmt.Sprintf("exed/rovol/rovol-%s", rovolHash))
 
-	// Check if rovol already exists for this git hash
+	// Check if rovol already exists for this content hash
 	checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", remoteDir)
 	if err := checkCmd.Run(); err == nil {
-		// Rovol already exists for this git hash, nothing to do
-		slog.Info("RovolFS already prepared on host", "host", host, "gitHash", gitHash, "dir", remoteDir)
+		// Rovol already exists for this content hash, nothing to do
+		slog.Info("RovolFS already prepared on host", "host", host, "rovolHash", rovolHash, "dir", remoteDir)
 		return nil
 	}
 
@@ -1983,7 +2019,7 @@ func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
 		return fmt.Errorf("failed to move files to final location: %w: %s", err, output)
 	}
 
-	slog.Info("Successfully prepared RovolFS on host", "host", host, "arch", m.hostArch, "gitHash", gitHash, "dir", remoteDir)
+	slog.Info("Successfully prepared RovolFS on host", "host", host, "arch", m.hostArch, "rovolHash", rovolHash, "dir", remoteDir)
 
 	// Create var/empty directory for sshd privilege separation
 	// This directory must exist but remain empty
@@ -2039,13 +2075,16 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		return containerDir, nil
 	} else {
 		// Use the pre-prepared rovol files (prepared during server setup)
-		gitHash := getGitHash()
-		rovolPath := m.DataPath(fmt.Sprintf("exed/rovol/rovol-%s", gitHash))
+		rovolHash, err := getRovolHash(m.hostArch)
+		if err != nil {
+			return "", fmt.Errorf("failed to compute rovol hash: %w", err)
+		}
+		rovolPath := m.DataPath(fmt.Sprintf("exed/rovol/rovol-%s", rovolHash))
 
 		// Verify the rovol directory exists
 		checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", rovolPath)
 		if err := checkCmd.Run(); err != nil {
-			return "", fmt.Errorf("rovol not prepared for git hash %s on host %s: PrepareRovol should have been called during server setup", gitHash, host)
+			return "", fmt.Errorf("rovol not prepared for content hash %s on host %s: PrepareRovol should have been called during server setup", rovolHash, host)
 		}
 
 		// Combine directory creation and CoW clone into a single command for speed
