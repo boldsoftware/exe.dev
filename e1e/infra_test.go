@@ -961,10 +961,6 @@ func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.
 	return sshCmd
 }
 
-func runBoxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) ([]byte, error) {
-	return boxSSHCommand(t, boxname, keyFile, args...).CombinedOutput()
-}
-
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	pty := sshWithUsername(t, boxname, keyFile)
 	pty.promptRe = regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$")
