@@ -127,9 +127,9 @@ container/rovol/arm64: Dockerfile.sshd
 	@docker buildx build --platform linux/arm64 -f Dockerfile.sshd --target out --output type=local,dest=./container/rovol/arm64 .
 	@echo "✓ Built container/rovol/arm64"
 
-container/rovol/amd64: Dockerfile.sshd-amd64
+container/rovol/amd64: Dockerfile.sshd
 	@echo "Building SSH binaries for amd64..."
-	@docker buildx build --platform linux/amd64 -f Dockerfile.sshd-amd64 --target out --output type=local,dest=./container/rovol/amd64 .
+	@docker buildx build --platform linux/amd64 -f Dockerfile.sshd --target out --output type=local,dest=./container/rovol/amd64 .
 	@echo "✓ Built container/rovol/amd64"
 
 ghuser/whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't exist
