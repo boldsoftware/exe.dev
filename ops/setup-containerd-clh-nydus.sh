@@ -506,7 +506,7 @@ if ip link show $BRIDGE_NAME >/dev/null 2>&1; then
 fi
 
 # Set up minimal iptables rules for host and network protection
-# Function to add iptables rule if it doesn't exist
+# Function to add iptables rule if it doesn't exist (append semantics)
 add_rule() {
     if ! iptables -C "$@" 2>/dev/null; then
         iptables -A "$@"
@@ -514,11 +514,15 @@ add_rule() {
     fi
 }
 
-# Protect the host from container-initiated connections
-add_rule INPUT -s $CONTAINER_SUBNET -m conntrack --ctstate NEW -j DROP
+# Accept established/related traffic early on FORWARD to avoid breaking DNAT replies
+add_rule FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Protect the host from container-initiated NEW connections (but allow established)
 add_rule INPUT -s $CONTAINER_SUBNET -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+add_rule INPUT -s $CONTAINER_SUBNET -m conntrack --ctstate NEW -j DROP
 
 # Block containers from accessing private networks and metadata services
+# (Replies to host/Internet remain allowed by the ESTABLISHED rule above)
 add_rule FORWARD -s $CONTAINER_SUBNET -d 192.168.0.0/16 -j DROP
 add_rule FORWARD -s $CONTAINER_SUBNET -d 172.16.0.0/12 -j DROP
 add_rule FORWARD -s $CONTAINER_SUBNET -d 10.0.0.0/14 -j DROP

@@ -42,8 +42,8 @@ func TestContainerIntegrationSuite(t *testing.T) {
 		}
 		defer CleanupContainer(t, manager, req.AllocID, c.ID)
 
-		// Wait for SSH tunnel to accept connections
-		sshAddr := fmt.Sprintf("localhost:%d", c.SSHPort)
+		// Wait for container SSH to accept connections on the correct host.
+		sshAddr := sshDialAddr(c)
 		deadline := time.Now().Add(30 * time.Second)
 		for {
 			conn, err := net.DialTimeout("tcp", sshAddr, 500*time.Millisecond)

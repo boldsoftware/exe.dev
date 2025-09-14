@@ -37,6 +37,7 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/container"
+	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
@@ -3355,9 +3356,26 @@ func (s *Server) selectCtrhostForNewAlloc() string {
 	if s.containerManager != nil {
 		hosts := s.containerManager.GetHosts()
 		if len(hosts) > 0 {
-			// For now, just use the first available host
-			// In the future, this could do load balancing
-			return hosts[0]
+			// Use the first available host for now.
+			chosen := hosts[0]
+
+			// In dev/test, store a direct TCP/IP dial address so piper/proxy can reach
+			// the Lima VM without relying on SSH alias DNS.
+			if s.devMode != "" {
+				// Strip ssh:// prefix for alias resolution
+				alias := strings.TrimPrefix(chosen, "ssh://")
+				if alias == "" {
+					alias = chosen
+				}
+				if dial := ctrhosttest.DetectDialAddr(); dial != "" {
+					return dial
+				}
+				// As a fallback, try resolving this alias specifically
+				if ip := ctrhosttest.ResolveHostFromSSHConfig(alias); ip != "" {
+					return "tcp://" + ip
+				}
+			}
+			return chosen
 		}
 	}
 	// Fallback to "local" if no container manager or no hosts

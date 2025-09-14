@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/container"
+	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
 )
 
@@ -409,10 +410,14 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 			sshHost = ctrhost
 		}
 	}
-	// if hostname starts with lima, use localhost, because limactl does some
-	// fancy weird port forwarding
-	if s.devMode != "" && strings.HasPrefix(sshHost, "lima") {
-		sshHost = "localhost"
+	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
+	if s.devMode != "" {
+		if _, err := net.LookupHost(sshHost); err != nil {
+			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
+				slog.Debug("Resolved host via SSH config for dev", "alias", sshHost, "ip", ip)
+				sshHost = ip
+			}
+		}
 	}
 
 	// Try to proxy to the configured port

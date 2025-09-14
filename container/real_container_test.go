@@ -1,7 +1,6 @@
 package container
 
 import (
-	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -106,9 +105,10 @@ func TestRealContainerSSHSetup(t *testing.T) {
 
 	// Spin wait for SSH port to be accessible AND SSH daemon to be ready
 	waitStart := time.Now()
+	sshAddr := sshDialAddr(container)
 	for {
 		// Try to connect to the SSH port to verify it's ready
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", sshPort), 500*time.Millisecond)
+		conn, err := net.DialTimeout("tcp", sshAddr, 500*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			// Port is open, now check if SSH daemon responds
@@ -121,7 +121,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 				HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 				Timeout:         1 * time.Second,
 			}
-			testClient, err := ssh.Dial("tcp", fmt.Sprintf("localhost:%d", sshPort), testConfig)
+			testClient, err := ssh.Dial("tcp", sshAddr, testConfig)
 			if err == nil {
 				testClient.Close()
 				t.Logf("SSH port %d is accessible and SSH daemon is ready (waited %v)", sshPort, time.Since(waitStart))
@@ -159,7 +159,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	}
 
 	// Try to connect via SSH
-	client, err := ssh.Dial("tcp", fmt.Sprintf("localhost:%d", sshPort), sshConfig)
+	client, err := ssh.Dial("tcp", sshAddr, sshConfig)
 	if err != nil {
 		t.Fatalf("❌ CRITICAL BUG: Failed to SSH connect to container: %v", err)
 	}

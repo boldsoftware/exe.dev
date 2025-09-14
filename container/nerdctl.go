@@ -47,9 +47,8 @@ type NerdctlManager struct {
 		m  map[string]chan struct{}
 	}
 
-	mu         sync.RWMutex
-	sshTunnels map[string]*exec.Cmd // containerID -> SSH tunnel command
-	sshPool    *sshpool.Pool        // Pool of persistent SSH connections
+	mu      sync.RWMutex
+	sshPool *sshpool.Pool // Pool of persistent SSH connections
 
 	// Tag resolver for image digest management (optional)
 	tagResolver *tagresolver.TagResolver
@@ -82,7 +81,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	manager := &NerdctlManager{
 		config:     config,
 		hosts:      config.ContainerdAddresses,
-		sshTunnels: make(map[string]*exec.Cmd),
 		sshPool:    sshpool.New(),
 		annSupport: make(map[string]bool),
 	}
@@ -1099,14 +1097,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		container.SSHUser = "root"
 	}
 
-	// Set up SSH tunnel if we're using a remote host
-	if host != "" && !strings.HasPrefix(host, "/") {
-		if err := m.setupSSHTunnel(containerID, host, sshPort); err != nil {
-			slog.Warn("Failed to set up SSH tunnel for container", "container", containerID, "error", err)
-			// Don't fail container creation, just log the warning
-		}
-	}
-
 	slog.Info("Created container", "id", containerID, "host", host, "ip", containerIP, "ssh_port", sshPort)
 
 	return container, nil
@@ -1283,57 +1273,6 @@ func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, cont
 	return containerIP, nil
 }
 
-// setupSSHTunnel sets up an SSH tunnel for accessing container SSH port from localhost
-func (m *NerdctlManager) setupSSHTunnel(containerID, host string, sshPort int) error {
-	// Parse SSH host
-	sshHost := host
-	sshHost = strings.TrimPrefix(sshHost, "ssh://")
-
-	// Create SSH tunnel command: ssh -N -L localPort:localhost:remotePort user@host
-	// -N: Don't execute remote command
-	// -L: Local port forwarding
-	// -o StrictHostKeyChecking=no: Skip host key checking (for dev mode)
-	// -o UserKnownHostsFile=/dev/null: Don't save host key
-	cmd := exec.Command("ssh",
-		"-N",
-		"-L", fmt.Sprintf("%d:localhost:%d", sshPort, sshPort),
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "ServerAliveInterval=30",
-		"-o", "ServerAliveCountMax=3",
-		sshHost,
-	)
-
-	// Start the SSH tunnel in background
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start SSH tunnel: %w", err)
-	}
-
-	// Store the tunnel command for cleanup
-	m.mu.Lock()
-	m.sshTunnels[containerID] = cmd
-	m.mu.Unlock()
-
-	slog.Info("Started SSH tunnel for container", "id", containerID, "local_port", sshPort, "remote_host", sshHost, "remote_port", sshPort)
-
-	// Monitor the tunnel in a goroutine
-	go func() {
-		if err := cmd.Wait(); err != nil {
-			// Only log if not killed intentionally
-			if err.Error() != "signal: killed" {
-				slog.Warn("SSH tunnel for container exited", "id", containerID, "error", err)
-			}
-		}
-		slog.Debug("SSH tunnel for container exited cleanly", "id", containerID, "local_port", sshPort)
-		// Clean up the tunnel from the map
-		m.mu.Lock()
-		delete(m.sshTunnels, containerID)
-		m.mu.Unlock()
-	}()
-
-	return nil
-}
-
 // getHostArch gets the architecture of the host
 func (m *NerdctlManager) getHostArch(ctx context.Context, host string) (string, error) {
 	// Use SSH pool for better performance
@@ -1422,21 +1361,6 @@ func (m *NerdctlManager) GetContainer(ctx context.Context, allocID, containerID 
 		container.SSHUser = "root"
 	}
 
-	// Ensure SSH tunnel exists for remote containers when accessed
-	if container.Status == StatusRunning && host != "" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
-		// Check if tunnel already exists
-		m.mu.RLock()
-		tunnelExists := m.sshTunnels[container.ID] != nil
-		m.mu.RUnlock()
-
-		if !tunnelExists {
-			slog.Info("SSH tunnel not found for container, creating one", "id", container.ID, "port", container.SSHPort)
-			if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
-				slog.Warn("Failed to set up SSH tunnel for container", "id", container.ID, "error", err)
-			}
-		}
-	}
-
 	return container, nil
 }
 
@@ -1453,22 +1377,6 @@ func (m *NerdctlManager) StartContainer(ctx context.Context, allocID, containerI
 	}
 
 	container.Status = StatusRunning
-
-	// Restart SSH tunnel if we're using a remote host
-	host := container.DockerHost
-	if host != "" && !strings.HasPrefix(host, "/") && container.SSHPort > 0 {
-		// Check if tunnel already exists
-		m.mu.RLock()
-		tunnelExists := m.sshTunnels[container.ID] != nil
-		m.mu.RUnlock()
-
-		if !tunnelExists {
-			if err := m.setupSSHTunnel(container.ID, host, container.SSHPort); err != nil {
-				slog.Warn("Failed to set up SSH tunnel for container", "id", container.ID, "error", err)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -1494,16 +1402,6 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 	if err != nil {
 		return err
 	}
-
-	// Kill any SSH tunnel for this container
-	m.mu.Lock()
-	if tunnel, exists := m.sshTunnels[container.ID]; exists {
-		if err := tunnel.Process.Kill(); err != nil {
-			slog.Warn("Failed to kill SSH tunnel for container", "id", container.ID, "error", err)
-		}
-		delete(m.sshTunnels, container.ID)
-	}
-	m.mu.Unlock()
 
 	// Get the box_id from container labels to identify the disk
 	// We need to use json format and parse it
@@ -1849,16 +1747,6 @@ func (m *NerdctlManager) GetContainerDiagnostics(ctx context.Context, allocID, c
 
 // Close cleans up the manager
 func (m *NerdctlManager) Close() error {
-	// Kill all SSH tunnels
-	m.mu.Lock()
-	for containerID, tunnel := range m.sshTunnels {
-		if err := tunnel.Process.Kill(); err != nil {
-			slog.Warn("Failed to kill SSH tunnel for container", "id", containerID, "error", err)
-		}
-	}
-	m.sshTunnels = make(map[string]*exec.Cmd)
-	m.mu.Unlock()
-
 	// Close SSH connection pool
 	m.sshPool.Close()
 

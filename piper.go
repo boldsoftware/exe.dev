@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
@@ -386,20 +387,9 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 		"user", sshDetails.User,
 	)
 
-	// Use SSH details from database instead of querying Docker
-	// The container might be paused/stopped, but we have the port mapping in the database
+	// Use SSH details from database instead of querying container runtime.
+	// We connect directly to the ctrhost:port just like in production.
 	host := "localhost"
-	// In development mode, try to use host.docker.internal if it resolves
-	// This handles the case where we're running inside a container (like Sketch)
-	// and need to connect to Docker-published ports
-	if p.server.devMode != "" {
-		if _, err := net.LookupHost("host.docker.internal"); err == nil {
-			host = "host.docker.internal"
-			slog.Debug("Using host.docker.internal in dev mode", "component", "piper-plugin", "host", host)
-		} else {
-			slog.Debug("host.docker.internal not available, using localhost", "component", "piper-plugin", "error", err)
-		}
-	}
 	if sshDetails.Ctrhost != nil && *sshDetails.Ctrhost != "" {
 		// Parse docker host to extract hostname
 		// Formats: tcp://hostname:port, ssh://hostname, or direct hostname
@@ -429,12 +419,14 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	}
 	port := sshDetails.Port
 
-	// In local dev mode with remote docker host via SSH, we use SSH tunneling
-	// so containers are accessible via localhost
-	if p.server.devMode != "" && sshDetails.Ctrhost != nil && strings.HasPrefix(*sshDetails.Ctrhost, "ssh://") {
-		host = "localhost"
-		slog.Debug("Using localhost for SSH tunnel in dev/test mode", "component", "piper-plugin", "original_host", *sshDetails.Ctrhost)
-		// SSH tunnel should already be established by container package
+	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
+	if p.server.devMode != "" {
+		if _, err := net.LookupHost(host); err != nil {
+			if ip := ctrhosttest.ResolveHostFromSSHConfig(host); ip != "" {
+				slog.Debug("Resolved host via SSH config for dev", "component", "piper-plugin", "alias", host, "ip", ip)
+				host = ip
+			}
+		}
 	}
 
 	slog.Debug("Using database SSH details for box", "component", "piper-plugin", "box_name", box.Name, "host", host, "port", port)
@@ -454,7 +446,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 
 	slog.Debug("directing piperd to connect", "host", host, "port", port, "user", sshDetails.User)
 	return &libplugin.Upstream{
-		Host:     host, // Container host (from ctrhost, host.docker.internal in dev mode, or localhost)
+		Host:     host, // Container host from ctrhost (direct via vzNAT in dev)
 		Port:     int32(port),
 		UserName: sshDetails.User, // Use the user from the Docker image USER directive
 		// Host key validation is handled by VerifyHostKeyCallback
