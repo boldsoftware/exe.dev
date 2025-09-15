@@ -44,6 +44,7 @@ func TestExeDevRejectsSCP(t *testing.T) {
 	sshCmd := exec.CommandContext(t.Context(), "scp",
 		"-P", fmt.Sprint(Env.piperd.SSHPort),
 		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
 		"unhappy_test.go",
 		"localhost:foo.txt",
 	)
