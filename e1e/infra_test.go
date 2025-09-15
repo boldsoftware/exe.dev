@@ -747,7 +747,9 @@ func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
 func makePty(t *testing.T, name string) *expectPty {
 	t.Helper()
 	opts := []expect.ConsoleOpt{
-		expect.WithDefaultRefreshingTimeout(15 * time.Second),
+		// TODO: reduce this timeout.
+		// josh increased it on sep 15 because performance regressions in box startup made it necessary to avoid flakiness.
+		expect.WithDefaultRefreshingTimeout(45 * time.Second),
 	}
 	if *flagVerbosePty {
 		opts = append(opts, expect.WithStdout(os.Stdout))
