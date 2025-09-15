@@ -1,3 +1,18 @@
+# Build generate-gateway-token as a static binary from the go
+# source in the generate-gateway-token/ directory.
+# This binary is then copied into the final image.
+FROM golang:1.25.1-alpine AS go-builder
+ARG TARGETARCH
+ARG TARGETOS=linux
+
+# Copy the generate-gateway-token source code so we can build it
+COPY generate-gateway-token/ /src/generate-gateway-token/
+WORKDIR /src/generate-gateway-token/
+
+# Build static binary for the target architecture
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
+    go build -ldflags="-s -w" -a -installsuffix cgo -o generate-gateway-token ./cmd
+
 FROM ubuntu:24.04
 
 # Switch from dash to bash by default.
@@ -92,8 +107,8 @@ ENV EXEUNTU=1
 COPY claude /usr/bin/claude
 RUN chmod +x /usr/bin/claude
 
-# Add gateway token generator script
-COPY generate-gateway-token /usr/local/bin/generate-gateway-token
+# Copy the pre-built static binary from the builder stage
+COPY --from=go-builder /src/generate-gateway-token/generate-gateway-token /usr/local/bin/generate-gateway-token
 RUN chmod +x /usr/local/bin/generate-gateway-token
 
 RUN mkdir -p /app && chown exedev /app
