@@ -363,6 +363,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, u
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal, // Interactive terminal available
+			ShowHidden: ss.server.devMode == "local",
 		}
 
 		// Execute command using new system
@@ -689,6 +690,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		Output:     NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
 		SSHSession: s,
 		Terminal:   nil, // No interactive terminal for exec mode
+		ShowHidden: ss.server.devMode == "local",
 	}
 
 	err = ss.commands.ExecuteCommand(s.Context(), cc, cmd) // Just the command name
@@ -875,6 +877,7 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User,
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal,
+			ShowHidden: ss.server.devMode == "local",
 		}
 
 		// Get completions

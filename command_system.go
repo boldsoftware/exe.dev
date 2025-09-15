@@ -40,10 +40,10 @@ type Command struct {
 	CompleterFunc     func(*CompletionContext, *CommandContext) []string // Custom completion for command arguments
 }
 
-func (c *Command) SubcommandNames() []string {
+func (ct *CommandTree) SubcommandNames(c *Command) []string {
 	var names []string
 	for _, sc := range c.Subcommands {
-		if sc.Hidden {
+		if sc.Hidden && !ct.ShowHidden {
 			continue
 		}
 		names = append(names, sc.Name)
@@ -107,6 +107,7 @@ type CommandContext struct {
 	FlagSet    *flag.FlagSet // parsed flags for this command
 	SSHServer  *SSHServer
 	SSHSession ssh.Session
+	ShowHidden bool // if true, show hidden commands in help and completions
 
 	// I/O interfaces
 	Output   io.Writer      // where to write output
@@ -161,20 +162,25 @@ func ValidateCommand(cmd *Command) error {
 
 // CommandTree holds the root command and provides execution methods
 type CommandTree struct {
-	Commands []*Command
+	Commands   []*Command
+	ShowHidden bool // if true, show hidden commands in help and completions
 }
 
 func (ct *CommandTree) Help(cc *CommandContext) {
 	tabw := tabwriter.NewWriter(cc.Output, 1, 1, 0, ' ', 0)
 	for _, cmd := range ct.GetAvailableCommands(cc) {
-		if cmd.Hidden {
+		if cmd.Hidden && !ct.ShowHidden {
 			continue
 		}
 		nameStr := cmd.Name
 		if len(cmd.Aliases) > 0 {
 			nameStr = fmt.Sprintf("%s (%s)", cmd.Name, strings.Join(cmd.Aliases, ","))
 		}
-		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\t\r\n", nameStr, cmd.Description)
+		var hidden string
+		if cmd.Hidden {
+			hidden = " [hidden]"
+		}
+		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s%s\t\r\n", nameStr, cmd.Description, hidden)
 	}
 	tabw.Flush()
 }
@@ -317,7 +323,7 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 	}
 	if len(cc.Args) > 0 && !cmd.HasPositionalArgs {
 		if len(cmd.Subcommands) > 0 {
-			return fmt.Errorf(`%q subcommand %q not found, valid %q subcommands are: %s`, commandPath[0], cc.Args[0], commandPath[0], strings.Join(cmd.SubcommandNames(), ", "))
+			return fmt.Errorf(`%q subcommand %q not found, valid %q subcommands are: %s`, commandPath[0], cc.Args[0], commandPath[0], strings.Join(ct.SubcommandNames(cmd), ", "))
 		}
 		return fmt.Errorf("%q command has no subcommands and does not take positional arguments", cmd.Name)
 	}
@@ -453,7 +459,7 @@ func (ct *CommandTree) completeCommandName(compCtx *CompletionContext, cc *Comma
 	prefix := compCtx.CurrentWord
 
 	for _, cmd := range ct.GetAvailableCommands(cc) {
-		if cmd.Hidden {
+		if cmd.Hidden && !ct.ShowHidden {
 			continue
 		}
 		if strings.HasPrefix(cmd.Name, prefix) {
@@ -476,7 +482,7 @@ func (ct *CommandTree) completeSubcommand(cmd *Command, compCtx *CompletionConte
 	prefix := compCtx.CurrentWord
 
 	for _, subCmd := range cmd.Subcommands {
-		if subCmd.Hidden {
+		if subCmd.Hidden && !ct.ShowHidden {
 			continue
 		}
 		if subCmd.Available == nil || subCmd.Available(cc) {

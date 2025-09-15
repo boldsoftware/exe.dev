@@ -155,7 +155,11 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 		}
 	}
 
-	return &CommandTree{Commands: commands}
+	ct := &CommandTree{Commands: commands}
+	if ss.server != nil && ss.server.devMode == "local" {
+		ct.ShowHidden = true
+	}
+	return ct
 }
 
 func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *CommandContext) error {
