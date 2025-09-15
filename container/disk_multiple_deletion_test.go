@@ -20,9 +20,6 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 
 	// Create allocation with unique ID to avoid conflicts
 	allocID := fmt.Sprintf("test-multi-delete-%d", time.Now().Unix())
-	if err := manager.CreateAlloc(ctx, allocID); err != nil {
-		t.Fatalf("CreateAlloc failed: %v", err)
-	}
 
 	// Use a specific BoxID for all iterations
 	boxID := GenerateTestBoxID()

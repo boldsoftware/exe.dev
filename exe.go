@@ -2703,7 +2703,6 @@ func (s *Server) isValidEmail(email string) bool {
 	return strings.Contains(domain, ".")
 }
 
-// Start starts HTTP, HTTPS (if configured), and SSH servers
 // syncAllocsWithHosts synchronizes allocations between the database and container hosts
 // This ensures that:
 // 1. All allocations in the database have their networks created on hosts
@@ -2986,6 +2985,7 @@ func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) 
 	})
 }
 
+// Start starts HTTP, HTTPS (if configured), and SSH servers
 func (s *Server) Start() error {
 	s.mu.Lock()
 	s.stopping = false
@@ -3272,15 +3272,6 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 	})
 	if err != nil {
 		return err
-	}
-
-	// After successful database creation, notify the container manager
-	// (CreateAlloc is now a no-op but kept for compatibility)
-	if s.containerManager != nil {
-		if err := s.containerManager.CreateAlloc(ctx, allocID); err != nil {
-			// Log the error but don't fail user creation
-			slog.Error("failed to create allocation", "allocID", allocID, "error", err)
-		}
 	}
 
 	return nil

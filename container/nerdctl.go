@@ -525,8 +525,7 @@ func (m *NerdctlManager) selectHost(ctx context.Context, allocID string) (ctrHos
 	//
 	// TODO: it is *critical* we have a stable mapping of allocID -> hostname.
 	// So much so, that if the host disappears, the allocID should continue
-	// to map to the missing host. The best way forward here is probably having
-	// CreateAlloc return the allocID.
+	// to map to the missing host.
 	_ = allocID // TODO
 	ctrHost = m.hosts[0]
 

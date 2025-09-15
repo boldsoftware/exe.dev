@@ -23,12 +23,6 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Ubuntu container with SSH + rovol checks + SSH handshake
 	t.Run("UbuntuSSHAndRovol", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ssh-%d", time.Now().UnixNano())
-
-		// Create the allocation
-		if err := manager.CreateAlloc(ctx, allocID); err != nil {
-			t.Fatalf("CreateAlloc failed: %v", err)
-		}
-
 		req := &CreateContainerRequest{
 			AllocID: allocID,
 			Name:    "sshtest",
@@ -108,12 +102,6 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: List containers presence with 3 alpine containers
 	t.Run("ListContainers", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-list-%d", time.Now().UnixNano())
-
-		// Create the allocation
-		if err := manager.CreateAlloc(ctx, allocID); err != nil {
-			t.Fatalf("CreateAlloc failed: %v", err)
-		}
-
 		var created [](*Container)
 		for i := 0; i < 3; i++ {
 			req := &CreateContainerRequest{
@@ -147,12 +135,6 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Start/Stop cycle
 	t.Run("StartStop", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ss-%d", time.Now().UnixNano())
-
-		// Create the allocation
-		if err := manager.CreateAlloc(ctx, allocID); err != nil {
-			t.Fatalf("CreateAlloc failed: %v", err)
-		}
-
 		req := &CreateContainerRequest{
 			AllocID:         allocID,
 			Name:            "startstop",
@@ -178,12 +160,6 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Exec
 	t.Run("Exec", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-exec-%d", time.Now().UnixNano())
-
-		// Create the allocation
-		if err := manager.CreateAlloc(ctx, allocID); err != nil {
-			t.Fatalf("CreateAlloc failed: %v", err)
-		}
-
 		req := &CreateContainerRequest{
 			AllocID: allocID,
 			Name:    "exec",

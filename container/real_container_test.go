@@ -32,11 +32,6 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	// Create container request
 	ctx := t.Context()
 
-	// Create the allocation
-	if err := manager.CreateAlloc(ctx, "test-alloc"); err != nil {
-		t.Fatalf("CreateAlloc failed: %v", err)
-	}
-
 	req := &CreateContainerRequest{
 		AllocID:       "test-alloc",
 		Name:          "ssh-test-container",
