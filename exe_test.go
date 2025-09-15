@@ -467,13 +467,13 @@ func TestSSHIdentityKeyForBox(t *testing.T) {
 			t.Fatalf("SSHIdentityKeyForBox failed: %v", err)
 		}
 
-		if publicKey == "" {
-			t.Fatal("Expected non-empty public key")
+		if publicKey == nil {
+			t.Fatal("Expected non-nil public key")
 		}
 
-		// Verify the public key format (should start with ssh-ed25519)
-		if !strings.HasPrefix(publicKey, "ssh-ed25519 ") {
-			t.Errorf("Expected public key to start with 'ssh-ed25519 ', got: %s", publicKey[:20])
+		// Verify the public key format
+		if publicKey.Type() != "ssh-ed25519" {
+			t.Errorf("Expected public key type to be 'ssh-ed25519', got: %q", publicKey.Type())
 		}
 	})
 

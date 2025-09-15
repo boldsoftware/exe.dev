@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -15,13 +16,13 @@ import (
 
 // mockBoxKeyAuthority implements boxKeyAuthority for testing
 type mockBoxKeyAuthority struct {
-	keys map[string]string // boxName -> SSH public key string
+	keys map[string]ssh.PublicKey // boxName -> SSH public key string
 }
 
-func (m *mockBoxKeyAuthority) SSHIdentityKeyForBox(ctx context.Context, name string) (string, error) {
+func (m *mockBoxKeyAuthority) SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error) {
 	key, exists := m.keys[name]
 	if !exists {
-		return "", fmt.Errorf("box not found: %s", name)
+		return nil, fmt.Errorf("box not found: %s", name)
 	}
 	return key, nil
 }
@@ -30,11 +31,11 @@ var _ boxKeyAuthority = &mockBoxKeyAuthority{}
 
 // testKeyPair holds a key pair for testing
 type testKeyPair struct {
-	privateKey    any        // crypto private key
-	publicKey     any        // crypto public key
-	sshPublicKey  string     // SSH format public key
-	sshPrivateKey ssh.Signer // SSH signer
-	keyType       string     // "ed25519"
+	privateKey    any           // crypto private key
+	publicKey     any           // crypto public key
+	sshPublicKey  ssh.PublicKey // SSH format public key
+	sshPrivateKey ssh.Signer    // SSH signer
+	keyType       string        // "ed25519"
 }
 
 // generateTestKeys creates Ed25519 test key pair (as used by exe.dev containers)
@@ -50,7 +51,7 @@ func generateTestKeys(t *testing.T) *testKeyPair {
 	if err != nil {
 		t.Fatalf("Failed to create Ed25519 SSH signer: %v", err)
 	}
-	ed25519SSHPubKey := string(ssh.MarshalAuthorizedKey(ed25519SSHSigner.PublicKey()))
+	ed25519SSHPubKey := ed25519SSHSigner.PublicKey()
 
 	return &testKeyPair{
 		privateKey:    ed25519Priv,
@@ -69,38 +70,39 @@ func TestNewBearerToken_And_BearerTokenAuth(t *testing.T) {
 	// Create test parameters
 	boxName := "test-box"
 	startTime := time.Now().Add(-5 * time.Minute) // 5 minutes ago
-	duration := 10 * time.Minute
+	ttlSec := 60 * 60 * 25
 
 	// Create bearer token
-	token := NewBearerToken(boxName, startTime, duration)
+	token := NewBearerToken(boxName, startTime, ttlSec)
 
 	// Verify token fields
 	if token.BoxName != boxName {
 		t.Errorf("Expected BoxName %s, got %s", boxName, token.BoxName)
 	}
-	if !token.StartTime.Equal(startTime) {
-		t.Errorf("Expected StartTime %v, got %v", startTime, token.StartTime)
+	if !token.CreatedAt.Equal(startTime) {
+		t.Errorf("Expected StartTime %v, got %v", startTime, token.CreatedAt)
 	}
-	if token.Duration != duration {
-		t.Errorf("Expected Duration %v, got %v", duration, token.Duration)
+	if token.TTLSeconds != ttlSec {
+		t.Errorf("Expected Duration %v, got %v", ttlSec, token.TTLSeconds)
 	}
+
 	sig, err := token.Sign(keyPair.sshPrivateKey)
 	if err != nil {
 		t.Fatalf("Failed to sign bearer token: %v", err)
 	}
-	if len(sig) == 0 {
+	if len(sig.Blob) == 0 {
 		t.Error("Expected non-empty signature")
 	}
 
 	// Create mock authority with test key
 	mockAuth := &mockBoxKeyAuthority{
-		keys: map[string]string{
+		keys: map[string]ssh.PublicKey{
 			boxName: keyPair.sshPublicKey,
 		},
 	}
 
 	// Create llmProxy instance with fixed time for testing
-	fixedTime := startTime.Add(2 * time.Minute) // 2 minutes after start, well within duration
+	fixedTime := startTime.Add(2 * time.Minute) // 2 minutes after start, well within ttlSec
 	proxy := &llmGateway{
 		boxKeyAuthority: mockAuth,
 		now:             func() time.Time { return fixedTime },
@@ -115,6 +117,8 @@ func TestNewBearerToken_And_BearerTokenAuth(t *testing.T) {
 	// Create HTTP request with Authorization Bearer header
 	req := httptest.NewRequest("POST", "http://example.com/api/test", strings.NewReader("test body"))
 	req.Header.Set("Authorization", "Bearer "+tokenEncoded)
+
+	slog.Info("test", "tokenEncoded", tokenEncoded)
 
 	// Test authentication
 	authenticatedBoxName, err := proxy.boxKeyAuth(context.Background(), req)
@@ -131,15 +135,14 @@ func TestBearerTokenAuth_ExpiredToken(t *testing.T) {
 	keyPair := generateTestKeys(t)
 	boxName := "test-box"
 
-	// Create expired token (started 10 minutes ago, duration 5 minutes)
+	// Create expired token (started 10 minutes ago, ttlSec 5 minutes)
 	startTime := time.Now().Add(-10 * time.Minute)
-	duration := 5 * time.Minute
-
-	token := NewBearerToken(boxName, startTime, duration)
+	ttlSec := 5 * 60
+	token := NewBearerToken(boxName, startTime, ttlSec)
 
 	// Create mock authority
 	mockAuth := &mockBoxKeyAuthority{
-		keys: map[string]string{
+		keys: map[string]ssh.PublicKey{
 			boxName: keyPair.sshPublicKey,
 		},
 	}
@@ -167,7 +170,7 @@ func TestBearerTokenAuth_ExpiredToken(t *testing.T) {
 }
 
 func TestBearerTokenAuth_MissingAuthHeader(t *testing.T) {
-	mockAuth := &mockBoxKeyAuthority{keys: make(map[string]string)}
+	mockAuth := &mockBoxKeyAuthority{keys: make(map[string]ssh.PublicKey)}
 	proxy := &llmGateway{
 		boxKeyAuthority: mockAuth,
 		now:             time.Now,
@@ -187,7 +190,7 @@ func TestBearerTokenAuth_MissingAuthHeader(t *testing.T) {
 }
 
 func TestBearerTokenAuth_InvalidBase64(t *testing.T) {
-	mockAuth := &mockBoxKeyAuthority{keys: make(map[string]string)}
+	mockAuth := &mockBoxKeyAuthority{keys: make(map[string]ssh.PublicKey)}
 	proxy := &llmGateway{
 		boxKeyAuthority: mockAuth,
 		now:             time.Now,
@@ -214,12 +217,12 @@ func TestBearerTokenAuth_InvalidSignature(t *testing.T) {
 
 	// Create token with one key
 	startTime := time.Now()
-	duration := 10 * time.Minute
-	token := NewBearerToken(boxName, startTime, duration)
+	ttlSec := 10 * 60
+	token := NewBearerToken(boxName, startTime, ttlSec)
 
 	// Create mock authority with different key
 	mockAuth := &mockBoxKeyAuthority{
-		keys: map[string]string{
+		keys: map[string]ssh.PublicKey{
 			boxName: wrongKeyPair.sshPublicKey, // Wrong key!
 		},
 	}

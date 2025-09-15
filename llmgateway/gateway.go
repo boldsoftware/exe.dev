@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"exe.dev/accounting"
+	"golang.org/x/crypto/ssh"
 )
 
 // llmGateway is a proxy for API calls to various LLM services.
@@ -26,23 +27,21 @@ type llmGateway struct {
 
 type boxKeyAuthority interface {
 	// SSHIdentityKeyForBox returns the public key portion of the ssh server identity for the given boxy name.
-	SSHIdentityKeyForBox(ctx context.Context, name string) (string, error)
+	SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error)
 }
 
 func NewGateway(accountant accounting.Accountant, boxKeyAuthority boxKeyAuthority) *llmGateway {
 	ret := &llmGateway{
 		now:             time.Now,
-		mux:             *http.NewServeMux(),
 		accountant:      accountant,
 		boxKeyAuthority: boxKeyAuthority,
 	}
 
-	ret.mux.HandleFunc("/{modelAlias}", ret.handleRequest)
 	return ret
 }
 
-func (m *llmGateway) handleRequest(w http.ResponseWriter, r *http.Request) {
-	alias := r.PathValue("modelAlias")
+func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	alias := r.PathValue("endpoint")
 	slog.Debug("llmGateway.handleRequest", "alias", alias)
 
 	// authenticate request
@@ -52,23 +51,22 @@ func (m *llmGateway) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	balance, err := m.accountant.GetUserBalance(r.Context(), billingAccountID)
-	if err != nil {
-		httpError(w, r, "unable to check account ballance: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	if m.accountant == nil {
+		slog.Warn("llmGateway.handleRequest: no accountant set; any request costs incurred will not be debited to a billing account")
+	} else {
+		balance, err := m.accountant.GetUserBalance(r.Context(), billingAccountID)
+		if err != nil {
+			httpError(w, r, "unable to check account ballance: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	if balance < 0.0 {
-		httpError(w, r, "insufficient account balance", http.StatusPaymentRequired)
-		return
+		if balance < 0.0 {
+			httpError(w, r, "insufficient account balance", http.StatusPaymentRequired)
+			return
+		}
 	}
 
 	httpError(w, r, "actual proxy methods not yet implemented", http.StatusNotImplemented)
-}
-
-// ServeHTTP implements http.Handler
-func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	m.mux.ServeHTTP(w, r)
 }
 
 func httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) {
