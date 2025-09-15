@@ -1,5 +1,5 @@
 [Unit]
-Description=Simple Go Web Server
+Description=Welcome exe.dev Web Application
 After=network.target
 Wants=network.target
 

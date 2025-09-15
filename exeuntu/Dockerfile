@@ -37,7 +37,6 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		/etc/systemd/system/multi-user.target.wants/ModemManager.service \
 		/etc/systemd/system/multi-user.target.wants/snapd.* \
 		/etc/systemd/system/multi-user.target.wants/ubuntu-advantage.service && \
-	systemctl mask getty.target console-getty.service && \
 	systemctl disable systemd-logind.service getty.target \
                    console-getty.service \
                    getty@.service \
@@ -52,6 +51,22 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
                    systemd-udev-trigger.service \
                    systemd-udev-settle.service \
                    systemd-hwdb-update.service && \
+	systemctl mask getty.target \
+	               console-getty.service \
+				   keyboard-setup.service \
+                   ssh.socket \
+                   plymouth.service \
+                   plymouth-start.service \
+                   plymouth-quit.service \
+                   plymouth-quit-wait.service \
+                   plymouth-read-write.service \
+                   plymouth-switch-root.service \
+                   plymouth-switch-root-initramfs.service \
+                   plymouth-halt.service \
+                   plymouth-reboot.service \
+                   plymouth-poweroff.service \
+                   plymouth-kexec.service \
+                   plymouth-log.service && \
 	mkdir -p /etc/systemd/system.conf.d && \
     		echo '[Manager]' > /etc/systemd/system.conf.d/container-overrides.conf && \
     		echo 'LogLevel=info' >> /etc/systemd/system.conf.d/container-overrides.conf && \
@@ -108,11 +123,20 @@ RUN git add . && \
 # Build the Go web server
 RUN go build -o webserver main.go && rm -rf ~/.cache
 
+# Switch back to root to install systemd service
+USER root
+
+# Install and enable the welcome web server systemd service
+RUN cp /app/welcome-exedev-webapp.service /etc/systemd/system/welcome-exedev-webapp.service && \
+    systemctl enable welcome-exedev-webapp.service
+
 # TODO(crawshaw/philip): This is called init so that exetini decides
 # this wrapper script is an init, and exec's it rather than forking it.
 # It would be better if you could indicate that via an env variable or something.
 COPY init-wrapper.sh /usr/local/bin/init
 
+# Expose the web server port
+EXPOSE 8000
+
 LABEL "exe.dev/login-user"="exedev"
-USER root
 CMD ["/usr/local/bin/init"]
