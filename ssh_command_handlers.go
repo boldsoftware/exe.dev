@@ -228,11 +228,6 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) 
 }
 
 func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) error {
-	if ss.server.containerManager == nil {
-		cc.Write("\033[1;31mBox management is not available\033[0m\r\n")
-		return fmt.Errorf("box management is not available")
-	}
-
 	user := cc.User
 	boxName := cc.FlagSet.Lookup("name").Value.String()
 	image := cc.FlagSet.Lookup("image").Value.String()
@@ -480,45 +475,6 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 	}
 
 	boxName := cc.Args[0]
-
-	if ss.server.containerManager == nil {
-		// Just delete from database if no container manager
-		cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
-
-		// Get box info before deleting to track it
-		var boxID int
-		var allocID string
-		err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-
-			// First get the box info
-			result, err := queries.GetBoxIDAndAllocByName(ctx, boxName)
-			if err != nil {
-				return err
-			}
-			boxID = result.ID
-			allocID = result.AllocID
-
-			// Track deletion in deleted_boxes table
-			err = queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
-				ID:      int64(boxID),
-				AllocID: allocID,
-			})
-			if err != nil {
-				return fmt.Errorf("tracking deletion: %w", err)
-			}
-
-			// Delete the box
-			return queries.DeleteBox(ctx, boxID)
-		})
-		if err != nil {
-			cc.Writeln("\033[1;31mError deleting box: %v\033[0m", err)
-			return fmt.Errorf("deleting box: %w", err)
-		}
-
-		cc.Writeln("\033[1;32mBox '%s' deleted\033[0m", boxName)
-		return nil
-	}
 
 	// Get box info
 	box, err := ss.server.getBoxByName(ctx, boxName)
