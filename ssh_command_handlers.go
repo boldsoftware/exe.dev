@@ -186,74 +186,40 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *CommandContext) 
 }
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *CommandContext) error {
-	// If container manager is available, get real-time status
-	if ss.server.containerManager != nil {
-		containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.AllocID)
-		if err != nil {
-			cc.Write("\033[1;31mError listing boxes: %v\033[0m\r\n", err)
-			return fmt.Errorf("listing boxes: %w", err)
-		}
-
-		if len(containers) == 0 {
-			cc.Write("No boxes found. Create one with 'new'.\r\n")
-			return fmt.Errorf("no boxes found")
-		}
-
-		cc.Write("\033[1;36mYour boxes:\033[0m\r\n")
-		for _, c := range containers {
-			status := string(c.Status)
-			statusColor := ""
-			switch c.Status {
-			case container.StatusRunning:
-				statusColor = "\033[1;32m" // green
-				status = "running"
-			case container.StatusStopped:
-				statusColor = "\033[1;31m" // red
-				status = "stopped"
-			case container.StatusPending:
-				statusColor = "\033[1;33m" // yellow
-				status = "starting"
-			}
-
-			// Show box with colored status
-			cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, status)
-
-			// Add image info if available
-			if c.Image != "" && c.Image != "exeuntu" {
-				displayImage := container.GetDisplayImageName(c.Image)
-				cc.Write(" (%s)", displayImage)
-			}
-
-			cc.Write("\r\n")
-		}
-		return nil
-	}
-
-	// Fallback to database if container manager not available
-	boxes, err := ss.server.getBoxesForAlloc(ctx, cc.Alloc.AllocID)
+	containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.AllocID)
 	if err != nil {
 		cc.Write("\033[1;31mError listing boxes: %v\033[0m\r\n", err)
 		return fmt.Errorf("listing boxes: %w", err)
 	}
 
-	if len(boxes) == 0 {
+	if len(containers) == 0 {
 		cc.Write("No boxes found. Create one with 'new'.\r\n")
 		return fmt.Errorf("no boxes found")
 	}
 
 	cc.Write("\033[1;36mYour boxes:\033[0m\r\n")
-	for _, m := range boxes {
-		status := m.Status
-		statusColors := map[string]string{
-			"running": "\033[1;32m",
-			"stopped": "\033[1;31m",
-			"pending": "\033[1;33m",
+	for _, c := range containers {
+		status := string(c.Status)
+		statusColor := ""
+		switch c.Status {
+		case container.StatusRunning:
+			statusColor = "\033[1;32m" // green
+			status = "running"
+		case container.StatusStopped:
+			statusColor = "\033[1;31m" // red
+			status = "stopped"
+		case container.StatusPending:
+			statusColor = "\033[1;33m" // yellow
+			status = "starting"
 		}
-		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", m.Name, statusColors[status], status)
+
+		// Show box with colored status
+		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, status)
 
 		// Add image info if available
-		if m.Image != "" && m.Image != "exeuntu" && m.Image != "ubuntu" {
-			cc.Write(" (%s)", m.Image)
+		if c.Image != "" && c.Image != "exeuntu" {
+			displayImage := container.GetDisplayImageName(c.Image)
+			cc.Write(" (%s)", displayImage)
 		}
 
 		cc.Write("\r\n")
