@@ -216,8 +216,8 @@ func TestHandleProxyRequest(t *testing.T) {
 		expectedStatus int
 		expectedBody   string
 	}{
-		{"web-server.exe.dev", "GET", "/", 200, "port: 80"},           // Public route should work
-		{"web-server.exe.dev", "GET", "/api/status", 200, "port: 80"}, // All paths go to same port
+		{"web-server.exe.dev", "GET", "/", 502, "Failed to proxy request to container"},           // No container running, should fail
+		{"web-server.exe.dev", "GET", "/api/status", 502, "Failed to proxy request to container"}, // No container running, should fail
 		{"nonexistent.exe.dev", "GET", "/", 404, "Box not found"},
 	}
 
@@ -443,21 +443,21 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 		t.Errorf("Expected updated share 'public', got '%s'", updatedRoute.Share)
 	}
 
-	// Test 5: Test proxy request with public route (should work)
+	// Test 5: Test proxy request with public route (should fail since no container is running)
 	req2 := httptest.NewRequest("GET", "/api/test", nil)
 	req2.Host = boxName + ".exe.dev"
 	w2 := httptest.NewRecorder()
 	server.handleProxyRequest(w2, req2)
 
-	// Should work for public access
-	if w2.Code != 200 {
-		t.Errorf("Expected status 200 for public route, got %d", w2.Code)
+	// Should fail since no actual container is running to proxy to
+	if w2.Code != 502 {
+		t.Errorf("Expected status 502 for public route with no running container, got %d", w2.Code)
 	}
 
-	// Check that it proxied to the right port
+	// Check that it returns appropriate error message
 	body := w2.Body.String()
-	if !strings.Contains(body, "port: 8080") {
-		t.Errorf("Expected response to contain 'port: 8080', got: %s", body)
+	if !strings.Contains(body, "Failed to proxy request to container") {
+		t.Errorf("Expected response to contain error message, got: %s", body)
 	}
 
 	// Test 6: Test invalid port (should fail)

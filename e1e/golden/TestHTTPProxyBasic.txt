@@ -1,0 +1,76 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a machine over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: TestHTTPProxyBasic@example.com
+Verification email sent to TestHTTPProxyBasic@example.com.
+
+Please click the link in your email to verify your account:
+http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+To create your first box, run:
+
+  new
+
+Or type `help` to see a list of commands.
+exe.dev ▶ whoami
+User Information:
+
+Email Address: TestHTTPProxyBasic@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+
+
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testhttpproxybasic
+Creating e1e-BOX_TIMESTAMP-testhttpproxybasic (medium) using image boldsoftware/exeuntu...
+Ready in ELAPSED_TIME! Access with:
+
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testhttpproxybasic@localhost
+http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT
+
+exe.dev ▶ list
+Your boxes:
+  • e1e-BOX_TIMESTAMP-testhttpproxybasic - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+exe.dev ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+route e1e-BOX_TIMESTAMP-testhttpproxybasic --port=80 --public
+
+exe.dev ▶ route e1e-BOX_TIMESTAMP-testhttpproxybasic --port=80 --public
+✓ Route updated successfully
+  Port: 80
+  Share: public
+
+exe.dev ▶ route e1e-BOX_TIMESTAMP-testhttpproxybasic
+
+Route configuration for box 'e1e-BOX_TIMESTAMP-testhttpproxybasic':
+  Port: 80
+  Share: public
+
+exe.dev ▶ exit
+Goodbye!

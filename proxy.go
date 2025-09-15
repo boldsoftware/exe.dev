@@ -371,14 +371,6 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 		return fmt.Errorf("box missing SSH credentials")
 	}
 
-	// In test mode, skip actual SSH connection and just simulate a successful proxy response.
-	// TODOX(philip): WTF is test mode.
-	if s.testMode {
-		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "Test proxy response from port: %d\n", route.Port)
-		return nil
-	}
-
 	// Parse the SSH private key
 	sshKey, err := container.CreateSSHSigner(string(box.SSHClientPrivateKey))
 	if err != nil {
