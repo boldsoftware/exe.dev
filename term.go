@@ -367,8 +367,10 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 			}
 		}
 	}
-	sshConfig := &ssh.ClientConfig{User: *box.SSHUser, Auth: []ssh.AuthMethod{
-		ssh.PublicKeys(sshKey)},
+	sshConfig := &ssh.ClientConfig{
+		User: *box.SSHUser, Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(sshKey),
+		},
 		// TODO(philip): Verify host key
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
