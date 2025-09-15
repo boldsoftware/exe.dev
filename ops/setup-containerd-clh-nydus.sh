@@ -633,6 +633,24 @@ for image in "${IMAGES[@]}"; do
 		else
 			echo "✓ $image imported from cache (skip pull)"
 		fi
+
+		# Ensure the repo@digest alias exists so code that resolves tags to digests
+		# can find the image without a network pull.
+		# 1) Derive the manifest digest as seen by containerd for this ref.
+		# Extract manifest digest for the imported tag without triggering SIGPIPE under pipefail.
+		# Read full input and print the digest of the exact matching ref, or empty if not found.
+		img_digest=$(sudo ctr -n exe images ls 2>/dev/null | awk -v img="$image" '($1==img){print $3; found=1} END{ if (!found) print "" }')
+		if [ -n "$img_digest" ]; then
+			repo_no_tag="${image%%:*}"
+			digest_ref="${repo_no_tag}@${img_digest}"
+			# 2) If the digest ref is not present, add a tag pointing to the same content.
+			if ! sudo ctr -n exe images ls 2>/dev/null | awk -v ref="$digest_ref" '($1==ref){found=1} END{exit !found}'; then
+				echo "Tagging $image as $digest_ref (repo@digest alias)"
+				sudo ctr -n exe images tag "$image" "$digest_ref" || true
+			fi
+		else
+			echo "Warning: failed to determine manifest digest for $image; skipping alias tag"
+		fi
 	else
 		echo "Pulling $image from registry..."
 		sudo nerdctl -n exe --snapshotter nydus pull "$image"
