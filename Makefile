@@ -124,11 +124,15 @@ sshd: container/rovol/arm64 container/rovol/amd64
 
 container/rovol/arm64: Dockerfile.sshd
 	@echo "Building SSH binaries for arm64..."
+	@rm -rf ./container/rovol/arm64
+	@mkdir -p ./container/rovol/arm64
 	@docker buildx build --platform linux/arm64 -f Dockerfile.sshd --target out --output type=local,dest=./container/rovol/arm64 .
 	@echo "✓ Built container/rovol/arm64"
 
 container/rovol/amd64: Dockerfile.sshd
 	@echo "Building SSH binaries for amd64..."
+	@rm -rf ./container/rovol/amd64
+	@mkdir -p ./container/rovol/amd64
 	@docker buildx build --platform linux/amd64 -f Dockerfile.sshd --target out --output type=local,dest=./container/rovol/amd64 .
 	@echo "✓ Built container/rovol/amd64"
 

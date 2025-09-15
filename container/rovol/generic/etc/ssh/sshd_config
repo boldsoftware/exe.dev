@@ -1,46 +1,42 @@
 # Minimal sshd configuration for exe.dev containers
-# Using only built-in crypto (no OpenSSL dependency)
 Port 22
 Protocol 2
 
-# Only use Ed25519 host keys (built-in crypto)
+# Host keys and authorized keys
 HostKey /exe.dev/etc/ssh/ssh_host_ed25519_key
 HostKeyAlgorithms ssh-ed25519
 AuthorizedKeysFile /exe.dev/etc/ssh/authorized_keys
 
-# Key exchange using built-in Curve25519
+# KEX and ciphers (built-in)
 KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
-
-# Ciphers using built-in implementations
 Ciphers chacha20-poly1305@openssh.com,aes256-ctr,aes128-ctr
-
-# MACs using built-in implementations
 MACs umac-128-etm@openssh.com,umac-64-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
 
-# Security settings
+# Security
 PermitRootLogin prohibit-password
 PubkeyAuthentication yes
 PasswordAuthentication no
 PermitEmptyPasswords no
 ChallengeResponseAuthentication no
 
-# Performance settings
+# Performance
 UseDNS no
 Compression no
 
-# Enable SFTP (binary will be found via PATH or absolute path)
+# SFTP
 Subsystem sftp /exe.dev/bin/sftp-server
 
-# Allow agent and port forwarding
+# Forwarding
 AllowAgentForwarding yes
 AllowTcpForwarding yes
 X11Forwarding yes
 X11UseLocalhost no
 
-# Keep connections alive
+# Keepalive
 ClientAliveInterval 60
 ClientAliveCountMax 3
 
 # Logging
 SyslogFacility AUTH
 LogLevel INFO
+

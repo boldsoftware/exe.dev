@@ -1761,41 +1761,55 @@ func (m *NerdctlManager) GetBackendType() string {
 // getRovolHash walks the embedded rovol FS for the given arch and returns
 // the first half (32 hex chars) of a SHA-256 over path names and file contents.
 func getRovolHash(arch string) (string, error) {
-	rovolFS, err := GetRovolFS(arch)
+	archFS, err := GetRovolFS(arch)
 	if err != nil {
 		return "", fmt.Errorf("failed to get rovol FS: %w", err)
 	}
-
-	// Collect all file paths to ensure deterministic ordering
-	var files []string
-	if err := fs.WalkDir(rovolFS, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if path == "." {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		files = append(files, path)
-		return nil
-	}); err != nil {
-		return "", fmt.Errorf("failed walking rovol FS: %w", err)
+	genFS, err := GetGenericRovolFS()
+	if err != nil {
+		return "", fmt.Errorf("failed to get generic rovol FS: %w", err)
 	}
 
+	filesSet := make(map[string]bool)
+	collect := func(fsys fs.FS) error {
+		return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if path == "." || d.IsDir() {
+				return nil
+			}
+			if !filesSet[path] {
+				filesSet[path] = true
+			}
+			return nil
+		})
+	}
+	if err := collect(archFS); err != nil {
+		return "", fmt.Errorf("failed walking arch rovol FS: %w", err)
+	}
+	if err := collect(genFS); err != nil {
+		return "", fmt.Errorf("failed walking generic rovol FS: %w", err)
+	}
+
+	var files []string
+	for p := range filesSet {
+		files = append(files, p)
+	}
 	sort.Strings(files)
 
 	h := sha256.New()
 	for _, p := range files {
-		// Hash the path and a separator to avoid ambiguity
 		io.WriteString(h, p)
 		h.Write([]byte{0})
-		content, err := fs.ReadFile(rovolFS, p)
+		b, err := fs.ReadFile(archFS, p)
 		if err != nil {
-			return "", fmt.Errorf("failed to read %s: %w", p, err)
+			b, err = fs.ReadFile(genFS, p)
+			if err != nil {
+				return "", fmt.Errorf("failed to read %s: %v", p, err)
+			}
 		}
-		h.Write(content)
+		h.Write(b)
 		h.Write([]byte{0})
 	}
 
@@ -1809,10 +1823,14 @@ func getRovolHash(arch string) (string, error) {
 // PrepareRovol prepares the RovolFS files on a host for later use by containers
 // This should be called once per host during server setup
 func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
-	// Get the RovolFS for the host architecture
-	rovolFS, err := GetRovolFS(m.hostArch)
+	// Get the RovolFS (arch + generic)
+	archFS, err := GetRovolFS(m.hostArch)
 	if err != nil {
 		return fmt.Errorf("failed to get RovolFS for %s: %w", m.hostArch, err)
+	}
+	genFS, err := GetGenericRovolFS()
+	if err != nil {
+		return fmt.Errorf("failed to get generic RovolFS: %w", err)
 	}
 
 	// Use content hash for rovol directory path
@@ -1843,46 +1861,49 @@ func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Walk through the embedded filesystem and recreate it locally
-	err = fs.WalkDir(rovolFS, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if path == "." {
-			return nil
-		}
-
-		localPath := filepath.Join(tempDir, path)
-
-		if d.IsDir() {
-			// Create directory locally
-			if err := os.MkdirAll(localPath, 0o755); err != nil {
-				return fmt.Errorf("failed to create local directory %s: %w", localPath, err)
+	// Helper to stage an FS into tempDir
+	stageFS := func(fsys fs.FS, skipExisting bool) error {
+		return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if path == "." {
+				return nil
+			}
+			localPath := filepath.Join(tempDir, path)
+			if d.IsDir() {
+				if err := os.MkdirAll(localPath, 0o755); err != nil {
+					return fmt.Errorf("failed to create local directory %s: %w", localPath, err)
+				}
+				return nil
+			}
+			if skipExisting {
+				if _, err := os.Stat(localPath); err == nil {
+					return nil
+				}
+			}
+			content, err := fs.ReadFile(fsys, path)
+			if err != nil {
+				return fmt.Errorf("failed to read file %s: %w", path, err)
+			}
+			mode := os.FileMode(0o644)
+			if strings.Contains(path, "bin/") || strings.HasSuffix(path, ".so.1") {
+				mode = 0o755
+			}
+			if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
+				return fmt.Errorf("failed to create parent dir for %s: %w", localPath, err)
+			}
+			if err := os.WriteFile(localPath, content, mode); err != nil {
+				return fmt.Errorf("failed to write file %s: %w", localPath, err)
 			}
 			return nil
-		}
-
-		// Read file content
-		content, err := fs.ReadFile(rovolFS, path)
-		if err != nil {
-			return fmt.Errorf("failed to read file %s: %w", path, err)
-		}
-
-		// Write file locally with proper permissions
-		mode := os.FileMode(0o644)
-		if strings.Contains(path, "bin/") || strings.HasSuffix(path, ".so.1") {
-			mode = 0o755
-		}
-
-		if err := os.WriteFile(localPath, content, mode); err != nil {
-			return fmt.Errorf("failed to write file %s: %w", localPath, err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to stage files locally: %w", err)
+		})
+	}
+	if err := stageFS(archFS, false); err != nil {
+		return fmt.Errorf("failed to stage arch rovol files: %w", err)
+	}
+	if err := stageFS(genFS, true); err != nil {
+		return fmt.Errorf("failed to stage generic rovol files: %w", err)
 	}
 
 	// Transfer the entire directory structure using the SSH pool's SCP method

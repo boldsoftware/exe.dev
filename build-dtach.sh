@@ -17,19 +17,7 @@ if [ -z "$ARCH" ]; then
     exit 1
 fi
 
-# Map arch to musl interpreter path
-case "$ARCH" in
-    arm64)
-        INTERPRETER="ld-musl-aarch64.so.1"
-        ;;
-    amd64)
-        INTERPRETER="ld-musl-x86_64.so.1"
-        ;;
-    *)
-        echo "Unsupported architecture: $ARCH" >&2
-        exit 1
-        ;;
-esac
+INTERPRETER="ld-musl.so.1"
 
 echo "Building dtach for $ARCH..."
 

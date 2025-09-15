@@ -30,3 +30,8 @@ func GetRovolFS(arch string) (fs.FS, error) {
 func GetCurrentArchRovolFS() (fs.FS, error) {
 	return GetRovolFS(runtime.GOARCH)
 }
+
+// GetGenericRovolFS returns the generic, architecture-agnostic subtree
+func GetGenericRovolFS() (fs.FS, error) {
+	return fs.Sub(rovolFS, "rovol/generic")
+}

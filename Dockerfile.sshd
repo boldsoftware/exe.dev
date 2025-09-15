@@ -19,13 +19,7 @@ RUN apk add --no-cache \
 
 # Set up /exe.dev/lib with the interpreter so compilation can use it
 RUN mkdir -p /exe.dev/lib && \
-    cp -v /lib/ld-musl-*.so.1 /exe.dev/lib/ && \
-    cd /exe.dev/lib && \
-    for f in ld-musl-*.so.1; do \
-      arch=$(echo $f | sed 's/ld-musl-//' | sed 's/\.so\.1//') && \
-      ln -sf "$f" "libc.musl-${arch}.so.1"; \
-      ln -sf "$f" "ld-musl.so.1"; \
-    done
+    cp -v /lib/ld-musl-*.so.1 /exe.dev/lib/ld-musl.so.1
 
 WORKDIR /src
 RUN curl -fsSLO https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz \
@@ -115,6 +109,7 @@ RUN make defconfig && \
     cp -v busybox /out/exe.dev/bin/sh && \
     patchelf --set-interpreter /exe.dev/lib/ld-musl.so.1 /out/exe.dev/bin/sh
 
+
 # Build dtach using our shared script
 COPY build-dtach.sh /build-dtach.sh
 RUN /build-dtach.sh ${TARGETARCH}
@@ -134,14 +129,9 @@ RUN for bin in /out/exe.dev/bin/*; do \
       fi \
     done
 
-# Copy the musl interpreter (already done when copying libraries above)
-RUN cp -v /lib/ld-musl-*.so.1 /out/exe.dev/lib/ && \
-    cd /out/exe.dev/lib && \
-    for f in ld-musl-*.so.1; do \
-      arch=$(echo $f | sed 's/ld-musl-//' | sed 's/\.so\.1//') && \
-      ln -sf "$f" "libc.musl-${arch}.so.1"; \
-      ln -sf "$f" "ld-musl.so.1"; \
-    done
+# Copy the musl interpreter as ld-musl.so.1 only
+RUN cp -v /lib/ld-musl-*.so.1 /out/exe.dev/lib/ld-musl.so.1
+
 
 # Check binary sizes for comparison
 RUN echo "=== Binary sizes ===" && \
