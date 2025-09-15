@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
+	"exe.dev/container"
+	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"github.com/creack/pty"
@@ -26,6 +31,9 @@ import (
 type TerminalSession struct {
 	pty               *os.File
 	Cmd               *exec.Cmd
+	sshClient         *ssh.Client
+	sshSession        *ssh.Session
+	sshStdin          io.WriteCloser
 	EventsClients     map[chan []byte]bool
 	LastEventClientID int
 	EventsMutex       sync.Mutex
@@ -97,13 +105,16 @@ func cleanupTerminalSession(session *TerminalSession) {
 		session.Cmd.Wait()
 	}
 
-	// Close all client channels
-	session.EventsMutex.Lock()
-	for ch := range session.EventsClients {
-		delete(session.EventsClients, ch)
-		close(ch)
+	// Close SSH session and client if they exist
+	if session.sshSession != nil {
+		session.sshSession.Close()
 	}
-	session.EventsMutex.Unlock()
+	if session.sshClient != nil {
+		session.sshClient.Close()
+	}
+
+	// Client channels are closed when the client HTTP connection goes away,
+	// though maybe we should send them a little signal...
 }
 
 // handleTerminalPage serves the terminal HTML page
@@ -149,6 +160,7 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 	session, exists := terminalSessions[sessionKey]
 	if !exists {
 		// Create new terminal session
+		// TODO(philip): Don't hold the lock while creating this!
 		session, err = s.createTerminalSession(r.Context(), userID, boxName, terminalID)
 		if err != nil {
 			terminalSessionsMutex.Unlock()
@@ -261,12 +273,11 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		var msg TerminalMessage
 		if err := json.Unmarshal(body, &msg); err == nil && msg.Type == "resize" {
 			if msg.Cols > 0 && msg.Rows > 0 {
-				// Handle PTY resize
+				// Handle PTY resize or SSH window change
 				if session.pty != nil {
-					pty.Setsize(session.pty, &pty.Winsize{
-						Cols: msg.Cols,
-						Rows: msg.Rows,
-					})
+					pty.Setsize(session.pty, &pty.Winsize{Cols: msg.Cols, Rows: msg.Rows})
+				} else if session.sshSession != nil {
+					_ = session.sshSession.WindowChange(int(msg.Rows), int(msg.Cols))
 				}
 				w.WriteHeader(http.StatusOK)
 				return
@@ -274,9 +285,11 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Regular terminal input - send to PTY
+	// Regular terminal input - send to PTY or SSH stdin
 	if session.pty != nil {
 		_, err = session.pty.Write(body)
+	} else if session.sshStdin != nil {
+		_, err = session.sshStdin.Write(body)
 	} else {
 		err = fmt.Errorf("no active terminal session")
 	}
@@ -308,91 +321,139 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, ter
 
 	// Check if box is running
 	if box.Status != "running" {
-		// Try to start the box if it's stopped
-		if box.Status == "exited" || box.Status == "paused" {
-			err = s.startBox(ctx, box)
-			if err != nil {
-				return nil, fmt.Errorf("failed to start box: %w", err)
-			}
-			// Wait a moment for the box to start
-			time.Sleep(2 * time.Second)
-		} else {
-			return nil, fmt.Errorf("box is in state %s and cannot be accessed", box.Status)
-		}
+		return nil, fmt.Errorf("box is not running (status: %s)", box.Status)
 	}
 
-	// For now, we'll use the container manager's connection interface
-	// In a real implementation, you'd set up SSH keys and connect directly
-	// This is a simplified version that creates a pseudo-terminal session
-
-	// Use docker exec to create a shell in the container
+	// Establish SSH shell session
 	err = s.createContainerExecSession(session, box)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container session: %w", err)
 	}
 
-	// Start goroutine to read from process and broadcast to clients
-	go s.readFromPtyAndBroadcast(session)
-
 	return session, nil
 }
 
-// createContainerExecSession creates a docker exec session for the terminal
 func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box) error {
-	if box.ContainerID == nil {
-		return fmt.Errorf("box has no container ID")
+	// Replaced nerdctl exec with SSH session creation
+	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil || box.SSHUser == nil {
+		return fmt.Errorf("box missing SSH credentials")
 	}
-
-	// Create docker exec command
-	cmd := exec.Command("docker", "exec", "-it", *box.ContainerID, "/bin/sh")
-
-	// Create PTY for the command
-	ptyFile, err := pty.Start(cmd)
+	sshKey, err := container.CreateSSHSigner(string(box.SSHClientPrivateKey))
 	if err != nil {
-		return fmt.Errorf("failed to start pty: %w", err)
+		return fmt.Errorf("failed to parse SSH private key: %w", err)
 	}
-
-	session.pty = ptyFile
-	session.Cmd = cmd
-
+	sshHost := "localhost"
+	ctrhost, err := withRxRes(s, context.Background(), func(ctx context.Context, q *exedb.Queries) (string, error) {
+		return q.GetCtrhostByAllocID(ctx, box.AllocID)
+	})
+	if err == nil && ctrhost != "" {
+		if strings.Contains(ctrhost, "://") {
+			if u, perr := url.Parse(ctrhost); perr == nil && u.Host != "" {
+				if host, _, herr := net.SplitHostPort(u.Host); herr == nil {
+					sshHost = host
+				} else {
+					sshHost = u.Host
+				}
+			}
+		} else {
+			sshHost = ctrhost
+		}
+	}
+	if s.devMode != "" {
+		if _, herr := net.LookupHost(sshHost); herr != nil {
+			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
+				slog.Debug("[TERMINAL] Resolved host via SSH config", "alias", sshHost, "ip", ip)
+				sshHost = ip
+			}
+		}
+	}
+	sshConfig := &ssh.ClientConfig{User: *box.SSHUser, Auth: []ssh.AuthMethod{
+		ssh.PublicKeys(sshKey)},
+		// TODO(philip): Verify host key
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+	addr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
+	client, err := ssh.Dial("tcp", addr, sshConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect via SSH: %w", err)
+	}
+	sess, err := client.NewSession()
+	if err != nil {
+		client.Close()
+		return fmt.Errorf("failed to create SSH session: %w", err)
+	}
+	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}
+	if err := sess.RequestPty("xterm-256color", 24, 80, modes); err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to request PTY: %w", err)
+	}
+	stdin, err := sess.StdinPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to get stdin pipe: %w", err)
+	}
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+	if err := sess.Shell(); err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to start remote shell: %w", err)
+	}
+	session.sshClient = client
+	session.sshSession = sess
+	session.sshStdin = stdin
+	go s.readFromSSHSessionAndBroadcast(session, stdout, stderr)
 	return nil
 }
 
-// readFromPtyAndBroadcast reads output from PTY and broadcasts to all connected clients
-func (s *Server) readFromPtyAndBroadcast(session *TerminalSession) {
-	buf := make([]byte, 4096)
+func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout io.Reader, stderr io.Reader) {
 	defer func() {
-		// Cleanup when done
 		cleanupTerminalSession(session)
 	}()
-
-	for {
-		n, err := session.pty.Read(buf)
-		if err != nil {
-			if err != io.EOF {
-				slog.Error("Failed to read from pty", "error", err)
+	var wg sync.WaitGroup
+	fn := func(r io.Reader) {
+		defer wg.Done()
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				data := make([]byte, n)
+				copy(data, buf[:n])
+				session.LastActivity = time.Now()
+				session.EventsMutex.Lock()
+				for ch := range session.EventsClients {
+					select {
+					case ch <- data:
+					default:
+					}
+				}
+				session.EventsMutex.Unlock()
 			}
-			break
-		}
-
-		// Update activity time
-		session.LastActivity = time.Now()
-
-		// Make copy of data for broadcasting
-		data := make([]byte, n)
-		copy(data, buf[:n])
-
-		// Broadcast to all connected clients
-		session.EventsMutex.Lock()
-		for ch := range session.EventsClients {
-			select {
-			case ch <- data:
-			default:
-				// Channel is full, drop the message
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					slog.Error("Failed reading SSH stream", "error", err)
+				}
+				return
 			}
 		}
-		session.EventsMutex.Unlock()
 	}
+	wg.Add(2)
+	go fn(stdout)
+	go fn(stderr)
+	wg.Wait()
 }
 
 // Helper functions for box management
@@ -427,34 +488,6 @@ func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) 
 	}
 
 	return &box, nil
-}
-
-// startBox starts a stopped box
-func (s *Server) startBox(ctx context.Context, box *exedb.Box) error {
-	// Use the container management system to start the box
-	if s.containerManager == nil {
-		return fmt.Errorf("container manager not available")
-	}
-
-	if box.ContainerID == nil {
-		return fmt.Errorf("box has no container ID")
-	}
-
-	err := s.containerManager.StartContainer(ctx, box.AllocID, *box.ContainerID)
-	if err != nil {
-		return fmt.Errorf("failed to start container: %w", err)
-	}
-
-	// Update box status in database
-	err = s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		now := time.Now()
-		return queries.UpdateBoxStatusRunningByID(ctx, exedb.UpdateBoxStatusRunningByIDParams{
-			UpdatedAt: &now,
-			ID:        box.ID,
-		})
-	})
-	return err
 }
 
 // getUserIDFromRequest extracts user ID from auth cookie

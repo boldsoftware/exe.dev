@@ -340,9 +340,10 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, u
 			return
 		}
 
-		if !ss.server.testMode {
-			log.Printf("Command received: %q", line)
+		if line == "" {
+			continue
 		}
+		slog.Debug("Command received: " + line)
 
 		parts, err := shlex.Split(strings.TrimSpace(line), true)
 		if err != nil {
