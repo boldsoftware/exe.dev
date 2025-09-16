@@ -438,11 +438,15 @@ sudo systemctl enable containerd
 
 # Start nydus-snapshotter first (it must be running before containerd)
 sudo systemctl start nydus-snapshotter
-sleep 5
+until systemctl is-active --quiet nydus-snapshotter; do
+  sleep 0.1
+done
 
 # Now start containerd (which requires nydus-snapshotter)
 sudo systemctl start containerd
-sleep 5
+until systemctl is-active --quiet containerd; do
+  sleep 0.1
+done
 
 echo "Waiting for nydus to register with containerd..."
 NYDUS_OK=0
