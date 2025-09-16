@@ -39,7 +39,7 @@ echo "=== Installing containerd ==="
 
 # Install prerequisites
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install --no-install-recommends --no-upgrade -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
 	ca-certificates \
 	curl \
 	gnupg \
@@ -244,32 +244,32 @@ root = "$CONTAINERD_ROOT"
 [plugins]
   [plugins."io.containerd.grpc.v1.cri"]
     sandbox_image = "registry.k8s.io/pause:3.9"
-    
+
     # Registry configuration to use hosts.toml files
     [plugins."io.containerd.grpc.v1.cri".registry]
       config_path = "/etc/containerd/certs.d"
-    
+
     # Use nydus as the default snapshotter
     [plugins."io.containerd.grpc.v1.cri".containerd]
       snapshotter = "nydus"
       disable_snapshot_annotations = false
       default_runtime_name = "kata"
-      
+
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
           runtime_type = "io.containerd.runc.v2"
           [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
             SystemdCgroup = true
-        
+
         [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
           runtime_type = "io.containerd.kata.v2"
           privileged_without_host_devices = true
           pod_annotations = ["io.katacontainers.*"]
           snapshotter = "nydus"
-          
+
           [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata.options]
             ConfigPath = "/etc/kata-containers/configuration-clh.toml"
-    
+
     # CNI configuration (not used since we use nerdctl which manages its own networking)
     [plugins."io.containerd.grpc.v1.cri".cni]
       bin_dir = "/opt/cni/bin"
@@ -497,7 +497,7 @@ if ip link show $BRIDGE_NAME >/dev/null 2>&1; then
         ip link set $BRIDGE_NAME type bridge vlan_filtering 1
         echo "Enabled VLAN filtering on $BRIDGE_NAME"
     fi
-    
+
     # Apply port isolation to all existing container interfaces
     for veth in $(bridge link show 2>/dev/null | grep "master $BRIDGE_NAME" | cut -d: -f2 | cut -d@ -f1); do
         bridge link set dev $veth isolated on flood off mcast_flood off bcast_flood off 2>/dev/null || true
