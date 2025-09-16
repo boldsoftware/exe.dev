@@ -5,7 +5,7 @@ set -euo pipefail
 LIMA_BASE="exe-ctr-base"
 LIMA_HOST_A="exe-ctr"
 LIMA_HOST_B="exe-ctr-tests"
-CPUS=4
+CPUS=8
 MEMORY=8
 DISK=100
 
