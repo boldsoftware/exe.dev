@@ -226,13 +226,6 @@ for i in $(seq 1 60); do
 done
 ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait || true'
 
-# Opportunistically speed up apt-get by using the local mirrors.
-MIRROR_FILE=/etc/apt/sources.list.d/hetzner-mirror.sources
-if [ -f "$MIRROR_FILE" ]; then
-	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" "sudo tee $MIRROR_FILE" < $MIRROR_FILE || echo true
-fi
-
-
 if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	echo "No snapshot found; provisioning VM and creating snapshot cache..."
 	# 6) Prepare containerd + nydus + kata on the VM

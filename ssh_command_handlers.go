@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/accounting"
 	"exe.dev/billing"
 	"exe.dev/container"
 	"exe.dev/exedb"
@@ -101,6 +102,12 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			FlagSetFunc: jsonOnlyFlags("billing"),
 			Subcommands: []*Command{
 				{
+					Name:        "balance",
+					Description: "Get current balance of billing account",
+					Usage:       "billing balance",
+					Handler:     ss.handleBillingBalance,
+				},
+				{
 					Name:        "setup",
 					Description: "Set up billing information",
 					Usage:       "billing setup",
@@ -117,6 +124,12 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 					Description: "Delete billing information",
 					Usage:       "billing delete",
 					Handler:     ss.handleBillingDeleteCommand,
+				},
+				{
+					Name:        "fund",
+					Description: "[dev mode] add credits to billing account",
+					Usage:       "fund",
+					Handler:     ss.handleBillingFundCommand,
 				},
 			},
 		},
@@ -595,12 +608,18 @@ func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContex
 	if err != nil {
 		return err
 	}
+	balance, err := ss.server.accountant.GetBalance(ctx, billingInfo.BillingAccountID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get balance: %v\033[0m", err)
+		return err
+	}
 
 	if cc.WantJSON() {
 		billing := map[string]any{
-			"configured":         billingInfo.HasBilling,
-			"email":              billingInfo.Email,
-			"stripe_customer_id": billingInfo.StripeCustomerID,
+			"configured":          billingInfo.HasBilling,
+			"email":               billingInfo.Email,
+			"stripe_customer_id":  billingInfo.StripeCustomerID,
+			"current_balance_usd": balance,
 		}
 		cc.WriteJSON(billing)
 		return nil
@@ -616,6 +635,7 @@ func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContex
 	}
 	if billingInfo.HasBilling {
 		cc.Writeln("  Status: \033[1;32mConfigured\033[0m")
+		cc.Writeln(". Current Balance: \033[1;32m%.2f\033[0m", balance)
 	} else {
 		cc.Writeln("  Status: \033[1;32mNot Configured\033[0m")
 		cc.Writeln("  run `billing setup` to configure")
@@ -632,6 +652,26 @@ func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *Command
 	return ss.deleteBillingInfo(cc, billingInfo)
 }
 
+func (ss *SSHServer) handleBillingFundCommand(ctx context.Context, cc *CommandContext) error {
+	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
+		return err
+	}
+	credit := accounting.UsageCredit{
+		BillingAccountID: billingInfo.BillingAccountID,
+		Amount:           25.0,
+		PaymentMethod:    "dev mode fund command",
+		Status:           "completed",
+	}
+	err = ss.server.accountant.CreditUsage(ctx, credit)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to credit account: %v\033[0m", err)
+		return err
+	}
+	return nil
+}
+
 func (ss *SSHServer) handleBillingUpdateEmailCommand(ctx context.Context, cc *CommandContext) error {
 	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
@@ -639,6 +679,29 @@ func (ss *SSHServer) handleBillingUpdateEmailCommand(ctx context.Context, cc *Co
 		return err
 	}
 	return ss.updateBillingEmail(cc, billingInfo)
+}
+
+func (ss *SSHServer) handleBillingBalance(ctx context.Context, cc *CommandContext) error {
+	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
+		return err
+	}
+	balance, err := ss.server.accountant.GetBalance(ctx, billingInfo.BillingAccountID)
+	if err != nil {
+		cc.Writeln("\033[1;31mError: Failed to get balance: %v\033[0m", err)
+		return err
+	}
+
+	if cc.WantJSON() {
+		billing := map[string]any{
+			"current_balance_usd": balance,
+		}
+		cc.WriteJSON(billing)
+		return nil
+	}
+	cc.Writeln("Current balance: $%f", balance)
+	return nil
 }
 
 func (ss *SSHServer) handleBillingSetup(ctx context.Context, cc *CommandContext) error {

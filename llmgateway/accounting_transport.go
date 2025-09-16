@@ -5,7 +5,9 @@ package llmgateway
 // proxies to anthropic.
 //
 // Note: The code in this package is mostly copied from bold.git/skaband.
+
 import (
+	"bufio"
 	"bytes"
 	"cmp"
 	"compress/gzip"
@@ -21,84 +23,23 @@ import (
 	"time"
 
 	"exe.dev/accounting"
-	"github.com/prometheus/client_golang/prometheus"
 )
-
-// Prometheus metrics for accounting
-var (
-	// Single counter for all token types with token_type label
-	tokensCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "llm_tokens_total",
-			Help: "Total number of tokens by type, model and API type",
-		},
-		[]string{"token_type", "model", "api_type"},
-	)
-
-	// Counter for cost in USD by model
-	costUSDCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "llm_cost_usd_total",
-			Help: "Total cost in USD by model",
-		},
-		[]string{"model", "api_type"},
-	)
-
-	// Counter for requests proxied
-	requestsCounter = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "llm_requests_total",
-			Help: "Total number of requests proxied",
-		},
-		[]string{"status", "api_type"},
-	)
-
-	// Histogram for request latencies
-	requestLatency = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "llm_request_duration_seconds",
-			Help:    "Request latency distribution",
-			Buckets: prometheus.ExponentialBuckets(0.1, 2, 10), // Start at 100ms, double 10 times
-		},
-		[]string{"model", "api_type"},
-	)
-
-	// Gauge for Anthropic rate limits
-	anthropicRateLimitGauge = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "anthropic_rate_limit_remaining",
-			Help: "Remaining Anthropic rate limits by type",
-		},
-		[]string{"type"},
-	)
-)
-
-// RegisterAccountingMetrics registers all accounting metrics with the provided registry
-func RegisterAccountingMetrics(registry *prometheus.Registry) {
-	registry.MustRegister(
-		tokensCounter,
-		costUSDCounter,
-		requestsCounter,
-		requestLatency,
-		anthropicRateLimitGauge,
-	)
-}
 
 // accountingTransport wraps http transactions to check and track the client's credit usage
 type accountingTransport struct {
 	http.RoundTripper
 	accountant       accounting.Accountant
-	BillingAccountID string
+	billingAccountID string
 	baseURL          string
-	apiType          string    // "antmsgs" or "gemmsgs"
+	apiType          string
 	testDebitDone    chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 }
 
 func (a *accountingTransport) checkCredits(ctx context.Context, billingAccountID string) error {
 	// Get the current balance for the user
-	balance, err := a.accountant.GetUserBalance(ctx, billingAccountID)
+	balance, err := a.accountant.GetBalance(ctx, billingAccountID)
 	if err != nil {
-		slog.Error("accountingTransport.checkCredits: GetUserBalance failed", "error", err)
+		slog.Error("accountingTransport.checkCredits", "error", err)
 		// Fallback to allowing the request if we can't check balance
 		return nil
 	}
@@ -113,8 +54,8 @@ func (a *accountingTransport) checkCredits(ctx context.Context, billingAccountID
 // RoundTrip enforces credit usage limits and records some metrics.
 func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	// TODO: restore latency measurements
-	if err := a.checkCredits(r.Context(), a.BillingAccountID); err != nil {
-		slog.Error("accountingTransport.RoundTrip: checkCredits failed", "error", err)
+
+	if err := a.checkCredits(r.Context(), a.billingAccountID); err != nil {
 		// Increment the requests counter with status="payment_required"
 		requestsCounter.WithLabelValues("payment_required", a.apiType).Inc()
 		return &http.Response{
@@ -125,6 +66,7 @@ func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error)
 			Request:       r,
 		}, nil
 	}
+
 	// Increment the requests counter with status="attempted"
 	requestsCounter.WithLabelValues("attempted", a.apiType).Inc()
 	ret, err := a.RoundTripper.RoundTrip(r)
@@ -139,7 +81,7 @@ func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error)
 	}
 
 	// Extract and record Anthropic rate limit headers if present
-	if ret != nil && err == nil && a.apiType == "antmsgs" {
+	if ret != nil && err == nil && a.apiType == "anthropic" {
 		// Extract the rate limit headers and publish as gauge metrics
 		setRateLimitGauge(ret.Header, "Anthropic-Ratelimit-Input-Tokens-Remaining", "input_tokens")
 		setRateLimitGauge(ret.Header, "Anthropic-Ratelimit-Output-Tokens-Remaining", "output_tokens")
@@ -155,48 +97,115 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		return nil
 	}
 
-	buf, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		return fmt.Errorf("couldn't read response body: %w", err)
-	}
-	resp.Body = io.NopCloser(bytes.NewReader(buf))
+	contentType := resp.Header.Get("Content-Type")
 
-	contentEncoding := resp.Header["Content-Encoding"]
-	if slices.Contains(contentEncoding, "gzip") {
-		gzReader, err := gzip.NewReader(bytes.NewReader(buf))
+	ctx := context.Background()
+
+	// Note that the response may be a unary HTTP response body, or it may be a stream of
+	// SSE events. So this goroutine may handle either a unary req/response transaction,
+	// or a long-lived streaming response (SSE).
+
+	// Just check the first part of contentType, if it's something like "text/event-stream; charset=utf-8"
+	parts := strings.Split(contentType, ";")
+	contentType = parts[0]
+
+	// Handle vanilla unary HTTP json responses by reading the entire body
+	// and creating a new reder for those same bytes after we've read them.
+	// This is basically resetting the response body reader for the downstream
+	// http handler logic after we've made our copy of it.
+	if contentType == "application/json" {
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
-			return fmt.Errorf("couldn't create new gzip reader: %w", err)
+			slog.Error("couldn't read unary response body", "error", err)
+			return err
 		}
-		decoded, err := io.ReadAll(gzReader)
-		if err != nil {
-			return fmt.Errorf("couldn't read gzip reader: %w", err)
+		resp.Body = io.NopCloser(bytes.NewReader(data))
+		contentEncoding := resp.Header["Content-Encoding"]
+
+		if slices.Contains(contentEncoding, "gzip") {
+			gzReader, err := gzip.NewReader(bytes.NewReader(data))
+			if err != nil {
+				slog.Error("accountingTransport couldn't create new gzip reader for unary response body", "error", err)
+				return err
+			}
+			decoded, err := io.ReadAll(gzReader)
+			if err != nil {
+				slog.Error("accountingTransport couldn't read gzip reader for unary response body", "error", err)
+				return err
+			}
+			gzReader.Close()
+			data = decoded
 		}
-		gzReader.Close()
-		buf = decoded
+		if err := a.processResponseData(ctx, data); err != nil {
+			slog.Error("accountingTransport couldn't process unary JSON response", "processResponseData error", err)
+			return err
+		}
 	}
 
-	usageDebit := accounting.UsageDebit{BillingAccountID: a.BillingAccountID, Created: time.Now()}
-	// Usage, Model, MessageID to be filled in below
+	// Handle SSE streams by scanning messages, parsing, and re-writing as we go.
+	// We run the scan-and-re-write loop in a goroutine so this method can return
+	// before the response body's event stream is closed (because that can be a long time
+	// from now).
+	if contentType == "text/event-stream" {
+		// TODO(banksean): Figure out if we need to check for "gzip" Content-Encoding headers
+		// here as well. I have no idea how (or if) gzipping works for SSE response streams, though.
+		body := resp.Body
+		bodyReader, bodyWriter := io.Pipe()
+		resp.Body = bodyReader
+		scanner := bufio.NewScanner(body)
+		go func() {
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.HasPrefix(line, "data:") {
+					data := strings.TrimPrefix(line, "data:")
+					// Process the event data, which may include details for accounting.
+					if err := a.processResponseData(ctx, []byte(data)); err != nil {
+						slog.Error("Proxy SSE scanner", "processResponseData error", err)
+					}
+				}
+				fmt.Fprintln(bodyWriter, line)
+			}
+			if err := scanner.Err(); err != nil {
+				slog.Error("Proxy SSE scanner", "error", err)
+			}
+			bodyWriter.Close()
+		}()
+	}
 
-	switch a.apiType {
-	case "antmsgs":
+	if a.testDebitDone != nil {
+		a.testDebitDone <- true
+	}
+
+	return nil
+}
+
+func (m *accountingTransport) processResponseData(ctx context.Context, data []byte) error {
+	usageDebit := accounting.UsageDebit{BillingAccountID: m.billingAccountID, Created: time.Now()}
+
+	switch m.apiType {
+	case "anthropic":
 		var ui anthropicResponseUsageInfo
-		if err := json.Unmarshal(buf, &ui); err != nil {
-			return fmt.Errorf("anthropic json decode error: %v", err)
+		if err := json.Unmarshal(data, &ui); err != nil {
+			slog.Error("anthropic json decode", "data", string(data), "error", err)
+			return fmt.Errorf("json decode error: %w", err)
 		}
-		usageDebit.Usage = ui.Usage
+		if ui.Usage == nil {
+			// Nothing to bill for here.
+			return nil
+		}
+		usageDebit.Usage = *ui.Usage
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-
-	case "oaimsgs":
-		if len(buf) == 0 {
+		slog.Info("debitResponse", "anthropicResponseUsageInfo", ui)
+	case "openai":
+		if len(data) == 0 {
 			return fmt.Errorf("empty openai response, skipping accounting")
 		}
 
 		var oi openaiResponseUsageInfo
-		if err := json.Unmarshal(buf, &oi); err != nil {
-			return fmt.Errorf("openai json decode error: %v, content: %s", err, string(buf))
+		if err := json.Unmarshal(data, &oi); err != nil {
+			return fmt.Errorf("openai json decode error: %v, content: %s", err, string(data))
 		}
 		if oi.Usage.TotalTokens == 0 {
 			return fmt.Errorf("openai response missing usage data, skipping accounting")
@@ -224,14 +233,14 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		usageDebit.Model = model
 		usageDebit.MessageID = oi.ID
 
-	case "gemmsgs":
-		if len(buf) == 0 {
+	case "gemini":
+		if len(data) == 0 {
 			return fmt.Errorf("empty gemini response, skipping accounting")
 		}
 
 		var gi geminiResponseUsageInfo
-		if err := json.Unmarshal(buf, &gi); err != nil {
-			return fmt.Errorf("gemini json decode error: %v, content: %s", err, string(buf))
+		if err := json.Unmarshal(data, &gi); err != nil {
+			return fmt.Errorf("gemini json decode error: %v, content: %s", err, string(data))
 		}
 		if gi.UsageMetadata.TotalTokenCount == 0 && len(gi.Candidates) == 0 {
 			return fmt.Errorf("gemini response missing usage data, skipping accounting")
@@ -266,42 +275,32 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		usageDebit.MessageID = fmt.Sprintf("gem-%d", time.Now().UnixNano()) // Gemini doesn't provide one
 
 	default:
-		return fmt.Errorf("unknown API type: %s", a.apiType)
+		slog.Error("unknown API type", "apiType", m.apiType)
 	}
 
 	uc := accounting.UsageCost(usageDebit.Model, usageDebit.Usage)
 	usageDebit.Usage.CostUSD = uc.USD()
-	resp.Header.Add("Skaband-Cost-Microcents", fmt.Sprint(uc))
 
-	// Do DB+metrics work in a separate goroutine to avoid blocking the HTTP response
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		if err := a.accountant.DebitUsage(ctx, usageDebit); err != nil {
-			slog.Error("accountingTransport.modifyResponse: couldn't debit usage", "error", err)
-		}
-		if a.testDebitDone != nil {
-			a.testDebitDone <- true
-		}
+	if err := m.accountant.DebitUsage(ctx, usageDebit); err != nil {
+		slog.Error("accountingTransport.debitResponse: couldn't debit usage", "error", err)
+	}
 
-		// Update Prometheus metrics
-		usage := usageDebit.Usage
-		model := usageDebit.Model
-		tokensCounter.WithLabelValues("input", model, a.apiType).Add(float64(usage.InputTokens))
-		tokensCounter.WithLabelValues("cache_creation", model, a.apiType).Add(float64(usage.CacheCreationInputTokens))
-		tokensCounter.WithLabelValues("cache_read", model, a.apiType).Add(float64(usage.CacheReadInputTokens))
-		tokensCounter.WithLabelValues("output", model, a.apiType).Add(float64(usage.OutputTokens))
-		costUSDCounter.WithLabelValues(model, a.apiType).Add(usage.CostUSD)
-	}()
-
+	// Update Prometheus metrics
+	usage := usageDebit.Usage
+	model := usageDebit.Model
+	tokensCounter.WithLabelValues("input", model, m.apiType).Add(float64(usage.InputTokens))
+	tokensCounter.WithLabelValues("cache_creation", model, m.apiType).Add(float64(usage.CacheCreationInputTokens))
+	tokensCounter.WithLabelValues("cache_read", model, m.apiType).Add(float64(usage.CacheReadInputTokens))
+	tokensCounter.WithLabelValues("output", model, m.apiType).Add(float64(usage.OutputTokens))
+	costUSDCounter.WithLabelValues(model, m.apiType).Add(usage.CostUSD)
 	return nil
 }
 
 // anthropicResponseUsageInfo extracts usage-relevant information from an Anthropic response.
 type anthropicResponseUsageInfo struct {
-	ID    string           `json:"id"`
-	Model string           `json:"model"`
-	Usage accounting.Usage `json:"usage"`
+	ID    string            `json:"id"`
+	Model string            `json:"model"`
+	Usage *accounting.Usage `json:"usage"`
 }
 
 // openaiResponseUsageInfo extracts usage-relevant information from an openai-compatible response.

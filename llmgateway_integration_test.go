@@ -2,6 +2,8 @@ package exe
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,7 +77,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	}
 
 	// Use the exe.Server as boxKeyAuthority (it implements the interface)
-	gateway := llmgateway.NewGateway(mockAcct, server)
+	gateway := llmgateway.NewGateway(mockAcct, server, "fake-anthropic-api-key")
 
 	// Create test HTTP server with the gateway
 	testServer := httptest.NewServer(gateway)
@@ -84,7 +86,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	// Test successful authentication flow
 	t.Run("successful authentication", func(t *testing.T) {
 		// Create HTTP request with bearer token
-		req, err := http.NewRequest("POST", testServer.URL+"/claude", strings.NewReader(`{"message": "test"}`))
+		req, err := http.NewRequest("POST", testServer.URL+"/_/gateway/nonexistent-endpoint", strings.NewReader(`{"message": "test"}`))
 		if err != nil {
 			t.Fatalf("Failed to create request: %v", err)
 		}
@@ -99,9 +101,9 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 		}
 		defer resp.Body.Close()
 
-		// Should get "not implemented" response (501) since proxy isn't implemented yet
-		if resp.StatusCode != http.StatusNotImplemented {
-			t.Errorf("Expected status 501 (Not Implemented), got %d", resp.StatusCode)
+		// We expect Not Found (rather than a 5xx, 3xx or 2xx)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("Expected status Not Found, got %d", resp.StatusCode)
 		}
 
 		// This means authentication succeeded and we reached the proxy logic
@@ -110,7 +112,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 
 	// Test authentication failure scenarios
 	t.Run("missing authorization header", func(t *testing.T) {
-		req, err := http.NewRequest("POST", testServer.URL+"/claude", strings.NewReader(`{"message": "test"}`))
+		req, err := http.NewRequest("POST", testServer.URL+"/_/gateway/nonexistent-endpoint", strings.NewReader(`{"message": "test"}`))
 		if err != nil {
 			t.Fatalf("Failed to create request: %v", err)
 		}
@@ -129,7 +131,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	})
 
 	t.Run("invalid bearer token", func(t *testing.T) {
-		req, err := http.NewRequest("POST", testServer.URL+"/claude", strings.NewReader(`{"message": "test"}`))
+		req, err := http.NewRequest("POST", testServer.URL+"/_/gateway/nonexistent-endpoint", strings.NewReader(`{"message": "test"}`))
 		if err != nil {
 			t.Fatalf("Failed to create request: %v", err)
 		}
@@ -151,12 +153,15 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 		// Create gateway with negative balance
 		negativeBalanceAcct := &mockAccountant{
 			balance: -1.0, // Insufficient balance
+			billingAccountForBox: map[string]string{
+				boxName: boxName + "-billing-account-id",
+			},
 		}
-		negativeGateway := llmgateway.NewGateway(negativeBalanceAcct, server)
+		negativeGateway := llmgateway.NewGateway(negativeBalanceAcct, server, "fake-anthropic-api-key")
 		negativeServer := httptest.NewServer(negativeGateway)
 		defer negativeServer.Close()
 
-		req, err := http.NewRequest("POST", negativeServer.URL+"/claude", strings.NewReader(`{"message": "test"}`))
+		req, err := http.NewRequest("POST", negativeServer.URL+"/_/gateway/anthropic", strings.NewReader(`{"message": "test"}`))
 		if err != nil {
 			t.Fatalf("Failed to create request: %v", err)
 		}
@@ -168,27 +173,36 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 			t.Fatalf("Request failed: %v", err)
 		}
 		defer resp.Body.Close()
-
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if resp.StatusCode != http.StatusPaymentRequired {
-			t.Errorf("Expected status 402 (Payment Required), got %d", resp.StatusCode)
+			t.Errorf("Expected status 402 (Payment Required), got %d\n%s", resp.StatusCode, string(body))
 		}
 	})
 }
 
 // mockAccountant implements Accountant for testing
 type mockAccountant struct {
-	balance      float64
-	balanceErr   error
-	usageDebits  []accounting.UsageDebit
-	usageCredits []accounting.UsageCredit
+	balance              float64
+	balanceErr           error
+	usageDebits          []accounting.UsageDebit
+	usageCredits         []accounting.UsageCredit
+	billingAccountForBox map[string]string
 }
+
+var _ accounting.Accountant = &mockAccountant{}
 
 // BillingAccountForBox implements accounting.Accountant.
 func (m *mockAccountant) BillingAccountForBox(ctx context.Context, boxName string) (string, error) {
-	panic("unimplemented")
+	if m.billingAccountForBox == nil {
+		return "", fmt.Errorf("no billing accounts defined in this mockAccountant")
+	}
+	return m.billingAccountForBox[boxName], nil
 }
 
-func (m *mockAccountant) GetUserBalance(ctx context.Context, billingAccountID string) (float64, error) {
+func (m *mockAccountant) GetBalance(ctx context.Context, billingAccountID string) (float64, error) {
 	if m.balanceErr != nil {
 		return 0, m.balanceErr
 	}

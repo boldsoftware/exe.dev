@@ -96,6 +96,7 @@ func (b *bearerTokenClaim) Encode(signer ssh.Signer) (string, error) {
 	return claimStr + "." + sigStr, nil
 }
 
+// boxKeyAuth returns the name of the box or an error.
 func (m *llmGateway) boxKeyAuth(ctx context.Context, r *http.Request) (string, error) {
 	bearerTokenString := r.Header.Get("Authorization")
 	if bearerTokenString == "" {

@@ -43,8 +43,8 @@ type Usage struct {
 
 // Accountant handles credit balance checking and usage debiting
 type Accountant interface {
-	// GetUserBalance retrieves the current credit balance for a user
-	GetUserBalance(ctx context.Context, billingAccountID string) (float64, error)
+	// GetUserBalance retrieves the current balance for a billing account.
+	GetBalance(ctx context.Context, billingAccountID string) (float64, error)
 
 	// DebitUsage records a usage debit for a user
 	DebitUsage(ctx context.Context, debit UsageDebit) error
@@ -170,8 +170,8 @@ func (d *dbAccountant) DebitUsage(ctx context.Context, debit UsageDebit) error {
 	})
 }
 
-// GetUserBalance implements Accountant.
-func (d *dbAccountant) GetUserBalance(ctx context.Context, billingAccountID string) (float64, error) {
+// GetBalance implements Accountant.
+func (d *dbAccountant) GetBalance(ctx context.Context, billingAccountID string) (float64, error) {
 	var balance float64
 
 	err := d.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {

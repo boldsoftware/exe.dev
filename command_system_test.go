@@ -334,8 +334,9 @@ func TestExecuteCommand(t *testing.T) {
 
 func TestBillingCommandConditionalBehavior(t *testing.T) {
 	// Create test server with mock billing
-	server := &Server{}
 	mockBilling := &billing.MockService{}
+	mockAccountant := &mockAccountant{}
+	server := &Server{accountant: mockAccountant}
 	sshServer := &SSHServer{server: server, billing: mockBilling}
 	sshServer.commands = NewCommandTree(sshServer)
 

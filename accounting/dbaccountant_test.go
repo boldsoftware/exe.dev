@@ -49,7 +49,7 @@ func setupTestDB(t *testing.T) (*sqlite.DB, func()) {
 	return db, cleanup
 }
 
-func TestDBAccountant_GetUserBalance(t *testing.T) {
+func TestDBAccountant_GetBalance(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -72,7 +72,7 @@ func TestDBAccountant_GetUserBalance(t *testing.T) {
 	}
 
 	// Initial balance should be 0
-	balance, err := accountant.GetUserBalance(ctx, billingAccountID)
+	balance, err := accountant.GetBalance(ctx, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to get balance: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestDBAccountant_GetUserBalance(t *testing.T) {
 	}
 
 	// Balance should now be 10.0
-	balance, err = accountant.GetUserBalance(ctx, billingAccountID)
+	balance, err = accountant.GetBalance(ctx, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to get balance after credit: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestDBAccountant_GetUserBalance(t *testing.T) {
 	}
 
 	// Balance should now be 7.5 (10.0 - 2.5)
-	balance, err = accountant.GetUserBalance(ctx, billingAccountID)
+	balance, err = accountant.GetBalance(ctx, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to get balance after debit: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestDBAccountant_DebitUsage_DuplicateMessageID(t *testing.T) {
 	}
 
 	// Balance should only reflect one debit
-	balance, err := accountant.GetUserBalance(ctx, billingAccountID)
+	balance, err := accountant.GetBalance(ctx, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to get balance: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestDBAccountant_ApplyNewUserCredits(t *testing.T) {
 	}
 
 	// Initial balance should be 0
-	balance, err := accountant.GetUserBalance(ctx, billingAccountID)
+	balance, err := accountant.GetBalance(ctx, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to get initial balance: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestDBAccountant_ApplyNewUserCredits(t *testing.T) {
 	accountant.ApplyNewUserCredits(ctx, billingAccountID)
 
 	// Balance should now include the new user credit
-	balance, err = accountant.GetUserBalance(ctx, billingAccountID)
+	balance, err = accountant.GetBalance(ctx, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to get balance after applying credits: %v", err)
 	}
