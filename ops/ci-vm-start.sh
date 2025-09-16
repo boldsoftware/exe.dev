@@ -262,13 +262,11 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	# Copy pre-downloaded tarballs to VM
 	echo "Copying pre-downloaded dependencies to VM ${IP}..."
 	CACHE_DIR="$HOME/.cache/exedops"
-	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/*.tar; do
-		if [ -f "$file" ]; then
-			basename=$(basename "$file")
-			echo "  Copying $basename..."
-			scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$file" "${USER_NAME}@${IP}:~/$basename"
-		fi
-	done
+	mapfile -t files < <(find "$CACHE_DIR" -maxdepth 1 -type f \
+		\( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name '*.tar' \))
+	rsync -av --progress \
+		-e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+		"${files[@]}" "${USER_NAME}@${IP}:~/"
 
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/kata-config-clh.toml /root/kata-config-clh.toml'
