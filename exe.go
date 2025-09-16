@@ -39,6 +39,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
+	"exe.dev/llmgateway"
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
@@ -593,10 +594,17 @@ func (s *Server) DataPath(path string) string {
 
 // setupHTTPServer configures the HTTP server
 func (s *Server) setupHTTPServer() {
+	// TODO(banksean) pass a non-nil accountant so we actually debit the billing accounts.
+	lg := llmgateway.NewGateway(nil, s)
+
+	servMux := http.NewServeMux()
+	servMux.Handle("/_/gateway/{endpoint}", lg)
+	servMux.Handle("/", s)
+
 	// Use standard promhttp instrumentation
 	instrumentedHandler := promhttp.InstrumentMetricHandler(
 		s.metricsRegistry,
-		s)
+		servMux)
 
 	s.httpServer = &http.Server{
 		Addr:    s.httpLn.addr,
@@ -614,6 +622,13 @@ func (s *Server) setupHTTPSServer() {
 	porkbunAPIKey := os.Getenv("PORKBUN_API_KEY")
 	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
 
+	// TODO(banksean) pass a non-nil accountant so we actually debit the billing accounts.
+	lg := llmgateway.NewGateway(nil, s)
+
+	servMux := http.NewServeMux()
+	servMux.Handle("/_/gateway/{endpoint}", lg)
+	servMux.Handle("/", s)
+
 	if porkbunAPIKey != "" && porkbunSecretKey != "" {
 		// Use Porkbun for wildcard certificates with DNS challenge
 		slog.Info("Using Porkbun DNS provider for wildcard TLS certificates")
@@ -627,7 +642,7 @@ func (s *Server) setupHTTPSServer() {
 
 		s.httpsServer = &http.Server{
 			Addr:    s.httpsLn.addr,
-			Handler: s,
+			Handler: servMux,
 			TLSConfig: &tls.Config{
 				GetCertificate: s.wildcardCertManager.GetCertificate,
 			},
@@ -643,7 +658,7 @@ func (s *Server) setupHTTPSServer() {
 
 		s.httpsServer = &http.Server{
 			Addr:    s.httpsLn.addr,
-			Handler: s,
+			Handler: servMux,
 			TLSConfig: &tls.Config{
 				GetCertificate: s.certManager.GetCertificate,
 			},
