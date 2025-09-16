@@ -124,9 +124,7 @@ get_remote_digest() {
 	local img="$1"
 	local arch="$2"
 	# Returns platform-specific manifest digest for linux/$arch
-	docker manifest inspect "$img" 2>/dev/null |
-		jq -r ".manifests[] | select(.platform.architecture==\"$arch\" and .platform.os==\"linux\") | .digest" |
-		head -n1
+	go run github.com/google/go-containerregistry/cmd/crane@latest digest --platform=linux/$arch "$img" 2> /dev/null
 }
 
 for image in "${IMAGES[@]}"; do
