@@ -27,16 +27,6 @@ type Config struct {
 	DataSubdir string `json:"data_subdir"`
 }
 
-// DefaultConfig returns a sensible default configuration
-func DefaultConfig() *Config {
-	return &Config{
-		ContainerdAddresses:  []string{""}, // Default to local daemon
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "256Mi",
-		DefaultStorageSize:   "1Gi",
-	}
-}
-
 // validateConfig ensures all required fields are present
 func validateConfig(cfg *Config) error {
 	if len(cfg.ContainerdAddresses) == 0 {
