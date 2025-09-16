@@ -74,10 +74,21 @@ func GetDisplayImageName(image string) string {
 	// Handle local development images
 	if strings.HasPrefix(image, "sha256:") {
 		hash := strings.TrimPrefix(image, "sha256:")
-		if len(hash) > 12 {
-			hash = hash[:12]
+		if len(hash) > 8 {
+			hash = hash[:8]
 		}
 		return "local:" + hash
+	}
+
+	suffix := ""
+	if strings.Contains(image, "@sha256:") {
+		cutIdx := strings.Index(image, "@sha256:")
+		hash := image[cutIdx+len("@sha256:"):]
+		if len(hash) > 8 {
+			hash = hash[:8]
+		}
+		image = image[:cutIdx]
+		suffix = "@sha256:" + hash
 	}
 
 	// Remove registry prefix for cleaner display
@@ -93,7 +104,7 @@ func GetDisplayImageName(image string) string {
 	// Simplify common images
 	switch image {
 	case "ghcr.io/boldsoftware/exeuntu:latest", "exeuntu:latest", "exeuntu":
-		return "exeuntu"
+		return "exeuntu" + suffix
 	case "ubuntu:24.04", "ubuntu:22.04", "ubuntu:latest":
 		return "ubuntu"
 	case "debian:bookworm", "debian:latest":
@@ -117,5 +128,5 @@ func GetDisplayImageName(image string) string {
 		return strings.TrimSuffix(image, ":latest")
 	}
 
-	return image
+	return image + suffix
 }
