@@ -62,21 +62,24 @@ elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
 	ARCH="arm64"
 fi
 
+# Directory where artifacts are staged by the downloader (ubuntu user's cache)
+ASSETS_DIR="/home/ubuntu/.cache/exedops"
+
 # Download and install containerd
 echo "Installing containerd ${CONTAINERD_VERSION} for ${ARCH}..."
 cd /tmp
 echo "Extracting containerd..."
-sudo tar -xzf /root/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz -C /usr/local
+sudo tar -xzf "${ASSETS_DIR}/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz" -C /usr/local
 
 # Install containerd systemd service
 sudo mkdir -p /usr/local/lib/systemd/system
-sudo cp /root/containerd.service /usr/local/lib/systemd/system/containerd.service
+sudo cp "${ASSETS_DIR}/containerd.service" /usr/local/lib/systemd/system/containerd.service
 sudo systemctl daemon-reload
 
 # Install runc
 RUNC_VERSION="1.1.14"
 echo "Installing runc ${RUNC_VERSION}..."
-sudo cp /root/runc-${RUNC_VERSION}.${ARCH} /usr/local/sbin/runc
+sudo cp "${ASSETS_DIR}/runc-${RUNC_VERSION}.${ARCH}" /usr/local/sbin/runc
 sudo chmod +x /usr/local/sbin/runc
 
 echo "=== Installing Kata Containers with Cloud Hypervisor ==="
@@ -88,7 +91,7 @@ KATA_ARCH="$ARCH"
 # Download and install Kata
 echo "Installing Kata Containers ${KATA_VERSION}..."
 cd /tmp
-sudo tar -xf /root/kata-static-${KATA_VERSION}-${KATA_ARCH}.tar.xz -C /
+sudo tar -xf "${ASSETS_DIR}/kata-static-${KATA_VERSION}-${KATA_ARCH}.tar.xz" -C /
 
 # Ensure Cloud Hypervisor is executable
 sudo chmod +x /opt/kata/bin/cloud-hypervisor
@@ -111,7 +114,7 @@ echo "Installing nydus-snapshotter v${NYDUS_VERSION}..."
 cd /tmp
 # Extract to temp dir first since binaries are in bin/ subdirectory
 mkdir -p /tmp/nydus-extract
-tar -xzf /root/nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz -C /tmp/nydus-extract
+tar -xzf "${ASSETS_DIR}/nydus-snapshotter-v${NYDUS_VERSION}-linux-${NYDUS_ARCH}.tar.gz" -C /tmp/nydus-extract
 sudo mv /tmp/nydus-extract/bin/* /usr/local/bin/
 rm -rf /tmp/nydus-extract
 sudo chmod +x /usr/local/bin/containerd-nydus-grpc
@@ -119,7 +122,7 @@ sudo chmod +x /usr/local/bin/containerd-nydus-grpc
 # Download and install nydusd daemon
 echo "Installing nydusd daemon v${NYDUSD_VERSION}..."
 cd /tmp
-tar -xzf /root/nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz
+tar -xzf "${ASSETS_DIR}/nydus-static-v${NYDUSD_VERSION}-linux-${NYDUS_ARCH}.tgz"
 sudo cp nydus-static/nydusd* /usr/local/bin/
 sudo cp nydus-static/nydus-image /usr/local/bin/
 sudo chmod +x /usr/local/bin/nydusd* /usr/local/bin/nydus-image
@@ -196,11 +199,11 @@ echo "=== Configuring Kata for Cloud Hypervisor with virtio-fs-nydus ==="
 # Copy our custom Cloud Hypervisor configuration
 sudo mkdir -p /etc/kata-containers
 
-# Kata config file must be placed in /root by the calling script
-KATA_CONFIG="/root/kata-config-clh.toml"
+# Kata config file must be placed in ${ASSETS_DIR} by the calling script
+KATA_CONFIG="${ASSETS_DIR}/kata-config-clh.toml"
 if [ ! -f "$KATA_CONFIG" ]; then
-	echo "ERROR: kata-config-clh.toml not found in /root"
-	echo "The calling script must copy kata-config-clh.toml to /root before running this script"
+	echo "ERROR: kata-config-clh.toml not found in ${ASSETS_DIR}"
+	echo "The calling script must copy kata-config-clh.toml to ${ASSETS_DIR} before running this script"
 	exit 1
 fi
 
@@ -307,7 +310,7 @@ NERDCTL_VERSION="2.1.3"
 NERDCTL_ARCH="$ARCH" # ARCH is normalized earlier to amd64/arm64
 echo "Installing nerdctl ${NERDCTL_VERSION}..."
 TMPD=$(mktemp -d)
-if ! tar -xzf "/root/nerdctl-${NERDCTL_VERSION}-linux-${NERDCTL_ARCH}.tar.gz" -C "$TMPD"; then
+if ! tar -xzf "${ASSETS_DIR}/nerdctl-${NERDCTL_VERSION}-linux-${NERDCTL_ARCH}.tar.gz" -C "$TMPD"; then
 	echo "ERROR: failed to extract nerdctl archive" >&2
 	rm -rf "$TMPD"
 	exit 1
@@ -334,7 +337,7 @@ CNI_VERSION="1.5.1"
 sudo mkdir -p /opt/cni/bin
 echo "Installing CNI plugins ${CNI_VERSION}..."
 cd /tmp
-sudo tar -xzf /root/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz -C /opt/cni/bin
+sudo tar -xzf "${ASSETS_DIR}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz" -C /opt/cni/bin
 
 # Configure default CNI network for nerdctl with a larger subnet for thousands of containers
 # This simplifies the network configuration and matches what works on AWS
@@ -619,7 +622,7 @@ IMAGES=(
 
 for image in "${IMAGES[@]}"; do
 	image_base=$(echo "$image" | sed 's|/|_|g' | sed 's|:|_|g')
-	base_tar="/root/${image_base}-${ARCH}.tar"
+	base_tar="${ASSETS_DIR}/${image_base}-${ARCH}.tar"
 
 	if [ -f "$base_tar" ]; then
 		echo "Loading $image from cache..."

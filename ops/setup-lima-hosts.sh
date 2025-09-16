@@ -60,11 +60,12 @@ provision_base_vm() {
 		fi
 	done
 
-	# Move files to /root
+	# Move files: setup script to /root; assets to canonical ASSETS_DIR=/home/ubuntu/.cache/exedops
 	limactl shell ${LIMA_BASE} -- sudo mv /tmp/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh
-	limactl shell ${LIMA_BASE} -- sudo mv /tmp/kata-config-clh.toml /root/kata-config-clh.toml
 	limactl shell ${LIMA_BASE} -- sudo chmod +x /root/setup-containerd-clh-nydus.sh
-	limactl shell ${LIMA_BASE} -- sudo bash -c 'mv /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.tgz /tmp/*.tar /tmp/*.service /tmp/runc-* /root/ 2>/dev/null || true'
+	limactl shell ${LIMA_BASE} -- sudo mkdir -p /home/ubuntu/.cache/exedops
+	limactl shell ${LIMA_BASE} -- sudo mv /tmp/kata-config-clh.toml /home/ubuntu/.cache/exedops/kata-config-clh.toml
+	limactl shell ${LIMA_BASE} -- sudo bash -c 'mv /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.tgz /tmp/*.tar /tmp/*.service /tmp/runc-* /home/ubuntu/.cache/exedops/ 2>/dev/null || true'
 
 	echo "=========================================="
 	echo "Starting containerd setup in VM"

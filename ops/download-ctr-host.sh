@@ -93,7 +93,6 @@ download_if_needed \
 	"https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz" \
 	"cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz"
 
-# Download container images to cache
 echo ""
 echo "=== Downloading container images to cache ==="
 
@@ -124,7 +123,7 @@ get_remote_digest() {
 	local img="$1"
 	local arch="$2"
 	# Returns platform-specific manifest digest for linux/$arch
-	go run github.com/google/go-containerregistry/cmd/crane@latest digest --platform=linux/$arch "$img" 2> /dev/null
+	go run github.com/google/go-containerregistry/cmd/crane@latest digest --platform=linux/$arch "$img" 2>/dev/null
 }
 
 for image in "${IMAGES[@]}"; do

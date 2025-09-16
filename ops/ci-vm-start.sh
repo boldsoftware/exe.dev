@@ -257,7 +257,8 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 
 	echo "Copying setup script and config files to VM ${IP}..."
 	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
-	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/kata-config-clh.toml"
+	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
+	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/.cache/exedops/kata-config-clh.toml"
 
 	# Copy pre-downloaded tarballs to VM
 	echo "Copying pre-downloaded dependencies to VM ${IP}..."
@@ -266,11 +267,10 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 		\( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name '*.tar' \))
 	rsync -av --progress \
 		-e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-		"${files[@]}" "${USER_NAME}@${IP}:~/"
+		"${files[@]}" "${USER_NAME}@${IP}:~/.cache/exedops/"
 
+	# Keep assets in canonical ASSETS_DIR (~/.cache/exedops); just place the setup script
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
-	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/kata-config-clh.toml /root/kata-config-clh.toml'
-	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/*.tar.gz ~/*.tar.xz ~/*.tgz ~/*.tar ~/*.service ~/runc-* /root/ 2>/dev/null || true'
 
 	echo "Executing setup script on VM ${IP} (raw streaming output)..."
 	# Stream exact commands and output directly to CI logs

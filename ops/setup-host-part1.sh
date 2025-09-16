@@ -331,74 +331,60 @@ echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm parted xfsprogs >/dev/null 2>&1
 
-# Setup 225GB swap on each of the 4 NVMe drives with equal priority for I/O interleaving
-echo "=== Setting up quad swap partitions on NVMe drives ==="
+echo "=== Detecting instance-store NVMe devices (~900GB) ==="
+# Select the 4x ~900GB instance-store NVMe disks; exclude EBS root (50GB) and data (250GB)
+mapfile -t NVME_DEVICES < <(lsblk -b -n -d -o NAME,SIZE,TYPE 2>/dev/null | awk '$3=="disk" && $1 ~ /^nvme/ { if ($2 >= 800*1024*1024*1024) print "/dev/"$1 }' | sort -V)
+if [ ${#NVME_DEVICES[@]} -lt 4 ]; then
+  echo "ERROR: Expected 4 NVMe instance-store disks (~900GB), found ${#NVME_DEVICES[@]}"
+  lsblk
+  exit 1
+fi
+# Use the first 4 detected devices
+NVME_DEVICES=("${NVME_DEVICES[@]:0:4}")
+printf "Using instance-store devices:\n%s\n" "${NVME_DEVICES[@]}"
 
-# First NVMe drive
-NVME1="/dev/nvme0n1"
-echo "Setting up 225GB swap on ${NVME1}..."
-sudo parted -s ${NVME1} mklabel gpt
-sudo parted -s ${NVME1} mkpart primary linux-swap 1MiB 226GiB
-sudo mkswap ${NVME1}p1
-
-# Second NVMe drive
-NVME2="/dev/nvme1n1"
-echo "Setting up 225GB swap on ${NVME2}..."
-sudo parted -s ${NVME2} mklabel gpt
-sudo parted -s ${NVME2} mkpart primary linux-swap 1MiB 226GiB
-sudo mkswap ${NVME2}p1
-
-# Third NVMe drive
-NVME3="/dev/nvme2n1"
-echo "Setting up 225GB swap on ${NVME3}..."
-sudo parted -s ${NVME3} mklabel gpt
-sudo parted -s ${NVME3} mkpart primary linux-swap 1MiB 226GiB
-sudo mkswap ${NVME3}p1
-
-# Fourth NVMe drive
-NVME4="/dev/nvme3n1"
-echo "Setting up 225GB swap on ${NVME4}..."
-sudo parted -s ${NVME4} mklabel gpt
-sudo parted -s ${NVME4} mkpart primary linux-swap 1MiB 226GiB
-sudo mkswap ${NVME4}p1
+echo "=== Setting up swap on instance-store NVMe devices ==="
+for dev in "${NVME_DEVICES[@]}"; do
+  echo "Setting up 225GB swap on ${dev}..."
+  # Ensure the device has no lingering signatures/partitions
+  sudo wipefs -a "$dev" >/dev/null 2>&1 || true
+  sudo parted -s "$dev" mklabel gpt
+  sudo parted -s "$dev" mkpart primary linux-swap 1MiB 226GiB
+  # Wait for kernel to create the partition node
+  sudo udevadm settle || sleep 1
+  sudo mkswap "${dev}p1"
+done
 
 # Enable all swaps with equal priority for I/O interleaving
-sudo swapon -p 1 ${NVME1}p1
-sudo swapon -p 1 ${NVME2}p1
-sudo swapon -p 1 ${NVME3}p1
-sudo swapon -p 1 ${NVME4}p1
+for dev in "${NVME_DEVICES[@]}"; do
+  sudo swapon -p 1 "${dev}p1"
+done
 
 # Add to fstab with priority
-echo "${NVME1}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-echo "${NVME2}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-echo "${NVME3}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
-echo "${NVME4}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab
+for dev in "${NVME_DEVICES[@]}"; do
+  echo "${dev}p1 none swap sw,pri=1 0 0" | sudo tee -a /etc/fstab >/dev/null
+done
 
-echo "Quad swap setup complete (4x 225GB with equal priority, 900GB total)"
+echo "Swap setup complete (4x 225GB with equal priority, 900GB total)"
 
 # Setup RAID 0 XFS volume for /local (Nydus snapshotting)
 echo "=== Setting up RAID 0 XFS volume for /local (Nydus snapshotting) ==="
 
 # Create remaining space partitions on each NVMe drive for /local
-echo "Creating partition on ${NVME1} for RAID..."
-sudo parted -s ${NVME1} mkpart primary 226GiB 100%
-sudo parted -s ${NVME1} set 2 raid on
+for dev in "${NVME_DEVICES[@]}"; do
+  echo "Creating RAID partition on ${dev}..."
+  sudo parted -s "$dev" mkpart primary 226GiB 100%
+  sudo parted -s "$dev" set 2 raid on
+done
 
-echo "Creating partition on ${NVME2} for RAID..."
-sudo parted -s ${NVME2} mkpart primary 226GiB 100%
-sudo parted -s ${NVME2} set 2 raid on
+# Build device list for RAID creation
+PARTS=()
+for dev in "${NVME_DEVICES[@]}"; do
+  PARTS+=("${dev}p2")
+done
 
-echo "Creating partition on ${NVME3} for RAID..."
-sudo parted -s ${NVME3} mkpart primary 226GiB 100%
-sudo parted -s ${NVME3} set 2 raid on
-
-echo "Creating partition on ${NVME4} for RAID..."
-sudo parted -s ${NVME4} mkpart primary 226GiB 100%
-sudo parted -s ${NVME4} set 2 raid on
-
-# Create RAID 0 array combining all 4 partitions (~2.7TB total)
-echo "Creating RAID 0 array with all 4 partitions..."
-sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 ${NVME1}p2 ${NVME2}p2 ${NVME3}p2 ${NVME4}p2 --force
+echo "Creating RAID 0 array with: ${PARTS[*]}"
+sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 ${PARTS[*]} --force
 
 # Wait for RAID to be ready
 sleep 2
@@ -478,40 +464,77 @@ fi
 
 rm -f /tmp/setup-volumes.sh
 
-# Download dependencies locally if not cached
-echo "Ensuring dependencies are downloaded for amd64..."
-"${SCRIPT_DIR}/download-ctr-host.sh" "amd64"
+###############################################
+# Download deps on the metal host (not locally)
+###############################################
 
-# Copy setup script and config files via Tailscale
-echo "Copying containerd setup script and config files to ${MACHINE_NAME}..."
+# Copy setup script, config, and downloader to the remote host
+echo "Copying setup scripts to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 	"${SCRIPT_DIR}/setup-containerd-clh-nydus.sh" \
 	"${SCRIPT_DIR}/kata-config-clh.toml" \
+	"${SCRIPT_DIR}/download-ctr-host.sh" \
 	"ubuntu@${MACHINE_NAME}:~/"; then
-	echo "ERROR: Failed to copy setup script and config files"
+	echo "ERROR: Failed to copy scripts and config to remote"
 	exit 1
 fi
 
-# Copy pre-downloaded tarballs to remote machine
-echo "Copying pre-downloaded dependencies to ${MACHINE_NAME}..."
+echo "Running downloads on ${MACHINE_NAME} to cache dependencies..."
+REMOTE_DOWNLOAD_CMD='set -euo pipefail
+ARCH=amd64
 CACHE_DIR="$HOME/.cache/exedops"
-for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/*.tar; do
-	if [ -f "$file" ]; then
-		basename=$(basename "$file")
-		echo "  Copying $basename..."
-		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$file" "ubuntu@${MACHINE_NAME}:~/$basename"
-	fi
+
+# Ensure tools needed by downloader
+if ! command -v wget >/dev/null 2>&1; then
+  sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y wget >/dev/null 2>&1
+fi
+
+chmod +x "$HOME/download-ctr-host.sh"
+set +e
+"$HOME/download-ctr-host.sh" "$ARCH"
+ret=$?
+set -e
+
+# The downloader also tries to prefetch images using docker/crane, which may not be installed on fresh metal.
+# Proceed if core dependency tarballs were downloaded; otherwise, fail clearly.
+missing=0
+deps=(
+  "$CACHE_DIR"/containerd-*-linux-"$ARCH".tar.gz
+  "$CACHE_DIR"/containerd.service
+  "$CACHE_DIR"/runc-*."$ARCH"
+  "$CACHE_DIR"/kata-static-*-"$ARCH".tar.xz
+  "$CACHE_DIR"/nydus-snapshotter-v*-linux-"$ARCH".tar.gz
+  "$CACHE_DIR"/nydus-static-v*-linux-"$ARCH".tgz
+  "$CACHE_DIR"/nerdctl-*-linux-"$ARCH".tar.gz
+  "$CACHE_DIR"/cni-plugins-linux-"$ARCH"-v*.tgz
+)
+for f in "${deps[@]}"; do
+  if ! ls $f >/dev/null 2>&1; then
+    echo "ERROR: Required dependency missing in cache: pattern $f"
+    missing=1
+  fi
 done
 
-# Move files to /root on the remote machine
-echo "Moving files to /root on ${MACHINE_NAME}..."
-if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-	"ubuntu@${MACHINE_NAME}" \
-	'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && \
-	 sudo mv ~/kata-config-clh.toml /root/kata-config-clh.toml && \
-	 sudo chmod +x /root/setup-containerd-clh-nydus.sh && \
-	 sudo mv ~/*.tar.gz ~/*.tar.xz ~/*.tgz ~/*.tar ~/*.service ~/runc-* /root/ 2>/dev/null || true'; then
-	echo "ERROR: Failed to move files to /root"
+if [ $missing -ne 0 ]; then
+  echo "Downloader exit code: $ret"
+  echo "Aborting because required files are missing."
+  exit 1
+fi
+
+echo "All required dependency artifacts are present in $CACHE_DIR"
+
+# Stage config into the cache directory used by the setup script
+mkdir -p "$CACHE_DIR"
+mv "$HOME"/kata-config-clh.toml "$CACHE_DIR"/kata-config-clh.toml
+
+# Place the setup script for execution
+sudo mv "$HOME"/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh
+sudo chmod +x /root/setup-containerd-clh-nydus.sh
+'
+
+if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "ubuntu@${MACHINE_NAME}" "$REMOTE_DOWNLOAD_CMD"; then
+	echo "ERROR: Remote download/setup of dependencies failed"
 	exit 1
 fi
 
