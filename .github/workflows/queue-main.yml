@@ -29,7 +29,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Validate commits for WIP and DO NOT SUBMIT
         run: |
           set -e
@@ -137,7 +136,9 @@ jobs:
         with:
           ref: ${{ needs.formatting.outputs.commit_sha }}
           fetch-depth: 0
-
+      - name: Abort any pending rebase
+        run: git rebase --abort || true # '|| true' prevents the step from failing if no rebase is in progress
+        shell: bash
       - name: Push to main
         run: |
           # Configure git for rebase operations
