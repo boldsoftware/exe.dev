@@ -87,34 +87,6 @@ To poke around production, ssh in using Tailscale:
 ssh ubuntu@exed-prod-01
 ```
 
-## Initial production deployment
-
-You probably don't need to do this.
-This is to bring up the AWS infrastructure and the VM to run exed.
-They should already exist.
-
-First, get a Tailscale auth key from
-https://login.tailscale.com/admin/settings/keys
-**Important**: Create the key with `tag:server` tag for proper ACL management
-
-```bash
-# 1. Set up production VM with Docker and Tailscale
-make setup-vm TAILSCALE_AUTH_KEY=tskey-auth-xxxxxxxxxxxxxx
-
-# 2. Deploy the binary
-make deploy
-
-# 3. Check status
-make status
-```
-
-The setup script will automatically:
-- Set up a production VM with Ubuntu 22.04 LTS
-- Install Docker for container management
-- Configure Tailscale for secure access
-- Install and configure systemd service for auto-start
-- Set up versioned deployments for easy rollback
-
 ## Production Container Host Configuration
 
 The script `./ops/setup-host-part1.sh` sets up more exe-ctr-NN hosts.

@@ -10,7 +10,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy setup-vm clean run-dev sqlc
+.PHONY: help build test deploy clean run-dev sqlc
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -38,20 +38,6 @@ deploy: ## Deploy to production
 	@echo "${YELLOW}Deploying to production...${NC}"
 	@chmod +x deploy-binary.sh
 	@./deploy-binary.sh
-
-setup-vm: ## Set up production VM (run once) - requires TAILSCALE_AUTH_KEY
-	@echo "Setting up production VM..."
-	@if [ -z "$(TAILSCALE_AUTH_KEY)" ]; then \
-		echo "ERROR: TAILSCALE_AUTH_KEY is required"; \
-		echo "Usage: make setup-vm TAILSCALE_AUTH_KEY=tskey-auth-xxxx"; \
-		echo ""; \
-		echo "Get an auth key from: https://login.tailscale.com/admin/settings/keys"; \
-		echo "Make sure to create a key with 'tag:server' tag"; \
-		exit 1; \
-	fi
-	@chmod +x setup-production-vm.sh
-	@./setup-production-vm.sh "$(TAILSCALE_AUTH_KEY)"
-	@echo "✓ VM setup complete with Tailscale"
 
 run-dev: ## Run exed locally for development
 	@echo "Starting development server..."
