@@ -9,3 +9,4 @@ node_modules/
 sshpiper/sshpiperd
 sshpiper/metrics
 exed
+*.cover

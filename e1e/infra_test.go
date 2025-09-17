@@ -202,6 +202,7 @@ type exedInstance struct {
 	SSHPort         int // direct SSH port, not via sshpiper
 	HTTPPort        int
 	PiperPluginPort int
+	CoverDir        string // directory for Go coverage artifacts (GOCOVERDIR)
 }
 
 type piperdInstance struct {
@@ -283,6 +284,12 @@ func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 		}
 	}
 	e.proxy.close()
+
+	// Extract "legacy" text format Go coverage profile to standard location
+	cmd := exec.Command("go", "tool", "covdata", "textfmt", "-i", e.exed.CoverDir, "-o", "e1e.cover")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		slog.Error("failed to write exed coverage profile", "error", err, "output", string(out))
+	}
 }
 
 type tcpProxy struct {
@@ -505,9 +512,24 @@ func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, e
 	}
 	dbPath.Close()
 
-	// Start exed process and capture its output
+	bin, err := os.CreateTemp("", "exed_test_bin_*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	bin.Close()
+	binPath := bin.Name()
+	coverDir, err := os.MkdirTemp("", "e1e-exed-cov-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create coverage dir: %w", err)
+	}
+
+	buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("failed to build exed with coverage: %w\n%s", err, out)
+	}
+
 	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServerPort)
-	exedCmd := exec.Command("go", "run", "-race", "../cmd/exed",
+	exedCmd := exec.Command(binPath,
 		"-db="+dbPath.Name(),
 		"-dev=test",
 		"-http=:0",
@@ -521,6 +543,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, e
 		"LOG_FORMAT=json",
 		"LOG_LEVEL=debug",
 		"CTR_HOST="+ctrHost,
+		"GOCOVERDIR="+coverDir,
 	)
 	cmdOut, err := exedCmd.StdoutPipe()
 	if err != nil {
@@ -611,6 +634,7 @@ ProcessLogs:
 		SSHPort:         sshPort,
 		HTTPPort:        httpPort,
 		PiperPluginPort: piperPluginPort,
+		CoverDir:        coverDir,
 	}
 
 	slog.Info("started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
