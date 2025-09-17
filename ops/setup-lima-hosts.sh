@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
+set -E # inherit traps
+trap 'echo Error in $0 at line $LINENO: $(cd "'"${PWD}"'" && awk "NR == $LINENO" $0)' ERR
 
 # Configuration
 LIMA_BASE="exe-ctr-base"
@@ -72,11 +74,15 @@ provision_base_vm() {
 	echo "=========================================="
 	echo "Running setup script in VM (this will take a few minutes)..."
 	# Set CI environment variable since Lima VMs are ephemeral-like
-	if ! limactl shell ${LIMA_BASE} -- sudo CI=1 /root/setup-containerd-clh-nydus.sh; then
-		echo "Error: Setup script failed"
-		echo "You can debug by running: limactl shell ${LIMA_BASE}"
-		return 1
-	fi
+	limactl shell ${LIMA_BASE} -- sudo CI=1 /root/setup-containerd-clh-nydus.sh
+
+	echo "=========================================="
+	echo "Lima-specific cofiguration..."
+	echo "=========================================="
+	# avahi-daemon makes *.local domains work; docker-registry runs a local registery, insecure (http), at port 5000
+	limactl shell ${LIMA_BASE} sudo apt-get -y install avahi-daemon docker-registry
+	# Copy default SSH keys to root's login, so ssh root@lima-exe-ctr.local works
+	(cat ~/.ssh/id_*.pub | limactl shell ${LIMA_BASE} sudo tee /root/.authorized_keys) || true
 
 	echo "Saving containerd configuration for persistence..."
 	limactl shell ${LIMA_BASE} -- sudo cp /etc/containerd/config.toml /home/ubuntu/containerd-config.toml.backup 2>/dev/null || true
@@ -121,13 +127,10 @@ else
 fi
 
 echo "Testing Lima SSH connection..."
-if ! limactl shell ${LIMA_BASE} -- echo "SSH connection successful"; then
-	echo "Error: Cannot connect to Lima VM"
-	exit 1
-fi
+limactl shell ${LIMA_BASE} -- echo "SSH connection successful"
 
 # Provision the base VM
-provision_base_vm || exit 1
+provision_base_vm
 
 echo "Stopping base instance before cloning..."
 limactl stop ${LIMA_BASE}
