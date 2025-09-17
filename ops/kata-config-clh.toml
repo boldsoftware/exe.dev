@@ -26,11 +26,13 @@ virtio_fs_daemon = "/opt/kata/libexec/virtiofsd"
 valid_virtio_fs_daemon_paths = ["/opt/kata/libexec/virtiofsd"]
 
 # DAX cache configuration
-virtio_fs_cache = "auto"
+# TODO(philip/crawshaw): To enable DAX, you also need virtio_fs_cache_size > 0,
+# but this fails on Lima at the moment.
+virtio_fs_cache = "always"
 virtio_fs_cache_size = 0
 virtio_fs_queue_size = 1024
 
-virtio_fs_extra_args = ["--thread-pool-size=1", "--announce-submounts"]
+virtio_fs_extra_args = ["--thread-pool-size=4", "--announce-submounts"]
 
 block_device_driver = "virtio-blk"
 
