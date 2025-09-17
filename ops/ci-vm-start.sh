@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NAME="${NAME:-ci-ubuntu-$(date +%s)}"
+NAME="${NAME:-ci-ubuntu-$(date +%Y%m%d%H%M%S)}"
 VCPUS="${VCPUS:-4}"
 RAM_MB="${RAM_MB:-4096}" # 4GiB
 DISK_GB="${DISK_GB:-20}" # thin-provisioned
