@@ -20,7 +20,8 @@ SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 # Remove minimization restrictions and install packages with documentation
 # We aim for a usable non-minimal system.
-RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/01_nodoc && \
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.com/mirrors.txt|' /etc/apt/sources.list && \
+        rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/01_nodoc && \
 	apt-get update && \
 	# Pre-configure debconf to avoid interactive prompts
 	echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections && \
@@ -43,6 +44,7 @@ RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/01_nodoc && \
 		ubuntu-server ubuntu-dev-tools ubuntu-standard \
 		man-db manpages manpages-dev \
 		systemd systemd-sysv \
+		atop iotop \
 		golang-go git && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/*
@@ -51,11 +53,49 @@ RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/01_nodoc && \
 RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		/etc/systemd/system/multi-user.target.wants/ModemManager.service \
 		/etc/systemd/system/multi-user.target.wants/snapd.* \
+		/etc/systemd/system/multi-user.target.wants/unattended-upgrades.* \
 		/etc/systemd/system/multi-user.target.wants/ubuntu-advantage.service && \
+	systemctl mask getty.target \
+		systemd-random-seed.service \
+		systemd-journal-catalog-update.service \
+		modprobe@.service \
+		systemd-modules-load.service \
+		systemd-journal-flush.service \
+		ldconfig.service \
+		unattended-upgrades.service \
+		polkit.service \
+		systemd-logind.service \
+		lxd-installer.socket \
+	        console-getty.service \
+		keyboard-setup.service \
+		systemd-ask-password-console.path \
+		systemd-ask-password-wall.path \
+		ssh.socket \
+		plymouth.service \
+		plymouth-start.service \
+		plymouth-quit.service \
+		plymouth-quit-wait.service \
+		plymouth-read-write.service \
+		plymouth-switch-root.service \
+		plymouth-switch-root-initramfs.service \
+		plymouth-halt.service \
+		plymouth-reboot.service \
+		plymouth-poweroff.service \
+		plymouth-kexec.service \
+		plymouth-log.service && \
 	systemctl disable systemd-logind.service getty.target \
                    console-getty.service \
+		   atop.service \
                    getty@.service \
                    snapd.socket \
+		   motd-news.timer motd-news.service \
+		    apport.service apport-autoreport.timer apport-autoreport.path apport-forward.socket \
+		    snapd.snap-repair.timer snapd.snap-repair.service \
+		    udisks2.service \
+		   ufw.service \
+		   lvm2-lvmpolld.socket \
+		   apt-daily-upgrade.timer \
+		   apt-daily.timer \
                    systemd-ask-password-wall.service \
                    systemd-ask-password-console.service \
                    systemd-machine-id-commit.service \
@@ -65,23 +105,12 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
                    systemd-udevd.service \
                    systemd-udev-trigger.service \
                    systemd-udev-settle.service \
+		   e2scrub_reap.service \
+		   systemd-user-sessions.service \
+		   systemd-update-utmp.service \
+		   atopacct.service \
+		   sysstat.service \
                    systemd-hwdb-update.service && \
-	systemctl mask getty.target \
-	               console-getty.service \
-				   keyboard-setup.service \
-                   ssh.socket \
-                   plymouth.service \
-                   plymouth-start.service \
-                   plymouth-quit.service \
-                   plymouth-quit-wait.service \
-                   plymouth-read-write.service \
-                   plymouth-switch-root.service \
-                   plymouth-switch-root-initramfs.service \
-                   plymouth-halt.service \
-                   plymouth-reboot.service \
-                   plymouth-poweroff.service \
-                   plymouth-kexec.service \
-                   plymouth-log.service && \
 	mkdir -p /etc/systemd/system.conf.d && \
     		echo '[Manager]' > /etc/systemd/system.conf.d/container-overrides.conf && \
     		echo 'LogLevel=info' >> /etc/systemd/system.conf.d/container-overrides.conf && \

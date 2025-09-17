@@ -19,4 +19,4 @@ if [[ ! -f /sys/fs/cgroup/cgroup.controllers ]]; then
 	mount -t cgroup2 none /sys/fs/cgroup
 fi
 echo "Starting systemd..."
-exec /sbin/init
+exec /sbin/init --log-level=debug --log-target=syslog --show-status=true
