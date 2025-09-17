@@ -1113,31 +1113,48 @@ func (m *NerdctlManager) applyPortIsolation(ctx context.Context, host, container
 			"fi")
 	if err := enableVlanCmd.Run(); err != nil {
 		// Log but don't fail - bridge might not exist yet or already configured
-		slog.Debug("Could not enable VLAN filtering", "error", err)
+		slog.Error("Could not enable VLAN filtering", "error", err)
+	}
+
+	fallbackApplyAll := func() error {
+		isolateAllCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
+			"for dev in $(bridge link show 2>/dev/null | grep 'master nerdctl0' | cut -d: -f2 | cut -d@ -f1); do sudo bridge link set dev $dev isolated on flood off mcast_flood off bcast_flood off 2>/dev/null || true; done")
+		if err := isolateAllCmd.Run(); err != nil {
+			return fmt.Errorf("failed to apply port isolation to bridge ports: %w", err)
+		}
+		slog.Info("Applied port isolation to all bridge ports", "container", containerID)
+		return nil
 	}
 
 	// Get the container's PID to find its network namespace
 	pidCmd := m.execNerdctl(ctx, host, "inspect", containerID, "--format", "{{.State.Pid}}")
 	pidOutput, err := pidCmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to get container PID: %w", err)
+		// Could not get PID (possible with Kata); fall back to applying to all ports
+		slog.Error("Port isolation: PID unavailable, applying to all ports", "container", containerID, "error", err)
+		return fallbackApplyAll()
 	}
 	pid := strings.TrimSpace(string(pidOutput))
 	if pid == "" || pid == "0" {
-		return fmt.Errorf("container PID not available")
+		// Kata/VM-based runtimes may not expose a usable netns; apply to all ports
+		slog.Error("Port isolation: empty PID, applying to all ports", "container", containerID)
+		return fallbackApplyAll()
 	}
 
 	// Find the veth interface on the host side that corresponds to this container
-	// The veth pair will be in the container's network namespace, we need to find the host side
+	// The veth pair will be in the container's network namespace with a peer index
 	findVethCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
-		fmt.Sprintf("sudo nsenter -t %s -n ip link show eth0 2>/dev/null | grep -o 'eth0@if[0-9]*' | grep -o '[0-9]*' || true", pid))
+		fmt.Sprintf("nsenter -t %s -n ip link show eth0 2>/dev/null | grep -o 'eth0@if[0-9]*' | grep -o '[0-9]*' || true", pid))
 	vethIndexOutput, err := findVethCmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to find veth index: %w", err)
+		slog.Error("Port isolation: veth index probe failed, applying to all ports", "container", containerID, "error", err)
+		return fallbackApplyAll()
 	}
 	vethIndex := strings.TrimSpace(string(vethIndexOutput))
 	if vethIndex == "" {
-		return fmt.Errorf("could not find veth interface index")
+		// With Kata there is no veth peer in a container netns; apply to all ports
+		slog.Error("Port isolation: no veth index, applying to all ports", "container", containerID)
+		return fallbackApplyAll()
 	}
 
 	// Find the corresponding veth interface on the host
@@ -1145,16 +1162,18 @@ func (m *NerdctlManager) applyPortIsolation(ctx context.Context, host, container
 		fmt.Sprintf("ip link show | grep '^%s:' | cut -d: -f2 | cut -d@ -f1 | tr -d ' '", vethIndex))
 	hostVethOutput, err := findHostVethCmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to find host veth: %w", err)
+		slog.Error("Port isolation: host veth lookup failed, applying to all ports", "container", containerID, "error", err)
+		return fallbackApplyAll()
 	}
 	hostVeth := strings.TrimSpace(string(hostVethOutput))
 	if hostVeth == "" {
-		return fmt.Errorf("could not find host veth interface")
+		slog.Error("Port isolation: empty host veth, applying to all ports", "container", containerID)
+		return fallbackApplyAll()
 	}
 
 	// Apply port isolation settings to the veth interface
 	isolateCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
-		fmt.Sprintf("sudo bridge link set dev %s isolated on flood off mcast_flood off bcast_flood off 2>/dev/null || true", hostVeth))
+		fmt.Sprintf("bridge link set dev %s isolated on flood off mcast_flood off bcast_flood off 2>/dev/null || true", hostVeth))
 	if err := isolateCmd.Run(); err != nil {
 		return fmt.Errorf("failed to apply port isolation to %s: %w", hostVeth, err)
 	}
