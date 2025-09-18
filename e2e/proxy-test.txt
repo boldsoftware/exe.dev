@@ -1,0 +1,156 @@
+# Proxy Support Test
+
+## Instructions
+
+Test HTTP proxying capabilities for containers, including both private and public routing scenarios.
+This test verifies that containers can expose HTTP services and that the proxy authentication and routing works correctly.
+
+### Prerequisites
+
+- Registration must be completed (setup-and-basics.txt)
+- Container must be created and SSH access working (container-creation-ssh.txt)
+- exed and sshpiper must be running
+
+### Test Steps
+
+#### 1. Start HTTP Server in Container
+
+1. SSH into your container:
+   ```
+   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 machinename@localhost
+   ```
+
+2. Install Python if needed and start HTTP server on port 80 with sudo:
+   ```
+   sudo python3 -m http.server 80
+   ```
+   
+   Note: This should start a simple HTTP server serving the current directory on port 80.
+   The server output should show "Serving HTTP on 0.0.0.0 port 80".
+
+#### 2. Test Private Routing (Default)
+
+3. Open a new terminal/browser and try to access the container via HTTP:
+   ```
+   curl http://machinename.localhost:8080/
+   ```
+   or navigate to http://machinename.localhost:8080/ in a browser.
+   
+   Expected: You should be redirected through an authentication flow. 
+   This may involve redirections and session management.
+   After successful authentication, you should see the Python HTTP server's directory listing.
+
+4. Test that the container route is set to private by default:
+   ```
+   ssh -p 2222 localhost route machinename
+   ```
+   
+   Expected: Should show port 80 and share "private".
+
+#### 3. Test Making Route Public
+
+5. Make the route public using the route command:
+   ```
+   ssh -p 2222 localhost route machinename --port=80 --public
+   ```
+   
+   Expected: Should confirm the route is now public.
+
+6. Verify the route is now public:
+   ```
+   ssh -p 2222 localhost route machinename
+   ```
+   
+   Expected: Should show port 80 and share "public".
+
+7. Test public access (no authentication required):
+   ```
+   curl http://machinename.localhost:8080/
+   ```
+   or navigate to http://machinename.localhost:8080/ in a browser.
+   
+   Expected: You should directly access the Python HTTP server's directory listing 
+   without any authentication redirect. The response should be immediate.
+
+#### 4. Test Route Port Changes
+
+8. Stop the HTTP server in the container (Ctrl+C) and start it on port 8000:
+   ```
+   python3 -m http.server 8000
+   ```
+
+9. Update the route to use port 8000:
+   ```
+   ssh -p 2222 localhost route machinename --port=8000 --public
+   ```
+
+10. Test access with the new port configuration:
+    ```
+    curl http://machinename.localhost:8080/
+    ```
+    
+    Expected: Should still work, as the proxy routes from 8080 to the container's port 8000.
+
+#### 5. Test Route Back to Private
+
+11. Make the route private again:
+    ```
+    ssh -p 2222 localhost route machinename --port=8000 --private
+    ```
+
+12. Test that authentication is required again:
+    ```
+    curl -v http://machinename.localhost:8080/
+    ```
+    
+    Expected: Should get redirected to authentication (you'll see HTTP redirects in the verbose output).
+    Direct access should be denied without authentication.
+
+#### 6. Test Logout Functionality
+
+13. If you authenticated in step 3, test logout:
+    ```
+    curl http://machinename.localhost:8080/__exe.dev/logout
+    ```
+    
+    Expected: Should log you out from the specific subhost.
+
+14. Try accessing the container again:
+    ```
+    curl http://machinename.localhost:8080/
+    ```
+    
+    Expected: Should require authentication again.
+
+## Expected Results
+
+- Private routes require authentication and redirect through the auth flow
+- Public routes allow direct access without authentication
+- Route command correctly shows and updates port and share settings
+- Port changes are reflected in proxy behavior
+- Logout functionality works correctly
+- HTTP server responds with directory listing when accessed successfully
+
+## Validation Points
+
+- [ ] HTTP server starts successfully on port 80 in container
+- [ ] Private route requires authentication 
+- [ ] Route command shows correct current configuration
+- [ ] Public route allows direct access without auth
+- [ ] Route port changes work correctly
+- [ ] Private route re-enables authentication requirement
+- [ ] Logout functionality works
+- [ ] All HTTP responses are as expected (directory listing, auth redirects, etc.)
+
+## Troubleshooting
+
+### Common Issues
+- If port 80 requires sudo, ensure you're using `sudo python3 -m http.server 80`
+- If container isn't accessible, verify SSH connection works first
+- If proxy doesn't work, check that exed and sshpiper are running
+- Authentication redirects may vary based on current session state
+
+### Debug Commands
+- Check container status: `ssh -p 2222 localhost ps`
+- Check container processes: `ssh -p 2222 localhost ps -aux machinename`
+- View logs in tmux sessions for debugging

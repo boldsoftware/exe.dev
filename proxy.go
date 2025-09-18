@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,10 +24,70 @@ import (
 	"exe.dev/exedb"
 )
 
+// exe.dev provides a "magic" proxy for user's boxes. When a user requests https://boxname.exe.dev/,
+// we terminate TLS, and send that request on to the box using HTTP. This allows users to serve
+// web sites without dealing with, for example, TLS. The port we go to is determined by the "route" command.
+// We also provide some basic auth. By default, you have to have access to the box (which we do via
+// a redirect dance) to have access to the proxy, but we also let you mark it public.
+//
+// If you have multiple web servers, for certain ports, we also redirect those requests. So,
+// https://boxname.exe.dev:8080/ will go to port 8080 on the box. These non-default ports are always
+// private.
+//
+// TODO: We should also send X-Exedev-Userid and X-Exedev-Email headers to the proxy requests,
+// when those are available.
+
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches box.team.exe.dev or box.team.localhost
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
+
+	// Ensure the port in the Host header matches the listener's local port
+	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if !ok {
+		slog.Error("Failed to get local address from request context")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	_, localPortStr, err := net.SplitHostPort(conn.String())
+	if err != nil {
+		slog.Error("Failed to parse local address", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	localPort, err := strconv.Atoi(localPortStr)
+	if err != nil {
+		slog.Error("Failed to convert local port to integer", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	hostHeaderPort := 0
+	hostHeaderHost, hostPortStr, err := net.SplitHostPort(r.Host)
+	if err != nil {
+		// No port in Host header, that's fine if it's the default port which only
+		// happens in HTTPS land...
+		hostHeaderHost = r.Host
+		if s.httpsLn != nil && s.httpsLn.tcp != nil {
+			hostHeaderPort = s.httpsLn.tcp.Port
+		} else {
+			slog.Error("Host header didn't have port but we're not using default ports.")
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		hostHeaderPort, err = strconv.Atoi(hostPortStr)
+		if err != nil {
+			slog.Error("Failed to convert host port to integer", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if hostHeaderPort != localPort {
+		slog.Warn("Host header port mismatch", "host_port", hostHeaderPort, "local_port", localPort)
+		http.Error(w, "internal server error", http.StatusBadRequest)
+		return
+	}
+
 	// Handle magic URL for authentication
 	if r.URL.Path == "/__exe.dev/auth" {
 		s.handleMagicAuth(w, r)
@@ -38,16 +100,10 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract box and team from Host header
-	hostname := r.Host
-	// Remove port if present
-	if idx := strings.LastIndex(hostname, ":"); idx > 0 {
-		hostname = hostname[:idx]
-	}
-
-	// Parse hostname to extract box name
-	boxName, err := s.parseProxyHostname(hostname)
+	// Parse hostname to extract box name and optional explicit target port
+	boxName, err := s.parseProxyHostname(hostHeaderHost)
 	if err != nil {
+		slog.Warn("Failed to parse proxy hostname", "error", err, "host", hostHeaderHost)
 		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
 		return
 	}
@@ -61,7 +117,22 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Box not found", http.StatusNotFound)
 		return
 	}
-	route := box.GetRoute()
+
+	// Determine final route:
+	// - If no explicit targetPort (0), or it matches server default ports, or equals box's default, use box route
+	// - Otherwise create an ad-hoc private route for the requested port
+	var route exedb.Route
+	boxRoute := box.GetRoute()
+	targetPort := hostHeaderPort
+	if targetPort == 0 || targetPort == boxRoute.Port || s.isDefaultServerPort(targetPort) {
+		route = boxRoute
+	} else {
+		route = exedb.Route{Port: targetPort, Share: "private"}
+	}
+
+	slog.Debug("Proxy routing",
+		"box", boxName, "route_port", route.Port, "route_share", route.Share,
+		"target_port", targetPort, "host", r.Host, "path", r.URL.Path)
 
 	// Apply authentication based on route share setting
 	if route.Share == "private" {
@@ -122,10 +193,28 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 // isProxyRequest determines if a request should be handled by the proxy
 func (s *Server) isProxyRequest(host string) bool {
-	// Remove port if present
+	// Remove server port if present, but keep box:port format intact
 	hostname := host
 	if idx := strings.LastIndex(host, ":"); idx > 0 {
-		hostname = host[:idx]
+		// Only remove if this looks like a server port (has domain before :)
+		if strings.Contains(host[:idx], ".") {
+			hostname = host[:idx]
+		}
+	}
+
+	// Check for "box:port" format (no domain, just box:port)
+	if strings.Contains(hostname, ":") && !strings.Contains(hostname, ".") {
+		parts := strings.Split(hostname, ":")
+		if len(parts) == 2 {
+			// Validate that it's a reasonable box name and port
+			boxName := parts[0]
+			// Exclude main domain names
+			if boxName != "" && !strings.Contains(boxName, ".") && boxName != "localhost" && boxName != "exe.dev" {
+				if _, err := strconv.Atoi(parts[1]); err == nil {
+					return true
+				}
+			}
+		}
 	}
 
 	// Check for production pattern: *.exe.dev (but not just exe.dev)
@@ -204,6 +293,58 @@ func (s *Server) getMainDomainWithPort() string {
 		return "localhost"
 	}
 	return "exe.dev"
+}
+
+// getProxyPorts returns the list of ports that should be used for proxying
+func (s *Server) getProxyPorts() []int {
+	if s.devMode != "" {
+		// Check if test infrastructure provided specific ports
+		if testPorts := os.Getenv("TEST_PROXY_PORTS"); testPorts != "" {
+			var ports []int
+			for _, portStr := range strings.Split(testPorts, ",") {
+				portStr = strings.TrimSpace(portStr)
+				if portStr == "" {
+					continue
+				}
+				if port, err := strconv.Atoi(portStr); err == nil {
+					ports = append(ports, port)
+				}
+			}
+			if len(ports) > 0 {
+				return ports
+			}
+		}
+		// Dev mode fallback: ports 8001-8008
+		return []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008}
+	}
+	// Production mode: specific ports
+	// TODO: Should we listen to all ports 2000-10000?
+	return []int{
+		2000, 2080,
+		3000, 3080,
+		4000, 4080,
+		5000, 5080,
+		6000, 6080,
+		7000, 7080,
+		8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8080, 8088, 8888,
+		9000, 9080,
+	}
+}
+
+// isDefaultServerPort returns true if the port should use the box's default route
+// This includes port 443 (HTTPS) and the server's main HTTP port
+func (s *Server) isDefaultServerPort(port int) bool {
+	// Port 443 always uses default route
+	if port == 443 {
+		return true
+	}
+
+	// Check if it matches the server's main HTTP port
+	if s.httpLn != nil && s.httpLn.tcp != nil && s.httpLn.tcp.Port == port {
+		return true
+	}
+
+	return false
 }
 
 // redirectToAuth redirects the user to authentication
@@ -437,17 +578,18 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	// Connect to SSH server
 	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
 
+	start := time.Now()
+	var sshConn *ssh.Client
+	var dialErrs error
 	retries := []time.Duration{
 		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
 		1 * time.Second, 1 * time.Second,
 		2 * time.Second, 3 * time.Second,
 		0, // trailing 0 delay makes loop logic simpler
 	}
-	start := time.Now()
-	var sshConn *ssh.Client
-	var dialErrs error
 	for i, wait := range retries {
-		slog.Debug("proxy dialing ssh using config", "attempt", i, "user", sshConfig.User, "private_key", sshKey, "timeout", sshConfig.Timeout)
+		slog.Debug("proxy dialing ssh using config", "attempt", i,
+			"user", sshConfig.User, "targetPort", targetPort, "timeout", sshConfig.Timeout)
 		var err error
 		sshConn, err = ssh.Dial("tcp", sshAddr, sshConfig)
 		if err == nil {
@@ -470,11 +612,6 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 
 	// Connect directly to the target port inside the container via SSH
 	remoteAddr := fmt.Sprintf("127.0.0.1:%d", targetPort)
-	remoteConn, err := sshConn.Dial("tcp", remoteAddr)
-	if err != nil {
-		return fmt.Errorf("failed to connect to port %d in container: %w", targetPort, err)
-	}
-	defer remoteConn.Close()
 
 	// Create a custom transport that uses the SSH connection
 	transport := &sshTransport{
@@ -509,14 +646,31 @@ type sshTransport struct {
 // RoundTrip implements the http.RoundTripper interface
 func (t *sshTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Connect to the target through SSH
-	conn, err := t.sshConn.Dial("tcp", t.remoteAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to establish SSH connection: %w", err)
+	var conn net.Conn
+	var errs error
+	// TODO(philip): It's not obvious we should retry here. Should we hide a slow startup from
+	// a server?
+	retries := []time.Duration{0, 100 * time.Millisecond, 200 * time.Millisecond,
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0}
+	for i, wait := range retries {
+		var err error
+		slog.Debug("sshTransport dialing remote via ssh", "attempt", i, "remoteAddr", t.remoteAddr)
+		conn, err = t.sshConn.Dial("tcp", t.remoteAddr)
+		if err == nil {
+			break
+		}
+		errs = errors.Join(errs, err)
+		slog.Info("failed to connect to remote via ssh", "remoteaddr",
+			t.remoteAddr, "attempt", i, "error", err)
+		time.Sleep(wait)
+	}
+	if conn == nil {
+		return nil, fmt.Errorf("failed to connect via SSH: %w", errs)
 	}
 	defer conn.Close()
 
 	// Write the HTTP request to the connection
-	err = req.Write(conn)
+	err := req.Write(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write HTTP request: %w", err)
 	}

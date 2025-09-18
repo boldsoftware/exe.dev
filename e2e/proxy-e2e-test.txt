@@ -1,0 +1,196 @@
+# Proxy E2E Test
+
+## Instructions
+
+Test HTTP proxy functionality end-to-end by creating a container, starting an HTTP server with `sudo python -m http.server` on port 80, and testing both private and public proxy access.
+
+### Prerequisites
+
+- Registration must be completed (setup-and-basics.txt)
+- Container must be created and SSH access working (container-creation-ssh.txt)
+- exed and sshpiper must be running
+
+### Test Steps
+
+#### 1. Create Container and Setup HTTP Server
+
+1. Create a new container using a descriptive name:
+   ```
+   ssh -p 2222 localhost ps myproxybox
+   ```
+
+2. SSH into the container:
+   ```
+   ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 myproxybox@localhost
+   ```
+
+3. Install Python and start HTTP server on port 80 with sudo:
+   ```
+   sudo apt-get update && sudo apt-get install -y python3
+   sudo python3 -m http.server 80
+   ```
+   
+   **Expected**: Server should start and show "Serving HTTP on 0.0.0.0 port 80"
+
+#### 2. Test Default Private Routing
+
+4. In a new terminal, check the default route configuration:
+   ```
+   ssh -p 2222 localhost route myproxybox
+   ```
+   
+   **Expected**: Should show `port: 80, share: private`
+
+5. Test private access via HTTP proxy:
+   ```
+   curl -v http://myproxybox.localhost:8080/
+   ```
+   
+   **Expected**: Should get HTTP redirect (3xx status) to authentication URL containing "auth" or "login"
+
+6. Test with browser navigation to `http://myproxybox.localhost:8080/`
+   
+   **Expected**: Should redirect through authentication flow. After successful login, should show Python HTTP server directory listing.
+
+#### 3. Test Public Routing
+
+7. Make the route public:
+   ```
+   ssh -p 2222 localhost route myproxybox --port=80 --public
+   ```
+   
+   **Expected**: Should confirm route update
+
+8. Verify route is now public:
+   ```
+   ssh -p 2222 localhost route myproxybox
+   ```
+   
+   **Expected**: Should show `port: 80, share: public`
+
+9. Test public access (no authentication required):
+   ```
+   curl http://myproxybox.localhost:8080/
+   ```
+   
+   **Expected**: Should return 200 OK with Python HTTP server directory listing directly, no redirects
+
+10. Verify response contains expected content:
+    
+    **Expected**: Response should contain "Directory listing" or "Index of" or similar Python HTTP server output
+
+#### 4. Test Port Changes
+
+11. In the container SSH session, stop the current server (Ctrl+C) and start on port 8000:
+    ```
+    python3 -m http.server 8000
+    ```
+
+12. Update the route to use port 8000:
+    ```
+    ssh -p 2222 localhost route myproxybox --port=8000 --public
+    ```
+
+13. Test access with new port configuration:
+    ```
+    curl http://myproxybox.localhost:8080/
+    ```
+    
+    **Expected**: Should still work and return 200 OK with directory listing (proxy routes from port 8080 to container's port 8000)
+
+#### 5. Test Private Route Restoration
+
+14. Make the route private again:
+    ```
+    ssh -p 2222 localhost route myproxybox --port=8000 --private
+    ```
+
+15. Verify route is private:
+    ```
+    ssh -p 2222 localhost route myproxybox
+    ```
+    
+    **Expected**: Should show `port: 8000, share: private`
+
+16. Test that authentication is required again:
+    ```
+    curl -v http://myproxybox.localhost:8080/
+    ```
+    
+    **Expected**: Should get HTTP redirect (3xx status) to authentication, not direct access
+
+#### 6. Test Logout Functionality
+
+17. If authenticated in browser from step 6, test logout:
+    ```
+    curl http://myproxybox.localhost:8080/__exe.dev/logout
+    ```
+    
+    **Expected**: Should log out from the specific container subdomain
+
+18. Try accessing the container again after logout:
+    ```
+    curl http://myproxybox.localhost:8080/
+    ```
+    
+    **Expected**: Should require authentication again (redirect to auth)
+
+### Validation Checklist
+
+- [ ] Container created successfully
+- [ ] HTTP server starts on port 80 with sudo
+- [ ] Default route is private (port 80)
+- [ ] Private route redirects to authentication
+- [ ] Route can be made public successfully
+- [ ] Public route allows direct access without auth
+- [ ] Python HTTP server returns expected directory listing
+- [ ] Port changes work (8000) with route update
+- [ ] Route can be made private again
+- [ ] Private route re-enables authentication requirement
+- [ ] Logout functionality works correctly
+
+### Expected Results Summary
+
+1. **Private Routes**: Always redirect to authentication (3xx status codes)
+2. **Public Routes**: Direct access with 200 OK status
+3. **Port Changes**: Proxy correctly routes to updated container ports
+4. **Content**: Python HTTP server serves directory listings
+5. **Authentication**: Login/logout flows work correctly
+
+### Troubleshooting
+
+<hint>
+- If port 80 requires sudo: Must use `sudo python3 -m http.server 80`
+- If container not accessible: Verify with `ssh -p 2222 localhost ps` first
+- If proxy not working: Check exed/sshpiper are running in tmux
+- If auth redirects unexpected: May depend on current session state
+- If permission denied on port 80: Ubuntu containers require sudo for ports < 1024
+</hint>
+
+### Debug Commands
+
+```bash
+# Check container status
+ssh -p 2222 localhost ps
+
+# Check processes in container
+ssh -p 2222 localhost ps -aux myproxybox
+
+# Check if HTTP server is running in container
+ssh -p 2222 myproxybox@localhost 'sudo netstat -ln | grep :80'
+
+# Check exed logs
+tmux capture-pane -p -t testing:exed
+
+# Check sshpiper logs
+tmux capture-pane -p -t testing:sshpiper
+```
+
+### Test Automation Helper
+
+For faster testing, use the automated test script:
+```bash
+./e2e/hints/test-proxy.sh myproxybox
+```
+
+This script automates most of the above steps but manual verification of authentication flows may still be needed.

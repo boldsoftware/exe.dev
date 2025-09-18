@@ -241,6 +241,7 @@ type UserSession struct {
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
 	httpLn     *listener
+	proxyLns   []*listener // Additional listeners for proxy ports
 	httpsLn    *listener
 	sshLn      *listener
 	pluginLn   *listener
@@ -523,6 +524,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 
 	s.setupHTTPServer()
 	s.setupHTTPSServer()
+	s.setupProxyServers()
 	s.setupSSHServer()
 
 	// Prepare RovolFS on all hosts during server setup
@@ -663,6 +665,27 @@ func (s *Server) setupHTTPSServer() {
 				GetCertificate: s.certManager.GetCertificate,
 			},
 		}
+	}
+}
+
+// setupProxyServers configures additional listeners for proxy ports
+func (s *Server) setupProxyServers() {
+	proxyPorts := s.getProxyPorts()
+	s.proxyLns = make([]*listener, 0, len(proxyPorts))
+
+	// Create listeners for each proxy port
+	for j, port := range proxyPorts {
+		addr := fmt.Sprintf(":%d", port)
+		ln, err := startListener(fmt.Sprintf("proxy-%d", j), addr)
+		if err != nil {
+			slog.Warn("Failed to listen on proxy port, skipping", "port", port, "error", err)
+			continue
+		}
+
+		s.proxyLns = append(s.proxyLns, ln)
+
+		slog.Debug("proxy listener configured", "addr", ln.tcp.String(), "port", ln.tcp.Port)
+
 	}
 }
 
@@ -975,8 +998,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Wake up containers on HTTP request
-	slog.Debug("HTTP request", "method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr, "host", r.Host)
+	conn, _ := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+
+	localAddr := "unknown"
+	if conn != nil {
+		localAddr = conn.String()
+	}
+
+	slog.Debug("HTTP request",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"remote_addr", r.RemoteAddr,
+		"local_addr", localAddr,
+		"host", r.Host)
 
 	// Check if this should be handled by the proxy handler
 	isProxy := s.isProxyRequest(r.Host)
@@ -3025,6 +3059,18 @@ func (s *Server) Start() error {
 		} else if s.wildcardCertManager != nil {
 			slog.Info("Using DNS challenges for wildcard certificates - port 80 not required for ACME")
 		}
+	}
+
+	// Start proxy listeners with the same HTTP handler
+	for _, proxyLn := range s.proxyLns {
+		go func(ln *listener) {
+			slog.Info("Proxy listener starting", "addr", ln.tcp.String())
+			if err := s.httpServer.Serve(ln.ln); err != nil && err != http.ErrServerClosed {
+				slog.Error("Proxy listener startup failed", "error", err, "addr", ln)
+				cancel()
+			}
+		}(proxyLn)
+
 	}
 
 	// Start SSH server in a goroutine

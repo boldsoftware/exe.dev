@@ -1,0 +1,54 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a machine over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: TestHTTPProxyForAlternateProxyPorts@example.com
+Verification email sent to TestHTTPProxyForAlternateProxyPorts@example.com.
+
+Please click the link in your email to verify your account:
+http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+To create your first box, run:
+
+  new
+
+Or type `help` to see a list of commands.
+exe.dev ▶ whoami
+User Information:
+
+Email Address: TestHTTPProxyForAlternateProxyPorts@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports
+Creating e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports (medium) using image boldsoftware/exeuntu...
+Ready in ELAPSED_TIME! Access with:
+
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports@localhost
+http://e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports.localhost:EXED_HTTP_PORT
+
+exe.dev ▶ list
+Your boxes:
+  • e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+exe.dev ▶ exit
+Goodbye!

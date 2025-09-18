@@ -203,6 +203,7 @@ type exedInstance struct {
 	HTTPPort        int
 	PiperPluginPort int
 	CoverDir        string // directory for Go coverage artifacts (GOCOVERDIR)
+	ExtraPorts      []int // additional proxy ports
 }
 
 type piperdInstance struct {
@@ -378,7 +379,8 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	// TODO: build piperd concurrently with starting exed for faster startup
-	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port)
+	// Pass "0,0" to let the proxy listeners allocate their own port numbers
+	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port, []int{0, 0})
 	if err != nil {
 		return env, err
 	}
@@ -414,7 +416,8 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	defer os.Remove(tmpFile.Name())
 
 	// Start piperd process and capture its output
-	piperdCmd := exec.Command("go", "run", "-race", "./cmd/sshpiperd",
+	// TODO(phil/josh): Pass -race if we're running under -race?
+	piperdCmd := exec.Command("go", "run", "./cmd/sshpiperd",
 		"--log-format", "json",
 		"--log-level", "debug",
 		"--port", "0",
@@ -503,7 +506,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	return instance, nil
 }
 
-func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, error) {
+func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
 	dbPath, err := os.CreateTemp("", "exed_test_*.db")
@@ -523,7 +526,8 @@ func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, e
 		return nil, fmt.Errorf("failed to create coverage dir: %w", err)
 	}
 
-	buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
+	// TODO(phil/josh): Pass -race if we're running under -race?
+	buildCmd := exec.Command("go", "build", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("failed to build exed with coverage: %w\n%s", err, out)
 	}
@@ -538,12 +542,23 @@ func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, e
 		"-piperd-port="+fmt.Sprint(piperPort),
 		"-fake-email-server="+emailServerURL,
 	)
+	// Convert extra proxy ports to comma-delimited string
+	extraPortsStr := ""
+	if len(extraProxyPorts) > 0 {
+		portStrs := make([]string, len(extraProxyPorts))
+		for i, port := range extraProxyPorts {
+			portStrs[i] = fmt.Sprintf("%d", port)
+		}
+		extraPortsStr = strings.Join(portStrs, ",")
+	}
+
 	exedCmd.Env = append(
 		os.Environ(),
 		"LOG_FORMAT=json",
 		"LOG_LEVEL=debug",
 		"CTR_HOST="+ctrHost,
 		"GOCOVERDIR="+coverDir,
+		"TEST_PROXY_PORTS="+extraPortsStr,
 	)
 	cmdOut, err := exedCmd.StdoutPipe()
 	if err != nil {
@@ -597,12 +612,14 @@ func startExed(ctrHost string, emailServerPort, piperPort int) (*exedInstance, e
 		}
 	}()
 
-	timeout := 15 * time.Second
+	timeout := 30 * time.Second
 	if os.Getenv("CI") != "" {
 		timeout = 2 * time.Minute
 	}
 
 	var sshPort, httpPort, piperPluginPort int
+	var proxyPorts []int
+	expectedProxyPorts := len(extraProxyPorts)
 ProcessLogs:
 	for {
 		select {
@@ -614,6 +631,14 @@ ProcessLogs:
 				httpPort = ln.port
 			case "plugin":
 				piperPluginPort = ln.port
+			default:
+				// Check if it's a proxy listener (type: "proxy-XXXX")
+				if strings.HasPrefix(ln.typ, "proxy-") {
+					proxyPorts = append(proxyPorts, ln.port)
+					if *flagVerbosePorts {
+						slog.Info("captured proxy port", "type", ln.typ, "port", ln.port)
+					}
+				}
 			}
 		case <-startedC:
 			break ProcessLogs
@@ -627,6 +652,9 @@ ProcessLogs:
 	if sshPort == 0 || httpPort == 0 || piperPluginPort == 0 {
 		return nil, fmt.Errorf("failed to start all required ports")
 	}
+	if len(proxyPorts) != expectedProxyPorts {
+		return nil, fmt.Errorf("expected %d proxy ports, got %d", expectedProxyPorts, len(proxyPorts))
+	}
 
 	instance := &exedInstance{
 		DBPath:          dbPath.Name(),
@@ -635,6 +663,7 @@ ProcessLogs:
 		HTTPPort:        httpPort,
 		PiperPluginPort: piperPluginPort,
 		CoverDir:        coverDir,
+		ExtraPorts:      proxyPorts,
 	}
 
 	slog.Info("started exed", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
@@ -1131,6 +1160,10 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 	pty.want(email)
 	pty.want(publicKey)
 	pty.wantPrompt()
+
+	t.Logf("INFO: exed is running on http://localhost:%d 'your' e-mail is %s", Env.exed.HTTPPort, email)
+	t.Logf("INFO: connect to this exed/sshpiper with:\nssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %d -i %s localhost\n",
+		Env.piperd.SSHPort, keyFile)
 
 	return pty, cookies, keyFile, email
 }

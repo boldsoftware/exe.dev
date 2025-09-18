@@ -181,8 +181,7 @@ func TestHandleProxyRequest(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		req := httptest.NewRequest(test.method, test.path, nil)
-		req.Host = test.hostname
+		req := createTestRequestForServer(test.method, test.path, test.hostname, server)
 
 		w := httptest.NewRecorder()
 		server.handleProxyRequest(w, req)
@@ -374,8 +373,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	}
 
 	// Test 2: Test proxy request with private route (should redirect to auth)
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = boxName + ".exe.dev"
+	req := createTestRequestForServer("GET", "/", boxName+".exe.dev", server)
 	w := httptest.NewRecorder()
 	server.handleProxyRequest(w, req)
 
@@ -423,8 +421,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	}
 
 	// Test 5: Test proxy request with public route (should fail since no container is running)
-	req2 := httptest.NewRequest("GET", "/api/test", nil)
-	req2.Host = boxName + ".exe.dev"
+	req2 := createTestRequestForServer("GET", "/api/test", boxName+".exe.dev", server)
 	w2 := httptest.NewRecorder()
 	server.handleProxyRequest(w2, req2)
 

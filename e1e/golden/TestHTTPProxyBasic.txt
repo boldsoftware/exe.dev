@@ -58,17 +58,17 @@ Goodbye!
 ● ssh localhost
 ●
 
-route e1e-BOX_TIMESTAMP-testhttpproxybasic --port=80 --public
+route e1e-BOX_TIMESTAMP-testhttpproxybasic --port=8080 --public
 
-exe.dev ▶ route e1e-BOX_TIMESTAMP-testhttpproxybasic --port=80 --public
+exe.dev ▶ route e1e-BOX_TIMESTAMP-testhttpproxybasic --port=8080 --public
 ✓ Route updated successfully
-  Port: 80
+  Port: 8080
   Share: public
 
 exe.dev ▶ route e1e-BOX_TIMESTAMP-testhttpproxybasic
 
 Route configuration for box 'e1e-BOX_TIMESTAMP-testhttpproxybasic':
-  Port: 80
+  Port: 8080
   Share: public
 
 exe.dev ▶ exit
