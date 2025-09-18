@@ -82,7 +82,9 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		plymouth-reboot.service \
 		plymouth-poweroff.service \
 		plymouth-kexec.service \
-		plymouth-log.service && \
+		   apt-daily-upgrade.timer \
+		   apt-daily.timer \
+		plymouth-log.service > /var/log/systemd-mask-out 2>&1 && \
 	systemctl disable systemd-logind.service getty.target \
                    console-getty.service \
 		   atop.service \
@@ -94,8 +96,6 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		    udisks2.service \
 		   ufw.service \
 		   lvm2-lvmpolld.socket \
-		   apt-daily-upgrade.timer \
-		   apt-daily.timer \
                    systemd-ask-password-wall.service \
                    systemd-ask-password-console.service \
                    systemd-machine-id-commit.service \
