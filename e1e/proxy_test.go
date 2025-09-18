@@ -320,9 +320,11 @@ func TestHTTPProxyBasic(t *testing.T) {
 	{
 		t.Log("Testing public route")
 		// The HTTP server takes a while to start up, so we retry a few times.
-		sleepTimes := []time.Duration{0, 100 * time.Millisecond,
+		sleepTimes := []time.Duration{
+			0, 100 * time.Millisecond,
 			200 * time.Millisecond, 300 * time.Millisecond, 500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
-			8 * time.Second, 16 * time.Second}
+			8 * time.Second, 16 * time.Second,
+		}
 		var resp *http.Response
 		var err error
 		var body []byte

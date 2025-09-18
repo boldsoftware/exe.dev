@@ -203,7 +203,7 @@ type exedInstance struct {
 	HTTPPort        int
 	PiperPluginPort int
 	CoverDir        string // directory for Go coverage artifacts (GOCOVERDIR)
-	ExtraPorts      []int // additional proxy ports
+	ExtraPorts      []int  // additional proxy ports
 }
 
 type piperdInstance struct {

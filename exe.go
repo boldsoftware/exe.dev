@@ -3070,7 +3070,6 @@ func (s *Server) Start() error {
 				cancel()
 			}
 		}(proxyLn)
-
 	}
 
 	// Start SSH server in a goroutine

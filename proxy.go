@@ -650,8 +650,10 @@ func (t *sshTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var errs error
 	// TODO(philip): It's not obvious we should retry here. Should we hide a slow startup from
 	// a server?
-	retries := []time.Duration{0, 100 * time.Millisecond, 200 * time.Millisecond,
-		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0}
+	retries := []time.Duration{
+		0, 100 * time.Millisecond, 200 * time.Millisecond,
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0,
+	}
 	for i, wait := range retries {
 		var err error
 		slog.Debug("sshTransport dialing remote via ssh", "attempt", i, "remoteAddr", t.remoteAddr)
