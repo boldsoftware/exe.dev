@@ -35,7 +35,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 	mandb -c && \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y \
 		ca-certificates wget \
-		git jq sqlite3 curl vim lsof iproute2 less \
+		git jq sqlite3 curl vim lsof iproute2 less nginx \
 		make python3-pip python-is-python3 tree net-tools file build-essential \
 		pipx psmisc bsdmainutils sudo socat \
 		openssh-server openssh-client \
