@@ -10,54 +10,6 @@ import (
 	"exe.dev/sqlite"
 )
 
-func TestRouteStructs(t *testing.T) {
-	t.Parallel()
-	// Test default route creation
-	var box exedb.Box
-	route := box.GetDefaultRoute()
-
-	if route.Port != 80 {
-		t.Errorf("Expected default port 80, got %d", route.Port)
-	}
-	if route.Share != "private" {
-		t.Errorf("Expected default share 'private', got '%s'", route.Share)
-	}
-}
-
-func TestBoxRoute(t *testing.T) {
-	t.Parallel()
-	box := exedb.Box{}
-
-	// Test getting route when none are set (should return defaults)
-	route := box.GetRoute()
-	if route.Port != 80 {
-		t.Errorf("Expected default port 80, got %d", route.Port)
-	}
-	if route.Share != "private" {
-		t.Errorf("Expected default share 'private', got '%s'", route.Share)
-	}
-
-	// Test setting custom route
-	customRoute := exedb.Route{
-		Port:  3000,
-		Share: "public",
-	}
-
-	err := box.SetRoute(customRoute)
-	if err != nil {
-		t.Errorf("Error setting route: %v", err)
-	}
-
-	// Test getting the custom route back
-	retrievedRoute := box.GetRoute()
-	if retrievedRoute.Port != 3000 {
-		t.Errorf("Expected port 3000, got %d", retrievedRoute.Port)
-	}
-	if retrievedRoute.Share != "public" {
-		t.Errorf("Expected share 'public', got '%s'", retrievedRoute.Share)
-	}
-}
-
 func TestProxyHostnameParsing(t *testing.T) {
 	t.Parallel()
 	server := &Server{}

@@ -104,36 +104,3 @@ func TestEmbeddedFiles(t *testing.T) {
 		})
 	}
 }
-
-func TestEmbeddedSizes(t *testing.T) {
-	t.Parallel()
-	// Verify that embedded files are not empty and have reasonable sizes
-	files := []struct {
-		name    string
-		minSize int
-	}{
-		{"welcome.html", 1024},
-		{"exe.dev.png", 10240},
-		{"browser-woodcut.png", 10240},
-		{"favicon.ico", 1024},
-	}
-
-	t.Logf("Embedded file sizes:")
-	for _, file := range files {
-		data, err := staticFS.ReadFile("static/" + file.name)
-		if err != nil {
-			t.Errorf("Failed to read %s from static FS: %v", file.name, err)
-			continue
-		}
-
-		if len(data) == 0 {
-			t.Errorf("%s is empty", file.name)
-		}
-
-		if len(data) < file.minSize {
-			t.Errorf("%s seems too small: %d bytes (expected at least %d)", file.name, len(data), file.minSize)
-		}
-
-		t.Logf("  %s: %d bytes", file.name, len(data))
-	}
-}

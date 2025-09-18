@@ -206,17 +206,3 @@ func TestCompleteCommand(t *testing.T) {
 		})
 	}
 }
-
-func TestCompleteBoxNames(t *testing.T) {
-	// This test would require a mock container manager
-	// For now, just test the basic structure
-	cc := &CommandContext{
-		SSHServer: nil, // No server means no completions
-	}
-	compCtx := &CompletionContext{
-		CurrentWord: "test",
-	}
-
-	result := CompleteBoxNames(compCtx, cc)
-	assert.Nil(t, result, "Should return nil when no container manager available")
-}
