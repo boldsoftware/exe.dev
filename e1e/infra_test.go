@@ -78,6 +78,8 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 -vemail   print email server logs
 -vpty     print pty (ssh) logs
 -vslog    print e1e test binary slogs
+
+Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProxyBasic ./e1e/... -vexed
 ════════
 
 `)
