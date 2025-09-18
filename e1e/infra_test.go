@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"os/exec"
@@ -1008,7 +1009,7 @@ func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 	return pty
 }
 
-func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) {
+func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie {
 	verifyURL, err := extractVerificationToken(emailMsg.Body)
 	if err != nil {
 		t.Fatalf("failed to extract verification URL: %v", err)
@@ -1038,10 +1039,17 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) {
 	token := matches[1]
 	Env.addCanonicalization(token, "EMAIL_VERIFICATION_TOKEN")
 
+	// Create HTTP client with cookie jar to capture authentication cookies
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create cookie jar: %v", err)
+	}
+	client := &http.Client{Jar: jar}
+
 	// Submit the form data as POST request (simulating clicking the confirm button)
 	formData := url.Values{"token": {token}}
 	postURL := fmt.Sprintf("http://localhost:%d/verify-email", Env.exed.HTTPPort)
-	postResp, err := http.PostForm(postURL, formData)
+	postResp, err := client.PostForm(postURL, formData)
 	if err != nil {
 		t.Fatalf("failed to submit verification form: %v", err)
 	}
@@ -1050,6 +1058,12 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) {
 		t.Errorf("email verification form submission returned status: %d, body: %s", postResp.StatusCode, string(body))
 	}
 	postResp.Body.Close()
+
+	// Extract cookies from the response
+	parsedURL, _ := url.Parse(postURL)
+	cookies := jar.Cookies(parsedURL)
+
+	return cookies
 }
 
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup
@@ -1064,9 +1078,10 @@ func boxName(t *testing.T) string {
 }
 
 // registerForExeDev is a convenience command to register for an exe.dev account.
-// It returns the open pty after registration, the account email, and the private keyFile.
+// It returns the open pty after registration, authentication cookies for HTTP access,
+// the private keyFile, and the account email.
 // It is the caller's responsibility to call pty.disconnect() when done.
-func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
+func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
 	keyFile, publicKey := genSSHKey(t)
 	pty = sshToExeDev(t, keyFile)
 	pty.want(banner)
@@ -1077,7 +1092,7 @@ func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 
 	emailMsg := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg)
+	cookies = clickVerifyLinkInEmail(t, emailMsg)
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
@@ -1091,7 +1106,116 @@ func registerForExeDev(t *testing.T) (pty *expectPty, keyFile, email string) {
 	pty.want(publicKey)
 	pty.wantPrompt()
 
-	return pty, keyFile, email
+	return pty, cookies, keyFile, email
+}
+
+// getProxyAuthCookies gets proxy-specific authentication cookies for accessing a boxName subdomain.
+// This follows the auth redirect flow to get exe-proxy-auth cookies.
+func getProxyAuthCookies(t *testing.T, boxName string, baseCookies []*http.Cookie) []*http.Cookie {
+	t.Helper()
+
+	// Create HTTP client with the base auth cookies
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create cookie jar: %v", err)
+	}
+	client := &http.Client{
+		Jar: jar,
+		// Don't follow redirects automatically so we can capture cookies
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Set base cookies for the main domain
+	mainURL := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+	parsedMainURL, _ := url.Parse(mainURL)
+	jar.SetCookies(parsedMainURL, baseCookies)
+
+	// Follow the auth redirect flow for the subdomain
+	subdomainHost := fmt.Sprintf("%s.localhost", boxName)
+	authURL := fmt.Sprintf("%s/auth?redirect=%%2F&return_host=%s", mainURL, url.QueryEscape(subdomainHost))
+
+	// Make request to auth endpoint
+	resp, err := client.Get(authURL)
+	if err != nil {
+		t.Fatalf("failed to access auth endpoint: %v", err)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	// Handle redirect if needed
+	if resp.StatusCode == http.StatusTemporaryRedirect {
+		location := resp.Header.Get("Location")
+		// Make the location absolute if it's relative
+		if !strings.HasPrefix(location, "http") {
+			location = mainURL + location
+		}
+
+		resp, err = client.Get(location)
+		if err != nil {
+			t.Fatalf("failed to follow redirect: %v", err)
+		}
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+	}
+
+	// Extract the confirm URL from the HTML response
+	confirmRe := regexp.MustCompile(`href="(/auth/confirm\?[^"]+action=confirm)"`)
+	matches := confirmRe.FindStringSubmatch(string(body))
+	if len(matches) < 2 {
+		t.Fatalf("failed to extract confirm URL from auth response: %s", string(body))
+	}
+	confirmPath := matches[1]
+	// Decode HTML entities
+	confirmPath = strings.ReplaceAll(confirmPath, "&amp;", "&")
+	confirmURL := fmt.Sprintf("%s%s", mainURL, confirmPath)
+
+	// Follow the confirm link to complete authentication
+	confirmResp, err := client.Get(confirmURL)
+	if err != nil {
+		t.Fatalf("failed to confirm auth: %v", err)
+	}
+
+	// Handle final redirect if it happens
+	if confirmResp.StatusCode == http.StatusTemporaryRedirect {
+		_ = confirmResp.Header.Get("Location")
+		// Don't follow this redirect - it might be to the subdomain which we can't resolve
+	}
+
+	confirmResp.Body.Close()
+
+	// Extract cookies for both main domain and subdomain
+	mainParsedURL, _ := url.Parse(mainURL)
+	mainCookies := jar.Cookies(mainParsedURL)
+
+	subdomainURL := fmt.Sprintf("http://%s", subdomainHost)
+	parsedSubdomainURL, _ := url.Parse(subdomainURL)
+	proxyCookies := jar.Cookies(parsedSubdomainURL)
+
+	// If no proxy-specific cookies, create proxy cookies from main cookies
+	if len(proxyCookies) == 0 {
+
+		// Create proxy-auth cookies based on the main exe-auth cookie
+		var proxyAuthCookies []*http.Cookie
+		for _, cookie := range mainCookies {
+			if cookie.Name == "exe-auth" {
+				// Create an exe-proxy-auth cookie for the subdomain
+				proxyAuthCookie := &http.Cookie{
+					Name:  "exe-proxy-auth",
+					Value: cookie.Value,
+					Path:  "/",
+				}
+				proxyAuthCookies = append(proxyAuthCookies, proxyAuthCookie)
+
+			}
+		}
+		return proxyAuthCookies
+	}
+
+	return proxyCookies
 }
 
 // newBox requests a new box from the open repl pty.

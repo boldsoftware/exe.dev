@@ -14,7 +14,7 @@ func TestSCPWorks(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	pty, keyFile, _ := registerForExeDev(t)
+	pty, _, keyFile, _ := registerForExeDev(t)
 	boxName := newBox(t, pty)
 
 	// scp a file to it. use our private key. why not.

@@ -14,7 +14,7 @@ func TestSSHWorks(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	pty, keyFile, _ := registerForExeDev(t)
+	pty, _, keyFile, _ := registerForExeDev(t)
 
 	// Create a box.
 	boxName := newBox(t, pty)
@@ -42,7 +42,7 @@ func TestDuplicateBoxCreationFails(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	pty, _, _ := registerForExeDev(t)
+	pty, _, _, _ := registerForExeDev(t)
 
 	// Create a box.
 	boxName := boxName(t)
@@ -61,7 +61,7 @@ func TestBadBoxName(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	pty, _, _ := registerForExeDev(t)
+	pty, _, _, _ := registerForExeDev(t)
 
 	// Create a box.
 	boxName := "ThisIsNotAValidBoxName!"
