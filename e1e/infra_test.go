@@ -35,6 +35,7 @@ import (
 	"exe.dev/vouch"
 	"github.com/Netflix/go-expect"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/creack/pty"
 	ansiterm "github.com/veops/go-ansiterm"
 	"golang.org/x/crypto/ssh"
 )
@@ -741,6 +742,7 @@ func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
 	if err := cmd.Start(); err != nil {
 		p.t.Fatalf("failed to start %v: %v", cmd, err)
 	}
+	pty.Setsize(p.console.Tty(), &pty.Winsize{Rows: 40, Cols: 80})
 	// sshCmd now owns the PTY; close our reference.
 	// Without this, linux hangs on disconnect waiting for EOF.
 	p.console.Tty().Close()

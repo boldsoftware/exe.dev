@@ -320,6 +320,19 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, u
 	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
 	ctx := s.Context()
 
+	// Set the terminal size to the pty size, and keep it updated whenever the pty changes.
+	_, winSizeCh, _ := s.Pty()
+	go func() {
+		for {
+			select {
+			case w := <-winSizeCh:
+				terminal.SetSize(w.Width, w.Height)
+			case <-s.Context().Done():
+				return
+			}
+		}
+	}()
+
 	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
 	if err != nil || alloc == nil {
 		fmt.Fprint(s, "Error: User not associated with any allocation\r\n")
