@@ -40,7 +40,8 @@ Email Address: TestHTTPProxyForAlternateProxyPorts@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 
-exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports --command="/b
+in/bash"
 Creating e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:
 

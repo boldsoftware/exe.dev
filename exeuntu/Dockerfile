@@ -57,6 +57,23 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		/etc/systemd/system/multi-user.target.wants/ubuntu-advantage.service && \
 	systemctl mask getty.target \
 		systemd-random-seed.service \
+		iscsid.socket \
+		dm-event.socket \
+		man-db.timer \
+		update-notifier-download.timer \
+		update-notifier-motd.timer \
+		atop-rotate.timer \
+		dpkg-db-backup.timer \
+		e2scrub_all.timer \
+		etc-resolv.conf.mount \
+		etc-hosts.mount \
+		etc-hostname.mount \
+		-.mount \
+		systemd-resolved.service \
+		systemd-remount-fs.service \
+		systemd-sysusers.service \
+		systemd-update-done.service \
+		systemd-update-utmp.service \
 		systemd-journal-catalog-update.service \
 		modprobe@.service \
 		systemd-modules-load.service \
@@ -86,6 +103,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		   apt-daily.timer \
 		plymouth-log.service > /var/log/systemd-mask-out 2>&1 && \
 	systemctl disable systemd-logind.service getty.target \
+		nginx.service \
                    console-getty.service \
 		   atop.service \
                    getty@.service \
