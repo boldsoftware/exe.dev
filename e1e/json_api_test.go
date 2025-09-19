@@ -6,19 +6,21 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
 	"exe.dev/vouch"
 )
 
-func TestJSONAPI(t *testing.T) {
+// TestExeDevAPI tests a variety of exe.dev commands/repls.
+func TestExeDevAPI(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-	pty.disconnect()
+	defer pty.disconnect()
 
 	whoOut, err := runExeDevSSHCommand(t, keyFile, "whoami", "--json")
 	if err != nil {
@@ -71,6 +73,12 @@ func TestJSONAPI(t *testing.T) {
 	if !strings.HasPrefix(nbo.HTTPS, "http") {
 		t.Errorf("expected https_url to start with 'http', got %q", nbo.HTTPS)
 	}
+
+	// Try to create a duplicate box using the repl.
+	Env.addCanonicalization(nbo.BoxName, "BOX_NAME")
+	pty.sendLine("new --name=" + nbo.BoxName)
+	pty.wantRe("Box name .*" + regexp.QuoteMeta(nbo.BoxName) + ".* is not available")
+	pty.wantPrompt()
 
 	listOut, err := runExeDevSSHCommand(t, keyFile, "list", "--json")
 	if err != nil {

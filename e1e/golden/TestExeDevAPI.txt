@@ -9,8 +9,8 @@
 EXE.DEV: get a machine over ssh
 To sign up, verify your email and set up billing.
 
-Please enter your email address: TestJSONAPI@example.com
-Verification email sent to TestJSONAPI@example.com.
+Please enter your email address: TestExeDevAPI@example.com
+Verification email sent to TestExeDevAPI@example.com.
 
 Please click the link in your email to verify your account:
 http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
@@ -36,9 +36,11 @@ Or type `help` to see a list of commands.
 exe.dev ▶ whoami
 User Information:
 
-Email Address: TestJSONAPI@example.com
+Email Address: TestExeDevAPI@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 
+exe.dev ▶ new --name=BOX_NAME
+Box name "BOX_NAME" is not available
 exe.dev ▶ exit
 Goodbye!
