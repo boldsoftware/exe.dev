@@ -23,12 +23,10 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 	t.Parallel()
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
-	box := newBox(t, pty, BoxOpts{})
+	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
 	pty.disconnect()
 
 	altPort := Env.exed.ExtraPorts[0]
-
-	time.Sleep(10 * time.Second)
 
 	// You might want to use "busybox httpd" but Go's http client doesn't like it (gets an EOF),
 	// so don't do that.
