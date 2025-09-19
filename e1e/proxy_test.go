@@ -23,7 +23,7 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 	t.Parallel()
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
-	box := newBox(t, pty)
+	box := newBox(t, pty, BoxOpts{})
 	pty.disconnect()
 
 	altPort := Env.exed.ExtraPorts[0]
@@ -32,7 +32,7 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 
 	// You might want to use "busybox httpd" but Go's http client doesn't like it (gets an EOF),
 	// so don't do that.
-	p := boxSSHCommand(t, box, keyFile, "sudo", "strace", "-f", "-r", "-o", "/tmp/strace.out", "python3", "-m", "http.server", strconv.Itoa(altPort))
+	p := boxSSHCommand(t, box, keyFile, "python3", "-m", "http.server", strconv.Itoa(altPort))
 	if err := p.Start(); err != nil {
 		t.Fatalf("failed to start python HTTP server: %v\n", err)
 	}
@@ -54,14 +54,12 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 		cookies:  nil,
 		httpCode: http.StatusTemporaryRedirect,
 	})
-	// TODO(philip). This SHOULD pass and SOMETIMES passes, but we don't
-	// know why it often fails unless you sleep a long time.
-	// proxyAssert(t, box, proxyExpectation{
-	// 	name:     "altport with auth succeeds",
-	// 	httpPort: altPort,
-	// 	cookies:  cookies,
-	// 	httpCode: http.StatusOK,
-	// })
+	proxyAssert(t, box, proxyExpectation{
+		name:     "altport with auth succeeds",
+		httpPort: altPort,
+		cookies:  cookies,
+		httpCode: http.StatusOK,
+	})
 
 	proxyAssert(t, box, proxyExpectation{
 		name:     "other altport with auth fails",
@@ -320,11 +318,9 @@ func TestHTTPProxyBasic(t *testing.T) {
 	{
 		t.Log("Testing public route")
 		// The HTTP server takes a while to start up, so we retry a few times.
-		sleepTimes := []time.Duration{
-			0, 100 * time.Millisecond,
+		sleepTimes := []time.Duration{0, 100 * time.Millisecond,
 			200 * time.Millisecond, 300 * time.Millisecond, 500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second,
-			8 * time.Second, 16 * time.Second,
-		}
+			8 * time.Second, 16 * time.Second}
 		var resp *http.Response
 		var err error
 		var body []byte
