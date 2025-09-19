@@ -17,7 +17,18 @@ func (m *MockService) GetBillingInfo(ctx context.Context, allocID string) (*Bill
 	return m.BillingInfo, nil
 }
 
+func (m *MockService) GetBillingInfoByAccount(ctx context.Context, billingAccountID string) (*BillingInfo, error) {
+	if m.Error != nil {
+		return nil, m.Error
+	}
+	return m.BillingInfo, nil
+}
+
 func (m *MockService) SetupBilling(allocID, billingEmail, cardNumber, expMonth, expYear, cvc string) error {
+	return m.Error
+}
+
+func (m *MockService) SetupBillingAccount(billingAccountID, name, billingEmail, cardNumber, expMonth, expYear, cvc string) error {
 	return m.Error
 }
 
@@ -29,7 +40,15 @@ func (m *MockService) UpdateBillingEmail(allocID, customerID, newEmail string) e
 	return m.Error
 }
 
-func (m *MockService) DeleteBillingInfo(allocID string) error {
+func (m *MockService) UpdateBillingAccountEmail(billingAccountID, customerID, newEmail string) error {
+	return m.Error
+}
+
+func (m *MockService) LinkAllocToBillingAccount(ctx context.Context, allocID, billingAccountID string) error {
+	return m.Error
+}
+
+func (m *MockService) DeleteBillingAccount(billingAccountID string) error {
 	return m.Error
 }
 

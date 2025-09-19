@@ -19,47 +19,19 @@ func TestUserDashboard(t *testing.T) {
 
 	// Create a test user
 	email := "test@example.com"
-	allocID := "test-alloc"
+	publicKey := "ssh-rsa dummy-test-key test@example.com"
 
-	// Insert test user
-	userID, err := generateUserID()
+	if err := server.createUser(t.Context(), publicKey, email); err != nil {
+		t.Fatal(err)
+	}
+	user, err := server.getUserByPublicKey(t.Context(), publicKey)
 	if err != nil {
-		t.Fatalf("Failed to generate user ID: %v", err)
+		t.Fatalf("Failed to get user by public key: %v", err)
 	}
 
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO users (user_id, email)
-			VALUES (?, ?)
-		`, userID, email)
-		return err
-	})
+	alloc, err := server.getUserAlloc(t.Context(), user.UserID)
 	if err != nil {
-		t.Fatalf("Failed to insert test user: %v", err)
-	}
-
-	// Create SSH key for user
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO ssh_keys (user_id, public_key)
-			VALUES (?, ?)
-		`, userID, "ssh-rsa dummy-test-key test@example.com")
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert SSH key: %v", err)
-	}
-
-	// Create alloc for the user
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`
-			INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at)
-			VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'))
-		`, allocID, userID)
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to insert test alloc: %v", err)
+		t.Fatalf("Failed to get alloc by user ID: %v", err)
 	}
 
 	// Create a test box
@@ -68,7 +40,7 @@ func TestUserDashboard(t *testing.T) {
 		_, err := tx.Exec(`
 			INSERT INTO boxes (alloc_id, name, status, image, created_by_user_id)
 			VALUES (?, ?, ?, ?, ?)
-		`, allocID, boxName, "stopped", "ubuntu:22.04", userID)
+		`, alloc.AllocID, boxName, "stopped", "ubuntu:22.04", user.UserID)
 		return err
 	})
 	if err != nil {
@@ -78,7 +50,7 @@ func TestUserDashboard(t *testing.T) {
 	// Create test server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Call handleUserDashboard directly with userID
-		server.handleUserDashboard(w, r, userID)
+		server.handleUserDashboard(w, r, user.UserID)
 	}))
 	defer ts.Close()
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"exe.dev/exedb"
@@ -42,10 +43,18 @@ func (s *Server) recordUserEventBestEffort(ctx context.Context, userID, event st
 // userEventCount returns the number of times userID has experienced event.
 func (s *Server) userEventCount(ctx context.Context, userID, event string) (int, error) {
 	count, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-		return queries.GetUserEventCount(ctx, exedb.GetUserEventCountParams{
+		ret, err := queries.GetUserEventCount(ctx, exedb.GetUserEventCountParams{
 			UserID: userID,
 			Event:  event,
 		})
+		if err != nil {
+			return 0, err
+		}
+		intRet, ok := ret.(int64)
+		if ok {
+			return intRet, nil
+		}
+		return 0, fmt.Errorf("could not convert result to int64")
 	})
 	if err != nil && errors.Is(err, sql.ErrNoRows) {
 		return 0, nil // Event hasn't occurred yet

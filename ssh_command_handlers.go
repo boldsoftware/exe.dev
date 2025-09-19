@@ -570,7 +570,7 @@ func (ss *SSHServer) handleAllocCommand(ctx context.Context, cc *CommandContext)
 }
 
 func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfo(ctx, cc.Alloc.AllocID)
+	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		cc.WriteInternalError("billing", err)
 		return nil
@@ -604,7 +604,7 @@ func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContex
 }
 
 func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfo(ctx, cc.Alloc.AllocID)
+	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
 		return err
@@ -613,7 +613,7 @@ func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *Command
 }
 
 func (ss *SSHServer) handleBillingUpdateEmailCommand(ctx context.Context, cc *CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfo(ctx, cc.Alloc.AllocID)
+	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
 		return err
@@ -794,7 +794,7 @@ func (ss *SSHServer) updateBillingEmail(cc *CommandContext, billingInfo *billing
 	cc.Writeln("Updating billing email...")
 
 	// Update billing email using billing service
-	err = ss.billing.UpdateBillingEmail(billingInfo.AllocID, billingInfo.StripeCustomerID, newEmail)
+	err = ss.billing.UpdateBillingAccountEmail(billingInfo.BillingAccountID, billingInfo.StripeCustomerID, newEmail)
 	if err != nil {
 		cc.Writeln("\033[1;31mError updating billing email: %v\033[0m", err)
 		return nil
@@ -834,7 +834,7 @@ func (ss *SSHServer) deleteBillingInfo(cc *CommandContext, billingInfo *billing.
 	cc.Writeln("Deleting billing information...")
 
 	// Delete billing info using billing service
-	err = ss.billing.DeleteBillingInfo(billingInfo.AllocID)
+	err = ss.billing.DeleteBillingAccount(billingInfo.BillingAccountID)
 	if err != nil {
 		cc.Writeln("\033[1;31mError deleting billing info: %v\033[0m", err)
 		return nil

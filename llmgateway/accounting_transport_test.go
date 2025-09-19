@@ -25,6 +25,11 @@ type mockAccountant struct {
 	usageCredits []accounting.UsageCredit
 }
 
+// BillingAccountForBox implements accounting.Accountant.
+func (m *mockAccountant) BillingAccountForBox(ctx context.Context, boxName string) (string, error) {
+	panic("unimplemented")
+}
+
 // ApplyNewUserCredits implements accountant.
 func (m *mockAccountant) ApplyNewUserCredits(ctx context.Context, billingAccountID string) any {
 	panic("unimplemented")

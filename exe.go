@@ -35,6 +35,7 @@ import (
 
 	mathrand "math/rand"
 
+	"exe.dev/accounting"
 	"exe.dev/billing"
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
@@ -166,9 +167,10 @@ func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
 
 // User represents an individual user
 type User struct {
-	UserID    string
-	Email     string
-	CreatedAt time.Time
+	UserID                  string
+	Email                   string
+	CreatedAt               time.Time
+	DefaultBillingAccountID string
 }
 
 // AllocType defines the resource allocation tier
@@ -193,8 +195,7 @@ type Alloc struct {
 	Region           Region
 	Ctrhost          string // Container host where this alloc's resources are
 	CreatedAt        time.Time
-	StripeCustomerID sql.NullString
-	BillingEmail     sql.NullString
+	BillingAccountID string
 }
 
 // UserPageData represents the data for the user dashboard page
@@ -296,6 +297,8 @@ type Server struct {
 
 	// Data isolation
 	dataSubdir string // subdirectory under /data for container isolation
+
+	accountant accounting.Accountant
 
 	mu       sync.RWMutex
 	stopping bool
@@ -520,6 +523,8 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		metricsRegistry: metricsRegistry,
 		sshMetrics:      sshMetrics,
 		dataSubdir:      dataSubdir,
+
+		accountant: accounting.NewDBAccountant(db),
 	}
 
 	s.setupHTTPServer()
@@ -596,11 +601,10 @@ func (s *Server) DataPath(path string) string {
 
 // setupHTTPServer configures the HTTP server
 func (s *Server) setupHTTPServer() {
-	// TODO(banksean) pass a non-nil accountant so we actually debit the billing accounts.
-	lg := llmgateway.NewGateway(nil, s)
+	lg := llmgateway.NewGateway(s.accountant, s)
 
 	servMux := http.NewServeMux()
-	servMux.Handle("/_/gateway/{endpoint}", lg)
+	servMux.Handle("/_/gateway/", lg)
 	servMux.Handle("/", s)
 
 	// Use standard promhttp instrumentation
@@ -624,11 +628,10 @@ func (s *Server) setupHTTPSServer() {
 	porkbunAPIKey := os.Getenv("PORKBUN_API_KEY")
 	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
 
-	// TODO(banksean) pass a non-nil accountant so we actually debit the billing accounts.
-	lg := llmgateway.NewGateway(nil, s)
+	lg := llmgateway.NewGateway(s.accountant, s)
 
 	servMux := http.NewServeMux()
-	servMux.Handle("/_/gateway/{endpoint}", lg)
+	servMux.Handle("/_/gateway/", lg)
 	servMux.Handle("/", s)
 
 	if porkbunAPIKey != "" && porkbunSecretKey != "" {
@@ -1393,7 +1396,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		if err != nil || user == nil {
 			slog.Info("User doesn't exist, creating", "email", email, "token", token)
 			// User doesn't exist - create them with their alloc
-			if err := s.createUserWithAlloc(context.Background(), verification.PublicKey, email); err != nil {
+			if err := s.createUser(context.Background(), verification.PublicKey, email); err != nil {
 				slog.Error("failed to create user with alloc during email verification", "error", err, "token", token)
 				http.Error(w, "Failed to create user account", http.StatusInternalServerError)
 				return
@@ -1888,9 +1891,16 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 				return fmt.Errorf("failed to generate user ID: %w", err)
 			}
 
+			// Create user default billing account
+			billingAccountID, err := s.createBillingAccount(ctx, queries, email)
+			if err != nil {
+				return fmt.Errorf("failed to createe billing account: %w", err)
+			}
+
 			err = queries.InsertUser(ctx, exedb.InsertUserParams{
-				UserID: userID,
-				Email:  email,
+				UserID:                  userID,
+				Email:                   email,
+				DefaultBillingAccountID: billingAccountID,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create user: %w", err)
@@ -1904,11 +1914,12 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 
 			ctrhost := s.selectCtrhostForNewAlloc()
 			err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-				AllocID:   allocID,
-				UserID:    userID,
-				AllocType: "shared",
-				Region:    "default",
-				Ctrhost:   ctrhost,
+				AllocID:          allocID,
+				UserID:           userID,
+				AllocType:        "shared",
+				Region:           "default",
+				Ctrhost:          ctrhost,
+				BillingAccountID: billingAccountID,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create allocation: %w", err)
@@ -1926,6 +1937,22 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 			ExpiresAt: expiresAt,
 		})
 	})
+}
+
+func (s *Server) createBillingAccount(ctx context.Context, queries *exedb.Queries, email string) (string, error) {
+	billingAccountID, err := generateBillingAccountID()
+	if err != nil {
+		return "", err
+	}
+	err = queries.InsertBillingAccount(ctx, exedb.InsertBillingAccountParams{
+		BillingAccountID: billingAccountID,
+		Name:             email + " (billing account)",
+		BillingEmail:     &email,
+	})
+	if err != nil {
+		return "", err
+	}
+	return billingAccountID, nil
 }
 
 // validateEmailVerificationByCode validates verification using short code
@@ -2214,8 +2241,9 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			return User{}, err
 		}
 		user := User{
-			UserID: result.UserID,
-			Email:  result.Email,
+			UserID:                  result.UserID,
+			Email:                   result.Email,
+			DefaultBillingAccountID: result.DefaultBillingAccountID,
 		}
 		if result.CreatedAt != nil {
 			user.CreatedAt = *result.CreatedAt
@@ -2688,12 +2716,7 @@ func (s *Server) getAllocsByHost(ctx context.Context, ctrhost string) ([]*Alloc,
 			if allocResult.CreatedAt != nil {
 				a.CreatedAt = *allocResult.CreatedAt
 			}
-			if allocResult.StripeCustomerID != nil {
-				a.StripeCustomerID = sql.NullString{String: *allocResult.StripeCustomerID, Valid: true}
-			}
-			if allocResult.BillingEmail != nil {
-				a.BillingEmail = sql.NullString{String: *allocResult.BillingEmail, Valid: true}
-			}
+			a.BillingAccountID = allocResult.BillingAccountID
 			allocs = append(allocs, a)
 		}
 		return allocs, nil
@@ -3249,8 +3272,9 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	}
 
 	user := &User{
-		UserID: result.UserID,
-		Email:  result.Email,
+		UserID:                  result.UserID,
+		Email:                   result.Email,
+		DefaultBillingAccountID: result.DefaultBillingAccountID,
 	}
 	if result.CreatedAt != nil {
 		user.CreatedAt = *result.CreatedAt
@@ -3261,23 +3285,31 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 // Note: allocateIPRange function has been removed since we no longer use per-allocation IP ranges.
 // All containers now use the default bridge network with port isolation.
 
-// createUserWithAlloc creates a new user with their resource allocation
-func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email string) error {
+// createUser creates a new user with their resource allocation and default billing account.
+func (s *Server) createUser(ctx context.Context, publicKey, email string) error {
 	var allocID string
 
 	// First create the user and allocation in the database
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		// Create user
+		queries := exedb.New(tx.Conn())
+
 		// Generate user ID
 		userID, err := generateUserID()
 		if err != nil {
 			return err
 		}
 
-		// Create user
-		queries := exedb.New(tx.Conn())
+		// Generate billing account ID
+		billingAccountID, err := s.createBillingAccount(ctx, queries, email)
+		if err != nil {
+			return err
+		}
+
 		err = queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: userID,
-			Email:  email,
+			UserID:                  userID,
+			Email:                   email,
+			DefaultBillingAccountID: billingAccountID,
 		})
 		if err != nil {
 			return err
@@ -3303,12 +3335,12 @@ func (s *Server) createUserWithAlloc(ctx context.Context, publicKey, email strin
 
 		// Create alloc for the user (no longer needs IP range)
 		return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-			AllocID:      allocID,
-			UserID:       userID,
-			AllocType:    string(AllocTypeMedium),
-			Region:       string(RegionAWSUSWest2),
-			Ctrhost:      ctrhost,
-			BillingEmail: &email,
+			AllocID:          allocID,
+			UserID:           userID,
+			AllocType:        string(AllocTypeMedium),
+			Region:           string(RegionAWSUSWest2),
+			Ctrhost:          ctrhost,
+			BillingAccountID: billingAccountID,
 		})
 	})
 	if err != nil {
@@ -3334,12 +3366,7 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 	if result.CreatedAt != nil {
 		alloc.CreatedAt = *result.CreatedAt
 	}
-	if result.StripeCustomerID != nil {
-		alloc.StripeCustomerID = sql.NullString{String: *result.StripeCustomerID, Valid: true}
-	}
-	if result.BillingEmail != nil {
-		alloc.BillingEmail = sql.NullString{String: *result.BillingEmail, Valid: true}
-	}
+	alloc.BillingAccountID = result.BillingAccountID
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// User exists but has no alloc yet - create one
@@ -3349,8 +3376,8 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 		}
 
 		// Get user's email for billing
-		email, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetEmailByUserID(ctx, userID)
+		user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+			return queries.GetUserWithDetails(ctx, userID)
 		})
 		if err != nil {
 			return nil, err
@@ -3360,12 +3387,12 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*Alloc, error
 
 		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-				AllocID:      allocID,
-				UserID:       userID,
-				AllocType:    string(AllocTypeMedium),
-				Region:       string(RegionAWSUSWest2),
-				Ctrhost:      ctrhost,
-				BillingEmail: &email,
+				AllocID:          allocID,
+				UserID:           userID,
+				AllocType:        string(AllocTypeMedium),
+				Region:           string(RegionAWSUSWest2),
+				Ctrhost:          ctrhost,
+				BillingAccountID: user.DefaultBillingAccountID,
 			})
 		})
 		if err != nil {
@@ -3424,55 +3451,14 @@ func generateAllocID() (string, error) {
 	return fmt.Sprintf("alloc_%s", hex.EncodeToString(bytes)), nil
 }
 
-// createUser creates a new user (deprecated - use createUserWithAlloc)
-func (s *Server) createUser(ctx context.Context, publicKey, email string) error {
-	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-
-		// Generate user ID
-		userID, err := generateUserID()
-		if err != nil {
-			return err
-		}
-
-		// Create the user
-		err = queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: userID,
-			Email:  email,
-		})
-		if err != nil {
-			return err
-		}
-
-		// Add the SSH key to ssh_keys table if provided
-		if publicKey != "" {
-			err = queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
-				UserID:    userID,
-				PublicKey: publicKey,
-			})
-			if err != nil {
-				return err
-			}
-		}
-
-		// Create an alloc for the user
-		allocID, err := generateAllocID()
-		if err != nil {
-			return err
-		}
-
-		ctrhost := s.selectCtrhostForNewAlloc()
-
-		// Create the allocation (no longer needs IP range)
-		return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-			AllocID:      allocID,
-			UserID:       userID,
-			AllocType:    string(AllocTypeMedium),
-			Region:       string(RegionAWSUSWest2),
-			Ctrhost:      ctrhost,
-			BillingEmail: &email,
-		})
-	})
+// generateBillingAccountID generates a unique billing account ID
+func generateBillingAccountID() (string, error) {
+	// Generate a random ID with "billing_" prefix
+	bytes := make([]byte, 12)
+	if _, err := cryptorand.Read(bytes); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("billing_%s", hex.EncodeToString(bytes)), nil
 }
 
 // Stop gracefully shuts down all servers
@@ -3671,8 +3657,9 @@ func (s *Server) GetUserByEmail(ctx context.Context, email string) (*User, error
 			return User{}, err
 		}
 		user := User{
-			UserID: result.UserID,
-			Email:  result.Email,
+			UserID:                  result.UserID,
+			Email:                   result.Email,
+			DefaultBillingAccountID: result.DefaultBillingAccountID,
 		}
 		if result.CreatedAt != nil {
 			user.CreatedAt = *result.CreatedAt

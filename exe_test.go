@@ -46,7 +46,7 @@ func TestPublicKeyAuthentication(t *testing.T) {
 
 	// Register the user with alloc in the database
 	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-	if err := server.createUserWithAlloc(t.Context(), publicKeyStr, "test@example.com"); err != nil {
+	if err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
@@ -229,20 +229,13 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	// Create a test user
 	email := "test@example.com"
 	// Create user with generated user_id
-	userID := "usr1234567890123" // test user ID
-	err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, email); err != nil {
-			return err
-		}
-		// Add SSH key
-		if _, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com"); err != nil {
-			return err
-		}
-		return nil
-	})
+	publicKey := "ssh-rsa dummy-test-key test@example.com"
+	err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
-		t.Fatalf("Failed to create user and SSH key: %v", err)
+		t.Fatalf("Failed to create user : %v", err)
 	}
+
+	user, err := server.GetUserByEmail(t.Context(), email)
 
 	// Create an email verification token
 	token := "test-token-" + time.Now().Format("20060102150405")
@@ -251,7 +244,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 		_, err := tx.Exec(`
 			INSERT INTO email_verifications (token, email, user_id, expires_at)
 			VALUES (?, ?, ?, ?)`,
-			token, email, userID, expires)
+			token, email, user.UserID, expires)
 		return err
 	})
 	if err != nil {
@@ -441,7 +434,7 @@ func TestSSHIdentityKeyForBox(t *testing.T) {
 
 	// Create a test user and alloc
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
-	if err := server.createUserWithAlloc(t.Context(), publicKeyStr, "test@example.com"); err != nil {
+	if err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 

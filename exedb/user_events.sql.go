@@ -42,7 +42,7 @@ func (q *Queries) GetAllUserEvents(ctx context.Context, userID string) ([]GetAll
 }
 
 const getUserEventCount = `-- name: GetUserEventCount :one
-SELECT COALESCE(count, 0) FROM user_events WHERE user_id = ? AND event = ?
+SELECT COALESCE((SELECT count FROM user_events WHERE user_id = ? AND event = ?), 0) AS event_count
 `
 
 type GetUserEventCountParams struct {
@@ -50,11 +50,11 @@ type GetUserEventCountParams struct {
 	Event  string `db:"event" json:"event"`
 }
 
-func (q *Queries) GetUserEventCount(ctx context.Context, arg GetUserEventCountParams) (int64, error) {
+func (q *Queries) GetUserEventCount(ctx context.Context, arg GetUserEventCountParams) (interface{}, error) {
 	row := q.queryRow(ctx, q.getUserEventCountStmt, getUserEventCount, arg.UserID, arg.Event)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+	var event_count interface{}
+	err := row.Scan(&event_count)
+	return event_count, err
 }
 
 const recordUserEvent = `-- name: RecordUserEvent :exec

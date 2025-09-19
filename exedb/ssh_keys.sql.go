@@ -92,7 +92,7 @@ func (q *Queries) GetUserIDBySSHKey(ctx context.Context, publicKey string) (stri
 }
 
 const getUserWithSSHKey = `-- name: GetUserWithSSHKey :one
-SELECT u.user_id, u.email, u.created_at
+SELECT u.user_id, u.email, u.created_at, u.default_billing_account_id
 FROM users u
 JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?
@@ -101,7 +101,12 @@ WHERE s.public_key = ?
 func (q *Queries) GetUserWithSSHKey(ctx context.Context, publicKey string) (User, error) {
 	row := q.queryRow(ctx, q.getUserWithSSHKeyStmt, getUserWithSSHKey, publicKey)
 	var i User
-	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.DefaultBillingAccountID,
+	)
 	return i, err
 }
 

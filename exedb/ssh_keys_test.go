@@ -53,9 +53,15 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	// First, create a test user
 	userEmail := "test@example.com"
 	userID := "usr1234567890123"
+	billingAccountID := "billing-account-id"
+	// Insert user directly using raw SQL for setup
+	_, err := db.Exec(`INSERT INTO billing_accounts (billing_account_id, name, billing_email) VALUES (?, ?, ?)`, userEmail, userEmail, billingAccountID)
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
 
 	// Insert user directly using raw SQL for setup
-	_, err := db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID, userEmail)
+	_, err = db.Exec(`INSERT INTO users (user_id, email, default_billing_account_id) VALUES (?, ?, ?)`, userID, userEmail, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
@@ -102,7 +108,7 @@ func TestInsertSSHKeyForEmailUser(t *testing.T) {
 	userID2 := "usr2234567890123"
 
 	// Insert second user
-	_, err = db.Exec(`INSERT INTO users (user_id, email) VALUES (?, ?)`, userID2, userEmail2)
+	_, err = db.Exec(`INSERT INTO users (user_id, email, default_billing_account_id) VALUES (?, ?, ?)`, userID2, userEmail2, billingAccountID)
 	if err != nil {
 		t.Fatalf("Failed to create second test user: %v", err)
 	}

@@ -97,34 +97,24 @@ func TestProxyRequestRouting(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
 
-	// Create test user
-	userID := "usr1234567890123" // test user ID
-	err := server.createUser(t.Context(), userID, "test@example.com")
+	email := "test@example.com"
+	publicKey := "ssh-rsa dummy-test-key test@example.com"
+
+	if err := server.createUser(t.Context(), publicKey, email); err != nil {
+		t.Fatal(err)
+	}
+	user, err := server.getUserByPublicKey(t.Context(), publicKey)
 	if err != nil {
-		t.Fatalf("Failed to create test user: %v", err)
+		t.Fatalf("Failed to get user by public key: %v", err)
 	}
 
-	// Create alloc for test user
-	allocID := "alloc_" + userID
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'), '', 'test@example.com')`, allocID, userID)
-		return err
-	})
+	alloc, err := server.getUserAlloc(t.Context(), user.UserID)
 	if err != nil {
-		t.Fatalf("Failed to create alloc: %v", err)
-	}
-
-	// Add SSH key for test user
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`, userID, "ssh-rsa dummy-test-key test@example.com")
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Failed to create SSH key: %v", err)
+		t.Fatalf("Failed to get alloc by user ID: %v", err)
 	}
 
 	// Create a test box with default routes
-	server.createTestBox(t, userID, allocID, "myapp", "container123", "nginx")
+	server.createTestBox(t, user.UserID, alloc.AllocID, "myapp", "container123", "nginx")
 
 	tests := []struct {
 		name           string
@@ -210,35 +200,20 @@ func TestMagicAuthFlow(t *testing.T) {
 	server := NewTestServer(t)
 	server.magicSecrets = make(map[string]*MagicSecret)
 
-	// Create a test user
-	userID, err := generateUserID()
-	if err != nil {
-		t.Fatalf("Failed to generate user ID: %v", err)
-	}
-
-	err = server.createUser(t.Context(), userID, "test@example.com")
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."
+	email := "test@example.com"
+	err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	// Create SSH key for the test user
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-			userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
-		return err
-	})
+	user, err := server.getUserByPublicKey(t.Context(), publicKey)
 	if err != nil {
-		t.Fatalf("Failed to create SSH key: %v", err)
+		t.Fatalf("Failed to get test user: %v", err)
 	}
-
-	// Create alloc for test user
-	allocID := "test-alloc-" + userID
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'), '', 'test@example.com')`, allocID, userID)
-		return err
-	})
+	alloc, err := server.getUserAlloc(t.Context(), user.UserID)
 	if err != nil {
-		t.Fatalf("Failed to create alloc: %v", err)
+		t.Fatalf("Failed to get user alloc: %v", err)
 	}
 
 	// Create a test box with a private route
@@ -247,7 +222,7 @@ func TestMagicAuthFlow(t *testing.T) {
 			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
 			                     ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, "testbox", "running", "test-image", "test-container-id", userID, `[
+		`, alloc.AllocID, "testbox", "running", "test-image", "test-container-id", user.UserID, `[
 			{
 				"name": "default",
 				"policy": "private",
@@ -401,35 +376,22 @@ func TestProxyLogoutFlow(t *testing.T) {
 	server := NewTestServer(t)
 	server.magicSecrets = make(map[string]*MagicSecret)
 
-	// Create a test user
-	userID, err := generateUserID()
-	if err != nil {
-		t.Fatalf("Failed to generate user ID: %v", err)
-	}
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."
+	email := "test-logout@example.com"
 
-	err = server.createUser(t.Context(), userID, "test-logout@example.com")
+	err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
-	// Create SSH key for the test user
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO ssh_keys (user_id, public_key) VALUES (?, ?)`,
-			userID, "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest...")
-		return err
-	})
+	user, err := server.getUserByPublicKey(t.Context(), publicKey)
 	if err != nil {
-		t.Fatalf("Failed to create SSH key: %v", err)
+		t.Fatalf("Failed to get test user: %v", err)
 	}
 
-	// Create alloc for test user
-	allocID := "test-alloc-" + userID
-	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, created_at, stripe_customer_id, billing_email) VALUES (?, ?, 'medium', 'aws-us-west-2', 'local', datetime('now'), '', 'test@example.com')`, allocID, userID)
-		return err
-	})
+	alloc, err := server.getUserAlloc(t.Context(), user.UserID)
 	if err != nil {
-		t.Fatalf("Failed to create alloc: %v", err)
+		t.Fatalf("Failed to get test user alloc: %v", err)
 	}
 
 	// Create a test box with a private route
@@ -438,7 +400,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
 							 ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, allocID, "testbox", "running", "test-image", "test-container-id", userID, `[
+		`, alloc.AllocID, "testbox", "running", "test-image", "test-container-id", user.UserID, `[
 			{
 				"name": "default",
 				"port": 80,
@@ -487,7 +449,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 	// Test 2: Logout after authentication should clear cookie and database entry
 	t.Run("logout_after_auth", func(t *testing.T) {
 		// First authenticate the user
-		secret, err := server.createMagicSecret(userID, "testbox", "")
+		secret, err := server.createMagicSecret(user.UserID, "testbox", "")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret: %v", err)
 		}
@@ -517,7 +479,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 		// Verify the cookie is valid by checking database
 		var count int
 		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, user.UserID).Scan(&count)
 		})
 		if err != nil || count != 1 {
 			t.Fatal("Auth cookie should exist in database")
@@ -554,7 +516,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 		// Verify the auth cookie was deleted from database
 		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, userID).Scan(&count)
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE cookie_value = ? AND user_id = ?", authCookie.Value, user.UserID).Scan(&count)
 		})
 		if err != nil || count != 0 {
 			t.Error("Auth cookie should have been deleted from database")
@@ -564,12 +526,12 @@ func TestProxyLogoutFlow(t *testing.T) {
 	// Test 3: Logout should only delete the specific cookie, not other cookies for the same user
 	t.Run("logout_preserves_other_sessions", func(t *testing.T) {
 		// Create two separate auth sessions for the same user
-		secret1, err := server.createMagicSecret(userID, "testbox", "")
+		secret1, err := server.createMagicSecret(user.UserID, "testbox", "")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret 1: %v", err)
 		}
 
-		secret2, err := server.createMagicSecret(userID, "testbox", "")
+		secret2, err := server.createMagicSecret(user.UserID, "testbox", "")
 		if err != nil {
 			t.Fatalf("Failed to create magic secret 2: %v", err)
 		}
@@ -610,7 +572,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 		// Verify we have 2 auth cookies in database for this user
 		var count int
 		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", user.UserID).Scan(&count)
 		})
 		if err != nil || count != 2 {
 			t.Fatalf("Should have 2 auth cookies for user, got %d", count)
@@ -628,7 +590,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 		// Verify only the first cookie was deleted, second one remains
 		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", userID).Scan(&count)
+			return rx.QueryRow("SELECT COUNT(*) FROM auth_cookies WHERE user_id = ?", user.UserID).Scan(&count)
 		})
 		if err != nil || count != 1 {
 			t.Errorf("Should have 1 auth cookie remaining for user, got %d", count)
@@ -637,7 +599,7 @@ func TestProxyLogoutFlow(t *testing.T) {
 		// Verify the remaining cookie is the second one
 		var remainingCookie string
 		err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			return rx.QueryRow("SELECT cookie_value FROM auth_cookies WHERE user_id = ?", userID).Scan(&remainingCookie)
+			return rx.QueryRow("SELECT cookie_value FROM auth_cookies WHERE user_id = ?", user.UserID).Scan(&remainingCookie)
 		})
 		if err != nil {
 			t.Fatal("Failed to get remaining cookie")

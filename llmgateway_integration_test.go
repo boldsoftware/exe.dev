@@ -25,7 +25,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 
 	// Create a test user and alloc
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
-	if err := server.createUserWithAlloc(context.Background(), publicKeyStr, "test@example.com"); err != nil {
+	if err := server.createUser(context.Background(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
@@ -181,6 +181,11 @@ type mockAccountant struct {
 	balanceErr   error
 	usageDebits  []accounting.UsageDebit
 	usageCredits []accounting.UsageCredit
+}
+
+// BillingAccountForBox implements accounting.Accountant.
+func (m *mockAccountant) BillingAccountForBox(ctx context.Context, boxName string) (string, error) {
+	panic("unimplemented")
 }
 
 func (m *mockAccountant) GetUserBalance(ctx context.Context, billingAccountID string) (float64, error) {

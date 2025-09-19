@@ -32,7 +32,7 @@ func (q *Queries) GetFirstUserID(ctx context.Context) (string, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at
+SELECT user_id, email, created_at, default_billing_account_id
 FROM users
 WHERE email = ?
 `
@@ -40,7 +40,12 @@ WHERE email = ?
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, email)
 	var i User
-	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.DefaultBillingAccountID,
+	)
 	return i, err
 }
 
@@ -56,7 +61,7 @@ func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (string, e
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at
+SELECT user_id, email, created_at, default_billing_account_id
 FROM users
 WHERE user_id = ?
 `
@@ -64,20 +69,26 @@ WHERE user_id = ?
 func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, error) {
 	row := q.queryRow(ctx, q.getUserWithDetailsStmt, getUserWithDetails, userID)
 	var i User
-	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.DefaultBillingAccountID,
+	)
 	return i, err
 }
 
 const insertUser = `-- name: InsertUser :exec
-INSERT INTO users (user_id, email) VALUES (?, ?)
+INSERT INTO users (user_id, email, default_billing_account_id) VALUES (?, ?, ?)
 `
 
 type InsertUserParams struct {
-	UserID string `db:"user_id" json:"user_id"`
-	Email  string `db:"email" json:"email"`
+	UserID                  string `db:"user_id" json:"user_id"`
+	Email                   string `db:"email" json:"email"`
+	DefaultBillingAccountID string `db:"default_billing_account_id" json:"default_billing_account_id"`
 }
 
 func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
-	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email)
+	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email, arg.DefaultBillingAccountID)
 	return err
 }

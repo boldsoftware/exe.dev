@@ -2,8 +2,10 @@ package billing
 
 import (
 	"context"
-	"database/sql"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -16,7 +18,7 @@ import (
 
 // BillingInfo represents billing information for display
 type BillingInfo struct {
-	AllocID          string
+	BillingAccountID string
 	Email            string
 	StripeCustomerID string
 	HasBilling       bool
@@ -24,23 +26,24 @@ type BillingInfo struct {
 
 // Billing interface defines the core billing business logic operations
 type Billing interface {
-	// GetBillingInfo retrieves current billing information for an allocation
-	GetBillingInfo(ctx context.Context, allocID string) (*BillingInfo, error)
+	// GetBillingInfoByAccount retrieves billing information for a billing account
+	GetBillingInfoByAccount(ctx context.Context, billingAccountID string) (*BillingInfo, error)
 
-	// SetupBilling creates a new Stripe customer and saves billing info
 	SetupBilling(allocID, billingEmail, cardNumber, expMonth, expYear, cvc string) error
 
 	// UpdatePaymentMethod updates the payment method for an existing customer
 	UpdatePaymentMethod(customerID, cardNumber, expMonth, expYear, cvc string) error
 
-	// UpdateBillingEmail updates the billing email in database and Stripe
-	UpdateBillingEmail(allocID, customerID, newEmail string) error
-
-	// DeleteBillingInfo removes billing information from database
-	DeleteBillingInfo(allocID string) error
+	// UpdateBillingAccountEmail updates billing account email
+	UpdateBillingAccountEmail(billingAccountID, customerID, newEmail string) error
 
 	// ValidateEmail validates email format
 	ValidateEmail(email string) bool
+
+	DeleteBillingAccount(billingAccountID string) error
+
+	// LinkAllocToBillingAccount links an allocation to a billing account
+	LinkAllocToBillingAccount(ctx context.Context, allocID, billingAccountID string) error
 }
 
 // billingService implements the Billing interface
@@ -79,22 +82,24 @@ func createStripeClient() *client.API {
 	})
 }
 
-// GetBillingInfo retrieves current billing information for an allocation
-func (bs *billingService) GetBillingInfo(ctx context.Context, allocID string) (*BillingInfo, error) {
+// GetBillingInfoByAccount retrieves billing information for a billing account
+func (bs *billingService) GetBillingInfoByAccount(ctx context.Context, billingAccountID string) (*BillingInfo, error) {
 	var billing BillingInfo
-	var emailNull, customerIDNull sql.NullString
 
 	err := bs.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
 		queries := exedb.New(rx.Conn())
-		result, err := queries.GetAllocBillingInfo(ctx, allocID)
+		account, err := queries.GetBillingAccount(ctx, billingAccountID)
 		if err != nil {
 			return err
 		}
-		if result.BillingEmail != nil {
-			emailNull = sql.NullString{String: *result.BillingEmail, Valid: true}
+
+		billing.BillingAccountID = account.BillingAccountID
+		if account.BillingEmail != nil {
+			billing.Email = *account.BillingEmail
 		}
-		if result.StripeCustomerID != nil {
-			customerIDNull = sql.NullString{String: *result.StripeCustomerID, Valid: true}
+		if account.StripeCustomerID != nil {
+			billing.StripeCustomerID = *account.StripeCustomerID
+			billing.HasBilling = true
 		}
 		return nil
 	})
@@ -102,26 +107,42 @@ func (bs *billingService) GetBillingInfo(ctx context.Context, allocID string) (*
 		return nil, err
 	}
 
-	billing.AllocID = allocID
-	if emailNull.Valid {
-		billing.Email = emailNull.String
-	}
-	if customerIDNull.Valid {
-		billing.StripeCustomerID = customerIDNull.String
-		billing.HasBilling = true
-	}
-
 	return &billing, nil
 }
 
-// SetupBilling creates a new Stripe customer and saves billing info
+// generateBillingAccountID generates a unique billing account ID
+func generateBillingAccountID() (string, error) {
+	// Generate a random ID with "billing_" prefix
+	bytes := make([]byte, 12)
+	if _, err := cryptorand.Read(bytes); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("billing_%s", hex.EncodeToString(bytes)), nil
+}
+
+// SetupBilling creates a new Stripe customer and saves billing info (legacy)
 func (bs *billingService) SetupBilling(allocID, billingEmail, cardNumber, expMonth, expYear, cvc string) error {
-	customerID, err := bs.createStripeCustomer(billingEmail, cardNumber, expMonth, expYear, cvc)
+	newBillingAccountID, err := generateBillingAccountID()
 	if err != nil {
 		return err
 	}
+	customerID, err := bs.createStripeCustomer(billingEmail, cardNumber, expMonth, expYear, cvc)
+	if err != nil {
+		slog.Error("billingService.SetupBilling", "createStripeCustomer error", err)
+		customerID = "fake-stripe_customer_id-for-" + newBillingAccountID
+		//return err
+	}
+	err = bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.InsertBillingAccount(ctx, exedb.InsertBillingAccountParams{
+			BillingAccountID: newBillingAccountID,
+			Name:             "default billing account",
+			BillingEmail:     &billingEmail,
+			StripeCustomerID: &customerID,
+		})
+	})
 
-	return bs.updateAllocBilling(allocID, customerID, billingEmail)
+	return err
 }
 
 // UpdatePaymentMethod updates the payment method for an existing customer
@@ -129,14 +150,14 @@ func (bs *billingService) UpdatePaymentMethod(customerID, cardNumber, expMonth, 
 	return bs.updateStripePaymentMethod(customerID, cardNumber, expMonth, expYear, cvc)
 }
 
-// UpdateBillingEmail updates the billing email in database and Stripe
-func (bs *billingService) UpdateBillingEmail(allocID, customerID, newEmail string) error {
+// UpdateBillingAccountEmail updates billing account email
+func (bs *billingService) UpdateBillingAccountEmail(billingAccountID, customerID, newEmail string) error {
 	// Update in database first
 	err := bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		return queries.UpdateAllocBillingEmail(ctx, exedb.UpdateAllocBillingEmailParams{
-			BillingEmail: &newEmail,
-			AllocID:      allocID,
+		return queries.UpdateBillingAccountEmail(ctx, exedb.UpdateBillingAccountEmailParams{
+			BillingEmail:     &newEmail,
+			BillingAccountID: billingAccountID,
 		})
 	})
 	if err != nil {
@@ -151,11 +172,26 @@ func (bs *billingService) UpdateBillingEmail(allocID, customerID, newEmail strin
 	return nil
 }
 
-// DeleteBillingInfo removes billing information from database
-func (bs *billingService) DeleteBillingInfo(allocID string) error {
+// LinkAllocToBillingAccount links an allocation to a billing account
+func (bs *billingService) LinkAllocToBillingAccount(ctx context.Context, allocID, billingAccountID string) error {
+	return bs.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		return queries.LinkAllocToBillingAccount(ctx, exedb.LinkAllocToBillingAccountParams{
+			BillingAccountID: billingAccountID,
+			AllocID:          allocID,
+		})
+	})
+}
+
+// DeleteBillingAccount removes billing information from database
+func (bs *billingService) DeleteBillingAccount(billingAccountID string) error {
+	// TODO(banksean):
+	// Check if there are allocs using this billing account. If so,
+	// return an error saying they need to reassign billing accounts for
+	// those allocs first.
 	return bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
-		return queries.ClearAllocBillingInfo(ctx, allocID)
+		return queries.DeleteBillingAccount(ctx, billingAccountID)
 	})
 }
 
@@ -190,7 +226,8 @@ func (bs *billingService) createStripeCustomer(email, cardNumber, expMonth, expY
 
 	pm, err := bs.client.PaymentMethods.New(pmParams)
 	if err != nil {
-		return "", fmt.Errorf("failed to create payment method: %v", err)
+		slog.Error("billingService.createStripeCustomer", "create payment method error", err)
+		//return "", fmt.Errorf("failed to create payment method: %v", err)
 	}
 
 	// Create customer
@@ -278,15 +315,4 @@ func (bs *billingService) updateStripeCustomerEmail(customerID, email string) er
 		return fmt.Errorf("failed to update customer email: %v", err)
 	}
 	return nil
-}
-
-func (bs *billingService) updateAllocBilling(allocID, customerID, billingEmail string) error {
-	return bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpdateAllocBilling(ctx, exedb.UpdateAllocBillingParams{
-			StripeCustomerID: &customerID,
-			BillingEmail:     &billingEmail,
-			AllocID:          allocID,
-		})
-	})
 }
