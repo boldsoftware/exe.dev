@@ -167,7 +167,7 @@ XML
 		rm -f "$TMPNET"
 	fi
 
-	if ! sudo virsh net-info default | grep -q "Active:.*yes"; then
+	if ! sudo virsh net-info default | grep "Active:.*yes"; then
 		echo "Starting libvirt 'default' NAT network..."
 		sudo virsh net-start default
 	fi
