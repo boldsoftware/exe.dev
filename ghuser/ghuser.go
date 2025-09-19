@@ -1,12 +1,14 @@
 package ghuser
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,9 +17,10 @@ import (
 )
 
 type Client struct {
-	token string
-	db    *sql.DB
-	stmt  *sql.Stmt
+	token      string
+	db         *sql.DB
+	stmt       *sql.Stmt
+	httpClient *http.Client
 }
 
 type githubUserInfo struct {
@@ -27,29 +30,33 @@ type githubUserInfo struct {
 	PublicRepos int       `json:"public_repos"`
 }
 
+type githubUserKey struct {
+	Key string `json:"key"`
+}
+
 // githubUser fetches user info from GitHub API by user ID.
-func (c *Client) githubUser(userID int64) (*githubUserInfo, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/user/%d", userID), nil)
+func (c *Client) githubUser(ctx context.Context, userID int64) (*githubUserInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://api.github.com/user/%d", userID), nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == 401 {
+	switch resp.StatusCode {
+	case 401:
 		return nil, fmt.Errorf("invalid GitHub token %q", c.token)
-	}
-	if resp.StatusCode == 429 {
+	case 429:
 		return nil, fmt.Errorf("GitHub API rate limit exceeded")
-	}
-	if resp.StatusCode != 200 {
+	case 200:
+		// OK, continued below
+	default:
 		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)
 	}
 
@@ -59,6 +66,59 @@ func (c *Client) githubUser(userID int64) (*githubUserInfo, error) {
 	}
 
 	return &user, nil
+}
+
+// githubUserHasKey reports whether the provided login currently publishes trimmedKey as one of their SSH public keys.
+func (c *Client) githubUserHasKey(ctx context.Context, login, trimmedKey string) (bool, error) {
+	if login == "" {
+		return false, fmt.Errorf("empty GitHub login")
+	}
+	trimmed := strings.TrimSpace(trimmedKey)
+	if trimmed == "" {
+		return false, fmt.Errorf("empty public key")
+	}
+
+	encodedLogin := url.PathEscape(login)
+	baseURL := fmt.Sprintf("https://api.github.com/users/%s/keys", encodedLogin)
+	// In theory this is paginated but if you have > 100 keys...fine, it doesn't always work for you.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case 401:
+		return false, fmt.Errorf("invalid GitHub token %q", c.token)
+	case 429:
+		return false, fmt.Errorf("GitHub API rate limit exceeded")
+	case 404:
+		return false, nil
+	case 200:
+		// OK, continued below
+	default:
+		return false, fmt.Errorf("GitHub API error: %s", resp.Status)
+	}
+
+	var keys []githubUserKey
+	decodeErr := json.NewDecoder(resp.Body).Decode(&keys)
+	if decodeErr != nil {
+		return false, fmt.Errorf("failed to decode GitHub keys response: %w", decodeErr)
+	}
+
+	for _, k := range keys {
+		if strings.TrimSpace(k.Key) == trimmed {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // New creates a new GitHub user client.
@@ -78,14 +138,14 @@ func New(token, dbPath string) (*Client, error) {
 		return nil, fmt.Errorf("no database path provided")
 	}
 
-	c := &Client{token: token}
+	c := &Client{token: token, httpClient: &http.Client{Timeout: 10 * time.Second}}
 
 	// Validate token with GitHub API by fetching a known user
 	// TODO: maybe restore this...or maybe not.
 	// It is disabled because it adds ~300ms and a GitHub dependency to startup time.
 	// But it would be nice to catch invalid tokens earlier in dev mode.
 	//
-	// _, err := c.githubUser(67496) // @josharian
+	// _, err := c.githubUser(context.Background(), 67496) // @josharian
 	// if err != nil {
 	// 	return nil, fmt.Errorf("failed to validate GitHub token: %w", err)
 	// }
@@ -162,26 +222,32 @@ type Info struct {
 // Users should be using the Extensions field of the Permissions return value from the various authentication callbacks to record data associated with the authentication attempt instead of referencing external state. Once the connection is established the state corresponding to the successful authentication attempt can be retrieved via the ServerConn.Permissions field. Note that some third-party libraries misuse the Permissions type by sharing it across authentication attempts; users of third-party libraries should refer to the relevant projects for guidance.
 //
 // See also https://github.com/gliderlabs/ssh/issues/242
-func (c *Client) InfoKey(pubKey ssh.PublicKey) (Info, error) {
+func (c *Client) InfoKey(ctx context.Context, pubKey ssh.PublicKey) (Info, error) {
 	if c == nil {
 		return Info{}, fmt.Errorf("nil ghuser.Client")
 	}
+	if ctx == nil {
+		return Info{}, fmt.Errorf("nil context")
+	}
 	authorizedKey := ssh.MarshalAuthorizedKey(pubKey)
-	return c.InfoString(string(authorizedKey))
+	return c.InfoString(ctx, string(authorizedKey))
 }
 
-func (c *Client) InfoString(pubKey string) (Info, error) {
+func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
 	if c == nil {
 		return Info{}, fmt.Errorf("nil ghuser.Client")
+	}
+	if ctx == nil {
+		return Info{}, fmt.Errorf("nil context")
 	}
 	// Calculate key hash
 	trimmed := strings.TrimSpace(pubKey)
 	hash := sha256.Sum256([]byte(trimmed))
 	dbKey := hash[:16]
-	return c.info(dbKey)
+	return c.info(ctx, dbKey, trimmed)
 }
 
-func (c *Client) info(dbKey []byte) (Info, error) {
+func (c *Client) info(ctx context.Context, dbKey []byte, trimmedKey string) (Info, error) {
 	if c.db == nil || c.stmt == nil {
 		return Info{}, fmt.Errorf("client not initialized")
 	}
@@ -199,9 +265,18 @@ func (c *Client) info(dbKey []byte) (Info, error) {
 		return Info{}, fmt.Errorf("database query failed: %w", err)
 	}
 
-	user, err := c.githubUser(userID)
+	user, err := c.githubUser(ctx, userID)
 	if err != nil {
 		return Info{}, fmt.Errorf("GitHub API request failed: %w", err)
+	}
+
+	valid, err := c.githubUserHasKey(ctx, user.Login, trimmedKey)
+	if err != nil {
+		return Info{}, fmt.Errorf("GitHub API request failed: %w", err)
+	}
+
+	if !valid {
+		return info, nil
 	}
 
 	info.IsGitHubUser = true

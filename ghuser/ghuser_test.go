@@ -73,7 +73,7 @@ func TestClient_Info_EndToEnd(t *testing.T) {
 	defer c.Close()
 
 	// Get info for the key
-	info, err := c.InfoKey(pubKey)
+	info, err := c.InfoKey(t.Context(), pubKey)
 	if err != nil {
 		t.Fatalf("InfoKey failed: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestClient_Info_UnknownKey(t *testing.T) {
 	defer c.Close()
 
 	// Get info for unknown key
-	info, err := c.InfoKey(pubKey)
+	info, err := c.InfoKey(t.Context(), pubKey)
 	if err != nil {
 		t.Fatalf("InfoKey failed: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestClient_Info_NotInitialized(t *testing.T) {
 	// Try to use InfoKey with uninitialized client
 	c := &Client{}
 
-	_, err = c.InfoKey(pubKey)
+	_, err = c.InfoKey(t.Context(), pubKey)
 	if err == nil || err.Error() != "client not initialized" {
 		t.Errorf("expected 'client not initialized' error, got: %v", err)
 	}
