@@ -203,7 +203,6 @@ func (d *dbAccountant) GetUserBalance(ctx context.Context, billingAccountID stri
 		balance = credits - debits
 		return nil
 	})
-
 	if err != nil {
 		return 0, err
 	}
@@ -238,7 +237,6 @@ func (d *dbAccountant) HasNewUserCredits(ctx context.Context, billingAccountID s
 		hasCredits = count == 0
 		return nil
 	})
-
 	if err != nil {
 		return false, nil
 	}

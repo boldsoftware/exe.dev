@@ -130,7 +130,7 @@ func (bs *billingService) SetupBilling(allocID, billingEmail, cardNumber, expMon
 	if err != nil {
 		slog.Error("billingService.SetupBilling", "createStripeCustomer error", err)
 		customerID = "fake-stripe_customer_id-for-" + newBillingAccountID
-		//return err
+		// return err
 	}
 	err = bs.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
@@ -227,7 +227,7 @@ func (bs *billingService) createStripeCustomer(email, cardNumber, expMonth, expY
 	pm, err := bs.client.PaymentMethods.New(pmParams)
 	if err != nil {
 		slog.Error("billingService.createStripeCustomer", "create payment method error", err)
-		//return "", fmt.Errorf("failed to create payment method: %v", err)
+		// return "", fmt.Errorf("failed to create payment method: %v", err)
 	}
 
 	// Create customer
