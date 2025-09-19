@@ -1096,6 +1096,9 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		container.SSHUser = "root"
 	}
 
+	// Detect the best exposed port for automatic routing
+	container.ExposedPorts = prep.imageConfig.ExposedPorts
+
 	slog.Info("Created container", "id", containerID, "host", host, "ip", containerIP, "ssh_port", sshPort)
 
 	return container, nil

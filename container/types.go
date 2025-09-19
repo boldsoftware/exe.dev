@@ -72,6 +72,9 @@ type Container struct {
 	SSHClientPrivateKey  string `json:"-"`                  // Private key for connecting to container - not exposed in JSON
 	SSHPort              int    `json:"ssh_port,omitempty"` // SSH port exposed for this container
 	SSHUser              string `json:"ssh_user,omitempty"` // User to connect as (from Docker image USER directive)
+
+	// Exposed ports from image config for routing decisions
+	ExposedPorts map[string]struct{} `json:"exposed_ports,omitempty"`
 }
 
 // ContainerSize represents a t-shirt size preset for containers

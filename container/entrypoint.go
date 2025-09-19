@@ -3,6 +3,8 @@ package container
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"exe.dev/tagresolver"
@@ -77,4 +79,45 @@ func buildEntrypointAndCmdArgs(useExetini bool, override string, imageEntrypoint
 
 	// No override; rely on image defaults
 	return nil
+}
+
+// ChooseBestPortToRoute determines the best port to use for automatic routing
+// This is a wrapper around the main routing logic for testing purposes
+// Priority: tcp/80 first, then smallest TCP port >= 1024
+func ChooseBestPortToRoute(exposedPorts map[string]struct{}) int {
+	if len(exposedPorts) == 0 {
+		return 0 // No exposed ports
+	}
+
+	// Check if tcp/80 is exposed
+	if _, exists := exposedPorts["80/tcp"]; exists {
+		return 80
+	}
+
+	var tcpPortsAbove1024 []int
+
+	// Find all TCP ports >= 1024
+	for portSpec := range exposedPorts {
+		// Parse port specification (e.g., "8080/tcp", "5432/tcp")
+		parts := strings.Split(portSpec, "/")
+		if len(parts) != 2 || parts[1] != "tcp" {
+			continue // Skip non-TCP ports
+		}
+
+		port, err := strconv.Atoi(parts[0])
+		if err != nil {
+			continue // Skip invalid ports
+		}
+
+		if port >= 1024 {
+			tcpPortsAbove1024 = append(tcpPortsAbove1024, port)
+		}
+	}
+
+	// Return smallest port >= 1024 if available
+	if len(tcpPortsAbove1024) > 0 {
+		return slices.Min(tcpPortsAbove1024)
+	}
+
+	return 0 // No TCP ports found
 }

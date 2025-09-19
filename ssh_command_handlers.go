@@ -461,8 +461,31 @@ done:
 		cc.Write("\033[1;33mWarning: Failed to update box info: %v\033[0m\r\n", err)
 	}
 
-	// Container is ready with SSH already configured!
-	// CreateContainer now blocks until SSH is verified, so we can proceed immediately
+	// Set up automatic routing based on exposed ports
+	proxyPort := 80
+	slog.Debug("setting up automatic routing", "box", boxName, "exposed_ports", createdContainer.ExposedPorts)
+	if bestPort := container.ChooseBestPortToRoute(createdContainer.ExposedPorts); bestPort > 0 {
+		box, err := ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+		if err != nil {
+			return err
+		}
+		route := exedb.Route{
+			Port:  bestPort,
+			Share: "private",
+		}
+		box.SetRoute(route)
+		if err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			queries := exedb.New(tx.Conn())
+			return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
+				Name:    box.Name,
+				AllocID: box.AllocID,
+				Routes:  box.Routes,
+			})
+		}); err != nil {
+			slog.Warn("failed to save auto-routing setup", "box", boxName, "port", bestPort, "error", err)
+		}
+		proxyPort = bestPort
+	}
 
 	totalTime := time.Since(startTime)
 	sshCommand := ss.server.formatSSHConnectionInfo(boxName)
@@ -473,17 +496,18 @@ done:
 	}
 
 	if cc.WantJSON() {
-		out := map[string]string{
+		out := map[string]any{
 			"box_name":    boxName,
 			"ssh_command": sshCommand,
 			"https_url":   httpsProxyAddr,
+			"proxy_port":  proxyPort,
 		}
 		cc.WriteJSON(out)
 		return nil
 	}
 	if cc.IsInteractive() {
-		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\033[1m%s\033[0m\r\n\r\n",
-			totalTime.Seconds(), sshCommand, httpsProxyAddr)
+		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\033[1m%s\033[0m (→ port %d)\r\n\r\n",
+			totalTime.Seconds(), sshCommand, httpsProxyAddr, proxyPort)
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
 		cc.Write("%s\r\n%s\r\n", sshCommand, httpsProxyAddr)
