@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1277,11 +1278,33 @@ func getProxyAuthCookies(t *testing.T, boxName string, baseCookies []*http.Cooki
 	return proxyCookies
 }
 
+// BoxOpts holds optional parameters for newBox.
+type BoxOpts struct {
+	Image   string
+	Command string
+}
+
 // newBox requests a new box from the open repl pty.
-func newBox(t *testing.T, pty *expectPty) string {
+func newBox(t *testing.T, pty *expectPty, opts ...BoxOpts) string {
 	boxName := boxName(t)
 	boxNameRe := regexp.QuoteMeta(boxName)
-	pty.sendLine("new --name=" + boxName)
+
+	// Use first opts if provided, otherwise default
+	var opt BoxOpts
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
+	// Build the command line
+	cmdLine := "new --name=" + boxName
+	if opt.Image != "" {
+		cmdLine += " --image=" + strconv.Quote(opt.Image)
+	}
+	if opt.Command != "" {
+		cmdLine += " --command=" + strconv.Quote(opt.Command)
+	}
+
+	pty.sendLine(cmdLine)
 	pty.reject("Sorry")
 	pty.wantRe("Creating .*" + boxNameRe)
 	// break onto two lines because ANSI codes
