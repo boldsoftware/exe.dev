@@ -417,8 +417,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	defer os.Remove(tmpFile.Name())
 
 	// Start piperd process and capture its output
-	// TODO(phil/josh): Pass -race if we're running under -race?
-	piperdCmd := exec.Command("go", "run", "./cmd/sshpiperd",
+	piperdCmd := exec.Command("go", "run", "-race", "./cmd/sshpiperd",
 		"--log-format", "json",
 		"--log-level", "debug",
 		"--port", "0",
@@ -527,8 +526,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		return nil, fmt.Errorf("failed to create coverage dir: %w", err)
 	}
 
-	// TODO(phil/josh): Pass -race if we're running under -race?
-	buildCmd := exec.Command("go", "build", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
+	buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("failed to build exed with coverage: %w\n%s", err, out)
 	}
