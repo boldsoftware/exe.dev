@@ -1,5 +1,5 @@
 -- name: GetAuthTokenInfo :one
-SELECT user_id, machine_name, expires_at, used_at
+SELECT *
 FROM auth_tokens
 WHERE token = ?;
 

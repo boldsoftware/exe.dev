@@ -99,9 +99,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
 	}
-	if q.getBoxWithSSHByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxWithSSHByNameAndAlloc); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxWithSSHByNameAndAlloc: %w", err)
-	}
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
 	}
@@ -449,11 +446,6 @@ func (q *Queries) Close() error {
 	if q.getBoxSSHDetailsStmt != nil {
 		if cerr := q.getBoxSSHDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
-		}
-	}
-	if q.getBoxWithSSHByNameAndAllocStmt != nil {
-		if cerr := q.getBoxWithSSHByNameAndAllocStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxWithSSHByNameAndAllocStmt: %w", cerr)
 		}
 	}
 	if q.getBoxesByHostStmt != nil {
@@ -885,7 +877,6 @@ type Queries struct {
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxIDAndAllocByNameStmt             *sql.Stmt
 	getBoxSSHDetailsStmt                   *sql.Stmt
-	getBoxWithSSHByNameAndAllocStmt        *sql.Stmt
 	getBoxesByHostStmt                     *sql.Stmt
 	getBoxesForAllocStmt                   *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
@@ -990,7 +981,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxIDAndAllocByNameStmt:             q.getBoxIDAndAllocByNameStmt,
 		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
-		getBoxWithSSHByNameAndAllocStmt:        q.getBoxWithSSHByNameAndAllocStmt,
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
 		getBoxesForAllocStmt:                   q.getBoxesForAllocStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,

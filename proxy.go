@@ -463,20 +463,21 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 
 // getBoxForUser retrieves a box for the given user/team/name
 func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (*exedb.Box, error) {
-	// Get user from public key
 	user, err := s.getUserByPublicKey(ctx, publicKey)
 	if err != nil || user == nil {
 		return nil, fmt.Errorf("user not found")
 	}
+	return s.boxForNameUserID(ctx, boxName, user.UserID)
+}
 
-	// Get user's alloc
-	alloc, err := s.getUserAlloc(ctx, user.UserID)
+func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (*exedb.Box, error) {
+	// TODO: do this in a single query instead of two separate ones
+	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
 		return nil, fmt.Errorf("user has no allocation")
 	}
 
-	// Get the box
-	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxByNameAndAllocRow, error) {
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.GetBoxByNameAndAlloc(ctx, exedb.GetBoxByNameAndAllocParams{
 			Name:    boxName,
 			AllocID: alloc.AllocID,
@@ -488,22 +489,7 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 		}
 		return nil, fmt.Errorf("database error: %v", err)
 	}
-
-	// Convert to exedb.Box
-	exeBox := &exedb.Box{
-		ID:              box.ID,
-		AllocID:         box.AllocID,
-		Name:            box.Name,
-		Status:          box.Status,
-		Image:           box.Image,
-		ContainerID:     box.ContainerID,
-		CreatedByUserID: box.CreatedByUserID,
-		CreatedAt:       box.CreatedAt,
-		UpdatedAt:       box.UpdatedAt,
-		LastStartedAt:   box.LastStartedAt,
-		Routes:          box.Routes,
-	}
-	return exeBox, nil
+	return &box, nil
 }
 
 // proxyToContainer proxies the HTTP request to a container via SSH port forwarding

@@ -8,12 +8,12 @@ SELECT user_id FROM users LIMIT 1;
 INSERT INTO users (user_id, email, default_billing_account_id) VALUES (?, ?, ?);
 
 -- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, default_billing_account_id
+SELECT *
 FROM users
 WHERE user_id = ?;
 
 -- name: GetUserByEmail :one
-SELECT user_id, email, created_at, default_billing_account_id
+SELECT *
 FROM users
 WHERE email = ?;
 

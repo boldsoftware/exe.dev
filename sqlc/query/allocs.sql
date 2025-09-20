@@ -6,12 +6,12 @@ INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_acco
 VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: GetAllocsByHost :many
-SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, billing_account_id
+SELECT *
 FROM allocs
 WHERE ctrhost = ?;
 
 -- name: GetAllocByUserID :one
-SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, billing_account_id
+SELECT *
 FROM allocs
 WHERE user_id = ?
 LIMIT 1;

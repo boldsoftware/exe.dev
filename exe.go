@@ -2213,10 +2213,7 @@ func (s *Server) cleanupExpiredMagicSecrets() {
 
 // validateAuthToken validates an authentication token and returns the user ID
 func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain string) (string, error) {
-	var authTokenInfo exedb.GetAuthTokenInfoRow
-
-	// Get auth token info
-	authTokenInfo, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetAuthTokenInfoRow, error) {
+	authToken, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.AuthToken, error) {
 		return queries.GetAuthTokenInfo(ctx, token)
 	})
 	if err != nil {
@@ -2227,17 +2224,17 @@ func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain
 	}
 
 	// Check if token has already been used
-	if authTokenInfo.UsedAt != nil {
+	if authToken.UsedAt != nil {
 		return "", fmt.Errorf("token already used")
 	}
 
 	// Check if token has expired
-	if time.Now().After(authTokenInfo.ExpiresAt) {
+	if time.Now().After(authToken.ExpiresAt) {
 		return "", fmt.Errorf("token expired")
 	}
 
 	// Check machine name if specified (equivalent to subdomain check)
-	if expectedSubdomain != "" && authTokenInfo.MachineName != nil && *authTokenInfo.MachineName != expectedSubdomain {
+	if expectedSubdomain != "" && authToken.MachineName != nil && *authToken.MachineName != expectedSubdomain {
 		return "", fmt.Errorf("token not valid for this subdomain")
 	}
 
@@ -2249,7 +2246,7 @@ func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain
 		slog.Error("Failed to mark token as used", "error", err)
 	}
 
-	return authTokenInfo.UserID, nil
+	return authToken.UserID, nil
 }
 
 // redirectAfterAuth handles redirecting user after successful authentication

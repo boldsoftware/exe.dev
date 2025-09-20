@@ -7,30 +7,24 @@ package exedb
 
 import (
 	"context"
-	"time"
 )
 
 const getAuthTokenInfo = `-- name: GetAuthTokenInfo :one
-SELECT user_id, machine_name, expires_at, used_at
+SELECT token, user_id, machine_name, expires_at, used_at, created_at
 FROM auth_tokens
 WHERE token = ?
 `
 
-type GetAuthTokenInfoRow struct {
-	UserID      string     `db:"user_id" json:"user_id"`
-	MachineName *string    `db:"machine_name" json:"machine_name"`
-	ExpiresAt   time.Time  `db:"expires_at" json:"expires_at"`
-	UsedAt      *time.Time `db:"used_at" json:"used_at"`
-}
-
-func (q *Queries) GetAuthTokenInfo(ctx context.Context, token string) (GetAuthTokenInfoRow, error) {
+func (q *Queries) GetAuthTokenInfo(ctx context.Context, token string) (AuthToken, error) {
 	row := q.queryRow(ctx, q.getAuthTokenInfoStmt, getAuthTokenInfo, token)
-	var i GetAuthTokenInfoRow
+	var i AuthToken
 	err := row.Scan(
+		&i.Token,
 		&i.UserID,
 		&i.MachineName,
 		&i.ExpiresAt,
 		&i.UsedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }

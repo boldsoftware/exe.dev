@@ -2,7 +2,6 @@ package exe
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -23,7 +22,6 @@ import (
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
-	"exe.dev/sqlite"
 	"github.com/creack/pty"
 )
 
@@ -161,7 +159,7 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		// Create new terminal session
 		// TODO(philip): Don't hold the lock while creating this!
-		session, err = s.createTerminalSession(r.Context(), userID, boxName, terminalID)
+		session, err = s.createTerminalSession(r.Context(), userID, boxName)
 		if err != nil {
 			terminalSessionsMutex.Unlock()
 			http.Error(w, fmt.Sprintf("Failed to create terminal: %v", err), http.StatusInternalServerError)
@@ -304,7 +302,7 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 }
 
 // createTerminalSession creates a new terminal session for a user's box
-func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, terminalID string) (*TerminalSession, error) {
+func (s *Server) createTerminalSession(ctx context.Context, userID, boxName string) (*TerminalSession, error) {
 	session := &TerminalSession{
 		EventsClients:     make(map[chan []byte]bool),
 		LastEventClientID: 0,
@@ -314,7 +312,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, ter
 	}
 
 	// Get box information
-	box, err := s.getBoxForUserByID(ctx, userID, boxName)
+	box, err := s.boxForNameUserID(ctx, boxName, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get box: %w", err)
 	}
@@ -459,38 +457,6 @@ func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout
 }
 
 // Helper functions for box management
-
-// getBoxForUserByID gets a box for a user using user ID
-func (s *Server) getBoxForUserByID(ctx context.Context, userID, boxName string) (*exedb.Box, error) {
-	// Get user's alloc
-	alloc, err := s.getUserAlloc(ctx, userID)
-	if err != nil || alloc == nil {
-		return nil, fmt.Errorf("user has no allocation")
-	}
-
-	// Get the box using sqlc
-	var box exedb.Box
-	err = s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		queries := exedb.New(rx.Conn())
-		result, err := queries.GetBoxWithSSHByNameAndAlloc(ctx, exedb.GetBoxWithSSHByNameAndAllocParams{
-			Name:    boxName,
-			AllocID: alloc.AllocID,
-		})
-		if err != nil {
-			return err
-		}
-		box = result
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("box '%s' not found or access denied", boxName)
-		}
-		return nil, fmt.Errorf("database error: %v", err)
-	}
-
-	return &box, nil
-}
 
 // getUserIDFromRequest extracts user ID from auth cookie
 func (s *Server) getUserIDFromRequest(r *http.Request) (string, error) {

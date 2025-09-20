@@ -23,7 +23,7 @@ SET stripe_customer_id = ?, updated_at = CURRENT_TIMESTAMP
 WHERE billing_account_id = ?;
 
 -- name: GetBillingAccountByAllocID :one
-SELECT ba.billing_account_id, ba.name, ba.billing_email, ba.stripe_customer_id, ba.created_at, ba.updated_at
+SELECT ba.*
 FROM billing_accounts ba
 JOIN allocs a ON ba.billing_account_id = a.billing_account_id
 WHERE a.alloc_id = ?;

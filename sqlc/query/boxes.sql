@@ -1,6 +1,5 @@
 -- name: GetBoxesForAlloc :many
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes,
-       ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user
+SELECT *
 FROM boxes
 WHERE alloc_id = ?
 ORDER BY name;
@@ -48,11 +47,7 @@ WHERE a.user_id = ?
 ORDER BY m.updated_at DESC;
 
 -- name: GetBoxesByHost :many
-SELECT
-    b.id, b.alloc_id, b.name, b.status, b.image, b.container_id,
-    b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at,
-    b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys,
-    b.ssh_client_private_key, b.ssh_port, b.ssh_user
+SELECT b.*
 FROM boxes b
 INNER JOIN allocs a ON b.alloc_id = a.alloc_id
 WHERE a.ctrhost = ? AND b.status != 'failed';
@@ -79,20 +74,7 @@ SET status = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
 -- name: GetBoxByNameAndAlloc :one
-SELECT id, alloc_id, name, status, image, container_id,
-       created_by_user_id, created_at, updated_at,
-       last_started_at, routes
-FROM boxes
-WHERE name = ? AND alloc_id = ?;
-
--- name: GetBoxWithSSHByNameAndAlloc :one
-SELECT id, alloc_id, name, status, image, container_id,
-       created_by_user_id, created_at, updated_at,
-       last_started_at, routes,
-       ssh_server_identity_key, ssh_authorized_keys,
-       ssh_client_private_key, ssh_port, ssh_user
-FROM boxes
-WHERE name = ? AND alloc_id = ?;
+SELECT * FROM boxes WHERE name = ? AND alloc_id = ?;
 
 -- name: DeleteBox :exec
 DELETE FROM boxes WHERE id = ?;
