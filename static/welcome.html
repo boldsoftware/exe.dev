@@ -17,68 +17,6 @@
             overflow-x: hidden;
         }
         
-        .stop-overbuilding {
-            font-size: 14px;
-            letter-spacing: 0.3em;
-            text-transform: uppercase;
-            font-variant: small-caps;
-            color: #333;
-            margin-bottom: 20px;
-            font-weight: 400;
-            position: relative;
-        }
-        
-        .stop-overbuilding::before,
-        .stop-overbuilding::after {
-            content: '§';
-            font-size: 18px;
-            opacity: 0.5;
-            margin: 0 15px;
-            font-weight: normal;
-        }
-        
-        .divider {
-            width: 200px;
-            height: 40px;
-            margin: 40px auto;
-            position: relative;
-            opacity: 0.4;
-        }
-        
-        .divider::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, 
-                transparent 0%, 
-                #333 20%, 
-                #333 80%, 
-                transparent 100%);
-        }
-        
-        .divider::after {
-            content: '❦';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 24px;
-            background: #fffff8;
-            padding: 0 10px;
-            color: #333;
-        }
-        
-        .just-use-ssh {
-            font-size: clamp(70px, 14vw, 160px);
-            line-height: 0.9;
-            color: #000;
-            margin-bottom: 40px;
-            font-weight: normal;
-            letter-spacing: -0.02em;
-        }
         
         .content-section {
             display: flex;
@@ -170,26 +108,7 @@
                 padding: 20px 10px;
             }
             
-            .stop-overbuilding {
-                font-size: 12px;
-                letter-spacing: 0.2em;
-            }
             
-            .stop-overbuilding::before,
-            .stop-overbuilding::after {
-                margin: 0 8px;
-            }
-            
-            .divider {
-                transform: scale(0.8);
-                margin: 30px auto;
-            }
-            
-            .just-use-ssh {
-                /* Remove negative margins that could cause overflow */
-                margin-left: 0;
-                margin-right: 0;
-            }
             
             .content-section {
                 flex-direction: column;
@@ -290,9 +209,9 @@
     </div>
     
     <main>
-        <div class="stop-overbuilding">yes you can have a machine</div>
+        <aside>yes you can have a machine</aside>
         
-        <h1 class="just-use-ssh">just use ssh</h1>
+        <h1>just use ssh</h1>
 
         <div class="content-section command-row">
             <div class="command-block">ssh exe.dev</div>
@@ -314,7 +233,7 @@
             </p>
         </div>
 
-        <div class="divider"></div>
+        <hr>
 
         <div class="content-section command-row">
             <div class="command-block">
@@ -327,7 +246,7 @@ ssh bip@exe.dev
             </p>
         </div>
 
-        <div class="divider"></div>
+        <hr>
 
         <div class="content-section https-section">
             <div class="https-content">
@@ -347,7 +266,7 @@ curl <strong>https</strong>://bip.yourteam.exe.dev
             </div>
         </div>
 
-        <div class="divider"></div>
+        <hr>
         
         <div class="content-section command-row">
             <div class="command-block">ssh exe.dev</div>

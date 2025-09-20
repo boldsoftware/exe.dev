@@ -31,3 +31,83 @@ main {
   margin: 0 auto;
 }
 
+/* Shared typographic + layout elements */
+
+h1 {
+  font-size: clamp(70px, 14vw, 160px);
+  line-height: 0.9;
+  color: #000;
+  margin-bottom: 40px;
+  font-weight: normal;
+  letter-spacing: -0.02em;
+}
+
+aside {
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  font-variant: small-caps;
+  color: #333;
+  margin-bottom: 20px;
+  font-weight: 400;
+  position: relative;
+}
+
+aside::before,
+aside::after {
+  content: '§';
+  font-size: 18px;
+  opacity: 0.5;
+  margin: 0 15px;
+  font-weight: normal;
+}
+
+hr {
+  width: 200px;
+  height: 40px;
+  border: 0;
+  margin: 40px auto;
+  position: relative;
+  opacity: 0.4;
+}
+
+hr::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    #333 20%,
+    #333 80%,
+    transparent 100%);
+}
+
+hr::after {
+  content: '❦';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 24px;
+  background: #fffff8;
+  padding: 0 10px;
+  color: #333;
+}
+
+@media (max-width: 600px) {
+  h1 {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  aside {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+  }
+  hr {
+    transform: scale(0.8);
+    margin: 30px auto;
+  }
+}
