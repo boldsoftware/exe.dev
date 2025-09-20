@@ -1,0 +1,33 @@
+/* EXE.DEV shared styles: background, fonts, basic layout */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+body {
+  background-color: #fffff8;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.035) 0px,
+    rgba(0, 0, 0, 0.035) 2px,
+    transparent 2px,
+    transparent 4px
+  );
+  background-size: 4px 4px;
+  font-family: Georgia, 'Times New Roman', serif;
+  overflow-x: hidden;
+}
+
+main {
+  max-width: 900px;
+  width: 100%;
+  overflow-x: hidden;
+  margin: 0 auto;
+}
+

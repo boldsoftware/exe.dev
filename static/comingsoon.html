@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXE.DEV - just use ssh</title>
+    <link rel="stylesheet" href="exe.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 40px 20px;
+            text-align: center;
+            overflow-x: hidden;
+        }
+        
+        .stop-overbuilding {
+            font-size: 14px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #333;
+            margin-bottom: 20px;
+            font-weight: 400;
+            position: relative;
+        }
+        
+        .stop-overbuilding::before,
+        .stop-overbuilding::after {
+            content: '§';
+            font-size: 18px;
+            opacity: 0.5;
+            margin: 0 15px;
+            font-weight: normal;
+        }
+        
+        .divider {
+            width: 200px;
+            height: 40px;
+            margin: 40px auto;
+            position: relative;
+            opacity: 0.4;
+        }
+        
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent 0%, 
+                #333 20%, 
+                #333 80%, 
+                transparent 100%);
+        }
+        
+        .divider::after {
+            content: '❦';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            background: #fffff8;
+            padding: 0 10px;
+            color: #333;
+        }
+        
+        .just-use-ssh {
+            font-size: clamp(70px, 14vw, 160px);
+            line-height: 0.9;
+            color: #000;
+            margin-bottom: 40px;
+            font-weight: normal;
+            letter-spacing: -0.02em;
+        }
+        
+        .content-section {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+            margin: 40px auto 50px;
+            flex-wrap: wrap;
+        }
+        
+        .content-section.command-row {
+            flex-direction: column;
+            gap: 20px;
+            margin: 30px auto;
+        }
+        
+        .content-section.command-row .description {
+            text-align: center;
+            max-width: 600px;
+        }
+        
+        .blowfish-logo {
+            width: 200px;
+            height: auto;
+        }
+        
+        .https-section {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+            justify-content: center;
+            margin: 30px auto;
+        }
+        
+        .https-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .description {
+            font-size: 18px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #444;
+            line-height: 1.8;
+            max-width: 420px;
+            font-weight: 400;
+            text-align: left;
+        }
+        
+        .description strong {
+            font-weight: bold;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 20px 10px;
+            }
+            
+            .stop-overbuilding {
+                font-size: 12px;
+                letter-spacing: 0.2em;
+            }
+            
+            .stop-overbuilding::before,
+            .stop-overbuilding::after {
+                margin: 0 8px;
+            }
+            
+            .divider {
+                transform: scale(0.8);
+                margin: 30px auto;
+            }
+            
+            .just-use-ssh {
+                /* Remove negative margins that could cause overflow */
+                margin-left: 0;
+                margin-right: 0;
+            }
+            
+            .content-section {
+                flex-direction: column;
+                width: 100%;
+                padding: 0 10px;
+            }
+            
+            .description {
+                font-size: 15px;
+                letter-spacing: 0.1em;
+                text-align: center;
+            }
+            
+            .blowfish-logo {
+                width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="stop-overbuilding">a vm for your thoughts</div>
+        
+        <h1 class="just-use-ssh">coming soon</h1>
+
+        <div class="divider"></div>
+    </main>
+</body>
+</html>
