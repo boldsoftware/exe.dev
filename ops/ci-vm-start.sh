@@ -202,17 +202,6 @@ sudo virsh list --all || true
 get_ip() {
 	# Prefer libvirt lease-based lookup (does not require guest agent)
 	ip=$(sudo virsh domifaddr "${NAME}" --source lease 2>/dev/null | awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1 || true)
-	if [[ -z "${ip}" ]]; then
-		# Fallback: correlate MAC from domiflist with default network DHCP leases
-		mac=$(sudo virsh domiflist "${NAME}" 2>/dev/null | awk 'NR>2 && $0!~/^$/ {print $5; exit}')
-		if [[ -n "${mac}" ]]; then
-			ip=$(sudo virsh net-dhcp-leases default 2>/dev/null | awk -v m="$mac" '$0 ~ m {print $5}' | sed 's|/.*||' | head -n1 || true)
-		fi
-	fi
-	if [[ -z "${ip}" ]]; then
-		# Last resort: guest agent
-		ip=$(sudo virsh domifaddr "${NAME}" --source agent 2>/dev/null | awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1 || true)
-	fi
 	echo "${ip}"
 }
 
@@ -221,7 +210,7 @@ for i in $(seq 1 120); do
 	IP="$(get_ip || true)"
 	if [[ -n "${IP}" ]]; then break; fi
 	echo "  attempt ${i}/120: no IP yet"
-	sleep 2
+	sleep 1
 done
 if [[ -z "${IP:-}" ]]; then
 	echo "Failed to obtain VM IP" >&2
@@ -236,6 +225,13 @@ for i in $(seq 1 60); do
 	sleep 2
 done
 ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait || true'
+
+# Opportunistically speed up apt-get by using the local mirrors.
+MIRROR_FILE=/etc/apt/sources.list.d/hetzner-mirror.sources
+if [ -f "$MIRROR_FILE" ]; then
+	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" "sudo tee $MIRROR_FILE" < $MIRROR_FILE || echo true
+fi
+
 
 if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	echo "No snapshot found; provisioning VM and creating snapshot cache..."
