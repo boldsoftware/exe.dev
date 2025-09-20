@@ -27,14 +27,13 @@ func (b *Box) GetRoute() Route {
 }
 
 // SetRoute sets the box's routing configuration
-func (b *Box) SetRoute(route Route) error {
+func (b *Box) SetRoute(route Route) {
 	data, err := json.Marshal(route)
 	if err != nil {
-		return err
+		panic("Failed to marshal route: " + err.Error())
 	}
 	routesStr := string(data)
 	b.Routes = &routesStr
-	return nil
 }
 
 // DefaultRoute returns the default routing configuration

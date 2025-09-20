@@ -955,12 +955,7 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 		Share: share,
 	}
 
-	err = box.SetRoute(newRoute)
-	if err != nil {
-		return err
-	}
-
-	// Update database
+	box.SetRoute(newRoute)
 	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{

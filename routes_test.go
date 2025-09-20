@@ -153,10 +153,7 @@ func TestHandleProxyRequest(t *testing.T) {
 		Port:  80,
 		Share: "public",
 	}
-	err = box.SetRoute(publicRoute)
-	if err != nil {
-		t.Fatalf("Failed to set route: %v", err)
-	}
+	box.SetRoute(publicRoute)
 
 	// Update the box in the database
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
