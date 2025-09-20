@@ -456,7 +456,7 @@ done:
 		SSHPort:           createdContainer.SSHPort,
 	}
 	if err := ss.server.updateBoxWithContainer(ctx, boxID, createdContainer.ID, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
-		cc.Write("\033[1;33mWarning: Failed to update box info: %v\033[0m\r\n", err)
+		return err
 	}
 
 	// Set up automatic routing based on exposed ports
