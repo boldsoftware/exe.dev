@@ -829,7 +829,7 @@ func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
 	if err := cmd.Start(); err != nil {
 		p.t.Fatalf("failed to start %v: %v", cmd, err)
 	}
-	pty.Setsize(p.console.Tty(), &pty.Winsize{Rows: 40, Cols: 80})
+	pty.Setsize(p.console.Tty(), &pty.Winsize{Rows: 120, Cols: 240})
 	// sshCmd now owns the PTY; close our reference.
 	// Without this, linux hangs on disconnect waiting for EOF.
 	p.console.Tty().Close()
