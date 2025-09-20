@@ -111,3 +111,45 @@ hr::after {
     margin: 30px auto;
   }
 }
+
+/* Simple bottom navigation */
+nav {
+  margin-top: 50px;
+  text-align: center;
+}
+
+nav a {
+  display: inline-block;
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  font-variant: small-caps;
+  color: #333;
+  text-decoration: none;
+}
+
+nav a:hover {
+  text-decoration: underline;
+}
+
+nav a + a::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+  margin: 0 12px 2px;
+  vertical-align: middle;
+}
+
+@media (max-width: 600px) {
+  nav a {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+  }
+  nav a + a::before {
+    margin: 0 8px 2px;
+  }
+}
