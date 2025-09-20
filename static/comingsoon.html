@@ -17,6 +17,87 @@
             overflow-x: hidden;
         }
         
+        /* waitlist styles (page-local) */
+        .waitlist-link {
+            display: inline-block;
+            margin-top: 20px;
+            font-size: 14px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            color: #333;
+            text-decoration: none;
+        }
+        .waitlist-link:hover { text-decoration: underline; }
+        
+        .waitlist-container {
+            display: none;
+            margin: 20px auto 0;
+        }
+        
+        .waitlist-panel {
+            display: inline-block;
+            background: rgba(255, 255, 248, 0.95);
+            padding: 20px 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            text-align: left;
+        }
+        
+        .waitlist-email {
+            width: 100%;
+            max-width: 360px;
+            font-size: 18px;
+            padding: 12px 14px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: #fff;
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        .waitlist-email::placeholder { color: #888; }
+        
+        .question {
+            margin-top: 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px 12px 10px;
+        }
+        .question legend {
+            font-size: 16px;
+            color: #444;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-variant: small-caps;
+            margin-bottom: 10px;
+        }
+        .choices {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .choice-btn {
+            border: 1px solid #333;
+            color: #333;
+            background: #fffffb;
+            border-radius: 9999px;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 14px;
+            letter-spacing: 0.03em;
+        }
+        .choice-btn[aria-pressed="true"], .choice-btn.active {
+            background: #333;
+            color: #fff;
+        }
+        .waitlist-status {
+            display: none;
+            margin-top: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+        }
+        
         .content-section {
             display: flex;
             align-items: center;
@@ -104,6 +185,30 @@
         
         <h1>coming soon</h1>
 
+        <a href="#" class="waitlist-link" id="waitlist-link" aria-expanded="false">join waitlist</a>
+        <div class="waitlist-container" id="waitlist">
+            <div class="waitlist-panel">
+                <form id="waitlist-form" method="POST" action="/waitlist">
+                    <div>
+                        <input type="email" name="email" class="waitlist-email" id="waitlist-email" placeholder="you@email.com" aria-label="Email address" required>
+                    </div>
+                    <fieldset class="question">
+                        <legend>what is a VM to you?</legend>
+                        <div class="choices" id="waitlist-choices" role="group" aria-label="What is a VM to you?">
+                            <button type="button" class="choice-btn" aria-pressed="false" data-value="Joy">Joy</button>
+                            <button type="button" class="choice-btn" aria-pressed="false" data-value="Agent">Agent</button>
+                            <button type="button" class="choice-btn" aria-pressed="false" data-value="Solitude">Solitude</button>
+                            <button type="button" class="choice-btn" aria-pressed="false" data-value="Freedom">Freedom</button>
+                        </div>
+                    </fieldset>
+                    <div id="waitlist-status" class="waitlist-status" aria-live="polite"></div>
+                    <div style="margin-top: 16px; text-align: right;">
+                        <button type="submit" class="choice-btn" style="border-color:#4a90e2;color:#fff;background:#4a90e2;">Join</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <hr>
 
         <nav>
@@ -112,5 +217,81 @@
             <a href="/jobs">jobs</a>
         </nav>
     </main>
+    <script>
+(function() {
+    var link = document.getElementById('waitlist-link');
+    var panel = document.getElementById('waitlist');
+    var choices = document.querySelectorAll('#waitlist-choices .choice-btn');
+    var form = document.getElementById('waitlist-form');
+    if (link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var visible = panel.style.display === 'block';
+            panel.style.display = visible ? 'none' : 'block';
+            link.setAttribute('aria-expanded', (!visible).toString());
+            if (!visible) {
+                var email = document.getElementById('waitlist-email');
+                if (email) email.focus();
+            }
+        });
+    }
+    choices.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var pressed = btn.getAttribute('aria-pressed') === 'true';
+            btn.setAttribute('aria-pressed', (!pressed).toString());
+            btn.classList.toggle('active', !pressed);
+        });
+    });
+
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var status = document.getElementById('waitlist-status');
+            var submitBtn = form.querySelector('button[type="submit"]');
+            // Respect built-in validation
+            if (typeof form.reportValidity === 'function' && !form.reportValidity()) {
+                return;
+            }
+            // Build urlencoded body
+            var params = new URLSearchParams();
+            var emailEl = document.getElementById('waitlist-email');
+            if (emailEl && emailEl.value) {
+                params.append('email', emailEl.value.trim());
+            }
+            Array.from(document.querySelectorAll('#waitlist-choices .choice-btn.active')).forEach(function(btn){
+                params.append('vm_meaning', btn.getAttribute('data-value'));
+            });
+            // UI state
+            if (status) { status.style.display = 'none'; status.textContent = ''; }
+            if (submitBtn) { submitBtn.disabled = true; }
+            // Submit
+            fetch('/waitlist', { method: 'POST', body: params.toString(), headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } })
+            .then(function(resp){ return resp.json().catch(function(){ return { ok: resp.ok }; }); })
+            .then(function(data){
+                if (data && data.ok) {
+                    if (status) {
+                        status.textContent = "You're on the list. Thank you!";
+                        status.style.display = 'block';
+                    }
+                    // Optionally disable inputs
+                    form.querySelectorAll('input,button').forEach(function(el){ el.disabled = true; });
+                } else {
+                    throw new Error((data && data.error) || 'Submission failed');
+                }
+            })
+            .catch(function(err){
+                if (status) {
+                    status.textContent = 'Sorry, something went wrong. Please try again later.';
+                    status.style.display = 'block';
+                    status.style.color = '#721c24';
+                    status.style.background = '#f8d7da';
+                    status.style.borderColor = '#f5c6cb';
+                }
+            })
+            .finally(function(){ if (submitBtn) { submitBtn.disabled = false; } });
+        });
+    }
+})();
+    </script>
 </body>
 </html>

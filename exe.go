@@ -1032,26 +1032,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch path {
 	case "/":
-		// In production mode, require basic auth for home page
-		if s.devMode == "" {
-			user, pass, ok := r.BasicAuth()
-			if !ok || user != "comingsoon" || pass != "" {
-				w.Header().Set("WWW-Authenticate", `Basic realm="exe.dev"`)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-		}
-
-		// Check if user is authenticated
+		// If authenticated, show user dashboard; otherwise redirect to /soon
 		if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
 			if userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
-				// User is authenticated, redirect to user dashboard
 				s.handleUserDashboard(w, r, userID)
 				return
 			}
 		}
-		// User not authenticated, serve welcome page
-		s.serveStaticFile(w, r, "welcome.html")
+		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
+		return
+	case "/soon":
+		s.serveStaticFile(w, r, "comingsoon.html")
 		return
 	case "/~", "/~/":
 		// User dashboard - require authentication
@@ -1077,6 +1068,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleMetrics(w, r)
 	case "/containers":
 		s.handleContainers(w, r)
+	case "/waitlist":
+		s.handleWaitlist(w, r)
 	case "/verify-email":
 		s.handleEmailVerificationHTTP(w, r)
 	case "/verify-device":
@@ -1146,6 +1139,107 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	handler := promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{})
 	handler.ServeHTTP(w, r)
+}
+
+// handleWaitlist handles POSTs from the coming soon waitlist form
+func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		if strings.Contains(r.Header.Get("Accept"), "application/json") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"ok":false,"error":"invalid form"}`)
+		} else {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+		}
+		return
+	}
+	email := strings.TrimSpace(r.FormValue("email"))
+	if email == "" {
+		if strings.Contains(r.Header.Get("Accept"), "application/json") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"ok":false,"error":"missing email"}`)
+		} else {
+			http.Error(w, "missing email", http.StatusBadRequest)
+		}
+		return
+	}
+	// Determine remote IP
+	remoteIP := r.Header.Get("X-Forwarded-For")
+	if remoteIP == "" {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err == nil {
+			remoteIP = host
+		} else {
+			remoteIP = r.RemoteAddr
+		}
+	}
+
+	// Collect selected meanings and encode as JSON object
+	meanings := r.Form["vm_meaning"]
+	var jsonPayload *string
+	if len(meanings) > 0 {
+		payload := map[string]any{
+			"meaning": meanings,
+		}
+		if b, err := json.Marshal(payload); err == nil {
+			s := string(b)
+			jsonPayload = &s
+		}
+	}
+
+	// Store in database and check if this is the first time this email appears
+	wasNew := false
+	err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		var dummy int
+		err := tx.QueryRow("SELECT 1 FROM waitlist WHERE email = ? LIMIT 1", email).Scan(&dummy)
+		if err == nil {
+			wasNew = false
+		} else if errors.Is(err, sql.ErrNoRows) {
+			wasNew = true
+		} else if err != nil {
+			return err
+		}
+
+		if jsonPayload != nil {
+			_, err := tx.Exec("INSERT INTO waitlist (email, remote_ip, json) VALUES (?, ?, ?)", email, remoteIP, *jsonPayload)
+			return err
+		}
+		_, err = tx.Exec("INSERT INTO waitlist (email, remote_ip) VALUES (?, ?)", email, remoteIP)
+		return err
+	})
+	if err != nil {
+		slog.Error("failed to insert waitlist entry", "err", err)
+		if strings.Contains(r.Header.Get("Accept"), "application/json") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"ok":false,"error":"internal error"}`)
+		} else {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Send confirmation email only on first add
+	if err == nil && wasNew {
+		subject := "You're on the exe.dev waitlist"
+		body := "Hello,\n\nThanks for your interest in exe.dev. You're on the waitlist. We'll reach out as soon as we have space for you.\n\nIn the meantime, we're heads down building a great SSH-first experience.\n\n— exe.dev"
+		if sendErr := s.sendEmail(email, subject, body); sendErr != nil {
+			slog.Warn("failed to send waitlist email", "email", email, "err", sendErr)
+		}
+	}
+
+	// Return JSON for JS clients, otherwise redirect back to home
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true}`)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // handleContainers handles container management requests

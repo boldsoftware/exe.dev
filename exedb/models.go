@@ -186,3 +186,11 @@ type UserEvent struct {
 	FirstOccurredAt *time.Time `db:"first_occurred_at" json:"first_occurred_at"`
 	LastOccurredAt  *time.Time `db:"last_occurred_at" json:"last_occurred_at"`
 }
+
+type Waitlist struct {
+	ID        int64      `db:"id" json:"id"`
+	Email     string     `db:"email" json:"email"`
+	RemoteIp  *string    `db:"remote_ip" json:"remote_ip"`
+	Json      *string    `db:"json" json:"json"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}
