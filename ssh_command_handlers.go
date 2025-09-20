@@ -290,8 +290,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	// Get size preset
 	sizePreset, exists := container.ContainerSizes[size]
 	if !exists {
-		cc.Write("\033[1;31mError: Invalid size '%s'. Valid sizes: micro, small, medium, large, xlarge\033[0m\r\n", size)
-		return fmt.Errorf("invalid container size %q", size)
+		return cc.Errorf("Invalid container size %q. Valid sizes: micro, small, medium, large, xlarge", size)
 	}
 
 	// Create channels for progress updates and completion
@@ -433,7 +432,6 @@ done:
 	}
 
 	if createErr != nil {
-		cc.WriteInternalError("new", createErr, "boxName", boxName, "image", image, "size", size)
 		// Clean up the pre-created box entry since container creation failed
 		if err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			queries := exedb.New(tx.Conn())
@@ -556,8 +554,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *CommandContext
 		return queries.DeleteBox(ctx, box.ID)
 	})
 	if err != nil {
-		cc.WriteInternalError("delete", err, "boxID", box.ID, "boxName", box.Name)
-		return nil
+		return err
 	}
 
 	if cc.WantJSON() {
@@ -596,8 +593,7 @@ func (ss *SSHServer) handleAllocCommand(ctx context.Context, cc *CommandContext)
 func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *CommandContext) error {
 	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
-		cc.WriteInternalError("billing", err)
-		return nil
+		return err
 	}
 
 	if cc.WantJSON() {
@@ -761,8 +757,7 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *CommandContext
 		},
 	)
 	if err != nil {
-		cc.WriteInternalError("whoami", err)
-		return nil
+		return err
 	}
 
 	slices.SortFunc(sshKeys, func(a, b sshKeyRow) int {
@@ -962,8 +957,7 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 
 	err = box.SetRoute(newRoute)
 	if err != nil {
-		cc.WriteInternalError("route", err, "boxName", boxName, "newRoute", newRoute)
-		return nil
+		return err
 	}
 
 	// Update database
@@ -976,7 +970,6 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 		})
 	})
 	if err != nil {
-		cc.WriteInternalError("route", err, "boxName", boxName, "newRoute", newRoute)
 		return err
 	}
 
@@ -1011,8 +1004,7 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *CommandContex
 		})
 	})
 	if err != nil {
-		cc.WriteInternalError("browser", err)
-		return nil
+		return err
 	}
 
 	baseURL := ss.server.getBaseURL()
