@@ -572,17 +572,6 @@ func (s *Server) withTx(ctx context.Context, fn func(context.Context, *exedb.Que
 	})
 }
 
-// withTxRes executes a function with a read-write database transaction and exedb queries, returning a value
-func withTxRes[T any](s *Server, ctx context.Context, fn func(context.Context, *exedb.Queries) (T, error)) (T, error) {
-	var result T
-	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		var err error
-		result, err = fn(ctx, queries)
-		return err
-	})
-	return result, err
-}
-
 // withRxRes executes a function with a read-only database transaction and exedb queries, returning a value
 func withRxRes[T any](s *Server, ctx context.Context, fn func(context.Context, *exedb.Queries) (T, error)) (T, error) {
 	var result T

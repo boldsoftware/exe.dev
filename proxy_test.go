@@ -58,41 +58,6 @@ func createTestRequestForServer(method, url, host string, server *Server) *http.
 	return req
 }
 
-// Backward compatibility helper
-func createTestRequest(method, url, host string) *http.Request {
-	// This version doesn't have access to server, so just add port 80 if missing
-	req := httptest.NewRequest(method, url, nil)
-
-	finalHost := host
-	if _, _, err := net.SplitHostPort(host); err != nil {
-		finalHost = net.JoinHostPort(host, "80")
-	}
-
-	req.Host = finalHost
-
-	// Set up mock local address context that the proxy handler expects
-	var mockPort int
-	if _, portStr, err := net.SplitHostPort(finalHost); err == nil {
-		if port, err := strconv.Atoi(portStr); err == nil {
-			mockPort = port
-		} else {
-			mockPort = 80 // fallback
-		}
-	} else {
-		mockPort = 80
-	}
-
-	mockAddr := &net.TCPAddr{
-		IP:   net.ParseIP("127.0.0.1"),
-		Port: mockPort,
-	}
-
-	ctx := context.WithValue(req.Context(), http.LocalAddrContextKey, mockAddr)
-	req = req.WithContext(ctx)
-
-	return req
-}
-
 func TestProxyRequestRouting(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
@@ -616,20 +581,6 @@ func TestProxyLogoutFlow(t *testing.T) {
 			t.Error("First cookie should have been deleted from database")
 		}
 	})
-}
-
-// TestMultiPortProxyHostnameParsing tests the new "box:port" hostname parsing
-// TODO: This test is broken - parseBoxAndPort doesn't exist
-// TODO: parseBoxAndPort method doesn't exist - test disabled
-func _TestMultiPortProxyHostnameParsing(t *testing.T) {
-	t.Skip("Test disabled - parseBoxAndPort method not implemented")
-}
-
-// TestRouteSelectionLogic tests the complete routing logic including default port handling
-// TODO: This test is broken - parseBoxAndPort doesn't exist
-// TODO: parseBoxAndPort method doesn't exist - test disabled
-func _TestRouteSelectionLogic(t *testing.T) {
-	t.Skip("Test disabled - parseBoxAndPort method not implemented")
 }
 
 // TestIsProxyRequest tests the isProxyRequest function with comprehensive cases

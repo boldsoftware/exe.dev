@@ -500,18 +500,6 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 	return nil
 }
 
-// parseContainerStatus converts nerdctl status to our ContainerStatus
-func (m *NerdctlManager) parseContainerStatus(status string) ContainerStatus {
-	status = strings.ToLower(status)
-	if strings.Contains(status, "up") || strings.Contains(status, "running") {
-		return StatusRunning
-	}
-	if strings.Contains(status, "paused") {
-		return StatusPending
-	}
-	return StatusStopped
-}
-
 // perHostCreateLimit is the maximum simultaneous create limit.
 //
 // TODO: we need a different limit on easily overloaded, nested KVM
