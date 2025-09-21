@@ -890,15 +890,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		}
 		prep.needsPull = false
 	})
-	prep.wg.Go(func() {
-		cfg, err := m.inspectImage(ctx, imageWithDigest)
-		if err != nil {
-			// Do not use errc here as we can continue without this info.
-			slog.Error("Failed to get image metadata", "image", imageWithDigest, "error", err)
-			return
-		}
-		prep.imageConfig = *cfg
-	})
+	// Image config will be retrieved AFTER the pull to ensure consistent nerdctl behavior
 
 	// Wait for all
 	prep.wg.Wait()
@@ -1009,6 +1001,15 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 			}
 		}
 	}
+
+	// Get image config AFTER the pull to ensure consistent nerdctl behavior.
+	// This is important because nerdctl might behave differently depending on whether
+	// the image is already cached on the container host machine or not.
+	cfg, err := m.inspectImage(ctx, imageWithDigest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image metadata after pull: %w", err)
+	}
+	prep.imageConfig = *cfg
 
 	// If using exetini, override the entrypoint and pass image user
 	runArgs = append(runArgs, "--entrypoint", "/exe.dev/bin/exetini")

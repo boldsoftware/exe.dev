@@ -117,24 +117,25 @@ type SshKey struct {
 }
 
 type TagResolution struct {
-	Registry        string  `db:"registry" json:"registry"`
-	Repository      string  `db:"repository" json:"repository"`
-	Tag             string  `db:"tag" json:"tag"`
-	IndexDigest     *string `db:"index_digest" json:"index_digest"`
-	PlatformDigest  *string `db:"platform_digest" json:"platform_digest"`
-	Platform        string  `db:"platform" json:"platform"`
-	LastCheckedAt   int64   `db:"last_checked_at" json:"last_checked_at"`
-	LastChangedAt   int64   `db:"last_changed_at" json:"last_changed_at"`
-	TtlSeconds      int64   `db:"ttl_seconds" json:"ttl_seconds"`
-	SeenOnHosts     *int64  `db:"seen_on_hosts" json:"seen_on_hosts"`
-	ImageSize       *int64  `db:"image_size" json:"image_size"`
-	CreatedAt       int64   `db:"created_at" json:"created_at"`
-	UpdatedAt       int64   `db:"updated_at" json:"updated_at"`
-	ImageUser       *string `db:"image_user" json:"image_user"`
-	ImageEntrypoint *string `db:"image_entrypoint" json:"image_entrypoint"`
-	ImageCmd        *string `db:"image_cmd" json:"image_cmd"`
-	ImageLoginUser  *string `db:"image_login_user" json:"image_login_user"`
-	ImageLabels     *string `db:"image_labels" json:"image_labels"`
+	Registry          string  `db:"registry" json:"registry"`
+	Repository        string  `db:"repository" json:"repository"`
+	Tag               string  `db:"tag" json:"tag"`
+	IndexDigest       *string `db:"index_digest" json:"index_digest"`
+	PlatformDigest    *string `db:"platform_digest" json:"platform_digest"`
+	Platform          string  `db:"platform" json:"platform"`
+	LastCheckedAt     int64   `db:"last_checked_at" json:"last_checked_at"`
+	LastChangedAt     int64   `db:"last_changed_at" json:"last_changed_at"`
+	TtlSeconds        int64   `db:"ttl_seconds" json:"ttl_seconds"`
+	SeenOnHosts       *int64  `db:"seen_on_hosts" json:"seen_on_hosts"`
+	ImageSize         *int64  `db:"image_size" json:"image_size"`
+	CreatedAt         int64   `db:"created_at" json:"created_at"`
+	UpdatedAt         int64   `db:"updated_at" json:"updated_at"`
+	ImageUser         *string `db:"image_user" json:"image_user"`
+	ImageEntrypoint   *string `db:"image_entrypoint" json:"image_entrypoint"`
+	ImageCmd          *string `db:"image_cmd" json:"image_cmd"`
+	ImageLoginUser    *string `db:"image_login_user" json:"image_login_user"`
+	ImageLabels       *string `db:"image_labels" json:"image_labels"`
+	ImageExposedPorts *string `db:"image_exposed_ports" json:"image_exposed_ports"`
 }
 
 type TagResolutionHistory struct {

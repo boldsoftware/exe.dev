@@ -45,7 +45,7 @@ Creating e1e-BOX_TIMESTAMP-testhttpproxybasic (medium) using image boldsoftware/
 Ready in ELAPSED_TIME! Access with:
 
 ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testhttpproxybasic@localhost
-http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT (→ port 80)
+http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT (→ port 8000)
 
 exe.dev ▶ list
 Your boxes:
