@@ -1042,7 +1042,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
 		return
 	case "/soon":
-		s.serveStaticFile(w, r, "comingsoon.html")
+		s.serveStaticFile(w, r, "soon.html")
 		return
 	case "/blog":
 		// Temporary redirect for blog to the coming soon page
