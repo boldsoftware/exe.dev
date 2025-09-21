@@ -21,6 +21,7 @@ body {
   );
   background-size: 4px 4px;
   font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
   overflow-x: hidden;
 }
 
@@ -34,7 +35,7 @@ main {
 /* Shared typographic + layout elements */
 
 h1 {
-  font-size: clamp(70px, 14vw, 160px);
+  font-size: clamp(70px, 14vw, 140px);
   line-height: 0.9;
   color: #000;
   margin-bottom: 40px;
