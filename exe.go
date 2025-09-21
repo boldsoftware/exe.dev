@@ -1044,6 +1044,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/soon":
 		s.serveStaticFile(w, r, "comingsoon.html")
 		return
+	case "/blog":
+		// Temporary redirect for blog to the coming soon page
+		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
+		return
 	case "/~", "/~/":
 		// User dashboard - require authentication
 		cookie, err := r.Cookie("exe-auth")
