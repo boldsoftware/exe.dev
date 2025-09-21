@@ -200,7 +200,8 @@ type testEnv struct {
 type exedInstance struct {
 	DBPath          string
 	Cmd             *exec.Cmd
-	SSHPort         int // direct SSH port, not via sshpiper
+	Ctx             context.Context // cancelled when Cmd exits
+	SSHPort         int             // direct SSH port, not via sshpiper
 	HTTPPort        int
 	PiperPluginPort int
 	CoverDir        string // directory for Go coverage artifacts (GOCOVERDIR)
@@ -262,6 +263,19 @@ func (t *testEnv) canonicalizeString(s string) string {
 	return s
 }
 
+func (e *testEnv) context(t *testing.T) context.Context {
+	// Merge t.Context() and e.exed.Ctx.
+	c, cancel := context.WithCancelCause(t.Context())
+	go func() {
+		select {
+		case <-e.exed.Ctx.Done():
+			cancel(context.Cause(e.exed.Ctx))
+		case <-c.Done():
+		}
+	}()
+	return c
+}
+
 func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 	if e == nil {
 		return
@@ -271,7 +285,7 @@ func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 	}
 	if e.exed.Cmd != nil && e.exed.Cmd.Process != nil {
 		e.exed.Cmd.Process.Kill()
-		e.exed.Cmd.Wait()
+		<-e.exed.Ctx.Done()
 	}
 	if e.piperd.Cmd != nil && e.piperd.Cmd.Process != nil {
 		e.piperd.Cmd.Process.Kill()
@@ -669,9 +683,16 @@ ProcessLogs:
 		return nil, fmt.Errorf("expected %d proxy ports, got %d", expectedProxyPorts, len(proxyPorts))
 	}
 
+	cmdCtx, cancel := context.WithCancel(context.Background())
+	go func() {
+		exedCmd.Wait()
+		cancel()
+	}()
+
 	instance := &exedInstance{
 		DBPath:          dbPath.Name(),
 		Cmd:             exedCmd,
+		Ctx:             cmdCtx,
 		SSHPort:         sshPort,
 		HTTPPort:        httpPort,
 		PiperPluginPort: piperPluginPort,
@@ -1019,7 +1040,7 @@ func sshToExeDev(t *testing.T, keyFile string) *expectPty {
 func runExeDevSSHCommand(t *testing.T, keyFile string, args ...string) ([]byte, error) {
 	sshArgs := baseSSHArgs("", keyFile)
 	sshArgs = append(sshArgs, args...)
-	sshCmd := exec.CommandContext(t.Context(), "ssh", sshArgs...)
+	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 	out, err := sshCmd.CombinedOutput()
 	if strings.Contains(string(out), "\r") {
@@ -1034,7 +1055,7 @@ func runExeDevSSHCommand(t *testing.T, keyFile string, args ...string) ([]byte, 
 func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.Cmd {
 	sshArgs := baseSSHArgs(boxname, keyFile)
 	sshArgs = append(sshArgs, args...)
-	sshCmd := exec.CommandContext(t.Context(), "ssh", sshArgs...)
+	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 	return sshCmd
 }
@@ -1075,7 +1096,7 @@ func baseSSHArgs(username, keyFile string) []string {
 func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
 	pty := makePty(t, "ssh "+usernameAt(username)+"localhost")
 	sshArgs := baseSSHArgs(username, keyFile)
-	sshCmd := exec.CommandContext(t.Context(), "ssh", sshArgs...)
+	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
 	// fmt.Println("RUNNING", sshCmd)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 	pty.attachAndStart(sshCmd)
