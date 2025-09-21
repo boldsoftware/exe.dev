@@ -25,13 +25,32 @@
 	main * {
             margin: 0 auto 1em;
 	}
+        /* Intro art sits to the right of the first paragraphs */
+        .intro-art {
+            float: right;
+            width: 40%;
+            max-width: 280px;
+            height: auto;
+            margin: 0 0 1em 20px;
+        }
+        .intro-clear { clear: both; }
+        @media (max-width: 700px) {
+            .intro-art {
+                float: none;
+                display: block;
+                margin: 0 auto 1em;
+                width: 60%;
+                max-width: 300px;
+            }
+        }
     </style>
 </head>
 <body>
     <header>
-        <h1>Jobs</h1>
+        <h1>jobs</h1>
     </header>
     <main>
+        <img src="exy-hardhat.png" alt="exy hardhat" class="intro-art">
         <p>
             We are hiring in the Bay Area.
         </p>
@@ -43,6 +62,7 @@
         <p>
             All roles are in the <b>Bay Area</b>. We come into the <b>office</b> three times a week SF.
         </p>
+        <div class="intro-clear"></div>
 
         <h2>Open roles</h2>
 
@@ -70,4 +90,3 @@
     </main>
 </body>
 </html>
-
