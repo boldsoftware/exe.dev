@@ -856,6 +856,11 @@ func cinemaOptsForTest(t *testing.T) []expect.ConsoleOpt {
 
 		Env.asciinemaWriters[testName] = writer
 		t.Cleanup(func() {
+			if t.Failed() {
+				// Don't overwrite existing golden files on failure.
+				// It's annoying to have to clean them up.
+				return
+			}
 			writer.Close()
 			if err := writeAsciinemaToText(castFile, baseName); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to write asciinema->text file: %v\n", err)
