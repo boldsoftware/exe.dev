@@ -580,19 +580,32 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 	listeningC := make(chan listen)
 	startedC := make(chan bool)
 	go func() {
+		seenPanic := false
 		scan := bufio.NewScanner(cmdOut)
 		for scan.Scan() {
 			line := scan.Bytes()
 			teeMu.Lock()
 			tee.Write(line)
-			tee.Write([]byte("\n"))
+			tee.WriteString("\n")
+			teeMu.Unlock()
 			if *flagVerboseExed {
 				fmt.Fprintln(logFileFor("exed"), string(line))
 			}
-			teeMu.Unlock()
-			// Parse JSON log line
+			if seenPanic {
+				fmt.Println(string(line))
+			}
+			// Parse JSON log line.
 			if !json.Valid(line) {
-				// TODO: log when non-JSON lines are seen?
+				// Invalid JSON could be a stray fmt.Printf...or a panic.
+				// If it's a panic, dup all output to stdout.
+				if bytes.Contains(line, []byte("panic:")) {
+					seenPanic = true
+					// Dump what we have so far.
+					// From here on out, we'll print as we go.
+					teeMu.Lock()
+					fmt.Print(tee.String())
+					teeMu.Unlock()
+				}
 				continue
 			}
 			var entry map[string]any
