@@ -40,8 +40,8 @@ func TestEmbeddedFiles(t *testing.T) {
 			contains:     []string{}, // ICO is binary, checking content-type is enough
 		},
 		{
-			name:         "exe.dev.png is served",
-			path:         "/exe.dev.png",
+			name:         "exy.png is served",
+			path:         "/exy.png",
 			expectedCode: http.StatusOK,
 			contentType:  "image/png",
 			contains:     []string{}, // PNG is binary, checking content-type is enough
