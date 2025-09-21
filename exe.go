@@ -1074,6 +1074,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleContainers(w, r)
 	case "/about":
 		s.serveStaticFile(w, r, "about.html")
+	case "/jobs":
+		s.serveStaticFile(w, r, "jobs.html")
 	case "/waitlist":
 		s.handleWaitlist(w, r)
 	case "/verify-email":
