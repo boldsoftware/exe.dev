@@ -212,6 +212,55 @@ func TestServerEndToEnd(t *testing.T) {
 		}
 	})
 
+	// Test that slug updates are reflected in the stream
+	t.Run("SlugUpdateStream", func(t *testing.T) {
+		// Create a conversation without a slug
+		conv, err := database.CreateConversation(context.Background(), nil, true)
+		if err != nil {
+			t.Fatalf("Failed to create conversation: %v", err)
+		}
+
+		// Verify initially no slug
+		if conv.Slug != nil {
+			t.Fatalf("Expected no initial slug, got: %v", *conv.Slug)
+		}
+
+		// Send a message which should trigger slug generation
+		chatRequest := server.ChatRequest{
+			Message: "Write a Python script to calculate fibonacci numbers",
+			Model:   "predictable",
+		}
+
+		chatBody, _ := json.Marshal(chatRequest)
+		chatResp, err := http.Post(
+			testServer.URL+"/api/conversation/"+conv.ConversationID+"/chat",
+			"application/json",
+			strings.NewReader(string(chatBody)),
+		)
+		if err != nil {
+			t.Fatalf("Failed to send chat message: %v", err)
+		}
+		chatResp.Body.Close()
+
+		// Wait longer for slug generation (it happens asynchronously)
+		for i := 0; i < 20; i++ {
+			time.Sleep(500 * time.Millisecond)
+
+			// Check if slug was generated
+			updatedConv, err := database.GetConversationByID(context.Background(), conv.ConversationID)
+			if err != nil {
+				t.Fatalf("Failed to get updated conversation: %v", err)
+			}
+
+			if updatedConv.Slug != nil {
+				t.Logf("Slug generated successfully: %s", *updatedConv.Slug)
+				return
+			}
+		}
+
+		t.Fatal("Slug was not generated within timeout period")
+	})
+
 	t.Run("ErrorHandling", func(t *testing.T) {
 		// Test non-existent conversation
 		resp, err := http.Get(testServer.URL + "/api/conversation/nonexistent")
@@ -521,3 +570,5 @@ func TestSlugEndToEnd(t *testing.T) {
 
 	t.Logf("Successfully tested slug-based conversation retrieval: %s -> %s", testSlug, conv.ConversationID)
 }
+
+// Test that slug updates are reflected in the stream

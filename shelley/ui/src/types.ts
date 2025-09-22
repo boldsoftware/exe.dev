@@ -48,3 +48,8 @@ export interface ChatRequest {
   message: string;
   model?: string;
 }
+// StreamResponse represents the streaming response format
+export interface StreamResponse {
+  messages: Message[];
+  conversation: Conversation;
+}

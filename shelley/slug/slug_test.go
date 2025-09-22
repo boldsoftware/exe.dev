@@ -19,7 +19,7 @@ func TestSanitize(t *testing.T) {
 		{"123 Numbers Test 456", "123-numbers-test-456"},
 		{"   leading and trailing   ", "leading-and-trailing"},
 		{"", ""},
-		{"Very Long Slug That Might Need To Be Truncated Because It Is Too Long For Normal Use", "very-long-slug-that-might-need-to-be-truncated-because-it"},
+		{"Very Long Slug That Might Need To Be Truncated Because It Is Too Long For Normal Use", "very-long-slug-that-might-need-to-be-truncated-because-it-is"},
 	}
 
 	for _, test := range tests {

@@ -23,6 +23,12 @@ import (
 	"shelley.exe.dev/slug"
 )
 
+// StreamResponse represents the response format for conversation streaming
+type StreamResponse struct {
+	Messages     []generated.Message    `json:"messages"`
+	Conversation generated.Conversation `json:"conversation"`
+}
+
 // LLMServiceManager manages multiple LLM services
 type LLMServiceManager struct {
 	// factories maps model IDs to service constructors.
@@ -185,7 +191,7 @@ type Server struct {
 type ConversationManager struct {
 	conversationID string
 	loop           *loop.Loop
-	subscribers    map[string]chan []generated.Message
+	subscribers    map[string]chan StreamResponse
 	mu             sync.RWMutex
 	lastActivity   time.Time
 }
@@ -441,6 +447,9 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 				_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
 				if err != nil {
 					s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
+				} else {
+					// Notify subscribers about the slug update
+					go s.notifySubscribers(context.Background(), conversationID)
 				}
 			}()
 		}
@@ -477,7 +486,7 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Get current messages
+	// Get current messages and conversation data
 	messages, err := s.db.Queries.ListMessages(ctx, conversationID)
 	if err != nil {
 		s.logger.Error("Failed to get conversation messages", "conversationID", conversationID, "error", err)
@@ -485,8 +494,19 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Send current messages
-	data, _ := json.Marshal(messages)
+	conversation, err := s.db.Queries.GetConversation(ctx, conversationID)
+	if err != nil {
+		s.logger.Error("Failed to get conversation", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Send current messages and conversation data
+	streamData := StreamResponse{
+		Messages:     messages,
+		Conversation: conversation,
+	}
+	data, _ := json.Marshal(streamData)
 	fmt.Fprintf(w, "data: %s\n\n", data)
 	w.(http.Flusher).Flush()
 
@@ -499,7 +519,7 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 
 	// Subscribe to updates
 	subscriptionID := fmt.Sprintf("%d", time.Now().UnixNano())
-	updateChan := make(chan []generated.Message, 10)
+	updateChan := make(chan StreamResponse, 10)
 	manager.subscribe(subscriptionID, updateChan)
 	defer manager.unsubscribe(subscriptionID)
 
@@ -508,8 +528,8 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		select {
 		case <-ctx.Done():
 			return
-		case messages := <-updateChan:
-			data, _ := json.Marshal(messages)
+		case streamData := <-updateChan:
+			data, _ := json.Marshal(streamData)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			w.(http.Flusher).Flush()
 		}
@@ -568,7 +588,7 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 	manager := &ConversationManager{
 		conversationID: conversationID,
 		loop:           convLoop,
-		subscribers:    make(map[string]chan []generated.Message),
+		subscribers:    make(map[string]chan StreamResponse),
 		lastActivity:   time.Now(),
 	}
 
@@ -651,7 +671,7 @@ func (s *Server) convertToLLMMessage(msg generated.Message) (llm.Message, error)
 	return llmMsg, nil
 }
 
-// notifySubscribers sends updated messages to all subscribers of a conversation
+// notifySubscribers sends updated messages and conversation data to all subscribers
 func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 	s.mu.RLock()
 	manager, exists := s.activeConversations[conversationID]
@@ -661,18 +681,29 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		return
 	}
 
-	// Get latest messages
+	// Get latest messages and conversation data
 	messages, err := s.db.Queries.ListMessages(ctx, conversationID)
 	if err != nil {
 		s.logger.Error("Failed to get messages for notification", "conversationID", conversationID, "error", err)
 		return
 	}
 
+	conversation, err := s.db.Queries.GetConversation(ctx, conversationID)
+	if err != nil {
+		s.logger.Error("Failed to get conversation for notification", "conversationID", conversationID, "error", err)
+		return
+	}
+
+	streamData := StreamResponse{
+		Messages:     messages,
+		Conversation: conversation,
+	}
+
 	// Notify all subscribers
 	manager.mu.RLock()
 	for _, ch := range manager.subscribers {
 		select {
-		case ch <- messages:
+		case ch <- streamData:
 		default:
 			// Channel is full, skip
 		}
@@ -681,7 +712,7 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 }
 
 // subscribe adds a subscriber to a conversation
-func (cm *ConversationManager) subscribe(id string, ch chan []generated.Message) {
+func (cm *ConversationManager) subscribe(id string, ch chan StreamResponse) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.subscribers[id] = ch

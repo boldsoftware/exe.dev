@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, Model, Conversation } from '../types';
+import { Message, Model, Conversation, StreamResponse } from '../types';
 import { api } from '../services/api';
 import MessageComponent from './Message';
 import MessageInput from './MessageInput';
@@ -10,9 +10,10 @@ interface ChatInterfaceProps {
   onOpenDrawer: () => void;
   onNewConversation: () => void;
   currentConversation?: Conversation;
+  onConversationUpdate?: (conversation: Conversation) => void;
 }
 
-function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, currentConversation }: ChatInterfaceProps) {
+function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, currentConversation, onConversationUpdate }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -75,8 +76,13 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
 
     eventSource.onmessage = (event) => {
       try {
-        const updatedMessages: Message[] = JSON.parse(event.data);
-        setMessages(updatedMessages);
+        const streamResponse: StreamResponse = JSON.parse(event.data);
+        setMessages(streamResponse.messages);
+        
+        // Update conversation data if provided
+        if (onConversationUpdate) {
+          onConversationUpdate(streamResponse.conversation);
+        }
       } catch (err) {
         console.error('Failed to parse message stream data:', err);
       }

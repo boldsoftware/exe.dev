@@ -54,6 +54,16 @@ function App() {
     setDrawerOpen(false);
   };
 
+  const updateConversation = (updatedConversation: Conversation) => {
+    setConversations(prev => 
+      prev.map(conv => 
+        conv.conversation_id === updatedConversation.conversation_id 
+          ? updatedConversation 
+          : conv
+      )
+    );
+  };
+
   if (loading && conversations.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center">
@@ -103,6 +113,7 @@ function App() {
             onOpenDrawer={() => setDrawerOpen(true)}
             onNewConversation={createNewConversation}
             currentConversation={currentConversation}
+            onConversationUpdate={updateConversation}
           />
         ) : (
           <div className="h-full flex items-center justify-center">
