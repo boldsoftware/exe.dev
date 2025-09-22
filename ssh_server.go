@@ -61,7 +61,7 @@ func (ss *SSHServer) Start(ln net.Listener) error {
 		Handler:          ss.handleSession,
 		PublicKeyHandler: ss.authenticatePublicKey,
 		ChannelHandlers: map[string]ssh.ChannelHandler{
-			"session": ssh.DefaultSessionHandler,
+			"session": sshSessionHandlerWithJobEasterEgg,
 		},
 		SubsystemHandlers: map[string]ssh.SubsystemHandler{
 			"sftp": func(s ssh.Session) {
@@ -92,6 +92,18 @@ func (ss *SSHServer) Start(ln net.Listener) error {
 	}
 
 	return ss.srv.Serve(ln)
+}
+
+// sshSessionHandlerWithJobEasterEgg sends a single GLOBAL_REQUEST per connection (visible at -vv/-vvv),
+// then delegates to the default session handler.
+func sshSessionHandlerWithJobEasterEgg(srv *ssh.Server, conn *gossh.ServerConn, newChan gossh.NewChannel, ctx ssh.Context) {
+	const jobNoteOnceValue = "session-job-easter-egg"
+	if ctx.Value(jobNoteOnceValue) == nil {
+		ctx.SetValue(jobNoteOnceValue, true)
+		name := "Hello, fellow -vv spelunker! Come work with us: david+sshvv@bold.dev"
+		_, _, _ = conn.SendRequest(name, false, nil)
+	}
+	ssh.DefaultSessionHandler(srv, conn, newChan, ctx)
 }
 
 // Stop gracefully stops the SSH server
