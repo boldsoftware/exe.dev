@@ -539,6 +539,8 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(path, "/terminal/input/"):
 		// Handle terminal input
 		s.handleTerminalInput(w, r)
+	case path == "/favicon.ico":
+		s.serveStaticFile(w, r, "favicon.ico")
 	case strings.HasPrefix(path, "/static/"):
 		// Serve static files using existing method
 		filename := strings.TrimPrefix(path, "/static/")

@@ -90,6 +90,35 @@ func TestTerminalStaticFiles(t *testing.T) {
 	}
 }
 
+func TestTerminalFavicon(t *testing.T) {
+	t.Parallel()
+	server := NewTestServer(t)
+
+	// Create a test user and auth them
+	userID := "test-user-id"
+	authCookie, err := server.createAuthCookie(t.Context(), userID, "testmachine.xterm.localhost")
+	if err != nil {
+		t.Fatalf("Failed to create auth cookie: %v", err)
+	}
+
+	// Test favicon serving
+	req := httptest.NewRequest("GET", "/favicon.ico", nil)
+	req.Host = "testmachine.xterm.localhost"
+	req.AddCookie(&http.Cookie{Name: "exe-auth", Value: authCookie})
+	w := httptest.NewRecorder()
+
+	server.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected 200 for favicon.ico, got %d", w.Code)
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		t.Errorf("Expected image content type for favicon, got %q", contentType)
+	}
+}
+
 func TestTerminalCleanupTimer(t *testing.T) {
 	t.Parallel()
 	// Test that inactive terminals are cleaned up
