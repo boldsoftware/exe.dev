@@ -61,6 +61,9 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     try {
       const modelList = await api.getModels();
       setModels(modelList);
+      // Prefer first ready model; fallback stays as-is
+      const firstReady = modelList.find((m) => m.ready);
+      if (firstReady) setSelectedModel(firstReady.id);
     } catch (err) {
       console.error('Failed to load models:', err);
     }
@@ -77,7 +80,23 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     eventSource.onmessage = (event) => {
       try {
         const streamResponse: StreamResponse = JSON.parse(event.data);
-        setMessages(streamResponse.messages);
+
+        // Merge new messages without losing existing ones.
+        // If no new messages (e.g., only conversation/slug update), keep existing list.
+        if (Array.isArray(streamResponse.messages) && streamResponse.messages.length > 0) {
+          setMessages((prev) => {
+            const byId = new Map<string, Message>();
+            for (const m of prev) byId.set(m.message_id, m);
+            for (const m of streamResponse.messages) byId.set(m.message_id, m);
+            // Preserve original order, then append truly new ones in the order received
+            const result: Message[] = [];
+            for (const m of prev) result.push(byId.get(m.message_id)!);
+            for (const m of streamResponse.messages) {
+              if (!prev.find((p) => p.message_id === m.message_id)) result.push(m);
+            }
+            return result;
+          });
+        }
         
         // Update conversation data if provided
         if (onConversationUpdate) {

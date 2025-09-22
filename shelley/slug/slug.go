@@ -19,19 +19,36 @@ type LLMServiceProvider interface {
 
 // GenerateSlug generates a slug for a conversation and updates the database
 func GenerateSlug(ctx context.Context, llmProvider LLMServiceProvider, database *db.DB, logger *slog.Logger, conversationID, userMessage string) (string, error) {
-	slug, err := generateSlugText(ctx, llmProvider, logger, userMessage)
+	baseSlug, err := generateSlugText(ctx, llmProvider, logger, userMessage)
 	if err != nil {
 		return "", err
 	}
 
-	// Update conversation with the generated slug
-	_, err = database.UpdateConversationSlug(ctx, conversationID, slug)
-	if err != nil {
+	// Try to update with the base slug first, then with numeric suffixes if needed
+	slug := baseSlug
+	for attempt := 0; attempt < 100; attempt++ {
+		_, err = database.UpdateConversationSlug(ctx, conversationID, slug)
+		if err == nil {
+			// Success!
+			logger.Info("Generated slug for conversation", "conversationID", conversationID, "slug", slug)
+			return slug, nil
+		}
+
+		// Check if this is a unique constraint violation
+		if strings.Contains(strings.ToLower(err.Error()), "unique constraint failed") ||
+			strings.Contains(strings.ToLower(err.Error()), "unique constraint") ||
+			strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			// Try with a numeric suffix
+			slug = fmt.Sprintf("%s-%d", baseSlug, attempt+1)
+			continue
+		}
+
+		// Some other error occurred
 		return "", fmt.Errorf("failed to update conversation slug: %w", err)
 	}
 
-	logger.Info("Generated slug for conversation", "conversationID", conversationID, "slug", slug)
-	return slug, nil
+	// If we've tried 100 times and still failed, give up
+	return "", fmt.Errorf("failed to generate unique slug after 100 attempts")
 }
 
 // generateSlugText generates a human-readable slug for a conversation based on the user message

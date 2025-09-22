@@ -546,12 +546,10 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		case <-ctx.Done():
 			return
 		case streamData := <-updateChan:
-			// Only send if there are actual messages to send
-			if len(streamData.Messages) > 0 {
-				data, _ := json.Marshal(streamData)
-				fmt.Fprintf(w, "data: %s\n\n", data)
-				w.(http.Flusher).Flush()
-			}
+			// Always forward updates, even if only the conversation changed (e.g., slug added)
+			data, _ := json.Marshal(streamData)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			w.(http.Flusher).Flush()
 		}
 	}
 }
@@ -737,15 +735,12 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 			messages = newMessages
 		}
 
-		// Skip if no new messages
-		if len(messages) == 0 {
-			continue
+		// Update the subscriber's last seen message time only when there are new messages
+		if len(messages) > 0 {
+			sub.lastMessageTime = &messages[len(messages)-1].CreatedAt
 		}
 
-		// Update the subscriber's last seen message time
-		sub.lastMessageTime = &messages[len(messages)-1].CreatedAt
-
-		// Send the update
+		// Send the update even if there are no new messages so clients can react to conversation-only changes (e.g., slug updates)
 		streamData := StreamResponse{
 			Messages:     messages,
 			Conversation: conversation,
