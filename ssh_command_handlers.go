@@ -42,8 +42,8 @@ func newCommandFlags() *flag.FlagSet {
 	return fs
 }
 
-// routeCommandFlags creates a FlagSet for the route command
-func routeCommandFlags() *flag.FlagSet {
+// proxyCommandFlags creates a FlagSet for the proxy command
+func proxyCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("route", flag.ContinueOnError)
 	fs.Int("port", 80, "port to expose")
 	fs.Bool("private", false, "make the route private")
@@ -134,18 +134,18 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			},
 		},
 		{
-			Name:              "route",
+			Name:              "proxy",
 			Description:       "Configure box routing",
-			Usage:             "route <box-name> [--port=80 --private|--public]",
-			Handler:           ss.handleRouteCommand,
-			FlagSetFunc:       routeCommandFlags,
+			Usage:             "proxy <box-name> [--port=80 --private|--public]",
+			Handler:           ss.handleProxyCommand,
+			FlagSetFunc:       proxyCommandFlags,
 			HasPositionalArgs: true,
 			CompleterFunc:     CompleteBoxNames,
 			Examples: []string{
-				"route mybox                     # show current routing config",
-				"route mybox --port=8080 --private  # expose port 8080 privately",
-				"route mybox --port=80 --public     # expose port 80 publicly",
-				"route mybox --port=3000 --public   # expose port 3000 publicly",
+				"proxy mybox                     # show current routing config",
+				"proxy mybox --port=8080 --private  # expose port 8080 privately",
+				"proxy mybox --port=80 --public     # expose port 80 publicly",
+				"proxy mybox --port=3000 --public   # expose port 3000 publicly",
 			},
 		},
 		{
@@ -928,7 +928,7 @@ func (ss *SSHServer) deleteBillingInfo(cc *CommandContext, billingInfo *billing.
 	return nil
 }
 
-func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext) error {
+func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *CommandContext) error {
 	if len(cc.Args) != 1 {
 		return cc.Errorf("please specify exactly one box name to route, got %d", len(cc.Args))
 	}
@@ -989,9 +989,9 @@ func (ss *SSHServer) handleRouteCommand(ctx context.Context, cc *CommandContext)
 	if portSet || privateSet || publicSet {
 		switch {
 		case !portSet:
-			flagMistake = "--port is required when setting route configuration"
+			flagMistake = "--port is required when setting proxy configuration"
 		case !privateSet && !publicSet:
-			flagMistake = "either --private or --public is required when setting route configuration"
+			flagMistake = "either --private or --public is required when setting proxy configuration"
 		case privateSet && publicSet:
 			flagMistake = "cannot specify both --private and --public"
 		}

@@ -2,7 +2,7 @@
 
 ## Instructions
 
-Test HTTP proxying capabilities, authentication flows, and route management.
+Test HTTP proxying capabilities, authentication flows, and proxy management.
 
 ### Prerequisites
 
@@ -46,6 +46,6 @@ URL you started at.
 - After logout, accessing container URLs should require re-authentication
 
 ### Route Management Hints
-- Use `route` command in exe.dev shell to manage public/private access
+- Use `proxy` command in exe.dev shell to manage public/private access
 - Making routes public bypasses authentication requirements
 - Test both authenticated and unauthenticated access patterns

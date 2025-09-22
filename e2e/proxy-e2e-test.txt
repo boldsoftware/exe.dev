@@ -34,9 +34,9 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 #### 2. Test Default Private Routing
 
-4. In a new terminal, check the default route configuration:
+4. In a new terminal, check the default proxy configuration:
    ```
-   ssh -p 2222 localhost route myproxybox
+   ssh -p 2222 localhost proxy myproxybox
    ```
    
    **Expected**: Should show `port: 80, share: private`
@@ -54,16 +54,16 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 #### 3. Test Public Routing
 
-7. Make the route public:
+7. Make the proxy public:
    ```
-   ssh -p 2222 localhost route myproxybox --port=80 --public
+   ssh -p 2222 localhost proxy myproxybox --port=80 --public
    ```
    
-   **Expected**: Should confirm route update
+   **Expected**: Should confirm proxy update
 
-8. Verify route is now public:
+8. Verify proxy is now public:
    ```
-   ssh -p 2222 localhost route myproxybox
+   ssh -p 2222 localhost proxy myproxybox
    ```
    
    **Expected**: Should show `port: 80, share: public`
@@ -86,9 +86,9 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
     python3 -m http.server 8000
     ```
 
-12. Update the route to use port 8000:
+12. Update the proxy to use port 8000:
     ```
-    ssh -p 2222 localhost route myproxybox --port=8000 --public
+    ssh -p 2222 localhost proxy myproxybox --port=8000 --public
     ```
 
 13. Test access with new port configuration:
@@ -100,14 +100,14 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 #### 5. Test Private Route Restoration
 
-14. Make the route private again:
+14. Make the proxy private again:
     ```
-    ssh -p 2222 localhost route myproxybox --port=8000 --private
+    ssh -p 2222 localhost proxy myproxybox --port=8000 --private
     ```
 
-15. Verify route is private:
+15. Verify proxy is private:
     ```
-    ssh -p 2222 localhost route myproxybox
+    ssh -p 2222 localhost proxy myproxybox
     ```
     
     **Expected**: Should show `port: 8000, share: private`
@@ -139,14 +139,14 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 - [ ] Container created successfully
 - [ ] HTTP server starts on port 80 with sudo
-- [ ] Default route is private (port 80)
-- [ ] Private route redirects to authentication
+- [ ] Default proxy is private (port 80)
+- [ ] Private proxy redirects to authentication
 - [ ] Route can be made public successfully
-- [ ] Public route allows direct access without auth
+- [ ] Public proxy allows direct access without auth
 - [ ] Python HTTP server returns expected directory listing
-- [ ] Port changes work (8000) with route update
+- [ ] Port changes work (8000) with proxy update
 - [ ] Route can be made private again
-- [ ] Private route re-enables authentication requirement
+- [ ] Private proxy re-enables authentication requirement
 - [ ] Logout functionality works correctly
 
 ### Expected Results Summary

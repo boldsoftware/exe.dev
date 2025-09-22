@@ -40,25 +40,25 @@ This test verifies that containers can expose HTTP services and that the proxy a
    This may involve redirections and session management.
    After successful authentication, you should see the Python HTTP server's directory listing.
 
-4. Test that the container route is set to private by default:
+4. Test that the container proxy is set to private by default:
    ```
-   ssh -p 2222 localhost route machinename
+   ssh -p 2222 localhost proxy machinename
    ```
    
    Expected: Should show port 80 and share "private".
 
 #### 3. Test Making Route Public
 
-5. Make the route public using the route command:
+5. Make the proxy public using the proxy command:
    ```
-   ssh -p 2222 localhost route machinename --port=80 --public
+   ssh -p 2222 localhost proxy machinename --port=80 --public
    ```
    
-   Expected: Should confirm the route is now public.
+   Expected: Should confirm the proxy is now public.
 
-6. Verify the route is now public:
+6. Verify the proxy is now public:
    ```
-   ssh -p 2222 localhost route machinename
+   ssh -p 2222 localhost proxy machinename
    ```
    
    Expected: Should show port 80 and share "public".
@@ -79,9 +79,9 @@ This test verifies that containers can expose HTTP services and that the proxy a
    python3 -m http.server 8000
    ```
 
-9. Update the route to use port 8000:
+9. Update the proxy to use port 8000:
    ```
-   ssh -p 2222 localhost route machinename --port=8000 --public
+   ssh -p 2222 localhost proxy machinename --port=8000 --public
    ```
 
 10. Test access with the new port configuration:
@@ -93,9 +93,9 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 #### 5. Test Route Back to Private
 
-11. Make the route private again:
+11. Make the proxy private again:
     ```
-    ssh -p 2222 localhost route machinename --port=8000 --private
+    ssh -p 2222 localhost proxy machinename --port=8000 --private
     ```
 
 12. Test that authentication is required again:
@@ -134,11 +134,11 @@ This test verifies that containers can expose HTTP services and that the proxy a
 ## Validation Points
 
 - [ ] HTTP server starts successfully on port 80 in container
-- [ ] Private route requires authentication 
+- [ ] Private proxy requires authentication 
 - [ ] Route command shows correct current configuration
-- [ ] Public route allows direct access without auth
+- [ ] Public proxy allows direct access without auth
 - [ ] Route port changes work correctly
-- [ ] Private route re-enables authentication requirement
+- [ ] Private proxy re-enables authentication requirement
 - [ ] Logout functionality works
 - [ ] All HTTP responses are as expected (directory listing, auth redirects, etc.)
 

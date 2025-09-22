@@ -252,7 +252,7 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 	// Create SSH server for testing
 	sshServer := &SSHServer{server: server}
 
-	// Test route command by calling it directly
+	// Test proxy command by calling it directly
 	cc := &CommandContext{
 		PublicKey: publicKey,
 		Alloc:     &Alloc{AllocID: allocID},
@@ -261,32 +261,32 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 		User:      &User{UserID: userID},
 	}
 
-	// Test showing current route (no flags)
-	cc.FlagSet = routeCommandFlags() // Create empty flagset
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	// Test showing current proxy configuration (no flags)
+	cc.FlagSet = proxyCommandFlags() // Create empty flagset
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err != nil {
-		t.Errorf("Failed to show route: %v", err)
+		t.Errorf("Failed to show proxy configuration: %v", err)
 	}
 	output := cc.Output.(*mockSession).output.String()
 	if !strings.Contains(output, "Port: 80") || !strings.Contains(output, "Share: private") {
-		t.Errorf("Expected default route info, got: %s", output)
+		t.Errorf("Expected default proxy configuration info, got: %s", output)
 	}
 
-	// Test setting route to public
+	// Test setting proxy to public
 	cc.Output = &mockSession{}
-	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet = proxyCommandFlags()
 	cc.FlagSet.Set("port", "8080")
 	cc.FlagSet.Set("public", "true")
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err != nil {
-		t.Errorf("Failed to set route: %v", err)
+		t.Errorf("Failed to set proxy configuration: %v", err)
 	}
 	output = cc.Output.(*mockSession).output.String()
 	if !strings.Contains(output, "updated successfully") {
 		t.Errorf("Expected success message, got: %s", output)
 	}
 
-	// Verify the route was updated
+	// Verify the proxy configuration was updated
 	box, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
 			Name:   boxName,
@@ -307,10 +307,10 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 	// Test error on nonexistent box
 	cc.Output = &mockSession{}
 	cc.Args = []string{"nonexistent"}
-	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet = proxyCommandFlags()
 	cc.FlagSet.Set("port", "80")
 	cc.FlagSet.Set("private", "true")
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err == nil {
 		t.Fatal("Expected error for nonexistent box")
 	}
@@ -379,7 +379,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 		t.Errorf("Expected status 307 for private route without auth, got %d", w.Code)
 	}
 
-	// Test 3: Use route command to set public access on port 8080
+	// Test 3: Use proxy command to set public access on port 8080
 	sshServer := &SSHServer{server: server}
 	cc := &CommandContext{
 		PublicKey: publicKey,
@@ -390,10 +390,10 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	}
 
 	// Set to public port 8080
-	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet = proxyCommandFlags()
 	cc.FlagSet.Set("port", "8080")
 	cc.FlagSet.Set("public", "true")
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err != nil {
 		t.Fatalf("Failed to set route: %v", err)
 	}
@@ -435,10 +435,10 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 
 	// Test 6: Test invalid port (should fail)
 	cc.Output = &mockSession{}
-	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet = proxyCommandFlags()
 	cc.FlagSet.Set("port", "99999")
 	cc.FlagSet.Set("public", "true")
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err == nil {
 		t.Fatal("Expected error for invalid port 99999")
 	}
@@ -448,9 +448,9 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 
 	// Test 7: Test missing --private/--public when --port is specified (should fail)
 	cc.Output = &mockSession{}
-	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet = proxyCommandFlags()
 	cc.FlagSet.Set("port", "3000")
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err == nil {
 		t.Fatal("Expected error when --port is specified without --private or --public")
 	}
@@ -460,9 +460,9 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 
 	// Test 8: Test missing --port when --public is specified (should fail)
 	cc.Output = &mockSession{}
-	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet = proxyCommandFlags()
 	cc.FlagSet.Set("public", "true")
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err == nil {
 		t.Fatal("Expected error when --public is specified without --port")
 	}
@@ -472,11 +472,11 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 
 	// Test 9: Test both --private and --public specified (should fail)
 	cc.Output = &mockSession{}
-	cc.FlagSet = routeCommandFlags()
+	cc.FlagSet = proxyCommandFlags()
 	cc.FlagSet.Set("port", "80")
 	cc.FlagSet.Set("private", "true")
 	cc.FlagSet.Set("public", "true")
-	err = sshServer.handleRouteCommand(t.Context(), cc)
+	err = sshServer.handleProxyCommand(t.Context(), cc)
 	if err == nil {
 		t.Fatal("Expected error when both --private and --public are specified")
 	}

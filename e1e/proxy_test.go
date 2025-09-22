@@ -300,12 +300,12 @@ func TestHTTPProxyBasic(t *testing.T) {
 	{
 		t.Log("Making route public")
 		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("route %s --port=8080 --public", boxName))
+		exeShell.sendLine(fmt.Sprintf("proxy %s --port=8080 --public", boxName))
 		exeShell.want("Route updated successfully")
 		exeShell.wantPrompt()
 
 		// Verify route is public
-		exeShell.sendLine(fmt.Sprintf("route %s", boxName))
+		exeShell.sendLine(fmt.Sprintf("proxy %s", boxName))
 		exeShell.want("Port: 8080")
 		exeShell.want("Share: public")
 		exeShell.wantPrompt()
