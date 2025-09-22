@@ -106,7 +106,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *mockAccountant, *mockBoxKeyAu
 		now:             time.Now,
 		accountant:      mockAcct,
 		boxKeyAuthority: mockAuth,
-		anthropicAPIKey: "test-api-key",
+		apiKeys:         APIKeys{Anthropic: "test-api-key"},
 		testDebitDone:   make(chan bool, 10), // Buffered for tests
 	}
 
@@ -236,7 +236,7 @@ func TestGateway_ProxyFunctionality_HeaderFiltering(t *testing.T) {
 			filteredHeaders[hk] = hv
 		}
 	}
-	filteredHeaders.Add("X-Api-Key", gateway.anthropicAPIKey)
+	filteredHeaders.Add("X-Api-Key", gateway.apiKeys.Anthropic)
 
 	// Verify filtered headers
 	if filteredHeaders.Get("Authorization") != "" {

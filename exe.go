@@ -591,7 +591,14 @@ func (s *Server) DataPath(path string) string {
 // setupHTTPServer configures the HTTP server
 func (s *Server) setupHTTPServer() {
 	anthropicAPIKey := os.Getenv("ANTHROPIC_API_KEY")
-	lg := llmgateway.NewGateway(s.accountant, s, anthropicAPIKey)
+	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
+	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+
+	lg := llmgateway.NewGateway(s.accountant, s, llmgateway.APIKeys{
+		Anthropic: anthropicAPIKey,
+		Fireworks: fireworksAPIKey,
+		OpenAI:    openaiAPIKey,
+	})
 
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)
@@ -619,7 +626,14 @@ func (s *Server) setupHTTPSServer() {
 	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
 
 	anthropicAPIKey := os.Getenv("ANTHROPIC_API_KEY")
-	lg := llmgateway.NewGateway(s.accountant, s, anthropicAPIKey)
+	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
+	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+
+	lg := llmgateway.NewGateway(s.accountant, s, llmgateway.APIKeys{
+		Anthropic: anthropicAPIKey,
+		Fireworks: fireworksAPIKey,
+		OpenAI:    openaiAPIKey,
+	})
 
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)
