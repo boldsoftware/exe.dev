@@ -451,7 +451,7 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 
 	// Start processing in background with a timeout context
 	go func() {
-		processCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
 		defer cancel()
 		if err := manager.loop.Go(processCtx); err != nil && err != context.DeadlineExceeded {
 			s.logger.Error("Failed to process loop", "conversationID", conversationID, "error", err)
