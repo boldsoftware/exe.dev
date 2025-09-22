@@ -100,7 +100,8 @@ type boxKeyAuthority interface {
 }
 
 func NewGateway(accountant accounting.Accountant, boxKeyAuthority boxKeyAuthority,
-	apiKeys APIKeys) *llmGateway {
+	apiKeys APIKeys,
+) *llmGateway {
 	ret := &llmGateway{
 		now:             time.Now,
 		accountant:      accountant,
@@ -186,7 +187,6 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	proxy.ServeHTTP(w, r)
-
 }
 
 func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.ReverseProxy, error) {
