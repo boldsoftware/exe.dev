@@ -7,6 +7,7 @@ package generated
 
 import (
 	"context"
+	"time"
 )
 
 const countMessagesByType = `-- name: CountMessagesByType :one
@@ -231,6 +232,48 @@ type ListMessagesPaginatedParams struct {
 
 func (q *Queries) ListMessagesPaginated(ctx context.Context, arg ListMessagesPaginatedParams) ([]Message, error) {
 	rows, err := q.db.QueryContext(ctx, listMessagesPaginated, arg.ConversationID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.ConversationID,
+			&i.Type,
+			&i.LlmData,
+			&i.UserData,
+			&i.UsageData,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMessagesSince = `-- name: ListMessagesSince :many
+SELECT message_id, conversation_id, type, llm_data, user_data, usage_data, created_at FROM messages
+WHERE conversation_id = ? AND created_at > ?
+ORDER BY created_at ASC
+`
+
+type ListMessagesSinceParams struct {
+	ConversationID string    `json:"conversation_id"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListMessagesSince(ctx context.Context, arg ListMessagesSinceParams) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesSince, arg.ConversationID, arg.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

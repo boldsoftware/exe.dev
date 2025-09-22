@@ -187,11 +187,17 @@ type Server struct {
 	logBuffer           *LogBuffer
 }
 
+// Subscriber represents a client subscribed to conversation updates
+type Subscriber struct {
+	channel         chan StreamResponse
+	lastMessageTime *time.Time // Last message timestamp this subscriber has seen
+}
+
 // ConversationManager manages a single active conversation
 type ConversationManager struct {
 	conversationID string
 	loop           *loop.Loop
-	subscribers    map[string]chan StreamResponse
+	subscribers    map[string]*Subscriber
 	mu             sync.RWMutex
 	lastActivity   time.Time
 }
@@ -523,15 +529,29 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	manager.subscribe(subscriptionID, updateChan)
 	defer manager.unsubscribe(subscriptionID)
 
+	// Track the last message time for this subscriber
+	var lastMessageTime *time.Time
+	if len(messages) > 0 {
+		lastMessageTime = &messages[len(messages)-1].CreatedAt
+	}
+	manager.mu.Lock()
+	if sub, exists := manager.subscribers[subscriptionID]; exists {
+		sub.lastMessageTime = lastMessageTime
+	}
+	manager.mu.Unlock()
+
 	// Listen for updates or context cancellation
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case streamData := <-updateChan:
-			data, _ := json.Marshal(streamData)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			w.(http.Flusher).Flush()
+			// Only send if there are actual messages to send
+			if len(streamData.Messages) > 0 {
+				data, _ := json.Marshal(streamData)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				w.(http.Flusher).Flush()
+			}
 		}
 	}
 }
@@ -588,7 +608,7 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 	manager := &ConversationManager{
 		conversationID: conversationID,
 		loop:           convLoop,
-		subscribers:    make(map[string]chan StreamResponse),
+		subscribers:    make(map[string]*Subscriber),
 		lastActivity:   time.Now(),
 	}
 
@@ -681,49 +701,81 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		return
 	}
 
-	// Get latest messages and conversation data
-	messages, err := s.db.Queries.ListMessages(ctx, conversationID)
-	if err != nil {
-		s.logger.Error("Failed to get messages for notification", "conversationID", conversationID, "error", err)
-		return
-	}
-
+	// Get conversation data (this is always sent)
 	conversation, err := s.db.Queries.GetConversation(ctx, conversationID)
 	if err != nil {
 		s.logger.Error("Failed to get conversation for notification", "conversationID", conversationID, "error", err)
 		return
 	}
 
-	streamData := StreamResponse{
-		Messages:     messages,
-		Conversation: conversation,
-	}
+	// Notify subscribers with incremental updates
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
 
-	// Notify all subscribers
-	manager.mu.RLock()
-	for _, ch := range manager.subscribers {
+	for subscriptionID, sub := range manager.subscribers {
+		var messages []generated.Message
+
+		// Get messages since the last message this subscriber has seen
+		if sub.lastMessageTime == nil {
+			// New subscriber or no messages seen yet - send all messages
+			allMessages, err := s.db.Queries.ListMessages(ctx, conversationID)
+			if err != nil {
+				s.logger.Error("Failed to get all messages for new subscriber", "conversationID", conversationID, "subscriptionID", subscriptionID, "error", err)
+				continue
+			}
+			messages = allMessages
+		} else {
+			// Existing subscriber - send only new messages
+			newMessages, err := s.db.Queries.ListMessagesSince(ctx, generated.ListMessagesSinceParams{
+				ConversationID: conversationID,
+				CreatedAt:      *sub.lastMessageTime,
+			})
+			if err != nil {
+				s.logger.Error("Failed to get new messages for subscriber", "conversationID", conversationID, "subscriptionID", subscriptionID, "error", err)
+				continue
+			}
+			messages = newMessages
+		}
+
+		// Skip if no new messages
+		if len(messages) == 0 {
+			continue
+		}
+
+		// Update the subscriber's last seen message time
+		sub.lastMessageTime = &messages[len(messages)-1].CreatedAt
+
+		// Send the update
+		streamData := StreamResponse{
+			Messages:     messages,
+			Conversation: conversation,
+		}
+
 		select {
-		case ch <- streamData:
+		case sub.channel <- streamData:
 		default:
-			// Channel is full, skip
+			// Channel is full, skip this subscriber
+			s.logger.Warn("Subscriber channel full, skipping update", "conversationID", conversationID, "subscriptionID", subscriptionID)
 		}
 	}
-	manager.mu.RUnlock()
 }
 
 // subscribe adds a subscriber to a conversation
 func (cm *ConversationManager) subscribe(id string, ch chan StreamResponse) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	cm.subscribers[id] = ch
+	cm.subscribers[id] = &Subscriber{
+		channel:         ch,
+		lastMessageTime: nil, // Will be set after first message batch
+	}
 }
 
 // unsubscribe removes a subscriber from a conversation
 func (cm *ConversationManager) unsubscribe(id string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	if ch, exists := cm.subscribers[id]; exists {
-		close(ch)
+	if sub, exists := cm.subscribers[id]; exists {
+		close(sub.channel)
 		delete(cm.subscribers, id)
 	}
 }
@@ -739,8 +791,8 @@ func (s *Server) Cleanup() {
 		if now.Sub(manager.lastActivity) > 30*time.Minute {
 			// Close all subscriber channels
 			manager.mu.Lock()
-			for _, ch := range manager.subscribers {
-				close(ch)
+			for _, sub := range manager.subscribers {
+				close(sub.channel)
 			}
 			manager.mu.Unlock()
 

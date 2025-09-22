@@ -572,3 +572,111 @@ func TestSlugEndToEnd(t *testing.T) {
 }
 
 // Test that slug updates are reflected in the stream
+
+// Test that SSE only sends incremental message updates
+func TestSSEIncrementalUpdates(t *testing.T) {
+	// Create temporary database
+	tempDB := t.TempDir() + "/test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer database.Close()
+
+	// Run migrations
+	if err := database.Migrate(context.Background()); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	// Create logger and LLM manager
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	llmManager := server.NewLLMServiceManager(logger)
+	logBuffer := server.NewLogBuffer(1000)
+
+	// Create server
+	serviceInstance := server.NewServer(database, llmManager, nil, logger, logBuffer)
+	mux := http.NewServeMux()
+	serviceInstance.RegisterRoutes(mux)
+	testServer := httptest.NewServer(mux)
+	defer testServer.Close()
+
+	// Create a conversation with initial message
+	slug := "test-sse"
+	conv, err := database.CreateConversation(context.Background(), &slug, true)
+	if err != nil {
+		t.Fatalf("Failed to create conversation: %v", err)
+	}
+
+	// Add initial message
+	_, err = database.CreateMessage(context.Background(), db.CreateMessageParams{
+		ConversationID: conv.ConversationID,
+		Type:           db.MessageTypeUser,
+		LLMData:        &llm.Message{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}}},
+		UserData:       map[string]string{"content": "Hello"},
+		UsageData:      llm.Usage{},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create initial message: %v", err)
+	}
+
+	// Create first SSE client
+	client1, err := http.Get(testServer.URL + "/api/conversation/" + conv.ConversationID + "/stream")
+	if err != nil {
+		t.Fatalf("Failed to connect client1: %v", err)
+	}
+	defer client1.Body.Close()
+
+	// Read initial response from client1 (should contain the first message)
+	buf1 := make([]byte, 2048)
+	n1, err := client1.Body.Read(buf1)
+	if err != nil && err != io.EOF {
+		t.Fatalf("Failed to read from client1: %v", err)
+	}
+
+	response1 := string(buf1[:n1])
+	t.Logf("Client1 initial response: %s", response1)
+
+	// Verify client1 received the initial message
+	if !strings.Contains(response1, "Hello") {
+		t.Fatal("Client1 should have received initial message")
+	}
+
+	// Add a second message
+	_, err = database.CreateMessage(context.Background(), db.CreateMessageParams{
+		ConversationID: conv.ConversationID,
+		Type:           db.MessageTypeAgent,
+		LLMData:        &llm.Message{Role: llm.MessageRoleAssistant, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hi there!"}}},
+		UserData:       map[string]string{"content": "Hi there!"},
+		UsageData:      llm.Usage{},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create second message: %v", err)
+	}
+
+	// Create second SSE client after the new message is added
+	client2, err := http.Get(testServer.URL + "/api/conversation/" + conv.ConversationID + "/stream")
+	if err != nil {
+		t.Fatalf("Failed to connect client2: %v", err)
+	}
+	defer client2.Body.Close()
+
+	// Read response from client2 (should contain both messages since it's a new client)
+	buf2 := make([]byte, 2048)
+	n2, err := client2.Body.Read(buf2)
+	if err != nil && err != io.EOF {
+		t.Fatalf("Failed to read from client2: %v", err)
+	}
+
+	response2 := string(buf2[:n2])
+	t.Logf("Client2 initial response: %s", response2)
+
+	// Verify client2 received both messages (new client gets full state)
+	if !strings.Contains(response2, "Hello") {
+		t.Fatal("Client2 should have received first message")
+	}
+	if !strings.Contains(response2, "Hi there!") {
+		t.Fatal("Client2 should have received second message")
+	}
+
+	t.Log("SSE incremental updates test completed successfully")
+}

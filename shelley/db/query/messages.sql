@@ -44,3 +44,8 @@ WHERE conversation_id = ?;
 -- name: CountMessagesByType :one
 SELECT COUNT(*) FROM messages
 WHERE conversation_id = ? AND type = ?;
+
+-- name: ListMessagesSince :many
+SELECT * FROM messages
+WHERE conversation_id = ? AND created_at > ?
+ORDER BY created_at ASC;
