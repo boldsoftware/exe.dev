@@ -55,7 +55,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		/etc/systemd/system/multi-user.target.wants/snapd.* \
 		/etc/systemd/system/multi-user.target.wants/unattended-upgrades.* \
 		/etc/systemd/system/multi-user.target.wants/ubuntu-advantage.service && \
-	systemctl mask getty.target \
+	systemctl mask -- getty.target \
 		systemd-random-seed.service \
 		iscsid.socket \
 		dm-event.socket \
@@ -99,9 +99,9 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		plymouth-reboot.service \
 		plymouth-poweroff.service \
 		plymouth-kexec.service \
-		   apt-daily-upgrade.timer \
-		   apt-daily.timer \
-		plymouth-log.service > /var/log/systemd-mask-out 2>&1 && \
+		apt-daily-upgrade.timer \
+		apt-daily.timer \
+		plymouth-log.service && \
 	systemctl disable systemd-logind.service getty.target \
 		nginx.service \
                    console-getty.service \
