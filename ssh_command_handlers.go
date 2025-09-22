@@ -96,6 +96,13 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			Handler:     ss.handleAllocCommand,
 		},
 		{
+			Name:        "hireme",
+			Aliases:     jobsRelatedBoxNames,
+			Hidden:      true,
+			Description: "Apply for a job at exe.dev",
+			Handler:     ss.handleJobCommand,
+		},
+		{
 			Name:        "billing",
 			Description: "Manage billing and payment info",
 			Handler:     ss.handleBillingCommand,
@@ -607,6 +614,24 @@ func (ss *SSHServer) handleAllocCommand(ctx context.Context, cc *CommandContext)
 	cc.Writeln("  Type: \033[1m%s\033[0m", cc.Alloc.AllocType)
 	cc.Writeln("  Region: \033[1m%s\033[0m", cc.Alloc.Region)
 	cc.Writeln("  Created: %s", cc.Alloc.CreatedAt.Format("Jan 2, 2006"))
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) handleJobCommand(ctx context.Context, cc *CommandContext) error {
+	if cc.WantJSON() {
+		jobInfo := map[string]any{
+			"email": "david+repl@bold.dev",
+		}
+		cc.WriteJSON(jobInfo)
+		return nil
+	}
+	cc.Writeln("")
+	cc.Writeln("\033[1;36mYou found the secret careers menu item.\033[0m")
+	cc.Writeln("")
+	cc.Writeln("  Want to work with us? Email:")
+	cc.Writeln("")
+	cc.Writeln("  david+repl@bold.dev")
 	cc.Writeln("")
 	return nil
 }
