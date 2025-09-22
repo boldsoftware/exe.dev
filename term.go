@@ -369,8 +369,7 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 		User: *box.SSHUser, Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshKey),
 		},
-		// TODO(philip): Verify host key
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: box.CreateHostKeyCallback(),
 		Timeout:         10 * time.Second,
 	}
 	addr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)

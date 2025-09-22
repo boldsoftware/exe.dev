@@ -557,7 +557,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshKey),
 		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Use proper host key validation
+		HostKeyCallback: box.CreateHostKeyCallback(),
 		Timeout:         10 * time.Second,
 	}
 
