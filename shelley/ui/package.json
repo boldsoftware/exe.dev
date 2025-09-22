@@ -9,7 +9,11 @@
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "type-check": "tsc --noEmit",
-    "generate-types": "cd .. && go run ./cmd/go2ts.go -o ui/src/generated-types.ts"
+    "generate-types": "cd .. && go run ./cmd/go2ts.go -o ui/src/generated-types.ts",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:headed": "npm run build && playwright test --headed",
+    "test:e2e:ui": "npm run build && playwright test --ui",
+    "test:e2e:debug": "npm run build && playwright test --debug"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -17,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "@playwright/test": "^1.40.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@typescript-eslint/eslint-plugin": "^8.43.0",

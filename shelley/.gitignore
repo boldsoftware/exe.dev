@@ -1,3 +1,58 @@
+# Database files
 shelley.db
 shelley.db*
+test-playwright.db
+test-playwright.db*
+test-e2e.db
+test-e2e.db*
+test*.db
+*.db-shm
+*.db-wal
+
+# Build outputs
 /shelley
+bin/
+
+# UI build outputs
+ui/dist/
+ui/node_modules/
+ui/.next/
+ui/out/
+
+# Playwright test outputs
+ui/test-results/
+ui/playwright-report/
+
+# Screenshots (keep only example ones)
+ui/e2e/screenshots/*
+!ui/e2e/screenshots/.gitkeep
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

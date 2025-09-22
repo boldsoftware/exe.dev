@@ -1,1 +1,76 @@
-# TODO
+# Shelley Makefile
+
+.PHONY: build test test-go test-e2e ui serve clean help
+
+# Default target
+all: build
+
+# Build the UI and Go binary
+build: ui
+	@echo "Building Shelley..."
+	go build -o bin/shelley ./cmd/shelley
+
+# Build UI
+ui:
+	@echo "Building UI..."
+	cd ui && npm install && npm run build
+
+# Run Go tests
+test-go:
+	@echo "Running Go tests..."
+	go test -v ./...
+
+# Run end-to-end tests
+test-e2e: ui
+	@echo "Running E2E tests..."
+	cd ui && npm run test:e2e
+
+# Run E2E tests in headed mode (with visible browser)
+test-e2e-headed: ui
+	@echo "Running E2E tests (headed)..."
+	cd ui && npm run test:e2e:headed
+
+# Run E2E tests in UI mode
+test-e2e-ui: ui
+	@echo "Opening E2E test UI..."
+	cd ui && npm run test:e2e:ui
+
+# Run all tests
+test: test-go test-e2e
+
+# Serve Shelley with predictable model for testing
+serve-test: ui
+	@echo "Starting Shelley with predictable model..."
+	go run ./cmd/shelley --model predictable --db test.db serve
+
+# Serve Shelley normally
+serve: ui
+	@echo "Starting Shelley..."
+	go run ./cmd/shelley serve
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning..."
+	rm -rf bin/
+	rm -rf ui/dist/
+	rm -rf ui/node_modules/
+	rm -rf ui/test-results/
+	rm -rf ui/playwright-report/
+	rm -f *.db
+
+# Show help
+help:
+	@echo "Shelley Build Commands:"
+	@echo ""
+	@echo "  build         Build UI and Go binary"
+	@echo "  ui            Build UI only"
+	@echo "  test          Run all tests (Go + E2E)"
+	@echo "  test-go       Run Go tests only"
+	@echo "  test-e2e      Run E2E tests (headless)"
+	@echo "  test-e2e-headed  Run E2E tests (visible browser)"
+	@echo "  test-e2e-ui   Open E2E test UI"
+	@echo "  serve         Start Shelley server"
+	@echo "  serve-test    Start Shelley with predictable model"
+	@echo "  clean         Clean build artifacts"
+	@echo "  help          Show this help"
+
