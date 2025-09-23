@@ -619,7 +619,7 @@ func (s *Server) setupHTTPServer() {
 
 	s.httpServer = &http.Server{
 		Addr:    s.httpLn.addr,
-		Handler: instrumentedHandler,
+		Handler: LoggerMiddleware(slog.Default())(instrumentedHandler),
 	}
 }
 
@@ -660,7 +660,7 @@ func (s *Server) setupHTTPSServer() {
 
 		s.httpsServer = &http.Server{
 			Addr:    s.httpsLn.addr,
-			Handler: servMux,
+			Handler: LoggerMiddleware(slog.Default())(servMux),
 			TLSConfig: &tls.Config{
 				GetCertificate: s.wildcardCertManager.GetCertificate,
 			},
@@ -676,7 +676,7 @@ func (s *Server) setupHTTPSServer() {
 
 		s.httpsServer = &http.Server{
 			Addr:    s.httpsLn.addr,
-			Handler: servMux,
+			Handler: LoggerMiddleware(slog.Default())(servMux),
 			TLSConfig: &tls.Config{
 				GetCertificate: s.certManager.GetCertificate,
 			},
@@ -1014,24 +1014,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, _ := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
-
-	localAddr := "unknown"
-	if conn != nil {
-		localAddr = conn.String()
-	}
-
-	slog.Debug("HTTP request",
-		"method", r.Method,
-		"path", r.URL.Path,
-		"remote_addr", r.RemoteAddr,
-		"local_addr", localAddr,
-		"host", r.Host)
+	// Request logging occurs in LoggerMiddleware; avoid duplicate per-request logs here.
 
 	// Check if this should be handled by the proxy handler
 	isProxy := s.isProxyRequest(r.Host)
 	isTerminal := s.isTerminalRequest(r.Host)
-	slog.Debug("[REDIRECT] Main handler routing check", "host", r.Host, "isProxy", isProxy, "isTerminal", isTerminal)
+	if info := GetRequestLogInfo(r.Context()); info != nil {
+		info.IsProxy = isProxy
+		info.IsTerminal = isTerminal
+	}
 	if isTerminal {
 		s.handleTerminalRequest(w, r)
 		return
@@ -1631,7 +1622,6 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 // handleAuth handles the main domain authentication flow
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("[REDIRECT] handleAuth called", "method", r.Method, "url", r.URL.String(), "host", r.Host)
 	// Check if user already has a valid exe.dev auth cookie
 	cookie, err := r.Cookie("exe-auth")
 	if err == nil && cookie.Value != "" {
