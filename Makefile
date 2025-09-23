@@ -138,7 +138,7 @@ ghuser/whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't ex
 		export B2_APPLICATION_KEY_ID="004edb881590a7d0000000008"; \
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
 		b2 authorize-account >/dev/null 2>&1 && \
-		b2 download-file-by-name bold-exe whoami.sqlite3.zst ghuser/whoami.sqlite3.zst \
+		b2 file download bold-exe whoami2.sqlite3.zst ghuser/whoami.sqlite3.zst \
 			|| (echo "${RED}Failed to download whoami.sqlite3.zst${NC}" && exit 1); \
 		echo "Decompressing ghuser/whoami.sqlite3.zst..."; \
 		zstd -d ghuser/whoami.sqlite3.zst -o ghuser/whoami.sqlite3 && \
