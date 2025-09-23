@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -3653,8 +3654,8 @@ func (s *Server) authenticateProxyUser(ctx context.Context, username string, ori
 func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, username string, originalUserKeyBytes []byte, localAddress string) (*ssh.Permissions, error) {
 	slog.Info("authenticateProxyUserWithLocalAddress", "username", username, "localAddress", localAddress, "keyBytes", len(originalUserKeyBytes))
 
-	// Check for special container-logs username format
-	if strings.HasPrefix(username, "container-logs:") {
+	// Check for special container-logs username format and easter egg careers usernames
+	if strings.HasPrefix(username, "container-logs:") || slices.Contains(jobsRelatedBoxNames, username) {
 		slog.Info("Detected special container-logs username, bypassing normal auth", "username", username)
 		// This is a special request to show container logs
 		// We don't need to authenticate the user normally, just pass through

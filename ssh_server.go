@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -250,6 +251,12 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 			ss.handleContainerLogs(s, allocID, containerID, boxName)
 			return
 		}
+	}
+	if slices.Contains(jobsRelatedBoxNames, username) {
+		s.Write([]byte("Oh hai. Nice find. Come work with us: david+magicuser@bold.dev\n"))
+		s.Close()
+		s.Exit(0)
+		return
 	}
 
 	// Get authentication info from context
