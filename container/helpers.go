@@ -28,23 +28,23 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 
 	// Expand common short names
 	var expandedImage string
-	switch {
-	case image == "exeuntu" || image == "exeuntu:latest":
+	switch image {
+	case "exeuntu", "exeuntu:latest":
 		// Use the public GitHub Container Registry image from Bold Software org
 		expandedImage = "ghcr.io/boldsoftware/exeuntu:latest"
-	case image == "ubuntu" || image == "ubuntu:latest":
+	case "ubuntu", "ubuntu:latest":
 		expandedImage = "ubuntu:22.04"
-	case image == "debian" || image == "debian:latest":
+	case "debian", "debian:latest":
 		expandedImage = "debian:bookworm"
-	case image == "alpine" || image == "alpine:latest":
+	case "alpine", "alpine:latest":
 		expandedImage = "alpine:latest"
-	case image == "python" || image == "python:latest":
+	case "python", "python:latest":
 		expandedImage = "python:3.11"
-	case image == "node" || image == "node:latest":
+	case "node", "node:latest":
 		expandedImage = "node:20"
-	case image == "golang" || image == "golang:latest":
+	case "golang", "golang:latest":
 		expandedImage = "golang:1.21"
-	case image == "rust" || image == "rust:latest":
+	case "rust", "rust:latest":
 		expandedImage = "rust:latest"
 	default:
 		expandedImage = image
