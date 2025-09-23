@@ -26,26 +26,26 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 		image += ":latest"
 	}
 
-	// Expand common short names
+	// Resolve common short names to their ghcr.io equivalents
 	var expandedImage string
 	switch image {
 	case "exeuntu:latest":
 		// Use the public GitHub Container Registry image from Bold Software org
-		expandedImage = "ghcr.io/boldsoftware/exeuntu:latest"
+		return "ghcr.io/boldsoftware/exeuntu:latest"
 	case "ubuntu:latest":
-		expandedImage = "ubuntu:22.04"
+		return "ghcr.io/library/ubuntu:22.04"
 	case "debian:latest":
-		expandedImage = "debian:bookworm"
+		return "ghcr.io/library/debian:bookworm"
 	case "alpine:latest":
-		expandedImage = "alpine:latest"
+		return "ghcr.io/library/alpine:latest"
 	case "python:latest":
-		expandedImage = "python:3.11"
+		return "ghcr.io/library/python:3.11"
 	case "node:latest":
-		expandedImage = "node:20"
+		return "ghcr.io/library/node:20"
 	case "golang:latest":
-		expandedImage = "golang:1.21"
+		return "ghcr.io/library/golang:1.21"
 	case "rust:latest":
-		expandedImage = "rust:latest"
+		return "ghcr.io/library/rust:latest"
 	default:
 		expandedImage = image
 	}
