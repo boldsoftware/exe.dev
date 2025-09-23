@@ -67,8 +67,8 @@ func TestExpandImageName(t *testing.T) {
 	}{
 		{"exeuntu", "ghcr.io/boldsoftware/exeuntu:latest"},
 		{"exeuntu:latest", "ghcr.io/boldsoftware/exeuntu:latest"},
-		{"ubuntu", "public.ecr.aws/lts/ubuntu:24.04"},
-		{"ubuntu:latest", "public.ecr.aws/lts/ubuntu:24.04"},
+		{"ubuntu", "docker.io/library/ubuntu:latest"},
+		{"ubuntu:latest", "docker.io/library/ubuntu:latest"},
 		{"debian", "ghcr.io/linuxcontainers/debian:bookworm"},
 		{"alpine", "ghcr.io/linuxcontainers/alpine:latest"},
 		{"python", "quay.io/sclorg/python-313"},

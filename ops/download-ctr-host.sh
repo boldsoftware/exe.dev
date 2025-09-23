@@ -99,7 +99,7 @@ echo "=== Downloading container images to cache ==="
 # Images to cache
 IMAGES=(
 	"ghcr.io/boldsoftware/exeuntu:latest"
-	"public.ecr.aws/lts/ubuntu:24.04"
+	"docker.io/library/ubuntu:latest"
 	"ghcr.io/linuxcontainers/alpine:latest"
 )
 
