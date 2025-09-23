@@ -26,25 +26,26 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 		image += ":latest"
 	}
 
-	// Resolve common short names to their ghcr.io equivalents
+	// Resolve common short names to non-docker.io images (GHCR/Quay/ECR)
 	switch image {
 	case "exeuntu:latest":
 		// Use the public GitHub Container Registry image from Bold Software org
 		return "ghcr.io/boldsoftware/exeuntu:latest"
 	case "ubuntu:latest":
-		return "ghcr.io/library/ubuntu:22.04"
+		// Canonical doesn't publish to GHCR/Quay; use Canonical's public ECR
+		return "public.ecr.aws/lts/ubuntu:24.04"
 	case "debian:latest":
-		return "ghcr.io/library/debian:bookworm"
+		return "ghcr.io/linuxcontainers/debian:bookworm"
 	case "alpine:latest":
-		return "ghcr.io/library/alpine:latest"
+		return "ghcr.io/linuxcontainers/alpine:latest"
 	case "python:latest":
-		return "ghcr.io/library/python:3.11"
+		return "quay.io/sclorg/python-313"
 	case "node:latest":
-		return "ghcr.io/library/node:20"
+		return "quay.io/sclorg/nodejs-22" // -22 is LTS
 	case "golang:latest":
-		return "ghcr.io/library/golang:1.21"
+		return "quay.io/sclorg/golang-1.25"
 	case "rust:latest":
-		return "ghcr.io/library/rust:latest"
+		return "ghcr.io/rust-lang/rust:latest"
 	}
 
 	// For containerd, add full registry paths
