@@ -27,7 +27,6 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 	}
 
 	// Resolve common short names to their ghcr.io equivalents
-	var expandedImage string
 	switch image {
 	case "exeuntu:latest":
 		// Use the public GitHub Container Registry image from Bold Software org
@@ -46,27 +45,25 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 		return "ghcr.io/library/golang:1.21"
 	case "rust:latest":
 		return "ghcr.io/library/rust:latest"
-	default:
-		expandedImage = image
 	}
 
 	// For containerd, add full registry paths
 	if forContainerd {
-		// If the image doesn't have a registry prefix, add docker.io/library/ or docker.io/
-		if !strings.Contains(expandedImage, "/") {
-			// Simple names like "alpine:latest" -> "docker.io/library/alpine:latest"
-			return "docker.io/library/" + expandedImage
+		// If the image doesn't have a registry prefix, add ghcr.io/library/ or ghcr.io/
+		if !strings.Contains(image, "/") {
+			// Simple names like "alpine:latest" -> "ghcr.io/library/alpine:latest"
+			return "ghcr.io/library/" + image
 		}
 
-		// If it has one slash but no registry domain, add docker.io/
-		parts := strings.SplitN(expandedImage, "/", 2)
+		// If it has one slash but no registry domain, add ghcr.io/
+		parts := strings.SplitN(image, "/", 2)
 		if len(parts) == 2 && !strings.Contains(parts[0], ".") && !strings.Contains(parts[0], ":") && parts[0] != "localhost" {
-			// e.g., "myuser/myimage" -> "docker.io/myuser/myimage"
-			return "docker.io/" + expandedImage
+			// e.g., "myuser/myimage" -> "ghcr.io/myuser/myimage"
+			return "ghcr.io/" + image
 		}
 	}
 
-	return expandedImage
+	return image
 }
 
 // GetDisplayImageName returns a user-friendly display name for an image
