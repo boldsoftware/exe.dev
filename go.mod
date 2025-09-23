@@ -13,7 +13,6 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/google/uuid v1.6.0
-	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
 	github.com/lmittmann/tint v1.1.2
 	github.com/prometheus/client_golang v1.23.0
@@ -28,6 +27,7 @@ require (
 	google.golang.org/grpc v1.75.0
 	modernc.org/sqlite v1.38.2
 	mvdan.cc/sh/v3 v3.12.0
+	tailscale.com v1.86.5
 )
 
 require (
@@ -64,6 +64,8 @@ require (
 	github.com/urfave/cli/v2 v2.27.7 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
+	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
+	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	goji.io v2.0.2+incompatible // indirect
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.42.0 // indirect

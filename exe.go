@@ -1035,6 +1035,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Handle root path and user dashboard
 	path := r.URL.Path
+	// Debug endpoints (pprof, expvar), gated by dev mode or Tailscale local addr
+	if strings.HasPrefix(path, "/debug") {
+		s.handleDebug(w, r)
+		return
+	}
 	switch path {
 	case "/":
 		// If authenticated, show user dashboard; otherwise redirect to /soon
