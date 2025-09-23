@@ -198,11 +198,19 @@ type Alloc struct {
 	BillingAccountID string
 }
 
+// BoxDisplayInfo represents a box with additional display information
+type BoxDisplayInfo struct {
+	exedb.Box
+	SSHCommand  string
+	ProxyURL    string
+	TerminalURL string
+}
+
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
 	User    User
 	SSHKeys []SSHKey
-	Boxes   []exedb.Box
+	Boxes   []BoxDisplayInfo
 }
 
 // SSHKey represents an SSH key for the user page
@@ -2389,10 +2397,10 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		slog.Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
 
-	// Convert to Box format
-	boxes := make([]exedb.Box, len(boxResults))
+	// Convert to BoxDisplayInfo format with additional display information
+	boxes := make([]BoxDisplayInfo, len(boxResults))
 	for i, result := range boxResults {
-		boxes[i] = exedb.Box{
+		box := exedb.Box{
 			ID:              result.ID,
 			AllocID:         result.AllocID,
 			Name:            result.Name,
@@ -2404,7 +2412,14 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			LastStartedAt:   result.LastStartedAt,
 		}
 		if result.ContainerID != "" {
-			boxes[i].ContainerID = &result.ContainerID
+			box.ContainerID = &result.ContainerID
+		}
+
+		boxes[i] = BoxDisplayInfo{
+			Box:         box,
+			SSHCommand:  s.formatSSHConnectionInfo(result.Name),
+			ProxyURL:    s.httpsProxyAddress(result.Name),
+			TerminalURL: s.terminalURL(result.Name),
 		}
 	}
 	if err != nil {
@@ -2586,6 +2601,14 @@ func (s *Server) httpsProxyAddress(boxName string) string {
 		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpLn.tcp.Port)
 	}
 	return fmt.Sprintf("https://%s.exe.dev", boxName)
+}
+
+// terminalURL returns the terminal URL for a box.
+func (s *Server) terminalURL(boxName string) string {
+	if s.devMode != "" {
+		return fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, s.httpLn.tcp.Port)
+	}
+	return fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 }
 
 // denylistedBoxNames contains common computer-related five+ letter words that are not allowed as box names
