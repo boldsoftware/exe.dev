@@ -13,6 +13,18 @@ func ExpandImageNameForContainerd(image string) string {
 	return expandImageNameInternal(image, true)
 }
 
+// wellKnownImages resolves common short names to non-docker.io images (GHCR/Quay/ECR)
+var wellKnownImages = map[string]string{
+	"exeuntu:latest": "ghcr.io/boldsoftware/exeuntu:latest",
+	"ubuntu:latest":  "public.ecr.aws/lts/ubuntu:24.04",
+	"debian:latest":  "ghcr.io/linuxcontainers/debian:bookworm",
+	"alpine:latest":  "ghcr.io/linuxcontainers/alpine:latest",
+	"python:latest":  "quay.io/sclorg/python-313",
+	"node:latest":    "quay.io/sclorg/nodejs-22", // -22 is LTS
+	"golang:latest":  "quay.io/sclorg/golang-1.25",
+	"rust:latest":    "ghcr.io/rust-lang/rust:latest",
+}
+
 // expandImageNameInternal is the internal implementation
 func expandImageNameInternal(image string, forContainerd bool) string {
 	// Handle local development case: sha256:{hash} -> local-dev@sha256:{hash}
@@ -26,26 +38,8 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 		image += ":latest"
 	}
 
-	// Resolve common short names to non-docker.io images (GHCR/Quay/ECR)
-	switch image {
-	case "exeuntu:latest":
-		// Use the public GitHub Container Registry image from Bold Software org
-		return "ghcr.io/boldsoftware/exeuntu:latest"
-	case "ubuntu:latest":
-		// Canonical doesn't publish to GHCR/Quay; use Canonical's public ECR
-		return "public.ecr.aws/lts/ubuntu:24.04"
-	case "debian:latest":
-		return "ghcr.io/linuxcontainers/debian:bookworm"
-	case "alpine:latest":
-		return "ghcr.io/linuxcontainers/alpine:latest"
-	case "python:latest":
-		return "quay.io/sclorg/python-313"
-	case "node:latest":
-		return "quay.io/sclorg/nodejs-22" // -22 is LTS
-	case "golang:latest":
-		return "quay.io/sclorg/golang-1.25"
-	case "rust:latest":
-		return "ghcr.io/rust-lang/rust:latest"
+	if expanded, ok := wellKnownImages[image]; ok {
+		return expanded
 	}
 
 	// For containerd, add full registry paths
