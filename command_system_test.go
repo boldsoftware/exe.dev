@@ -259,8 +259,8 @@ func TestExecuteCommand(t *testing.T) {
 			t.Errorf("ExecuteCommand() should fail for nonexistent command")
 		}
 		result := output.String()
-		if !strings.Contains(result, "internal error") {
-			t.Errorf("Output should indicate internal error for unknown command. Actual output:\n%s\n", result)
+		if !strings.Contains(result, `command not found: "nonexistent"`) {
+			t.Errorf("Output should indicate command lookup failure, got:\n%s\n", result)
 		}
 	})
 
@@ -274,8 +274,8 @@ func TestExecuteCommand(t *testing.T) {
 			t.Errorf("ExecuteCommand() should fail for nonexistent subcommand")
 		}
 		result := output.String()
-		if !strings.Contains(result, "internal error") {
-			t.Errorf("Output should indicate internal error for unknown subcommand. Actual output:\n%s\n", result)
+		if !strings.Contains(result, `subcommand "nonexistent" not found`) {
+			t.Errorf("Output should indicate missing subcommand, got:\n%s\n", result)
 		}
 	})
 
@@ -785,13 +785,13 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 			name:        "unknown flag",
 			commandPath: []string{"new", "--unknown-flag=value"},
 			expectError: true,
-			errorText:   "internal error",
+			errorText:   "flag parsing error",
 		},
 		{
 			name:        "flag without value",
 			commandPath: []string{"new", "--name"},
 			expectError: true,
-			errorText:   "internal error",
+			errorText:   "flag parsing error",
 		},
 		{
 			name:        "valid flags",

@@ -347,12 +347,12 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 		}
 	}
 	if cmd == nil || cmd.Handler == nil {
-		return fmt.Errorf("command not found: %s", strings.Join(commandPath, " "))
+		return cc.Errorf("command not found: %q", strings.Join(commandPath, " "))
 	}
 
 	// Check if command is available
 	if cmd.Available != nil && !cmd.Available(cc) {
-		return fmt.Errorf("command not available: %s", strings.Join(commandPath, " "))
+		return cc.Errorf("command not available: %q", strings.Join(commandPath, " "))
 	}
 
 	// Parse flags if the command has a FlagSetFunc
@@ -408,7 +408,7 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 		if err == flag.ErrHelp {
 			return cmd.Help(cc)
 		}
-		return fmt.Errorf("flag parsing error: %v", err)
+		return cc.Errorf("flag parsing error: %w", err)
 	}
 	// Set the unparsed args as the new Args
 	cc.Args = fs.Args()
@@ -421,9 +421,9 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 	}
 	if len(cc.Args) > 0 && !cmd.HasPositionalArgs {
 		if len(cmd.Subcommands) > 0 {
-			return fmt.Errorf(`%q subcommand %q not found, valid %q subcommands are: %s`, commandPath[0], cc.Args[0], commandPath[0], strings.Join(ct.SubcommandNames(cmd), ", "))
+			return cc.Errorf(`%q subcommand %q not found, valid %q subcommands are: %s`, commandPath[0], cc.Args[0], commandPath[0], strings.Join(ct.SubcommandNames(cmd), ", "))
 		}
-		return fmt.Errorf("%q command has no subcommands and does not take positional arguments", cmd.Name)
+		return cc.Errorf("%q command has no subcommands and does not take positional arguments", cmd.Name)
 	}
 	return cmd.Handler(ctx, cc)
 }
