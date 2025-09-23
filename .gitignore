@@ -13,3 +13,4 @@ exed
 # codex seems to need a local go cache because of its sandbox.
 # it keeps recreating this; stop fighting it.
 .gocache
+.DS_Store
