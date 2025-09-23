@@ -60,27 +60,6 @@ func TestContainerSizes(t *testing.T) {
 	}
 }
 
-func TestCreateContainerRequestDefaults(t *testing.T) {
-	req := CreateContainerRequest{
-		AllocID: "test-alloc",
-		Name:    "test-container",
-	}
-
-	// Verify the fields exist and can be set
-	req.Size = "medium"
-	req.CPURequest = "1000m"
-	req.MemoryRequest = "4Gi"
-	req.StorageSize = "20Gi"
-	req.Ephemeral = true
-
-	if req.Size != "medium" {
-		t.Errorf("Expected Size to be medium, got %s", req.Size)
-	}
-	if !req.Ephemeral {
-		t.Error("Expected Ephemeral to be true")
-	}
-}
-
 func TestExpandImageName(t *testing.T) {
 	tests := []struct {
 		input    string
