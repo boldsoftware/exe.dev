@@ -67,14 +67,14 @@ func TestExpandImageName(t *testing.T) {
 	}{
 		{"exeuntu", "ghcr.io/boldsoftware/exeuntu:latest"},
 		{"exeuntu:latest", "ghcr.io/boldsoftware/exeuntu:latest"},
-		{"ubuntu", "ubuntu:22.04"},
-		{"ubuntu:latest", "ubuntu:22.04"},
-		{"debian", "debian:bookworm"},
-		{"alpine", "alpine:latest"},
-		{"python", "python:3.11"},
-		{"node", "node:20"},
-		{"golang", "golang:1.21"},
-		{"rust", "rust:latest"},
+		{"ubuntu", "public.ecr.aws/lts/ubuntu:24.04"},
+		{"ubuntu:latest", "public.ecr.aws/lts/ubuntu:24.04"},
+		{"debian", "ghcr.io/linuxcontainers/debian:bookworm"},
+		{"alpine", "ghcr.io/linuxcontainers/alpine:latest"},
+		{"python", "quay.io/sclorg/python-313"},
+		{"node", "quay.io/sclorg/nodejs-22"},
+		{"golang", "quay.io/sclorg/golang-1.25"},
+		{"rust", "ghcr.io/rust-lang/rust:latest"},
 		{"custom/image:tag", "custom/image:tag"},             // Should not be modified
 		{"ghcr.io/user/repo:v1.0", "ghcr.io/user/repo:v1.0"}, // Should not be modified
 	}

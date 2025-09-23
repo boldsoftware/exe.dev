@@ -9,12 +9,12 @@ func TestExpandImageNameForContainerd(t *testing.T) {
 		input    string
 		expected string
 	}{
-		// Simple names get docker.io/library/ prefix
-		{"alpine", "docker.io/library/alpine:latest"},
-		{"alpine:latest", "docker.io/library/alpine:latest"},
+		// Simple names expand to the configured registries
+		{"alpine", "ghcr.io/linuxcontainers/alpine:latest"},
+		{"alpine:latest", "ghcr.io/linuxcontainers/alpine:latest"},
 		{"alpine:3.18", "docker.io/library/alpine:3.18"},
-		{"ubuntu", "docker.io/library/ubuntu:22.04"},
-		{"ubuntu:latest", "docker.io/library/ubuntu:22.04"},
+		{"ubuntu", "public.ecr.aws/lts/ubuntu:24.04"},
+		{"ubuntu:latest", "public.ecr.aws/lts/ubuntu:24.04"},
 		{"ubuntu:20.04", "docker.io/library/ubuntu:20.04"},
 		{"nginx", "docker.io/library/nginx:latest"},
 		{"nginx:1.25", "docker.io/library/nginx:1.25"},
