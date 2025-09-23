@@ -345,7 +345,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *CommandContext) e
 	startTime := time.Now()
 
 	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
-	showSpinner := ss.shouldShowSpinner(cc.SSHSession) && !cc.WantJSON()
+	// Allow forced spinner (e.g., HTTP/SSE flows) via cc.ForceSpinner
+	showSpinner := (ss.shouldShowSpinner(cc.SSHSession) || cc.ForceSpinner) && !cc.WantJSON()
 
 	// Reserve space for spinner if we're showing it: print a blank line, then move cursor up.
 	// This makes the readline prompt visible in the repl ui.
@@ -476,7 +477,14 @@ done:
 	proxyPort := 80
 	slog.Debug("setting up automatic routing", "box", boxName, "exposed_ports", createdContainer.ExposedPorts)
 	if bestPort := container.ChooseBestPortToRoute(createdContainer.ExposedPorts); bestPort > 0 {
-		box, err := ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+		var box *exedb.Box
+		var err error
+		if cc.PublicKey != "" {
+			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+		} else {
+			// Fallback for non-SSH contexts (e.g., mobile flow) where PublicKey is empty
+			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.UserID, boxName)
+		}
 		if err != nil {
 			return err
 		}

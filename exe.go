@@ -558,7 +558,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	go func() {
 		s.ready.Wait()
 		// The following log line signals to e2e tests that they may proceed with using the server (better than sleeps!)
-		slog.Info("server started")
+		slog.Info("server started", "url", s.BaseURL)
 	}()
 
 	return s, nil
@@ -1111,6 +1111,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(path, "/auth/") {
 			s.handleAuthCallback(w, r)
 			return
+		}
+
+		// Serve embedded static assets under /static/
+		if strings.HasPrefix(path, "/static/") {
+			filename := strings.TrimPrefix(path, "/static/")
+			// simple security check; our embed only exposes files inside static/
+			if filename != "" && !strings.Contains(filename, "..") {
+				s.serveStaticFile(w, r, filename)
+				return
+			}
 		}
 
 		// Try to serve static file if GET request

@@ -115,6 +115,11 @@ type CommandContext struct {
 	// I/O interfaces
 	Output   io.Writer      // where to write output
 	Terminal *term.Terminal // for interactive input (nil for non-interactive)
+
+	// ForceSpinner overrides spinner auto-detection for non-SSH contexts
+	// (e.g., HTTP/SSE driven flows). When true, progress spinner output
+	// will be enabled even without an SSH session.
+	ForceSpinner bool
 }
 
 // Write is a convenience method for writing to the output.

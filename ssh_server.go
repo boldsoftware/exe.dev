@@ -117,6 +117,10 @@ func (ss *SSHServer) Stop() error {
 // shouldShowSpinner determines if we should show spinner/progress indicators
 // Based on TTY detection, environment variables, and terminal capabilities
 func (ss *SSHServer) shouldShowSpinner(s ssh.Session) bool {
+	// If we are not in an SSH session (e.g., invoked from HTTP), don't show spinner
+	if s == nil {
+		return false
+	}
 	// Check environment variables first
 	env := s.Environ()
 	envMap := make(map[string]string)

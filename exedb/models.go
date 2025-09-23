@@ -84,6 +84,14 @@ type Migration struct {
 	ExecutedAt      *time.Time `db:"executed_at" json:"executed_at"`
 }
 
+type MobilePendingVm struct {
+	Token       string     `db:"token" json:"token"`
+	UserID      string     `db:"user_id" json:"user_id"`
+	Hostname    string     `db:"hostname" json:"hostname"`
+	Description *string    `db:"description" json:"description"`
+	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
+}
+
 type PendingSshKey struct {
 	Token     string     `db:"token" json:"token"`
 	PublicKey string     `db:"public_key" json:"public_key"`

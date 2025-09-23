@@ -164,6 +164,12 @@
                        placeholder="you@example.com"
                        required
                        autofocus>
+                {{if .Hostname}}
+                <input type="hidden" name="hostname" value="{{.Hostname}}">
+                {{end}}
+                {{if .Description}}
+                <input type="hidden" name="description" value="{{.Description}}">
+                {{end}}
             </div>
             
             <button type="submit" class="continue-button">Send Verification Code</button>

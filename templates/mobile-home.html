@@ -207,8 +207,11 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
+            <div class="header">
             <div class="logo">exe.dev</div>
+            <div style="margin-top:8px; text-align:right">
+                <a href="/auth?redirect=/m" style="color:#666; text-decoration:none; font-size:14px">Sign in</a>
+            </div>
         </div>
         
         <form id="create-vm-form" method="POST" action="/m/create-vm">
@@ -231,7 +234,7 @@
             </div>
             
             <div class="description-section">
-                <label for="description" class="description-label">What do you want to build?</label>
+                <label for="description" class="description-label">What do you want to build? (optional)</label>
                 <textarea id="description" 
                          name="description" 
                          class="description-input" 

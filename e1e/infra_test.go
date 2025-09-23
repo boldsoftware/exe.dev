@@ -1167,6 +1167,11 @@ func boxName(t *testing.T) string {
 	// This avoids collisions between test runs and makes cleanup easy
 	timestamp := fmt.Sprintf("%05d", time.Now().Unix()%100_000)
 	testName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
+	// Sanitize to allowed charset [a-z0-9-] to satisfy isValidBoxName
+	testName = regexp.MustCompile(`[^a-z0-9-]+`).ReplaceAllString(testName, "-")
+	// Collapse multiple hyphens and trim
+	testName = regexp.MustCompile(`-+`).ReplaceAllString(testName, "-")
+	testName = strings.Trim(testName, "-")
 	Env.addCanonicalization(timestamp, "BOX_TIMESTAMP")
 	return fmt.Sprintf("e1e-%s-%s", timestamp, testName)
 }

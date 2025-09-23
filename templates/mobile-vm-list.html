@@ -60,6 +60,9 @@
             padding: 20px;
             margin-bottom: 15px;
             transition: box-shadow 0.2s;
+            display: block;
+            color: inherit;
+            text-decoration: none;
         }
         
         .vm-item:hover {
@@ -169,7 +172,7 @@
         <div class="vm-list">
             {{if .Boxes}}
                 {{range .Boxes}}
-                <div class="vm-item">
+                <a class="vm-item" href="/m/box/{{.Name}}">
                     <div class="vm-name">{{.Name}}.exe.dev</div>
                     <div class="vm-status {{if eq .Status "running"}}running{{else if eq .Status "stopped"}}stopped{{else}}unknown{{end}}">
                         {{.Status}}
@@ -178,20 +181,20 @@
                     <div class="vm-image">Image: {{.Image}}</div>
                     {{end}}
                     <div class="vm-created">Created: {{.CreatedAt.Format "Jan 2, 2006"}}</div>
-                </div>
+                </a>
                 {{end}}
             {{else}}
             <div class="empty-state">
                 <div class="empty-icon">💻</div>
                 <div class="empty-message">You don't have any VMs yet</div>
-                <a href="/m" class="create-vm-button">Create Your First VM</a>
+                <a href="/m/new" class="create-vm-button">Create Your First VM</a>
             </div>
             {{end}}
         </div>
         
         {{if .Boxes}}
         <div class="actions">
-            <a href="/m" class="create-vm-button">Create Another VM</a>
+            <a href="/m/new" class="create-vm-button">Create Another VM</a>
         </div>
         {{end}}
         
