@@ -616,8 +616,8 @@ echo "Loading baseline images (exeuntu, ubuntu, alpine)..."
 # Images to load
 IMAGES=(
 	"ghcr.io/boldsoftware/exeuntu:latest"
-	"docker.io/library/ubuntu:latest"
-	"docker.io/library/alpine:latest"
+	"public.ecr.aws/lts/ubuntu:24.04"
+	"ghcr.io/linuxcontainers/alpine:latest"
 )
 
 for image in "${IMAGES[@]}"; do
@@ -695,7 +695,7 @@ echo "  sudo nerdctl -n exe --snapshotter nydus <command>         # Use nerdctl 
 echo ""
 echo "Example usage:"
 echo "  sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 alpine:latest sh"
-echo "  sudo ctr -n exe run --runtime io.containerd.kata.v2 --snapshotter nydus docker.io/library/alpine:latest test-container sh"
+echo "  sudo ctr -n exe run --runtime io.containerd.kata.v2 --snapshotter nydus ghcr.io/linuxcontainers/alpine:latest test-container sh"
 echo ""
 echo "Note: Network isolation is configured with iptables rules"
 echo ""
