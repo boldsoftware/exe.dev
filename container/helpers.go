@@ -50,17 +50,17 @@ func expandImageNameInternal(image string, forContainerd bool) string {
 
 	// For containerd, add full registry paths
 	if forContainerd {
-		// If the image doesn't have a registry prefix, add ghcr.io/library/ or ghcr.io/
+		// If the image doesn't have a registry prefix, add docker.io/library/ or docker.io/
 		if !strings.Contains(image, "/") {
-			// Simple names like "alpine:latest" -> "ghcr.io/library/alpine:latest"
-			return "ghcr.io/library/" + image
+			// Simple names like "alpine:latest" -> "docker.io/library/alpine:latest"
+			return "docker.io/library/" + image
 		}
 
-		// If it has one slash but no registry domain, add ghcr.io/
+		// If it has one slash but no registry domain, add docker.io/
 		parts := strings.SplitN(image, "/", 2)
 		if len(parts) == 2 && !strings.Contains(parts[0], ".") && !strings.Contains(parts[0], ":") && parts[0] != "localhost" {
-			// e.g., "myuser/myimage" -> "ghcr.io/myuser/myimage"
-			return "ghcr.io/" + image
+			// e.g., "myuser/myimage" -> "docker.io/myuser/myimage"
+			return "docker.io/" + image
 		}
 	}
 
