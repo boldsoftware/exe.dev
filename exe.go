@@ -2605,140 +2605,59 @@ func (s *Server) terminalURL(boxName string) string {
 	return fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 }
 
-// denylistedBoxNames contains common computer-related five+ letter words that are not allowed as box names
-var denylistedBoxNames = map[string]bool{
-	"teams": true,
-	"abort": true, "admin": true, "allow": true, "array": true, "async": true,
-	"audit": true, "block": true, "board": true, "boost": true, "break": true,
-	"build": true, "bytes": true, "cable": true, "cache": true, "catch": true,
-	"chain": true, "check": true, "chips": true, "class": true, "clock": true,
-	"cloud": true, "codec": true, "codes": true, "const": true, "cores": true,
-	"crawl": true, "crypt": true, "debug": true, "drive": true, "email": true,
-	"entry": true, "error": true, "event": true, "fetch": true, "fiber": true,
-	"field": true, "flash": true, "frame": true, "games": true, "grant": true,
-	"guard": true, "guest": true, "https": true, "image": true, "index": true,
-	"input": true, "laser": true, "links": true, "logic": true, "login": true,
-	"macro": true, "match": true, "merge": true, "modem": true, "mount": true,
-	"nodes": true, "parse": true, "paste": true, "patch": true, "pixel": true,
-	"ports": true, "power": true, "print": true, "proxy": true, "query": true,
-	"radio": true, "regex": true, "reset": true, "route": true, "scope": true,
-	"serve": true, "setup": true, "share": true, "shell": true, "solid": true,
-	"sound": true, "speed": true, "spell": true, "stack": true, "start": true,
-	"store": true, "style": true, "table": true, "theme": true, "throw": true,
-	"timer": true, "token": true, "tower": true, "trace": true, "trash": true,
-	"trust": true, "users": true, "video": true, "virus": true, "watts": true,
-	"agent": true, "agents": true, "claude": true, "openai": true, "jules": true,
-	"cursor": true, "cline": true, "qwencode": true, "claudecode": true,
-	"editor": true, "terminal": true, "sketch": true, "webterm": true,
-	"daemon": true, "server": true, "client": true, "remote": true, "session": true,
-	"tunnel": true, "bridge": true, "exedev": true,
-	"gateway": true, "router": true, "switch": true, "firewall": true, "cluster": true,
-	"docker": true, "podman": true, "kubernetes": true, "helm": true, "ansible": true,
-	"terraform": true, "vagrant": true, "puppet": true, "consul": true, "vault": true,
-	"nomad": true, "etcd": true, "redis": true, "nginx": true, "apache": true,
-	"traefik": true, "envoy": true, "istio": true, "linkerd": true, "cilium": true,
-	"weave": true, "calico": true, "flannel": true, "zookeeper": true,
-	"kafka": true, "rabbit": true, "zeromq": true,
-	"websocket": true, "telnet": true, "rsync": true, "netcat": true,
-	"socat": true, "screen": true, "byobu": true, "mosh": true,
-	"tmate": true, "gotty": true, "ttyd": true, "shellinabox": true, "wetty": true,
-	"xterm": true, "xtermjs": true, "monaco": true, "codemirror": true, "ace": true,
-	"vscode": true, "neovim": true, "emacs": true, "sublime": true, "atom": true,
-	"bracket": true, "theia": true, "gitpod": true, "codespace": true, "replit": true,
-	"sandbox": true, "container": true, "chroot": true, "namespace": true, "cgroup": true,
-	"systemd": true, "upstart": true, "supervisor": true, "monit": true, "circus": true,
-	"gunicorn": true, "uwsgi": true, "passenger": true, "puma": true, "unicorn": true,
-	"process": true, "thread": true, "worker": true, "queue": true, "scheduler": true,
-	"crontab": true, "systemctl": true, "service": true, "socket": true, "target": true,
-	"volume": true, "overlay": true, "union": true, "btrfs": true,
-	"iptables": true, "netfilter": true, "fail2ban": true, "selinux": true,
-	"apparmor": true, "grsec": true, "hardening": true, "syslog": true,
-	"journald": true, "rsyslog": true, "fluentd": true, "logstash": true, "filebeat": true,
-	"prometheus": true, "grafana": true, "influx": true, "telegraf": true, "collectd": true,
-	"nagios": true, "zabbix": true, "sensu": true, "datadog": true, "newrelic": true,
-	"splunk": true, "elastic": true, "kibana": true, "jaeger": true, "zipkin": true,
-	"opentracing": true, "honeycomb": true, "lightstep": true, "wavefront": true, "signalfx": true,
-	"vibes": true, "awesome": true,
-	"panel": true, "adminpanel": true, "console": true, "dashboard": true,
-	"settings": true, "config": true, "preferences": true, "options": true,
-	"management": true, "control": true, "monitor": true,
-	"viewer": true, "preview": true, "observability": true,
-	"report": true, "analytics": true, "metric": true, "metrics": true, "stats": true,
-	"endpoint": true, "identity": true, "oauth": true, "whoami": true,
-	"profile": true, "username": true, "password": true, "passkey": true,
-	"gitlab": true, "githost": true, "gitty": true,
-	"jupyter": true, "notebook": true,
-	"gerrit": true, "reviewboard": true,
-	"zulip": true, "jitsi": true, "mastodon": true,
-	"nextcloud": true, "owncloud": true, "seafile": true, "alertmanager": true,
-	"jenkins": true, "philz": true, "buildbot": true, "drone": true,
-	"gitea": true, "forgejo": true, "sourcehut": true,
-	"mattermost": true, "rocketchat": true, "element": true,
-	"discourse": true, "flarum": true, "nodebb": true,
-	"wikijs": true, "bookstack": true, "outline": true,
-	"jellyfin": true, "plex": true, "emby": true,
-	"homeassistant": true, "openhab": true, "domoticz": true,
-	"bitwarden": true, "vaultwarden": true, "keepass": true,
-	"immich": true, "photoprism": true, "piwigo": true,
-	"pihole": true, "adguard": true, "unbound": true,
-	"wireguard": true, "openvpn": true, "tailscale": true,
-	"caddy": true, "haproxy": true,
-	"portainer": true, "rancher": true, "k3s": true,
-	"minio": true, "rclone": true, "syncthing": true,
-	"ghost": true, "strapi": true, "directus": true,
-	"supabase": true, "appwrite": true, "pocketbase": true,
-	"invoiceninja": true, "crater": true, "akaunting": true,
-	"nodered": true, "huginn": true,
-	"box-name": true, "new-link": true, "test-name": true,
-	"invite": true, "unlink": true, "source-port": true,
-	"target-port": true, "ssh-port": true,
-	"admin-user": true, "admin-name": true, "admin-login": true,
-	"user-name": true, "user-login": true, "user-pass": true,
-	"dev-user": true, "dev-name": true, "dev-login": true,
-	"dev-pass": true, "demo-user": true, "demo-name": true, "demo-login": true,
-	"demo-pass": true, "test-user": true, "test-login": true, "test-pass": true,
-	"example": true, "examples": true, "sample": true, "samples": true,
-	"foobar": true, "foo-bar": true, "bar-foo": true,
-	"hello": true, "world": true, "hello-world": true,
-	"lorem": true, "ipsum": true, "lorem-ipsum": true,
-	"access-level": true, "priority": true, "read-only": true, "readwrite": true,
-	"path-prefix": true, "subdomain": true, "two-factor": true, "twofactor": true,
-	"multi-factor": true, "multifactor": true, "mfa-required": true,
-	"ssh-key": true, "ssh-keys": true, "sshkey": true, "sshkeys": true,
-	"ssh-access": true, "sshaccess": true,
-	"ssh-login": true, "sshlogin": true, "sshport": true,
-	"ssh-user": true, "sshuser": true,
-	"ssh-host": true, "sshhost": true,
-	"ssh-hostname": true, "sshhostname": true,
-	"ssh-identity": true, "sshidentity": true,
-	"ssh-auth": true, "sshauth": true,
-	"ssh-authentication": true, "sshauthentication": true,
-	"ssh-agent": true, "sshagent": true,
-	"ssh-config": true, "sshconfig": true,
-	"ssh-command": true, "sshcommand": true,
-	"ssh-connection": true, "sshconnection": true,
-	"ssh-tunnel": true, "sshtunnel": true,
-	"ssh-forward": true, "sshforward": true,
-	"ssh-forwarding": true, "sshforwarding": true,
-	"ssh-session": true, "sshsession": true,
-	"ssh-socket": true, "sshsocket": true,
-	"ssh-agent-forward": true, "sshagentforward": true,
-	"ssh-agent-forwarding": true, "sshagentforwarding": true,
-	"ssh-keygen": true, "sshkeygen": true,
-	"ssh-copy-id": true, "sshcopyid": true,
-	"ssh-add": true, "sshadd": true,
+// reservedBoxNames contains common computer-related five+ letter words that are not allowed as box names
+var reservedBoxNames = []string{
+	"teams", "abort", "admin", "allow", "array", "async", "audit", "block", "board", "boost", "break", "build", "bytes", "cable", "cache", "catch", "chain",
+	"check", "chips", "class", "clock", "cloud", "codec", "codes", "const", "cores", "crawl", "crypt", "debug", "drive", "email", "entry", "error", "event",
+	"fetch", "fiber", "field", "flash", "frame", "games", "grant", "guard", "guest", "https", "image", "index", "input", "laser", "links", "logic", "login",
+	"macro", "match", "merge", "modem", "mount", "nodes", "parse", "paste", "patch", "pixel", "ports", "power", "print", "proxy", "query", "radio", "regex",
+	"reset", "route", "scope", "serve", "setup", "share", "shell", "solid", "sound", "speed", "spell", "stack", "start", "store", "style", "table", "theme",
+	"throw", "timer", "token", "tower", "trace", "trash", "trust", "users", "video", "virus", "watts", "agent", "agents", "claude", "openai", "jules", "cursor",
+	"cline", "qwencode", "claudecode", "editor", "terminal", "sketch", "webterm", "daemon", "server", "client", "remote", "session", "tunnel", "bridge", "exedev",
+	"gateway", "router", "switch", "firewall", "cluster", "docker", "podman", "kubernetes", "helm", "ansible", "terraform", "vagrant", "puppet", "consul", "vault",
+	"nomad", "etcd", "redis", "nginx", "apache", "traefik", "envoy", "istio", "linkerd", "cilium", "weave", "calico", "flannel", "zookeeper", "kafka", "rabbit",
+	"zeromq", "websocket", "telnet", "rsync", "netcat", "socat", "screen", "byobu", "mosh", "tmate", "gotty", "ttyd", "shellinabox", "wetty", "xterm", "xtermjs",
+	"monaco", "codemirror", "ace", "vscode", "neovim", "emacs", "sublime", "atom", "bracket", "theia", "gitpod", "codespace", "replit", "sandbox", "container",
+	"chroot", "namespace", "cgroup", "systemd", "upstart", "supervisor", "monit", "circus", "gunicorn", "uwsgi", "passenger", "puma", "unicorn", "process",
+	"thread", "worker", "queue", "scheduler", "crontab", "systemctl", "service", "socket", "target", "volume", "overlay", "union", "btrfs", "iptables", "netfilter",
+	"fail2ban", "selinux", "apparmor", "grsec", "hardening", "syslog", "journald", "rsyslog", "fluentd", "logstash", "filebeat", "prometheus", "grafana", "influx",
+	"telegraf", "collectd", "nagios", "zabbix", "sensu", "datadog", "newrelic", "splunk", "elastic", "kibana", "jaeger", "zipkin", "opentracing", "honeycomb",
+	"lightstep", "wavefront", "signalfx", "vibes", "awesome", "panel", "adminpanel", "console", "dashboard", "settings", "config", "preferences", "options",
+	"management", "control", "monitor", "viewer", "preview", "observability", "report", "analytics", "metric", "metrics", "stats", "endpoint", "identity", "oauth",
+	"whoami", "profile", "username", "password", "passkey", "gitlab", "githost", "gitty", "jupyter", "notebook", "gerrit", "reviewboard", "zulip", "jitsi",
+	"mastodon", "nextcloud", "owncloud", "seafile", "alertmanager", "jenkins", "philz", "buildbot", "drone", "gitea", "forgejo", "sourcehut", "mattermost",
+	"rocketchat", "element", "discourse", "flarum", "nodebb", "wikijs", "bookstack", "outline", "jellyfin", "plex", "emby", "homeassistant", "openhab", "domoticz",
+	"bitwarden", "vaultwarden", "keepass", "immich", "photoprism", "piwigo", "pihole", "adguard", "unbound", "wireguard", "openvpn", "tailscale", "caddy",
+	"haproxy", "portainer", "rancher", "k3s", "minio", "rclone", "syncthing", "ghost", "strapi", "directus", "supabase", "appwrite", "pocketbase", "invoiceninja",
+	"crater", "akaunting", "nodered", "huginn", "box-name", "new-link", "test-name", "invite", "unlink", "source-port", "target-port", "ssh-port", "admin-user",
+	"admin-name", "admin-login", "user-name", "user-login", "user-pass", "dev-user", "dev-name", "dev-login", "dev-pass", "demo-user", "demo-name", "demo-login",
+	"demo-pass", "test-user", "test-login", "test-pass", "example", "examples", "sample", "samples", "foobar", "foo-bar", "bar-foo", "hello", "world",
+	"hello-world", "lorem", "ipsum", "lorem-ipsum", "access-level", "priority", "read-only", "readwrite", "path-prefix", "subdomain", "two-factor", "twofactor",
+	"multi-factor", "multifactor", "mfa-required", "ssh-key", "ssh-keys", "sshkey", "sshkeys", "ssh-access", "sshaccess", "ssh-login", "sshlogin", "sshport",
+	"ssh-user", "sshuser", "ssh-host", "sshhost", "ssh-hostname", "sshhostname", "ssh-identity", "sshidentity", "ssh-auth", "sshauth", "ssh-authentication",
+	"sshauthentication", "ssh-agent", "sshagent", "ssh-config", "sshconfig", "ssh-command", "sshcommand", "ssh-connection", "sshconnection", "ssh-tunnel",
+	"sshtunnel", "ssh-forward", "sshforward", "ssh-forwarding", "sshforwarding", "ssh-session", "sshsession", "ssh-socket", "sshsocket", "ssh-agent-forward",
+	"sshagentforward", "ssh-agent-forwarding", "sshagentforwarding", "ssh-keygen", "sshkeygen", "ssh-copy-id", "sshcopyid", "ssh-add", "sshadd",
+}
+
+var jobsRelatedBoxNames = []string{"job", "jobs", "career", "careers", "apply", "work", "position", "positions", "opening", "openings", "hire", "hiring", "role", "roles", "join"}
+
+var denylistedBoxNames map[string]bool
+
+func init() {
+	denylistedBoxNames = make(map[string]bool)
+	for _, name := range reservedBoxNames {
+		denylistedBoxNames[name] = true
+	}
+	for _, name := range jobsRelatedBoxNames {
+		denylistedBoxNames[name] = true
+	}
 }
 
 // isValidBoxName validates box name format
 func isValidBoxName(name string) bool {
 	// Must be at least 5 characters and at most 64 characters
 	if len(name) < 5 || len(name) > 64 {
-		return false
-	}
-
-	// Check if name is in denylist
-	withoutHyphens := strings.ReplaceAll(name, "-", "")
-	if denylistedBoxNames[withoutHyphens] {
 		return false
 	}
 
@@ -2801,6 +2720,12 @@ func (s *Server) updateBoxWithContainer(ctx context.Context, boxID int, containe
 // isBoxNameAvailable checks if a box name is available for use.
 // Errors are translated into false (unavailability).
 func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
+	// Check if name is in denylist
+	withoutHyphens := strings.ReplaceAll(name, "-", "")
+	if denylistedBoxNames[withoutHyphens] {
+		return false
+	}
+
 	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
 		return queries.BoxWithNameExists(ctx, name)
 	})
