@@ -1,17 +1,27 @@
-# Build generate-gateway-token as a static binary from the go
-# source in the generate-gateway-token/ directory.
-# This binary is then copied into the final image.
+# Build generate-gateway-token and shelley as static binaries
 FROM golang:1.25.1-alpine AS go-builder
 ARG TARGETARCH
 ARG TARGETOS=linux
 
+# Install Node.js 22 from tarball and build tools - use alpine node package instead of tarball
+RUN apk add --no-cache make nodejs npm && \
+    node --version && npm --version
+
+# Ensure node and npm are in PATH for subsequent layers
+ENV PATH="/usr/local/bin:${PATH}"
+
 # Copy the generate-gateway-token source code so we can build it
-COPY generate-gateway-token/ /src/generate-gateway-token/
+COPY exeuntu/generate-gateway-token/ /src/generate-gateway-token/
 WORKDIR /src/generate-gateway-token/
 
 # Build static binary for the target architecture
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
     go build -ldflags="-s -w" -a -installsuffix cgo -o generate-gateway-token ./cmd
+
+# Build Shelley using its Makefile
+COPY shelley/ /src/shelley/
+WORKDIR /src/shelley/
+RUN make build
 
 FROM ubuntu:24.04
 
@@ -151,19 +161,22 @@ ENV EXEUNTU=1
 # STOPSIGNAL SIGRTMIN+3
 
 # Add claude script to PATH (in /usr/bin to avoid conflict with npm's /usr/local/bin/claude)
-COPY claude /usr/bin/claude
+COPY exeuntu/claude /usr/bin/claude
 RUN chmod +x /usr/bin/claude
 
-# Copy the pre-built static binary from the builder stage
+# Copy the pre-built static binaries from the builder stage
 COPY --from=go-builder /src/generate-gateway-token/generate-gateway-token /usr/local/bin/generate-gateway-token
 RUN chmod +x /usr/local/bin/generate-gateway-token
+
+COPY --from=go-builder /src/shelley/bin/shelley /usr/local/bin/shelley
+RUN chmod +x /usr/local/bin/shelley
 
 RUN mkdir -p /app && chown exedev /app
 
 USER exedev
 
 # Add claude settings file
-COPY claude-settings.json /home/exedev/.claude.json
+COPY exeuntu/claude-settings.json /home/exedev/.claude.json
 
 WORKDIR /app
 
@@ -173,7 +186,7 @@ RUN git config --global user.email "system@exe.dev" && \
     git init .
 
 # Copy welcome source code
-COPY welcome/ ./
+COPY exeuntu/welcome/ ./
 
 # Create .gitignore to exclude binary
 RUN echo 'webserver' > .gitignore
@@ -192,13 +205,17 @@ USER root
 RUN cp /app/welcome-exedev-webapp.service /etc/systemd/system/welcome-exedev-webapp.service && \
     systemctl enable welcome-exedev-webapp.service
 
+# Create systemd service for Shelley
+COPY exeuntu/shelley.service /etc/systemd/system/shelley.service
+RUN chmod 644 /etc/systemd/system/shelley.service && systemctl enable shelley.service
+
 # TODO(crawshaw/philip): This is called init so that exetini decides
 # this wrapper script is an init, and exec's it rather than forking it.
 # It would be better if you could indicate that via an env variable or something.
-COPY init-wrapper.sh /usr/local/bin/init
+COPY exeuntu/init-wrapper.sh /usr/local/bin/init
 
-# Expose the web server port
-EXPOSE 8000
+# Expose the web server ports
+EXPOSE 8000 9999
 
 LABEL "exe.dev/login-user"="exedev"
 CMD ["/usr/local/bin/init"]

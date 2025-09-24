@@ -1,0 +1,15 @@
+# Node modules should be installed fresh in the container
+shelley/ui/node_modules/
+shelley/ui/dist/
+shelley/ui/test-results/
+shelley/ui/playwright-report/
+
+# Build artifacts that should not be copied
+shelley/bin/
+shelley/*.db
+shelley/*.db-*
+
+# General files to exclude
+.git
+.DS_Store
+*.log

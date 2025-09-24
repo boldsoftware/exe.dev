@@ -1,0 +1,32 @@
+[Unit]
+Description=Shelley AI Assistant Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=exec
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev
+ExecStart=/usr/local/bin/shelley serve --port 9999
+Restart=always
+RestartSec=5
+Environment=HOME=/home/exedev
+Environment=USER=exedev
+KillMode=process
+TimeoutStopSec=10
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=no
+ReadWritePaths=/home/exedev
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shelley
+
+[Install]
+WantedBy=multi-user.target

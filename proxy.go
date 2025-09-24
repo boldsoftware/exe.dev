@@ -348,8 +348,8 @@ func (s *Server) getProxyPorts() []int {
 				return ports
 			}
 		}
-		// Dev mode fallback: ports 8001-8008
-		return []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008}
+		// Dev mode fallback: ports 8001-8008 and 9999
+		return []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999}
 	}
 	// Production mode: specific ports
 	// TODO: Should we listen to all ports 2000-10000?
@@ -361,7 +361,7 @@ func (s *Server) getProxyPorts() []int {
 		6000, 6080,
 		7000, 7080,
 		8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8080, 8088, 8888,
-		9000, 9080,
+		9000, 9080, 9999,
 	}
 }
 
