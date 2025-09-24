@@ -71,11 +71,12 @@ type DeletedBox struct {
 }
 
 type EmailVerification struct {
-	Token     string     `db:"token" json:"token"`
-	Email     string     `db:"email" json:"email"`
-	UserID    string     `db:"user_id" json:"user_id"`
-	ExpiresAt time.Time  `db:"expires_at" json:"expires_at"`
-	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+	Token            string     `db:"token" json:"token"`
+	Email            string     `db:"email" json:"email"`
+	UserID           string     `db:"user_id" json:"user_id"`
+	ExpiresAt        time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
+	VerificationCode *string    `db:"verification_code" json:"verification_code"`
 }
 
 type Migration struct {

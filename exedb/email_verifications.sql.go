@@ -38,53 +38,55 @@ func (q *Queries) GetEmailVerificationByEmail(ctx context.Context, email string)
 }
 
 const getEmailVerificationByPartialToken = `-- name: GetEmailVerificationByPartialToken :one
-SELECT user_id, token
+SELECT user_id
 FROM email_verifications
-WHERE token LIKE ? AND expires_at > datetime('now')
+WHERE token = ? AND expires_at > datetime('now')
 LIMIT 1
 `
 
-type GetEmailVerificationByPartialTokenRow struct {
-	UserID string `db:"user_id" json:"user_id"`
-	Token  string `db:"token" json:"token"`
-}
-
-func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token string) (GetEmailVerificationByPartialTokenRow, error) {
+func (q *Queries) GetEmailVerificationByPartialToken(ctx context.Context, token string) (string, error) {
 	row := q.queryRow(ctx, q.getEmailVerificationByPartialTokenStmt, getEmailVerificationByPartialToken, token)
-	var i GetEmailVerificationByPartialTokenRow
-	err := row.Scan(&i.UserID, &i.Token)
-	return i, err
+	var user_id string
+	err := row.Scan(&user_id)
+	return user_id, err
 }
 
 const getEmailVerificationByToken = `-- name: GetEmailVerificationByToken :one
-SELECT user_id, email, expires_at
+SELECT user_id, email, expires_at, verification_code
 FROM email_verifications
 WHERE token = ?
 `
 
 type GetEmailVerificationByTokenRow struct {
-	UserID    string    `db:"user_id" json:"user_id"`
-	Email     string    `db:"email" json:"email"`
-	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
+	UserID           string    `db:"user_id" json:"user_id"`
+	Email            string    `db:"email" json:"email"`
+	ExpiresAt        time.Time `db:"expires_at" json:"expires_at"`
+	VerificationCode *string   `db:"verification_code" json:"verification_code"`
 }
 
 func (q *Queries) GetEmailVerificationByToken(ctx context.Context, token string) (GetEmailVerificationByTokenRow, error) {
 	row := q.queryRow(ctx, q.getEmailVerificationByTokenStmt, getEmailVerificationByToken, token)
 	var i GetEmailVerificationByTokenRow
-	err := row.Scan(&i.UserID, &i.Email, &i.ExpiresAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.ExpiresAt,
+		&i.VerificationCode,
+	)
 	return i, err
 }
 
 const insertEmailVerification = `-- name: InsertEmailVerification :exec
-INSERT INTO email_verifications (token, email, user_id, expires_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code)
+VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertEmailVerificationParams struct {
-	Token     string    `db:"token" json:"token"`
-	Email     string    `db:"email" json:"email"`
-	UserID    string    `db:"user_id" json:"user_id"`
-	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
+	Token            string    `db:"token" json:"token"`
+	Email            string    `db:"email" json:"email"`
+	UserID           string    `db:"user_id" json:"user_id"`
+	ExpiresAt        time.Time `db:"expires_at" json:"expires_at"`
+	VerificationCode *string   `db:"verification_code" json:"verification_code"`
 }
 
 func (q *Queries) InsertEmailVerification(ctx context.Context, arg InsertEmailVerificationParams) error {
@@ -93,20 +95,22 @@ func (q *Queries) InsertEmailVerification(ctx context.Context, arg InsertEmailVe
 		arg.Email,
 		arg.UserID,
 		arg.ExpiresAt,
+		arg.VerificationCode,
 	)
 	return err
 }
 
 const insertOrReplaceEmailVerification = `-- name: InsertOrReplaceEmailVerification :exec
-INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at)
-VALUES (?, ?, ?, ?)
+INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at, verification_code)
+VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertOrReplaceEmailVerificationParams struct {
-	Token     string    `db:"token" json:"token"`
-	UserID    string    `db:"user_id" json:"user_id"`
-	Email     string    `db:"email" json:"email"`
-	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
+	Token            string    `db:"token" json:"token"`
+	UserID           string    `db:"user_id" json:"user_id"`
+	Email            string    `db:"email" json:"email"`
+	ExpiresAt        time.Time `db:"expires_at" json:"expires_at"`
+	VerificationCode *string   `db:"verification_code" json:"verification_code"`
 }
 
 func (q *Queries) InsertOrReplaceEmailVerification(ctx context.Context, arg InsertOrReplaceEmailVerificationParams) error {
@@ -115,6 +119,7 @@ func (q *Queries) InsertOrReplaceEmailVerification(ctx context.Context, arg Inse
 		arg.UserID,
 		arg.Email,
 		arg.ExpiresAt,
+		arg.VerificationCode,
 	)
 	return err
 }

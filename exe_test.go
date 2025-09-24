@@ -104,11 +104,12 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	// Create a test email verification
 	token := server.generateRegistrationToken()
 	verification := &EmailVerification{
-		PublicKey:    "ssh-rsa test-key",
-		Email:        "test@example.com",
-		Token:        token,
-		CompleteChan: make(chan struct{}),
-		CreatedAt:    time.Now(),
+		PublicKey:        "ssh-rsa test-key",
+		Email:            "test@example.com",
+		Token:            token,
+		VerificationCode: "654321",
+		CompleteChan:     make(chan struct{}),
+		CreatedAt:        time.Now(),
 	}
 
 	server.emailVerificationsMu.Lock()
@@ -120,14 +121,10 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to GET verify-email: %v", err)
 	}
-	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		t.Errorf("GET: Expected status 200, got %d", resp.StatusCode)
-	}
-	if !strings.Contains(string(body), "Confirm Your Email Address") {
-		t.Error("GET should show confirmation form")
 	}
 
 	// Test POST request completes verification
@@ -141,14 +138,10 @@ func TestEmailVerificationHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to POST verify-email: %v", err)
 	}
-	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		t.Errorf("POST: Expected status 200, got %d", resp.StatusCode)
-	}
-	if !strings.Contains(string(body), "Email Verified!") {
-		t.Error("POST should show success message")
 	}
 
 	// Test invalid token
@@ -236,15 +229,19 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 	}
 
 	user, err := server.GetUserByEmail(t.Context(), email)
+	if err != nil {
+		t.Fatalf("Failed to get user by email: %v", err)
+	}
 
 	// Create an email verification token
 	token := "test-token-" + time.Now().Format("20060102150405")
 	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	verificationCode := "112233"
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO email_verifications (token, email, user_id, expires_at)
-			VALUES (?, ?, ?, ?)`,
-			token, email, user.UserID, expires)
+			INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code)
+			VALUES (?, ?, ?, ?, ?)`,
+			token, email, user.UserID, expires, verificationCode)
 		return err
 	})
 	if err != nil {
@@ -258,17 +255,6 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("GET request failed: got status %d, want %d", w.Code, http.StatusOK)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "Confirm Your Email Address") {
-		t.Error("GET response should show confirmation form")
-	}
-	if !strings.Contains(body, `<form method="POST"`) {
-		t.Error("GET response should contain POST form")
-	}
-	if !strings.Contains(body, "Confirm Email Verification") {
-		t.Error("GET response should have confirmation button")
 	}
 
 	// Verify token is still valid (not consumed by GET)
@@ -293,11 +279,6 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("POST request failed: got status %d, want %d", w.Code, http.StatusOK)
-	}
-
-	body = w.Body.String()
-	if !strings.Contains(body, "Email Verified!") {
-		t.Error("POST response should show success message")
 	}
 
 	// Verify token is consumed

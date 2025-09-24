@@ -10,10 +10,11 @@ EXE.DEV: get a machine over ssh
 To sign up, verify your email and set up billing.
 
 Please enter your email address: TestExeDevAPI@example.com
-Verification email sent to TestExeDevAPI@example.com.
 
-Please click the link in your email to verify your account:
-http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+Verification email sent to: TestExeDevAPI@example.com
+Verification code: EMAIL_VERIFICATION_CODE
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
 
 Waiting for email verification...
 ✓ Email verified successfully!

@@ -2,17 +2,17 @@
 DELETE FROM email_verifications WHERE token = ?;
 
 -- name: InsertEmailVerification :exec
-INSERT INTO email_verifications (token, email, user_id, expires_at)
-VALUES (?, ?, ?, ?);
+INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code)
+VALUES (?, ?, ?, ?, ?);
 
 -- name: GetEmailVerificationByToken :one
-SELECT user_id, email, expires_at
+SELECT user_id, email, expires_at, verification_code
 FROM email_verifications
 WHERE token = ?;
 
 -- name: InsertOrReplaceEmailVerification :exec
-INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at)
-VALUES (?, ?, ?, ?);
+INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at, verification_code)
+VALUES (?, ?, ?, ?, ?);
 
 -- name: GetEmailVerificationByEmail :one
 SELECT user_id, token
@@ -20,7 +20,7 @@ FROM email_verifications
 WHERE email = ?;
 
 -- name: GetEmailVerificationByPartialToken :one
-SELECT user_id, token
+SELECT user_id
 FROM email_verifications
-WHERE token LIKE ? AND expires_at > datetime('now')
+WHERE token = ? AND expires_at > datetime('now')
 LIMIT 1;

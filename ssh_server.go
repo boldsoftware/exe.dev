@@ -565,13 +565,18 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		return
 	}
 
-	fmt.Fprintf(s, "%sVerification email sent to %s%s.\r\n", "\033[1;32m", "\033[0m", email)
+	fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
+
+	if strings.TrimSpace(verification.VerificationCode) == "" {
+		fmt.Fprint(s, "\033[1;31mInternal error: Empty verification code. Please try again.\033[0m\r\n")
+		return
+	}
+	fmt.Fprintf(s, "Verification code: \033[1;32m%s\033[0m\r\n", verification.VerificationCode)
 
 	// Only show the verification URL in dev mode
 	if ss.server.devMode != "" {
 		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", ss.server.getBaseURL(), verification.Token)
-		fmt.Fprintf(s, "\r\nPlease click the link in your email to verify your account:\r\n")
-		fmt.Fprintf(s, "\033[1;36m%s\033[0m\r\n\r\n", verifyURL)
+		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 	}
 
 	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
@@ -790,8 +795,9 @@ func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, e
 
 		// Don't store in ssh_keys yet - only store verified keys there
 
-		// Generate token for new ssh key verification
+		// Generate token and verification code for new ssh key verification
 		token := ss.server.generateRegistrationToken()
+		verificationCode := ss.server.generateVerificationCode()
 		expires := time.Now().Add(15 * time.Minute)
 
 		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
@@ -809,11 +815,12 @@ func (ss *SSHServer) startEmailVerificationNew(ctx context.Context, publicKey, e
 
 		// Create verification object
 		verification := &EmailVerification{
-			PublicKey:    publicKey,
-			Email:        email,
-			Token:        token,
-			CompleteChan: make(chan struct{}),
-			CreatedAt:    time.Now(),
+			PublicKey:        publicKey,
+			Email:            email,
+			Token:            token,
+			VerificationCode: verificationCode,
+			CompleteChan:     make(chan struct{}),
+			CreatedAt:        time.Now(),
 		}
 
 		// Store verification
@@ -850,14 +857,16 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 
 	// New user registration
 	token := ss.server.generateRegistrationToken()
+	verificationCode := ss.server.generateVerificationCode()
 
 	// Create verification object
 	verification := &EmailVerification{
-		PublicKey:    publicKey,
-		Email:        email,
-		Token:        token,
-		CompleteChan: make(chan struct{}),
-		CreatedAt:    time.Now(),
+		PublicKey:        publicKey,
+		Email:            email,
+		Token:            token,
+		VerificationCode: verificationCode,
+		CompleteChan:     make(chan struct{}),
+		CreatedAt:        time.Now(),
 	}
 
 	// Store verification

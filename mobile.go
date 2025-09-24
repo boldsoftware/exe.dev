@@ -24,7 +24,8 @@ func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 	mux.HandleFunc("/check-hostname", s.handleMobileHostnameCheck)
 	mux.HandleFunc("/create-vm", s.handleMobileCreateVM)
 	mux.HandleFunc("/email-auth", s.handleMobileEmailAuth)
-	mux.HandleFunc("/verify-code", s.handleMobileVerifyCode)
+	mux.HandleFunc("POST /verify-token", s.handleMobileVerifyTokenManualEntry)
+	mux.HandleFunc("GET /verify-token", s.handleMobileVerifyTokenEmailLink)
 	mux.HandleFunc("/home", s.handleMobileVMList)
 	mux.HandleFunc("/creating", s.handleMobileCreatingPage)
 	mux.HandleFunc("/creating/stream", s.handleMobileCreatingStream)
@@ -218,7 +219,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send verification email
-	verifyURL := fmt.Sprintf("%s/m/verify-code?token=%s", s.getBaseURL(), token)
+	verifyURL := fmt.Sprintf("%s/m/verify-token?token=%s", s.getBaseURL(), token)
 	subject := "Verify your email - exe.dev"
 	body := fmt.Sprintf(`Hello,
 
@@ -226,12 +227,14 @@ Please click the link below to verify your email and complete your setup:
 
 %s
 
-Or use this verification code: %s
+Or enter this token:
+
+%s
 
 This link will expire in 24 hours.
 
 Best regards,
-The exe.dev team`, verifyURL, token[:8])
+The exe.dev team`, verifyURL, token)
 
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
@@ -256,125 +259,113 @@ The exe.dev team`, verifyURL, token[:8])
 	s.renderTemplate(w, "mobile-email-sent.html", data)
 }
 
-// handleMobileVerifyCode handles code verification
-func (s *Server) handleMobileVerifyCode(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		// Handle email link click
-		token := r.URL.Query().Get("token")
-		if token == "" {
-			http.Error(w, "Missing token", http.StatusBadRequest)
-			return
-		}
-
-		userID, err := s.validateEmailVerificationToken(r.Context(), token)
-		if err != nil {
-			http.Error(w, "Invalid or expired token", http.StatusBadRequest)
-			return
-		}
-
-		// Create auth cookie
-		cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
-		if err != nil {
-			slog.Error("Failed to create auth cookie", "error", err)
-			http.Error(w, "Authentication failed", http.StatusInternalServerError)
-			return
-		}
-
-		http.SetCookie(w, &http.Cookie{
-			Name:     "exe-auth",
-			Value:    cookieValue,
-			Path:     "/",
-			Expires:  time.Now().Add(30 * 24 * time.Hour),
-			Secure:   s.devMode == "", // Only secure in production
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
-
-		// If we have a pending VM tied to this token, redirect to creating page
-		var hostname string
-		err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			row := rx.Conn().QueryRowContext(ctx, `SELECT hostname FROM mobile_pending_vm WHERE token = ?`, token)
-			return row.Scan(&hostname)
-		})
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
-				return
-			}
-			slog.Error("Failed to query pending mobile VM by token", "error", err)
-			http.Error(w, "Failed to process request", http.StatusInternalServerError)
-			return
-		}
-		if hostname != "" {
-			http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname), http.StatusTemporaryRedirect)
-			return
-		}
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+// handleMobileVerifyTokenEmailLink handles token verification via clicked email link
+func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Missing token", http.StatusBadRequest)
 		return
 	}
 
-	if r.Method == http.MethodPost {
-		// Handle manual code entry
-		code := strings.TrimSpace(r.FormValue("code"))
-		if code == "" {
-			http.Error(w, "Code is required", http.StatusBadRequest)
-			return
-		}
-
-		// Find full token by code prefix
-		userID, err := s.validateEmailVerificationByCode(r.Context(), code)
-		if err != nil {
-			http.Error(w, "Invalid or expired code", http.StatusBadRequest)
-			return
-		}
-
-		// Create auth cookie
-		cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
-		if err != nil {
-			slog.Error("Failed to create auth cookie", "error", err)
-			http.Error(w, "Authentication failed", http.StatusInternalServerError)
-			return
-		}
-
-		http.SetCookie(w, &http.Cookie{
-			Name:     "exe-auth",
-			Value:    cookieValue,
-			Path:     "/",
-			Expires:  time.Now().Add(30 * 24 * time.Hour),
-			Secure:   s.devMode == "", // Only secure in production
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
-
-		// Look up the most recent pending VM for this user
-		var hostname string
-		err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-			row := rx.Conn().QueryRowContext(ctx, `SELECT hostname FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, userID)
-			return row.Scan(&hostname)
-		})
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
-				return
-			}
-			slog.Error("Failed to query pending mobile VM by user_id", "error", err)
-			http.Error(w, "Failed to process request", http.StatusInternalServerError)
-			return
-		}
-		if hostname != "" {
-			http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname), http.StatusTemporaryRedirect)
-			return
-		}
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+	userID, err := s.validateEmailVerificationToken(r.Context(), token)
+	if err != nil {
+		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
 		return
 	}
 
-	// GET request to show verification form
-	data := struct {
-		Error string
-	}{}
+	// Create auth cookie
+	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
+	if err != nil {
+		slog.Error("Failed to create auth cookie", "error", err)
+		http.Error(w, "Authentication failed", http.StatusInternalServerError)
+		return
+	}
 
-	s.renderTemplate(w, "mobile-verify-code.html", data)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "exe-auth",
+		Value:    cookieValue,
+		Path:     "/",
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		Secure:   s.devMode == "", // Only secure in production
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// If we have a pending VM tied to this token, redirect to creating page
+	var hostname string
+	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname FROM mobile_pending_vm WHERE token = ?`, token)
+		return row.Scan(&hostname)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+			return
+		}
+		slog.Error("Failed to query pending mobile VM by token", "error", err)
+		http.Error(w, "Failed to process request", http.StatusInternalServerError)
+		return
+	}
+	if hostname != "" {
+		http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname), http.StatusTemporaryRedirect)
+		return
+	}
+	http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+}
+
+// handleMobileVerifyTokenManualEntry handles token verification via manual entry form
+func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(r.FormValue("token"))
+	if token == "" {
+		http.Error(w, "Token is required", http.StatusBadRequest)
+		return
+	}
+
+	// Find full token by code prefix
+	userID, err := s.validateEmailVerificationByToken(r.Context(), token)
+	if err != nil {
+		http.Error(w, "Invalid or expired token", http.StatusBadRequest)
+		return
+	}
+
+	// Create auth cookie
+	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
+	if err != nil {
+		slog.Error("Failed to create auth cookie", "error", err)
+		http.Error(w, "Authentication failed", http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "exe-auth",
+		Value:    cookieValue,
+		Path:     "/",
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		Secure:   s.devMode == "", // Only secure in production
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// Look up the most recent pending VM for this user
+	var hostname string
+	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, userID)
+		return row.Scan(&hostname)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+			return
+		}
+		slog.Error("Failed to query pending mobile VM by user_id", "error", err)
+		http.Error(w, "Failed to process request", http.StatusInternalServerError)
+		return
+	}
+	if hostname != "" {
+		http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname), http.StatusTemporaryRedirect)
+		return
+	}
+	http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
 }
 
 // handleMobileVMList shows the user's VM list

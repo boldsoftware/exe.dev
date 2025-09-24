@@ -60,17 +60,17 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Check your email") {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Check Your Email") {
 		t.Fatalf("unexpected email sent page: status=%d body=%q", resp.StatusCode, string(body))
 	}
 
-	// 4) Click verify link from email (uses the mobile /m/verify-code?token=... link)
+	// 4) Click verify link from email (uses the mobile /m/verify-token?token=... link)
 	emailMsg := Env.email.waitForEmail(t, email)
-	// Extract first URL to /m/verify-code?token=...
-	re := regexp.MustCompile(`http://localhost:\d+/m/verify-code\?token=[a-f0-9]+`)
+	// Extract first URL to /m/verify-token?token=...
+	re := regexp.MustCompile(`http://localhost:\d+/m/verify-token\?token=[a-zA-Z0-9]+`)
 	m := re.FindString(emailMsg.Body)
 	if m == "" {
-		t.Fatalf("did not find mobile verify link in email: %q", emailMsg.Body)
+		t.Fatalf("did not find mobile verify link in email:\n%s", emailMsg.Body)
 	}
 	// Use a fresh client+jar to follow redirects and retain cookies
 	jar2, _ := cookiejar.New(nil)
@@ -79,10 +79,10 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET verify link: %v", err)
 	}
-	io.ReadAll(verifyResp.Body)
+	verifyRespBody, _ := io.ReadAll(verifyResp.Body)
 	verifyResp.Body.Close()
 	if verifyResp.StatusCode != http.StatusOK && verifyResp.StatusCode != http.StatusTemporaryRedirect {
-		t.Fatalf("verify response status: %d", verifyResp.StatusCode)
+		t.Fatalf("bad verify response status: %d\n%s", verifyResp.StatusCode, verifyRespBody)
 	}
 
 	// 5) Visit creating page and connect to SSE stream

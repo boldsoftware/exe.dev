@@ -115,11 +115,11 @@ func TestMobileEmailAuth(t *testing.T) {
 	}
 
 	body := w.Body.String()
-	if !strings.Contains(body, "Check your email") {
-		t.Error("Expected email check message in response")
+	if !strings.Contains(body, "Check Your Email") {
+		t.Errorf("expected email check message in response, got:\n%s", body)
 	}
 	if !strings.Contains(body, "test@example.com") {
-		t.Error("Expected email address in response")
+		t.Errorf("expected email address in response, got:\n%s", body)
 	}
 }
 

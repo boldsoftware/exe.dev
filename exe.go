@@ -3,7 +3,7 @@ package exe
 
 import (
 	"context"
-	cryptorand "crypto/rand"
+	crand "crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
@@ -20,6 +20,7 @@ import (
 	"io/fs"
 	"log"
 	"log/slog"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -223,11 +224,12 @@ type SSHKey struct {
 
 // EmailVerification represents a pending email verification (in-memory)
 type EmailVerification struct {
-	PublicKey    string
-	Email        string
-	Token        string
-	CompleteChan chan struct{}
-	CreatedAt    time.Time
+	PublicKey        string
+	Email            string
+	Token            string
+	VerificationCode string
+	CompleteChan     chan struct{}
+	CreatedAt        time.Time
 }
 
 // MagicSecret represents a temporary authentication secret for proxy magic URLs
@@ -802,7 +804,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// No existing key, generate a new one
-		privateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
+		privateKey, err := rsa.GenerateKey(crand.Reader, 2048)
 		if err != nil {
 			return fmt.Errorf("failed to generate RSA key: %w", err)
 		}
@@ -869,9 +871,19 @@ func (s *Server) GetPublicKeyFingerprint(key ssh.PublicKey) string {
 
 // generateRegistrationToken creates a random registration token
 func (s *Server) generateRegistrationToken() string {
-	bytes := make([]byte, 16)
-	cryptorand.Read(bytes)
-	return hex.EncodeToString(bytes)
+	txt := crand.Text()
+	return txt[:len(txt)/2] // we don't need a super long token, no birthday attacks here, 64 bits is plenty
+}
+
+// generateVerificationCode returns a zero-padded six digit string for anti-phishing checks.
+func (s *Server) generateVerificationCode() string {
+	max := big.NewInt(1_000_000)
+	n, err := crand.Int(crand.Reader, max)
+	if err != nil {
+		// crand.Reader is now documented never to fail, so panic if it does
+		panic("crypto/rand failed: " + err.Error())
+	}
+	return fmt.Sprintf("%06d", n.Int64())
 }
 
 // getBaseURL returns the base URL for the server
@@ -894,7 +906,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	// In dev mode, always just log the email
 	if s.devMode != "" {
-		slog.Info("📧 DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
+		slog.Info("DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
 		return nil
 	}
 
@@ -1497,38 +1509,47 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 
 // showEmailVerificationForm shows a confirmation form for email verification
 func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
-	// First validate that the token exists
-	isValid := false
+	var (
+		email string
+		code  string
+	)
 
 	// Check if this is an SSH session token (in-memory)
 	s.emailVerificationsMu.Lock()
-	_, exists := s.emailVerifications[token]
+	verification, exists := s.emailVerifications[token]
 	s.emailVerificationsMu.Unlock()
 
 	if exists {
-		isValid = true
+		email = verification.Email
+		code = verification.VerificationCode
 	} else {
 		// Check database for HTTP auth token (without consuming it)
-		_, err := s.checkEmailVerificationToken(r.Context(), token)
-		if err == nil {
-			isValid = true
+		row, err := s.checkEmailVerificationToken(r.Context(), token)
+		if err != nil {
+			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
+			return
+		}
+		email = row.Email
+		if row.VerificationCode != nil {
+			code = *row.VerificationCode
 		}
 	}
 
-	if !isValid {
-		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
-		return
-	}
+	code = strings.TrimSpace(code)
 
 	// Prepare template data
 	data := struct {
-		Token       string
-		RedirectURL string
-		ReturnHost  string
+		Token            string
+		RedirectURL      string
+		ReturnHost       string
+		Email            string
+		VerificationCode string
 	}{
-		Token:       token,
-		RedirectURL: r.URL.Query().Get("redirect"),
-		ReturnHost:  r.URL.Query().Get("return_host"),
+		Token:            token,
+		RedirectURL:      r.URL.Query().Get("redirect"),
+		ReturnHost:       r.URL.Query().Get("return_host"),
+		Email:            email,
+		VerificationCode: code,
 	}
 
 	// Render template
@@ -1722,13 +1743,13 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	if email == "" {
-		s.showAuthError(w, r, "Please enter a valid email address")
+		s.showAuthError(w, r, "Please enter a valid email address", "")
 		return
 	}
 
 	// Basic email validation
 	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
-		s.showAuthError(w, r, "Please enter a valid email address")
+		s.showAuthError(w, r, "Please enter a valid email address", "")
 		return
 	}
 
@@ -1738,15 +1759,20 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			s.showAuthError(w, r, "No account found with this email address. Please sign up first using SSH: ssh exe.dev")
+			s.showAuthError(
+				w,
+				r,
+				"No account found with this email address. Please sign up first using SSH.",
+				s.formatExeDevConnectionInfo(),
+			)
 			return
 		}
 		slog.Error("Database error checking user", "error", err)
-		s.showAuthError(w, r, "Database error occurred. Please try again.")
+		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 		return
 	}
 
-	// Generate verification token - reuse the existing email verification system
+	// Generate verification token
 	token := s.generateRegistrationToken()
 
 	// Store verification in database (reuse existing email_verifications table)
@@ -1760,7 +1786,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	})
 	if err != nil {
 		slog.Error("Failed to store email verification", "error", err)
-		s.showAuthError(w, r, "Failed to create verification. Please try again.")
+		s.showAuthError(w, r, "Failed to create verification. Please try again.", "")
 		return
 	}
 
@@ -1811,7 +1837,7 @@ The exe.dev team`, verifyEmailURL)
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
 		slog.Error("Failed to send auth email", "error", err)
-		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.")
+		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.", "")
 		return
 	}
 
@@ -1824,12 +1850,14 @@ The exe.dev team`, verifyEmailURL)
 }
 
 // showAuthError displays an authentication error page
-func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message string) {
+func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message string, command string) {
 	data := struct {
 		Message     string
+		Command     string
 		QueryString string
 	}{
 		Message:     message,
+		Command:     command,
 		QueryString: r.URL.RawQuery,
 	}
 
@@ -2017,42 +2045,37 @@ func getDomain(host string) string {
 }
 
 // checkEmailVerificationToken checks if an email verification token is valid without consuming it
-func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (string, error) {
-	var userID string
-	var expiresAt time.Time
+func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) (exedb.GetEmailVerificationByTokenRow, error) {
+	var row exedb.GetEmailVerificationByTokenRow
 
 	// Get verification info and return user_id directly
 	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		row, err := queries.GetEmailVerificationByToken(ctx, token)
-		if err != nil {
-			return err
-		}
-		userID = row.UserID
-		expiresAt = row.ExpiresAt
-		return nil
+		var err error
+		row, err = queries.GetEmailVerificationByToken(ctx, token)
+		return err
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("invalid verification token")
+			return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("invalid verification token")
 		}
-		return "", fmt.Errorf("database error: %w", err)
+		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("database error: %w", err)
 	}
 
 	// Check if token has expired
-	if time.Now().After(expiresAt) {
+	if time.Now().After(row.ExpiresAt) {
 		// Clean up expired token
 		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteEmailVerificationByToken(ctx, token)
 		})
-		return "", fmt.Errorf("verification token expired")
+		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("verification token expired")
 	}
 
-	return userID, nil
+	return row, nil
 }
 
 // validateEmailVerificationToken validates an email verification token, consumes it, and returns the user ID
 func (s *Server) validateEmailVerificationToken(ctx context.Context, token string) (string, error) {
-	userID, err := s.checkEmailVerificationToken(ctx, token)
+	row, err := s.checkEmailVerificationToken(ctx, token)
 	if err != nil {
 		return "", err
 	}
@@ -2062,7 +2085,7 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 		return queries.DeleteEmailVerificationByToken(ctx, token)
 	})
 
-	return userID, nil
+	return row.UserID, nil
 }
 
 // storeEmailVerification stores an email verification token
@@ -2141,17 +2164,15 @@ func (s *Server) createBillingAccount(ctx context.Context, queries *exedb.Querie
 	return billingAccountID, nil
 }
 
-// validateEmailVerificationByCode validates verification using short code
-func (s *Server) validateEmailVerificationByCode(ctx context.Context, code string) (string, error) {
-	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetEmailVerificationByPartialTokenRow, error) {
-		return queries.GetEmailVerificationByPartialToken(ctx, code+"%")
+// validateEmailVerificationByToken validates verification using a token
+func (s *Server) validateEmailVerificationByToken(ctx context.Context, token string) (string, error) {
+	userID, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetEmailVerificationByPartialToken(ctx, token)
 	})
 	if err != nil {
-		return "", fmt.Errorf("invalid or expired code")
+		return "", fmt.Errorf("invalid or expired token")
 	}
 
-	userID := result.UserID
-	token := result.Token
 	// Consume the token
 	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.DeleteEmailVerificationByToken(ctx, token)
@@ -2169,7 +2190,7 @@ func (s *Server) validateEmailVerificationByCode(ctx context.Context, code strin
 func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (string, error) {
 	// Generate a random cookie value
 	cookieBytes := make([]byte, 32)
-	if _, err := cryptorand.Read(cookieBytes); err != nil {
+	if _, err := crand.Read(cookieBytes); err != nil {
 		return "", fmt.Errorf("failed to generate cookie: %w", err)
 	}
 	cookieValue := base64.URLEncoding.EncodeToString(cookieBytes)
@@ -2238,7 +2259,7 @@ func (s *Server) validateAuthCookie(ctx context.Context, cookieValue, domain str
 // createMagicSecret creates a temporary magic secret for proxy authentication
 func (s *Server) createMagicSecret(userID, boxName, redirectURL string) (string, error) {
 	// Generate a random secret
-	secret := cryptorand.Text()
+	secret := crand.Text()
 
 	// Clean up expired secrets while we're here
 	s.cleanupExpiredMagicSecrets()
@@ -3568,7 +3589,7 @@ func (s *Server) selectCtrhostForNewAlloc() string {
 func generateAllocID() (string, error) {
 	// Generate a random ID with "alloc_" prefix
 	bytes := make([]byte, 12)
-	if _, err := cryptorand.Read(bytes); err != nil {
+	if _, err := crand.Read(bytes); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("alloc_%s", hex.EncodeToString(bytes)), nil
@@ -3578,7 +3599,7 @@ func generateAllocID() (string, error) {
 func generateBillingAccountID() (string, error) {
 	// Generate a random ID with "billing_" prefix
 	bytes := make([]byte, 12)
-	if _, err := cryptorand.Read(bytes); err != nil {
+	if _, err := crand.Read(bytes); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("billing_%s", hex.EncodeToString(bytes)), nil
@@ -3750,7 +3771,7 @@ func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, user
 
 // generateUserID creates a new user ID with "usr" prefix + 13 random characters
 func generateUserID() (string, error) {
-	randomPart := cryptorand.Text()
+	randomPart := crand.Text()
 	if len(randomPart) < 13 {
 		return "", fmt.Errorf("random text too short: %d", len(randomPart))
 	}

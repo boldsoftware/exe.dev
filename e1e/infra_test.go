@@ -1124,6 +1124,14 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 	}
 	getResp.Body.Close()
 
+	codeRe := regexp.MustCompile(`class="code-value">([0-9]{6})<`)
+	codeMatches := codeRe.FindStringSubmatch(string(htmlBody))
+	if len(codeMatches) < 2 {
+		t.Fatalf("failed to extract verification code from HTML form: %s", string(htmlBody))
+	}
+	verificationCode := codeMatches[1]
+	Env.addCanonicalization(verificationCode, "EMAIL_VERIFICATION_CODE")
+
 	// Extract token from the hidden input field in the HTML form
 	re := regexp.MustCompile(`<input[^>]+name="token"[^>]+value="([a-zA-Z0-9\-_]+)"[^>]*>`)
 	matches := re.FindStringSubmatch(string(htmlBody))
@@ -1189,6 +1197,7 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 	email = t.Name() + "@example.com"
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Verification code: .*[0-9]{6}.*")
 
 	emailMsg := Env.email.waitForEmail(t, email)
 	cookies = clickVerifyLinkInEmail(t, emailMsg)
