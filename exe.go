@@ -54,6 +54,7 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
+	"tailscale.com/client/tailscale"
 )
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
@@ -681,6 +682,59 @@ func (s *Server) setupHTTPSServer() {
 			TLSConfig: &tls.Config{
 				GetCertificate: s.certManager.GetCertificate,
 			},
+		}
+	}
+
+	// If possible, obtain Tailscale certificates and serve them for the Tailscale hostname.
+	// This lets the HTTPS server also respond on the node's Tailscale domain.
+	// Errors here should not prevent standard certificates from working.
+	var tsCert *tls.Certificate
+	var tsDomain string
+	func() {
+		// Short timeout to avoid blocking startup
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		tailscale.I_Acknowledge_This_API_Is_Unstable = true
+		lc := &tailscale.LocalClient{}
+		st, err := lc.Status(ctx)
+		if err != nil || st == nil || st.Self == nil || st.Self.DNSName == "" {
+			if err != nil {
+				slog.Debug("tailscale status unavailable", "error", err)
+			} else {
+				slog.Debug("tailscale DNS name not found")
+			}
+			return
+		}
+		tsDomain = strings.TrimSuffix(st.Self.DNSName, ".")
+		certPEM, keyPEM, err := lc.CertPair(ctx, tsDomain)
+		if err != nil {
+			slog.Debug("tailscale cert pair error", "error", err)
+			tsDomain = ""
+			return
+		}
+		c, err := tls.X509KeyPair(certPEM, keyPEM)
+		if err != nil {
+			slog.Debug("tailscale x509 keypair parse error", "error", err)
+			tsDomain = ""
+			return
+		}
+		if len(c.Certificate) > 0 {
+			if leaf, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
+				c.Leaf = leaf
+			}
+		}
+		tsCert = &c
+		slog.Info("tailscale cert loaded", "domain", tsDomain)
+	}()
+
+	if tsCert != nil && tsDomain != "" && s.httpsServer != nil && s.httpsServer.TLSConfig != nil {
+		origGet := s.httpsServer.TLSConfig.GetCertificate
+		s.httpsServer.TLSConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if hello != nil && hello.ServerName != "" && strings.HasSuffix(hello.ServerName, tsDomain) {
+				// Serve Tailscale cert when connecting via the node's Tailscale hostname
+				return tsCert, nil
+			}
+			return origGet(hello)
 		}
 	}
 }
