@@ -8,7 +8,7 @@ on:
 
 jobs:
   ai-test:
-    runs-on: "linux-x64-ubuntu-latest-8-core"
+    runs-on: [self-hosted, linux, x64]
     environment: ai-testing
     steps:
       - uses: actions/checkout@v4
@@ -29,12 +29,23 @@ jobs:
 
       - name: Setup test environment
         run: |
-          # Assert Docker is running (it should already be in GitHub Actions)
+          # Assert Docker is running on the CI host
           docker version
 
           # Install tmux if not available (needed for the e2e tests)
           sudo apt-get update
           sudo apt-get install -y tmux
+
+      - name: Start container host
+        id: vm
+        run: |
+          set -euo pipefail
+          ./ops/ci-vm-start.sh | tee ci-vm-start.log
+          ENVFILE=$(tail -n1 ci-vm-start.log)
+          echo "envfile=$ENVFILE" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC1090
+          source "$ENVFILE"
+          echo "CTR_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
 
       - name: Build exe.dev
         run: |
@@ -158,3 +169,10 @@ jobs:
             *.log
             *.txt
           retention-days: 7
+
+      - name: Destroy container host
+        if: always()
+        run: |
+          if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
+            ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
+          fi
