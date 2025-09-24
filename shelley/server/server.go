@@ -21,6 +21,7 @@ import (
 	"shelley.exe.dev/llm/oai"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/slug"
+	"shelley.exe.dev/ui"
 )
 
 // StreamResponse represents the response format for conversation streaming
@@ -222,20 +223,20 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/models", s.handleModels)
 	mux.HandleFunc("/api/logs/stream", s.handleLogsStream)
 
-	// Serve static files from ui/dist with conservative caching to avoid stale assets
-	mux.Handle("/", s.staticHandler("ui/dist/"))
+	// Serve embedded UI assets with conservative caching
+	mux.Handle("/", s.staticHandler(ui.Assets()))
 }
 
-// staticHandler serves files from a directory and disables caching for HTML/CSS/JS to avoid stale bundles
-func (s *Server) staticHandler(dir string) http.Handler {
-	fs := http.FileServer(http.Dir(dir))
+// staticHandler serves files from the provided filesystem and disables caching for HTML/CSS/JS to avoid stale bundles
+func (s *Server) staticHandler(fs http.FileSystem) http.Handler {
+	fileServer := http.FileServer(fs)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".html") || strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
 		}
-		fs.ServeHTTP(w, r)
+		fileServer.ServeHTTP(w, r)
 	})
 }
 

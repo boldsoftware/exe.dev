@@ -1,7 +1,14 @@
-main_test is wild; just execute the underlying code dude
+UI for tools is all shitty; need to collapse tool request and tool call (or maybe
+hide everything)
 
-slugs don't show up when they are generated still
+need to hook up end to end?
+
+main_test is wild; just execute the underlying code dude
+? slugs don't show up when they are generated still
 
 things go too wide out of their box all the time
 
 how does the system prompt work? Is it in the DB?
+
+
+system promopt should include agent.md

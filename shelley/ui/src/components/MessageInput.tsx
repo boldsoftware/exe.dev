@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from "react";
 
 interface MessageInputProps {
   onSend: (message: string) => void;
@@ -6,19 +6,19 @@ interface MessageInputProps {
 }
 
 function MessageInput({ onSend, disabled = false }: MessageInputProps) {
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim() && !disabled) {
       onSend(message);
-      setMessage('');
+      setMessage("");
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
     }
@@ -26,10 +26,13 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
 
   const adjustTextareaHeight = () => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
       const scrollHeight = textareaRef.current.scrollHeight;
       const maxHeight = 200; // Maximum height in pixels
-      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+      textareaRef.current.style.height = `${Math.min(
+        scrollHeight,
+        maxHeight
+      )}px`;
     }
   };
 
@@ -48,7 +51,7 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
           placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
           className="w-full min-h-[44px] max-h-[200px] pl-4 pr-12 py-3 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
           disabled={disabled}
-          style={{ height: 'auto' }}
+          style={{ height: "auto" }}
         />
         <button
           type="submit"
@@ -60,10 +63,20 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
             </div>
           ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+              />
             </svg>
-          )
+          )}
         </button>
       </form>
     </div>

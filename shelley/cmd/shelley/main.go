@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -96,12 +94,6 @@ func runServe(global GlobalConfig, args []string) {
 	// Create log buffer first
 	logBuffer := server.NewLogBuffer(1000) // Keep last 1000 log entries
 	logger := setupLoggingWithBuffer(global.Debug, logBuffer)
-
-	// Build UI first before starting server
-	if err := buildUI(logger); err != nil {
-		logger.Error("Failed to build UI", "error", err)
-		os.Exit(1)
-	}
 
 	database := setupDatabase(global.DBPath, logger)
 	defer database.Close()
@@ -533,52 +525,6 @@ func runModels(global GlobalConfig, args []string) {
 			fmt.Printf("  Required env: none\n")
 		}
 	}
-}
-
-func buildUI(logger *slog.Logger) error {
-	// Find the UI directory relative to the binary
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
-	}
-	binaryDir := filepath.Dir(execPath)
-
-	// Try common paths for the UI directory
-	uiPaths := []string{
-		filepath.Join("ui"),                  // relative to working directory
-		filepath.Join("..", "ui"),            // one level up
-		filepath.Join(binaryDir, "ui"),       // next to binary
-		filepath.Join(binaryDir, "..", "ui"), // one level up from binary
-	}
-
-	var uiDir string
-	for _, path := range uiPaths {
-		if absPath, err := filepath.Abs(path); err == nil {
-			if _, err := os.Stat(filepath.Join(absPath, "package.json")); err == nil {
-				uiDir = absPath
-				break
-			}
-		}
-	}
-
-	if uiDir == "" {
-		return fmt.Errorf("UI directory with package.json not found in any of the expected locations")
-	}
-
-	logger.Info("Building UI", "dir", uiDir)
-
-	// Run npm build
-	cmd := exec.Command("npm", "run", "build")
-	cmd.Dir = uiDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("npm build failed: %w", err)
-	}
-
-	logger.Info("UI build completed successfully")
-	return nil
 }
 
 func setupTools(llmProvider claudetool.LLMServiceProvider) []*llm.Tool {
