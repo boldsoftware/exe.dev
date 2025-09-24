@@ -6,5 +6,4 @@
 - do not overly worry about compatibility; do not create shims to handle compatibility
 - NEVER create defaults for things that are required. If data is missing, either fix the missing data or fail with a clear error explaining what's wrong
 - use `go test -count=1 ./e1e` to run end-to-end tests against a local container host.
-
-- when editing go code, run "go fmt" on the files you've changed
+- when editing go code, run gofumpt on the files you've changed
