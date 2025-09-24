@@ -22,9 +22,10 @@ import (
 )
 
 type GlobalConfig struct {
-	DBPath string
-	Debug  bool
-	Model  string
+	DBPath          string
+	Debug           bool
+	Model           string
+	PredictableOnly bool
 }
 
 // Message emoji constants
@@ -43,6 +44,7 @@ func main() {
 	flag.StringVar(&global.DBPath, "db", "shelley.db", "Path to SQLite database file")
 	flag.BoolVar(&global.Debug, "debug", false, "Enable debug logging")
 	flag.StringVar(&global.Model, "model", "qwen3-coder-fireworks", "LLM model to use (default: qwen3-coder-fireworks; use 'predictable' for testing)")
+	flag.BoolVar(&global.PredictableOnly, "predictable-only", false, "Use only the predictable service, ignoring all other models")
 
 	// Custom usage function
 	flag.Usage = func() {
@@ -138,7 +140,7 @@ func runPrompt(global GlobalConfig, args []string) {
 	defer database.Close()
 
 	// Initialize LLM service for the main conversation
-	llmService := setupLLMService(global.Model, logger)
+	llmService := setupLLMService(global, logger)
 
 	// Initialize LLM service manager for tools (same as HTTP server)
 	llmManager := server.NewLLMServiceManager(logger)
@@ -449,11 +451,23 @@ func setupDatabase(dbPath string, logger *slog.Logger) *db.DB {
 	return database
 }
 
-func setupLLMService(modelFlag string, logger *slog.Logger) llm.Service {
+func setupLLMService(global GlobalConfig, logger *slog.Logger) llm.Service {
+	// If predictable-only flag is set, always use predictable service
+	if global.PredictableOnly {
+		logger.Info("Using specified model", "model", "predictable-only")
+		return loop.NewPredictableService()
+	}
+
 	// Default model if none provided
-	modelID := strings.TrimSpace(modelFlag)
+	modelID := strings.TrimSpace(global.Model)
 	if modelID == "" {
 		modelID = "qwen3-coder-fireworks"
+	}
+
+	// Check for predictable model
+	if modelID == "predictable" {
+		logger.Info("Using specified model", "model", modelID)
+		return loop.NewPredictableService()
 	}
 
 	// Always use the service manager to ensure consistent logging

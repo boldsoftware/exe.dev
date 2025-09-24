@@ -37,7 +37,7 @@ func TestLoggingLLMService(t *testing.T) {
 	logger := slog.New(handler)
 
 	// Create predictable service for testing
-	predictableService := loop.NewPredictableServiceWithTestResponses()
+	predictableService := loop.NewPredictableService()
 
 	// Wrap with logging
 	loggedService := NewLoggingLLMService(predictableService, logger, "test-model")

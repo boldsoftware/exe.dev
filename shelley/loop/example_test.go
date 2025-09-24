@@ -57,27 +57,11 @@ func ExampleLoop() {
 		Tools:         []*llm.Tool{testTool},
 		RecordMessage: recordMessage,
 	})
-	toolCallInput := json.RawMessage(`{"name": "Alice"}`)
-	service.SetResponses([]loop.PredictableResponse{
-		{
-			Content: "I'll greet you properly!",
-			ToolCalls: []loop.PredictableToolCall{
-				{ID: "greet-1", Name: "greet", Input: toolCallInput},
-			},
-			StopReason: llm.StopReasonToolUse,
-			Usage:      llm.Usage{InputTokens: 10, OutputTokens: 5},
-		},
-		{
-			Content:    "Great! I've greeted you successfully.",
-			StopReason: llm.StopReasonStopSequence,
-			Usage:      llm.Usage{InputTokens: 5, OutputTokens: 8},
-		},
-	})
 
-	// Queue a user message
+	// Queue a user message that triggers a simple response
 	myLoop.QueueUserMessage(llm.Message{
 		Role:    llm.MessageRoleUser,
-		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Please greet me"}},
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}},
 	})
 
 	// Run the loop for a short time
@@ -92,8 +76,6 @@ func ExampleLoop() {
 
 	// Output:
 	// Recorded user message with 1 content items
-	// Recorded assistant message with 2 content items
-	// Recorded user message with 1 content items
 	// Recorded assistant message with 1 content items
-	// Total usage: in: 15, out: 13
+	// Total usage: in: 3, out: 3
 }

@@ -65,11 +65,11 @@ func TestQueueUserMessage(t *testing.T) {
 func TestPredictableService(t *testing.T) {
 	service := NewPredictableService()
 
-	// Test default response
+	// Test simple hello response
 	ctx := context.Background()
 	req := &llm.Request{
 		Messages: []llm.Message{
-			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}}},
+			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}}},
 		},
 	}
 
@@ -90,83 +90,55 @@ func TestPredictableService(t *testing.T) {
 		t.Errorf("expected text content, got %v", resp.Content[0].Type)
 	}
 
-	if resp.Content[0].Text != "Hello! I'm a predictable AI assistant. How can I help you today?" {
+	if resp.Content[0].Text != "Well, hi there!" {
 		t.Errorf("unexpected response text: %s", resp.Content[0].Text)
 	}
 }
 
-func TestPredictableServiceCustomResponses(t *testing.T) {
+func TestPredictableServiceEcho(t *testing.T) {
 	service := NewPredictableService()
 
-	// Add custom responses
-	service.SetResponses([]PredictableResponse{
-		{
-			Content:    "First response",
-			StopReason: llm.StopReasonStopSequence,
-			Usage:      llm.Usage{InputTokens: 5, OutputTokens: 3},
-		},
-		{
-			Content:    "Second response",
-			StopReason: llm.StopReasonStopSequence,
-			Usage:      llm.Usage{InputTokens: 5, OutputTokens: 3},
-		},
-	})
-
 	ctx := context.Background()
-	req := &llm.Request{}
-
-	// First call
-	resp1, err := service.Do(ctx, req)
-	if err != nil {
-		t.Fatalf("first call failed: %v", err)
-	}
-	if resp1.Content[0].Text != "First response" {
-		t.Errorf("expected 'First response', got '%s'", resp1.Content[0].Text)
-	}
-
-	// Second call
-	resp2, err := service.Do(ctx, req)
-	if err != nil {
-		t.Fatalf("second call failed: %v", err)
-	}
-	if resp2.Content[0].Text != "Second response" {
-		t.Errorf("expected 'Second response', got '%s'", resp2.Content[0].Text)
-	}
-
-	// Third call should return default response
-	resp3, err := service.Do(ctx, req)
-	if err != nil {
-		t.Fatalf("third call failed: %v", err)
-	}
-	if resp3.Content[0].Text != "I've run out of predictable responses. Try special commands like 'echo foo', 'error bar', or 'tool bash ls'." {
-		t.Errorf("expected default response, got '%s'", resp3.Content[0].Text)
-	}
-}
-
-func TestPredictableServiceWithToolCalls(t *testing.T) {
-	service := NewPredictableService()
-
-	toolInput := json.RawMessage(`{"query": "test"}`)
-	service.SetResponses([]PredictableResponse{
-		{
-			Content: "I'll use a tool to help with that.",
-			ToolCalls: []PredictableToolCall{
-				{
-					ID:    "tool-123",
-					Name:  "test_tool",
-					Input: toolInput,
-				},
-			},
-			StopReason: llm.StopReasonToolUse,
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "echo: foo"}}},
 		},
-	})
-
-	ctx := context.Background()
-	req := &llm.Request{}
+	}
 
 	resp, err := service.Do(ctx, req)
 	if err != nil {
-		t.Fatalf("tool call response failed: %v", err)
+		t.Fatalf("echo test failed: %v", err)
+	}
+
+	if resp.Content[0].Text != "foo" {
+		t.Errorf("expected 'foo', got '%s'", resp.Content[0].Text)
+	}
+
+	// Test another echo
+	req.Messages[0].Content[0].Text = "echo: hello world"
+	resp, err = service.Do(ctx, req)
+	if err != nil {
+		t.Fatalf("echo hello world test failed: %v", err)
+	}
+
+	if resp.Content[0].Text != "hello world" {
+		t.Errorf("expected 'hello world', got '%s'", resp.Content[0].Text)
+	}
+}
+
+func TestPredictableServiceBashTool(t *testing.T) {
+	service := NewPredictableService()
+
+	ctx := context.Background()
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "bash: ls -la"}}},
+		},
+	}
+
+	resp, err := service.Do(ctx, req)
+	if err != nil {
+		t.Fatalf("bash tool test failed: %v", err)
 	}
 
 	if resp.StopReason != llm.StopReasonToolUse {
@@ -190,12 +162,38 @@ func TestPredictableServiceWithToolCalls(t *testing.T) {
 		t.Fatal("no tool use content found")
 	}
 
-	if toolUseContent.ToolName != "test_tool" {
-		t.Errorf("expected tool name 'test_tool', got '%s'", toolUseContent.ToolName)
+	if toolUseContent.ToolName != "bash" {
+		t.Errorf("expected tool name 'bash', got '%s'", toolUseContent.ToolName)
 	}
 
-	if toolUseContent.ID != "tool-123" {
-		t.Errorf("expected tool ID 'tool-123', got '%s'", toolUseContent.ID)
+	// Check tool input contains the command
+	var toolInput map[string]interface{}
+	if err := json.Unmarshal(toolUseContent.ToolInput, &toolInput); err != nil {
+		t.Fatalf("failed to parse tool input: %v", err)
+	}
+
+	if toolInput["command"] != "ls -la" {
+		t.Errorf("expected command 'ls -la', got '%v'", toolInput["command"])
+	}
+}
+
+func TestPredictableServiceDefaultResponse(t *testing.T) {
+	service := NewPredictableService()
+
+	ctx := context.Background()
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "some unknown input"}}},
+		},
+	}
+
+	resp, err := service.Do(ctx, req)
+	if err != nil {
+		t.Fatalf("default response test failed: %v", err)
+	}
+
+	if resp.Content[0].Text != "edit predictable.go to add a response for that one..." {
+		t.Errorf("unexpected default response: %s", resp.Content[0].Text)
 	}
 }
 
@@ -210,7 +208,6 @@ func TestLoopWithPredictableService(t *testing.T) {
 	}
 
 	service := NewPredictableService()
-	service.AddSimpleResponse("Hello there!")
 	loop := NewLoop(Config{
 		LLM:           service,
 		History:       []llm.Message{},
@@ -218,10 +215,10 @@ func TestLoopWithPredictableService(t *testing.T) {
 		RecordMessage: recordFunc,
 	})
 
-	// Queue a user message
+	// Queue a user message that triggers a known response
 	userMessage := llm.Message{
 		Role:    llm.MessageRoleUser,
-		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Hello"}},
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}},
 	}
 	loop.QueueUserMessage(userMessage)
 
@@ -250,35 +247,20 @@ func TestLoopWithTools(t *testing.T) {
 	var toolCalls []string
 
 	testTool := &llm.Tool{
-		Name:        "test_tool",
-		Description: "A test tool",
-		InputSchema: llm.MustSchema(`{"type": "object", "properties": {"input": {"type": "string"}}}`),
+		Name:        "bash",
+		Description: "A test bash tool",
+		InputSchema: llm.MustSchema(`{"type": "object", "properties": {"command": {"type": "string"}}}`),
 		Run: func(ctx context.Context, input json.RawMessage) llm.ToolOut {
 			toolCalls = append(toolCalls, string(input))
 			return llm.ToolOut{
 				LLMContent: []llm.Content{
-					{Type: llm.ContentTypeText, Text: "Tool executed successfully"},
+					{Type: llm.ContentTypeText, Text: "Command executed successfully"},
 				},
 			}
 		},
 	}
 
 	service := NewPredictableService()
-	toolInput := json.RawMessage(`{"input": "test data"}`)
-	service.SetResponses([]PredictableResponse{
-		{
-			Content: "I'll use the test tool.",
-			ToolCalls: []PredictableToolCall{
-				{ID: "tool-1", Name: "test_tool", Input: toolInput},
-			},
-			StopReason: llm.StopReasonToolUse,
-		},
-		{
-			Content:    "Tool completed successfully.",
-			StopReason: llm.StopReasonStopSequence,
-		},
-	})
-
 	loop := NewLoop(Config{
 		LLM:     service,
 		History: []llm.Message{},
@@ -288,10 +270,10 @@ func TestLoopWithTools(t *testing.T) {
 		},
 	})
 
-	// Queue a user message
+	// Queue a user message that triggers the bash tool
 	userMessage := llm.Message{
 		Role:    llm.MessageRoleUser,
-		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "Use the test tool"}},
+		Content: []llm.Content{{Type: llm.ContentTypeText, Text: "bash: echo hello"}},
 	}
 	loop.QueueUserMessage(userMessage)
 
@@ -309,7 +291,7 @@ func TestLoopWithTools(t *testing.T) {
 		t.Errorf("expected 1 tool call, got %d", len(toolCalls))
 	}
 
-	if toolCalls[0] != `{"input": "test data"}` {
+	if toolCalls[0] != `{"command": "echo hello"}` {
 		t.Errorf("unexpected tool call input: %s", toolCalls[0])
 	}
 }
@@ -343,23 +325,6 @@ func TestGetHistory(t *testing.T) {
 func TestLoopWithKeywordTool(t *testing.T) {
 	// Test that keyword tool doesn't crash with nil pointer dereference
 	service := NewPredictableService()
-	service.SetResponses([]PredictableResponse{
-		{
-			Content: "I'll search for files.",
-			ToolCalls: []PredictableToolCall{
-				{
-					ID:    "tool_001",
-					Name:  "keyword_search",
-					Input: json.RawMessage(`{"query": "test query", "search_terms": ["test"]}`),
-				},
-			},
-			StopReason: llm.StopReasonToolUse,
-		},
-		{
-			Content:    "Found some files!",
-			StopReason: llm.StopReasonStopSequence,
-		},
-	})
 
 	var messages []llm.Message
 	recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
@@ -367,9 +332,8 @@ func TestLoopWithKeywordTool(t *testing.T) {
 		return nil
 	}
 
-	// Import keyword tool
+	// Add a mock keyword tool that doesn't actually search
 	tools := []*llm.Tool{
-		// Add a mock keyword tool that doesn't actually search
 		{
 			Name:        "keyword_search",
 			Description: "Mock keyword search",
@@ -388,7 +352,7 @@ func TestLoopWithKeywordTool(t *testing.T) {
 		RecordMessage: recordMessage,
 	})
 
-	// Send a user message that will trigger the keyword tool
+	// Send a user message that will trigger the default response
 	userMessage := llm.Message{
 		Role: llm.MessageRoleUser,
 		Content: []llm.Content{
@@ -398,7 +362,7 @@ func TestLoopWithKeywordTool(t *testing.T) {
 
 	loop.QueueUserMessage(userMessage)
 
-	// Process one turn - this should trigger the keyword tool without crashing
+	// Process one turn
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -424,23 +388,6 @@ func TestLoopWithKeywordTool(t *testing.T) {
 func TestLoopWithActualKeywordTool(t *testing.T) {
 	// Test that actual keyword tool works with Loop
 	service := NewPredictableService()
-	service.SetResponses([]PredictableResponse{
-		{
-			Content: "I'll search for files.",
-			ToolCalls: []PredictableToolCall{
-				{
-					ID:    "tool_001",
-					Name:  "keyword_search",
-					Input: json.RawMessage(`{"query": "test query", "search_terms": ["test"]}`),
-				},
-			},
-			StopReason: llm.StopReasonToolUse,
-		},
-		{
-			Content:    "Found some files!",
-			StopReason: llm.StopReasonStopSequence,
-		},
-	})
 
 	var messages []llm.Message
 	recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
@@ -470,7 +417,7 @@ func TestLoopWithActualKeywordTool(t *testing.T) {
 		RecordMessage: recordMessage,
 	})
 
-	// Send a user message that will trigger the keyword tool
+	// Send a user message that will trigger the default response
 	userMessage := llm.Message{
 		Role: llm.MessageRoleUser,
 		Content: []llm.Content{
@@ -480,7 +427,7 @@ func TestLoopWithActualKeywordTool(t *testing.T) {
 
 	loop.QueueUserMessage(userMessage)
 
-	// Process one turn - this should trigger the keyword tool without crashing
+	// Process one turn
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -508,13 +455,6 @@ func TestLoopWithActualKeywordTool(t *testing.T) {
 func TestKeywordToolWithLLMProvider(t *testing.T) {
 	// Create a predictable service for testing
 	predictableService := NewPredictableService()
-	predictableService.SetResponses([]PredictableResponse{
-		{
-			Content:    "/path/to/relevant/file.go: Contains the search functionality\n/path/to/other/file.go: Also relevant",
-			StopReason: llm.StopReasonStopSequence,
-			Usage:      llm.Usage{InputTokens: 50, OutputTokens: 20, CostUSD: 0.001},
-		},
-	})
 
 	// Create a simple LLM provider for testing
 	llmProvider := &testLLMProvider{

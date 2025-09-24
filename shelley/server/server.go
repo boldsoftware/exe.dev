@@ -101,7 +101,7 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 
 	// Predictable (no envs)
 	manager.factories["predictable"] = func() (llm.Service, error) {
-		return loop.NewPredictableServiceWithTestResponses(), nil
+		return loop.NewPredictableService(), nil
 	}
 
 	return manager

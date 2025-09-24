@@ -43,7 +43,7 @@ func TestServerEndToEnd(t *testing.T) {
 
 	// Create LLM service manager with predictable service
 	llmManager := server.NewLLMServiceManager(logger)
-	predictableService := loop.NewPredictableServiceWithTestResponses()
+	predictableService := loop.NewPredictableService()
 	// For testing, we'll override the manager's service selection
 	_ = predictableService // will need to mock this properly
 
@@ -295,7 +295,7 @@ func TestServerEndToEnd(t *testing.T) {
 
 func TestPredictableServiceWithTools(t *testing.T) {
 	// Test that the predictable service correctly handles tool calls
-	service := loop.NewPredictableServiceWithTestResponses()
+	service := loop.NewPredictableService()
 
 	// First call should return greeting
 	resp1, err := service.Do(context.Background(), &llm.Request{
