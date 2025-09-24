@@ -10,7 +10,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy clean run-dev sqlc
+.PHONY: help build test deploy clean run-dev sqlc whoami-clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -146,6 +146,17 @@ ghuser/whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't ex
 		echo "✓ Downloaded and decompressed ghuser/whoami.sqlite3"; \
 	else \
 		echo "✓ ghuser/whoami.sqlite3 already exists"; \
+	fi
+
+whoami-clean: ## Remove ghuser/whoami.sqlite3 so it can be re-downloaded
+	@if [ -f ghuser/whoami.sqlite3 ]; then \
+		echo "Removing ghuser/whoami.sqlite3..."; \
+		rm ghuser/whoami.sqlite3; \
+		echo "✓ Removed ghuser/whoami.sqlite3"; \
+	else \
+		echo "${RED}Error: ghuser/whoami.sqlite3 not found${NC}"; \
+		echo "Run 'make ghuser/whoami' to download it."; \
+		exit 1; \
 	fi
 
 .DEFAULT_GOAL := help
