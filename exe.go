@@ -1219,13 +1219,7 @@ func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
 	err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		var dummy int
 		err := tx.QueryRow("SELECT 1 FROM waitlist WHERE email = ? LIMIT 1", email).Scan(&dummy)
-		if err == nil {
-			wasNew = false
-		} else if errors.Is(err, sql.ErrNoRows) {
-			wasNew = true
-		} else if err != nil {
-			return err
-		}
+		wasNew = errors.Is(err, sql.ErrNoRows)
 
 		if jsonPayload != nil {
 			_, err := tx.Exec("INSERT INTO waitlist (email, remote_ip, json) VALUES (?, ?, ?)", email, remoteIP, *jsonPayload)
