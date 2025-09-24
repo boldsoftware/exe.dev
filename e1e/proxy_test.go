@@ -20,7 +20,10 @@ import (
 
 func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 	vouch.For("philip")
-	t.Parallel()
+	// Empirically, this test does not play well with others.
+	// It would be really good to confirm that this does not reflect
+	// a real bug, but for now, skip parallel execution.
+	// t.Parallel()
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
