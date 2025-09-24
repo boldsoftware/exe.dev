@@ -1665,7 +1665,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Try to validate as database token
 		userID, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
-			slog.Error("Invalid email verification token", "error", err)
+			slog.Info("invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
 			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 			return
 		}
@@ -1897,7 +1897,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		// Validate email verification token
 		userID, err = s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
-			slog.Error("Invalid email verification token", "error", err)
+			slog.Info("invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
 			http.Error(w, "Invalid or expired verification token", http.StatusUnauthorized)
 			return
 		}
