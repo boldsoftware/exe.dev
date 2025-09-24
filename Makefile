@@ -10,7 +10,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy clean run-dev sqlc whoami-clean
+.PHONY: help build test deploy-exed deploy-what deploy-piperd clean run-dev sqlc whoami-clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -34,10 +34,18 @@ test: ## Run all tests
 	@go test ./... -v -short
 	@echo "✓ Tests complete"
 
-deploy: ## Deploy to production
-	@echo "${YELLOW}Deploying to production...${NC}"
-	@chmod +x deploy-binary.sh
-	@./deploy-binary.sh
+deploy-exed: ## Deploy exed to production
+	@echo "${YELLOW}Deploying exed to production...${NC}"
+	@chmod +x ops/deploy-exed.sh
+	@./ops/deploy-exed.sh
+
+deploy-piperd: ## Deploy sshpiperd to production
+	@echo "${YELLOW}Deploying sshpiperd to production...${NC}"
+	@chmod +x ops/deploy-sshpiper.sh
+	@./ops/deploy-sshpiper.sh
+
+deploy-what: ## Show commits that would deploy to production
+	@./ops/deploy-what.sh
 
 run-dev: ## Run exed locally for development
 	@echo "Starting development server..."

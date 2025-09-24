@@ -76,16 +76,20 @@ ssh lima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
 Run:
 
 ```
-make deploy
+make deploy-exed
 ```
 
-This will build a new exed, push it to the VM, and reboot it.
+This builds a new exed, pushes it to the VM, and restarts the service.
+
+To see the commits that would ship before deploying, run `make deploy-what`.
 
 To poke around production, ssh in using Tailscale:
 
 ```
 ssh ubuntu@exed-prod-01
 ```
+
+There are other deployment options, like `make deploy-piperd`, but these are less frequently used.
 
 ## Production Container Host Configuration
 
