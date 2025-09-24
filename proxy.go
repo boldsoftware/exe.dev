@@ -186,6 +186,40 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	err = s.proxyToContainer(w, r, &box, route)
 	if err != nil {
 		slog.Debug("Failed to proxy request", "error", err, "box", boxName)
+
+		// Determine if the requester is the owner of the box's alloc
+		isOwner := false
+		if userID, ok := s.getAuthenticatedUserID(r); ok {
+			if alloc, aerr := s.getUserAlloc(r.Context(), userID); aerr == nil && alloc != nil {
+				if box.AllocID == alloc.AllocID {
+					isOwner = true
+				}
+			}
+		}
+
+		if isOwner {
+			// Render owner-facing help page
+			terminalHost := fmt.Sprintf("%s.xterm.%s", boxName, s.getMainDomainWithPort())
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			data := struct {
+				BoxName     string
+				Port        int
+				TerminalURL string
+			}{
+				BoxName:     boxName,
+				Port:        route.Port,
+				TerminalURL: fmt.Sprintf("%s://%s/", scheme, terminalHost),
+			}
+
+			w.WriteHeader(http.StatusBadGateway)
+			_ = s.renderTemplate(w, "proxy-unreachable.html", data)
+			return
+		}
+
+		// Non-owner: return a terse 502
 		http.Error(w, "Failed to proxy request to container", http.StatusBadGateway)
 		return
 	}
@@ -615,6 +649,38 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	proxy.Transport = transport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		slog.Debug("HTTP proxy error", "error", err, "target_port", targetPort)
+
+		// If the requester owns this box, show a helpful page
+		isOwner := false
+		if userID, ok := s.getAuthenticatedUserID(r); ok {
+			if alloc, aerr := s.getUserAlloc(r.Context(), userID); aerr == nil && alloc != nil {
+				if box.AllocID == alloc.AllocID {
+					isOwner = true
+				}
+			}
+		}
+
+		if isOwner {
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			terminalHost := fmt.Sprintf("%s.xterm.%s", box.Name, s.getMainDomainWithPort())
+			data := struct {
+				BoxName     string
+				Port        int
+				TerminalURL string
+			}{
+				BoxName:     box.Name,
+				Port:        targetPort,
+				TerminalURL: fmt.Sprintf("%s://%s/", scheme, terminalHost),
+			}
+			w.WriteHeader(http.StatusBadGateway)
+			_ = s.renderTemplate(w, "proxy-unreachable.html", data)
+			return
+		}
+
+		// Non-owner: brief 502
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 	}
 
