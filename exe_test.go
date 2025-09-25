@@ -500,3 +500,99 @@ func TestGeneratedBoxNamesAreValid(t *testing.T) {
 		}
 	}
 }
+
+// TestMetricsEndpointProtection tests that /metrics is protected by IP restrictions
+func TestMetricsEndpointProtection(t *testing.T) {
+	// Test the requireLocalAccess decorator directly
+
+	// Create a simple test handler
+	testHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("success"))
+	}
+
+	// Test request from non-localhost, non-Tailscale IP should be denied
+	t.Run("external_ip_denied", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.RemoteAddr = "192.168.1.100:12345" // Simulate external IP
+		w := httptest.NewRecorder()
+
+		requireLocalAccess(testHandler)(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401 for external IP, got %d", w.Code)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "Access denied") {
+			t.Errorf("Expected 'Access denied' in response body, got: %s", body)
+		}
+	})
+
+	// Test request from localhost should be allowed
+	t.Run("localhost_allowed", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.RemoteAddr = "127.0.0.1:12345" // Localhost IP
+		w := httptest.NewRecorder()
+
+		requireLocalAccess(testHandler)(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200 for localhost, got %d", w.Code)
+		}
+		body := w.Body.String()
+		if body != "success" {
+			t.Errorf("Expected 'success' in response body, got: %s", body)
+		}
+	})
+
+	// Test request from IPv6 localhost should be allowed
+	t.Run("localhost_ipv6_allowed", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.RemoteAddr = "[::1]:12345" // IPv6 localhost
+		w := httptest.NewRecorder()
+
+		requireLocalAccess(testHandler)(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200 for IPv6 localhost, got %d", w.Code)
+		}
+		body := w.Body.String()
+		if body != "success" {
+			t.Errorf("Expected 'success' in response body, got: %s", body)
+		}
+	})
+
+	// Test request from Tailscale IP should be allowed
+	t.Run("tailscale_ip_allowed", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.RemoteAddr = "100.64.1.1:12345" // Tailscale IP range
+		w := httptest.NewRecorder()
+
+		requireLocalAccess(testHandler)(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200 for Tailscale IP, got %d", w.Code)
+		}
+		body := w.Body.String()
+		if body != "success" {
+			t.Errorf("Expected 'success' in response body, got: %s", body)
+		}
+	})
+
+	// Test malformed RemoteAddr
+	t.Run("malformed_remote_addr", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.RemoteAddr = "invalid-ip" // Malformed IP
+		w := httptest.NewRecorder()
+
+		requireLocalAccess(testHandler)(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("Expected status 500 for malformed IP, got %d", w.Code)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "remoteaddr check") {
+			t.Errorf("Expected 'remoteaddr check' error in response body, got: %s", body)
+		}
+	})
+}

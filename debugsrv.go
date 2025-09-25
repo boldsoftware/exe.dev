@@ -3,13 +3,9 @@ package exe
 import (
 	"expvar"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/pprof"
-	"net/netip"
 	"runtime/debug"
-
-	"tailscale.com/net/tsaddr"
 )
 
 // debugHandler constructs and returns a handler with Go-standard debug endpoints
@@ -36,22 +32,9 @@ func (s *Server) debugHandler() http.Handler {
 	return mux
 }
 
-// handleDebug gates access to debug endpoints: allowed in dev mode or when the
+// handleDebug gates access to debug endpoints: allowed when the
 // request originates from a Tailscale IP or loopback.
 func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
-	if s.devMode == "" {
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		remoteIP, err := netip.ParseAddr(host)
-		if err != nil {
-			http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
-			http.Error(w, "Access denied", http.StatusUnauthorized)
-			return
-		}
-	}
-
 	// If requesting /debug or /debug/, redirect to the pprof index.
 	switch r.URL.Path {
 	case "/debug", "/debug/":

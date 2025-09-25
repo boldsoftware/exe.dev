@@ -23,6 +23,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/exec"
@@ -56,6 +57,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
 	"tailscale.com/client/tailscale"
+	"tailscale.com/net/tsaddr"
 )
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
@@ -1118,9 +1120,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Handle root path and user dashboard
 	path := r.URL.Path
-	// Debug endpoints (pprof, expvar), gated by dev mode or Tailscale local addr
+	// Debug endpoints (pprof, expvar), gated by localhost or Tailscale access
 	if strings.HasPrefix(path, "/debug") {
-		s.handleDebug(w, r)
+		requireLocalAccess(s.handleDebug)(w, r)
 		return
 	}
 	switch path {
@@ -1162,7 +1164,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/health":
 		s.handleHealth(w, r)
 	case "/metrics":
-		s.handleMetrics(w, r)
+		requireLocalAccess(s.handleMetrics)(w, r)
 	case "/containers":
 		s.handleContainers(w, r)
 	case "/about":
@@ -1246,7 +1248,24 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 }
 
-// handleMetrics serves Prometheus metrics
+// requireLocalAccess wraps an HTTP handler to only allow access from localhost or Tailscale IPs
+func requireLocalAccess(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		remoteIP, err := netip.ParseAddr(host)
+		if err != nil {
+			http.Error(w, "remoteaddr check: "+r.RemoteAddr+": "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if !remoteIP.IsLoopback() && !tsaddr.IsTailscaleIP(remoteIP) {
+			http.Error(w, "Access denied", http.StatusUnauthorized)
+			return
+		}
+		handler(w, r)
+	}
+}
+
+// handleMetrics serves Prometheus metrics, gated by localhost or Tailscale access
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	handler := promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{})
 	handler.ServeHTTP(w, r)
