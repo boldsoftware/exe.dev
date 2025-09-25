@@ -272,6 +272,10 @@ type Server struct {
 	certManager         *autocert.Manager
 	wildcardCertManager *porkbun.WildcardCertManager
 
+	// Tailscale HTTPS (preloaded at startup)
+	tsCert   *tls.Certificate
+	tsDomain string
+
 	// Piper plugin for SSH proxy authentication
 	piperPlugin *PiperPlugin
 
@@ -659,14 +663,6 @@ func (s *Server) setupHTTPSServer() {
 			porkbunSecretKey,
 			autocert.DirCache("certs"),
 		)
-
-		s.httpsServer = &http.Server{
-			Addr:    s.httpsLn.addr,
-			Handler: LoggerMiddleware(slog.Default())(servMux),
-			TLSConfig: &tls.Config{
-				GetCertificate: s.wildcardCertManager.GetCertificate,
-			},
-		}
 	} else {
 		// Fall back to regular autocert for non-wildcard certificates
 		slog.Info("Using standard autocert (no wildcard support)", "note", "Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates")
@@ -675,24 +671,20 @@ func (s *Server) setupHTTPSServer() {
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: autocert.HostWhitelist("exe.dev"),
 		}
-
-		s.httpsServer = &http.Server{
-			Addr:    s.httpsLn.addr,
-			Handler: LoggerMiddleware(slog.Default())(servMux),
-			TLSConfig: &tls.Config{
-				GetCertificate: s.certManager.GetCertificate,
-			},
-		}
 	}
 
-	// If possible, obtain Tailscale certificates and serve them for the Tailscale hostname.
-	// This lets the HTTPS server also respond on the node's Tailscale domain.
-	// Errors here should not prevent standard certificates from working.
-	var tsCert *tls.Certificate
-	var tsDomain string
+	// Single TLS dispatcher for all domains (exe.dev and Tailscale)
+	s.httpsServer = &http.Server{
+		Addr:    s.httpsLn.addr,
+		Handler: LoggerMiddleware(slog.Default())(servMux),
+		TLSConfig: &tls.Config{
+			GetCertificate: s.getCertificate,
+		},
+	}
+
+	// Discover Tailscale DNS name early; certificate retrieval can happen lazily in getCertificate
 	func() {
-		// Short timeout to avoid blocking startup
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		tailscale.I_Acknowledge_This_API_Is_Unstable = true
 		lc := &tailscale.LocalClient{}
@@ -705,17 +697,17 @@ func (s *Server) setupHTTPSServer() {
 			}
 			return
 		}
-		tsDomain = strings.TrimSuffix(st.Self.DNSName, ".")
-		certPEM, keyPEM, err := lc.CertPair(ctx, tsDomain)
+		s.tsDomain = strings.TrimSuffix(st.Self.DNSName, ".")
+
+		// Try to eagerly fetch and cache cert, but it's optional
+		certPEM, keyPEM, err := lc.CertPair(ctx, s.tsDomain)
 		if err != nil {
-			slog.Debug("tailscale cert pair error", "error", err)
-			tsDomain = ""
+			slog.Debug("tailscale cert pair not preloaded", "error", err)
 			return
 		}
 		c, err := tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
 			slog.Debug("tailscale x509 keypair parse error", "error", err)
-			tsDomain = ""
 			return
 		}
 		if len(c.Certificate) > 0 {
@@ -723,20 +715,43 @@ func (s *Server) setupHTTPSServer() {
 				c.Leaf = leaf
 			}
 		}
-		tsCert = &c
-		slog.Info("tailscale cert loaded", "domain", tsDomain)
+		s.tsCert = &c
+		slog.Info("tailscale cert loaded", "domain", s.tsDomain)
 	}()
+}
 
-	if tsCert != nil && tsDomain != "" && s.httpsServer != nil && s.httpsServer.TLSConfig != nil {
-		origGet := s.httpsServer.TLSConfig.GetCertificate
-		s.httpsServer.TLSConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if hello != nil && hello.ServerName != "" && strings.HasSuffix(hello.ServerName, tsDomain) {
-				// Serve Tailscale cert when connecting via the node's Tailscale hostname
-				return tsCert, nil
-			}
-			return origGet(hello)
-		}
+// getCertificate is the single TLS certificate dispatcher for HTTPS.
+// It serves:
+// - Tailscale node certificate for the machine's Tailscale DNS name
+// - Wildcard exe.dev certificates (via Porkbun DNS-01) when configured
+// - Standard autocert for exe.dev when wildcard manager is not configured
+func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	if hello == nil || hello.ServerName == "" {
+		return nil, fmt.Errorf("no server name provided")
 	}
+
+	serverName := strings.TrimSuffix(strings.ToLower(hello.ServerName), ".")
+
+	// 1) Serve Tailscale certificate for exact Tailscale DNS name
+	if s.tsDomain != "" && serverName == strings.ToLower(s.tsDomain) {
+		if s.tsCert != nil {
+			return s.tsCert, nil
+		}
+		return nil, fmt.Errorf("tailscale certificate not available for %s", s.tsDomain)
+	}
+
+	// 2) exe.dev handling
+	if serverName == "exe.dev" || serverName == "www.exe.dev" || strings.HasSuffix(serverName, ".exe.dev") {
+		if s.wildcardCertManager != nil {
+			return s.wildcardCertManager.GetCertificate(hello)
+		}
+		if s.certManager != nil {
+			return s.certManager.GetCertificate(hello)
+		}
+		return nil, fmt.Errorf("no certificate manager configured for exe.dev")
+	}
+
+	return nil, fmt.Errorf("unsupported domain %s", hello.ServerName)
 }
 
 // setupProxyServers configures additional listeners for proxy ports
