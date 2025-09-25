@@ -1,6 +1,6 @@
 module shelley.exe.dev
 
-go 1.25.0
+go 1.25.1
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20250803210736-d308e07a266d
