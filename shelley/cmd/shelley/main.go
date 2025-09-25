@@ -106,7 +106,7 @@ func runServe(global GlobalConfig, args []string) {
 	tools := setupTools(llmManager)
 
 	// Create and start server
-	svr := server.NewServer(database, llmManager, tools, logger, logBuffer)
+	svr := server.NewServer(database, llmManager, tools, logger, logBuffer, global.PredictableOnly)
 	if err := svr.Start(*port); err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)

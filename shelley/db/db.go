@@ -267,9 +267,16 @@ func (db *DB) CreateMessage(ctx context.Context, params CreateMessageParams) (*g
 		usageDataJSON = &str
 	}
 
+	// Get next sequence_id for this conversation
+	sequenceID, err := db.Queries.GetNextSequenceID(ctx, params.ConversationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get next sequence ID: %w", err)
+	}
+
 	message, err := db.Queries.CreateMessage(ctx, generated.CreateMessageParams{
 		MessageID:      messageID,
 		ConversationID: params.ConversationID,
+		SequenceID:     sequenceID,
 		Type:           string(params.Type),
 		LlmData:        llmDataJSON,
 		UserData:       userDataJSON,

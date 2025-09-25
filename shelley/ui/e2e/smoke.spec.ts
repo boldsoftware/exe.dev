@@ -10,21 +10,65 @@ test.describe('Shelley Smoke Tests', () => {
     expect(title).toBe('Shelley');
   });
 
-  test('can find message input', async ({ page }) => {
+  test('can find message input with proper aria label', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
     
-    // Find the textarea for message input
-    const messageInput = page.locator('textarea').first();
+    // Find the textarea using improved selectors
+    const messageInput = page.getByTestId('message-input');
     await expect(messageInput).toBeVisible();
+    
+    // Verify it has proper aria labeling
+    await expect(messageInput).toHaveAttribute('aria-label', 'Message input');
   });
 
-  test('can find send button', async ({ page }) => {
+  test('can find send button with proper aria label', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
     
-    // Find any submit button
-    const sendButton = page.locator('button[type="submit"]');
+    // Find the send button using improved selectors
+    const sendButton = page.getByTestId('send-button');
     await expect(sendButton).toBeVisible();
+    
+    // Verify it has proper aria labeling
+    await expect(sendButton).toHaveAttribute('aria-label', 'Send message');
+  });
+  
+  test('message input is initially empty and focused', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    const messageInput = page.getByTestId('message-input');
+    await expect(messageInput).toBeVisible();
+    
+    // Verify input is empty initially
+    await expect(messageInput).toHaveValue('');
+    
+    // Verify placeholder text is present
+    await expect(messageInput).toHaveAttribute('placeholder', /Type your message/);
+  });
+  
+  test('send button is disabled when input is empty', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    const sendButton = page.getByTestId('send-button');
+    
+    // Button should be disabled initially
+    await expect(sendButton).toBeDisabled();
+  });
+  
+  test('send button becomes enabled when text is entered', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    const messageInput = page.getByTestId('message-input');
+    const sendButton = page.getByTestId('send-button');
+    
+    // Enter some text
+    await messageInput.fill('test message');
+    
+    // Button should now be enabled
+    await expect(sendButton).toBeEnabled();
   });
 });

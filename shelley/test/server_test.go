@@ -58,7 +58,7 @@ func TestServerEndToEnd(t *testing.T) {
 
 	// Create server
 	logBuffer := server.NewLogBuffer(100)
-	svr := server.NewServer(database, llmManager, tools, logger, logBuffer)
+	svr := server.NewServer(database, llmManager, tools, logger, logBuffer, false)
 
 	// Set up HTTP server
 	mux := http.NewServeMux()
@@ -365,7 +365,7 @@ func TestConversationCleanup(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	llmManager := server.NewLLMServiceManager(logger)
 	logBuffer := server.NewLogBuffer(100)
-	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer)
+	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
 
 	// Create a conversation
 	// Using database directly instead of service
@@ -402,7 +402,7 @@ func TestSlugGeneration(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	llmManager := server.NewLLMServiceManager(logger)
 	logBuffer := server.NewLogBuffer(100)
-	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer)
+	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
 
 	// Test slug generation directly to avoid timing issues
 	// ctx := context.Background()
@@ -497,7 +497,7 @@ func TestSlugGenerationWithPredictableService(t *testing.T) {
 	}
 
 	logBuffer := server.NewLogBuffer(100)
-	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer)
+	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
 
 	// Test slug generation directly
 	// ctx := context.Background()
@@ -594,7 +594,7 @@ func TestSSEIncrementalUpdates(t *testing.T) {
 	logBuffer := server.NewLogBuffer(1000)
 
 	// Create server
-	serviceInstance := server.NewServer(database, llmManager, nil, logger, logBuffer)
+	serviceInstance := server.NewServer(database, llmManager, nil, logger, logBuffer, false)
 	mux := http.NewServeMux()
 	serviceInstance.RegisterRoutes(mux)
 	testServer := httptest.NewServer(mux)

@@ -19,6 +19,7 @@ type Conversation struct {
 type Message struct {
 	MessageID      string    `json:"message_id"`
 	ConversationID string    `json:"conversation_id"`
+	SequenceID     int64     `json:"sequence_id"`
 	Type           string    `json:"type"`
 	LlmData        *string   `json:"llm_data"`
 	UserData       *string   `json:"user_data"`

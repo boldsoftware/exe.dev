@@ -75,6 +75,11 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 			return s.makeThinkToolResponse(thoughts), nil
 		}
 
+		if strings.HasPrefix(inputText, "patch: ") {
+			filePath := strings.TrimPrefix(inputText, "patch: ")
+			return s.makePatchToolResponse(filePath), nil
+		}
+
 		if strings.HasPrefix(inputText, "error: ") {
 			errorMsg := strings.TrimPrefix(inputText, "error: ")
 			return s.makeResponse(fmt.Sprintf("Error: %s", errorMsg)), nil
@@ -106,7 +111,10 @@ func (s *PredictableService) makeResponse(text string) *llm.Response {
 
 // makeBashToolResponse creates a response that calls the bash tool
 func (s *PredictableService) makeBashToolResponse(command string) *llm.Response {
-	toolInput := json.RawMessage(fmt.Sprintf(`{"command": "%s"}`, command))
+	// Properly marshal the command to avoid JSON escaping issues
+	toolInputData := map[string]string{"command": command}
+	toolInputBytes, _ := json.Marshal(toolInputData)
+	toolInput := json.RawMessage(toolInputBytes)
 	return &llm.Response{
 		ID:    fmt.Sprintf("pred-bash-%d", time.Now().UnixNano()),
 		Type:  "message",
@@ -132,7 +140,10 @@ func (s *PredictableService) makeBashToolResponse(command string) *llm.Response 
 
 // makeThinkToolResponse creates a response that calls the think tool
 func (s *PredictableService) makeThinkToolResponse(thoughts string) *llm.Response {
-	toolInput := json.RawMessage(fmt.Sprintf(`{"thoughts": "%s"}`, thoughts))
+	// Properly marshal the thoughts to avoid JSON escaping issues
+	toolInputData := map[string]string{"thoughts": thoughts}
+	toolInputBytes, _ := json.Marshal(toolInputData)
+	toolInput := json.RawMessage(toolInputBytes)
 	return &llm.Response{
 		ID:    fmt.Sprintf("pred-think-%d", time.Now().UnixNano()),
 		Type:  "message",
@@ -152,6 +163,44 @@ func (s *PredictableService) makeThinkToolResponse(thoughts string) *llm.Respons
 			InputTokens:  uint64(len(strings.Fields(thoughts)) + 5),
 			OutputTokens: uint64(len(strings.Fields(thoughts)) + 5),
 			CostUSD:      0.002,
+		},
+	}
+}
+
+// makePatchToolResponse creates a response that calls the patch tool
+func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Response {
+	// Properly marshal the patch data to avoid JSON escaping issues
+	toolInputData := map[string]interface{}{
+		"path": filePath,
+		"patches": []map[string]string{
+			{
+				"operation": "replace",
+				"oldText":   "example",
+				"newText":   "updated example",
+			},
+		},
+	}
+	toolInputBytes, _ := json.Marshal(toolInputData)
+	toolInput := json.RawMessage(toolInputBytes)
+	return &llm.Response{
+		ID:    fmt.Sprintf("pred-patch-%d", time.Now().UnixNano()),
+		Type:  "message",
+		Role:  llm.MessageRoleAssistant,
+		Model: "predictable-v1",
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: fmt.Sprintf("I'll patch the file: %s", filePath)},
+			{
+				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
+				Type:      llm.ContentTypeToolUse,
+				ToolName:  "patch",
+				ToolInput: toolInput,
+			},
+		},
+		StopReason: llm.StopReasonToolUse,
+		Usage: llm.Usage{
+			InputTokens:  uint64(len(strings.Fields(filePath)) + 10),
+			OutputTokens: uint64(len(strings.Fields(filePath)) + 15),
+			CostUSD:      0.003,
 		},
 	}
 }

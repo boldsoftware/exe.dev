@@ -7,7 +7,6 @@ package generated
 
 import (
 	"context"
-	"time"
 )
 
 const countMessagesByType = `-- name: CountMessagesByType :one
@@ -40,14 +39,15 @@ func (q *Queries) CountMessagesInConversation(ctx context.Context, conversationI
 }
 
 const createMessage = `-- name: CreateMessage :one
-INSERT INTO messages (message_id, conversation_id, type, llm_data, user_data, usage_data)
-VALUES (?, ?, ?, ?, ?, ?)
-RETURNING message_id, conversation_id, type, llm_data, user_data, usage_data, created_at
+INSERT INTO messages (message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at
 `
 
 type CreateMessageParams struct {
 	MessageID      string  `json:"message_id"`
 	ConversationID string  `json:"conversation_id"`
+	SequenceID     int64   `json:"sequence_id"`
 	Type           string  `json:"type"`
 	LlmData        *string `json:"llm_data"`
 	UserData       *string `json:"user_data"`
@@ -58,6 +58,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 	row := q.db.QueryRowContext(ctx, createMessage,
 		arg.MessageID,
 		arg.ConversationID,
+		arg.SequenceID,
 		arg.Type,
 		arg.LlmData,
 		arg.UserData,
@@ -67,6 +68,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (M
 	err := row.Scan(
 		&i.MessageID,
 		&i.ConversationID,
+		&i.SequenceID,
 		&i.Type,
 		&i.LlmData,
 		&i.UserData,
@@ -97,9 +99,9 @@ func (q *Queries) DeleteMessage(ctx context.Context, messageID string) error {
 }
 
 const getLatestMessage = `-- name: GetLatestMessage :one
-SELECT message_id, conversation_id, type, llm_data, user_data, usage_data, created_at FROM messages
+SELECT message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at FROM messages
 WHERE conversation_id = ?
-ORDER BY created_at DESC
+ORDER BY sequence_id DESC
 LIMIT 1
 `
 
@@ -109,6 +111,7 @@ func (q *Queries) GetLatestMessage(ctx context.Context, conversationID string) (
 	err := row.Scan(
 		&i.MessageID,
 		&i.ConversationID,
+		&i.SequenceID,
 		&i.Type,
 		&i.LlmData,
 		&i.UserData,
@@ -119,7 +122,7 @@ func (q *Queries) GetLatestMessage(ctx context.Context, conversationID string) (
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT message_id, conversation_id, type, llm_data, user_data, usage_data, created_at FROM messages
+SELECT message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at FROM messages
 WHERE message_id = ?
 `
 
@@ -129,6 +132,7 @@ func (q *Queries) GetMessage(ctx context.Context, messageID string) (Message, er
 	err := row.Scan(
 		&i.MessageID,
 		&i.ConversationID,
+		&i.SequenceID,
 		&i.Type,
 		&i.LlmData,
 		&i.UserData,
@@ -138,10 +142,23 @@ func (q *Queries) GetMessage(ctx context.Context, messageID string) (Message, er
 	return i, err
 }
 
-const listMessages = `-- name: ListMessages :many
-SELECT message_id, conversation_id, type, llm_data, user_data, usage_data, created_at FROM messages
+const getNextSequenceID = `-- name: GetNextSequenceID :one
+SELECT COALESCE(MAX(sequence_id), 0) + 1 
+FROM messages 
 WHERE conversation_id = ?
-ORDER BY created_at ASC
+`
+
+func (q *Queries) GetNextSequenceID(ctx context.Context, conversationID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getNextSequenceID, conversationID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const listMessages = `-- name: ListMessages :many
+SELECT message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at FROM messages
+WHERE conversation_id = ?
+ORDER BY sequence_id ASC
 `
 
 func (q *Queries) ListMessages(ctx context.Context, conversationID string) ([]Message, error) {
@@ -156,6 +173,7 @@ func (q *Queries) ListMessages(ctx context.Context, conversationID string) ([]Me
 		if err := rows.Scan(
 			&i.MessageID,
 			&i.ConversationID,
+			&i.SequenceID,
 			&i.Type,
 			&i.LlmData,
 			&i.UserData,
@@ -176,9 +194,9 @@ func (q *Queries) ListMessages(ctx context.Context, conversationID string) ([]Me
 }
 
 const listMessagesByType = `-- name: ListMessagesByType :many
-SELECT message_id, conversation_id, type, llm_data, user_data, usage_data, created_at FROM messages
+SELECT message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at FROM messages
 WHERE conversation_id = ? AND type = ?
-ORDER BY created_at ASC
+ORDER BY sequence_id ASC
 `
 
 type ListMessagesByTypeParams struct {
@@ -198,6 +216,7 @@ func (q *Queries) ListMessagesByType(ctx context.Context, arg ListMessagesByType
 		if err := rows.Scan(
 			&i.MessageID,
 			&i.ConversationID,
+			&i.SequenceID,
 			&i.Type,
 			&i.LlmData,
 			&i.UserData,
@@ -218,9 +237,9 @@ func (q *Queries) ListMessagesByType(ctx context.Context, arg ListMessagesByType
 }
 
 const listMessagesPaginated = `-- name: ListMessagesPaginated :many
-SELECT message_id, conversation_id, type, llm_data, user_data, usage_data, created_at FROM messages
+SELECT message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at FROM messages
 WHERE conversation_id = ?
-ORDER BY created_at ASC
+ORDER BY sequence_id ASC
 LIMIT ? OFFSET ?
 `
 
@@ -242,6 +261,7 @@ func (q *Queries) ListMessagesPaginated(ctx context.Context, arg ListMessagesPag
 		if err := rows.Scan(
 			&i.MessageID,
 			&i.ConversationID,
+			&i.SequenceID,
 			&i.Type,
 			&i.LlmData,
 			&i.UserData,
@@ -262,18 +282,18 @@ func (q *Queries) ListMessagesPaginated(ctx context.Context, arg ListMessagesPag
 }
 
 const listMessagesSince = `-- name: ListMessagesSince :many
-SELECT message_id, conversation_id, type, llm_data, user_data, usage_data, created_at FROM messages
-WHERE conversation_id = ? AND created_at > ?
-ORDER BY created_at ASC
+SELECT message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, created_at FROM messages
+WHERE conversation_id = ? AND sequence_id > ?
+ORDER BY sequence_id ASC
 `
 
 type ListMessagesSinceParams struct {
-	ConversationID string    `json:"conversation_id"`
-	CreatedAt      time.Time `json:"created_at"`
+	ConversationID string `json:"conversation_id"`
+	SequenceID     int64  `json:"sequence_id"`
 }
 
 func (q *Queries) ListMessagesSince(ctx context.Context, arg ListMessagesSinceParams) ([]Message, error) {
-	rows, err := q.db.QueryContext(ctx, listMessagesSince, arg.ConversationID, arg.CreatedAt)
+	rows, err := q.db.QueryContext(ctx, listMessagesSince, arg.ConversationID, arg.SequenceID)
 	if err != nil {
 		return nil, err
 	}
@@ -284,6 +304,7 @@ func (q *Queries) ListMessagesSince(ctx context.Context, arg ListMessagesSincePa
 		if err := rows.Scan(
 			&i.MessageID,
 			&i.ConversationID,
+			&i.SequenceID,
 			&i.Type,
 			&i.LlmData,
 			&i.UserData,

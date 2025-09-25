@@ -306,7 +306,7 @@ function Message({ message, toolUseMap }: MessageProps) {
   }
 
   return (
-    <div className="flex flex-col space-y-2">
+    <div className="flex flex-col space-y-2" data-testid="message" role="article" aria-label={`Message from ${getMessageLabel()}`}>
       {/* Message header for non-user messages */}
       {!isUser && (
         <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
@@ -316,7 +316,7 @@ function Message({ message, toolUseMap }: MessageProps) {
       )}
       
       {/* Message content */}
-      <div className={getMessageStyles()}>
+      <div className={getMessageStyles()} data-testid="message-content">
         {meaningfulContent.map((content, index) => (
           <div key={index}>
             {renderContent(content)}

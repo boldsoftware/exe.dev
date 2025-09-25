@@ -52,11 +52,15 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
           className="w-full min-h-[44px] max-h-[200px] pl-4 pr-12 py-3 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
           disabled={disabled}
           style={{ height: "auto" }}
+          aria-label="Message input"
+          data-testid="message-input"
         />
         <button
           type="submit"
           disabled={disabled || !message.trim()}
           className="absolute right-2 bottom-2 p-2 bg-primary hover:bg-primary-dark disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+          aria-label="Send message"
+          data-testid="send-button"
         >
           {disabled ? (
             <div className="flex items-center justify-center">

@@ -291,7 +291,7 @@ func TestLoopWithTools(t *testing.T) {
 		t.Errorf("expected 1 tool call, got %d", len(toolCalls))
 	}
 
-	if toolCalls[0] != `{"command": "echo hello"}` {
+	if toolCalls[0] != `{"command":"echo hello"}` {
 		t.Errorf("unexpected tool call input: %s", toolCalls[0])
 	}
 }

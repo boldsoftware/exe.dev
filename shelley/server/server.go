@@ -186,12 +186,13 @@ type Server struct {
 	mu                  sync.RWMutex
 	logger              *slog.Logger
 	logBuffer           *LogBuffer
+	predictableOnly     bool
 }
 
 // Subscriber represents a client subscribed to conversation updates
 type Subscriber struct {
-	channel         chan StreamResponse
-	lastMessageTime *time.Time // Last message timestamp this subscriber has seen
+	channel        chan StreamResponse
+	lastSequenceID int64 // Last message sequence_id this subscriber has seen
 }
 
 // ConversationManager manages a single active conversation
@@ -204,7 +205,7 @@ type ConversationManager struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager *LLMServiceManager, tools []*llm.Tool, logger *slog.Logger, logBuffer *LogBuffer) *Server {
+func NewServer(database *db.DB, llmManager *LLMServiceManager, tools []*llm.Tool, logger *slog.Logger, logBuffer *LogBuffer, predictableOnly bool) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
@@ -212,6 +213,7 @@ func NewServer(database *db.DB, llmManager *LLMServiceManager, tools []*llm.Tool
 		activeConversations: make(map[string]*ConversationManager),
 		logger:              logger,
 		logBuffer:           logBuffer,
+		predictableOnly:     predictableOnly,
 	}
 }
 
@@ -252,11 +254,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Ready bool   `json:"ready"`
 	}
 
-	models := s.llmManager.GetAvailableModels()
 	var out []ModelInfo
-	for _, id := range models {
-		_, err := s.llmManager.GetService(id)
-		out = append(out, ModelInfo{ID: id, Ready: err == nil})
+
+	// If predictable-only mode is enabled, only return the predictable model
+	if s.predictableOnly {
+		out = append(out, ModelInfo{ID: "predictable", Ready: true})
+	} else {
+		models := s.llmManager.GetAvailableModels()
+		for _, id := range models {
+			_, err := s.llmManager.GetService(id)
+			out = append(out, ModelInfo{ID: id, Ready: err == nil})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -530,14 +538,14 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	manager.subscribe(subscriptionID, updateChan)
 	defer manager.unsubscribe(subscriptionID)
 
-	// Track the last message time for this subscriber
-	var lastMessageTime *time.Time
+	// Track the last sequence_id and seen message IDs for this subscriber
+	var lastSequenceID int64 = 0
 	if len(messages) > 0 {
-		lastMessageTime = &messages[len(messages)-1].CreatedAt
+		lastSequenceID = messages[len(messages)-1].SequenceID
 	}
 	manager.mu.Lock()
 	if sub, exists := manager.subscribers[subscriptionID]; exists {
-		sub.lastMessageTime = lastMessageTime
+		sub.lastSequenceID = lastSequenceID
 	}
 	manager.mu.Unlock()
 
@@ -715,7 +723,7 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		var messages []generated.Message
 
 		// Get messages since the last message this subscriber has seen
-		if sub.lastMessageTime == nil {
+		if sub.lastSequenceID == 0 {
 			// New subscriber or no messages seen yet - send all messages
 			allMessages, err := s.db.Queries.ListMessages(ctx, conversationID)
 			if err != nil {
@@ -727,7 +735,7 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 			// Existing subscriber - send only new messages
 			newMessages, err := s.db.Queries.ListMessagesSince(ctx, generated.ListMessagesSinceParams{
 				ConversationID: conversationID,
-				CreatedAt:      *sub.lastMessageTime,
+				SequenceID:     sub.lastSequenceID,
 			})
 			if err != nil {
 				s.logger.Error("Failed to get new messages for subscriber", "conversationID", conversationID, "subscriptionID", subscriptionID, "error", err)
@@ -736,9 +744,9 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 			messages = newMessages
 		}
 
-		// Update the subscriber's last seen message time only when there are new messages
+		// Update the subscriber's last seen sequence_id
 		if len(messages) > 0 {
-			sub.lastMessageTime = &messages[len(messages)-1].CreatedAt
+			sub.lastSequenceID = messages[len(messages)-1].SequenceID
 		}
 
 		// Send the update even if there are no new messages so clients can react to conversation-only changes (e.g., slug updates)
@@ -761,8 +769,8 @@ func (cm *ConversationManager) subscribe(id string, ch chan StreamResponse) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.subscribers[id] = &Subscriber{
-		channel:         ch,
-		lastMessageTime: nil, // Will be set after first message batch
+		channel:        ch,
+		lastSequenceID: 0, // Will be set after first message batch
 	}
 }
 

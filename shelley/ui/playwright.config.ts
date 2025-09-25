@@ -18,7 +18,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:9000',
+    baseURL: process.env.TEST_SERVER_URL || 'http://localhost:9001',
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'retain-on-failure',
     /* Take screenshots on failure */
@@ -38,8 +38,8 @@ export default defineConfig({
   /* Run our test server with isolated database */
   webServer: {
     command: 'node scripts/test-server.cjs',
-    url: 'http://localhost:9000',
-    reuseExistingServer: !process.env.CI,
+    url: process.env.TEST_SERVER_URL || 'http://localhost:9001',
+    reuseExistingServer: !process.env.CI, // Allow reuse in dev, always fresh in CI
     timeout: 60000,
   },
 });
