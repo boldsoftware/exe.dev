@@ -47,7 +47,7 @@ jobs:
         id: build-base
         uses: docker/build-push-action@v5
         with:
-          context: ./exeuntu
+          context: .
           file: ./exeuntu/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
