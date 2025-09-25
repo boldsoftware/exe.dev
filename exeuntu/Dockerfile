@@ -180,29 +180,23 @@ COPY exeuntu/claude-settings.json /home/exedev/.claude.json
 
 WORKDIR /app
 
-# Initialize git repo and add welcome code
+# Initialize git repo for the welcome example (optional)
 RUN git config --global user.email "system@exe.dev" && \
     git config --global user.name "Exe.dev System" && \
     git init .
 
-# Copy welcome source code
-COPY exeuntu/welcome/ ./
-
-# Create .gitignore to exclude binary
-RUN echo 'webserver' > .gitignore
-
-# Commit the initial code to git (excluding binary)
-RUN git add . && \
-    git commit -m "Initial welcome web server code"
-
-# Build the Go web server
-RUN go build -o webserver main.go && rm -rf ~/.cache
+# Copy welcome source code and build it
+COPY --chown=exedev:exedev exeuntu/welcome/ ./welcome/
+WORKDIR /app/welcome
+RUN make build && \
+    mv welcomed /app/ && \
+    rm -rf ~/.cache
 
 # Switch back to root to install systemd service
 USER root
 
 # Install and enable the welcome web server systemd service
-RUN cp /app/welcome-exedev-webapp.service /etc/systemd/system/welcome-exedev-webapp.service && \
+RUN cp /app/welcome/welcome-exedev-webapp.service /etc/systemd/system/welcome-exedev-webapp.service && \
     systemctl enable welcome-exedev-webapp.service
 
 # Create systemd service for Shelley
