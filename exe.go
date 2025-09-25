@@ -768,7 +768,7 @@ func (s *Server) setupProxyServers() {
 	// Create listeners for each proxy port
 	for j, port := range proxyPorts {
 		addr := fmt.Sprintf(":%d", port)
-		ln, err := startListener(fmt.Sprintf("proxy-%d", j), addr)
+		ln, err := startListener(fmt.Sprintf("proxy-%d", port), addr)
 		if err != nil {
 			slog.Warn("Failed to listen on proxy port, skipping", "port", port, "error", err)
 			continue
