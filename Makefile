@@ -45,6 +45,9 @@ ssh-exed: ## ssh to exed production server
 ssh-ci: ## ssh to exed ci server
 	@ssh root@ci.bold.dev
 
+ssh-mon: ## ssh to monitoring (prometheus/grafana) server
+	@ssh ubuntu@mon
+
 deploy-piperd: ## Deploy sshpiperd to production
 	@echo "${YELLOW}Deploying sshpiperd to production...${NC}"
 	@chmod +x ops/deploy-sshpiper.sh
