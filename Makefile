@@ -39,6 +39,9 @@ deploy-exed: ## Deploy exed to production
 	@chmod +x ops/deploy-exed.sh
 	@./ops/deploy-exed.sh
 
+ssh-exed: ## ssh to exed production server
+	@ssh ubuntu@exed-01
+
 deploy-piperd: ## Deploy sshpiperd to production
 	@echo "${YELLOW}Deploying sshpiperd to production...${NC}"
 	@chmod +x ops/deploy-sshpiper.sh
