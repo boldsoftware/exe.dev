@@ -2,7 +2,7 @@
 
 echo "🕸️  checking what is deployed..."
 
-DEPLOYED_SHA=$(curl -s https://exe.dev/debug/gitsha)
+DEPLOYED_SHA=$(curl -s https://exed-01.crocodile-vector.ts.net/debug/gitsha)
 
 if [ $? -ne 0 ]; then
 	echo "😞 could not get deployed SHA (curl failed)"
