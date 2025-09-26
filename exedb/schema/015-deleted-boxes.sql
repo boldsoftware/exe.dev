@@ -8,3 +8,6 @@ CREATE TABLE IF NOT EXISTS deleted_boxes (
 
 CREATE INDEX IF NOT EXISTS idx_deleted_boxes_alloc_id ON deleted_boxes(alloc_id);
 CREATE INDEX IF NOT EXISTS idx_deleted_boxes_deleted_at ON deleted_boxes(deleted_at);
+
+INSERT OR IGNORE INTO migrations (migration_number, migration_name)
+VALUES (015, '015_deleted_boxes');

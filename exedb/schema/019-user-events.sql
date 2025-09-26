@@ -15,4 +15,4 @@ CREATE TABLE IF NOT EXISTS user_events (
 );
 
 -- Record this migration
-INSERT OR IGNORE INTO migrations (migration_number, migration_name) VALUES (015, '015_user_events');
+INSERT OR IGNORE INTO migrations (migration_number, migration_name) VALUES (019, '019_user_events');
