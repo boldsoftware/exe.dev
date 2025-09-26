@@ -130,7 +130,6 @@ rm -f ~/metrics.latest
 ln -sf ~/$METRICS_NAME ~/metrics.latest
 
 # Install systemd service file
-sudo cp ~/sshpiper.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # Enable service (but don't start it yet as requested)
