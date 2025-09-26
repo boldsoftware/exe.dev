@@ -39,7 +39,7 @@ echo -e "${YELLOW}Building binary...${NC}"
 echo "Binary name: $BINARY_NAME"
 
 # Build the binary
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "/tmp/$BINARY_NAME" ./cmd/exed/exed.go
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "/tmp/$BINARY_NAME" ./cmd/exed
 
 if [ ! -f "/tmp/$BINARY_NAME" ]; then
     echo -e "${RED}ERROR: Failed to build binary${NC}"
