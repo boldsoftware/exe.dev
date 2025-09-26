@@ -766,7 +766,7 @@ func (s *Server) setupProxyServers() {
 	s.proxyLns = make([]*listener, 0, len(proxyPorts))
 
 	// Create listeners for each proxy port
-	for j, port := range proxyPorts {
+	for _, port := range proxyPorts {
 		addr := fmt.Sprintf(":%d", port)
 		ln, err := startListener(fmt.Sprintf("proxy-%d", port), addr)
 		if err != nil {
