@@ -14,6 +14,7 @@ func (s *Server) debugHandler() http.Handler {
 	mux := http.NewServeMux()
 
 	// index & aux
+	mux.HandleFunc("/debug$", s.handleDebugIndex)
 	mux.HandleFunc("/debug/", s.handleDebugIndex)
 	mux.HandleFunc("/debug/gitsha", s.handleDebugGitsha)
 
@@ -35,13 +36,6 @@ func (s *Server) debugHandler() http.Handler {
 // handleDebug gates access to debug endpoints: allowed when the
 // request originates from a Tailscale IP or loopback.
 func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
-	// If requesting /debug or /debug/, redirect to the pprof index.
-	switch r.URL.Path {
-	case "/debug", "/debug/":
-		http.Redirect(w, r, "/debug/pprof/", http.StatusTemporaryRedirect)
-		return
-	}
-
 	s.debugHandler().ServeHTTP(w, r)
 }
 
