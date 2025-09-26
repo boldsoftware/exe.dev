@@ -2,6 +2,7 @@ package exe
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,40 +13,32 @@ import (
 
 func TestProxyHostnameParsing(t *testing.T) {
 	t.Parallel()
-	server := &Server{}
+
+	prodServer := &Server{}
+	devServer := &Server{devMode: "dev"}
 
 	tests := []struct {
+		name        string
+		server      *Server
 		hostname    string
 		expectedBox string
-		shouldError bool
 	}{
-		{"test-box.exe.dev", "test-box", false},
-		{"web.localhost", "web", false},
-		{"api.exe.dev", "api", false},
-		{"empty.exe.dev", "empty", false}, // Valid in new format
-		{"invalid.domain.com", "", true},
-		{"box.with.dots.exe.dev", "", true}, // Too many subdomains
-		{"just-domain.com", "", true},       // Not exe.dev or localhost
+		{"prod valid exe.dev", prodServer, "test-box.exe.dev", "test-box"},
+		{"prod rejects localhost", prodServer, "web.localhost", ""},
+		{"prod valid simple", prodServer, "empty.exe.dev", "empty"},
+		{"prod invalid domain", prodServer, "invalid.domain.com", ""},
+		{"prod rejects dotted box", prodServer, "box.with.dots.exe.dev", ""},
+		{"dev valid localhost", devServer, "dev-box.localhost", "dev-box"},
+		{"dev rejects exe.dev", devServer, "dev-box.exe.dev", ""},
 	}
 
 	for _, test := range tests {
-		box, err := server.parseProxyHostname(test.hostname)
-
-		if test.shouldError {
-			if err == nil {
-				t.Errorf("Expected error for hostname '%s', got none", test.hostname)
+		t.Run(test.name, func(t *testing.T) {
+			result := test.server.parseProxyHostname(test.hostname)
+			if result != test.expectedBox {
+				t.Fatalf("parseProxyHostname(%q) = %q, want %q", test.hostname, result, test.expectedBox)
 			}
-			continue
-		}
-
-		if err != nil {
-			t.Errorf("Unexpected error for hostname '%s': %v", test.hostname, err)
-			continue
-		}
-
-		if box != test.expectedBox {
-			t.Errorf("Expected box '%s', got '%s'", test.expectedBox, box)
-		}
+		})
 	}
 }
 
@@ -111,6 +104,7 @@ func TestBoxCreationWithRoute(t *testing.T) {
 func TestHandleProxyRequest(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
+	mainDomain := server.getMainDomain()
 
 	// Create test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
@@ -172,9 +166,9 @@ func TestHandleProxyRequest(t *testing.T) {
 		expectedStatus int
 		expectedBody   string
 	}{
-		{"web-server.exe.dev", "GET", "/", 502, "Failed to proxy request to container"},           // No container running, should fail
-		{"web-server.exe.dev", "GET", "/api/status", 502, "Failed to proxy request to container"}, // No container running, should fail
-		{"nonexistent.exe.dev", "GET", "/", 404, "Box not found"},
+		{fmt.Sprintf("web-server.%s", mainDomain), "GET", "/", 502, "Failed to proxy request to container"},           // No container running, should fail
+		{fmt.Sprintf("web-server.%s", mainDomain), "GET", "/api/status", 502, "Failed to proxy request to container"}, // No container running, should fail
+		{fmt.Sprintf("nonexistent.%s", mainDomain), "GET", "/", 404, "Box not found"},
 	}
 
 	for _, test := range tests {
@@ -323,6 +317,7 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
+	mainDomain := server.getMainDomain()
 
 	// Create test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
@@ -370,7 +365,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	}
 
 	// Test 2: Test proxy request with private route (should redirect to auth)
-	req := createTestRequestForServer("GET", "/", boxName+".exe.dev", server)
+	req := createTestRequestForServer("GET", "/", fmt.Sprintf("%s.%s", boxName, mainDomain), server)
 	w := httptest.NewRecorder()
 	server.handleProxyRequest(w, req)
 
@@ -418,7 +413,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 	}
 
 	// Test 5: Test proxy request with public route (should fail since no container is running)
-	req2 := createTestRequestForServer("GET", "/api/test", boxName+".exe.dev", server)
+	req2 := createTestRequestForServer("GET", "/api/test", fmt.Sprintf("%s.%s", boxName, mainDomain), server)
 	w2 := httptest.NewRecorder()
 	server.handleProxyRequest(w2, req2)
 

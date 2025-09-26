@@ -2021,9 +2021,9 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse hostname to get box name
-	boxName, err := s.parseProxyHostname(hostname)
-	if err != nil {
-		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
+	boxName := s.parseProxyHostname(hostname)
+	if boxName == "" {
+		http.Error(w, "bad proxy hostname", http.StatusBadRequest)
 		return
 	}
 
@@ -2424,10 +2424,10 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 				hostname = returnHost[:idx]
 			}
 
-			boxName, err := s.parseProxyHostname(hostname)
-			if err != nil {
-				slog.Error("Failed to parse proxy hostname", "hostname", hostname, "error", err)
-				http.Error(w, "Invalid hostname format", http.StatusBadRequest)
+			boxName := s.parseProxyHostname(hostname)
+			if boxName == "" {
+				slog.Info("redirectAfterAuth failed to parse proxy hostname", "hostname", hostname)
+				http.Error(w, "invalid hostname format", http.StatusBadRequest)
 				return
 			}
 

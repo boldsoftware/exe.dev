@@ -101,10 +101,10 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse hostname to extract box name and optional explicit target port
-	boxName, err := s.parseProxyHostname(hostHeaderHost)
-	if err != nil {
-		slog.Warn("Failed to parse proxy hostname", "error", err, "host", hostHeaderHost)
-		http.Error(w, "Invalid hostname format", http.StatusBadRequest)
+	boxName := s.parseProxyHostname(hostHeaderHost)
+	if boxName == "" {
+		// Don't log a warning here, too noisy.
+		http.Error(w, "invalid hostname", http.StatusBadRequest)
 		return
 	}
 
@@ -264,31 +264,19 @@ func (s *Server) isProxyRequest(host string) bool {
 	return false
 }
 
-// parseProxyHostname extracts box and team names from hostname
-// Supports both box.team.exe.dev and box.team.localhost formats
-func (s *Server) parseProxyHostname(hostname string) (box string, err error) {
+// parseProxyHostname extracts box and team names from hostname.
+// Supports both box.team.exe.dev and box.team.localhost formats.
+// Returns an empty string if hostname is not a valid proxy hostname.
+func (s *Server) parseProxyHostname(hostname string) (box string) {
 	// Remove domain suffix based on dev mode
 	expectedDomain := s.getMainDomain()
 	expectedSuffix := "." + expectedDomain
-	if strings.HasSuffix(hostname, expectedSuffix) {
-		hostname = strings.TrimSuffix(hostname, expectedSuffix)
-	} else {
-		// Also support the other domain for flexibility
-		if s.devMode != "" && strings.HasSuffix(hostname, ".exe.dev") {
-			hostname = strings.TrimSuffix(hostname, ".exe.dev")
-		} else if s.devMode == "" && strings.HasSuffix(hostname, ".localhost") {
-			hostname = strings.TrimSuffix(hostname, ".localhost")
-		} else {
-			return "", fmt.Errorf("unsupported domain")
-		}
+	hostname, hadSuffix := strings.CutSuffix(hostname, expectedSuffix)
+	if !hadSuffix || hostname == "" || strings.Contains(hostname, ".") {
+		return ""
 	}
 
-	// The remaining part is just the box name
-	if hostname == "" || strings.Contains(hostname, ".") {
-		return "", fmt.Errorf("invalid box name")
-	}
-
-	return hostname, nil
+	return hostname
 }
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID

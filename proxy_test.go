@@ -2,6 +2,7 @@ package exe
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -81,6 +82,9 @@ func TestProxyRequestRouting(t *testing.T) {
 	// Create a test box with default routes
 	server.createTestBox(t, user.UserID, alloc.AllocID, "myapp", "container123", "nginx")
 
+	mainDomain := server.getMainDomain()
+	mainHost := fmt.Sprintf("myapp.%s", mainDomain)
+
 	tests := []struct {
 		name           string
 		host           string
@@ -89,36 +93,22 @@ func TestProxyRequestRouting(t *testing.T) {
 		expectedBody   string
 	}{
 		{
-			name:           "production proxy request",
-			host:           "myapp.exe.dev",
+			name:           "proxy request on main domain",
+			host:           mainHost,
 			expectedProxy:  true,
 			expectedStatus: 307, // Should redirect to auth for private routes
 			expectedBody:   "auth?redirect=",
 		},
 		{
-			name:           "development proxy request",
-			host:           "myapp.localhost",
-			expectedProxy:  true,
-			expectedStatus: 307, // Should redirect to auth for private routes
-			expectedBody:   "auth?redirect=",
-		},
-		{
-			name:           "production proxy request with port",
-			host:           "myapp.exe.dev:8080",
+			name:           "proxy request on main domain with explicit port",
+			host:           fmt.Sprintf("%s:%d", mainHost, 8080),
 			expectedProxy:  true,
 			expectedStatus: 307, // Should redirect to auth for private routes
 			expectedBody:   "auth?redirect=",
 		},
 		{
 			name:           "main domain request",
-			host:           "exe.dev",
-			expectedProxy:  false,
-			expectedStatus: 404, // Test server doesn't have full routing
-			expectedBody:   "",
-		},
-		{
-			name:           "localhost main request",
-			host:           "localhost:8080",
+			host:           mainDomain,
 			expectedProxy:  false,
 			expectedStatus: 404, // Test server doesn't have full routing
 			expectedBody:   "",
