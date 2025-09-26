@@ -1,3 +1,10 @@
+---
+title: exe.dev HTTP Proxies
+description: Configure and use the HTTP proxies provided for exe.dev containers.
+subheading: Operations
+published: false
+---
+
 # exe.dev HTTP Proxies
 
 exe.dev proxies traffic to https://boxname.exe.dev/ to your box seamlessly, handling

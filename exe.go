@@ -42,6 +42,7 @@ import (
 	"exe.dev/billing"
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
+	docspkg "exe.dev/docs"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/porkbun"
@@ -318,6 +319,8 @@ type Server struct {
 
 	accountant accounting.Accountant
 
+	docs *docspkg.Handler
+
 	mu       sync.RWMutex
 	stopping bool
 }
@@ -517,6 +520,13 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		slog.Info("Tag resolver configured for image freshness management")
 	}
 
+	docsStore, err := docspkg.Load()
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("loading docs: %w", err)
+	}
+	docsHandler := docspkg.NewHandler(docsStore)
+
 	s := &Server{
 		httpLn:             httpLn,
 		httpsLn:            httpsLn,
@@ -543,6 +553,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		dataSubdir:      dataSubdir,
 
 		accountant: accounting.NewDBAccountant(db),
+		docs:       docsHandler,
 	}
 
 	s.setupHTTPServer()
@@ -1124,6 +1135,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "/debug") {
 		requireLocalAccess(s.handleDebug)(w, r)
 		return
+	} else if strings.HasPrefix(path, "/docs") {
+		if s.docs != nil && s.docs.Handle(w, r) {
+			return
+		}
 	}
 	switch path {
 	case "/":

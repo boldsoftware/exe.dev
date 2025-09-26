@@ -22,6 +22,8 @@ require (
 	github.com/stripe/stripe-mock v0.195.0
 	github.com/tg123/sshpiper v0.0.0-00010101000000-000000000000
 	github.com/veops/go-ansiterm v0.0.5
+	github.com/yuin/goldmark v1.7.4
+	github.com/yuin/goldmark-meta v1.1.0
 	golang.org/x/crypto v0.41.0
 	golang.org/x/term v0.34.0
 	google.golang.org/grpc v1.75.0
@@ -90,6 +92,7 @@ require (
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.66.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
