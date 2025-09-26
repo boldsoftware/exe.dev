@@ -927,9 +927,9 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	_, err := s.postmarkClient.SendEmail(email)
 	if err != nil {
-		slog.Error("📧 Failed to send email", "to", to, "subject", subject, "error", err)
+		slog.Error("failed to send email", "to", to, "subject", subject, "error", err)
 	} else {
-		slog.Info("📧 Email sent successfully", "to", to, "subject", subject)
+		slog.Info("email sent successfully", "to", to, "subject", subject)
 	}
 	return err
 }
