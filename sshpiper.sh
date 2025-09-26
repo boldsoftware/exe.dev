@@ -31,6 +31,24 @@ while ! timeout 1 bash -c "</dev/tcp/localhost/$PIPER_PLUGIN_PORT" 2>/dev/null; 
 done
 echo "Port $PIPER_PLUGIN_PORT is ready"
 
+METRICS_ARGS=()
+if command -v tailscale &> /dev/null; then
+    TS_IP_OUTPUT=$(tailscale ip -4 2>/dev/null || true)
+    TS_IP_OUTPUT=$(echo "$TS_IP_OUTPUT" | sed '/^[[:space:]]*$/d')
+    if [ -z "$TS_IP_OUTPUT" ]; then
+        echo "Error: No Tailscale IP address found. Is Tailscale running and logged in?"
+    elif [ "$(echo "$TS_IP_OUTPUT" | wc -l)" -ne 1 ]; then
+        echo "Error: Multiple Tailscale IP addresses found. Please ensure only one is active."
+        echo "$TS_IP_OUTPUT"
+    else
+        TS_IP=$TS_IP_OUTPUT
+        echo "Using Tailscale IP: $TS_IP"
+        METRICS_ARGS=(-- ./sshpiper/metrics --collect-pipe-create-errors --collect-upstream-auth-failures --address "$TS_IP" --port 30303)
+    fi
+else
+    echo "'tailscale' command not found, skipping metrics plugin"
+fi
+
 # Start sshpiper
 cd ./sshpiper && go build -o sshpiperd ./cmd/sshpiperd; cd ..
 exec ./sshpiper/sshpiperd \
@@ -40,5 +58,4 @@ exec ./sshpiper/sshpiperd \
     --address=0.0.0.0 \
     --server-key-data="$(echo "$PRIVATE_KEY" | base64 -w 0)" \
     grpc --endpoint=localhost:$PIPER_PLUGIN_PORT --insecure \
-    -- ./sshpiper/metrics --collect-pipe-create-errors \
-    --collect-upstream-auth-failures --port 8888
+    "${METRICS_ARGS[@]}"
