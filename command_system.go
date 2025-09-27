@@ -702,3 +702,22 @@ func CompleteBoxNames(compCtx *CompletionContext, cc *CommandContext) []string {
 
 	return completions
 }
+
+// CompleteDocSlugs provides completion for embedded documentation slugs
+func CompleteDocSlugs(compCtx *CompletionContext, cc *CommandContext) []string {
+	if cc == nil || cc.SSHServer == nil || cc.SSHServer.server == nil || cc.SSHServer.server.docs == nil {
+		return nil
+	}
+	store := cc.SSHServer.server.docs.Store()
+	if store == nil {
+		return nil
+	}
+	prefix := compCtx.CurrentWord
+	var completions []string
+	for _, slug := range store.Slugs() {
+		if strings.HasPrefix(slug, prefix) {
+			completions = append(completions, slug)
+		}
+	}
+	return completions
+}

@@ -63,6 +63,14 @@ func NewCommandTree(ss *SSHServer) *CommandTree {
 			HasPositionalArgs: true,
 		},
 		{
+			Name:              "doc",
+			Description:       "Read exe.dev documentation",
+			Usage:             "doc <slug>",
+			Handler:           ss.handleDocCommand,
+			HasPositionalArgs: true,
+			CompleterFunc:     CompleteDocSlugs,
+		},
+		{
 			Name:        "list",
 			Aliases:     []string{"ls"},
 			Description: "List your boxes",

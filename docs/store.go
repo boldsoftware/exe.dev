@@ -41,6 +41,8 @@ type Asset struct {
 
 type Entry struct {
 	Path        string
+	Slug        string
+	Markdown    string
 	Author      string
 	Title       string
 	Description string
@@ -60,6 +62,7 @@ type Store struct {
 	entries     []*Entry
 	groups      []Group
 	byPath      map[string]*Entry
+	bySlug      map[string]*Entry
 	assets      map[string]Asset
 	defaultPath string
 }
@@ -67,6 +70,7 @@ type Store struct {
 func Load() (*Store, error) {
 	store := &Store{
 		byPath: make(map[string]*Entry),
+		bySlug: make(map[string]*Entry),
 		assets: make(map[string]Asset),
 	}
 
@@ -138,6 +142,9 @@ func Load() (*Store, error) {
 
 	for _, entry := range store.entries {
 		store.byPath[entry.Path] = entry
+		if entry.Slug != "" {
+			store.bySlug[entry.Slug] = entry
+		}
 	}
 
 	if len(store.entries) > 0 {
@@ -163,6 +170,26 @@ func (s *Store) Entry(path string) (*Entry, bool) {
 func (s *Store) Asset(path string) (Asset, bool) {
 	asset, ok := s.assets[path]
 	return asset, ok
+}
+
+func (s *Store) EntryBySlug(slug string) (*Entry, bool) {
+	if s == nil {
+		return nil, false
+	}
+	entry, ok := s.bySlug[slug]
+	return entry, ok
+}
+
+func (s *Store) Slugs() []string {
+	if s == nil {
+		return nil
+	}
+	slugs := make([]string, 0, len(s.bySlug))
+	for slug := range s.bySlug {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
+	return slugs
 }
 
 type Handler struct {
@@ -305,6 +332,8 @@ func parseMarkdownDoc(relPath string, data []byte) (Entry, error) {
 	if err != nil {
 		return Entry{}, err
 	}
+	entry.Slug = slug
+	entry.Markdown = string(data)
 	entry.Content = template.HTML(buf.String())
 	return entry, nil
 }
