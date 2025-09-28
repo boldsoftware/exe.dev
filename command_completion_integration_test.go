@@ -3,6 +3,7 @@ package exe
 import (
 	"testing"
 
+	"exe.dev/exemenu"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,11 +23,15 @@ func TestCompletionIntegration(t *testing.T) {
 		AllocID: "test-alloc",
 	}
 
-	cc := &CommandContext{
-		User:      user,
-		Alloc:     alloc,
+	cc := &exemenu.CommandContext{
+		User: &exemenu.UserInfo{
+			ID:    user.UserID,
+			Email: user.Email,
+		},
+		Alloc: &exemenu.AllocInfo{
+			ID: alloc.AllocID,
+		},
 		PublicKey: "test-key",
-		SSHServer: sshServer,
 	}
 
 	tests := []struct {

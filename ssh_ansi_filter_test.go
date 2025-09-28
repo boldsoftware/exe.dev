@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"exe.dev/exemenu"
 )
 
 // TestCommandSystemUsesANSIFilterInExecMode verifies that the command system properly uses ANSI filtering for exec commands
@@ -16,7 +18,7 @@ func TestCommandSystemUsesANSIFilterInExecMode(t *testing.T) {
 	var shellOutput bytes.Buffer
 
 	// Test handleExec uses NewANSIFilterWriter
-	execFilterWriter := NewANSIFilterWriter(&execOutput)
+	execFilterWriter := exemenu.NewANSIFilterWriter(&execOutput)
 	shellDirectWriter := &shellOutput
 
 	// Create test content with ANSI codes (like what help command would output)
@@ -57,10 +59,10 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 	t.Parallel()
 
 	// Create a test command that outputs ANSI codes
-	testCommand := &Command{
+	testCommand := &exemenu.Command{
 		Name:        "ansi-test",
 		Description: "Test command that outputs ANSI codes",
-		Handler: func(ctx context.Context, cc *CommandContext) error {
+		Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 			// Output content with ANSI codes like a real command would
 			cc.Write("\033[1;32mSuccess:\033[0m Command executed\r\n")
 			cc.Write("Regular text\r\n")
@@ -70,15 +72,15 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 	}
 
 	// Create command tree with our test command
-	commandTree := &CommandTree{
-		Commands: []*Command{testCommand},
+	commandTree := &exemenu.CommandTree{
+		Commands: []*exemenu.Command{testCommand},
 	}
 
 	// Test exec mode - should filter ANSI
 	t.Run("exec mode filters ANSI", func(t *testing.T) {
 		var execOutput bytes.Buffer
-		execContext := &CommandContext{
-			Output: NewANSIFilterWriter(&execOutput), // This simulates handleExec behavior
+		execContext := &exemenu.CommandContext{
+			Output: exemenu.NewANSIFilterWriter(&execOutput), // This simulates handleExec behavior
 			Args:   []string{},
 		}
 
@@ -104,7 +106,7 @@ func TestANSIFilterIntegratesWithCommandSystem(t *testing.T) {
 	// Test shell mode - should preserve ANSI
 	t.Run("shell mode preserves ANSI", func(t *testing.T) {
 		var shellOutput bytes.Buffer
-		shellContext := &CommandContext{
+		shellContext := &exemenu.CommandContext{
 			Output: &shellOutput, // This simulates handleShell behavior (direct writer)
 			Args:   []string{},
 		}
@@ -178,7 +180,7 @@ func TestANSIFilterWriterDirectly(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			writer := NewANSIFilterWriter(&buf)
+			writer := exemenu.NewANSIFilterWriter(&buf)
 
 			n, err := writer.Write([]byte(tc.input))
 			if err != nil {
@@ -203,7 +205,7 @@ func TestANSIFilterWriterMultipleWrites(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	writer := NewANSIFilterWriter(&buf)
+	writer := exemenu.NewANSIFilterWriter(&buf)
 
 	// Write parts of an ANSI sequence across multiple writes
 	writes := []string{

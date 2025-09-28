@@ -6,12 +6,13 @@ import (
 	"strings"
 
 	docspkg "exe.dev/docs"
+	"exe.dev/exemenu"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 )
 
-func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *CommandContext) error {
+func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if ss.server == nil || ss.server.docs == nil {
 		return cc.Errorf("documentation is not available")
 	}
@@ -78,7 +79,7 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *CommandContext) e
 	return nil
 }
 
-func (ss *SSHServer) writeDocList(cc *CommandContext, store *docspkg.Store) error {
+func (ss *SSHServer) writeDocList(cc *exemenu.CommandContext, store *docspkg.Store) error {
 	cc.Writeln("Usage: doc <slug>")
 	cc.Writeln("")
 	cc.Writeln("Available docs:")

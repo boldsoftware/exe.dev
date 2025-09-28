@@ -1,4 +1,4 @@
-package exe
+package exemenu
 
 import (
 	"testing"

@@ -1,4 +1,4 @@
-package exe
+package exemenu
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/charmbracelet/x/ansi"
@@ -103,12 +104,11 @@ func (c *Command) Help(cc *CommandContext) error {
 // CommandContext provides all the context a command needs to execute
 type CommandContext struct {
 	// Core context
-	User       *User
-	Alloc      *Alloc
+	User       *UserInfo
+	Alloc      *AllocInfo
 	PublicKey  string
 	Args       []string
 	FlagSet    *flag.FlagSet // parsed flags for this command
-	SSHServer  *SSHServer
 	SSHSession ssh.Session
 	DevMode    bool // if true, show hidden commands in help and completions
 
@@ -120,6 +120,21 @@ type CommandContext struct {
 	// (e.g., HTTP/SSE driven flows). When true, progress spinner output
 	// will be enabled even without an SSH session.
 	ForceSpinner bool
+}
+
+// UserInfo provides the minimal user details required by menu commands.
+type UserInfo struct {
+	ID    string
+	Email string
+}
+
+// AllocInfo contains allocation details needed by menu commands.
+type AllocInfo struct {
+	ID               string
+	Type             string
+	Region           string
+	BillingAccountID string
+	CreatedAt        time.Time
 }
 
 // Write is a convenience method for writing to the output.
@@ -674,50 +689,4 @@ func (ct *CommandTree) findDeepestSubcommand(commandPath []string) (*Command, []
 	}
 
 	return current, commandPath[consumed:]
-}
-
-// Common completion functions
-
-// CompleteBoxNames provides completion for box names
-func CompleteBoxNames(compCtx *CompletionContext, cc *CommandContext) []string {
-	if cc.SSHServer == nil || cc.SSHServer.server == nil || cc.SSHServer.server.containerManager == nil {
-		return nil
-	}
-
-	// Get user's containers
-	ctx := context.Background() // Use a background context for completion
-	containers, err := cc.SSHServer.server.containerManager.ListContainers(ctx, cc.Alloc.AllocID)
-	if err != nil {
-		return nil
-	}
-
-	var completions []string
-	prefix := compCtx.CurrentWord
-
-	for _, container := range containers {
-		if strings.HasPrefix(container.Name, prefix) {
-			completions = append(completions, container.Name)
-		}
-	}
-
-	return completions
-}
-
-// CompleteDocSlugs provides completion for embedded documentation slugs
-func CompleteDocSlugs(compCtx *CompletionContext, cc *CommandContext) []string {
-	if cc == nil || cc.SSHServer == nil || cc.SSHServer.server == nil || cc.SSHServer.server.docs == nil {
-		return nil
-	}
-	store := cc.SSHServer.server.docs.Store()
-	if store == nil {
-		return nil
-	}
-	prefix := compCtx.CurrentWord
-	var completions []string
-	for _, slug := range store.Slugs() {
-		if strings.HasPrefix(slug, prefix) {
-			completions = append(completions, slug)
-		}
-	}
-	return completions
 }

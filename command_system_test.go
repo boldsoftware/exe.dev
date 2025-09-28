@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"exe.dev/billing"
+	"exe.dev/exemenu"
 )
 
 // MockOutput captures output for testing
@@ -23,13 +24,26 @@ func (m *MockOutput) String() string {
 }
 
 // Helper to create test context
-func createTestContext(sshServer *SSHServer, user *User, alloc *Alloc, output *MockOutput, args []string) *CommandContext {
-	return &CommandContext{
-		User:      user,
-		Alloc:     alloc,
+func createTestContext(sshServer *SSHServer, user *User, alloc *Alloc, output *MockOutput, args []string) *exemenu.CommandContext {
+	var userInfo *exemenu.UserInfo
+	if user != nil {
+		userInfo = &exemenu.UserInfo{ID: user.UserID, Email: user.Email}
+	}
+	var allocInfo *exemenu.AllocInfo
+	if alloc != nil {
+		allocInfo = &exemenu.AllocInfo{
+			ID:               alloc.AllocID,
+			Type:             string(alloc.AllocType),
+			Region:           string(alloc.Region),
+			BillingAccountID: alloc.BillingAccountID,
+			CreatedAt:        alloc.CreatedAt,
+		}
+	}
+	return &exemenu.CommandContext{
+		User:      userInfo,
+		Alloc:     allocInfo,
 		PublicKey: "test-key",
 		Args:      args,
-		SSHServer: sshServer,
 		Output:    output,
 		Terminal:  nil, // For now, we'll test without the terminal interface
 	}
@@ -108,7 +122,7 @@ func TestCommandTree_FindCommand(t *testing.T) {
 func TestCommandContext_HelperMethods(t *testing.T) {
 	output := &MockOutput{}
 
-	ctx := &CommandContext{
+	ctx := &exemenu.CommandContext{
 		Output:   output,
 		Terminal: nil, // Non-interactive for this test
 	}
@@ -426,14 +440,14 @@ func TestCommandFlagParsing(t *testing.T) {
 		name         string
 		commandPath  []string
 		expectedArgs []string
-		checkFlags   func(t *testing.T, cc *CommandContext)
+		checkFlags   func(t *testing.T, cc *exemenu.CommandContext)
 		expectErr    bool
 	}{
 		{
 			name:         "new command with no flags",
 			commandPath:  []string{"new"},
 			expectedArgs: []string{},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for new command")
 				}
@@ -461,7 +475,7 @@ func TestCommandFlagParsing(t *testing.T) {
 			name:         "new command with name flag",
 			commandPath:  []string{"new", "--name=test-machine"},
 			expectedArgs: []string{},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for new command")
 				}
@@ -475,7 +489,7 @@ func TestCommandFlagParsing(t *testing.T) {
 			name:         "new command with multiple flags",
 			commandPath:  []string{"new", "--name=my-machine", "--image=ubuntu:22.04", "--size=large"},
 			expectedArgs: []string{},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for new command")
 				}
@@ -498,7 +512,7 @@ func TestCommandFlagParsing(t *testing.T) {
 			name:         "new command with flags and remaining args",
 			commandPath:  []string{"new", "--name=test", "arg1", "arg2"},
 			expectedArgs: []string{"arg1", "arg2"},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for new command")
 				}
@@ -513,7 +527,7 @@ func TestCommandFlagParsing(t *testing.T) {
 			name:         "new command with separated flag value",
 			commandPath:  []string{"new", "--name", "separated-value"},
 			expectedArgs: []string{},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for new command")
 				}
@@ -527,7 +541,7 @@ func TestCommandFlagParsing(t *testing.T) {
 			name:         "help command has no flags",
 			commandPath:  []string{"help"},
 			expectedArgs: []string{},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				// Help command should not have a FlagSet, so it uses the defaultFlagSet
 				// which means cc.FlagSet should be nil after execution
 				if cc.FlagSet != nil {
@@ -540,8 +554,8 @@ func TestCommandFlagParsing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a mock handler that captures the CommandContext for inspection
-			var capturedCC *CommandContext
-			mockHandler := func(ctx context.Context, cc *CommandContext) error {
+			var capturedCC *exemenu.CommandContext
+			mockHandler := func(ctx context.Context, cc *exemenu.CommandContext) error {
 				capturedCC = cc
 				return nil
 			}
@@ -614,21 +628,21 @@ func TestSubcommandFlagParsing(t *testing.T) {
 		return fs
 	}
 
-	var capturedContext *CommandContext
-	testSubHandler := func(ctx context.Context, cc *CommandContext) error {
+	var capturedContext *exemenu.CommandContext
+	testSubHandler := func(ctx context.Context, cc *exemenu.CommandContext) error {
 		capturedContext = cc
 		return nil
 	}
 
-	customTree := &CommandTree{
-		Commands: []*Command{
+	customTree := &exemenu.CommandTree{
+		Commands: []*exemenu.Command{
 			{
 				Name:        "parent",
 				Description: "Parent command with subcommands",
-				Handler: func(ctx context.Context, cc *CommandContext) error {
+				Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
 					return nil
 				},
-				Subcommands: []*Command{
+				Subcommands: []*exemenu.Command{
 					{
 						Name:              "sub",
 						Description:       "Subcommand with flags",
@@ -654,14 +668,14 @@ func TestSubcommandFlagParsing(t *testing.T) {
 		name         string
 		commandPath  []string
 		expectedArgs []string
-		checkFlags   func(t *testing.T, cc *CommandContext)
+		checkFlags   func(t *testing.T, cc *exemenu.CommandContext)
 		expectErr    bool
 	}{
 		{
 			name:         "subcommand with default flags",
 			commandPath:  []string{"parent", "sub"},
 			expectedArgs: []string{},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for subcommand with flags")
 				}
@@ -679,7 +693,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 			name:         "subcommand with custom flags",
 			commandPath:  []string{"parent", "sub", "--option=custom", "--verbose"},
 			expectedArgs: []string{},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for subcommand with flags")
 				}
@@ -697,7 +711,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 			name:         "subcommand with flags and remaining args",
 			commandPath:  []string{"parent", "sub", "--option=test", "arg1", "arg2"},
 			expectedArgs: []string{"arg1", "arg2"},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
 					t.Fatal("FlagSet should not be nil for subcommand with flags")
 				}
@@ -711,7 +725,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 			name:         "subcommand without flags",
 			commandPath:  []string{"parent", "nosub", "arg1"},
 			expectedArgs: []string{"arg1"},
-			checkFlags: func(t *testing.T, cc *CommandContext) {
+			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet != nil {
 					t.Errorf("Expected FlagSet to be nil for subcommand without flags, got %v", cc.FlagSet)
 				}
@@ -807,12 +821,12 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 			ctx := context.Background()
 
 			// For valid flags test, replace handler with a mock to avoid business logic
-			var originalHandler func(context.Context, *CommandContext) error
+			var originalHandler func(context.Context, *exemenu.CommandContext) error
 			if !tt.expectError {
 				cmd := sshServer.commands.FindCommand([]string{tt.commandPath[0]})
 				if cmd != nil {
 					originalHandler = cmd.Handler
-					cmd.Handler = func(ctx context.Context, cc *CommandContext) error {
+					cmd.Handler = func(ctx context.Context, cc *exemenu.CommandContext) error {
 						return nil // Success
 					}
 				}
@@ -846,75 +860,75 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 func TestValidateCommand(t *testing.T) {
 	tests := []struct {
 		name        string
-		command     *Command
+		command     *exemenu.Command
 		expectError bool
 		errorText   string
 	}{
 		{
 			name: "valid command with positional args only",
-			command: &Command{
+			command: &exemenu.Command{
 				Name:              "test",
 				HasPositionalArgs: true,
-				Handler:           func(context.Context, *CommandContext) error { return nil },
+				Handler:           func(context.Context, *exemenu.CommandContext) error { return nil },
 			},
 			expectError: false,
 		},
 		{
 			name: "valid command with subcommands only",
-			command: &Command{
+			command: &exemenu.Command{
 				Name: "test",
-				Subcommands: []*Command{
+				Subcommands: []*exemenu.Command{
 					{
 						Name:    "sub",
-						Handler: func(context.Context, *CommandContext) error { return nil },
+						Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 					},
 				},
-				Handler: func(context.Context, *CommandContext) error { return nil },
+				Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 			},
 			expectError: false,
 		},
 		{
 			name: "valid command with neither positional args nor subcommands",
-			command: &Command{
+			command: &exemenu.Command{
 				Name:    "test",
-				Handler: func(context.Context, *CommandContext) error { return nil },
+				Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 			},
 			expectError: false,
 		},
 		{
 			name: "invalid command with both positional args and subcommands",
-			command: &Command{
+			command: &exemenu.Command{
 				Name:              "test",
 				HasPositionalArgs: true,
-				Subcommands: []*Command{
+				Subcommands: []*exemenu.Command{
 					{
 						Name:    "sub",
-						Handler: func(context.Context, *CommandContext) error { return nil },
+						Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 					},
 				},
-				Handler: func(context.Context, *CommandContext) error { return nil },
+				Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 			},
 			expectError: true,
 			errorText:   "cannot have both positional arguments and subcommands",
 		},
 		{
 			name: "invalid subcommand with both positional args and subcommands",
-			command: &Command{
+			command: &exemenu.Command{
 				Name: "parent",
-				Subcommands: []*Command{
+				Subcommands: []*exemenu.Command{
 					{
 						Name:              "invalid-sub",
 						HasPositionalArgs: true,
-						Subcommands: []*Command{
+						Subcommands: []*exemenu.Command{
 							{
 								Name:    "nested",
-								Handler: func(context.Context, *CommandContext) error { return nil },
+								Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 							},
 						},
-						Handler: func(context.Context, *CommandContext) error { return nil },
+						Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 					},
 				},
-				Handler: func(context.Context, *CommandContext) error { return nil },
+				Handler: func(context.Context, *exemenu.CommandContext) error { return nil },
 			},
 			expectError: true,
 			errorText:   "in subcommand of \"parent\": command \"invalid-sub\" cannot have both positional arguments and subcommands",
@@ -923,7 +937,7 @@ func TestValidateCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateCommand(tt.command)
+			err := exemenu.ValidateCommand(tt.command)
 
 			if tt.expectError {
 				if err == nil {

@@ -13,6 +13,7 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/exedb"
+	"exe.dev/exemenu"
 	"exe.dev/sqlite"
 )
 
@@ -541,9 +542,15 @@ func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Reque
 
 	fs := newCommandFlags()
 	_ = fs.Set("name", hostname)
-	cc := &CommandContext{
-		User:    &User{UserID: userID},
-		Alloc:   alloc,
+	cc := &exemenu.CommandContext{
+		User: &exemenu.UserInfo{ID: userID},
+		Alloc: &exemenu.AllocInfo{
+			ID:               alloc.AllocID,
+			Type:             string(alloc.AllocType),
+			Region:           string(alloc.Region),
+			BillingAccountID: alloc.BillingAccountID,
+			CreatedAt:        alloc.CreatedAt,
+		},
 		FlagSet: fs,
 		Output:  &sseLineWriter{w: w},
 		// Force spinner/progress output for HTTP/SSE flows

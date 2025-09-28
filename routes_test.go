@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"exe.dev/exedb"
+	"exe.dev/exemenu"
 	"exe.dev/sqlite"
 )
 
@@ -247,12 +248,12 @@ func TestRouteCommandEndToEnd(t *testing.T) {
 	sshServer := &SSHServer{server: server}
 
 	// Test proxy command by calling it directly
-	cc := &CommandContext{
+	cc := &exemenu.CommandContext{
 		PublicKey: publicKey,
-		Alloc:     &Alloc{AllocID: allocID},
+		Alloc:     &exemenu.AllocInfo{ID: allocID},
 		Args:      []string{boxName},
 		Output:    &mockSession{},
-		User:      &User{UserID: userID},
+		User:      &exemenu.UserInfo{ID: userID},
 	}
 
 	// Test showing current proxy configuration (no flags)
@@ -376,12 +377,12 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 
 	// Test 3: Use proxy command to set public access on port 8080
 	sshServer := &SSHServer{server: server}
-	cc := &CommandContext{
+	cc := &exemenu.CommandContext{
 		PublicKey: publicKey,
-		Alloc:     &Alloc{AllocID: allocID},
+		Alloc:     &exemenu.AllocInfo{ID: allocID},
 		Args:      []string{boxName},
 		Output:    &mockSession{},
-		User:      &User{UserID: userID},
+		User:      &exemenu.UserInfo{ID: userID},
 	}
 
 	// Set to public port 8080

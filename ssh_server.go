@@ -14,6 +14,7 @@ import (
 
 	"exe.dev/billing"
 	"exe.dev/exedb"
+	"exe.dev/exemenu"
 	"exe.dev/sqlite"
 	"exe.dev/termfun"
 	"github.com/anmitsu/go-shlex"
@@ -40,7 +41,7 @@ type SSHServer struct {
 	server   *Server
 	srv      *ssh.Server
 	billing  billing.Billing
-	commands *CommandTree
+	commands *exemenu.CommandTree
 }
 
 // NewSSHServer creates a new SSH server using gliderlabs/ssh
@@ -390,12 +391,20 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, u
 			continue
 		}
 
-		cc := &CommandContext{
-			User:       user,
-			Alloc:      alloc,
+		cc := &exemenu.CommandContext{
+			User: &exemenu.UserInfo{
+				ID:    user.UserID,
+				Email: user.Email,
+			},
+			Alloc: &exemenu.AllocInfo{
+				ID:               alloc.AllocID,
+				Type:             string(alloc.AllocType),
+				Region:           string(alloc.Region),
+				BillingAccountID: alloc.BillingAccountID,
+				CreatedAt:        alloc.CreatedAt,
+			},
 			PublicKey:  publicKey,
 			Args:       []string{}, // ExecuteCommand will determine the real args
-			SSHServer:  ss,
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal, // Interactive terminal available
@@ -717,13 +726,21 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		return
 	}
 
-	cc := &CommandContext{
-		User:       user,
-		Alloc:      alloc,
+	cc := &exemenu.CommandContext{
+		User: &exemenu.UserInfo{
+			ID:    user.UserID,
+			Email: user.Email,
+		},
+		Alloc: &exemenu.AllocInfo{
+			ID:               alloc.AllocID,
+			Type:             string(alloc.AllocType),
+			Region:           string(alloc.Region),
+			BillingAccountID: alloc.BillingAccountID,
+			CreatedAt:        alloc.CreatedAt,
+		},
 		PublicKey:  publicKey,
-		Args:       cmd[1:], // Skip the command name itself
-		SSHServer:  ss,
-		Output:     NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
+		Args:       cmd[1:],                        // Skip the command name itself
+		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
 		SSHSession: s,
 		Terminal:   nil, // No interactive terminal for exec mode
 		DevMode:    ss.server.devMode == "local",
@@ -907,11 +924,19 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User,
 		}
 
 		// Create command context for completion
-		cc := &CommandContext{
-			User:       user,
-			Alloc:      alloc,
+		cc := &exemenu.CommandContext{
+			User: &exemenu.UserInfo{
+				ID:    user.UserID,
+				Email: user.Email,
+			},
+			Alloc: &exemenu.AllocInfo{
+				ID:               alloc.AllocID,
+				Type:             string(alloc.AllocType),
+				Region:           string(alloc.Region),
+				BillingAccountID: alloc.BillingAccountID,
+				CreatedAt:        alloc.CreatedAt,
+			},
 			PublicKey:  publicKey,
-			SSHServer:  ss,
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal,
