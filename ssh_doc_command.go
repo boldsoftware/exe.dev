@@ -64,7 +64,11 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 		}
 	}
 
-	model := newDocViewerModel(entry.Title, slug, entry.Markdown, width, height)
+	title := entry.Title
+	if ss.server != nil && ss.server.devMode != "" && !entry.Published {
+		title += " [hidden]"
+	}
+	model := newDocViewerModel(title, slug, entry.Markdown, width, height)
 	program := tea.NewProgram(model,
 		tea.WithContext(ctx),
 		tea.WithInput(cc.SSHSession),
@@ -83,13 +87,18 @@ func (ss *SSHServer) writeDocList(cc *exemenu.CommandContext, store *docspkg.Sto
 	cc.Writeln("Usage: doc <slug>")
 	cc.Writeln("")
 	cc.Writeln("Available docs:")
+	showHidden := ss.server != nil && ss.server.devMode != ""
 	for _, group := range store.Groups() {
 		heading := strings.TrimSpace(group.Heading)
 		if heading != "" {
 			cc.Writeln("  %s", heading)
 		}
 		for _, entry := range group.Docs {
-			cc.Writeln("    %-20s %s", entry.Slug, entry.Title)
+			title := entry.Title
+			if showHidden && !entry.Published {
+				title += " [hidden]"
+			}
+			cc.Writeln("    %-20s %s", entry.Slug, title)
 		}
 	}
 	return nil

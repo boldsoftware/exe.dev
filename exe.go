@@ -521,12 +521,13 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		slog.Info("Tag resolver configured for image freshness management")
 	}
 
-	docsStore, err := docspkg.Load()
+	includeUnpublishedDocs := devMode != ""
+	docsStore, err := docspkg.Load(includeUnpublishedDocs)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("loading docs: %w", err)
 	}
-	docsHandler := docspkg.NewHandler(docsStore)
+	docsHandler := docspkg.NewHandler(docsStore, includeUnpublishedDocs)
 
 	s := &Server{
 		httpLn:             httpLn,

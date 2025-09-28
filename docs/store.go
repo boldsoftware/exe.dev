@@ -67,7 +67,7 @@ type Store struct {
 	defaultPath string
 }
 
-func Load() (*Store, error) {
+func Load(includeUnpublished bool) (*Store, error) {
 	store := &Store{
 		byPath: make(map[string]*Entry),
 		bySlug: make(map[string]*Entry),
@@ -106,7 +106,7 @@ func Load() (*Store, error) {
 			if err != nil {
 				return fmt.Errorf("parsing %s: %w", path, err)
 			}
-			if entry.Published {
+			if entry.Published || includeUnpublished {
 				copyEntry := entry
 				store.entries = append(store.entries, &copyEntry)
 			}
@@ -123,6 +123,9 @@ func Load() (*Store, error) {
 
 	sort.Slice(store.entries, func(i, j int) bool {
 		a, b := store.entries[i], store.entries[j]
+		if a.Published != b.Published {
+			return a.Published
+		}
 		if a.Subheading != b.Subheading {
 			return a.Subheading < b.Subheading
 		}
@@ -147,7 +150,13 @@ func Load() (*Store, error) {
 		}
 	}
 
-	if len(store.entries) > 0 {
+	for _, entry := range store.entries {
+		if entry.Published {
+			store.defaultPath = entry.Path
+			break
+		}
+	}
+	if store.defaultPath == "" && len(store.entries) > 0 {
 		store.defaultPath = store.entries[0].Path
 	}
 
@@ -193,14 +202,15 @@ func (s *Store) Slugs() []string {
 }
 
 type Handler struct {
-	store *Store
+	store      *Store
+	showHidden bool
 }
 
-func NewHandler(store *Store) *Handler {
+func NewHandler(store *Store, showHidden bool) *Handler {
 	if store == nil {
 		return nil
 	}
-	return &Handler{store: store}
+	return &Handler{store: store, showHidden: showHidden}
 }
 
 func (h *Handler) Store() *Store {
@@ -254,8 +264,9 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *Entry) {
 	buf := new(bytes.Buffer)
 	data := map[string]any{
-		"Entry":  entry,
-		"Groups": h.store.Groups(),
+		"Entry":      entry,
+		"Groups":     h.store.Groups(),
+		"ShowHidden": h.showHidden,
 	}
 
 	if err := docTemplates.ExecuteTemplate(buf, "doc-entry.html", data); err != nil {
@@ -270,7 +281,8 @@ func (h *Handler) renderDocEntry(w http.ResponseWriter, r *http.Request, entry *
 func (h *Handler) renderDocsList(w http.ResponseWriter, r *http.Request) {
 	buf := new(bytes.Buffer)
 	data := map[string]any{
-		"Groups": h.store.Groups(),
+		"Groups":     h.store.Groups(),
+		"ShowHidden": h.showHidden,
 	}
 
 	if err := docTemplates.ExecuteTemplate(buf, "docs-list.html", data); err != nil {

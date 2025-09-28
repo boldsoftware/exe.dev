@@ -260,7 +260,7 @@
           {{range .Docs}}
           <div class="doc-item">
             <h3 class="doc-title">
-              <a href="{{.Path}}">{{.Title}}</a>
+              <a href="{{.Path}}">{{.Title}}{{if and $.ShowHidden (not .Published)}} [hidden]{{end}}</a>
             </h3>
             <p class="doc-description">{{.Description}}</p>
           </div>
