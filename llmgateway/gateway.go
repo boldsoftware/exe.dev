@@ -203,6 +203,9 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.ReverseProxy, error) {
+	if m.apiKeys.Anthropic == "" {
+		return nil, fmt.Errorf("anthropic api key not configured")
+	}
 	transport := &accountingTransport{
 		RoundTripper:     http.DefaultTransport,
 		accountant:       m.accountant,
@@ -231,6 +234,9 @@ func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.Re
 }
 
 func (m *llmGateway) createOpenAIProxy(billingAccountID string) (*httputil.ReverseProxy, error) {
+	if m.apiKeys.OpenAI == "" {
+		return nil, fmt.Errorf("anthropic api key not configured")
+	}
 	transport := &accountingTransport{
 		RoundTripper:     http.DefaultTransport,
 		accountant:       m.accountant,
@@ -260,6 +266,9 @@ func (m *llmGateway) createOpenAIProxy(billingAccountID string) (*httputil.Rever
 }
 
 func (m *llmGateway) createFireworksProxy(billingAccountID string) (*httputil.ReverseProxy, error) {
+	if m.apiKeys.Fireworks == "" {
+		return nil, fmt.Errorf("fireworks api key not configured")
+	}
 	transport := &accountingTransport{
 		RoundTripper:     http.DefaultTransport,
 		accountant:       m.accountant,
