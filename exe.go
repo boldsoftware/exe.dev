@@ -2048,12 +2048,10 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	cancelURL := strings.ReplaceAll(currentURL, "action=", "unused=") + "&action=cancel"
 
 	data := struct {
-		TeamName   string
 		SiteDomain string
 		ConfirmURL string
 		CancelURL  string
 	}{
-		TeamName:   boxName,
 		SiteDomain: hostname,
 		ConfirmURL: confirmURL,
 		CancelURL:  cancelURL,
