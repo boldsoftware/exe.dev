@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, Model, Conversation, StreamResponse } from '../types';
+import { Message, Model, Conversation, StreamResponse, LLMContent } from '../types';
 import { api } from '../services/api';
 import MessageComponent from './Message';
 import MessageInput from './MessageInput';
@@ -188,13 +188,13 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     }
 
     // Build tool use map from all messages
-    const toolUseMap: Record<string, {name: string, input: any}> = {};
+    const toolUseMap: Record<string, {name: string, input: unknown}> = {};
     messages.forEach(message => {
       if (message.llm_data) {
         try {
           const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
           if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
-            llmData.Content.forEach((content: any) => {
+            llmData.Content.forEach((content: LLMContent) => {
               if (content && content.Type === 5 && content.ID && content.ToolName) { // tool_use
                 toolUseMap[content.ID] = {
                   name: content.ToolName,
@@ -220,10 +220,10 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
         // Check if message only contains:
         // 1. Generic "I'll use the X tool now" text
         // 2. Tool use content
-        const hasToolUse = llmData.Content.some((c: any) => c.Type === 5);
+        const hasToolUse = llmData.Content.some((c: LLMContent) => c.Type === 5);
         if (!hasToolUse) return false;
         
-        const textContent = llmData.Content.filter((c: any) => c.Type === 2).map((c: any) => c.Text).join(' ').trim();
+        const textContent = llmData.Content.filter((c: LLMContent) => c.Type === 2).map((c: LLMContent) => c.Text).join(' ').trim();
         const isGenericToolText = textContent.match(/^I'll use the \w+ tool now\.?$/);
         
         return isGenericToolText !== null;

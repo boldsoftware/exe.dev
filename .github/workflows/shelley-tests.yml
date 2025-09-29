@@ -1,0 +1,50 @@
+name: Shelley Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'shelley/**'
+      - '.github/workflows/shelley-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shelley
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: shelley/go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Shelley tests
+        run: ./test_ci.sh
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: shelley/ui/playwright-report/
+          retention-days: 7
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: shelley/ui/test-results/
+          retention-days: 7
+        continue-on-error: true

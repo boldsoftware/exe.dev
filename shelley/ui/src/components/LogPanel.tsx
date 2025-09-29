@@ -4,7 +4,7 @@ interface LogEntry {
   timestamp: string;
   level: string;
   message: string;
-  fields?: Record<string, any>;
+  fields?: Record<string, unknown>;
 }
 
 const LogPanel: React.FC = () => {
@@ -69,7 +69,7 @@ const LogPanel: React.FC = () => {
     }
   };
 
-  const formatFields = (fields?: Record<string, any>) => {
+  const formatFields = (fields?: Record<string, unknown>) => {
     if (!fields || Object.keys(fields).length === 0) {
       return null;
     }

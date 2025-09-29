@@ -4,7 +4,7 @@ import { Message as MessageType, LLMMessage, LLMContent } from '../types';
 interface MessageProps {
   message: MessageType;
   // Tool use information from previous messages to correlate with results
-  toolUseMap?: Record<string, {name: string, input: any}>;
+  toolUseMap?: Record<string, {name: string, input: unknown}>;
 }
 
 function Message({ message, toolUseMap }: MessageProps) {
@@ -21,21 +21,6 @@ function Message({ message, toolUseMap }: MessageProps) {
   const isUser = message.type === 'user' && !hasToolResult(llmMessage);
   const isAssistant = message.type === 'agent';
   const isTool = message.type === 'tool' || hasToolContent(llmMessage);
-  
-  // Extract tool use information from current message
-  const getToolUseInfo = (content: LLMContent[]) => {
-    const toolUse = content.find(c => c.Type === 5); // tool_use
-    if (toolUse && toolUse.ID && toolUse.ToolName) {
-      return {
-        id: toolUse.ID,
-        name: toolUse.ToolName,
-        input: toolUse.ToolInput
-      };
-    }
-    return null;
-  };
-  
-  const currentToolUse = llmMessage ? getToolUseInfo(llmMessage.Content) : null;
 
   // Convert Go struct Type field (number) to string type
   // Based on llm/llm.go constants (iota continues across types in same const block):
@@ -118,7 +103,7 @@ function Message({ message, toolUseMap }: MessageProps) {
         }
 
         // Get a short summary of the tool result for mobile-friendly display
-        const getToolResultSummary = (results: any[]) => {
+        const getToolResultSummary = (results: LLMContent[]) => {
           if (!results || results.length === 0) return 'No output';
           
           const firstResult = results[0];
@@ -214,7 +199,7 @@ function Message({ message, toolUseMap }: MessageProps) {
       case 'thinking':
         // Hide thinking content by default in main flow, but could be made expandable
         return null;
-      default:
+      default: {
         // For unknown content types, show the type and try to display useful content
         const displayText = content.Text || content.Data || '';
         const hasMediaType = content.MediaType;
@@ -263,6 +248,7 @@ function Message({ message, toolUseMap }: MessageProps) {
             )}
           </div>
         );
+      }
     }
   };
 
