@@ -2122,7 +2122,8 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 
 // storeEmailVerification stores an email verification token
 func (s *Server) storeEmailVerification(ctx context.Context, email, token string) error {
-	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
 		// Check if user exists, create if not
 		userID, err := queries.GetUserIDByEmail(ctx, email)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -2147,10 +2148,8 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 				return fmt.Errorf("failed to create user: %w", err)
 			}
 
-			// Apply new user credits in a separate transaction
-			err = s.db.Tx(ctx, func(ctx context.Context, tx2 *sqlite.Tx) error {
-				return s.accountant.ApplyNewUserCredits(ctx, tx2, billingAccountID)
-			})
+			// Apply new user credits using the current transaction
+			err = s.accountant.ApplyNewUserCredits(ctx, tx, billingAccountID)
 			if err != nil {
 				return fmt.Errorf("failed to apply new user credits: %w", err)
 			}
