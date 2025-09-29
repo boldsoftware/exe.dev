@@ -51,16 +51,17 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 		logger:    logger,
 	}
 
-	// Anthropic Claude (env required)
-	manager.factories["claude-sonnet-3.5"] = func() (llm.Service, error) {
+	// Anthropic Claude Sonnet 4.5 (env required)
+	manager.factories["claude-sonnet-4.5"] = func() (llm.Service, error) {
 		apiKey := os.Getenv("ANTHROPIC_API_KEY")
 		if apiKey == "" {
-			return nil, fmt.Errorf("claude-sonnet-3.5 requires ANTHROPIC_API_KEY env var")
+			return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY env var")
 		}
-		return &ant.Service{APIKey: apiKey, Model: ant.DefaultModel}, nil
+		return &ant.Service{APIKey: apiKey, Model: ant.Claude45Sonnet}, nil
 	}
-	// Backward-compat alias
-	manager.factories["claude-sonnet-4.1"] = manager.factories["claude-sonnet-3.5"]
+	// Aliases
+	manager.factories["claude"] = manager.factories["claude-sonnet-4.5"]
+	manager.factories["sonnet"] = manager.factories["claude-sonnet-4.5"]
 
 	// OpenAI (env required)
 	manager.factories["openai-gpt4"] = func() (llm.Service, error) {

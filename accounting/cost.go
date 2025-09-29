@@ -4,11 +4,12 @@ package accounting
 // different kinds of metered usage.
 
 const (
-	Claude35Sonnet = "claude-3-5-sonnet-20241022"
 	Claude35Haiku  = "claude-3-5-haiku-20241022"
 	Claude37Sonnet = "claude-3-7-sonnet-20250219"
 	Claude4Sonnet  = "claude-sonnet-4-20250514"
+	Claude45Sonnet = "claude-sonnet-4-5-20250929"
 	Claude4Opus    = "claude-opus-4-20250514"
+	Claude41Opus   = "claude-opus-4-1-20250805"
 )
 
 type microCents uint64 // millionths of a cent
@@ -22,7 +23,7 @@ func UsageCost(model string, usage Usage) microCents {
 	cpm, ok := modelCost[model]
 	if !ok {
 		// Default to Sonnet pricing if model not found
-		cpm = modelCost[Claude35Sonnet]
+		cpm = modelCost[Claude45Sonnet]
 	}
 
 	uc := usage.InputTokens*cpm.Input +
@@ -51,35 +52,47 @@ type centsPer1MTokens struct {
 
 // https://www.anthropic.com/pricing#api
 var modelCost = map[string]centsPer1MTokens{
+	// Claude 4.5 Sonnet
+	Claude45Sonnet: {
+		Input:         300,  // $3
+		Output:        1500, // $15
+		CacheRead:     30,   // $0.30
+		CacheCreation: 375,  // $3.75
+	},
+	// Claude 4 Sonnet
 	Claude4Sonnet: {
 		Input:         300,  // $3
 		Output:        1500, // $15
 		CacheRead:     30,   // $0.30
 		CacheCreation: 375,  // $3.75
 	},
-	Claude4Opus: {
-		Input:         1500, // $15
-		Output:        7500, // $75
-		CacheRead:     150,  // $1.50
-		CacheCreation: 1875, // $18.75
-	},
+	// Claude 3.7 Sonnet
 	Claude37Sonnet: {
 		Input:         300,  // $3
 		Output:        1500, // $15
 		CacheRead:     30,   // $0.30
 		CacheCreation: 375,  // $3.75
 	},
+	// Claude 4.1 Opus
+	Claude41Opus: {
+		Input:         1500, // $15
+		Output:        7500, // $75
+		CacheRead:     150,  // $1.50
+		CacheCreation: 1875, // $18.75
+	},
+	// Claude 4 Opus
+	Claude4Opus: {
+		Input:         1500, // $15
+		Output:        7500, // $75
+		CacheRead:     150,  // $1.50
+		CacheCreation: 1875, // $18.75
+	},
+	// Claude 3.5 Haiku
 	Claude35Haiku: {
 		Input:         80,  // $0.80
 		Output:        400, // $4.00
 		CacheRead:     8,   // $0.08
 		CacheCreation: 100, // $1.00
-	},
-	Claude35Sonnet: {
-		Input:         300,  // $3
-		Output:        1500, // $15
-		CacheRead:     30,   // $0.30
-		CacheCreation: 375,  // $3.75
 	},
 	// Gemini 1.5 Pro pricing
 	// https://ai.google.dev/pricing

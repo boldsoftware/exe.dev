@@ -58,7 +58,7 @@ func generateSlugText(ctx context.Context, llmProvider LLMServiceProvider, logge
 	var err error
 
 	// Preferred models in order of preference
-	preferredModels := []string{"gpt5-mini", "gpt-5-thinking-mini", "claude-sonnet-3.5", "qwen3-coder-fireworks", "predictable"}
+	preferredModels := []string{"qwen3-coder-fireworks", "gpt5-mini", "gpt-5-thinking-mini", "claude-sonnet-4.5", "predictable"}
 
 	for _, model := range preferredModels {
 		llmService, err = llmProvider.GetService(model)

@@ -565,7 +565,7 @@ func (b *BashTool) selectBestLLM() (llm.Service, error) {
 	}
 
 	// Preferred models in order of preference for tool validation (fast, cheap models preferred)
-	preferredModels := []string{"gpt-5-thinking-mini", "gpt5-mini", "claude-sonnet-3.5", "qwen3-coder-fireworks", "predictable"}
+	preferredModels := []string{"qwen3-coder-fireworks", "gpt-5-thinking-mini", "gpt5-mini", "claude-sonnet-4.5", "predictable"}
 
 	for _, model := range preferredModels {
 		svc, err := b.LLMProvider.GetService(model)

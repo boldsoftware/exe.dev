@@ -494,7 +494,7 @@ func runModels(global GlobalConfig, args []string) {
 		{ID: "gpt-5-thinking", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking model (alias: gpt-5)"},
 		{ID: "gpt-5-thinking-mini", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking mini model (alias: gpt-5-mini)"},
 		{ID: "gpt-5-thinking-nano", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking nano model (alias: gpt-5-nano)"},
-		{ID: "claude-sonnet-3.5", Provider: "Anthropic", EnvVars: []string{"ANTHROPIC_API_KEY"}, Description: "Claude Sonnet"},
+		{ID: "claude-sonnet-4.5", Provider: "Anthropic", EnvVars: []string{"ANTHROPIC_API_KEY"}, Description: "Claude Sonnet 4.5 (aliases: claude, sonnet)"},
 		{ID: "predictable", Provider: "Built-in", EnvVars: []string{}, Description: "Deterministic test model (no API key)"},
 	}
 
