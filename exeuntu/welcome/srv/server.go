@@ -3,110 +3,99 @@ package srv
 import (
 	"database/sql"
 	"fmt"
-	"html"
-	"log"
+	"html/template"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
-	welcomedbpkg "exe.dev/exeuntu/welcome/db"
-	welcomedb "exe.dev/exeuntu/welcome/sqlc"
+	"welcome.exe.dev/db"
+	"welcome.exe.dev/db/welcomedb"
 )
 
 type Server struct {
-	DB       *sql.DB
-	Hostname string
+	DB           *sql.DB
+	Hostname     string
+	TemplatesDir string
 }
 
-func New(db *sql.DB, hostname string) *Server {
-	return &Server{DB: db, Hostname: hostname}
+type welcomePageData struct {
+	Hostname   string
+	Now        string
+	UserEmail  string
+	VisitCount int64
+	AuthLinks  []authLink
+}
+
+type authLink struct {
+	Label string
+	URL   string
+}
+
+func New(dbPath, hostname string) (*Server, error) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	templatesDir := filepath.Join(filepath.Dir(thisFile), "templates")
+	srv := &Server{
+		Hostname:     hostname,
+		TemplatesDir: templatesDir,
+	}
+	if err := srv.setUpDatabase(dbPath); err != nil {
+		return nil, err
+	}
+	return srv, nil
 }
 
 func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/favicon.ico" {
+		http.NotFound(w, r)
+		return
+	}
+
 	// Identity from proxy headers (if present)
-	userID := strings.TrimSpace(r.Header.Get("X-Exedev-Userid"))
-	if userID == "" {
-		userID = strings.TrimSpace(r.Header.Get("X-Exedev-UserID"))
-	}
-	userEmail := strings.TrimSpace(r.Header.Get("X-Exedev-Email"))
-
-	// Logged-in detection: either headers present or subdomain auth cookie exists
-	loggedIn := userID != "" || userEmail != ""
-	if !loggedIn {
-		if c, err := r.Cookie("exe-proxy-auth"); err == nil && c.Value != "" {
-			loggedIn = true
-		}
-	}
-
-	// Key for counting
-	counterKey := ""
-	if userID != "" {
-		counterKey = "user:" + userID
-	} else {
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if host == "" {
-			host = r.RemoteAddr
-		}
-		counterKey = "anon:" + host
-	}
-
-	// Update db counter (sqlc)
-	q := welcomedb.New(s.DB)
+	// UserID is stable; email is useful.
+	userID := strings.TrimSpace(r.Header.Get("X-ExeDev-UserID"))
+	userEmail := strings.TrimSpace(r.Header.Get("X-ExeDev-Email"))
 	now := time.Now()
-	_ = q.UpsertVisitor(r.Context(), welcomedb.UpsertVisitorParams{
-		ID:        counterKey,
-		Email:     sqlNull(userEmail),
-		CreatedAt: now,
-		LastSeen:  now,
-	})
-	v, err := q.GetVisitor(r.Context(), counterKey)
+
 	var count int64
-	if err == nil {
-		count = v.ViewCount
-	}
-
-	// Compute login/logout links
-	loginURL := loginURLForRequest(r)
-	logoutURL := "/__exe.dev/logout"
-
-	// Render
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, "<!doctype html><html><head><meta charset=\"utf-8\"><title>exe.dev – Welcome</title>")
-	fmt.Fprintf(w, "<style>body{font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:740px;margin:40px auto;padding:0 16px;color:#222}.muted{color:#666}.btn{display:inline-block;padding:8px 12px;border:1px solid #ccc;border-radius:6px;text-decoration:none;color:#222}.btn:hover{background:#f6f6f6}code{background:#f3f3f3;padding:2px 4px;border-radius:4px}</style>")
-	fmt.Fprintf(w, "</head><body>")
-	fmt.Fprintf(w, "<h1>Welcome to exe.dev</h1>")
-	fmt.Fprintf(w, "<p class=\"muted\">Hostname: %s &nbsp;•&nbsp; Time: %s &nbsp;•&nbsp; Path: %s</p>", html.EscapeString(s.Hostname), time.Now().Format(time.RFC3339), html.EscapeString(r.URL.Path))
-
-	if loggedIn {
-		who := ""
-		if userEmail != "" && userID != "" {
-			who = fmt.Sprintf("%s (%s)", html.EscapeString(userEmail), html.EscapeString(userID))
-		} else if userEmail != "" {
-			who = html.EscapeString(userEmail)
-		} else if userID != "" {
-			who = html.EscapeString(userID)
-		} else {
-			who = "(authenticated)"
+	if userID != "" && s.DB != nil {
+		q := welcomedb.New(s.DB)
+		shouldRecordView := r.Method == http.MethodGet
+		if shouldRecordView {
+			// Best effort
+			err := q.UpsertVisitor(r.Context(), welcomedb.UpsertVisitorParams{
+				ID:        userID,
+				CreatedAt: now,
+				LastSeen:  now,
+			})
+			if err != nil {
+				slog.Warn("upsert visitor", "error", err, "user_id", userID)
+			}
 		}
-		fmt.Fprintf(w, "<p>You’re logged in as <strong>%s</strong>. <a class=\"btn\" href=\"%s\">Logout</a></p>", who, html.EscapeString(logoutURL))
-	} else {
-		fmt.Fprintf(w, "<p>You’re not logged in. <a class=\"btn\" href=\"%s\">Login</a></p>", html.EscapeString(loginURL))
+		if v, err := q.VisitorWithID(r.Context(), userID); err == nil {
+			count = v.ViewCount
+		}
 	}
 
-	if count > 0 {
-		fmt.Fprintf(w, "<p>You’ve viewed this page <strong>%d</strong> times.</p>", count)
+	data := welcomePageData{
+		Hostname:   s.Hostname,
+		Now:        now.Format(time.RFC3339),
+		UserEmail:  userEmail,
+		VisitCount: count,
+		AuthLinks: []authLink{
+			{Label: "Login", URL: loginURLForRequest(r)},
+			{Label: "Logout", URL: "/__exe.dev/logout"},
+		},
 	}
 
-	fmt.Fprintf(w, "<h3>Auth URLs</h3>")
-	fmt.Fprintf(w, "<ul><li>Login: <code>%s</code></li><li>Logout: <code>%s</code></li></ul>", html.EscapeString(loginURL), html.EscapeString(logoutURL))
-	fmt.Fprintf(w, "</body></html>")
-}
-
-func (s *Server) HandleHealth(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "OK\n")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.renderTemplate(w, "welcome.html", data); err != nil {
+		slog.Warn("render template", "url", r.URL.Path, "error", err)
+	}
 }
 
 func loginURLForRequest(r *http.Request) string {
@@ -122,43 +111,45 @@ func loginURLForRequest(r *http.Request) string {
 	return fmt.Sprintf("%s://%s/auth?%s", scheme, main, v.Encode())
 }
 
+func (s *Server) renderTemplate(w http.ResponseWriter, name string, data any) error {
+	path := filepath.Join(s.TemplatesDir, name)
+	tmpl, err := template.ParseFiles(path)
+	if err != nil {
+		return fmt.Errorf("parse template %q: %w", name, err)
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		return fmt.Errorf("execute template %q: %w", name, err)
+	}
+	return nil
+}
+
 func mainDomainFromHost(h string) string {
-	if i := strings.LastIndex(h, ":"); i > 0 {
-		basePort := h[i:]
-		host := h[:i]
-		if strings.HasSuffix(host, ".localhost") {
-			return "localhost" + basePort
-		}
-		if strings.HasSuffix(host, ".exe.dev") {
-			return "exe.dev"
-		}
-		return host
+	host, port, err := net.SplitHostPort(h)
+	if err != nil {
+		host = strings.TrimSpace(h)
 	}
-	if strings.HasSuffix(h, ".localhost") {
-		return "localhost"
+	if port != "" {
+		port = ":" + port
 	}
-	if strings.HasSuffix(h, ".exe.dev") {
+	if strings.HasSuffix(host, ".localhost") {
+		return "localhost" + port
+	}
+	if strings.HasSuffix(host, ".exe.dev") {
 		return "exe.dev"
 	}
-	return h
+	return host
 }
 
 // SetupDatabase initializes the database connection and runs migrations
-func (s *Server) SetupDatabase(dbPath string) error {
-	if dbPath == "" {
-		dbPath = "./welcome.sqlite3"
-	}
-
-	db, err := welcomedbpkg.Open(dbPath)
+func (s *Server) setUpDatabase(dbPath string) error {
+	wdb, err := db.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open db: %w", err)
 	}
-	s.DB = db
-
-	if err := welcomedbpkg.RunMigrations(db); err != nil {
+	s.DB = wdb
+	if err := db.RunMigrations(wdb); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
-
 	return nil
 }
 
@@ -166,15 +157,6 @@ func (s *Server) SetupDatabase(dbPath string) error {
 func (s *Server) Serve(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.HandleRoot)
-	mux.HandleFunc("/health", s.HandleHealth)
-
-	log.Printf("Starting welcome server on %s", addr)
+	slog.Info("starting welcome server", "addr", addr)
 	return http.ListenAndServe(addr, mux)
-}
-
-func sqlNull(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }

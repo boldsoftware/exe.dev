@@ -1,25 +1,30 @@
 package main
 
 import (
-	"log"
+	"flag"
+	"fmt"
 	"os"
 
-	"exe.dev/exeuntu/welcome/srv"
+	"welcome.exe.dev/srv"
 )
 
+var flagListenAddr = flag.String("listen", ":8000", "address to listen on")
+
 func main() {
-	dbPath := os.Getenv("WELCOME_DB_PATH")
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+}
+
+func run() error {
+	flag.Parse()
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
 	}
-
-	server := srv.New(nil, hostname)
-
-	if err := server.SetupDatabase(dbPath); err != nil {
-		log.Fatalf("database setup failed: %v", err)
+	server, err := srv.New("welcome.sqlite3", hostname)
+	if err != nil {
+		return fmt.Errorf("create server: %w", err)
 	}
-	defer server.DB.Close()
-
-	log.Fatal(server.Serve(":8000"))
+	return server.Serve(*flagListenAddr)
 }

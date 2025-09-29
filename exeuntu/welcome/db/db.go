@@ -13,7 +13,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed schema/*.sql
+//go:generate go tool github.com/sqlc-dev/sqlc/cmd/sqlc generate
+
+//go:embed migrations/*.sql
 var migrationFS embed.FS
 
 // Open opens an sqlite database and prepares pragmas suitable for a small web app.
@@ -41,9 +43,9 @@ func Open(path string) (*sql.DB, error) {
 // RunMigrations executes database migrations in numeric order (NNN-*.sql),
 // similar in spirit to exed's exedb.RunMigrations.
 func RunMigrations(db *sql.DB) error {
-	entries, err := migrationFS.ReadDir("schema")
+	entries, err := migrationFS.ReadDir("migrations")
 	if err != nil {
-		return fmt.Errorf("read schema dir: %w", err)
+		return fmt.Errorf("read migrations dir: %w", err)
 	}
 	var migrations []string
 	pat := regexp.MustCompile(`^(\d{3})-.*\.sql$`)
@@ -102,7 +104,7 @@ func RunMigrations(db *sql.DB) error {
 }
 
 func executeMigration(db *sql.DB, filename string) error {
-	content, err := migrationFS.ReadFile("schema/" + filename)
+	content, err := migrationFS.ReadFile("migrations/" + filename)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", filename, err)
 	}

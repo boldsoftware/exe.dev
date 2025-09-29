@@ -25,15 +25,3 @@ sql:
           ssh_client_private_key: "SSHClientPrivateKey"
           ssh_port: "SSHPort"
           ssh_user: "SSHUser"
-  - engine: "sqlite"
-    queries: "exeuntu/welcome/sqlc/query.sql"
-    schema: "exeuntu/welcome/sqlc/schema.sql"
-    gen:
-      go:
-        package: "welcomedb"
-        out: "exeuntu/welcome/sqlc"
-        emit_json_tags: true
-        emit_empty_slices: true
-        emit_pointers_for_null_types: true
-        json_tags_case_style: "snake"
-        sql_package: "database/sql"

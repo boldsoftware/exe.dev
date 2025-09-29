@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>{{.Hostname}}</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        max-width: 740px;
+        margin: 40px auto;
+        padding: 0 16px;
+        color: #222;
+      }
+      .muted {
+        color: #666;
+      }
+      .auth-action {
+        font-family: monospace;
+        text-decoration: none;
+        color: #0066cc;
+      }
+      .auth-action:hover {
+        text-decoration: underline;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #e0e0e0;
+        margin: 24px 0;
+      }
+      .auth-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .auth-list li {
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .copy-btn {
+        border: none;
+        background: none;
+        cursor: pointer;
+        padding: 0;
+        margin-left: 4px;
+      }
+      .clipboard-icon {
+        transition: background 0.3s;
+        padding: 2px 4px;
+        border-radius: 6px;
+      }
+      .clipboard-icon.copied {
+        background: rgba(100, 180, 255, 0.3);
+      }
+      .link-icon {
+        text-decoration: none;
+        display: inline-block;
+        vertical-align: baseline;
+      }
+      .auth-link {
+        word-break: break-all;
+        font-family: monospace;
+        background: #f5f5f5;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Welcome to {{.Hostname}}.exe.dev</h1>
+      <p class="muted">Time: {{.Now}}</p>
+      <p class="muted">
+        {{if .UserEmail}}
+        Signed in as <strong>{{.UserEmail}}</strong>
+        {{else}}
+        Not signed in
+        {{end}}
+      </p>
+    </header>
+    <hr />
+    {{if .VisitCount}}
+    <p>You’ve viewed this page <strong>{{.VisitCount}}</strong> times.</p>
+    {{end}}
+    <section>
+      <h3>Auth URLs</h3>
+      <ul class="auth-list">
+        {{range .AuthLinks}}
+        <li>
+          <span class="muted">{{.Label}}:</span>
+          <span class="auth-link">{{.URL}}</span
+          ><button
+            type="button"
+            class="copy-btn"
+            data-copy="{{.URL}}"
+            aria-label="Copy {{.Label}} URL"
+          >
+            <span class="clipboard-icon">📋</span></button
+          ><a class="link-icon" href="{{.URL}}">🔗</a>
+        </li>
+        {{end}}
+      </ul>
+    </section>
+    <script>
+      document.addEventListener("click", function (event) {
+        var btn = event.target.closest(".copy-btn");
+        if (!btn) {
+          return;
+        }
+        var text = btn.getAttribute("data-copy");
+        if (!text) {
+          return;
+        }
+        navigator.clipboard.writeText(text).catch(function () {});
+        var icon = btn.querySelector(".clipboard-icon");
+        icon.classList.add("copied");
+        setTimeout(function () {
+          icon.classList.remove("copied");
+        }, 300);
+        btn.blur();
+      });
+    </script>
+  </body>
+</html>

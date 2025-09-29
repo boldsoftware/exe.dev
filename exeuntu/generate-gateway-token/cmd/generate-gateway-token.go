@@ -13,13 +13,12 @@ import (
 )
 
 // bearerTokenClaim holds a claim that a request originated from a client who has access to
-// a parituclar box's ssh server identitys private key.  The http header is encoded as a
-// {claim}.{signature} string, and would appear in an http header like so:
+// a particular box's ssh server identity's private key. The http header is encoded as a
+// {claim}.{signature} string, and would appear in an http header as:
 //
 // `Authorization: Bearer <base64(json(claim))>.<base64(signature(json(claim)))>`
 //
-// The json format of the claim is defined by type bearerTokenClaim's json encoding
-// struct tags.
+// The json format of the claim is defined by type bearerTokenClaim's json encoding struct tags.
 type bearerTokenClaim struct {
 	BoxName    string    `json:"box_name"`
 	CreatedAt  time.Time `json:"created_at"`
@@ -67,14 +66,21 @@ var (
 )
 
 func main() {
+	err := run()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	flag.Parse()
 	hostname := *hostnameFlag
 	var err error
 	if hostname == "" {
 		hostname, err = os.Hostname()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, err.Error())
-			os.Exit(1)
+			return fmt.Errorf("get hostname: %w", err)
 		}
 	}
 
@@ -86,19 +92,18 @@ func main() {
 
 	pemBytes, err := os.ReadFile(*keyFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
-		os.Exit(1)
+		return fmt.Errorf("read key file %q: %w", *keyFile, err)
 	}
 
 	key, err := ssh.ParsePrivateKey(pemBytes)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
-		os.Exit(1)
+		return fmt.Errorf("parse private key: %w", err)
 	}
 	tokStr, err := btok.Encode(key)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, err.Error())
-		os.Exit(1)
+		return fmt.Errorf("encode token: %w", err)
 	}
 	fmt.Printf("%s\n", tokStr)
+
+	return nil
 }

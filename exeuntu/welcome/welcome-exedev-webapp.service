@@ -1,5 +1,5 @@
 [Unit]
-Description=Welcome exe.dev Web Application
+Description=exe.dev box demo/welcome server
 After=network.target
 Wants=network.target
 
@@ -7,7 +7,7 @@ Wants=network.target
 Type=simple
 User=root
 WorkingDirectory=/app
-ExecStart=/app/welcomed
+ExecStart=/app/welcome/welcomed
 Restart=always
 RestartSec=5
 StandardOutput=journal

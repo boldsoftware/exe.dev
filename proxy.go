@@ -34,7 +34,7 @@ import (
 // https://boxname.exe.dev:8080/ will go to port 8080 on the box. These non-default ports are always
 // private.
 //
-// TODO: We should also send X-Exedev-Userid and X-Exedev-Email headers to the proxy requests,
+// TODO: We should also send X-ExeDev-UserID and X-ExeDev-Email headers to the proxy requests,
 // when those are available.
 
 // handleProxyRequest handles requests that should be proxied to containers

@@ -38,7 +38,7 @@ TODO: Add e-mail shares?
 
 If you would like to impelement authorization in your service,
 you can leverage exe.dev's existing authentication. You can
-look for X-exedev-userid headers in the HTTP requests. If they are
+look for X-ExeDev-UserID headers in the HTTP requests. If they are
 not set, you can redirect users to https://exe.dev/auth_redirect?.... TODO TODO
 to log in.
 
