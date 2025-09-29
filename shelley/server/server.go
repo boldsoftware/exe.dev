@@ -57,11 +57,12 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 		if apiKey == "" {
 			return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY env var")
 		}
-		return &ant.Service{APIKey: apiKey, Model: ant.Claude45Sonnet}, nil
+		svc := &ant.Service{APIKey: apiKey, Model: ant.Claude45Sonnet}
+		if baseURL := os.Getenv("ANTHROPIC_API_BASE"); baseURL != "" {
+			svc.URL = baseURL
+		}
+		return svc, nil
 	}
-	// Aliases
-	manager.factories["claude"] = manager.factories["claude-sonnet-4.5"]
-	manager.factories["sonnet"] = manager.factories["claude-sonnet-4.5"]
 
 	// OpenAI (env required)
 	manager.factories["openai-gpt4"] = func() (llm.Service, error) {
@@ -69,9 +70,12 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 		if apiKey == "" {
 			return nil, fmt.Errorf("openai-gpt4 requires %s env var", oai.OpenAIAPIKeyEnv)
 		}
-		return &oai.Service{Model: oai.DefaultModel, APIKey: apiKey}, nil
+		svc := &oai.Service{Model: oai.DefaultModel, APIKey: apiKey}
+		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
+			svc.ModelURL = baseURL
+		}
+		return svc, nil
 	}
-	manager.factories["openai-gpt4-turbo"] = manager.factories["openai-gpt4"]
 
 	// OpenAI GPT-5 series (env required)
 	manager.factories["gpt-5-thinking"] = func() (llm.Service, error) {
@@ -79,25 +83,34 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 		if apiKey == "" {
 			return nil, fmt.Errorf("gpt-5-thinking requires %s env var", oai.OpenAIAPIKeyEnv)
 		}
-		return &oai.Service{Model: oai.GPT5, APIKey: apiKey}, nil
+		svc := &oai.Service{Model: oai.GPT5, APIKey: apiKey}
+		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
+			svc.ModelURL = baseURL
+		}
+		return svc, nil
 	}
 	manager.factories["gpt-5-thinking-mini"] = func() (llm.Service, error) {
 		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
 		if apiKey == "" {
 			return nil, fmt.Errorf("gpt-5-thinking-mini requires %s env var", oai.OpenAIAPIKeyEnv)
 		}
-		return &oai.Service{Model: oai.GPT5Mini, APIKey: apiKey}, nil
+		svc := &oai.Service{Model: oai.GPT5Mini, APIKey: apiKey}
+		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
+			svc.ModelURL = baseURL
+		}
+		return svc, nil
 	}
 	manager.factories["gpt-5-thinking-nano"] = func() (llm.Service, error) {
 		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
 		if apiKey == "" {
 			return nil, fmt.Errorf("gpt-5-thinking-nano requires %s env var", oai.OpenAIAPIKeyEnv)
 		}
-		return &oai.Service{Model: oai.GPT5Nano, APIKey: apiKey}, nil
+		svc := &oai.Service{Model: oai.GPT5Nano, APIKey: apiKey}
+		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
+			svc.ModelURL = baseURL
+		}
+		return svc, nil
 	}
-
-	// Aliases for convenience
-	manager.factories["gpt5-mini"] = manager.factories["gpt-5-thinking-mini"]
 
 	// Fireworks Qwen3 Coder (env required)
 	manager.factories["qwen3-coder-fireworks"] = func() (llm.Service, error) {
@@ -105,7 +118,11 @@ func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
 		if apiKey == "" {
 			return nil, fmt.Errorf("qwen3-coder-fireworks requires %s env var", oai.FireworksAPIKeyEnv)
 		}
-		return &oai.Service{Model: oai.Qwen3CoderFireworks, APIKey: apiKey}, nil
+		svc := &oai.Service{Model: oai.Qwen3CoderFireworks, APIKey: apiKey}
+		if baseURL := os.Getenv("FIREWORKS_API_BASE"); baseURL != "" {
+			svc.ModelURL = baseURL
+		}
+		return svc, nil
 	}
 
 	// Predictable (no envs)
