@@ -70,6 +70,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:           ss.handleDocCommand,
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeDocSlugs,
+			Hidden:            true, // temporarily, while it gets built out
 		},
 		{
 			Name:        "list",
