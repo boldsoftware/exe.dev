@@ -1,34 +1,19 @@
 ---
-title: What is exe?
-description: exe provides persistent development containers reachable over SSH and the browser.
+title: What is EXE?
+description: EXE is just a computer.
 subheading: "1. Introduction"
 suborder: 1
 published: true
 ---
 
-exe is the service that provisions persistent development containers on exe.dev.
+Developers need computers. Sometimes we need those computers to be on the internet, to keep running when we close our laptop lid or when our desktop goes to sleep. We need that because they have work to do in a cron job, or our colleagues or friends need access to them.
 
-Each user receives a Linux container with durable storage, predictable resources, and first-class SSH access. Containers run on hardened hosts that exe manages for production, CI, and macOS development workflows.
+These computers need to be **secure**. Only we should be able to ssh into them and do things. We should be able to run a web server on port 80 and make sure only people we want can reach it. Having to build a password database (remember to hash and salt and build a rigorous email recovery flow), or oauth integration, or fiddle with any other sort of auth and how it works with the language and framework you chose, is a huge distraction.
 
-## What problems does exe solve?
+Other than that, it should just be a computer. We don’t need config files filled with options. It should be some kind of stock linux, the disk should be persistent, the disk should be fast. Setup should be an easy one-liner, that is scriptable. It should have a domain name. It should not, in isolation, cost some dollars a month and have dedicated resources, it should be a fully functional VM that shares CPU and RAM out of my fixed-price allotment.
 
-Developers need a place where code, tools, and long-running services can stay alive even after the terminal disconnects. Local laptops are fragile; ad-hoc cloud servers are hard to maintain. exe keeps the environment online so you can drop back in instantly.
+*Just a computer.*
 
-- **Persistent storage:** disks are preserved across restarts, so git repos and databases stick around.
-- **Fast SSH access:** log in with your existing keys and land in the same container every time.
-- **Controller-managed hosts:** exe orchestrates container hosts through `ctr-host` automation.
-- **Integrated tooling:** the web UI mirrors SSH output while staying minimal for production use.
+Want to build a soccer scheduling app for your kids school? Want a box to try out agent-of-the-week on a project where it cannot trash your laptop’s dot files (or bug you for permission to `ls` every five seconds)? Run `ssh exe.dev new`
 
-## How does it work?
-
-The `exed` controller accepts web and SSH connections, authenticates users, and schedules their containers. It communicates with container hosts over secure channels, wiring up networking, disks, and metrics. Hosts are configured via the scripts in `ops/` for production, CI, and macOS lima environments.
-
-When you connect to `ssh exe.dev`, the shell you see is running inside that managed container. The controller keeps logs sparse on purpose -- only the essential prompts appear in the terminal UI.
-
-## How do I get access?
-
-Access is invite-only while we scale the fleet. Join the waitlist from the docs navigation and we will reach out when capacity opens up.
-
-## Where to go next?
-
-Continue through the documentation to learn about deployment modes, container lifecycle management, and integrating exe with your workflow. The sidebar on the left lists everything that is currently available.
+That is what exe.dev gives you. Pay a monthly fee for some compute resources. Spin up as many VMs as you like. Resource management and auth are taken care of for you.
