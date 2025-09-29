@@ -276,6 +276,19 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 			hidden = " [hidden]"
 		}
 		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s%s\t\r\n", nameStr, cmd.Description, hidden)
+
+		// Show subcommands if any exist
+		for _, sub := range cmd.Subcommands {
+			if sub.Hidden && !ct.DevMode {
+				continue
+			}
+			subNameStr := fmt.Sprintf("%s %s", cmd.Name, sub.Name)
+			var subHidden string
+			if sub.Hidden {
+				subHidden = " [hidden]"
+			}
+			fmt.Fprintf(tabw, "    \033[2m%s\033[0m\t    %s%s\t\r\n", subNameStr, sub.Description, subHidden)
+		}
 	}
 	tabw.Flush()
 }

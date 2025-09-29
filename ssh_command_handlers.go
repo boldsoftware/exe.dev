@@ -65,12 +65,11 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:              "doc",
-			Description:       "Read exe.dev documentation",
-			Usage:             "doc <slug>",
+			Description:       "Browse documentation",
 			Handler:           ss.handleDocCommand,
+			Usage:             "doc [slug]",
 			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeDocSlugs,
-			Hidden:            true, // temporarily, while it gets built out
+			CompleterFunc:     ss.completeDocSlugs
 		},
 		{
 			Name:        "list",
@@ -1143,7 +1142,6 @@ func withAccountantRxRes[T any](s *Server, ctx context.Context, fn func(context.
 	})
 	return result, err
 }
-
 
 func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
 	if ss == nil || ss.server == nil || ss.server.containerManager == nil {

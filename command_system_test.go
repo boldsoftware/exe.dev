@@ -183,6 +183,16 @@ func TestHelpCommand(t *testing.T) {
 		if !strings.Contains(result, "exit") {
 			t.Errorf("Help output should contain 'exit'")
 		}
+		// Check that billing subcommands are now shown in general help
+		if !strings.Contains(result, "billing balance") {
+			t.Errorf("Help output should contain 'billing balance' subcommand")
+		}
+		if !strings.Contains(result, "billing setup") {
+			t.Errorf("Help output should contain 'billing setup' subcommand")
+		}
+		if !strings.Contains(result, "billing update") {
+			t.Errorf("Help output should contain 'billing update' subcommand")
+		}
 	})
 
 	t.Run("specific command help", func(t *testing.T) {
