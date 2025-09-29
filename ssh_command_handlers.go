@@ -748,7 +748,7 @@ func (ss *SSHServer) handleBillingBalance(ctx context.Context, cc *exemenu.Comma
 		cc.WriteJSON(billing)
 		return nil
 	}
-	cc.Writeln("Current balance: $%f", balance)
+	cc.Writeln("Current balance: $%.2f", balance)
 	return nil
 }
 
