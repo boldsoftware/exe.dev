@@ -153,7 +153,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		if box.AllocID != alloc.AllocID {
 			// User is authenticated but box belongs to different alloc
-			http.Error(w, "Forbidden: You do not have access to this box", http.StatusForbidden)
+			// Tempting to return a 401/403, but that leaks the existence of the box.
+			http.Error(w, "Box not found", http.StatusNotFound)
 			return
 		}
 	}
