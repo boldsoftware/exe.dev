@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"exe.dev/accounting"
+	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
 )
@@ -82,7 +83,8 @@ func RegisterAccountingMetrics(registry *prometheus.Registry) {
 type llmGateway struct {
 	now             func() time.Time
 	mux             http.ServeMux
-	accountant      accounting.Accountant
+	accountant      *accounting.Accountant
+	db              *sqlite.DB
 	boxKeyAuthority boxKeyAuthority
 	apiKeys         APIKeys
 	testDebitDone   chan bool // for testing -- if non-nil, best effort send every time a debit occurs
@@ -99,12 +101,13 @@ type boxKeyAuthority interface {
 	SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error)
 }
 
-func NewGateway(accountant accounting.Accountant, boxKeyAuthority boxKeyAuthority,
+func NewGateway(accountant *accounting.Accountant, db *sqlite.DB, boxKeyAuthority boxKeyAuthority,
 	apiKeys APIKeys,
 ) *llmGateway {
 	ret := &llmGateway{
 		now:             time.Now,
 		accountant:      accountant,
+		db:              db,
 		boxKeyAuthority: boxKeyAuthority,
 		apiKeys:         apiKeys,
 	}
@@ -121,15 +124,20 @@ func httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) 
 
 func (a *llmGateway) checkCredits(ctx context.Context, billingAccountID string) error {
 	// Get the current balance for the user
-	balance, err := a.accountant.GetBalance(ctx, billingAccountID)
+	var balance float64
+	err := a.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = a.accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		slog.Error("accountingTransport.checkCredits: GetBalance failed", "error", err)
 		// Fallback to allowing the request if we can't check balance
 		return nil
 	}
 
-	// If balance is negative, reject the request
-	if balance < 0 {
+	// If balance is insufficient, reject the request
+	if balance <= 0 {
 		return fmt.Errorf("your account balance of $%.2f is insufficient - please purchase more credits at %s, and then ask the agent to continue", balance, "https://exe.dev/buy")
 	}
 	return nil
@@ -145,7 +153,12 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	billingID, err := m.accountant.BillingAccountForBox(r.Context(), boxName)
+	var billingID string
+	err = m.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		billingID, err = m.accountant.BillingAccountForBox(ctx, rx, boxName)
+		return err
+	})
 	if err != nil {
 		slog.Error("llmGateway.ServeHTTP", "BillingAccountForBox error", err)
 	}
@@ -193,6 +206,7 @@ func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.Re
 	transport := &accountingTransport{
 		RoundTripper:     http.DefaultTransport,
 		accountant:       m.accountant,
+		db:               m.db,
 		billingAccountID: billingAccountID,
 		apiType:          "anthropic",
 	}
@@ -220,6 +234,7 @@ func (m *llmGateway) createOpenAIProxy(billingAccountID string) (*httputil.Rever
 	transport := &accountingTransport{
 		RoundTripper:     http.DefaultTransport,
 		accountant:       m.accountant,
+		db:               m.db,
 		billingAccountID: billingAccountID,
 		apiType:          "openai",
 	}
@@ -248,6 +263,7 @@ func (m *llmGateway) createFireworksProxy(billingAccountID string) (*httputil.Re
 	transport := &accountingTransport{
 		RoundTripper:     http.DefaultTransport,
 		accountant:       m.accountant,
+		db:               m.db,
 		billingAccountID: billingAccountID,
 		apiType:          "fireworks",
 	}

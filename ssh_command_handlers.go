@@ -226,9 +226,6 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.ID)
 	if err != nil {
 		return err
@@ -284,14 +281,7 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.User == nil {
-		return cc.Errorf("user context missing")
-	}
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	user := cc.User
-	alloc := cc.Alloc
 	boxName := cc.FlagSet.Lookup("name").Value.String()
 	image := cc.FlagSet.Lookup("image").Value.String()
 	size := cc.FlagSet.Lookup("size").Value.String()
@@ -348,7 +338,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	if image == "exeuntu" {
 		imageToStore = "boldsoftware/exeuntu"
 	}
-	boxID, err := ss.server.preCreateBox(ctx, user.ID, alloc.ID, boxName, imageToStore)
+	boxID, err := ss.server.preCreateBox(ctx, user.ID, cc.Alloc.ID, boxName, imageToStore)
 	if err != nil {
 		cc.Write("\033[1;31mError: Failed to create box entry: %v\033[0m\r\n", err)
 		return fmt.Errorf("failed to create box entry: %w", err)
@@ -356,7 +346,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 	// Create container request with progress callback
 	req := &container.CreateContainerRequest{
-		AllocID:         alloc.ID,
+		AllocID:         cc.Alloc.ID,
 		Name:            boxName,
 		BoxID:           boxID,
 		Image:           image,
@@ -510,9 +500,6 @@ done:
 			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
 		} else {
 			// Fallback for non-SSH contexts (e.g., mobile flow) where PublicKey is empty
-			if cc.User == nil {
-				return cc.Errorf("user context missing")
-			}
 			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
 		}
 		if err != nil {
@@ -565,9 +552,6 @@ done:
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.User == nil {
-		return cc.Errorf("user context missing")
-	}
 	if len(cc.Args) != 1 {
 		return cc.Errorf("please specify exactly one box name to delete, got %d", len(cc.Args))
 	}
@@ -624,9 +608,6 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 }
 
 func (ss *SSHServer) handleAllocCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	if cc.WantJSON() {
 		allocInfo := map[string]any{
 			"id":      cc.Alloc.ID,
@@ -666,14 +647,13 @@ func (ss *SSHServer) handleJobCommand(ctx context.Context, cc *exemenu.CommandCo
 }
 
 func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		return err
 	}
-	balance, err := ss.server.accountant.GetBalance(ctx, billingInfo.BillingAccountID)
+	balance, err := withAccountantRxRes(ss.server, ctx, func(ctx context.Context, accountant *accounting.Accountant, rx *sqlite.Rx) (float64, error) {
+		return accountant.GetBalance(ctx, rx, billingInfo.BillingAccountID)
+	})
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get balance: %v\033[0m", err)
 		return err
@@ -709,9 +689,6 @@ func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *exemenu.Comma
 }
 
 func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
@@ -721,9 +698,6 @@ func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *exemenu
 }
 
 func (ss *SSHServer) handleBillingFundCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
@@ -735,7 +709,9 @@ func (ss *SSHServer) handleBillingFundCommand(ctx context.Context, cc *exemenu.C
 		PaymentMethod:    "dev mode fund command",
 		Status:           "completed",
 	}
-	err = ss.server.accountant.CreditUsage(ctx, credit)
+	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return ss.server.accountant.CreditUsage(ctx, tx, credit)
+	})
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to credit account: %v\033[0m", err)
 		return err
@@ -744,9 +720,6 @@ func (ss *SSHServer) handleBillingFundCommand(ctx context.Context, cc *exemenu.C
 }
 
 func (ss *SSHServer) handleBillingUpdateEmailCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
@@ -756,15 +729,14 @@ func (ss *SSHServer) handleBillingUpdateEmailCommand(ctx context.Context, cc *ex
 }
 
 func (ss *SSHServer) handleBillingBalance(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
 		return err
 	}
-	balance, err := ss.server.accountant.GetBalance(ctx, billingInfo.BillingAccountID)
+	balance, err := withAccountantRxRes(ss.server, ctx, func(ctx context.Context, accountant *accounting.Accountant, rx *sqlite.Rx) (float64, error) {
+		return accountant.GetBalance(ctx, rx, billingInfo.BillingAccountID)
+	})
 	if err != nil {
 		cc.Writeln("\033[1;31mError: Failed to get balance: %v\033[0m", err)
 		return err
@@ -782,12 +754,6 @@ func (ss *SSHServer) handleBillingBalance(ctx context.Context, cc *exemenu.Comma
 }
 
 func (ss *SSHServer) handleBillingSetup(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
-	if cc.User == nil {
-		return cc.Errorf("user context missing")
-	}
 	cc.Writeln("\033[1;33mBilling Setup\033[0m")
 	cc.Writeln("")
 	cc.Writeln("You need to set up billing information to continue using exe.dev.")
@@ -878,9 +844,6 @@ func (ss *SSHServer) handleBillingSetup(ctx context.Context, cc *exemenu.Command
 }
 
 func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.User == nil {
-		return cc.Errorf("user context missing")
-	}
 	type sshKeyRow struct {
 		PublicKey string `json:"public_key"`
 		Current   bool   `json:"current"`
@@ -937,9 +900,6 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 }
 
 func (ss *SSHServer) updateBillingEmail(cc *exemenu.CommandContext, billingInfo *billing.BillingInfo) error {
-	if cc.User == nil {
-		return cc.Errorf("user context missing")
-	}
 	cc.Writeln("\033[1;33mUpdate Billing Email\033[0m")
 	cc.Writeln("")
 
@@ -1018,12 +978,6 @@ func (ss *SSHServer) deleteBillingInfo(cc *exemenu.CommandContext, billingInfo *
 }
 
 func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.User == nil {
-		return cc.Errorf("user context missing")
-	}
-	if cc.Alloc == nil {
-		return cc.Errorf("allocation context missing")
-	}
 	if len(cc.Args) != 1 {
 		return cc.Errorf("please specify exactly one box name to route, got %d", len(cc.Args))
 	}
@@ -1144,9 +1098,6 @@ func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *exemenu.Command
 }
 
 func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.User == nil {
-		return cc.Errorf("user context missing")
-	}
 	// Generate a verification token using the same system as email authentication.
 	// The verification code for email is anti-phishing, but not needed here since the user directly acquires the link.
 	token := ss.server.generateRegistrationToken()
@@ -1181,6 +1132,18 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 	cc.Writeln("")
 	return nil
 }
+
+// withAccountantRxRes executes a function with the accountant and a read transaction, returning a value
+func withAccountantRxRes[T any](s *Server, ctx context.Context, fn func(context.Context, *accounting.Accountant, *sqlite.Rx) (T, error)) (T, error) {
+	var result T
+	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		result, err = fn(ctx, s.accountant, rx)
+		return err
+	})
+	return result, err
+}
+
 
 func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
 	if ss == nil || ss.server == nil || ss.server.containerManager == nil {

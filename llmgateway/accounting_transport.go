@@ -23,12 +23,14 @@ import (
 	"time"
 
 	"exe.dev/accounting"
+	"exe.dev/sqlite"
 )
 
 // accountingTransport wraps http transactions to check and track the client's credit usage
 type accountingTransport struct {
 	http.RoundTripper
-	accountant       accounting.Accountant
+	accountant       *accounting.Accountant
+	db               *sqlite.DB
 	billingAccountID string
 	baseURL          string
 	apiType          string
@@ -37,7 +39,12 @@ type accountingTransport struct {
 
 func (a *accountingTransport) checkCredits(ctx context.Context, billingAccountID string) error {
 	// Get the current balance for the user
-	balance, err := a.accountant.GetBalance(ctx, billingAccountID)
+	var balance float64
+	err := a.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = a.accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		slog.Error("accountingTransport.checkCredits", "error", err)
 		// Fallback to allowing the request if we can't check balance
@@ -246,7 +253,10 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 	uc := accounting.UsageCost(usageDebit.Model, usageDebit.Usage)
 	usageDebit.Usage.CostUSD = uc.USD()
 
-	if err := m.accountant.DebitUsage(ctx, usageDebit); err != nil {
+	err := m.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return m.accountant.DebitUsage(ctx, tx, usageDebit)
+	})
+	if err != nil {
 		slog.Error("accountingTransport.debitResponse: couldn't debit usage", "error", err)
 	}
 

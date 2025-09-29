@@ -2,7 +2,6 @@ package exe
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -71,13 +70,24 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to encode bearer token: %v", err)
 	}
 
-	// Create mock accountant with positive balance
-	mockAcct := &mockAccountant{
-		balance: 10.0, // Sufficient balance
+	// Use server's real accountant and set up a positive balance
+	accountant := server.accountant
+	credit := accounting.UsageCredit{
+		BillingAccountID: "test-billing-account",
+		Amount:           10.0,
+		PaymentMethod:    "test",
+		PaymentID:        "test-payment",
+		Status:           "completed",
+	}
+	err = server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		return accountant.CreditUsage(ctx, tx, credit)
+	})
+	if err != nil {
+		t.Fatalf("Failed to add test balance: %v", err)
 	}
 
 	// Use the exe.Server as boxKeyAuthority (it implements the interface)
-	gateway := llmgateway.NewGateway(mockAcct, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"})
+	gateway := llmgateway.NewGateway(accountant, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"})
 
 	// Create test HTTP server with the gateway
 	testServer := httptest.NewServer(gateway)
@@ -150,14 +160,9 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	})
 
 	t.Run("insufficient balance", func(t *testing.T) {
-		// Create gateway with negative balance
-		negativeBalanceAcct := &mockAccountant{
-			balance: -1.0, // Insufficient balance
-			billingAccountForBox: map[string]string{
-				boxName: boxName + "-billing-account-id",
-			},
-		}
-		negativeGateway := llmgateway.NewGateway(negativeBalanceAcct, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"})
+		// Create gateway with zero balance (insufficient)
+		insuffBalanceAcct := accounting.NewAccountant()
+		negativeGateway := llmgateway.NewGateway(insuffBalanceAcct, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"})
 		negativeServer := httptest.NewServer(negativeGateway)
 		defer negativeServer.Close()
 
@@ -181,48 +186,4 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 			t.Errorf("Expected status 402 (Payment Required), got %d\n%s", resp.StatusCode, string(body))
 		}
 	})
-}
-
-// mockAccountant implements Accountant for testing
-type mockAccountant struct {
-	balance              float64
-	balanceErr           error
-	usageDebits          []accounting.UsageDebit
-	usageCredits         []accounting.UsageCredit
-	billingAccountForBox map[string]string
-}
-
-var _ accounting.Accountant = &mockAccountant{}
-
-// BillingAccountForBox implements accounting.Accountant.
-func (m *mockAccountant) BillingAccountForBox(ctx context.Context, boxName string) (string, error) {
-	if m.billingAccountForBox == nil {
-		return "", fmt.Errorf("no billing accounts defined in this mockAccountant")
-	}
-	return m.billingAccountForBox[boxName], nil
-}
-
-func (m *mockAccountant) GetBalance(ctx context.Context, billingAccountID string) (float64, error) {
-	if m.balanceErr != nil {
-		return 0, m.balanceErr
-	}
-	return m.balance, nil
-}
-
-func (m *mockAccountant) DebitUsage(ctx context.Context, debit accounting.UsageDebit) error {
-	m.usageDebits = append(m.usageDebits, debit)
-	return nil
-}
-
-func (m *mockAccountant) CreditUsage(ctx context.Context, credit accounting.UsageCredit) error {
-	m.usageCredits = append(m.usageCredits, credit)
-	return nil
-}
-
-func (m *mockAccountant) HasNewUserCredits(ctx context.Context, billingAccountID string) (bool, any) {
-	return false, nil
-}
-
-func (m *mockAccountant) ApplyNewUserCredits(ctx context.Context, billingAccountID string) any {
-	return nil
 }

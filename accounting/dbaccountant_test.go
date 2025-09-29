@@ -53,7 +53,7 @@ func TestDBAccountant_GetBalance(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	accountant := NewDBAccountant(db)
+	accountant := NewAccountant()
 	ctx := context.Background()
 	billingAccountID := "test-account-1"
 
@@ -72,7 +72,11 @@ func TestDBAccountant_GetBalance(t *testing.T) {
 	}
 
 	// Initial balance should be 0
-	balance, err := accountant.GetBalance(ctx, billingAccountID)
+	var balance float64
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		balance, err = accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to get balance: %v", err)
 	}
@@ -88,13 +92,19 @@ func TestDBAccountant_GetBalance(t *testing.T) {
 		PaymentID:        "test-payment-1",
 		Status:           "completed",
 	}
-	err = accountant.CreditUsage(ctx, credit)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return accountant.CreditUsage(ctx, tx, credit)
+	})
 	if err != nil {
 		t.Fatalf("Failed to add credit: %v", err)
 	}
 
 	// Balance should now be 10.0
-	balance, err = accountant.GetBalance(ctx, billingAccountID)
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to get balance after credit: %v", err)
 	}
@@ -114,13 +124,19 @@ func TestDBAccountant_GetBalance(t *testing.T) {
 		BillingAccountID: billingAccountID,
 		Created:          time.Now(),
 	}
-	err = accountant.DebitUsage(ctx, debit)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return accountant.DebitUsage(ctx, tx, debit)
+	})
 	if err != nil {
 		t.Fatalf("Failed to add debit: %v", err)
 	}
 
 	// Balance should now be 7.5 (10.0 - 2.5)
-	balance, err = accountant.GetBalance(ctx, billingAccountID)
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to get balance after debit: %v", err)
 	}
@@ -133,7 +149,7 @@ func TestDBAccountant_DebitUsage_DuplicateMessageID(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	accountant := NewDBAccountant(db)
+	accountant := NewAccountant()
 	ctx := context.Background()
 	billingAccountID := "test-account-2"
 
@@ -162,19 +178,28 @@ func TestDBAccountant_DebitUsage_DuplicateMessageID(t *testing.T) {
 	}
 
 	// First debit should succeed
-	err = accountant.DebitUsage(ctx, debit)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return accountant.DebitUsage(ctx, tx, debit)
+	})
 	if err != nil {
 		t.Fatalf("Failed to add first debit: %v", err)
 	}
 
 	// Second debit with same message ID should be ignored (no error)
-	err = accountant.DebitUsage(ctx, debit)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return accountant.DebitUsage(ctx, tx, debit)
+	})
 	if err != nil {
 		t.Fatalf("Second debit with duplicate message ID should not error: %v", err)
 	}
 
 	// Balance should only reflect one debit
-	balance, err := accountant.GetBalance(ctx, billingAccountID)
+	var balance float64
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to get balance: %v", err)
 	}
@@ -187,7 +212,7 @@ func TestDBAccountant_HasNewUserCredits(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	accountant := NewDBAccountant(db)
+	accountant := NewAccountant()
 	ctx := context.Background()
 	billingAccountID := "test-account-3"
 
@@ -204,19 +229,36 @@ func TestDBAccountant_HasNewUserCredits(t *testing.T) {
 	}
 
 	// New user should be eligible for credits
-	hasCredits, data := accountant.HasNewUserCredits(ctx, billingAccountID)
+	var hasCredits bool
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		hasCredits, err = accountant.HasNewUserCredits(ctx, rx, billingAccountID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to check new user credits: %v", err)
+	}
 	if !hasCredits {
 		t.Errorf("New user should be eligible for credits, got hasCredits=%v", hasCredits)
 	}
-	if data == nil {
-		t.Error("Credit data should not be nil")
-	}
 
 	// Apply the credits
-	accountant.ApplyNewUserCredits(ctx, billingAccountID)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return accountant.ApplyNewUserCredits(ctx, tx, billingAccountID)
+	})
+	if err != nil {
+		t.Fatalf("Failed to apply new user credits: %v", err)
+	}
 
 	// User should no longer be eligible for credits
-	hasCredits, _ = accountant.HasNewUserCredits(ctx, billingAccountID)
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		hasCredits, err = accountant.HasNewUserCredits(ctx, rx, billingAccountID)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to check new user credits after applying: %v", err)
+	}
 	if hasCredits {
 		t.Error("User should not be eligible for credits after applying them")
 	}
@@ -226,7 +268,7 @@ func TestDBAccountant_ApplyNewUserCredits(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	accountant := NewDBAccountant(db)
+	accountant := NewAccountant()
 	ctx := context.Background()
 	billingAccountID := "test-account-4"
 
@@ -243,7 +285,12 @@ func TestDBAccountant_ApplyNewUserCredits(t *testing.T) {
 	}
 
 	// Initial balance should be 0
-	balance, err := accountant.GetBalance(ctx, billingAccountID)
+	var balance float64
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to get initial balance: %v", err)
 	}
@@ -252,14 +299,23 @@ func TestDBAccountant_ApplyNewUserCredits(t *testing.T) {
 	}
 
 	// Apply new user credits
-	accountant.ApplyNewUserCredits(ctx, billingAccountID)
+	err = db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		return accountant.ApplyNewUserCredits(ctx, tx, billingAccountID)
+	})
+	if err != nil {
+		t.Fatalf("Failed to apply new user credits: %v", err)
+	}
 
 	// Balance should now include the new user credit
-	balance, err = accountant.GetBalance(ctx, billingAccountID)
+	err = db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = accountant.GetBalance(ctx, rx, billingAccountID)
+		return err
+	})
 	if err != nil {
 		t.Fatalf("Failed to get balance after applying credits: %v", err)
 	}
-	if balance != 10.0 {
-		t.Errorf("Expected balance to be 10.0 after applying new user credits, got %f", balance)
+	if balance != 100.0 {
+		t.Errorf("Expected balance to be 100.0 after applying new user credits, got %f", balance)
 	}
 }

@@ -317,7 +317,7 @@ type Server struct {
 	// Data isolation
 	dataSubdir string // subdirectory under /data for container isolation
 
-	accountant accounting.Accountant
+	accountant *accounting.Accountant
 
 	docs *docspkg.Handler
 
@@ -552,7 +552,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		sshMetrics:      sshMetrics,
 		dataSubdir:      dataSubdir,
 
-		accountant: accounting.NewDBAccountant(db),
+		accountant: accounting.NewAccountant(),
 		docs:       docsHandler,
 	}
 
@@ -623,7 +623,7 @@ func (s *Server) setupHTTPServer() {
 	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
 	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
 
-	lg := llmgateway.NewGateway(s.accountant, s, llmgateway.APIKeys{
+	lg := llmgateway.NewGateway(s.accountant, s.db, s, llmgateway.APIKeys{
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,
@@ -658,7 +658,7 @@ func (s *Server) setupHTTPSServer() {
 	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
 	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
 
-	lg := llmgateway.NewGateway(s.accountant, s, llmgateway.APIKeys{
+	lg := llmgateway.NewGateway(s.accountant, s.db, s, llmgateway.APIKeys{
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,
@@ -2145,6 +2145,14 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create user: %w", err)
+			}
+
+			// Apply new user credits in a separate transaction
+			err = s.db.Tx(ctx, func(ctx context.Context, tx2 *sqlite.Tx) error {
+				return s.accountant.ApplyNewUserCredits(ctx, tx2, billingAccountID)
+			})
+			if err != nil {
+				return fmt.Errorf("failed to apply new user credits: %w", err)
 			}
 
 			// Create user allocation

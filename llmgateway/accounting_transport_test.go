@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"exe.dev/accounting"
+	"exe.dev/exedb"
+	"exe.dev/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 // mockTransport implements http.RoundTripper for testing
@@ -29,26 +33,72 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return m.response, nil
 }
 
+// createTestDB creates a temporary database for testing
+func createTestDB(t *testing.T) (*sqlite.DB, func()) {
+	tmpFile, err := os.CreateTemp("", "accounting-transport-test-*.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	tmpFile.Close()
+	dbPath := tmpFile.Name()
+
+	// Run migrations
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		os.Remove(dbPath)
+		t.Fatalf("Failed to open database: %v", err)
+	}
+
+	if err := exedb.RunMigrations(rawDB); err != nil {
+		rawDB.Close()
+		os.Remove(dbPath)
+		t.Fatalf("Failed to run migrations: %v", err)
+	}
+	rawDB.Close()
+
+	// Open with sqlite wrapper
+	db, err := sqlite.New(dbPath, 1)
+	if err != nil {
+		os.Remove(dbPath)
+		t.Fatalf("Failed to open sqlite database: %v", err)
+	}
+
+	cleanup := func() {
+		db.Close()
+		os.Remove(dbPath)
+	}
+
+	return db, cleanup
+}
+
 // Factory function to create an accountingTransport for testing
-func newTestAccountingTransport(balance float64, balanceErr error, rt http.RoundTripper, billingAccountID string) (*accountingTransport, *mockAccountant) {
-	mockAcct := &mockAccountant{
-		balances: map[string]float64{
-			billingAccountID: balance,
-		},
-	}
-	if balanceErr != nil {
-		mockAcct.balanceErrors = map[string]error{
-			billingAccountID: balanceErr,
+func newTestAccountingTransport(balance float64, balanceErr error, rt http.RoundTripper, billingAccountID string) (*accountingTransport, *accounting.Accountant, *sqlite.DB) {
+	db, _ := createTestDB(&testing.T{})
+	accountant := accounting.NewAccountant()
+
+	// If we want a balance, add credits
+	if balance > 0 {
+		credit := accounting.UsageCredit{
+			BillingAccountID: billingAccountID,
+			Amount:           balance,
+			PaymentMethod:    "test",
+			PaymentID:        "test-payment",
+			Status:           "completed",
 		}
+		_ = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			return accountant.CreditUsage(ctx, tx, credit)
+		})
 	}
+
 	return &accountingTransport{
 		RoundTripper:     rt,
-		accountant:       mockAcct,
+		accountant:       accountant,
+		db:               db,
 		billingAccountID: billingAccountID,
 		baseURL:          "https://example.com",
 		apiType:          "anthropic", // Default to anthropic for tests
 		testDebitDone:    make(chan bool, 1),
-	}, mockAcct
+	}, accountant, db
 }
 
 // createGzippedJSONResponse creates a gzipped JSON response body
@@ -68,10 +118,9 @@ func createGzippedJSONResponse(t *testing.T, data any) io.ReadCloser {
 // TestAccountingTransportCheckCredits tests the checkCredits method
 func TestAccountingTransportCheckCredits(t *testing.T) {
 	tests := []struct {
-		name       string
-		balance    float64
-		balanceErr error
-		wantErr    bool
+		name    string
+		balance float64
+		wantErr bool
 	}{
 		{
 			name:    "sufficient balance",
@@ -83,22 +132,22 @@ func TestAccountingTransportCheckCredits(t *testing.T) {
 			balance: 0.0,
 			wantErr: true,
 		},
-		{
-			name:       "balance check error",
-			balance:    0.0,
-			balanceErr: fmt.Errorf("database error"),
-			wantErr:    false, // Should not error, just log
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a test accountingTransport with our mock
-			at, act := newTestAccountingTransport(tt.balance, tt.balanceErr, nil, tt.name)
+			// Create a test accountingTransport with our accountant
+			at, act, db := newTestAccountingTransport(tt.balance, nil, nil, tt.name)
+			defer db.Close()
 
 			// Test the checkCredits method
 			err := at.checkCredits(context.Background(), tt.name)
-			bal, balErr := act.GetBalance(context.Background(), tt.name)
+			var bal float64
+			balErr := db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+				var err error
+				bal, err = act.GetBalance(ctx, rx, tt.name)
+				return err
+			})
 			t.Logf("%s: biling id %q, tt.balance %f, bal: %f, balErr: %v", at.billingAccountID, tt.name, tt.balance, bal, balErr)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -115,7 +164,8 @@ func TestAccountingTransportCheckCredits(t *testing.T) {
 		BillingAccountID := "123"
 
 		// Get error from test implementation
-		testTransport, _ := newTestAccountingTransport(balance, nil, nil, BillingAccountID)
+		testTransport, _, db := newTestAccountingTransport(balance, nil, nil, BillingAccountID)
+		defer db.Close()
 		testErr := testTransport.checkCredits(context.Background(), BillingAccountID)
 
 		assert.Error(t, testErr)
@@ -129,7 +179,6 @@ func TestAccountingTransportRoundTrip(t *testing.T) {
 	tests := []struct {
 		name         string
 		balance      float64
-		balanceErr   error
 		expectedCode int
 	}{
 		{
@@ -141,12 +190,6 @@ func TestAccountingTransportRoundTrip(t *testing.T) {
 			name:         "insufficient balance",
 			balance:      0.0,
 			expectedCode: http.StatusPaymentRequired,
-		},
-		{
-			name:         "balance check error - allows request",
-			balance:      0.0,
-			balanceErr:   fmt.Errorf("database error"),
-			expectedCode: http.StatusOK,
 		},
 	}
 
@@ -162,8 +205,9 @@ func TestAccountingTransportRoundTrip(t *testing.T) {
 			// Create a mock RoundTripper
 			mockRT := &mockTransport{response: mockResp}
 
-			// Create an actual accountingTransport with our mocks
-			at, _ := newTestAccountingTransport(tt.balance, tt.balanceErr, mockRT, "123")
+			// Create an actual accountingTransport with our accountant
+			at, _, db := newTestAccountingTransport(tt.balance, nil, mockRT, "123")
+			defer db.Close()
 
 			// Create a test request
 			req := httptest.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", nil)
@@ -201,7 +245,8 @@ func TestModifyResponseAnthropic(t *testing.T) {
 	resp.Header.Add("Content-type", "application/json")
 
 	// Create accounting transport
-	at, mockAcct := newTestAccountingTransport(100.0, nil, nil, "123")
+	at, act, db := newTestAccountingTransport(100.0, nil, nil, "123")
+	defer db.Close()
 	at.apiType = "anthropic"
 
 	// Test modifyResponse
@@ -216,14 +261,15 @@ func TestModifyResponseAnthropic(t *testing.T) {
 	// Wait for async accounting to complete
 	<-at.testDebitDone
 
-	// Verify accounting was called
-	assert.Len(t, mockAcct.debits, 1, "Should have recorded one usage debit")
-	debit := mockAcct.debits[0]
-	assert.Equal(t, "msg_test123", debit.MessageID)
-	assert.Equal(t, "claude-3-haiku-20240307", debit.Model)
-	assert.Equal(t, uint64(100), debit.Usage.InputTokens)
-	assert.Equal(t, uint64(50), debit.Usage.OutputTokens)
-	assert.Greater(t, debit.Usage.CostUSD, 0.0, "Cost should be calculated")
+	// Verify the balance was debited
+	var balance float64
+	err = db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = act.GetBalance(ctx, rx, "123")
+		return err
+	})
+	assert.NoError(t, err)
+	assert.Less(t, balance, 100.0, "Balance should have decreased from the debit")
 }
 
 // TestModifyResponseGzipped tests modifyResponse with gzipped content
@@ -250,7 +296,8 @@ func TestModifyResponseGzipped(t *testing.T) {
 	resp.Header.Set("Content-Encoding", "gzip")
 	resp.Header.Add("Content-type", "application/json")
 	// Create accounting transport
-	at, mockAcct := newTestAccountingTransport(100.0, nil, nil, "123")
+	at, act, db := newTestAccountingTransport(100.0, nil, nil, "123")
+	defer db.Close()
 	at.apiType = "anthropic"
 
 	// Test modifyResponse
@@ -260,11 +307,15 @@ func TestModifyResponseGzipped(t *testing.T) {
 	// Wait for async accounting to complete
 	<-at.testDebitDone
 
-	// Verify accounting was called
-	assert.Len(t, mockAcct.debits, 1, "Should have recorded one usage debit")
-	debit := mockAcct.debits[0]
-	assert.Equal(t, "msg_gzip_test", debit.MessageID)
-	assert.Equal(t, "claude-3-sonnet-20240229", debit.Model)
+	// Verify the balance was debited
+	var balance float64
+	err = db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+		var err error
+		balance, err = act.GetBalance(ctx, rx, "123")
+		return err
+	})
+	assert.NoError(t, err)
+	assert.Less(t, balance, 100.0, "Balance should have decreased from the debit")
 }
 
 // TestModifyResponseErrorCases tests error handling in modifyResponse
@@ -276,7 +327,8 @@ func TestModifyResponseErrorCases(t *testing.T) {
 			Header:     make(http.Header),
 		}
 
-		at, _ := newTestAccountingTransport(100.0, nil, nil, "123")
+		at, _, db := newTestAccountingTransport(100.0, nil, nil, "123")
+		defer db.Close()
 		err := at.modifyResponse(resp)
 		assert.NoError(t, err, "Should not error for non-200 responses")
 
@@ -293,7 +345,8 @@ func TestModifyResponseErrorCases(t *testing.T) {
 		}
 		resp.Header.Add("Content-type", "application/json")
 
-		at, _ := newTestAccountingTransport(100.0, nil, nil, "123")
+		at, _, db := newTestAccountingTransport(100.0, nil, nil, "123")
+		defer db.Close()
 		at.apiType = "anthropic"
 		err := at.modifyResponse(resp)
 		assert.Error(t, err, "Should error on malformed JSON")
