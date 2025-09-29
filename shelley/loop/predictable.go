@@ -14,6 +14,8 @@ import (
 type PredictableService struct {
 	// TokenContextWindow size
 	tokenContextWindow int
+	// Recent requests for testing inspection
+	recentRequests []*llm.Request
 }
 
 // NewPredictableService creates a new predictable LLM service
@@ -30,6 +32,12 @@ func (s *PredictableService) TokenContextWindow() int {
 
 // Do processes a request and returns a predictable response based on the input text
 func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Response, error) {
+	// Store request for testing inspection
+	s.recentRequests = append(s.recentRequests, req)
+	// Keep only last 10 requests
+	if len(s.recentRequests) > 10 {
+		s.recentRequests = s.recentRequests[len(s.recentRequests)-10:]
+	}
 	// Extract the text content from the last user message
 	var inputText string
 	if len(req.Messages) > 0 {
@@ -203,4 +211,22 @@ func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Respons
 			CostUSD:      0.003,
 		},
 	}
+}
+
+// GetRecentRequests returns the recent requests made to this service
+func (s *PredictableService) GetRecentRequests() []*llm.Request {
+	return s.recentRequests
+}
+
+// GetLastRequest returns the most recent request, or nil if none
+func (s *PredictableService) GetLastRequest() *llm.Request {
+	if len(s.recentRequests) == 0 {
+		return nil
+	}
+	return s.recentRequests[len(s.recentRequests)-1]
+}
+
+// ClearRequests clears the request history
+func (s *PredictableService) ClearRequests() {
+	s.recentRequests = nil
 }

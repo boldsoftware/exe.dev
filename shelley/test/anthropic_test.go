@@ -117,14 +117,23 @@ func TestWithAnthropicAPI(t *testing.T) {
 			t.Fatalf("Failed to decode messages: %v", err)
 		}
 
-		// Should have user message and assistant response
-		if len(messages) < 2 {
-			t.Fatalf("Expected at least 2 messages (user + assistant), got %d", len(messages))
+		// Should have system message, user message and assistant response
+		if len(messages) < 3 {
+			msgTypes := make([]string, len(messages))
+			for i, msg := range messages {
+				msgTypes[i] = msg.Type
+			}
+			t.Fatalf("Expected at least 3 messages (system + user + assistant), got %d: %v", len(messages), msgTypes)
 		}
 
-		// Check user message
-		if messages[0].Type != "user" {
-			t.Fatalf("Expected first message to be user, got %s", messages[0].Type)
+		// Check first message is system prompt
+		if messages[0].Type != "system" {
+			t.Fatalf("Expected first message to be system, got %s", messages[0].Type)
+		}
+
+		// Check user message is second
+		if messages[1].Type != "user" {
+			t.Fatalf("Expected second message to be user, got %s", messages[1].Type)
 		}
 
 		// Check assistant response

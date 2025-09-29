@@ -23,12 +23,12 @@ function App() {
       const convs = await api.getConversations();
       setConversations(convs);
       
-      // If no current conversation, create a new one or select the first
-      if (!currentConversationId && convs.length === 0) {
-        await createNewConversation();
-      } else if (!currentConversationId && convs.length > 0) {
+      // If we have conversations and no current one selected, select the first
+      if (!currentConversationId && convs.length > 0) {
         setCurrentConversationId(convs[0].conversation_id);
       }
+      // If no conversations exist, leave currentConversationId as null
+      // The UI will show the welcome screen and create conversation on first message
     } catch (err) {
       console.error('Failed to load conversations:', err);
       setError('Failed to load conversations. Please refresh the page.');
@@ -37,16 +37,10 @@ function App() {
     }
   };
 
-  const createNewConversation = async () => {
-    try {
-      const newConv = await api.createConversation();
-      setConversations(prev => [newConv, ...prev]);
-      setCurrentConversationId(newConv.conversation_id);
-      setDrawerOpen(false);
-    } catch (err) {
-      console.error('Failed to create conversation:', err);
-      setError('Failed to create new conversation');
-    }
+  const startNewConversation = () => {
+    // Just clear the current conversation - a new one will be created when the user sends their first message
+    setCurrentConversationId(null);
+    setDrawerOpen(false);
   };
 
   const selectConversation = (conversationId: string) => {
@@ -93,6 +87,22 @@ function App() {
 
   const currentConversation = conversations.find(conv => conv.conversation_id === currentConversationId);
 
+  const handleFirstMessage = async (message: string, model: string) => {
+    try {
+      const response = await api.sendMessageWithNewConversation({ message, model });
+      const newConversationId = response.conversation_id;
+      
+      // Fetch the new conversation details
+      const updatedConvs = await api.getConversations();
+      setConversations(updatedConvs);
+      setCurrentConversationId(newConversationId);
+    } catch (err) {
+      console.error('Failed to send first message:', err);
+      setError('Failed to send message');
+      throw err;
+    }
+  };
+
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 flex relative">
       {/* Conversations drawer */}
@@ -102,33 +112,19 @@ function App() {
         conversations={conversations}
         currentConversationId={currentConversationId}
         onSelectConversation={selectConversation}
-        onNewConversation={createNewConversation}
+        onNewConversation={startNewConversation}
       />
 
       {/* Main chat interface */}
       <div className="flex-1 flex flex-col">
-        {currentConversationId ? (
-          <ChatInterface
-            conversationId={currentConversationId}
-            onOpenDrawer={() => setDrawerOpen(true)}
-            onNewConversation={createNewConversation}
-            currentConversation={currentConversation}
-            onConversationUpdate={updateConversation}
-          />
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <h2 className="text-xl font-semibold mb-4">Welcome to Shelley</h2>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">Start a new conversation to get started</p>
-              <button
-                onClick={createNewConversation}
-                className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
-              >
-                New Conversation
-              </button>
-            </div>
-          </div>
-        )}
+        <ChatInterface
+          conversationId={currentConversationId}
+          onOpenDrawer={() => setDrawerOpen(true)}
+          onNewConversation={startNewConversation}
+          currentConversation={currentConversation}
+          onConversationUpdate={updateConversation}
+          onFirstMessage={handleFirstMessage}
+        />
       </div>
 
       {/* Backdrop for mobile drawer */}

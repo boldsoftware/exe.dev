@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS messages (
     message_id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('user', 'agent', 'tool')),
+    type TEXT NOT NULL CHECK (type IN ('user', 'agent', 'tool', 'system')),
     llm_data TEXT, -- JSON data sent to/from LLM
     user_data TEXT, -- JSON data for UI display
     usage_data TEXT, -- JSON data about token usage, etc.

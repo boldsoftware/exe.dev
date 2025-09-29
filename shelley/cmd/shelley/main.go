@@ -203,7 +203,7 @@ func runPrompt(global GlobalConfig, args []string) {
 	}
 
 	// Generate system prompt
-	systemPrompt, err := GenerateSystemPrompt()
+	systemPrompt, err := server.GenerateSystemPrompt()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating system prompt: %s\n", err)
 		os.Exit(1)

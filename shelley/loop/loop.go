@@ -190,7 +190,11 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 		System:   system,
 	}
 
-	l.logger.Debug("sending LLM request", "message_count", len(messages), "tool_count", len(tools))
+	systemLen := 0
+	for _, sys := range system {
+		systemLen += len(sys.Text)
+	}
+	l.logger.Debug("sending LLM request", "message_count", len(messages), "tool_count", len(tools), "system_items", len(system), "system_length", systemLen)
 
 	resp, err := l.llm.Do(ctx, req)
 	if err != nil {

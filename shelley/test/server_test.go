@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -146,14 +147,19 @@ func TestServerEndToEnd(t *testing.T) {
 			t.Fatalf("Failed to decode messages: %v", err)
 		}
 
-		// Should have at least the user message
-		if len(messages) == 0 {
-			t.Fatal("Expected at least 1 message")
+		// Should have at least system and user messages
+		if len(messages) < 2 {
+			t.Fatalf("Expected at least 2 messages (system + user), got %d", len(messages))
 		}
 
-		// First message should be from user
-		if messages[0].Type != "user" {
-			t.Fatalf("Expected first message to be user, got %s", messages[0].Type)
+		// First message should be system prompt
+		if messages[0].Type != "system" {
+			t.Fatalf("Expected first message to be system, got %s", messages[0].Type)
+		}
+
+		// Second message should be from user
+		if messages[1].Type != "user" {
+			t.Fatalf("Expected second message to be user, got %s", messages[1].Type)
 		}
 	})
 
@@ -679,4 +685,187 @@ func TestSSEIncrementalUpdates(t *testing.T) {
 	}
 
 	t.Log("SSE incremental updates test completed successfully")
+}
+
+// TestSystemPromptSentToLLM verifies that the system prompt is included in LLM requests
+func TestSystemPromptSentToLLM(t *testing.T) {
+	ctx := context.Background()
+
+	// Create database and server with predictable service
+	database, err := db.New(db.Config{DSN: ":memory:"})
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	logBuffer := server.NewLogBuffer(100)
+
+	// Create a predictable service we can inspect
+	predictableService := loop.NewPredictableService()
+
+	// Create a custom LLM manager that returns our inspectable predictable service
+	customLLMManager := &inspectableLLMManager{
+		predictableService: predictableService,
+		logger:             logger,
+	}
+
+	tools := []*llm.Tool{}
+	svr := server.NewServer(database, customLLMManager, tools, logger, logBuffer, false)
+
+	// Start server
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux := http.NewServeMux()
+		svr.RegisterRoutes(mux)
+		mux.ServeHTTP(w, r)
+	}))
+	defer ts.Close()
+
+	// Test 1: Create new conversation and send first message
+	t.Run("FirstMessage", func(t *testing.T) {
+		predictableService.ClearRequests()
+
+		// Send first message using /api/conversations/new
+		chatReq := map[string]interface{}{
+			"message": "Hello",
+			"model":   "predictable",
+		}
+		body, _ := json.Marshal(chatReq)
+		resp, err := http.Post(ts.URL+"/api/conversations/new", "application/json", bytes.NewBuffer(body))
+		if err != nil {
+			t.Fatalf("Failed to send message: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("Expected status 201, got %d: %s", resp.StatusCode, body)
+		}
+
+		// Wait a moment for async processing
+		time.Sleep(100 * time.Millisecond)
+
+		// Check that the predictable service received a request with system prompt
+		lastReq := predictableService.GetLastRequest()
+		if lastReq == nil {
+			t.Fatal("No request was sent to the LLM service")
+		}
+
+		if len(lastReq.System) == 0 {
+			t.Fatal("System prompt was not included in the LLM request")
+		}
+
+		// Verify system prompt contains expected content
+		systemText := ""
+		for _, sys := range lastReq.System {
+			systemText += sys.Text
+		}
+		if !strings.Contains(systemText, "Shelley") {
+			t.Errorf("System prompt doesn't contain 'Shelley': %s", systemText)
+		}
+		if !strings.Contains(systemText, "coding agent") {
+			t.Errorf("System prompt doesn't contain 'coding agent': %s", systemText)
+		}
+
+		t.Logf("System prompt successfully sent (length: %d chars)", len(systemText))
+	})
+
+	// Test 2: Send second message in existing conversation
+	t.Run("SubsequentMessage", func(t *testing.T) {
+		predictableService.ClearRequests()
+
+		// Create conversation first
+		chatReq := map[string]interface{}{
+			"message": "Hello",
+			"model":   "predictable",
+		}
+		body, _ := json.Marshal(chatReq)
+		resp, err := http.Post(ts.URL+"/api/conversations/new", "application/json", bytes.NewBuffer(body))
+		if err != nil {
+			t.Fatalf("Failed to send first message: %v", err)
+		}
+		defer resp.Body.Close()
+
+		var createResp struct {
+			ConversationID string `json:"conversation_id"`
+		}
+		if resp.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("Expected status 201, got %d: %s", resp.StatusCode, body)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("Failed to decode response (status %d): %v, body: %s", resp.StatusCode, err, body)
+		}
+
+		conversationID := createResp.ConversationID
+		time.Sleep(100 * time.Millisecond)
+
+		// Clear requests and send second message
+		predictableService.ClearRequests()
+
+		chatReq2 := map[string]interface{}{
+			"message": "what is the date",
+			"model":   "predictable",
+		}
+		body2, _ := json.Marshal(chatReq2)
+		resp2, err := http.Post(ts.URL+"/api/conversation/"+conversationID+"/chat", "application/json", bytes.NewBuffer(body2))
+		if err != nil {
+			t.Fatalf("Failed to send second message: %v", err)
+		}
+		defer resp2.Body.Close()
+
+		if resp2.StatusCode != http.StatusAccepted {
+			body, _ := io.ReadAll(resp2.Body)
+			t.Fatalf("Expected status 202, got %d: %s", resp2.StatusCode, body)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+
+		// Check that system prompt is still included in subsequent request
+		lastReq := predictableService.GetLastRequest()
+		if lastReq == nil {
+			t.Fatal("No request was sent to the LLM service")
+		}
+
+		if len(lastReq.System) == 0 {
+			t.Fatal("System prompt was not included in subsequent LLM request")
+		}
+
+		// Verify system prompt contains expected content
+		systemText := ""
+		for _, sys := range lastReq.System {
+			systemText += sys.Text
+		}
+		if !strings.Contains(systemText, "Shelley") {
+			t.Errorf("System prompt doesn't contain 'Shelley' in subsequent request: %s", systemText)
+		}
+
+		t.Logf("System prompt successfully sent in subsequent message (length: %d chars)", len(systemText))
+	})
+}
+
+// inspectableLLMManager is a test helper that always returns the same predictable service
+type inspectableLLMManager struct {
+	predictableService *loop.PredictableService
+	logger             *slog.Logger
+}
+
+func (m *inspectableLLMManager) GetService(modelID string) (llm.Service, error) {
+	if modelID != "predictable" {
+		return nil, fmt.Errorf("unsupported model: %s", modelID)
+	}
+	return m.predictableService, nil
+}
+
+func (m *inspectableLLMManager) GetAvailableModels() []string {
+	return []string{"predictable"}
+}
+
+func (m *inspectableLLMManager) HasModel(modelID string) bool {
+	return modelID == "predictable"
 }

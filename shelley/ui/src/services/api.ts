@@ -11,15 +11,16 @@ class ApiService {
     return response.json();
   }
 
-  async createConversation(): Promise<Conversation> {
-    const response = await fetch(`${this.baseUrl}/conversations`, {
+  async sendMessageWithNewConversation(request: ChatRequest): Promise<{ conversation_id: string }> {
+    const response = await fetch(`${this.baseUrl}/conversations/new`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(request),
     });
     if (!response.ok) {
-      throw new Error(`Failed to create conversation: ${response.statusText}`);
+      throw new Error(`Failed to send message: ${response.statusText}`);
     }
     return response.json();
   }

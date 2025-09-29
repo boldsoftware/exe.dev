@@ -6,14 +6,15 @@ import MessageInput from './MessageInput';
 import Modal from './Modal';
 
 interface ChatInterfaceProps {
-  conversationId: string;
+  conversationId: string | null;
   onOpenDrawer: () => void;
   onNewConversation: () => void;
   currentConversation?: Conversation;
   onConversationUpdate?: (conversation: Conversation) => void;
+  onFirstMessage?: (message: string, model: string) => Promise<void>;
 }
 
-function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, currentConversation, onConversationUpdate }: ChatInterfaceProps) {
+function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, currentConversation, onConversationUpdate, onFirstMessage }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -26,8 +27,14 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
 
   // Load messages and set up streaming
   useEffect(() => {
-    loadMessages();
-    setupMessageStream();
+    if (conversationId) {
+      loadMessages();
+      setupMessageStream();
+    } else {
+      // No conversation yet, show empty state
+      setMessages([]);
+      setLoading(false);
+    }
     loadModels();
 
     return () => {
@@ -43,6 +50,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   }, [messages]);
 
   const loadMessages = async () => {
+    if (!conversationId) return;
     try {
       setLoading(true);
       setError(null);
@@ -70,6 +78,8 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   };
 
   const setupMessageStream = () => {
+    if (!conversationId) return;
+    
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -134,10 +144,16 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     try {
       setSending(true);
       setError(null);
-      await api.sendMessage(conversationId, {
-        message: message.trim(),
-        model: selectedModel,
-      });
+      
+      // If no conversation ID, this is the first message
+      if (!conversationId && onFirstMessage) {
+        await onFirstMessage(message.trim(), selectedModel);
+      } else if (conversationId) {
+        await api.sendMessage(conversationId, {
+          message: message.trim(),
+          model: selectedModel,
+        });
+      }
     } catch (err) {
       console.error('Failed to send message:', err);
       setError('Failed to send message. Please try again.');

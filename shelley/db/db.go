@@ -219,9 +219,10 @@ func (db *DB) UpdateConversationSlug(ctx context.Context, conversationID, slug s
 type MessageType string
 
 const (
-	MessageTypeUser  MessageType = "user"
-	MessageTypeAgent MessageType = "agent"
-	MessageTypeTool  MessageType = "tool"
+	MessageTypeUser   MessageType = "user"
+	MessageTypeAgent  MessageType = "agent"
+	MessageTypeTool   MessageType = "tool"
+	MessageTypeSystem MessageType = "system"
 )
 
 // CreateMessageParams contains parameters for creating a message
