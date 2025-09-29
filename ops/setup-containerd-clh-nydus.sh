@@ -496,6 +496,7 @@ set -e
 
 CONTAINER_SUBNET="10.4.0.0/16"
 BRIDGE_NAME="nerdctl0"
+ALLOW_DEV_HOST_ACCESS="__ALLOW_DEV_HOST_ACCESS__"
 
 # Wait for bridge to exist (it's created by CNI when first container starts)
 if ip link show $BRIDGE_NAME >/dev/null 2>&1; then
@@ -528,6 +529,19 @@ add_rule FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 add_rule INPUT -s $CONTAINER_SUBNET -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 add_rule INPUT -s $CONTAINER_SUBNET -m conntrack --ctstate NEW -j DROP
 
+# Development: Allow containers to access host gateway on port 8080 (e.g., for local services)
+if [ -n "$ALLOW_DEV_HOST_ACCESS" ] && [ "$ALLOW_DEV_HOST_ACCESS" = "1" ]; then
+    # Detect gateway IP (Mac host in Lima)
+    GATEWAY_IP=$(getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}')
+    if [ -n "$GATEWAY_IP" ]; then
+        # Allow access to gateway:8080 before the general DROP rules
+        add_rule FORWARD -s $CONTAINER_SUBNET -d $GATEWAY_IP -p tcp --dport 8080 -j ACCEPT
+        echo "Development mode: Allowed container access to $GATEWAY_IP:8080"
+    else
+        echo "Warning: ALLOW_DEV_HOST_ACCESS set but could not determine gateway IP"
+    fi
+fi
+
 # Block containers from accessing private networks and metadata services
 # (Replies to host/Internet remain allowed by the ESTABLISHED rule above)
 add_rule FORWARD -s $CONTAINER_SUBNET -d 192.168.0.0/16 -j DROP
@@ -553,6 +567,9 @@ done
 
 echo "Container isolation rules applied successfully"
 ISOLATION_SCRIPT
+
+# Substitute the ALLOW_DEV_HOST_ACCESS value into the script
+sudo sed -i "s/__ALLOW_DEV_HOST_ACCESS__/${ALLOW_DEV_HOST_ACCESS:-}/g" /usr/local/bin/setup-container-isolation.sh
 
 sudo chmod +x /usr/local/bin/setup-container-isolation.sh
 

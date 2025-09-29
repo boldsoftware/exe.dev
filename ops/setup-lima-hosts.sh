@@ -74,7 +74,8 @@ provision_base_vm() {
 	echo "=========================================="
 	echo "Running setup script in VM (this will take a few minutes)..."
 	# Set CI environment variable since Lima VMs are ephemeral-like
-	limactl shell ${LIMA_BASE} -- sudo CI=1 /root/setup-containerd-clh-nydus.sh
+	# Set ALLOW_DEV_HOST_ACCESS to allow containers to access Mac host on port 8080 for development
+	limactl shell ${LIMA_BASE} -- sudo CI=1 ALLOW_DEV_HOST_ACCESS=1 /root/setup-containerd-clh-nydus.sh
 
 	echo "=========================================="
 	echo "Lima-specific cofiguration..."
