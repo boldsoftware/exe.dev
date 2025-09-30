@@ -2043,6 +2043,15 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get user email from database
+	userEmail, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetEmailByUserID(ctx, magicSecret.UserID)
+	})
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
 	// Prepare template data
 	currentURL := r.URL.String()
 	confirmURL := strings.ReplaceAll(currentURL, "action=", "unused=") + "&action=confirm"
@@ -2052,10 +2061,12 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		SiteDomain string
 		ConfirmURL string
 		CancelURL  string
+		UserEmail  string
 	}{
 		SiteDomain: hostname,
 		ConfirmURL: confirmURL,
 		CancelURL:  cancelURL,
+		UserEmail:  userEmail,
 	}
 
 	s.renderTemplate(w, "login-confirmation.html", data)
