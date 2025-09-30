@@ -2073,6 +2073,28 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		"etc/ssh/authorized_keys":          {sshKeys.AuthorizedKeys, "644"},
 	}
 
+	// Add shelley.json if we can determine the gateway
+	var gatewayURL string
+	if m.config.IsProduction {
+		gatewayURL = "https://exe.dev"
+	} else {
+		gatewayIP, err := m.getGatewayIP(ctx, host)
+		if err == nil {
+			gatewayURL = fmt.Sprintf("http://%s:8080", gatewayIP)
+		}
+	}
+	if gatewayURL != "" {
+		shelleyJSON := map[string]string{"llm_gateway": gatewayURL}
+		shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal shelley.json: %w", err)
+		}
+		files["shelley.json"] = struct {
+			content string
+			mode    string
+		}{string(shelleyJSONBytes), "644"}
+	}
+
 	// Build a single command to write all files
 	// This dramatically reduces SSH round-trips from 4 to 1
 	var writeScript strings.Builder
@@ -2095,33 +2117,10 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		return "", fmt.Errorf("failed to write SSH files: %w: %s", err, output)
 	}
 
-	slog.Info("Wrote all container-specific SSH files")
-
-	// Create shelley.json with gateway IP
-	gatewayIP, err := m.getGatewayIP(ctx, host)
-	if err != nil {
-		slog.Warn("Failed to get gateway IP for shelley.json", "error", err)
-		// Continue without shelley.json - not critical for basic functionality
+	if gatewayURL != "" {
+		slog.Info("Wrote all container-specific files", "gateway", gatewayURL)
 	} else {
-		// Create the shelley.json content
-		shelleyJSON := map[string]string{
-			"llm_gateway": gatewayIP,
-		}
-		shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")
-		if err != nil {
-			slog.Warn("Failed to marshal shelley.json", "error", err)
-		} else {
-			shelleyPath := filepath.Join(containerDir, "shelley.json")
-			encodedContent := base64.StdEncoding.EncodeToString(shelleyJSONBytes)
-			shelleyCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
-				fmt.Sprintf("echo '%s' | base64 -d | sudo tee '%s' > /dev/null && sudo chmod 644 '%s'",
-					encodedContent, shelleyPath, shelleyPath))
-			if output, err := shelleyCmd.CombinedOutput(); err != nil {
-				slog.Warn("Failed to write shelley.json", "error", err, "output", string(output))
-			} else {
-				slog.Info("Created shelley.json", "path", shelleyPath, "gateway", gatewayIP)
-			}
-		}
+		slog.Info("Wrote all container-specific SSH files")
 	}
 
 	slog.Info("Successfully prepared container-specific /exe.dev directory", "dir", containerDir)

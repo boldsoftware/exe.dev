@@ -44,8 +44,14 @@ func TestWithAnthropicAPI(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo, // Less verbose for real API test
 	}))
-	llmManager := server.NewLLMServiceManager(logger)
-	// The manager will automatically use the API key from environment
+	llmConfig := &server.LLMConfig{
+		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
+		GeminiAPIKey:    os.Getenv("GEMINI_API_KEY"),
+		FireworksAPIKey: os.Getenv("FIREWORKS_API_KEY"),
+		Logger:          logger,
+	}
+	llmManager := server.NewLLMServiceManager(llmConfig)
 
 	// Set up tools
 	bashTool := &claudetool.BashTool{Pwd: t.TempDir()}

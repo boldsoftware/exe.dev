@@ -468,6 +468,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 			DefaultMemoryRequest: "1Gi",
 			DefaultStorageSize:   "10Gi",
 			DataSubdir:           dataSubdir,
+			IsProduction:         devMode == "", // Production when devMode is empty
 		}
 
 		// Optional: load OCI/Kata annotations from environment as JSON

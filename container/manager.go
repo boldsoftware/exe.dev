@@ -25,6 +25,11 @@ type Config struct {
 
 	// DataSubdir is the subdirectory under /data for container isolation
 	DataSubdir string `json:"data_subdir"`
+
+	// IsProduction indicates whether this is a production environment.
+	// When true, shelley.json will use "exe.dev" as the gateway.
+	// When false, shelley.json will use the actual gateway IP.
+	IsProduction bool `json:"is_production"`
 }
 
 // validateConfig ensures all required fields are present

@@ -43,7 +43,7 @@ func TestServerEndToEnd(t *testing.T) {
 	}))
 
 	// Create LLM service manager with predictable service
-	llmManager := server.NewLLMServiceManager(logger)
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
 	predictableService := loop.NewPredictableService()
 	// For testing, we'll override the manager's service selection
 	_ = predictableService // will need to mock this properly
@@ -369,7 +369,7 @@ func TestConversationCleanup(t *testing.T) {
 
 	// Create server with predictable service
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	llmManager := server.NewLLMServiceManager(logger)
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
 	logBuffer := server.NewLogBuffer(100)
 	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
 
@@ -406,7 +406,7 @@ func TestSlugGeneration(t *testing.T) {
 
 	// Create server
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	llmManager := server.NewLLMServiceManager(logger)
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
 	logBuffer := server.NewLogBuffer(100)
 	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
 
@@ -488,7 +488,7 @@ func TestSanitizeSlug(t *testing.T) {
 func TestSlugGenerationWithPredictableService(t *testing.T) {
 	// Create server with predictable service only
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	llmManager := server.NewLLMServiceManager(logger)
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
 
 	// Create a temporary database
 	tempDB := t.TempDir() + "/test.db"
@@ -596,7 +596,7 @@ func TestSSEIncrementalUpdates(t *testing.T) {
 
 	// Create logger and LLM manager
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	llmManager := server.NewLLMServiceManager(logger)
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
 	logBuffer := server.NewLogBuffer(1000)
 
 	// Create server

@@ -24,6 +24,7 @@ type GlobalConfig struct {
 	Debug           bool
 	Model           string
 	PredictableOnly bool
+	ConfigPath      string
 }
 
 // Message emoji constants
@@ -43,6 +44,7 @@ func main() {
 	flag.BoolVar(&global.Debug, "debug", false, "Enable debug logging")
 	flag.StringVar(&global.Model, "model", "qwen3-coder-fireworks", "LLM model to use (default: qwen3-coder-fireworks; use 'predictable' for testing)")
 	flag.BoolVar(&global.PredictableOnly, "predictable-only", false, "Use only the predictable service, ignoring all other models")
+	flag.StringVar(&global.ConfigPath, "config", "", "Path to shelley.json configuration file (optional)")
 
 	// Custom usage function
 	flag.Usage = func() {
@@ -100,8 +102,11 @@ func runServe(global GlobalConfig, args []string) {
 
 	logger.Info("Starting Shelley", "port", *port, "db", global.DBPath)
 
-	// Initialize LLM service manager (no auto-detection)
-	llmManager := server.NewLLMServiceManager(logger)
+	// Build LLM configuration
+	llmConfig := buildLLMConfig(logger, global.ConfigPath)
+
+	// Initialize LLM service manager
+	llmManager := server.NewLLMServiceManager(llmConfig)
 
 	tools := setupTools(llmManager)
 
@@ -134,8 +139,11 @@ func runPrompt(global GlobalConfig, args []string) {
 	// Initialize LLM service for the main conversation
 	llmService := setupLLMService(global, logger)
 
+	// Build LLM configuration
+	llmConfig := buildLLMConfig(logger, global.ConfigPath)
+
 	// Initialize LLM service manager for tools (same as HTTP server)
-	llmManager := server.NewLLMServiceManager(logger)
+	llmManager := server.NewLLMServiceManager(llmConfig)
 	tools := setupTools(llmManager)
 	ctx := context.Background()
 
@@ -462,8 +470,11 @@ func setupLLMService(global GlobalConfig, logger *slog.Logger) llm.Service {
 		return loop.NewPredictableService()
 	}
 
+	// Build LLM configuration
+	llmConfig := buildLLMConfig(logger, global.ConfigPath)
+
 	// Always use the service manager to ensure consistent logging
-	llmManager := server.NewLLMServiceManager(logger)
+	llmManager := server.NewLLMServiceManager(llmConfig)
 	svc, err := llmManager.GetService(modelID)
 	if err != nil {
 		// Provide a helpful message with env hints
@@ -591,6 +602,46 @@ func getMessageContentPreview(message llm.Message) string {
 		}
 	}
 	return content.String()
+}
+
+// buildLLMConfig constructs LLMConfig from environment variables and optional config file
+func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
+	llmCfg := &server.LLMConfig{
+		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
+		GeminiAPIKey:    os.Getenv("GEMINI_API_KEY"),
+		FireworksAPIKey: os.Getenv("FIREWORKS_API_KEY"),
+		Logger:          logger,
+	}
+
+	if configPath != "" {
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				logger.Warn("Failed to read config file", "path", configPath, "error", err)
+			}
+			return llmCfg
+		}
+
+		var cfg struct {
+			LLMGateway string `json:"llm_gateway"`
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			logger.Warn("Failed to parse config file", "path", configPath, "error", err)
+			return llmCfg
+		}
+
+		if cfg.LLMGateway != "" {
+			gateway := strings.TrimSuffix(cfg.LLMGateway, "/")
+			llmCfg.AnthropicBaseURL = gateway + "/_/gateway/anthropic"
+			llmCfg.OpenAIBaseURL = gateway + "/_/gateway/openai"
+			llmCfg.GeminiBaseURL = gateway + "/_/gateway/gemini"
+			llmCfg.FireworksBaseURL = gateway + "/_/gateway/fireworks"
+			logger.Info("Using LLM gateway", "gateway", cfg.LLMGateway)
+		}
+	}
+
+	return llmCfg
 }
 
 // printMessageToConsole prints a readable representation of a message to stdout, as it occurs.

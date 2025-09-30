@@ -18,6 +18,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/llm/ant"
+	"shelley.exe.dev/llm/gem"
 	"shelley.exe.dev/llm/oai"
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/slug"
@@ -45,82 +46,88 @@ type LLMServiceManager struct {
 }
 
 // NewLLMServiceManager creates a new LLM service manager
-func NewLLMServiceManager(logger *slog.Logger) *LLMServiceManager {
+func NewLLMServiceManager(cfg *LLMConfig) *LLMServiceManager {
 	manager := &LLMServiceManager{
 		factories: make(map[string]func() (llm.Service, error)),
-		logger:    logger,
+		logger:    cfg.Logger,
 	}
 
-	// Anthropic Claude Sonnet 4.5 (env required)
+	// Anthropic Claude Sonnet 4.5
 	manager.factories["claude-sonnet-4.5"] = func() (llm.Service, error) {
-		apiKey := os.Getenv("ANTHROPIC_API_KEY")
-		if apiKey == "" {
-			return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY env var")
+		if cfg.AnthropicAPIKey == "" {
+			return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY")
 		}
-		svc := &ant.Service{APIKey: apiKey, Model: ant.Claude45Sonnet}
-		if baseURL := os.Getenv("ANTHROPIC_API_BASE"); baseURL != "" {
-			svc.URL = baseURL
+		svc := &ant.Service{APIKey: cfg.AnthropicAPIKey, Model: ant.Claude45Sonnet}
+		if cfg.AnthropicBaseURL != "" {
+			svc.URL = cfg.AnthropicBaseURL
 		}
 		return svc, nil
 	}
 
-	// OpenAI (env required)
+	// OpenAI
 	manager.factories["openai-gpt4"] = func() (llm.Service, error) {
-		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-		if apiKey == "" {
-			return nil, fmt.Errorf("openai-gpt4 requires %s env var", oai.OpenAIAPIKeyEnv)
+		if cfg.OpenAIAPIKey == "" {
+			return nil, fmt.Errorf("openai-gpt4 requires OPENAI_API_KEY")
 		}
-		svc := &oai.Service{Model: oai.DefaultModel, APIKey: apiKey}
-		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
-			svc.ModelURL = baseURL
+		svc := &oai.Service{Model: oai.DefaultModel, APIKey: cfg.OpenAIAPIKey}
+		if cfg.OpenAIBaseURL != "" {
+			svc.ModelURL = cfg.OpenAIBaseURL
 		}
 		return svc, nil
 	}
 
-	// OpenAI GPT-5 series (env required)
+	// OpenAI GPT-5 series
 	manager.factories["gpt-5-thinking"] = func() (llm.Service, error) {
-		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-		if apiKey == "" {
-			return nil, fmt.Errorf("gpt-5-thinking requires %s env var", oai.OpenAIAPIKeyEnv)
+		if cfg.OpenAIAPIKey == "" {
+			return nil, fmt.Errorf("gpt-5-thinking requires OPENAI_API_KEY")
 		}
-		svc := &oai.Service{Model: oai.GPT5, APIKey: apiKey}
-		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
-			svc.ModelURL = baseURL
+		svc := &oai.Service{Model: oai.GPT5, APIKey: cfg.OpenAIAPIKey}
+		if cfg.OpenAIBaseURL != "" {
+			svc.ModelURL = cfg.OpenAIBaseURL
 		}
 		return svc, nil
 	}
 	manager.factories["gpt-5-thinking-mini"] = func() (llm.Service, error) {
-		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-		if apiKey == "" {
-			return nil, fmt.Errorf("gpt-5-thinking-mini requires %s env var", oai.OpenAIAPIKeyEnv)
+		if cfg.OpenAIAPIKey == "" {
+			return nil, fmt.Errorf("gpt-5-thinking-mini requires OPENAI_API_KEY")
 		}
-		svc := &oai.Service{Model: oai.GPT5Mini, APIKey: apiKey}
-		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
-			svc.ModelURL = baseURL
+		svc := &oai.Service{Model: oai.GPT5Mini, APIKey: cfg.OpenAIAPIKey}
+		if cfg.OpenAIBaseURL != "" {
+			svc.ModelURL = cfg.OpenAIBaseURL
 		}
 		return svc, nil
 	}
 	manager.factories["gpt-5-thinking-nano"] = func() (llm.Service, error) {
-		apiKey := os.Getenv(oai.OpenAIAPIKeyEnv)
-		if apiKey == "" {
-			return nil, fmt.Errorf("gpt-5-thinking-nano requires %s env var", oai.OpenAIAPIKeyEnv)
+		if cfg.OpenAIAPIKey == "" {
+			return nil, fmt.Errorf("gpt-5-thinking-nano requires OPENAI_API_KEY")
 		}
-		svc := &oai.Service{Model: oai.GPT5Nano, APIKey: apiKey}
-		if baseURL := os.Getenv("OPENAI_API_BASE"); baseURL != "" {
-			svc.ModelURL = baseURL
+		svc := &oai.Service{Model: oai.GPT5Nano, APIKey: cfg.OpenAIAPIKey}
+		if cfg.OpenAIBaseURL != "" {
+			svc.ModelURL = cfg.OpenAIBaseURL
 		}
 		return svc, nil
 	}
 
-	// Fireworks Qwen3 Coder (env required)
+	// Fireworks Qwen3 Coder
 	manager.factories["qwen3-coder-fireworks"] = func() (llm.Service, error) {
-		apiKey := os.Getenv(oai.FireworksAPIKeyEnv)
-		if apiKey == "" {
-			return nil, fmt.Errorf("qwen3-coder-fireworks requires %s env var", oai.FireworksAPIKeyEnv)
+		if cfg.FireworksAPIKey == "" {
+			return nil, fmt.Errorf("qwen3-coder-fireworks requires FIREWORKS_API_KEY")
 		}
-		svc := &oai.Service{Model: oai.Qwen3CoderFireworks, APIKey: apiKey}
-		if baseURL := os.Getenv("FIREWORKS_API_BASE"); baseURL != "" {
-			svc.ModelURL = baseURL
+		svc := &oai.Service{Model: oai.Qwen3CoderFireworks, APIKey: cfg.FireworksAPIKey}
+		if cfg.FireworksBaseURL != "" {
+			svc.ModelURL = cfg.FireworksBaseURL
+		}
+		return svc, nil
+	}
+
+	// Google Gemini
+	manager.factories["gemini-2.5-pro"] = func() (llm.Service, error) {
+		if cfg.GeminiAPIKey == "" {
+			return nil, fmt.Errorf("gemini-2.5-pro requires GEMINI_API_KEY")
+		}
+		svc := &gem.Service{Model: gem.DefaultModel, APIKey: cfg.GeminiAPIKey}
+		if cfg.GeminiBaseURL != "" {
+			svc.URL = cfg.GeminiBaseURL
 		}
 		return svc, nil
 	}
