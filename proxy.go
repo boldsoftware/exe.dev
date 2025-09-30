@@ -33,9 +33,6 @@ import (
 // If you have multiple web servers, for certain ports, we also redirect those requests. So,
 // https://boxname.exe.dev:8080/ will go to port 8080 on the box. These non-default ports are always
 // private.
-//
-// TODO: We should also send X-ExeDev-UserID and X-ExeDev-Email headers to the proxy requests,
-// when those are available.
 
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches box.team.exe.dev or box.team.localhost
@@ -648,6 +645,43 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.Transport = transport
+
+	// Set up Director to add user headers and remove auth cookie
+	defaultDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		defaultDirector(req)
+
+		// Add user info headers if authenticated
+		if userID, ok := s.getAuthenticatedUserID(r); ok {
+			email, err := withRxRes(s, req.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+				return queries.GetEmailByUserID(ctx, userID)
+			})
+			if err != nil {
+				slog.Error("failed to get user email for authenticated proxy headers", "error", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			req.Header.Set("X-ExeDev-UserID", userID)
+			req.Header.Set("X-ExeDev-Email", email)
+		}
+
+		// Remove the exe-proxy-auth cookie
+		nCookies := len(req.Cookies())
+		var cookies []*http.Cookie
+		for _, c := range req.Cookies() {
+			if c.Name != "exe-proxy-auth" {
+				cookies = append(cookies, c)
+			}
+		}
+		if len(cookies) != nCookies {
+			// Clear all cookies, re-add only the non-auth ones
+			req.Header.Del("Cookie")
+			for _, c := range cookies {
+				req.AddCookie(c)
+			}
+		}
+	}
+
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		slog.Debug("HTTP proxy error", "error", err, "target_port", targetPort)
 
