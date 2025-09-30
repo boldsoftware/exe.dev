@@ -228,12 +228,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	path := r.URL.Path
 
 	if path == "/docs" || path == "/docs/" {
-		defaultPath := h.store.DefaultPath()
-		if defaultPath == "" {
-			http.NotFound(w, r)
-			return true
-		}
-		http.Redirect(w, r, defaultPath, http.StatusFound)
+		h.renderDocsList(w, r)
 		return true
 	}
 
