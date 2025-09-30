@@ -56,6 +56,9 @@ type NerdctlManager struct {
 
 	// Cache for nerdctl run --annotation support per host
 	annSupport map[string]bool
+
+	// Cache for gateway IP per host
+	gatewayIPCache map[string]string
 }
 
 // SetTagResolver sets the tag resolver for the manager
@@ -79,10 +82,11 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	manager := &NerdctlManager{
-		config:     config,
-		hosts:      config.ContainerdAddresses,
-		sshPool:    sshpool.New(),
-		annSupport: make(map[string]bool),
+		config:         config,
+		hosts:          config.ContainerdAddresses,
+		sshPool:        sshpool.New(),
+		annSupport:     make(map[string]bool),
+		gatewayIPCache: make(map[string]string),
 	}
 
 	// Verify Kata runtime is available on all hosts
@@ -290,6 +294,37 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*ta
 	}
 	slog.Info("Image metadata inspected and stored", "image", imageRef, "user", cfg.User, "entrypoint", cfg.Entrypoint, "cmd", cfg.Cmd)
 	return &cfg, nil
+}
+
+// getGatewayIP gets the gateway IP address for a given host, with caching
+func (m *NerdctlManager) getGatewayIP(ctx context.Context, host string) (string, error) {
+	host = strings.TrimPrefix(host, "ssh://")
+	m.mu.RLock()
+	ip, ok := m.gatewayIPCache[host]
+	m.mu.RUnlock()
+	if ok {
+		return ip, nil
+	}
+
+	// Query the gateway IP using getent
+	cmd := m.sshPool.ExecCommand(ctx, host, "sh", "-c", "getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}'")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get gateway IP: %w", err)
+	}
+
+	ip = strings.TrimSpace(string(out))
+	if ip == "" {
+		return "", fmt.Errorf("gateway IP not found")
+	}
+
+	// Cache the result
+	m.mu.Lock()
+	m.gatewayIPCache[host] = ip
+	m.mu.Unlock()
+
+	slog.Info("Cached gateway IP for host", "host", host, "gateway", ip)
+	return ip, nil
 }
 
 // supportsAnnotations checks whether nerdctl run supports --annotation on the given host.
@@ -2061,6 +2096,33 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 	}
 
 	slog.Info("Wrote all container-specific SSH files")
+
+	// Create shelley.json with gateway IP
+	gatewayIP, err := m.getGatewayIP(ctx, host)
+	if err != nil {
+		slog.Warn("Failed to get gateway IP for shelley.json", "error", err)
+		// Continue without shelley.json - not critical for basic functionality
+	} else {
+		// Create the shelley.json content
+		shelleyJSON := map[string]string{
+			"llm_gateway": gatewayIP,
+		}
+		shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")
+		if err != nil {
+			slog.Warn("Failed to marshal shelley.json", "error", err)
+		} else {
+			shelleyPath := filepath.Join(containerDir, "shelley.json")
+			encodedContent := base64.StdEncoding.EncodeToString(shelleyJSONBytes)
+			shelleyCmd := m.ExecSSHCommand(ctx, host, "sh", "-c",
+				fmt.Sprintf("echo '%s' | base64 -d | sudo tee '%s' > /dev/null && sudo chmod 644 '%s'",
+					encodedContent, shelleyPath, shelleyPath))
+			if output, err := shelleyCmd.CombinedOutput(); err != nil {
+				slog.Warn("Failed to write shelley.json", "error", err, "output", string(output))
+			} else {
+				slog.Info("Created shelley.json", "path", shelleyPath, "gateway", gatewayIP)
+			}
+		}
+	}
 
 	slog.Info("Successfully prepared container-specific /exe.dev directory", "dir", containerDir)
 	return containerDir, nil
