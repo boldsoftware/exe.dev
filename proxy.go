@@ -40,7 +40,7 @@ import (
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches box.team.exe.dev or box.team.localhost
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
+	slog.Info("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
 
 	// Ensure the port in the Host header matches the listener's local port
 	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
@@ -90,12 +90,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Handle magic URL for authentication
 	if r.URL.Path == "/__exe.dev/auth" {
+		slog.Info("[REDIRECT] Magic auth URL accessed", "host", r.Host, "path", r.URL.Path)
 		s.handleMagicAuth(w, r)
 		return
 	}
 
 	// Handle logout URL
 	if r.URL.Path == "/__exe.dev/logout" {
+		slog.Info("[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
 		s.handleProxyLogout(w, r)
 		return
 	}
@@ -484,8 +486,14 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	})
 
-	// Redirect to the root path of this proxy domain
-	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+	// Redirect to logged out page on main domain
+	mainDomain := s.getMainDomainWithPort()
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	logoutURL := fmt.Sprintf("%s://%s/logged-out", scheme, mainDomain)
+	http.Redirect(w, r, logoutURL, http.StatusTemporaryRedirect)
 }
 
 // getBoxForUser retrieves a box for the given user/team/name

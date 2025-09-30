@@ -1199,6 +1199,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleAuthConfirm(w, r)
 	case "/logout":
 		s.handleLogout(w, r)
+	case "/logged-out":
+		s.handleLoggedOut(w, r)
 	default:
 		// Handle mobile UI routes
 		if strings.HasPrefix(path, "/m") {
@@ -2619,6 +2621,16 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to home page
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+}
+
+// handleLoggedOut displays a logged out confirmation page
+func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
+	data := struct {
+		MainDomain string
+	}{
+		MainDomain: s.getMainDomain(),
+	}
+	_ = s.renderTemplate(w, "proxy-logged-out.html", data)
 }
 
 // getScheme returns the request scheme

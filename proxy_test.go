@@ -371,21 +371,21 @@ func TestProxyLogoutFlow(t *testing.T) {
 		t.Fatalf("Failed to create test box: %v", err)
 	}
 
-	// Test 1: Logout without authentication should still work (redirect to root)
+	// Test 1: Logout without authentication should still work (redirect to logged-out page)
 	t.Run("logout_without_auth", func(t *testing.T) {
 		req := createTestRequestForServer("GET", "http://testbox.localhost/__exe.dev/logout", "testbox.localhost", server)
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
 
-		if w.Code != 307 { // StatusTemporaryRedirect
-			t.Errorf("Expected redirect status 307, got %d", w.Code)
+		if w.Code != 307 {
+			t.Errorf("Expected status 307, got %d", w.Code)
 		}
 
-		// Check redirect location
+		// Check redirect to logged-out page on main domain
 		location := w.Header().Get("Location")
-		if location != "/" {
-			t.Errorf("Expected redirect to '/', got '%s'", location)
+		if !strings.HasSuffix(location, "/logged-out") {
+			t.Errorf("Expected redirect to /logged-out, got '%s'", location)
 		}
 
 		// Check that logout cookie was set
@@ -448,13 +448,13 @@ func TestProxyLogoutFlow(t *testing.T) {
 		server.ServeHTTP(w2, req2)
 
 		if w2.Code != 307 {
-			t.Errorf("Expected redirect status 307, got %d", w2.Code)
+			t.Errorf("Expected status 307, got %d", w2.Code)
 		}
 
-		// Check redirect location
+		// Check redirect to logged-out page
 		location := w2.Header().Get("Location")
-		if location != "/" {
-			t.Errorf("Expected redirect to '/', got '%s'", location)
+		if !strings.HasSuffix(location, "/logged-out") {
+			t.Errorf("Expected redirect to /logged-out, got '%s'", location)
 		}
 
 		// Check that logout cookie was set
