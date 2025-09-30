@@ -167,12 +167,22 @@ func (ctx *CommandContext) Errorf(msg string, args ...any) error {
 
 // WriteJSON is a convenience method for json output.
 func (ctx *CommandContext) WriteJSON(x any) {
-	data, err := json.Marshal(x)
+	var data []byte
+	var err error
+	var nl string
+	slog.Info("writing JSON output", "data", x, "interactive", ctx.IsInteractive())
+	if ctx.IsInteractive() {
+		data, err = json.MarshalIndent(x, "", "  ")
+		nl = "\r\n"
+	} else {
+		data, err = json.Marshal(x)
+		nl = "\n"
+	}
 	if err != nil {
 		fmt.Fprintf(ctx.Output, "failed to marshal JSON: %v\r\n", err)
 		return
 	}
-	fmt.Fprintf(ctx.Output, "%s\n", data)
+	fmt.Fprintf(ctx.Output, "%s%s", data, nl)
 }
 
 func (ctx *CommandContext) WriteInternalError(cmd string, err error, slogDetails ...any) {
