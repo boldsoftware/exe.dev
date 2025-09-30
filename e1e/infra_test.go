@@ -302,10 +302,14 @@ func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 	}
 	e.proxy.close()
 
-	// Extract "legacy" text format Go coverage profile to standard location
-	cmd := exec.Command("go", "tool", "covdata", "textfmt", "-i", e.exed.CoverDir, "-o", "e1e.cover")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		slog.Error("failed to write exed coverage profile", "error", err, "output", string(out))
+	// CoverDir should always be non-empty, but maybe if exed failed to start?
+	// Avoid duplicate/confusing errors by just skipping in this case.
+	if e.exed.CoverDir != "" {
+		// Extract "legacy" text format Go coverage profile to standard location
+		cmd := exec.Command("go", "tool", "covdata", "textfmt", "-i", e.exed.CoverDir, "-o", "e1e.cover")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			slog.Error("failed to write exed coverage profile", "cmd", cmd.String(), "error", err, "output", string(out))
+		}
 	}
 }
 
