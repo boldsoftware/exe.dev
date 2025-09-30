@@ -35,12 +35,9 @@ To create your first box, run:
 
 Or type `help` to see a list of commands.
 exe.dev ▶ whoami
-User Information:
-
 Email Address: TestHTTPProxyForAlternateProxyPorts@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports --command="/bin/bash"
 Creating e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:

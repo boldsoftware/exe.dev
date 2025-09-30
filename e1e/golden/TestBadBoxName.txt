@@ -35,12 +35,9 @@ To create your first box, run:
 
 Or type `help` to see a list of commands.
 exe.dev ▶ whoami
-User Information:
-
 Email Address: TestBadBoxName@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-
 exe.dev ▶ new --name=ThisIsNotAValidBoxName!
 Invalid box name "ThisIsNotAValidBoxName!". Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), and be up to 64 characters
 exe.dev ▶ exit

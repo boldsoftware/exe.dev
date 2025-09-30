@@ -883,8 +883,6 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 		cc.WriteJSON(userInfo)
 		return nil
 	}
-	cc.Writeln("\033[1;36mUser Information:\033[0m")
-	cc.Writeln("")
 	cc.Writeln("\033[1mEmail Address:\033[0m %s", cc.User.Email)
 	cc.Writeln("\033[1mSSH Keys:\033[0m")
 	for _, key := range sshKeys {
@@ -894,7 +892,6 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 		}
 		cc.Writeln("")
 	}
-	cc.Writeln("")
 	return nil
 }
 

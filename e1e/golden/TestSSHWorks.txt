@@ -35,12 +35,9 @@ To create your first box, run:
 
 Or type `help` to see a list of commands.
 exe.dev ▶ whoami
-User Information:
-
 Email Address: TestSSHWorks@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testsshworks
 Creating e1e-BOX_TIMESTAMP-testsshworks (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:
