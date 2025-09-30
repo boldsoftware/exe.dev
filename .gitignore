@@ -16,3 +16,4 @@ exed
 .gomodcache
 .gopath
 .DS_Store
+.cache
