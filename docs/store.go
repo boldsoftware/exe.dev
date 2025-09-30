@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	staticpkg "exe.dev/static"
 	"github.com/yuin/goldmark"
 	gmmeta "github.com/yuin/goldmark-meta"
 	"github.com/yuin/goldmark/parser"
@@ -27,7 +28,16 @@ var contentFS embed.FS
 //go:embed doc-entry.html docs-list.html
 var templateFS embed.FS
 
-var docTemplates = template.Must(template.New("docs").ParseFS(templateFS, "doc-entry.html", "docs-list.html"))
+var docTemplates = template.Must(func() (*template.Template, error) {
+	tmpl, err := template.New("docs").ParseFS(templateFS, "doc-entry.html", "docs-list.html")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tmpl.Parse(staticpkg.TopbarTemplate); err != nil {
+		return nil, err
+	}
+	return tmpl, nil
+}())
 
 var markdown = goldmark.New(
 	goldmark.WithExtensions(gmmeta.Meta),
