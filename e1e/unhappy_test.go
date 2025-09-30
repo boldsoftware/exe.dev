@@ -30,7 +30,8 @@ func TestRequiresSSHKey(t *testing.T) {
 	pty.attachAndStart(sshCmd)
 
 	pty.want("SSH keys are required to access exe.dev")
-	pty.want("Press Enter to close this connection.")
+	pty.want("Press Enter to close this connection.\r\r\n")
+	// why \r\r\n? no idea. that's what sshpiper emits, and we need to consume all of it.
 	pty.sendLine("")
 	pty.wantEOF()
 }
