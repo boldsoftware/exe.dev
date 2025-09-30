@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
-	"errors" 
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -608,7 +608,10 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	}
 	for i, wait := range retries {
 		slog.Debug("proxy dialing ssh using config", "attempt", i,
-			"user", sshConfig.User, "targetPort", targetPort, "timeout", sshConfig.Timeout)
+			"box", box.Name,
+			"user", sshConfig.User,
+			"targetPort", targetPort,
+			"timeout", sshConfig.Timeout)
 		var err error
 		sshConn, err = ssh.Dial("tcp", sshAddr, sshConfig)
 		if err == nil {
