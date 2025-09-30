@@ -4,8 +4,9 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
-	"errors"
+	"errors" 
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand/v2"
 	"net"
@@ -756,19 +757,45 @@ func (t *sshTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("failed to connect via SSH: %w", errs)
 	}
-	defer conn.Close()
 
 	// Write the HTTP request to the connection
 	err := req.Write(conn)
 	if err != nil {
+		conn.Close()
 		return nil, fmt.Errorf("failed to write HTTP request: %w", err)
 	}
 
 	// Read the HTTP response from the connection
 	resp, err := http.ReadResponse(bufio.NewReader(conn), req)
 	if err != nil {
+		conn.Close()
 		return nil, fmt.Errorf("failed to read HTTP response: %w", err)
 	}
 
+	// Wrap the response body so that closing it also closes the underlying connection.
+	// This is critical for streaming responses (like SSE) where the body is read over time.
+	resp.Body = &connClosingBody{body: resp.Body, conn: conn}
+
 	return resp, nil
+}
+
+// connClosingBody wraps a response body and ensures the underlying connection
+// is closed when the body is closed. This is necessary for streaming responses
+// like SSE where the body read happens after RoundTrip returns.
+type connClosingBody struct {
+	body io.ReadCloser
+	conn net.Conn
+}
+
+func (c *connClosingBody) Read(p []byte) (n int, err error) {
+	return c.body.Read(p)
+}
+
+func (c *connClosingBody) Close() error {
+	err1 := c.body.Close()
+	err2 := c.conn.Close()
+	if err1 != nil {
+		return err1
+	}
+	return err2
 }
