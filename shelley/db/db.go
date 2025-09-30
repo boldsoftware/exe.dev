@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"shelley.exe.dev/db/generated"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 //go:embed schema/*.sql
@@ -58,7 +58,7 @@ func New(cfg Config) (*DB, error) {
 		}
 	}
 
-	sqlDB, err := sql.Open("sqlite3", cfg.DSN+"?_foreign_keys=on&_journal_mode=WAL")
+	sqlDB, err := sql.Open("sqlite", cfg.DSN+"?_foreign_keys=on&_journal_mode=WAL")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
