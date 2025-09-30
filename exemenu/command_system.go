@@ -279,7 +279,11 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 		}
 		nameStr := cmd.Name
 		if len(cmd.Aliases) > 0 {
-			nameStr = fmt.Sprintf("%s (%s)", cmd.Name, strings.Join(cmd.Aliases, ","))
+			aliasText := strings.Join(cmd.Aliases, ",")
+			if cmd.Hidden && len(cmd.Aliases) > 3 {
+				aliasText = fmt.Sprintf("+%d aliases", len(cmd.Aliases))
+			}
+			nameStr = fmt.Sprintf("%s (%s)", cmd.Name, aliasText)
 		}
 		var hidden string
 		if cmd.Hidden {
