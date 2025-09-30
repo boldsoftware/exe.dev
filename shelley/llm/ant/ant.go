@@ -546,22 +546,22 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			return toLLMResponse(&response), nil
 		case resp.StatusCode >= 500 && resp.StatusCode < 600:
 			// server error, retry
-			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode)
-			errs = errors.Join(errs, fmt.Errorf("status %v: %s", resp.Status, buf))
+			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
+			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
 			continue
 		case resp.StatusCode == 429:
 			// rate limited, retry
-			slog.WarnContext(ctx, "anthropic_request_rate_limited", "response", string(buf))
-			errs = errors.Join(errs, fmt.Errorf("status %v: %s", resp.Status, buf))
+			slog.WarnContext(ctx, "anthropic_request_rate_limited", "response", string(buf), "url", url, "model", s.Model)
+			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
 			continue
 		case resp.StatusCode >= 400 && resp.StatusCode < 500:
 			// some other 400, probably unrecoverable
-			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode)
-			return nil, errors.Join(errs, fmt.Errorf("status %v: %s", resp.Status, buf))
+			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
+			return nil, errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
 		default:
 			// ...retry, I guess?
-			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode)
-			errs = errors.Join(errs, fmt.Errorf("status %v: %s", resp.Status, buf))
+			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
+			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
 			continue
 		}
 	}
@@ -571,3 +571,14 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 // func (s *Service) UseSimplifiedPatch() bool {
 // 	return true
 // }
+
+// ConfigDetails returns configuration information for logging
+func (s *Service) ConfigDetails() map[string]string {
+	model := cmp.Or(s.Model, DefaultModel)
+	url := cmp.Or(s.URL, DefaultURL)
+	return map[string]string{
+		"url":             url,
+		"model":           model,
+		"has_api_key_set": fmt.Sprintf("%v", s.APIKey != ""),
+	}
+}

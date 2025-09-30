@@ -8,6 +8,12 @@ import (
 	"shelley.exe.dev/llm"
 )
 
+// ConfigInfo is an optional interface that services can implement to provide configuration details for logging
+type ConfigInfo interface {
+	// ConfigDetails returns human-readable configuration info (e.g., URL, model name)
+	ConfigDetails() map[string]string
+}
+
 // LoggingLLMService wraps an llm.Service to log request completion with usage information
 type LoggingLLMService struct {
 	service llm.Service
@@ -36,11 +42,20 @@ func (l *LoggingLLMService) Do(ctx context.Context, request *llm.Request) (*llm.
 
 	// Log the completion with usage information
 	if err != nil {
-		l.logger.Error("LLM request failed",
+		logAttrs := []any{
 			"model", l.modelID,
 			"duration_seconds", durationSeconds,
-			"error", err,
-		)
+		}
+
+		// Add configuration details if available
+		if configProvider, ok := l.service.(ConfigInfo); ok {
+			for k, v := range configProvider.ConfigDetails() {
+				logAttrs = append(logAttrs, k, v)
+			}
+		}
+
+		logAttrs = append(logAttrs, "error", err)
+		l.logger.Error("LLM request failed", logAttrs...)
 	} else {
 		// Log successful completion with usage info
 		logAttrs := []any{

@@ -759,8 +759,9 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 
 	// TODO: do this one during Service setup? maybe with a constructor instead?
 	config := openai.DefaultConfig(s.APIKey)
-	if modelURLOverride := cmp.Or(s.ModelURL, model.URL); modelURLOverride != "" {
-		config.BaseURL = modelURLOverride
+	baseURL := cmp.Or(s.ModelURL, model.URL)
+	if baseURL != "" {
+		config.BaseURL = baseURL
 	}
 	if s.Org != "" {
 		config.OrgID = s.Org
@@ -800,13 +801,13 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	} else {
 		req.MaxTokens = cmp.Or(s.MaxTokens, DefaultMaxTokens)
 	}
+	// Construct the full URL for logging and debugging
+	fullURL := baseURL + "/chat/completions"
+
 	// Dump request if enabled
 	if s.DumpLLM {
 		if reqJSON, err := json.MarshalIndent(req, "", "  "); err == nil {
-			// Construct the chat completions URL
-			baseURL := cmp.Or(model.URL, OpenAIURL)
-			url := baseURL + "/chat/completions"
-			if err := llm.DumpToFile("request", url, reqJSON); err != nil {
+			if err := llm.DumpToFile("request", fullURL, reqJSON); err != nil {
 				slog.WarnContext(ctx, "failed to dump openai request to file", "error", err)
 			}
 		}
@@ -819,7 +820,7 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	var errs error // accumulated errors across all attempts
 	for attempts := 0; ; attempts++ {
 		if attempts > 10 {
-			return nil, fmt.Errorf("openai request failed after %d attempts: %w", attempts, errs)
+			return nil, fmt.Errorf("openai request failed after %d attempts (url=%s, model=%s): %w", attempts, fullURL, model.ModelName, errs)
 		}
 		if attempts > 0 {
 			sleep := backoff[min(attempts, len(backoff)-1)] + time.Duration(rand.Int64N(int64(time.Second)))
@@ -853,31 +854,31 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 		var apiErr *openai.APIError
 		if ok := errors.As(err, &apiErr); !ok {
 			// Not an OpenAI API error, return immediately with accumulated errors
-			return nil, errors.Join(errs, err)
+			return nil, errors.Join(errs, fmt.Errorf("url=%s model=%s: %w", fullURL, model.ModelName, err))
 		}
 
 		switch {
 		case apiErr.HTTPStatusCode >= 500:
 			// Server error, try again with backoff
-			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode)
-			errs = errors.Join(errs, fmt.Errorf("status %d: %s", apiErr.HTTPStatusCode, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
+			errs = errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 			continue
 
 		case apiErr.HTTPStatusCode == 429:
 			// Rate limited, accumulate error and retry
-			slog.WarnContext(ctx, "openai_request_rate_limited", "error", apiErr.Error())
-			errs = errors.Join(errs, fmt.Errorf("status %d (rate limited): %s", apiErr.HTTPStatusCode, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_rate_limited", "error", apiErr.Error(), "url", fullURL, "model", model.ModelName)
+			errs = errors.Join(errs, fmt.Errorf("status %d (rate limited, url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 			continue
 
 		case apiErr.HTTPStatusCode >= 400 && apiErr.HTTPStatusCode < 500:
 			// Client error, probably unrecoverable
-			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode)
-			return nil, errors.Join(errs, fmt.Errorf("status %d: %s", apiErr.HTTPStatusCode, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
+			return nil, errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 
 		default:
 			// Other error, accumulate and retry
-			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode)
-			errs = errors.Join(errs, fmt.Errorf("status %d: %s", apiErr.HTTPStatusCode, apiErr.Error()))
+			slog.WarnContext(ctx, "openai_request_failed", "error", apiErr.Error(), "status_code", apiErr.HTTPStatusCode, "url", fullURL, "model", model.ModelName)
+			errs = errors.Join(errs, fmt.Errorf("status %d (url=%s, model=%s): %s", apiErr.HTTPStatusCode, fullURL, model.ModelName, apiErr.Error()))
 			continue
 		}
 	}
@@ -885,4 +886,17 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 
 func (s *Service) UseSimplifiedPatch() bool {
 	return s.Model.UseSimplifiedPatch
+}
+
+// ConfigDetails returns configuration information for logging
+func (s *Service) ConfigDetails() map[string]string {
+	model := cmp.Or(s.Model, DefaultModel)
+	baseURL := cmp.Or(s.ModelURL, model.URL, OpenAIURL)
+	return map[string]string{
+		"base_url":        baseURL,
+		"model_name":      model.ModelName,
+		"full_url":        baseURL + "/chat/completions",
+		"api_key_env":     model.APIKeyEnv,
+		"has_api_key_set": fmt.Sprintf("%v", s.APIKey != ""),
+	}
 }

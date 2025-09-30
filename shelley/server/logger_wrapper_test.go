@@ -257,10 +257,95 @@ func TestLoggingLLMServiceError(t *testing.T) {
 	}
 }
 
+func TestLoggingLLMServiceErrorWithConfigDetails(t *testing.T) {
+	// Create test handler to capture logs
+	handler := &testHandler{}
+	logger := slog.New(handler)
+
+	// Create a mock service that returns an error and has config details
+	mockService := &mockLLMService{
+		err: llm.ErrorfToolOut("API error: 404 Not Found").Error,
+		configDetails: map[string]string{
+			"base_url":   "https://api.example.com/v1",
+			"full_url":   "https://api.example.com/v1/chat/completions",
+			"model_name": "gpt-5-mini",
+		},
+	}
+
+	// Wrap with logging
+	loggedService := NewLoggingLLMService(mockService, logger, "test-model-with-config")
+
+	// Create a test request
+	request := &llm.Request{
+		Messages: []llm.Message{
+			{
+				Role: llm.MessageRoleUser,
+				Content: []llm.Content{
+					{Type: llm.ContentTypeText, Text: "Hello, world!"},
+				},
+			},
+		},
+	}
+
+	// Make the request
+	ctx := context.Background()
+	_, err := loggedService.Do(ctx, request)
+	if err == nil {
+		t.Fatal("Expected error but got none")
+	}
+
+	// Find the error log
+	var errorLog *slog.Record
+	for i := range handler.logs {
+		if handler.logs[i].Message == "LLM request failed" {
+			errorLog = &handler.logs[i]
+			break
+		}
+	}
+
+	if errorLog == nil {
+		t.Fatal("No error log found")
+	}
+
+	// Verify log attributes include config details
+	logAttrs := make(map[string]any)
+	errorLog.Attrs(func(a slog.Attr) bool {
+		logAttrs[a.Key] = a.Value.Any()
+		return true
+	})
+
+	// Check required attributes
+	if modelID, ok := logAttrs["model"]; !ok || modelID != "test-model-with-config" {
+		t.Errorf("Expected model 'test-model-with-config', got %v", modelID)
+	}
+
+	// Check config details are present
+	expectedConfigAttrs := []string{"base_url", "full_url", "model_name"}
+	for _, attr := range expectedConfigAttrs {
+		if _, ok := logAttrs[attr]; !ok {
+			t.Errorf("Expected config attribute %s not found in log", attr)
+		}
+	}
+
+	// Verify specific config values
+	if baseURL, ok := logAttrs["base_url"]; !ok || baseURL != "https://api.example.com/v1" {
+		t.Errorf("Expected base_url='https://api.example.com/v1', got %v", baseURL)
+	}
+
+	if fullURL, ok := logAttrs["full_url"]; !ok || fullURL != "https://api.example.com/v1/chat/completions" {
+		t.Errorf("Expected full_url='https://api.example.com/v1/chat/completions', got %v", fullURL)
+	}
+
+	if modelName, ok := logAttrs["model_name"]; !ok || modelName != "gpt-5-mini" {
+		t.Errorf("Expected model_name='gpt-5-mini', got %v", modelName)
+	}
+}
+
 // mockLLMService for testing
 type mockLLMService struct {
-	response *llm.Response
-	err      error
+	response      *llm.Response
+	err           error
+	configDetails map[string]string
 }
 
 func (m *mockLLMService) Do(ctx context.Context, req *llm.Request) (*llm.Response, error) {
@@ -272,4 +357,11 @@ func (m *mockLLMService) Do(ctx context.Context, req *llm.Request) (*llm.Respons
 
 func (m *mockLLMService) TokenContextWindow() int {
 	return 4096
+}
+
+func (m *mockLLMService) ConfigDetails() map[string]string {
+	if m.configDetails == nil {
+		return map[string]string{}
+	}
+	return m.configDetails
 }
