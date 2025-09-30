@@ -8,7 +8,7 @@ Type=exec
 User=exedev
 Group=exedev
 WorkingDirectory=/home/exedev
-ExecStart=/usr/local/bin/shelley serve --port 9999 --config /exe.dev/shelley.json
+ExecStart=/usr/local/bin/shelley --config /exe.dev/shelley.json serve --port 9999
 Restart=always
 RestartSec=5
 Environment=HOME=/home/exedev
