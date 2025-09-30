@@ -160,9 +160,18 @@ ENV EXEUNTU=1
 # might be useful?
 # STOPSIGNAL SIGRTMIN+3
 
-# Add claude script to PATH (in /usr/bin to avoid conflict with npm's /usr/local/bin/claude)
-COPY exeuntu/claude /usr/bin/claude
-RUN chmod +x /usr/bin/claude
+# Install Node.js v22.20.0 to /usr/local
+RUN ARCH=$(uname -m) && \
+	case $ARCH in \
+		x86_64) NODE_ARCH=x64 ;; \
+		aarch64) NODE_ARCH=arm64 ;; \
+		*) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+	esac && \
+	cd /tmp && \
+	wget -q -O node.tar.xz "https://nodejs.org/dist/v22.20.0/node-v22.20.0-linux-${NODE_ARCH}.tar.xz" && \
+	tar -C /usr/local --strip-components=1 -xJf node.tar.xz && \
+	rm node.tar.xz && \
+	node --version && npm --version npm install -g @anthropic-ai/claude-code codex
 
 # Copy the pre-built static binaries from the builder stage
 COPY --from=go-builder /src/generate-gateway-token/generate-gateway-token /usr/local/bin/generate-gateway-token
