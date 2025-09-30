@@ -173,7 +173,11 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		// Show current user info
 		if cookie, err := r.Cookie("exe-proxy-auth"); err == nil && cookie.Value != "" {
 			if userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
-				fmt.Fprintf(w, "Logged in user: %s\n", userID)
+				// Ignore error
+				userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+					return queries.GetEmailByUserID(ctx, userID)
+				})
+				fmt.Fprintf(w, "Logged in user: %q (%q)\n", userEmail, userID)
 			} else {
 				fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
 			}
