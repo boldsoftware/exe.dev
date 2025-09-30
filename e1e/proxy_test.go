@@ -379,4 +379,3 @@ func makeProxyRequest(t *testing.T, boxName string, httpPort int) (*http.Respons
 	req.Host = fmt.Sprintf("%s.localhost:%d", boxName, httpPort)
 	return client.Do(req)
 }
-
