@@ -307,22 +307,18 @@
         color: #000000;
       }
 
-      /* Mobile Navigation */
-      .mobile-nav-toggle {
+      .back-to-list {
         display: none;
-        background: #f8f8f8;
-        border: 1px solid #e5e5e5;
-        padding: 12px 16px;
-        margin: 24px;
-        border-radius: 6px;
-        cursor: pointer;
-        text-align: center;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 24px;
         font-size: 14px;
         color: #666666;
+        text-decoration: none;
       }
 
-      .mobile-nav-content {
-        display: block;
+      .back-to-list:hover {
+        color: #000000;
       }
 
       /* Responsive */
@@ -335,23 +331,7 @@
         }
 
         .sidebar {
-          width: 100%;
-          position: static;
-          max-height: none;
-          padding: 24px 20px;
-        }
-
-        .mobile-nav-toggle {
-          display: block;
-        }
-
-        .mobile-nav-content {
           display: none;
-          padding: 0;
-        }
-
-        .mobile-nav-content.show {
-          display: block;
         }
 
         .main {
@@ -365,6 +345,10 @@
 
         .nav-links {
           display: none;
+        }
+
+        .back-to-list {
+          display: inline-flex;
         }
       }
     </style>
@@ -392,10 +376,7 @@
     <div class="container">
       <!-- Sidebar Navigation -->
       <div class="sidebar" role="navigation" aria-label="Documentation sections">
-        <!-- Mobile Table of Contents Toggle -->
-        <div class="mobile-nav-toggle" onclick="toggleMobileNav()">📚 Table of Contents</div>
-
-        <div class="mobile-nav-content" id="mobileNavContent">
+        <div>
           {{range .Groups}}
           <div class="sidebar-heading">{{.Heading}}</div>
           {{range .Docs}}
@@ -409,6 +390,7 @@
       <!-- Main Content -->
       <main class="main">
         {{with .Entry}}
+        <a class="back-to-list" href="/docs">&larr; All docs</a>
         <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [hidden]{{end}}</h1>
 
         <div class="doc-content">{{.Content}}</div>
@@ -420,11 +402,5 @@
       </main>
     </div>
 
-    <script>
-      function toggleMobileNav() {
-        const content = document.getElementById("mobileNavContent");
-        content.classList.toggle("show");
-      }
-    </script>
   </body>
 </html>
