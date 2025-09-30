@@ -629,7 +629,7 @@ func (s *Server) setupHTTPServer() {
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,
-	})
+	}, s.devMode != "")
 
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)
@@ -664,7 +664,7 @@ func (s *Server) setupHTTPSServer() {
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,
-	})
+	}, s.devMode != "")
 
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)

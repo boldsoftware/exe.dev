@@ -87,7 +87,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	}
 
 	// Use the exe.Server as boxKeyAuthority (it implements the interface)
-	gateway := llmgateway.NewGateway(accountant, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"})
+	gateway := llmgateway.NewGateway(accountant, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
 
 	// Create test HTTP server with the gateway
 	testServer := httptest.NewServer(gateway)
@@ -162,7 +162,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	t.Run("insufficient balance", func(t *testing.T) {
 		// Create gateway with zero balance (insufficient)
 		insuffBalanceAcct := accounting.NewAccountant()
-		negativeGateway := llmgateway.NewGateway(insuffBalanceAcct, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"})
+		negativeGateway := llmgateway.NewGateway(insuffBalanceAcct, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
 		negativeServer := httptest.NewServer(negativeGateway)
 		defer negativeServer.Close()
 

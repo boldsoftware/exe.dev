@@ -2084,7 +2084,10 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		}
 	}
 	if gatewayURL != "" {
-		shelleyJSON := map[string]string{"llm_gateway": gatewayURL}
+		shelleyJSON := map[string]string{
+			"llm_gateway":   gatewayURL,
+			"key_generator": "sudo /usr/local/bin/generate-gateway-token",
+		}
 		shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")
 		if err != nil {
 			return "", fmt.Errorf("failed to marshal shelley.json: %w", err)

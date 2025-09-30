@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -604,6 +605,16 @@ func getMessageContentPreview(message llm.Message) string {
 	return content.String()
 }
 
+// executeKeyGenerator runs the specified command via bash and returns the output as the API key
+func executeKeyGenerator(command string) (string, error) {
+	cmd := exec.Command("bash", "-c", command)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("executing key generator: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file
 func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 	llmCfg := &server.LLMConfig{
@@ -624,7 +635,8 @@ func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 		}
 
 		var cfg struct {
-			LLMGateway string `json:"llm_gateway"`
+			LLMGateway   string `json:"llm_gateway"`
+			KeyGenerator string `json:"key_generator"`
 		}
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			logger.Warn("Failed to parse config file", "path", configPath, "error", err)
@@ -638,6 +650,29 @@ func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 			llmCfg.GeminiBaseURL = gateway + "/_/gateway/gemini"
 			llmCfg.FireworksBaseURL = gateway + "/_/gateway/fireworks"
 			logger.Info("Using LLM gateway", "gateway", cfg.LLMGateway)
+
+			// If key_generator is specified, execute it to get the API key
+			if cfg.KeyGenerator != "" {
+				key, err := executeKeyGenerator(cfg.KeyGenerator)
+				if err != nil {
+					logger.Warn("Failed to execute key generator", "command", cfg.KeyGenerator, "error", err)
+				} else {
+					// Use the generated key for all providers when using gateway
+					if llmCfg.AnthropicAPIKey == "" {
+						llmCfg.AnthropicAPIKey = key
+					}
+					if llmCfg.OpenAIAPIKey == "" {
+						llmCfg.OpenAIAPIKey = key
+					}
+					if llmCfg.GeminiAPIKey == "" {
+						llmCfg.GeminiAPIKey = key
+					}
+					if llmCfg.FireworksAPIKey == "" {
+						llmCfg.FireworksAPIKey = key
+					}
+					logger.Debug("Using key from generator", "command", cfg.KeyGenerator)
+				}
+			}
 		}
 	}
 

@@ -16,10 +16,6 @@ Environment=USER=exedev
 KillMode=process
 TimeoutStopSec=10
 
-# Generate gateway token before starting
-ExecStartPre=+/bin/sh -c 'TOKEN=$(/usr/local/bin/generate-gateway-token) && echo "ANTHROPIC_API_KEY=$TOKEN" > /run/shelley-env && echo "OPENAI_API_KEY=$TOKEN" >> /run/shelley-env && echo "GEMINI_API_KEY=$TOKEN" >> /run/shelley-env'
-EnvironmentFile=-/run/shelley-env
-
 # Security settings
 NoNewPrivileges=yes
 PrivateTmp=yes

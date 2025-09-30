@@ -87,6 +87,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *accounting.Accountant, *sqlit
 		db:              db,
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
+		devMode:         false,
 		testDebitDone:   make(chan bool, 10), // Buffered for tests
 	}
 
@@ -122,6 +123,7 @@ func TestGateway_BillingIntegration_CheckCredits_InsufficientBalance(t *testing.
 		db:              db,
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
+		devMode:         false,
 	}
 
 	// Test checkCredits with insufficient balance
@@ -154,6 +156,7 @@ func TestGateway_BillingIntegration_CheckCredits_BalanceCheckFails(t *testing.T)
 		db:              db,
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
+		devMode:         false,
 	}
 
 	// Test checkCredits when balance check fails - should allow request (fallback)
@@ -309,6 +312,60 @@ func TestGateway_ServeHTTP_RequestProcessing(t *testing.T) {
 	}
 }
 
+func TestGateway_ServeHTTP_DevKeyAuthentication(t *testing.T) {
+	gateway, _, db, _, _ := setupTestGateway(t)
+	gateway.devMode = true // Enable dev mode
+	defer db.Close()
+
+	// Test with dev.key in Authorization header
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
+	req.Header.Set("Authorization", "Bearer dev.key")
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	gateway.ServeHTTP(rr, req)
+
+	// Should not return 401 (authentication should pass)
+	if rr.Code == http.StatusUnauthorized {
+		t.Errorf("Expected authentication to pass with dev.key, got 401: %s", rr.Body.String())
+	}
+
+	// Test with dev.key in X-API-Key header
+	req2 := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
+	req2.Header.Set("X-API-Key", "dev.key")
+	req2.Header.Set("Content-Type", "application/json")
+
+	rr2 := httptest.NewRecorder()
+	gateway.ServeHTTP(rr2, req2)
+
+	// Should not return 401 (authentication should pass)
+	if rr2.Code == http.StatusUnauthorized {
+		t.Errorf("Expected authentication to pass with dev.key in X-API-Key, got 401: %s", rr2.Body.String())
+	}
+}
+
+func TestGateway_ServeHTTP_DevKeyDisabledInProduction(t *testing.T) {
+	gateway, _, db, _, _ := setupTestGateway(t)
+	gateway.devMode = false // Production mode
+	defer db.Close()
+
+	// Test with dev.key in Authorization header
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
+	req.Header.Set("Authorization", "Bearer dev.key")
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	gateway.ServeHTTP(rr, req)
+
+	// Should return 401 (dev.key should not work in production)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for dev.key in production mode, got %d", rr.Code)
+	}
+}
+
 func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
 	gateway, _, db, _, _ := setupTestGateway(t)
 	defer db.Close()
@@ -350,6 +407,7 @@ func TestGateway_ServeHTTP_InsufficientCredits(t *testing.T) {
 		db:              db,
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
+		devMode:         false,
 	}
 
 	// Create authenticated request

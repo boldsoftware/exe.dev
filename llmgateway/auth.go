@@ -97,15 +97,31 @@ func (b *bearerTokenClaim) Encode(signer ssh.Signer) (string, error) {
 }
 
 // boxKeyAuth returns the name of the box or an error.
+// It checks both Authorization and X-API-Key headers.
+// In dev mode, accepts "dev.key" as a valid API key.
 func (m *llmGateway) boxKeyAuth(ctx context.Context, r *http.Request) (string, error) {
-	bearerTokenString := r.Header.Get("Authorization")
-	if bearerTokenString == "" {
+	// Check both Authorization and X-API-Key headers
+	var authToken string
+	auth := r.Header.Get("Authorization")
+	if auth != "" {
+		// Strip "Bearer " prefix if present
+		authToken = strings.TrimPrefix(auth, "Bearer ")
+	}
+	if authToken == "" {
+		authToken = r.Header.Get("X-API-Key")
+	}
+
+	if authToken == "" {
 		return "", fmt.Errorf("no authorization header provided")
 	}
 
-	bearerTokenString = strings.TrimPrefix(bearerTokenString, "Bearer ")
+	// In dev mode, accept "dev.key" as a valid API key
+	if m.devMode && authToken == "dev.key" {
+		slog.Debug("boxKeyAuth: using dev.key in dev mode")
+		return "dev-box", nil
+	}
 
-	tok, claimBytes, sigBytes, err := DecodeBearerToken(bearerTokenString)
+	tok, claimBytes, sigBytes, err := DecodeBearerToken(authToken)
 	if err != nil {
 		return "", fmt.Errorf("boxKeyAuth: %w", err)
 	}

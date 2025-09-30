@@ -87,6 +87,7 @@ type llmGateway struct {
 	db              *sqlite.DB
 	boxKeyAuthority boxKeyAuthority
 	apiKeys         APIKeys
+	devMode         bool      // if true, accept "dev.key" as a valid API key
 	testDebitDone   chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 }
 
@@ -102,7 +103,7 @@ type boxKeyAuthority interface {
 }
 
 func NewGateway(accountant *accounting.Accountant, db *sqlite.DB, boxKeyAuthority boxKeyAuthority,
-	apiKeys APIKeys,
+	apiKeys APIKeys, devMode bool,
 ) *llmGateway {
 	ret := &llmGateway{
 		now:             time.Now,
@@ -110,6 +111,7 @@ func NewGateway(accountant *accounting.Accountant, db *sqlite.DB, boxKeyAuthorit
 		db:              db,
 		boxKeyAuthority: boxKeyAuthority,
 		apiKeys:         apiKeys,
+		devMode:         devMode,
 	}
 	if apiKeys.Anthropic == "" || apiKeys.Fireworks == "" || apiKeys.OpenAI == "" {
 		slog.Warn("NewGateway: not all apiKeys are set", "apiKeys", apiKeys)
