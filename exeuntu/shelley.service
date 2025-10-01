@@ -1,5 +1,5 @@
 [Unit]
-Description=Shelley AI Assistant Service
+Description=Shelley-the-Agent
 After=network.target
 Wants=network.target
 
@@ -17,14 +17,6 @@ Environment=USER=exedev
 KillMode=process
 TimeoutStopSec=10
 
-# Security settings
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=no
-ReadWritePaths=/home/exedev
-
-# Logging
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=shelley
