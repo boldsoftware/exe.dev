@@ -17,10 +17,8 @@ import (
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
-	"shelley.exe.dev/llm/ant"
-	"shelley.exe.dev/llm/gem"
-	"shelley.exe.dev/llm/oai"
 	"shelley.exe.dev/loop"
+	"shelley.exe.dev/models"
 	"shelley.exe.dev/slug"
 	"shelley.exe.dev/ui"
 )
@@ -38,120 +36,25 @@ type LLMProvider interface {
 	HasModel(modelID string) bool
 }
 
-// LLMServiceManager manages multiple LLM services
-type LLMServiceManager struct {
-	// factories maps model IDs to service constructors.
-	factories map[string]func() (llm.Service, error)
-	logger    *slog.Logger
-}
-
-// NewLLMServiceManager creates a new LLM service manager
-func NewLLMServiceManager(cfg *LLMConfig) *LLMServiceManager {
-	manager := &LLMServiceManager{
-		factories: make(map[string]func() (llm.Service, error)),
-		logger:    cfg.Logger,
+// NewLLMServiceManager creates a new LLM service manager from config
+func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
+	// Convert LLMConfig to models.Config
+	modelConfig := &models.Config{
+		AnthropicAPIKey: cfg.AnthropicAPIKey,
+		OpenAIAPIKey:    cfg.OpenAIAPIKey,
+		GeminiAPIKey:    cfg.GeminiAPIKey,
+		FireworksAPIKey: cfg.FireworksAPIKey,
+		Gateway:         cfg.Gateway,
+		Logger:          cfg.Logger,
 	}
 
-	// Anthropic Claude Sonnet 4.5
-	manager.factories["claude-sonnet-4.5"] = func() (llm.Service, error) {
-		if cfg.AnthropicAPIKey == "" {
-			return nil, fmt.Errorf("claude-sonnet-4.5 requires ANTHROPIC_API_KEY")
-		}
-		svc := &ant.Service{APIKey: cfg.AnthropicAPIKey, Model: ant.Claude45Sonnet}
-		if cfg.AnthropicBaseURL != "" {
-			svc.URL = cfg.AnthropicBaseURL
-		}
-		return svc, nil
-	}
-
-	// OpenAI
-	manager.factories["openai-gpt4"] = func() (llm.Service, error) {
-		if cfg.OpenAIAPIKey == "" {
-			return nil, fmt.Errorf("openai-gpt4 requires OPENAI_API_KEY")
-		}
-		svc := &oai.Service{Model: oai.DefaultModel, APIKey: cfg.OpenAIAPIKey}
-		if cfg.OpenAIBaseURL != "" {
-			svc.ModelURL = cfg.OpenAIBaseURL
-		}
-		return svc, nil
-	}
-
-	// OpenAI GPT-5 series
-	manager.factories["gpt-5-thinking"] = func() (llm.Service, error) {
-		if cfg.OpenAIAPIKey == "" {
-			return nil, fmt.Errorf("gpt-5-thinking requires OPENAI_API_KEY")
-		}
-		svc := &oai.Service{Model: oai.GPT5, APIKey: cfg.OpenAIAPIKey}
-		if cfg.OpenAIBaseURL != "" {
-			svc.ModelURL = cfg.OpenAIBaseURL
-		}
-		return svc, nil
-	}
-	manager.factories["gpt-5-thinking-mini"] = func() (llm.Service, error) {
-		if cfg.OpenAIAPIKey == "" {
-			return nil, fmt.Errorf("gpt-5-thinking-mini requires OPENAI_API_KEY")
-		}
-		svc := &oai.Service{Model: oai.GPT5Mini, APIKey: cfg.OpenAIAPIKey}
-		if cfg.OpenAIBaseURL != "" {
-			svc.ModelURL = cfg.OpenAIBaseURL
-		}
-		return svc, nil
-	}
-	manager.factories["gpt-5-thinking-nano"] = func() (llm.Service, error) {
-		if cfg.OpenAIAPIKey == "" {
-			return nil, fmt.Errorf("gpt-5-thinking-nano requires OPENAI_API_KEY")
-		}
-		svc := &oai.Service{Model: oai.GPT5Nano, APIKey: cfg.OpenAIAPIKey}
-		if cfg.OpenAIBaseURL != "" {
-			svc.ModelURL = cfg.OpenAIBaseURL
-		}
-		return svc, nil
-	}
-
-	// Fireworks Qwen3 Coder
-	manager.factories["qwen3-coder-fireworks"] = func() (llm.Service, error) {
-		if cfg.FireworksAPIKey == "" {
-			return nil, fmt.Errorf("qwen3-coder-fireworks requires FIREWORKS_API_KEY")
-		}
-		svc := &oai.Service{Model: oai.Qwen3CoderFireworks, APIKey: cfg.FireworksAPIKey}
-		if cfg.FireworksBaseURL != "" {
-			svc.ModelURL = cfg.FireworksBaseURL
-		}
-		return svc, nil
-	}
-
-	// Google Gemini
-	manager.factories["gemini-2.5-pro"] = func() (llm.Service, error) {
-		if cfg.GeminiAPIKey == "" {
-			return nil, fmt.Errorf("gemini-2.5-pro requires GEMINI_API_KEY")
-		}
-		svc := &gem.Service{Model: gem.DefaultModel, APIKey: cfg.GeminiAPIKey}
-		if cfg.GeminiBaseURL != "" {
-			svc.URL = cfg.GeminiBaseURL
-		}
-		return svc, nil
-	}
-
-	// Predictable (no envs)
-	manager.factories["predictable"] = func() (llm.Service, error) {
-		return loop.NewPredictableService(), nil
+	manager, err := models.NewManager(modelConfig)
+	if err != nil {
+		// This shouldn't happen in practice, but handle it gracefully
+		cfg.Logger.Error("Failed to create models manager", "error", err)
 	}
 
 	return manager
-}
-
-// GetService returns the LLM service for the given model ID, wrapped with logging
-func (m *LLMServiceManager) GetService(modelID string) (llm.Service, error) {
-	if factory, ok := m.factories[modelID]; ok {
-		svc, err := factory()
-		if err != nil {
-			return nil, err
-		}
-		// Wrap the service with logging
-		loggedSvc := NewLoggingLLMService(svc, m.logger, modelID)
-		return loggedSvc, nil
-	}
-	return nil, fmt.Errorf("unsupported model: %s", modelID)
 }
 
 // handleLogsStream handles GET /api/logs/stream
@@ -192,21 +95,6 @@ func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 			w.(http.Flusher).Flush()
 		}
 	}
-}
-
-// GetAvailableModels returns a list of available model IDs
-func (m *LLMServiceManager) GetAvailableModels() []string {
-	var models []string
-	for model := range m.factories {
-		models = append(models, model)
-	}
-	return models
-}
-
-// HasModel reports whether the manager knows about a model ID
-func (m *LLMServiceManager) HasModel(modelID string) bool {
-	_, ok := m.factories[modelID]
-	return ok
 }
 
 // Server manages the HTTP API and active conversations

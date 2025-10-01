@@ -16,6 +16,7 @@ import (
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/loop"
+	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
 	"shelley.exe.dev/slug"
 )
@@ -492,29 +493,11 @@ func runModels(global GlobalConfig, args []string) {
 	logger := setupLogging(global.Debug)
 	_ = logger
 
-	type modelInfo struct {
-		ID          string
-		Provider    string
-		EnvVars     []string
-		Description string
-	}
-
-	models := []modelInfo{
-		{ID: "qwen3-coder-fireworks", Provider: "Fireworks", EnvVars: []string{"FIREWORKS_API_KEY"}, Description: "Qwen3 Coder 480B on Fireworks (default)"},
-		{ID: "openai-gpt4", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4.1 family"},
-		{ID: "openai-gpt4-turbo", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-4o family"},
-		{ID: "gpt-5-thinking", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking model (alias: gpt-5)"},
-		{ID: "gpt-5-thinking-mini", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking mini model (alias: gpt-5-mini)"},
-		{ID: "gpt-5-thinking-nano", Provider: "OpenAI", EnvVars: []string{"OPENAI_API_KEY"}, Description: "GPT-5 thinking nano model (alias: gpt-5-nano)"},
-		{ID: "claude-sonnet-4.5", Provider: "Anthropic", EnvVars: []string{"ANTHROPIC_API_KEY"}, Description: "Claude Sonnet 4.5 (aliases: claude, sonnet)"},
-		{ID: "predictable", Provider: "Built-in", EnvVars: []string{}, Description: "Deterministic test model (no API key)"},
-	}
-
 	fmt.Println("Supported models:")
-	for _, m := range models {
+	for _, m := range models.All() {
 		ready := true
 		missing := []string{}
-		for _, env := range m.EnvVars {
+		for _, env := range m.RequiredEnvVars {
 			if os.Getenv(env) == "" {
 				ready = false
 				missing = append(missing, env)
@@ -528,8 +511,8 @@ func runModels(global GlobalConfig, args []string) {
 		if m.Description != "" {
 			fmt.Printf("  %s\n", m.Description)
 		}
-		if len(m.EnvVars) > 0 {
-			fmt.Printf("  Required env: %s\n", strings.Join(m.EnvVars, ", "))
+		if len(m.RequiredEnvVars) > 0 {
+			fmt.Printf("  Required env: %s\n", strings.Join(m.RequiredEnvVars, ", "))
 			if len(missing) > 0 {
 				fmt.Printf("  Missing: %s\n", strings.Join(missing, ", "))
 			}
@@ -645,12 +628,8 @@ func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 
 		if cfg.LLMGateway != "" {
 			gateway := strings.TrimSuffix(cfg.LLMGateway, "/")
-			// TODO(philip): This isn't really the base.
-			llmCfg.AnthropicBaseURL = gateway + "/_/gateway/anthropic/v1/messages"
-			llmCfg.OpenAIBaseURL = gateway + "/_/gateway/openai/v1/chat/completions"
-			llmCfg.GeminiBaseURL = gateway + "/_/gateway/gemini/v1/models/generate"
-			llmCfg.FireworksBaseURL = gateway + "/_/gateway/fireworks/inference/v1"
-			logger.Info("Using LLM gateway", "gateway", cfg.LLMGateway)
+			llmCfg.Gateway = gateway
+			logger.Info("Using LLM gateway", "gateway", gateway)
 
 			// If key_generator is specified, execute it to get the API key
 			if cfg.KeyGenerator != "" {

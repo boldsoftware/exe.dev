@@ -10,11 +10,8 @@ type LLMConfig struct {
 	GeminiAPIKey    string
 	FireworksAPIKey string
 
-	// Base URLs for each provider (optional, uses defaults if empty)
-	AnthropicBaseURL string
-	OpenAIBaseURL    string
-	GeminiBaseURL    string
-	FireworksBaseURL string
+	// Gateway is the base URL of the LLM gateway (optional)
+	Gateway string
 
 	Logger *slog.Logger
 }
