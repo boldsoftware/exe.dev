@@ -1052,6 +1052,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Temporary redirect for blog to the coming soon page
 		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
 		return
+	case "/welcome":
+		s.serveStaticFile(w, r, "welcome.html")
+		return
 	case "/~", "/~/":
 		// User dashboard - require authentication
 		userID, err := s.validateAuthCookie(r)
