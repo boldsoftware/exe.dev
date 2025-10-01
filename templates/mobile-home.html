@@ -306,7 +306,7 @@
                 hostnameSpinner.style.display = 'none';
                 
                 if (data.valid && data.available) {
-                    hostnameCheck.textContent = '✓ ' + data.message;
+                    hostnameCheck.textContent = '';
                     hostnameCheck.className = 'hostname-check hostname-available';
                     createButton.disabled = false;
                 } else {

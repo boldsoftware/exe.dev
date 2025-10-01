@@ -64,8 +64,8 @@ func TestMobileHostnameCheck(t *testing.T) {
 	if !response.Available {
 		t.Error("Expected hostname to be available")
 	}
-	if !strings.Contains(response.Message, "available") {
-		t.Error("Expected available message")
+	if response.Message != "" {
+		t.Errorf("Expected empty message for available hostname, got %q", response.Message)
 	}
 }
 

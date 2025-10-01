@@ -300,7 +300,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 	// Validate box name (both provided and generated)
 	if !boxname.Valid(boxName) {
-		return cc.Errorf("Invalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), and be up to 64 characters", boxName)
+		return cc.Errorf("%s", boxname.InvalidBoxNameMessage)
 	}
 
 	if !ss.server.isBoxNameAvailable(ctx, boxName) {

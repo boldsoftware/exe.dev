@@ -95,18 +95,18 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	hostname := strings.TrimSpace(request.Hostname)
-	if hostname == "" {
-		http.Error(w, "Hostname is required", http.StatusBadRequest)
+	name := strings.TrimSpace(request.Hostname)
+	if name == "" {
+		http.Error(w, "Box name is required", http.StatusBadRequest)
 		return
 	}
 
 	// Check if hostname is valid and available
-	isValid := boxname.Valid(hostname)
+	isValid := boxname.Valid(name)
 	isAvailable := true
 
 	if isValid {
-		isAvailable = s.isBoxNameAvailable(r.Context(), hostname)
+		isAvailable = s.isBoxNameAvailable(r.Context(), name)
 	}
 
 	response := struct {
@@ -118,12 +118,11 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 		Available: isAvailable,
 	}
 
-	if !isValid {
-		response.Message = "Invalid hostname format. Must be 5-64 characters, letters, numbers, and hyphens only."
-	} else if !isAvailable {
-		response.Message = "This hostname is already taken. Please choose another."
-	} else {
-		response.Message = "This hostname is available!"
+	switch {
+	case !isValid:
+		response.Message = boxname.InvalidBoxNameMessage
+	case !isAvailable:
+		response.Message = "That box name is not available."
 	}
 
 	w.Header().Set("Content-Type", "application/json")

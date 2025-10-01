@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
 	"testing"
 
 	"exe.dev/vouch"
@@ -81,11 +80,10 @@ func TestBadBoxName(t *testing.T) {
 
 	pty, _, _, _ := registerForExeDev(t)
 
-	// Create a box.
+	// Attempt to create a box with an invalid name.
 	boxName := "ThisIsNotAValidBoxName!"
-	boxNameRe := regexp.QuoteMeta(boxName)
 	pty.sendLine("new --name=" + boxName)
-	pty.wantRe("Invalid box name .*" + boxNameRe)
+	pty.wantRe("Invalid box name")
 	pty.wantPrompt()
 	pty.disconnect()
 }
