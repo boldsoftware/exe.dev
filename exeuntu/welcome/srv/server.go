@@ -50,11 +50,6 @@ func New(dbPath, hostname string) (*Server, error) {
 }
 
 func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/favicon.ico" {
-		http.NotFound(w, r)
-		return
-	}
-
 	// Identity from proxy headers (if present)
 	// UserID is stable; email is useful.
 	userID := strings.TrimSpace(r.Header.Get("X-ExeDev-UserID"))
@@ -156,7 +151,7 @@ func (s *Server) setUpDatabase(dbPath string) error {
 // Serve starts the HTTP server with the configured routes
 func (s *Server) Serve(addr string) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.HandleRoot)
+	mux.HandleFunc("GET /{$}", s.HandleRoot)
 	slog.Info("starting welcome server", "addr", addr)
 	return http.ListenAndServe(addr, mux)
 }
