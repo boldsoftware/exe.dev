@@ -645,10 +645,11 @@ func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 
 		if cfg.LLMGateway != "" {
 			gateway := strings.TrimSuffix(cfg.LLMGateway, "/")
-			llmCfg.AnthropicBaseURL = gateway + "/_/gateway/anthropic"
-			llmCfg.OpenAIBaseURL = gateway + "/_/gateway/openai"
-			llmCfg.GeminiBaseURL = gateway + "/_/gateway/gemini"
-			llmCfg.FireworksBaseURL = gateway + "/_/gateway/fireworks"
+			// TODO(philip): This isn't really the base.
+			llmCfg.AnthropicBaseURL = gateway + "/_/gateway/anthropic/v1/messages"
+			llmCfg.OpenAIBaseURL = gateway + "/_/gateway/openai/v1/chat/completions"
+			llmCfg.GeminiBaseURL = gateway + "/_/gateway/gemini/v1/models/generate"
+			llmCfg.FireworksBaseURL = gateway + "/_/gateway/fireworks/inference/v1"
 			logger.Info("Using LLM gateway", "gateway", cfg.LLMGateway)
 
 			// If key_generator is specified, execute it to get the API key
@@ -658,18 +659,10 @@ func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 					logger.Warn("Failed to execute key generator", "command", cfg.KeyGenerator, "error", err)
 				} else {
 					// Use the generated key for all providers when using gateway
-					if llmCfg.AnthropicAPIKey == "" {
-						llmCfg.AnthropicAPIKey = key
-					}
-					if llmCfg.OpenAIAPIKey == "" {
-						llmCfg.OpenAIAPIKey = key
-					}
-					if llmCfg.GeminiAPIKey == "" {
-						llmCfg.GeminiAPIKey = key
-					}
-					if llmCfg.FireworksAPIKey == "" {
-						llmCfg.FireworksAPIKey = key
-					}
+					llmCfg.AnthropicAPIKey = key
+					llmCfg.OpenAIAPIKey = key
+					llmCfg.GeminiAPIKey = key
+					llmCfg.FireworksAPIKey = key
 					logger.Debug("Using key from generator", "command", cfg.KeyGenerator)
 				}
 			}

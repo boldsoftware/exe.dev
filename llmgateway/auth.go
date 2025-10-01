@@ -115,10 +115,14 @@ func (m *llmGateway) boxKeyAuth(ctx context.Context, r *http.Request) (string, e
 		return "", fmt.Errorf("no authorization header provided")
 	}
 
-	// In dev mode, accept "dev.key" as a valid API key
-	if m.devMode && authToken == "dev.key" {
-		slog.Debug("boxKeyAuth: using dev.key in dev mode")
-		return "dev-box", nil
+	// In dev mode, accept "dev.key:<box>" as a valid API key
+	slog.Debug("boxKeyAuth", "authToken", authToken)
+	if m.devMode && strings.HasPrefix(authToken, "dev.key:") {
+		parts := strings.SplitN(authToken, ":", 2)
+		if len(parts) == 2 && parts[1] != "" {
+			slog.Debug("boxKeyAuth: dev mode, accepting dev.key", "box", parts[1])
+			return parts[1], nil
+		}
 	}
 
 	tok, claimBytes, sigBytes, err := DecodeBearerToken(authToken)
