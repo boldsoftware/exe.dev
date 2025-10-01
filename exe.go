@@ -177,7 +177,7 @@ type Server struct {
 	piperPlugin *PiperPlugin
 
 	// Database
-	db     *sqlite.DB
+	db *sqlite.DB
 
 	// Container management
 	containerManager *container.NerdctlManager
