@@ -21,6 +21,7 @@ CACHE_DIR="$HOME/.cache/exedops"
 CONTAINERD_VERSION="2.1.4"
 RUNC_VERSION="1.1.14"
 KATA_VERSION="3.20.0"
+CLOUD_HYPERVISOR_VERSION="47.0"
 NYDUS_SNAPSHOTTER_VERSION="0.15.2"
 NYDUSD_VERSION="2.2.5"
 NERDCTL_VERSION="2.1.3"
@@ -72,6 +73,20 @@ download_if_needed \
 download_if_needed \
 	"https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-${ARCH}.tar.xz" \
 	"kata-static-${KATA_VERSION}-${ARCH}.tar.xz"
+
+# Download cloud-hypervisor remote binary
+# Map arch to cloud-hypervisor naming (aarch64 for arm64, x86_64 for amd64)
+if [ "$ARCH" = "arm64" ]; then
+	CH_ARCH="aarch64"
+	download_if_needed \
+		"https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v${CLOUD_HYPERVISOR_VERSION}/ch-remote-static-aarch64" \
+		"ch-remote-static-${CLOUD_HYPERVISOR_VERSION}-${ARCH}"
+else
+	CH_ARCH="x86_64"
+	download_if_needed \
+		"https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v${CLOUD_HYPERVISOR_VERSION}/ch-remote-static" \
+		"ch-remote-static-${CLOUD_HYPERVISOR_VERSION}-${ARCH}"
+fi
 
 # Download Nydus snapshotter
 download_if_needed \

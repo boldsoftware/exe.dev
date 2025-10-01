@@ -504,6 +504,7 @@ deps=(
   "$CACHE_DIR"/containerd.service
   "$CACHE_DIR"/runc-*."$ARCH"
   "$CACHE_DIR"/kata-static-*-"$ARCH".tar.xz
+  "$CACHE_DIR"/ch-remote-static-*-"$ARCH"
   "$CACHE_DIR"/nydus-snapshotter-v*-linux-"$ARCH".tar.gz
   "$CACHE_DIR"/nydus-static-v*-linux-"$ARCH".tgz
   "$CACHE_DIR"/nerdctl-*-linux-"$ARCH".tar.gz

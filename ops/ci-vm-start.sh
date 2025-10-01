@@ -253,7 +253,7 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	echo "Copying pre-downloaded dependencies to VM ${IP}..."
 	CACHE_DIR="$HOME/.cache/exedops"
 	mapfile -t files < <(find "$CACHE_DIR" -maxdepth 1 -type f \
-		\( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name '*.tar' \))
+		\( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name 'ch-remote-static-*' -o -name '*.tar' \))
 	rsync -av --progress \
 		-e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
 		"${files[@]}" "${USER_NAME}@${IP}:~/.cache/exedops/"

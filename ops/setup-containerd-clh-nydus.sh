@@ -85,6 +85,7 @@ sudo chmod +x /usr/local/sbin/runc
 echo "=== Installing Kata Containers with Cloud Hypervisor ==="
 
 KATA_VERSION="3.20.0"
+CLOUD_HYPERVISOR_VERSION="47.0"
 # Kata uses the same arch naming as we normalized (amd64, arm64)
 KATA_ARCH="$ARCH"
 
@@ -97,9 +98,15 @@ sudo tar -xf "${ASSETS_DIR}/kata-static-${KATA_VERSION}-${KATA_ARCH}.tar.xz" -C 
 sudo chmod +x /opt/kata/bin/cloud-hypervisor
 sudo chmod +x /opt/kata/bin/containerd-shim-kata-v2
 
+# Install cloud-hypervisor remote binary
+echo "Installing cloud-hypervisor remote v${CLOUD_HYPERVISOR_VERSION}..."
+sudo cp "${ASSETS_DIR}/ch-remote-static-${CLOUD_HYPERVISOR_VERSION}-${ARCH}" /opt/kata/bin/ch-remote
+sudo chmod +x /opt/kata/bin/ch-remote
+
 # Link Kata binaries
 sudo ln -sf /opt/kata/bin/kata-runtime /usr/local/bin/kata-runtime
 sudo ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim-kata-v2
+sudo ln -sf /opt/kata/bin/ch-remote /usr/local/bin/ch-remote
 
 echo "=== Installing Nydus Snapshotter ==="
 
