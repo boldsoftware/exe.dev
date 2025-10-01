@@ -905,6 +905,10 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User,
 			return "", 0, false
 		}
 
+		if strings.TrimSpace(line) == "" {
+			return line, pos, true
+		}
+
 		// Create command context for completion
 		cc := &exemenu.CommandContext{
 			User: &exemenu.UserInfo{
