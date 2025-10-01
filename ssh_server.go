@@ -899,6 +899,9 @@ The EXE.DEV team`, ss.server.getBaseURL(), token)
 // readLineWithCompletion reads a line from the terminal with tab completion support
 func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User, alloc *Alloc, publicKey string, s ssh.Session) (string, error) {
 	// Set up tab completion using AutoCompleteCallback
+	var lastCompletionLine string
+	var lastCompletionPos int
+	var lastCompletionResults []string
 	terminal.AutoCompleteCallback = func(line string, pos int, key rune) (newLine string, newPos int, ok bool) {
 		// Only handle tab key
 		if key != '\t' {
@@ -932,18 +935,28 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *User,
 		// Get completions
 		completions := ss.commands.CompleteCommand(line, pos, cc)
 
+		if line == lastCompletionLine && pos == lastCompletionPos && slices.Equal(completions, lastCompletionResults) {
+			return line, pos, true
+		}
+
 		if len(completions) == 0 {
 			return "", 0, false // No completions, handle tab normally
 		}
 
 		if len(completions) == 1 {
 			// Single completion - auto-complete
+			lastCompletionLine = ""
+			lastCompletionPos = 0
+			lastCompletionResults = nil
 			newLine, newPos := ss.applySingleCompletion(line, pos, completions[0])
 			return newLine, newPos, true
 		}
 
 		// Multiple completions - show options and return original line
 		ss.showCompletions(terminal, completions)
+		lastCompletionLine = line
+		lastCompletionPos = pos
+		lastCompletionResults = slices.Clone(completions)
 		return line, pos, true // Don't modify the line, just show completions
 	}
 
