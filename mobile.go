@@ -401,19 +401,7 @@ func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Convert []exedb.Box to []*exedb.Box
-	boxPtrs := make([]*exedb.Box, len(boxes))
-	for i := range boxes {
-		boxPtrs[i] = &boxes[i]
-	}
-
-	data := struct {
-		Boxes []*exedb.Box
-	}{
-		Boxes: boxPtrs,
-	}
-
-	s.renderTemplate(w, "mobile-vm-list.html", data)
+	s.renderTemplate(w, "mobile-vm-list.html", map[string]any{"Boxes": boxes})
 }
 
 // Helper functions for mobile
