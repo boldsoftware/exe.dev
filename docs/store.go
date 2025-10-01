@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	staticpkg "exe.dev/static"
+	templatespkg "exe.dev/templates"
 	"github.com/yuin/goldmark"
 	gmmeta "github.com/yuin/goldmark-meta"
 	"github.com/yuin/goldmark/parser"
@@ -33,7 +33,7 @@ var docTemplates = template.Must(func() (*template.Template, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tmpl.Parse(staticpkg.TopbarTemplate); err != nil {
+	if _, err := tmpl.ParseFS(templatespkg.Files, "topbar.html"); err != nil {
 		return nil, err
 	}
 	return tmpl, nil

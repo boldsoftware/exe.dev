@@ -47,6 +47,7 @@ import (
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
 	"exe.dev/tagresolver"
+	templatespkg "exe.dev/templates"
 	"github.com/keighl/postmark"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,11 +62,6 @@ import (
 
 //go:embed static
 var staticFS embed.FS
-
-//go:embed templates
-var templatesFS embed.FS
-
-// metrics moved to metrics.go
 
 // User represents an individual user
 type User struct {
@@ -870,25 +866,15 @@ func (s *Server) sendFakeEmail(to, subject, body string) error {
 
 // renderTemplate is a helper method that handles template parsing and execution
 func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data interface{}) error {
-	// Parse template
-	tmplFS, err := fs.Sub(templatesFS, "templates")
-	if err != nil {
-		slog.Error("Failed to access templates filesystem", "error", err, "template", templateName)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return err
-	}
-
-	tmpl, err := template.ParseFS(tmplFS, templateName)
+	tmpl, err := template.ParseFS(templatespkg.Files, "topbar.html", templateName)
 	if err != nil {
 		slog.Error("Failed to parse template", "error", err, "template", templateName)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return err
 	}
 
-	// Render template
 	w.Header().Set("Content-Type", "text/html")
-	err = tmpl.Execute(w, data)
-	if err != nil {
+	if err := tmpl.ExecuteTemplate(w, templateName, data); err != nil {
 		slog.Error("Failed to execute template", "error", err, "template", templateName)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return err
@@ -1053,7 +1039,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
 		return
 	case "/welcome":
-		s.serveStaticFile(w, r, "welcome.html")
+		if err := s.renderTemplate(w, "welcome.html", nil); err != nil {
+			return
+		}
 		return
 	case "/~", "/~/":
 		// User dashboard - require authentication

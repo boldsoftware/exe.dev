@@ -4,20 +4,27 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EXE.DEV - just use ssh</title>
-    <link rel="stylesheet" href="exe.css">
+    <link rel="stylesheet" href="/static/exe.css">
+    {{template "topbar_style" .}}
     <style>
         body {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
             min-height: 100vh;
-            padding: 40px 20px;
             text-align: center;
             overflow-x: hidden;
+            align-items: stretch;
         }
-        
-        
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
         .content-section {
             display: flex;
             align-items: center;
@@ -26,29 +33,29 @@
             margin: 40px auto 50px;
             flex-wrap: wrap;
         }
-        
+
         .content-section.command-row {
             flex-direction: column;
             gap: 20px;
             margin: 30px auto;
         }
-        
+
         .content-section.command-row .description {
             text-align: center;
             max-width: 600px;
         }
-        
+
         .blowfish-logo {
             width: 200px;
             height: auto;
         }
-        
+
         .woodcut-icon {
             width: 120px;
             height: auto;
             margin-bottom: 20px;
         }
-        
+
         .https-section {
             display: flex;
             align-items: center;
@@ -56,20 +63,20 @@
             justify-content: center;
             margin: 30px auto;
         }
-        
+
         .woodcut-icon-side {
             width: 180px;
             height: auto;
             flex-shrink: 0;
         }
-        
+
         .https-content {
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 20px;
         }
-        
+
         .description {
             font-size: 18px;
             letter-spacing: 0.15em;
@@ -81,11 +88,11 @@
             font-weight: 400;
             text-align: left;
         }
-        
+
         .description strong {
             font-weight: bold;
         }
-        
+
         .command-block {
             font-family: 'Courier New', Courier, monospace;
             font-size: clamp(20px, 3.5vw, 28px);
@@ -102,48 +109,46 @@
             max-width: 100%;
             overflow-x: auto;
         }
-        
+
         @media (max-width: 600px) {
-            body {
+            main {
                 padding: 20px 10px;
             }
-            
-            
-            
+
             .content-section {
                 flex-direction: column;
                 width: 100%;
                 padding: 0 10px;
             }
-            
+
             .description {
                 font-size: 15px;
                 letter-spacing: 0.1em;
                 text-align: center;
             }
-            
+
             .blowfish-logo {
                 width: 150px;
             }
-            
+
             .woodcut-icon {
                 width: 100px;
             }
-            
+
             .https-section {
                 flex-direction: column;
                 gap: 20px;
             }
-            
+
             /* Reorder browser section on mobile to show text first */
             .browser-section {
                 flex-direction: column-reverse;
             }
-            
+
             .woodcut-icon-side {
                 width: 130px;
             }
-            
+
             .command-block {
                 padding: 12px 15px;
                 white-space: pre-wrap;
@@ -156,79 +161,31 @@
                 margin-right: auto;
             }
         }
-        
-        .auth-door {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-        
-        .door-button {
-            display: block;
-            text-decoration: none;
-            transition: transform 0.2s ease;
-            position: relative;
-        }
-        
-        .door-button:hover {
-            transform: scale(1.05);
-        }
-        
-        .door-image {
-            width: 80px;
-            height: 120px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        }
-        
-        .door-text {
-            position: absolute;
-            bottom: 8px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 10px;
-            color: #ffffff;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-            text-transform: uppercase;
-            font-variant: small-caps;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 2px 6px;
-            border-radius: 3px;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-        }
     </style>
 </head>
 <body>
-    <div class="auth-door">
-        <a href="/auth" class="door-button login-door">
-            <img src="open-door-small.png" alt="Login" class="door-image">
-            <div class="door-text">login</div>
-        </a>
-    </div>
-    
+    {{template "topbar" .}}
     <main>
         <aside>persistent, private, as many as you need</aside>
-        
+
         <h1>just use ssh</h1>
 
         <div class="content-section command-row">
             <div class="command-block">ssh exe.dev</div>
         </div>
-        
+
         <div class="content-section">
             <p class="description">
                 <strong>EXE.DEV</strong> does it all over ssh<br><br>
                 Start a vm in a second<br><br>
                 Keep it private,<br>share it with an invite link<br><br>
             </p>
-            
-            <img src="exy.png" alt="exe.dev blowfish logo" class="blowfish-logo">
+
+            <img src="/static/exy.png" alt="exe.dev blowfish logo" class="blowfish-logo">
         </div>
 
         <div class="content-section https-section browser-section">
-            <img src="browser-woodcut.png" alt="HTTPS browser security" class="woodcut-icon-side">
+            <img src="/static/browser-woodcut.png" alt="HTTPS browser security" class="woodcut-icon-side">
             <p class="description">
                 <strong>HTTPS</strong> done for you<br>
                 auth proxy <strong>by default</strong><br>

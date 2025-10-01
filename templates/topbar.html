@@ -1,0 +1,23 @@
+{{define "topbar_style"}}
+<link rel="stylesheet" href="/static/topbar.css">
+{{end}}
+
+{{define "topbar"}}
+<header>
+  <div class="nav-container">
+    <div class="nav-left">
+      <a href="/" class="nav-logo">
+        <img src="/static/exy.png" alt="exe.dev logo" />
+        exe.dev
+      </a>
+      <div class="nav-links">
+        <a href="/docs">docs</a>
+      </div>
+    </div>
+    <div class="nav-right">
+      <a href="/soon" class="btn">Join the waitlist</a>
+      <a href="/auth" class="btn">Sign in</a>
+    </div>
+  </div>
+</header>
+{{end}}
