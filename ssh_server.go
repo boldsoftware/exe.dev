@@ -562,7 +562,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		fmt.Fprint(s, "\033[1;31mInternal error: Empty verification code. Please try again.\033[0m\r\n")
 		return
 	}
-	fmt.Fprintf(s, "Verification code: \033[1;32m%s\033[0m\r\n", verification.VerificationCode)
+	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.VerificationCode)
 
 	// Only show the verification URL in dev mode
 	if ss.server.devMode != "" {

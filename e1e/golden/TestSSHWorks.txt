@@ -12,7 +12,7 @@ To sign up, verify your email and set up billing.
 Please enter your email address: TestSSHWorks@example.com
 
 Verification email sent to: TestSSHWorks@example.com
-Verification code: EMAIL_VERIFICATION_CODE
+Pairing code: EMAIL_VERIFICATION_CODE
 
 [DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
 

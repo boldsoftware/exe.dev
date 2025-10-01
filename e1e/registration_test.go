@@ -21,7 +21,7 @@ func TestNewKeyRegistration(t *testing.T) {
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Verification code: .*[0-9]{6}.*")
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")
@@ -49,7 +49,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
-	pty.wantRe("Verification code: .*[0-9]{6}.*")
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
 	emailMsg := Env.email.waitForEmail(t, email)
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")

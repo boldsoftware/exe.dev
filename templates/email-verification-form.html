@@ -37,25 +37,25 @@
         background: #f0f9ff;
         border: 1px solid #0ea5e9;
         border-radius: 8px;
-        padding: 16px;
+        padding: 12px;
         text-align: center;
-        margin: 24px 0 12px;
+        margin: 20px 0 8px;
       }
       .code-label {
         display: block;
         color: #0369a1;
-        font-size: 13px;
+        font-size: 12px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
       .code-value {
         font-family:
           "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-        font-size: 28px;
-        font-weight: 600;
+        font-size: 20px;
+        font-weight: 500;
         color: #0f172a;
-        letter-spacing: 0.2em;
+        letter-spacing: 0.16em;
       }
       .code-note {
         color: #475569;
@@ -67,13 +67,14 @@
         background: #2563eb;
         color: white;
         border: none;
-        padding: 12px 32px;
-        border-radius: 6px;
-        font-size: 16px;
+        padding: 16px 0;
+        border-radius: 8px;
+        font-size: 18px;
         font-weight: 600;
         cursor: pointer;
-        display: inline-block;
-        margin-top: 20px;
+        display: block;
+        width: 100%;
+        margin-top: 28px;
         transition: background 0.2s;
       }
       .button:hover {
@@ -97,7 +98,7 @@
 
       {{if .VerificationCode}}
       <div class="code-box">
-        <span class="code-label">Verification Code</span>
+        <span class="code-label">Terminal Pairing Code</span>
         <span class="code-value">{{.VerificationCode}}</span>
       </div>
       <p class="code-note">
