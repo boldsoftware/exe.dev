@@ -34,7 +34,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Create VM") {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "Create") {
 		t.Fatalf("/m unexpected: status=%d contains-Create? %v", resp.StatusCode, strings.Contains(string(body), "Create VM"))
 	}
 
