@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sqlite"
@@ -57,7 +58,7 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate a random hostname suggestion
-	hostnameSuggestion := generateRandomBoxName()
+	hostnameSuggestion := boxname.Random()
 
 	data := struct {
 		HostnameSuggestion string
@@ -71,7 +72,7 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 // handleMobileNew renders the VM creation page explicitly
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 	// Always show the create page (even if logged in)
-	hostnameSuggestion := generateRandomBoxName()
+	hostnameSuggestion := boxname.Random()
 	data := struct {
 		HostnameSuggestion string
 	}{
@@ -103,7 +104,7 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Check if hostname is valid and available
-	isValid := isValidBoxName(hostname)
+	isValid := boxname.Valid(hostname)
 	isAvailable := true
 
 	if isValid {
@@ -514,7 +515,7 @@ func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Reque
 
 	// Read hostname from POST body
 	hostname := strings.TrimSpace(r.PostFormValue("hostname"))
-	if hostname == "" || !isValidBoxName(hostname) {
+	if hostname == "" || !boxname.Valid(hostname) {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}

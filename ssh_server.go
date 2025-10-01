@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"exe.dev/billing"
+	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sqlite"
@@ -244,7 +245,7 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 			return
 		}
 	}
-	if slices.Contains(jobsRelatedBoxNames, username) {
+	if slices.Contains(boxname.JobsRelated, username) {
 		s.Write([]byte("Oh hai. Nice find. Come work with us: david+magicuser@bold.dev\n"))
 		s.Close()
 		s.Exit(0)

@@ -16,6 +16,7 @@ import (
 
 	"exe.dev/accounting"
 	"exe.dev/billing"
+	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -106,7 +107,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:        "hireme",
-			Aliases:     jobsRelatedBoxNames,
+			Aliases:     boxname.JobsRelated,
 			Hidden:      true,
 			Description: "Apply for a job at exe.dev",
 			Handler:     ss.handleJobCommand,
@@ -289,8 +290,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Generate box name if not provided
 	if boxName == "" {
 		for range 10 {
-			randBoxName := generateRandomBoxName()
-			if isValidBoxName(randBoxName) && ss.server.isBoxNameAvailable(ctx, randBoxName) {
+			randBoxName := boxname.Random()
+			if boxname.Valid(randBoxName) && ss.server.isBoxNameAvailable(ctx, randBoxName) {
 				boxName = randBoxName
 				break
 			}
@@ -298,7 +299,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Validate box name (both provided and generated)
-	if !isValidBoxName(boxName) {
+	if !boxname.Valid(boxName) {
 		return cc.Errorf("Invalid box name %q. Box names must be at least 5 characters, lowercase, start with a letter, contain only letters, numbers and hyphens (no consecutive hyphens), and be up to 64 characters", boxName)
 	}
 

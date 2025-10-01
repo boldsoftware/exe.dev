@@ -488,19 +488,6 @@ func TestSSHIdentityKeyForBox(t *testing.T) {
 	})
 }
 
-func TestGeneratedBoxNamesAreValid(t *testing.T) {
-	t.Parallel()
-	for range 10 {
-		name := generateRandomBoxName()
-		if !isValidBoxName(name) {
-			t.Errorf("Generated name '%s' is not valid", name)
-		}
-		if len(name) > 30 {
-			t.Errorf("Generated name '%s' is too long (%d chars)", name, len(name))
-		}
-	}
-}
-
 // TestMetricsEndpointProtection tests that /metrics is protected by IP restrictions
 func TestMetricsEndpointProtection(t *testing.T) {
 	// Test the requireLocalAccess decorator directly
