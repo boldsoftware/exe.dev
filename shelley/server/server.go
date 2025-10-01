@@ -751,6 +751,12 @@ func (s *Server) getMessageType(message llm.Message) (db.MessageType, error) {
 	case llm.MessageRoleUser:
 		return db.MessageTypeUser, nil
 	case llm.MessageRoleAssistant:
+		// Check if this is an error message by looking at content
+		for _, content := range message.Content {
+			if content.Type == llm.ContentTypeText && strings.HasPrefix(content.Text, "LLM request failed:") {
+				return db.MessageTypeError, nil
+			}
+		}
 		return db.MessageTypeAgent, nil
 	default:
 		// For tool messages, check if it's a tool call or tool result

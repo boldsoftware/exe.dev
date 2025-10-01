@@ -29,4 +29,4 @@ export interface Usage {
 	cost_usd: number;
 }
 
-export type MessageType = 'user' | 'agent' | 'tool';
+export type MessageType = 'user' | 'agent' | 'tool' | 'error';

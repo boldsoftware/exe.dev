@@ -50,6 +50,7 @@ func TS() *go2ts.Go2TS {
 			db.MessageTypeUser,
 			db.MessageTypeAgent,
 			db.MessageTypeTool,
+			db.MessageTypeError,
 		},
 	)
 

@@ -198,6 +198,19 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 
 	resp, err := l.llm.Do(ctx, req)
 	if err != nil {
+		// Record the error as a message so it can be displayed in the UI
+		errorMessage := llm.Message{
+			Role: llm.MessageRoleAssistant,
+			Content: []llm.Content{
+				{
+					Type: llm.ContentTypeText,
+					Text: fmt.Sprintf("LLM request failed: %v", err),
+				},
+			},
+		}
+		if recordErr := l.recordMessage(ctx, errorMessage, llm.Usage{}); recordErr != nil {
+			l.logger.Error("failed to record error message", "error", recordErr)
+		}
 		return fmt.Errorf("LLM request failed: %w", err)
 	}
 

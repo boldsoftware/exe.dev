@@ -90,7 +90,7 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 
 		if strings.HasPrefix(inputText, "error: ") {
 			errorMsg := strings.TrimPrefix(inputText, "error: ")
-			return s.makeResponse(fmt.Sprintf("Error: %s", errorMsg)), nil
+			return nil, fmt.Errorf("predictable error: %s", errorMsg)
 		}
 
 		// Default response for undefined inputs

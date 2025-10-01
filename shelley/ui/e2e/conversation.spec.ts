@@ -304,3 +304,39 @@ test.describe('Shelley Conversation Tests', () => {
     await expect(page.locator('text=Tool: patch').first()).toBeVisible();
   });
 });
+
+  test('displays LLM error message in UI', async ({ page }) => {
+    // Clear any existing data by navigating to root (which should show empty state)
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    // Wait for the empty state or message input
+    const messageInput = page.getByTestId('message-input');
+    await expect(messageInput).toBeVisible({ timeout: 30000 });
+    
+    const sendButton = page.getByTestId('send-button');
+    
+    // Send a message that triggers an error in the predictable LLM
+    await messageInput.fill('error: test error message');
+    await sendButton.click();
+    
+    // Wait for the error message to appear in the UI
+    await page.waitForFunction(
+      () => {
+        const text = 'LLM request failed: predictable error: test error message';
+        return document.body.textContent?.includes(text) ?? false;
+      },
+      undefined,
+      { timeout: 30000 }
+    );
+    
+    // Verify error message is visible with error styling
+    const errorMessage = page.locator('[role="alert"]');
+    await expect(errorMessage).toBeVisible({ timeout: 10000 });
+    
+    // Verify the error text is displayed
+    await expect(page.locator('text=LLM request failed: predictable error: test error message')).toBeVisible();
+    
+    // Verify error label is shown in the message header
+    await expect(page.locator('[role="alert"]').locator('text=Error')).toBeVisible();
+  });

@@ -223,6 +223,7 @@ const (
 	MessageTypeAgent  MessageType = "agent"
 	MessageTypeTool   MessageType = "tool"
 	MessageTypeSystem MessageType = "system"
+	MessageTypeError  MessageType = "error"
 )
 
 // CreateMessageParams contains parameters for creating a message

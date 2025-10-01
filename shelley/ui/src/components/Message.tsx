@@ -21,6 +21,7 @@ function Message({ message, toolUseMap }: MessageProps) {
   const isUser = message.type === 'user' && !hasToolResult(llmMessage);
   const isAssistant = message.type === 'agent';
   const isTool = message.type === 'tool' || hasToolContent(llmMessage);
+  const isError = message.type === 'error';
 
   // Convert Go struct Type field (number) to string type
   // Based on llm/llm.go constants (iota continues across types in same const block):
@@ -256,6 +257,7 @@ function Message({ message, toolUseMap }: MessageProps) {
     if (isUser) return 'You';
     if (isAssistant) return 'Shelley';
     if (isTool) return 'Tool';
+    if (isError) return 'Error';
     return 'System';
   };
 
@@ -264,6 +266,9 @@ function Message({ message, toolUseMap }: MessageProps) {
   const getMessageStyles = () => {
     if (isUser) {
       return 'ml-auto max-w-[80%] bg-primary text-white rounded-lg px-4 py-2';
+    }
+    if (isError) {
+      return 'mr-auto max-w-full bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-lg px-4 py-3';
     }
     return 'mr-auto max-w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg px-4 py-3';
   };
@@ -274,6 +279,33 @@ function Message({ message, toolUseMap }: MessageProps) {
       minute: '2-digit' 
     });
   };
+
+  // Special rendering for error messages
+  if (isError) {
+    let errorText = 'An error occurred';
+    if (llmMessage && llmMessage.Content && llmMessage.Content.length > 0) {
+      const textContent = llmMessage.Content.find(c => c.Type === 2);
+      if (textContent && textContent.Text) {
+        errorText = textContent.Text;
+      }
+    }
+    return (
+      <div className="flex flex-col space-y-2" data-testid="message" role="alert" aria-label="Error message">
+        <div className="flex items-center space-x-2 text-sm text-red-600 dark:text-red-400">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span className="font-medium">{getMessageLabel()}</span>
+          <span className="text-xs">{formatTime(message.created_at)}</span>
+        </div>
+        <div className={getMessageStyles()} data-testid="message-content">
+          <div className="whitespace-pre-wrap break-words text-red-800 dark:text-red-200">
+            {errorText}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Don't render messages with no meaningful content
   if (!llmMessage || !llmMessage.Content || llmMessage.Content.length === 0) {
