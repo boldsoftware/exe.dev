@@ -678,9 +678,9 @@ func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *exemenu.Comma
 	if billingInfo.StripeCustomerID != "" {
 		cc.Writeln("  Stripe Customer ID: \033[1m%s\033[0m", billingInfo.StripeCustomerID)
 	}
+	cc.Writeln("  Current Balance: \033[1;32m%.2f\033[0m", balance)
 	if billingInfo.HasBilling {
 		cc.Writeln("  Status: \033[1;32mConfigured\033[0m")
-		cc.Writeln(". Current Balance: \033[1;32m%.2f\033[0m", balance)
 	} else {
 		cc.Writeln("  Status: \033[1;32mNot Configured\033[0m")
 		cc.Writeln("  run `billing setup` to configure")
