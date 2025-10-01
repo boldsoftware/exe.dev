@@ -1,0 +1,6 @@
+For this test, use the browser tool. Be sure to take frequent
+screenshots (to include in the report). Change the browser viewport
+size to be a mobile-friendly size.
+
+Navigate to /m on the exed web server.
+Create a VM, going through the entire workflow.

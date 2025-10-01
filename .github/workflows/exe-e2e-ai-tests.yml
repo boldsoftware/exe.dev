@@ -29,12 +29,14 @@ jobs:
 
       - name: Setup test environment
         run: |
-          # Assert Docker is running on the CI host
-          docker version
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-          # Install tmux if not available (needed for the e2e tests)
-          sudo apt-get update
-          sudo apt-get install -y tmux
+          # See if tmux is available
+          if command -v tmux >/dev/null 2>&1; then
+            exit 0
+          fi
+          sudo apt-get update && sudo apt-get install -y tmux
 
       - name: Start container host
         id: vm
@@ -80,39 +82,14 @@ jobs:
           # Execute sketch with the test prompt
           ../sketch -one-shot -skaband-addr= -unsafe -prompt 'read test-prompt.md and follow instructions'
 
-          # Check if the test created a result file
-          if [ -f "result.txt" ]; then
-            RESULT=$(cat result.txt)
-            echo "Test result: $RESULT"
-            if [ "$RESULT" != "SUCCESS" ]; then
-              echo "E2E test failed with result: $RESULT"
-              exit 1
-            fi
-          else
-            echo "No result.txt file found - test may not have completed properly"
-            exit 1
-          fi
-
           # Create a branch with the test report and push to timestamped ref
           if [ -d "report" ] || [ -f "result.txt" ]; then
-            echo "Creating report branch..."
-            
             # Generate timestamp for unique ref
             TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
             RUN_ID="${{ github.run_id }}"
             REF_NAME="test-report-$TIMESTAMP-run-$RUN_ID"
-            
-            # Configure git user for the commit
-            git config user.name "GitHub Actions"
-            git config user.email "actions@github.com"
-            
-            # Create tree with report files using git plumbing
-            echo "Creating git tree with report files..."
-            
-            # Create temporary index for our report tree
             export GIT_INDEX_FILE=".git/index-report"
-            
-            # Add report files to the temporary index
+
             if [ -d "report" ]; then
               find report -type f -exec git update-index --add {} \;
             fi
@@ -122,9 +99,6 @@ jobs:
             
             # Create tree object from the index
             TREE_SHA=$(git write-tree)
-            echo "Created tree: $TREE_SHA"
-            
-            # Create commit object
             printf "E2E test report - %s\n\nWorkflow run: %s/%s/actions/runs/%s\nTriggered by: %s\nCommit: %s\nResult: %s\n" \
               "$TIMESTAMP" \
               "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
@@ -132,33 +106,46 @@ jobs:
               > commit-msg.txt
             
             COMMIT_SHA=$(git commit-tree $TREE_SHA < commit-msg.txt)
-            rm commit-msg.txt
-            echo "Created commit: $COMMIT_SHA"
-            
             # Push directly to workflow ref namespace
             git push origin "$COMMIT_SHA:refs/workflow/$REF_NAME"
             
-            # Clean up temporary index
-            rm -f ".git/index-report"
+            # Clean up
+            rm -f ".git/index-report" commit-msg.txt
+            rm commit-msg.txt
             unset GIT_INDEX_FILE
             
             # Output the link to the report
             REPO_URL="https://github.com/${{ github.repository }}"
-            REPORT_URL="$REPO_URL/tree/$COMMIT_SHA"
+            REPORT_URL="$REPO_URL/tree/$COMMIT_SHA/report/report.md"
             echo "📋 Test report available at: $REPORT_URL"
             
             # Also output as workflow summary
             echo "## E2E Test Report" >> $GITHUB_STEP_SUMMARY
             echo "**Result:** $RESULT" >> $GITHUB_STEP_SUMMARY
             echo "**Report:** [$REF_NAME]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
-            echo "**Timestamp:** $TIMESTAMP" >> $GITHUB_STEP_SUMMARY
             echo "**Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ -f "report/report.md" ]; then
+              cat report/report.md >> $GITHUB_STEP_SUMMARY || true
+            fi
           else
             echo "No report directory or result.txt found - skipping report branch creation"
           fi
 
-      - name: Upload artifacts on failure
-        if: failure()
+          # Check if the test created a result file
+          if [ ! -f "result.txt" ]; then
+            echo "No result.txt file found - test may not have completed properly"
+            exit 1
+          fi
+
+          RESULT=$(cat result.txt)
+          if [ "$RESULT" != "SUCCESS" ]; then
+            echo "E2E test failed with result: $RESULT"
+            exit 1
+          fi
+
+          exit 0
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: exe-e2e-test-logs
