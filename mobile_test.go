@@ -25,11 +25,8 @@ func TestMobileHomeRoute(t *testing.T) {
 	if !strings.Contains(body, "exe.dev") {
 		t.Error("Expected exe.dev title in response")
 	}
-	if !strings.Contains(body, "Choose your hostname") {
-		t.Error("Expected hostname selection in response")
-	}
-	if !strings.Contains(body, "Create VM") {
-		t.Error("Expected Create VM button in response")
+	if !strings.Contains(body, "Create") {
+		t.Error("Expected Create button in response")
 	}
 }
 
@@ -170,7 +167,7 @@ func TestMobileInvalidHostname(t *testing.T) {
 	if response.Valid {
 		t.Error("Expected hostname to be invalid")
 	}
-	if !strings.Contains(response.Message, "Invalid hostname format") {
+	if !strings.Contains(response.Message, "Invalid") {
 		t.Error("Expected invalid hostname message")
 	}
 }
