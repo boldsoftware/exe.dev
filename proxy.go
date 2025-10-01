@@ -38,8 +38,6 @@ import (
 // handleProxyRequest handles requests that should be proxied to containers
 // This handler is called when the Host header matches box.team.exe.dev or box.team.localhost
 func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
-	slog.Info("[REDIRECT] handleProxyRequest called", "host", r.Host, "path", r.URL.Path)
-
 	// Ensure the port in the Host header matches the listener's local port
 	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
 	if !ok {
