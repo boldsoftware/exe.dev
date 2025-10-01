@@ -3,6 +3,7 @@ package llmgateway
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -69,7 +70,62 @@ func setupTestAccountant(t *testing.T, billingAccountID string, balance float64)
 	return accountant, db
 }
 
-// setupTestGateway creates a test gateway with mocked dependencies
+// setupTestBox creates a box in the database linked to a billing account
+func setupTestBox(t *testing.T, db *sqlite.DB, boxName string, billingAccountID string) {
+	err := db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+
+		// Create billing account
+		err := queries.InsertBillingAccount(ctx, exedb.InsertBillingAccountParams{
+			BillingAccountID: billingAccountID,
+			Name:             "Test Account",
+		})
+		if err != nil {
+			return fmt.Errorf("insert billing account: %w", err)
+		}
+
+		// Create user
+		userID := "test-user-" + boxName
+		err = queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID:                  userID,
+			Email:                   "test@example.com",
+			DefaultBillingAccountID: billingAccountID,
+		})
+		if err != nil {
+			return fmt.Errorf("insert user: %w", err)
+		}
+
+		// Create alloc
+		allocID := "test-alloc-" + boxName
+		err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
+			AllocID:          allocID,
+			UserID:           userID,
+			AllocType:        "test",
+			Region:           "test-region",
+			Ctrhost:          "test-ctrhost",
+			BillingAccountID: billingAccountID,
+		})
+		if err != nil {
+			return fmt.Errorf("insert alloc: %w", err)
+		}
+
+		// Create box
+		_, err = queries.InsertBox(ctx, exedb.InsertBoxParams{
+			AllocID:         allocID,
+			Name:            boxName,
+			Status:          "running",
+			Image:           "test-image",
+			CreatedByUserID: userID,
+			Routes:          nil,
+		})
+		if err != nil {
+			return fmt.Errorf("insert box: %w", err)
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+} // setupTestGateway creates a test gateway with mocked dependencies
 func setupTestGateway(t *testing.T) (*llmGateway, *accounting.Accountant, *sqlite.DB, *mockBoxKeyAuthority, *testKeyPair) {
 	keyPair := generateTestKeys(t)
 
@@ -80,6 +136,9 @@ func setupTestGateway(t *testing.T) (*llmGateway, *accounting.Accountant, *sqlit
 	}
 
 	accountant, db := setupTestAccountant(t, "billing-123", 10.0)
+
+	// Create the box and link it to the billing account
+	setupTestBox(t, db, "test-box", "billing-123")
 
 	gateway := &llmGateway{
 		now:             time.Now,
@@ -170,16 +229,22 @@ func TestGateway_BillingIntegration_BillingAccountLookup(t *testing.T) {
 	_, accountant, db, _, _ := setupTestGateway(t)
 	defer db.Close()
 
-	// Test failed lookup for nonexistent box (simplified test database doesn't have box setup)
+	// Test successful lookup for box that exists
 	err := db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
-		_, err := accountant.BillingAccountForBox(ctx, rx, "test-box")
-		return err
+		billingID, err := accountant.BillingAccountForBox(ctx, rx, "test-box")
+		if err != nil {
+			return err
+		}
+		if billingID != "billing-123" {
+			t.Errorf("Expected billing ID 'billing-123', got '%s'", billingID)
+		}
+		return nil
 	})
-	if err == nil {
-		t.Error("Expected error for nonexistent box")
+	if err != nil {
+		t.Errorf("Expected successful lookup for test-box, got error: %v", err)
 	}
 
-	// Test another failed lookup
+	// Test failed lookup for nonexistent box
 	err = db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
 		_, err := accountant.BillingAccountForBox(ctx, rx, "nonexistent-box")
 		return err
@@ -317,32 +382,34 @@ func TestGateway_ServeHTTP_DevKeyAuthentication(t *testing.T) {
 	gateway.devMode = true // Enable dev mode
 	defer db.Close()
 
-	// Test with dev.key in Authorization header
+	// Test with dev.key:test-box in Authorization header
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req.Header.Set("Authorization", "Bearer dev.key")
+	req.Header.Set("Authorization", "Bearer dev.key:test-box")
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
 	gateway.ServeHTTP(rr, req)
 
-	// Should not return 401 (authentication should pass)
-	if rr.Code == http.StatusUnauthorized {
-		t.Errorf("Expected authentication to pass with dev.key, got 401: %s", rr.Body.String())
+	// Gateway authentication should pass - we should NOT get our gateway's auth error
+	// The request will be proxied to Anthropic which will return 401 for invalid API key
+	// But the body should be Anthropic's error, not our "box key auth failed" error
+	if rr.Code == http.StatusUnauthorized && strings.Contains(rr.Body.String(), "box key auth failed") {
+		t.Errorf("Expected gateway authentication to pass with dev.key:test-box, but got gateway auth error: %s", rr.Body.String())
 	}
 
-	// Test with dev.key in X-API-Key header
+	// Test with dev.key:test-box in X-API-Key header
 	req2 := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req2.Header.Set("X-API-Key", "dev.key")
+	req2.Header.Set("X-API-Key", "dev.key:test-box")
 	req2.Header.Set("Content-Type", "application/json")
 
 	rr2 := httptest.NewRecorder()
 	gateway.ServeHTTP(rr2, req2)
 
-	// Should not return 401 (authentication should pass)
-	if rr2.Code == http.StatusUnauthorized {
-		t.Errorf("Expected authentication to pass with dev.key in X-API-Key, got 401: %s", rr2.Body.String())
+	// Gateway authentication should pass - we should NOT get our gateway's auth error
+	if rr2.Code == http.StatusUnauthorized && strings.Contains(rr2.Body.String(), "box key auth failed") {
+		t.Errorf("Expected gateway authentication to pass with dev.key:test-box in X-API-Key, but got gateway auth error: %s", rr2.Body.String())
 	}
 }
 
@@ -351,10 +418,10 @@ func TestGateway_ServeHTTP_DevKeyDisabledInProduction(t *testing.T) {
 	gateway.devMode = false // Production mode
 	defer db.Close()
 
-	// Test with dev.key in Authorization header
+	// Test with dev.key:test-box in Authorization header
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
 		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req.Header.Set("Authorization", "Bearer dev.key")
+	req.Header.Set("Authorization", "Bearer dev.key:test-box")
 	req.Header.Set("Content-Type", "application/json")
 
 	rr := httptest.NewRecorder()
@@ -362,7 +429,7 @@ func TestGateway_ServeHTTP_DevKeyDisabledInProduction(t *testing.T) {
 
 	// Should return 401 (dev.key should not work in production)
 	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("Expected status 401 for dev.key in production mode, got %d", rr.Code)
+		t.Errorf("Expected status 401 for dev.key:test-box in production mode, got %d", rr.Code)
 	}
 }
 
