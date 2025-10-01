@@ -1,10 +1,11 @@
 package logging
 
 import (
-	"github.com/lmittmann/tint"
 	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/lmittmann/tint"
 )
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
