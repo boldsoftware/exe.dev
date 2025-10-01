@@ -8,6 +8,29 @@ import (
 	"time"
 )
 
+// responseWriter wraps http.ResponseWriter to capture the status code.
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	written    bool
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	if !rw.written {
+		rw.statusCode = code
+		rw.written = true
+		rw.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	if !rw.written {
+		rw.statusCode = http.StatusOK
+		rw.written = true
+	}
+	return rw.ResponseWriter.Write(b)
+}
+
 // requestLogInfoKey is used to pass request classification info via context.
 type requestLogInfoKey struct{}
 
@@ -41,8 +64,11 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			ctx, _ := WithNewRequestLogInfo(r.Context())
 			r = r.WithContext(ctx)
 
+			// Wrap the response writer to capture status code
+			wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
 			start := time.Now()
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(wrapped, r)
 			duration := time.Since(start)
 
 			// host and local_addr for richer context
@@ -57,6 +83,7 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 				logger.Info("HTTP request",
 					"method", r.Method,
 					"path", r.URL.Path,
+					"status", wrapped.statusCode,
 					"host", host,
 					"local_addr", localAddr,
 					"proxy", info.IsProxy,
@@ -69,6 +96,7 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			logger.Info("HTTP request",
 				"method", r.Method,
 				"path", r.URL.Path,
+				"status", wrapped.statusCode,
 				"host", host,
 				"local_addr", localAddr,
 				"duration", duration,
