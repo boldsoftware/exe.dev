@@ -96,14 +96,10 @@ func runServe(global GlobalConfig, args []string) {
 	port := fs.String("port", "9000", "Port to listen on")
 	fs.Parse(args)
 
-	// Create log buffer first
-	logBuffer := server.NewLogBuffer(1000) // Keep last 1000 log entries
-	logger := setupLoggingWithBuffer(global.Debug, logBuffer)
+	logger := setupLogging(global.Debug)
 
 	database := setupDatabase(global.DBPath, logger)
 	defer database.Close()
-
-	logger.Info("Starting Shelley", "port", *port, "db", global.DBPath)
 
 	// Build LLM configuration
 	llmConfig := buildLLMConfig(logger, global.ConfigPath)
@@ -114,7 +110,7 @@ func runServe(global GlobalConfig, args []string) {
 	tools := setupTools(llmManager)
 
 	// Create and start server
-	svr := server.NewServer(database, llmManager, tools, logger, logBuffer, global.PredictableOnly)
+	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly)
 	if err := svr.Start(*port); err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)
@@ -140,6 +136,7 @@ func runPrompt(global GlobalConfig, args []string) {
 	defer database.Close()
 
 	// Initialize LLM service for the main conversation
+	// TODO(philip): XXX This seems unnecessary.
 	llmService := setupLLMService(global, logger)
 
 	// Build LLM configuration
@@ -167,6 +164,7 @@ func runPrompt(global GlobalConfig, args []string) {
 		conversationID = conv.ConversationID
 
 		// Load message history (use high limit to get all messages)
+		// TODO(philip): high limit is insane; just get all the messages
 		messages, err := database.ListMessagesByConversationPaginated(ctx, conversationID, 1000, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading conversation history: %s\n", err)
@@ -256,6 +254,7 @@ func runPrompt(global GlobalConfig, args []string) {
 	}
 
 	// Start slug generation for new conversations in parallel (only if this is not a continuation)
+	// TODO(philip): Isn't this busted? I think ProcessOneTurn blcoks, so this needs to be above?
 	var slugDone chan struct{}
 	if *continueID == "" {
 		slugDone = make(chan struct{})
@@ -288,8 +287,6 @@ func runPrompt(global GlobalConfig, args []string) {
 		fmt.Fprintf(os.Stderr, "Warning: could not fetch conversation details: %s\n", err)
 		fmt.Printf("Conversation completed: %s\n", conversationID)
 	} else {
-		// Show conversation ID and continuation command
-		fmt.Printf("Conversation completed: %s\n", conversationID)
 		// Check if slug was generated and use it, otherwise use conversation ID
 		if conv.Slug != nil && *conv.Slug != "" {
 			fmt.Printf("To continue: shelley prompt -continue %s \"<your message>\"\n", *conv.Slug)
@@ -301,7 +298,7 @@ func runPrompt(global GlobalConfig, args []string) {
 
 func runList(global GlobalConfig, args []string) {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
-	limit := fs.Int64("limit", 20, "Maximum number of conversations to list")
+	limit := fs.Int64("limit", 1000, "Maximum number of conversations to list")
 	offset := fs.Int64("offset", 0, "Number of conversations to skip")
 	fs.Parse(args)
 
@@ -368,6 +365,7 @@ func runInspect(global GlobalConfig, args []string) {
 	}
 
 	// Get messages (use high limit to get all messages)
+	// TODO(philip): Just get all the messages
 	messages, err := database.ListMessagesByConversationPaginated(ctx, conversation.ConversationID, 1000, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading messages: %s\n", err)
@@ -419,24 +417,6 @@ func setupLogging(debug bool) *slog.Logger {
 	return logger
 }
 
-func setupLoggingWithBuffer(debug bool, logBuffer *server.LogBuffer) *slog.Logger {
-	logLevel := slog.LevelInfo
-	if debug {
-		logLevel = slog.LevelDebug
-	}
-
-	// Create the base handler
-	baseHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	})
-
-	// Wrap with buffered handler
-	bufferedHandler := server.NewBufferedLogHandler(baseHandler, logBuffer)
-
-	logger := slog.New(bufferedHandler)
-	slog.SetDefault(logger)
-	return logger
-}
 
 func setupDatabase(dbPath string, logger *slog.Logger) *db.DB {
 	database, err := db.New(db.Config{DSN: dbPath})

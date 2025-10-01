@@ -58,8 +58,7 @@ func TestServerEndToEnd(t *testing.T) {
 	}
 
 	// Create server
-	logBuffer := server.NewLogBuffer(100)
-	svr := server.NewServer(database, llmManager, tools, logger, logBuffer, false)
+	svr := server.NewServer(database, llmManager, tools, logger, false)
 
 	// Set up HTTP server
 	mux := http.NewServeMux()
@@ -370,8 +369,7 @@ func TestConversationCleanup(t *testing.T) {
 	// Create server with predictable service
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
-	logBuffer := server.NewLogBuffer(100)
-	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
+	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, false)
 
 	// Create a conversation
 	// Using database directly instead of service
@@ -407,8 +405,7 @@ func TestSlugGeneration(t *testing.T) {
 	// Create server
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
-	logBuffer := server.NewLogBuffer(100)
-	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
+	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, false)
 
 	// Test slug generation directly to avoid timing issues
 	// ctx := context.Background()
@@ -502,8 +499,7 @@ func TestSlugGenerationWithPredictableService(t *testing.T) {
 		t.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	logBuffer := server.NewLogBuffer(100)
-	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, logBuffer, false)
+	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, false)
 
 	// Test slug generation directly
 	// ctx := context.Background()
@@ -597,10 +593,9 @@ func TestSSEIncrementalUpdates(t *testing.T) {
 	// Create logger and LLM manager
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
-	logBuffer := server.NewLogBuffer(1000)
 
 	// Create server
-	serviceInstance := server.NewServer(database, llmManager, nil, logger, logBuffer, false)
+	serviceInstance := server.NewServer(database, llmManager, nil, logger, false)
 	mux := http.NewServeMux()
 	serviceInstance.RegisterRoutes(mux)
 	testServer := httptest.NewServer(mux)
@@ -703,7 +698,6 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	logBuffer := server.NewLogBuffer(100)
 
 	// Create a predictable service we can inspect
 	predictableService := loop.NewPredictableService()
@@ -715,7 +709,7 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 	}
 
 	tools := []*llm.Tool{}
-	svr := server.NewServer(database, customLLMManager, tools, logger, logBuffer, false)
+	svr := server.NewServer(database, customLLMManager, tools, logger, false)
 
 	// Start server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

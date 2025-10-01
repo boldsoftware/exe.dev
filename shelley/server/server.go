@@ -57,45 +57,6 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 	return manager
 }
 
-// handleLogsStream handles GET /api/logs/stream
-func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	ctx := r.Context()
-
-	// Set up SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	// Send current logs
-	currentLogs := s.logBuffer.GetAll()
-	data, _ := json.Marshal(currentLogs)
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	w.(http.Flusher).Flush()
-
-	// Subscribe to new log entries
-	subscriptionID := fmt.Sprintf("%d", time.Now().UnixNano())
-	updateChan := make(chan LogEntry, 10)
-	s.logBuffer.Subscribe(subscriptionID, updateChan)
-	defer s.logBuffer.Unsubscribe(subscriptionID)
-
-	// Listen for updates or context cancellation
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case entry := <-updateChan:
-			data, _ := json.Marshal([]LogEntry{entry})
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			w.(http.Flusher).Flush()
-		}
-	}
-}
 
 // Server manages the HTTP API and active conversations
 type Server struct {
@@ -105,7 +66,6 @@ type Server struct {
 	activeConversations map[string]*ConversationManager
 	mu                  sync.RWMutex
 	logger              *slog.Logger
-	logBuffer           *LogBuffer
 	predictableOnly     bool
 }
 
@@ -125,14 +85,13 @@ type ConversationManager struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, logBuffer *LogBuffer, predictableOnly bool) *Server {
+func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
 		tools:               tools,
 		activeConversations: make(map[string]*ConversationManager),
 		logger:              logger,
-		logBuffer:           logBuffer,
 		predictableOnly:     predictableOnly,
 	}
 }
@@ -144,7 +103,6 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
 	mux.HandleFunc("/api/models", s.handleModels)
-	mux.HandleFunc("/api/logs/stream", s.handleLogsStream)
 
 	// Serve embedded UI assets with conservative caching
 	mux.Handle("/", s.staticHandler(ui.Assets()))
