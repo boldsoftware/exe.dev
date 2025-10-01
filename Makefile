@@ -10,7 +10,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-what deploy-piperd clean run-dev sqlc whoami-clean
+.PHONY: help build test deploy-exed deploy-whoami deploy-what deploy-piperd clean run-dev sqlc whoami-clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -38,6 +38,11 @@ deploy-exed: ## Deploy exed to production
 	@echo "${YELLOW}Deploying exed to production...${NC}"
 	@chmod +x ops/deploy-exed.sh
 	@./ops/deploy-exed.sh
+
+deploy-whoami: ## Deploy whoami sqlite database to production
+	@echo "${YELLOW}Deploying whoami database to production...${NC}"
+	@chmod +x ops/deploy-whoami.sh
+	@./ops/deploy-whoami.sh
 
 ssh-exed: ## ssh to exed production server
 	@ssh ubuntu@exed-01
