@@ -178,7 +178,6 @@ type Server struct {
 
 	// Database
 	db     *sqlite.DB
-	dbPath string
 
 	// Container management
 	containerManager *container.NerdctlManager
@@ -428,7 +427,6 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		piperdPort:         piperdPort,
 		BaseURL:            baseURL,
 		db:                 db,
-		dbPath:             dbPath,
 		containerManager:   containerManager,
 		tagResolver:        tagResolverInstance,
 		hostUpdater:        hostUpdaterInstance,
