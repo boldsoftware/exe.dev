@@ -459,13 +459,11 @@ func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout
 
 // getUserIDFromRequest extracts user ID from auth cookie
 func (s *Server) getUserIDFromRequest(r *http.Request) (string, error) {
-	cookie, err := r.Cookie("exe-auth")
+	userID, err := s.validateAuthCookie(r)
 	if err != nil {
-		return "", fmt.Errorf("no auth cookie")
-	}
-
-	userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
-	if err != nil {
+		if errors.Is(err, http.ErrNoCookie) {
+			return "", fmt.Errorf("no auth cookie")
+		}
 		return "", fmt.Errorf("invalid auth cookie")
 	}
 
@@ -501,20 +499,7 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check authentication for other paths
-	cookie, err := r.Cookie("exe-auth")
-	if err != nil || cookie.Value == "" {
-		// Not authenticated, redirect to auth with return URL
-		scheme := getScheme(r)
-		returnURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
-		mainDomain := s.getMainDomainWithPort()
-		authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s", scheme, mainDomain, url.QueryEscape(returnURL), url.QueryEscape(r.Host))
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-		return
-	}
-
-	// Validate auth cookie
-	_, err = s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
-	if err != nil {
+	if _, err := s.validateAuthCookie(r); err != nil {
 		// Invalid cookie, redirect to auth
 		scheme := getScheme(r)
 		returnURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())

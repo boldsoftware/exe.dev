@@ -171,18 +171,16 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Request path: %s\n", r.URL.Path)
 
 		// Show current user info
-		if cookie, err := r.Cookie("exe-proxy-auth"); err == nil && cookie.Value != "" {
-			if userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
-				// Ignore error
-				userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-					return queries.GetEmailByUserID(ctx, userID)
-				})
-				fmt.Fprintf(w, "Logged in user: %q (%q)\n", userEmail, userID)
-			} else {
-				fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
-			}
-		} else {
+		if userID, err := s.validateProxyAuthCookie(r); err == nil {
+			// Ignore error
+			userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+				return queries.GetEmailByUserID(ctx, userID)
+			})
+			fmt.Fprintf(w, "Logged in user: %q (%q)\n", userEmail, userID)
+		} else if errors.Is(err, http.ErrNoCookie) {
 			fmt.Fprintf(w, "Not logged in\n")
+		} else {
+			fmt.Fprintf(w, "Invalid auth cookie: %v\n", err)
 		}
 		return
 	}
@@ -287,14 +285,7 @@ func (s *Server) parseProxyHostname(hostname string) (box string) {
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
 // Returns (userID, true) if authenticated, ("") if not authenticated
 func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
-	// Check for authentication cookie
-	cookie, err := r.Cookie("exe-proxy-auth")
-	if err != nil || cookie.Value == "" {
-		return "", false
-	}
-
-	// Validate cookie and get user ID
-	userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
+	userID, err := s.validateProxyAuthCookie(r)
 	if err != nil {
 		return "", false
 	}

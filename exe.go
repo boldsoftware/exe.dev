@@ -1141,11 +1141,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch path {
 	case "/":
 		// If authenticated, show user dashboard; otherwise redirect to /soon
-		if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
-			if userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
-				s.handleUserDashboard(w, r, userID)
-				return
-			}
+		if userID, err := s.validateAuthCookie(r); err == nil {
+			s.handleUserDashboard(w, r, userID)
+			return
 		}
 		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
 		return
@@ -1158,16 +1156,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/~", "/~/":
 		// User dashboard - require authentication
-		cookie, err := r.Cookie("exe-auth")
-		if err != nil || cookie.Value == "" {
-			// Not authenticated, redirect to auth
-			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
-			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
-			return
-		}
-		userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
+		userID, err := s.validateAuthCookie(r)
 		if err != nil {
-			// Invalid cookie, redirect to auth
+			// Not authenticated, redirect to auth
 			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
 			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 			return
@@ -1749,14 +1740,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 // handleAuth handles the main domain authentication flow
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	// Check if user already has a valid exe.dev auth cookie
-	cookie, err := r.Cookie("exe-auth")
-	if err == nil && cookie.Value != "" {
-		userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
-		if err == nil {
-			// User is already authenticated, handle redirect
-			s.redirectAfterAuth(w, r, userID)
-			return
-		}
+	if userID, err := s.validateAuthCookie(r); err == nil {
+		// User is already authenticated, handle redirect
+		s.redirectAfterAuth(w, r, userID)
+		return
 	}
 
 	// Handle POST request (email submission)
@@ -2264,16 +2251,39 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 	return cookieValue, nil
 }
 
-// validateAuthCookie validates an authentication cookie and returns the user_id
-func (s *Server) validateAuthCookie(ctx context.Context, cookieValue, domain string) (string, error) {
+// validateAuthCookie validates the primary authentication cookie and returns the user_id
+func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
+	return s.validateNamedAuthCookie(r, "exe-auth")
+}
+
+// validateProxyAuthCookie validates the proxy authentication cookie and returns the user_id
+func (s *Server) validateProxyAuthCookie(r *http.Request) (string, error) {
+	return s.validateNamedAuthCookie(r, "exe-proxy-auth")
+}
+
+func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (string, error) {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		// NB: many callers check for errors.Is(err, http.ErrNoCookie),
+		// so be sure to wrap the error returned from r.Cookie.
+		return "", fmt.Errorf("failed to read %s cookie: %w", cookieName, err)
+	}
+	if cookie.Value == "" {
+		return "", fmt.Errorf("empty %s: %w", cookieName, http.ErrNoCookie)
+	}
+
+	ctx := r.Context()
+	cookieValue := cookie.Value
+	domain := getDomain(r.Host)
+
 	var userID string
 	var expiresAt time.Time
 
 	// Get auth cookie info
-	err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+	if err := s.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		row, err := queries.GetAuthCookieInfo(ctx, exedb.GetAuthCookieInfoParams{
 			CookieValue: cookieValue,
-			Domain:      getDomain(domain),
+			Domain:      domain,
 		})
 		if err != nil {
 			return err
@@ -2281,8 +2291,7 @@ func (s *Server) validateAuthCookie(ctx context.Context, cookieValue, domain str
 		userID = row.UserID
 		expiresAt = row.ExpiresAt
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", fmt.Errorf("invalid cookie")
 		}
@@ -2583,10 +2592,9 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// Get the current user's ID from the main auth cookie
 	var userID string
-	cookie, err := r.Cookie("exe-auth")
-	if err == nil && cookie.Value != "" {
+	if id, err := s.validateAuthCookie(r); err == nil {
 		// Get the user ID before deleting
-		userID, _ = s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
+		userID = id
 	}
 
 	// Clear ALL auth cookies for this user across all domains

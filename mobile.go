@@ -49,12 +49,10 @@ func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 // handleMobileHome renders the initial mobile page
 func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	// Check if user is already authenticated
-	if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
-		if _, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
-			// User is authenticated, show their VM list at /m
-			s.handleMobileVMList(w, r)
-			return
-		}
+	if _, err := s.validateAuthCookie(r); err == nil {
+		// User is authenticated, show their VM list at /m
+		s.handleMobileVMList(w, r)
+		return
 	}
 
 	// Generate a random hostname suggestion
@@ -145,11 +143,9 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Mobile VM creation request", "hostname", hostname, "description", description)
 
 	// If user is logged in, go directly to creating page with SSE
-	if cookie, err := r.Cookie("exe-auth"); err == nil && cookie.Value != "" {
-		if _, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err == nil {
-			http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname)+"&description="+urlQueryEscape(description), http.StatusTemporaryRedirect)
-			return
-		}
+	if _, err := s.validateAuthCookie(r); err == nil {
+		http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname)+"&description="+urlQueryEscape(description), http.StatusTemporaryRedirect)
+		return
 	}
 
 	// Otherwise, proceed to email auth, carrying the VM details as hidden fields
@@ -370,13 +366,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 // handleMobileVMList shows the user's VM list
 func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 	// Check authentication
-	cookie, err := r.Cookie("exe-auth")
-	if err != nil || cookie.Value == "" {
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
-		return
-	}
-
-	userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
+	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
 		return
@@ -409,12 +399,7 @@ func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 // handleMobileCreatingPage shows a creating screen that connects to SSE for progress
 func (s *Server) handleMobileCreatingPage(w http.ResponseWriter, r *http.Request) {
 	// Require auth
-	cookie, err := r.Cookie("exe-auth")
-	if err != nil || cookie.Value == "" {
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
-		return
-	}
-	if _, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host); err != nil {
+	if _, err := s.validateAuthCookie(r); err != nil {
 		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
 		return
 	}
@@ -490,12 +475,7 @@ func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Require auth and resolve user and alloc
-	cookie, err := r.Cookie("exe-auth")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Authentication required", http.StatusUnauthorized)
-		return
-	}
-	userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
+	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Error(w, "Authentication required", http.StatusUnauthorized)
 		return
@@ -578,12 +558,7 @@ func (s *Server) getBoxForUserByUserID(ctx context.Context, userID, boxName stri
 // handleMobileBoxPage shows details for a box
 func (s *Server) handleMobileBoxPage(w http.ResponseWriter, r *http.Request) {
 	// Require auth
-	cookie, err := r.Cookie("exe-auth")
-	if err != nil || cookie.Value == "" {
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
-		return
-	}
-	userID, err := s.validateAuthCookie(r.Context(), cookie.Value, r.Host)
+	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
 		return
