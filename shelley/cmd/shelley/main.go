@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -591,11 +592,14 @@ func getMessageContentPreview(message llm.Message) string {
 // executeKeyGenerator runs the specified command via bash and returns the output as the API key
 func executeKeyGenerator(command string) (string, error) {
 	cmd := exec.Command("bash", "-c", command)
-	output, err := cmd.Output()
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("executing key generator: %w", err)
+		return "", fmt.Errorf("executing key generator: %w\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(stdout.String()), nil
 }
 
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file

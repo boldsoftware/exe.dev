@@ -1,6 +1,6 @@
 # Shelley Makefile
 
-.PHONY: build test test-go test-e2e ui serve clean help
+.PHONY: build build-linux-aarch64 test test-go test-e2e ui serve clean help
 
 # Default target
 all: build
@@ -9,6 +9,11 @@ all: build
 build: ui
 	@echo "Building Shelley..."
 	go build -o bin/shelley ./cmd/shelley
+
+# Build for Linux ARM64
+build-linux-aarch64: ui
+	@echo "Building Shelley for Linux ARM64..."
+	GOOS=linux GOARCH=arm64 go build -o bin/shelley-linux-aarch64 ./cmd/shelley
 
 # Build UI
 ui:
@@ -63,6 +68,7 @@ help:
 	@echo "Shelley Build Commands:"
 	@echo ""
 	@echo "  build         Build UI and Go binary"
+	@echo "  build-linux-aarch64  Build for Linux ARM64"
 	@echo "  ui            Build UI only"
 	@echo "  test          Run all tests (Go + E2E)"
 	@echo "  test-go       Run Go tests only"
