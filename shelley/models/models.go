@@ -67,7 +67,7 @@ func (c *Config) getAnthropicURL() string {
 // getOpenAIURL returns the OpenAI API URL, with gateway suffix if gateway is set
 func (c *Config) getOpenAIURL() string {
 	if c.Gateway != "" {
-		return c.Gateway + "/_/gateway/openai/v1/chat/completions"
+		return c.Gateway + "/_/gateway/openai/v1"
 	}
 	return "" // use default from oai package
 }

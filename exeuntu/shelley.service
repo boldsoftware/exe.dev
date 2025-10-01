@@ -7,8 +7,8 @@ Wants=network.target
 Type=exec
 User=exedev
 Group=exedev
-WorkingDirectory=/home/exedev
-ExecStart=/usr/local/bin/shelley --config /exe.dev/shelley.json serve --port 9999
+WorkingDirectory=/app
+ExecStart=/usr/local/bin/shelley -debug -db /home/exedev/shelley.db -config /exe.dev/shelley.json serve -port 9999
 Restart=always
 RestartSec=5
 Environment=HOME=/home/exedev
