@@ -900,8 +900,11 @@ func cinemaOptsForTest(t *testing.T) []expect.ConsoleOpt {
 				return
 			}
 			writer.Close()
-			if err := writeAsciinemaToText(castFile, baseName); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to write asciinema->text file: %v\n", err)
+			_, skip := skipGolden.Load(t.Name())
+			if !skip {
+				if err := writeAsciinemaToText(castFile, baseName); err != nil {
+					fmt.Fprintf(os.Stderr, "failed to write asciinema->text file: %v\n", err)
+				}
 			}
 			Env.asciinemaMu.Lock()
 			defer Env.asciinemaMu.Unlock()
@@ -1375,7 +1378,7 @@ func newBox(t *testing.T, pty *expectPty, opts ...BoxOpts) string {
 }
 
 func asciinemaToText(castData []byte) (string, error) {
-	// asciicinema has a size header, but we ignore it.
+	// asciinema has a size header, but we ignore it.
 	// this isn't safe in general, but it makes sense for us, in our context.
 	// width and height should both be generous for consistency and to avoid losing scrollback.
 	screen := ansiterm.NewScreen(1024, 16384)
@@ -1423,11 +1426,22 @@ NextLine:
 	return outText, nil
 }
 
-var didRunTest sync.Map // map[string]bool
+var (
+	didRunTest sync.Map // map[string]bool
+	skipGolden sync.Map // map[string]bool
+)
 
 func e1eTestsOnlyRunOnce(t *testing.T) {
 	prev, _ := didRunTest.Swap(t.Name(), true)
 	if didRun, ok := prev.(bool); ok && didRun {
 		t.Fatal("e1e tests don't work with -count > 1. use a bash loop. if this makes you sad, talk to josh.")
 	}
+}
+
+// noGolden marks the test as not wanting golden file updates.
+// We use this for tests that satisfy both of these conditions:
+//   - are hard to get stable output out of
+//   - whose golden output isn't interesting/useful
+func noGolden(t *testing.T) {
+	skipGolden.Store(t.Name(), true)
 }
