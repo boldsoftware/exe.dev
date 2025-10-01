@@ -291,8 +291,6 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		return nil, fmt.Errorf("failed to initialize data subdir: %w", err)
 	}
 
-	// Detect if we're running in test mode
-
 	// Initialize Postmark client
 	postmarkAPIKey := os.Getenv("POSTMARK_API_KEY")
 	var postmarkClient *postmark.Client
@@ -507,18 +505,8 @@ func (s *Server) DataPath(path string) string {
 	return fmt.Sprintf("/data/%s/%s", s.dataSubdir, strings.TrimPrefix(path, "/"))
 }
 
-// setupHTTPServer configures the HTTP server
-func (s *Server) setupHTTPServer() {
-	anthropicAPIKey := os.Getenv("ANTHROPIC_API_KEY")
-	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
-
-	lg := llmgateway.NewGateway(s.accountant, s.db, s, llmgateway.APIKeys{
-		Anthropic: anthropicAPIKey,
-		Fireworks: fireworksAPIKey,
-		OpenAI:    openaiAPIKey,
-	}, s.devMode != "")
-
+func (s *Server) prepareHandler() http.Handler {
+	lg := s.prepareLlmGateway()
 	servMux := http.NewServeMux()
 	servMux.Handle("/_/gateway/", lg)
 	servMux.Handle("/", s)
@@ -528,10 +516,31 @@ func (s *Server) setupHTTPServer() {
 		s.metricsRegistry,
 		servMux)
 
+	h := LoggerMiddleware(slog.Default())(instrumentedHandler)
+	return h
+}
+
+// setupHTTPServer configures the HTTP server
+func (s *Server) setupHTTPServer() {
+	h := s.prepareHandler()
+
 	s.httpServer = &http.Server{
 		Addr:    s.httpLn.addr,
-		Handler: LoggerMiddleware(slog.Default())(instrumentedHandler),
+		Handler: h,
 	}
+}
+
+func (s *Server) prepareLlmGateway() http.Handler {
+	anthropicAPIKey := os.Getenv("ANTHROPIC_API_KEY")
+	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
+	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+
+	lg := llmgateway.NewGateway(s.accountant, s.db, s, llmgateway.APIKeys{
+		Anthropic: anthropicAPIKey,
+		Fireworks: fireworksAPIKey,
+		OpenAI:    openaiAPIKey,
+	}, s.devMode != "")
+	return lg
 }
 
 // setupHTTPSServer configures the HTTPS server with Let's Encrypt if enabled
@@ -543,20 +552,6 @@ func (s *Server) setupHTTPSServer() {
 	// Check if Porkbun API credentials are available for wildcard cert
 	porkbunAPIKey := os.Getenv("PORKBUN_API_KEY")
 	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
-
-	anthropicAPIKey := os.Getenv("ANTHROPIC_API_KEY")
-	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
-
-	lg := llmgateway.NewGateway(s.accountant, s.db, s, llmgateway.APIKeys{
-		Anthropic: anthropicAPIKey,
-		Fireworks: fireworksAPIKey,
-		OpenAI:    openaiAPIKey,
-	}, s.devMode != "")
-
-	servMux := http.NewServeMux()
-	servMux.Handle("/_/gateway/", lg)
-	servMux.Handle("/", s)
 
 	if porkbunAPIKey != "" && porkbunSecretKey != "" {
 		// Use Porkbun for wildcard certificates with DNS challenge
@@ -581,7 +576,7 @@ func (s *Server) setupHTTPSServer() {
 	// Single TLS dispatcher for all domains (exe.dev and Tailscale)
 	s.httpsServer = &http.Server{
 		Addr:    s.httpsLn.addr,
-		Handler: LoggerMiddleware(slog.Default())(servMux),
+		Handler: s.prepareHandler(),
 		TLSConfig: &tls.Config{
 			GetCertificate: s.getCertificate,
 		},
