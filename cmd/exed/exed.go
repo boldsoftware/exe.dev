@@ -9,6 +9,7 @@ import (
 
 	"exe.dev"
 	"exe.dev/ctrhosttest"
+	"exe.dev/logging"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func run() error {
 	}
 
 	// Setup structured logging
-	exe.SetupLogger(*devMode)
+	logging.SetupLogger(*devMode)
 	slog.Info("Starting exed server")
 
 	// Parse containerd addresses
