@@ -84,15 +84,6 @@ func (ss *SSHServer) Start(ln net.Listener) error {
 		log.Printf("Warning: No host key found in main server configuration")
 	}
 
-	if ss.server == nil || !ss.server.testMode {
-		tcpAddr, ok := ln.Addr().(*net.TCPAddr)
-		if ok {
-			slog.Info("starting SSH server", "addr", tcpAddr.String(), "ip", tcpAddr.IP.String(), "port", tcpAddr.Port)
-		} else {
-			slog.Info("starting SSH server", "addr", ln.Addr().String(), "net", ln.Addr().Network())
-		}
-	}
-
 	return ss.srv.Serve(ln)
 }
 
@@ -363,10 +354,7 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, u
 		return
 	}
 
-	// Command loop using new command system
-	if !ss.server.testMode {
-		log.Printf("Entering command loop")
-	}
+	slog.Info("starting repl", "public_key", publicKey, "email", user.Email)
 	for {
 		// Read line with tab completion
 		line, err := ss.readLineWithCompletion(terminal, user, alloc, publicKey, s)
@@ -423,12 +411,11 @@ func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, u
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
 func (ss *SSHServer) showAnimatedWelcome(s ssh.Session) {
 	// Skip animation in test mode for faster tests
-	if ss.server.testMode {
+	if ss.server.devMode == "test" {
 		fmt.Fprint(s, "~~~ EXE.DEV ~~~\r\n")
 		return
 	}
 
-	// More compact ASCII art that fits better in terminals
 	asciiArt := []string{
 		"███████╗██╗  ██╗███████╗   ██████╗ ███████╗██╗   ██╗",
 		"██╔════╝╚██╗██╔╝██╔════╝   ██╔══██╗██╔════╝██║   ██║",
@@ -544,17 +531,11 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		}
 	}
 
-	// No longer ask for team name - boxes will be named directly under exe.dev
-
-	// Log for debugging
-	if !ss.server.testMode {
-		slog.Debug("Starting email verification", "email", email)
-	}
-
+	slog.Debug("starting email verification", "email", email)
 	// Start email verification directly without using sshbuf.Channel
 	if err := ss.startEmailVerificationNew(s.Context(), publicKey, email); err != nil {
 		// Log the error for debugging
-		log.Printf("Email verification failed for %s: %v", email, err)
+		slog.Error("email verification failed", "email", email, "error", err)
 		// Show user-friendly error message
 		if err.Error() == "email service not configured" {
 			fmt.Fprintf(s, "\r\n%sError: Email service is not configured. Cannot send verification email.%s\r\n", "\033[1;31m", "\033[0m")

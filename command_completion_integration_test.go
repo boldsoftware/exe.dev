@@ -9,9 +9,7 @@ import (
 
 func TestCompletionIntegration(t *testing.T) {
 	// Create a test SSH server with the real command tree
-	server := &Server{
-		testMode: true,
-	}
+	server := &Server{}
 	sshServer := NewSSHServer(server, nil) // nil billing for completion testing
 
 	// Create test user and alloc context
@@ -100,7 +98,7 @@ func TestCompletionIntegration(t *testing.T) {
 
 // TestApplySingleCompletion tests the single completion logic
 func TestApplySingleCompletion(t *testing.T) {
-	server := &Server{testMode: true}
+	server := &Server{}
 	sshServer := NewSSHServer(server, nil)
 
 	tests := []struct {

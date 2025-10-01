@@ -307,8 +307,7 @@ type Server struct {
 	stripeKey      string
 	fakeHTTPEmail  string // fake HTTP email server URL for sending emails (for e2e tests)
 
-	testMode bool   // Test mode - skip animations for faster testing
-	devMode  string // Development mode: "" (production) or "local" (Docker) or "test" for test mode
+	devMode string // Development mode: "" (production) or "local" (Docker) or "test" for test mode
 
 	// Metrics
 	metricsRegistry *prometheus.Registry
@@ -549,7 +548,6 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		stripeKey:          stripe.Key,
 		devMode:            devMode,
 
-		testMode:        testing.Testing() || devMode == "test",
 		metricsRegistry: metricsRegistry,
 		sshMetrics:      sshMetrics,
 		dataSubdir:      dataSubdir,
