@@ -209,7 +209,7 @@
     </div>
     
     <main>
-        <aside>yes you can have a machine</aside>
+        <aside>persistent, private, as many as you need</aside>
         
         <h1>just use ssh</h1>
 
@@ -219,7 +219,9 @@
         
         <div class="content-section">
             <p class="description">
-                <strong>EXE.DEV</strong> gives you machines over ssh. no cloud cruft.
+                <strong>EXE.DEV</strong> does it all over ssh<br><br>
+                Start a vm in a second<br><br>
+                Keep it private,<br>share it with an invite link<br><br>
             </p>
             
             <img src="exy.png" alt="exe.dev blowfish logo" class="blowfish-logo">
@@ -236,39 +238,9 @@
         <hr>
 
         <div class="content-section command-row">
-            <div class="command-block">
-ssh exe.dev create --name=bip<br>
-ssh bip@exe.dev
-            </div>
             <p class="description">
-                make a new machine with <strong>persistent</strong> disk<br>
-                your ssh key is your passport
+                All the comforts of $HOME
             </p>
-        </div>
-
-        <hr>
-
-        <div class="content-section https-section">
-            <div class="https-content">
-                <div class="command-block">
-ssh bip@exe.dev py -m http.server 80 &<br>
-curl <strong>https</strong>://bip.exe.dev
-                </div>
-                <p class="description">
-                    <strong>HTTPS</strong> done for you<br>
-                </p>
-                <div class="command-block">ssh exe.dev proxy bip:/dropbox public<br></div>
-                <p class="description">
-                    share what you want
-                </p>
-
-            </div>
-        </div>
-
-        <hr>
-        
-        <div class="content-section command-row">
-            <div class="command-block">ssh exe.dev</div>
             <p class="description">
                 <strong>sign up</strong> now, in your terminal
             </p>
