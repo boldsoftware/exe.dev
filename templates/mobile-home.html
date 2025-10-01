@@ -263,14 +263,14 @@
     <script>
       // Placeholder text rotation
       const placeholders = [
-        "Build a blog...",
         "Run a Jupyter notebook...",
         "Deploy a web app...",
-        "Set up a database...",
         "Create an API...",
         "Launch a game server...",
         "Build a chatbot...",
         "Set up CI/CD...",
+        "Set up a database...",
+        "Build a blog...",
       ];
 
       let currentPlaceholderIndex = 0;
@@ -287,7 +287,7 @@
         }
       }
 
-      setInterval(rotatePlaceholder, 2000);
+      setInterval(rotatePlaceholder, 5000);
 
       // Hostname availability checking
       const hostnameInput = document.getElementById("hostname");
