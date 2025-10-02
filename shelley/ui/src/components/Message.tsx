@@ -1,6 +1,16 @@
 import React from 'react';
 import { Message as MessageType, LLMMessage, LLMContent } from '../types';
 
+// Display data types from different tools
+interface ToolDisplay {
+  tool_use_id: string;
+  tool_name?: string;
+  display: any;
+}
+
+// Patch tool display is a unified diff string
+type PatchDisplay = string;
+
 interface MessageProps {
   message: MessageType;
   // Tool use information from previous messages to correlate with results
@@ -8,6 +18,16 @@ interface MessageProps {
 }
 
 function Message({ message, toolUseMap }: MessageProps) {
+  // Check if we have display_data to render
+  let displayData: ToolDisplay[] | null = null;
+  if (message.display_data) {
+    try {
+      displayData = typeof message.display_data === 'string' ? JSON.parse(message.display_data) : message.display_data;
+    } catch (err) {
+      console.error('Failed to parse display data:', err);
+    }
+  }
+
   // Parse LLM data if available
   let llmMessage: LLMMessage | null = null;
   if (message.llm_data) {
@@ -17,6 +37,8 @@ function Message({ message, toolUseMap }: MessageProps) {
       console.error('Failed to parse LLM data:', err);
     }
   }
+
+
 
   const isUser = message.type === 'user' && !hasToolResult(llmMessage);
   const isTool = message.type === 'tool' || hasToolContent(llmMessage);
@@ -236,6 +258,65 @@ function Message({ message, toolUseMap }: MessageProps) {
     }
   };
 
+  // Render display data for tool-specific rendering
+  const renderDisplayData = (toolDisplay: ToolDisplay, toolName?: string) => {
+    const display = toolDisplay.display;
+    
+    // Infer tool type from display content if tool name not provided
+    const inferredToolName = toolName || (typeof display === 'string' && display.includes('---') && display.includes('+++') ? 'patch' : undefined);
+    
+    // Render based on tool name if available
+    if (inferredToolName === 'patch' && typeof display === 'string') {
+      // It's likely a unified diff from the patch tool
+      return (
+        <div className="tool-result-details">
+          <details open>
+            <summary className="tool-result-summary">
+              <div className="tool-result-meta">
+                <div className="flex items-center space-x-2">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span className="text-sm font-medium text-blue">{inferredToolName}</span>
+                </div>
+              </div>
+            </summary>
+            <div className="tool-result-content">
+              <pre className="diff-display">
+                {display}
+              </pre>
+            </div>
+          </details>
+        </div>
+      );
+    }
+    
+    // For other types of display data, render as JSON
+    return (
+      <div className="tool-result-details">
+        <details open>
+          <summary className="tool-result-summary">
+            <div className="tool-result-meta">
+              <div className="flex items-center space-x-2">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="text-sm font-medium text-blue">{inferredToolName || 'Tool output'}</span>
+              </div>
+            </div>
+          </summary>
+          <div className="tool-result-content">
+            <pre style={{whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>
+              {JSON.stringify(display, null, 2)}
+            </pre>
+          </div>
+        </details>
+      </div>
+    );
+  };
+
   const getMessageClasses = () => {
     if (isUser) {
       return 'message message-user';
@@ -264,6 +345,21 @@ function Message({ message, toolUseMap }: MessageProps) {
           <div className="whitespace-pre-wrap break-words">
             {errorText}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If we have display_data, use that for rendering (more compact, tool-specific)
+  if (displayData && displayData.length > 0) {
+    return (
+      <div className={getMessageClasses()} data-testid="message" role="article">
+        <div className="message-content" data-testid="message-content">
+          {displayData.map((toolDisplay, index) => (
+            <div key={index}>
+              {renderDisplayData(toolDisplay, toolDisplay.tool_name)}
+            </div>
+          ))}
         </div>
       </div>
     );

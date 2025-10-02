@@ -25,4 +25,5 @@ type Message struct {
 	UserData       *string   `json:"user_data"`
 	UsageData      *string   `json:"usage_data"`
 	CreatedAt      time.Time `json:"created_at"`
+	DisplayData    *string   `json:"display_data"`
 }

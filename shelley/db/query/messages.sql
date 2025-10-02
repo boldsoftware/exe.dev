@@ -1,6 +1,6 @@
 -- name: CreateMessage :one
-INSERT INTO messages (message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO messages (message_id, conversation_id, sequence_id, type, llm_data, user_data, usage_data, display_data)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetNextSequenceID :one

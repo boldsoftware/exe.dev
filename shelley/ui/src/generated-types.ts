@@ -14,11 +14,13 @@ export interface Conversation {
 export interface Message {
 	message_id: string;
 	conversation_id: string;
+	sequence_id: number;
 	type: string;
-	llm_data: string | null;
-	user_data: string | null;
-	usage_data: string | null;
+	llm_data?: string | null;
+	user_data?: string | null;
+	usage_data?: string | null;
 	created_at: string;
+	display_data?: string | null;
 }
 
 export interface Usage {

@@ -259,6 +259,7 @@ type CreateMessageParams struct {
 	LLMData        interface{} // Will be JSON marshalled
 	UserData       interface{} // Will be JSON marshalled
 	UsageData      interface{} // Will be JSON marshalled
+	DisplayData    interface{} // Will be JSON marshalled, tool-specific display content
 }
 
 // CreateMessage creates a new message
@@ -266,7 +267,7 @@ func (db *DB) CreateMessage(ctx context.Context, params CreateMessageParams) (*g
 	messageID := uuid.New().String()
 
 	// Marshal JSON fields
-	var llmDataJSON, userDataJSON, usageDataJSON *string
+	var llmDataJSON, userDataJSON, usageDataJSON, displayDataJSON *string
 
 	if params.LLMData != nil {
 		data, err := json.Marshal(params.LLMData)
@@ -295,6 +296,15 @@ func (db *DB) CreateMessage(ctx context.Context, params CreateMessageParams) (*g
 		usageDataJSON = &str
 	}
 
+	if params.DisplayData != nil {
+		data, err := json.Marshal(params.DisplayData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal display data: %w", err)
+		}
+		str := string(data)
+		displayDataJSON = &str
+	}
+
 	var message generated.Message
 	err := db.pool.Tx(ctx, func(ctx context.Context, tx *Tx) error {
 		q := generated.New(tx.Conn())
@@ -313,6 +323,7 @@ func (db *DB) CreateMessage(ctx context.Context, params CreateMessageParams) (*g
 			LlmData:        llmDataJSON,
 			UserData:       userDataJSON,
 			UsageData:      usageDataJSON,
+			DisplayData:    displayDataJSON,
 		})
 		return err
 	})

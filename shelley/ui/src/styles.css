@@ -939,8 +939,20 @@ svg {
   border-bottom-right-radius: 0.5rem;
 }
 
+/* Diff display styling */
+.diff-display {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: var(--bg-base);
+  padding: 1rem;
+  border-radius: 0.25rem;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text-primary);
+}
+
 /* Responsive adjustments */
-@media (min-width: 1024px) {
   .drawer {
     position: static;
     transform: translateX(0) !important;

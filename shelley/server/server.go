@@ -24,8 +24,22 @@ import (
 )
 
 // StreamResponse represents the response format for conversation streaming
+// APIMessage is the message format sent to clients
+// It omits llm_data when display_data is available to reduce bandwidth
+type APIMessage struct {
+	MessageID      string    `json:"message_id"`
+	ConversationID string    `json:"conversation_id"`
+	SequenceID     int64     `json:"sequence_id"`
+	Type           string    `json:"type"`
+	LlmData        *string   `json:"llm_data,omitempty"`
+	UserData       *string   `json:"user_data,omitempty"`
+	UsageData      *string   `json:"usage_data,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	DisplayData    *string   `json:"display_data,omitempty"`
+}
+
 type StreamResponse struct {
-	Messages     []generated.Message    `json:"messages"`
+	Messages     []APIMessage           `json:"messages"`
 	Conversation generated.Conversation `json:"conversation"`
 }
 
@@ -55,6 +69,30 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 	}
 
 	return manager
+}
+
+// toAPIMessages converts database messages to API messages
+// For messages with display_data, it omits llm_data to reduce bandwidth
+func toAPIMessages(messages []generated.Message) []APIMessage {
+	apiMessages := make([]APIMessage, len(messages))
+	for i, msg := range messages {
+		apiMsg := APIMessage{
+			MessageID:      msg.MessageID,
+			ConversationID: msg.ConversationID,
+			SequenceID:     msg.SequenceID,
+			Type:           msg.Type,
+			UserData:       msg.UserData,
+			UsageData:      msg.UsageData,
+			CreatedAt:      msg.CreatedAt,
+			DisplayData:    msg.DisplayData,
+		}
+		// Only include llm_data if there's no display_data
+		if msg.DisplayData == nil {
+			apiMsg.LlmData = msg.LlmData
+		}
+		apiMessages[i] = apiMsg
+	}
+	return apiMessages
 }
 
 // Server manages the HTTP API and active conversations
@@ -248,7 +286,7 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(messages)
+	json.NewEncoder(w).Encode(toAPIMessages(messages))
 }
 
 // ChatRequest represents a chat message from the user
@@ -536,7 +574,7 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 
 	// Send current messages and conversation data
 	streamData := StreamResponse{
-		Messages:     messages,
+		Messages:     toAPIMessages(messages),
 		Conversation: conversation,
 	}
 	data, _ := json.Marshal(streamData)
@@ -688,7 +726,33 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 		return fmt.Errorf("failed to determine message type: %w", err)
 	}
 
-	// The message service will handle JSON marshalling
+	// Extract display data from content items
+	// Display data is only present in tool results
+	// Build a map of tool_use_id to tool_name for lookups
+	toolNameMap := make(map[string]string)
+	for _, content := range message.Content {
+		if content.Type == llm.ContentTypeToolUse {
+			toolNameMap[content.ID] = content.ToolName
+		}
+	}
+
+	var displayData []any
+	for _, content := range message.Content {
+		if content.Type == llm.ContentTypeToolResult && content.Display != nil {
+			// Include tool name if we can find it
+			toolName := toolNameMap[content.ToolUseID]
+			displayData = append(displayData, map[string]any{
+				"tool_use_id": content.ToolUseID,
+				"tool_name":   toolName,
+				"display":     content.Display,
+			})
+		}
+	}
+
+	var displayDataToStore interface{}
+	if len(displayData) > 0 {
+		displayDataToStore = displayData
+	}
 
 	// Create message
 	_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
@@ -697,6 +761,7 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 		LLMData:        message,
 		UserData:       nil,
 		UsageData:      usage,
+		DisplayData:    displayDataToStore,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create message: %w", err)
@@ -825,7 +890,7 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 
 		// Send the update even if there are no new messages so clients can react to conversation-only changes (e.g., slug updates)
 		streamData := StreamResponse{
-			Messages:     messages,
+			Messages:     toAPIMessages(messages),
 			Conversation: conversation,
 		}
 
