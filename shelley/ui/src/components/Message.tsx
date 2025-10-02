@@ -1,5 +1,6 @@
 import React from 'react';
 import { Message as MessageType, LLMMessage, LLMContent } from '../types';
+import BashTool from './BashTool';
 
 // Display data types from different tools
 interface ToolDisplay {
@@ -41,6 +42,19 @@ function Message({ message }: MessageProps) {
   const isUser = message.type === 'user' && !hasToolResult(llmMessage);
   const isTool = message.type === 'tool' || hasToolContent(llmMessage);
   const isError = message.type === 'error';
+
+  // Build a map of tool use IDs to their inputs for linking tool_result back to tool_use
+  const toolUseMap: Record<string, { name: string; input: any }> = {};
+  if (llmMessage && llmMessage.Content) {
+    llmMessage.Content.forEach(content => {
+      if (content.Type === 5 && content.ID && content.ToolName) { // tool_use
+        toolUseMap[content.ID] = {
+          name: content.ToolName,
+          input: content.ToolInput
+        };
+      }
+    });
+  }
 
   // Convert Go struct Type field (number) to string type
   // Based on llm/llm.go constants (iota continues across types in same const block):
@@ -84,6 +98,16 @@ function Message({ message }: MessageProps) {
           </div>
         );
       case 'tool_use':
+        // Use specialized component for bash tool
+        if (content.ToolName === 'bash') {
+          return (
+            <BashTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Default rendering for other tools
         return (
           <div className="tool-use">
             <div className="tool-header">
@@ -143,6 +167,20 @@ function Message({ message }: MessageProps) {
         const toolName = (toolInfo && typeof toolInfo === 'object' && toolInfo.name) || content.ToolName || 'Unknown Tool';
         const toolInput = (toolInfo && typeof toolInfo === 'object') ? toolInfo.input : undefined;
         
+        // Use specialized component for bash tool
+        if (toolName === 'bash') {
+          return (
+            <BashTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+        
+        // Default rendering for other tools
         return (
           <details className={`tool-result-details ${hasError ? 'error' : ''}`}>
             <summary className="tool-result-summary">

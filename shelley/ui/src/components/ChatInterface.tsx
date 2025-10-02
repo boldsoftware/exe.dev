@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import MessageComponent from './Message';
 import MessageInput from './MessageInput';
 import Modal from './Modal';
+import BashTool from './BashTool';
 
 interface CoalescedToolCallProps {
   toolName: string;
@@ -35,6 +36,19 @@ function CoalescedToolCall({
     } else {
       executionTime = `${(diffMs / 1000).toFixed(1)}s`;
     }
+  }
+
+  // Use specialized BashTool component for bash
+  if (toolName === 'bash') {
+    return (
+      <BashTool
+        toolInput={toolInput}
+        isRunning={!hasResult}
+        toolResult={toolResult}
+        hasError={toolError}
+        executionTime={executionTime}
+      />
+    );
   }
 
   const getToolResultSummary = (results: LLMContent[]) => {

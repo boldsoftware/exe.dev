@@ -627,6 +627,142 @@ button {
   }
 }
 
+/* Bash Tool Component */
+.bash-tool {
+  background: var(--gray-100);
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+.dark .bash-tool {
+  background: var(--gray-800);
+}
+
+.bash-tool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bash-tool-header:hover {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0.5rem;
+}
+
+.dark .bash-tool-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.bash-tool-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.bash-tool-emoji {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.bash-tool-command {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bash-tool-running {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  flex-shrink: 0;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.bash-tool-success {
+  color: var(--success-text);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.bash-tool-error {
+  color: var(--error-text);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.bash-tool-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.bash-tool-toggle:hover {
+  color: var(--text-primary);
+}
+
+.bash-tool-details {
+  padding: 0 1rem 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bash-tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bash-tool-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bash-tool-time {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-weight: normal;
+}
+
+.bash-tool-code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.875rem;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.75rem;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.bash-tool-code.error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-text);
+}
+
 /* Message Input */
 .message-input-container {
   background: var(--bg-base);
