@@ -95,6 +95,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Description:       "Delete a box",
 			Handler:           ss.handleDeleteCommand,
 			FlagSetFunc:       jsonOnlyFlags("delete"),
+			Aliases:           []string{"rm"},
 			Usage:             "delete <box-name>",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
