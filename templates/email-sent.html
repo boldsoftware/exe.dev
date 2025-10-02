@@ -1,23 +1,30 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <title>Check Your Email - exe.dev</title>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/static/exe.css" />
     <style>
       body {
         font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        max-width: 500px;
-        margin: 100px auto;
-        padding: 40px;
-        background: #f5f5f5;
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 48px 20px;
+      }
+      main.verify-container {
+        width: 100%;
+        max-width: 520px;
       }
       .container {
-        background: white;
-        border-radius: 12px;
-        padding: 40px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        background: rgba(255, 255, 248, 0.95);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 24px;
+        padding: 48px 40px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
         text-align: center;
       }
       .exy {
@@ -26,12 +33,13 @@
         margin: 0 auto 24px;
       }
       h1 {
-        color: #0f172a;
+        color: #000;
         margin-bottom: 16px;
         font-size: 28px;
+        letter-spacing: -0.01em;
       }
       p {
-        color: #475569;
+        color: #4a4a4a;
         line-height: 1.6;
         margin: 16px 0;
       }
@@ -41,22 +49,22 @@
         justify-content: center;
         padding: 8px 16px;
         border-radius: 999px;
-        background: #eff6ff;
-        color: #1d4ed8;
+        background: rgba(0, 0, 0, 0.08);
+        color: #000;
         font-weight: 600;
         margin-top: 8px;
       }
       .notice {
-        background: #f0fdf4;
-        border: 1px solid #22c55e;
+        background: rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 8px;
         padding: 20px;
-        color: #166534;
+        color: #3a3a3a;
         margin-top: 24px;
       }
       .dev-box {
-        background: #f8fafc;
-        border: 1px solid #cbd5f5;
+        background: rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 8px;
         padding: 20px;
         text-align: left;
@@ -66,26 +74,26 @@
         font-size: 14px;
         text-transform: uppercase;
         letter-spacing: 0.12em;
-        color: #1e293b;
+        color: #222;
         margin: 0 0 12px 0;
       }
       .dev-box p {
         margin: 0 0 12px 0;
-        color: #475569;
+        color: #4a4a4a;
         font-size: 14px;
       }
       .code-box {
-        background: #f1f5f9;
+        background: rgba(0, 0, 0, 0.08);
         border-radius: 8px;
         padding: 12px;
         font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 13px;
-        color: #0f172a;
-        word-break: break-all;
+        color: #000;
+        word-break: break-word;
       }
       a {
-        color: #0284c7;
+        color: #000;
         text-decoration: none;
         font-weight: 500;
       }
@@ -96,13 +104,31 @@
         margin-top: 24px;
         font-size: 14px;
       }
+      .cta-button {
+        display: inline-block;
+        margin-top: 24px;
+        padding: 12px 24px;
+        border-radius: 999px;
+        background: #000;
+        color: #fff;
+        border: 1px solid #000;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-decoration: none;
+        transition: background 0.2s ease;
+      }
+      .cta-button:hover {
+        background: #222;
+        text-decoration: none;
+      }
       @media (max-width: 600px) {
         body {
-          margin: 48px auto;
-          padding: 24px;
+          padding: 32px 16px;
         }
         .container {
-          padding: 32px 24px;
+          padding: 36px 24px;
+          border-radius: 20px;
         }
         h1 {
           font-size: 24px;
@@ -111,22 +137,25 @@
     </style>
   </head>
   <body>
-    <div class="container">
-      <img src="/static/exy.png" alt="exy the fish" class="exy" />
-      <h1>Check Your Email</h1>
-      <p>We sent a sign-in link to:</p>
-      <div class="highlight">{{.Email}}</div>
-      {{if .DevURL}}
-      <div class="dev-box">
-        <h2>Development Shortcut</h2>
-        <p>Use this link while testing locally:</p>
-        <a class="code-box" href="{{.DevURL}}">{{.DevURL}}</a>
+    <main class="verify-container">
+      <div class="container">
+        <img src="/static/exy.png" alt="exy the fish" class="exy" />
+        <h1>Check Your Email</h1>
+        <p>We sent a sign-in link to:</p>
+        <div class="highlight">{{.Email}}</div>
+        {{if .DevURL}}
+        <div class="dev-box">
+          <h2>Development Shortcut</h2>
+          <p>Use this link while testing locally:</p>
+          <a class="code-box" href="{{.DevURL}}">{{.DevURL}}</a>
+        </div>
+        {{end}}
+        <p class="retry">
+          The link expires in 24 hours. Didn't receive it?
+          <a href="/auth?{{.QueryString}}">Try again</a>
+        </p>
+        <a class="cta-button" href="/">Return to exe.dev</a>
       </div>
-      {{end}}
-      <p class="retry">
-        The link expires in 24 hours. Didn't receive it?
-        <a href="/auth?{{.QueryString}}">Try again</a>
-      </p>
-    </div>
+    </main>
   </body>
 </html>
