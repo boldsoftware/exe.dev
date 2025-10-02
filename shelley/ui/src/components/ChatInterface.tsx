@@ -22,8 +22,10 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('qwen3-coder-fireworks');
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
 
   // Load messages and set up streaming
   useEffect(() => {
@@ -48,6 +50,22 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Close overflow menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (overflowMenuRef.current && !overflowMenuRef.current.contains(event.target as Node)) {
+        setShowOverflowMenu(false);
+      }
+    };
+
+    if (showOverflowMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showOverflowMenu]);
 
   const loadMessages = async () => {
     if (!conversationId) return;
@@ -265,18 +283,6 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
         </div>
         
         <div className="header-actions">
-          {/* Gear icon for settings */}
-          <button
-            onClick={() => setShowConfigModal(true)}
-            className="btn-icon"
-            aria-label="Settings"
-          >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
-          
           {/* Green + icon in circle for new conversation */}
           <button
             onClick={onNewConversation}
@@ -287,6 +293,37 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
           </button>
+          
+          {/* Overflow menu */}
+          <div ref={overflowMenuRef} style={{position: 'relative'}}>
+            <button
+              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+              className="btn-icon"
+              aria-label="More options"
+            >
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+              </svg>
+            </button>
+            
+            {showOverflowMenu && (
+              <div className="overflow-menu">
+                <button
+                  onClick={() => {
+                    setShowOverflowMenu(false);
+                    setShowConfigModal(true);
+                  }}
+                  className="overflow-menu-item"
+                >
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1.25rem', height: '1.25rem', marginRight: '0.75rem'}}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Settings
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
