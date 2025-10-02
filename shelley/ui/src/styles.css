@@ -953,6 +953,7 @@ svg {
 }
 
 /* Responsive adjustments */
+@media (min-width: 768px) {
   .drawer {
     position: static;
     transform: translateX(0) !important;
