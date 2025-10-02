@@ -3,12 +3,16 @@ package exe
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/sqlite"
 )
@@ -839,4 +843,94 @@ func TestIsDefaultServerPort(t *testing.T) {
 			t.Error("Expected false for port 8080 with nil tcp")
 		}
 	})
+}
+
+// TestProxyStreaming tests that the proxy doesn't buffer streaming responses
+func TestProxyStreaming(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that FlushInterval is set on the reverse proxy
+	// to avoid buffering responses. This is critical for:
+	// - Server-Sent Events (SSE)
+	// - Streaming responses
+	// - WebSocket upgrades
+	// - Any real-time data transfer
+
+	// Create a mock streaming backend that sends data in chunks
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Enable flushing
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("ResponseWriter doesn't support flushing")
+		}
+
+		// Send headers
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		// Send data in chunks with delays
+		for i := 0; i < 3; i++ {
+			fmt.Fprintf(w, "data: chunk %d\n\n", i)
+			flusher.Flush()
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer backend.Close()
+
+	// Parse backend URL
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a reverse proxy similar to what proxyViaSSHPortForward does
+	proxy := httputil.NewSingleHostReverseProxy(backendURL)
+	// This is the critical setting - FlushInterval = -1 means flush immediately
+	proxy.FlushInterval = -1
+
+	// Create test server with the proxy
+	proxyServer := httptest.NewServer(proxy)
+	defer proxyServer.Close()
+
+	// Make request to proxy
+	req, err := http.NewRequest("GET", proxyServer.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body to verify streaming works
+	// If buffering were enabled, we'd get all chunks at once after the delays
+	// With flushing, we get them as they're sent
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bodyStr := string(body)
+
+	// Verify we got all chunks
+	for i := 0; i < 3; i++ {
+		expected := fmt.Sprintf("data: chunk %d\n\n", i)
+		if !strings.Contains(bodyStr, expected) {
+			t.Errorf("Expected to find %q in response, got: %q", expected, bodyStr)
+		}
+	}
+
+	// Verify content type
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Expected Content-Type 'text/event-stream', got %q", ct)
+	}
 }

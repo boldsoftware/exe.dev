@@ -1,12 +1,10 @@
 package exe
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math/rand/v2"
 	"net"
@@ -624,10 +622,40 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	// Connect directly to the target port inside the container via SSH
 	remoteAddr := fmt.Sprintf("127.0.0.1:%d", targetPort)
 
-	// Create a custom transport that uses the SSH connection
-	transport := &sshTransport{
-		sshConn:    sshConn,
-		remoteAddr: remoteAddr,
+	// Create a custom transport that uses the SSH connection for dialing
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Dial through SSH to the remote address
+			// We retry here because the container might be starting up
+			var conn net.Conn
+			var errs error
+			retries := []time.Duration{
+				0, 100 * time.Millisecond, 200 * time.Millisecond,
+				500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0,
+			}
+			for i, wait := range retries {
+				var err error
+				slog.Debug("sshTransport dialing remote via ssh", "attempt", i, "remoteAddr", remoteAddr)
+				conn, err = sshConn.Dial("tcp", remoteAddr)
+				if err == nil {
+					break
+				}
+				errs = errors.Join(errs, err)
+				slog.Info("failed to connect to remote via ssh", "remoteaddr",
+					remoteAddr, "attempt", i, "error", err)
+				if wait > 0 {
+					select {
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					case <-time.After(wait):
+					}
+				}
+			}
+			if conn == nil {
+				return nil, fmt.Errorf("failed to connect via SSH: %w", errs)
+			}
+			return conn, nil
+		},
 	}
 
 	// Create HTTP reverse proxy with custom transport
@@ -638,6 +666,8 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.Transport = transport
+	// Flush responses immediately to avoid buffering (e.g., for SSE, streaming)
+	proxy.FlushInterval = -1
 
 	// Set up Director to add user headers and remove auth cookie
 	defaultDirector := proxy.Director
@@ -715,79 +745,4 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	// Proxy the request
 	proxy.ServeHTTP(w, r)
 	return nil
-}
-
-// sshTransport implements http.RoundTripper to send HTTP requests through SSH connections
-type sshTransport struct {
-	sshConn    *ssh.Client
-	remoteAddr string
-}
-
-// RoundTrip implements the http.RoundTripper interface
-func (t *sshTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Connect to the target through SSH
-	var conn net.Conn
-	var errs error
-	// TODO(philip): It's not obvious we should retry here. Should we hide a slow startup from
-	// a server?
-	retries := []time.Duration{
-		0, 100 * time.Millisecond, 200 * time.Millisecond,
-		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0,
-	}
-	for i, wait := range retries {
-		var err error
-		slog.Debug("sshTransport dialing remote via ssh", "attempt", i, "remoteAddr", t.remoteAddr)
-		conn, err = t.sshConn.Dial("tcp", t.remoteAddr)
-		if err == nil {
-			break
-		}
-		errs = errors.Join(errs, err)
-		slog.Info("failed to connect to remote via ssh", "remoteaddr",
-			t.remoteAddr, "attempt", i, "error", err)
-		time.Sleep(wait)
-	}
-	if conn == nil {
-		return nil, fmt.Errorf("failed to connect via SSH: %w", errs)
-	}
-
-	// Write the HTTP request to the connection
-	err := req.Write(conn)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to write HTTP request: %w", err)
-	}
-
-	// Read the HTTP response from the connection
-	resp, err := http.ReadResponse(bufio.NewReader(conn), req)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("failed to read HTTP response: %w", err)
-	}
-
-	// Wrap the response body so that closing it also closes the underlying connection.
-	// This is critical for streaming responses (like SSE) where the body is read over time.
-	resp.Body = &connClosingBody{body: resp.Body, conn: conn}
-
-	return resp, nil
-}
-
-// connClosingBody wraps a response body and ensures the underlying connection
-// is closed when the body is closed. This is necessary for streaming responses
-// like SSE where the body read happens after RoundTrip returns.
-type connClosingBody struct {
-	body io.ReadCloser
-	conn net.Conn
-}
-
-func (c *connClosingBody) Read(p []byte) (n int, err error) {
-	return c.body.Read(p)
-}
-
-func (c *connClosingBody) Close() error {
-	err1 := c.body.Close()
-	err2 := c.conn.Close()
-	if err1 != nil {
-		return err1
-	}
-	return err2
 }
