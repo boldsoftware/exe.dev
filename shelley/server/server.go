@@ -57,7 +57,6 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 	return manager
 }
 
-
 // Server manages the HTTP API and active conversations
 type Server struct {
 	db                  *db.DB

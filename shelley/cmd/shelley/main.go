@@ -417,7 +417,6 @@ func setupLogging(debug bool) *slog.Logger {
 	return logger
 }
 
-
 func setupDatabase(dbPath string, logger *slog.Logger) *db.DB {
 	database, err := db.New(db.Config{DSN: dbPath})
 	if err != nil {
