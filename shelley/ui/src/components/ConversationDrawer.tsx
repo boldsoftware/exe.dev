@@ -46,32 +46,29 @@ function ConversationDrawer({
   return (
     <>
       {/* Drawer */}
-      <div className={`
-        fixed lg:relative inset-y-0 left-0 z-50 w-80 bg-white dark:bg-gray-800 border-r dark:border-gray-700
-        transform transition-transform duration-300 ease-in-out flex flex-col h-full
-        ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
+      <div className={`drawer ${isOpen ? 'open' : ''}`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b dark:border-gray-700">
-          <h2 className="text-lg font-semibold">Conversations</h2>
+        <div className="drawer-header">
+          <h2 className="drawer-title">Conversations</h2>
           <button
             onClick={onClose}
-            className="lg:hidden p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="btn-icon hide-on-desktop"
             aria-label="Close conversations"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* New conversation button */}
-        <div className="p-4 border-b dark:border-gray-700">
+        <div className="drawer-section">
           <button
             onClick={onNewConversation}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors"
+            className="btn-primary"
+            style={{width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'}}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem'}}>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             <span>New Conversation</span>
@@ -79,38 +76,27 @@ function ConversationDrawer({
         </div>
 
         {/* Conversations list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
+        <div className="drawer-body scrollable">
           {conversations.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+            <div style={{padding: '1rem', textAlign: 'center'}} className="text-secondary">
               <p>No conversations yet</p>
-              <p className="text-sm mt-1">Start a new conversation to get started</p>
+              <p className="text-sm" style={{marginTop: '0.25rem'}}>Start a new conversation to get started</p>
             </div>
           ) : (
-            <div className="p-2">
+            <div className="conversation-list">
               {conversations.map((conversation) => {
                 const isActive = conversation.conversation_id === currentConversationId;
                 return (
                   <button
                     key={conversation.conversation_id}
                     onClick={() => onSelectConversation(conversation.conversation_id)}
-                    className={`
-                      w-full text-left p-3 rounded-lg mb-1 transition-colors
-                      ${
-                        isActive
-                          ? 'bg-primary text-white'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100'
-                      }
-                    `}
+                    className={`conversation-item ${isActive ? 'active' : ''}`}
                   >
-                    <div className="flex flex-col space-y-1">
-                      <div className="font-medium text-sm break-all">
-                        {getConversationPreview(conversation)}
-                      </div>
-                      <div className={`text-xs ${
-                        isActive ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
-                      }`}>
-                        {formatDate(conversation.updated_at)}
-                      </div>
+                    <div className="conversation-title">
+                      {getConversationPreview(conversation)}
+                    </div>
+                    <div className="conversation-date">
+                      {formatDate(conversation.updated_at)}
                     </div>
                   </button>
                 );

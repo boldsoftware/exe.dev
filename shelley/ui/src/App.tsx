@@ -60,10 +60,10 @@ function App() {
 
   if (loading && conversations.length === 0) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+      <div className="loading-container">
+        <div className="loading-content">
+          <div className="spinner" style={{margin: '0 auto 1rem'}}></div>
+          <p className="text-secondary">Loading...</p>
         </div>
       </div>
     );
@@ -71,12 +71,12 @@ function App() {
 
   if (error && conversations.length === 0) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 dark:text-red-400 mb-4">{error}</p>
+      <div className="error-container">
+        <div className="error-content">
+          <p className="error-message" style={{marginBottom: '1rem'}}>{error}</p>
           <button
             onClick={loadConversations}
-            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+            className="btn-primary"
           >
             Retry
           </button>
@@ -104,7 +104,7 @@ function App() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex relative">
+    <div className="app-container">
       {/* Conversations drawer */}
       <ConversationDrawer
         isOpen={drawerOpen}
@@ -116,7 +116,7 @@ function App() {
       />
 
       {/* Main chat interface */}
-      <div className="flex-1 flex flex-col">
+      <div className="main-content">
         <ChatInterface
           conversationId={currentConversationId}
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -130,7 +130,7 @@ function App() {
       {/* Backdrop for mobile drawer */}
       {drawerOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          className="backdrop hide-on-desktop"
           onClick={() => setDrawerOpen(false)}
         />
       )}

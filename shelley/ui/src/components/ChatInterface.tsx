@@ -178,9 +178,9 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   const renderMessages = () => {
     if (messages.length === 0) {
       return (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center text-gray-500 dark:text-gray-400">
-            <p className="text-lg mb-2">Start a conversation</p>
+        <div className="empty-state">
+          <div className="empty-state-content">
+            <p className="text-lg" style={{marginBottom: '0.5rem'}}>Start a conversation</p>
             <p className="text-sm">Send a message to begin chatting with Shelley</p>
           </div>
         </div>
@@ -245,33 +245,33 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="full-height flex flex-col">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 px-4 py-3 flex items-center justify-between">
+      <div className="header">
         <div className="flex items-center space-x-3">
           <button
             onClick={onOpenDrawer}
-            className="lg:hidden p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="btn-icon hide-on-desktop"
             aria-label="Open conversations"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
           
-          <h1 className="text-lg font-semibold truncate" title={currentConversation?.slug || 'Shelley'}>
+          <h1 className="header-title" title={currentConversation?.slug || 'Shelley'}>
             {getDisplayTitle()}
           </h1>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="header-actions">
           {/* Gear icon for settings */}
           <button
             onClick={() => setShowConfigModal(true)}
-            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="btn-icon"
             aria-label="Settings"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
@@ -280,10 +280,10 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
           {/* Green + icon in circle for new conversation */}
           <button
             onClick={onNewConversation}
-            className="w-8 h-8 bg-green-600 hover:bg-green-700 text-white rounded-full flex items-center justify-center transition-colors"
+            className="btn-new"
             aria-label="New conversation"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem'}}>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
           </button>
@@ -291,13 +291,13 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin">
+      <div className="messages-container scrollable">
         {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="flex items-center justify-center full-height">
+            <div className="spinner"></div>
           </div>
         ) : (
-          <div className="p-4 space-y-4">
+          <div className="messages-list">
             {renderMessages()}
             <div ref={messagesEndRef} />
           </div>
@@ -306,14 +306,15 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
 
       {/* Error banner */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <p className="text-red-700 dark:text-red-400 text-sm">{error}</p>
+        <div className="error-banner">
+          <div className="error-banner-content">
+            <p className="error-message">{error}</p>
             <button
               onClick={() => setError(null)}
-              className="text-red-500 hover:text-red-700 dark:hover:text-red-300"
+              className="btn-icon"
+              style={{color: 'var(--error-text)'}}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem'}}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -330,25 +331,22 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
         onClose={() => setShowConfigModal(false)}
         title="Configuration"
       >
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="model-select" className="block text-sm font-medium mb-2">
-              Model
-            </label>
-            <select
-              id="model-select"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="w-full bg-gray-100 dark:bg-gray-700 border dark:border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
-              disabled={sending}
-            >
-              {models.map((model) => (
-                <option key={model.id} value={model.id} disabled={!model.ready}>
-                  {model.id} {!model.ready ? '(not ready)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <label htmlFor="model-select">
+            Model
+          </label>
+          <select
+            id="model-select"
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            disabled={sending}
+          >
+            {models.map((model) => (
+              <option key={model.id} value={model.id} disabled={!model.ready}>
+                {model.id} {!model.ready ? '(not ready)' : ''}
+              </option>
+            ))}
+          </select>
         </div>
       </Modal>
     </div>

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "esbuild src/main.tsx --bundle --outfile=dist/main.js --servedir=dist --watch",
-    "build": "mkdir -p dist && cp src/index.html dist/ && esbuild src/main.tsx --bundle --outfile=dist/main.js --minify --sourcemap",
+    "build": "mkdir -p dist && cp src/index.html dist/ && cp src/styles.css dist/ && esbuild src/main.tsx --bundle --outfile=dist/main.js --minify --sourcemap",
     "clean": "rm -rf dist/*",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",

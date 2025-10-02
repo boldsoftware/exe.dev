@@ -19,7 +19,6 @@ function Message({ message, toolUseMap }: MessageProps) {
   }
 
   const isUser = message.type === 'user' && !hasToolResult(llmMessage);
-  const isAssistant = message.type === 'agent';
   const isTool = message.type === 'tool' || hasToolContent(llmMessage);
   const isError = message.type === 'error';
 
@@ -49,11 +48,11 @@ function Message({ message, toolUseMap }: MessageProps) {
       case 'message_role_assistant':
         // These shouldn't occur in Content objects, but display as text if they do
         return (
-          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded p-2 text-sm">
-            <div className="text-orange-800 dark:text-orange-200 font-mono">
+          <div style={{background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '0.25rem', padding: '0.5rem', fontSize: '0.875rem'}}>
+            <div style={{color: '#9a3412', fontFamily: 'monospace'}}>
               [Unexpected message role content: {contentType}]
             </div>
-            <div className="text-gray-700 dark:text-gray-300 mt-1">
+            <div style={{marginTop: '0.25rem'}}>
               {content.Text || JSON.stringify(content)}
             </div>
           </div>
@@ -66,17 +65,17 @@ function Message({ message, toolUseMap }: MessageProps) {
         );
       case 'tool_use':
         return (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 my-2">
-            <div className="flex items-center space-x-2 mb-2">
-              <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="tool-use">
+            <div className="tool-header">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              <span className="font-medium text-blue-800 dark:text-blue-200">
+              <span className="tool-name">
                 Tool: {content.ToolName}
               </span>
             </div>
-            <div className="text-sm font-mono bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto">
+            <div className="tool-input">
               {typeof content.ToolInput === 'string' 
                 ? content.ToolInput 
                 : JSON.stringify(content.ToolInput, null, 2)
@@ -125,60 +124,44 @@ function Message({ message, toolUseMap }: MessageProps) {
         const toolInput = (toolInfo && typeof toolInfo === 'object') ? toolInfo.input : undefined;
         
         return (
-          <details className={`border rounded-lg my-2 ${
-            hasError 
-              ? 'border-red-200 dark:border-red-800'
-              : 'border-gray-200 dark:border-gray-700'
-          }`}>
-            <summary className={`cursor-pointer px-3 py-2 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
-              hasError 
-                ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200'
-                : 'bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
-            }`}>
-              <div className="flex items-center justify-between">
+          <details className={`tool-result-details ${hasError ? 'error' : ''}`}>
+            <summary className="tool-result-summary">
+              <div className="tool-result-meta">
                 <div className="flex items-center space-x-2">
-                  <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                  <span className="text-sm font-medium text-blue">
                     {toolName}
                   </span>
-                  <span className={`text-xs ${
-                    hasError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'
-                  }`}>
+                  <span className={`tool-result-status text-xs ${hasError ? 'error' : 'success'}`}>
                     {hasError ? '✗' : '✓'} {summary}
                   </span>
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
+                <div className="tool-result-time">
                   {executionTime && <span>{executionTime}</span>}
                 </div>
               </div>
             </summary>
-            <div className="p-3 pt-0 space-y-3">
+            <div className="tool-result-content">
               {/* Show tool input */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-2">
-                <div className="text-xs font-medium text-blue-800 dark:text-blue-200 mb-1">Input:</div>
-                <div className="text-sm font-mono text-blue-900 dark:text-blue-100 overflow-x-auto">
+              <div className="tool-result-section">
+                <div className="tool-result-label">Input:</div>
+                <div className="tool-result-data">
                   {toolInput ? (
                     typeof toolInput === 'string' 
                       ? toolInput 
                       : JSON.stringify(toolInput, null, 2)
                   ) : (
-                    <span className="text-gray-500 dark:text-gray-400 italic">No input data</span>
+                    <span className="text-secondary italic">No input data</span>
                   )}
                 </div>
               </div>
               
               {/* Show tool output with header */}
-              <div className={`rounded p-2 ${
-                hasError 
-                  ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
-                  : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
-              }`}>
-                <div className={`text-xs font-medium mb-1 ${
-                  hasError ? 'text-red-800 dark:text-red-200' : 'text-green-800 dark:text-green-200'
-                }`}>Output{hasError ? ' (Error)' : ''}:</div>
+              <div className={`tool-result-section output ${hasError ? 'error' : ''}`}>
+                <div className="tool-result-label">Output{hasError ? ' (Error)' : ''}:</div>
                 <div className="space-y-2">
                   {content.ToolResult?.map((result, idx) => (
                     <div key={idx}>
@@ -193,7 +176,7 @@ function Message({ message, toolUseMap }: MessageProps) {
       }
       case 'redacted_thinking':
         return (
-          <div className="text-gray-400 dark:text-gray-600 italic text-sm">
+          <div className="text-tertiary italic text-sm">
             [Thinking content hidden]
           </div>
         );
@@ -209,21 +192,21 @@ function Message({ message, toolUseMap }: MessageProps) {
         );
         
         return (
-          <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-3">
-            <div className="text-xs text-gray-600 dark:text-gray-400 mb-2 font-mono">
+          <div style={{background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '0.25rem', padding: '0.75rem'}}>
+            <div className="text-xs text-secondary" style={{marginBottom: '0.5rem', fontFamily: 'monospace'}}>
               Unknown content type: {contentType} (value: {content.Type})
             </div>
             
             {/* Show media content if available */}
             {hasMediaType && (
-              <div className="mb-2">
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Media Type: {content.MediaType}</div>
+              <div style={{marginBottom: '0.5rem'}}>
+                <div className="text-xs text-secondary" style={{marginBottom: '0.25rem'}}>Media Type: {content.MediaType}</div>
                 {content.MediaType?.startsWith('image/') && content.Data && (
                   <img 
                     src={`data:${content.MediaType};base64,${content.Data}`}
                     alt="Tool output image"
-                    className="max-w-full h-auto rounded border"
-                    style={{ maxHeight: '300px' }}
+                    className="rounded border"
+                    style={{ maxWidth: '100%', height: 'auto', maxHeight: '300px' }}
                   />
                 )}
               </div>
@@ -231,7 +214,7 @@ function Message({ message, toolUseMap }: MessageProps) {
             
             {/* Show text content if available */}
             {displayText && (
-              <div className="text-sm whitespace-pre-wrap break-words text-gray-700 dark:text-gray-300">
+              <div className="text-sm whitespace-pre-wrap break-words">
                 {displayText}
               </div>
             )}
@@ -239,10 +222,10 @@ function Message({ message, toolUseMap }: MessageProps) {
             {/* Show raw JSON for debugging if no text content */}
             {!displayText && hasOtherData && (
               <details className="text-xs">
-                <summary className="text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">
+                <summary className="text-secondary" style={{cursor: 'pointer'}}>
                   Show raw content
                 </summary>
-                <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded text-xs overflow-x-auto">
+                <pre style={{marginTop: '0.5rem', padding: '0.5rem', background: 'var(--bg-base)', borderRadius: '0.25rem', fontSize: '0.75rem', overflow: 'auto'}}>
                   {JSON.stringify(content, null, 2)}
                 </pre>
               </details>
@@ -253,14 +236,17 @@ function Message({ message, toolUseMap }: MessageProps) {
     }
   };
 
-  const getMessageStyles = () => {
+  const getMessageClasses = () => {
     if (isUser) {
-      return 'ml-auto max-w-[80%] bg-primary text-white rounded-lg px-4 py-2';
+      return 'message message-user';
     }
     if (isError) {
-      return 'mr-auto max-w-full bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-lg px-4 py-3';
+      return 'message message-error';
     }
-    return 'mr-auto max-w-full bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg px-4 py-3';
+    if (isTool) {
+      return 'message message-tool';
+    }
+    return 'message message-agent';
   };
 
   // Special rendering for error messages
@@ -273,9 +259,9 @@ function Message({ message, toolUseMap }: MessageProps) {
       }
     }
     return (
-      <div className="flex flex-col space-y-2" data-testid="message" role="alert" aria-label="Error message">
-        <div className={getMessageStyles()} data-testid="message-content">
-          <div className="whitespace-pre-wrap break-words text-red-800 dark:text-red-200">
+      <div className={getMessageClasses()} data-testid="message" role="alert" aria-label="Error message">
+        <div className="message-content" data-testid="message-content">
+          <div className="whitespace-pre-wrap break-words">
             {errorText}
           </div>
         </div>
@@ -300,9 +286,9 @@ function Message({ message, toolUseMap }: MessageProps) {
   }
 
   return (
-    <div className="flex flex-col space-y-2" data-testid="message" role="article">
+    <div className={getMessageClasses()} data-testid="message" role="article">
       {/* Message content */}
-      <div className={getMessageStyles()} data-testid="message-content">
+      <div className="message-content" data-testid="message-content">
         {meaningfulContent.map((content, index) => (
           <div key={index}>
             {renderContent(content)}
