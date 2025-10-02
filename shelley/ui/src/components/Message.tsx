@@ -13,11 +13,9 @@ type PatchDisplay = string;
 
 interface MessageProps {
   message: MessageType;
-  // Tool use information from previous messages to correlate with results
-  toolUseMap?: Record<string, {name: string, input: unknown}>;
 }
 
-function Message({ message, toolUseMap }: MessageProps) {
+function Message({ message }: MessageProps) {
   // Check if we have display_data to render
   let displayData: ToolDisplay[] | null = null;
   if (message.display_data) {
@@ -370,11 +368,11 @@ function Message({ message, toolUseMap }: MessageProps) {
     return null;
   }
 
-  // Filter out thinking content and empty content
+  // Filter out thinking content, empty content, tool_use, and tool_result
   const meaningfulContent = llmMessage?.Content?.filter(c => {
     const contentType = c.Type;
-    // Filter out thinking (3) and redacted thinking (4), and empty text content
-    return contentType !== 3 && contentType !== 4 && (c.Text?.trim() || contentType !== 2); // 3 = thinking, 4 = redacted_thinking, 2 = text
+    // Filter out thinking (3), redacted thinking (4), tool_use (5), tool_result (6), and empty text content
+    return contentType !== 3 && contentType !== 4 && contentType !== 5 && contentType !== 6 && (c.Text?.trim() || contentType !== 2); // 3 = thinking, 4 = redacted_thinking, 5 = tool_use, 6 = tool_result, 2 = text
   }) || [];
 
   if (meaningfulContent.length === 0) {

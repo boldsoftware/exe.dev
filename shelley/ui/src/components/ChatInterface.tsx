@@ -5,6 +5,154 @@ import MessageComponent from './Message';
 import MessageInput from './MessageInput';
 import Modal from './Modal';
 
+interface CoalescedToolCallProps {
+  toolName: string;
+  toolInput?: unknown;
+  toolResult?: LLMContent[];
+  toolError?: boolean;
+  toolStartTime?: string | null;
+  toolEndTime?: string | null;
+  hasResult?: boolean;
+}
+
+function CoalescedToolCall({ 
+  toolName, 
+  toolInput, 
+  toolResult, 
+  toolError, 
+  toolStartTime, 
+  toolEndTime, 
+  hasResult 
+}: CoalescedToolCallProps) {
+  // Calculate execution time if available
+  let executionTime = '';
+  if (hasResult && toolStartTime && toolEndTime) {
+    const start = new Date(toolStartTime).getTime();
+    const end = new Date(toolEndTime).getTime();
+    const diffMs = end - start;
+    if (diffMs < 1000) {
+      executionTime = `${diffMs}ms`;
+    } else {
+      executionTime = `${(diffMs / 1000).toFixed(1)}s`;
+    }
+  }
+
+  const getToolResultSummary = (results: LLMContent[]) => {
+    if (!results || results.length === 0) return 'No output';
+    
+    const firstResult = results[0];
+    if (firstResult.Type === 2 && firstResult.Text) { // text content
+      const text = firstResult.Text.trim();
+      if (text.length <= 50) return text;
+      return text.substring(0, 47) + '...';
+    }
+    
+    return `${results.length} result${results.length > 1 ? 's' : ''}`;
+  };
+
+  const renderContent = (content: LLMContent) => {
+    if (content.Type === 2) { // text
+      return (
+        <div className="whitespace-pre-wrap break-words">
+          {content.Text || ''}
+        </div>
+      );
+    }
+    return (
+      <div className="text-secondary text-sm italic">
+        [Content type {content.Type}]
+      </div>
+    );
+  };
+
+  if (!hasResult) {
+    // Show "running" state
+    return (
+      <div className="message message-tool" data-testid="tool-call-running">
+        <div className="message-content">
+          <div className="tool-running">
+            <div className="tool-running-header">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="tool-name">
+                Tool: {toolName}
+              </span>
+              <span className="tool-status-running">(running)</span>
+            </div>
+            <div className="tool-input">
+              {typeof toolInput === 'string' 
+                ? toolInput 
+                : JSON.stringify(toolInput, null, 2)
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show completed state with result
+  const summary = toolResult ? getToolResultSummary(toolResult) : 'No output';
+
+  return (
+    <div className="message message-tool" data-testid="tool-call-completed">
+      <div className="message-content">
+        <details className={`tool-result-details ${toolError ? 'error' : ''}`}>
+          <summary className="tool-result-summary">
+            <div className="tool-result-meta">
+              <div className="flex items-center space-x-2">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="text-sm font-medium text-blue">
+                  {toolName}
+                </span>
+                <span className={`tool-result-status text-xs ${toolError ? 'error' : 'success'}`}>
+                  {toolError ? '✗' : '✓'} {summary}
+                </span>
+              </div>
+              <div className="tool-result-time">
+                {executionTime && <span>{executionTime}</span>}
+              </div>
+            </div>
+          </summary>
+          <div className="tool-result-content">
+            {/* Show tool input */}
+            <div className="tool-result-section">
+              <div className="tool-result-label">Input:</div>
+              <div className="tool-result-data">
+                {toolInput ? (
+                  typeof toolInput === 'string' 
+                    ? toolInput 
+                    : JSON.stringify(toolInput, null, 2)
+                ) : (
+                  <span className="text-secondary italic">No input data</span>
+                )}
+              </div>
+            </div>
+            
+            {/* Show tool output with header */}
+            <div className={`tool-result-section output ${toolError ? 'error' : ''}`}>
+              <div className="tool-result-label">Output{toolError ? ' (Error)' : ''}:</div>
+              <div className="space-y-2">
+                {toolResult?.map((result, idx) => (
+                  <div key={idx}>
+                    {renderContent(result)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+
 interface ChatInterfaceProps {
   conversationId: string | null;
   onOpenDrawer: () => void;
@@ -230,6 +378,137 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     return 'Shelley';
   };
 
+  // Process messages to coalesce tool calls
+  const processMessages = () => {
+    if (messages.length === 0) {
+      return [];
+    }
+
+    interface CoalescedItem {
+      type: 'message' | 'tool';
+      message?: Message;
+      toolUseId?: string;
+      toolName?: string;
+      toolInput?: unknown;
+      toolResult?: LLMContent[];
+      toolError?: boolean;
+      toolStartTime?: string | null;
+      toolEndTime?: string | null;
+      hasResult?: boolean;
+    }
+
+    const coalescedItems: CoalescedItem[] = [];
+    const toolResultMap: Record<string, {
+      result: LLMContent[];
+      error: boolean;
+      startTime: string | null;
+      endTime: string | null;
+    }> = {};
+
+    // First pass: collect all tool results
+    messages.forEach(message => {
+      if (message.llm_data) {
+        try {
+          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
+          if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
+            llmData.Content.forEach((content: LLMContent) => {
+              if (content && content.Type === 6 && content.ToolUseID) { // tool_result
+                toolResultMap[content.ToolUseID] = {
+                  result: content.ToolResult || [],
+                  error: content.ToolError || false,
+                  startTime: content.ToolUseStartTime || null,
+                  endTime: content.ToolUseEndTime || null
+                };
+              }
+            });
+          }
+        } catch (err) {
+          console.error('Failed to parse message LLM data for tool results:', err);
+        }
+      }
+    });
+
+    // Second pass: process messages and extract tool uses
+    messages.forEach(message => {
+      if (message.type === 'error') {
+        coalescedItems.push({ type: 'message', message });
+        return;
+      }
+
+      // Check if this is a user message with tool results (skip rendering them as messages)
+      let hasToolResult = false;
+      if (message.llm_data) {
+        try {
+          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
+          if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
+            hasToolResult = llmData.Content.some((c: LLMContent) => c.Type === 6);
+          }
+        } catch (err) {
+          console.error('Failed to parse message LLM data:', err);
+        }
+      }
+
+      // If it's a user message without tool results, show it
+      if (message.type === 'user' && !hasToolResult) {
+        coalescedItems.push({ type: 'message', message });
+        return;
+      }
+
+      // If it's a user message with tool results, skip it (we'll handle it via the toolResultMap)
+      if (message.type === 'user' && hasToolResult) {
+        return;
+      }
+
+      if (message.llm_data) {
+        try {
+          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
+          if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
+            // Extract text content and tool uses separately
+            const textContents: LLMContent[] = [];
+            const toolUses: LLMContent[] = [];
+
+            llmData.Content.forEach((content: LLMContent) => {
+              if (content.Type === 2) { // text
+                textContents.push(content);
+              } else if (content.Type === 5) { // tool_use
+                toolUses.push(content);
+              }
+            });
+
+            // If we have text content, add it as a message (but only if it's not empty)
+            const textString = textContents.map(c => c.Text || '').join('').trim();
+            if (textString) {
+              coalescedItems.push({ type: 'message', message });
+            }
+
+            // Add tool uses as separate items
+            toolUses.forEach(toolUse => {
+              const resultData = toolUse.ID ? toolResultMap[toolUse.ID] : undefined;
+              coalescedItems.push({
+                type: 'tool',
+                toolUseId: toolUse.ID,
+                toolName: toolUse.ToolName,
+                toolInput: toolUse.ToolInput,
+                toolResult: resultData?.result,
+                toolError: resultData?.error,
+                toolStartTime: resultData?.startTime,
+                toolEndTime: resultData?.endTime,
+                hasResult: !!resultData
+              });
+            });
+          }
+        } catch (err) {
+          console.error('Failed to parse message LLM data:', err);
+          coalescedItems.push({ type: 'message', message });
+        }
+      } else {
+        coalescedItems.push({ type: 'message', message });
+      }
+    });
+
+    return coalescedItems;
+  };
+
   const renderMessages = () => {
     if (messages.length === 0) {
       return (
@@ -242,61 +521,32 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       );
     }
 
-    // Build tool use map from all messages
-    const toolUseMap: Record<string, {name: string, input: unknown}> = {};
-    messages.forEach(message => {
-      if (message.llm_data) {
-        try {
-          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
-          if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
-            llmData.Content.forEach((content: LLMContent) => {
-              if (content && content.Type === 5 && content.ID && content.ToolName) { // tool_use
-                toolUseMap[content.ID] = {
-                  name: content.ToolName,
-                  input: content.ToolInput
-                };
-              }
-            });
-          }
-        } catch (err) {
-          console.error('Failed to parse message LLM data for tool mapping:', err);
-        }
+    const coalescedItems = processMessages();
+
+    return coalescedItems.map((item, index) => {
+      if (item.type === 'message' && item.message) {
+        return (
+          <MessageComponent 
+            key={item.message.message_id} 
+            message={item.message}
+          />
+        );
+      } else if (item.type === 'tool') {
+        return (
+          <CoalescedToolCall
+            key={item.toolUseId || `tool-${index}`}
+            toolName={item.toolName || 'Unknown Tool'}
+            toolInput={item.toolInput}
+            toolResult={item.toolResult}
+            toolError={item.toolError}
+            toolStartTime={item.toolStartTime}
+            toolEndTime={item.toolEndTime}
+            hasResult={item.hasResult}
+          />
+        );
       }
+      return null;
     });
-
-    // Filter out agent messages that only contain tool use + generic text
-    const shouldHideMessage = (message: Message) => {
-      if (message.type !== 'agent') return false;
-      
-      try {
-        const llmData = message.llm_data ? (typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data) : null;
-        if (!llmData?.Content) return false;
-        
-        // Check if message only contains:
-        // 1. Generic "I'll use the X tool now" text
-        // 2. Tool use content
-        const hasToolUse = llmData.Content.some((c: LLMContent) => c.Type === 5);
-        if (!hasToolUse) return false;
-        
-        const textContent = llmData.Content.filter((c: LLMContent) => c.Type === 2).map((c: LLMContent) => c.Text).join(' ').trim();
-        const isGenericToolText = textContent.match(/^I'll use the \w+ tool now\.?$/);
-        
-        return isGenericToolText !== null;
-      } catch (err) {
-        console.error('Failed to parse message for hiding logic:', err);
-        return false;
-      }
-    };
-
-    return messages
-      .filter(message => !shouldHideMessage(message))
-      .map((message) => (
-        <MessageComponent 
-          key={message.message_id} 
-          message={message} 
-          toolUseMap={toolUseMap}
-        />
-      ));
   };
 
   return (

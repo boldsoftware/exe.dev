@@ -98,8 +98,10 @@ test.describe('Shelley Conversation Tests', () => {
       { timeout: 30000 }
     );
     
-    // Verify tool usage appears in the UI with tool indicator
-    await expect(page.locator('text=Tool: bash')).toBeVisible({ timeout: 10000 });
+    // Verify tool usage appears in the UI with coalesced tool call
+    await expect(page.locator('[data-testid="tool-call-completed"]')).toBeVisible({ timeout: 10000 });
+    // Check that the tool name "bash" is visible
+    await expect(page.locator('text=bash').first()).toBeVisible();
   });
   
   test('gives default response for undefined messages', async ({ page }) => {
@@ -208,7 +210,8 @@ test.describe('Shelley Conversation Tests', () => {
     );
     
     // Verify think tool usage appears in the UI
-    await expect(page.locator('text=Tool: think')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=think').first()).toBeVisible();
   });
   
   test('handles patch tool correctly', async ({ page }) => {
@@ -230,7 +233,8 @@ test.describe('Shelley Conversation Tests', () => {
     );
     
     // Verify patch tool usage appears in the UI
-    await expect(page.locator('text=Tool: patch')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=patch').first()).toBeVisible();
   });
   
   test('displays tool results with collapsible details', async ({ page }) => {
@@ -244,12 +248,8 @@ test.describe('Shelley Conversation Tests', () => {
     await messageInput.fill('bash: echo "testing tool results"');
     await sendButton.click();
     
-    // Wait for the tool use to appear
-    await page.waitForFunction(
-      () => document.body.textContent?.includes('Tool: bash') ?? false,
-      undefined,
-      { timeout: 30000 }
-    );
+    // Wait for the tool call to appear
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
     
     // Check for collapsible tool details (details element)
     const toolDetails = page.locator('details');
@@ -267,18 +267,15 @@ test.describe('Shelley Conversation Tests', () => {
     await messageInput.fill('bash: echo "first command"');
     await sendButton.click();
     
-    await page.waitForFunction(
-      () => document.body.textContent?.includes('Tool: bash') ?? false,
-      undefined,
-      { timeout: 30000 }
-    );
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
     
     // Second tool call: think
     await messageInput.fill('think: analyzing the output');
     await sendButton.click();
     
+    // Wait for at least 2 tool calls
     await page.waitForFunction(
-      () => document.body.textContent?.includes('Tool: think') ?? false,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 2,
       undefined,
       { timeout: 30000 }
     );
@@ -287,8 +284,9 @@ test.describe('Shelley Conversation Tests', () => {
     await messageInput.fill('patch: example.txt');
     await sendButton.click();
     
+    // Wait for at least 3 tool calls
     await page.waitForFunction(
-      () => document.body.textContent?.includes('Tool: patch') ?? false,
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 3,
       undefined,
       { timeout: 30000 }
     );
@@ -298,12 +296,86 @@ test.describe('Shelley Conversation Tests', () => {
     await expect(page.locator('text=think: analyzing the output')).toBeVisible();
     await expect(page.locator('text=patch: example.txt')).toBeVisible();
     
-    // Verify all tool types are visible (just check one instance of each)
-    await expect(page.locator('text=Tool: bash').first()).toBeVisible();
-    await expect(page.locator('text=Tool: think').first()).toBeVisible();
-    await expect(page.locator('text=Tool: patch').first()).toBeVisible();
+    // Verify all tool types are visible
+    await expect(page.locator('text=bash').first()).toBeVisible();
+    await expect(page.locator('text=think').first()).toBeVisible();
+    await expect(page.locator('text=patch').first()).toBeVisible();
   });
 });
+
+  test('coalesces tool calls - shows tool result with details', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    const messageInput = page.getByTestId('message-input');
+    const sendButton = page.getByTestId('send-button');
+    
+    // Send a bash command to trigger tool use
+    await messageInput.fill('bash: echo "hello world"');
+    await sendButton.click();
+    
+    // Wait for the tool result to appear
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
+    
+    // Verify the completed state shows result in summary with bash and checkmark
+    await expect(page.locator('text=bash').first()).toBeVisible();
+    
+    // Verify we have a details element (collapsible) with the tool result
+    await expect(page.locator('details').first()).toBeVisible();
+    
+    // Verify tool result shows output text (even in collapsed state, the summary should show result)
+    await expect(page.locator('text=hello world').first()).toBeVisible();
+  });
+  
+  test('coalesces tool calls - displays agent text and tool separately', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    const messageInput = page.getByTestId('message-input');
+    const sendButton = page.getByTestId('send-button');
+    
+    // Send a bash command
+    await messageInput.fill('bash: pwd');
+    await sendButton.click();
+    
+    // Wait for tool result
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
+    
+    // Verify agent message is shown ("I'll run the command: pwd")
+    await expect(page.locator('text=I\'ll run the command: pwd').first()).toBeVisible();
+    
+    // Verify tool result is shown separately as coalesced tool call
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible();
+    await expect(page.locator('text=bash').first()).toBeVisible();
+  });
+  
+  test('handles sequential tool calls', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    
+    const messageInput = page.getByTestId('message-input');
+    const sendButton = page.getByTestId('send-button');
+    
+    // First tool call
+    await messageInput.fill('bash: echo "first"');
+    await sendButton.click();
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
+    
+    // Second tool call
+    await messageInput.fill('bash: echo "second"');
+    await sendButton.click();
+    
+    // Wait for the second tool result
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="tool-call-completed"]').length >= 2,
+      undefined,
+      { timeout: 30000 }
+    );
+    
+    // Verify both tool calls are displayed
+    const toolCalls = page.locator('[data-testid="tool-call-completed"]');
+    expect(await toolCalls.count()).toBeGreaterThanOrEqual(2);
+  });
 
   test('displays LLM error message in UI', async ({ page }) => {
     // Clear any existing data by navigating to root (which should show empty state)
