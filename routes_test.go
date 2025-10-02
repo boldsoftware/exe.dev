@@ -167,8 +167,8 @@ func TestHandleProxyRequest(t *testing.T) {
 		expectedStatus int
 		expectedBody   string
 	}{
-		{fmt.Sprintf("web-server.%s", mainDomain), "GET", "/", 502, "Failed to proxy request to container"},           // No container running, should fail
-		{fmt.Sprintf("web-server.%s", mainDomain), "GET", "/api/status", 502, "Failed to proxy request to container"}, // No container running, should fail
+		{fmt.Sprintf("web-server.%s", mainDomain), "GET", "/", 502, "Bad Gateway"},           // No container running, should fail
+		{fmt.Sprintf("web-server.%s", mainDomain), "GET", "/api/status", 502, "Bad Gateway"}, // No container running, should fail
 		{fmt.Sprintf("nonexistent.%s", mainDomain), "GET", "/", 404, "Box not found"},
 	}
 
@@ -425,7 +425,7 @@ func TestSimplifiedRoutingEndToEnd(t *testing.T) {
 
 	// Check that it returns appropriate error message
 	body := w2.Body.String()
-	if !strings.Contains(body, "Failed to proxy request to container") {
+	if !strings.Contains(body, "Bad Gateway") {
 		t.Errorf("Expected response to contain error message, got: %s", body)
 	}
 

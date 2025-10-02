@@ -219,7 +219,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Non-owner: return a terse 502
-		http.Error(w, "Failed to proxy request to container", http.StatusBadGateway)
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
 }
@@ -569,111 +569,176 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	return nil
 }
 
-// proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
-func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *exedb.Box, sshKey ssh.Signer, targetPort int) error {
-	// Create SSH client config
+// SSHSingleHostReverseProxy is a reverse proxy that tunnels HTTP requests through SSH.
+// It establishes a new SSH connection per HTTP request and proxies through to the target port.
+type SSHSingleHostReverseProxy struct {
+	sshConfig *ssh.ClientConfig
+	sshAddr   string
+	targetURL *url.URL
+	proxy     *httputil.ReverseProxy
+}
+
+// NewSSHSingleHostReverseProxy creates a new SSH reverse proxy with the given configuration
+func NewSSHSingleHostReverseProxy(sshHost string, sshPort int, sshUser string, sshKey ssh.Signer, hostKeyCallback ssh.HostKeyCallback, targetPort int) *SSHSingleHostReverseProxy {
 	sshConfig := &ssh.ClientConfig{
-		User: *box.SSHUser,
+		User: sshUser,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshKey),
 		},
-		HostKeyCallback: box.CreateHostKeyCallback(),
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         10 * time.Second,
 	}
 
-	// Connect to SSH server
-	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
+	sshAddr := fmt.Sprintf("%s:%d", sshHost, sshPort)
 
-	start := time.Now()
-	var sshConn *ssh.Client
-	var dialErrs error
-	retries := []time.Duration{
-		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
-		1 * time.Second, 1 * time.Second,
-		2 * time.Second, 3 * time.Second,
-		0, // trailing 0 delay makes loop logic simpler
-	}
-	for i, wait := range retries {
-		slog.Debug("proxy dialing ssh using config", "attempt", i,
-			"box", box.Name,
-			"user", sshConfig.User,
-			"targetPort", targetPort,
-			"timeout", sshConfig.Timeout)
-		var err error
-		sshConn, err = ssh.Dial("tcp", sshAddr, sshConfig)
-		if err == nil {
-			break
-		}
-		dialErrs = errors.Join(dialErrs, err)
-		slog.Info("failed to connect to SSH server", "attempt", i, "error", err, "elapsed", time.Since(start).Round(10*time.Millisecond).String())
-		if wait > 0 {
-			// add jitter to d: multiply by random factor between 0.8 and 1.2
-			jitter := 0.8 + rand.Float64()*0.4
-			wait = time.Duration(float64(wait) * jitter)
-			time.Sleep(wait)
-		}
-	}
-
-	if sshConn == nil {
-		return fmt.Errorf("failed to connect to SSH server %s: %w", sshAddr, dialErrs)
-	}
-	defer sshConn.Close()
-
-	// Connect directly to the target port inside the container via SSH
-	remoteAddr := fmt.Sprintf("127.0.0.1:%d", targetPort)
-
-	// Create a custom transport that uses the SSH connection for dialing
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// Dial through SSH to the remote address
-			// We retry here because the container might be starting up
-			var conn net.Conn
-			var errs error
-			retries := []time.Duration{
-				0, 100 * time.Millisecond, 200 * time.Millisecond,
-				500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0,
-			}
-			for i, wait := range retries {
-				var err error
-				slog.Debug("sshTransport dialing remote via ssh", "attempt", i, "remoteAddr", remoteAddr)
-				conn, err = sshConn.Dial("tcp", remoteAddr)
-				if err == nil {
-					break
-				}
-				errs = errors.Join(errs, err)
-				slog.Info("failed to connect to remote via ssh", "remoteaddr",
-					remoteAddr, "attempt", i, "error", err)
-				if wait > 0 {
-					select {
-					case <-ctx.Done():
-						return nil, ctx.Err()
-					case <-time.After(wait):
-					}
-				}
-			}
-			if conn == nil {
-				return nil, fmt.Errorf("failed to connect via SSH: %w", errs)
-			}
-			return conn, nil
-		},
-	}
-
-	// Create HTTP reverse proxy with custom transport
 	targetURL := &url.URL{
 		Scheme: "http",
 		Host:   fmt.Sprintf("127.0.0.1:%d", targetPort),
 	}
 
+	p := &SSHSingleHostReverseProxy{
+		sshConfig: sshConfig,
+		sshAddr:   sshAddr,
+		targetURL: targetURL,
+	}
+
+	// Create the HTTP reverse proxy with custom SSH transport
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	proxy.Transport = transport
-	// Flush responses immediately to avoid buffering (e.g., for SSE, streaming)
-	proxy.FlushInterval = -1
+	proxy.Transport = p.createTransport()
+	proxy.FlushInterval = -1 // Force immediate flushing for streaming responses
+	p.proxy = proxy
+
+	return p
+}
+
+// createTransport creates an HTTP transport that dials through SSH
+func (p *SSHSingleHostReverseProxy) createTransport() *http.Transport {
+	return &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Establish new SSH connection for each HTTP request
+			sshConn, err := p.dialSSH(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			// Dial through SSH to the target address
+			conn, err := p.dialRemote(ctx, sshConn)
+			if err != nil {
+				sshConn.Close()
+				return nil, err
+			}
+
+			// Wrap the connection to close SSH client when connection closes
+			return &sshConnWrapper{Conn: conn, sshClient: sshConn}, nil
+		},
+	}
+}
+
+// dialSSH establishes an SSH connection with retries and jitter
+func (p *SSHSingleHostReverseProxy) dialSSH(ctx context.Context) (*ssh.Client, error) {
+	start := time.Now()
+	var dialErrs error
+	retries := []time.Duration{
+		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
+		1 * time.Second, 1 * time.Second,
+		2 * time.Second, 3 * time.Second,
+		0,
+	}
+
+	for i, wait := range retries {
+		slog.Debug("proxy dialing ssh", "attempt", i, "addr", p.sshAddr, "timeout", p.sshConfig.Timeout)
+		sshConn, err := ssh.Dial("tcp", p.sshAddr, p.sshConfig)
+		if err == nil {
+			return sshConn, nil
+		}
+		dialErrs = errors.Join(dialErrs, err)
+		slog.Info("failed to connect to SSH server", "attempt", i, "error", err, "elapsed", time.Since(start).Round(10*time.Millisecond).String())
+		if wait > 0 {
+			jitter := 0.8 + rand.Float64()*0.4
+			wait = time.Duration(float64(wait) * jitter)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to connect to SSH server %s: %w", p.sshAddr, dialErrs)
+}
+
+// dialRemote dials the target address through the SSH connection with retries
+func (p *SSHSingleHostReverseProxy) dialRemote(ctx context.Context, sshConn *ssh.Client) (net.Conn, error) {
+	remoteAddr := p.targetURL.Host
+	var errs error
+	retries := []time.Duration{
+		0, 100 * time.Millisecond, 200 * time.Millisecond,
+		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0,
+	}
+
+	for i, wait := range retries {
+		slog.Debug("sshTransport dialing remote via ssh", "attempt", i, "remoteAddr", remoteAddr)
+		conn, err := sshConn.Dial("tcp", remoteAddr)
+		if err == nil {
+			return conn, nil
+		}
+		errs = errors.Join(errs, err)
+		slog.Info("failed to connect to remote via ssh", "remoteaddr", remoteAddr, "attempt", i, "error", err)
+		if wait > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to connect via SSH: %w", errs)
+}
+
+// ServeHTTP proxies the HTTP request through SSH
+func (p *SSHSingleHostReverseProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.proxy.ServeHTTP(w, r)
+}
+
+// SetDirector sets a custom director function for modifying requests before proxying
+func (p *SSHSingleHostReverseProxy) SetDirector(director func(*http.Request)) {
+	defaultDirector := p.proxy.Director
+	p.proxy.Director = func(req *http.Request) {
+		defaultDirector(req)
+		director(req)
+	}
+}
+
+// SetErrorHandler sets a custom error handler for the proxy
+func (p *SSHSingleHostReverseProxy) SetErrorHandler(handler func(http.ResponseWriter, *http.Request, error)) {
+	p.proxy.ErrorHandler = handler
+}
+
+// sshConnWrapper wraps a connection to close the SSH client when the connection closes
+type sshConnWrapper struct {
+	net.Conn
+	sshClient *ssh.Client
+}
+
+func (w *sshConnWrapper) Close() error {
+	connErr := w.Conn.Close()
+	sshErr := w.sshClient.Close()
+	slog.Debug("Closed HTTP connection and SSH client")
+
+	if connErr != nil {
+		return connErr
+	}
+	return sshErr
+}
+
+// proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
+func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *exedb.Box, sshKey ssh.Signer, targetPort int) error {
+	// Create SSH reverse proxy
+	proxy := NewSSHSingleHostReverseProxy(sshHost, int(*box.SSHPort), *box.SSHUser, sshKey, box.CreateHostKeyCallback(), targetPort)
 
 	// Set up Director to add user headers and remove auth cookie
-	defaultDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		defaultDirector(req)
-
+	proxy.SetDirector(func(req *http.Request) {
 		// Add user info headers if authenticated
 		if userID, ok := s.getAuthenticatedUserID(r); ok {
 			email, err := withRxRes(s, req.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
@@ -703,46 +768,16 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 				req.AddCookie(c)
 			}
 		}
-	}
+	})
 
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+	// Capture proxy errors and return them to the caller
+	var proxyErr error
+	proxy.SetErrorHandler(func(w http.ResponseWriter, r *http.Request, err error) {
 		slog.Debug("HTTP proxy error", "error", err, "target_port", targetPort)
-
-		// If the requester owns this box, show a helpful page
-		isOwner := false
-		if userID, ok := s.getAuthenticatedUserID(r); ok {
-			if alloc, aerr := s.getUserAlloc(r.Context(), userID); aerr == nil && alloc != nil {
-				if box.AllocID == alloc.AllocID {
-					isOwner = true
-				}
-			}
-		}
-
-		if isOwner {
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
-			terminalHost := fmt.Sprintf("%s.xterm.%s", box.Name, s.getMainDomainWithPort())
-			data := struct {
-				BoxName     string
-				Port        int
-				TerminalURL string
-			}{
-				BoxName:     box.Name,
-				Port:        targetPort,
-				TerminalURL: fmt.Sprintf("%s://%s/", scheme, terminalHost),
-			}
-			w.WriteHeader(http.StatusBadGateway)
-			_ = s.renderTemplate(w, "proxy-unreachable.html", data)
-			return
-		}
-
-		// Non-owner: brief 502
-		http.Error(w, "Bad Gateway", http.StatusBadGateway)
-	}
+		proxyErr = err
+	})
 
 	// Proxy the request
 	proxy.ServeHTTP(w, r)
-	return nil
+	return proxyErr
 }
