@@ -5,6 +5,7 @@ import MessageComponent from './Message';
 import MessageInput from './MessageInput';
 import Modal from './Modal';
 import BashTool from './BashTool';
+import PatchTool from './PatchTool';
 
 interface CoalescedToolCallProps {
   toolName: string;
@@ -42,6 +43,19 @@ function CoalescedToolCall({
   if (toolName === 'bash') {
     return (
       <BashTool
+        toolInput={toolInput}
+        isRunning={!hasResult}
+        toolResult={toolResult}
+        hasError={toolError}
+        executionTime={executionTime}
+      />
+    );
+  }
+
+  // Use specialized PatchTool component for patch
+  if (toolName === 'patch') {
+    return (
+      <PatchTool
         toolInput={toolInput}
         isRunning={!hasResult}
         toolResult={toolResult}

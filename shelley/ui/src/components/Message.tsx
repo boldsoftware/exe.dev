@@ -1,6 +1,7 @@
 import React from 'react';
 import { Message as MessageType, LLMMessage, LLMContent } from '../types';
 import BashTool from './BashTool';
+import PatchTool from './PatchTool';
 
 // Display data types from different tools
 interface ToolDisplay {
@@ -107,6 +108,15 @@ function Message({ message }: MessageProps) {
             />
           );
         }
+        // Use specialized component for patch tool
+        if (content.ToolName === 'patch') {
+          return (
+            <PatchTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
         // Default rendering for other tools
         return (
           <div className="tool-use">
@@ -171,6 +181,19 @@ function Message({ message }: MessageProps) {
         if (toolName === 'bash') {
           return (
             <BashTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+        
+        // Use specialized component for patch tool
+        if (toolName === 'patch') {
+          return (
+            <PatchTool
               toolInput={toolInput}
               isRunning={false}
               toolResult={content.ToolResult}
