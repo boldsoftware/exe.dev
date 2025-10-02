@@ -97,3 +97,75 @@ func TestFactory(t *testing.T) {
 		t.Fatal("predictable Factory() returned nil service")
 	}
 }
+
+func TestManagerGetAvailableModelsOrder(t *testing.T) {
+	// Test that GetAvailableModels returns models in consistent order
+	cfg := &Config{}
+
+	// Create manager - should only have predictable model since no API keys
+	manager, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Get available models multiple times
+	firstCall := manager.GetAvailableModels()
+	secondCall := manager.GetAvailableModels()
+	thirdCall := manager.GetAvailableModels()
+
+	// Should return at least predictable model
+	if len(firstCall) == 0 {
+		t.Fatal("expected at least one model")
+	}
+
+	// All calls should return identical order
+	if len(firstCall) != len(secondCall) || len(firstCall) != len(thirdCall) {
+		t.Errorf("calls returned different lengths: %d, %d, %d", len(firstCall), len(secondCall), len(thirdCall))
+	}
+
+	for i := range firstCall {
+		if firstCall[i] != secondCall[i] {
+			t.Errorf("call 1 and 2 differ at index %d: %q vs %q", i, firstCall[i], secondCall[i])
+		}
+		if firstCall[i] != thirdCall[i] {
+			t.Errorf("call 1 and 3 differ at index %d: %q vs %q", i, firstCall[i], thirdCall[i])
+		}
+	}
+}
+
+func TestManagerGetAvailableModelsMatchesAllOrder(t *testing.T) {
+	// Test that available models are returned in the same order as All()
+	cfg := &Config{
+		AnthropicAPIKey: "test-key",
+		OpenAIAPIKey:    "test-key",
+		GeminiAPIKey:    "test-key",
+		FireworksAPIKey: "test-key",
+	}
+
+	manager, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	available := manager.GetAvailableModels()
+	all := All()
+
+	// Build expected order from All()
+	var expected []string
+	for _, m := range all {
+		if manager.HasModel(m.ID) {
+			expected = append(expected, m.ID)
+		}
+	}
+
+	// Should match
+	if len(available) != len(expected) {
+		t.Fatalf("available models count %d != expected count %d", len(available), len(expected))
+	}
+
+	for i := range available {
+		if available[i] != expected[i] {
+			t.Errorf("model at index %d: got %q, want %q", i, available[i], expected[i])
+		}
+	}
+}

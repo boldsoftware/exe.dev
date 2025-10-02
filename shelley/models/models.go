@@ -249,11 +249,15 @@ func (m *Manager) GetService(modelID string) (llm.Service, error) {
 	return nil, fmt.Errorf("unsupported model: %s", modelID)
 }
 
-// GetAvailableModels returns a list of available model IDs
+// GetAvailableModels returns a list of available model IDs in the same order as All()
 func (m *Manager) GetAvailableModels() []string {
+	// Return IDs in the same order as All() for consistency
+	all := All()
 	var ids []string
-	for id := range m.services {
-		ids = append(ids, id)
+	for _, model := range all {
+		if _, ok := m.services[model.ID]; ok {
+			ids = append(ids, model.ID)
+		}
 	}
 	return ids
 }
