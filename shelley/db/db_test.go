@@ -13,7 +13,9 @@ import (
 func setupTestDB(t *testing.T) *DB {
 	t.Helper()
 
-	db, err := New(Config{DSN: ":memory:"})
+	// Use a temporary file instead of :memory: because the pool requires multiple connections
+	tmpDir := t.TempDir()
+	db, err := New(Config{DSN: tmpDir + "/test.db"})
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
@@ -35,9 +37,9 @@ func TestNew(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:    "valid memory database",
+			name:    "memory database not supported",
 			cfg:     Config{DSN: ":memory:"},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name:    "empty DSN",
@@ -61,7 +63,8 @@ func TestNew(t *testing.T) {
 }
 
 func TestDB_Migrate(t *testing.T) {
-	db, err := New(Config{DSN: ":memory:"})
+	tmpDir := t.TempDir()
+	db, err := New(Config{DSN: tmpDir + "/test.db"})
 	if err != nil {
 		t.Fatalf("Failed to create test database: %v", err)
 	}
@@ -75,7 +78,12 @@ func TestDB_Migrate(t *testing.T) {
 	}
 
 	// Verify tables were created by trying to count conversations
-	count, err := db.Queries.CountConversations(ctx)
+	var count int64
+	err = db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		count, err = q.CountConversations(ctx)
+		return err
+	})
 	if err != nil {
 		t.Errorf("Failed to query conversations after migration: %v", err)
 	}
@@ -105,7 +113,12 @@ func TestDB_WithTx(t *testing.T) {
 	}
 
 	// Verify the conversation was created
-	conv, err := db.Queries.GetConversation(ctx, "test-conv-1")
+	var conv generated.Conversation
+	err = db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		conv, err = q.GetConversation(ctx, "test-conv-1")
+		return err
+	})
 	if err != nil {
 		t.Errorf("Failed to get conversation after transaction: %v", err)
 	}
@@ -128,14 +141,18 @@ func TestDB_ForeignKeyConstraints(t *testing.T) {
 
 	// Try to create a message with a non-existent conversation_id
 	// This should fail due to foreign key constraint
-	_, err := db.Queries.CreateMessage(ctx, generated.CreateMessageParams{
-		MessageID:      "test-msg-1",
-		ConversationID: "non-existent-conversation",
-		Type:           "user",
+	err := db.QueriesTx(ctx, func(q *generated.Queries) error {
+		_, err := q.CreateMessage(ctx, generated.CreateMessageParams{
+			MessageID:      "test-msg-1",
+			ConversationID: "non-existent-conversation",
+			Type:           "user",
+		})
+		return err
 	})
 
 	if err == nil {
 		t.Error("Expected error when creating message with non-existent conversation_id")
+		return
 	}
 
 	// Verify the error is related to foreign key constraint

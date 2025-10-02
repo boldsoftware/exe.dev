@@ -180,7 +180,12 @@ func TestMessageService_ListByConversation(t *testing.T) {
 	}
 
 	// List messages
-	messages, err := db.Queries.ListMessages(ctx, conv.ConversationID)
+	var messages []generated.Message
+	err = db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messages, err = q.ListMessages(ctx, conv.ConversationID)
+		return err
+	})
 	if err != nil {
 		t.Errorf("ListByConversation() error = %v", err)
 		return
@@ -320,7 +325,9 @@ func TestMessageService_Delete(t *testing.T) {
 	}
 
 	// Delete the message
-	err = db.Queries.DeleteMessage(ctx, created.MessageID)
+	err = db.QueriesTx(ctx, func(q *generated.Queries) error {
+		return q.DeleteMessage(ctx, created.MessageID)
+	})
 	if err != nil {
 		t.Errorf("Delete() error = %v", err)
 		return
@@ -349,7 +356,12 @@ func TestMessageService_CountInConversation(t *testing.T) {
 	}
 
 	// Initial count should be 0
-	count, err := db.Queries.CountMessagesInConversation(ctx, conv.ConversationID)
+	var count int64
+	err = db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		count, err = q.CountMessagesInConversation(ctx, conv.ConversationID)
+		return err
+	})
 	if err != nil {
 		t.Errorf("CountInConversation() error = %v", err)
 		return
@@ -371,7 +383,11 @@ func TestMessageService_CountInConversation(t *testing.T) {
 	}
 
 	// Count should now be 4
-	count, err = db.Queries.CountMessagesInConversation(ctx, conv.ConversationID)
+	err = db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		count, err = q.CountMessagesInConversation(ctx, conv.ConversationID)
+		return err
+	})
 	if err != nil {
 		t.Errorf("CountInConversation() error = %v", err)
 		return

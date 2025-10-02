@@ -235,7 +235,12 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 	}
 
 	ctx := r.Context()
-	messages, err := s.db.Queries.ListMessages(ctx, conversationID)
+	var messages []generated.Message
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messages, err = q.ListMessages(ctx, conversationID)
+		return err
+	})
 	if err != nil {
 		s.logger.Error("Failed to get conversation messages", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -288,7 +293,12 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Check if this is the first message and store system prompt before creating manager
-	messageCount, err := s.db.Queries.CountMessagesInConversation(ctx, conversationID)
+	var messageCount int64
+	err = s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messageCount, err = q.CountMessagesInConversation(ctx, conversationID)
+		return err
+	})
 	if err != nil {
 		s.logger.Error("Failed to count messages", "conversationID", conversationID, "error", err)
 		// Continue processing even if we can't count messages
@@ -507,16 +517,19 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Get current messages and conversation data
-	messages, err := s.db.Queries.ListMessages(ctx, conversationID)
+	var messages []generated.Message
+	var conversation generated.Conversation
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messages, err = q.ListMessages(ctx, conversationID)
+		if err != nil {
+			return err
+		}
+		conversation, err = q.GetConversation(ctx, conversationID)
+		return err
+	})
 	if err != nil {
-		s.logger.Error("Failed to get conversation messages", "conversationID", conversationID, "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	conversation, err := s.db.Queries.GetConversation(ctx, conversationID)
-	if err != nil {
-		s.logger.Error("Failed to get conversation", "conversationID", conversationID, "error", err)
+		s.logger.Error("Failed to get conversation data", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -586,7 +599,12 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 	}
 
 	// Get existing messages to build history
-	messages, err := s.db.Queries.ListMessages(ctx, conversationID)
+	var messages []generated.Message
+	err = s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		messages, err = q.ListMessages(ctx, conversationID)
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get conversation history: %w", err)
 	}
@@ -685,7 +703,9 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 	}
 
 	// Update conversation's last updated timestamp for correct ordering
-	if err := s.db.Queries.UpdateConversationTimestamp(ctx, conversationID); err != nil {
+	if err := s.db.QueriesTx(ctx, func(q *generated.Queries) error {
+		return q.UpdateConversationTimestamp(ctx, conversationID)
+	}); err != nil {
 		s.logger.Warn("Failed to update conversation timestamp", "conversationID", conversationID, "error", err)
 	}
 
@@ -752,7 +772,12 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 	}
 
 	// Get conversation data (this is always sent)
-	conversation, err := s.db.Queries.GetConversation(ctx, conversationID)
+	var conversation generated.Conversation
+	err := s.db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		conversation, err = q.GetConversation(ctx, conversationID)
+		return err
+	})
 	if err != nil {
 		s.logger.Error("Failed to get conversation for notification", "conversationID", conversationID, "error", err)
 		return
@@ -768,23 +793,29 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		// Get messages since the last message this subscriber has seen
 		if sub.lastSequenceID == 0 {
 			// New subscriber or no messages seen yet - send all messages
-			allMessages, err := s.db.Queries.ListMessages(ctx, conversationID)
+			err := s.db.Queries(ctx, func(q *generated.Queries) error {
+				var err error
+				messages, err = q.ListMessages(ctx, conversationID)
+				return err
+			})
 			if err != nil {
 				s.logger.Error("Failed to get all messages for new subscriber", "conversationID", conversationID, "subscriptionID", subscriptionID, "error", err)
 				continue
 			}
-			messages = allMessages
 		} else {
 			// Existing subscriber - send only new messages
-			newMessages, err := s.db.Queries.ListMessagesSince(ctx, generated.ListMessagesSinceParams{
-				ConversationID: conversationID,
-				SequenceID:     sub.lastSequenceID,
+			err := s.db.Queries(ctx, func(q *generated.Queries) error {
+				var err error
+				messages, err = q.ListMessagesSince(ctx, generated.ListMessagesSinceParams{
+					ConversationID: conversationID,
+					SequenceID:     sub.lastSequenceID,
+				})
+				return err
 			})
 			if err != nil {
 				s.logger.Error("Failed to get new messages for subscriber", "conversationID", conversationID, "subscriptionID", subscriptionID, "error", err)
 				continue
 			}
-			messages = newMessages
 		}
 
 		// Update the subscriber's last seen sequence_id

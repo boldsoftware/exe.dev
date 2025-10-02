@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"shelley.exe.dev/db/generated"
 )
 
 func TestConversationService_Create(t *testing.T) {
@@ -247,7 +249,9 @@ func TestConversationService_Touch(t *testing.T) {
 	}
 
 	// Touch the conversation
-	err = db.Queries.UpdateConversationTimestamp(ctx, created.ConversationID)
+	err = db.QueriesTx(ctx, func(q *generated.Queries) error {
+		return q.UpdateConversationTimestamp(ctx, created.ConversationID)
+	})
 	if err != nil {
 		t.Errorf("Touch() error = %v", err)
 		return
@@ -280,7 +284,9 @@ func TestConversationService_Delete(t *testing.T) {
 	}
 
 	// Delete the conversation
-	err = db.Queries.DeleteConversation(ctx, created.ConversationID)
+	err = db.QueriesTx(ctx, func(q *generated.Queries) error {
+		return q.DeleteConversation(ctx, created.ConversationID)
+	})
 	if err != nil {
 		t.Errorf("Delete() error = %v", err)
 		return
@@ -302,7 +308,12 @@ func TestConversationService_Count(t *testing.T) {
 	defer cancel()
 
 	// Initial count should be 0
-	count, err := db.Queries.CountConversations(ctx)
+	var count int64
+	err := db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		count, err = q.CountConversations(ctx)
+		return err
+	})
 	if err != nil {
 		t.Errorf("Count() error = %v", err)
 		return
@@ -320,7 +331,11 @@ func TestConversationService_Count(t *testing.T) {
 	}
 
 	// Count should now be 3
-	count, err = db.Queries.CountConversations(ctx)
+	err = db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		count, err = q.CountConversations(ctx)
+		return err
+	})
 	if err != nil {
 		t.Errorf("Count() error = %v", err)
 		return
