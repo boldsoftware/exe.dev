@@ -23,9 +23,13 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   const [selectedModel, setSelectedModel] = useState<string>('qwen3-coder-fireworks');
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [isDisconnected, setIsDisconnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
 
   // Load messages and set up streaming
   useEffect(() => {
@@ -42,6 +46,9 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
       }
     };
   }, [conversationId]);
@@ -143,16 +150,36 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
         eventSourceRef.current = null;
       }
       
-      // Retry after 2 seconds
-      setTimeout(() => {
-        if (eventSourceRef.current === null) {
-          setupMessageStream();
+      // Backoff delays: 1s, 5s, 10s, then give up
+      const delays = [1000, 5000, 10000];
+      
+      setReconnectAttempts((prev) => {
+        const attempts = prev + 1;
+        
+        if (attempts > delays.length) {
+          // Give up and show disconnected UI
+          setIsDisconnected(true);
+          return attempts;
         }
-      }, 2000);
+        
+        const delay = delays[attempts - 1];
+        console.log(`Reconnecting in ${delay}ms (attempt ${attempts}/${delays.length})`);
+        
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          if (eventSourceRef.current === null) {
+            setupMessageStream();
+          }
+        }, delay);
+        
+        return attempts;
+      });
     };
 
     eventSource.onopen = () => {
       console.log('Message stream connected');
+      // Reset reconnect attempts on successful connection
+      setReconnectAttempts(0);
+      setIsDisconnected(false);
     };
   };
 
@@ -182,6 +209,16 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleManualReconnect = () => {
+    setIsDisconnected(false);
+    setReconnectAttempts(0);
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    setupMessageStream();
   };
 
   const getDisplayTitle = () => {
@@ -340,6 +377,21 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
           </div>
         )}
       </div>
+
+      {/* Disconnect banner */}
+      {isDisconnected && (
+        <div className="disconnect-banner">
+          <div className="disconnect-banner-content">
+            <p className="disconnect-message">Disconnected</p>
+            <button
+              onClick={handleManualReconnect}
+              className="btn-reconnect"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error banner */}
       {error && (

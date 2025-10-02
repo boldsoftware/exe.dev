@@ -767,6 +767,43 @@ select:disabled {
   text-align: center;
 }
 
+.disconnect-banner {
+  background: var(--gray-100);
+  border-top: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+}
+
+.dark .disconnect-banner {
+  background: var(--gray-800);
+}
+
+.disconnect-banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.disconnect-message {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.btn-reconnect {
+  padding: 0.25rem 0.75rem;
+  background: var(--primary);
+  color: white;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-reconnect:hover {
+  background: var(--primary-dark);
+}
+
 .error-banner {
   background: var(--error-bg);
   border-top: 1px solid var(--error-border);
