@@ -513,7 +513,11 @@ func setupTools(llmProvider claudetool.LLMServiceProvider) []*llm.Tool {
 		LLMProvider:      llmProvider,
 		EnableJITInstall: claudetool.EnableBashToolJITInstall,
 	}
-	patchTool := &claudetool.PatchTool{}
+	patchTool := &claudetool.PatchTool{
+		Simplified: true,
+		Pwd:        wd,
+		ClipboardEnabled: true,
+	}
 	keywordTool := claudetool.NewKeywordTool(llmProvider)
 
 	return []*llm.Tool{
