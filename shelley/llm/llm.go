@@ -97,6 +97,8 @@ type Tool struct {
 	InputSchema json.RawMessage
 	// EndsTurn indicates that this tool should cause the model to end its turn when used
 	EndsTurn bool
+	// Cache indicates whether to use prompt caching for this tool
+	Cache bool
 
 	// The Run function is automatically called when the tool is used.
 	// Run functions may be called concurrently with each other and themselves.
@@ -258,6 +260,9 @@ type Usage struct {
 	CacheReadInputTokens     uint64  `json:"cache_read_input_tokens"`
 	OutputTokens             uint64  `json:"output_tokens"`
 	CostUSD                  float64 `json:"cost_usd"`
+	Model                    string  `json:"model,omitempty"`
+	StartTime                *time.Time `json:"start_time,omitempty"`
+	EndTime                  *time.Time `json:"end_time,omitempty"`
 }
 
 func (u *Usage) Add(other Usage) {

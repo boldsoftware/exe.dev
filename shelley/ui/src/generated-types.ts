@@ -16,11 +16,11 @@ export interface Message {
 	conversation_id: string;
 	sequence_id: number;
 	type: string;
-	llm_data?: string | null;
-	user_data?: string | null;
-	usage_data?: string | null;
+	llm_data: string | null;
+	user_data: string | null;
+	usage_data: string | null;
 	created_at: string;
-	display_data?: string | null;
+	display_data: string | null;
 }
 
 export interface Usage {
@@ -29,6 +29,9 @@ export interface Usage {
 	cache_read_input_tokens: number;
 	output_tokens: number;
 	cost_usd: number;
+	model?: string;
+	start_time?: string | null;
+	end_time?: string | null;
 }
 
 export type MessageType = 'user' | 'agent' | 'tool' | 'error' | 'system';

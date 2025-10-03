@@ -1,5 +1,5 @@
-import React from 'react';
-import { Message as MessageType, LLMMessage, LLMContent } from '../types';
+import React, { useState } from 'react';
+import { Message as MessageType, LLMMessage, LLMContent, Usage } from '../types';
 import BashTool from './BashTool';
 import PatchTool from './PatchTool';
 
@@ -24,6 +24,114 @@ function Message({ message }: MessageProps) {
   }
 
   // Check if we have display_data to render
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [hoverTimer, setHoverTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Parse usage data if available (only for agent messages)
+  let usage: Usage | null = null;
+  if (message.type === 'agent' && message.usage_data) {
+    try {
+      usage = typeof message.usage_data === 'string' ? JSON.parse(message.usage_data) : message.usage_data;
+    } catch (err) {
+      console.error('Failed to parse usage data:', err);
+    }
+  }
+
+  // Calculate duration if we have timing info
+  let durationMs: number | null = null;
+  if (usage?.start_time && usage?.end_time) {
+    const start = new Date(usage.start_time).getTime();
+    const end = new Date(usage.end_time).getTime();
+    durationMs = end - start;
+  }
+
+  const handleMouseEnter = () => {
+    // Only show tooltip for agent messages with usage data
+    if (message.type === 'agent' && usage) {
+      const timer = setTimeout(() => {
+        setShowTooltip(true);
+      }, 500); // Show after 500ms hover
+      setHoverTimer(timer);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimer) {
+      clearTimeout(hoverTimer);
+      setHoverTimer(null);
+    }
+    setShowTooltip(false);
+  };
+
+  // Format duration in human-readable format
+  const formatDuration = (ms: number): string => {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
+    return `${(ms / 60000).toFixed(2)}m`;
+  };
+
+  // Render tooltip with usage information
+  const renderTooltip = () => {
+    if (!showTooltip || !usage) return null;
+
+    return (
+      <div style={{
+        position: 'absolute',
+        top: '-8px',
+        right: '8px',
+        transform: 'translateY(-100%)',
+        backgroundColor: '#1f2937',
+        color: '#f9fafb',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        fontSize: '12px',
+        lineHeight: '1.5',
+        zIndex: 1000,
+        minWidth: '200px',
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        pointerEvents: 'none',
+      }}>
+        <div style={{ fontWeight: '600', marginBottom: '4px' }}>Token Usage</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 8px' }}>
+          {usage.model && (
+            <>
+              <div style={{ color: '#9ca3af' }}>Model:</div>
+              <div>{usage.model}</div>
+            </>
+          )}
+          <div style={{ color: '#9ca3af' }}>Input:</div>
+          <div>{usage.input_tokens.toLocaleString()}</div>
+          {usage.cache_read_input_tokens > 0 && (
+            <>
+              <div style={{ color: '#9ca3af' }}>Cache Read:</div>
+              <div>{usage.cache_read_input_tokens.toLocaleString()}</div>
+            </>
+          )}
+          {usage.cache_creation_input_tokens > 0 && (
+            <>
+              <div style={{ color: '#9ca3af' }}>Cache Write:</div>
+              <div>{usage.cache_creation_input_tokens.toLocaleString()}</div>
+            </>
+          )}
+          <div style={{ color: '#9ca3af' }}>Output:</div>
+          <div>{usage.output_tokens.toLocaleString()}</div>
+          {usage.cost_usd > 0 && (
+            <>
+              <div style={{ color: '#9ca3af' }}>Cost:</div>
+              <div>\${usage.cost_usd.toFixed(4)}</div>
+            </>
+          )}
+          {durationMs !== null && (
+            <>
+              <div style={{ color: '#9ca3af' }}>Duration:</div>
+              <div>{formatDuration(durationMs)}</div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   let displayData: ToolDisplay[] | null = null;
   if (message.display_data) {
     try {
@@ -404,7 +512,8 @@ function Message({ message }: MessageProps) {
       }
     }
     return (
-      <div className={getMessageClasses()} data-testid="message" role="alert" aria-label="Error message">
+      <div className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{position: "relative"}} data-testid="message" role="alert" aria-label="Error message">
+        {renderTooltip()}
         <div className="message-content" data-testid="message-content">
           <div className="whitespace-pre-wrap break-words">
             {errorText}
@@ -417,7 +526,8 @@ function Message({ message }: MessageProps) {
   // If we have display_data, use that for rendering (more compact, tool-specific)
   if (displayData && displayData.length > 0) {
     return (
-      <div className={getMessageClasses()} data-testid="message" role="article">
+      <div className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{position: "relative"}} data-testid="message" role="article">
+        {renderTooltip()}
         <div className="message-content" data-testid="message-content">
           {displayData.map((toolDisplay, index) => (
             <div key={index}>
@@ -446,7 +556,8 @@ function Message({ message }: MessageProps) {
   }
 
   return (
-    <div className={getMessageClasses()} data-testid="message" role="article">
+    <div className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{position: "relative"}} data-testid="message" role="article">
+      {renderTooltip()}
       {/* Message content */}
       <div className="message-content" data-testid="message-content">
         {meaningfulContent.map((content, index) => (

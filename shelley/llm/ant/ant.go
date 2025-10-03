@@ -169,6 +169,7 @@ type tool struct {
 	Type        string          `json:"type,omitempty"`
 	Description string          `json:"description,omitempty"`
 	InputSchema json.RawMessage `json:"input_schema,omitempty"`
+	CacheControl    json.RawMessage `json:"cache_control,omitempty"`
 }
 
 // usage represents the billing and rate-limit usage.
@@ -358,10 +359,11 @@ func fromLLMToolChoice(tc *llm.ToolChoice) *toolChoice {
 
 func fromLLMTool(t *llm.Tool) *tool {
 	return &tool{
-		Name:        t.Name,
-		Type:        t.Type,
-		Description: t.Description,
-		InputSchema: t.InputSchema,
+		Name:         t.Name,
+		Type:         t.Type,
+		Description:  t.Description,
+		InputSchema:  t.InputSchema,
+		CacheControl: fromLLMCache(t.Cache),
 	}
 }
 
@@ -438,8 +440,8 @@ func toLLMResponse(r *response) *llm.Response {
 
 // Do sends a request to Anthropic.
 func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error) {
+	startTime := time.Now()
 	request := s.fromLLMRequest(ir)
-
 	var payload []byte
 	var err error
 	if s.DumpLLM || testing.Testing() {
@@ -543,7 +545,11 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			}
 			response.Usage.CostUSD = llm.CostUSDFromResponse(resp.Header)
 
-			return toLLMResponse(&response), nil
+			endTime := time.Now()
+			result := toLLMResponse(&response)
+			result.StartTime = &startTime
+			result.EndTime = &endTime
+			return result, nil
 		case resp.StatusCode >= 500 && resp.StatusCode < 600:
 			// server error, retry
 			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)

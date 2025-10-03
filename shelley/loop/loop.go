@@ -184,12 +184,36 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	system := l.system
 	l.mu.Unlock()
 
+	// Enable prompt caching: set cache flag on last tool and last user message content
+	// See https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+	if len(tools) > 0 {
+		// Make a copy of tools to avoid modifying the shared slice
+		tools = append([]*llm.Tool(nil), tools...)
+		// Copy the last tool and enable caching
+		lastTool := *tools[len(tools)-1]
+		lastTool.Cache = true
+		tools[len(tools)-1] = &lastTool
+	}
+
+	// Set cache flag on the last content block of the last user message
+	if len(messages) > 0 {
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == llm.MessageRoleUser && len(messages[i].Content) > 0 {
+				// Deep copy the message to avoid modifying the shared history
+				msg := messages[i]
+				msg.Content = append([]llm.Content(nil), msg.Content...)
+				msg.Content[len(msg.Content)-1].Cache = true
+				messages[i] = msg
+				break
+			}
+		}
+	}
+
 	req := &llm.Request{
 		Messages: messages,
 		Tools:    tools,
 		System:   system,
 	}
-
 	systemLen := 0
 	for _, sys := range system {
 		systemLen += len(sys.Text)
@@ -227,8 +251,12 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	l.history = append(l.history, assistantMessage)
 	l.mu.Unlock()
 
-	// Record assistant message
-	if err := l.recordMessage(ctx, assistantMessage, resp.Usage); err != nil {
+	// Record assistant message with model and timing metadata
+	usageWithMeta := resp.Usage
+	usageWithMeta.Model = resp.Model
+	usageWithMeta.StartTime = resp.StartTime
+	usageWithMeta.EndTime = resp.EndTime
+	if err := l.recordMessage(ctx, assistantMessage, usageWithMeta); err != nil {
 		l.logger.Error("failed to record assistant message", "error", err)
 	}
 
