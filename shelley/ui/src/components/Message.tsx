@@ -18,6 +18,11 @@ interface MessageProps {
 }
 
 function Message({ message }: MessageProps) {
+  // Hide system messages from the UI
+  if (message.type === 'system') {
+    return null;
+  }
+
   // Check if we have display_data to render
   let displayData: ToolDisplay[] | null = null;
   if (message.display_data) {

@@ -458,6 +458,11 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
 
     // Second pass: process messages and extract tool uses
     messages.forEach(message => {
+      // Skip system messages
+      if (message.type === 'system') {
+        return;
+      }
+
       if (message.type === 'error') {
         coalescedItems.push({ type: 'message', message });
         return;
