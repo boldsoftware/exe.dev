@@ -22,7 +22,7 @@ import (
 )
 
 // ScreenshotDir is the directory where screenshots are stored
-const ScreenshotDir = "/tmp/sketch-screenshots"
+const ScreenshotDir = "/tmp/shelley-screenshots"
 
 // BrowseTools contains all browser tools and manages a shared browser instance
 type BrowseTools struct {
@@ -325,6 +325,7 @@ func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.
 		return llm.ErrorfToolOut("invalid input: %w", err)
 	}
 
+	// Try to get a browser context; if unavailable, return an error
 	browserCtx, err := b.GetBrowserContext()
 	if err != nil {
 		return llm.ErrorToolOut(err)
@@ -365,7 +366,16 @@ func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.
 	// Encode the image as base64
 	base64Data := base64.StdEncoding.EncodeToString(buf)
 
-	// Return the screenshot directly to the LLM
+	// Prepare display data for the UI
+	display := map[string]any{
+		"type":     "screenshot",
+		"id":       id,
+		"url":      "/api/read?path=" + url.QueryEscape(screenshotPath),
+		"path":     screenshotPath,
+		"selector": input.Selector,
+	}
+
+	// Return the screenshot directly to the LLM and provide display metadata for the UI
 	return llm.ToolOut{LLMContent: []llm.Content{
 		{
 			Type: llm.ContentTypeText,
@@ -376,7 +386,7 @@ func (b *BrowseTools) screenshotRun(ctx context.Context, m json.RawMessage) llm.
 			MediaType: "image/png",
 			Data:      base64Data,
 		},
-	}}
+	}, Display: display}
 }
 
 // GetTools returns browser tools, optionally filtering out screenshot-related tools

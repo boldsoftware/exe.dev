@@ -9,12 +9,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"shelley.exe.dev/claudetool"
+	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -687,7 +690,10 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 	ctx := context.Background()
 
 	// Create database and server with predictable service
-	database, err := db.New(db.Config{DSN: ":memory:"})
+	// Note: :memory: is not supported by our DB wrapper since it requires multiple connections.
+	// Use a temp file-backed database for tests.
+	tempDB := t.TempDir() + "/system_prompt_test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -862,4 +868,58 @@ func (m *inspectableLLMManager) GetAvailableModels() []string {
 
 func (m *inspectableLLMManager) HasModel(modelID string) bool {
 	return modelID == "predictable"
+}
+
+func TestScreenshotRouteServesImage(t *testing.T) {
+	// Create temp DB-backed server
+	ctx := context.Background()
+	tempDB := t.TempDir() + "/route_test.db"
+	database, err := db.New(db.Config{DSN: tempDB})
+	if err != nil {
+		t.Fatalf("Failed to create database: %v", err)
+	}
+	defer database.Close()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("Failed to migrate database: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
+	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, true, "")
+
+	mux := http.NewServeMux()
+	svr.RegisterRoutes(mux)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	// Create a fake screenshot file in the expected location
+	id := "testshot"
+	path := browse.GetScreenshotPath(id)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("Failed to create screenshot dir: %v", err)
+	}
+	pngData := []byte{0x89, 0x50, 0x4E, 0x47} // PNG magic, minimal content
+	if err := os.WriteFile(path, pngData, 0o644); err != nil {
+		t.Fatalf("Failed to write screenshot: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+
+	// Request the screenshot
+	resp, err := http.Get(ts.URL + "/api/read?path=" + url.QueryEscape(path))
+	if err != nil {
+		t.Fatalf("GET screenshot failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(b))
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("expected image/png, got %q", ct)
+	}
+	// Cache-Control should be set
+	if cc := resp.Header.Get("Cache-Control"); cc == "" {
+		t.Fatalf("expected Cache-Control header to be set")
+	}
 }

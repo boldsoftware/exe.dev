@@ -448,10 +448,49 @@ function Message({ message }: MessageProps) {
   // Render display data for tool-specific rendering
   const renderDisplayData = (toolDisplay: ToolDisplay, toolName?: string) => {
     const display = toolDisplay.display;
-    
+
+    // If this is a screenshot display payload, render the image from the server route
+    if (display && typeof display === 'object' && (display as any).type === 'screenshot') {
+      const d = display as { id?: string; url?: string; path?: string; selector?: string };
+      const url = d.url || (d.path ? `/api/read?path=${encodeURIComponent(d.path)}` : (d.id ? `/api/read?path=${encodeURIComponent(d.id)}` : undefined));
+      return (
+        <div className="tool-result-details">
+          <details open>
+            <summary className="tool-result-summary">
+              <div className="tool-result-meta">
+                <div className="flex items-center space-x-2">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem', color: 'var(--blue-text)' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h4l2-2h6l2 2h4v12H3z" />
+                  </svg>
+                  <span className="text-sm font-medium text-blue">screenshot</span>
+                  {d.selector && (
+                    <span className="text-xs text-secondary">selector: {d.selector}</span>
+                  )}
+                </div>
+              </div>
+            </summary>
+            <div className="tool-result-content">
+              {url ? (
+                <a href={url} target="_blank" rel="noreferrer">
+                  <img
+                    src={url}
+                    alt={d.selector ? `Screenshot of ${d.selector}` : 'Screenshot'}
+                    className="rounded border"
+                    style={{ maxWidth: '100%', height: 'auto' }}
+                  />
+                </a>
+              ) : (
+                <div className="text-secondary text-sm italic">screenshot available</div>
+              )}
+            </div>
+          </details>
+        </div>
+      );
+    }
+
     // Infer tool type from display content if tool name not provided
     const inferredToolName = toolName || (typeof display === 'string' && display.includes('---') && display.includes('+++') ? 'patch' : undefined);
-    
+
     // Render based on tool name if available
     if (inferredToolName === 'patch' && typeof display === 'string') {
       // It's likely a unified diff from the patch tool
@@ -478,7 +517,7 @@ function Message({ message }: MessageProps) {
         </div>
       );
     }
-    
+
     // For other types of display data, render as JSON
     return (
       <div className="tool-result-details">

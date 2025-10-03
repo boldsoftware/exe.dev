@@ -85,9 +85,9 @@ The browser screenshot tool has been modified to save screenshots to a temporary
 
 ### How It Works
 
-1. When a screenshot is taken, it's saved to `/tmp/sketch-screenshots/` with a unique UUID filename
+1. When a screenshot is taken, it's saved to `/tmp/shelley-screenshots/` with a unique UUID filename
 2. The tool returns the screenshot ID in its response
-3. The web UI can fetch the screenshot using the `/screenshot/{id}` endpoint
+3. The web UI can fetch the screenshot using the `/api/read?path=...` endpoint (with path set to the screenshot file)
 
 ### Example Usage
 
@@ -110,4 +110,4 @@ Tool response:
 }
 ```
 
-The screenshot is then accessible at: `/screenshot/550e8400-e29b-41d4-a716-446655440000`
+The screenshot is then accessible at: `/api/read?path=/tmp/shelley-screenshots/550e8400-e29b-41d4-a716-446655440000.png`

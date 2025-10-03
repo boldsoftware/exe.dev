@@ -424,9 +424,12 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       startTime: string | null;
       endTime: string | null;
     }> = {};
+    // Some tool results may be delivered only as display_data (e.g., screenshots)
+    const displayResultSet: Set<string> = new Set();
 
     // First pass: collect all tool results
     messages.forEach(message => {
+      // Collect tool_result data from llm_data if present
       if (message.llm_data) {
         try {
           const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
@@ -444,6 +447,22 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
           }
         } catch (err) {
           console.error('Failed to parse message LLM data for tool results:', err);
+        }
+      }
+
+      // Also collect tool_use_ids from display_data to mark completion even if llm_data is omitted
+      if (message.display_data) {
+        try {
+          const displays = typeof message.display_data === 'string' ? JSON.parse(message.display_data) : message.display_data;
+          if (Array.isArray(displays)) {
+            for (const d of displays) {
+              if (d && typeof d === 'object' && (d as any).tool_use_id) {
+                displayResultSet.add((d as any).tool_use_id as string);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to parse display_data for tool completion:', err);
         }
       }
     });
@@ -509,6 +528,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
             // Add tool uses as separate items
             toolUses.forEach(toolUse => {
               const resultData = toolUse.ID ? toolResultMap[toolUse.ID] : undefined;
+              const completedViaDisplay = toolUse.ID ? displayResultSet.has(toolUse.ID) : false;
               coalescedItems.push({
                 type: 'tool',
                 toolUseId: toolUse.ID,
@@ -518,7 +538,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
                 toolError: resultData?.error,
                 toolStartTime: resultData?.startTime,
                 toolEndTime: resultData?.endTime,
-                hasResult: !!resultData
+                hasResult: !!resultData || completedViaDisplay,
               });
             });
           }

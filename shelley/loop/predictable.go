@@ -63,6 +63,10 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 	case "Create an example":
 		return s.makeThinkToolResponse("I'll create a simple example for you."), nil
 
+	case "screenshot":
+		// Trigger a screenshot of the current page
+		return s.makeScreenshotToolResponse(""), nil
+
 	case "echo: foo":
 		return s.makeResponse("foo"), nil
 
@@ -91,6 +95,11 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 		if strings.HasPrefix(inputText, "error: ") {
 			errorMsg := strings.TrimPrefix(inputText, "error: ")
 			return nil, fmt.Errorf("predictable error: %s", errorMsg)
+		}
+
+		if strings.HasPrefix(inputText, "screenshot: ") {
+			selector := strings.TrimSpace(strings.TrimPrefix(inputText, "screenshot: "))
+			return s.makeScreenshotToolResponse(selector), nil
 		}
 
 		// Default response for undefined inputs
@@ -229,4 +238,35 @@ func (s *PredictableService) GetLastRequest() *llm.Request {
 // ClearRequests clears the request history
 func (s *PredictableService) ClearRequests() {
 	s.recentRequests = nil
+}
+
+// makeScreenshotToolResponse creates a response that calls the screenshot tool
+func (s *PredictableService) makeScreenshotToolResponse(selector string) *llm.Response {
+	toolInputData := map[string]any{}
+	if selector != "" {
+		toolInputData["selector"] = selector
+	}
+	toolInputBytes, _ := json.Marshal(toolInputData)
+	toolInput := json.RawMessage(toolInputBytes)
+	return &llm.Response{
+		ID:    fmt.Sprintf("pred-screenshot-%d", time.Now().UnixNano()),
+		Type:  "message",
+		Role:  llm.MessageRoleAssistant,
+		Model: "predictable-v1",
+		Content: []llm.Content{
+			{Type: llm.ContentTypeText, Text: "Taking a screenshot..."},
+			{
+				ID:        fmt.Sprintf("tool_%d", time.Now().UnixNano()%1000),
+				Type:      llm.ContentTypeToolUse,
+				ToolName:  "browser_take_screenshot",
+				ToolInput: toolInput,
+			},
+		},
+		StopReason: llm.StopReasonToolUse,
+		Usage: llm.Usage{
+			InputTokens:  5,
+			OutputTokens: 5,
+			CostUSD:      0.0,
+		},
+	}
 }

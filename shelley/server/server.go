@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -143,8 +145,63 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
 
+	// Generic read route restricted to safe paths
+	mux.HandleFunc("/api/read", s.handleRead)
+
 	// Serve embedded UI assets with conservative caching
 	mux.Handle("/", s.staticHandler(ui.Assets()))
+}
+
+// handleRead serves files from limited allowed locations via /api/read?path=
+func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p := r.URL.Query().Get("path")
+	if p == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+	// Clean and enforce prefix restriction
+	clean := p
+	// Do not resolve symlinks here; enforce string prefix restriction only
+	if !(strings.HasPrefix(clean, browse.ScreenshotDir+"/")) {
+		http.Error(w, "path not allowed", http.StatusForbidden)
+		return
+	}
+	f, err := os.Open(clean)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	// Determine content type by extension first, then fallback to sniffing
+	ext := strings.ToLower(filepath.Ext(clean))
+	switch ext {
+	case ".png":
+		w.Header().Set("Content-Type", "image/png")
+	case ".jpg", ".jpeg":
+		w.Header().Set("Content-Type", "image/jpeg")
+	case ".gif":
+		w.Header().Set("Content-Type", "image/gif")
+	case ".webp":
+		w.Header().Set("Content-Type", "image/webp")
+	case ".svg":
+		w.Header().Set("Content-Type", "image/svg+xml")
+	default:
+		buf := make([]byte, 512)
+		n, _ := f.Read(buf)
+		contentType := http.DetectContentType(buf[:n])
+		if _, err := f.Seek(0, 0); err != nil {
+			http.Error(w, "seek failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+	}
+	// Reasonable short-term caching for assets, allow quick refresh during sessions
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	io.Copy(w, f)
 }
 
 // staticHandler serves files from the provided filesystem and disables caching for HTML/CSS/JS to avoid stale bundles
