@@ -255,12 +255,12 @@ func CostUSDFromResponse(headers http.Header) float64 {
 // However, the front-end uses this struct, and it relies on its JSON serialization.
 // Do NOT use this struct directly when implementing an llm.Service.
 type Usage struct {
-	InputTokens              uint64  `json:"input_tokens"`
-	CacheCreationInputTokens uint64  `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     uint64  `json:"cache_read_input_tokens"`
-	OutputTokens             uint64  `json:"output_tokens"`
-	CostUSD                  float64 `json:"cost_usd"`
-	Model                    string  `json:"model,omitempty"`
+	InputTokens              uint64     `json:"input_tokens"`
+	CacheCreationInputTokens uint64     `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     uint64     `json:"cache_read_input_tokens"`
+	OutputTokens             uint64     `json:"output_tokens"`
+	CostUSD                  float64    `json:"cost_usd"`
+	Model                    string     `json:"model,omitempty"`
 	StartTime                *time.Time `json:"start_time,omitempty"`
 	EndTime                  *time.Time `json:"end_time,omitempty"`
 }

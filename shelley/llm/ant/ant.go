@@ -166,10 +166,10 @@ type tool struct {
 	Name string `json:"name"`
 	// Type is used by the text editor tool; see
 	// https://docs.anthropic.com/en/docs/build-with-claude/tool-use/text-editor-tool
-	Type        string          `json:"type,omitempty"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema,omitempty"`
-	CacheControl    json.RawMessage `json:"cache_control,omitempty"`
+	Type         string          `json:"type,omitempty"`
+	Description  string          `json:"description,omitempty"`
+	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
+	CacheControl json.RawMessage `json:"cache_control,omitempty"`
 }
 
 // usage represents the billing and rate-limit usage.
