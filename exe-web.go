@@ -650,11 +650,9 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 	)
 
 	// Check if this is an SSH session token (in-memory)
-	s.emailVerificationsMu.Lock()
-	verification, exists := s.emailVerifications[token]
-	s.emailVerificationsMu.Unlock()
+	verification := s.lookUpEmailVerification(token)
 
-	if exists {
+	if verification != nil {
 		email = verification.Email
 		code = verification.PairingCode
 	} else {

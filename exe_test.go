@@ -100,24 +100,10 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestEmailVerificationHTTP(t *testing.T) {
 	server := NewTestServer(t)
-
-	// Create a test email verification
-	token := server.generateRegistrationToken()
-	verification := &EmailVerification{
-		PublicKey:    "ssh-rsa test-key",
-		Email:        "test@example.com",
-		Token:        token,
-		PairingCode:  "654321",
-		CompleteChan: make(chan struct{}),
-		CreatedAt:    time.Now(),
-	}
-
-	server.emailVerificationsMu.Lock()
-	server.emailVerifications[token] = verification
-	server.emailVerificationsMu.Unlock()
+	verification := server.addEmailVerification("ssh-rsa test-key", "test@example.com", true)
 
 	// Test GET request shows form
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email?token=%s", server.httpLn.tcp.Port, token))
+	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email?token=%s", server.httpLn.tcp.Port, verification.Token))
 	if err != nil {
 		t.Fatalf("Failed to GET verify-email: %v", err)
 	}
@@ -129,7 +115,7 @@ func TestEmailVerificationHTTP(t *testing.T) {
 
 	// Test POST request completes verification
 	form := url.Values{}
-	form.Add("token", token)
+	form.Add("token", verification.Token)
 	resp, err = http.Post(
 		fmt.Sprintf("http://127.0.0.1:%d/verify-email", server.httpLn.tcp.Port),
 		"application/x-www-form-urlencoded",
