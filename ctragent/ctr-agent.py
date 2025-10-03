@@ -107,6 +107,24 @@ def inside_mode(args):
     # After exit, print slug and clean up worktree if branch hasn't moved
     print(f"\nExited container: {args.slug}")
 
+    # Check if workspace is dirty and commit if so
+    git_status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        capture_output=True, text=True, check=False
+    )
+
+    if git_status.returncode == 0 and git_status.stdout.strip():
+        print(f"Workspace is dirty, creating commit...")
+        # Add all changes
+        subprocess.run(["git", "add", "-A"], check=False)
+        # Create commit
+        commit_msg = f"Auto-commit by ctragent on exit\n\nAgent: {args.agent}\nBranch: {args.slug}"
+        subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            check=False
+        )
+        print(f"Created commit for dirty workspace")
+
     # Check if branch still points to original commit
     current_commit = subprocess.run(
         ["git", "rev-parse", args.slug],
