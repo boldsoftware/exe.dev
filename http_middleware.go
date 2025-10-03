@@ -1,6 +1,7 @@
 package exe
 
 import (
+	"bufio"
 	"context"
 	"log/slog"
 	"net"
@@ -29,6 +30,21 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 		rw.written = true
 	}
 	return rw.ResponseWriter.Write(b)
+}
+
+// Flush implements http.Flusher to support streaming responses like SSE
+func (rw *responseWriter) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Hijack implements http.Hijacker for WebSocket support
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := rw.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
 }
 
 // requestLogInfoKey is used to pass request classification info via context.
