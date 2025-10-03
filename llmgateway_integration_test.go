@@ -30,10 +30,10 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
-	// Get the user to find their alloc
-	var userID, allocID string
+	// Get the user to find their alloc and billing account
+	var userID, allocID, billingAccountID string
 	err := server.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT u.user_id, a.alloc_id FROM users u JOIN allocs a ON u.user_id = a.user_id WHERE u.email = ?`, "test@example.com").Scan(&userID, &allocID)
+		return rx.QueryRow(`SELECT u.user_id, a.alloc_id, u.default_billing_account_id FROM users u JOIN allocs a ON u.user_id = a.user_id WHERE u.email = ?`, "test@example.com").Scan(&userID, &allocID, &billingAccountID)
 	})
 	if err != nil {
 		t.Fatalf("Failed to get user and alloc: %v", err)
@@ -70,21 +70,9 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to encode bearer token: %v", err)
 	}
 
-	// Use server's real accountant and set up a positive balance
+	// Use server's real accountant
+	// Note: The user already has $100 in new user credits from createUser
 	accountant := server.accountant
-	credit := accounting.UsageCredit{
-		BillingAccountID: "test-billing-account",
-		Amount:           10.0,
-		PaymentMethod:    "test",
-		PaymentID:        "test-payment",
-		Status:           "completed",
-	}
-	err = server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-		return accountant.CreditUsage(ctx, tx, credit)
-	})
-	if err != nil {
-		t.Fatalf("Failed to add test balance: %v", err)
-	}
 
 	// Use the exe.Server as boxKeyAuthority (it implements the interface)
 	gateway := llmgateway.NewGateway(accountant, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
@@ -160,9 +148,24 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	})
 
 	t.Run("insufficient balance", func(t *testing.T) {
-		// Create gateway with zero balance (insufficient)
-		insuffBalanceAcct := accounting.NewAccountant()
-		negativeGateway := llmgateway.NewGateway(insuffBalanceAcct, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
+		// Drain the user's balance to create insufficient balance scenario
+		// User has $100 from new user credits, so debit $150 to make balance negative
+		debit := accounting.UsageDebit{
+			Usage: accounting.Usage{
+				CostUSD: 150.0,
+			},
+			BillingAccountID: billingAccountID,
+			Created:          time.Now(),
+		}
+		err := server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+			return accountant.DebitUsage(ctx, tx, debit)
+		})
+		if err != nil {
+			t.Fatalf("Failed to debit balance: %v", err)
+		}
+
+		// Now create gateway - it will see the negative balance
+		negativeGateway := llmgateway.NewGateway(accountant, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
 		negativeServer := httptest.NewServer(negativeGateway)
 		defer negativeServer.Close()
 

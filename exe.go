@@ -1715,6 +1715,12 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 			return err
 		}
 
+		// Apply new user credits
+		err = s.accountant.ApplyNewUserCredits(ctx, tx, billingAccountID)
+		if err != nil {
+			return fmt.Errorf("failed to apply new user credits: %w", err)
+		}
+
 		// Add the SSH key to ssh_keys table
 		err = queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
 			UserID:    userID,

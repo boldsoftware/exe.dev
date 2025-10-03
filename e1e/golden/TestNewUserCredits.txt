@@ -1,0 +1,49 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a machine over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: TestNewUserCredits@example.com
+
+Verification email sent to: TestNewUserCredits@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+To create your first box, run:
+
+  new
+
+Or type `help` to see a list of commands.
+exe.dev ▶ whoami
+Email Address: TestNewUserCredits@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ billing
+Billing Information:
+
+  Email: TestNewUserCredits@example.com
+  Current Balance: 100.00
+  Status: Not Configured
+  run `billing setup` to configure
+exe.dev ▶ exit
+Goodbye!
