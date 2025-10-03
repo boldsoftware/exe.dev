@@ -3,22 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>exe.dev Terminal</title>
+    <title id="page-title">Terminal</title>
     <link rel="stylesheet" href="/static/xterm.css">
     <style>
+        :root {
+            --bg-primary: #f8f9fa;
+            --bg-secondary: white;
+            --border-color: #e9ecef;
+            --text-primary: #343a40;
+            --text-secondary: #6c757d;
+            --terminal-bg: #ffffff;
+            --terminal-fg: #24292f;
+            --terminal-cursor: #0969da;
+            --terminal-selection: rgba(9, 105, 218, 0.99);
+            --terminal-border: #dee2e6;
+            --theme-button-bg: #f8f9fa;
+            --theme-button-hover: #e9ecef;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --terminal-bg: #0d1117;
+            --terminal-fg: #e6edf3;
+            --terminal-cursor: #58a6ff;
+            --terminal-selection: rgba(88, 166, 255, 0.3);
+            --terminal-border: #30363d;
+            --theme-button-bg: #21262d;
+            --theme-button-hover: #30363d;
+        }
+
         body {
             margin: 0;
             padding: 20px;
-            background-color: #f8f9fa;
+            background-color: var(--bg-primary);
             font-family: system-ui, -apple-system, sans-serif;
+            transition: background-color 0.2s ease;
         }
         .terminal-frame {
-            background: white;
+            background: var(--bg-secondary);
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             padding: 20px;
             margin: 0 auto;
             max-width: 1200px;
+            transition: background-color 0.2s ease;
         }
         .terminal-header {
             display: flex;
@@ -26,22 +58,41 @@
             align-items: center;
             margin-bottom: 16px;
             padding-bottom: 12px;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid var(--border-color);
         }
         .terminal-title {
             font-size: 18px;
             font-weight: 600;
-            color: #343a40;
+            color: var(--text-primary);
         }
         .terminal-info {
             font-size: 14px;
-            color: #6c757d;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .theme-toggle {
+            background: var(--theme-button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-primary);
+            transition: background-color 0.2s ease;
+        }
+        .theme-toggle:hover {
+            background: var(--theme-button-hover);
         }
         #terminal {
-            border: 1px solid #dee2e6;
+            border: 1px solid var(--terminal-border);
             border-radius: 4px;
             padding: 10px;
-            background-color: #ffffff;
+            background-color: var(--terminal-bg);
+        }
+        #terminal ::selection {
+            background: var(--terminal-selection);
         }
         .connection-status {
             position: fixed;
@@ -103,8 +154,13 @@
 <body>
     <div class="terminal-frame">
         <div class="terminal-header">
-            <div class="terminal-title">Terminal</div>
-            <div class="terminal-info">Sessions timeout after 10 minutes of inactivity. Use tmux to persist sessions.</div>
+            <div class="terminal-title" id="terminal-title">Terminal</div>
+            <div class="terminal-info">
+                <span>Sessions timeout after 10 minutes of inactivity. Use tmux to persist sessions.</span>
+                <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
+                    <span class="theme-icon">◐</span>
+                </button>
+            </div>
         </div>
         <div id="connection-status" class="connection-status">
             <div class="status-icon"></div>
@@ -115,30 +171,15 @@
 
     <script src="/static/xterm.js"></script>
     <script>
-        class TerminalClient {
+        // Theme management
+        class ThemeManager {
             constructor() {
-                this.terminal = null;
-                this.eventSource = null;
-                this.terminalId = this.getTerminalId();
-                this.inputQueue = [];
-                this.processingInput = false;
-            }
-
-            getTerminalId() {
-                const urlParams = new URLSearchParams(window.location.search);
-                return urlParams.get('t') || '1';
-            }
-
-            init() {
-                this.terminal = new Terminal({
-                    cursorBlink: true,
-                    fontSize: 14,
-                    fontFamily: 'Consolas, "Liberation Mono", Menlo, Courier, monospace',
-                    theme: {
+                this.themes = {
+                    light: {
                         background: '#ffffff',
                         foreground: '#24292f',
                         cursor: '#0969da',
-                        selection: '#0969da33',
+                        selection: '#b3d7ff',
                         black: '#24292f',
                         red: '#cf222e',
                         green: '#116329',
@@ -155,15 +196,126 @@
                         brightMagenta: '#a475f9',
                         brightCyan: '#3192aa',
                         brightWhite: '#8c959f'
+                    },
+                    dark: {
+                        background: '#0d1117',
+                        foreground: '#e6edf3',
+                        cursor: '#58a6ff',
+                        selection: 'rgba(88, 166, 255, 0.3)',
+                        black: '#484f58',
+                        red: '#ff7b72',
+                        green: '#3fb950',
+                        yellow: '#d29922',
+                        blue: '#58a6ff',
+                        magenta: '#bc8cff',
+                        cyan: '#39c5cf',
+                        white: '#b1bac4',
+                        brightBlack: '#6e7681',
+                        brightRed: '#ffa198',
+                        brightGreen: '#56d364',
+                        brightYellow: '#e3b341',
+                        brightBlue: '#79c0ff',
+                        brightMagenta: '#d2a8ff',
+                        brightCyan: '#56d4dd',
+                        brightWhite: '#f0f6fc'
                     }
+                };
+                this.currentTheme = this.loadTheme();
+                this.applyTheme(this.currentTheme);
+            }
+
+            loadTheme() {
+                const saved = localStorage.getItem('terminal-theme');
+                return saved === 'dark' ? 'dark' : 'light';
+            }
+
+            saveTheme(theme) {
+                localStorage.setItem('terminal-theme', theme);
+            }
+
+            applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                this.currentTheme = theme;
+                this.saveTheme(theme);
+            }
+
+            toggle() {
+                const newTheme = this.currentTheme === 'light' ? 'dark' : 'light';
+                this.applyTheme(newTheme);
+                return newTheme;
+            }
+
+            getTerminalTheme() {
+                return this.themes[this.currentTheme];
+            }
+        }
+
+        class TerminalClient {
+            constructor() {
+                this.terminal = null;
+                this.eventSource = null;
+                this.terminalId = this.getTerminalId();
+                this.inputQueue = [];
+                this.processingInput = false;
+                this.themeManager = new ThemeManager();
+                this.boxName = this.getBoxName();
+            }
+
+            getTerminalId() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('t') || '1';
+            }
+
+            getBoxName() {
+                const hostname = window.location.hostname;
+                // Extract box name from hostname (box.xterm.localhost or box.xterm.exe.dev)
+                const parts = hostname.split('.');
+                if (parts.length >= 3) {
+                    return parts[0];
+                }
+                return null;
+            }
+
+            updatePageTitle() {
+                const titleEl = document.getElementById('page-title');
+                const headerEl = document.getElementById('terminal-title');
+                if (this.boxName) {
+                    const title = `${this.boxName} - Terminal`;
+                    if (titleEl) titleEl.textContent = title;
+                    if (headerEl) headerEl.textContent = title;
+                } else {
+                    if (titleEl) titleEl.textContent = 'Terminal';
+                    if (headerEl) headerEl.textContent = 'Terminal';
+                }
+            }
+
+            init() {
+                this.updatePageTitle();
+                
+                this.terminal = new Terminal({
+                    cursorBlink: true,
+                    fontSize: 14,
+                    fontFamily: 'Consolas, "Liberation Mono", Menlo, Courier, monospace',
+                    theme: this.themeManager.getTerminalTheme()
                 });
 
                 this.terminal.open(document.getElementById('terminal'));
                 this.setupEventHandlers();
+                this.setupThemeToggle();
                 this.connect();
                 this.fitTerminal();
                 
                 window.addEventListener('resize', () => this.fitTerminal());
+            }
+
+            setupThemeToggle() {
+                const toggleBtn = document.getElementById('theme-toggle');
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', () => {
+                        this.themeManager.toggle();
+                        this.terminal.options.theme = this.themeManager.getTerminalTheme();
+                    });
+                }
             }
 
             setupEventHandlers() {
