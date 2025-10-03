@@ -657,7 +657,10 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		select {
 		case <-ctx.Done():
 			return
-		case streamData := <-updateChan:
+		case streamData, ok := <-updateChan:
+			if !ok {
+				return
+			}
 			// Always forward updates, even if only the conversation changed (e.g., slug added)
 			data, _ := json.Marshal(streamData)
 			fmt.Fprintf(w, "data: %s\n\n", data)
@@ -979,12 +982,17 @@ func (s *Server) Cleanup() {
 	for id, manager := range s.activeConversations {
 		// Remove managers that have been inactive for more than 30 minutes
 		if now.Sub(manager.lastActivity) > 30*time.Minute {
-			// Close all subscriber channels
+			// Collect subscriber IDs then unsubscribe outside the manager lock to avoid double-closing channels
 			manager.mu.Lock()
-			for _, sub := range manager.subscribers {
-				close(sub.channel)
+			subscriberIDs := make([]string, 0, len(manager.subscribers))
+			for subscriberID := range manager.subscribers {
+				subscriberIDs = append(subscriberIDs, subscriberID)
 			}
 			manager.mu.Unlock()
+
+			for _, subscriberID := range subscriberIDs {
+				manager.unsubscribe(subscriberID)
+			}
 
 			delete(s.activeConversations, id)
 			s.logger.Debug("Cleaned up inactive conversation", "conversationID", id)
