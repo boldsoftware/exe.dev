@@ -623,8 +623,148 @@ button {
   }
 }
 
-/* Bash Tool Component */
-.bash-tool {
+/* Tool Component (shared styles for all tools) */
+.tool {
+  background: var(--gray-100);
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+.dark .tool {
+  background: var(--gray-800);
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-header:hover {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0.5rem;
+}
+
+.dark .tool-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tool-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-emoji {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.tool-emoji.running {
+  animation: rotate 1s linear infinite;
+}
+
+.tool-command {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-running {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  flex-shrink: 0;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.tool-success {
+  color: var(--success-text);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.tool-error {
+  color: var(--error-text);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.tool-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.tool-toggle:hover {
+  color: var(--text-primary);
+}
+
+.tool-details {
+  padding: 0 1rem 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tool-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tool-time {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-weight: normal;
+}
+
+.tool-code {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.875rem;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.75rem;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.tool-code.error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-text);
+}
+
+/* Bash Tool Component - uses shared tool styles */
+.bash-tool { /* Alias for backwards compatibility */
   background: var(--gray-100);
   border-radius: 0.5rem;
   margin: 0.5rem 0;
@@ -664,6 +804,10 @@ button {
 .bash-tool-emoji {
   font-size: 1rem;
   flex-shrink: 0;
+}
+
+.bash-tool-emoji.running {
+  animation: rotate 1s linear infinite;
 }
 
 .bash-tool-command {
@@ -802,6 +946,10 @@ button {
   flex-shrink: 0;
 }
 
+.patch-tool-emoji.running {
+  animation: rotate 1s linear infinite;
+}
+
 .patch-tool-filename {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 0.875rem;
@@ -925,6 +1073,157 @@ button {
 }
 
 .patch-tool-error-message {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.875rem;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 0.25rem;
+  padding: 0.75rem;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--error-text);
+}
+
+/* Screenshot Tool */
+.screenshot-tool {
+  background: var(--gray-100);
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+
+.dark .screenshot-tool {
+  background: var(--gray-800);
+}
+
+.screenshot-tool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.screenshot-tool-header:hover {
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0.5rem;
+}
+
+.dark .screenshot-tool-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.screenshot-tool-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.screenshot-tool-emoji {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.screenshot-tool-emoji.running {
+  animation: rotate 1s linear infinite;
+}
+
+.screenshot-tool-filename {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.screenshot-tool-running {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  flex-shrink: 0;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.screenshot-tool-success {
+  color: var(--success-text);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.screenshot-tool-error {
+  color: var(--error-text);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.screenshot-tool-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.screenshot-tool-toggle:hover {
+  color: var(--text-primary);
+}
+
+.screenshot-tool-details {
+  padding: 0 1rem 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.screenshot-tool-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.screenshot-tool-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.screenshot-tool-time {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-weight: normal;
+}
+
+.screenshot-tool-image-container {
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  overflow: hidden;
+  background: var(--bg-base);
+}
+
+.screenshot-tool-image-container a {
+  display: block;
+}
+
+.screenshot-tool-image-container img {
+  display: block;
+  border-radius: 0.25rem;
+}
+
+.screenshot-tool-error-message {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-size: 0.875rem;
   background: var(--error-bg);
@@ -1308,5 +1607,16 @@ svg {
   
   .backdrop {
     display: none !important;
+  }
+}
+
+
+/* Rotation animation for running tools */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }

@@ -6,6 +6,13 @@ import MessageInput from './MessageInput';
 import Modal from './Modal';
 import BashTool from './BashTool';
 import PatchTool from './PatchTool';
+import ScreenshotTool from './ScreenshotTool';
+import ThinkTool from './ThinkTool';
+import KeywordSearchTool from './KeywordSearchTool';
+import BrowserNavigateTool from './BrowserNavigateTool';
+import BrowserEvalTool from './BrowserEvalTool';
+import ReadImageTool from './ReadImageTool';
+import BrowserConsoleLogsTool from './BrowserConsoleLogsTool';
 
 interface CoalescedToolCallProps {
   toolName: string;
@@ -17,14 +24,29 @@ interface CoalescedToolCallProps {
   hasResult?: boolean;
 }
 
-function CoalescedToolCall({ 
-  toolName, 
-  toolInput, 
-  toolResult, 
-  toolError, 
-  toolStartTime, 
-  toolEndTime, 
-  hasResult 
+// Map tool names to their specialized components
+const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
+  'bash': BashTool,
+  'patch': PatchTool,
+  'screenshot': ScreenshotTool,
+  'browser_take_screenshot': ScreenshotTool,
+  'think': ThinkTool,
+  'keyword_search': KeywordSearchTool,
+  'browser_navigate': BrowserNavigateTool,
+  'browser_eval': BrowserEvalTool,
+  'read_image': ReadImageTool,
+  'browser_recent_console_logs': BrowserConsoleLogsTool,
+  'browser_clear_console_logs': BrowserConsoleLogsTool,
+};
+
+function CoalescedToolCall({
+  toolName,
+  toolInput,
+  toolResult,
+  toolError,
+  toolStartTime,
+  toolEndTime,
+  hasResult
 }: CoalescedToolCallProps) {
   // Calculate execution time if available
   let executionTime = '';
@@ -39,30 +61,19 @@ function CoalescedToolCall({
     }
   }
 
-  // Use specialized BashTool component for bash
-  if (toolName === 'bash') {
-    return (
-      <BashTool
-        toolInput={toolInput}
-        isRunning={!hasResult}
-        toolResult={toolResult}
-        hasError={toolError}
-        executionTime={executionTime}
-      />
-    );
-  }
-
-  // Use specialized PatchTool component for patch
-  if (toolName === 'patch') {
-    return (
-      <PatchTool
-        toolInput={toolInput}
-        isRunning={!hasResult}
-        toolResult={toolResult}
-        hasError={toolError}
-        executionTime={executionTime}
-      />
-    );
+  // Look up the specialized component for this tool
+  const ToolComponent = TOOL_COMPONENTS[toolName];
+  if (ToolComponent) {
+    const props = {
+      toolInput,
+      isRunning: !hasResult,
+      toolResult,
+      hasError: toolError,
+      executionTime,
+      // BrowserConsoleLogsTool needs the toolName prop
+      ...(toolName === 'browser_recent_console_logs' || toolName === 'browser_clear_console_logs' ? { toolName } : {}),
+    };
+    return <ToolComponent {...props} />;
   }
 
   const getToolResultSummary = (results: LLMContent[]) => {

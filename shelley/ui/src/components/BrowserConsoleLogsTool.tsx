@@ -1,33 +1,24 @@
 import React, { useState } from "react";
 import { LLMContent } from "../types";
 
-interface BashToolProps {
-  // For tool_use (pending state)
+interface BrowserConsoleLogsToolProps {
+  toolName: string; // to distinguish between recent and clear
   toolInput?: any;
   isRunning?: boolean;
-
-  // For tool_result (completed state)
   toolResult?: LLMContent[];
   hasError?: boolean;
   executionTime?: string;
 }
 
-function BashTool({
+function BrowserConsoleLogsTool({
+  toolName,
   toolInput,
   isRunning,
   toolResult,
   hasError,
   executionTime,
-}: BashToolProps) {
+}: BrowserConsoleLogsToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-
-  // Extract command from toolInput
-  const command =
-    typeof toolInput === "object" && toolInput?.command
-      ? toolInput.command
-      : typeof toolInput === "string"
-      ? toolInput
-      : "";
 
   // Extract output from toolResult
   const output =
@@ -35,31 +26,37 @@ function BashTool({
       ? toolResult[0].Text
       : "";
 
-  // Truncate command for display
-  const truncateCommand = (cmd: string, maxLen: number = 300) => {
-    if (cmd.length <= maxLen) return cmd;
-    return cmd.substring(0, maxLen) + "...";
+  // Determine display text based on tool name and state
+  const getDisplayText = () => {
+    if (isRunning) {
+      return toolName === "browser_console_clear_logs"
+        ? "clearing console..."
+        : "fetching console logs...";
+    }
+    return toolName === "browser_console_clear_logs"
+      ? "clear console"
+      : "console logs";
   };
 
-  const displayCommand = truncateCommand(command);
+  const displayText = getDisplayText();
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
-    <div className="bash-tool">
+    <div className="tool">
       <div
-        className="bash-tool-header"
+        className="tool-header"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="bash-tool-summary">
-          <span className={`bash-tool-emoji ${isRunning ? 'running' : ''}`}>🛠️</span>
-          <span className="bash-tool-command">{displayCommand}</span>
-          {isComplete && hasError && <span className="bash-tool-error">✗</span>}
+        <div className="tool-summary">
+          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>📋</span>
+          <span className="tool-command">{displayText}</span>
+          {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && (
-            <span className="bash-tool-success">✓</span>
+            <span className="tool-success">✓</span>
           )}
         </div>
         <button
-          className="bash-tool-toggle"
+          className="tool-toggle"
           aria-label={isExpanded ? "Collapse" : "Expand"}
           aria-expanded={isExpanded}
         >
@@ -86,21 +83,16 @@ function BashTool({
       </div>
 
       {isExpanded && (
-        <div className="bash-tool-details">
-          <div className="bash-tool-section">
-            <div className="bash-tool-label">Command:</div>
-            <pre className="bash-tool-code">{command}</pre>
-          </div>
-
+        <div className="tool-details">
           {isComplete && (
-            <div className="bash-tool-section">
-              <div className="bash-tool-label">
+            <div className="tool-section">
+              <div className="tool-label">
                 Output{hasError ? " (Error)" : ""}:
                 {executionTime && (
-                  <span className="bash-tool-time">{executionTime}</span>
+                  <span className="tool-time">{executionTime}</span>
                 )}
               </div>
-              <pre className={`bash-tool-code ${hasError ? "error" : ""}`}>
+              <pre className={`tool-code ${hasError ? "error" : ""}`}>
                 {output || "(no output)"}
               </pre>
             </div>
@@ -111,4 +103,4 @@ function BashTool({
   );
 }
 
-export default BashTool;
+export default BrowserConsoleLogsTool;

@@ -67,6 +67,10 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 		// Trigger a screenshot of the current page
 		return s.makeScreenshotToolResponse(""), nil
 
+	case "tool smorgasbord":
+		// Return a response with all tool types for testing
+		return s.makeToolSmorgasbordResponse(), nil
+
 	case "echo: foo":
 		return s.makeResponse("foo"), nil
 
@@ -267,6 +271,117 @@ func (s *PredictableService) makeScreenshotToolResponse(selector string) *llm.Re
 			InputTokens:  5,
 			OutputTokens: 5,
 			CostUSD:      0.0,
+		},
+	}
+}
+
+// makeToolSmorgasbordResponse creates a response that uses all available tool types
+func (s *PredictableService) makeToolSmorgasbordResponse() *llm.Response {
+	baseNano := time.Now().UnixNano()
+	content := []llm.Content{
+		{Type: llm.ContentTypeText, Text: "Here's a sample of all the tools:"},
+	}
+
+	// bash tool
+	bashInput, _ := json.Marshal(map[string]string{"command": "echo 'hello from bash'"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_bash_%d", baseNano%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "bash",
+		ToolInput: json.RawMessage(bashInput),
+	})
+
+	// think tool
+	thinkInput, _ := json.Marshal(map[string]string{"thoughts": "I'm thinking about the best approach for this task. Let me consider all the options available."})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_think_%d", (baseNano+1)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "think",
+		ToolInput: json.RawMessage(thinkInput),
+	})
+
+	// patch tool
+	patchInput, _ := json.Marshal(map[string]interface{}{
+		"path": "/tmp/example.txt",
+		"patches": []map[string]string{
+			{"operation": "replace", "oldText": "foo", "newText": "bar"},
+		},
+	})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_patch_%d", (baseNano+2)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "patch",
+		ToolInput: json.RawMessage(patchInput),
+	})
+
+	// screenshot tool
+	screenshotInput, _ := json.Marshal(map[string]string{})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_screenshot_%d", (baseNano+3)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_take_screenshot",
+		ToolInput: json.RawMessage(screenshotInput),
+	})
+
+	// keyword_search tool
+	keywordInput, _ := json.Marshal(map[string]interface{}{
+		"query":        "find all references",
+		"search_terms": []string{"reference", "example"},
+	})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_keyword_%d", (baseNano+4)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "keyword_search",
+		ToolInput: json.RawMessage(keywordInput),
+	})
+
+	// browser_navigate tool
+	navigateInput, _ := json.Marshal(map[string]string{"url": "https://example.com"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_navigate_%d", (baseNano+5)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_navigate",
+		ToolInput: json.RawMessage(navigateInput),
+	})
+
+	// browser_eval tool
+	evalInput, _ := json.Marshal(map[string]string{"script": "document.title"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_eval_%d", (baseNano+6)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_eval",
+		ToolInput: json.RawMessage(evalInput),
+	})
+
+	// read_image tool
+	readImageInput, _ := json.Marshal(map[string]string{"path": "/tmp/image.png"})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_readimg_%d", (baseNano+7)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "read_image",
+		ToolInput: json.RawMessage(readImageInput),
+	})
+
+	// browser_recent_console_logs tool
+	consoleInput, _ := json.Marshal(map[string]string{})
+	content = append(content, llm.Content{
+		ID:        fmt.Sprintf("tool_console_%d", (baseNano+8)%1000),
+		Type:      llm.ContentTypeToolUse,
+		ToolName:  "browser_recent_console_logs",
+		ToolInput: json.RawMessage(consoleInput),
+	})
+
+	return &llm.Response{
+		ID:    fmt.Sprintf("pred-smorgasbord-%d", baseNano),
+		Type:  "message",
+		Role:  llm.MessageRoleAssistant,
+		Model: "predictable-v1",
+		Content: content,
+		StopReason: llm.StopReasonToolUse,
+		Usage: llm.Usage{
+			InputTokens:  100,
+			OutputTokens: 200,
+			CostUSD:      0.01,
 		},
 	}
 }

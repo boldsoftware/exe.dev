@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { LLMContent } from "../types";
 
-interface BashToolProps {
+interface BrowserEvalToolProps {
   // For tool_use (pending state)
-  toolInput?: any;
+  toolInput?: any; // { script: string }
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -12,54 +12,54 @@ interface BashToolProps {
   executionTime?: string;
 }
 
-function BashTool({
+function BrowserEvalTool({
   toolInput,
   isRunning,
   toolResult,
   hasError,
   executionTime,
-}: BashToolProps) {
+}: BrowserEvalToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Extract command from toolInput
-  const command =
-    typeof toolInput === "object" && toolInput?.command
-      ? toolInput.command
+  // Extract script from toolInput
+  const script =
+    typeof toolInput === "object" && toolInput?.script
+      ? toolInput.script
       : typeof toolInput === "string"
       ? toolInput
       : "";
 
-  // Extract output from toolResult
-  const output =
+  // Extract result from toolResult
+  const result =
     toolResult && toolResult.length > 0 && toolResult[0].Text
       ? toolResult[0].Text
       : "";
 
-  // Truncate command for display
-  const truncateCommand = (cmd: string, maxLen: number = 300) => {
-    if (cmd.length <= maxLen) return cmd;
-    return cmd.substring(0, maxLen) + "...";
+  // Truncate script for display
+  const truncateScript = (scr: string, maxLen: number = 300) => {
+    if (scr.length <= maxLen) return scr;
+    return scr.substring(0, maxLen) + "...";
   };
 
-  const displayCommand = truncateCommand(command);
+  const displayScript = truncateScript(script);
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
-    <div className="bash-tool">
+    <div className="tool">
       <div
-        className="bash-tool-header"
+        className="tool-header"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="bash-tool-summary">
-          <span className={`bash-tool-emoji ${isRunning ? 'running' : ''}`}>🛠️</span>
-          <span className="bash-tool-command">{displayCommand}</span>
-          {isComplete && hasError && <span className="bash-tool-error">✗</span>}
+        <div className="tool-summary">
+          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>⚡</span>
+          <span className="tool-command">{displayScript}</span>
+          {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && (
-            <span className="bash-tool-success">✓</span>
+            <span className="tool-success">✓</span>
           )}
         </div>
         <button
-          className="bash-tool-toggle"
+          className="tool-toggle"
           aria-label={isExpanded ? "Collapse" : "Expand"}
           aria-expanded={isExpanded}
         >
@@ -86,22 +86,22 @@ function BashTool({
       </div>
 
       {isExpanded && (
-        <div className="bash-tool-details">
-          <div className="bash-tool-section">
-            <div className="bash-tool-label">Command:</div>
-            <pre className="bash-tool-code">{command}</pre>
+        <div className="tool-details">
+          <div className="tool-section">
+            <div className="tool-label">Script:</div>
+            <pre className="tool-code">{script}</pre>
           </div>
 
           {isComplete && (
-            <div className="bash-tool-section">
-              <div className="bash-tool-label">
-                Output{hasError ? " (Error)" : ""}:
+            <div className="tool-section">
+              <div className="tool-label">
+                Result{hasError ? " (Error)" : ""}:
                 {executionTime && (
-                  <span className="bash-tool-time">{executionTime}</span>
+                  <span className="tool-time">{executionTime}</span>
                 )}
               </div>
-              <pre className={`bash-tool-code ${hasError ? "error" : ""}`}>
-                {output || "(no output)"}
+              <pre className={`tool-code ${hasError ? "error" : ""}`}>
+                {result || "(no result)"}
               </pre>
             </div>
           )}
@@ -111,4 +111,4 @@ function BashTool({
   );
 }
 
-export default BashTool;
+export default BrowserEvalTool;

@@ -2,6 +2,14 @@ import React, { useState, useRef } from 'react';
 import { Message as MessageType, LLMMessage, LLMContent, Usage } from '../types';
 import BashTool from './BashTool';
 import PatchTool from './PatchTool';
+import ScreenshotTool from './ScreenshotTool';
+import GenericTool from './GenericTool';
+import ThinkTool from './ThinkTool';
+import KeywordSearchTool from './KeywordSearchTool';
+import BrowserNavigateTool from './BrowserNavigateTool';
+import BrowserEvalTool from './BrowserEvalTool';
+import ReadImageTool from './ReadImageTool';
+import BrowserConsoleLogsTool from './BrowserConsoleLogsTool';
 
 // Display data types from different tools
 interface ToolDisplay {
@@ -245,25 +253,77 @@ function Message({ message }: MessageProps) {
             />
           );
         }
-        // Default rendering for other tools
+        // Use specialized component for screenshot tool
+        if (content.ToolName === 'screenshot' || content.ToolName === 'browser_take_screenshot') {
+          return (
+            <ScreenshotTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Use specialized component for think tool
+        if (content.ToolName === 'think') {
+          return (
+            <ThinkTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Use specialized component for keyword search tool
+        if (content.ToolName === 'keyword_search') {
+          return (
+            <KeywordSearchTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Use specialized component for browser navigate tool
+        if (content.ToolName === 'browser_navigate') {
+          return (
+            <BrowserNavigateTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Use specialized component for browser eval tool
+        if (content.ToolName === 'browser_eval') {
+          return (
+            <BrowserEvalTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Use specialized component for read image tool
+        if (content.ToolName === 'read_image') {
+          return (
+            <ReadImageTool
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Use specialized component for browser console logs tools
+        if (content.ToolName === 'browser_recent_console_logs' || content.ToolName === 'browser_clear_console_logs') {
+          return (
+            <BrowserConsoleLogsTool
+              toolName={content.ToolName}
+              toolInput={content.ToolInput}
+              isRunning={true}
+            />
+          );
+        }
+        // Default rendering for other tools using GenericTool
         return (
-          <div className="tool-use">
-            <div className="tool-header">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span className="tool-name">
-                Tool: {content.ToolName}
-              </span>
-            </div>
-            <div className="tool-input">
-              {typeof content.ToolInput === 'string' 
-                ? content.ToolInput 
-                : JSON.stringify(content.ToolInput, null, 2)
-              }
-            </div>
-          </div>
+          <GenericTool
+            toolName={content.ToolName || 'Unknown Tool'}
+            toolInput={content.ToolInput}
+            isRunning={true}
+          />
         );
       case 'tool_result': {
         const hasError = content.ToolError;
@@ -317,7 +377,7 @@ function Message({ message }: MessageProps) {
             />
           );
         }
-        
+
         // Use specialized component for patch tool
         if (toolName === 'patch') {
           return (
@@ -330,57 +390,111 @@ function Message({ message }: MessageProps) {
             />
           );
         }
-        
-        // Default rendering for other tools
+
+        // Use specialized component for screenshot tool
+        if (toolName === 'screenshot' || toolName === 'browser_take_screenshot') {
+          return (
+            <ScreenshotTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+              display={content.Display}
+            />
+          );
+        }
+
+        // Use specialized component for think tool
+        if (toolName === 'think') {
+          return (
+            <ThinkTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+
+        // Use specialized component for keyword search tool
+        if (toolName === 'keyword_search') {
+          return (
+            <KeywordSearchTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+
+        // Use specialized component for browser navigate tool
+        if (toolName === 'browser_navigate') {
+          return (
+            <BrowserNavigateTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+
+        // Use specialized component for browser eval tool
+        if (toolName === 'browser_eval') {
+          return (
+            <BrowserEvalTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+
+        // Use specialized component for read image tool
+        if (toolName === 'read_image') {
+          return (
+            <ReadImageTool
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+              display={content.Display}
+            />
+          );
+        }
+
+        // Use specialized component for browser console logs tools
+        if (toolName === 'browser_recent_console_logs' || toolName === 'browser_clear_console_logs') {
+          return (
+            <BrowserConsoleLogsTool
+              toolName={toolName}
+              toolInput={toolInput}
+              isRunning={false}
+              toolResult={content.ToolResult}
+              hasError={hasError}
+              executionTime={executionTime}
+            />
+          );
+        }
+
+        // Default rendering for other tools using GenericTool
         return (
-          <details className={`tool-result-details ${hasError ? 'error' : ''}`}>
-            <summary className="tool-result-summary">
-              <div className="tool-result-meta">
-                <div className="flex items-center space-x-2">
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="text-sm font-medium text-blue">
-                    {toolName}
-                  </span>
-                  <span className={`tool-result-status text-xs ${hasError ? 'error' : 'success'}`}>
-                    {hasError ? '✗' : '✓'} {summary}
-                  </span>
-                </div>
-                <div className="tool-result-time">
-                  {executionTime && <span>{executionTime}</span>}
-                </div>
-              </div>
-            </summary>
-            <div className="tool-result-content">
-              {/* Show tool input */}
-              <div className="tool-result-section">
-                <div className="tool-result-label">Input:</div>
-                <div className="tool-result-data">
-                  {toolInput ? (
-                    typeof toolInput === 'string' 
-                      ? toolInput 
-                      : JSON.stringify(toolInput, null, 2)
-                  ) : (
-                    <span className="text-secondary italic">No input data</span>
-                  )}
-                </div>
-              </div>
-              
-              {/* Show tool output with header */}
-              <div className={`tool-result-section output ${hasError ? 'error' : ''}`}>
-                <div className="tool-result-label">Output{hasError ? ' (Error)' : ''}:</div>
-                <div className="space-y-2">
-                  {content.ToolResult?.map((result, idx) => (
-                    <div key={idx}>
-                      {renderContent(result)}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </details>
+          <GenericTool
+            toolName={toolName}
+            toolInput={toolInput}
+            isRunning={false}
+            toolResult={content.ToolResult}
+            hasError={hasError}
+            executionTime={executionTime}
+          />
         );
       }
       case 'redacted_thinking':
@@ -449,97 +563,48 @@ function Message({ message }: MessageProps) {
   const renderDisplayData = (toolDisplay: ToolDisplay, toolName?: string) => {
     const display = toolDisplay.display;
 
-    // If this is a screenshot display payload, render the image from the server route
+    // Skip rendering screenshot displays here - they are handled by tool_result rendering
     if (display && typeof display === 'object' && (display as any).type === 'screenshot') {
-      const d = display as { id?: string; url?: string; path?: string; selector?: string };
-      const url = d.url || (d.path ? `/api/read?path=${encodeURIComponent(d.path)}` : (d.id ? `/api/read?path=${encodeURIComponent(d.id)}` : undefined));
-      return (
-        <div className="tool-result-details">
-          <details open>
-            <summary className="tool-result-summary">
-              <div className="tool-result-meta">
-                <div className="flex items-center space-x-2">
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '1rem', height: '1rem', color: 'var(--blue-text)' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h4l2-2h6l2 2h4v12H3z" />
-                  </svg>
-                  <span className="text-sm font-medium text-blue">screenshot</span>
-                  {d.selector && (
-                    <span className="text-xs text-secondary">selector: {d.selector}</span>
-                  )}
-                </div>
-              </div>
-            </summary>
-            <div className="tool-result-content">
-              {url ? (
-                <a href={url} target="_blank" rel="noreferrer">
-                  <img
-                    src={url}
-                    alt={d.selector ? `Screenshot of ${d.selector}` : 'Screenshot'}
-                    className="rounded border"
-                    style={{ maxWidth: '100%', height: 'auto' }}
-                  />
-                </a>
-              ) : (
-                <div className="text-secondary text-sm italic">screenshot available</div>
-              )}
-            </div>
-          </details>
-        </div>
-      );
+      return null;
     }
 
     // Infer tool type from display content if tool name not provided
     const inferredToolName = toolName || (typeof display === 'string' && display.includes('---') && display.includes('+++') ? 'patch' : undefined);
 
-    // Render based on tool name if available
+    // Render patch tool displays using PatchTool component
     if (inferredToolName === 'patch' && typeof display === 'string') {
-      // It's likely a unified diff from the patch tool
+      // Create a mock toolResult with the diff in Text field
+      const mockToolResult: LLMContent[] = [{
+        ID: toolDisplay.tool_use_id,
+        Type: 6, // tool_result
+        Text: display
+      }];
+
       return (
-        <div className="tool-result-details">
-          <details open>
-            <summary className="tool-result-summary">
-              <div className="tool-result-meta">
-                <div className="flex items-center space-x-2">
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="text-sm font-medium text-blue">{inferredToolName}</span>
-                </div>
-              </div>
-            </summary>
-            <div className="tool-result-content">
-              <pre className="diff-display">
-                {display}
-              </pre>
-            </div>
-          </details>
-        </div>
+        <PatchTool
+          toolInput={{}}
+          isRunning={false}
+          toolResult={mockToolResult}
+          hasError={false}
+        />
       );
     }
 
-    // For other types of display data, render as JSON
+    // For other types of display data, use GenericTool component
+    const mockToolResult: LLMContent[] = [{
+      ID: toolDisplay.tool_use_id,
+      Type: 6, // tool_result
+      Text: JSON.stringify(display, null, 2)
+    }];
+
     return (
-      <div className="tool-result-details">
-        <details open>
-          <summary className="tool-result-summary">
-            <div className="tool-result-meta">
-              <div className="flex items-center space-x-2">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span className="text-sm font-medium text-blue">{inferredToolName || 'Tool output'}</span>
-              </div>
-            </div>
-          </summary>
-          <div className="tool-result-content">
-            <pre style={{whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>
-              {JSON.stringify(display, null, 2)}
-            </pre>
-          </div>
-        </details>
-      </div>
+      <GenericTool
+        toolName={inferredToolName || toolName || 'Tool output'}
+        toolInput={{}}
+        isRunning={false}
+        toolResult={mockToolResult}
+        hasError={false}
+      />
     );
   };
 

@@ -1,30 +1,27 @@
 import React, { useState } from "react";
 import { LLMContent } from "../types";
 
-interface BashToolProps {
-  // For tool_use (pending state)
-  toolInput?: any;
+interface BrowserNavigateToolProps {
+  toolInput?: any; // { url: string }
   isRunning?: boolean;
-
-  // For tool_result (completed state)
   toolResult?: LLMContent[];
   hasError?: boolean;
   executionTime?: string;
 }
 
-function BashTool({
+function BrowserNavigateTool({
   toolInput,
   isRunning,
   toolResult,
   hasError,
   executionTime,
-}: BashToolProps) {
+}: BrowserNavigateToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Extract command from toolInput
-  const command =
-    typeof toolInput === "object" && toolInput?.command
-      ? toolInput.command
+  // Extract URL from toolInput
+  const url =
+    typeof toolInput === "object" && toolInput?.url
+      ? toolInput.url
       : typeof toolInput === "string"
       ? toolInput
       : "";
@@ -35,31 +32,31 @@ function BashTool({
       ? toolResult[0].Text
       : "";
 
-  // Truncate command for display
-  const truncateCommand = (cmd: string, maxLen: number = 300) => {
-    if (cmd.length <= maxLen) return cmd;
-    return cmd.substring(0, maxLen) + "...";
+  // Truncate URL for display
+  const truncateUrl = (urlStr: string, maxLen: number = 300) => {
+    if (urlStr.length <= maxLen) return urlStr;
+    return urlStr.substring(0, maxLen) + "...";
   };
 
-  const displayCommand = truncateCommand(command);
+  const displayUrl = truncateUrl(url);
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
-    <div className="bash-tool">
+    <div className="tool">
       <div
-        className="bash-tool-header"
+        className="tool-header"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="bash-tool-summary">
-          <span className={`bash-tool-emoji ${isRunning ? 'running' : ''}`}>🛠️</span>
-          <span className="bash-tool-command">{displayCommand}</span>
-          {isComplete && hasError && <span className="bash-tool-error">✗</span>}
+        <div className="tool-summary">
+          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>🌐</span>
+          <span className="tool-command">{displayUrl}</span>
+          {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && (
-            <span className="bash-tool-success">✓</span>
+            <span className="tool-success">✓</span>
           )}
         </div>
         <button
-          className="bash-tool-toggle"
+          className="tool-toggle"
           aria-label={isExpanded ? "Collapse" : "Expand"}
           aria-expanded={isExpanded}
         >
@@ -86,22 +83,26 @@ function BashTool({
       </div>
 
       {isExpanded && (
-        <div className="bash-tool-details">
-          <div className="bash-tool-section">
-            <div className="bash-tool-label">Command:</div>
-            <pre className="bash-tool-code">{command}</pre>
+        <div className="tool-details">
+          <div className="tool-section">
+            <div className="tool-label">URL:</div>
+            <div className="tool-code">
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                {url}
+              </a>
+            </div>
           </div>
 
-          {isComplete && (
-            <div className="bash-tool-section">
-              <div className="bash-tool-label">
+          {isComplete && output && (
+            <div className="tool-section">
+              <div className="tool-label">
                 Output{hasError ? " (Error)" : ""}:
                 {executionTime && (
-                  <span className="bash-tool-time">{executionTime}</span>
+                  <span className="tool-time">{executionTime}</span>
                 )}
               </div>
-              <pre className={`bash-tool-code ${hasError ? "error" : ""}`}>
-                {output || "(no output)"}
+              <pre className={`tool-code ${hasError ? "error" : ""}`}>
+                {output}
               </pre>
             </div>
           )}
@@ -111,4 +112,4 @@ function BashTool({
   );
 }
 
-export default BashTool;
+export default BrowserNavigateTool;

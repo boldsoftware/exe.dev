@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { LLMContent } from "../types";
 
-interface BashToolProps {
+interface GenericToolProps {
+  toolName: string;
+
   // For tool_use (pending state)
   toolInput?: any;
   isRunning?: boolean;
@@ -12,54 +14,51 @@ interface BashToolProps {
   executionTime?: string;
 }
 
-function BashTool({
+function GenericTool({
+  toolName,
   toolInput,
   isRunning,
   toolResult,
   hasError,
   executionTime,
-}: BashToolProps) {
+}: GenericToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Extract command from toolInput
-  const command =
-    typeof toolInput === "object" && toolInput?.command
-      ? toolInput.command
-      : typeof toolInput === "string"
-      ? toolInput
-      : "";
+  // Format data for display
+  const formatData = (data: any): string => {
+    if (data === undefined || data === null) return "";
+    if (typeof data === "string") return data;
+    try {
+      return JSON.stringify(data, null, 2);
+    } catch {
+      return String(data);
+    }
+  };
 
   // Extract output from toolResult
   const output =
-    toolResult && toolResult.length > 0 && toolResult[0].Text
-      ? toolResult[0].Text
+    toolResult && toolResult.length > 0
+      ? toolResult.map((result) => result.Text || formatData(result)).join("\n")
       : "";
 
-  // Truncate command for display
-  const truncateCommand = (cmd: string, maxLen: number = 300) => {
-    if (cmd.length <= maxLen) return cmd;
-    return cmd.substring(0, maxLen) + "...";
-  };
-
-  const displayCommand = truncateCommand(command);
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
-    <div className="bash-tool">
+    <div className="tool">
       <div
-        className="bash-tool-header"
+        className="tool-header"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="bash-tool-summary">
-          <span className={`bash-tool-emoji ${isRunning ? 'running' : ''}`}>🛠️</span>
-          <span className="bash-tool-command">{displayCommand}</span>
-          {isComplete && hasError && <span className="bash-tool-error">✗</span>}
+        <div className="tool-summary">
+          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>⚙️</span>
+          <span className="tool-command">{toolName}</span>
+          {isComplete && hasError && <span className="tool-error">✗</span>}
           {isComplete && !hasError && (
-            <span className="bash-tool-success">✓</span>
+            <span className="tool-success">✓</span>
           )}
         </div>
         <button
-          className="bash-tool-toggle"
+          className="tool-toggle"
           aria-label={isExpanded ? "Collapse" : "Expand"}
           aria-expanded={isExpanded}
         >
@@ -86,21 +85,30 @@ function BashTool({
       </div>
 
       {isExpanded && (
-        <div className="bash-tool-details">
-          <div className="bash-tool-section">
-            <div className="bash-tool-label">Command:</div>
-            <pre className="bash-tool-code">{command}</pre>
-          </div>
+        <div className="tool-details">
+          {toolInput !== undefined && (
+            <div className="tool-section">
+              <div className="tool-label">Input:</div>
+              <pre className="tool-code">{formatData(toolInput)}</pre>
+            </div>
+          )}
+
+          {isRunning && (
+            <div className="tool-section">
+              <div className="tool-label">Status:</div>
+              <div className="tool-running-text">running...</div>
+            </div>
+          )}
 
           {isComplete && (
-            <div className="bash-tool-section">
-              <div className="bash-tool-label">
+            <div className="tool-section">
+              <div className="tool-label">
                 Output{hasError ? " (Error)" : ""}:
                 {executionTime && (
-                  <span className="bash-tool-time">{executionTime}</span>
+                  <span className="tool-time">{executionTime}</span>
                 )}
               </div>
-              <pre className={`bash-tool-code ${hasError ? "error" : ""}`}>
+              <pre className={`tool-code ${hasError ? "error" : ""}`}>
                 {output || "(no output)"}
               </pre>
             </div>
@@ -111,4 +119,4 @@ function BashTool({
   );
 }
 
-export default BashTool;
+export default GenericTool;
