@@ -340,6 +340,9 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 			DataSubdir:           dataSubdir,
 			IsProduction:         devMode == "", // Production when devMode is empty
 		}
+		if httpLn != nil && httpLn.tcp != nil {
+			config.ExedListeningPort = httpLn.tcp.Port
+		}
 
 		// Optional: load OCI/Kata annotations from environment as JSON
 		// Example: EXE_KATA_ANNOTATIONS='{"io.katacontainers.config.hypervisor.restore_snapshot":"/var/lib/cloud-hypervisor/snapshots/base.snapshot","io.katacontainers.config.hypervisor.restore_memory":"/var/lib/cloud-hypervisor/snapshots/base.mem"}'

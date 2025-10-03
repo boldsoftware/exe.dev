@@ -30,6 +30,9 @@ type Config struct {
 	// When true, shelley.json will use "exe.dev" as the gateway.
 	// When false, shelley.json will use the actual gateway IP.
 	IsProduction bool `json:"is_production"`
+
+	// For dev mode (uses an HTTP port), the port that exed is listening on (default tends to be 8080)
+	ExedListeningPort int `json:"exed_listening_port"`
 }
 
 // validateConfig ensures all required fields are present

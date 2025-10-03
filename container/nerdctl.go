@@ -2081,26 +2081,27 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		terminalURL = fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 	} else {
 		gatewayIP, err := m.getGatewayIP(ctx, host)
+		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, m.config.ExedListeningPort)
 		if err == nil {
-			gatewayURL = fmt.Sprintf("http://%s:8080", gatewayIP)
-			terminalURL = fmt.Sprintf("http://%s.localhost:8080", boxName)
+			gatewayURL = fmt.Sprintf("http://%s:%d", gatewayIP, m.config.ExedListeningPort)
 		}
+	}
+	shelleyJSON := map[string]string{
+		"terminal_url":  terminalURL,
 	}
 	if gatewayURL != "" {
-		shelleyJSON := map[string]string{
-			"llm_gateway":   gatewayURL,
-			"key_generator": "sudo /usr/local/bin/generate-gateway-token",
-			"terminal_url":  terminalURL,
-		}
-		shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal shelley.json: %w", err)
-		}
-		files["shelley.json"] = struct {
-			content string
-			mode    string
-		}{string(shelleyJSONBytes), "644"}
+		shelleyJSON["llm_gateway"] = gatewayURL
+		shelleyJSON["key_generator"] = "sudo /usr/local/bin/generate-gateway-token"
 	}
+
+	shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal shelley.json: %w", err)
+	}
+	files["shelley.json"] = struct {
+		content string
+		mode    string
+	}{string(shelleyJSONBytes), "644"}
 
 	// Build a single command to write all files
 	// This dramatically reduces SSH round-trips from 4 to 1
