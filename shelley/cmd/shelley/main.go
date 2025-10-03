@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"shelley.exe.dev/claudetool"
+	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
@@ -108,7 +109,11 @@ func runServe(global GlobalConfig, args []string) {
 	// Initialize LLM service manager
 	llmManager := server.NewLLMServiceManager(llmConfig)
 
-	tools := setupTools(llmManager)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	tools, toolsCleanup := setupTools(ctx, llmManager)
+	defer toolsCleanup()
 
 	// Create and start server
 	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL)
@@ -145,8 +150,9 @@ func runPrompt(global GlobalConfig, args []string) {
 
 	// Initialize LLM service manager for tools (same as HTTP server)
 	llmManager := server.NewLLMServiceManager(llmConfig)
-	tools := setupTools(llmManager)
 	ctx := context.Background()
+	tools, toolsCleanup := setupTools(ctx, llmManager)
+	defer toolsCleanup()
 
 	var conversationID string
 	var history []llm.Message
@@ -288,6 +294,7 @@ func runPrompt(global GlobalConfig, args []string) {
 		fmt.Fprintf(os.Stderr, "Warning: could not fetch conversation details: %s\n", err)
 		fmt.Printf("Conversation completed: %s\n", conversationID)
 	} else {
+		fmt.Printf("Conversation completed: %s\n", conversationID)
 		// Check if slug was generated and use it, otherwise use conversation ID
 		if conv.Slug != nil && *conv.Slug != "" {
 			fmt.Printf("To continue: shelley prompt -continue %s \"<your message>\"\n", *conv.Slug)
@@ -503,7 +510,7 @@ func runModels(global GlobalConfig, args []string) {
 	}
 }
 
-func setupTools(llmProvider claudetool.LLMServiceProvider) []*llm.Tool {
+func setupTools(ctx context.Context, llmProvider claudetool.LLMServiceProvider) ([]*llm.Tool, func()) {
 	wd, err := os.Getwd()
 	if err != nil {
 		// Fallback to "/" if we can't get working directory
@@ -521,11 +528,29 @@ func setupTools(llmProvider claudetool.LLMServiceProvider) []*llm.Tool {
 	}
 	keywordTool := claudetool.NewKeywordTool(llmProvider)
 
-	return []*llm.Tool{
+	tools := []*llm.Tool{
 		claudetool.Think,
 		bashTool.Tool(),
 		patchTool.Tool(),
 		keywordTool.Tool(),
+	}
+
+	browserTools, browserCleanup := browse.RegisterBrowserTools(ctx, true)
+	if len(browserTools) > 0 {
+		tools = append(tools, browserTools...)
+	}
+
+	cleanups := make([]func(), 0, 1)
+	if browserCleanup != nil {
+		cleanups = append(cleanups, browserCleanup)
+	}
+
+	return tools, func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			if cleanups[i] != nil {
+				cleanups[i]()
+			}
+		}
 	}
 }
 
