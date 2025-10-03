@@ -2087,7 +2087,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		}
 	}
 	shelleyJSON := map[string]string{
-		"terminal_url":  terminalURL,
+		"terminal_url": terminalURL,
 	}
 	if gatewayURL != "" {
 		shelleyJSON["llm_gateway"] = gatewayURL
