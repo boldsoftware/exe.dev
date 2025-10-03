@@ -93,7 +93,7 @@ type MobilePendingVm struct {
 	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
 }
 
-type PendingSshKey struct {
+type PendingSSHKey struct {
 	Token     string     `db:"token" json:"token"`
 	PublicKey string     `db:"public_key" json:"public_key"`
 	UserEmail string     `db:"user_email" json:"user_email"`

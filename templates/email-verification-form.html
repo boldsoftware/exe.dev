@@ -7,7 +7,8 @@
     <style>
       body {
         font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -59,7 +60,8 @@
       }
       .code-value {
         font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
         font-size: 20px;
         font-weight: 500;
         color: #000;
@@ -117,10 +119,10 @@
 
         <p>If you did not initiate this request, please close this page.</p>
 
-        {{if .VerificationCode}}
+        {{if .PairingCode}}
         <div class="code-box">
           <span class="code-label">Terminal Pairing Code</span>
-          <span class="code-value">{{.VerificationCode}}</span>
+          <span class="code-value">{{.PairingCode}}</span>
         </div>
         <p class="code-note">
           This should match the code shown in your terminal.

@@ -97,6 +97,7 @@ type EmailVerification struct {
 	PairingCode  string
 	CompleteChan chan struct{}
 	CreatedAt    time.Time
+	IsNewAccount bool
 }
 
 // MagicSecret represents a temporary authentication secret for proxy magic URLs
@@ -1659,6 +1660,20 @@ func (s *Server) GetEmailBySSHKey(ctx context.Context, publicKeyStr string) (ema
 func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*exedb.User, error) {
 	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
 		return queries.GetUserWithSSHKey(ctx, publicKeyStr)
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// userWithEmail retrieves a user by their email
+func (s *Server) userWithEmail(ctx context.Context, email string) (*exedb.User, error) {
+	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserWithEmail(ctx, email)
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

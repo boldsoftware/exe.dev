@@ -20,21 +20,21 @@ func (q *Queries) DeletePendingSSHKeyByToken(ctx context.Context, token string) 
 }
 
 const getPendingSSHKeyByToken = `-- name: GetPendingSSHKeyByToken :one
-SELECT public_key, user_email, expires_at
+SELECT token, public_key, user_email, expires_at, created_at
 FROM pending_ssh_keys
 WHERE token = ?
 `
 
-type GetPendingSSHKeyByTokenRow struct {
-	PublicKey string    `db:"public_key" json:"public_key"`
-	UserEmail string    `db:"user_email" json:"user_email"`
-	ExpiresAt time.Time `db:"expires_at" json:"expires_at"`
-}
-
-func (q *Queries) GetPendingSSHKeyByToken(ctx context.Context, token string) (GetPendingSSHKeyByTokenRow, error) {
+func (q *Queries) GetPendingSSHKeyByToken(ctx context.Context, token string) (PendingSSHKey, error) {
 	row := q.queryRow(ctx, q.getPendingSSHKeyByTokenStmt, getPendingSSHKeyByToken, token)
-	var i GetPendingSSHKeyByTokenRow
-	err := row.Scan(&i.PublicKey, &i.UserEmail, &i.ExpiresAt)
+	var i PendingSSHKey
+	err := row.Scan(
+		&i.Token,
+		&i.PublicKey,
+		&i.UserEmail,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
 	return i, err
 }
 

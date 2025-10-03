@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net"
@@ -547,7 +548,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 
 	buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
 	if out, err := buildCmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("failed to build exed with coverage: %w\n%s", err, out)
+		return nil, fmt.Errorf("failed to build exed: %w\n%s", err, out)
 	}
 
 	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServerPort)
@@ -1030,10 +1031,10 @@ func (es *emailServer) waitForEmail(t *testing.T, email string) emailMessage {
 // extractVerificationToken extracts the full verification URL from the email body
 func extractVerificationToken(body string) (string, error) {
 	// Look for the full verification URL pattern
-	re := regexp.MustCompile(`http://[^/]+/verify-email\?token=([a-zA-Z0-9\-_]+)`)
+	re := regexp.MustCompile(`http://[^/]+/verify-(email|device)\?token=([a-zA-Z0-9\-_]+)`)
 	matches := re.FindStringSubmatch(body)
 	if len(matches) < 1 {
-		return "", fmt.Errorf("verification URL not found in email body")
+		return "", fmt.Errorf("verification URL not found in email body: %s", body)
 	}
 	return matches[0], nil // Return the full URL, not just the token
 }
@@ -1116,6 +1117,11 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 		t.Fatalf("failed to extract verification URL: %v", err)
 	}
 
+	parsedVerifyURL, err := url.Parse(verifyURL)
+	if err != nil {
+		t.Fatalf("failed to parse verification URL %q: %v", verifyURL, err)
+	}
+
 	// Step 1: GET the verification page (shows confirmation form)
 	getResp, err := http.Get(verifyURL)
 	if err != nil {
@@ -1131,22 +1137,40 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 	}
 	getResp.Body.Close()
 
-	codeRe := regexp.MustCompile(`class="code-value">([0-9]{6})<`)
-	codeMatches := codeRe.FindStringSubmatch(string(htmlBody))
-	if len(codeMatches) < 2 {
-		t.Fatalf("failed to extract verification code from HTML form: %s", string(htmlBody))
-	}
-	verificationCode := codeMatches[1]
-	Env.addCanonicalization(verificationCode, "EMAIL_VERIFICATION_CODE")
+	bodyStr := string(htmlBody)
 
-	// Extract token from the hidden input field in the HTML form
-	re := regexp.MustCompile(`<input[^>]+name="token"[^>]+value="([a-zA-Z0-9\-_]+)"[^>]*>`)
-	matches := re.FindStringSubmatch(string(htmlBody))
-	if len(matches) < 2 {
-		t.Fatalf("failed to extract token from HTML form: %s", string(htmlBody))
+	codeRe := regexp.MustCompile(`class="code-value">([0-9]{6})<`)
+	codeMatches := codeRe.FindStringSubmatch(bodyStr)
+	if len(codeMatches) >= 1 {
+		pairingCode := codeMatches[1]
+		Env.addCanonicalization(pairingCode, "EMAIL_VERIFICATION_CODE")
 	}
-	token := matches[1]
+
+	// Extract hidden inputs so we can POST the same form fields back
+	hiddenRe := regexp.MustCompile(`<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>`)
+	formData := url.Values{}
+	for _, match := range hiddenRe.FindAllStringSubmatch(bodyStr, -1) {
+		name := match[1]
+		value := html.UnescapeString(match[2])
+		formData.Set(name, value)
+	}
+
+	token := formData.Get("token")
+	if token == "" {
+		t.Fatalf("failed to extract token from HTML form: %s", bodyStr)
+	}
 	Env.addCanonicalization(token, "EMAIL_VERIFICATION_TOKEN")
+
+	// Determine form action (defaults to /verify-email if not found)
+	actionRe := regexp.MustCompile(`<form[^>]+action="([^"]+)"`)
+	actionMatch := actionRe.FindStringSubmatch(bodyStr)
+	actionPath := "/verify-email"
+	if len(actionMatch) >= 2 {
+		actionPath = actionMatch[1]
+	}
+	if !strings.HasPrefix(actionPath, "/") {
+		actionPath = "/" + actionPath
+	}
 
 	// Create HTTP client with cookie jar to capture authentication cookies
 	jar, err := cookiejar.New(nil)
@@ -1155,22 +1179,23 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 	}
 	client := &http.Client{Jar: jar}
 
-	// Submit the form data as POST request (simulating clicking the confirm button)
-	formData := url.Values{"token": {token}}
-	postURL := fmt.Sprintf("http://localhost:%d/verify-email", Env.exed.HTTPPort)
+	postURL := fmt.Sprintf("http://localhost:%d%s", Env.exed.HTTPPort, actionPath)
 	postResp, err := client.PostForm(postURL, formData)
 	if err != nil {
 		t.Fatalf("failed to submit verification form: %v", err)
 	}
 	if postResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(postResp.Body)
-		t.Errorf("email verification form submission returned status: %d, body: %s", postResp.StatusCode, string(body))
+		t.Errorf("verification form submission returned status: %d, body: %s", postResp.StatusCode, string(body))
 	}
 	postResp.Body.Close()
 
 	// Extract cookies from the response
-	parsedURL, _ := url.Parse(postURL)
-	cookies := jar.Cookies(parsedURL)
+	cookies := jar.Cookies(parsedVerifyURL)
+	if len(cookies) == 0 {
+		parsedPostURL, _ := url.Parse(postURL)
+		cookies = jar.Cookies(parsedPostURL)
+	}
 
 	return cookies
 }

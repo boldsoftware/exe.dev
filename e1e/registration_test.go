@@ -3,6 +3,10 @@
 package e1e
 
 import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"regexp"
 	"testing"
 
@@ -81,4 +85,105 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.wantPrompt()
 
 	pty.disconnect()
+}
+
+func TestRegisterMultipleKeys(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	for i := range 3 {
+		keyFile, publicKey := genSSHKey(t)
+		pty := sshToExeDev(t, keyFile)
+		pty.want(banner)
+		pty.want("Please enter your email")
+		email := t.Name() + "@example.com"
+		pty.sendLine(email)
+		pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+		pty.wantRe("Pairing code: .*[0-9]{6}.*")
+		emailMsg := Env.email.waitForEmail(t, email)
+		clickVerifyLinkInEmail(t, emailMsg)
+		pty.want("Email verified successfully")
+		pty.want("Registration complete")
+		if i == 0 {
+			pty.wantRe("account.*created")
+		} else {
+			pty.wantRe("key.*added")
+		}
+		pty.want("Press any key to continue")
+		pty.sendLine("")
+		if i == 0 {
+			pty.want("Welcome to EXE.DEV!") // welcome message only on first time
+		}
+		pty.wantPrompt()
+		pty.sendLine("whoami")
+		pty.want(email)
+		pty.want(publicKey)
+		pty.disconnect()
+	}
+}
+
+func TestRegisterWebThenKey(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	email := t.Name() + "@example.com"
+	baseURL := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
+
+	resp, err := http.PostForm(baseURL+"/m/email-auth", url.Values{"email": {email}})
+	if err != nil {
+		t.Fatalf("POST /m/email-auth: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status %d from /m/email-auth: %s", resp.StatusCode, string(body))
+	}
+
+	// Verify the email using the mobile flow link
+	emailMsg := Env.email.waitForEmail(t, email)
+	mobileRe := regexp.MustCompile(`http://localhost:\d+/m/verify-token\?token=[a-zA-Z0-9]+`)
+	verifyLink := mobileRe.FindString(emailMsg.Body)
+	if verifyLink == "" {
+		t.Fatalf("did not find mobile verify link in email:\n%s", emailMsg.Body)
+	}
+
+	verifyResp, err := http.Get(verifyLink)
+	if err != nil {
+		t.Fatalf("GET mobile verify link: %v", err)
+	}
+	verifyRespBody, _ := io.ReadAll(verifyResp.Body)
+	verifyResp.Body.Close()
+	if verifyResp.StatusCode != http.StatusOK && verifyResp.StatusCode != http.StatusTemporaryRedirect {
+		t.Fatalf("mobile verify returned status %d body %q", verifyResp.StatusCode, string(verifyRespBody))
+	}
+
+	keyFile, publicKey := genSSHKey(t)
+	pty := sshToExeDev(t, keyFile)
+	pty.want(banner)
+	pty.want("Please enter your email")
+	pty.sendLine(email)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+
+	deviceEmail := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, deviceEmail)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
+	pty.want("Your new ssh key has been added to your existing account.")
+	pty.want("Press any key to continue")
+	pty.sendLine("")
+	pty.want("Welcome to EXE.DEV!")
+	pty.want("To create your first box, run:")
+	pty.wantPrompt()
+	pty.sendLine("whoami")
+	pty.want(email)
+	pty.want(publicKey)
+	pty.wantPrompt()
+	pty.disconnect()
+}
+
+func TestRegisterGitHubKey(t *testing.T) {
 }

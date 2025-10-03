@@ -2,6 +2,8 @@ package exe
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -587,7 +589,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 
 func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, email string) (*exedb.User, error) {
 	slog.Debug("starting email verification", "email", email)
-	verification, err := ss.startEmailVerification(s.Context(), publicKey, email)
+	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
 		switch {
 		case err.Error() == "email service not configured":
@@ -600,13 +602,6 @@ func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, e
 
 	fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
 	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
-
-	// Show the verification URL in dev mode
-	if ss.server.devMode != "" {
-		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", ss.server.getBaseURL(), verification.Token)
-		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
-	}
-
 	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
 	// Create channels and atomic bool for coordinating with Ctrl+C handler
@@ -686,7 +681,11 @@ func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, e
 
 	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
-	fmt.Fprintf(s, "Your account has been successfully created.\r\n\r\n")
+	if verification.IsNewAccount {
+		fmt.Fprintf(s, "Your account has been successfully created.\r\n\r\n")
+	} else {
+		fmt.Fprintf(s, "Your new ssh key has been added to your existing account.\r\n\r\n")
+	}
 	fmt.Fprintf(s, "%sPress any key to continue...%s", "\033[1;36m", "\033[0m")
 
 	// Wait for the goroutine to exit (user presses Enter or any key)
@@ -782,17 +781,26 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	fmt.Fprintf(s, "  \033[1m%s delete %s\033[0m\r\n", ss.server.formatExeDevConnectionInfo(), boxName)
 }
 
-func (ss *SSHServer) startEmailVerification(ctx context.Context, publicKey, email string) (*EmailVerification, error) {
+func (ss *SSHServer) startEmailVerification(s ssh.Session, publicKey, email string) (*EmailVerification, error) {
 	// Check whether this email already exists
-	_, err := withRxRes(ss.server, ctx, func(ctx context.Context, q *exedb.Queries) (any, error) {
+	_, err := withRxRes(ss.server, s.Context(), func(ctx context.Context, q *exedb.Queries) (any, error) {
 		return q.GetUserIDByEmail(ctx, email)
 	})
+	var isNewAccount bool
+	switch {
+	case err == nil:
+		isNewAccount = false
+	case errors.Is(err, sql.ErrNoRows):
+		isNewAccount = true
+	default:
+		return nil, fmt.Errorf("failed to check existing email: %v", err)
+	}
 
-	if err == nil {
+	if !isNewAccount {
 		// Email already exists - this is a new ssh key for an existing user.
-		verif := ss.server.addEmailVerification(publicKey, email)
+		verif := ss.server.addEmailVerification(publicKey, email, isNewAccount)
 
-		err := ss.server.withTx(ctx, func(ctx context.Context, q *exedb.Queries) error {
+		err := ss.server.withTx(s.Context(), func(ctx context.Context, q *exedb.Queries) error {
 			return q.InsertPendingSSHKey(ctx, exedb.InsertPendingSSHKeyParams{
 				Token:     verif.Token,
 				PublicKey: publicKey,
@@ -806,6 +814,7 @@ func (ss *SSHServer) startEmailVerification(ctx context.Context, publicKey, emai
 
 		// Send new device verification email
 		subject := "New ssh key login - EXE.DEV"
+		verifyURL := fmt.Sprintf("%s/verify-device?token=%s", ss.server.getBaseURL(), verif.Token)
 		body := fmt.Sprintf(`Hello,
 
 A new ssh key is trying to register with your EXE.DEV account email, with public key:
@@ -814,48 +823,55 @@ A new ssh key is trying to register with your EXE.DEV account email, with public
 
 If this was you, please click the link below to authorize this device:
 
-%s/verify-device?token=%s
+%s
 
 If you did not attempt to register from a new device, please ignore this email.
 
 This link will expire in 15 minutes.
 
 Best regards,
-The EXE.DEV team`, publicKey, ss.server.getBaseURL(), verif.Token)
+The EXE.DEV team`, publicKey, verifyURL)
 
 		if err := ss.server.sendEmail(email, subject, body); err != nil {
 			ss.server.deleteEmailVerification(verif)
 			return nil, fmt.Errorf("failed to send verification email: %v", err)
+		}
+		if ss.server.devMode != "" {
+			fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 		}
 
 		return verif, nil
 	}
 
 	// New user registration
-	verif := ss.server.addEmailVerification(publicKey, email)
+	verif := ss.server.addEmailVerification(publicKey, email, isNewAccount)
 
 	// Send verification email
 	subject := "Welcome to EXE.DEV - Verify Your Email"
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", ss.server.getBaseURL(), verif.Token)
 	body := fmt.Sprintf(`Welcome to EXE.DEV!
 
 Please click the link below to verify your email address:
 
-%s/verify-email?token=%s
+%s
 
 This link will expire in 15 minutes.
 
 Best regards,
-The EXE.DEV team`, ss.server.getBaseURL(), verif.Token)
+The EXE.DEV team`, verifyURL)
 
 	if err := ss.server.sendEmail(email, subject, body); err != nil {
 		ss.server.deleteEmailVerification(verif)
 		return nil, fmt.Errorf("failed to send verification email: %v", err)
 	}
+	if ss.server.devMode != "" {
+		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
+	}
 
 	return verif, nil
 }
 
-func (s *Server) addEmailVerification(publicKey, email string) *EmailVerification {
+func (s *Server) addEmailVerification(publicKey, email string, isNewAccount bool) *EmailVerification {
 	token := s.generateRegistrationToken()
 	pairingCode := s.generatePairingCode()
 
@@ -866,6 +882,7 @@ func (s *Server) addEmailVerification(publicKey, email string) *EmailVerificatio
 		PairingCode:  pairingCode,
 		CompleteChan: make(chan struct{}),
 		CreatedAt:    time.Now(),
+		IsNewAccount: isNewAccount,
 	}
 	s.emailVerificationsMu.Lock()
 	defer s.emailVerificationsMu.Unlock()

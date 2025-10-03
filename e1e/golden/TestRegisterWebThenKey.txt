@@ -9,12 +9,12 @@
 EXE.DEV: get a machine over ssh
 To sign up, verify your email and set up billing.
 
-Please enter your email address: TestNewKeyRegistration@example.com
+Please enter your email address: TestRegisterWebThenKey@example.com
 
-[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-device?token=EMAIL_VERIFICATION_TOKEN
 
 
-Verification email sent to: TestNewKeyRegistration@example.com
+Verification email sent to: TestRegisterWebThenKey@example.com
 Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
@@ -22,7 +22,7 @@ Waiting for email verification...
 
 Registration complete!
 
-Your account has been successfully created.
+Your new ssh key has been added to your existing account.
 
 Press any key to continue...
 
@@ -35,7 +35,7 @@ To create your first box, run:
 
 Or type `help` to see a list of commands.
 exe.dev ▶ whoami
-Email Address: TestNewKeyRegistration@example.com
+Email Address: TestRegisterWebThenKey@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ exit

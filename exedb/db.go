@@ -195,6 +195,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserWithDetailsStmt, err = db.PrepareContext(ctx, getUserWithDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithDetails: %w", err)
 	}
+	if q.getUserWithEmailStmt, err = db.PrepareContext(ctx, getUserWithEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserWithEmail: %w", err)
+	}
 	if q.getUserWithSSHKeyStmt, err = db.PrepareContext(ctx, getUserWithSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithSSHKey: %w", err)
 	}
@@ -608,6 +611,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserWithDetailsStmt: %w", cerr)
 		}
 	}
+	if q.getUserWithEmailStmt != nil {
+		if cerr := q.getUserWithEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserWithEmailStmt: %w", cerr)
+		}
+	}
 	if q.getUserWithSSHKeyStmt != nil {
 		if cerr := q.getUserWithSSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserWithSSHKeyStmt: %w", cerr)
@@ -909,6 +917,7 @@ type Queries struct {
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
+	getUserWithEmailStmt                   *sql.Stmt
 	getUserWithSSHKeyStmt                  *sql.Stmt
 	incrementSeenOnHostsStmt               *sql.Stmt
 	insertAllocStmt                        *sql.Stmt
@@ -1013,6 +1022,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
+		getUserWithEmailStmt:                   q.getUserWithEmailStmt,
 		getUserWithSSHKeyStmt:                  q.getUserWithSSHKeyStmt,
 		incrementSeenOnHostsStmt:               q.incrementSeenOnHostsStmt,
 		insertAllocStmt:                        q.insertAllocStmt,

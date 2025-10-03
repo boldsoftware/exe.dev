@@ -506,49 +506,30 @@ func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
 
 // showDeviceVerificationForm shows a confirmation form for device verification
 func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
-	// Look up the pending SSH key to validate token and get info
-	result, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.GetPendingSSHKeyByTokenRow, error) {
-		return queries.GetPendingSSHKeyByToken(ctx, token)
-	})
-	publicKey := result.PublicKey
-	email := result.UserEmail
-	expires := result.ExpiresAt
-
-	if errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
+	pendingKey, verification, err := s.lookUpDeviceVerification(r.Context(), token)
+	switch {
+	case errors.Is(err, errExpiredToken), errors.Is(err, sql.ErrNoRows):
+		http.Error(w, "invalid or expired verification token", http.StatusNotFound)
 		return
-	}
-	if err != nil {
-		slog.Error("Database error during device verification check", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	case errors.Is(err, errVerificationNotFound):
+		http.Error(w, "verification session not found; please try logging in via SSH again", http.StatusBadRequest)
 		return
-	}
-
-	// Check if token has expired
-	if time.Now().After(expires) {
-		// Clean up expired token - use context.Background() to ensure cleanup completes even if client disconnects
-		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeletePendingSSHKeyByToken(ctx, token)
-		})
-		http.Error(w, "Verification token has expired", http.StatusBadRequest)
+	case err != nil:
+		slog.Error("unexpected error during device verification check", "error", err, "token", token)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
-	}
-
-	// Show confirmation form
-	// Use public key preview for verification display
-	publicKeyPreview := publicKey
-	if len(publicKey) > 32 {
-		publicKeyPreview = publicKey[:32] + "..."
 	}
 
 	data := struct {
-		Email     string
-		PublicKey string
-		Token     string
+		Email       string
+		PublicKey   string
+		Token       string
+		PairingCode string
 	}{
-		Email:     email,
-		PublicKey: publicKeyPreview,
-		Token:     token,
+		Email:       pendingKey.UserEmail,
+		PublicKey:   truncatePublicKey(pendingKey.PublicKey),
+		Token:       token,
+		PairingCode: verification.PairingCode,
 	}
 
 	s.renderTemplate(w, "device-verification.html", data)
@@ -556,59 +537,38 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 
 // handleDeviceVerificationHTTP handles web-based device verification
 func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Request) {
-	// Handle GET request - show confirmation form
-	if r.Method == http.MethodGet {
-		token := r.URL.Query().Get("token")
-		if token == "" {
-			http.Error(w, "Missing token parameter", http.StatusBadRequest)
-			return
-		}
-		s.showDeviceVerificationForm(w, r, token)
-		return
-	}
-
-	// Handle POST request - complete verification
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse form data to get the token from POST
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		http.Error(w, "failed to parse form", http.StatusBadRequest)
 		return
 	}
 	token := r.FormValue("token")
 	if token == "" {
-		http.Error(w, "Missing token in form data", http.StatusBadRequest)
+		http.Error(w, "missing token in form data", http.StatusBadRequest)
 		return
 	}
 
-	// Look up the pending SSH key
-	result, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.GetPendingSSHKeyByTokenRow, error) {
-		return queries.GetPendingSSHKeyByToken(ctx, token)
-	})
-	publicKey := result.PublicKey
-	email := result.UserEmail
-	expires := result.ExpiresAt
-
-	if errors.Is(err, sql.ErrNoRows) {
-		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
+	switch r.Method {
+	case http.MethodGet:
+		s.showDeviceVerificationForm(w, r, token)
 		return
-	}
-	if err != nil {
-		slog.Error("Database error during device verification", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	case http.MethodPost:
+		// continued below
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Check if token has expired
-	if time.Now().After(expires) {
-		// Clean up expired token
-		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.DeletePendingSSHKeyByToken(ctx, token)
-		})
-		http.Error(w, "Verification token has expired", http.StatusBadRequest)
+	pendingKey, verification, err := s.lookUpDeviceVerification(r.Context(), token)
+	switch {
+	case errors.Is(err, errExpiredToken), errors.Is(err, sql.ErrNoRows):
+		http.Error(w, "invalid or expired verification token", http.StatusNotFound)
+		return
+	case errors.Is(err, errVerificationNotFound):
+		http.Error(w, "verification session not found; please try logging in via SSH again", http.StatusBadRequest)
+		return
+	case err != nil:
+		slog.Error("unexpected error during device verification check", "error", err, "token", token)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -616,8 +576,8 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
 		// Add SSH key
 		err := queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
-			Email:     email,
-			PublicKey: publicKey,
+			Email:     pendingKey.UserEmail,
+			PublicKey: pendingKey.PublicKey,
 		})
 		if err != nil {
 			return err
@@ -633,28 +593,53 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 
 	// Signal completion to waiting SSH session
-	s.emailVerificationsMu.Lock()
-	verification, exists := s.emailVerifications[token]
-	if exists {
-		close(verification.CompleteChan)
-		delete(s.emailVerifications, token)
-	}
-	s.emailVerificationsMu.Unlock()
-
-	// Send success response with public key preview for verification
-	// Use first 32 characters of public key as display identifier
-	publicKeyPreview := publicKey
-	if len(publicKey) > 32 {
-		publicKeyPreview = publicKey[:32] + "..."
-	}
+	close(verification.CompleteChan)
+	s.deleteEmailVerification(verification)
 
 	data := struct {
 		PublicKey string
 	}{
-		PublicKey: publicKeyPreview,
+		PublicKey: truncatePublicKey(pendingKey.PublicKey),
+	}
+	s.renderTemplate(w, "device-verified.html", data)
+}
+
+var (
+	errExpiredToken         = errors.New("verification token has expired")
+	errVerificationNotFound = errors.New("verification session not found")
+)
+
+func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*exedb.PendingSSHKey, *EmailVerification, error) {
+	// Look up the pending SSH key to validate token and get info
+	pendingKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.PendingSSHKey, error) {
+		return queries.GetPendingSSHKeyByToken(ctx, token)
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 
-	s.renderTemplate(w, "device-verified.html", data)
+	// Check if token has expired
+	if time.Now().After(pendingKey.ExpiresAt) {
+		// Clean up expired token - use context.Background() to ensure cleanup completes even if client disconnects
+		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+			return queries.DeletePendingSSHKeyByToken(ctx, token)
+		})
+		return nil, nil, errExpiredToken
+	}
+
+	verification := s.lookUpEmailVerification(token)
+	if verification == nil {
+		return nil, nil, errVerificationNotFound
+	}
+
+	return &pendingKey, verification, nil
+}
+
+func truncatePublicKey(key string) string {
+	if len(key) <= 32 {
+		return key
+	}
+	return key[:32] + "..."
 }
 
 // showEmailVerificationForm shows a confirmation form for email verification
@@ -689,17 +674,17 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 
 	// Prepare template data
 	data := struct {
-		Token            string
-		RedirectURL      string
-		ReturnHost       string
-		Email            string
-		VerificationCode string
+		Token       string
+		RedirectURL string
+		ReturnHost  string
+		Email       string
+		PairingCode string
 	}{
-		Token:            token,
-		RedirectURL:      r.URL.Query().Get("redirect"),
-		ReturnHost:       r.URL.Query().Get("return_host"),
-		Email:            email,
-		VerificationCode: code,
+		Token:       token,
+		RedirectURL: r.URL.Query().Get("redirect"),
+		ReturnHost:  r.URL.Query().Get("return_host"),
+		Email:       email,
+		PairingCode: code,
 	}
 
 	// Render template
@@ -806,7 +791,10 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string) (*exedb.User, error) {
 	// Create the user if they don't exist
-	user, err := s.getUserByPublicKey(ctx, publicKey)
+	// Note that this is called during email verification,
+	// so we must look up the user by email (verified),
+	// not by SSH key (which is what we are about to connect to this email).
+	user, err := s.GetUserByEmail(ctx, email)
 	if err != nil || user == nil {
 		slog.Info("User doesn't exist, creating", "email", email)
 		// User doesn't exist - create them with their alloc

@@ -1,5 +1,5 @@
 -- name: GetPendingSSHKeyByToken :one
-SELECT public_key, user_email, expires_at
+SELECT *
 FROM pending_ssh_keys
 WHERE token = ?;
 

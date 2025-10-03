@@ -874,6 +874,12 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 	}
 
 	slices.SortFunc(sshKeys, func(a, b sshKeyRow) int {
+		if a.Current != b.Current {
+			if a.Current {
+				return -1
+			}
+			return 1
+		}
 		return cmp.Compare(a.PublicKey, b.PublicKey)
 	})
 
