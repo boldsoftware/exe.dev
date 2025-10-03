@@ -23,18 +23,6 @@ ANIMALS = [
 
 def inside_mode(args):
     """Run inside the container - setup worktree and start agent."""
-    # Create tmux session first if we need tsnsrv
-    if args.ts_authkey:
-        # Create detached tmux session
-        subprocess.run(["tmux", "new-session", "-d", "-s", "mysession"], check=True)
-
-        # Start tsnsrv in a separate pane
-        tsnsrv_cmd = f'TS_AUTHKEY={args.ts_authkey} /go/bin/tsnsrv -name {args.slug} -listenAddr :9000 -plaintext=true http://0.0.0.0:9000/'
-        subprocess.run(
-            ["tmux", "new-window", "-t", "mysession", "-n", "tsnsrv", tsnsrv_cmd],
-            check=True
-        )
-        print(f"Started tsnsrv for {args.slug} in tmux pane")
 
     # Fix ownership
     whoami = subprocess.run(["whoami"], capture_output=True, text=True, check=True).stdout.strip()
@@ -66,6 +54,19 @@ def inside_mode(args):
     claude_json_symlink = Path("/home/agent/.claude.json")
     if not claude_json_symlink.exists():
         claude_json_symlink.symlink_to("/home/agent/.claude/claude.json")
+
+    # Create tmux session first if we need tsnsrv
+    if args.ts_authkey:
+        # Create detached tmux session
+        subprocess.run(["tmux", "new-session", "-d", "-s", "mysession"], check=True)
+
+        # Start tsnsrv in a separate pane
+        tsnsrv_cmd = f'TS_AUTHKEY={args.ts_authkey} /go/bin/tsnsrv -name {args.slug} -listenAddr :9000 -plaintext=true http://0.0.0.0:9000/'
+        subprocess.run(
+            ["tmux", "new-window", "-t", "mysession", "-n", "tsnsrv", tsnsrv_cmd],
+            check=True
+        )
+        print(f"Started tsnsrv for {args.slug} in tmux pane")
 
     # Start or attach to tmux session with appropriate agent
     if args.agent == "codex":
