@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Message as MessageType, LLMMessage, LLMContent, Usage } from '../types';
 import BashTool from './BashTool';
 import PatchTool from './PatchTool';
@@ -26,6 +26,9 @@ function Message({ message }: MessageProps) {
   // Check if we have display_data to render
   const [showTooltip, setShowTooltip] = useState(false);
   const [hoverTimer, setHoverTimer] = useState<NodeJS.Timeout | null>(null);
+  // Track cursor for tooltip positioning
+  const [cursor, setCursor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const messageRef = useRef<HTMLDivElement | null>(null);
 
   // Parse usage data if available (only for agent messages)
   let usage: Usage | null = null;
@@ -63,6 +66,11 @@ function Message({ message }: MessageProps) {
     setShowTooltip(false);
   };
 
+  const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    // Update cursor position for tooltip to follow
+    setCursor({ x: e.clientX, y: e.clientY });
+  };
+
   // Format duration in human-readable format
   const formatDuration = (ms: number): string => {
     if (ms < 1000) return `${ms}ms`;
@@ -74,12 +82,18 @@ function Message({ message }: MessageProps) {
   const renderTooltip = () => {
     if (!showTooltip || !usage) return null;
 
+    // Clamp tooltip within viewport with some padding
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+    const pad = 12;
+    const left = Math.max(4, Math.min(cursor.x + pad, vw - 360)); // assume max width 360
+    const top = Math.max(4, Math.min(cursor.y + pad, vh - 200));  // rough height cap
+
     return (
       <div style={{
-        position: 'absolute',
-        top: '-8px',
-        right: '8px',
-        transform: 'translateY(-100%)',
+        position: 'fixed',
+        left: `${left}px`,
+        top: `${top}px`,
         backgroundColor: '#1f2937',
         color: '#f9fafb',
         padding: '8px 12px',
@@ -88,6 +102,7 @@ function Message({ message }: MessageProps) {
         lineHeight: '1.5',
         zIndex: 1000,
         minWidth: '200px',
+        maxWidth: 'min(60vw, 360px)',
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
         pointerEvents: 'none',
       }}>
@@ -512,7 +527,7 @@ function Message({ message }: MessageProps) {
       }
     }
     return (
-      <div className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{position: "relative"}} data-testid="message" role="alert" aria-label="Error message">
+      <div ref={messageRef} className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseMove={handleMouseMove} style={{position: "relative"}} data-testid="message" role="alert" aria-label="Error message">
         {renderTooltip()}
         <div className="message-content" data-testid="message-content">
           <div className="whitespace-pre-wrap break-words">
@@ -526,7 +541,7 @@ function Message({ message }: MessageProps) {
   // If we have display_data, use that for rendering (more compact, tool-specific)
   if (displayData && displayData.length > 0) {
     return (
-      <div className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{position: "relative"}} data-testid="message" role="article">
+      <div ref={messageRef} className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseMove={handleMouseMove} style={{position: "relative"}} data-testid="message" role="article">
         {renderTooltip()}
         <div className="message-content" data-testid="message-content">
           {displayData.map((toolDisplay, index) => (
@@ -556,7 +571,7 @@ function Message({ message }: MessageProps) {
   }
 
   return (
-    <div className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={{position: "relative"}} data-testid="message" role="article">
+    <div ref={messageRef} className={getMessageClasses()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseMove={handleMouseMove} style={{position: "relative"}} data-testid="message" role="article">
       {renderTooltip()}
       {/* Message content */}
       <div className="message-content" data-testid="message-content">
