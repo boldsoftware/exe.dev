@@ -66,7 +66,7 @@ func TestWithAnthropicAPI(t *testing.T) {
 	}
 
 	// Create server
-	svr := server.NewServer(database, llmManager, tools, logger, false)
+	svr := server.NewServer(database, llmManager, tools, logger, false, "")
 
 	// Set up HTTP server
 	mux := http.NewServeMux()

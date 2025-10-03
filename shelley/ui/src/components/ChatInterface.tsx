@@ -195,10 +195,15 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [models, setModels] = useState<Model[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('qwen3-coder-fireworks');
+  const [models, setModels] = useState<Model[]>(window.__SHELLEY_INIT__?.models || []);
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    const initModels = window.__SHELLEY_INIT__?.models || [];
+    const firstReady = initModels.find((m) => m.ready);
+    return firstReady?.id || 'qwen3-coder-fireworks';
+  });
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [terminalURL, setTerminalURL] = useState<string | null>(window.__SHELLEY_INIT__?.terminal_url || null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [isDisconnected, setIsDisconnected] = useState(false);
@@ -217,7 +222,6 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       setMessages([]);
       setLoading(false);
     }
-    loadModels();
 
     return () => {
       if (eventSourceRef.current) {
@@ -263,18 +267,6 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     } finally {
       // Always set loading to false, even if other operations fail
       setLoading(false);
-    }
-  };
-
-  const loadModels = async () => {
-    try {
-      const modelList = await api.getModels();
-      setModels(modelList);
-      // Prefer first ready model; fallback stays as-is
-      const firstReady = modelList.find((m) => m.ready);
-      if (firstReady) setSelectedModel(firstReady.id);
-    } catch (err) {
-      console.error('Failed to load models:', err);
     }
   };
 
@@ -628,6 +620,20 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
             
             {showOverflowMenu && (
               <div className="overflow-menu">
+                {terminalURL && (
+                  <button
+                    onClick={() => {
+                      setShowOverflowMenu(false);
+                      window.open(terminalURL, '_blank');
+                    }}
+                    className="overflow-menu-item"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1.25rem', height: '1.25rem', marginRight: '0.75rem'}}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Terminal
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setShowOverflowMenu(false);

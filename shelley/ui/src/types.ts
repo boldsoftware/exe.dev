@@ -53,3 +53,17 @@ export interface StreamResponse {
   messages: Message[];
   conversation: Conversation;
 }
+
+// InitData is injected into window by the server
+export interface InitData {
+  models: Model[];
+  default_model: string;
+  terminal_url?: string;
+}
+
+// Extend Window interface to include our init data
+declare global {
+  interface Window {
+    __SHELLEY_INIT__?: InitData;
+  }
+}

@@ -28,6 +28,7 @@ type GlobalConfig struct {
 	Model           string
 	PredictableOnly bool
 	ConfigPath      string
+	TerminalURL     string
 }
 
 // Message emoji constants
@@ -102,7 +103,7 @@ func runServe(global GlobalConfig, args []string) {
 	defer database.Close()
 
 	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath)
+	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL)
 
 	// Initialize LLM service manager
 	llmManager := server.NewLLMServiceManager(llmConfig)
@@ -110,7 +111,7 @@ func runServe(global GlobalConfig, args []string) {
 	tools := setupTools(llmManager)
 
 	// Create and start server
-	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly)
+	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL)
 	if err := svr.Start(*port); err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)
@@ -140,7 +141,7 @@ func runPrompt(global GlobalConfig, args []string) {
 	llmService := setupLLMService(global, logger)
 
 	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath)
+	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL)
 
 	// Initialize LLM service manager for tools (same as HTTP server)
 	llmManager := server.NewLLMServiceManager(llmConfig)
@@ -453,7 +454,7 @@ func setupLLMService(global GlobalConfig, logger *slog.Logger) llm.Service {
 	}
 
 	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath)
+	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL)
 
 	// Always use the service manager to ensure consistent logging
 	llmManager := server.NewLLMServiceManager(llmConfig)
@@ -586,12 +587,13 @@ func executeKeyGenerator(command string) (string, error) {
 }
 
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file
-func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
+func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string) *server.LLMConfig {
 	llmCfg := &server.LLMConfig{
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
 		GeminiAPIKey:    os.Getenv("GEMINI_API_KEY"),
 		FireworksAPIKey: os.Getenv("FIREWORKS_API_KEY"),
+		TerminalURL:     terminalURL,
 		Logger:          logger,
 	}
 
@@ -607,6 +609,7 @@ func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 		var cfg struct {
 			LLMGateway   string `json:"llm_gateway"`
 			KeyGenerator string `json:"key_generator"`
+			TerminalURL  string `json:"terminal_url"`
 		}
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			logger.Warn("Failed to parse config file", "path", configPath, "error", err)
@@ -632,6 +635,12 @@ func buildLLMConfig(logger *slog.Logger, configPath string) *server.LLMConfig {
 					logger.Debug("Using key from generator", "command", cfg.KeyGenerator)
 				}
 			}
+		}
+
+		// Override terminal URL from config file if present and not already set via flag
+		if cfg.TerminalURL != "" && llmCfg.TerminalURL == "" {
+			llmCfg.TerminalURL = cfg.TerminalURL
+			logger.Info("Using terminal URL from config", "url", cfg.TerminalURL)
 		}
 	}
 

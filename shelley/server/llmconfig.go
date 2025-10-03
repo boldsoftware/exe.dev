@@ -13,5 +13,8 @@ type LLMConfig struct {
 	// Gateway is the base URL of the LLM gateway (optional)
 	Gateway string
 
+	// TerminalURL is the URL to the terminal interface (optional)
+	TerminalURL string
+
 	Logger *slog.Logger
 }

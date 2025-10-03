@@ -887,7 +887,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// Prepare container-specific /exe.dev directory with SSH keys
 	prep.wg.Go(func() {
-		path, err := m.prepareContainerExeDev(ctx, host, req.BoxID, sshKeys)
+		path, err := m.prepareContainerExeDev(ctx, host, req.BoxID, req.Name, sshKeys)
 		if err != nil {
 			prep.errc <- fmt.Errorf("failed to prepare container /exe.dev: %w", err)
 		} else {
@@ -2009,7 +2009,7 @@ func (m *NerdctlManager) VerifyDisk(ctx context.Context, host string, boxID int)
 }
 
 // prepareContainerExeDev creates a container-specific /exe.dev directory with SSH keys
-func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string, boxID int, sshKeys *ContainerSSHKeys) (string, error) {
+func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string, boxID int, boxName string, sshKeys *ContainerSSHKeys) (string, error) {
 	// Base directory for this container's files - use box ID for stable path
 	containerDir := m.DataPath(fmt.Sprintf("exed/containers/box-%d/exe.dev", boxID))
 
@@ -2075,18 +2075,22 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 
 	// Add shelley.json if we can determine the gateway
 	var gatewayURL string
+	var terminalURL string
 	if m.config.IsProduction {
 		gatewayURL = "https://exe.dev"
+		terminalURL = fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 	} else {
 		gatewayIP, err := m.getGatewayIP(ctx, host)
 		if err == nil {
 			gatewayURL = fmt.Sprintf("http://%s:8080", gatewayIP)
+			terminalURL = fmt.Sprintf("http://%s.localhost:8080", boxName)
 		}
 	}
 	if gatewayURL != "" {
 		shelleyJSON := map[string]string{
 			"llm_gateway":   gatewayURL,
 			"key_generator": "sudo /usr/local/bin/generate-gateway-token",
+			"terminal_url":  terminalURL,
 		}
 		shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")
 		if err != nil {

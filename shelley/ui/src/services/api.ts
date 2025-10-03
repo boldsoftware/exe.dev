@@ -49,14 +49,6 @@ class ApiService {
   createMessageStream(conversationId: string): EventSource {
     return new EventSource(`${this.baseUrl}/conversation/${conversationId}/stream`);
   }
-
-  async getModels(): Promise<Model[]> {
-    const response = await fetch(`${this.baseUrl}/models`);
-    if (!response.ok) {
-      throw new Error(`Failed to get models: ${response.statusText}`);
-    }
-    return response.json();
-  }
 }
 
 export const api = new ApiService();

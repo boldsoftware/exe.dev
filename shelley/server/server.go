@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -104,6 +105,7 @@ type Server struct {
 	mu                  sync.RWMutex
 	logger              *slog.Logger
 	predictableOnly     bool
+	terminalURL         string
 }
 
 // Subscriber represents a client subscribed to conversation updates
@@ -122,7 +124,7 @@ type ConversationManager struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool) *Server {
+func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL string) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
@@ -130,6 +132,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logge
 		activeConversations: make(map[string]*ConversationManager),
 		logger:              logger,
 		predictableOnly:     predictableOnly,
+		terminalURL:         terminalURL,
 	}
 }
 
@@ -139,7 +142,6 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations", s.handleConversations)
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
-	mux.HandleFunc("/api/models", s.handleModels)
 
 	// Serve embedded UI assets with conservative caching
 	mux.Handle("/", s.staticHandler(ui.Assets()))
@@ -149,7 +151,17 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 func (s *Server) staticHandler(fs http.FileSystem) http.Handler {
 	fileServer := http.FileServer(fs)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".html") || strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
+		// Inject initialization data into index.html
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+			w.Header().Set("Content-Type", "text/html")
+			s.serveIndexWithInit(w, r, fs)
+			return
+		}
+
+		if strings.HasSuffix(r.URL.Path, ".html") || strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".css") {
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
@@ -158,35 +170,70 @@ func (s *Server) staticHandler(fs http.FileSystem) http.Handler {
 	})
 }
 
-// handleModels returns available models and whether they are ready (i.e., envs present)
-func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+// serveIndexWithInit serves index.html with injected initialization data
+func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs http.FileSystem) {
+	// Read index.html from the filesystem
+	file, err := fs.Open("/index.html")
+	if err != nil {
+		http.Error(w, "index.html not found", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+
+	indexHTML, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Failed to read index.html", http.StatusInternalServerError)
 		return
 	}
 
+	// Build initialization data
 	type ModelInfo struct {
 		ID    string `json:"id"`
 		Ready bool   `json:"ready"`
 	}
 
-	var out []ModelInfo
-
-	// If predictable-only mode is enabled, only return the predictable model
+	var models []ModelInfo
 	if s.predictableOnly {
-		out = append(out, ModelInfo{ID: "predictable", Ready: true})
+		models = append(models, ModelInfo{ID: "predictable", Ready: true})
 	} else {
-		models := s.llmManager.GetAvailableModels()
-		for _, id := range models {
+		modelIDs := s.llmManager.GetAvailableModels()
+		for _, id := range modelIDs {
 			_, err := s.llmManager.GetService(id)
-			out = append(out, ModelInfo{ID: id, Ready: err == nil})
+			models = append(models, ModelInfo{ID: id, Ready: err == nil})
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(out)
+	// Select default model - prefer first ready model
+	defaultModel := "predictable"
+	for _, m := range models {
+		if m.Ready {
+			defaultModel = m.ID
+			break
+		}
+	}
+
+	initData := map[string]interface{}{
+		"models":        models,
+		"default_model": defaultModel,
+	}
+	if s.terminalURL != "" {
+		initData["terminal_url"] = s.terminalURL
+	}
+
+	initJSON, err := json.Marshal(initData)
+	if err != nil {
+		http.Error(w, "Failed to marshal init data", http.StatusInternalServerError)
+		return
+	}
+
+	// Inject the script tag before </head>
+	initScript := fmt.Sprintf(`<script>window.__SHELLEY_INIT__=%s;</script>`, initJSON)
+	modifiedHTML := strings.Replace(string(indexHTML), "</head>", initScript+"</head>", 1)
+
+	w.Write([]byte(modifiedHTML))
 }
 
+// handleConfig returns server configuration
 // handleConversations handles GET /conversations
 func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
