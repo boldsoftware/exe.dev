@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -17,29 +17,25 @@ function Modal({ isOpen, onClose, title, children }: ModalProps) {
   };
 
   return (
-    <div 
-      className="modal-overlay"
-      onClick={handleBackdropClick}
-    >
+    <div className="modal-overlay" onClick={handleBackdropClick}>
       <div className="modal">
         {/* Header */}
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
-          <button
-            onClick={onClose}
-            className="btn-icon"
-            aria-label="Close modal"
-          >
+          <button onClick={onClose} className="btn-icon" aria-label="Close modal">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
-        
+
         {/* Content */}
-        <div className="modal-body">
-          {children}
-        </div>
+        <div className="modal-body">{children}</div>
       </div>
     </div>
   );

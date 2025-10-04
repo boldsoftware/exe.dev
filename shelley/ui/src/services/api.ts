@@ -1,7 +1,7 @@
-import { Conversation, Message, ChatRequest } from '../types';
+import { Conversation, Message, ChatRequest } from "../types";
 
 class ApiService {
-  private baseUrl = '/api';
+  private baseUrl = "/api";
 
   async getConversations(): Promise<Conversation[]> {
     const response = await fetch(`${this.baseUrl}/conversations`);
@@ -13,9 +13,9 @@ class ApiService {
 
   async sendMessageWithNewConversation(request: ChatRequest): Promise<{ conversation_id: string }> {
     const response = await fetch(`${this.baseUrl}/conversations/new`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
     });
@@ -35,9 +35,9 @@ class ApiService {
 
   async sendMessage(conversationId: string, request: ChatRequest): Promise<void> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/chat`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
     });

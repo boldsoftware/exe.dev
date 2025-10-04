@@ -12,22 +12,19 @@ interface ThinkToolProps {
   executionTime?: string;
 }
 
-function ThinkTool({
-  toolInput,
-  isRunning,
-  toolResult,
-  hasError,
-  executionTime,
-}: ThinkToolProps) {
+function ThinkTool({ toolInput, isRunning, toolResult, hasError, executionTime }: ThinkToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Extract thoughts from toolInput
   const thoughts =
-    typeof toolInput === "object" && toolInput !== null && 'thoughts' in toolInput && typeof toolInput.thoughts === 'string'
+    typeof toolInput === "object" &&
+    toolInput !== null &&
+    "thoughts" in toolInput &&
+    typeof toolInput.thoughts === "string"
       ? toolInput.thoughts
       : typeof toolInput === "string"
-      ? toolInput
-      : "";
+        ? toolInput
+        : "";
 
   // Truncate thoughts for display - get first 50 chars
   const truncateThoughts = (text: string, maxLen: number = 50) => {
@@ -41,19 +38,14 @@ function ThinkTool({
 
   return (
     <div className="tool">
-      <div
-        className="tool-header"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
+      <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
-          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>💭</span>
+          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>💭</span>
           <span className="tool-command">
             {displayThoughts || (isRunning ? "thinking..." : "thinking...")}
           </span>
           {isComplete && hasError && <span className="tool-error">✗</span>}
-          {isComplete && !hasError && (
-            <span className="tool-success">✓</span>
-          )}
+          {isComplete && !hasError && <span className="tool-success">✓</span>}
         </div>
         <button
           className="tool-toggle"
@@ -87,9 +79,7 @@ function ThinkTool({
           <div className="tool-section">
             <div className="tool-label">
               Thoughts:
-              {executionTime && (
-                <span className="tool-time">{executionTime}</span>
-              )}
+              {executionTime && <span className="tool-time">{executionTime}</span>}
             </div>
             <div className={`tool-code ${hasError ? "error" : ""}`}>
               {thoughts || "(no thoughts)"}

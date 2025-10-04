@@ -23,20 +23,24 @@ function KeywordSearchTool({
 
   // Extract query and search terms from toolInput
   const query =
-    typeof toolInput === "object" && toolInput !== null && 'query' in toolInput && typeof toolInput.query === 'string'
+    typeof toolInput === "object" &&
+    toolInput !== null &&
+    "query" in toolInput &&
+    typeof toolInput.query === "string"
       ? toolInput.query
       : "";
 
   const searchTerms =
-    typeof toolInput === "object" && toolInput !== null && 'search_terms' in toolInput && Array.isArray(toolInput.search_terms)
+    typeof toolInput === "object" &&
+    toolInput !== null &&
+    "search_terms" in toolInput &&
+    Array.isArray(toolInput.search_terms)
       ? toolInput.search_terms
       : [];
 
   // Extract output from toolResult
   const output =
-    toolResult && toolResult.length > 0 && toolResult[0].Text
-      ? toolResult[0].Text
-      : "";
+    toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
 
   // Truncate search terms for display
   const truncateSearchTerms = (terms: string[], maxLen: number = 300) => {
@@ -50,17 +54,12 @@ function KeywordSearchTool({
 
   return (
     <div className="tool">
-      <div
-        className="tool-header"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
+      <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
-          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>🔍</span>
+          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>🔍</span>
           <span className="tool-command">{displayText}</span>
           {isComplete && hasError && <span className="tool-error">✗</span>}
-          {isComplete && !hasError && (
-            <span className="tool-success">✓</span>
-          )}
+          {isComplete && !hasError && <span className="tool-success">✓</span>}
         </div>
         <button
           className="tool-toggle"
@@ -109,9 +108,7 @@ function KeywordSearchTool({
             <div className="tool-section">
               <div className="tool-label">
                 Results{hasError ? " (Error)" : ""}:
-                {executionTime && (
-                  <span className="tool-time">{executionTime}</span>
-                )}
+                {executionTime && <span className="tool-time">{executionTime}</span>}
               </div>
               <pre className={`tool-code ${hasError ? "error" : ""}`}>
                 {output || "(no output)"}

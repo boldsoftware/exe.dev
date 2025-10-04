@@ -1,5 +1,5 @@
-import React from 'react';
-import { Conversation } from '../types';
+import React from "react";
+import { Conversation } from "../types";
 
 interface ConversationDrawerProps {
   isOpen: boolean;
@@ -23,11 +23,11 @@ function ConversationDrawer({
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays === 0) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     } else if (diffDays === 1) {
-      return 'Yesterday';
+      return "Yesterday";
     } else if (diffDays < 7) {
       return `${diffDays} days ago`;
     } else {
@@ -46,7 +46,7 @@ function ConversationDrawer({
   return (
     <>
       {/* Drawer */}
-      <div className={`drawer ${isOpen ? 'open' : ''}`}>
+      <div className={`drawer ${isOpen ? "open" : ""}`}>
         {/* Header */}
         <div className="drawer-header">
           <h2 className="drawer-title">Conversations</h2>
@@ -56,7 +56,12 @@ function ConversationDrawer({
             aria-label="Close conversations"
           >
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -66,10 +71,26 @@ function ConversationDrawer({
           <button
             onClick={onNewConversation}
             className="btn-primary"
-            style={{width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'}}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+            }}
           >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem'}}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              style={{ width: "1rem", height: "1rem" }}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
             <span>New Conversation</span>
           </button>
@@ -78,9 +99,11 @@ function ConversationDrawer({
         {/* Conversations list */}
         <div className="drawer-body scrollable">
           {conversations.length === 0 ? (
-            <div style={{padding: '1rem', textAlign: 'center'}} className="text-secondary">
+            <div style={{ padding: "1rem", textAlign: "center" }} className="text-secondary">
               <p>No conversations yet</p>
-              <p className="text-sm" style={{marginTop: '0.25rem'}}>Start a new conversation to get started</p>
+              <p className="text-sm" style={{ marginTop: "0.25rem" }}>
+                Start a new conversation to get started
+              </p>
             </div>
           ) : (
             <div className="conversation-list">
@@ -90,14 +113,10 @@ function ConversationDrawer({
                   <button
                     key={conversation.conversation_id}
                     onClick={() => onSelectConversation(conversation.conversation_id)}
-                    className={`conversation-item ${isActive ? 'active' : ''}`}
+                    className={`conversation-item ${isActive ? "active" : ""}`}
                   >
-                    <div className="conversation-title">
-                      {getConversationPreview(conversation)}
-                    </div>
-                    <div className="conversation-date">
-                      {formatDate(conversation.updated_at)}
-                    </div>
+                    <div className="conversation-title">{getConversationPreview(conversation)}</div>
+                    <div className="conversation-date">{formatDate(conversation.updated_at)}</div>
                   </button>
                 );
               })}

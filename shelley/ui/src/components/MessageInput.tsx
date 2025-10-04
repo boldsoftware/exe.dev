@@ -29,10 +29,7 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
       textareaRef.current.style.height = "auto";
       const scrollHeight = textareaRef.current.scrollHeight;
       const maxHeight = 200; // Maximum height in pixels
-      textareaRef.current.style.height = `${Math.min(
-        scrollHeight,
-        maxHeight
-      )}px`;
+      textareaRef.current.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
     }
   };
 
@@ -64,14 +61,10 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
         >
           {disabled ? (
             <div className="flex items-center justify-center">
-              <div className="spinner spinner-small" style={{borderTopColor: 'white'}}></div>
+              <div className="spinner spinner-small" style={{ borderTopColor: "white" }}></div>
             </div>
           ) : (
-            <svg
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

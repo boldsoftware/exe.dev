@@ -12,28 +12,23 @@ interface BashToolProps {
   executionTime?: string;
 }
 
-function BashTool({
-  toolInput,
-  isRunning,
-  toolResult,
-  hasError,
-  executionTime,
-}: BashToolProps) {
+function BashTool({ toolInput, isRunning, toolResult, hasError, executionTime }: BashToolProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Extract command from toolInput
   const command =
-    typeof toolInput === "object" && toolInput !== null && 'command' in toolInput && typeof toolInput.command === 'string'
+    typeof toolInput === "object" &&
+    toolInput !== null &&
+    "command" in toolInput &&
+    typeof toolInput.command === "string"
       ? toolInput.command
       : typeof toolInput === "string"
-      ? toolInput
-      : "";
+        ? toolInput
+        : "";
 
   // Extract output from toolResult
   const output =
-    toolResult && toolResult.length > 0 && toolResult[0].Text
-      ? toolResult[0].Text
-      : "";
+    toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
 
   // Truncate command for display
   const truncateCommand = (cmd: string, maxLen: number = 300) => {
@@ -46,17 +41,12 @@ function BashTool({
 
   return (
     <div className="bash-tool">
-      <div
-        className="bash-tool-header"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
+      <div className="bash-tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="bash-tool-summary">
-          <span className={`bash-tool-emoji ${isRunning ? 'running' : ''}`}>🛠️</span>
+          <span className={`bash-tool-emoji ${isRunning ? "running" : ""}`}>🛠️</span>
           <span className="bash-tool-command">{displayCommand}</span>
           {isComplete && hasError && <span className="bash-tool-error">✗</span>}
-          {isComplete && !hasError && (
-            <span className="bash-tool-success">✓</span>
-          )}
+          {isComplete && !hasError && <span className="bash-tool-success">✓</span>}
         </div>
         <button
           className="bash-tool-toggle"
@@ -96,9 +86,7 @@ function BashTool({
             <div className="bash-tool-section">
               <div className="bash-tool-label">
                 Output{hasError ? " (Error)" : ""}:
-                {executionTime && (
-                  <span className="bash-tool-time">{executionTime}</span>
-                )}
+                {executionTime && <span className="bash-tool-time">{executionTime}</span>}
               </div>
               <pre className={`bash-tool-code ${hasError ? "error" : ""}`}>
                 {output || "(no output)"}

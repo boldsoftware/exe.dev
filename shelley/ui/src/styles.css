@@ -5,7 +5,10 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -615,7 +618,8 @@ button {
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -671,7 +675,8 @@ button {
 }
 
 .tool-command {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -744,7 +749,8 @@ button {
 }
 
 .tool-code {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   background: var(--bg-base);
   border: 1px solid var(--border);
@@ -764,7 +770,8 @@ button {
 }
 
 /* Bash Tool Component - uses shared tool styles */
-.bash-tool { /* Alias for backwards compatibility */
+.bash-tool {
+  /* Alias for backwards compatibility */
   background: var(--gray-100);
   border-radius: 0.5rem;
   margin: 0.5rem 0;
@@ -811,7 +818,8 @@ button {
 }
 
 .bash-tool-command {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -884,7 +892,8 @@ button {
 }
 
 .bash-tool-code {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   background: var(--bg-base);
   border: 1px solid var(--border);
@@ -951,7 +960,8 @@ button {
 }
 
 .patch-tool-filename {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -1025,7 +1035,8 @@ button {
 }
 
 .patch-tool-diff {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   background: var(--bg-base);
   border: 1px solid var(--border);
@@ -1073,7 +1084,8 @@ button {
 }
 
 .patch-tool-error-message {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   background: var(--error-bg);
   border: 1px solid var(--error-border);
@@ -1134,7 +1146,8 @@ button {
 }
 
 .screenshot-tool-filename {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -1224,7 +1237,8 @@ button {
 }
 
 .screenshot-tool-error-message {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-family:
+    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
   font-size: 0.875rem;
   background: var(--error-bg);
   border: 1px solid var(--error-border);
@@ -1392,7 +1406,9 @@ select:disabled {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Loading/Error States */
@@ -1548,7 +1564,9 @@ svg {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 0.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   min-width: 10rem;
   z-index: 50;
 }
@@ -1600,16 +1618,15 @@ svg {
     position: static;
     transform: translateX(0) !important;
   }
-  
+
   .hide-on-desktop {
     display: none !important;
   }
-  
+
   .backdrop {
     display: none !important;
   }
 }
-
 
 /* Rotation animation for running tools */
 @keyframes rotate {

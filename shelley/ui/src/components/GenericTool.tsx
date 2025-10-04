@@ -45,17 +45,12 @@ function GenericTool({
 
   return (
     <div className="tool">
-      <div
-        className="tool-header"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
+      <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
-          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>⚙️</span>
+          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>⚙️</span>
           <span className="tool-command">{toolName}</span>
           {isComplete && hasError && <span className="tool-error">✗</span>}
-          {isComplete && !hasError && (
-            <span className="tool-success">✓</span>
-          )}
+          {isComplete && !hasError && <span className="tool-success">✓</span>}
         </div>
         <button
           className="tool-toggle"
@@ -104,9 +99,7 @@ function GenericTool({
             <div className="tool-section">
               <div className="tool-label">
                 Output{hasError ? " (Error)" : ""}:
-                {executionTime && (
-                  <span className="tool-time">{executionTime}</span>
-                )}
+                {executionTime && <span className="tool-time">{executionTime}</span>}
               </div>
               <pre className={`tool-code ${hasError ? "error" : ""}`}>
                 {output || "(no output)"}

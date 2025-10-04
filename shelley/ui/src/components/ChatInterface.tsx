@@ -1,18 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Message, Conversation, StreamResponse, LLMContent } from '../types';
-import { api } from '../services/api';
-import MessageComponent from './Message';
-import MessageInput from './MessageInput';
-import Modal from './Modal';
-import BashTool from './BashTool';
-import PatchTool from './PatchTool';
-import ScreenshotTool from './ScreenshotTool';
-import ThinkTool from './ThinkTool';
-import KeywordSearchTool from './KeywordSearchTool';
-import BrowserNavigateTool from './BrowserNavigateTool';
-import BrowserEvalTool from './BrowserEvalTool';
-import ReadImageTool from './ReadImageTool';
-import BrowserConsoleLogsTool from './BrowserConsoleLogsTool';
+import React, { useState, useEffect, useRef } from "react";
+import { Message, Conversation, StreamResponse, LLMContent } from "../types";
+import { api } from "../services/api";
+import MessageComponent from "./Message";
+import MessageInput from "./MessageInput";
+import Modal from "./Modal";
+import BashTool from "./BashTool";
+import PatchTool from "./PatchTool";
+import ScreenshotTool from "./ScreenshotTool";
+import ThinkTool from "./ThinkTool";
+import KeywordSearchTool from "./KeywordSearchTool";
+import BrowserNavigateTool from "./BrowserNavigateTool";
+import BrowserEvalTool from "./BrowserEvalTool";
+import ReadImageTool from "./ReadImageTool";
+import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
 
 interface CoalescedToolCallProps {
   toolName: string;
@@ -27,17 +27,17 @@ interface CoalescedToolCallProps {
 // Map tool names to their specialized components
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
-  'bash': BashTool,
-  'patch': PatchTool,
-  'screenshot': ScreenshotTool,
-  'browser_take_screenshot': ScreenshotTool,
-  'think': ThinkTool,
-  'keyword_search': KeywordSearchTool,
-  'browser_navigate': BrowserNavigateTool,
-  'browser_eval': BrowserEvalTool,
-  'read_image': ReadImageTool,
-  'browser_recent_console_logs': BrowserConsoleLogsTool,
-  'browser_clear_console_logs': BrowserConsoleLogsTool,
+  bash: BashTool,
+  patch: PatchTool,
+  screenshot: ScreenshotTool,
+  browser_take_screenshot: ScreenshotTool,
+  think: ThinkTool,
+  keyword_search: KeywordSearchTool,
+  browser_navigate: BrowserNavigateTool,
+  browser_eval: BrowserEvalTool,
+  read_image: ReadImageTool,
+  browser_recent_console_logs: BrowserConsoleLogsTool,
+  browser_clear_console_logs: BrowserConsoleLogsTool,
 };
 
 function CoalescedToolCall({
@@ -47,10 +47,10 @@ function CoalescedToolCall({
   toolError,
   toolStartTime,
   toolEndTime,
-  hasResult
+  hasResult,
 }: CoalescedToolCallProps) {
   // Calculate execution time if available
-  let executionTime = '';
+  let executionTime = "";
   if (hasResult && toolStartTime && toolEndTime) {
     const start = new Date(toolStartTime).getTime();
     const end = new Date(toolEndTime).getTime();
@@ -72,37 +72,33 @@ function CoalescedToolCall({
       hasError: toolError,
       executionTime,
       // BrowserConsoleLogsTool needs the toolName prop
-      ...(toolName === 'browser_recent_console_logs' || toolName === 'browser_clear_console_logs' ? { toolName } : {}),
+      ...(toolName === "browser_recent_console_logs" || toolName === "browser_clear_console_logs"
+        ? { toolName }
+        : {}),
     };
     return <ToolComponent {...props} />;
   }
 
   const getToolResultSummary = (results: LLMContent[]) => {
-    if (!results || results.length === 0) return 'No output';
-    
+    if (!results || results.length === 0) return "No output";
+
     const firstResult = results[0];
-    if (firstResult.Type === 2 && firstResult.Text) { // text content
+    if (firstResult.Type === 2 && firstResult.Text) {
+      // text content
       const text = firstResult.Text.trim();
       if (text.length <= 50) return text;
-      return text.substring(0, 47) + '...';
+      return text.substring(0, 47) + "...";
     }
-    
-    return `${results.length} result${results.length > 1 ? 's' : ''}`;
+
+    return `${results.length} result${results.length > 1 ? "s" : ""}`;
   };
 
   const renderContent = (content: LLMContent) => {
-    if (content.Type === 2) { // text
-      return (
-        <div className="whitespace-pre-wrap break-words">
-          {content.Text || ''}
-        </div>
-      );
+    if (content.Type === 2) {
+      // text
+      return <div className="whitespace-pre-wrap break-words">{content.Text || ""}</div>;
     }
-    return (
-      <div className="text-secondary text-sm italic">
-        [Content type {content.Type}]
-      </div>
-    );
+    return <div className="text-secondary text-sm italic">[Content type {content.Type}]</div>;
   };
 
   if (!hasResult) {
@@ -112,20 +108,30 @@ function CoalescedToolCall({
         <div className="message-content">
           <div className="tool-running">
             <div className="tool-running-header">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <svg
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{ width: "1rem", height: "1rem", color: "var(--blue-text)" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
               </svg>
-              <span className="tool-name">
-                Tool: {toolName}
-              </span>
+              <span className="tool-name">Tool: {toolName}</span>
               <span className="tool-status-running">(running)</span>
             </div>
             <div className="tool-input">
-              {typeof toolInput === 'string' 
-                ? toolInput 
-                : JSON.stringify(toolInput, null, 2)
-              }
+              {typeof toolInput === "string" ? toolInput : JSON.stringify(toolInput, null, 2)}
             </div>
           </div>
         </div>
@@ -134,24 +140,37 @@ function CoalescedToolCall({
   }
 
   // Show completed state with result
-  const summary = toolResult ? getToolResultSummary(toolResult) : 'No output';
+  const summary = toolResult ? getToolResultSummary(toolResult) : "No output";
 
   return (
     <div className="message message-tool" data-testid="tool-call-completed">
       <div className="message-content">
-        <details className={`tool-result-details ${toolError ? 'error' : ''}`}>
+        <details className={`tool-result-details ${toolError ? "error" : ""}`}>
           <summary className="tool-result-summary">
             <div className="tool-result-meta">
               <div className="flex items-center space-x-2">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem', color: 'var(--blue-text)'}}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <svg
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  style={{ width: "1rem", height: "1rem", color: "var(--blue-text)" }}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
                 </svg>
-                <span className="text-sm font-medium text-blue">
-                  {toolName}
-                </span>
-                <span className={`tool-result-status text-xs ${toolError ? 'error' : 'success'}`}>
-                  {toolError ? '✗' : '✓'} {summary}
+                <span className="text-sm font-medium text-blue">{toolName}</span>
+                <span className={`tool-result-status text-xs ${toolError ? "error" : "success"}`}>
+                  {toolError ? "✗" : "✓"} {summary}
                 </span>
               </div>
               <div className="tool-result-time">
@@ -165,23 +184,23 @@ function CoalescedToolCall({
               <div className="tool-result-label">Input:</div>
               <div className="tool-result-data">
                 {toolInput ? (
-                  typeof toolInput === 'string' 
-                    ? toolInput 
-                    : JSON.stringify(toolInput, null, 2)
+                  typeof toolInput === "string" ? (
+                    toolInput
+                  ) : (
+                    JSON.stringify(toolInput, null, 2)
+                  )
                 ) : (
                   <span className="text-secondary italic">No input data</span>
                 )}
               </div>
             </div>
-            
+
             {/* Show tool output with header */}
-            <div className={`tool-result-section output ${toolError ? 'error' : ''}`}>
-              <div className="tool-result-label">Output{toolError ? ' (Error)' : ''}:</div>
+            <div className={`tool-result-section output ${toolError ? "error" : ""}`}>
+              <div className="tool-result-label">Output{toolError ? " (Error)" : ""}:</div>
               <div className="space-y-2">
                 {toolResult?.map((result, idx) => (
-                  <div key={idx}>
-                    {renderContent(result)}
-                  </div>
+                  <div key={idx}>{renderContent(result)}</div>
                 ))}
               </div>
             </div>
@@ -192,7 +211,6 @@ function CoalescedToolCall({
   );
 }
 
-
 interface ChatInterfaceProps {
   conversationId: string | null;
   onOpenDrawer: () => void;
@@ -202,7 +220,14 @@ interface ChatInterfaceProps {
   onFirstMessage?: (message: string, model: string) => Promise<void>;
 }
 
-function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, currentConversation, onConversationUpdate, onFirstMessage }: ChatInterfaceProps) {
+function ChatInterface({
+  conversationId,
+  onOpenDrawer,
+  onNewConversation,
+  currentConversation,
+  onConversationUpdate,
+  onFirstMessage,
+}: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -211,7 +236,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     const initModels = window.__SHELLEY_INIT__?.models || [];
     const firstReady = initModels.find((m) => m.ready);
-    return firstReady?.id || 'qwen3-coder-fireworks';
+    return firstReady?.id || "qwen3-coder-fireworks";
   });
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
@@ -259,9 +284,9 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     };
 
     if (showOverflowMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
       return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside);
       };
     }
   }, [showOverflowMenu]);
@@ -274,8 +299,8 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       const msgs = await api.getMessages(conversationId);
       setMessages(msgs);
     } catch (err) {
-      console.error('Failed to load messages:', err);
-      setError('Failed to load messages');
+      console.error("Failed to load messages:", err);
+      setError("Failed to load messages");
     } finally {
       // Always set loading to false, even if other operations fail
       setLoading(false);
@@ -284,7 +309,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
 
   const setupMessageStream = () => {
     if (!conversationId) return;
-    
+
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -312,51 +337,51 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
             return result;
           });
         }
-        
+
         // Update conversation data if provided
         if (onConversationUpdate) {
           onConversationUpdate(streamResponse.conversation);
         }
       } catch (err) {
-        console.error('Failed to parse message stream data:', err);
+        console.error("Failed to parse message stream data:", err);
       }
     };
 
     eventSource.onerror = (event) => {
-      console.warn('Message stream error (will retry):', event);
+      console.warn("Message stream error (will retry):", event);
       // Close and retry after a delay
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
-      
+
       // Backoff delays: 1s, 5s, 10s, then give up
       const delays = [1000, 5000, 10000];
-      
+
       setReconnectAttempts((prev) => {
         const attempts = prev + 1;
-        
+
         if (attempts > delays.length) {
           // Give up and show disconnected UI
           setIsDisconnected(true);
           return attempts;
         }
-        
+
         const delay = delays[attempts - 1];
         console.log(`Reconnecting in ${delay}ms (attempt ${attempts}/${delays.length})`);
-        
+
         reconnectTimeoutRef.current = window.setTimeout(() => {
           if (eventSourceRef.current === null) {
             setupMessageStream();
           }
         }, delay);
-        
+
         return attempts;
       });
     };
 
     eventSource.onopen = () => {
-      console.log('Message stream connected');
+      console.log("Message stream connected");
       // Reset reconnect attempts on successful connection
       setReconnectAttempts(0);
       setIsDisconnected(false);
@@ -369,7 +394,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     try {
       setSending(true);
       setError(null);
-      
+
       // If no conversation ID, this is the first message
       if (!conversationId && onFirstMessage) {
         await onFirstMessage(message.trim(), selectedModel);
@@ -380,15 +405,15 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
         });
       }
     } catch (err) {
-      console.error('Failed to send message:', err);
-      setError('Failed to send message. Please try again.');
+      console.error("Failed to send message:", err);
+      setError("Failed to send message. Please try again.");
     } finally {
       setSending(false);
     }
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   const handleManualReconnect = () => {
@@ -407,7 +432,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       const slug = currentConversation.slug;
       return slug.length > 30 ? `${slug.substring(0, 27)}...` : slug;
     }
-    return 'Shelley';
+    return "Shelley";
   };
 
   // Process messages to coalesce tool calls
@@ -417,7 +442,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     }
 
     interface CoalescedItem {
-      type: 'message' | 'tool';
+      type: "message" | "tool";
       message?: Message;
       toolUseId?: string;
       toolName?: string;
@@ -430,64 +455,77 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     }
 
     const coalescedItems: CoalescedItem[] = [];
-    const toolResultMap: Record<string, {
-      result: LLMContent[];
-      error: boolean;
-      startTime: string | null;
-      endTime: string | null;
-    }> = {};
+    const toolResultMap: Record<
+      string,
+      {
+        result: LLMContent[];
+        error: boolean;
+        startTime: string | null;
+        endTime: string | null;
+      }
+    > = {};
     // Some tool results may be delivered only as display_data (e.g., screenshots)
     const displayResultSet: Set<string> = new Set();
 
     // First pass: collect all tool results
-    messages.forEach(message => {
+    messages.forEach((message) => {
       // Collect tool_result data from llm_data if present
       if (message.llm_data) {
         try {
-          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
+          const llmData =
+            typeof message.llm_data === "string" ? JSON.parse(message.llm_data) : message.llm_data;
           if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
             llmData.Content.forEach((content: LLMContent) => {
-              if (content && content.Type === 6 && content.ToolUseID) { // tool_result
+              if (content && content.Type === 6 && content.ToolUseID) {
+                // tool_result
                 toolResultMap[content.ToolUseID] = {
                   result: content.ToolResult || [],
                   error: content.ToolError || false,
                   startTime: content.ToolUseStartTime || null,
-                  endTime: content.ToolUseEndTime || null
+                  endTime: content.ToolUseEndTime || null,
                 };
               }
             });
           }
         } catch (err) {
-          console.error('Failed to parse message LLM data for tool results:', err);
+          console.error("Failed to parse message LLM data for tool results:", err);
         }
       }
 
       // Also collect tool_use_ids from display_data to mark completion even if llm_data is omitted
       if (message.display_data) {
         try {
-          const displays = typeof message.display_data === 'string' ? JSON.parse(message.display_data) : message.display_data;
+          const displays =
+            typeof message.display_data === "string"
+              ? JSON.parse(message.display_data)
+              : message.display_data;
           if (Array.isArray(displays)) {
             for (const d of displays) {
-              if (d && typeof d === 'object' && 'tool_use_id' in d && typeof d.tool_use_id === 'string') {
+              if (
+                d &&
+                typeof d === "object" &&
+                "tool_use_id" in d &&
+                typeof d.tool_use_id === "string"
+              ) {
                 displayResultSet.add(d.tool_use_id);
               }
             }
           }
         } catch (err) {
-          console.error('Failed to parse display_data for tool completion:', err);
+          console.error("Failed to parse display_data for tool completion:", err);
         }
       }
     });
 
     // Second pass: process messages and extract tool uses
-    messages.forEach(message => {
+    messages.forEach((message) => {
       // Skip system messages
-      if (message.type === 'system') {
+      if (message.type === "system") {
         return;
       }
 
-      if (message.type === 'error') {
-        coalescedItems.push({ type: 'message', message });
+      if (message.type === "error") {
+        coalescedItems.push({ type: "message", message });
         return;
       }
 
@@ -495,54 +533,61 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       let hasToolResult = false;
       if (message.llm_data) {
         try {
-          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
+          const llmData =
+            typeof message.llm_data === "string" ? JSON.parse(message.llm_data) : message.llm_data;
           if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
             hasToolResult = llmData.Content.some((c: LLMContent) => c.Type === 6);
           }
         } catch (err) {
-          console.error('Failed to parse message LLM data:', err);
+          console.error("Failed to parse message LLM data:", err);
         }
       }
 
       // If it's a user message without tool results, show it
-      if (message.type === 'user' && !hasToolResult) {
-        coalescedItems.push({ type: 'message', message });
+      if (message.type === "user" && !hasToolResult) {
+        coalescedItems.push({ type: "message", message });
         return;
       }
 
       // If it's a user message with tool results, skip it (we'll handle it via the toolResultMap)
-      if (message.type === 'user' && hasToolResult) {
+      if (message.type === "user" && hasToolResult) {
         return;
       }
 
       if (message.llm_data) {
         try {
-          const llmData = typeof message.llm_data === 'string' ? JSON.parse(message.llm_data) : message.llm_data;
+          const llmData =
+            typeof message.llm_data === "string" ? JSON.parse(message.llm_data) : message.llm_data;
           if (llmData && llmData.Content && Array.isArray(llmData.Content)) {
             // Extract text content and tool uses separately
             const textContents: LLMContent[] = [];
             const toolUses: LLMContent[] = [];
 
             llmData.Content.forEach((content: LLMContent) => {
-              if (content.Type === 2) { // text
+              if (content.Type === 2) {
+                // text
                 textContents.push(content);
-              } else if (content.Type === 5) { // tool_use
+              } else if (content.Type === 5) {
+                // tool_use
                 toolUses.push(content);
               }
             });
 
             // If we have text content, add it as a message (but only if it's not empty)
-            const textString = textContents.map(c => c.Text || '').join('').trim();
+            const textString = textContents
+              .map((c) => c.Text || "")
+              .join("")
+              .trim();
             if (textString) {
-              coalescedItems.push({ type: 'message', message });
+              coalescedItems.push({ type: "message", message });
             }
 
             // Add tool uses as separate items
-            toolUses.forEach(toolUse => {
+            toolUses.forEach((toolUse) => {
               const resultData = toolUse.ID ? toolResultMap[toolUse.ID] : undefined;
               const completedViaDisplay = toolUse.ID ? displayResultSet.has(toolUse.ID) : false;
               coalescedItems.push({
-                type: 'tool',
+                type: "tool",
                 toolUseId: toolUse.ID,
                 toolName: toolUse.ToolName,
                 toolInput: toolUse.ToolInput,
@@ -555,11 +600,11 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
             });
           }
         } catch (err) {
-          console.error('Failed to parse message LLM data:', err);
-          coalescedItems.push({ type: 'message', message });
+          console.error("Failed to parse message LLM data:", err);
+          coalescedItems.push({ type: "message", message });
         }
       } else {
-        coalescedItems.push({ type: 'message', message });
+        coalescedItems.push({ type: "message", message });
       }
     });
 
@@ -571,7 +616,9 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
       return (
         <div className="empty-state">
           <div className="empty-state-content">
-            <p className="text-lg" style={{marginBottom: '0.5rem'}}>Start a conversation</p>
+            <p className="text-lg" style={{ marginBottom: "0.5rem" }}>
+              Start a conversation
+            </p>
             <p className="text-sm">Send a message to begin chatting with Shelley</p>
           </div>
         </div>
@@ -581,18 +628,13 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
     const coalescedItems = processMessages();
 
     return coalescedItems.map((item, index) => {
-      if (item.type === 'message' && item.message) {
-        return (
-          <MessageComponent 
-            key={item.message.message_id} 
-            message={item.message}
-          />
-        );
-      } else if (item.type === 'tool') {
+      if (item.type === "message" && item.message) {
+        return <MessageComponent key={item.message.message_id} message={item.message} />;
+      } else if (item.type === "tool") {
         return (
           <CoalescedToolCall
             key={item.toolUseId || `tool-${index}`}
-            toolName={item.toolName || 'Unknown Tool'}
+            toolName={item.toolName || "Unknown Tool"}
             toolInput={item.toolInput}
             toolResult={item.toolResult}
             toolError={item.toolError}
@@ -617,51 +659,77 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
             aria-label="Open conversations"
           >
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
             </svg>
           </button>
-          
-          <h1 className="header-title" title={currentConversation?.slug || 'Shelley'}>
+
+          <h1 className="header-title" title={currentConversation?.slug || "Shelley"}>
             {getDisplayTitle()}
           </h1>
         </div>
-        
+
         <div className="header-actions">
           {/* Green + icon in circle for new conversation */}
-          <button
-            onClick={onNewConversation}
-            className="btn-new"
-            aria-label="New conversation"
-          >
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem'}}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <button onClick={onNewConversation} className="btn-new" aria-label="New conversation">
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              style={{ width: "1rem", height: "1rem" }}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
           </button>
-          
+
           {/* Overflow menu */}
-          <div ref={overflowMenuRef} style={{position: 'relative'}}>
+          <div ref={overflowMenuRef} style={{ position: "relative" }}>
             <button
               onClick={() => setShowOverflowMenu(!showOverflowMenu)}
               className="btn-icon"
               aria-label="More options"
             >
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                />
               </svg>
             </button>
-            
+
             {showOverflowMenu && (
               <div className="overflow-menu">
                 {terminalURL && (
                   <button
                     onClick={() => {
                       setShowOverflowMenu(false);
-                      window.open(terminalURL, '_blank');
+                      window.open(terminalURL, "_blank");
                     }}
                     className="overflow-menu-item"
                   >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1.25rem', height: '1.25rem', marginRight: '0.75rem'}}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <svg
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                     Terminal
                   </button>
@@ -673,9 +741,24 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
                   }}
                   className="overflow-menu-item"
                 >
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1.25rem', height: '1.25rem', marginRight: '0.75rem'}}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <svg
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
                   </svg>
                   Settings
                 </button>
@@ -704,10 +787,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
         <div className="disconnect-banner">
           <div className="disconnect-banner-content">
             <p className="disconnect-message">Disconnected</p>
-            <button
-              onClick={handleManualReconnect}
-              className="btn-reconnect"
-            >
+            <button onClick={handleManualReconnect} className="btn-reconnect">
               Retry
             </button>
           </div>
@@ -722,10 +802,20 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
             <button
               onClick={() => setError(null)}
               className="btn-icon"
-              style={{color: 'var(--error-text)'}}
+              style={{ color: "var(--error-text)" }}
             >
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '1rem', height: '1rem'}}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                style={{ width: "1rem", height: "1rem" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -734,7 +824,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
 
       {/* Message input */}
       <MessageInput onSend={sendMessage} disabled={sending || loading} />
-      
+
       {/* Configuration Modal */}
       <Modal
         isOpen={showConfigModal}
@@ -742,9 +832,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
         title="Configuration"
       >
         <div>
-          <label htmlFor="model-select">
-            Model
-          </label>
+          <label htmlFor="model-select">Model</label>
           <select
             id="model-select"
             value={selectedModel}
@@ -753,7 +841,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
           >
             {models.map((model) => (
               <option key={model.id} value={model.id} disabled={!model.ready}>
-                {model.id} {!model.ready ? '(not ready)' : ''}
+                {model.id} {!model.ready ? "(not ready)" : ""}
               </option>
             ))}
           </select>

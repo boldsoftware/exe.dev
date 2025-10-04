@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import ChatInterface from './components/ChatInterface';
-import ConversationDrawer from './components/ConversationDrawer';
-import { Conversation } from './types';
-import { api } from './services/api';
+import React, { useState, useEffect } from "react";
+import ChatInterface from "./components/ChatInterface";
+import ConversationDrawer from "./components/ConversationDrawer";
+import { Conversation } from "./types";
+import { api } from "./services/api";
 
 function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -22,7 +22,7 @@ function App() {
       setError(null);
       const convs = await api.getConversations();
       setConversations(convs);
-      
+
       // If we have conversations and no current one selected, select the first
       if (!currentConversationId && convs.length > 0) {
         setCurrentConversationId(convs[0].conversation_id);
@@ -30,8 +30,8 @@ function App() {
       // If no conversations exist, leave currentConversationId as null
       // The UI will show the welcome screen and create conversation on first message
     } catch (err) {
-      console.error('Failed to load conversations:', err);
-      setError('Failed to load conversations. Please refresh the page.');
+      console.error("Failed to load conversations:", err);
+      setError("Failed to load conversations. Please refresh the page.");
     } finally {
       setLoading(false);
     }
@@ -49,12 +49,10 @@ function App() {
   };
 
   const updateConversation = (updatedConversation: Conversation) => {
-    setConversations(prev => 
-      prev.map(conv => 
-        conv.conversation_id === updatedConversation.conversation_id 
-          ? updatedConversation 
-          : conv
-      )
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.conversation_id === updatedConversation.conversation_id ? updatedConversation : conv,
+      ),
     );
   };
 
@@ -62,7 +60,7 @@ function App() {
     return (
       <div className="loading-container">
         <div className="loading-content">
-          <div className="spinner" style={{margin: '0 auto 1rem'}}></div>
+          <div className="spinner" style={{ margin: "0 auto 1rem" }}></div>
           <p className="text-secondary">Loading...</p>
         </div>
       </div>
@@ -73,11 +71,10 @@ function App() {
     return (
       <div className="error-container">
         <div className="error-content">
-          <p className="error-message" style={{marginBottom: '1rem'}}>{error}</p>
-          <button
-            onClick={loadConversations}
-            className="btn-primary"
-          >
+          <p className="error-message" style={{ marginBottom: "1rem" }}>
+            {error}
+          </p>
+          <button onClick={loadConversations} className="btn-primary">
             Retry
           </button>
         </div>
@@ -85,20 +82,22 @@ function App() {
     );
   }
 
-  const currentConversation = conversations.find(conv => conv.conversation_id === currentConversationId);
+  const currentConversation = conversations.find(
+    (conv) => conv.conversation_id === currentConversationId,
+  );
 
   const handleFirstMessage = async (message: string, model: string) => {
     try {
       const response = await api.sendMessageWithNewConversation({ message, model });
       const newConversationId = response.conversation_id;
-      
+
       // Fetch the new conversation details
       const updatedConvs = await api.getConversations();
       setConversations(updatedConvs);
       setCurrentConversationId(newConversationId);
     } catch (err) {
-      console.error('Failed to send first message:', err);
-      setError('Failed to send message');
+      console.error("Failed to send first message:", err);
+      setError("Failed to send message");
       throw err;
     }
   };
@@ -129,10 +128,7 @@ function App() {
 
       {/* Backdrop for mobile drawer */}
       {drawerOpen && (
-        <div
-          className="backdrop hide-on-desktop"
-          onClick={() => setDrawerOpen(false)}
-        />
+        <div className="backdrop hide-on-desktop" onClick={() => setDrawerOpen(false)} />
       )}
     </div>
   );

@@ -1,5 +1,10 @@
 // Types for Shelley UI
-import { Conversation as GeneratedConversation, Message as GeneratedMessage, Usage as GeneratedUsage, MessageType as GeneratedMessageType } from './generated-types';
+import {
+  Conversation as GeneratedConversation,
+  Message as GeneratedMessage,
+  Usage as GeneratedUsage,
+  MessageType as GeneratedMessageType,
+} from "./generated-types";
 
 // Re-export generated types
 export type Conversation = GeneratedConversation;
@@ -7,7 +12,7 @@ export type Usage = GeneratedUsage;
 export type MessageType = GeneratedMessageType;
 
 // Extend the generated Message type with parsed data
-export interface Message extends Omit<GeneratedMessage, 'type'> {
+export interface Message extends Omit<GeneratedMessage, "type"> {
   type: MessageType;
 }
 

@@ -23,17 +23,18 @@ function BrowserEvalTool({
 
   // Extract script from toolInput
   const script =
-    typeof toolInput === "object" && toolInput !== null && 'script' in toolInput && typeof toolInput.script === 'string'
+    typeof toolInput === "object" &&
+    toolInput !== null &&
+    "script" in toolInput &&
+    typeof toolInput.script === "string"
       ? toolInput.script
       : typeof toolInput === "string"
-      ? toolInput
-      : "";
+        ? toolInput
+        : "";
 
   // Extract result from toolResult
   const result =
-    toolResult && toolResult.length > 0 && toolResult[0].Text
-      ? toolResult[0].Text
-      : "";
+    toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
 
   // Truncate script for display
   const truncateScript = (scr: string, maxLen: number = 300) => {
@@ -46,17 +47,12 @@ function BrowserEvalTool({
 
   return (
     <div className="tool">
-      <div
-        className="tool-header"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
+      <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
-          <span className={`tool-emoji ${isRunning ? 'running' : ''}`}>⚡</span>
+          <span className={`tool-emoji ${isRunning ? "running" : ""}`}>⚡</span>
           <span className="tool-command">{displayScript}</span>
           {isComplete && hasError && <span className="tool-error">✗</span>}
-          {isComplete && !hasError && (
-            <span className="tool-success">✓</span>
-          )}
+          {isComplete && !hasError && <span className="tool-success">✓</span>}
         </div>
         <button
           className="tool-toggle"
@@ -96,9 +92,7 @@ function BrowserEvalTool({
             <div className="tool-section">
               <div className="tool-label">
                 Result{hasError ? " (Error)" : ""}:
-                {executionTime && (
-                  <span className="tool-time">{executionTime}</span>
-                )}
+                {executionTime && <span className="tool-time">{executionTime}</span>}
               </div>
               <pre className={`tool-code ${hasError ? "error" : ""}`}>
                 {result || "(no result)"}
