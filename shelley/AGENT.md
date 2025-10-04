@@ -9,3 +9,11 @@
    to only expose this model, and use shelley with a browser.
 6. Build the UI (`make ui` or `cd ui && npm install && npm run build`) before running Go tests so `ui/dist` exists for the embed.
 7. Run Go unit tests with `go test ./server` (or narrower packages while iterating) once the UI bundle is built.
+8. To programmatically type into the React message input (e.g., in browser automation), you must use React's internal setter:
+   ```javascript
+   const input = document.querySelector('[data-testid="message-input"]');
+   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+   nativeInputValueSetter.call(input, 'your message');
+   input.dispatchEvent(new Event('input', { bubbles: true }));
+   ```
+   Simply setting `input.value = '...'` won't work because React won't detect the change.
