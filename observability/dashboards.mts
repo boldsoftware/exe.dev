@@ -17,7 +17,10 @@ import {
   QueryVariableBuilder,
   RowBuilder,
 } from "@grafana/grafana-foundation-sdk/dashboard";
-import { TextMode, PanelBuilder as TextPanelBuilder } from "@grafana/grafana-foundation-sdk/text";
+import {
+  TextMode,
+  PanelBuilder as TextPanelBuilder,
+} from "@grafana/grafana-foundation-sdk/text";
 import { DataqueryBuilder } from "@grafana/grafana-foundation-sdk/prometheus";
 import { PanelBuilder as TimeseriesBuilder } from "@grafana/grafana-foundation-sdk/timeseries";
 import { PanelBuilder as StatBuilder } from "@grafana/grafana-foundation-sdk/stat";
@@ -87,10 +90,10 @@ function makeDevExeDashboard() {
           `To modify this dashboard:\n` +
           `1. Edit the code in \`observability/dashboards.mts\`\n` +
           `2. Run \`./node_modules/.bin/tsx dashboards.mts\` to update\n\n` +
-          `Last updated: ${new Date().toISOString()} by ${import.meta.url}`,
+          `Last updated: ${new Date().toISOString()} by ${import.meta.url}`
       )
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 4 }),
+      .gridPos({ x: 0, y: 0, w: 24, h: 4 })
   );
 
   // Row 1: HTTP metrics overview (starting at y: 4 after README)
@@ -99,19 +102,24 @@ function makeDevExeDashboard() {
     `rate(promhttp_metric_handler_requests_total{job="exed"}[$__rate_interval])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 4, w: 8, h: 6 }),
-    },
+    }
   );
 
-  addTimeseriesChart("HTTP Requests in Flight", `promhttp_metric_handler_requests_in_flight{job="exed"}`, {
-    panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 4, w: 8, h: 6 }),
-  });
+  addTimeseriesChart(
+    "HTTP Requests in Flight",
+    `promhttp_metric_handler_requests_in_flight{job="exed"}`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 4, w: 8, h: 6 }),
+    }
+  );
 
   addTimeseriesChart(
     "HTTP Request Success Rate",
     `rate(promhttp_metric_handler_requests_total{job="exed",code="200"}[$__rate_interval]) / rate(promhttp_metric_handler_requests_total{job="exed"}[$__rate_interval]) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 4, w: 8, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 4, w: 8, h: 6 }),
+    }
   );
 
   // Row 2: SSH connections and activity
@@ -120,7 +128,7 @@ function makeDevExeDashboard() {
     `rate(ssh_connections_total[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
-    },
+    }
   );
 
   addTimeseriesChart("Current SSH Connections", `ssh_connections_current`, {
@@ -131,9 +139,8 @@ function makeDevExeDashboard() {
     "SSH Auth Attempts Rate",
     `rate(ssh_auth_attempts_total[5m])`,
     {
-      panelCustomization: (x) =>
-        x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
-    },
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
+    }
   );
 
   // Row 3: SSH session details
@@ -141,16 +148,18 @@ function makeDevExeDashboard() {
     "SSH Session Duration (95th percentile)",
     `histogram_quantile(0.95, rate(ssh_session_duration_seconds_bucket[5m]))`,
     {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 16, w: 12, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("s").gridPos({ x: 0, y: 16, w: 12, h: 6 }),
+    }
   );
 
   addTimeseriesChart(
     "HTTP Error Rate",
     `rate(promhttp_metric_handler_requests_total{job="exed",code=~"[45].."}[5m]) / rate(promhttp_metric_handler_requests_total{job="exed"}[5m]) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").gridPos({ x: 12, y: 16, w: 12, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("percent").gridPos({ x: 12, y: 16, w: 12, h: 6 }),
+    }
   );
 
   // sshpiperd metrics
@@ -159,7 +168,7 @@ function makeDevExeDashboard() {
     `rate(sshpiper_pipe_open_connections[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
-    },
+    }
   );
 
   addTimeseriesChart(
@@ -167,7 +176,7 @@ function makeDevExeDashboard() {
     `rate(sshpiper_pipe_create_errors[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 8, y: 10, w: 8, h: 6 }),
-    },
+    }
   );
 
   addTimeseriesChart(
@@ -175,14 +184,18 @@ function makeDevExeDashboard() {
     `rate(sshpiper_upstream_auth_failures[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
-    },
+    }
   );
 
-
   // Row 6: SQLite Connection Pool Metrics
-  dash.withRow(new RowBuilder("SQLite Connection Pool").gridPos({ x: 0, y: 34, w: 24, h: 1 }));
-
-
+  dash.withRow(
+    new RowBuilder("SQLite Connection Pool").gridPos({
+      x: 0,
+      y: 34,
+      w: 24,
+      h: 1,
+    })
+  );
 
   // SQL-level connection metrics
   const sqlPoolPanel = new TimeseriesBuilder()
@@ -190,12 +203,20 @@ function makeDevExeDashboard() {
     .min(0)
     .gridPos({ x: 0, y: 35, w: 8, h: 6 })
     .withTarget(
-      new DataqueryBuilder().expr("sqlite_pool_open_connections{job=\"exed\"}").legendFormat("Open Connections"),
+      new DataqueryBuilder()
+        .expr('sqlite_pool_open_connections{job="exed"}')
+        .legendFormat("Open Connections")
     )
     .withTarget(
-      new DataqueryBuilder().expr("sqlite_pool_in_use_connections{job=\"exed\"}").legendFormat("In Use"),
+      new DataqueryBuilder()
+        .expr('sqlite_pool_in_use_connections{job="exed"}')
+        .legendFormat("In Use")
     )
-    .withTarget(new DataqueryBuilder().expr("sqlite_pool_idle_connections{job=\"exed\"}").legendFormat("Idle"));
+    .withTarget(
+      new DataqueryBuilder()
+        .expr('sqlite_pool_idle_connections{job="exed"}')
+        .legendFormat("Idle")
+    );
   dash.withPanel(sqlPoolPanel);
 
   // Writer connections
@@ -204,9 +225,15 @@ function makeDevExeDashboard() {
     .min(0)
     .gridPos({ x: 8, y: 35, w: 8, h: 6 })
     .withTarget(
-      new DataqueryBuilder().expr("sqlite_pool_available_writers{job=\"exed\"}").legendFormat("Available"),
+      new DataqueryBuilder()
+        .expr('sqlite_pool_available_writers{job="exed"}')
+        .legendFormat("Available")
     )
-    .withTarget(new DataqueryBuilder().expr("sqlite_pool_total_writers{job=\"exed\"}").legendFormat("Total"));
+    .withTarget(
+      new DataqueryBuilder()
+        .expr('sqlite_pool_total_writers{job="exed"}')
+        .legendFormat("Total")
+    );
   dash.withPanel(writerPoolPanel);
 
   // Reader connections
@@ -215,28 +242,50 @@ function makeDevExeDashboard() {
     .min(0)
     .gridPos({ x: 16, y: 35, w: 8, h: 6 })
     .withTarget(
-      new DataqueryBuilder().expr("sqlite_pool_available_readers{job=\"exed\"}").legendFormat("Available"),
+      new DataqueryBuilder()
+        .expr('sqlite_pool_available_readers{job="exed"}')
+        .legendFormat("Available")
     )
-    .withTarget(new DataqueryBuilder().expr("sqlite_pool_total_readers{job=\"exed\"}").legendFormat("Total"));
+    .withTarget(
+      new DataqueryBuilder()
+        .expr('sqlite_pool_total_readers{job="exed"}')
+        .legendFormat("Total")
+    );
   dash.withPanel(readerPoolPanel);
 
   // Row 7: SQLite Transaction Metrics
-  dash.withRow(new RowBuilder("SQLite Transaction Metrics").gridPos({ x: 0, y: 41, w: 24, h: 1 }));
+  dash.withRow(
+    new RowBuilder("SQLite Transaction Metrics").gridPos({
+      x: 0,
+      y: 41,
+      w: 24,
+      h: 1,
+    })
+  );
 
-  addTimeseriesChart("SQLite Transaction Leaks", `rate(sqlite_tx_leaks_total{job="exed"}[5m])`, {
-    panelCustomization: (x) => x.gridPos({ x: 0, y: 42, w: 8, h: 6 }),
-  });
+  addTimeseriesChart(
+    "SQLite Transaction Leaks",
+    `rate(sqlite_tx_leaks_total{job="exed"}[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 42, w: 8, h: 6 }),
+    }
+  );
 
-  addTimeseriesChart("SQLite Read Transaction Leaks", `rate(sqlite_rx_leaks_total{job="exed"}[5m])`, {
-    panelCustomization: (x) => x.gridPos({ x: 8, y: 42, w: 8, h: 6 }),
-  });
+  addTimeseriesChart(
+    "SQLite Read Transaction Leaks",
+    `rate(sqlite_rx_leaks_total{job="exed"}[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 42, w: 8, h: 6 }),
+    }
+  );
 
   addTimeseriesChart(
     "SQLite Transaction Latency (95th percentile)",
     `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed"}[5m])) / 1000`,
     {
-      panelCustomization: (x) => x.unit("ms").gridPos({ x: 16, y: 42, w: 8, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("ms").gridPos({ x: 16, y: 42, w: 8, h: 6 }),
+    }
   );
 
   return dash;
@@ -253,47 +302,54 @@ function makeContainerMetricsDashboard() {
     .timezone("browser");
 
   // Helper function for adding charts.
-  const addTimeseriesChart = makeAddTimeseriesChart(dash, "exe-dev-container-metrics-dashboard");
+  const addTimeseriesChart = makeAddTimeseriesChart(
+    dash,
+    "exe-dev-container-metrics-dashboard"
+  );
 
   // Variable definitions for filtering
   dash.withVariable(
     new QueryVariableBuilder("image")
       .includeAll(true)
-      .query('label_values(container_last_seen{container_label_managed_by="exe"}, image)')
+      .query(
+        'label_values(container_last_seen{container_label_managed_by="exe"}, image)'
+      )
       .current({ text: "All", value: "$__all" })
       .multi(true)
-      .sort(1),
+      .sort(1)
   );
 
   dash.withVariable(
     new QueryVariableBuilder("instance")
       .includeAll(true)
-      .query('label_values(container_last_seen{container_label_managed_by="exe"}, instance)')
+      .query(
+        'label_values(container_last_seen{container_label_managed_by="exe"}, instance)'
+      )
       .current({ text: "All", value: "$__all" })
       .multi(true)
-      .sort(1),
+      .sort(1)
   );
 
   dash.withVariable(
     new QueryVariableBuilder("user_id")
       .includeAll(true)
       .query(
-        'label_values(container_last_seen{container_label_managed_by="exe"}, container_label_user_id)',
+        'label_values(container_last_seen{container_label_managed_by="exe"}, container_label_user_id)'
       )
       .current({ text: "All", value: "$__all" })
       .multi(true)
-      .sort(1),
+      .sort(1)
   );
 
   dash.withVariable(
     new QueryVariableBuilder("team")
       .includeAll(true)
       .query(
-        'label_values(container_last_seen{container_label_managed_by="exe"}, container_label_team)',
+        'label_values(container_last_seen{container_label_managed_by="exe"}, container_label_team)'
       )
       .current({ text: "All", value: "$__all" })
       .multi(true)
-      .sort(1),
+      .sort(1)
   );
 
   // Filter for containers with sketch="true" label and selected variables
@@ -312,7 +368,9 @@ function makeContainerMetricsDashboard() {
   );
 
   // Row 1: Container Overview (starting at y: 4 after README)
-  dash.withRow(new RowBuilder("Container Overview").gridPos({ x: 0, y: 4, w: 24, h: 1 }));
+  dash.withRow(
+    new RowBuilder("Container Overview").gridPos({ x: 0, y: 4, w: 24, h: 1 })
+  );
 
   // Container count
   const containerCountPanel = new StatBuilder()
@@ -321,7 +379,7 @@ function makeContainerMetricsDashboard() {
     .withTarget(
       new DataqueryBuilder()
         .expr(`count(container_last_seen{${CONTAINER_FILTER}})`)
-        .legendFormat("Containers"),
+        .legendFormat("Containers")
     )
     .colorMode(BigValueColorMode.Value)
     .graphMode(BigValueGraphMode.Area)
@@ -336,7 +394,7 @@ function makeContainerMetricsDashboard() {
     .withTarget(
       new DataqueryBuilder()
         .expr(`avg(time() - container_start_time_seconds{${CONTAINER_FILTER}})`)
-        .legendFormat("Age"),
+        .legendFormat("Age")
     )
     .unit("s")
     .colorMode(BigValueColorMode.Value)
@@ -351,8 +409,10 @@ function makeContainerMetricsDashboard() {
     .gridPos({ x: 12, y: 5, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
-        .expr(`sum(rate(container_cpu_usage_seconds_total{${CONTAINER_FILTER}}[5m])) * 100`)
-        .legendFormat("CPU %"),
+        .expr(
+          `sum(rate(container_cpu_usage_seconds_total{${CONTAINER_FILTER}}[5m])) * 100`
+        )
+        .legendFormat("CPU %")
     )
     .unit("percent")
     .colorMode(BigValueColorMode.Value)
@@ -368,7 +428,7 @@ function makeContainerMetricsDashboard() {
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(container_memory_working_set_bytes{${CONTAINER_FILTER}})`)
-        .legendFormat("Memory"),
+        .legendFormat("Memory")
     )
     .unit("bytes")
     .colorMode(BigValueColorMode.Value)
@@ -378,33 +438,40 @@ function makeContainerMetricsDashboard() {
   dash.withPanel(totalMemoryPanel);
 
   // Row 2: CPU Metrics (starting at y: 9)
-  dash.withRow(new RowBuilder("CPU Metrics").gridPos({ x: 0, y: 9, w: 24, h: 1 }));
+  dash.withRow(
+    new RowBuilder("CPU Metrics").gridPos({ x: 0, y: 9, w: 24, h: 1 })
+  );
 
   addTimeseriesChart(
     "CPU Usage % per Container",
     `rate(container_cpu_usage_seconds_total{${CONTAINER_FILTER}}[5m]) * 100`,
     {
-      panelCustomization: (x) => x.unit("percent").min(0).gridPos({ x: 0, y: 10, w: 12, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).gridPos({ x: 0, y: 10, w: 12, h: 6 }),
+    }
   );
 
   addTimeseriesChart(
     "CPU Throttling per Container",
     `rate(container_cpu_cfs_throttled_seconds_total{${CONTAINER_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.unit("s").min(0).gridPos({ x: 12, y: 10, w: 12, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("s").min(0).gridPos({ x: 12, y: 10, w: 12, h: 6 }),
+    }
   );
 
   // Row 3: Memory Metrics (starting at y: 16)
-  dash.withRow(new RowBuilder("Memory Metrics").gridPos({ x: 0, y: 16, w: 24, h: 1 }));
+  dash.withRow(
+    new RowBuilder("Memory Metrics").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+  );
 
   addTimeseriesChart(
     "Memory Usage per Container",
     `container_memory_working_set_bytes{${CONTAINER_FILTER}}`,
     {
-      panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 0, y: 17, w: 12, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 0, y: 17, w: 12, h: 6 }),
+    }
   );
 
   addTimeseriesChart(
@@ -412,47 +479,73 @@ function makeContainerMetricsDashboard() {
     `(container_memory_working_set_bytes{${CONTAINER_FILTER}} / container_spec_memory_limit_bytes{${CONTAINER_FILTER}}) * 100`,
     {
       panelCustomization: (x) =>
-        x.unit("percent").min(0).max(100).gridPos({ x: 12, y: 17, w: 12, h: 6 }),
-    },
+        x
+          .unit("percent")
+          .min(0)
+          .max(100)
+          .gridPos({ x: 12, y: 17, w: 12, h: 6 }),
+    }
   );
 
   // Row 4: Container Lifecycle (starting at y: 23)
-  dash.withRow(new RowBuilder("Container Lifecycle").gridPos({ x: 0, y: 23, w: 24, h: 1 }));
+  dash.withRow(
+    new RowBuilder("Container Lifecycle").gridPos({ x: 0, y: 23, w: 24, h: 1 })
+  );
 
   addTimeseriesChart(
     "Container Age (Uptime)",
     `time() - container_start_time_seconds{${CONTAINER_FILTER}}`,
     {
-      panelCustomization: (x) => x.unit("s").min(0).gridPos({ x: 0, y: 24, w: 12, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("s").min(0).gridPos({ x: 0, y: 24, w: 12, h: 6 }),
+    }
   );
 
-  addTimeseriesChart("Container Restart Count", `container_restart_count{${CONTAINER_FILTER}}`, {
-    panelCustomization: (x) => x.min(0).gridPos({ x: 12, y: 24, w: 12, h: 6 }),
-  });
+  addTimeseriesChart(
+    "Container Restart Count",
+    `container_restart_count{${CONTAINER_FILTER}}`,
+    {
+      panelCustomization: (x) =>
+        x.min(0).gridPos({ x: 12, y: 24, w: 12, h: 6 }),
+    }
+  );
 
   // Row 5: Network and File System (starting at y: 30)
-  dash.withRow(new RowBuilder("Network & File System").gridPos({ x: 0, y: 30, w: 24, h: 1 }));
+  dash.withRow(
+    new RowBuilder("Network & File System").gridPos({
+      x: 0,
+      y: 30,
+      w: 24,
+      h: 1,
+    })
+  );
 
   addTimeseriesChart(
     "Network Receive Rate",
     `rate(container_network_receive_bytes_total{${CONTAINER_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ x: 0, y: 31, w: 8, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("Bps").min(0).gridPos({ x: 0, y: 31, w: 8, h: 6 }),
+    }
   );
 
   addTimeseriesChart(
     "Network Transmit Rate",
     `rate(container_network_transmit_bytes_total{${CONTAINER_FILTER}}[5m])`,
     {
-      panelCustomization: (x) => x.unit("Bps").min(0).gridPos({ x: 8, y: 31, w: 8, h: 6 }),
-    },
+      panelCustomization: (x) =>
+        x.unit("Bps").min(0).gridPos({ x: 8, y: 31, w: 8, h: 6 }),
+    }
   );
 
-  addTimeseriesChart("File System Usage", `container_fs_usage_bytes{${CONTAINER_FILTER}}`, {
-    panelCustomization: (x) => x.unit("bytes").min(0).gridPos({ x: 16, y: 31, w: 8, h: 6 }),
-  });
+  addTimeseriesChart(
+    "File System Usage",
+    `container_fs_usage_bytes{${CONTAINER_FILTER}}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 16, y: 31, w: 8, h: 6 }),
+    }
+  );
 
   return dash;
 }
@@ -460,7 +553,8 @@ function makeContainerMetricsDashboard() {
 // Helper method to create "addTimeseriesChart" methods for your dashboard.
 function makeAddTimeseriesChart(dash: DashboardBuilder, dashboardUID: string) {
   const builders = {
-    buildPanel: () => new TimeseriesBuilder().gridPos({ x: 0, y: 0, w: 8, h: 6 }),
+    buildPanel: () =>
+      new TimeseriesBuilder().gridPos({ x: 0, y: 0, w: 8, h: 6 }),
     // You might need to specify a default datasource, like so:
     // new DataqueryBuilder().datasource({ type: "prometheus", uid: "grafanacloud-prom" })
     buildQueryTarget: () => new DataqueryBuilder(),
@@ -496,17 +590,22 @@ async function createAlerts() {
           headers: {
             Authorization: `Bearer ${TOKEN}`,
           },
-        },
+        }
       );
 
       if (existingAlertResponse.ok) {
-        console.log(`🔄 Updating existing alert for ${alertSpec.panelTitle}...`);
-        await fetch(`${GRAFANA_URL}api/v1/provisioning/alert-rules/${alertUID}`, {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${TOKEN}`,
-          },
-        });
+        console.log(
+          `🔄 Updating existing alert for ${alertSpec.panelTitle}...`
+        );
+        await fetch(
+          `${GRAFANA_URL}api/v1/provisioning/alert-rules/${alertUID}`,
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${TOKEN}`,
+            },
+          }
+        );
       }
 
       const alertRule = {
@@ -577,7 +676,8 @@ async function createAlerts() {
         ruleGroup: "dashboard-alerts",
         annotations: {
           summary:
-            alertSpec.alertConfig.summary || `${alertSpec.panelTitle} has exceeded threshold`,
+            alertSpec.alertConfig.summary ||
+            `${alertSpec.panelTitle} has exceeded threshold`,
           description:
             alertSpec.alertConfig.description ||
             `${alertSpec.panelTitle} is above ${alertSpec.alertConfig.threshold}`,
@@ -589,25 +689,31 @@ async function createAlerts() {
         folderUID: "auto-alerts",
       };
 
-      const response = await fetch(`${GRAFANA_URL}api/v1/provisioning/alert-rules`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${TOKEN}`,
-        },
-        body: JSON.stringify(alertRule),
-      });
+      const response = await fetch(
+        `${GRAFANA_URL}api/v1/provisioning/alert-rules`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${TOKEN}`,
+          },
+          body: JSON.stringify(alertRule),
+        }
+      );
 
       if (response.ok) {
         console.log(`✓ Created alert for ${alertSpec.panelTitle}`);
       } else {
         const errorText = await response.text();
         console.error(
-          `✗ Failed to create alert for ${alertSpec.panelTitle}: ${response.status} - ${errorText}`,
+          `✗ Failed to create alert for ${alertSpec.panelTitle}: ${response.status} - ${errorText}`
         );
       }
     } catch (error) {
-      console.error(`✗ Error creating alert for ${alertSpec.panelTitle}:`, error);
+      console.error(
+        `✗ Error creating alert for ${alertSpec.panelTitle}:`,
+        error
+      );
     }
   }
 }
@@ -641,7 +747,7 @@ async function getDefaultPrometheusDatasourceUID(): Promise<string> {
     if (response.ok) {
       const datasources = await response.json();
       const defaultPrometheus = datasources.find(
-        (ds: any) => ds.type === "prometheus" && ds.isDefault,
+        (ds: any) => ds.type === "prometheus" && ds.isDefault
       );
 
       if (defaultPrometheus) {
@@ -649,7 +755,9 @@ async function getDefaultPrometheusDatasourceUID(): Promise<string> {
         return defaultPrometheus.uid;
       } else {
         // Fallback to first Prometheus datasource if no default
-        const firstPrometheus = datasources.find((ds: any) => ds.type === "prometheus");
+        const firstPrometheus = datasources.find(
+          (ds: any) => ds.type === "prometheus"
+        );
         if (firstPrometheus) {
           defaultPrometheusDatasourceUID = firstPrometheus.uid;
           return firstPrometheus.uid;
@@ -688,7 +796,10 @@ async function ensureAlertFolder() {
       if (createResponse.ok) {
         console.log("✓ Created alerts folder");
       } else {
-        console.error("✗ Failed to create alerts folder:", await createResponse.text());
+        console.error(
+          "✗ Failed to create alerts folder:",
+          await createResponse.text()
+        );
       }
     }
   } catch (error) {
@@ -704,12 +815,15 @@ async function createDashboard(dash: DashboardBuilder) {
   const built = dash.build();
   try {
     // 1) Try to fetch existing dashboard to get its version:
-    const getResponse = await fetch(`${GRAFANA_URL}api/dashboards/uid/${built.uid}`, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${TOKEN}`,
-      },
-    });
+    const getResponse = await fetch(
+      `${GRAFANA_URL}api/dashboards/uid/${built.uid}`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${TOKEN}`,
+        },
+      }
+    );
     // If response is OK, parse JSON and retrieve version:
     if (getResponse.ok) {
       const getData = await getResponse.json();
@@ -743,7 +857,9 @@ ${postResponse.status}`);
       // Parse JSON for the returned info
       const data = await postResponse.json();
       // Fix double slash issue by removing trailing slash from GRAFANA_URL if present
-      const baseUrl = GRAFANA_URL?.endsWith("/") ? GRAFANA_URL.slice(0, -1) : GRAFANA_URL;
+      const baseUrl = GRAFANA_URL?.endsWith("/")
+        ? GRAFANA_URL.slice(0, -1)
+        : GRAFANA_URL;
       console.log("Dashboard updated. Dashboard URL:", `${baseUrl}${data.url}`);
     } catch (error) {
       console.error("Error posting dashboard:", error);
@@ -758,7 +874,7 @@ ${postResponse.status}`);
 function makeAddChart<T extends TimeseriesBuilder>(
   dash: DashboardBuilder,
   builders: { buildPanel: () => T; buildQueryTarget: () => DataqueryBuilder },
-  dashboardUID: string,
+  dashboardUID: string
 ) {
   return function addChart(
     title: string,
@@ -771,7 +887,7 @@ function makeAddChart<T extends TimeseriesBuilder>(
       panelCustomization?: (panel: T) => T;
       queryCustomization?: (dataQuery: DataqueryBuilder) => DataqueryBuilder;
       alert?: AlertConfig;
-    } = {},
+    } = {}
   ) {
     const panel = builders.buildPanel().title(title);
     const queryTarget = builders.buildQueryTarget().expr(query);
@@ -792,7 +908,7 @@ function makeAddChart<T extends TimeseriesBuilder>(
         ]);
 
       const thresholdStyle = new GraphThresholdsStyleConfigBuilder().mode(
-        GraphThresholdsStyleMode.Dashed,
+        GraphThresholdsStyleMode.Dashed
       );
 
       panel.thresholds(thresholds).thresholdsStyle(thresholdStyle);
@@ -820,12 +936,14 @@ function makeAddChart<T extends TimeseriesBuilder>(
 async function main() {
   if (TOKEN === undefined) {
     console.error(
-      "Please provide a Grafana bearer token in the GRAFANA_BEARER_TOKEN environment variable.",
+      "Please provide a Grafana bearer token in the GRAFANA_BEARER_TOKEN environment variable."
     );
     process.exit(1);
   }
   if (GRAFANA_URL === undefined) {
-    console.error("Please provide the Grafana URL in the GRAFANA_URL environment variable.");
+    console.error(
+      "Please provide the Grafana URL in the GRAFANA_URL environment variable."
+    );
     process.exit(1);
   }
   await createDashboard(makeDevExeDashboard());
