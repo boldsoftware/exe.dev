@@ -372,11 +372,11 @@ func (s *PredictableService) makeToolSmorgasbordResponse() *llm.Response {
 	})
 
 	return &llm.Response{
-		ID:    fmt.Sprintf("pred-smorgasbord-%d", baseNano),
-		Type:  "message",
-		Role:  llm.MessageRoleAssistant,
-		Model: "predictable-v1",
-		Content: content,
+		ID:         fmt.Sprintf("pred-smorgasbord-%d", baseNano),
+		Type:       "message",
+		Role:       llm.MessageRoleAssistant,
+		Model:      "predictable-v1",
+		Content:    content,
 		StopReason: llm.StopReasonToolUse,
 		Usage: llm.Usage{
 			InputTokens:  100,
