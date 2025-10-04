@@ -13,7 +13,7 @@ REMOTE_PREFIX="${REMOTE_DIR}/${REMOTE_BASENAME}"
 B2_KEY_ID="004edb881590a7d0000000008"
 B2_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"
 B2_BUCKET="bold-exe"
-B2_OBJECT="whoami2.sqlite3.zst"
+B2_OBJECT="whoami3.sqlite3.zst"
 
 printf 'Deploying %s to %s...\n' "${B2_OBJECT}" "${TAILSCALE_HOST}"
 
@@ -59,7 +59,7 @@ mkdir -p "\${REMOTE_DIR}"
 export B2_APPLICATION_KEY_ID="\${B2_KEY_ID}"
 export B2_APPLICATION_KEY="\${B2_KEY}"
 
-if ! b2 authorize-account >/dev/null 2>&1; then
+if ! b2 account authorize >/dev/null 2>&1; then
     echo "failed to authorize with Backblaze B2" >&2
     exit 1
 fi
