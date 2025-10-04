@@ -12,11 +12,6 @@
             --border-color: #e9ecef;
             --text-primary: #343a40;
             --text-secondary: #6c757d;
-            --terminal-bg: #ffffff;
-            --terminal-fg: #24292f;
-            --terminal-cursor: #0969da;
-            --terminal-selection: rgba(9, 105, 218, 0.99);
-            --terminal-border: #dee2e6;
             --theme-button-bg: #f8f9fa;
             --theme-button-hover: #e9ecef;
         }
@@ -27,11 +22,6 @@
             --border-color: #30363d;
             --text-primary: #e6edf3;
             --text-secondary: #8b949e;
-            --terminal-bg: #0d1117;
-            --terminal-fg: #e6edf3;
-            --terminal-cursor: #58a6ff;
-            --terminal-selection: rgba(88, 166, 255, 0.3);
-            --terminal-border: #30363d;
             --theme-button-bg: #21262d;
             --theme-button-hover: #30363d;
         }
@@ -86,13 +76,9 @@
             background: var(--theme-button-hover);
         }
         #terminal {
-            border: 1px solid var(--terminal-border);
+            border: 1px solid var(--border-color);
             border-radius: 4px;
             padding: 10px;
-            background-color: var(--terminal-bg);
-        }
-        #terminal ::selection {
-            background: var(--terminal-selection);
         }
         .connection-status {
             position: fixed;
@@ -179,7 +165,8 @@
                         background: '#ffffff',
                         foreground: '#24292f',
                         cursor: '#0969da',
-                        selection: '#b3d7ff',
+                        selectionBackground: '#0969da40',
+                        selectionForeground: '#24292f',
                         black: '#24292f',
                         red: '#cf222e',
                         green: '#116329',
@@ -201,7 +188,7 @@
                         background: '#0d1117',
                         foreground: '#e6edf3',
                         cursor: '#58a6ff',
-                        selection: 'rgba(88, 166, 255, 0.3)',
+                        selectionBackground: '#58a6ff4d',
                         black: '#484f58',
                         red: '#ff7b72',
                         green: '#3fb950',
