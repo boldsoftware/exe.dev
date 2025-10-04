@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -22,12 +21,10 @@ import (
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
-	"github.com/creack/pty"
 )
 
-// TerminalSession represents a terminal session with its PTY and event channels
+// TerminalSession represents a terminal session with its event channels
 type TerminalSession struct {
-	pty               *os.File
 	Cmd               *exec.Cmd
 	sshClient         *ssh.Client
 	sshSession        *ssh.Session
@@ -92,11 +89,6 @@ func cleanupInactiveTerminals() {
 
 // cleanupTerminalSession properly closes all resources for a terminal session
 func cleanupTerminalSession(session *TerminalSession) {
-	// Close PTY if it exists
-	if session.pty != nil {
-		session.pty.Close()
-	}
-
 	// Kill process if it exists
 	if session.Cmd != nil && session.Cmd.Process != nil {
 		session.Cmd.Process.Kill()
@@ -113,6 +105,66 @@ func cleanupTerminalSession(session *TerminalSession) {
 
 	// Client channels are closed when the client HTTP connection goes away,
 	// though maybe we should send them a little signal...
+}
+
+// withTerminalAuth is middleware that checks authentication and authorization for terminal access
+// If successful, it adds auth info to the request context and calls the next handler
+// Otherwise, it handles redirects and error pages
+func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get box name from subdomain
+		boxName, err := s.parseTerminalHostname(r.Host)
+		if err != nil {
+			http.Error(w, "Invalid hostname", http.StatusBadRequest)
+			return
+		}
+
+		// Check authentication - terminal requests use exe-auth cookie
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			// Not authenticated - redirect to login
+			scheme := getScheme(r)
+			returnURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
+			mainDomain := s.getMainDomainWithPort()
+			authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s", scheme, mainDomain, url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+
+		// Check authorization - verify user has access to this box
+		_, err = s.boxForNameUserID(r.Context(), boxName, userID)
+		if err != nil {
+			// User doesn't have access to this box (or it doesn't exist)
+			// Show access denied page
+			scheme := getScheme(r)
+			mainDomain := s.getMainDomainWithPort()
+			dashboardURL := fmt.Sprintf("%s://%s/~", scheme, mainDomain)
+			data := struct {
+				BoxName      string
+				DashboardURL string
+			}{
+				BoxName:      boxName,
+				DashboardURL: dashboardURL,
+			}
+			s.renderTemplate(w, "terminal-access-denied.html", data)
+			return
+		}
+
+		// Add auth info to context
+		ctx := context.WithValue(r.Context(), terminalAuthKey{}, &terminalAuthInfo{
+			UserID:  userID,
+			BoxName: boxName,
+		})
+		next(w, r.WithContext(ctx))
+	}
+}
+
+// getTerminalAuthInfo retrieves terminal auth info from the request context
+func getTerminalAuthInfo(r *http.Request) *terminalAuthInfo {
+	if info, ok := r.Context().Value(terminalAuthKey{}).(*terminalAuthInfo); ok {
+		return info
+	}
+	return nil
 }
 
 // handleTerminalPage serves the terminal HTML page
@@ -136,37 +188,47 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	terminalID := parts[3]
 
-	// Get user authentication from auth cookie
-	userID, err := s.getUserIDFromRequest(r)
-	if err != nil {
+	// Get auth info from context
+	authInfo := getTerminalAuthInfo(r)
+	if authInfo == nil {
 		http.Error(w, "Authentication required", http.StatusUnauthorized)
 		return
 	}
-
-	// Get box name from subdomain
-	boxName, err := s.parseTerminalHostname(r.Host)
-	if err != nil {
-		http.Error(w, "Invalid hostname", http.StatusBadRequest)
-		return
-	}
+	userID := authInfo.UserID
+	boxName := authInfo.BoxName
 
 	// Create session key combining user, box, and terminal ID
 	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
 
 	// Get or create terminal session
-	terminalSessionsMutex.Lock()
+	terminalSessionsMutex.RLock()
 	session, exists := terminalSessions[sessionKey]
+	terminalSessionsMutex.RUnlock()
+
 	if !exists {
-		// Create new terminal session
-		// TODO(philip): Don't hold the lock while creating this!
-		session, err = s.createTerminalSession(r.Context(), userID, boxName)
+		// Create new terminal session without holding the lock
+		newSession, err := s.createTerminalSession(r.Context(), userID, boxName)
 		if err != nil {
-			terminalSessionsMutex.Unlock()
 			http.Error(w, fmt.Sprintf("Failed to create terminal: %v", err), http.StatusInternalServerError)
 			return
 		}
-		terminalSessions[sessionKey] = session
+
+		// Now acquire write lock to store the session
+		terminalSessionsMutex.Lock()
+		// Check again in case another goroutine created it
+		if existingSession, exists := terminalSessions[sessionKey]; exists {
+			// Someone else created it, close our new one and use existing
+			go cleanupTerminalSession(newSession)
+			session = existingSession
+		} else {
+			terminalSessions[sessionKey] = newSession
+			session = newSession
+		}
+		terminalSessionsMutex.Unlock()
 	}
+
+	// Update last activity time
+	terminalSessionsMutex.Lock()
 	session.LastActivity = time.Now()
 	terminalSessionsMutex.Unlock()
 
@@ -229,19 +291,14 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	}
 	terminalID := parts[3]
 
-	// Get user authentication
-	userID, err := s.getUserIDFromRequest(r)
-	if err != nil {
+	// Get auth info from context
+	authInfo := getTerminalAuthInfo(r)
+	if authInfo == nil {
 		http.Error(w, "Authentication required", http.StatusUnauthorized)
 		return
 	}
-
-	// Get box name from subdomain
-	boxName, err := s.parseTerminalHostname(r.Host)
-	if err != nil {
-		http.Error(w, "Invalid hostname", http.StatusBadRequest)
-		return
-	}
+	userID := authInfo.UserID
+	boxName := authInfo.BoxName
 
 	// Create session key
 	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
@@ -271,10 +328,8 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		var msg TerminalMessage
 		if err := json.Unmarshal(body, &msg); err == nil && msg.Type == "resize" {
 			if msg.Cols > 0 && msg.Rows > 0 {
-				// Handle PTY resize or SSH window change
-				if session.pty != nil {
-					pty.Setsize(session.pty, &pty.Winsize{Cols: msg.Cols, Rows: msg.Rows})
-				} else if session.sshSession != nil {
+				// Handle SSH window change
+				if session.sshSession != nil {
 					_ = session.sshSession.WindowChange(int(msg.Rows), int(msg.Cols))
 				}
 				w.WriteHeader(http.StatusOK)
@@ -283,10 +338,8 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Regular terminal input - send to PTY or SSH stdin
-	if session.pty != nil {
-		_, err = session.pty.Write(body)
-	} else if session.sshStdin != nil {
+	// Regular terminal input - send to SSH stdin
+	if session.sshStdin != nil {
 		_, err = session.sshStdin.Write(body)
 	} else {
 		err = fmt.Errorf("no active terminal session")
@@ -455,20 +508,16 @@ func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout
 	wg.Wait()
 }
 
-// Helper functions for box management
-
-// getUserIDFromRequest extracts user ID from auth cookie
-func (s *Server) getUserIDFromRequest(r *http.Request) (string, error) {
-	userID, err := s.validateAuthCookie(r)
-	if err != nil {
-		if errors.Is(err, http.ErrNoCookie) {
-			return "", fmt.Errorf("no auth cookie")
-		}
-		return "", fmt.Errorf("invalid auth cookie")
-	}
-
-	return userID, nil
+// terminalAuthInfo holds authenticated user and box information
+type terminalAuthInfo struct {
+	UserID  string
+	BoxName string
 }
+
+// terminalAuthKey is the context key for terminal authentication info
+type terminalAuthKey struct{}
+
+// Helper functions for box management
 
 // isTerminalRequest determines if a request is for a terminal subdomain
 func (s *Server) isTerminalRequest(host string) bool {
@@ -513,17 +562,14 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch {
 	case path == "/":
-		// Serve terminal HTML page
-		s.handleTerminalPage(w, r)
-	case path == "/":
-		// Serve terminal HTML page
-		s.handleTerminalPage(w, r)
+		// Serve terminal HTML page - requires auth
+		s.withTerminalAuth(s.handleTerminalPage)(w, r)
 	case strings.HasPrefix(path, "/terminal/events/"):
-		// Handle SSE events
-		s.handleTerminalEvents(w, r)
+		// Handle SSE events - requires auth
+		s.withTerminalAuth(s.handleTerminalEvents)(w, r)
 	case strings.HasPrefix(path, "/terminal/input/"):
-		// Handle terminal input
-		s.handleTerminalInput(w, r)
+		// Handle terminal input - requires auth
+		s.withTerminalAuth(s.handleTerminalInput)(w, r)
 	case path == "/favicon.ico":
 		s.serveStaticFile(w, r, "favicon.ico")
 	case strings.HasPrefix(path, "/static/"):
