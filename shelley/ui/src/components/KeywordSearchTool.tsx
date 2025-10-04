@@ -3,7 +3,7 @@ import { LLMContent } from "../types";
 
 interface KeywordSearchToolProps {
   // For tool_use (pending state)
-  toolInput?: any; // { query: string, search_terms: string[] }
+  toolInput?: unknown; // { query: string, search_terms: string[] }
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -23,12 +23,12 @@ function KeywordSearchTool({
 
   // Extract query and search terms from toolInput
   const query =
-    typeof toolInput === "object" && toolInput?.query
+    typeof toolInput === "object" && toolInput !== null && 'query' in toolInput && typeof toolInput.query === 'string'
       ? toolInput.query
       : "";
 
   const searchTerms =
-    typeof toolInput === "object" && toolInput?.search_terms && Array.isArray(toolInput.search_terms)
+    typeof toolInput === "object" && toolInput !== null && 'search_terms' in toolInput && Array.isArray(toolInput.search_terms)
       ? toolInput.search_terms
       : [];
 

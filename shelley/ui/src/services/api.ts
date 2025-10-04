@@ -1,4 +1,4 @@
-import { Conversation, Message, Model, ChatRequest } from '../types';
+import { Conversation, Message, ChatRequest } from '../types';
 
 class ApiService {
   private baseUrl = '/api';

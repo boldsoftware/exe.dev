@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, Model, Conversation, StreamResponse, LLMContent } from '../types';
+import { Message, Conversation, StreamResponse, LLMContent } from '../types';
 import { api } from '../services/api';
 import MessageComponent from './Message';
 import MessageInput from './MessageInput';
@@ -25,6 +25,7 @@ interface CoalescedToolCallProps {
 }
 
 // Map tool names to their specialized components
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TOOL_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'bash': BashTool,
   'patch': PatchTool,
@@ -206,7 +207,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [models, setModels] = useState<Model[]>(window.__SHELLEY_INIT__?.models || []);
+  const models = window.__SHELLEY_INIT__?.models || [];
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     const initModels = window.__SHELLEY_INIT__?.models || [];
     const firstReady = initModels.find((m) => m.ready);
@@ -214,7 +215,7 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
   });
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
-  const [terminalURL, setTerminalURL] = useState<string | null>(window.__SHELLEY_INIT__?.terminal_url || null);
+  const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [isDisconnected, setIsDisconnected] = useState(false);
@@ -467,8 +468,8 @@ function ChatInterface({ conversationId, onOpenDrawer, onNewConversation, curren
           const displays = typeof message.display_data === 'string' ? JSON.parse(message.display_data) : message.display_data;
           if (Array.isArray(displays)) {
             for (const d of displays) {
-              if (d && typeof d === 'object' && (d as any).tool_use_id) {
-                displayResultSet.add((d as any).tool_use_id as string);
+              if (d && typeof d === 'object' && 'tool_use_id' in d && typeof d.tool_use_id === 'string') {
+                displayResultSet.add(d.tool_use_id);
               }
             }
           }

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { LLMContent } from "../types";
 
 interface BrowserNavigateToolProps {
-  toolInput?: any; // { url: string }
+  toolInput?: unknown; // { url: string }
   isRunning?: boolean;
   toolResult?: LLMContent[];
   hasError?: boolean;
@@ -20,7 +20,7 @@ function BrowserNavigateTool({
 
   // Extract URL from toolInput
   const url =
-    typeof toolInput === "object" && toolInput?.url
+    typeof toolInput === "object" && toolInput !== null && 'url' in toolInput && typeof toolInput.url === 'string'
       ? toolInput.url
       : typeof toolInput === "string"
       ? toolInput

@@ -3,7 +3,7 @@ import { LLMContent } from "../types";
 
 interface BrowserConsoleLogsToolProps {
   toolName: string; // to distinguish between recent and clear
-  toolInput?: any;
+  toolInput?: unknown;
   isRunning?: boolean;
   toolResult?: LLMContent[];
   hasError?: boolean;
@@ -12,7 +12,6 @@ interface BrowserConsoleLogsToolProps {
 
 function BrowserConsoleLogsTool({
   toolName,
-  toolInput,
   isRunning,
   toolResult,
   hasError,

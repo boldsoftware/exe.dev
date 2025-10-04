@@ -3,7 +3,7 @@ import { LLMContent } from "../types";
 
 interface BashToolProps {
   // For tool_use (pending state)
-  toolInput?: any;
+  toolInput?: unknown;
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -23,7 +23,7 @@ function BashTool({
 
   // Extract command from toolInput
   const command =
-    typeof toolInput === "object" && toolInput?.command
+    typeof toolInput === "object" && toolInput !== null && 'command' in toolInput && typeof toolInput.command === 'string'
       ? toolInput.command
       : typeof toolInput === "string"
       ? toolInput

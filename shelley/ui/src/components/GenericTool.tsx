@@ -5,7 +5,7 @@ interface GenericToolProps {
   toolName: string;
 
   // For tool_use (pending state)
-  toolInput?: any;
+  toolInput?: unknown;
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -25,7 +25,7 @@ function GenericTool({
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Format data for display
-  const formatData = (data: any): string => {
+  const formatData = (data: unknown): string => {
     if (data === undefined || data === null) return "";
     if (typeof data === "string") return data;
     try {

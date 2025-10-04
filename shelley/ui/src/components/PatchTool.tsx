@@ -3,7 +3,7 @@ import { LLMContent } from '../types';
 
 interface PatchToolProps {
   // For tool_use (pending state)
-  toolInput?: any;
+  toolInput?: unknown;
   isRunning?: boolean;
   
   // For tool_result (completed state)
@@ -16,7 +16,7 @@ function PatchTool({ toolInput, isRunning, toolResult, hasError, executionTime }
   const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
   
   // Extract path from toolInput
-  const path = typeof toolInput === 'object' && toolInput?.path 
+  const path = typeof toolInput === 'object' && toolInput !== null && 'path' in toolInput && typeof toolInput.path === 'string'
     ? toolInput.path 
     : typeof toolInput === 'string' 
       ? toolInput 

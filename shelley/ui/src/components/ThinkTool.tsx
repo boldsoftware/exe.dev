@@ -3,7 +3,7 @@ import { LLMContent } from "../types";
 
 interface ThinkToolProps {
   // For tool_use (pending state)
-  toolInput?: any; // { thoughts: string }
+  toolInput?: unknown; // { thoughts: string }
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -23,16 +23,10 @@ function ThinkTool({
 
   // Extract thoughts from toolInput
   const thoughts =
-    typeof toolInput === "object" && toolInput?.thoughts
+    typeof toolInput === "object" && toolInput !== null && 'thoughts' in toolInput && typeof toolInput.thoughts === 'string'
       ? toolInput.thoughts
       : typeof toolInput === "string"
       ? toolInput
-      : "";
-
-  // Extract output from toolResult (if any)
-  const output =
-    toolResult && toolResult.length > 0 && toolResult[0].Text
-      ? toolResult[0].Text
       : "";
 
   // Truncate thoughts for display - get first 50 chars

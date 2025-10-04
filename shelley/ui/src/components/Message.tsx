@@ -15,11 +15,8 @@ import BrowserConsoleLogsTool from './BrowserConsoleLogsTool';
 interface ToolDisplay {
   tool_use_id: string;
   tool_name?: string;
-  display: any;
+  display: unknown;
 }
-
-// Patch tool display is a unified diff string
-type PatchDisplay = string;
 
 interface MessageProps {
   message: MessageType;
@@ -33,7 +30,7 @@ function Message({ message }: MessageProps) {
 
   // Check if we have display_data to render
   const [showTooltip, setShowTooltip] = useState(false);
-  const [hoverTimer, setHoverTimer] = useState<NodeJS.Timeout | null>(null);
+  const [hoverTimer, setHoverTimer] = useState<number | null>(null);
   // Track cursor for tooltip positioning
   const [cursor, setCursor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const messageRef = useRef<HTMLDivElement | null>(null);
@@ -181,7 +178,7 @@ function Message({ message }: MessageProps) {
   const isError = message.type === 'error';
 
   // Build a map of tool use IDs to their inputs for linking tool_result back to tool_use
-  const toolUseMap: Record<string, { name: string; input: any }> = {};
+  const toolUseMap: Record<string, { name: string; input: unknown }> = {};
   if (llmMessage && llmMessage.Content) {
     llmMessage.Content.forEach(content => {
       if (content.Type === 5 && content.ID && content.ToolName) { // tool_use
@@ -358,7 +355,8 @@ function Message({ message }: MessageProps) {
           return `${results.length} result${results.length > 1 ? 's' : ''}`;
         };
         
-        const summary = content.ToolResult ? getToolResultSummary(content.ToolResult) : 'No output';
+        // unused for now
+        void getToolResultSummary;
         
         // Get tool information from the toolUseMap or fallback to content
         const toolInfo = toolUseId && toolUseMap && toolUseMap[toolUseId];
@@ -564,7 +562,7 @@ function Message({ message }: MessageProps) {
     const display = toolDisplay.display;
 
     // Skip rendering screenshot displays here - they are handled by tool_result rendering
-    if (display && typeof display === 'object' && (display as any).type === 'screenshot') {
+    if (display && typeof display === 'object' && 'type' in display && display.type === 'screenshot') {
       return null;
     }
 

@@ -3,7 +3,7 @@ import { LLMContent } from "../types";
 
 interface BrowserEvalToolProps {
   // For tool_use (pending state)
-  toolInput?: any; // { script: string }
+  toolInput?: unknown; // { script: string }
   isRunning?: boolean;
 
   // For tool_result (completed state)
@@ -23,7 +23,7 @@ function BrowserEvalTool({
 
   // Extract script from toolInput
   const script =
-    typeof toolInput === "object" && toolInput?.script
+    typeof toolInput === "object" && toolInput !== null && 'script' in toolInput && typeof toolInput.script === 'string'
       ? toolInput.script
       : typeof toolInput === "string"
       ? toolInput
