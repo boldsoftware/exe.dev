@@ -94,6 +94,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Install gofumpt v0.9.0
         run: |
           curl -L https://github.com/mvdan/gofumpt/releases/download/v0.9.0/gofumpt_v0.9.0_linux_amd64 -o /tmp/gofumpt
@@ -102,8 +107,8 @@ jobs:
 
       - name: Check and fix formatting
         run: |
-          # Apply gofumpt
-          find . -name "*.go" -exec gofumpt -w {} +
+          # Run the formatters script
+          ./bin/run_formatters.sh
 
           # Check if anything changed and commit if so
           if ! git diff --quiet; then
