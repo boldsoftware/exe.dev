@@ -303,17 +303,12 @@ function makeContainerMetricsDashboard() {
   // README panel for auto-generated dashboard
   dash.withPanel(
     new TextPanelBuilder()
-      .title("README - Auto Generated Dashboard")
+      .title("⚠️ **This dashboard is automatically generated** ⚠️")
       .content(
-        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
-          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
-          `To modify this dashboard:\n` +
-          `1. Edit the code in \`observability/dashboards.mts\`\n` +
-          `2. Run \`./node_modules/.bin/tsx dashboards.mts\` to update\n\n` +
-          `Last updated: ${new Date().toISOString()} by ${import.meta.url}`,
+        `To modify, edit \`observability/dashboards.mts\` then run \`./node_modules/.bin/tsx dashboards.mts\``
       )
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 4 }),
+      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
   );
 
   // Row 1: Container Overview (starting at y: 4 after README)
