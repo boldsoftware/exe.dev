@@ -160,7 +160,7 @@ func (q *Queries) InsertSSHKeyForEmailUser(ctx context.Context, arg InsertSSHKey
 const upsertSSHKeyForUser = `-- name: UpsertSSHKeyForUser :exec
 INSERT INTO ssh_keys (user_id, public_key)
 VALUES (?, ?)
-ON CONFLICT(public_key) DO UPDATE SET user_id = VALUES(user_id)
+ON CONFLICT(public_key) DO UPDATE SET user_id = excluded.user_id
 `
 
 type UpsertSSHKeyForUserParams struct {

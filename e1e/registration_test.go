@@ -7,9 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
 
+	"exe.dev/ghuser"
 	"exe.dev/vouch"
 )
 
@@ -186,4 +189,67 @@ func TestRegisterWebThenKey(t *testing.T) {
 }
 
 func TestRegisterGitHubKey(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	keyDir := t.TempDir()
+	keyFile := filepath.Join(keyDir, "id_ed25519")
+	if err := os.WriteFile(keyFile, []byte(ghuser.FakePrivateKey0), 0o600); err != nil {
+		t.Fatalf("failed to write GitHub private key: %v", err)
+	}
+
+	pty := sshToExeDev(t, keyFile)
+	pty.want(banner)
+	pty.want("Please enter your email address:")
+	pty.want("fake-for-tests@example.com")
+	pty.sendLine("")
+
+	pty.want("Welcome to EXE.DEV!")
+	pty.wantPrompt()
+	pty.sendLine("whoami")
+	pty.want("fake-for-tests@example.com")
+	pty.want(ghuser.FakePublicKey0)
+	pty.wantPrompt()
+	pty.disconnect()
+}
+
+func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	keyDir := t.TempDir()
+	keyFile := filepath.Join(keyDir, "id_ed25519")
+	if err := os.WriteFile(keyFile, []byte(ghuser.FakePrivateKey1), 0o600); err != nil {
+		t.Fatalf("failed to write GitHub private key: %v", err)
+	}
+
+	pty := sshToExeDev(t, keyFile)
+	pty.want(banner)
+	pty.want("Please enter your email address:")
+	pty.want(ghuser.FakeEmail1)
+	// change email from "fake-for-tests@example.com" to "fake-for-tests@example.combinatorics"
+	suffix := "binatorics"
+	// This triggers a verification email, despite the known SSH key.
+	pty.sendLine(suffix)
+	newEmail := ghuser.FakeEmail1 + suffix
+
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(newEmail))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+
+	deviceEmail := Env.email.waitForEmail(t, newEmail)
+	clickVerifyLinkInEmail(t, deviceEmail)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
+	pty.want("Press any key to continue")
+	pty.sendLine("")
+	pty.want("Welcome to EXE.DEV!")
+	pty.wantPrompt()
+	pty.sendLine("whoami")
+	pty.want("fake-for-tests@example.com")
+	pty.want(ghuser.FakePublicKey1)
+	pty.wantPrompt()
+	pty.disconnect()
 }

@@ -552,6 +552,10 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 	}
 
 	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServerPort)
+	whoamiPath := "../ghuser/whoami.sqlite3"
+	if os.Getenv("CI") != "" {
+		whoamiPath = "/root/whoami.sqlite3"
+	}
 	exedCmd := exec.Command(binPath,
 		"-db="+dbPath.Name(),
 		"-dev=test",
@@ -560,6 +564,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		"-piper-plugin=:0",
 		"-piperd-port="+fmt.Sprint(piperPort),
 		"-fake-email-server="+emailServerURL,
+		"-gh-whoami="+whoamiPath,
 	)
 	// Convert extra proxy ports to comma-delimited string
 	extraPortsStr := ""
@@ -579,6 +584,9 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		"GOCOVERDIR="+coverDir,
 		"TEST_PROXY_PORTS="+extraPortsStr,
 	)
+	if os.Getenv("CI") != "" {
+		exedCmd.Env = append(exedCmd.Env, "GITHUB_TOKEN=fake-but-not-empty")
+	}
 	cmdOut, err := exedCmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)

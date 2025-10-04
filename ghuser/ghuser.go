@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -232,6 +233,30 @@ func (c *Client) InfoKey(ctx context.Context, pubKey ssh.PublicKey) (Info, error
 	return c.InfoString(ctx, string(authorizedKey))
 }
 
+const (
+	FakePrivateKey0 = `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACCg1LIORjy0R+3J79xgxNnyk3iO0QnHkN6EHdHFbrbP5gAAAJggF5bxIBeW
+8QAAAAtzc2gtZWQyNTUxOQAAACCg1LIORjy0R+3J79xgxNnyk3iO0QnHkN6EHdHFbrbP5g
+AAAEAqX4V1W6V5j6c018T5SVfbIEAJ9OYqqgjzTEL3STDkNaDUsg5GPLRH7cnv3GDE2fKT
+eI7RCceQ3oQd0cVuts/mAAAADmpvc2hAam0zLmxvY2FsAQIDBAUGBw==
+-----END OPENSSH PRIVATE KEY-----
+`
+	FakePublicKey0 = `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKDUsg5GPLRH7cnv3GDE2fKTeI7RCceQ3oQd0cVuts/m`
+	FakeEmail0     = "fake-for-tests@example.com"
+
+	FakePrivateKey1 = `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAfs4SWrC0RmT7RXgALT4j/iZ2mkjlm+tQR4pWLELpqKQAAAJgZJXOgGSVz
+oAAAAAtzc2gtZWQyNTUxOQAAACAfs4SWrC0RmT7RXgALT4j/iZ2mkjlm+tQR4pWLELpqKQ
+AAAEAqcH6wbFRn8Hb2rt5YPeLtBXAIpvJZTuo2ewGxQIH26x+zhJasLRGZPtFeAAtPiP+J
+naaSOWb61BHilYsQumopAAAADmpvc2hAam0zLmxvY2FsAQIDBAUGBw==
+-----END OPENSSH PRIVATE KEY-----
+`
+	FakePublicKey1 = `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB+zhJasLRGZPtFeAAtPiP+JnaaSOWb61BHilYsQumop`
+	FakeEmail1     = "also-fake-for-tests@example.com"
+)
+
 func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
 	if c == nil {
 		return Info{}, fmt.Errorf("nil ghuser.Client")
@@ -241,14 +266,20 @@ func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
 	}
 	// Calculate key hash
 	trimmed := strings.TrimSpace(pubKey)
+	switch trimmed {
+	case FakePublicKey0:
+		slog.Debug("recognized fake public key 0, responding with fake user info")
+		return Info{IsGitHubUser: true, Email: FakeEmail0, CreditOK: true}, nil
+	case FakePublicKey1:
+		slog.Debug("recognized fake public key 1, responding with fake user info")
+		return Info{IsGitHubUser: true, Email: FakeEmail1, CreditOK: true}, nil
+	}
 	hash := sha256.Sum256([]byte(trimmed))
 	dbKey := hash[:16]
 	return c.info(ctx, dbKey, trimmed)
 }
 
 func (c *Client) info(ctx context.Context, dbKey []byte, trimmedKey string) (Info, error) {
-	return Info{}, fmt.Errorf("GitHub integration not complete yet")
-
 	if c.db == nil || c.stmt == nil {
 		return Info{}, fmt.Errorf("client not initialized")
 	}

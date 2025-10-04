@@ -1,0 +1,28 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a machine over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: fake-for-tests@example.com
+
+
+
+Welcome to EXE.DEV!
+
+To create your first box, run:
+
+  new
+
+Or type `help` to see a list of commands.
+exe.dev ▶ whoami
+Email Address: fake-for-tests@example.com
+SSH Keys:
+  Public Key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKDUsg5GPLRH7cnv3GDE2fKTeI7RCceQ3oQd0cVuts/m ← current
+exe.dev ▶ exit
+Goodbye!

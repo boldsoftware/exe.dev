@@ -547,7 +547,6 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	}
 
 	needsEmailVerification := ghInfo.Email == "" || email != ghInfo.Email
-	needsEmailVerification = true
 	var user *exedb.User
 	if needsEmailVerification {
 		user, err = ss.waitForEmailVerification(s, publicKey, email)
