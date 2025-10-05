@@ -112,7 +112,7 @@ func (ss *SSHServer) Stop() error {
 
 // shouldShowSpinner determines if we should show spinner/progress indicators
 // Based on TTY detection, environment variables, and terminal capabilities
-func (ss *SSHServer) shouldShowSpinner(s ssh.Session) bool {
+func (ss *SSHServer) shouldShowSpinner(s exemenu.ShellSession) bool {
 	// If we are not in an SSH session (e.g., invoked from HTTP), don't show spinner
 	if s == nil {
 		return false
@@ -299,10 +299,19 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 		return
 	}
 
-	ss.runMainShellWithReadline(s, publicKey, user)
+	ss.runMainShellWithReadline(sshSessionAdapter{s}, publicKey, user)
 }
 
-func (ss *SSHServer) displayWelcomeTip(s ssh.Session, user *exedb.User) {
+// sshSessionAdapter adapts ssh.Session to exemenu.ShellSession
+type sshSessionAdapter struct {
+	ssh.Session
+}
+
+func (a sshSessionAdapter) Context() context.Context {
+	return a.Session.Context()
+}
+
+func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User) {
 	// Check if user has created their first box to determine if we should show the welcome message
 	userEvents := ss.server.allUserEventsBestEffort(s.Context(), user.UserID)
 	hasCreatedBox := userEvents[userEventCreatedBox] > 0
@@ -327,7 +336,7 @@ func (ss *SSHServer) displayWelcomeTip(s ssh.Session, user *exedb.User) {
 }
 
 // runMainShellWithReadline implements the main menu using a simple line reader
-func (ss *SSHServer) runMainShellWithReadline(s ssh.Session, publicKey string, user *exedb.User) {
+func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey string, user *exedb.User) {
 	slog.Debug("start runMainShellWithReadline", "public_key", publicKey, "email", user.Email)
 	// Show welcome message, hints, tips, etc.
 	ss.displayWelcomeTip(s, user)
@@ -583,7 +592,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
 	// This avoids issues with partially consumed readers
-	ss.runMainShellWithReadline(s, publicKey, user)
+	ss.runMainShellWithReadline(sshSessionAdapter{s}, publicKey, user)
 }
 
 func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, email string) (*exedb.User, error) {
@@ -736,7 +745,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		PublicKey:  publicKey,
 		Args:       cmd[1:],                        // Skip the command name itself
 		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
-		SSHSession: s,
+		SSHSession: sshSessionAdapter{s},
 		Terminal:   nil, // No interactive terminal for exec mode
 		DevMode:    ss.server.devMode == "local",
 	}
@@ -902,7 +911,7 @@ func (s *Server) lookUpEmailVerification(token string) *EmailVerification {
 }
 
 // readLineWithCompletion reads a line from the terminal with tab completion support
-func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb.User, alloc *exedb.Alloc, publicKey string, s ssh.Session) (string, error) {
+func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb.User, alloc *exedb.Alloc, publicKey string, s exemenu.ShellSession) (string, error) {
 	// Set up tab completion using AutoCompleteCallback
 	var lastCompletionLine string
 	var lastCompletionPos int

@@ -321,6 +321,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleLogout(w, r)
 	case "/logged-out":
 		s.handleLoggedOut(w, r)
+	case "/shell":
+		s.handleWebShell(w, r)
+	case "/shell/ws":
+		s.handleWebShellWS(w, r)
 	default:
 		// Handle mobile UI routes
 		if strings.HasPrefix(path, "/m") {

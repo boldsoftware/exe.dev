@@ -139,6 +139,7 @@ type Server struct {
 	httpsServer         *http.Server
 	sshConfig           *ssh.ServerConfig
 	sshHostKey          ssh.Signer
+	sshServer           *SSHServer
 	certManager         *autocert.Manager
 	wildcardCertManager *porkbun.WildcardCertManager
 
@@ -1495,8 +1496,8 @@ func (s *Server) Start() error {
 	// Start SSH server in a goroutine
 	go func() {
 		billing := billing.New(s.db)
-		sshServer := NewSSHServer(s, billing)
-		if err := sshServer.Start(s.sshLn.ln); err != nil {
+		s.sshServer = NewSSHServer(s, billing)
+		if err := s.sshServer.Start(s.sshLn.ln); err != nil {
 			slog.Error("SSH server startup failed", "error", err)
 			cancel()
 		}

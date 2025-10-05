@@ -109,7 +109,7 @@ type CommandContext struct {
 	PublicKey  string
 	Args       []string
 	FlagSet    *flag.FlagSet // parsed flags for this command
-	SSHSession ssh.Session
+	SSHSession ShellSession
 	DevMode    bool // if true, show hidden commands in help and completions
 
 	// I/O interfaces
@@ -120,6 +120,15 @@ type CommandContext struct {
 	// (e.g., HTTP/SSE driven flows). When true, progress spinner output
 	// will be enabled even without an SSH session.
 	ForceSpinner bool
+}
+
+// ShellSession is the subset of ssh.Session that we need to provide access to
+// the command system from both SSH and web-based sessions at /shell.
+type ShellSession interface {
+	io.ReadWriter
+	Context() context.Context
+	Environ() []string
+	Pty() (ssh.Pty, <-chan ssh.Window, bool)
 }
 
 // UserInfo provides the minimal user details required by menu commands.
