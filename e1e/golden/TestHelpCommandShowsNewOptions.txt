@@ -1,0 +1,58 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a machine over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: TestHelpCommandShowsNewOptions@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+
+Verification email sent to: TestHelpCommandShowsNewOptions@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+To create your first box, run:
+
+  new
+
+Or type `help` to see a list of commands.
+exe.dev ▶ whoami
+Email Address: TestHelpCommandShowsNewOptions@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ help new
+
+Command: new
+
+Create a new box
+
+Options:
+  --command container command: auto, none, or a custom command
+  --image   container image
+  --json    output in JSON format
+  --name    box name (auto-generated if not specified)
+  --size    box size (small, medium, or large)
+
+Examples:
+  new                                # just give me a computer
+  new --name=b --image=ubuntu:22.04  # custom image and name
+exe.dev ▶ exit
+Goodbye!

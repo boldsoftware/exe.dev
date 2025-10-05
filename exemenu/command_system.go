@@ -379,6 +379,7 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 	// Treat the "help" command as a special case when it is the first thing in the command path.
 	if commandPath[0] == "help" {
 		cmd = ct.FindCommand([]string{"help"})
+		remainingArgs = commandPath[1:]
 	} else {
 		for i := len(commandPath); i > 0; i-- {
 			cmd = ct.FindCommand(commandPath[:i])
