@@ -84,14 +84,11 @@ func toAPIMessages(messages []generated.Message) []APIMessage {
 			ConversationID: msg.ConversationID,
 			SequenceID:     msg.SequenceID,
 			Type:           msg.Type,
+			LlmData:        msg.LlmData,
 			UserData:       msg.UserData,
 			UsageData:      msg.UsageData,
 			CreatedAt:      msg.CreatedAt,
 			DisplayData:    msg.DisplayData,
-		}
-		// Only include llm_data if there's no display_data
-		if msg.DisplayData == nil {
-			apiMsg.LlmData = msg.LlmData
 		}
 		apiMessages[i] = apiMsg
 	}
@@ -825,16 +822,8 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 	return manager, nil
 }
 
-// recordMessage records a new message to the database
-func (s *Server) recordMessage(ctx context.Context, conversationID string, message llm.Message, usage llm.Usage) error {
-	// Convert LLM message to database format
-	messageType, err := s.getMessageType(message)
-	if err != nil {
-		return fmt.Errorf("failed to determine message type: %w", err)
-	}
-
-	// Extract display data from content items
-	// Display data is only present in tool results
+// ExtractDisplayData extracts display data from message content for storage
+func ExtractDisplayData(message llm.Message) interface{} {
 	// Build a map of tool_use_id to tool_name for lookups
 	toolNameMap := make(map[string]string)
 	for _, content := range message.Content {
@@ -856,10 +845,22 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 		}
 	}
 
-	var displayDataToStore interface{}
 	if len(displayData) > 0 {
-		displayDataToStore = displayData
+		return displayData
 	}
+	return nil
+}
+
+// recordMessage records a new message to the database
+func (s *Server) recordMessage(ctx context.Context, conversationID string, message llm.Message, usage llm.Usage) error {
+	// Convert LLM message to database format
+	messageType, err := s.getMessageType(message)
+	if err != nil {
+		return fmt.Errorf("failed to determine message type: %w", err)
+	}
+
+	// Extract display data from content items
+	displayDataToStore := ExtractDisplayData(message)
 
 	// Create message
 	_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{

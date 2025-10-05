@@ -22,6 +22,7 @@ interface CoalescedToolCallProps {
   toolStartTime?: string | null;
   toolEndTime?: string | null;
   hasResult?: boolean;
+  display?: unknown;
 }
 
 // Map tool names to their specialized components
@@ -48,6 +49,7 @@ function CoalescedToolCall({
   toolStartTime,
   toolEndTime,
   hasResult,
+  display,
 }: CoalescedToolCallProps) {
   // Calculate execution time if available
   let executionTime = "";
@@ -71,6 +73,7 @@ function CoalescedToolCall({
       toolResult,
       hasError: toolError,
       executionTime,
+      display,
       // BrowserConsoleLogsTool needs the toolName prop
       ...(toolName === "browser_recent_console_logs" || toolName === "browser_clear_console_logs"
         ? { toolName }
@@ -452,6 +455,7 @@ function ChatInterface({
       toolStartTime?: string | null;
       toolEndTime?: string | null;
       hasResult?: boolean;
+      display?: unknown;
     }
 
     const coalescedItems: CoalescedItem[] = [];
@@ -466,6 +470,7 @@ function ChatInterface({
     > = {};
     // Some tool results may be delivered only as display_data (e.g., screenshots)
     const displayResultSet: Set<string> = new Set();
+    const displayDataMap: Record<string, unknown> = {};
 
     // First pass: collect all tool results
     messages.forEach((message) => {
@@ -508,6 +513,10 @@ function ChatInterface({
                 typeof d.tool_use_id === "string"
               ) {
                 displayResultSet.add(d.tool_use_id);
+                // Store the display data for this tool use
+                if ("display" in d) {
+                  displayDataMap[d.tool_use_id] = d.display;
+                }
               }
             }
           }
@@ -586,6 +595,7 @@ function ChatInterface({
             toolUses.forEach((toolUse) => {
               const resultData = toolUse.ID ? toolResultMap[toolUse.ID] : undefined;
               const completedViaDisplay = toolUse.ID ? displayResultSet.has(toolUse.ID) : false;
+              const displayData = toolUse.ID ? displayDataMap[toolUse.ID] : undefined;
               coalescedItems.push({
                 type: "tool",
                 toolUseId: toolUse.ID,
@@ -596,6 +606,7 @@ function ChatInterface({
                 toolStartTime: resultData?.startTime,
                 toolEndTime: resultData?.endTime,
                 hasResult: !!resultData || completedViaDisplay,
+                display: displayData,
               });
             });
           }
@@ -641,6 +652,7 @@ function ChatInterface({
             toolStartTime={item.toolStartTime}
             toolEndTime={item.toolEndTime}
             hasResult={item.hasResult}
+            display={item.display}
           />
         );
       }

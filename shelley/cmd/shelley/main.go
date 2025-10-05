@@ -202,12 +202,15 @@ func runPrompt(global GlobalConfig, args []string) {
 	recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
 		// Persist to DB
 		msgType := getMessageType(message)
+		// Extract display data from message
+		displayData := server.ExtractDisplayData(message)
 		if _, err := database.CreateMessage(ctx, db.CreateMessageParams{
 			ConversationID: conversationID,
 			Type:           msgType,
 			LLMData:        message,
 			UserData:       nil,
 			UsageData:      usage,
+			DisplayData:    displayData,
 		}); err != nil {
 			// Log DB failure but continue to print to console
 			fmt.Fprintf(os.Stderr, "Failed to record message: %v\n", err)
