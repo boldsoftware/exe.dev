@@ -501,16 +501,8 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Queue user message
+	// The conversation loop is already running and will pick up this message
 	manager.loop.QueueUserMessage(userMessage)
-
-	// Start processing in background with a timeout context
-	go func() {
-		processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
-		defer cancel()
-		if err := manager.loop.Go(processCtx); err != nil && err != context.DeadlineExceeded {
-			s.logger.Error("Failed to process loop", "conversationID", conversationID, "error", err)
-		}
-	}()
 
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
@@ -608,16 +600,8 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Queue user message
+	// The conversation loop is already running and will pick up this message
 	manager.loop.QueueUserMessage(userMessage)
-
-	// Start processing in background with a timeout context
-	go func() {
-		processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
-		defer cancel()
-		if err := manager.loop.Go(processCtx); err != nil && err != context.DeadlineExceeded {
-			s.logger.Error("Failed to process loop", "conversationID", conversationID, "error", err)
-		}
-	}()
 
 	// Generate slug in parallel
 	go func() {
@@ -818,6 +802,16 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 
 	s.activeConversations[conversationID] = manager
 	_ = conversation // avoid unused variable
+
+	// Start the conversation loop once when the manager is created
+	// The loop will continuously process queued messages until the context is canceled
+	go func() {
+		processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+		defer cancel()
+		if err := convLoop.Go(processCtx); err != nil && err != context.DeadlineExceeded {
+			s.logger.Error("Conversation loop stopped", "conversationID", conversationID, "error", err)
+		}
+	}()
 
 	return manager, nil
 }

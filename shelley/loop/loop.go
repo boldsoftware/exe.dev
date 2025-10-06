@@ -132,11 +132,13 @@ func (l *Loop) Go(ctx context.Context) error {
 
 		if hasQueuedMessages {
 			// Send request to LLM
+			l.logger.Debug("processing queued messages", "count", 1)
 			if err := l.processLLMRequest(ctx); err != nil {
 				l.logger.Error("failed to process LLM request", "error", err)
 				time.Sleep(time.Second) // Wait before retrying
 				continue
 			}
+			l.logger.Debug("finished processing queued messages")
 		} else {
 			// No queued messages, wait a bit
 			select {
@@ -262,6 +264,7 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 
 	// Handle tool calls if any
 	if resp.StopReason == llm.StopReasonToolUse {
+		l.logger.Debug("handling tool calls", "content_count", len(resp.Content))
 		return l.handleToolCalls(ctx, resp.Content)
 	}
 

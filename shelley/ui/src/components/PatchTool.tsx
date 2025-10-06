@@ -55,7 +55,10 @@ function PatchTool({ toolInput, isRunning, toolResult, hasError, executionTime }
   const { filename, lines } = parseDiff(diff);
 
   return (
-    <div className="patch-tool">
+    <div
+      className="patch-tool"
+      data-testid={isComplete ? "tool-call-completed" : "tool-call-running"}
+    >
       <div className="patch-tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="patch-tool-summary">
           <span className={`patch-tool-emoji ${isRunning ? "running" : ""}`}>🖋️</span>

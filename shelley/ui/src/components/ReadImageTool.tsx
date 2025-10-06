@@ -72,7 +72,10 @@ function ReadImageTool({
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
-    <div className="screenshot-tool">
+    <div
+      className="screenshot-tool"
+      data-testid={isComplete ? "tool-call-completed" : "tool-call-running"}
+    >
       <div className="screenshot-tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="screenshot-tool-summary">
           <span className={`screenshot-tool-emoji ${isRunning ? "running" : ""}`}>🖼️</span>
