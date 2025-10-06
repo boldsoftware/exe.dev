@@ -54,7 +54,7 @@ provision_base_vm() {
 	# Copy pre-downloaded tarballs to VM
 	echo "Copying pre-downloaded dependencies to VM..."
 	CACHE_DIR="$HOME/.cache/exedops"
-	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/*.tar; do
+	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
 		if [ -f "$file" ]; then
 			basename=$(basename "$file")
 			echo "  Copying $basename..."
@@ -67,7 +67,7 @@ provision_base_vm() {
 	limactl shell ${LIMA_BASE} -- sudo chmod +x /root/setup-containerd-clh-nydus.sh
 	limactl shell ${LIMA_BASE} -- sudo mkdir -p /home/ubuntu/.cache/exedops
 	limactl shell ${LIMA_BASE} -- sudo mv /tmp/kata-config-clh.toml /home/ubuntu/.cache/exedops/kata-config-clh.toml
-	limactl shell ${LIMA_BASE} -- sudo bash -c 'mv /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.tgz /tmp/*.tar /tmp/*.service /tmp/runc-* /tmp/ch-remote-static-* /home/ubuntu/.cache/exedops/ 2>/dev/null || true'
+	limactl shell ${LIMA_BASE} -- sudo bash -c 'for f in /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.tgz /tmp/*.tar /tmp/*.service /tmp/runc-* /tmp/ch-remote-static-*; do [ -e "$f" ] && mv "$f" /home/ubuntu/.cache/exedops/; done'
 
 	echo "=========================================="
 	echo "Starting containerd setup in VM"
