@@ -45,6 +45,7 @@ Ready in ELAPSED_TIME! Access with:
 ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testhttpproxybasic@localhost
 http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT (→ port 8000)
 
+🐌 Talk to Shelley, exe.dev's agent, on your box at http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:9999
 exe.dev ▶ list
 Your boxes:
   • e1e-BOX_TIMESTAMP-testhttpproxybasic - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)

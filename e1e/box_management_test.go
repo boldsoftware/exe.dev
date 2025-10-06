@@ -93,10 +93,6 @@ func TestNewWithPrompt(t *testing.T) {
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
-	// Test uses predictable model which doesn't require API keys and responds instantly
-	// TODO: Temporarily skipped - requires exeuntu image rebuild to include EndOfTurn field in Shelley
-	t.Skip("Skipping until exeuntu image is rebuilt with EndOfTurn support")
-
 	pty, _, _, _ := registerForExeDev(t)
 
 	// Create a box with a prompt (use predictable model for testing)

@@ -82,8 +82,10 @@ func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandCo
 		return err
 	}
 
+	cc.Write("🐌 Connected to Shelley\r\n")
+
 	// Stream the conversation and display agent messages
-	return ss.streamShelleyConversation(ctx, httpClient, conversationID, cc)
+	return ss.streamShelleyConversation(ctx, httpClient, conversationID, cc, box.Name)
 }
 
 // createShelleyConversation creates a new Shelley conversation with the given prompt
@@ -171,7 +173,7 @@ func (ss *SSHServer) createShelleyConversation(ctx context.Context, httpClient *
 }
 
 // streamShelleyConversation streams a Shelley conversation and displays agent messages
-func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *http.Client, conversationID string, cc *exemenu.CommandContext) error {
+func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *http.Client, conversationID string, cc *exemenu.CommandContext, boxName string) error {
 	// Connect to the conversation stream
 	streamURL := fmt.Sprintf("http://localhost:9999/api/conversation/%s/stream", conversationID)
 	streamReq, err := http.NewRequestWithContext(ctx, "GET", streamURL, nil)
@@ -236,7 +238,7 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 						continue
 					}
 					if agentMsg.Text != "" {
-						cc.Write("%s\r\n", agentMsg.Text)
+						cc.Write("🤖 %s\r\n", strings.TrimSpace(agentMsg.Text))
 					}
 
 					// Check if this is end of turn
@@ -259,15 +261,18 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 					for _, content := range llmData.Content {
 						if content.Type == 2 && content.Text != "" {
 							// Text content
-							cc.Write("%s\r\n", content.Text)
+							cc.Write("🤖 %s\r\n", strings.TrimSpace(content.Text))
 						} else if content.Type == 5 && content.ToolName != "" {
 							// Tool use (Type 5 = ContentTypeToolUse)
-							cc.Write("Calling '%s'...\r\n", content.ToolName)
+							cc.Write("🛠️ Calling '%s'...\r\n", content.ToolName)
 						}
 					}
 
 					// Check if this message marks end of turn
 					if llmData.EndOfTurn {
+						cc.Write("🏁 Shelley finished its turn. Continue the conversation at\r\n")
+						url := ss.server.shelleyURL(boxName)
+						cc.Write("  %s\r\n", url)
 						done <- nil
 						return
 					}
@@ -286,8 +291,8 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(90 * time.Second):
-		return fmt.Errorf("timeout waiting for Shelley response (90s) - agent may still be processing")
+	case <-time.After(5 * time.Minute):
+		return fmt.Errorf("timeout waiting for Shelley response (5m) - agent may still be processing")
 	case <-ctx.Done():
 		return ctx.Err()
 	}

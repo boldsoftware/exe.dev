@@ -24,6 +24,11 @@ import (
 	"golang.org/x/term"
 )
 
+// TODO(philip): Probably can be done in Shelley itself as part of the system prompt.
+const shelleyPreamble = `
+The user has just created this box, and wants to do the following with it.
+`
+
 // jsonOnlyFlags returns a FlagSet creation function for a FlagSet named name with only the --json flag.
 func jsonOnlyFlags(name string) func() *flag.FlagSet {
 	return func() *flag.FlagSet {
@@ -541,6 +546,13 @@ done:
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
 	}
+	// TODO(philip): We should allow Shelley to run on all images, but injecting it,
+	// but, until that's done (https://github.com/boldsoftware/exe/issues/7), let's only
+	// show the URL sometimes.
+	shelleyUrl := ""
+	if image == "exeuntu" && command == "auto" {
+		shelleyUrl = ss.server.shelleyURL(boxName)
+	}
 
 	if cc.WantJSON() {
 		out := map[string]any{
@@ -549,12 +561,18 @@ done:
 			"https_url":   httpsProxyAddr,
 			"proxy_port":  proxyPort,
 		}
+		if shelleyUrl != "" {
+			out["shelley_url"] = shelleyUrl
+		}
 		cc.WriteJSON(out)
 		return nil
 	}
 	if cc.IsInteractive() {
 		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\033[1m%s\033[0m (→ port %d)\r\n\r\n",
 			totalTime.Seconds(), sshCommand, httpsProxyAddr, proxyPort)
+		if shelleyUrl != "" {
+			cc.Write("🐌 Talk to Shelley, exe.dev's agent, on your box at %s\r\n", shelleyUrl)
+		}
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
 		cc.Write("%s\r\n%s\r\n", sshCommand, httpsProxyAddr)
@@ -562,7 +580,7 @@ done:
 
 	// If prompt was provided, run it through Shelley
 	if prompt != "" {
-		cc.Write("\r\nRunning prompt through Shelley...\r\n\r\n")
+		cc.Write("\r\n🤖 Running prompt through Shelley...\r\n\r\n")
 
 		// Get the box and SSH details for Shelley integration
 		var box *exedb.Box
@@ -592,10 +610,15 @@ done:
 			return fmt.Errorf("failed to get ctrhost for Shelley: %w", err)
 		}
 
+		if model != "predictable" {
+			prompt = shelleyPreamble + prompt
+		}
+
 		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, ctrhost, prompt, model); err != nil {
+			// We write out the error but don't fail.
 			cc.Write("\033[1;31mError running Shelley prompt: %v\033[0m\r\n", err)
-			// Don't return the error - Shelley is optional/experimental
-			// The box was created successfully, so we shouldn't fail the command
+			url := ss.server.shelleyURL(box.Name)
+			cc.Write("Connect to Shelly at %s\r\n", url)
 		}
 		cc.Write("\r\n")
 	}

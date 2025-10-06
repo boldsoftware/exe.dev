@@ -203,7 +203,7 @@ func buildShelley(t *testing.T) string {
 
 	// Build from the shelley directory (it's a separate module)
 	// Use a build tag to skip the UI embedding
-	cmd := exec.Command("go", "build", "-tags", "noui", "-o", binaryPath, "./cmd/shelley")
+	cmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/shelley")
 	cmd.Dir = "./shelley"
 	output, err := cmd.CombinedOutput()
 	if err != nil {
