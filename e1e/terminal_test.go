@@ -18,6 +18,7 @@ import (
 )
 
 func TestTerminalPermissions(t *testing.T) {
+	e1eTestsOnlyRunOnce(t)
 	vouch.For("philip")
 	t.Parallel()
 
@@ -72,26 +73,44 @@ func TestTerminalPermissions(t *testing.T) {
 
 	// Test 4: Terminal functionality - send command and receive output
 	t.Run("terminal_send_and_receive", func(t *testing.T) {
-		// Wait a bit for the box SSH to be fully ready
-		time.Sleep(2 * time.Second)
+		// Retry connecting to the terminal until successful or timeout
+		var client *http.Client
+		var outputChan chan string
+		var errChan chan error
+		var readyChan chan bool
 
-		// Create authenticated client for terminal subdomain
-		client := createAuthenticatedTerminalClient(t, box, cookies)
+		retryTimeout := time.After(15 * time.Second)
+		retryTicker := time.NewTicker(100 * time.Millisecond)
+		defer retryTicker.Stop()
 
-		// Start listening to terminal events in a goroutine
-		outputChan := make(chan string, 100)
-		errChan := make(chan error, 1)
-		readyChan := make(chan bool, 1)
-		go streamTerminalEventsWithClient(t, box, client, outputChan, errChan, readyChan)
+		connected := false
+		for !connected {
+			select {
+			case <-retryTimeout:
+				t.Fatal("timeout waiting for box SSH to be ready")
+			case <-retryTicker.C:
+				// Create authenticated client for terminal subdomain
+				client = createAuthenticatedTerminalClient(t, box, cookies)
 
-		// Wait for the terminal connection to be established
-		select {
-		case <-readyChan:
-			// Terminal is ready
-		case err := <-errChan:
-			t.Fatalf("failed to connect to terminal: %v", err)
-		case <-time.After(5 * time.Second):
-			t.Fatal("timeout waiting for terminal to be ready")
+				// Start listening to terminal events in a goroutine
+				outputChan = make(chan string, 100)
+				errChan = make(chan error, 1)
+				readyChan = make(chan bool, 1)
+				go streamTerminalEventsWithClient(t, box, client, outputChan, errChan, readyChan)
+
+				// Wait for the terminal connection to be established
+				select {
+				case <-readyChan:
+					// Terminal is ready
+					connected = true
+				case err := <-errChan:
+					// Connection failed, will retry
+					t.Logf("failed to connect to terminal, retrying: %v", err)
+				case <-time.After(500 * time.Millisecond):
+					// Connection attempt timed out, will retry
+					t.Logf("terminal connection attempt timed out, retrying")
+				}
+			}
 		}
 
 		// Send a command
