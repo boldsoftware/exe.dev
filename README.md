@@ -47,10 +47,10 @@ Host *.localexe
 
 ## Local Development
 
-After you have setup a local ctr host (see above), run:
+After you have setup a local ctr host (see above) and downloaded the whoami database (make whoami), run:
 
 ```
-go run ./cmd/exed -dev=local
+go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3
 ```
 
 With this you can:
@@ -68,6 +68,18 @@ To get details on the VM under your box, use commands like:
 ssh lima-exe-ctr sudo nerdctl --namespace=exe ps -a
 ssh lima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
 ```
+
+## whoami DB and GITHUB_TOKEN
+
+The following downloads the whoami database. It'll prompt you to install some
+Backblaze tools from brew.
+```
+make whoami	
+```
+
+You can create yourself a fine-grained personal access token with NO permissions
+(public repositories only) at https://github.com/settings/personal-access-tokens
+and set it as GITHUB_TOKEN.
 
 ## Production Deployment
 
