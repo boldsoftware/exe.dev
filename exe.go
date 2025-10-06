@@ -75,6 +75,7 @@ type BoxDisplayInfo struct {
 	ProxyURL    string
 	TerminalURL string
 	ShelleyURL  string
+	VSCodeURL   string
 	ProxyPort   int
 	ProxyShare  string
 }
@@ -1006,15 +1007,26 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 }
 
 // formatSSHConnectionInfo returns SSH connection info for box boxName based on dev mode.
-func (s *Server) formatSSHConnectionInfo(boxName string) string {
+// sshConnectionString returns the SSH connection string (without the "ssh" command prefix)
+func (s *Server) sshConnectionString(boxName string) string {
 	if s.devMode != "" {
-		var dashP string
 		if s.piperdPort != 22 {
-			dashP = fmt.Sprintf("-p %v ", s.piperdPort)
+			return fmt.Sprintf("%s@localhost:%d", boxName, s.piperdPort)
 		}
-		return fmt.Sprintf("ssh %s%s@localhost", dashP, boxName)
+		return fmt.Sprintf("%s@localhost", boxName)
 	}
-	return fmt.Sprintf("ssh %s@exe.dev", boxName)
+	return fmt.Sprintf("%s@exe.dev", boxName)
+}
+
+func (s *Server) formatSSHConnectionInfo(boxName string) string {
+	connStr := s.sshConnectionString(boxName)
+	if s.devMode != "" && s.piperdPort != 22 {
+		return fmt.Sprintf("ssh -p %d %s@localhost", s.piperdPort, boxName)
+	}
+	if s.devMode != "" {
+		return fmt.Sprintf("ssh %s@localhost", boxName)
+	}
+	return fmt.Sprintf("ssh %s", connStr)
 }
 
 // formatExeDevConnectionInfo returns SSH connection info for the exe.dev server based on dev mode.
@@ -1051,6 +1063,12 @@ func (s *Server) shelleyURL(boxName string) string {
 		return fmt.Sprintf("http://%s.localhost:%d", boxName, 9999)
 	}
 	return fmt.Sprintf("https://%s.exe.dev:9999", boxName)
+}
+
+// vscodeURL returns the VSCode remote SSH URL for a box.
+func (s *Server) vscodeURL(boxName string) string {
+	connStr := s.sshConnectionString(boxName)
+	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/app?windowId=_blank", connStr)
 }
 
 // preCreateBox creates a box entry before the container is created, returns the box ID
