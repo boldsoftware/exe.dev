@@ -50,8 +50,8 @@ func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	// Check if user is already authenticated
 	if _, err := s.validateAuthCookie(r); err == nil {
-		// User is authenticated, show their VM list at /m
-		s.handleMobileVMList(w, r)
+		// User is authenticated, redirect to unified dashboard
+		http.Redirect(w, r, "/~", http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -362,35 +362,17 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 	http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
 }
 
-// handleMobileVMList shows the user's VM list
+// handleMobileVMList redirects to the unified dashboard
 func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 	// Check authentication
-	userID, err := s.validateAuthCookie(r)
+	_, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
 		return
 	}
 
-	// Get user's allocation
-	alloc, err := s.getUserAlloc(r.Context(), userID)
-	if err != nil {
-		slog.Error("Failed to get user allocation", "error", err, "user_id", userID)
-		http.Error(w, "Failed to load user data", http.StatusInternalServerError)
-		return
-	}
-
-	// Get user's boxes
-	var boxes []exedb.Box
-	if alloc != nil {
-		boxes, err = s.getBoxesForAlloc(r.Context(), alloc.AllocID)
-		if err != nil {
-			slog.Error("Failed to get boxes", "error", err, "alloc_id", alloc.AllocID)
-			http.Error(w, "Failed to load boxes", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	s.renderTemplate(w, "mobile-vm-list.html", map[string]any{"Boxes": boxes})
+	// Redirect to unified dashboard
+	http.Redirect(w, r, "/~", http.StatusTemporaryRedirect)
 }
 
 // Helper functions for mobile

@@ -210,7 +210,10 @@ func (s *Server) setupProxyServers() {
 
 // renderTemplate is a helper method that handles template parsing and execution
 func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data interface{}) error {
-	tmpl, err := template.ParseFS(templatespkg.Files, "topbar.html", templateName)
+	funcMap := template.FuncMap{
+		"contains": strings.Contains,
+	}
+	tmpl, err := template.New(templateName).Funcs(funcMap).ParseFS(templatespkg.Files, "topbar.html", templateName)
 	if err != nil {
 		slog.Error("Failed to parse template", "error", err, "template", templateName)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -298,6 +301,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleUserDashboard(w, r, userID)
+		return
+	case "/user":
+		// User profile page - require authentication
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			// Not authenticated, redirect to auth
+			authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+		s.handleUserProfile(w, r, userID)
 		return
 	case "/health":
 		s.handleHealth(w, r)
@@ -1448,12 +1462,20 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			box.ContainerID = &result.ContainerID
 		}
 
-		boxes[i] = BoxDisplayInfo{
+		route := box.GetRoute()
+		boxInfo := BoxDisplayInfo{
 			Box:         box,
 			SSHCommand:  s.formatSSHConnectionInfo(result.Name),
 			ProxyURL:    s.httpsProxyAddress(result.Name),
 			TerminalURL: s.terminalURL(result.Name),
+			ProxyPort:   route.Port,
+			ProxyShare:  route.Share,
 		}
+		// Only set ShelleyURL for exeuntu images
+		if strings.Contains(result.Image, "exeuntu") {
+			boxInfo.ShelleyURL = s.shelleyURL(result.Name)
+		}
+		boxes[i] = boxInfo
 	}
 	if err != nil {
 		slog.Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
@@ -1467,7 +1489,49 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	}
 
 	// Render template
-	s.renderTemplate(w, "user.html", data)
+	s.renderTemplate(w, "dashboard.html", data)
+}
+
+func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userID string) {
+	// Get user info
+	user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserWithDetails(ctx, userID)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "User not found", http.StatusNotFound)
+		} else {
+			slog.Error("Failed to get user info for profile", "error", err, "user_id", userID)
+			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Get user's SSH keys
+	var sshKeys []SSHKey
+	err = s.withRx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		publicKeys, err := queries.GetSSHKeysForUser(ctx, user.UserID)
+		if err != nil {
+			return err
+		}
+		for _, publicKey := range publicKeys {
+			key := SSHKey{PublicKey: publicKey}
+			sshKeys = append(sshKeys, key)
+		}
+		return nil
+	})
+	if err != nil {
+		slog.Error("Failed to get SSH keys for profile", "error", err, "email", user.Email)
+	}
+
+	// Prepare template data
+	data := UserPageData{
+		User:    user,
+		SSHKeys: sshKeys,
+	}
+
+	// Render template
+	s.renderTemplate(w, "user-profile.html", data)
 }
 
 // handleLogout logs out the user by clearing their auth cookie

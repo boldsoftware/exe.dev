@@ -74,6 +74,9 @@ type BoxDisplayInfo struct {
 	SSHCommand  string
 	ProxyURL    string
 	TerminalURL string
+	ShelleyURL  string
+	ProxyPort   int
+	ProxyShare  string
 }
 
 // UserPageData represents the data for the user dashboard page
@@ -1040,6 +1043,14 @@ func (s *Server) terminalURL(boxName string) string {
 		return fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, s.httpLn.tcp.Port)
 	}
 	return fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
+}
+
+// shelleyURL returns the Shelley agent URL for a box (port 9999).
+func (s *Server) shelleyURL(boxName string) string {
+	if s.devMode != "" {
+		return fmt.Sprintf("http://%s.localhost:%d", boxName, 9999)
+	}
+	return fmt.Sprintf("https://%s.exe.dev:9999", boxName)
 }
 
 // preCreateBox creates a box entry before the container is created, returns the box ID

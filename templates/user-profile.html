@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXE.DEV - User Profile</title>
+    <link rel="stylesheet" href="/static/topbar.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fafafa;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            min-height: 100vh;
+        }
+        
+        .main-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .info-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 20px;
+        }
+        
+        .info-row {
+            display: flex;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-size: 13px;
+            color: #666;
+            width: 120px;
+            flex-shrink: 0;
+        }
+        
+        .info-value {
+            font-size: 13px;
+            color: #000;
+            word-break: break-all;
+        }
+        
+        .ssh-keys-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .ssh-key {
+            background: #f8f8f8;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 12px;
+            color: #333;
+            word-break: break-all;
+        }
+        
+        .no-keys {
+            color: #999;
+            font-size: 13px;
+            font-style: italic;
+        }
+        
+        .actions {
+            margin-top: 32px;
+            padding-top: 32px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 8px 16px;
+            border: 1px solid #e0e0e0;
+            background: #fff;
+            color: #666;
+            text-decoration: none;
+            font-size: 13px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+        }
+        
+        .btn:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+            color: #333;
+        }
+        
+        .btn-danger {
+            color: #dc2626;
+            border-color: #dc2626;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+            color: white;
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 20px 12px;
+            }
+            
+            .info-row {
+                flex-direction: column;
+                gap: 4px;
+            }
+            
+            .info-label {
+                width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="nav-container">
+            <div class="nav-left">
+                <a href="/~" class="nav-logo">
+                    <img src="/static/exy.png" alt="exe.dev logo" />
+                    exe.dev
+                </a>
+                <div class="nav-links">
+                    <a href="/docs">docs</a>
+                </div>
+            </div>
+            <div class="nav-right">
+                <a href="/user" class="btn">Profile</a>
+                <a href="/logout" class="btn">Sign out</a>
+            </div>
+        </div>
+    </header>
+    
+    <div class="main-container">
+        <div class="section">
+            <div class="section-title">Account</div>
+            <div class="info-card">
+                <div class="info-row">
+                    <div class="info-label">Email</div>
+                    <div class="info-value">{{.User.Email}}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">SSH Keys</div>
+            {{if .SSHKeys}}
+            <div class="ssh-keys-list">
+                {{range .SSHKeys}}
+                <div class="ssh-key">{{.PublicKey}}</div>
+                {{end}}
+            </div>
+            {{else}}
+            <div class="info-card">
+                <div class="no-keys">No SSH keys registered yet.</div>
+            </div>
+            {{end}}
+        </div>
+        
+        <div class="actions">
+            <a href="/logout" class="btn btn-danger">Sign Out</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXE.DEV - Your Boxes</title>
+    <link rel="stylesheet" href="/static/topbar.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fafafa;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            min-height: 100vh;
+        }
+        
+        .main-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .boxes-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background: #e0e0e0;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .box-row {
+            background: #fff;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .box-row:hover {
+            background: #f8f8f8;
+        }
+        
+        .box-main {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .box-details {
+            margin-left: 24px;
+            padding-top: 12px;
+            border-top: 1px solid #f0f0f0;
+            display: none;
+        }
+        
+        .box-row.expanded .box-details {
+            display: block;
+        }
+        
+        .box-info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 16px;
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+        
+        .box-info-label {
+            color: #666;
+        }
+        
+        .box-info-value {
+            color: #000;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            cursor: help;
+        }
+        
+        .status-dot.running {
+            background-color: #22c55e;
+        }
+        
+        .status-dot.stopped {
+            background-color: #ef4444;
+        }
+        
+        .status-dot.starting {
+            background-color: #f59e0b;
+        }
+        
+        .status-dot.paused {
+            background-color: #6b7280;
+        }
+        
+        .box-name {
+            font-size: 14px;
+            color: #000;
+            font-weight: 500;
+            min-width: 150px;
+            flex-shrink: 0;
+        }
+        
+        .box-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            flex-wrap: wrap;
+        }
+        
+        .box-actions-expanded {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .expand-btn {
+            padding: 6px 10px;
+            border: 1px solid #e0e0e0;
+            background: #fff;
+            color: #666;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+        }
+        
+        .expand-btn:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+        }
+        
+        .expand-btn svg {
+            width: 14px;
+            height: 14px;
+            transition: transform 0.2s ease;
+        }
+        
+        .box-row.expanded .expand-btn svg {
+            transform: rotate(180deg);
+        }
+        
+        .action-btn {
+            padding: 6px 8px;
+            border: 1px solid #e0e0e0;
+            background: #fff;
+            color: #666;
+            text-decoration: none;
+            font-size: 12px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .action-btn .btn-text {
+            display: none;
+        }
+        
+        .action-btn-expanded {
+            padding: 8px 16px;
+            border: 1px solid #e0e0e0;
+            background: #fff;
+            color: #666;
+            text-decoration: none;
+            font-size: 13px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .action-btn-expanded svg {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .action-btn-expanded:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+            color: #333;
+            text-decoration: none;
+        }
+        
+        .action-btn:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+            color: #333;
+            text-decoration: none;
+        }
+        
+        .action-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+        
+        .copy-btn {
+            padding: 6px 8px;
+            border: 1px solid #e0e0e0;
+            background: #fff;
+            color: #666;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .copy-btn .btn-text {
+            display: none;
+        }
+        
+        .toast {
+            position: absolute;
+            background: #333;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+        
+        .toast.show {
+            opacity: 1;
+        }
+        
+        .copy-btn:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
+        }
+        
+        .copy-btn.copied {
+            background: #22c55e !important;
+            border-color: #22c55e !important;
+            color: white !important;
+        }
+        
+        .copy-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+        
+        .no-boxes {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        
+        .no-boxes-message {
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        
+        .no-boxes code {
+            font-family: inherit;
+            background: #f5f5f5;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .ssh-command-display {
+            font-family: inherit;
+            background: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            border: 1px solid #e0e0e0;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .ssh-command-display code {
+            flex: 1;
+            font-family: inherit;
+            background: none;
+            padding: 0;
+            border: none;
+        }
+        
+        @media (min-width: 640px) {
+            .action-btn .btn-text,
+            .copy-btn .btn-text {
+                display: inline;
+            }
+            
+            .action-btn,
+            .copy-btn {
+                padding: 6px 12px;
+            }
+            
+            .copy-btn {
+                display: flex;
+            }
+        }
+        
+        @media (max-width: 639px) {
+            .box-actions .copy-btn {
+                display: none;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 20px 12px;
+            }
+            
+            .box-main {
+                flex-wrap: wrap;
+            }
+            
+            .box-name {
+                min-width: auto;
+                flex: 1;
+            }
+            
+            .box-actions {
+                width: 100%;
+                margin-left: 24px;
+                gap: 6px;
+            }
+            
+            .box-details {
+                margin-left: 0;
+            }
+            
+            .action-btn {
+                font-size: 11px;
+                padding: 5px 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="nav-container">
+            <div class="nav-left">
+                <a href="/~" class="nav-logo">
+                    <img src="/static/exy.png" alt="exe.dev logo" />
+                    exe.dev
+                </a>
+                <div class="nav-links">
+                    <a href="/docs">docs</a>
+                </div>
+            </div>
+            <div class="nav-right">
+                <a href="/user" class="btn">Profile</a>
+                <a href="/logout" class="btn">Sign out</a>
+            </div>
+        </div>
+    </header>
+    
+    <div class="main-container">
+        <div class="section-title">Boxes</div>
+        
+        {{if .Boxes}}
+        <div class="boxes-list">
+            {{range .Boxes}}
+            <div class="box-row">
+                <div class="box-main">
+                    <span class="status-dot {{.Status}}" title="{{.Status}}"></span>
+                    <span class="box-name">{{.Name}}</span>
+                    <div class="box-actions">
+                        <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="SSH">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+                            </svg>
+                            <span class="btn-text">SSH</span>
+                        </button>
+                        <a href="{{.ProxyURL}}" class="action-btn" target="_blank" title="HTTPS">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                            <span class="btn-text">HTTPS</span>
+                        </a>
+                        <a href="{{.TerminalURL}}" class="action-btn" target="_blank" title="Terminal">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="4,17 10,11 4,5"></polyline>
+                                <line x1="12" y1="19" x2="20" y2="19"></line>
+                            </svg>
+                            <span class="btn-text">Terminal</span>
+                        </a>
+                        {{if .ShelleyURL}}
+                        <a href="{{.ShelleyURL}}" class="action-btn" target="_blank" title="Shelley Agent">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                                <circle cx="9" cy="10" r="1" fill="currentColor"></circle>
+                                <circle cx="15" cy="10" r="1" fill="currentColor"></circle>
+                                <path d="M9 15h6"></path>
+                            </svg>
+                            <span class="btn-text">Agent</span>
+                        </a>
+                        {{end}}
+                        <button class="expand-btn" onclick="toggleExpand(this)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="box-details">
+                    <div class="ssh-command-display">
+                        <code>{{.SSHCommand}}</code>
+                        <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="Copy SSH command">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="box-info-grid">
+                        <span class="box-info-label">Status:</span>
+                        <span class="box-info-value">{{.Status}}</span>
+                        <span class="box-info-label">Image:</span>
+                        <span class="box-info-value">{{.Image}}</span>
+                        <span class="box-info-label">Proxy:</span>
+                        <span class="box-info-value">Port {{.ProxyPort}}, {{.ProxyShare}}</span>
+                        <span class="box-info-label">Created:</span>
+                        <span class="box-info-value">{{.CreatedAt.Format "Jan 2, 2006 15:04 MST"}}</span>
+                    </div>
+                    <div class="box-actions-expanded">
+                        <a href="{{.ProxyURL}}" class="action-btn-expanded" target="_blank">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                            Open HTTPS Proxy
+                        </a>
+                        <a href="{{.TerminalURL}}" class="action-btn-expanded" target="_blank">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="4,17 10,11 4,5"></polyline>
+                                <line x1="12" y1="19" x2="20" y2="19"></line>
+                            </svg>
+                            Open Terminal
+                        </a>
+                        {{if .ShelleyURL}}
+                        <a href="{{.ShelleyURL}}" class="action-btn-expanded" target="_blank">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                                <circle cx="9" cy="10" r="1" fill="currentColor"></circle>
+                                <circle cx="15" cy="10" r="1" fill="currentColor"></circle>
+                                <path d="M9 15h6"></path>
+                            </svg>
+                            Open Shelley Agent
+                        </a>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{else}}
+        <div class="no-boxes">
+            <div class="no-boxes-message">No boxes yet. Create one with:</div>
+            <code>ssh exe.dev new --name=myname</code>
+        </div>
+        {{end}}
+    </div>
+    
+    <div id="toast" class="toast"></div>
+    
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

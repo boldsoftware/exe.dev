@@ -77,11 +77,6 @@ func TestUserDashboard(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Check that user email appears
-	if !strings.Contains(bodyStr, email) {
-		t.Errorf("Expected to find user email %s in dashboard", email)
-	}
-
 	// Check that box name appears
 	if !strings.Contains(bodyStr, boxName) {
 		t.Errorf("Expected to find box name %s in dashboard", boxName)
