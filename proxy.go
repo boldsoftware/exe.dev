@@ -524,31 +524,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	}
 
 	// Determine SSH host address from the allocation's ctrhost
-	sshHost := "localhost"
-	if ctrhost != "" {
-		// Extract hostname from ctrhost URL if it's a URL format
-		if strings.Contains(ctrhost, "://") {
-			if u, err := url.Parse(ctrhost); err == nil && u.Host != "" {
-				if host, _, err := net.SplitHostPort(u.Host); err == nil {
-					sshHost = host
-				} else {
-					sshHost = u.Host
-				}
-			}
-		} else {
-			// Direct hostname
-			sshHost = ctrhost
-		}
-	}
-	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
-	if s.devMode != "" {
-		if _, err := net.LookupHost(sshHost); err != nil {
-			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
-				slog.Debug("Resolved host via SSH config for dev", "alias", sshHost, "ip", ip)
-				sshHost = ip
-			}
-		}
-	}
+	sshHost := s.resolveSSHHost(ctrhost)
 
 	// Try to proxy to the configured port
 	err = s.proxyViaSSHPortForward(w, r, sshHost, box, sshKey, route.Port)
@@ -664,8 +640,38 @@ func (d *sshDialer) DialContext(ctx context.Context, network, addr string) (net.
 	return &sshConn{Conn: remoteConn, client: client}, nil
 }
 
-// proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
-func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *exedb.Box, sshKey ssh.Signer, targetPort int) error {
+// resolveSSHHost resolves the SSH host address from a ctrhost, handling URL formats and dev mode aliases
+func (s *Server) resolveSSHHost(ctrhost string) string {
+	sshHost := "localhost"
+	if ctrhost != "" {
+		// Extract hostname from ctrhost URL if it's a URL format
+		if strings.Contains(ctrhost, "://") {
+			if u, err := url.Parse(ctrhost); err == nil && u.Host != "" {
+				if host, _, err := net.SplitHostPort(u.Host); err == nil {
+					sshHost = host
+				} else {
+					sshHost = u.Host
+				}
+			}
+		} else {
+			// Direct hostname
+			sshHost = ctrhost
+		}
+	}
+	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
+	if s.devMode != "" {
+		if _, err := net.LookupHost(sshHost); err != nil {
+			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
+				slog.Debug("Resolved host via SSH config for dev", "alias", sshHost, "ip", ip)
+				sshHost = ip
+			}
+		}
+	}
+	return sshHost
+}
+
+// createSSHTunnelTransport creates an HTTP transport that tunnels through SSH to a container
+func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey ssh.Signer) *http.Transport {
 	// Build SSH client config
 	cfg := &ssh.ClientConfig{
 		User:            *box.SSHUser,
@@ -677,7 +683,8 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	sshAddr := net.JoinHostPort(sshHost, strconv.Itoa(int(*box.SSHPort)))
 
 	// Build an HTTP transport that dials through SSH to the target on the SSH host.
-	transport := &http.Transport{
+	// The sshDialer includes built-in retry logic for SSH connection failures
+	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&sshDialer{sshAddr: sshAddr, cfg: cfg}).DialContext,
 		ForceAttemptHTTP2:     false,
@@ -686,6 +693,11 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
+}
+
+// proxyViaSSHPortForward establishes an SSH connection and proxies the HTTP request directly
+func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, sshHost string, box *exedb.Box, sshKey ssh.Signer, targetPort int) error {
+	transport := s.createSSHTunnelTransport(sshHost, box, sshKey)
 
 	// Configure the reverse proxy using NewSingleHostReverseProxy
 	targetURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", targetPort))

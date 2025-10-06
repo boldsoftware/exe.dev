@@ -76,6 +76,10 @@ func (c *Command) Help(cc *CommandContext) error {
 		if hasFlags {
 			tabw := tabwriter.NewWriter(cc.Output, 0, 0, 1, ' ', 0)
 			fs.VisitAll(func(f *flag.Flag) {
+				// Skip flags with empty usage (hidden flags)
+				if f.Usage == "" {
+					return
+				}
 				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\t\r\n", f.Name, f.Usage)
 			})
 			tabw.Flush()

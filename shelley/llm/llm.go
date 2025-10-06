@@ -65,9 +65,10 @@ type Request struct {
 
 // Message represents a message in the conversation.
 type Message struct {
-	Role    MessageRole
-	Content []Content
-	ToolUse *ToolUse // use to control whether/which tool to use
+	Role      MessageRole `json:"Role"`
+	Content   []Content   `json:"Content"`
+	ToolUse   *ToolUse    `json:"ToolUse,omitempty"` // use to control whether/which tool to use
+	EndOfTurn bool        `json:"EndOfTurn"`         // true if this message completes the agent's turn (no tool calls to make)
 }
 
 // ToolUse represents a tool use in the message content.
@@ -232,8 +233,9 @@ type Response struct {
 
 func (m *Response) ToMessage() Message {
 	return Message{
-		Role:    m.Role,
-		Content: m.Content,
+		Role:      m.Role,
+		Content:   m.Content,
+		EndOfTurn: m.StopReason != StopReasonToolUse, // End of turn unless there are tools to call
 	}
 }
 

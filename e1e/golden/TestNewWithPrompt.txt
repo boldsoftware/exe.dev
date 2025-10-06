@@ -1,0 +1,57 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a machine over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: TestNewWithPrompt@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+
+Verification email sent to: TestNewWithPrompt@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+To create your first box, run:
+
+  new
+
+Or type `help` to see a list of commands.
+exe.dev ▶ whoami
+Email Address: TestNewWithPrompt@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testnewwithprompt --prompt="hello" --prompt-model=predictable
+Creating e1e-BOX_TIMESTAMP-testnewwithprompt (medium) using image boldsoftware/exeuntu...
+Ready in ELAPSED_TIME! Access with:
+
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testnewwithprompt@localhost
+http://e1e-BOX_TIMESTAMP-testnewwithprompt.localhost:EXED_HTTP_PORT (→ port 8000)
+
+
+Running prompt through Shelley...
+
+Well, hi there!
+
+exe.dev ▶ delete e1e-BOX_TIMESTAMP-testnewwithprompt
+Deleting e1e-BOX_TIMESTAMP-testnewwithprompt...
+Box "e1e-BOX_TIMESTAMP-testnewwithprompt" deleted successfully
+exe.dev ▶ exit
+Goodbye!

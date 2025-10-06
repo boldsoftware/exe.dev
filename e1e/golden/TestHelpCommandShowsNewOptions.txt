@@ -49,6 +49,7 @@ Options:
   --image   container image
   --json    output in JSON format
   --name    box name (auto-generated if not specified)
+  --prompt  initial prompt to send to Shelley after box creation (requires exeuntu image)
   --size    box size (small, medium, or large)
 
 Examples:

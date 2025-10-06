@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -1076,11 +1077,21 @@ func (s *Server) Start(port string) error {
 		}
 	}()
 
+	// Create listener to get actual port (important when port is "0")
+	listener, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		s.logger.Error("Failed to create listener", "error", err)
+		return err
+	}
+
+	// Get actual port from listener
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+
 	// Start server in goroutine
 	serverErrCh := make(chan error, 1)
 	go func() {
-		s.logger.Info("Server starting", "addr", httpServer.Addr, "url", "http://localhost:"+port)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		s.logger.Info("Server starting", "port", actualPort, "url", fmt.Sprintf("http://localhost:%d", actualPort))
+		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			serverErrCh <- err
 		}
 	}()

@@ -40,7 +40,10 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("image", "exeuntu", "container image")
 	fs.String("size", "medium", "box size (small, medium, or large)")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
+	fs.String("prompt", "", "initial prompt to send to Shelley after box creation (requires exeuntu image)")
 	fs.Bool("json", false, "output in JSON format")
+	// Hidden flag for testing
+	fs.String("prompt-model", "", "")
 	return fs
 }
 
@@ -287,6 +290,13 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	image := cc.FlagSet.Lookup("image").Value.String()
 	size := cc.FlagSet.Lookup("size").Value.String()
 	command := cc.FlagSet.Lookup("command").Value.String()
+	prompt := cc.FlagSet.Lookup("prompt").Value.String()
+	model := cc.FlagSet.Lookup("prompt-model").Value.String()
+
+	// Validate that --prompt is only used with exeuntu image
+	if prompt != "" && image != "exeuntu" {
+		return cc.Errorf("--prompt can only be used with the exeuntu image")
+	}
 
 	// Generate box name if not provided
 	if boxName == "" {
@@ -549,6 +559,47 @@ done:
 		// Non-interactive session: output clean SSH command to stdout
 		cc.Write("%s\r\n%s\r\n", sshCommand, httpsProxyAddr)
 	}
+
+	// If prompt was provided, run it through Shelley
+	if prompt != "" {
+		cc.Write("\r\nRunning prompt through Shelley...\r\n\r\n")
+
+		// Get the box and SSH details for Shelley integration
+		var box *exedb.Box
+		if cc.PublicKey != "" {
+			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+		} else {
+			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get box for Shelley: %w", err)
+		}
+
+		// Create SSH signer from the client private key
+		sshSigner, err := container.CreateSSHSigner(sshKeys.ClientPrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create SSH signer for Shelley: %w", err)
+		}
+
+		// Get ctrhost for the allocation
+		var ctrhost string
+		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+			queries := exedb.New(tx.Conn())
+			ctrhost, err = queries.GetCtrhostByAllocID(ctx, box.AllocID)
+			return err
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get ctrhost for Shelley: %w", err)
+		}
+
+		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, ctrhost, prompt, model); err != nil {
+			cc.Write("\033[1;31mError running Shelley prompt: %v\033[0m\r\n", err)
+			// Don't return the error - Shelley is optional/experimental
+			// The box was created successfully, so we shouldn't fail the command
+		}
+		cc.Write("\r\n")
+	}
+
 	return nil
 }
 

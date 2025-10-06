@@ -87,3 +87,38 @@ func TestBadBoxName(t *testing.T) {
 	pty.wantPrompt()
 	pty.disconnect()
 }
+
+func TestNewWithPrompt(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	// Test uses predictable model which doesn't require API keys and responds instantly
+	// TODO: Temporarily skipped - requires exeuntu image rebuild to include EndOfTurn field in Shelley
+	t.Skip("Skipping until exeuntu image is rebuilt with EndOfTurn support")
+
+	pty, _, _, _ := registerForExeDev(t)
+
+	// Create a box with a prompt (use predictable model for testing)
+	boxName := boxName(t)
+	prompt := "hello" // This will trigger predictable service to respond with "Well, hi there!"
+	pty.sendLine(fmt.Sprintf("new --name=%s --prompt=%q --prompt-model=predictable", boxName, prompt))
+	pty.reject("Sorry")
+	pty.wantRe("Creating .*" + boxName)
+	pty.want("Access with")
+
+	// Expect Shelley prompt execution to start
+	pty.want("Running prompt through Shelley")
+
+	// With predictable model, we should get a quick response
+	pty.want("Well, hi there!") // Expected response from predictable service for "hello"
+
+	// Should return to prompt after Shelley completes
+	pty.wantPrompt()
+
+	// Cleanup
+	pty.sendLine("delete " + boxName)
+	pty.want("Deleting")
+	pty.wantPrompt()
+	pty.disconnect()
+}
