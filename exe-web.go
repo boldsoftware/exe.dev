@@ -1454,6 +1454,9 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		if result.ContainerID != "" {
 			box.ContainerID = &result.ContainerID
 		}
+		if result.CreationLog != "" {
+			box.CreationLog = &result.CreationLog
+		}
 
 		route := box.GetRoute()
 		boxInfo := BoxDisplayInfo{

@@ -141,19 +141,19 @@
         color: #f44336;
       }
 
-      .description-section {
+      .prompt-section {
         text-align: center;
         margin-bottom: 30px;
       }
 
-      .description-label {
+      .prompt-label {
         font-size: 16px;
         color: #333;
         margin-bottom: 15px;
         display: block;
       }
 
-      .description-input {
+      .prompt-input {
         width: 100%;
         font-size: 16px;
         padding: 12px 16px;
@@ -165,7 +165,7 @@
         font-family: Georgia, "Times New Roman", serif;
       }
 
-      .description-input:focus {
+      .prompt-input:focus {
         outline: none;
         border-color: #4caf50;
       }
@@ -241,14 +241,14 @@
           </div>
         </div>
 
-        <div class="description-section">
-          <label for="description" class="description-label"
+        <div class="prompt-section">
+          <label for="prompt" class="prompt-label"
             >What do you want to build? (optional)</label
           >
           <textarea
-            id="description"
-            name="description"
-            class="description-input"
+            id="prompt"
+            name="prompt"
+            class="prompt-input"
             placeholder="Build a blog..."
             rows="3"
           ></textarea>
@@ -274,16 +274,16 @@
       ];
 
       let currentPlaceholderIndex = 0;
-      const descriptionInput = document.getElementById("description");
+      const promptInput = document.getElementById("prompt");
 
       function rotatePlaceholder() {
         if (
-          descriptionInput.value === "" &&
-          document.activeElement !== descriptionInput
+          promptInput.value === "" &&
+          document.activeElement !== promptInput
         ) {
           currentPlaceholderIndex =
             (currentPlaceholderIndex + 1) % placeholders.length;
-          descriptionInput.placeholder = placeholders[currentPlaceholderIndex];
+          promptInput.placeholder = placeholders[currentPlaceholderIndex];
         }
       }
 

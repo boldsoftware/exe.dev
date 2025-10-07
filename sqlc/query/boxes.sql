@@ -40,7 +40,8 @@ UPDATE boxes SET container_id = ?, status = 'running' WHERE id = ?;
 -- name: GetBoxesForUserDashboard :many
 SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
-       m.created_at, m.updated_at, m.last_started_at
+       m.created_at, m.updated_at, m.last_started_at,
+       COALESCE(m.creation_log, '') as creation_log
 FROM boxes m
 JOIN allocs a ON m.alloc_id = a.alloc_id
 WHERE a.user_id = ?

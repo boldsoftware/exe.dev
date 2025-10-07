@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EXE.DEV - Your Boxes</title>
     <link rel="stylesheet" href="/static/topbar.css">
+    <link rel="stylesheet" href="/static/xterm.css">
+    <link rel="stylesheet" href="/static/terminal-common.css">
     <style>
         * {
             margin: 0;
@@ -28,9 +30,41 @@
             font-size: 14px;
             font-weight: 600;
             color: #666;
-            margin-bottom: 20px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            gap: 20px;
+        }
+        
+        .section-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .new-box-btn {
+            padding: 6px 12px;
+            background: #fff;
+            color: #666;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        
+        .new-box-btn:hover {
+            background: #f5f5f5;
+            border-color: #d0d0d0;
         }
         
         .boxes-list {
@@ -49,6 +83,7 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+            cursor: pointer;
         }
         
         .box-row:hover {
@@ -61,11 +96,68 @@
             gap: 16px;
         }
         
+        .search-box {
+            flex: 1;
+            max-width: 300px;
+            position: relative;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 8px 32px 8px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: inherit;
+            background: #fff;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #999;
+        }
+        
+        .search-clear {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            padding: 4px;
+            display: none;
+            font-size: 16px;
+            line-height: 1;
+        }
+        
+        .search-clear:hover {
+            color: #333;
+        }
+        
+        .search-box.has-value .search-clear {
+            display: block;
+        }
+        
         .box-details {
             margin-left: 24px;
             padding-top: 12px;
             border-top: 1px solid #f0f0f0;
             display: none;
+        }
+        
+        .box-terminal {
+            margin-top: 12px;
+            background: #000;
+            border-radius: 4px;
+            padding: 1px;
+            min-height: 200px;
+        }
+        
+        .box-terminal .xterm {
+            padding: 6px 8px;
+            border-radius: 4px;
         }
         
         .box-row.expanded .box-details {
@@ -110,6 +202,21 @@
         
         .status-dot.paused {
             background-color: #6b7280;
+        }
+        
+        .status-dot.pending {
+            background-color: #f59e0b;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .status-dot.creating {
+            background-color: #f59e0b;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
         
         .box-name {
@@ -387,16 +494,29 @@
     </header>
     
     <div class="main-container">
-        <div class="section-title">Boxes</div>
+        <div class="section-header">
+            <div class="section-left">
+                <div class="section-title">Boxes</div>
+                <a href="/m/new" class="new-box-btn">+ New</a>
+            </div>
+            <div class="search-box">
+                <input type="text" 
+                       id="box-search" 
+                       placeholder="Search boxes..." 
+                       class="search-input">
+                <button class="search-clear" onclick="clearSearch()" title="Clear search">×</button>
+            </div>
+        </div>
         
         {{if .Boxes}}
         <div class="boxes-list">
             {{range .Boxes}}
-            <div class="box-row">
-                <div class="box-main">
+            <div class="box-row"{{if .CreationLog}} data-has-log="true"{{end}}>
+                <div class="box-main" onclick="handleBoxRowClick(event, this)">
                     <span class="status-dot {{.Status}}" title="{{.Status}}"></span>
                     <span class="box-name">{{.Name}}</span>
                     <div class="box-actions">
+                        {{if and (ne .Status "pending") (ne .Status "creating")}}
                         <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="SSH">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
@@ -429,6 +549,7 @@
                             <span class="btn-text">Agent</span>
                         </a>
                         {{end}}
+                        {{end}}
                         <button class="expand-btn" onclick="toggleExpand(this)">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="6 9 12 15 18 9"></polyline>
@@ -437,6 +558,7 @@
                     </div>
                 </div>
                 <div class="box-details">
+                    {{if and (ne .Status "pending") (ne .Status "creating")}}
                     <div class="ssh-command-display">
                         <code>{{.SSHCommand}}</code>
                         <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="Copy SSH command">
@@ -446,6 +568,7 @@
                             </svg>
                         </button>
                     </div>
+                    {{end}}
                     <div class="box-info-grid">
                         <span class="box-info-label">Status:</span>
                         <span class="box-info-value">{{.Status}}</span>
@@ -453,9 +576,12 @@
                         <span class="box-info-value">{{.Image}}</span>
                         <span class="box-info-label">Proxy:</span>
                         <span class="box-info-value">Port {{.ProxyPort}}, {{.ProxyShare}}</span>
+                        {{if and (ne .Status "pending") (ne .Status "creating")}}
                         <span class="box-info-label">Created:</span>
                         <span class="box-info-value">{{.CreatedAt.Format "Jan 2, 2006 15:04 MST"}}</span>
+                        {{end}}
                     </div>
+                    {{if and (ne .Status "pending") (ne .Status "creating")}}
                     <div class="box-actions-expanded">
                         <a href="{{.ProxyURL}}" class="action-btn-expanded" target="_blank">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -490,6 +616,7 @@
                         </a>
                         {{end}}
                     </div>
+                    {{end}}
                 </div>
             </div>
             {{end}}
@@ -504,6 +631,8 @@
     
     <div id="toast" class="toast"></div>
     
+    <script src="/static/xterm.js"></script>
+    <script src="/static/terminal-common.js"></script>
     <script src="/static/dashboard.js"></script>
 </body>
 </html>

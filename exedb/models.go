@@ -62,6 +62,7 @@ type Box struct {
 	SSHClientPrivateKey  []byte     `db:"ssh_client_private_key" json:"ssh_client_private_key"`
 	SSHPort              *int64     `db:"ssh_port" json:"ssh_port"`
 	SSHUser              *string    `db:"ssh_user" json:"ssh_user"`
+	CreationLog          *string    `db:"creation_log" json:"creation_log"`
 }
 
 type DeletedBox struct {
@@ -86,11 +87,11 @@ type Migration struct {
 }
 
 type MobilePendingVm struct {
-	Token       string     `db:"token" json:"token"`
-	UserID      string     `db:"user_id" json:"user_id"`
-	Hostname    string     `db:"hostname" json:"hostname"`
-	Description *string    `db:"description" json:"description"`
-	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
+	Token     string     `db:"token" json:"token"`
+	UserID    string     `db:"user_id" json:"user_id"`
+	Hostname  string     `db:"hostname" json:"hostname"`
+	Prompt    *string    `db:"prompt" json:"prompt"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
 type PendingSSHKey struct {

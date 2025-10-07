@@ -148,8 +148,8 @@
         {{if .Hostname}}
         <div class="vm-details">
             <div class="vm-hostname">{{.Hostname}}.exe.dev</div>
-            {{if .Description}}
-            <div class="vm-description">{{.Description}}</div>
+            {{if .Prompt}}
+            <div class="vm-description">{{.Prompt}}</div>
             {{end}}
         </div>
         {{end}}
@@ -167,8 +167,8 @@
                 {{if .Hostname}}
                 <input type="hidden" name="hostname" value="{{.Hostname}}">
                 {{end}}
-                {{if .Description}}
-                <input type="hidden" name="description" value="{{.Description}}">
+                {{if .Prompt}}
+                <input type="hidden" name="prompt" value="{{.Prompt}}">
                 {{end}}
             </div>
             

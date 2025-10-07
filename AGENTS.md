@@ -7,3 +7,5 @@
 - NEVER create defaults for things that are required. If data is missing, either fix the missing data or fail with a clear error explaining what's wrong
 - use `go test -count=1 ./e1e` to run end-to-end tests against a local container host.
 - when editing go code, run gofumpt on the files you've changed
+- prefer sync.Mutex over sync.RWMutex unless there's a clear performance benefit from read-heavy workloads
+- don't add sleeps in tests; instead, add retry loops with a very small sleep

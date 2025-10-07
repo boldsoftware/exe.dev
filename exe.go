@@ -68,6 +68,11 @@ const (
 	RegionAWSUSWest2 Region = "aws-us-west-2" // Default and only region for now
 )
 
+const (
+	// Timeout for long-running operations like box creation and Shelley prompts
+	longOperationTimeout = 30 * time.Minute
+)
+
 // BoxDisplayInfo represents a box with additional display information
 type BoxDisplayInfo struct {
 	exedb.Box
@@ -167,6 +172,8 @@ type Server struct {
 	emailVerifications   map[string]*EmailVerification // token -> email verification
 	magicSecretsMu       sync.RWMutex
 	magicSecrets         map[string]*MagicSecret // secret -> magic secret with expiration
+	creationStreamsMu    sync.Mutex
+	creationStreams      map[creationStreamKey]*CreationStream // (userID, hostname) -> creation stream
 
 	// User sessions for tracking authenticated users
 	sessions map[*sshbuf.Channel]*UserSession // channel -> user session
@@ -421,6 +428,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		hostUpdater:        hostUpdaterInstance,
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
+		creationStreams:    make(map[creationStreamKey]*CreationStream),
 		sessions:           make(map[*sshbuf.Channel]*UserSession),
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,

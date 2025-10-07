@@ -11,7 +11,7 @@ import (
 )
 
 const boxNamed = `-- name: BoxNamed :one
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user FROM boxes WHERE name = ?
+SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log FROM boxes WHERE name = ?
 `
 
 // This is not a secure API!
@@ -36,6 +36,7 @@ func (q *Queries) BoxNamed(ctx context.Context, name string) (Box, error) {
 		&i.SSHClientPrivateKey,
 		&i.SSHPort,
 		&i.SSHUser,
+		&i.CreationLog,
 	)
 	return i, err
 }
@@ -52,7 +53,7 @@ func (q *Queries) BoxWithNameExists(ctx context.Context, name string) (int64, er
 }
 
 const boxWithOwnerNamed = `-- name: BoxWithOwnerNamed :one
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user FROM boxes WHERE name = ? AND boxes.alloc_id = (SELECT allocs.alloc_id FROM allocs WHERE allocs.user_id = ?)
+SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log FROM boxes WHERE name = ? AND boxes.alloc_id = (SELECT allocs.alloc_id FROM allocs WHERE allocs.user_id = ?)
 `
 
 type BoxWithOwnerNamedParams struct {
@@ -80,6 +81,7 @@ func (q *Queries) BoxWithOwnerNamed(ctx context.Context, arg BoxWithOwnerNamedPa
 		&i.SSHClientPrivateKey,
 		&i.SSHPort,
 		&i.SSHUser,
+		&i.CreationLog,
 	)
 	return i, err
 }
@@ -94,7 +96,7 @@ func (q *Queries) DeleteBox(ctx context.Context, id int) error {
 }
 
 const getBoxByNameAndAlloc = `-- name: GetBoxByNameAndAlloc :one
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user FROM boxes WHERE name = ? AND alloc_id = ?
+SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log FROM boxes WHERE name = ? AND alloc_id = ?
 `
 
 type GetBoxByNameAndAllocParams struct {
@@ -122,6 +124,7 @@ func (q *Queries) GetBoxByNameAndAlloc(ctx context.Context, arg GetBoxByNameAndA
 		&i.SSHClientPrivateKey,
 		&i.SSHPort,
 		&i.SSHUser,
+		&i.CreationLog,
 	)
 	return i, err
 }
@@ -195,7 +198,7 @@ func (q *Queries) GetBoxSSHDetails(ctx context.Context, id int) (GetBoxSSHDetail
 }
 
 const getBoxesByHost = `-- name: GetBoxesByHost :many
-SELECT b.id, b.alloc_id, b.name, b.status, b.image, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user
+SELECT b.id, b.alloc_id, b.name, b.status, b.image, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log
 FROM boxes b
 INNER JOIN allocs a ON b.alloc_id = a.alloc_id
 WHERE a.ctrhost = ? AND b.status != 'failed'
@@ -227,6 +230,7 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 			&i.SSHClientPrivateKey,
 			&i.SSHPort,
 			&i.SSHUser,
+			&i.CreationLog,
 		); err != nil {
 			return nil, err
 		}
@@ -242,7 +246,7 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 }
 
 const getBoxesForAlloc = `-- name: GetBoxesForAlloc :many
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user
+SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log
 FROM boxes
 WHERE alloc_id = ?
 ORDER BY name
@@ -274,6 +278,7 @@ func (q *Queries) GetBoxesForAlloc(ctx context.Context, allocID string) ([]Box, 
 			&i.SSHClientPrivateKey,
 			&i.SSHPort,
 			&i.SSHUser,
+			&i.CreationLog,
 		); err != nil {
 			return nil, err
 		}
@@ -291,7 +296,8 @@ func (q *Queries) GetBoxesForAlloc(ctx context.Context, allocID string) ([]Box, 
 const getBoxesForUserDashboard = `-- name: GetBoxesForUserDashboard :many
 SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
-       m.created_at, m.updated_at, m.last_started_at
+       m.created_at, m.updated_at, m.last_started_at,
+       COALESCE(m.creation_log, '') as creation_log
 FROM boxes m
 JOIN allocs a ON m.alloc_id = a.alloc_id
 WHERE a.user_id = ?
@@ -309,6 +315,7 @@ type GetBoxesForUserDashboardRow struct {
 	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt       *time.Time `db:"updated_at" json:"updated_at"`
 	LastStartedAt   *time.Time `db:"last_started_at" json:"last_started_at"`
+	CreationLog     string     `db:"creation_log" json:"creation_log"`
 }
 
 func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, userID string) ([]GetBoxesForUserDashboardRow, error) {
@@ -331,6 +338,7 @@ func (q *Queries) GetBoxesForUserDashboard(ctx context.Context, userID string) (
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LastStartedAt,
+			&i.CreationLog,
 		); err != nil {
 			return nil, err
 		}

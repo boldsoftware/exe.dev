@@ -295,8 +295,8 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 		}
 	}()
 
-	// Wait for completion with both absolute (30m) and idle (5m) timeouts
-	absoluteTimeout := time.NewTimer(30 * time.Minute)
+	// Wait for completion with both absolute and idle (5m) timeouts
+	absoluteTimeout := time.NewTimer(longOperationTimeout)
 	defer absoluteTimeout.Stop()
 
 	idleTimeout := time.NewTimer(5 * time.Minute)

@@ -72,7 +72,7 @@ func TestMobileCreateVMFlow(t *testing.T) {
 	// Test VM creation form submission
 	form := url.Values{}
 	form.Add("hostname", "test-vm")
-	form.Add("description", "A test VM")
+	form.Add("prompt", "Build a blog")
 
 	req := httptest.NewRequest("POST", "/m/create-vm", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -87,8 +87,8 @@ func TestMobileCreateVMFlow(t *testing.T) {
 	if !strings.Contains(body, "test-vm.exe.dev") {
 		t.Error("Expected VM hostname in response")
 	}
-	if !strings.Contains(body, "A test VM") {
-		t.Error("Expected VM description in response")
+	if !strings.Contains(body, "Build a blog") {
+		t.Error("Expected VM prompt in response")
 	}
 	if !strings.Contains(body, "Enter your email to continue") {
 		t.Error("Expected email prompt in response")
@@ -129,8 +129,8 @@ func TestMobileVMListUnauthorized(t *testing.T) {
 	server.ServeHTTP(w, req)
 
 	// Should redirect to /m
-	if w.Code != http.StatusTemporaryRedirect {
-		t.Errorf("Expected status 307, got %d", w.Code)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected status 303, got %d", w.Code)
 	}
 
 	location := w.Header().Get("Location")

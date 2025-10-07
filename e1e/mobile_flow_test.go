@@ -41,7 +41,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	// 2) POST /m/create-vm (logged-out) → email auth page
 	form := url.Values{}
 	form.Set("hostname", host)
-	form.Set("description", "e2e mobile flow")
+	form.Set("prompt", "e2e mobile flow")
 	resp, err = client.PostForm(base+"/m/create-vm", form)
 	if err != nil {
 		t.Fatalf("POST /m/create-vm: %v", err)
@@ -85,28 +85,25 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 		t.Fatalf("bad verify response status: %d\n%s", verifyResp.StatusCode, verifyRespBody)
 	}
 
-	// 5) Visit creating page and connect to SSE stream
-	createURL := base + "/m/creating?hostname=" + url.QueryEscape(host)
-	pageResp, err := client2.Get(createURL)
-	if err != nil {
-		t.Fatalf("GET creating page: %v", err)
-	}
-	io.ReadAll(pageResp.Body)
-	pageResp.Body.Close()
-	if pageResp.StatusCode != http.StatusOK {
-		t.Fatalf("creating page status: %d", pageResp.StatusCode)
-	}
-
-	// Stream via POST since creation is a write action
-	sseResp, err := client2.PostForm(base+"/m/creating/stream", url.Values{"hostname": {host}})
-	if err != nil {
-		t.Fatalf("GET SSE stream: %v", err)
+	// 5) Connect to SSE stream (creation already started in background after verification)
+	// Retry until stream is available
+	streamURL := base + "/m/creating/stream?hostname=" + url.QueryEscape(host)
+	var sseResp *http.Response
+	for i := 0; i < 50; i++ {
+		sseResp, err = client2.Get(streamURL)
+		if err != nil {
+			t.Fatalf("GET SSE stream: %v", err)
+		}
+		if sseResp.StatusCode == http.StatusOK && strings.Contains(strings.ToLower(sseResp.Header.Get("Content-Type")), "text/event-stream") {
+			break
+		}
+		sseResp.Body.Close()
+		if i == 49 {
+			t.Fatalf("SSE stream not ready after retries")
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	defer sseResp.Body.Close()
-	if sseResp.StatusCode != http.StatusOK || !strings.Contains(strings.ToLower(sseResp.Header.Get("Content-Type")), "text/event-stream") {
-		b, _ := io.ReadAll(sseResp.Body)
-		t.Fatalf("SSE stream unexpected: status=%d ct=%q body=%q", sseResp.StatusCode, sseResp.Header.Get("Content-Type"), string(b))
-	}
 
 	// Read SSE until we see event: done
 	scanner := bufio.NewScanner(sseResp.Body)
@@ -141,15 +138,15 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 		t.Fatalf("unexpected done payload: %q", doneData)
 	}
 
-	// 6) VM page
-	vmURL := base + "/m/box/" + url.PathEscape(host)
-	vmResp, err := client2.Get(vmURL)
+	// 6) Dashboard page should show the box
+	dashURL := base + "/~"
+	dashResp, err := client2.Get(dashURL)
 	if err != nil {
-		t.Fatalf("GET VM page: %v", err)
+		t.Fatalf("GET dashboard: %v", err)
 	}
-	vmBody, _ := io.ReadAll(vmResp.Body)
-	vmResp.Body.Close()
-	if vmResp.StatusCode != http.StatusOK || !strings.Contains(string(vmBody), host+".exe.dev") {
-		t.Fatalf("VM page unexpected: status=%d body=%q", vmResp.StatusCode, string(vmBody))
+	dashBody, _ := io.ReadAll(dashResp.Body)
+	dashResp.Body.Close()
+	if dashResp.StatusCode != http.StatusOK || !strings.Contains(string(dashBody), host) {
+		t.Fatalf("Dashboard unexpected: status=%d contains host? %v", dashResp.StatusCode, strings.Contains(string(dashBody), host))
 	}
 }

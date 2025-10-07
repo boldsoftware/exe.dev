@@ -1,14 +1,18 @@
 package exe
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"exe.dev/billing"
@@ -17,6 +21,231 @@ import (
 	"exe.dev/exemenu"
 	"exe.dev/sqlite"
 )
+
+const (
+
+	// creationStreamIdleTimeout is how long to keep a creation stream after last access
+	creationStreamIdleTimeout = 10 * time.Minute
+)
+
+// creationStreamKey uniquely identifies a creation stream
+type creationStreamKey struct {
+	userID   string
+	hostname string
+}
+
+// CreationStream holds the output stream for a box being created
+type CreationStream struct {
+	mu         sync.Mutex
+	buf        bytes.Buffer
+	logBuf     bytes.Buffer // Complete log for database storage
+	done       bool
+	err        error
+	waiters    []chan struct{}
+	hostname   string
+	lastAccess time.Time
+	key        creationStreamKey
+	server     *Server
+}
+
+// Write implements io.Writer
+func (cs *CreationStream) Write(p []byte) (n int, err error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.lastAccess = time.Now()
+	n, err = cs.buf.Write(p)
+	// Also write to log buffer for database storage
+	cs.logBuf.Write(p)
+	// Notify all waiters that new data is available
+	for _, ch := range cs.waiters {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+	return n, err
+}
+
+// MarkDone marks the stream as complete
+func (cs *CreationStream) MarkDone(err error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.done = true
+	cs.err = err
+	cs.lastAccess = time.Now()
+	// Notify all waiters
+	for _, ch := range cs.waiters {
+		close(ch)
+	}
+	cs.waiters = nil
+}
+
+// startCleanupTimer starts a goroutine that removes this stream after idle timeout
+func (cs *CreationStream) startCleanupTimer() {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			cs.mu.Lock()
+			idle := time.Since(cs.lastAccess)
+			done := cs.done
+			cs.mu.Unlock()
+
+			// Clean up if done and idle for long enough
+			if done && idle > creationStreamIdleTimeout {
+				cs.server.removeCreationStream(cs.key.userID, cs.key.hostname)
+				return
+			}
+		}
+	}()
+}
+
+// Read reads available data and waits for more if not done
+func (cs *CreationStream) Read(p []byte) (n int, err error) {
+	cs.mu.Lock()
+	cs.lastAccess = time.Now()
+	n, err = cs.buf.Read(p)
+	if n > 0 {
+		cs.mu.Unlock()
+		return n, nil
+	}
+	if cs.done {
+		err := cs.err
+		cs.mu.Unlock()
+		if err != nil {
+			return 0, err
+		}
+		return 0, io.EOF
+	}
+	// No data available and not done - wait
+	waitCh := make(chan struct{}, 1)
+	cs.waiters = append(cs.waiters, waitCh)
+	cs.mu.Unlock()
+
+	<-waitCh
+	return 0, nil // Signal to retry
+}
+
+// getOrCreateCreationStream gets or creates a creation stream for a user's hostname
+func (s *Server) getOrCreateCreationStream(userID, hostname string) *CreationStream {
+	s.creationStreamsMu.Lock()
+	defer s.creationStreamsMu.Unlock()
+	key := creationStreamKey{userID: userID, hostname: hostname}
+	if cs, ok := s.creationStreams[key]; ok {
+		return cs
+	}
+	cs := &CreationStream{
+		hostname:   hostname,
+		key:        key,
+		server:     s,
+		lastAccess: time.Now(),
+	}
+	s.creationStreams[key] = cs
+	cs.startCleanupTimer()
+	return cs
+}
+
+// getCreationStream gets an existing creation stream
+func (s *Server) getCreationStream(userID, hostname string) *CreationStream {
+	s.creationStreamsMu.Lock()
+	defer s.creationStreamsMu.Unlock()
+	return s.creationStreams[creationStreamKey{userID: userID, hostname: hostname}]
+}
+
+// removeCreationStream removes a creation stream after it's done
+func (s *Server) removeCreationStream(userID, hostname string) {
+	s.creationStreamsMu.Lock()
+	defer s.creationStreamsMu.Unlock()
+	delete(s.creationStreams, creationStreamKey{userID: userID, hostname: hostname})
+}
+
+// startBoxCreation starts creating a box in the background
+func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID string) {
+	// Check if already creating
+	if cs := s.getCreationStream(userID, hostname); cs != nil {
+		slog.Info("Box creation already in progress", "hostname", hostname, "user_id", userID)
+		return
+	}
+
+	// Create the stream first so errors can be written to it
+	cs := s.getOrCreateCreationStream(userID, hostname)
+
+	// Get user's allocation
+	alloc, err := s.getUserAlloc(ctx, userID)
+	if err != nil || alloc == nil {
+		slog.Error("Failed to get user allocation for box creation", "error", err, "user_id", userID)
+		cs.MarkDone(fmt.Errorf("failed to get user allocation: %w", err))
+		return
+	}
+
+	// Check if hostname is available
+	if !s.isBoxNameAvailable(ctx, hostname) {
+		slog.Error("Box name not available", "hostname", hostname)
+		cs.MarkDone(fmt.Errorf("box name %q is not available", hostname))
+		return
+	}
+
+	// Start creation in background
+	go func() {
+		// Create a context for the creation (separate from request context)
+		createCtx, cancel := context.WithTimeout(context.Background(), longOperationTimeout)
+		defer cancel()
+
+		// Set up the command context
+		ss := NewSSHServer(s, billing.New(s.db))
+		fs := newCommandFlags()
+		_ = fs.Set("name", hostname)
+		if prompt != "" {
+			_ = fs.Set("prompt", prompt)
+		}
+
+		cc := &exemenu.CommandContext{
+			User: &exemenu.UserInfo{ID: userID},
+			Alloc: &exemenu.AllocInfo{
+				ID:               alloc.AllocID,
+				Type:             string(alloc.AllocType),
+				Region:           string(alloc.Region),
+				BillingAccountID: alloc.BillingAccountID,
+				CreatedAt:        alloc.CreatedAt,
+			},
+			FlagSet:      fs,
+			Output:       cs,
+			ForceSpinner: true,
+		}
+
+		// Run the creation
+		err := ss.handleNewCommand(createCtx, cc)
+
+		// Save creation log to database
+		cs.mu.Lock()
+		creationLog := cs.logBuf.String()
+		cs.mu.Unlock()
+
+		if saveErr := s.db.Tx(createCtx, func(ctx context.Context, tx *sqlite.Tx) error {
+			_, updateErr := tx.Conn().ExecContext(ctx, `UPDATE boxes SET creation_log = ? WHERE name = ?`, creationLog, hostname)
+			return updateErr
+		}); saveErr != nil {
+			slog.Error("Failed to save creation log", "error", saveErr, "hostname", hostname)
+		}
+
+		if err != nil {
+			slog.Error("Box creation failed", "hostname", hostname, "error", err)
+			cs.MarkDone(err)
+			return
+		}
+
+		// Clean up pending VM entry if it exists
+		if err := s.db.Tx(createCtx, func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Conn().ExecContext(ctx, `DELETE FROM mobile_pending_vm WHERE user_id = ? AND hostname = ?`, userID, hostname)
+			return err
+		}); err != nil {
+			slog.Error("Failed to delete pending mobile VM", "error", err, "user_id", userID, "hostname", hostname)
+		}
+
+		cs.MarkDone(nil)
+		slog.Info("Box creation completed", "hostname", hostname)
+	}()
+}
 
 // handleMobile handles the mobile UI flow at /m using a mux for cleaner routing
 func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
@@ -29,9 +258,8 @@ func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 	mux.HandleFunc("POST /verify-token", s.handleMobileVerifyTokenManualEntry)
 	mux.HandleFunc("GET /verify-token", s.handleMobileVerifyTokenEmailLink)
 	mux.HandleFunc("/home", s.handleMobileVMList)
-	mux.HandleFunc("/creating", s.handleMobileCreatingPage)
 	mux.HandleFunc("/creating/stream", s.handleMobileCreatingStream)
-	mux.HandleFunc("/box/", s.handleMobileBoxPage)
+	mux.HandleFunc("/box/creation-log", s.handleBoxCreationLog)
 
 	// Strip /m prefix before passing to mux
 	originalURL := r.URL.Path
@@ -51,7 +279,7 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	// Check if user is already authenticated
 	if _, err := s.validateAuthCookie(r); err == nil {
 		// User is authenticated, redirect to unified dashboard
-		http.Redirect(w, r, "/~", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/~", http.StatusSeeOther)
 		return
 	}
 
@@ -137,23 +365,25 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hostname := strings.TrimSpace(r.FormValue("hostname"))
-	description := strings.TrimSpace(r.FormValue("description"))
+	prompt := strings.TrimSpace(r.FormValue("prompt"))
 
-	slog.Info("Mobile VM creation request", "hostname", hostname, "description", description)
+	slog.Info("Mobile VM creation request", "hostname", hostname, "prompt", prompt)
 
-	// If user is logged in, go directly to creating page with SSE
-	if _, err := s.validateAuthCookie(r); err == nil {
-		http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname)+"&description="+urlQueryEscape(description), http.StatusTemporaryRedirect)
+	// If user is logged in, start creation immediately and redirect to dashboard
+	if userID, err := s.validateAuthCookie(r); err == nil {
+		// Start box creation in background
+		s.startBoxCreation(r.Context(), hostname, prompt, userID)
+		http.Redirect(w, r, "/~?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 		return
 	}
 
 	// Otherwise, proceed to email auth, carrying the VM details as hidden fields
 	data := struct {
-		Hostname    string
-		Description string
+		Hostname string
+		Prompt   string
 	}{
-		Hostname:    hostname,
-		Description: description,
+		Hostname: hostname,
+		Prompt:   prompt,
 	}
 
 	s.renderTemplate(w, "mobile-email-auth.html", data)
@@ -168,7 +398,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 
 	email := strings.TrimSpace(r.FormValue("email"))
 	hostname := strings.TrimSpace(r.FormValue("hostname"))
-	description := strings.TrimSpace(r.FormValue("description"))
+	prompt := strings.TrimSpace(r.FormValue("prompt"))
 	if email == "" {
 		http.Error(w, "Email is required", http.StatusBadRequest)
 		return
@@ -203,7 +433,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	if hostname != "" {
 		if err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-			_, err := tx.Conn().ExecContext(ctx, `INSERT OR REPLACE INTO mobile_pending_vm (token, user_id, hostname, description) VALUES (?, ?, ?, ?)`, token, userID, hostname, description)
+			_, err := tx.Conn().ExecContext(ctx, `INSERT OR REPLACE INTO mobile_pending_vm (token, user_id, hostname, prompt) VALUES (?, ?, ?, ?)`, token, userID, hostname, prompt)
 			return err
 		}); err != nil {
 			slog.Error("Failed to store pending mobile VM", "error", err)
@@ -285,15 +515,15 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	// If we have a pending VM tied to this token, redirect to creating page
-	var hostname string
+	// If we have a pending VM tied to this token, start creation and redirect to dashboard
+	var hostname, prompt string
 	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname FROM mobile_pending_vm WHERE token = ?`, token)
-		return row.Scan(&hostname)
+		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname, prompt FROM mobile_pending_vm WHERE token = ?`, token)
+		return row.Scan(&hostname, &prompt)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+			http.Redirect(w, r, "/~", http.StatusSeeOther)
 			return
 		}
 		slog.Error("Failed to query pending mobile VM by token", "error", err)
@@ -301,10 +531,12 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 		return
 	}
 	if hostname != "" {
-		http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname), http.StatusTemporaryRedirect)
+		// Start box creation in background
+		s.startBoxCreation(r.Context(), hostname, prompt, userID)
+		http.Redirect(w, r, "/~?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "/~", http.StatusSeeOther)
 }
 
 // handleMobileVerifyTokenManualEntry handles token verification via manual entry form
@@ -341,14 +573,14 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 	})
 
 	// Look up the most recent pending VM for this user
-	var hostname string
+	var hostname, prompt string
 	err = s.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, userID)
-		return row.Scan(&hostname)
+		row := rx.Conn().QueryRowContext(ctx, `SELECT hostname, prompt FROM mobile_pending_vm WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, userID)
+		return row.Scan(&hostname, &prompt)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+			http.Redirect(w, r, "/~", http.StatusSeeOther)
 			return
 		}
 		slog.Error("Failed to query pending mobile VM by user_id", "error", err)
@@ -356,10 +588,12 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		return
 	}
 	if hostname != "" {
-		http.Redirect(w, r, "/m/creating?hostname="+urlQueryEscape(hostname), http.StatusTemporaryRedirect)
+		// Start box creation in background
+		s.startBoxCreation(r.Context(), hostname, prompt, userID)
+		http.Redirect(w, r, "/~?filter="+urlQueryEscape(hostname), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "/~", http.StatusSeeOther)
 }
 
 // handleMobileVMList redirects to the unified dashboard
@@ -367,35 +601,15 @@ func (s *Server) handleMobileVMList(w http.ResponseWriter, r *http.Request) {
 	// Check authentication
 	_, err := s.validateAuthCookie(r)
 	if err != nil {
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/m", http.StatusSeeOther)
 		return
 	}
 
 	// Redirect to unified dashboard
-	http.Redirect(w, r, "/~", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, "/~", http.StatusSeeOther)
 }
 
 // Helper functions for mobile
-
-// handleMobileCreatingPage shows a creating screen that connects to SSE for progress
-func (s *Server) handleMobileCreatingPage(w http.ResponseWriter, r *http.Request) {
-	// Require auth
-	if _, err := s.validateAuthCookie(r); err != nil {
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
-		return
-	}
-	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
-	data := struct{ Hostname string }{Hostname: hostname}
-	s.renderTemplate(w, "mobile-creating.html", data)
-}
-
-// sseWrite is a helper to write SSE data events
-func sseWrite(w http.ResponseWriter, data string) {
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-}
 
 // sseEvent writes a named SSE event with data
 func sseEvent(w http.ResponseWriter, event, data string) {
@@ -406,39 +620,6 @@ func sseEvent(w http.ResponseWriter, event, data string) {
 	}
 }
 
-// sseLineWriter implements io.Writer and converts writes to SSE data lines
-type sseLineWriter struct {
-	w   http.ResponseWriter
-	buf strings.Builder
-}
-
-func (sw *sseLineWriter) Write(p []byte) (int, error) {
-	// Process incoming bytes; flush on newline as a normal message.
-	// If we see carriage-return updates without newline (spinner frames),
-	// emit them immediately as a dedicated SSE event `spin` so the client
-	// can render in-place progress updates.
-	for _, b := range p {
-		if b == '\n' {
-			// Completed line: send as a standard message
-			line := sw.buf.String()
-			sseWrite(sw.w, line)
-			sw.buf.Reset()
-			continue
-		}
-		sw.buf.WriteByte(b)
-	}
-	// If buffer contains a carriage return but no newline, it's likely an in-place spinner update.
-	// Flush it immediately as a spin event to keep the UI responsive.
-	if sw.buf.Len() > 0 {
-		s := sw.buf.String()
-		if strings.Contains(s, "\r") && !strings.Contains(s, "\n") {
-			sseEvent(sw.w, "spin", s)
-			sw.buf.Reset()
-		}
-	}
-	return len(p), nil
-}
-
 // terminalAddress returns the terminal URL for a box
 func (s *Server) terminalAddress(boxName string) string {
 	if s.devMode != "" {
@@ -447,82 +628,95 @@ func (s *Server) terminalAddress(boxName string) string {
 	return fmt.Sprintf("https://%s.xterm.exe.dev/", boxName)
 }
 
-// handleMobileCreatingStream streams progress via SSE and creates the VM
+// handleMobileCreatingStream streams progress from an in-memory creation stream
 func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Request) {
-	// Require POST for creation (write action)
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Require auth and resolve user and alloc
+	// Require auth
 	userID, err := s.validateAuthCookie(r)
 	if err != nil {
 		http.Error(w, "Authentication required", http.StatusUnauthorized)
 		return
 	}
 
-	// Read hostname from POST body
-	hostname := strings.TrimSpace(r.PostFormValue("hostname"))
+	// Read hostname from query parameter
+	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
 	if hostname == "" || !boxname.Valid(hostname) {
 		http.Error(w, "Invalid hostname", http.StatusBadRequest)
 		return
 	}
-	if !s.isBoxNameAvailable(r.Context(), hostname) {
-		http.Error(w, "Hostname not available", http.StatusConflict)
+
+	// Look up the creation stream
+	cs := s.getCreationStream(userID, hostname)
+	if cs == nil {
+		// No stream, just return empty - it's fine
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
 		return
 	}
 
-	alloc, err := s.getUserAlloc(r.Context(), userID)
-	if err != nil || alloc == nil {
-		http.Error(w, "No allocation", http.StatusInternalServerError)
-		return
-	}
-
-	// SSE headers
+	// Set up SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// Initial message
-	sseWrite(w, fmt.Sprintf("Creating %s...", hostname))
-
-	// Reuse the SSH command handler for creation, wiring Output to SSE
-	ss := NewSSHServer(s, billing.New(s.db))
-
-	fs := newCommandFlags()
-	_ = fs.Set("name", hostname)
-	cc := &exemenu.CommandContext{
-		User: &exemenu.UserInfo{ID: userID},
-		Alloc: &exemenu.AllocInfo{
-			ID:               alloc.AllocID,
-			Type:             string(alloc.AllocType),
-			Region:           string(alloc.Region),
-			BillingAccountID: alloc.BillingAccountID,
-			CreatedAt:        alloc.CreatedAt,
-		},
-		FlagSet: fs,
-		Output:  &sseLineWriter{w: w},
-		// Force spinner/progress output for HTTP/SSE flows
-		ForceSpinner: true,
+	// Read and stream the creation output as raw bytes
+	buf := make([]byte, 4096)
+	for {
+		n, err := cs.Read(buf)
+		if n > 0 {
+			// Send base64-encoded terminal output as SSE data event
+			encoded := base64.StdEncoding.EncodeToString(buf[:n])
+			fmt.Fprintf(w, "data: %s\n\n", encoded)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+		if err == io.EOF {
+			// Creation completed successfully
+			httpsURL := s.httpsProxyAddress(hostname)
+			termURL := s.terminalAddress(hostname)
+			sseEvent(w, "done", fmt.Sprintf("%s|%s", httpsURL, termURL))
+			return
+		}
+		if err != nil {
+			// Creation failed
+			sseEvent(w, "fail", err.Error())
+			return
+		}
+		// No data yet, read will have waited and returned 0, nil - try again
 	}
+}
 
-	if err := ss.handleNewCommand(r.Context(), cc); err != nil {
-		slog.Error("mobile create failed", "user_id", userID, "hostname", hostname, "error", err)
-		sseEvent(w, "fail", err.Error())
+// handleBoxCreationLog returns the stored creation log for a box
+func (s *Server) handleBoxCreationLog(w http.ResponseWriter, r *http.Request) {
+	// Require auth
+	userID, err := s.validateAuthCookie(r)
+	if err != nil {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
 		return
 	}
 
-	if err := s.db.Tx(r.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Conn().ExecContext(ctx, `DELETE FROM mobile_pending_vm WHERE user_id = ? AND hostname = ?`, userID, hostname)
-		return err
-	}); err != nil {
-		slog.Error("Failed to delete pending mobile VM", "error", err, "user_id", userID, "hostname", hostname)
+	// Read hostname from query parameter
+	hostname := strings.TrimSpace(r.URL.Query().Get("hostname"))
+	if hostname == "" || !boxname.Valid(hostname) {
+		http.Error(w, "Invalid hostname", http.StatusBadRequest)
+		return
 	}
 
-	httpsURL := s.httpsProxyAddress(hostname)
-	termURL := s.terminalAddress(hostname)
-	sseEvent(w, "done", fmt.Sprintf("%s|%s", httpsURL, termURL))
+	// Get the box
+	box, err := s.getBoxForUserByUserID(r.Context(), userID, hostname)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Return the creation log (raw terminal output)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if box.CreationLog != nil && *box.CreationLog != "" {
+		w.Write([]byte(*box.CreationLog))
+	} else {
+		w.Write([]byte(""))
+	}
 }
 
 // getBoxForUserByUserID fetches a box for a user by userID and name
@@ -534,41 +728,6 @@ func (s *Server) getBoxForUserByUserID(ctx context.Context, userID, boxName stri
 		return nil, err
 	}
 	return &b, nil
-}
-
-// handleMobileBoxPage shows details for a box
-func (s *Server) handleMobileBoxPage(w http.ResponseWriter, r *http.Request) {
-	// Require auth
-	userID, err := s.validateAuthCookie(r)
-	if err != nil {
-		http.Redirect(w, r, "/m", http.StatusTemporaryRedirect)
-		return
-	}
-
-	// Extract name after /box/
-	name := strings.TrimPrefix(r.URL.Path, "/box/")
-	name = strings.Trim(name, "/")
-	if name == "" {
-		http.Error(w, "Missing box name", http.StatusBadRequest)
-		return
-	}
-	box, err := s.getBoxForUserByUserID(r.Context(), userID, name)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	data := struct {
-		Box       *exedb.Box
-		HTTPURL   string
-		TermURL   string
-		HostLabel string
-	}{
-		Box:       box,
-		HTTPURL:   s.httpsProxyAddress(box.Name),
-		TermURL:   s.terminalAddress(box.Name),
-		HostLabel: fmt.Sprintf("%s.exe.dev", box.Name),
-	}
-	s.renderTemplate(w, "mobile-vm.html", data)
 }
 
 // urlQueryEscape escapes a string for URL query
