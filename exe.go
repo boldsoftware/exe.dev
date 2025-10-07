@@ -1179,6 +1179,53 @@ func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.B
 	return boxes, nil
 }
 
+func (s *Server) getBoxesByHostVariants(ctx context.Context, host string) ([]*exedb.Box, error) {
+	var allBoxes []*exedb.Box
+	seen := make(map[int]bool)
+	for _, key := range s.hostLookupKeys(host) {
+		boxes, err := s.getBoxesByHost(ctx, key)
+		if err != nil {
+			slog.Debug("getBoxesByHost lookup failed", "hostKey", key, "error", err)
+			continue
+		}
+		for _, box := range boxes {
+			if !seen[box.ID] {
+				allBoxes = append(allBoxes, box)
+				seen[box.ID] = true
+			}
+		}
+	}
+	return allBoxes, nil
+}
+
+func (s *Server) hostLookupKeys(host string) []string {
+	keys := []string{host}
+	if strings.HasPrefix(host, "ssh://") {
+		alias := strings.TrimPrefix(host, "ssh://")
+		if alias != "" {
+			keys = append(keys, alias)
+			if ip := ctrhosttest.ResolveHostFromSSHConfig(alias); ip != "" {
+				keys = append(keys, "tcp://"+ip)
+			}
+		}
+	}
+	return dedupeStrings(keys)
+}
+
+func dedupeStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	j := 0
+	for _, v := range values {
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		values[j] = v
+		j++
+	}
+	return values[:j]
+}
+
 // isValidEmail performs basic email validation
 func (s *Server) isValidEmail(email string) bool {
 	if email == "" {
@@ -1193,6 +1240,50 @@ func (s *Server) isValidEmail(email string) bool {
 
 	domain := email[atIndex+1:]
 	return strings.Contains(domain, ".")
+}
+
+const (
+	containerListRetryInitialDelay = 2 * time.Second
+	containerListRetryMaxDelay     = 20 * time.Second
+	containerListRetryTimeout      = 3 * time.Minute
+)
+
+func (s *Server) listContainersWithRetry(ctx context.Context, host string) ([]*container.Container, error) {
+	delay := containerListRetryInitialDelay
+	deadline := time.Now().Add(containerListRetryTimeout)
+	attempt := 0
+	var lastErr error
+
+	for {
+		attempt++
+		containers, err := s.containerManager.ListContainersOnHost(ctx, host)
+		if err == nil {
+			if attempt > 1 {
+				slog.Info("Successfully listed containers on host after retry", "host", host, "attempts", attempt)
+			}
+			return containers, nil
+		}
+
+		lastErr = err
+		slog.Warn("Failed to list containers on host", "host", host, "attempt", attempt, "error", err)
+
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("timed out listing containers on host %s after %d attempts: %w", host, attempt, lastErr)
+		}
+
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while waiting for host %s containers: %w", host, ctx.Err())
+		}
+
+		if delay < containerListRetryMaxDelay {
+			delay *= 2
+			if delay > containerListRetryMaxDelay {
+				delay = containerListRetryMaxDelay
+			}
+		}
+	}
 }
 
 // syncAllocsWithHosts synchronizes allocations between the database and container hosts
@@ -1311,15 +1402,15 @@ func (s *Server) syncContainersWithHosts(ctx context.Context) error {
 // syncContainersForHost synchronizes containers for a specific container host
 func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 	// Get boxes from the database that should be on this host
-	dbBoxes, err := s.getBoxesByHost(ctx, host)
+	dbBoxes, err := s.getBoxesByHostVariants(ctx, host)
 	if err != nil {
 		return fmt.Errorf("failed to get boxes from database: %w", err)
 	}
 
-	// Get containers currently on the host
-	hostContainers, err := s.containerManager.ListAllContainers(ctx)
+	// Get containers currently on the host, retrying while the host is restarting
+	hostContainers, err := s.listContainersWithRetry(ctx, host)
 	if err != nil {
-		return fmt.Errorf("failed to list containers on host: %w", err)
+		return err
 	}
 
 	// Create maps for easier lookup
@@ -1333,9 +1424,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 	// Map of container names to containers for orphan detection
 	hostContainerMap := make(map[string]*container.Container)
 	for _, c := range hostContainers {
-		if c.DockerHost == host {
-			hostContainerMap[c.ID] = c
-		}
+		hostContainerMap[c.ID] = c
 	}
 
 	// Check each box that should have a container
@@ -1347,6 +1436,19 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 
 		containerID := *box.ContainerID
 		hostContainer, exists := hostContainerMap[containerID]
+
+		containerStatus := "missing"
+		if hostContainer != nil {
+			containerStatus = hostContainer.Status.String()
+		}
+		slog.Debug("syncContainersForHost status",
+			"host", host,
+			"box", box.Name,
+			"boxStatus", box.Status,
+			"containerID", containerID,
+			"containerFound", exists,
+			"containerStatus", containerStatus,
+		)
 
 		if !exists {
 			// Container doesn't exist on host but should - check for persistent disk

@@ -1528,13 +1528,30 @@ func (m *NerdctlManager) ListAllContainers(ctx context.Context) ([]*Container, e
 	return m.listContainersWithFilter(ctx, "label=alloc_id", "")
 }
 
-func (m *NerdctlManager) listContainersWithFilter(ctx context.Context, filter, allocID string) ([]*Container, error) {
-	// Determine which host to query
-	host := ""
-	if m.config != nil && len(m.config.ContainerdAddresses) > 0 {
-		host = m.config.ContainerdAddresses[0]
+// ListContainersOnHost lists all containers on a specific host without filtering by allocation ID
+func (m *NerdctlManager) ListContainersOnHost(ctx context.Context, host string) ([]*Container, error) {
+	if strings.TrimSpace(host) == "" {
+		return nil, fmt.Errorf("host is required for ListContainersOnHost")
 	}
+	return m.listContainersWithFilterOnHost(ctx, host, "label=alloc_id", "")
+}
 
+func (m *NerdctlManager) listContainersWithFilter(ctx context.Context, filter, allocID string) ([]*Container, error) {
+	var containers []*Container
+	for _, host := range m.hosts {
+		if strings.TrimSpace(host) == "" {
+			continue
+		}
+		hostContainers, err := m.listContainersWithFilterOnHost(ctx, host, filter, allocID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list containers on host %s: %w", host, err)
+		}
+		containers = append(containers, hostContainers...)
+	}
+	return containers, nil
+}
+
+func (m *NerdctlManager) listContainersWithFilterOnHost(ctx context.Context, host, filter, allocID string) ([]*Container, error) {
 	cmd := m.execNerdctl(ctx, host, "ps", "-a", "--no-trunc", "--format", "json", "--filter", filter)
 	output, err := cmd.Output()
 	if err != nil {
