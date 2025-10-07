@@ -1511,13 +1511,21 @@ func (s *Server) Start() error {
 		}
 	}
 
-	// Start proxy listeners with the same HTTP handler
+	// Start proxy listeners with the same handlers. Prefer https if it's available
 	for _, proxyLn := range s.proxyLns {
 		go func(ln *listener) {
-			slog.Info("Proxy listener starting", "addr", ln.tcp.String())
-			if err := s.httpServer.Serve(ln.ln); err != nil && err != http.ErrServerClosed {
-				slog.Error("Proxy listener startup failed", "error", err, "addr", ln)
-				cancel()
+			if s.httpsLn.ln != nil {
+				slog.Info("Proxy listener starting with HTTPS handler", "addr", ln.tcp.String())
+				if err := s.httpsServer.ServeTLS(proxyLn.ln, "", ""); err != nil && err != http.ErrServerClosed {
+					slog.Error("Proxy listener startup failed (HTTPS)", "error", err, "addr", ln)
+					cancel()
+				}
+			} else {
+				slog.Info("Proxy listener starting with HTTP handler", "addr", ln.tcp.String())
+				if err := s.httpServer.Serve(ln.ln); err != nil && err != http.ErrServerClosed {
+					slog.Error("Proxy listener startup failed (HTTP)", "error", err, "addr", ln)
+					cancel()
+				}
 			}
 		}(proxyLn)
 	}
