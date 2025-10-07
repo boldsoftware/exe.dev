@@ -123,3 +123,15 @@ make push-exeuntu
 ```
 
 The image is automatically built and pushed via GitHub Actions when the Dockerfile changes.
+
+# Production Operations
+
+Prod exed machine is `exed-01`. 
+
+Keys are in `/etc/systemd/system/exed.service.d/env.conf`
+
+Restart with `sudo systemctl daemon-reload && sudo systemctl restart exed`
+
+Deploy with `make deploy-exed`
+
+Systemd unit is in `/etc/systemd/system/exed.service` (TODO: source control)
