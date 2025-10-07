@@ -4,10 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>exe.dev - Shell</title>
+    <link rel="stylesheet" href="/static/topbar.css">
     <link rel="stylesheet" href="/static/xterm.css">
     <link rel="stylesheet" href="/static/terminal-common.css">
 </head>
 <body>
+    <header>
+        <div class="nav-container">
+            <div class="nav-left">
+                <a href="/~" class="nav-logo">
+                    <img src="/static/exy.png" alt="exe.dev logo" />
+                    exe.dev
+                </a>
+                <div class="nav-links">
+                    <a href="/docs">docs</a>
+                </div>
+            </div>
+            <div class="nav-right">
+                <a href="/shell" class="btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
+                        <polyline points="4,17 10,11 4,5"></polyline>
+                        <line x1="12" y1="19" x2="20" y2="19"></line>
+                    </svg>
+                    Shell
+                </a>
+                <a href="/user" class="btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
+                        <circle cx="12" cy="8" r="4"></circle>
+                        <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
+                    </svg>
+                    Profile
+                </a>
+                <a href="/logout" class="btn">Sign out</a>
+            </div>
+        </div>
+    </header>
     <div class="terminal-frame">
         <div class="terminal-header">
             <div class="terminal-title">exe.dev Shell</div>
