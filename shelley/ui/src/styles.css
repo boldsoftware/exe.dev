@@ -1259,28 +1259,35 @@ button {
 }
 
 .message-input-form {
-  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .message-textarea {
-  width: 100%;
+  flex: 1;
   min-height: 44px;
   max-height: 200px;
-  padding: 0.75rem 3rem 0.75rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border: 1.5px solid var(--border);
+  border-radius: 24px;
   resize: none;
   background: var(--bg-base);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 1rem;
   line-height: 1.5;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .message-textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
 }
 
 .message-textarea:disabled {
@@ -1288,31 +1295,46 @@ button {
   cursor: not-allowed;
 }
 
+.message-send-btn svg {
+  transform: rotate(-90deg);
+}
+
 .message-textarea::placeholder {
   color: var(--text-tertiary);
 }
 
 .message-send-btn {
-  position: absolute;
-  right: 0.5rem;
-  bottom: 0.5rem;
-  padding: 0.5rem;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 0.25rem;
+  padding: 0;
   background: var(--primary);
   color: white;
-  border-radius: 0.5rem;
+  border: none;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s;
+  transition:
+    background-color 0.2s,
+    transform 0.1s;
+  cursor: pointer;
 }
 
 .message-send-btn:hover:not(:disabled) {
   background: var(--primary-dark);
+  transform: scale(1.05);
+}
+
+.message-send-btn:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .message-send-btn:disabled {
   background: var(--gray-300);
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .dark .message-send-btn:disabled {

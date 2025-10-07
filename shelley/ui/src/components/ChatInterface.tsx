@@ -835,7 +835,12 @@ function ChatInterface({
       )}
 
       {/* Message input */}
-      <MessageInput onSend={sendMessage} disabled={sending || loading} />
+      <MessageInput
+        key={conversationId || "new"}
+        onSend={sendMessage}
+        disabled={sending || loading}
+        autoFocus={true}
+      />
 
       {/* Configuration Modal */}
       <Modal

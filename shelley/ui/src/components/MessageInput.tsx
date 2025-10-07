@@ -3,9 +3,10 @@ import React, { useState, useRef, useEffect } from "react";
 interface MessageInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  autoFocus?: boolean;
 }
 
-function MessageInput({ onSend, disabled = false }: MessageInputProps) {
+function MessageInput({ onSend, disabled = false, autoFocus = false }: MessageInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -37,6 +38,15 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
     adjustTextareaHeight();
   }, [message]);
 
+  useEffect(() => {
+    if (autoFocus && textareaRef.current) {
+      // Use setTimeout to ensure the component is fully rendered
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 0);
+    }
+  }, [autoFocus]);
+
   return (
     <div className="message-input-container">
       <form onSubmit={handleSubmit} className="message-input-form">
@@ -45,12 +55,13 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+          placeholder="Type your message..."
           className="message-textarea"
           disabled={disabled}
           style={{ height: "auto" }}
           aria-label="Message input"
           data-testid="message-input"
+          autoFocus={autoFocus}
         />
         <button
           type="submit"
@@ -64,13 +75,8 @@ function MessageInput({ onSend, disabled = false }: MessageInputProps) {
               <div className="spinner spinner-small" style={{ borderTopColor: "white" }}></div>
             </div>
           ) : (
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-              />
+            <svg fill="currentColor" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
             </svg>
           )}
         </button>
