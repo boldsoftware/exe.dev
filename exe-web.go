@@ -545,7 +545,7 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 		PairingCode string
 	}{
 		Email:       pendingKey.UserEmail,
-		PublicKey:   truncatePublicKey(pendingKey.PublicKey),
+		PublicKey:   pendingKey.PublicKey,
 		Token:       token,
 		PairingCode: verification.PairingCode,
 	}
@@ -617,7 +617,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	data := struct {
 		PublicKey string
 	}{
-		PublicKey: truncatePublicKey(pendingKey.PublicKey),
+		PublicKey: pendingKey.PublicKey,
 	}
 	s.renderTemplate(w, "device-verified.html", data)
 }
@@ -651,13 +651,6 @@ func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*e
 	}
 
 	return &pendingKey, verification, nil
-}
-
-func truncatePublicKey(key string) string {
-	if len(key) <= 32 {
-		return key
-	}
-	return key[:32] + "..."
 }
 
 // showEmailVerificationForm shows a confirmation form for email verification

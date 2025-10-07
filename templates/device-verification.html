@@ -73,6 +73,28 @@
         text-align: center;
         margin-top: 8px;
       }
+      .info-box {
+        background: rgba(0, 0, 0, 0.02);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+      .info-box strong {
+        color: #222;
+        display: block;
+        margin-bottom: 8px;
+      }
+      .public-key {
+        font-family:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+        font-size: 12px;
+        color: #000;
+        word-break: break-all;
+        line-height: 1.6;
+      }
       .button {
         background: #000;
         color: #fff;
@@ -116,6 +138,12 @@
           A new ssh key has requested access to
           <em>{{.Email}}</em>'s <strong>exe.dev</strong> account.
         </p>
+
+        <div class="info-box">
+          <strong>Account:</strong> {{.Email}}<br>
+          <strong>Public Key:</strong>
+          <div class="public-key">{{.PublicKey}}</div>
+        </div>
 
         <p>If you did not initiate this request, please close this page.</p>
 
