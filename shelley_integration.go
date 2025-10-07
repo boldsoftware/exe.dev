@@ -195,6 +195,8 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 	// Process SSE stream with a timeout
 	// Create a channel to signal when we're done
 	done := make(chan error, 1)
+	messageReceived := make(chan struct{}, 1)
+
 	go func() {
 		scanner := bufio.NewScanner(streamResp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // 64KB buffer, 1MB max
@@ -222,6 +224,12 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 					continue
 				}
 				lastSequenceID = msg.SequenceID
+
+				// Signal that we received a message (reset idle timeout)
+				select {
+				case messageReceived <- struct{}{}:
+				default:
+				}
 
 				// Only show agent messages
 				if msg.Type != "agent" {
@@ -287,13 +295,29 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 		}
 	}()
 
-	// Wait for completion with a generous timeout for LLM processing
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(5 * time.Minute):
-		return fmt.Errorf("timeout waiting for Shelley response (5m) - agent may still be processing")
-	case <-ctx.Done():
-		return ctx.Err()
+	// Wait for completion with both absolute (30m) and idle (5m) timeouts
+	absoluteTimeout := time.NewTimer(30 * time.Minute)
+	defer absoluteTimeout.Stop()
+
+	idleTimeout := time.NewTimer(5 * time.Minute)
+	defer idleTimeout.Stop()
+
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-messageReceived:
+			// Reset idle timeout when we receive a message
+			if !idleTimeout.Stop() {
+				<-idleTimeout.C
+			}
+			idleTimeout.Reset(5 * time.Minute)
+		case <-idleTimeout.C:
+			return fmt.Errorf("idle timeout: no messages received for 5 minutes")
+		case <-absoluteTimeout.C:
+			return fmt.Errorf("absolute timeout: Shelley processing exceeded 30 minutes")
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }
