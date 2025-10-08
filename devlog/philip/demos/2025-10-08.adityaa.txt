@@ -1,0 +1,83 @@
+demo session with Adityaa
+
+Adityaa is the founder of subtrace, which I really like. Sharp Go programmer.
+
+
+I sent him to exe.dev/welcome. He went straight for the SSH command and typed
+or copy-pasted it into the terminal. His SSH key didn't register in our github
+db. He tried to click on the confirmation number to type it back into
+the terminal, went to the terminal, and then back to the web and found the Confirm button.
+So, he figured it out, but maybe wasn't perfect.
+
+He typed "new" and was impressed ("Wow") that it came back in 2s.
+
+He clicked on the welcome page. It's very ugly. He did say
+"it's like the it works thing that nginx does", but this is obviously
+a page we need to do some love on. "What next?" copy.
+
+He complained about the logout links. It should be a POST (per some
+hackernews article).
+
+He was confused between the exe.dev terminal and the machine terminal.
+
+"Can I drop into a shell?" <-- on the exe.dev terminal.
+
+He was a bit confused about "Sessions timeout after 10 minutes of inactivity"
+in the Terminal tab. (I say this because we need to release resources, but we
+should just do the dtach work.)
+
+He checked out /proc/cpuinfo and meminfo and such. Was happy to see 2GB of memory
+and a real machine. "I would have killed to just get a shell when I was 13...
+I didn't have a credit card."
+
+He tried installing claude. Didn't know it was pre-installed and that's
+a bit awkard anyway.
+
+We had a long chat about creds and custom images and so on. It would
+be annoying to spin up a new box and have to inject creds (like for Claude Code).
+AMI images? Private containers? Env variables?
+
+An idea we had was "volumes"; should we allow mounting and sharing a drive
+across boxes?
+
+Tried "new ?" and "new -h"; didn't see "new help". We should just be better
+about command line arguments.
+
+"Oh, these are mapped one to one" about multiple port proxies.
+
+"If this was raw TCP, I could do some interesting stuff" (like an SMTP server)
+
+Ctrl-C dropped him out of the exe.dev shell. I think it shouldn't have.
+
+Some confusion about how the proxy command marks one port as special.
+We discussed renaming it to "expose" or "publish".
+
+He asked about subdomains within his box domain. I don't know that that's
+easy for us (wildcard cert problems; is DNS easy? not sure). 
+
+The use case for subdomains is that whatever thing Adityaa is developing
+requires foo.subtrace.exe.dev and bar.subtrace.exe.dev. He could implement his
+own caddy or whatever, but he has some use cases in mind for subdomains maybe.
+
+The /new page needs a link to the agent when it's creating. I think
+the buttons are being hidden early.
+
+Subtrace has an ipv6 trick. You can get a lot of ipv6 domains, and do AAAA
+records and that sort of gives him what we want vis-a-vis box.exe.dev vs box@exe.dev.
+But we talked through it and it's only nice to have.
+
+He tried using replit for github web hooks in response to PRs and it went
+terribly. Replit overcompilcated things.
+
+He was interested in how our agent chose Go for his example prompt.
+We need slightly better prompting here (restart the daemon; don't start
+another one), but it worked well enough.
+
+Shelley web browser is borken in boring ways.
+
+"People by CPU, storage, network, and tokens, and nothing else in dev tools."
+
+Adityaa kept thinking of these things as more temporary than they are.
+I think he has a lot of temporary use cases.
+
+He pointed out that an exe.dev box could recursively create more exe.dev boxes.
