@@ -1,9 +1,10 @@
 ---
 title: HTTP Proxies
+description: Publish to the Internet, both privately and publically
 subheading: "2. Features"
 ---
 
-<img src="proxy.svg" alt="Diagram of HTTPS Proxy Flow" width="100"/>
+<img src="proxy.svg" alt="Diagram of HTTPS Proxy Flow" width="100%"/>
 
 # exe.dev HTTP Proxies
 
