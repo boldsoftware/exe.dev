@@ -251,6 +251,10 @@ func runMigrations(dbPath string) error {
 		return fmt.Errorf("failed to open database for migrations: %w", err)
 	}
 	defer rawDB.Close()
+	// Set busy_timeout to handle database lock contention during restarts
+	if _, err := rawDB.Exec("PRAGMA busy_timeout=1000"); err != nil {
+		return fmt.Errorf("failed to set busy_timeout: %w", err)
+	}
 	if err := exedb.RunMigrations(rawDB); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
