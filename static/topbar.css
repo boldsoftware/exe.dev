@@ -1,5 +1,7 @@
 header {
-  padding: 16px 24px;
+  padding: 0 24px;
+  padding-top: 16px;
+  padding-bottom: 16px;
   border-bottom: 1px solid #e5e5e5;
   background: #ffffff;
   position: sticky;
@@ -88,8 +90,20 @@ header .btn-primary:hover {
   background: #333333;
 }
 
+header .btn .btn-text {
+  display: inline;
+}
+
 @media (max-width: 768px) {
   header .nav-links {
     display: none;
+  }
+  
+  header .btn .btn-text {
+    display: none;
+  }
+  
+  header .btn {
+    padding: 8px 12px;
   }
 }

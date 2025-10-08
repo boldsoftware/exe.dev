@@ -20,7 +20,7 @@
 
 body {
     margin: 0;
-    padding: 20px;
+    padding: 0;
     background-color: var(--bg-primary);
     font-family: system-ui, -apple-system, sans-serif;
     transition: background-color 0.2s ease;
@@ -30,7 +30,7 @@ body {
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     padding: 20px;
-    margin: 0 auto;
+    margin: 20px auto;
     max-width: 1200px;
     transition: background-color 0.2s ease;
 }
