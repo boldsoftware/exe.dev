@@ -38,6 +38,8 @@
                 this.processingInput = false;
                 this.themeManager = new ThemeManager();
                 this.boxName = this.getBoxName();
+                this.retryCount = 0;
+                this.maxRetries = 5;
             }
 
             getTerminalId() {
@@ -110,6 +112,7 @@
 
             connect() {
                 this.setStatus('connecting', 'Connecting to terminal...');
+                this.removeStatusClickListener();
                 
                 // Close existing connection
                 if (this.eventSource) {
@@ -120,6 +123,7 @@
                 this.eventSource = new EventSource(`/terminal/events/${this.terminalId}`);
 
                 this.eventSource.onopen = () => {
+                    this.retryCount = 0; // Reset retry counter on successful connection
                     this.setStatus('connected', 'Connected');
                     setTimeout(() => this.hideStatus(), 2000);
                     this.sendResize();
@@ -136,11 +140,17 @@
 
                 this.eventSource.onerror = (error) => {
                     console.error('Terminal SSE error:', error);
-                    this.setStatus('error', 'Connection lost. Attempting to reconnect...');
                     
                     if (this.eventSource && this.eventSource.readyState === EventSource.CLOSED) {
-                        // Attempt to reconnect after a delay
-                        setTimeout(() => this.connect(), 2000);
+                        this.retryCount++;
+                        
+                        if (this.retryCount <= this.maxRetries) {
+                            this.setStatus('error', `Connection lost. Reconnecting... (${this.retryCount}/${this.maxRetries})`);
+                            setTimeout(() => this.connect(), 2000);
+                        } else {
+                            this.setStatus('disconnected', 'Disconnected. Click to reconnect.');
+                            this.makeStatusClickable();
+                        }
                     }
                 };
             }
@@ -155,6 +165,25 @@
             hideStatus() {
                 const statusEl = document.getElementById('connection-status');
                 statusEl.style.display = 'none';
+            }
+
+            makeStatusClickable() {
+                const statusEl = document.getElementById('connection-status');
+                statusEl.style.cursor = 'pointer';
+                this.statusClickHandler = () => {
+                    this.retryCount = 0;
+                    this.connect();
+                };
+                statusEl.addEventListener('click', this.statusClickHandler);
+            }
+
+            removeStatusClickListener() {
+                const statusEl = document.getElementById('connection-status');
+                statusEl.style.cursor = 'default';
+                if (this.statusClickHandler) {
+                    statusEl.removeEventListener('click', this.statusClickHandler);
+                    this.statusClickHandler = null;
+                }
             }
 
             async sendInput(data) {

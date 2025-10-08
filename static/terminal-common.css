@@ -106,6 +106,19 @@ body {
     color: #721c24;
     border: 1px solid #f5c6cb;
 }
+.connection-status.disconnected {
+    display: flex;
+    align-items: center;
+    background-color: #e2e3e5;
+    color: #383d41;
+    border: 1px solid #d6d8db;
+    cursor: pointer;
+    user-select: none;
+}
+.connection-status.disconnected:hover {
+    background-color: #d6d8db;
+    transform: scale(1.02);
+}
 .status-icon {
     width: 8px;
     height: 8px;
@@ -122,6 +135,9 @@ body {
 .error .status-icon {
     background-color: #dc3545;
     animation: pulse 1s ease-in-out infinite alternate;
+}
+.disconnected .status-icon {
+    background-color: #6c757d;
 }
 @keyframes pulse {
     from { opacity: 0.4; }
