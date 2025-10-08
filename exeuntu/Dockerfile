@@ -1,3 +1,6 @@
+# Stage 1: Get Chrome/Chromium from chromedp/headless-shell
+FROM docker.io/chromedp/headless-shell:stable AS chrome
+
 # Build generate-gateway-token and shelley as static binaries
 FROM golang:1.25.1-alpine AS go-builder
 ARG TARGETARCH
@@ -55,7 +58,11 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		man-db manpages manpages-dev \
 		systemd systemd-sysv \
 		atop iotop \
-		golang-go git && \
+		golang-go git \
+		libglib2.0-0 libnss3 libx11-6 libxcomposite1 libxdamage1 \
+		libxext6 libxi6 libxrandr2 libgbm1 libgtk-3-0 \
+		fonts-noto-color-emoji fonts-symbola && \
+	fc-cache -f -v && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/*
 
@@ -179,6 +186,10 @@ RUN chmod +x /usr/local/bin/generate-gateway-token
 
 COPY --from=go-builder /src/shelley/bin/shelley /usr/local/bin/shelley
 RUN chmod +x /usr/local/bin/shelley
+
+# Copy the self-contained Chrome bundle from chromedp/headless-shell
+COPY --from=chrome /headless-shell /headless-shell
+ENV PATH="/headless-shell:${PATH}"
 
 RUN mkdir -p /app && chown exedev /app
 
