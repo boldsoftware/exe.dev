@@ -74,10 +74,9 @@ func (s *Server) handleWebShell(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Serve the shell HTML page
-	data := struct {
-		Email string
-	}{
-		Email: user.Email,
+	data := UserPageData{
+		User:       user,
+		ActivePage: "shell",
 	}
 	s.renderTemplate(w, "shell.html", data)
 }

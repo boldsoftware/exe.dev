@@ -1490,9 +1490,10 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 
 	// Prepare template data
 	data := UserPageData{
-		User:    user,
-		SSHKeys: sshKeys,
-		Boxes:   boxes,
+		User:       user,
+		SSHKeys:    sshKeys,
+		Boxes:      boxes,
+		ActivePage: "boxes",
 	}
 
 	// Render template
@@ -1533,8 +1534,9 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 
 	// Prepare template data
 	data := UserPageData{
-		User:    user,
-		SSHKeys: sshKeys,
+		User:       user,
+		SSHKeys:    sshKeys,
+		ActivePage: "profile",
 	}
 
 	// Render template

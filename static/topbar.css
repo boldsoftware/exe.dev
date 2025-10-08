@@ -80,6 +80,19 @@ header .btn:hover {
   border-color: #d0d0d0;
 }
 
+header .btn-active {
+  background: #f5f5f5;
+  color: #000000;
+  border-color: #d0d0d0;
+  cursor: default;
+  font-weight: 500;
+}
+
+header .btn-active:hover {
+  background: #f5f5f5;
+  border-color: #d0d0d0;
+}
+
 header .btn-primary {
   background: #000000;
   color: #ffffff;

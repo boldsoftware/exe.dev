@@ -88,9 +88,10 @@ type BoxDisplayInfo struct {
 
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
-	User    exedb.User
-	SSHKeys []SSHKey
-	Boxes   []BoxDisplayInfo
+	User       exedb.User
+	SSHKeys    []SSHKey
+	Boxes      []BoxDisplayInfo
+	ActivePage string
 }
 
 // SSHKey represents an SSH key for the user page
