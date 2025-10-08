@@ -97,7 +97,6 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		systemd-journal-flush.service \
 		ldconfig.service \
 		unattended-upgrades.service \
-		polkit.service \
 		systemd-logind.service \
 		lxd-installer.socket \
 	        console-getty.service \
@@ -191,14 +190,14 @@ RUN chmod +x /usr/local/bin/shelley
 COPY --from=chrome /headless-shell /headless-shell
 ENV PATH="/headless-shell:${PATH}"
 
-RUN mkdir -p /app && chown exedev /app
+RUN mkdir -p /home/exedev/src && chown exedev:exedev /home/exedev/src
 
 USER exedev
 
 # Add claude settings file
 COPY exeuntu/claude-settings.json /home/exedev/.claude.json
 
-WORKDIR /app
+WORKDIR /home/exedev/src
 
 # Initialize git repo for the welcome example (optional)
 RUN git config --global user.email "system@exe.dev" && \
@@ -206,16 +205,19 @@ RUN git config --global user.email "system@exe.dev" && \
     git init .
 
 # Copy welcome source code and build it
-COPY --chown=exedev:exedev exeuntu/welcome/ ./welcome/
-WORKDIR /app/welcome
+COPY --chown=exedev:exedev exeuntu/welcome/ ./
 RUN make build && go clean -modcache && rm -rf ~/.cache ~/go
 
 # Switch back to root to install systemd service
 USER root
 
 # Install and enable the welcome web server systemd service
-RUN cp /app/welcome/welcome-exedev-webapp.service /etc/systemd/system/welcome-exedev-webapp.service && \
-    systemctl enable welcome-exedev-webapp.service
+RUN cp /home/exedev/src/welcome.service /etc/systemd/system/welcome.service && \
+    systemctl enable welcome.service
+
+# Install polkit rule to allow exedev user to manage welcome service
+COPY exeuntu/welcome-manage.polkit /etc/polkit-1/rules.d/50-welcome-manage.rules
+RUN chmod 644 /etc/polkit-1/rules.d/50-welcome-manage.rules
 
 # Create systemd service for Shelley
 COPY exeuntu/shelley.service /etc/systemd/system/shelley.service

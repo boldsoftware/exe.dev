@@ -5,11 +5,14 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/app
-ExecStart=/app/welcome/welcomed
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev/src
+ExecStart=/home/exedev/src/welcomed
 Restart=always
 RestartSec=5
+Environment=HOME=/home/exedev
+Environment=USER=exedev
 StandardOutput=journal
 StandardError=journal
 

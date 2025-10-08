@@ -4,8 +4,8 @@ This example web server demonstrates end-to-end usage of exe.dev.
 
 ## Starting and Stopping the server
 
-The welcome server runs as a systemd unit called "welcome-exedev-webapp".
-You can see logs with `sudo journalctl -u welcome-exedev-webapp`. Build
+The welcome server runs as a systemd unit called "welcome".
+You can see logs with `sudo journalctl -u welcome`. Build
 with `make build` and deploy with `make restart`.
 
 ## Authorization

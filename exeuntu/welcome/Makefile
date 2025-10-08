@@ -1,6 +1,6 @@
-.PHONY: build clean stop start restart
+.PHONY: build clean stop start restart test
 
-SERVICE_NAME = welcome-exedev-webapp
+SERVICE_NAME = welcome
 
 build:
 	go build -o welcomed ./cmd/welcomed
@@ -8,11 +8,15 @@ build:
 clean:
 	rm -f welcomed
 
+test:
+	go test ./...
+
+# No sudo needed - polkit rule in exeuntu/welcome-manage.polkit allows exedev to manage this service
 stop:
-	sudo systemctl stop $(SERVICE_NAME)
+	systemctl stop $(SERVICE_NAME)
 
 start:
-	sudo systemctl start $(SERVICE_NAME)
+	systemctl start $(SERVICE_NAME)
 
 restart: build
-	sudo systemctl restart $(SERVICE_NAME)
+	systemctl restart $(SERVICE_NAME)
