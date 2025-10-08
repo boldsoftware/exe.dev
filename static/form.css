@@ -1,0 +1,152 @@
+/* Shared form styles for exe.dev */
+.form-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.form-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 32px;
+}
+
+.form-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #000;
+    margin-bottom: 24px;
+}
+
+.form-description {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 32px;
+}
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+.form-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: #fff;
+    transition: border-color 0.15s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #999;
+}
+
+.form-input::placeholder {
+    color: #999;
+}
+
+.form-textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.form-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-input-suffix {
+    font-size: 14px;
+    color: #666;
+    white-space: nowrap;
+}
+
+.form-hint {
+    font-size: 12px;
+    color: #666;
+    margin-top: 6px;
+    min-height: 18px;
+}
+
+.form-hint.success {
+    color: #22c55e;
+}
+
+.form-hint.error {
+    color: #ef4444;
+}
+
+.form-hint .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #e0e0e0;
+    border-top-color: #666;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.form-button {
+    width: 100%;
+    padding: 12px 16px;
+    background: #000;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.form-button:hover {
+    background: #333;
+}
+
+.form-button:disabled {
+    background: #e0e0e0;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.form-secondary-button {
+    width: 100%;
+    padding: 12px 16px;
+    background: #fff;
+    color: #666;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+}
+
+.form-secondary-button:hover {
+    background: #f5f5f5;
+    border-color: #d0d0d0;
+}

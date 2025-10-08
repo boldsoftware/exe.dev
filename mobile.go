@@ -251,7 +251,6 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleMobileHome)
-	mux.HandleFunc("/new", s.handleMobileNew)
 	mux.HandleFunc("/check-hostname", s.handleMobileHostnameCheck)
 	mux.HandleFunc("/create-vm", s.handleMobileCreateVM)
 	mux.HandleFunc("/email-auth", s.handleMobileEmailAuth)
@@ -276,6 +275,12 @@ func (s *Server) handleMobile(w http.ResponseWriter, r *http.Request) {
 
 // handleMobileHome renders the initial mobile page
 func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
+	// Only handle exact "/" path (which is /m after prefix stripping)
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
 	// Check if user is already authenticated
 	if _, err := s.validateAuthCookie(r); err == nil {
 		// User is authenticated, redirect to unified dashboard
@@ -288,23 +293,32 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		HostnameSuggestion string
+		IsLoggedIn         bool
 	}{
 		HostnameSuggestion: hostnameSuggestion,
+		IsLoggedIn:         false, // Already checked auth above, if we're here user is not logged in
 	}
 
-	s.renderTemplate(w, "mobile-home.html", data)
+	s.renderTemplate(w, "new.html", data)
 }
 
 // handleMobileNew renders the VM creation page explicitly
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 	// Always show the create page (even if logged in)
 	hostnameSuggestion := boxname.Random()
+
+	// Check if user is authenticated
+	_, err := s.validateAuthCookie(r)
+	isLoggedIn := err == nil
+
 	data := struct {
 		HostnameSuggestion string
+		IsLoggedIn         bool
 	}{
 		HostnameSuggestion: hostnameSuggestion,
+		IsLoggedIn:         isLoggedIn,
 	}
-	s.renderTemplate(w, "mobile-home.html", data)
+	s.renderTemplate(w, "new.html", data)
 }
 
 // handleMobileHostnameCheck checks if a hostname is available

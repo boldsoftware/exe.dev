@@ -339,6 +339,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleWebShell(w, r)
 	case "/shell/ws":
 		s.handleWebShellWS(w, r)
+	case "/new":
+		// New box creation page
+		s.handleMobileNew(w, r)
+		return
+	case "/check-hostname":
+		s.handleMobileHostnameCheck(w, r)
+		return
+	case "/create-vm":
+		s.handleMobileCreateVM(w, r)
+		return
 	default:
 		// Handle mobile UI routes
 		if strings.HasPrefix(path, "/m") {
