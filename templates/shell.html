@@ -56,6 +56,7 @@
     </div>
 
     <script src="/static/xterm.js"></script>
+    <script src="/static/xterm-addon-web-links.js"></script>
     <script src="/static/terminal-common.js"></script>
     <script>
         class ShellClient {
@@ -75,6 +76,11 @@
                 });
 
                 this.terminal.open(document.getElementById('terminal'));
+                
+                // Enable clickable links
+                const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+                this.terminal.loadAddon(webLinksAddon);
+                
                 this.setupEventHandlers();
                 this.setupThemeToggle();
                 this.connect();

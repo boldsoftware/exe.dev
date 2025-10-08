@@ -240,6 +240,10 @@ function showStoredCreationLog(hostname, boxRow) {
     });
     term.open(termContainer);
     
+    // Enable clickable links
+    const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+    term.loadAddon(webLinksAddon);
+    
     // Fit terminal
     setTimeout(() => {
         const cols = Math.max(40, Math.floor(termContainer.clientWidth / 9));
@@ -293,6 +297,10 @@ function showCreationStream(hostname, boxRow) {
         theme: themeManager.getTerminalTheme()
     });
     term.open(termContainer);
+    
+    // Enable clickable links
+    const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+    term.loadAddon(webLinksAddon);
     
     // Fit terminal
     setTimeout(() => {
