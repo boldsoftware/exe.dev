@@ -15,6 +15,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"log/slog"
 	"math/big"
@@ -80,7 +81,7 @@ type BoxDisplayInfo struct {
 	ProxyURL    string
 	TerminalURL string
 	ShelleyURL  string
-	VSCodeURL   string
+	VSCodeURL   template.URL
 	ProxyPort   int
 	ProxyShare  string
 }

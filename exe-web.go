@@ -1474,7 +1474,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			SSHCommand:  s.formatSSHConnectionInfo(result.Name),
 			ProxyURL:    s.httpsProxyAddress(result.Name),
 			TerminalURL: s.terminalURL(result.Name),
-			VSCodeURL:   s.vscodeURL(result.Name),
+			VSCodeURL:   template.URL(s.vscodeURL(result.Name)),
 			ProxyPort:   route.Port,
 			ProxyShare:  route.Share,
 		}
