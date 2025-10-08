@@ -1,36 +1,30 @@
 # Welcome Server
 
-This example web server demonstrates end-to-end usage of exe.dev:
+This example web server demonstrates end-to-end usage of exe.dev.
 
-- Login/logout behind the exed proxy using its auth URLs
-- Show who is logged in (when proxy headers are present)
-- Track per-user page views in SQLite
+## Starting and Stopping the server
 
-After making changes: `make build` and then `sudo make restart`.
+The welcome server runs as a systemd unit called "welcome-exedev-webapp".
+You can see logs with `sudo journalctl -u welcome-exedev-webapp`. Build
+with `make build` and deploy with `make restart`.
 
-Auth flow
+## Authorization
 
-- When not logged in, the page shows a Login link to:
-  `https://{main-domain}/auth?redirect={path}&return_host={this-host}`
-  This sends the user to the main domain to authenticate, then returns them to
-  `https://{this-host}` and sets the subdomain cookie.
-- When logged in, the page shows a Logout link to:
-  `https://{this-host}/__exe.dev/logout`
+exe.dev provides authorization headers and login/logout links
+that this repostitory uses.
 
-Identity headers
+When proxied through exed, requests will include `X-ExeDev-UserID` and
+`X-ExeDev-Email` if the user is authenticated via exe.dev.
 
-- When proxied through exed, requests will include `X-ExeDev-UserID` and `X-ExeDev-Email` if the user is authenticated via exe.dev.
-  If present, the welcome server shows who you are and counts your visits.
+## Database
 
-SQLite storage
+This app uses sqlite. SQL queries are managed with
+sqlc.
 
-- The server stores per-visitor counts in SQLite.
-- The server manages migrations, auto-creates a `visitors` table,
-  and upserts counts per request.
-
-Code layout
+## Code layout
 
 - `cmd/welcomed`: main package (binary entrypoint)
 - `srv`: HTTP server logic (handlers)
+- `srv/templates`: Go templates the web server
 - `db`: SQLite open + migrations (001-base.sql)
 - `sqlc`: optional sqlc schema/queries for codegen

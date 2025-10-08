@@ -9,10 +9,10 @@ clean:
 	rm -f welcomed
 
 stop:
-	systemctl stop $(SERVICE_NAME)
+	sudo systemctl stop $(SERVICE_NAME)
 
 start:
-	systemctl start $(SERVICE_NAME)
+	sudo systemctl start $(SERVICE_NAME)
 
-restart:
-	systemctl restart $(SERVICE_NAME)
+restart: build
+	sudo systemctl restart $(SERVICE_NAME)
