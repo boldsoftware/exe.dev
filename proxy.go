@@ -330,18 +330,12 @@ func (s *Server) getProxyPorts() []int {
 		// Dev mode fallback: ports 8001-8008 and 9999
 		return []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999}
 	}
-	// Production mode: specific ports
-	// TODO: Should we listen to all ports 2000-10000?
-	return []int{
-		2000, 2080,
-		3000, 3080,
-		4000, 4080,
-		5000, 5080,
-		6000, 6080,
-		7000, 7080,
-		8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8080, 8088, 8888,
-		9000, 9080, 9999,
+	// Production mode: all ports 2000-9999
+	ports := make([]int, 0, 8000)
+	for port := 2000; port <= 9999; port++ {
+		ports = append(ports, port)
 	}
+	return ports
 }
 
 // isDefaultServerPort returns true if the port should use the box's default route
