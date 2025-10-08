@@ -614,7 +614,7 @@ done:
 			prompt = shelleyPreamble + prompt
 		}
 
-		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, ctrhost, prompt, model); err != nil {
+		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, ctrhost, prompt, shelleyUrl, model); err != nil {
 			// We write out the error but don't fail.
 			cc.Write("\033[1;31mError running Shelley prompt: %v\033[0m\r\n", err)
 			url := ss.server.shelleyURL(box.Name)

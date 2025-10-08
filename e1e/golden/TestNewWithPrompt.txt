@@ -50,6 +50,8 @@ http://e1e-BOX_TIMESTAMP-testnewwithprompt.localhost:EXED_HTTP_PORT (→ port 80
 🤖 Running prompt through Shelley...
 
 🐌 Connected to Shelley
+🐌 Follow along at http://e1e-BOX_TIMESTAMP-testnewwithprompt.localhost:9999
+
 🤖 Well, hi there!
 🏁 Shelley finished its turn. Continue the conversation at
   http://e1e-BOX_TIMESTAMP-testnewwithprompt.localhost:9999

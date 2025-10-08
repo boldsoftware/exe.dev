@@ -537,7 +537,7 @@
                     <span class="status-dot {{.Status}}" title="{{.Status}}"></span>
                     <span class="box-name">{{.Name}}</span>
                     <div class="box-actions">
-                        {{if and (ne .Status "pending") (ne .Status "creating")}}
+                        {{if ne .Status "pending"}}
                         <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="SSH">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
@@ -579,7 +579,7 @@
                     </div>
                 </div>
                 <div class="box-details">
-                    {{if and (ne .Status "pending") (ne .Status "creating")}}
+                    {{if ne .Status "pending"}}
                     <div class="ssh-command-display">
                         <code>{{.SSHCommand}}</code>
                         <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="Copy SSH command">
@@ -597,12 +597,12 @@
                         <span class="box-info-value">{{.Image}}</span>
                         <span class="box-info-label">Proxy:</span>
                         <span class="box-info-value">Port {{.ProxyPort}}, {{.ProxyShare}}</span>
-                        {{if and (ne .Status "pending") (ne .Status "creating")}}
+                        {{if ne .Status "pending"}}
                         <span class="box-info-label">Created:</span>
                         <span class="box-info-value">{{.CreatedAt.Format "Jan 2, 2006 15:04 MST"}}</span>
                         {{end}}
                     </div>
-                    {{if and (ne .Status "pending") (ne .Status "creating")}}
+                    {{if ne .Status "pending"}}
                     <div class="box-actions-expanded">
                         <a href="{{.ProxyURL}}" class="action-btn-expanded" target="_blank">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

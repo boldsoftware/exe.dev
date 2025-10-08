@@ -270,6 +270,22 @@ function showStoredCreationLog(hostname, boxRow) {
     })();
 }
 
+function updateBoxStatusToRunning(boxRow) {
+    // Update the status dot from 'creating' to 'running'
+    const statusDot = boxRow.querySelector('.status-dot');
+    if (statusDot) {
+        statusDot.classList.remove('creating');
+        statusDot.classList.add('running');
+        statusDot.title = 'running';
+    }
+    
+    // Update the status text in the expanded details
+    const statusValue = boxRow.querySelector('.box-info-value');
+    if (statusValue && statusValue.previousElementSibling?.textContent === 'Status:') {
+        statusValue.textContent = 'running';
+    }
+}
+
 function showCreationStream(hostname, boxRow) {
     // Check if already initialized to avoid duplicate terminals
     if (initializedBoxes.has(hostname)) {
@@ -357,6 +373,8 @@ function showCreationStream(hostname, boxRow) {
                             term.write('\r\nError: ' + (data || 'failed') + '\r\n');
                         } else if (curEvent === 'done') {
                             term.write('\r\n✓ Box created successfully!\r\n');
+                            // Update the box status to running without full page reload
+                            updateBoxStatusToRunning(boxRow);
                         }
                     } else if (line === '') {
                         curEvent = '';
