@@ -3,56 +3,15 @@
   <head>
     <title>Email Verified - exe.dev</title>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
     <style>
-      body {
-        font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        padding: 48px 20px;
-      }
-      main.email-verified {
-        width: 100%;
-        max-width: 480px;
-      }
-      .container {
-        background: rgba(255, 255, 248, 0.95);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 24px;
-        padding: 48px 40px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
+      .auth-box {
         text-align: center;
-      }
-      .exy {
-        display: block;
-        width: 72px;
-        margin: 0 auto 24px;
-      }
-      h1 {
-        color: #000;
-        margin-bottom: 16px;
-        font-size: 28px;
-        letter-spacing: -0.01em;
-      }
-      p {
-        color: #4a4a4a;
-        line-height: 1.6;
-        margin: 16px 0;
       }
       .code-box {
         background: rgba(0, 0, 0, 0.08);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 8px;
-        padding: 16px;
-        font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        color: #000;
         letter-spacing: 0.12em;
-        display: inline-block;
-        margin-top: 8px;
       }
       .cta-button {
         display: inline-block;
@@ -72,23 +31,11 @@
         background: #222;
         text-decoration: none;
       }
-      @media (max-width: 600px) {
-        body {
-          padding: 32px 16px;
-        }
-        .container {
-          padding: 36px 24px;
-          border-radius: 20px;
-        }
-        h1 {
-          font-size: 24px;
-        }
-      }
     </style>
   </head>
-  <body>
-    <main class="email-verified">
-      <div class="container">
+  <body class="auth-page">
+    <main>
+      <div class="auth-box">
         <img src="/static/exy.png" alt="exy the fish" class="exy" />
         <h1>Email Verified</h1>
         <p>You can now return to your SSH session.</p>

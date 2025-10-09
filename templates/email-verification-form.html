@@ -1,120 +1,19 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <title>Confirm Email - exe.dev</title>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
-    <style>
-      body {
-        font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-          "Liberation Mono", monospace;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        padding: 48px 20px;
-      }
-      main.verify-email {
-        width: 100%;
-        max-width: 520px;
-      }
-      .container {
-        background: rgba(255, 255, 248, 0.95);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 24px;
-        padding: 48px 40px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
-      }
-      .exy {
-        display: block;
-        width: 72px;
-        margin: 0 auto 24px;
-      }
-      h1 {
-        color: #000;
-        margin-bottom: 16px;
-        font-size: 28px;
-        letter-spacing: -0.01em;
-      }
-      p {
-        color: #4a4a4a;
-        line-height: 1.6;
-        margin: 20px 0;
-      }
-      .code-box {
-        background: rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 8px;
-        padding: 12px;
-        text-align: center;
-        margin: 20px 0 8px;
-      }
-      .code-label {
-        display: block;
-        color: #222;
-        font-size: 12px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        margin-bottom: 6px;
-      }
-      .code-value {
-        font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-          "Liberation Mono", monospace;
-        font-size: 20px;
-        font-weight: 500;
-        color: #000;
-        letter-spacing: 0.16em;
-      }
-      .code-note {
-        color: #4a4a4a;
-        font-size: 12px;
-        text-align: center;
-        margin-top: 8px;
-      }
-      .button {
-        background: #000;
-        color: #fff;
-        border: 1px solid #000;
-        padding: 16px 0;
-        border-radius: 999px;
-        font-size: 18px;
-        font-weight: 600;
-        cursor: pointer;
-        display: block;
-        width: 100%;
-        margin-top: 28px;
-        transition: background 0.2s;
-      }
-      .button:hover {
-        background: #222;
-      }
-      form {
-        margin: 0;
-      }
-      @media (max-width: 600px) {
-        body {
-          padding: 32px 16px;
-        }
-        .container {
-          padding: 36px 24px;
-          border-radius: 20px;
-        }
-        h1 {
-          font-size: 24px;
-        }
-      }
-    </style>
   </head>
-  <body>
-    <main class="verify-email">
-      <div class="container">
+  <body class="auth-page">
+    <main>
+      <div class="auth-box">
         <img src="/static/exy.png" alt="exy the fish" class="exy" />
-        <h1>Confirm Your Email</h1>
+        <h1 align="center">Confirm Your Email</h1>
         <p>
           Please verify your email address <em>{{.Email}}</em> for
-          <strong>exe.dev</strong> to continue account setup.
+          <strong>exe.dev</strong> to continue.
         </p>
 
         <p>If you did not initiate this request, please close this page.</p>

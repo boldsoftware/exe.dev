@@ -1,8 +1,6 @@
 {{define "topbar_style"}}
-<link rel="stylesheet" href="/static/topbar.css">
-{{end}}
-
-{{define "topbar"}}
+<link rel="stylesheet" href="/static/topbar.css" />
+{{end}} {{define "topbar"}}
 <header>
   <div class="nav-container">
     <div class="nav-left">
@@ -16,89 +14,162 @@
     </div>
     <div class="nav-right">
       <a href="/soon" class="btn">Join the waitlist</a>
-      <a href="/auth" class="btn">Sign in</a>
+      <a href="/auth?redirect=/" class="btn">Sign in</a>
     </div>
   </div>
 </header>
-{{end}}
-
-{{define "topbar_loggedin"}}
+{{end}} {{define "topbar_loggedin"}}
 <header>
-    <div class="nav-container">
-        <div class="nav-left">
-            <a href="/~" class="nav-logo">
-                <img src="/static/exy.png" alt="exe.dev logo" />
-                exe.dev
-            </a>
-            <div class="nav-links">
-                <a href="/docs">docs</a>
-            </div>
-        </div>
-        <div class="nav-right">
-            {{if eq .ActivePage "boxes"}}
-            <span class="btn btn-active">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                    <rect x="3" y="3" width="8" height="8" rx="1"></rect>
-                    <rect x="13" y="3" width="8" height="8" rx="1"></rect>
-                    <rect x="3" y="13" width="8" height="8" rx="1"></rect>
-                    <rect x="13" y="13" width="8" height="8" rx="1"></rect>
-                </svg>
-                <span class="btn-text">Boxes</span>
-            </span>
-            {{else}}
-            <a href="/~" class="btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                    <rect x="3" y="3" width="8" height="8" rx="1"></rect>
-                    <rect x="13" y="3" width="8" height="8" rx="1"></rect>
-                    <rect x="3" y="13" width="8" height="8" rx="1"></rect>
-                    <rect x="13" y="13" width="8" height="8" rx="1"></rect>
-                </svg>
-                <span class="btn-text">Boxes</span>
-            </a>
-            {{end}}
-            {{if eq .ActivePage "shell"}}
-            <span class="btn btn-active">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                    <polyline points="4,17 10,11 4,5"></polyline>
-                    <line x1="12" y1="19" x2="20" y2="19"></line>
-                </svg>
-                <span class="btn-text">Shell</span>
-            </span>
-            {{else}}
-            <a href="/shell" class="btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                    <polyline points="4,17 10,11 4,5"></polyline>
-                    <line x1="12" y1="19" x2="20" y2="19"></line>
-                </svg>
-                <span class="btn-text">Shell</span>
-            </a>
-            {{end}}
-            {{if eq .ActivePage "profile"}}
-            <span class="btn btn-active">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                    <circle cx="12" cy="8" r="4"></circle>
-                    <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
-                </svg>
-                <span class="btn-text">Profile</span>
-            </span>
-            {{else}}
-            <a href="/user" class="btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                    <circle cx="12" cy="8" r="4"></circle>
-                    <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
-                </svg>
-                <span class="btn-text">Profile</span>
-            </a>
-            {{end}}
-            <a href="/logout" class="btn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                    <polyline points="16 17 21 12 16 7"></polyline>
-                    <line x1="21" y1="12" x2="9" y2="12"></line>
-                </svg>
-                <span class="btn-text">Sign out</span>
-            </a>
-        </div>
+  <div class="nav-container">
+    <div class="nav-left">
+      <a href="/~" class="nav-logo">
+        <img src="/static/exy.png" alt="exe.dev logo" />
+        exe.dev
+      </a>
+      <div class="nav-links">
+        <a href="/docs">docs</a>
+      </div>
     </div>
+    <div class="nav-right">
+      {{if eq .ActivePage "boxes"}}
+      <span class="btn btn-active">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <rect x="3" y="3" width="8" height="8" rx="1"></rect>
+          <rect x="13" y="3" width="8" height="8" rx="1"></rect>
+          <rect x="3" y="13" width="8" height="8" rx="1"></rect>
+          <rect x="13" y="13" width="8" height="8" rx="1"></rect>
+        </svg>
+        <span class="btn-text">Boxes</span>
+      </span>
+      {{else}}
+      <a href="/~" class="btn">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <rect x="3" y="3" width="8" height="8" rx="1"></rect>
+          <rect x="13" y="3" width="8" height="8" rx="1"></rect>
+          <rect x="3" y="13" width="8" height="8" rx="1"></rect>
+          <rect x="13" y="13" width="8" height="8" rx="1"></rect>
+        </svg>
+        <span class="btn-text">Boxes</span>
+      </a>
+      {{end}} {{if eq .ActivePage "shell"}}
+      <span class="btn btn-active">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <polyline points="4,17 10,11 4,5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        <span class="btn-text">Shell</span>
+      </span>
+      {{else}}
+      <a href="/shell" class="btn">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <polyline points="4,17 10,11 4,5"></polyline>
+          <line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        <span class="btn-text">Shell</span>
+      </a>
+      {{end}} {{if eq .ActivePage "profile"}}
+      <span class="btn btn-active">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
+        </svg>
+        <span class="btn-text">Profile</span>
+      </span>
+      {{else}}
+      <a href="/user" class="btn">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
+        </svg>
+        <span class="btn-text">Profile</span>
+      </a>
+      {{end}}
+      <a href="/logout" class="btn">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="
+            width: 14px;
+            height: 14px;
+            vertical-align: middle;
+            margin-right: 4px;
+          "
+        >
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        <span class="btn-text">Sign out</span>
+      </a>
+    </div>
+  </div>
 </header>
 {{end}}

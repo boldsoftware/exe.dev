@@ -2,162 +2,124 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>exe.dev - Authentication Required</title>
     <link rel="stylesheet" href="/static/exe.css" />
     <style>
-      body {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        padding: 48px 20px;
+      .auth-box h1 {
+        text-align: center;
       }
-      .exy {
-        display: block;
-        width: 72px;
-        margin: 0 auto 24px;
-      }
-
-      main.auth-container {
-        width: 100%;
-        max-width: 460px;
-      }
-
-      .auth-card {
-        background: rgba(255, 255, 248, 0.95);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 24px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
-        padding: 48px 40px;
-      }
-
-      h1 {
-        font-size: 28px;
-        font-weight: 500;
-        color: #000;
-        margin-bottom: 12px;
-        letter-spacing: -0.01em;
-      }
-
-      .subtitle {
-        color: #5a5a5a;
-        margin-bottom: 32px;
-        font-size: 16px;
-      }
-
-      .form-group {
+      .vm-details {
+        background: rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 8px;
+        padding: 16px;
         margin-bottom: 24px;
+        text-align: center;
       }
-
-      label {
-        display: block;
+      .vm-details-label {
+        font-size: 13px;
+        color: #666;
+        margin-bottom: 8px;
+      }
+      .vm-hostname {
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+        font-size: 18px;
+        color: #000;
         margin-bottom: 8px;
         font-weight: 600;
-        color: #000;
+      }
+      .vm-description {
         font-size: 14px;
-        letter-spacing: 0.02em;
-      }
-
-      input[type="email"] {
-        width: 100%;
-        padding: 14px 16px;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        border-radius: 8px;
-        font-size: 16px;
-        background: #fffdf5;
-      }
-
-      input[type="email"]:focus {
-        outline: none;
-        border-color: #000;
-      }
-
-      button {
-        width: 100%;
-        background: #000;
-        color: #fff;
-        padding: 14px 16px;
-        border: 1px solid #000;
-        border-radius: 999px;
-        cursor: pointer;
-        font-size: 16px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        transition: background 0.2s ease;
-      }
-
-      button:hover {
-        background: #222;
-      }
-
-      button:disabled {
-        background: #ccc;
-        border-color: #ccc;
-        cursor: not-allowed;
-      }
-
-      .alt-method {
-        margin-top: 36px;
-        padding-top: 28px;
-        border-top: 1px dotted rgba(0, 0, 0, 0.2);
-        text-align: center;
         color: #666;
+        font-style: italic;
+      }
+      .auth-box.with-vm input[type="email"] {
+        font-size: 18px;
+        padding: 16px;
+        border: 2px solid rgba(0, 0, 0, 0.15);
+      }
+      .auth-box.with-vm input[type="email"]:focus {
+        border-color: #000;
+        box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
+      }
+      .back-link {
+        text-align: center;
+        margin-top: 20px;
         font-size: 14px;
-        letter-spacing: 0.01em;
       }
-
-      .ssh-command {
-        margin-top: 12px;
-        background: rgba(0, 0, 0, 0.04);
-        padding: 12px 16px;
-        border-radius: 8px;
-        font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        color: #000;
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        display: inline-block;
+      .back-link a {
+        color: #666;
+        text-decoration: none;
       }
-
-      @media (max-width: 480px) {
-        body {
-          padding: 32px 16px;
-        }
-
-        .auth-card {
-          padding: 36px 24px;
-          border-radius: 20px;
-        }
-
-        h1 {
-          font-size: 24px;
-        }
-
-        .subtitle {
-          font-size: 15px;
-        }
+      .back-link a:hover {
+        text-decoration: underline;
       }
     </style>
   </head>
-  <body>
-    <main class="auth-container">
-      <div class="auth-card">
+  <body class="auth-page">
+    <main>
+      <div class="auth-box{{if .Hostname}} with-vm{{end}}">
         <img src="/static/exy.png" alt="exy the fish" class="exy" />
         <h1>Sign in</h1>
+        <p class="subtitle">
+          New to exe.dev? We'll create your account automatically.
+        </p>
 
-        <form method="POST" action="/auth">{{if .RedirectURL}}
-            <input type="hidden" name="redirect" value="{{.RedirectURL}}">{{end}}{{if .ReturnHost}}
-            <input type="hidden" name="return_host" value="{{.ReturnHost}}">{{end}}
-            <div class="form-group">
-                <input type="email" id="email" name="email" required placeholder="you@example.com">
-            </div>
+        {{if .Hostname}}
+        <div class="vm-details">
+          <div class="vm-details-label">
+            After you sign up, we will create
+          </div>
+          <div class="vm-hostname">{{.Hostname}}.exe.dev</div>
+          {{if .Prompt}}
+          <div class="vm-description">{{.Prompt}}</div>
+          {{end}}
+        </div>
+        {{end}}
 
-            <button type="submit">Send sign-in link</button>
+        <form
+          method="POST"
+          action="{{if .Hostname}}/m/email-auth{{else}}/auth{{end}}"
+        >
+          {{if .RedirectURL}}
+          <input type="hidden" name="redirect" value="{{.RedirectURL}}" />
+          {{end}} {{if .ReturnHost}}
+          <input type="hidden" name="return_host" value="{{.ReturnHost}}" />
+          {{end}} {{if .Hostname}}
+          <input type="hidden" name="hostname" value="{{.Hostname}}" />
+          {{end}} {{if .Prompt}}
+          <input type="hidden" name="prompt" value="{{.Prompt}}" />
+          {{end}}
+          <div class="form-group">
+            <input
+              type="email"
+              id="email"
+              name="email"
+              required
+              placeholder="you@example.com"
+              autocomplete="email"
+              autocorrect="on"
+              autocapitalize="none"
+              spellcheck="false"
+              autofocus
+            />
+          </div>
+
+          <button type="submit">Send sign-in link</button>
         </form>
 
-        <div class="alt-method">
-            <p>Or authenticate via SSH:</p>
-            <div class="ssh-command">ssh exe.dev</div>
+        {{if .Hostname}}
+        <div class="back-link">
+          <a href="/m">← Back to VM creation</a>
         </div>
+        {{else}}
+        <div class="alt-method">
+          <p>Or authenticate via SSH:</p>
+          <div class="ssh-command">ssh exe.dev</div>
+        </div>
+        {{end}}
       </div>
     </main>
   </body>

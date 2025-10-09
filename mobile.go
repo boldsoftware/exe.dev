@@ -392,15 +392,12 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Otherwise, proceed to email auth, carrying the VM details as hidden fields
-	data := struct {
-		Hostname string
-		Prompt   string
-	}{
-		Hostname: hostname,
-		Prompt:   prompt,
+	data := map[string]interface{}{
+		"Hostname": hostname,
+		"Prompt":   prompt,
 	}
 
-	s.renderTemplate(w, "mobile-email-auth.html", data)
+	s.renderTemplate(w, "auth-form.html", data)
 }
 
 // handleMobileEmailAuth handles email authentication
@@ -494,7 +491,7 @@ The exe.dev team`, verifyURL, token)
 		data.DevURL = verifyURL
 	}
 
-	s.renderTemplate(w, "mobile-email-sent.html", data)
+	s.renderTemplate(w, "email-sent.html", data)
 }
 
 // handleMobileVerifyTokenEmailLink handles token verification via clicked email link

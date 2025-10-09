@@ -6,42 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
     <style>
-      body {
-        font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        padding: 48px 20px;
-      }
-      main.verify-container {
-        width: 100%;
-        max-width: 520px;
-      }
-      .container {
-        background: rgba(255, 255, 248, 0.95);
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        border-radius: 24px;
-        padding: 48px 40px;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
+      .auth-box {
         text-align: center;
-      }
-      .exy {
-        display: block;
-        width: 72px;
-        margin: 0 auto 24px;
-      }
-      h1 {
-        color: #000;
-        margin-bottom: 16px;
-        font-size: 28px;
-        letter-spacing: -0.01em;
-      }
-      p {
-        color: #4a4a4a;
-        line-height: 1.6;
-        margin: 16px 0;
       }
       .highlight {
         display: inline-flex;
@@ -53,14 +19,6 @@
         color: #000;
         font-weight: 600;
         margin-top: 8px;
-      }
-      .notice {
-        background: rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 8px;
-        padding: 20px;
-        color: #3a3a3a;
-        margin-top: 24px;
       }
       .dev-box {
         background: rgba(0, 0, 0, 0.04);
@@ -82,7 +40,7 @@
         color: #4a4a4a;
         font-size: 14px;
       }
-      .code-box {
+      .dev-box .code-box {
         background: rgba(0, 0, 0, 0.08);
         border-radius: 8px;
         padding: 12px;
@@ -91,14 +49,12 @@
         font-size: 13px;
         color: #000;
         word-break: break-word;
-      }
-      a {
-        color: #000;
+        display: block;
         text-decoration: none;
-        font-weight: 500;
       }
-      a:hover {
-        text-decoration: underline;
+      .dev-box .code-box:hover {
+        text-decoration: none;
+        background: rgba(0, 0, 0, 0.12);
       }
       .retry {
         margin-top: 24px;
@@ -122,23 +78,11 @@
         background: #222;
         text-decoration: none;
       }
-      @media (max-width: 600px) {
-        body {
-          padding: 32px 16px;
-        }
-        .container {
-          padding: 36px 24px;
-          border-radius: 20px;
-        }
-        h1 {
-          font-size: 24px;
-        }
-      }
     </style>
   </head>
-  <body>
-    <main class="verify-container">
-      <div class="container">
+  <body class="auth-page">
+    <main>
+      <div class="auth-box">
         <img src="/static/exy.png" alt="exy the fish" class="exy" />
         <h1>Check Your Email</h1>
         <p>We sent a sign-in link to:</p>
@@ -152,7 +96,7 @@
         {{end}}
         <p class="retry">
           The link expires in 24 hours. Didn't receive it?
-          <a href="/auth?{{.QueryString}}">Try again</a>
+          <a href="{{if .QueryString}}/auth?{{.QueryString}}{{else}}/m{{end}}">Try again</a>
         </p>
         <a class="cta-button" href="/">Return to exe.dev</a>
       </div>

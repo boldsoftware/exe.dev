@@ -3,49 +3,20 @@
 <head>
     <title>Device Verified - exe.dev</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/exe.css" />
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            text-align: center;
+        .auth-page main {
             max-width: 400px;
         }
-        h1 {
-            color: #2d3748;
-            margin-bottom: 20px;
-        }
-        p {
-            color: #4a5568;
-            line-height: 1.6;
-        }
-        .success {
-            color: #48bb78;
-            font-size: 48px;
-            margin-bottom: 20px;
-        }
-        .command {
-            background: #f7fafc;
-            padding: 15px;
-            border-radius: 5px;
-            font-family: monospace;
-            margin: 20px 0;
-            border: 1px solid #e2e8f0;
+        .auth-box {
+            text-align: center;
         }
     </style>
 </head>
-<body>
-    <div class="container">
+<body class="auth-page gradient">
+    <main>
+      <div class="auth-box simple">
         <div class="success">✓</div>
         <h1>Device Verified!</h1>
         <p>Your new device has been successfully authorized.</p>
@@ -54,6 +25,7 @@
         <p style="font-size: 14px; color: #718096; margin-top: 30px;">
             Public Key: {{.PublicKey}}
         </p>
-    </div>
+      </div>
+    </main>
 </body>
 </html>

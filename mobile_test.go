@@ -90,7 +90,7 @@ func TestMobileCreateVMFlow(t *testing.T) {
 	if !strings.Contains(body, "Build a blog") {
 		t.Error("Expected VM prompt in response")
 	}
-	if !strings.Contains(body, "Enter your email to continue") {
+	if !strings.Contains(body, "Sign in") {
 		t.Error("Expected email prompt in response")
 	}
 }

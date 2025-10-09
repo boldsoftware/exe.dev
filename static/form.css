@@ -6,9 +6,10 @@
 }
 
 .form-card {
-    background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
+    background: rgba(255, 255, 248, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
     padding: 32px;
 }
 
@@ -40,17 +41,17 @@
 .form-input {
     width: 100%;
     padding: 10px 12px;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
     font-size: 14px;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    background: #fff;
+    background: #fffdf5;
     transition: border-color 0.15s ease;
 }
 
 .form-input:focus {
     outline: none;
-    border-color: #999;
+    border-color: #000;
 }
 
 .form-input::placeholder {
@@ -111,20 +112,20 @@
     background: #000;
     color: #fff;
     border: none;
-    border-radius: 6px;
+    border-radius: 999px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
 .form-button:hover {
-    background: #333;
+    background: #222;
 }
 
 .form-button:disabled {
-    background: #e0e0e0;
+    background: #ccc;
     color: #999;
     cursor: not-allowed;
 }
@@ -134,10 +135,10 @@
     padding: 12px 16px;
     background: #fff;
     color: #666;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 999px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -148,5 +149,5 @@
 
 .form-secondary-button:hover {
     background: #f5f5f5;
-    border-color: #d0d0d0;
+    border-color: #999;
 }
