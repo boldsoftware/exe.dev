@@ -59,7 +59,9 @@
         </p>
         <div class="auth-buttons">
           {{if .UserEmail}}
-          <a href="{{.LogoutURL}}">logout</a>
+          <form method="POST" action="{{.LogoutURL}}" style="display:inline">
+            <button type="submit">logout</button>
+          </form>
           {{else}}
           <a href="{{.LoginURL}}">login</a>
           {{end}}

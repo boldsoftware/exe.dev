@@ -100,15 +100,15 @@ func TestProxyRequestRouting(t *testing.T) {
 			name:           "proxy request on main domain",
 			host:           mainHost,
 			expectedProxy:  true,
-			expectedStatus: 307, // Should redirect to auth for private routes
-			expectedBody:   "auth?redirect=",
+			expectedStatus: 307, // Should redirect to /__exe.dev/login for private routes
+			expectedBody:   "/__exe.dev/login?redirect=",
 		},
 		{
 			name:           "proxy request on main domain with explicit port",
 			host:           fmt.Sprintf("%s:%d", mainHost, 8080),
 			expectedProxy:  true,
-			expectedStatus: 307, // Should redirect to auth for private routes
-			expectedBody:   "auth?redirect=",
+			expectedStatus: 307, // Should redirect to /__exe.dev/login for private routes
+			expectedBody:   "/__exe.dev/login?redirect=",
 		},
 		{
 			name:           "main domain request",
@@ -220,11 +220,11 @@ func TestMagicAuthFlow(t *testing.T) {
 		}
 
 		location := w.Header().Get("Location")
-		if !strings.Contains(location, "/auth?") {
-			t.Errorf("Expected redirect to auth, got %s", location)
+		if !strings.Contains(location, "/__exe.dev/login?") {
+			t.Errorf("Expected redirect to /__exe.dev/login, got %s", location)
 		}
-		if !strings.Contains(location, "return_host=") {
-			t.Errorf("Expected return_host in redirect URL, got %s", location)
+		if !strings.Contains(location, "redirect=") {
+			t.Errorf("Expected redirect parameter in URL, got %s", location)
 		}
 	})
 
@@ -330,6 +330,91 @@ func TestMagicAuthFlow(t *testing.T) {
 	})
 }
 
+func TestProxyLoginFlow(t *testing.T) {
+	t.Parallel()
+	server := NewTestServer(t)
+
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."
+	email := "test-login@example.com"
+
+	_, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	user, err := server.getUserByPublicKey(t.Context(), publicKey)
+	if err != nil {
+		t.Fatalf("Failed to get test user: %v", err)
+	}
+
+	alloc, err := server.getUserAlloc(t.Context(), user.UserID)
+	if err != nil {
+		t.Fatalf("Failed to get test user alloc: %v", err)
+	}
+
+	// Create a test box
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+						 ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, alloc.AllocID, "testbox", "running", "test-image", "test-container-id", user.UserID, `[
+			{
+				"name": "default",
+				"port": 80,
+				"methods": "*",
+				"prefix": "/",
+				"policy": "private",
+				"priority": 100
+			}
+		]`, "test-key", "test-keys", "test-client-key", 2222)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test box: %v", err)
+	}
+
+	// Test 1: Login URL should redirect to main domain auth flow
+	t.Run("login_redirects_to_auth", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "http://testbox.localhost/__exe.dev/login?redirect=/my-path", "testbox.localhost", server)
+		w := httptest.NewRecorder()
+
+		server.ServeHTTP(w, req)
+
+		if w.Code != 307 {
+			t.Errorf("Expected status 307, got %d", w.Code)
+		}
+
+		location := w.Header().Get("Location")
+		if !strings.Contains(location, "/auth?") {
+			t.Errorf("Expected redirect to /auth, got %s", location)
+		}
+		if !strings.Contains(location, "redirect=%2Fmy-path") {
+			t.Errorf("Expected redirect parameter in URL, got %s", location)
+		}
+		if !strings.Contains(location, "return_host=") {
+			t.Errorf("Expected return_host parameter in URL, got %s", location)
+		}
+	})
+
+	// Test 2: Login URL without redirect parameter should default to /
+	t.Run("login_without_redirect_defaults_to_root", func(t *testing.T) {
+		req := createTestRequestForServer("GET", "http://testbox.localhost/__exe.dev/login", "testbox.localhost", server)
+		w := httptest.NewRecorder()
+
+		server.ServeHTTP(w, req)
+
+		if w.Code != 307 {
+			t.Errorf("Expected status 307, got %d", w.Code)
+		}
+
+		location := w.Header().Get("Location")
+		if !strings.Contains(location, "redirect=%2F") {
+			t.Errorf("Expected redirect to /, got %s", location)
+		}
+	})
+}
+
 func TestProxyLogoutFlow(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)
@@ -375,9 +460,29 @@ func TestProxyLogoutFlow(t *testing.T) {
 		t.Fatalf("Failed to create test box: %v", err)
 	}
 
-	// Test 1: Logout without authentication should still work (redirect to logged-out page)
-	t.Run("logout_without_auth", func(t *testing.T) {
+	// Test 1: Logout GET without authentication should show confirmation form
+	t.Run("logout_get_without_auth", func(t *testing.T) {
 		req := createTestRequestForServer("GET", "http://testbox.localhost/__exe.dev/logout", "testbox.localhost", server)
+		w := httptest.NewRecorder()
+
+		server.ServeHTTP(w, req)
+
+		if w.Code != 200 {
+			t.Errorf("Expected status 200, got %d", w.Code)
+		}
+
+		body := w.Body.String()
+		if !strings.Contains(body, "Are you sure you want to log out?") {
+			t.Error("Expected logout confirmation form")
+		}
+		if !strings.Contains(body, `<form method="POST"`) {
+			t.Error("Expected POST form in confirmation page")
+		}
+	})
+
+	// Test 1b: Logout POST without authentication should still work (redirect to logged-out page)
+	t.Run("logout_post_without_auth", func(t *testing.T) {
+		req := createTestRequestForServer("POST", "http://testbox.localhost/__exe.dev/logout", "testbox.localhost", server)
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -444,8 +549,8 @@ func TestProxyLogoutFlow(t *testing.T) {
 			t.Fatal("Auth cookie should exist in database")
 		}
 
-		// Now logout
-		req2 := createTestRequestForServer("GET", "http://testbox.localhost/__exe.dev/logout", "testbox.localhost", server)
+		// Now logout (use POST)
+		req2 := createTestRequestForServer("POST", "http://testbox.localhost/__exe.dev/logout", "testbox.localhost", server)
 		req2.AddCookie(authCookie) // Send the auth cookie
 		w2 := httptest.NewRecorder()
 
@@ -537,8 +642,8 @@ func TestProxyLogoutFlow(t *testing.T) {
 			t.Fatalf("Should have 2 auth cookies for user, got %d", count)
 		}
 
-		// Logout using only the first cookie
-		req3 := createTestRequestForServer("GET", "http://testbox.localhost/__exe.dev/logout", "testbox.localhost", server)
+		// Logout using only the first cookie (use POST)
+		req3 := createTestRequestForServer("POST", "http://testbox.localhost/__exe.dev/logout", "testbox.localhost", server)
 		req3.AddCookie(cookie1) // Only send the first cookie
 		w3 := httptest.NewRecorder()
 		server.ServeHTTP(w3, req3)

@@ -88,6 +88,12 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle login URL
+	if r.URL.Path == "/__exe.dev/login" {
+		s.handleProxyLogin(w, r)
+		return
+	}
+
 	// Handle logout URL
 	if r.URL.Path == "/__exe.dev/logout" {
 		slog.Info("[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
@@ -354,23 +360,11 @@ func (s *Server) isDefaultServerPort(port int) bool {
 	return false
 }
 
-// redirectToAuth redirects the user to authentication
+// redirectToAuth redirects the user to the /__exe.dev/login URL
+// which will then redirect to the main domain auth flow
 func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
-	// Create auth URL with redirect parameter
-	authURL := fmt.Sprintf("/auth?redirect=%s", url.QueryEscape(r.URL.String()))
-
-	// If we're on a subdomain, redirect to the main domain
-	if r.Host != "" {
-		mainDomain := s.getMainDomainWithPort()
-
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-
-		// Include the return host so we can come back after auth
-		authURL = fmt.Sprintf("%s://%s%s&return_host=%s", scheme, mainDomain, authURL, url.QueryEscape(r.Host))
-	}
+	// Redirect to /__exe.dev/login with the current URL as the redirect parameter
+	authURL := fmt.Sprintf("/__exe.dev/login?redirect=%s", url.QueryEscape(r.URL.String()))
 
 	slog.Debug("[REDIRECT] redirectToAuth", "from", r.Host+r.URL.Path, "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
@@ -425,10 +419,60 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, finalRedirect, http.StatusTemporaryRedirect)
 }
 
-// handleProxyLogout handles the logout URL /__exe.dev/logout
-func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("[REDIRECT] handleProxyLogout called", "host", r.Host)
+// handleProxyLogin handles the login URL /__exe.dev/login
+// It redirects to the main domain auth flow with redirect and return_host parameters
+func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("[REDIRECT] handleProxyLogin called", "host", r.Host)
 
+	// Get redirect parameter from query string
+	redirect := r.URL.Query().Get("redirect")
+	if redirect == "" {
+		redirect = "/"
+	}
+
+	mainDomain := s.getMainDomainWithPort()
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+
+	// Build auth URL with redirect and return_host
+	authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s",
+		scheme, mainDomain, url.QueryEscape(redirect), url.QueryEscape(r.Host))
+
+	slog.Debug("[REDIRECT] redirecting to auth", "from", r.Host+r.URL.Path, "to", authURL)
+	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+}
+
+// handleProxyLogout handles the logout URL /__exe.dev/logout
+// GET: renders a simple confirmation form
+// POST: performs the logout and redirects to logged-out page
+func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		// Render a simple logout confirmation form
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head><title>Logout</title></head>
+<body>
+<h1>Logout</h1>
+<p>Are you sure you want to log out?</p>
+<form method="POST" action="/__exe.dev/logout">
+<button type="submit">Yes, log out</button>
+</form>
+<a href="/">Cancel</a>
+</body>
+</html>`)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// POST: perform the logout
 	// Get the specific cookie value to delete
 	var cookieValue string
 	cookie, err := r.Cookie("exe-proxy-auth")

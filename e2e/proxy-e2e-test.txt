@@ -123,10 +123,14 @@ Test HTTP proxy functionality end-to-end by creating a container, starting an HT
 
 17. If authenticated in browser from step 6, test logout:
     ```
+    # GET shows confirmation form
     curl http://myproxybox.localhost:8080/__exe.dev/logout
+    
+    # POST actually logs out
+    curl -X POST http://myproxybox.localhost:8080/__exe.dev/logout
     ```
     
-    **Expected**: Should log out from the specific container subdomain
+    **Expected**: GET shows HTML confirmation form, POST logs out and redirects to main domain
 
 18. Try accessing the container again after logout:
     ```

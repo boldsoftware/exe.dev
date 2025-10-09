@@ -42,10 +42,10 @@ the user is authenticated via exe.dev.
 
 The following special URLs are available for authentication flows:
 
-- **Login**: `https://exe.dev/auth?redirect={path}&return_host={your-box.exe.dev}`
-
-- **Logout**: Redirect to `https://{your-box}.exe.dev/__exe.dev/logout`
-
+- **Login**: `https://{your-box}.exe.dev/__exe.dev/login?redirect={path}`
+  
+- **Logout**: POST `https://{your-box}.exe.dev/__exe.dev/logout`
+  
 ### Example: nginx configuration
 
 The following `nginx` configuration allows only specified email addresses to access a protected location:

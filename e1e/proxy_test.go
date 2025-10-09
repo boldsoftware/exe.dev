@@ -156,11 +156,23 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			t.Fatalf("failed to get redirect location: %v", err)
 			return
 		}
-		req, err := http.NewRequest("GET", u.String(), nil)
+
+		// First redirect should be to /__exe.dev/login
+		if !strings.Contains(u.String(), "/__exe.dev/login?") {
+			t.Errorf("expected first redirect to /__exe.dev/login, got %s", u.String())
+		}
+
+		// Follow the login redirect, preserving the original Host header
+		// The Location header is a relative URL, so the host should be the same
+		originalHost := req.Host
+		req, err = localhostRequestWithHostHeader("GET", u.String(), nil)
 		if err != nil {
 			t.Errorf("failed to make http request: %v", err)
 			return
 		}
+		// localhostRequestWithHostHeader may not preserve the Host for plain localhost
+		// so we explicitly set it to match the original request
+		req.Host = originalHost
 		resp, err = client.Do(req)
 		if err != nil {
 			t.Errorf("failed to do http request: %v", err)
@@ -174,22 +186,45 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			t.Fatalf("failed to get redirect location: %v", err)
 			return
 		}
-		t.Logf("Got redirect to %s", u.String())
-		// Now we scream through the confirm screen by adding "action=confirm" to the URL
-		// There's a product question of whether this screen should exist when you own
-		// the machine, but for now test follows the implementation.
-		q := u.Query()
-		q.Set("action", "confirm")
-		u.RawQuery = q.Encode()
+		t.Logf("Got redirect to main domain auth: %s", u.String())
+		// Follow the redirect to /auth (which should then redirect to /auth/confirm with a secret)
 		req, err = http.NewRequest("GET", u.String(), nil)
-		resp, err = client.Do(req)
 		if err != nil {
 			t.Errorf("failed to make http request: %v", err)
 			return
 		}
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Errorf("failed to do http request: %v", err)
+			return
+		}
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			t.Errorf("expected redirect to /auth/confirm, got status %d", resp.StatusCode)
+		}
+		u, err = resp.Location()
+		if err != nil {
+			t.Fatalf("failed to get redirect location: %v", err)
+			return
+		}
+		t.Logf("Got redirect to confirm page: %s", u.String())
+
+		// Now we scream through the confirm screen by adding "action=confirm" to the URL
+		q := u.Query()
+		q.Set("action", "confirm")
+		u.RawQuery = q.Encode()
+		req, err = http.NewRequest("GET", u.String(), nil)
+		if err != nil {
+			t.Errorf("failed to make http request: %v", err)
+			return
+		}
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Errorf("failed to do http request: %v", err)
+			return
+		}
 		t.Logf("Last request was to: %s", req.URL.String())
 
-		// Now we follow that one!
+		// Now we should get a redirect to /__exe.dev/auth
 		if resp.StatusCode != http.StatusTemporaryRedirect {
 			t.Errorf("expected redirect during auth dance, got status %d", resp.StatusCode)
 		}

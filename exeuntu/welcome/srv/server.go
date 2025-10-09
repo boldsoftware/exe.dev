@@ -91,15 +91,9 @@ func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
 
 func loginURLForRequest(r *http.Request) string {
 	path := r.URL.RequestURI()
-	main := mainDomainFromHost(r.Host)
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
 	v := url.Values{}
 	v.Set("redirect", path)
-	v.Set("return_host", r.Host)
-	return fmt.Sprintf("%s://%s/auth?%s", scheme, main, v.Encode())
+	return "/__exe.dev/login?" + v.Encode()
 }
 
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data any) error {
