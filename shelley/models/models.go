@@ -108,6 +108,22 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "glm-4p6-fireworks",
+			Provider:        ProviderFireworks,
+			Description:     "GLM-4P6 on Fireworks",
+			RequiredEnvVars: []string{"FIREWORKS_API_KEY"},
+			Factory: func(config *Config) (llm.Service, error) {
+				if config.FireworksAPIKey == "" {
+					return nil, fmt.Errorf("glm-4p6-fireworks requires FIREWORKS_API_KEY")
+				}
+				svc := &oai.Service{Model: oai.GLM4P6Fireworks, APIKey: config.FireworksAPIKey}
+				if url := config.getFireworksURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "gpt-5",
 			Provider:        ProviderOpenAI,
 			Description:     "GPT-5",

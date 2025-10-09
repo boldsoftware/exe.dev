@@ -243,6 +243,13 @@ var (
 		APIKeyEnv: FireworksAPIKeyEnv,
 	}
 
+	GLM4P6Fireworks = Model{
+		UserName:  "glm-4p6-fireworks",
+		ModelName: "accounts/fireworks/models/glm-4p6",
+		URL:       FireworksURL,
+		APIKeyEnv: FireworksAPIKeyEnv,
+	}
+
 	GPTOSS20B = Model{
 		UserName:  "gpt-oss-20b",
 		ModelName: "accounts/fireworks/models/gpt-oss-20b",
@@ -344,6 +351,7 @@ var ModelsRegistry = []Model{
 	Qwen3Coder30Fireworks,
 	Qwen3CoderCerebras,
 	ZaiGLM45CoderFireworks,
+	GLM4P6Fireworks,
 	GPTOSS120B,
 	GPTOSS20B,
 	// Skaband-supported models
