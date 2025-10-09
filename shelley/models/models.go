@@ -140,6 +140,22 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "gpt-5-codex",
+			Provider:        ProviderOpenAI,
+			Description:     "GPT-5 Codex (uses Responses API)",
+			RequiredEnvVars: []string{"OPENAI_API_KEY"},
+			Factory: func(config *Config) (llm.Service, error) {
+				if config.OpenAIAPIKey == "" {
+					return nil, fmt.Errorf("gpt-5-codex requires OPENAI_API_KEY")
+				}
+				svc := &oai.ResponsesService{Model: oai.GPT5Codex, APIKey: config.OpenAIAPIKey}
+				if url := config.getOpenAIURL(); url != "" {
+					svc.ModelURL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "claude-sonnet-4.5",
 			Provider:        ProviderAnthropic,
 			Description:     "Claude Sonnet 4.5",

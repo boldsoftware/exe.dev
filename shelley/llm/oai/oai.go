@@ -278,6 +278,13 @@ var (
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
 
+	GPT5Codex = Model{
+		UserName:  "gpt-5-codex",
+		ModelName: "gpt-5-codex",
+		URL:       OpenAIURL,
+		APIKeyEnv: OpenAIAPIKeyEnv,
+	}
+
 	// Skaband-specific model names.
 	// Provider details (URL and APIKeyEnv) are handled by skaband
 	Qwen = Model{
@@ -315,6 +322,7 @@ var ModelsRegistry = []Model{
 	GPT5,
 	GPT5Mini,
 	GPT5Nano,
+	GPT5Codex,
 	O3,
 	O4Mini,
 	Gemini25Flash,
