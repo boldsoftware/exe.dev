@@ -59,7 +59,16 @@ jobs:
           export E1E_LOG_DIR
           echo "E1E_LOG_DIR=$E1E_LOG_DIR" >> "$GITHUB_ENV"
 
-          gotestsum --format testname -- -race ./...
+          PKGS=$(go list ./... | grep -v 'exe.dev/e1e/restarttest')
+          if [ -z "$PKGS" ]; then
+            echo "no packages to test"
+          else
+            gotestsum --format testname -- -race $PKGS
+          fi
+
+      - name: Run restart tests
+        run: |
+          go test -timeout=5m ./e1e/restarttest
 
       - name: Check golden files unchanged
         run: |
