@@ -258,9 +258,6 @@ naaSOWb61BHilYsQumopAAAADmpvc2hAam0zLmxvY2FsAQIDBAUGBw==
 )
 
 func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
-	if c == nil {
-		return Info{}, fmt.Errorf("nil ghuser.Client")
-	}
 	if ctx == nil {
 		return Info{}, fmt.Errorf("nil context")
 	}
@@ -273,6 +270,9 @@ func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
 	case FakePublicKey1:
 		slog.Debug("recognized fake public key 1, responding with fake user info")
 		return Info{IsGitHubUser: true, Email: FakeEmail1, CreditOK: true}, nil
+	}
+	if c == nil {
+		return Info{}, fmt.Errorf("nil ghuser.Client")
 	}
 	hash := sha256.Sum256([]byte(trimmed))
 	dbKey := hash[:16]
