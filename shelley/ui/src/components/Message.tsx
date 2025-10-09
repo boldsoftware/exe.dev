@@ -10,6 +10,8 @@ import BrowserNavigateTool from "./BrowserNavigateTool";
 import BrowserEvalTool from "./BrowserEvalTool";
 import ReadImageTool from "./ReadImageTool";
 import BrowserConsoleLogsTool from "./BrowserConsoleLogsTool";
+import ContextMenu from "./ContextMenu";
+import UsageDetailModal from "./UsageDetailModal";
 
 // Display data types from different tools
 interface ToolDisplay {
@@ -28,11 +30,10 @@ function Message({ message }: MessageProps) {
     return null;
   }
 
-  // Check if we have display_data to render
-  const [showTooltip, setShowTooltip] = useState(false);
-  const [hoverTimer, setHoverTimer] = useState<number | null>(null);
-  // Track cursor for tooltip positioning
-  const [cursor, setCursor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showUsageModal, setShowUsageModal] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState<number | null>(null);
   const messageRef = useRef<HTMLDivElement | null>(null);
 
   // Parse usage data if available (only for agent messages)
@@ -56,105 +57,100 @@ function Message({ message }: MessageProps) {
     durationMs = end - start;
   }
 
-  const handleMouseEnter = () => {
-    // Only show tooltip for agent messages with usage data
-    if (message.type === "agent" && usage) {
-      const timer = setTimeout(() => {
-        setShowTooltip(true);
-      }, 500); // Show after 500ms hover
-      setHoverTimer(timer);
+  // Convert Go struct Type field (number) to string type
+  // Based on llm/llm.go constants (iota continues across types in same const block):
+  // MessageRoleUser = 0, MessageRoleAssistant = 1,
+  // ContentTypeText = 2, ContentTypeThinking = 3, ContentTypeRedactedThinking = 4,
+  // ContentTypeToolUse = 5, ContentTypeToolResult = 6
+  const getContentType = (type: number): string => {
+    switch (type) {
+      case 0:
+        return "message_role_user"; // Should not occur in Content, but handle gracefully
+      case 1:
+        return "message_role_assistant"; // Should not occur in Content, but handle gracefully
+      case 2:
+        return "text";
+      case 3:
+        return "thinking";
+      case 4:
+        return "redacted_thinking";
+      case 5:
+        return "tool_use";
+      case 6:
+        return "tool_result";
+      default:
+        return "unknown";
     }
   };
 
-  const handleMouseLeave = () => {
-    if (hoverTimer) {
-      clearTimeout(hoverTimer);
-      setHoverTimer(null);
+  // Get text content from message for copying
+  const getMessageText = (): string => {
+    if (!llmMessage?.Content) return "";
+    
+    const textParts: string[] = [];
+    llmMessage.Content.forEach((content) => {
+      const contentType = getContentType(content.Type);
+      if (contentType === "text" && content.Text) {
+        textParts.push(content.Text);
+      }
+    });
+    return textParts.join("\n");
+  };
+
+  // Handle right-click (desktop)
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  // Handle long-press (mobile)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const timer = setTimeout(() => {
+      setContextMenu({ x: touch.clientX, y: touch.clientY });
+    }, 500); // 500ms long press
+    setLongPressTimer(timer);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
     }
-    setShowTooltip(false);
   };
 
-  const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
-    // Update cursor position for tooltip to follow
-    setCursor({ x: e.clientX, y: e.clientY });
+  const handleTouchMove = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
   };
 
-  // Format duration in human-readable format
-  const formatDuration = (ms: number): string => {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`;
-    return `${(ms / 60000).toFixed(2)}m`;
-  };
+  // Copy icon SVG
+  const CopyIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  );
 
-  // Render tooltip with usage information
-  const renderTooltip = () => {
-    if (!showTooltip || !usage) return null;
+  // Info icon SVG
+  const InfoIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="16" x2="12" y2="12"></line>
+      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
+  );
 
-    // Clamp tooltip within viewport with some padding
-    const vw = typeof window !== "undefined" ? window.innerWidth : 0;
-    const vh = typeof window !== "undefined" ? window.innerHeight : 0;
-    const pad = 12;
-    const left = Math.max(4, Math.min(cursor.x + pad, vw - 360)); // assume max width 360
-    const top = Math.max(4, Math.min(cursor.y + pad, vh - 200)); // rough height cap
-
-    return (
-      <div
-        style={{
-          position: "fixed",
-          left: `${left}px`,
-          top: `${top}px`,
-          backgroundColor: "#1f2937",
-          color: "#f9fafb",
-          padding: "8px 12px",
-          borderRadius: "6px",
-          fontSize: "12px",
-          lineHeight: "1.5",
-          zIndex: 1000,
-          minWidth: "200px",
-          maxWidth: "min(60vw, 360px)",
-          boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-          pointerEvents: "none",
-        }}
-      >
-        <div style={{ fontWeight: "600", marginBottom: "4px" }}>Token Usage</div>
-        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 8px" }}>
-          {usage.model && (
-            <>
-              <div style={{ color: "#9ca3af" }}>Model:</div>
-              <div>{usage.model}</div>
-            </>
-          )}
-          <div style={{ color: "#9ca3af" }}>Input:</div>
-          <div>{usage.input_tokens.toLocaleString()}</div>
-          {usage.cache_read_input_tokens > 0 && (
-            <>
-              <div style={{ color: "#9ca3af" }}>Cache Read:</div>
-              <div>{usage.cache_read_input_tokens.toLocaleString()}</div>
-            </>
-          )}
-          {usage.cache_creation_input_tokens > 0 && (
-            <>
-              <div style={{ color: "#9ca3af" }}>Cache Write:</div>
-              <div>{usage.cache_creation_input_tokens.toLocaleString()}</div>
-            </>
-          )}
-          <div style={{ color: "#9ca3af" }}>Output:</div>
-          <div>{usage.output_tokens.toLocaleString()}</div>
-          {usage.cost_usd > 0 && (
-            <>
-              <div style={{ color: "#9ca3af" }}>Cost:</div>
-              <div>\${usage.cost_usd.toFixed(4)}</div>
-            </>
-          )}
-          {durationMs !== null && (
-            <>
-              <div style={{ color: "#9ca3af" }}>Duration:</div>
-              <div>{formatDuration(durationMs)}</div>
-            </>
-          )}
-        </div>
-      </div>
-    );
+  // Handle copy action
+  const handleCopy = () => {
+    const text = getMessageText();
+    if (text) {
+      navigator.clipboard.writeText(text).catch((err) => {
+        console.error("Failed to copy text:", err);
+      });
+    }
   };
 
   let displayData: ToolDisplay[] | null = null;
@@ -184,6 +180,28 @@ function Message({ message }: MessageProps) {
   const isTool = message.type === "tool" || hasToolContent(llmMessage);
   const isError = message.type === "error";
 
+  // Build context menu items after llmMessage is available
+  const contextMenuItems = [];
+  
+  // Always show copy for messages with text content
+  const messageText = getMessageText();
+  if (messageText) {
+    contextMenuItems.push({
+      label: "Copy",
+      icon: <CopyIcon />,
+      onClick: handleCopy,
+    });
+  }
+
+  // Show usage detail only for agent messages with usage data
+  if (message.type === "agent" && usage) {
+    contextMenuItems.push({
+      label: "Usage Detail",
+      icon: <InfoIcon />,
+      onClick: () => setShowUsageModal(true),
+    });
+  }
+
   // Build a map of tool use IDs to their inputs for linking tool_result back to tool_use
   const toolUseMap: Record<string, { name: string; input: unknown }> = {};
   if (llmMessage && llmMessage.Content) {
@@ -197,32 +215,6 @@ function Message({ message }: MessageProps) {
       }
     });
   }
-
-  // Convert Go struct Type field (number) to string type
-  // Based on llm/llm.go constants (iota continues across types in same const block):
-  // MessageRoleUser = 0, MessageRoleAssistant = 1,
-  // ContentTypeText = 2, ContentTypeThinking = 3, ContentTypeRedactedThinking = 4,
-  // ContentTypeToolUse = 5, ContentTypeToolResult = 6
-  const getContentType = (type: number): string => {
-    switch (type) {
-      case 0:
-        return "message_role_user"; // Should not occur in Content, but handle gracefully
-      case 1:
-        return "message_role_assistant"; // Should not occur in Content, but handle gracefully
-      case 2:
-        return "text";
-      case 3:
-        return "thinking";
-      case 4:
-        return "redacted_thinking";
-      case 5:
-        return "tool_use";
-      case 6:
-        return "tool_result";
-      default:
-        return "unknown";
-    }
-  };
 
   const renderContent = (content: LLMContent) => {
     const contentType = getContentType(content.Type);
@@ -640,45 +632,79 @@ function Message({ message }: MessageProps) {
       }
     }
     return (
-      <div
-        ref={messageRef}
-        className={getMessageClasses()}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onMouseMove={handleMouseMove}
-        style={{ position: "relative" }}
-        data-testid="message"
-        role="alert"
-        aria-label="Error message"
-      >
-        {renderTooltip()}
-        <div className="message-content" data-testid="message-content">
-          <div className="whitespace-pre-wrap break-words">{errorText}</div>
+      <>
+        <div
+          ref={messageRef}
+          className={getMessageClasses()}
+          onContextMenu={handleContextMenu}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
+          style={{ position: "relative" }}
+          data-testid="message"
+          role="alert"
+          aria-label="Error message"
+        >
+          <div className="message-content" data-testid="message-content">
+            <div className="whitespace-pre-wrap break-words">{errorText}</div>
+          </div>
         </div>
-      </div>
+        {contextMenu && contextMenuItems.length > 0 && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            items={contextMenuItems}
+          />
+        )}
+        {showUsageModal && usage && (
+          <UsageDetailModal
+            usage={usage}
+            durationMs={durationMs}
+            onClose={() => setShowUsageModal(false)}
+          />
+        )}
+      </>
     );
   }
 
   // If we have display_data, use that for rendering (more compact, tool-specific)
   if (displayData && displayData.length > 0) {
     return (
-      <div
-        ref={messageRef}
-        className={getMessageClasses()}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onMouseMove={handleMouseMove}
-        style={{ position: "relative" }}
-        data-testid="message"
-        role="article"
-      >
-        {renderTooltip()}
-        <div className="message-content" data-testid="message-content">
-          {displayData.map((toolDisplay, index) => (
-            <div key={index}>{renderDisplayData(toolDisplay, toolDisplay.tool_name)}</div>
-          ))}
+      <>
+        <div
+          ref={messageRef}
+          className={getMessageClasses()}
+          onContextMenu={handleContextMenu}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
+          style={{ position: "relative" }}
+          data-testid="message"
+          role="article"
+        >
+          <div className="message-content" data-testid="message-content">
+            {displayData.map((toolDisplay, index) => (
+              <div key={index}>{renderDisplayData(toolDisplay, toolDisplay.tool_name)}</div>
+            ))}
+          </div>
         </div>
-      </div>
+        {contextMenu && contextMenuItems.length > 0 && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onClose={() => setContextMenu(null)}
+            items={contextMenuItems}
+          />
+        )}
+        {showUsageModal && usage && (
+          <UsageDetailModal
+            usage={usage}
+            durationMs={durationMs}
+            onClose={() => setShowUsageModal(false)}
+          />
+        )}
+      </>
     );
   }
 
@@ -706,24 +732,41 @@ function Message({ message }: MessageProps) {
   }
 
   return (
-    <div
-      ref={messageRef}
-      className={getMessageClasses()}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onMouseMove={handleMouseMove}
-      style={{ position: "relative" }}
-      data-testid="message"
-      role="article"
-    >
-      {renderTooltip()}
-      {/* Message content */}
-      <div className="message-content" data-testid="message-content">
-        {meaningfulContent.map((content, index) => (
-          <div key={index}>{renderContent(content)}</div>
-        ))}
+    <>
+      <div
+        ref={messageRef}
+        className={getMessageClasses()}
+        onContextMenu={handleContextMenu}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchMove={handleTouchMove}
+        style={{ position: "relative" }}
+        data-testid="message"
+        role="article"
+      >
+        {/* Message content */}
+        <div className="message-content" data-testid="message-content">
+          {meaningfulContent.map((content, index) => (
+            <div key={index}>{renderContent(content)}</div>
+          ))}
+        </div>
       </div>
-    </div>
+      {contextMenu && contextMenuItems.length > 0 && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={contextMenuItems}
+        />
+      )}
+      {showUsageModal && usage && (
+        <UsageDetailModal
+          usage={usage}
+          durationMs={durationMs}
+          onClose={() => setShowUsageModal(false)}
+        />
+      )}
+    </>
   );
 }
 
