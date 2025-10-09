@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"runtime/pprof"
 	"strings"
+	"time"
 
 	"exe.dev"
 	"exe.dev/ctrhosttest"
@@ -31,6 +36,8 @@ func run() error {
 	containerdAddresses := flag.String("containerd-addresses", "", "Comma-separated list of containerd addresses (e.g., 'ssh://host1,ssh://host2')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
+	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
+	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
 	flag.Parse()
 
 	// Validate dev mode
@@ -38,9 +45,55 @@ func run() error {
 		return fmt.Errorf(`valid dev modes are "", "local", and "test", got: %q`, *devMode)
 	}
 
+	// Validate -open flag (dev mode only)
+	if *openBrowser && *devMode == "" {
+		return fmt.Errorf("-open flag is only available in dev mode")
+	}
+
 	// Setup structured logging
 	logging.SetupLogger(*devMode)
 	slog.Info("Starting exed server")
+
+	// Start CPU profiling if requested
+	var enableProfiling bool
+	var profPath string
+
+	if *profilePath != "" {
+		enableProfiling = true
+		profPath = *profilePath
+	} else {
+		// Check for empty string flag (user passed -profile without value)
+		flag.Visit(func(f *flag.Flag) {
+			if f.Name == "profile" {
+				enableProfiling = true
+			}
+		})
+	}
+
+	if enableProfiling {
+		if profPath == "" {
+			profPath = filepath.Join("/tmp", fmt.Sprintf("exed-profile-%d.prof", time.Now().Unix()))
+		}
+
+		f, err := os.Create(profPath)
+		if err != nil {
+			return fmt.Errorf("failed to create profile file: %w", err)
+		}
+
+		if err := pprof.StartCPUProfile(f); err != nil {
+			f.Close()
+			return fmt.Errorf("failed to start CPU profile: %w", err)
+		}
+
+		go func() {
+			time.Sleep(30 * time.Second)
+			pprof.StopCPUProfile()
+			f.Close()
+			slog.Info("CPU profile written", "path", profPath)
+		}()
+
+		slog.Info("CPU profiling started for 30 seconds", "path", profPath)
+	}
 
 	// Parse containerd addresses
 	var addresses []string
@@ -78,9 +131,38 @@ func run() error {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
 
+	// Open browser if requested (dev mode only)
+	if *openBrowser {
+		go func() {
+			// Wait a moment for the server to start
+			time.Sleep(500 * time.Millisecond)
+			url := fmt.Sprintf("http://localhost%s", *httpAddr)
+			if err := openBrowserURL(url); err != nil {
+				slog.Warn("failed to open browser", "error", err)
+			} else {
+				slog.Info("opened browser", "url", url)
+			}
+		}()
+	}
+
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("server error: %w", err)
 	}
 
 	return nil // unreachable
+}
+
+func openBrowserURL(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+	return cmd.Start()
 }
