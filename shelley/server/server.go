@@ -106,6 +106,7 @@ type Server struct {
 	logger              *slog.Logger
 	predictableOnly     bool
 	terminalURL         string
+	defaultModel        string
 }
 
 // Subscriber represents a client subscribed to conversation updates
@@ -124,7 +125,7 @@ type ConversationManager struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL string) *Server {
+func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL string, defaultModel string) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
@@ -133,6 +134,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logge
 		logger:              logger,
 		predictableOnly:     predictableOnly,
 		terminalURL:         terminalURL,
+		defaultModel:        defaultModel,
 	}
 }
 
@@ -253,17 +255,34 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	} else {
 		modelIDs := s.llmManager.GetAvailableModels()
 		for _, id := range modelIDs {
+			// Skip predictable model unless predictable-only flag is set
+			if id == "predictable" {
+				continue
+			}
 			_, err := s.llmManager.GetService(id)
 			models = append(models, ModelInfo{ID: id, Ready: err == nil})
 		}
 	}
 
-	// Select default model - prefer first ready model
-	defaultModel := "predictable"
+	// Select default model - use configured default if available, otherwise first ready model
+	defaultModel := s.defaultModel
+	if defaultModel == "" {
+		defaultModel = "claude-sonnet-4.5"
+	}
+	defaultModelAvailable := false
 	for _, m := range models {
-		if m.Ready {
-			defaultModel = m.ID
+		if m.ID == defaultModel && m.Ready {
+			defaultModelAvailable = true
 			break
+		}
+	}
+	if !defaultModelAvailable {
+		// Fall back to first ready model
+		for _, m := range models {
+			if m.Ready {
+				defaultModel = m.ID
+				break
+			}
 		}
 	}
 

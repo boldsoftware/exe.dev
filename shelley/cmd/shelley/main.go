@@ -30,6 +30,7 @@ type GlobalConfig struct {
 	PredictableOnly bool
 	ConfigPath      string
 	TerminalURL     string
+	DefaultModel    string
 }
 
 // Message emoji constants
@@ -50,6 +51,7 @@ func main() {
 	flag.StringVar(&global.Model, "model", "qwen3-coder-fireworks", "LLM model to use (default: qwen3-coder-fireworks; use 'predictable' for testing)")
 	flag.BoolVar(&global.PredictableOnly, "predictable-only", false, "Use only the predictable service, ignoring all other models")
 	flag.StringVar(&global.ConfigPath, "config", "", "Path to shelley.json configuration file (optional)")
+	flag.StringVar(&global.DefaultModel, "default-model", "claude-sonnet-4.5", "Default model for web UI (default: claude-sonnet-4.5)")
 
 	// Custom usage function
 	flag.Usage = func() {
@@ -104,7 +106,7 @@ func runServe(global GlobalConfig, args []string) {
 	defer database.Close()
 
 	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL)
+	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
 
 	// Initialize LLM service manager
 	llmManager := server.NewLLMServiceManager(llmConfig)
@@ -116,7 +118,7 @@ func runServe(global GlobalConfig, args []string) {
 	defer toolsCleanup()
 
 	// Create and start server
-	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL)
+	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel)
 	if err := svr.Start(*port); err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)
@@ -146,7 +148,7 @@ func runPrompt(global GlobalConfig, args []string) {
 	llmService := setupLLMService(global, logger)
 
 	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL)
+	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
 
 	// Initialize LLM service manager for tools (same as HTTP server)
 	llmManager := server.NewLLMServiceManager(llmConfig)
@@ -464,7 +466,7 @@ func setupLLMService(global GlobalConfig, logger *slog.Logger) llm.Service {
 	}
 
 	// Build LLM configuration
-	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL)
+	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
 
 	// Always use the service manager to ensure consistent logging
 	llmManager := server.NewLLMServiceManager(llmConfig)
@@ -615,13 +617,14 @@ func executeKeyGenerator(command string) (string, error) {
 }
 
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file
-func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string) *server.LLMConfig {
+func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string, defaultModel string) *server.LLMConfig {
 	llmCfg := &server.LLMConfig{
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 		OpenAIAPIKey:    os.Getenv("OPENAI_API_KEY"),
 		GeminiAPIKey:    os.Getenv("GEMINI_API_KEY"),
 		FireworksAPIKey: os.Getenv("FIREWORKS_API_KEY"),
 		TerminalURL:     terminalURL,
+		DefaultModel:    defaultModel,
 		Logger:          logger,
 	}
 
@@ -638,6 +641,7 @@ func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string) 
 			LLMGateway   string `json:"llm_gateway"`
 			KeyGenerator string `json:"key_generator"`
 			TerminalURL  string `json:"terminal_url"`
+			DefaultModel string `json:"default_model"`
 		}
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			logger.Warn("Failed to parse config file", "path", configPath, "error", err)
@@ -669,6 +673,12 @@ func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string) 
 		if cfg.TerminalURL != "" && llmCfg.TerminalURL == "" {
 			llmCfg.TerminalURL = cfg.TerminalURL
 			logger.Info("Using terminal URL from config", "url", cfg.TerminalURL)
+		}
+
+		// Override default model from config file if present and not already set via flag
+		if cfg.DefaultModel != "" && llmCfg.DefaultModel == "" {
+			llmCfg.DefaultModel = cfg.DefaultModel
+			logger.Info("Using default model from config", "model", cfg.DefaultModel)
 		}
 	}
 
