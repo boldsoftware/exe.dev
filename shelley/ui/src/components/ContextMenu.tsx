@@ -27,41 +27,41 @@ function ContextMenu({ x, y, onClose, items }: ContextMenuProps) {
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('[data-context-menu]')) {
+      if (!target.closest("[data-context-menu]")) {
         onClose();
       }
     };
 
     // Use capture phase to ensure we catch the click before other handlers
-    document.addEventListener('mousedown', handleClickOutside, true);
-    return () => document.removeEventListener('mousedown', handleClickOutside, true);
+    document.addEventListener("mousedown", handleClickOutside, true);
+    return () => document.removeEventListener("mousedown", handleClickOutside, true);
   }, [onClose]);
 
   // Close on escape key
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
   return (
     <div
       data-context-menu
       style={{
-        position: 'fixed',
+        position: "fixed",
         left: `${clampedX}px`,
         top: `${clampedY}px`,
-        backgroundColor: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '6px',
-        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+        backgroundColor: "#ffffff",
+        border: "1px solid #e5e7eb",
+        borderRadius: "6px",
+        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
         zIndex: 10000,
         minWidth: `${menuWidth}px`,
-        padding: '4px 0',
+        padding: "4px 0",
       }}
     >
       {items.map((item, index) => (
@@ -72,27 +72,27 @@ function ContextMenu({ x, y, onClose, items }: ContextMenuProps) {
             onClose();
           }}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            width: '100%',
-            padding: '10px 16px',
-            border: 'none',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
-            fontSize: '14px',
-            color: '#1f2937',
-            textAlign: 'left',
-            transition: 'background-color 0.1s',
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            width: "100%",
+            padding: "10px 16px",
+            border: "none",
+            backgroundColor: "transparent",
+            cursor: "pointer",
+            fontSize: "14px",
+            color: "#1f2937",
+            textAlign: "left",
+            transition: "background-color 0.1s",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.backgroundColor = "#f3f4f6";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.backgroundColor = "transparent";
           }}
         >
-          <span style={{ display: 'flex', alignItems: 'center', width: '20px', height: '20px' }}>
+          <span style={{ display: "flex", alignItems: "center", width: "20px", height: "20px" }}>
             {item.icon}
           </span>
           <span>{item.label}</span>
