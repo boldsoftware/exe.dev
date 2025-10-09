@@ -21,6 +21,7 @@ type Server struct {
 	DB           *sql.DB
 	Hostname     string
 	TemplatesDir string
+	StaticDir    string
 }
 
 type welcomePageData struct {
@@ -28,20 +29,17 @@ type welcomePageData struct {
 	Now        string
 	UserEmail  string
 	VisitCount int64
-	AuthLinks  []authLink
-}
-
-type authLink struct {
-	Label string
-	URL   string
+	LoginURL   string
+	LogoutURL  string
 }
 
 func New(dbPath, hostname string) (*Server, error) {
 	_, thisFile, _, _ := runtime.Caller(0)
-	templatesDir := filepath.Join(filepath.Dir(thisFile), "templates")
+	baseDir := filepath.Dir(thisFile)
 	srv := &Server{
 		Hostname:     hostname,
-		TemplatesDir: templatesDir,
+		TemplatesDir: filepath.Join(baseDir, "templates"),
+		StaticDir:    filepath.Join(baseDir, "static"),
 	}
 	if err := srv.setUpDatabase(dbPath); err != nil {
 		return nil, err
@@ -81,10 +79,8 @@ func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
 		Now:        now.Format(time.RFC3339),
 		UserEmail:  userEmail,
 		VisitCount: count,
-		AuthLinks: []authLink{
-			{Label: "Login", URL: loginURLForRequest(r)},
-			{Label: "Logout", URL: "/__exe.dev/logout"},
-		},
+		LoginURL:   loginURLForRequest(r),
+		LogoutURL:  "/__exe.dev/logout",
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -152,6 +148,7 @@ func (s *Server) setUpDatabase(dbPath string) error {
 func (s *Server) Serve(addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.HandleRoot)
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(s.StaticDir))))
 	slog.Info("starting welcome server", "addr", addr)
 	return http.ListenAndServe(addr, mux)
 }

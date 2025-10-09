@@ -1,132 +1,78 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{.Hostname}}</title>
-    <style>
-      body {
-        font-family:
-          system-ui,
-          -apple-system,
-          Segoe UI,
-          Roboto,
-          Helvetica,
-          Arial,
-          sans-serif;
-        max-width: 740px;
-        margin: 40px auto;
-        padding: 0 16px;
-        color: #222;
-      }
-      .muted {
-        color: #666;
-      }
-      .auth-action {
-        font-family: monospace;
-        text-decoration: none;
-        color: #0066cc;
-      }
-      .auth-action:hover {
-        text-decoration: underline;
-      }
-      hr {
-        border: none;
-        border-top: 1px solid #e0e0e0;
-        margin: 24px 0;
-      }
-      .auth-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-      .auth-list li {
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .copy-btn {
-        border: none;
-        background: none;
-        cursor: pointer;
-        padding: 0;
-        margin-left: 4px;
-      }
-      .clipboard-icon {
-        transition: background 0.3s;
-        padding: 2px 4px;
-        border-radius: 6px;
-      }
-      .clipboard-icon.copied {
-        background: rgba(100, 180, 255, 0.3);
-      }
-      .link-icon {
-        text-decoration: none;
-        display: inline-block;
-        vertical-align: baseline;
-      }
-      .auth-link {
-        word-break: break-all;
-        font-family: monospace;
-        background: #f5f5f5;
-        padding: 4px 8px;
-        border-radius: 4px;
-      }
-    </style>
+    <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <header>
-      <h1>Welcome to {{.Hostname}}.exe.dev</h1>
-      <p class="muted">Time: {{.Now}}</p>
-      <p class="muted">
-        {{if .UserEmail}}
-        Signed in as <strong>{{.UserEmail}}</strong>
-        {{else}}
-        Not signed in
-        {{end}}
+    <main>
+      <h1>I'm alive, now what?</h1>
+      
+      <p class="intro">
+        This page is being served by the <code>welcome</code> service on your new exe.dev box. It's got a persistent disk for storage, and, as you can see, it's accessible over HTTPS at this address. Login with SSH or over the web to customize it or open up Shelley, our coding agent, to customize it. When you make something you want to share, ssh back into exe.dev to publish it!
       </p>
-    </header>
-    <hr />
-    {{if .VisitCount}}
-    <p>You’ve viewed this page <strong>{{.VisitCount}}</strong> times.</p>
-    {{end}}
-    <section>
-      <h3>Auth URLs</h3>
-      <ul class="auth-list">
-        {{range .AuthLinks}}
+
+      <div class="hostname">{{.Hostname}}</div>
+
+      <ul class="actions">
         <li>
-          <span class="muted">{{.Label}}:</span>
-          <span class="auth-link">{{.URL}}</span
-          ><button
-            type="button"
-            class="copy-btn"
-            data-copy="{{.URL}}"
-            aria-label="Copy {{.Label}} URL"
-          >
-            <span class="clipboard-icon">📋</span></button
-          ><a class="link-icon" href="{{.URL}}">🔗</a>
+          <a href="#" class="ssh-copy" data-copy="ssh {{.Hostname}}.exe.dev">
+            <span class="action-icon">🔑</span>
+            <span class="action-label">SSH</span>
+            <span class="action-detail">ssh {{.Hostname}}.exe.dev</span>
+          </a>
         </li>
-        {{end}}
+        <li>
+          <a href="https://{{.Hostname}}.xterm.exe.dev" target="_blank">
+            <span class="action-icon">💻</span>
+            <span class="action-label">Terminal</span>
+            <span class="action-detail">{{.Hostname}}.xterm.exe.dev</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://{{.Hostname}}.exe.dev:9999" target="_blank">
+            <span class="action-icon">🤖</span>
+            <span class="action-label">Shelley Agent</span>
+            <span class="action-detail">{{.Hostname}}.exe.dev:9999</span>
+          </a>
+        </li>
+        <li>
+          <a href="https://exe.dev" target="_blank">
+            <span class="action-icon">🏠</span>
+            <span class="action-label">exe.dev</span>
+            <span class="action-detail">exe.dev</span>
+          </a>
+        </li>
       </ul>
-    </section>
-    <script>
-      document.addEventListener("click", function (event) {
-        var btn = event.target.closest(".copy-btn");
-        if (!btn) {
-          return;
-        }
-        var text = btn.getAttribute("data-copy");
-        if (!text) {
-          return;
-        }
-        navigator.clipboard.writeText(text).catch(function () {});
-        var icon = btn.querySelector(".clipboard-icon");
-        icon.classList.add("copied");
-        setTimeout(function () {
-          icon.classList.remove("copied");
-        }, 300);
-        btn.blur();
-      });
-    </script>
+
+      <hr />
+
+      <div class="user-info">
+        <p class="user-status">
+          {{if .UserEmail}}
+          Signed in as <strong>{{.UserEmail}}</strong>
+          {{else}}
+          Not signed in
+          {{end}}
+        </p>
+        <div class="auth-buttons">
+          {{if .UserEmail}}
+          <a href="{{.LogoutURL}}">logout</a>
+          {{else}}
+          <a href="{{.LoginURL}}">login</a>
+          {{end}}
+        </div>
+      </div>
+
+      {{if .VisitCount}}
+      <p class="counter">You've viewed this page <strong>{{.VisitCount}}</strong> times.</p>
+      {{end}}
+    </main>
+
+    <div class="copied-feedback" id="copiedFeedback">Copied to clipboard!</div>
+
+    <script src="/static/script.js"></script>
   </body>
 </html>

@@ -30,14 +30,17 @@ func TestServerSetupAndHandlers(t *testing.T) {
 		}
 
 		body := w.Body.String()
-		if !strings.Contains(body, "Welcome to ") {
-			t.Errorf("expected page to contain 'Welcome to ', got body: %s", body)
+		if !strings.Contains(body, "test-hostname") {
+			t.Errorf("expected page to show hostname, got body: %s", body)
+		}
+		if !strings.Contains(body, "I'm alive, now what?") {
+			t.Errorf("expected page to contain tagline, got body: %s", body)
 		}
 		if strings.Contains(body, "Signed in as") {
 			t.Errorf("expected page to not be logged in, got body: %s", body)
 		}
-		if !strings.Contains(body, "test-hostname") {
-			t.Errorf("expected page to show hostname, got body: %s", body)
+		if !strings.Contains(body, "Not signed in") {
+			t.Errorf("expected page to show 'Not signed in', got body: %s", body)
 		}
 	})
 
