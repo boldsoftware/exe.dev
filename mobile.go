@@ -302,23 +302,17 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, "new.html", data)
 }
 
-// handleMobileNew renders the VM creation page explicitly
+// handleMobileNew renders the responsive welcome/new page
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
-	// Always show the create page (even if logged in)
+	// Always show the responsive page (desktop welcome, mobile create)
 	hostnameSuggestion := boxname.Random()
-
-	// Check if user is authenticated
-	_, err := s.validateAuthCookie(r)
-	isLoggedIn := err == nil
 
 	data := struct {
 		HostnameSuggestion string
-		IsLoggedIn         bool
 	}{
 		HostnameSuggestion: hostnameSuggestion,
-		IsLoggedIn:         isLoggedIn,
 	}
-	s.renderTemplate(w, "new.html", data)
+	s.renderTemplate(w, "welcome.html", data)
 }
 
 // handleMobileHostnameCheck checks if a hostname is available

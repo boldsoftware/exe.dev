@@ -6,6 +6,7 @@
     <title>EXE.DEV - just use ssh</title>
     <link rel="stylesheet" href="/static/exe.css">
     {{template "topbar_style" .}}
+    <link rel="stylesheet" href="/static/form.css">
     <style>
         body {
             display: flex;
@@ -16,7 +17,8 @@
             align-items: stretch;
         }
 
-        main {
+        /* Desktop welcome view - uses default textured beige background from exe.css */
+        .welcome-view {
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -110,106 +112,295 @@
             overflow-x: auto;
         }
 
-        @media (max-width: 600px) {
-            main {
-                padding: 20px 10px;
+        /* Mobile new box view - white background */
+        .new-view {
+            display: none;
+            min-height: 100vh;
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+            background: #fff;
+        }
+        
+        .form-input-large {
+            font-size: 18px;
+            padding: 14px 16px;
+        }
+        
+        .form-input-suffix-large {
+            font-size: 18px;
+        }
+
+        /* Mobile: hide welcome, show new */
+        @media (max-width: 768px) {
+            .welcome-view {
+                display: none;
             }
 
-            .content-section {
-                flex-direction: column;
-                width: 100%;
-                padding: 0 10px;
+            .new-view {
+                display: block;
             }
 
-            .description {
+            body {
+                padding: 0;
+                background: #fff;
+                background-image: none;
+            }
+            
+            .form-container {
+                padding: 16px 0;
+                max-width: 100%;
+            }
+            
+            .form-card {
+                border: none;
+                border-radius: 0;
+                padding: 20px 16px;
+                box-shadow: none;
+            }
+            
+            .form-title {
+                font-size: 20px;
+                margin-bottom: 20px;
+            }
+            
+            .form-input-group {
+                flex-direction: row;
+                align-items: center;
+                gap: 6px;
+            }
+            
+            .form-input-large {
+                font-size: 16px;
+                padding: 12px 10px;
+                text-align: left;
+                flex: 1;
+                min-width: 0;
+            }
+            
+            .form-input-suffix-large {
+                font-size: 14px;
+                color: #666;
+                flex-shrink: 0;
+            }
+            
+            .form-button {
+                font-size: 16px;
+                padding: 14px 16px;
+            }
+            
+            .form-group {
+                margin-bottom: 16px;
+            }
+            
+            .form-label {
+                font-size: 13px;
+                margin-bottom: 6px;
+            }
+            
+            .form-hint {
+                font-size: 12px;
+                margin-top: 4px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .form-card {
+                padding: 16px 12px;
+            }
+            
+            .form-title {
+                font-size: 18px;
+                margin-bottom: 16px;
+            }
+            
+            .form-input-large {
                 font-size: 15px;
-                letter-spacing: 0.1em;
-                text-align: center;
+                padding: 11px 8px;
             }
-
-            .blowfish-logo {
-                width: 150px;
-            }
-
-            .woodcut-icon {
-                width: 100px;
-            }
-
-            .https-section {
-                flex-direction: column;
-                gap: 20px;
-            }
-
-            /* Reorder browser section on mobile to show text first */
-            .browser-section {
-                flex-direction: column-reverse;
-            }
-
-            .woodcut-icon-side {
-                width: 130px;
-            }
-
-            .command-block {
-                padding: 12px 15px;
-                white-space: pre-wrap;
-                word-break: break-word;
-                font-size: clamp(14px, 3vw, 18px);
-                width: auto;
-                max-width: calc(100vw - 40px);
-                overflow-x: auto;
-                margin-left: auto;
-                margin-right: auto;
+            
+            .form-input-suffix-large {
+                font-size: 13px;
             }
         }
     </style>
 </head>
 <body>
     {{template "topbar" .}}
-    <main>
-        <h1>just use ssh</h1>
+    
+    <!-- Desktop Welcome View -->
+    <div class="welcome-view">
+        <main>
+            <h1>just use ssh</h1>
 
-        <aside>persistent, private servers</aside>
+            <aside>persistent, private servers</aside>
 
-        <div class="content-section command-row">
-            <div class="command-block">ssh exe.dev</div>
+            <div class="content-section command-row">
+                <div class="command-block">ssh exe.dev</div>
+            </div>
+
+            <div class="content-section">
+                <p class="description">
+                    As many VMs as you need for a <strong>flat rate</strong><br><br>
+                    Keep it private,<br>
+                    share it with an invite link<br><br>
+                    <strong>Start a VM</strong> in a second with ssh
+                </p>
+
+                <img src="/static/exy.png" alt="exe.dev blowfish logo" class="blowfish-logo">
+            </div>
+
+            <div class="content-section https-section browser-section">
+                <img src="/static/browser-woodcut.png" alt="HTTPS browser security" class="woodcut-icon-side">
+                <p class="description">
+                    <strong>HTTPS</strong> done for you<br>
+                    auth proxy <strong>by default</strong><br>
+                </p>
+            </div>
+
+            <hr>
+
+            <div class="content-section command-row">
+                <p class="description">
+                    All the comforts of <code>$HOME</code>
+                </p>
+                <p class="description">
+                    <strong>sign up</strong> now, in your terminal
+                </p>
+                <div class="command-block">ssh exe.dev</div>
+            </div>
+
+            <nav>
+                <a href="/about">about</a>
+                <a href="/blog">blog</a>
+                <a href="/jobs">jobs</a>
+            </nav>
+        </main>
+    </div>
+    
+    <!-- Mobile New Box View -->
+    <div class="new-view">
+        <div class="form-container">
+            <div class="form-card">
+                <h1 class="form-title">Create a New Box</h1>
+                
+                <form id="create-vm-form" method="POST" action="/create-vm">
+                    <div class="form-group">
+                        <div class="form-input-group">
+                            <input
+                                type="text"
+                                id="hostname"
+                                name="hostname"
+                                class="form-input form-input-large"
+                                placeholder="{{.HostnameSuggestion}}"
+                                value="{{.HostnameSuggestion}}"
+                                required
+                                autocomplete="off"
+                            />
+                            <span class="form-input-suffix form-input-suffix-large">.exe.dev</span>
+                        </div>
+                        <div id="hostname-hint" class="form-hint"></div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="prompt" class="form-label">What do you want to build? <span style="color: #999; font-weight: 400;">(optional)</span></label>
+                        <textarea
+                            id="prompt"
+                            name="prompt"
+                            class="form-input form-textarea"
+                            placeholder="Build a blog..."
+                            rows="4"
+                        ></textarea>
+                    </div>
+                    
+                    <button type="submit" class="form-button" id="create-button" disabled>
+                        Create Box
+                    </button>
+                </form>
+            </div>
         </div>
-
-        <div class="content-section">
-            <p class="description">
-		As many VMs as you need for a <strong>flat rate</strong><br><br>
-                Keep it private,<br>
-		share it with an invite link<br><br>
-                <strong>Start a VM</strong> in a second with ssh
-            </p>
-
-            <img src="/static/exy.png" alt="exe.dev blowfish logo" class="blowfish-logo">
-        </div>
-
-        <div class="content-section https-section browser-section">
-            <img src="/static/browser-woodcut.png" alt="HTTPS browser security" class="woodcut-icon-side">
-            <p class="description">
-                <strong>HTTPS</strong> done for you<br>
-                auth proxy <strong>by default</strong><br>
-            </p>
-        </div>
-
-        <hr>
-
-        <div class="content-section command-row">
-            <p class="description">
-                All the comforts of <code>$HOME</code>
-            </p>
-            <p class="description">
-                <strong>sign up</strong> now, in your terminal
-            </p>
-            <div class="command-block">ssh exe.dev</div>
-        </div>
-
-        <nav>
-            <a href="/about">about</a>
-            <a href="/blog">blog</a>
-            <a href="/jobs">jobs</a>
-        </nav>
-    </main>
+    </div>
+    
+    <script>
+        // Only run mobile scripts on mobile
+        if (window.innerWidth <= 768) {
+            // Placeholder text rotation
+            const placeholders = [
+                'Run a Jupyter notebook...',
+                'Deploy a web app...',
+                'Create an API...',
+                'Launch a game server...',
+                'Build a chatbot...',
+                'Set up CI/CD...',
+                'Set up a database...',
+                'Build a blog...'
+            ];
+            
+            let currentPlaceholderIndex = 0;
+            const promptInput = document.getElementById('prompt');
+            
+            function rotatePlaceholder() {
+                if (promptInput.value === '' && document.activeElement !== promptInput) {
+                    currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholders.length;
+                    promptInput.placeholder = placeholders[currentPlaceholderIndex];
+                }
+            }
+            
+            setInterval(rotatePlaceholder, 5000);
+            
+            // Hostname availability checking
+            const hostnameInput = document.getElementById('hostname');
+            const hostnameHint = document.getElementById('hostname-hint');
+            const createButton = document.getElementById('create-button');
+            
+            let checkTimeout;
+            
+            function checkHostnameAvailability() {
+                const hostname = hostnameInput.value.trim();
+                
+                if (!hostname) {
+                    hostnameHint.innerHTML = '';
+                    hostnameHint.className = 'form-hint';
+                    createButton.disabled = true;
+                    return;
+                }
+                
+                // Show spinner
+                hostnameHint.innerHTML = '<span class="spinner"></span>Checking availability...';
+                hostnameHint.className = 'form-hint';
+                
+                fetch('/check-hostname', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ hostname: hostname }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.valid && data.available) {
+                        hostnameHint.textContent = '';
+                        hostnameHint.className = 'form-hint';
+                        createButton.disabled = false;
+                    } else {
+                        hostnameHint.textContent = '✗ ' + data.message;
+                        hostnameHint.className = 'form-hint error';
+                        createButton.disabled = true;
+                    }
+                })
+                .catch(error => {
+                    hostnameHint.textContent = '✗ Error checking availability';
+                    hostnameHint.className = 'form-hint error';
+                    createButton.disabled = true;
+                });
+            }
+            
+            hostnameInput.addEventListener('input', function() {
+                clearTimeout(checkTimeout);
+                checkTimeout = setTimeout(checkHostnameAvailability, 500);
+            });
+            
+            // Check initial hostname
+            checkHostnameAvailability();
+        }
+    </script>
 </body>
 </html>

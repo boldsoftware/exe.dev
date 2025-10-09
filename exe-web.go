@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/porkbun"
@@ -287,7 +288,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
 		return
 	case "/welcome":
-		if err := s.renderTemplate(w, "welcome.html", nil); err != nil {
+		// Serve responsive page (desktop welcome, mobile new box form)
+		hostnameSuggestion := boxname.Random()
+		data := struct {
+			HostnameSuggestion string
+		}{
+			HostnameSuggestion: hostnameSuggestion,
+		}
+		if err := s.renderTemplate(w, "welcome.html", data); err != nil {
 			return
 		}
 		return

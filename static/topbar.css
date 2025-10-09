@@ -108,8 +108,13 @@ header .btn .btn-text {
 }
 
 @media (max-width: 768px) {
+  /* Keep nav-links visible but adjust styling */
   header .nav-links {
-    display: none;
+    gap: 16px;
+  }
+  
+  header .nav-links a {
+    font-size: 13px;
   }
   
   header .btn .btn-text {
@@ -118,5 +123,19 @@ header .btn .btn-text {
   
   header .btn {
     padding: 8px 12px;
+  }
+  
+  /* Hide waitlist button on mobile */
+  header .btn-waitlist {
+    display: none;
+  }
+  
+  /* Reduce gap between left and right sections on mobile */
+  header .nav-left {
+    gap: 16px;
+  }
+  
+  header .nav-right {
+    gap: 8px;
   }
 }
