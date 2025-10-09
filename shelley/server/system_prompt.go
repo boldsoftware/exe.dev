@@ -25,9 +25,9 @@ type GitInfo struct {
 }
 
 type CodebaseInfo struct {
-	InjectFiles     []string
+	InjectFiles        []string
 	InjectFileContents map[string]string
-	GuidanceFiles   []string
+	GuidanceFiles      []string
 }
 
 // GenerateSystemPrompt generates the system prompt using the embedded template
@@ -155,10 +155,10 @@ func findGuidanceFilesInDir(dir string) []string {
 	}
 
 	guidanceNames := map[string]bool{
-		"agent.md": true,
-		"claude.md": true,
+		"agent.md":    true,
+		"claude.md":   true,
 		"dear_llm.md": true,
-		"readme.md": true,
+		"readme.md":   true,
 	}
 
 	var found []string
@@ -179,8 +179,8 @@ func findGuidanceFilesInDir(dir string) []string {
 
 func findAllGuidanceFiles(root string) []string {
 	guidanceNames := map[string]bool{
-		"agent.md": true,
-		"claude.md": true,
+		"agent.md":    true,
+		"claude.md":   true,
 		"dear_llm.md": true,
 	}
 
