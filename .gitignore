@@ -1,5 +1,5 @@
 dist/
-./exed
+/exed
 exe.db
 exe.db-wal
 exe.db-shm
@@ -8,7 +8,7 @@ ghuser/whoami.sqlite3*
 node_modules/
 sshpiper/sshpiperd
 sshpiper/metrics
-exed
+/cmd/exed/exed
 *.cover
 # codex seems to need a local go cache because of its sandbox.
 # it keeps recreating this; stop fighting it.
