@@ -111,7 +111,6 @@ jobs:
             
             # Clean up
             rm -f ".git/index-report" commit-msg.txt
-            rm commit-msg.txt
             unset GIT_INDEX_FILE
             
             # Output the link to the report
