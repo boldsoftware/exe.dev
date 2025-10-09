@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/template"
 )
@@ -16,10 +17,17 @@ var systemPromptTemplate string
 type SystemPromptData struct {
 	WorkingDirectory string
 	GitInfo          *GitInfo
+	Codebase         *CodebaseInfo
 }
 
 type GitInfo struct {
 	Root string
+}
+
+type CodebaseInfo struct {
+	InjectFiles     []string
+	InjectFileContents map[string]string
+	GuidanceFiles   []string
 }
 
 // GenerateSystemPrompt generates the system prompt using the embedded template
@@ -59,6 +67,12 @@ func collectSystemData() (*SystemPromptData, error) {
 		data.GitInfo = gitInfo
 	}
 
+	// Collect codebase info
+	codebaseInfo, err := collectCodebaseInfo(wd, gitInfo)
+	if err == nil {
+		data.Codebase = codebaseInfo
+	}
+
 	return data, nil
 }
 
@@ -74,4 +88,125 @@ func collectGitInfo() (*GitInfo, error) {
 	return &GitInfo{
 		Root: root,
 	}, nil
+}
+
+func collectCodebaseInfo(wd string, gitInfo *GitInfo) (*CodebaseInfo, error) {
+	info := &CodebaseInfo{
+		InjectFiles:        []string{},
+		InjectFileContents: make(map[string]string),
+		GuidanceFiles:      []string{},
+	}
+
+	// Determine the root directory to search
+	searchRoot := wd
+	if gitInfo != nil {
+		searchRoot = gitInfo.Root
+	}
+
+	// Track seen files to avoid duplicates on case-insensitive file systems
+	seenFiles := make(map[string]bool)
+
+	// Find root-level guidance files (case-insensitive)
+	rootGuidanceFiles := findGuidanceFilesInDir(searchRoot)
+	for _, file := range rootGuidanceFiles {
+		lowerPath := strings.ToLower(file)
+		if seenFiles[lowerPath] {
+			continue
+		}
+		seenFiles[lowerPath] = true
+
+		content, err := os.ReadFile(file)
+		if err == nil && len(content) > 0 {
+			info.InjectFiles = append(info.InjectFiles, file)
+			info.InjectFileContents[file] = string(content)
+		}
+	}
+
+	// If working directory is different from root, also check working directory
+	if wd != searchRoot {
+		wdGuidanceFiles := findGuidanceFilesInDir(wd)
+		for _, file := range wdGuidanceFiles {
+			lowerPath := strings.ToLower(file)
+			if seenFiles[lowerPath] {
+				continue
+			}
+			seenFiles[lowerPath] = true
+
+			content, err := os.ReadFile(file)
+			if err == nil && len(content) > 0 {
+				info.InjectFiles = append(info.InjectFiles, file)
+				info.InjectFileContents[file] = string(content)
+			}
+		}
+	}
+
+	// Find all guidance files recursively for the directory listing
+	allGuidanceFiles := findAllGuidanceFiles(searchRoot)
+	info.GuidanceFiles = allGuidanceFiles
+
+	return info, nil
+}
+
+func findGuidanceFilesInDir(dir string) []string {
+	// Read directory entries to handle case-insensitive file systems
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	guidanceNames := map[string]bool{
+		"agent.md": true,
+		"claude.md": true,
+		"dear_llm.md": true,
+		"readme.md": true,
+	}
+
+	var found []string
+	seen := make(map[string]bool)
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		lowerName := strings.ToLower(entry.Name())
+		if guidanceNames[lowerName] && !seen[lowerName] {
+			seen[lowerName] = true
+			found = append(found, filepath.Join(dir, entry.Name()))
+		}
+	}
+	return found
+}
+
+func findAllGuidanceFiles(root string) []string {
+	guidanceNames := map[string]bool{
+		"agent.md": true,
+		"claude.md": true,
+		"dear_llm.md": true,
+	}
+
+	var found []string
+	seen := make(map[string]bool)
+
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue on errors
+		}
+		if info.IsDir() {
+			// Skip hidden directories and common ignore patterns
+			if strings.HasPrefix(info.Name(), ".") || info.Name() == "node_modules" || info.Name() == "vendor" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		lowerName := strings.ToLower(info.Name())
+		if guidanceNames[lowerName] {
+			lowerPath := strings.ToLower(path)
+			if !seen[lowerPath] {
+				seen[lowerPath] = true
+				found = append(found, path)
+			}
+		}
+		return nil
+	})
+	return found
 }
