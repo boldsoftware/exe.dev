@@ -150,10 +150,32 @@ func New(token, dbPath string) (*Client, error) {
 	// 	return nil, fmt.Errorf("failed to validate GitHub token: %w", err)
 	// }
 
+	db, err := openDB(dbPath)
+	if err != nil {
+		slog.Warn("failed to open github-whoami database, falling back to empty in-memory db", "error", err)
+		db, err = newInMemoryDB()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open and to create empty github-whoami database: %w", err)
+		}
+	}
+
+	// Prepare statement for lookups
+	stmt, err := db.Prepare("SELECT userID FROM key_userid WHERE keyHash = ?")
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+
+	c.db = db
+	c.stmt = stmt
+	return c, nil
+}
+
+func openDB(dbPath string) (*sql.DB, error) {
 	// Open database
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("failed to open github-whoami database: %w", err)
 	}
 
 	// Check row count
@@ -168,16 +190,20 @@ func New(token, dbPath string) (*Client, error) {
 		return nil, fmt.Errorf("database has only %d rows, expected at least 20 million", count)
 	}
 
-	// Prepare statement for lookups
-	stmt, err := db.Prepare("SELECT userID FROM key_userid WHERE keyHash = ?")
-	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to prepare statement: %w", err)
-	}
+	return db, nil
+}
 
-	c.db = db
-	c.stmt = stmt
-	return c, nil
+func newInMemoryDB() (*sql.DB, error) {
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create in-memory database: %w", err)
+	}
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`CREATE TABLE key_userid (keyHash BLOB PRIMARY KEY, userID INTEGER) WITHOUT ROWID`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize in-memory database schema: %w", err)
+	}
+	return db, nil
 }
 
 // Close releases resources.
