@@ -68,7 +68,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	if testing.Verbose() {
+	if testing.Verbose() && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
 		fmt.Print(`
 ════════
 -v requested, but the e1e tests generate lots of output, and they run in parallel.
