@@ -47,41 +47,7 @@ var (
 
 const banner = "~~~ EXE.DEV ~~~"
 
-var Env *testEnv
-
-func TestMain(m *testing.M) {
-	vouch.For("josh")
-	flag.Parse()
-
-	initLogging()
-
-	ctrHost := ctrhosttest.Detect()
-	if os.Getenv("CI") != "" && ctrHost == "" {
-		fmt.Println("skipping restart tests in CI: no ctr-host accessible")
-		return
-	}
-
-	env, err := setup(ctrHost)
-	if err != nil {
-		slog.Error("restart test setup failed", "error", err)
-		if env != nil {
-			env.Close(nil)
-		}
-		os.Exit(1)
-	}
-
-	manager, err := env.initContainerManager(ctrHost)
-	if err != nil {
-		slog.Error("failed to init container manager", "error", err)
-		env.Close(nil)
-		os.Exit(1)
-	}
-
-	Env = env
-	code := m.Run()
-	env.Close(manager)
-	os.Exit(code)
-}
+var loggingOnce sync.Once
 
 func initLogging() {
 	level := slog.LevelWarn
@@ -91,15 +57,54 @@ func initLogging() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
 }
 
+type restartSuite struct {
+	t   *testing.T
+	env *testEnv
+}
+
+func newRestartSuite(t *testing.T) *restartSuite {
+	t.Helper()
+	vouch.For("josh")
+	loggingOnce.Do(initLogging)
+
+	ctrHost := ctrhosttest.Detect()
+	if os.Getenv("CI") != "" && ctrHost == "" {
+		t.Skip("skipping restart tests in CI: no ctr-host accessible")
+	}
+
+	env, err := setup(ctrHost)
+	if err != nil {
+		if env != nil {
+			env.Close(nil)
+		}
+		t.Fatalf("restart test setup failed: %v", err)
+	}
+
+	manager, err := env.initContainerManager(ctrHost)
+	if err != nil {
+		env.Close(nil)
+		t.Fatalf("failed to init container manager: %v", err)
+	}
+
+	suite := &restartSuite{t: t, env: env}
+	t.Cleanup(func() {
+		env.Close(manager)
+	})
+	return suite
+}
+
 func TestBoxRecoversAfterCtrHostAndExedRestart(t *testing.T) {
 	vouch.For("david")
 	testsOnlyRunOnce(t)
 
-	if Env.ctrHostAddress == "" {
+	suite := newRestartSuite(t)
+	env := suite.env
+
+	if env.ctrHostAddress == "" {
 		t.Skip("CTR_HOST not configured; skipping recovery test")
 	}
 
-	pty, _, keyFile, _ := registerForExeDev(t)
+	pty, _, keyFile, _ := suite.registerForExeDev()
 	boxName := newBox(t, pty)
 	pty.disconnect()
 
@@ -107,21 +112,21 @@ func TestBoxRecoversAfterCtrHostAndExedRestart(t *testing.T) {
 		testFile    = "/home/exedev/recovery-check.txt"
 		testContent = "recovery verifies disk persistence"
 	)
-	writeCmd := boxSSHCommand(t, boxName, keyFile, "bash", "-lc", fmt.Sprintf("cat <<'EOF' > %[1]s\n%[2]s\nEOF", testFile, testContent))
+	writeCmd := suite.boxSSHCommand(boxName, keyFile, "bash", "-lc", fmt.Sprintf("cat <<'EOF' > %[1]s\n%[2]s\nEOF", testFile, testContent))
 	if out, err := writeCmd.CombinedOutput(); err != nil {
 		t.Fatalf("failed to write recovery file: %v\n%s", err, out)
 	}
 
-	slog.Info("starting ctr-host restart sequence", "address", Env.ctrHostAddress, "alias", Env.ctrHostAlias)
-	Env.restartCtrHost(t)
-	slog.Info("ctr-host restart initiated", "alias", Env.ctrHostAlias, "domain", Env.ctrHostDomain)
-	waitForCtrHost(t, Env.ctrHostAlias)
+	slog.Info("starting ctr-host restart sequence", "address", env.ctrHostAddress, "alias", env.ctrHostAlias)
+	env.restartCtrHost(t)
+	slog.Info("ctr-host restart initiated", "alias", env.ctrHostAlias, "domain", env.ctrHostDomain)
+	waitForCtrHost(t, env, env.ctrHostAlias)
 
-	Env.restartExed(t)
+	env.restartExed(t)
 
-	waitForBoxSSH(t, boxName, keyFile)
+	suite.waitForBoxSSH(boxName, keyFile)
 
-	cmd := boxSSHCommand(t, boxName, keyFile, "whoami")
+	cmd := suite.boxSSHCommand(boxName, keyFile, "whoami")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("failed to reach box after restarts: %v\n%s", err, out)
@@ -130,7 +135,7 @@ func TestBoxRecoversAfterCtrHostAndExedRestart(t *testing.T) {
 		t.Fatalf("unexpected whoami output after restarts: %q", who)
 	}
 
-	verifyCmd := boxSSHCommand(t, boxName, keyFile, "cat", testFile)
+	verifyCmd := suite.boxSSHCommand(boxName, keyFile, "cat", testFile)
 	fileOut, err := verifyCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("failed to read recovery file after restarts: %v\n%s", err, fileOut)
@@ -749,7 +754,7 @@ func restartSSHHost(t *testing.T, alias string) string {
 	return hostName
 }
 
-func logCtrHostDiagnostics(t *testing.T, alias string) {
+func logCtrHostDiagnostics(t *testing.T, env *testEnv, alias string) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 
@@ -774,14 +779,14 @@ func logCtrHostDiagnostics(t *testing.T, alias string) {
 		)
 	}
 
-	if Env != nil && Env.ctrHostDomain != "" {
-		runCmd("sudo", "virsh", "domifaddr", Env.ctrHostDomain, "--source", "lease")
-		runCmd("sudo", "virsh", "dominfo", Env.ctrHostDomain)
+	if env != nil && env.ctrHostDomain != "" {
+		runCmd("sudo", "virsh", "domifaddr", env.ctrHostDomain, "--source", "lease")
+		runCmd("sudo", "virsh", "dominfo", env.ctrHostDomain)
 	}
 	runCmd("sudo", "virsh", "list", "--all")
 }
 
-func waitForCtrHost(t *testing.T, alias string) {
+func waitForCtrHost(t *testing.T, env *testEnv, alias string) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
 
@@ -806,7 +811,7 @@ func waitForCtrHost(t *testing.T, alias string) {
 			return
 		}
 		if ctx.Err() != nil {
-			logCtrHostDiagnostics(t, alias)
+			logCtrHostDiagnostics(t, env, alias)
 			t.Fatalf("context cancelled while waiting for ctr-host %s: %v", alias, ctx.Err())
 		}
 
@@ -815,7 +820,7 @@ func waitForCtrHost(t *testing.T, alias string) {
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			logCtrHostDiagnostics(t, alias)
+			logCtrHostDiagnostics(t, env, alias)
 			t.Fatalf("timed out waiting for ctr-host %s to become available", alias)
 		}
 
@@ -901,17 +906,17 @@ func (p *expectPty) attachAndStart(cmd *exec.Cmd) {
 	p.t.Cleanup(func() { _ = cmd.Wait() })
 }
 
-func sshWithUsername(t *testing.T, username, keyFile string) *expectPty {
-	pty := makePty(t, "ssh "+usernameAt(username)+"localhost")
-	sshArgs := baseSSHArgs(username, keyFile)
-	cmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
+func (s *restartSuite) sshWithUsername(username, keyFile string) *expectPty {
+	pty := makePty(s.t, "ssh "+usernameAt(username)+"localhost")
+	sshArgs := s.baseSSHArgs(username, keyFile)
+	cmd := exec.CommandContext(s.env.context(s.t), "ssh", sshArgs...)
 	cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
 	pty.attachAndStart(cmd)
 	return pty
 }
 
-func sshToExeDev(t *testing.T, keyFile string) *expectPty {
-	pty := sshWithUsername(t, "", keyFile)
+func (s *restartSuite) sshToExeDev(keyFile string) *expectPty {
+	pty := s.sshWithUsername("", keyFile)
 	pty.promptRe = regexp.QuoteMeta("\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
 	return pty
 }
@@ -965,10 +970,10 @@ func usernameAt(username string) string {
 	return username + "@"
 }
 
-func baseSSHArgs(username, keyFile string) []string {
+func (s *restartSuite) baseSSHArgs(username, keyFile string) []string {
 	return []string{
 		"-F", "/dev/null",
-		"-p", fmt.Sprint(Env.sshPort()),
+		"-p", fmt.Sprint(s.env.sshPort()),
 		"-o", "IdentityFile=" + keyFile,
 		"-o", "IdentityAgent=none",
 		"-o", "StrictHostKeyChecking=no",
@@ -994,19 +999,19 @@ func (e *testEnv) exedHTTPPort() int {
 	return e.exed.HTTPPort
 }
 
-func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
-	keyFile, publicKey := genSSHKey(t)
-	pty = sshToExeDev(t, keyFile)
+func (s *restartSuite) registerForExeDev() (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
+	keyFile, publicKey := genSSHKey(s.t)
+	pty = s.sshToExeDev(keyFile)
 	pty.want(banner)
 	pty.want("Please enter your email")
 
-	email = t.Name() + "@example.com"
+	email = s.t.Name() + "@example.com"
 	pty.sendLine(email)
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	pty.wantRe("Pairing code: .*")
 
-	message := Env.email.waitForEmail(t, email)
-	cookies = verifyEmail(t, message)
+	message := s.env.email.waitForEmail(s.t, email)
+	cookies = s.verifyEmail(message)
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
@@ -1019,33 +1024,33 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 	return pty, cookies, keyFile, email
 }
 
-func verifyEmail(t *testing.T, msg emailMessage) []*http.Cookie {
+func (s *restartSuite) verifyEmail(msg emailMessage) []*http.Cookie {
 	link := extractVerificationLink(msg.Body)
 	if link == "" {
-		t.Fatalf("verification link not found in email body: %s", msg.Body)
+		s.t.Fatalf("verification link not found in email body: %s", msg.Body)
 	}
 	parsed, err := url.Parse(link)
 	if err != nil {
-		t.Fatalf("invalid verification link %q: %v", link, err)
+		s.t.Fatalf("invalid verification link %q: %v", link, err)
 	}
 
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		t.Fatalf("failed to create cookie jar: %v", err)
+		s.t.Fatalf("failed to create cookie jar: %v", err)
 	}
 	client := &http.Client{Jar: jar}
 
 	resp, err := client.Get(link)
 	if err != nil {
-		t.Fatalf("failed to fetch verification link: %v", err)
+		s.t.Fatalf("failed to fetch verification link: %v", err)
 	}
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		t.Fatalf("failed to read verification page: %v", err)
+		s.t.Fatalf("failed to read verification page: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("verification page returned %d: %s", resp.StatusCode, string(body))
+		s.t.Fatalf("verification page returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	hidden := regexp.MustCompile(`<input[^>]+name="([^\"]+)"[^>]+value="([^\"]*)"[^>]*>`)
@@ -1065,15 +1070,15 @@ func verifyEmail(t *testing.T, msg emailMessage) []*http.Cookie {
 		}
 	}
 
-	postURL := fmt.Sprintf("http://localhost:%d%s", Env.exedHTTPPort(), action)
+	postURL := fmt.Sprintf("http://localhost:%d%s", s.env.exedHTTPPort(), action)
 	resp, err = client.PostForm(postURL, form)
 	if err != nil {
-		t.Fatalf("failed to submit verification form: %v", err)
+		s.t.Fatalf("failed to submit verification form: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("verification form returned %d: %s", resp.StatusCode, string(body))
+		s.t.Fatalf("verification form returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	return jar.Cookies(parsed)
@@ -1099,27 +1104,27 @@ func newBox(t *testing.T, pty *expectPty) string {
 	return name
 }
 
-func boxSSHCommand(t *testing.T, boxName, keyFile string, args ...string) *exec.Cmd {
-	sshArgs := baseSSHArgs(boxName, keyFile)
+func (s *restartSuite) boxSSHCommand(boxName, keyFile string, args ...string) *exec.Cmd {
+	sshArgs := s.baseSSHArgs(boxName, keyFile)
 	sshArgs = append(sshArgs, args...)
-	cmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
+	cmd := exec.CommandContext(s.env.context(s.t), "ssh", sshArgs...)
 	cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
 	return cmd
 }
 
-func waitForBoxSSH(t *testing.T, boxName, keyFile string) {
+func (s *restartSuite) waitForBoxSSH(boxName, keyFile string) {
 	start := time.Now()
 	delay := 2 * time.Second
 	const maxDelay = 20 * time.Second
 
 	for {
-		cmd := boxSSHCommand(t, boxName, keyFile, "true")
+		cmd := s.boxSSHCommand(boxName, keyFile, "true")
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			return
 		}
 		if time.Since(start) > 5*time.Minute {
-			t.Fatalf("timed out waiting for box ssh: %v\n%s", err, out)
+			s.t.Fatalf("timed out waiting for box ssh: %v\n%s", err, out)
 		}
 		time.Sleep(delay)
 		if delay < maxDelay {
