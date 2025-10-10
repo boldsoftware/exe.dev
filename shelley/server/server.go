@@ -107,6 +107,7 @@ type Server struct {
 	predictableOnly     bool
 	terminalURL         string
 	defaultModel        string
+	links               []Link
 }
 
 // Subscriber represents a client subscribed to conversation updates
@@ -125,7 +126,7 @@ type ConversationManager struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL string, defaultModel string) *Server {
+func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logger *slog.Logger, predictableOnly bool, terminalURL string, defaultModel string, links []Link) *Server {
 	return &Server{
 		db:                  database,
 		llmManager:          llmManager,
@@ -135,6 +136,7 @@ func NewServer(database *db.DB, llmManager LLMProvider, tools []*llm.Tool, logge
 		predictableOnly:     predictableOnly,
 		terminalURL:         terminalURL,
 		defaultModel:        defaultModel,
+		links:               links,
 	}
 }
 
@@ -292,6 +294,9 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 	}
 	if s.terminalURL != "" {
 		initData["terminal_url"] = s.terminalURL
+	}
+	if len(s.links) > 0 {
+		initData["links"] = s.links
 	}
 
 	initJSON, err := json.Marshal(initData)

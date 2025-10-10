@@ -2093,23 +2093,36 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 	// Add shelley.json if we can determine the gateway
 	var gatewayURL string
 	var terminalURL string
+	var exedevURL string
 	if m.config.IsProduction {
 		gatewayURL = "https://exe.dev"
+		exedevURL = "https://exe.dev"
 		terminalURL = fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 	} else {
 		gatewayIP, err := m.getGatewayIP(ctx, host)
 		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, m.config.ExedListeningPort)
 		if err == nil {
 			gatewayURL = fmt.Sprintf("http://%s:%d", gatewayIP, m.config.ExedListeningPort)
+			exedevURL = fmt.Sprintf("http://localhost:%d", m.config.ExedListeningPort)
 		}
 	}
-	shelleyJSON := map[string]string{
+	shelleyJSON := map[string]interface{}{
 		"terminal_url":  terminalURL,
 		"default_model": "claude-sonnet-4.5",
 	}
 	if gatewayURL != "" {
 		shelleyJSON["llm_gateway"] = gatewayURL
 		shelleyJSON["key_generator"] = "sudo /usr/local/bin/generate-gateway-token"
+	}
+	// Add "Back to exe.dev" link if we have an exe.dev URL
+	if exedevURL != "" {
+		shelleyJSON["links"] = []map[string]string{
+			{
+				"title":    "Back to exe.dev",
+				"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+				"url":      exedevURL,
+			},
+		}
 	}
 
 	shelleyJSONBytes, err := json.MarshalIndent(shelleyJSON, "", "  ")

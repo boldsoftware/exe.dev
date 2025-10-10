@@ -2,6 +2,13 @@ package server
 
 import "log/slog"
 
+// Link represents a custom link to be displayed in the UI
+type Link struct {
+	Title   string `json:"title"`
+	IconSVG string `json:"icon_svg,omitempty"` // SVG path data for the icon
+	URL     string `json:"url"`
+}
+
 // LLMConfig holds all configuration for LLM services
 type LLMConfig struct {
 	// API keys for each provider
@@ -18,6 +25,9 @@ type LLMConfig struct {
 
 	// DefaultModel is the default model to use (optional, defaults to claude-sonnet-4.5)
 	DefaultModel string
+
+	// Links are custom links to be displayed in the UI (optional)
+	Links []Link
 
 	Logger *slog.Logger
 }

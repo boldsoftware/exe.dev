@@ -59,11 +59,19 @@ export interface StreamResponse {
   conversation: Conversation;
 }
 
+// Link represents a custom link that can be added to the UI
+export interface Link {
+  title: string;
+  icon_svg?: string; // SVG path data for the icon
+  url: string;
+}
+
 // InitData is injected into window by the server
 export interface InitData {
   models: Model[];
   default_model: string;
   terminal_url?: string;
+  links?: Link[];
 }
 
 // Extend Window interface to include our init data

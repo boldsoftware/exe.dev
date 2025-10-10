@@ -118,7 +118,7 @@ func runServe(global GlobalConfig, args []string) {
 	defer toolsCleanup()
 
 	// Create and start server
-	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel)
+	svr := server.NewServer(database, llmManager, tools, logger, global.PredictableOnly, llmConfig.TerminalURL, llmConfig.DefaultModel, llmConfig.Links)
 	if err := svr.Start(*port); err != nil {
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)
@@ -638,10 +638,11 @@ func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string, 
 		}
 
 		var cfg struct {
-			LLMGateway   string `json:"llm_gateway"`
-			KeyGenerator string `json:"key_generator"`
-			TerminalURL  string `json:"terminal_url"`
-			DefaultModel string `json:"default_model"`
+			LLMGateway   string         `json:"llm_gateway"`
+			KeyGenerator string         `json:"key_generator"`
+			TerminalURL  string         `json:"terminal_url"`
+			DefaultModel string         `json:"default_model"`
+			Links        []server.Link  `json:"links"`
 		}
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			logger.Warn("Failed to parse config file", "path", configPath, "error", err)
@@ -679,6 +680,12 @@ func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string, 
 		if cfg.DefaultModel != "" && llmCfg.DefaultModel == "" {
 			llmCfg.DefaultModel = cfg.DefaultModel
 			logger.Info("Using default model from config", "model", cfg.DefaultModel)
+		}
+
+		// Load links from config file if present
+		if len(cfg.Links) > 0 {
+			llmCfg.Links = cfg.Links
+			logger.Info("Loaded links from config", "count", len(cfg.Links))
 		}
 	}
 
