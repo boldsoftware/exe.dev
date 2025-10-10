@@ -73,6 +73,11 @@ jobs:
           # Verify the binary works
           ./sketch --version || echo "sketch binary downloaded successfully"
 
+      - name: Setup headless-shell
+        run: |
+          docker run --rm --entrypoint "bash" chromedp/headless-shell -c "tar -cvf - /headless-shell/" | tar -xf-
+          echo "$PWD/headless-shell" >> $GITHUB_PATH
+
       - name: Run e2e AI tests
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
