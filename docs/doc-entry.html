@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>exe docs: {{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [hidden]{{end}}</title>
+    <title>exe docs: {{.Entry.Title}}{{if and .ShowHidden (not .Entry.Published)}} [draft]{{end}}</title>
     <link rel="stylesheet" href="/static/exe.css" />
     {{template "topbar_style" .}}
     <style>
@@ -271,7 +271,7 @@
           <div class="sidebar-heading">{{.Heading}}</div>
           {{range .Docs}}
           <a href="{{.Path}}" class="sidebar-link{{if eq .Path $.Entry.Path}} active{{end}}">
-            {{.Title}}{{if and $.ShowHidden (not .Published)}} [hidden]{{end}}
+            {{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}
           </a>
           {{end}} {{end}}
         </div>
@@ -281,7 +281,7 @@
       <main class="main">
         {{with .Entry}}
         <a class="back-to-list" href="/docs">&larr; All docs</a>
-        <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [hidden]{{end}}</h1>
+        <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}</h1>
 
         <div class="doc-content">{{.Content}}</div>
         {{end}}
