@@ -197,6 +197,8 @@ func (c *Client) Close() error {
 type Info struct {
 	// IsGitHubUser indicates whether the public key is recognized as belonging to a GitHub user.
 	IsGitHubUser bool
+	// Login is the GitHub login name for the user.
+	Login string
 	// Email is the GitHub-validated email address for the user.
 	// Excludes GitHub-proxied addresses.
 	Email string
@@ -266,10 +268,10 @@ func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
 	switch trimmed {
 	case FakePublicKey0:
 		slog.Debug("recognized fake public key 0, responding with fake user info")
-		return Info{IsGitHubUser: true, Email: FakeEmail0, CreditOK: true}, nil
+		return Info{IsGitHubUser: true, Login: "fakeuser0", Email: FakeEmail0, CreditOK: true}, nil
 	case FakePublicKey1:
 		slog.Debug("recognized fake public key 1, responding with fake user info")
-		return Info{IsGitHubUser: true, Email: FakeEmail1, CreditOK: true}, nil
+		return Info{IsGitHubUser: true, Login: "fakeuser1", Email: FakeEmail1, CreditOK: true}, nil
 	}
 	if c == nil {
 		return Info{}, fmt.Errorf("nil ghuser.Client")
@@ -315,6 +317,7 @@ func (c *Client) info(ctx context.Context, dbKey []byte, trimmedKey string) (Inf
 	if !isGHProxyEmail(user.Email) {
 		info.Email = user.Email
 	}
+	info.Login = user.Login
 	info.CreditOK = user.CreatedAt.Before(userCreationCutoff) && user.PublicRepos > 0
 
 	return info, nil
