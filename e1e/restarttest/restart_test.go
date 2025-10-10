@@ -64,7 +64,6 @@ type restartSuite struct {
 
 func newRestartSuite(t *testing.T) *restartSuite {
 	t.Helper()
-	vouch.For("josh")
 	loggingOnce.Do(initLogging)
 
 	ctrHost := ctrhosttest.Detect()
@@ -96,6 +95,10 @@ func newRestartSuite(t *testing.T) *restartSuite {
 func TestBoxRecoversAfterCtrHostAndExedRestart(t *testing.T) {
 	vouch.For("david")
 	testsOnlyRunOnce(t)
+
+	if os.Getenv("CI") == "" {
+		t.Skip("skipping restart tests outside CI")
+	}
 
 	suite := newRestartSuite(t)
 	env := suite.env
