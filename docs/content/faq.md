@@ -1,7 +1,7 @@
 ---
 title: Frequent Asked Questions
 description: and some infrequently asked ones too
-subheading: "3. Other"
+subheading: "4. Other"
 suborder: 1
 published: true
 ---

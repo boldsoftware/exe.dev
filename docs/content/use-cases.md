@@ -1,6 +1,7 @@
 ---
 title: exe.dev Use Cases
 description: Potential projects and services you can run on exe.dev containers.
+subheading: "4. Other"
 published: false
 ---
 
