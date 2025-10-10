@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"exe.dev/boxname"
+	"exe.dev/cobble"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/porkbun"
@@ -85,24 +86,39 @@ func (s *Server) setupHTTPSServer() {
 	porkbunAPIKey := os.Getenv("PORKBUN_API_KEY")
 	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
 
-	if porkbunAPIKey != "" && porkbunSecretKey != "" {
-		// Use Porkbun for wildcard certificates with DNS challenge
+	if porkbunAPIKey != "" && porkbunSecretKey != "" && s.devMode == "" {
+		// Use Porkbun for wildcard certificates with DNS challenge (production only)
 		slog.Info("Using Porkbun DNS provider for wildcard TLS certificates")
 		s.wildcardCertManager = porkbun.NewWildcardCertManager(
-			"exe.dev",
-			"support@exe.dev",
+			s.getMainDomain(),
+			"support@"+s.getMainDomain(),
 			porkbunAPIKey,
 			porkbunSecretKey,
 			autocert.DirCache("certs"),
 		)
 	} else {
-		// Fall back to regular autocert for non-wildcard certificates
 		slog.Info("Using standard autocert (no wildcard support)", "note", "Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates")
-		s.certManager = &autocert.Manager{
-			Cache:      autocert.DirCache("certs"),
-			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist("exe.dev"),
+	}
+
+	s.certManager = &autocert.Manager{
+		Cache:      autocert.DirCache("certs"),
+		Prompt:     autocert.AcceptTOS,
+		HostPolicy: s.hostPolicy,
+	}
+
+	if s.devMode != "" {
+		// In dev mode, use cobble to get locally-trusted certs
+		slog.Info("Using Pebble ACME test server for TLS certificates in dev mode")
+		stone, err := cobble.Start(context.Background(), &cobble.Config{
+			AlwaysValid: true,
+			Log:         os.Stdout,
+		})
+		if err != nil {
+			slog.Error("failed to start Pebble ACME server", "error", err)
+			return
 		}
+		s.stopCobble = stone.Stop
+		s.certManager.Client = stone.Client()
 	}
 
 	// Single TLS dispatcher for all domains (exe.dev and Tailscale)
@@ -154,6 +170,94 @@ func (s *Server) setupHTTPSServer() {
 	}()
 }
 
+var errBoxNotFound = errors.New("box not found")
+
+// resolveBoxName converts a hostname to a box name.
+// If hostname is a subdomain of the main domain (e.g., box.exe.dev),
+// it returns the box name with the main domain suffix stripped (e.g., "box").
+// In dev mode, also handles .localhost subdomains the same way.
+// For all other hostname values, a CNAME lookup is performed, and the above
+// rules are applied to the result; otherwise an error is returned.
+func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, error) {
+	if hostname == "" {
+		return "", nil
+	}
+
+	parse := func(hostname string) string {
+		// Try main domain first (exe.dev or exe.local)
+		hostname, _ = strings.CutSuffix(hostname, s.getMainDomain())
+		if hostname == "" {
+			// host is the main domain or empty
+			return hostname
+		}
+		host, isMainSubDomain := strings.CutSuffix(hostname, ".")
+		if isMainSubDomain {
+			return host
+		}
+
+		// In dev mode, also try localhost suffix
+		if s.devMode != "" {
+			hostname, _ = strings.CutSuffix(hostname, "localhost")
+			if hostname == "" {
+				return hostname
+			}
+			host, isLocalhostSubDomain := strings.CutSuffix(hostname, ".")
+			if isLocalhostSubDomain {
+				return host
+			}
+		}
+
+		return ""
+	}
+
+	if boxName := parse(hostname); boxName != "" {
+		return boxName, nil
+	}
+
+	cname, err := s.lookupCNAME(ctx, hostname)
+	if err != nil {
+		return "", err
+	}
+
+	// CNAME records often have a trailing dot for FQDN.
+	// For example, "example.exe.dev." is the canonical form of "example.exe.dev",
+	// and some DNS providers always return the FQDN (such as Cloudflare, and Route53).
+	cname = strings.TrimSuffix(cname, ".")
+	return parse(cname), nil
+}
+
+func (s *Server) lookupCNAME(ctx context.Context, host string) (string, error) {
+	if s.lookupCNAMEFunc != nil {
+		return s.lookupCNAMEFunc(ctx, host)
+	}
+	return net.DefaultResolver.LookupCNAME(ctx, host)
+}
+
+func (s *Server) hostPolicy(ctx context.Context, host string) error {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if host == s.getMainDomain() || host == s.getMainDomain("www") || strings.HasSuffix(host, "."+s.getMainDomain()) {
+		return nil
+	}
+
+	cname, err := s.lookupCNAME(ctx, host)
+	if err != nil {
+		slog.Warn("hostPolicy: CNAME lookup failed", "host", host, "error", err)
+		return fmt.Errorf("CNAME lookup failed for %s: %w", host, err)
+	}
+
+	cname = strings.TrimSuffix(strings.ToLower(cname), ".")
+	name, ok := strings.CutSuffix(cname, "."+s.getMainDomain())
+	if !ok {
+		slog.Warn("hostPolicy: CNAME does not point to main domain", "host", host, "cname", cname, "mainDomain", s.getMainDomain())
+		return fmt.Errorf("CNAME does not point to %s: %s -> %s", s.getMainDomain(), host, cname)
+	}
+	if !s.boxByNameExists(ctx, name) {
+		slog.Warn("hostPolicy: no box found for subdomain", "subdomain", host)
+		return fmt.Errorf("%w: %s", errBoxNotFound, name)
+	}
+	return nil
+}
+
 // getCertificate is the single TLS certificate dispatcher for HTTPS.
 // It serves:
 // - Tailscale node certificate for the machine's Tailscale DNS name
@@ -174,18 +278,24 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 		return nil, fmt.Errorf("tailscale certificate not available for %s", s.tsDomain)
 	}
 
-	// 2) exe.dev handling
-	if serverName == "exe.dev" || serverName == "www.exe.dev" || strings.HasSuffix(serverName, ".exe.dev") {
+	// 2) Main domain handling
+	if serverName == s.getMainDomain() || serverName == s.getMainDomain("www") || strings.HasSuffix(serverName, "."+s.getMainDomain()) {
 		if s.wildcardCertManager != nil {
 			return s.wildcardCertManager.GetCertificate(hello)
 		}
-		if s.certManager != nil {
-			return s.certManager.GetCertificate(hello)
-		}
-		return nil, fmt.Errorf("no certificate manager configured for exe.dev")
+
+		// fall through to standard autocert for custom domains
 	}
 
-	return nil, fmt.Errorf("unsupported domain %s", hello.ServerName)
+	if s.certManager == nil {
+		slog.Error("no certificate manager configured; was https enabled at startup?", "serverName", serverName)
+		return nil, fmt.Errorf("no certificate manager configured for %s", s.getMainDomain())
+	}
+
+	slog.Debug("getCertificate", "serverName", serverName)
+	defer slog.Debug("getCertificate done", "serverName", serverName)
+
+	return s.certManager.GetCertificate(hello)
 }
 
 // setupProxyServers configures additional listeners for proxy ports
@@ -859,6 +969,29 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// In dev mode, skip email verification and go straight to auth/confirm
+	if s.devMode != "" && r.Method == "GET" {
+		// Extract redirect parameters
+		redirectURL := r.URL.Query().Get("redirect")
+		returnHost := r.URL.Query().Get("return_host")
+
+		if redirectURL != "" && returnHost != "" {
+			// Get the first user in the database (dev mode convenience)
+			userID, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+				return queries.GetFirstUserID(ctx)
+			})
+			if err != nil {
+				slog.Error("Failed to get first user for dev mode auth bypass", "error", err)
+				http.Error(w, "No users found in database. Please create one first.", http.StatusInternalServerError)
+				return
+			}
+
+			// Redirect directly to redirectAfterAuth flow
+			s.redirectAfterAuth(w, r, userID)
+			return
+		}
+	}
+
 	// Handle POST request (email submission)
 	if r.Method == "POST" {
 		s.handleAuthEmailSubmission(w, r)
@@ -1142,10 +1275,11 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		hostname = returnHost[:idx]
 	}
 
-	// Parse hostname to get box name
-	boxName := s.parseProxyHostname(hostname)
-	if boxName == "" {
-		http.Error(w, "bad proxy hostname", http.StatusBadRequest)
+	// Parse hostname to get box name (including custom domains via CNAME)
+	boxName, err := s.resolveBoxName(r.Context(), hostname)
+	if err != nil || boxName == "" {
+		slog.Info("handleAuthConfirm failed to resolve box name", "hostname", hostname, "error", err)
+		http.Error(w, "invalid hostname format", http.StatusBadRequest)
 		return
 	}
 
@@ -1346,7 +1480,11 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 
 	slog.Debug("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
 
-	if returnHost != "" && redirectURL != "" {
+	// Check if returnHost is actually a subdomain that needs proxy/terminal auth
+	// Skip the proxy/terminal flow if returnHost is the main domain itself
+	shouldDoProxyFlow := returnHost != "" && redirectURL != "" && !s.isMainDomain(returnHost)
+
+	if shouldDoProxyFlow {
 		if s.isTerminalRequest(returnHost) {
 			slog.Debug("[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
 			// Parse hostname to extract box name
@@ -1377,15 +1515,15 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			return
 		} else if s.isProxyRequest(returnHost) {
 			slog.Debug("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
-			// Parse hostname to extract box and team names
+			// Parse hostname to extract box name (including custom domains via CNAME)
 			hostname := returnHost
 			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
 				hostname = returnHost[:idx]
 			}
 
-			boxName := s.parseProxyHostname(hostname)
-			if boxName == "" {
-				slog.Info("redirectAfterAuth failed to parse proxy hostname", "hostname", hostname)
+			boxName, err := s.resolveBoxName(r.Context(), hostname)
+			if err != nil || boxName == "" {
+				slog.Info("redirectAfterAuth failed to resolve box name", "hostname", hostname, "error", err)
 				http.Error(w, "invalid hostname format", http.StatusBadRequest)
 				return
 			}
@@ -1607,4 +1745,19 @@ func getScheme(r *http.Request) string {
 		return "https"
 	}
 	return "http"
+}
+
+// isMainDomain checks if the given host (with optional port) is the main domain
+func (s *Server) isMainDomain(host string) bool {
+	// Strip port if present
+	hostname := host
+	if idx := strings.LastIndex(host, ":"); idx > 0 {
+		hostname = host[:idx]
+	}
+
+	mainDomain := s.getMainDomain()
+
+	// Check if it's exactly the main domain or www subdomain
+	return hostname == mainDomain || hostname == "www."+mainDomain ||
+		(s.devMode != "" && (hostname == "localhost" || hostname == "exe.local"))
 }

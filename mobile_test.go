@@ -14,6 +14,7 @@ func TestMobileHomeRoute(t *testing.T) {
 
 	// Test GET /m
 	req := httptest.NewRequest("GET", "/m", nil)
+	req.Host = server.getMainDomain()
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
@@ -36,6 +37,7 @@ func TestMobileHostnameCheck(t *testing.T) {
 	// Test hostname availability check
 	reqBody := `{"hostname": "test-hostname"}`
 	req := httptest.NewRequest("POST", "/m/check-hostname", strings.NewReader(reqBody))
+	req.Host = server.getMainDomain()
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -75,6 +77,7 @@ func TestMobileCreateVMFlow(t *testing.T) {
 	form.Add("prompt", "Build a blog")
 
 	req := httptest.NewRequest("POST", "/m/create-vm", strings.NewReader(form.Encode()))
+	req.Host = server.getMainDomain()
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -103,6 +106,7 @@ func TestMobileEmailAuth(t *testing.T) {
 	form.Add("email", "test@example.com")
 
 	req := httptest.NewRequest("POST", "/m/email-auth", strings.NewReader(form.Encode()))
+	req.Host = server.getMainDomain()
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -125,6 +129,7 @@ func TestMobileVMListUnauthorized(t *testing.T) {
 
 	// Test VM list without authentication
 	req := httptest.NewRequest("GET", "/m/home", nil)
+	req.Host = server.getMainDomain()
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
@@ -145,6 +150,7 @@ func TestMobileInvalidHostname(t *testing.T) {
 	// Test invalid hostname check
 	reqBody := `{"hostname": "a"}`
 	req := httptest.NewRequest("POST", "/m/check-hostname", strings.NewReader(reqBody))
+	req.Host = server.getMainDomain()
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -180,6 +186,7 @@ func TestMobileInvalidEmail(t *testing.T) {
 	form.Add("email", "invalid-email")
 
 	req := httptest.NewRequest("POST", "/m/email-auth", strings.NewReader(form.Encode()))
+	req.Host = server.getMainDomain()
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)

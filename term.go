@@ -521,7 +521,7 @@ type terminalAuthKey struct{}
 
 // isTerminalRequest determines if a request is for a terminal subdomain
 func (s *Server) isTerminalRequest(host string) bool {
-	// Remove port if present
+	// Extract hostname (strip port if present)
 	hostname := host
 	if idx := strings.LastIndex(host, ":"); idx > 0 {
 		hostname = host[:idx]

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -64,6 +65,12 @@ func createTestRequestForServer(method, url, host string, server *Server) *http.
 }
 
 func TestProxyRequestRouting(t *testing.T) {
+	slog0 := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})))
+	defer slog.SetDefault(slog0)
+
 	t.Parallel()
 	server := NewTestServer(t)
 
@@ -92,6 +99,7 @@ func TestProxyRequestRouting(t *testing.T) {
 	tests := []struct {
 		name           string
 		host           string
+		cname          string // Optional CNAME to simulate DNS resolution
 		expectedProxy  bool
 		expectedStatus int
 		expectedBody   string
@@ -120,14 +128,29 @@ func TestProxyRequestRouting(t *testing.T) {
 		{
 			name:           "unrelated domain",
 			host:           "example.com",
-			expectedProxy:  false,
-			expectedStatus: 404, // Test server doesn't have full routing
-			expectedBody:   "",
+			expectedProxy:  true,
+			cname:          mainHost, // Simulate CNAME to main domain
+			expectedStatus: 307,      // Valid but private,
+			expectedBody:   "/__exe.dev/login?redirect=",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			slog0 := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			})))
+			defer slog.SetDefault(slog0)
+
+			server.lookupCNAMEFunc = func(ctx context.Context, host string) (string, error) {
+				if tt.cname != "" {
+					// Simulate that the CNAME lookup resolves to the main domain
+					return tt.cname, nil
+				}
+				return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+			}
+
 			// Test isProxyRequest logic
 			got := server.isProxyRequest(tt.host)
 			if got != tt.expectedProxy {
@@ -141,7 +164,7 @@ func TestProxyRequestRouting(t *testing.T) {
 			server.ServeHTTP(w, req)
 
 			if w.Code != tt.expectedStatus {
-				t.Errorf("ServeHTTP status = %d, want %d", w.Code, tt.expectedStatus)
+				t.Errorf("ServeHTTP (host=%q) status = %d, want %d", tt.host, w.Code, tt.expectedStatus)
 			}
 
 			if tt.expectedProxy && tt.expectedBody != "" {
@@ -832,15 +855,15 @@ func TestIsProxyRequest(t *testing.T) {
 			name:     "other domain",
 			devMode:  "test",
 			host:     "example.com",
-			expected: false,
-			comment:  "Other domains should not be proxy requests",
+			expected: true,
+			comment:  "Other domains should be proxy requests",
 		},
 		{
 			name:     "subdomain of other domain",
 			devMode:  "test",
 			host:     "mybox.example.com",
-			expected: false,
-			comment:  "Subdomains of other domains should not be proxy requests",
+			expected: true,
+			comment:  "Subdomains of other domains should be proxy requests",
 		},
 	}
 

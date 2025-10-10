@@ -146,13 +146,16 @@ type Server struct {
 	// but it's close, and it's much better than time.Sleep+hope.
 	ready sync.WaitGroup
 
-	httpServer          *http.Server
-	httpsServer         *http.Server
-	sshConfig           *ssh.ServerConfig
-	sshHostKey          ssh.Signer
-	sshServer           *SSHServer
+	httpServer  *http.Server
+	httpsServer *http.Server
+	sshConfig   *ssh.ServerConfig
+	sshHostKey  ssh.Signer
+	sshServer   *SSHServer
+
 	certManager         *autocert.Manager
 	wildcardCertManager *porkbun.WildcardCertManager
+	lookupCNAMEFunc     func(context.Context, string) (string, error) // for tests
+	stopCobble          func() error
 
 	// Tailscale HTTPS (preloaded at startup)
 	tsCert   *tls.Certificate
@@ -213,6 +216,22 @@ type listener struct {
 	ln       net.Listener // listener (nil if not started yet)
 	addr     string       // resolved listening address (e.g. if origAddr was :0)
 	tcp      *net.TCPAddr // resolved TCP listening address
+}
+
+func (l *listener) String() string {
+	if l == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("<tcp %sstarted addr=%q orig=%q>",
+		func() string {
+			if l.ln != nil {
+				return ""
+			}
+			return "un"
+		}(),
+		l.addr,
+		l.origAddr,
+	)
 }
 
 func unusedListener(addr string) *listener {
@@ -308,7 +327,6 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	if httpsAddr != "" {
 		// HTTPS is configured, use https://exe.dev
 		baseURL = "https://exe.dev"
-		httpLn = unusedListener(httpAddr)
 		httpsLn, err = startListener("https", httpsAddr)
 		if err != nil {
 			db.Close()
@@ -316,15 +334,16 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		}
 	} else {
 		httpsLn = unusedListener(httpsAddr)
-		httpLn, err = startListener("http", httpAddr)
-		if err != nil {
-			db.Close()
-			return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
-		}
-		// No HTTPS, use http://localhost with the HTTP port
-		baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
-		slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
 	}
+
+	httpLn, err = startListener("http", httpAddr)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
+	}
+	// No HTTPS, use http://localhost with the HTTP port
+	baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
+	slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
 
 	sshLn, err := startListener("ssh", sshAddr)
 	if err != nil {
@@ -797,12 +816,16 @@ func getDomain(host string) string {
 		host = host[:idx]
 	}
 
-	if strings.HasSuffix(host, ".localhost") {
+	// Check for localhost-based domains (dev mode)
+	if strings.HasSuffix(host, ".localhost") || host == "localhost" {
 		return "localhost"
-	} else if strings.HasSuffix(host, ".exe.dev") {
+	}
+	// Check for exe.dev-based domains (production)
+	if strings.HasSuffix(host, ".exe.dev") || host == "exe.dev" {
 		return "exe.dev"
 	}
 
+	// Return as-is for custom domains
 	return host
 }
 
@@ -1153,6 +1176,17 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 		return false
 	}
 	return box == 0
+}
+
+func (s *Server) boxByNameExists(ctx context.Context, name string) bool {
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+		return queries.BoxWithNameExists(ctx, name)
+	})
+	if err != nil {
+		slog.Warn("failed to check box name existence", "error", err, "box_name", name)
+		return false
+	}
+	return box > 0
 }
 
 // getBoxesForAlloc gets all boxes for an allocation
@@ -1612,18 +1646,8 @@ func (s *Server) Start() error {
 			}
 		}()
 
-		// Start autocert HTTP handler for ACME challenges on port 80 (only for regular autocert)
-		// Note: DNS challenge for wildcard certs doesn't need HTTP-01 challenge handler
-		if s.certManager != nil {
-			go func() {
-				slog.Info("Starting autocert HTTP server on :80 for ACME challenges")
-				if err := http.ListenAndServe(":80", s.certManager.HTTPHandler(nil)); err != nil {
-					slog.Error("Autocert HTTP server startup failed", "error", err)
-					cancel()
-				}
-			}()
-		} else if s.wildcardCertManager != nil {
-			slog.Info("Using DNS challenges for wildcard certificates - port 80 not required for ACME")
+		if s.wildcardCertManager != nil {
+			slog.Info("Using DNS challenges for wildcard main domain certificate")
 		}
 	}
 
@@ -2049,6 +2073,10 @@ func (s *Server) Stop() error {
 	// Close database connection
 	if s.db != nil {
 		s.db.Close()
+	}
+
+	if s.stopCobble != nil {
+		s.stopCobble()
 	}
 
 	slog.Debug("Servers stopped")

@@ -1,36 +1,29 @@
 package exe
 
 import (
-	"os"
+	"path/filepath"
 	"testing"
 )
 
 func NewTestServer(t *testing.T, dockerhosts ...string) *Server {
 	t.Helper()
+	s := newUnstartedServer(t, dockerhosts...)
+	s.startAndAwaitReady()
+	return s
+}
 
-	tmpDB, err := os.CreateTemp("", t.Name()+"_*.db")
-	if err != nil {
-		t.Fatalf("failed to create temp db: %v", err)
-	}
-	t.Cleanup(func() {
-		tmpDB.Close()
-		os.Remove(tmpDB.Name())
-	})
+func (s *Server) startAndAwaitReady() {
+	go s.Start()
+	s.ready.Wait()
+}
 
-	if len(dockerhosts) == 0 {
-		dockerhosts = []string{""}
-	}
-
-	server, err := NewServer(":0", "", ":0", ":0", tmpDB.Name(), "test", "", 2222, "ghuser/whoami.sqlite3", dockerhosts)
+func newUnstartedServer(t *testing.T, dockerhosts ...string) *Server {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
+	s, err := NewServer(":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "ghuser/whoami.sqlite3", dockerhosts)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
-	t.Cleanup(func() {
-		server.Stop()
-	})
-
-	go server.Start()
-	server.ready.Wait()
-
-	return server
+	t.Cleanup(func() { s.Stop() }) // Ensure server is stopped when test ends (even if not started)
+	return s
 }

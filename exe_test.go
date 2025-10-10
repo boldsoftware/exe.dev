@@ -69,7 +69,7 @@ func TestServerStartStop(t *testing.T) {
 	server := NewTestServer(t)
 
 	// Test that server is responding
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", server.httpLn.tcp.Port))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", server.httpLn.tcp.Port))
 	if err != nil {
 		t.Fatalf("Health check failed: %v", err)
 	}

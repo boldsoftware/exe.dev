@@ -1,0 +1,8 @@
+{
+  "pebble": {
+    "listenAddress": "0.0.0.0:14000",
+    "certificate": "certs/cert.pem",
+    "privateKey": "certs/key.pem",
+    "httpPort": 80
+  }
+}

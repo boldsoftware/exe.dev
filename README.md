@@ -81,6 +81,52 @@ You can create yourself a fine-grained personal access token with NO permissions
 (public repositories only) at https://github.com/settings/personal-access-tokens
 and set it as GITHUB_TOKEN.
 
+## TLS (locally)
+
+Run exed with TLS enabled:
+
+```
+go run ./cmd/exed -dev=local -https=:443
+```
+
+TLS requires valid domain names.
+Exed uses `exe.local` instead of `localhost` for the main domain when serving TLS.
+Certificates are issued by a local ACME server (Pebble) that runs automatically.
+
+Add entries to `/etc/hosts`:
+
+```
+# exe.dev local dev
+127.0.0.1	exe.local
+127.0.0.1	www.exe.local
+```
+
+For each machine subdomain,
+add its corresponding `.exe.local` entry.
+For example, a machine named `testing`:
+
+```
+127.0.0.1	testing.exe.local
+```
+
+Custom domains work via CNAME records pointing to machine subdomains.
+Create a CNAME record for your domain:
+
+```
+testing.bllamo.com.  CNAME  testing.exe.local.
+```
+
+Verify the CNAME:
+
+```
+dig +short testing.bllamo.com
+```
+
+Visit `https://testing.bllamo.com`.
+Your browser will warn about untrusted certificates because Pebble's CA is not in your system trust store.
+This is expected in local development.
+
+
 ## Production Deployment
 
 ### Regular deployment
