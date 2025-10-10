@@ -14,3 +14,4 @@
 For web pages:
 - Separate HTML templates, CSS, and JS into their own files.
 - Try to re-use JS and CSS as much as reasonable.
+- Web pages should be responsive and look good on both mobile and desktop.
