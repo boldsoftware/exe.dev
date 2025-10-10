@@ -18,6 +18,8 @@ type SystemPromptData struct {
 	WorkingDirectory string
 	GitInfo          *GitInfo
 	Codebase         *CodebaseInfo
+	IsExeDev         bool
+	IsSudoAvailable  bool
 }
 
 type GitInfo struct {
@@ -72,6 +74,12 @@ func collectSystemData() (*SystemPromptData, error) {
 	if err == nil {
 		data.Codebase = codebaseInfo
 	}
+
+	// Check if running on exe.dev
+	data.IsExeDev = isExeDev()
+
+	// Check sudo availability
+	data.IsSudoAvailable = isSudoAvailable()
 
 	return data, nil
 }
@@ -209,4 +217,15 @@ func findAllGuidanceFiles(root string) []string {
 		return nil
 	})
 	return found
+}
+
+func isExeDev() bool {
+	_, err := os.Stat("/exe.dev")
+	return err == nil
+}
+
+func isSudoAvailable() bool {
+	cmd := exec.Command("sudo", "-n", "id")
+	_, err := cmd.CombinedOutput()
+	return err == nil
 }
