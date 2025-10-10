@@ -312,10 +312,12 @@ func (a sshSessionAdapter) Context() context.Context {
 }
 
 func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User) {
-	// Check if user has created their first box to determine if we should show the welcome message
+	// Check what the user has done so far to determine what tips to show
 	userEvents := ss.server.allUserEventsBestEffort(s.Context(), user.UserID)
 	hasCreatedBox := userEvents[userEventCreatedBox] > 0
 	hasUsedRepl := userEvents[userEventUsedREPL] > 0
+	hasSetBrowserCookies := userEvents[userEventSetBrowserCookies] > 0
+	hasRunHelp := userEvents[userEventHasRunHelp] > 0 // TODO: maybe > 1 or > 2? or something recency-based?
 
 	line := func(msg string, args ...any) {
 		fmt.Fprintf(s, msg+"\r\n", args...)
@@ -326,12 +328,21 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 		line("Welcome to EXE.DEV!")
 		line("")
 	}
+	var printedTip bool
 	if !hasCreatedBox {
-		line("To create your first box, run:")
+		line("- \033[1mnew\033[0m to create your first box")
+		printedTip = true
+	}
+	if !hasSetBrowserCookies {
+		line("- \033[1mbrowser\033[0m to speed-login on the web")
+		printedTip = true
+	}
+	if !hasRunHelp {
+		line("- \033[1mhelp\033[0m to see a list of commands")
+		printedTip = true
+	}
+	if printedTip {
 		line("")
-		line("  new")
-		line("")
-		line("Or type `help` to see a list of commands.")
 	}
 }
 
@@ -533,9 +544,12 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		slog.InfoContext(s.Context(), "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
 	}
 
-	signupContent := "\r\n\033[1;33mEXE.DEV: get a machine over ssh\033[0m\r\n" +
-		"To sign up, verify your email and set up billing.\r\n\r\n"
-	fmt.Fprint(s, signupContent)
+	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a box over ssh\033[0m\r\n")
+	if ghInfo.Email != "" {
+		fmt.Fprintf(s, "Hello, @%s. (Surprised? %s/docs/ssh-github)\r\n\r\n", ghInfo.Login, ss.server.getBaseURL())
+	} else {
+		fmt.Fprint(s, "To sign up, verify your email and set up billing.\r\n\r\n")
+	}
 
 	// Validate email
 	var email string
@@ -544,7 +558,11 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		if email != "" {
 			fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
 		}
-		fmt.Fprint(s, "\033[1mPlease enter your email address:\033[0m ")
+		verb := "enter"
+		if suggested != "" {
+			verb = "confirm"
+		}
+		fmt.Fprintf(s, "\033[1mPlease %s your email address:\033[0m ", verb)
 		var pressedEnter bool
 		email, pressedEnter = ss.readLineWithEchoAndDefault(s, suggested)
 		if email == "" || !pressedEnter {

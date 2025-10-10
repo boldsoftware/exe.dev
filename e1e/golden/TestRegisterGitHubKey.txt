@@ -6,20 +6,19 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a machine over ssh
-To sign up, verify your email and set up billing.
+EXE.DEV: get a box over ssh
+Hello, @fakeuser0. (Surprised? http://localhost:EXED_HTTP_PORT/docs/ssh-github)
 
-Please enter your email address: fake-for-tests@example.com
+Please confirm your email address: fake-for-tests@example.com
 
 
 
 Welcome to EXE.DEV!
 
-To create your first box, run:
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
 
-  new
-
-Or type `help` to see a list of commands.
 exe.dev ▶ whoami
 Email Address: fake-for-tests@example.com
 SSH Keys:

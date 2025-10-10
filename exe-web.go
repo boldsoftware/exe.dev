@@ -1194,6 +1194,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setExeAuthCookie(w, r, cookieValue)
+	s.recordUserEventBestEffort(r.Context(), userID, userEventSetBrowserCookies)
 
 	// Handle redirect after authentication
 	s.redirectAfterAuth(w, r, userID)

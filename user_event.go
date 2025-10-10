@@ -12,12 +12,17 @@ import (
 )
 
 const (
-	userEventCreatedBox = "created_box"
-	userEventUsedREPL   = "used_repl"
+	userEventCreatedBox        = "created_box"
+	userEventUsedREPL          = "used_repl"
+	userEventSetBrowserCookies = "set_browser_cookies"
+	userEventHasRunHelp        = "ran_help"
 )
 
 // recordUserEvent increments the number of times userID has experienced event.
 func (s *Server) recordUserEvent(ctx context.Context, userID, event string) error {
+	if s.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
 	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		return s.recordUserEventTx(tx, userID, event)
 	})

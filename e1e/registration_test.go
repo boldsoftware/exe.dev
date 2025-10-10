@@ -65,7 +65,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	pty.sendLine("")
 	// Check that we show welcome message for first login.
 	pty.want("Welcome to EXE.DEV!")
-	pty.want("To create your first box, run:")
+	pty.want("create your first box")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -80,7 +80,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	// No registration flow, no welcome message
 	// but should still hint about how to create boxes,
 	// because they haven't yet.
-	pty.want("To create your first box, run:")
+	pty.want("create your first box")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -179,7 +179,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 	pty.want("Press any key to continue")
 	pty.sendLine("")
 	pty.want("Welcome to EXE.DEV!")
-	pty.want("To create your first box, run:")
+	pty.want("create your first box")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -204,7 +204,7 @@ func TestRegisterGitHubKey(t *testing.T) {
 
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	pty.want("Please enter your email address:")
+	pty.want("Please confirm your email address:")
 	pty.want("fake-for-tests@example.com")
 	pty.sendLine("")
 
@@ -233,7 +233,7 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	pty.want("Please enter your email address:")
+	pty.want("Please confirm your email address:")
 	pty.want(ghuser.FakeEmail1)
 	// change email from "fake-for-tests@example.com" to "fake-for-tests@example.combinatorics"
 	suffix := "binatorics"

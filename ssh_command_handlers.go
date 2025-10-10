@@ -183,7 +183,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 		},
 		{
 			Name:        "browser",
-			Description: "Generate a magic link to access the web UI authenticated as yourself",
+			Description: "Generate a magic link to log in to the exe.dev website",
 			Usage:       "browser",
 			Handler:     ss.handleBrowserCommand,
 			FlagSetFunc: jsonOnlyFlags("browser"),
@@ -212,6 +212,10 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 }
 
 func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if cc.User != nil {
+		ss.server.recordUserEventBestEffort(ctx, cc.User.ID, userEventHasRunHelp)
+	}
+
 	if len(cc.Args) > 0 {
 		// Help for specific command
 		cmdPath := cc.Args
@@ -1202,11 +1206,11 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 		cc.WriteJSON(magicLink)
 		return nil
 	}
-	cc.Writeln("Use this link to access the exe.dev website:")
+	cc.Writeln("This link will log you in to exe.dev:")
 	cc.Writeln("")
 	cc.Writeln("\033[1;36m%s\033[0m", magicURL)
 	cc.Writeln("")
-	cc.Writeln("\033[2mThis link will expire in 15 minutes.\033[0m")
+	cc.Writeln("\033[2mExpires in 15 minutes.\033[0m")
 	cc.Writeln("")
 	return nil
 }

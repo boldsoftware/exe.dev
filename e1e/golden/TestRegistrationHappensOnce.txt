@@ -6,7 +6,7 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a machine over ssh
+EXE.DEV: get a box over ssh
 To sign up, verify your email and set up billing.
 
 Please enter your email address: TestRegistrationHappensOnce@example.com
@@ -29,11 +29,10 @@ Press any key to continue...
 
 Welcome to EXE.DEV!
 
-To create your first box, run:
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
 
-  new
-
-Or type `help` to see a list of commands.
 exe.dev ▶ whoami
 Email Address: TestRegistrationHappensOnce@example.com
 SSH Keys:
@@ -47,11 +46,10 @@ Goodbye!
 ●
 
 
-To create your first box, run:
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
 
-  new
-
-Or type `help` to see a list of commands.
 exe.dev ▶ whoami
 Email Address: TestRegistrationHappensOnce@example.com
 SSH Keys:
