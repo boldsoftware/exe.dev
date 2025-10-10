@@ -60,6 +60,7 @@ type Entry struct {
 	Suborder    int
 	Tags        []string
 	Published   bool
+	Unlinked    bool
 	Content     template.HTML
 }
 
@@ -161,7 +162,7 @@ func Load(includeUnpublished bool) (*Store, error) {
 	}
 
 	for _, entry := range store.entries {
-		if entry.Published {
+		if entry.Published && !entry.Unlinked {
 			store.defaultPath = entry.Path
 			break
 		}
@@ -305,6 +306,9 @@ func groupDocsByHeading(entries []*Entry) []Group {
 	headingsSeen := make(map[string]bool)
 
 	for _, entry := range entries {
+		if entry.Unlinked {
+			continue
+		}
 		heading := extractMainHeading(entry.Subheading)
 		if !headingsSeen[heading] {
 			headingOrder = append(headingOrder, heading)
@@ -402,6 +406,14 @@ func entryFromMetadata(docPath string, metadata map[string]any) (Entry, error) {
 			return Entry{}, err
 		}
 		entry.Published = published
+	}
+
+	if raw, ok := metadata["unlinked"]; ok {
+		unlinked, err := metadataBool(raw, "unlinked")
+		if err != nil {
+			return Entry{}, err
+		}
+		entry.Unlinked = unlinked
 	}
 
 	author, err := metadataString(metadata, "author", false)
