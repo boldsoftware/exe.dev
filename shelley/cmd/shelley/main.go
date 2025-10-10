@@ -638,11 +638,11 @@ func buildLLMConfig(logger *slog.Logger, configPath string, terminalURL string, 
 		}
 
 		var cfg struct {
-			LLMGateway   string         `json:"llm_gateway"`
-			KeyGenerator string         `json:"key_generator"`
-			TerminalURL  string         `json:"terminal_url"`
-			DefaultModel string         `json:"default_model"`
-			Links        []server.Link  `json:"links"`
+			LLMGateway   string        `json:"llm_gateway"`
+			KeyGenerator string        `json:"key_generator"`
+			TerminalURL  string        `json:"terminal_url"`
+			DefaultModel string        `json:"default_model"`
+			Links        []server.Link `json:"links"`
 		}
 		if err := json.Unmarshal(data, &cfg); err != nil {
 			logger.Warn("Failed to parse config file", "path", configPath, "error", err)
