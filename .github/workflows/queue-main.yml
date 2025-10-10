@@ -25,6 +25,8 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
+    outputs:
+      devlog_only: ${{ steps.devlog_only.outputs.devlog_only }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,6 +83,27 @@ jobs:
 
           echo "✅ All commits passed validation"
 
+      - name: Determine change scope
+        id: devlog_only
+        run: |
+          set -euo pipefail
+
+          base_ref="origin/main"
+          end_ref="HEAD"
+
+          changed_files=$(git diff --name-only "${base_ref}".."${end_ref}")
+
+          if [ -z "${changed_files}" ]; then
+            echo "devlog_only=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "${changed_files}" | grep -v '^devlog/' >/dev/null; then
+            echo "devlog_only=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "devlog_only=true" >>"$GITHUB_OUTPUT"
+          fi
+
   formatting:
     needs: commit-validation
     runs-on: [self-hosted, linux, x64]
@@ -95,17 +118,20 @@ jobs:
           fetch-depth: 0
 
       - name: Install Node.js
+        if: ${{ needs.commit-validation.outputs.devlog_only != 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install gofumpt v0.9.0
+        if: ${{ needs.commit-validation.outputs.devlog_only != 'true' }}
         run: |
           curl -L https://github.com/mvdan/gofumpt/releases/download/v0.9.0/gofumpt_v0.9.0_linux_amd64 -o /tmp/gofumpt
           chmod +x /tmp/gofumpt
           sudo mv /tmp/gofumpt /usr/local/bin/gofumpt
 
       - name: Check and fix formatting
+        if: ${{ needs.commit-validation.outputs.devlog_only != 'true' }}
         run: |
           # Run the formatters script
           ./bin/run_formatters.sh
@@ -127,6 +153,7 @@ jobs:
 
   test:
     needs: [commit-validation, formatting]
+    if: ${{ needs.commit-validation.outputs.devlog_only != 'true' }}
     uses: ./.github/workflows/_tests.yml
     with:
       ref: ${{ needs.formatting.outputs.commit_sha }}
@@ -134,6 +161,7 @@ jobs:
   push-to-main:
     runs-on: [self-hosted, linux, x64]
     needs: [commit-validation, formatting, test]
+    if: ${{ needs.commit-validation.outputs.devlog_only == 'true' || needs.test.result == 'success' }}
     permissions:
       contents: write
     steps:
