@@ -10,3 +10,7 @@
 - prefer sync.Mutex over sync.RWMutex unless there's a clear performance benefit from read-heavy workloads
 - don't add sleeps in tests; instead, add retry loops with a very small sleep
 - use await syntax instead of .then()/.catch() where possible
+
+For web pages:
+- Separate HTML templates, CSS, and JS into their own files.
+- Try to re-use JS and CSS as much as reasonable.
