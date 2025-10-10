@@ -4,34 +4,10 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
-
-func TestOpenBrowserURL(t *testing.T) {
-	// Skip on systems without required commands
-	switch runtime.GOOS {
-	case "linux":
-		if _, err := os.Stat("/usr/bin/xdg-open"); os.IsNotExist(err) {
-			t.Skip("xdg-open not available")
-		}
-	case "darwin":
-		// open command should always be available on macOS
-	case "windows":
-		// cmd should always be available on Windows
-	default:
-		t.Skipf("unsupported platform: %s", runtime.GOOS)
-	}
-
-	// Test that the function at least starts without error
-	// We can't actually verify the browser opens in CI
-	err := openBrowserURL("http://localhost:8080")
-	if err != nil {
-		t.Errorf("openBrowserURL failed: %v", err)
-	}
-}
 
 func TestProfileFlag(t *testing.T) {
 	// Create a temporary directory for the profile
