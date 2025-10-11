@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"exe.dev/boxname"
@@ -75,6 +76,10 @@ func (s *Server) prepareLlmGateway() http.Handler {
 	}, s.devMode != "")
 	return lg
 }
+
+var tailscaleAcknowledgeUnstableAPI = sync.OnceFunc(func() {
+	tailscale.I_Acknowledge_This_API_Is_Unstable = true
+})
 
 // setupHTTPSServer configures the HTTPS server with Let's Encrypt if enabled
 func (s *Server) setupHTTPSServer() {
@@ -136,7 +141,7 @@ func (s *Server) setupHTTPSServer() {
 	func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		tailscale.I_Acknowledge_This_API_Is_Unstable = true
+		tailscaleAcknowledgeUnstableAPI()
 		lc := &tailscale.LocalClient{}
 		st, err := lc.Status(ctx)
 		if err != nil || st == nil || st.Self == nil || st.Self.DNSName == "" {
