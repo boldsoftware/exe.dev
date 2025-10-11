@@ -1,0 +1,41 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, verify your email and set up billing.
+
+Please enter your email address: TestSSHTerminalInputDuringRegistration@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+
+Verification email sent to: TestSSHTerminalInputDuringRegistration@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ whoami
+Email Address: TestSSHTerminalInputDuringRegistration@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ exit
+Goodbye!

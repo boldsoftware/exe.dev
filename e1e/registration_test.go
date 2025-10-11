@@ -253,3 +253,45 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 	pty.wantPrompt()
 	pty.disconnect()
 }
+
+// TestSSHTerminalInputDuringRegistration verifies that terminal input works
+// character-by-character at the email prompt during registration.
+// (We had early issues with ssh input buffers.)
+func TestSSHTerminalInputDuringRegistration(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	keyFile, publicKey := genSSHKey(t)
+	pty := sshToExeDev(t, keyFile)
+	pty.want(banner)
+	pty.want("Please enter your email")
+
+	email := t.Name() + "@example.com"
+
+	// Type the email one character at a time to simulate interactive typing.
+	for _, ch := range email {
+		pty.send(string(ch))
+	}
+	pty.send("\n")
+
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+
+	emailMsg := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, emailMsg)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
+	pty.want("Press any key to continue")
+	pty.sendLine("")
+
+	// After first-time registration, we show a welcome message and a prompt.
+	pty.want("Welcome to EXE.DEV!")
+	pty.want("create your first box")
+	pty.wantPrompt()
+	pty.sendLine("whoami")
+	pty.want(email)
+	pty.want(publicKey)
+	pty.disconnect()
+}
