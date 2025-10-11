@@ -378,12 +378,21 @@ func TestHTTPProxyBasic(t *testing.T) {
 				t.Logf("Attempt %d: failed to read response body: %v", i+1, err)
 				continue
 			}
-			if resp.StatusCode == http.StatusOK &&
-				(strings.Contains(string(body), "Directory listing") || strings.Contains(string(body), "Index of")) {
+			switch resp.StatusCode {
+			case http.StatusOK:
+				// success, continue below
+			case http.StatusBadGateway:
+				t.Logf("Attempt %d: got bad gateway, server not ready yet", i+1)
+				continue
+			default:
+				t.Logf("Attempt %d: HTTP status %d", i+1, resp.StatusCode)
+				continue
+			}
+			if strings.Contains(string(body), "Directory listing") || strings.Contains(string(body), "Index of") {
 				// Success
 				break
 			}
-			t.Logf("Attempt %d: unexpected status %d or body", i+1, resp.StatusCode)
+			t.Logf("Attempt %d: unexpected body: %s", i+1, string(body))
 		}
 		if resp == nil || err != nil {
 			t.Fatalf("failed to make proxy request after retries: %v", err)
