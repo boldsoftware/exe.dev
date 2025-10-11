@@ -43,4 +43,7 @@ ops/ci-vm-start.sh
 source $NAME.env
 export CTR_HOST=ssh://$VM_USER@$VM_IP
 time go test -count -v -parallel=1 ./e1e -vexed |& ts '%.s' | tee test.out
-```
+
+## Clean up errant VMs
+
+sudo virsh list | grep ci-ubuntu | awk '{ print $2 }' | xargs -n 1 sudo virsh destroy

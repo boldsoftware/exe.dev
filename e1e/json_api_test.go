@@ -48,7 +48,7 @@ func TestExeDevAPI(t *testing.T) {
 		t.Errorf("expected at least one current SSH key in whoami output, got none")
 	}
 
-	newOut, err := runExeDevSSHCommand(t, keyFile, "new", "--json")
+	newOut, err := runExeDevSSHCommand(t, keyFile, "new", "--command=bash", "--json")
 	if err != nil {
 		t.Fatalf("failed to run new box command: %v\n%s", err, newOut)
 	}
