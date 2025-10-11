@@ -265,17 +265,12 @@ var setStripeKey = sync.OnceFunc(func() {
 	stripe.Key = stripeKey
 })
 
-func runMigrations(dbPath string) error {
-	rawDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		return fmt.Errorf("failed to open database for migrations: %w", err)
-	}
-	defer rawDB.Close()
+func runMigrations(db *sql.DB) error {
 	// Set busy_timeout to handle database lock contention during restarts
-	if _, err := rawDB.Exec("PRAGMA busy_timeout=1000"); err != nil {
+	if _, err := db.Exec("PRAGMA busy_timeout=1000"); err != nil {
 		return fmt.Errorf("failed to set busy_timeout: %w", err)
 	}
-	if err := exedb.RunMigrations(rawDB); err != nil {
+	if err := exedb.RunMigrations(db); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 	slog.Debug("database migrations complete")
@@ -284,15 +279,19 @@ func runMigrations(dbPath string) error {
 
 // NewServer creates a new Server instance with database and container management
 func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses []string) (*Server, error) {
-	// Run db migrations with a raw connection (not a pool).
-	err := runMigrations(dbPath)
+	rawDB, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to run database migrations: %w", err)
+		return nil, fmt.Errorf("failed to open exed database: %w", err)
+	}
+	if err := runMigrations(rawDB); err != nil {
+		rawDB.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	const nReaders = 16
-	db, err := sqlite.New(dbPath, nReaders)
+	db, err := sqlite.NewFromDB(rawDB, nReaders)
 	if err != nil {
+		rawDB.Close()
 		return nil, fmt.Errorf("failed to create sqlite connection pool: %w", err)
 	}
 

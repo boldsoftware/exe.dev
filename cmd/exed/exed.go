@@ -117,7 +117,11 @@ func run() error {
 			"suggestion", "Use -containerd-addresses flag, or set CTR_HOST env var")
 	}
 
-	if *dbPath == "TMP" {
+	switch strings.ToLower(*dbPath) {
+	case "memory", "mem":
+		*dbPath = "file::memory:?cache=shared"
+		slog.Info("using in-memory sqlite database")
+	case "tmp":
 		f, err := os.CreateTemp("", "exe.db")
 		if err != nil {
 			return fmt.Errorf("failed to create temp db file: %w", err)
