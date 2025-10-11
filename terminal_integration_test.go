@@ -155,7 +155,6 @@ func TestTerminalCleanupTimer(t *testing.T) {
 
 func TestTerminalHostnameParsing(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
 
 	tests := []struct {
 		name        string
@@ -172,7 +171,7 @@ func TestTerminalHostnameParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := server.parseTerminalHostname(tt.hostname)
+			result, err := parseTerminalHostnameWithBase(tt.hostname, ".xterm.localhost")
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error for %q, but got none", tt.hostname)

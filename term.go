@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
@@ -591,31 +592,29 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 
 // parseTerminalHostname extracts box name from terminal hostname
 func (s *Server) parseTerminalHostname(hostname string) (string, error) {
-	// Remove port if present
-	if idx := strings.LastIndex(hostname, ":"); idx > 0 {
-		hostname = hostname[:idx]
-	}
-
-	// Extract box name from hostname
+	// Development: box.xterm.localhost
+	// Production: box.xterm.exe.dev
+	base := ".xterm.exe.dev"
 	if s.devMode != "" {
-		// Development: box.xterm.localhost
-		if strings.HasSuffix(hostname, ".xterm.localhost") {
-			boxName := strings.TrimSuffix(hostname, ".xterm.localhost")
-			if boxName == "" || strings.Contains(boxName, ".") {
-				return "", fmt.Errorf("invalid box name")
-			}
-			return boxName, nil
-		}
-	} else {
-		// Production: box.xterm.exe.dev
-		if strings.HasSuffix(hostname, ".xterm.exe.dev") {
-			boxName := strings.TrimSuffix(hostname, ".xterm.exe.dev")
-			if boxName == "" || strings.Contains(boxName, ".") {
-				return "", fmt.Errorf("invalid box name")
-			}
-			return boxName, nil
-		}
+		base = ".xterm.localhost"
+	}
+	return parseTerminalHostnameWithBase(hostname, base)
+}
+
+func parseTerminalHostnameWithBase(hostname, base string) (string, error) {
+	// Remove port if present
+	host, _, err := net.SplitHostPort(hostname)
+	if err == nil {
+		hostname = host
 	}
 
-	return "", fmt.Errorf("not a terminal hostname")
+	// Extract box name from hostname.
+	boxName, ok := strings.CutSuffix(hostname, base)
+	if !ok {
+		return "", fmt.Errorf("not a terminal hostname")
+	}
+	if !boxname.Valid(boxName) {
+		return "", fmt.Errorf("invalid box name")
+	}
+	return boxName, nil
 }
