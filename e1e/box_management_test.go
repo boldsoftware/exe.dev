@@ -104,7 +104,7 @@ func TestNewWithPrompt(t *testing.T) {
 	pty.want("Access with")
 
 	// Expect Shelley prompt execution to start
-	pty.want("Running prompt through Shelley")
+	pty.want("Running prompt through Shelley...")
 
 	// With predictable model, we should get a quick response
 	pty.want("Well, hi there!") // Expected response from predictable service for "hello"
