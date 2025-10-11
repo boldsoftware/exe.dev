@@ -2,10 +2,8 @@ package exe
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"testing"
-	"time"
 
 	"exe.dev/sshbuf"
 )
@@ -134,9 +132,6 @@ func TestParseBackgroundColor(t *testing.T) {
 func TestDetectTerminalMode(t *testing.T) {
 	t.Parallel()
 
-	// Create a test server
-	server := NewTestServer(t)
-
 	tests := []struct {
 		name     string
 		response []byte
@@ -169,11 +164,7 @@ func TestDetectTerminalMode(t *testing.T) {
 
 			// Wrap with buffered channel
 			channel := sshbuf.New(mockChannel)
-
-			// Give the background reader a moment to start
-			time.Sleep(10 * time.Millisecond)
-
-			result := server.detectTerminalMode(channel)
+			result := detectTerminalMode(channel)
 
 			// Verify OSC 11 query was sent
 			if !mockChannel.writeCalled {
@@ -230,83 +221,4 @@ func TestGetTerminalColors(t *testing.T) {
 			t.Errorf("Light mode fade steps count = %d, want 7", len(colors.fadeSteps))
 		}
 	})
-}
-
-func TestGetGrayText(t *testing.T) {
-	t.Parallel()
-	server := &Server{}
-
-	tests := []struct {
-		name     string
-		response []byte
-		expected string
-	}{
-		{
-			name:     "Dark terminal - returns gray",
-			response: []byte("\033]11;rgb:0000/0000/0000\033\\"),
-			expected: "\033[2;37m",
-		},
-		{
-			name:     "Light terminal - returns black",
-			response: []byte("\033]11;rgb:ffff/ffff/ffff\033\\"),
-			expected: "\033[0;30m",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create mock channel with response
-			mockChannel := &MockChannelWithResponse{
-				response: tt.response,
-				buffer:   &bytes.Buffer{},
-			}
-
-			// Wrap with buffered channel
-			channel := sshbuf.New(mockChannel)
-
-			// Give the background reader a moment to start
-			time.Sleep(10 * time.Millisecond)
-
-			result := server.getGrayText(channel)
-
-			if result != tt.expected {
-				t.Errorf("getGrayText() = %q, want %q", result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestClearOSCResponse(t *testing.T) {
-	t.Parallel()
-	server := &Server{}
-
-	// Create mock channel with leftover OSC response
-	leftoverResponse := []byte("leftover\033\\more")
-	mockChannel := &MockChannelWithResponse{
-		response: leftoverResponse,
-		buffer:   &bytes.Buffer{},
-	}
-
-	// Wrap with buffered channel
-	channel := sshbuf.New(mockChannel)
-
-	// Give the background reader a moment to read the data
-	time.Sleep(20 * time.Millisecond)
-
-	// Clear the OSC response
-	server.clearOSCResponse(channel)
-
-	// Try to read - should get remaining data after terminator
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-
-	buf := make([]byte, 100)
-	n, _ := channel.ReadCtx(ctx, buf)
-
-	// clearOSCResponse is now a no-op, so we should get everything that was in the buffer
-	result := string(buf[:n])
-	expected := "leftover\033\\more"
-	if result != expected {
-		t.Errorf("After clearOSCResponse, got %q, expected %q", result, expected)
-	}
 }

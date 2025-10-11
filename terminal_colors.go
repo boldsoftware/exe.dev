@@ -18,7 +18,7 @@ const (
 )
 
 // detectTerminalMode queries the terminal background color using OSC 11 and determines if it's dark or light mode
-func (s *Server) detectTerminalMode(channel *sshbuf.Channel) TerminalMode {
+func detectTerminalMode(channel *sshbuf.Channel) TerminalMode {
 	// Send OSC 11 query for background color
 	query := []byte("\033]11;?\033\\")
 	if _, err := channel.Write(query); err != nil {
@@ -236,31 +236,4 @@ func (s *Server) getTerminalColors(mode TerminalMode) struct {
 			{"\033[30m", 100 * time.Millisecond},      // Black (invisible on dark bg)
 		},
 	}
-}
-
-// clearOSCResponse clears any remaining OSC response from the input buffer
-// This function is now deprecated and does nothing to prevent consuming user input
-func (s *Server) clearOSCResponse(channel *sshbuf.Channel) {
-	// This function used to consume input aggressively, causing the bug where
-	// the first two characters of email input were lost during signup.
-	//
-	// The fix is to not clear the OSC response aggressively since:
-	// 1. detectTerminalMode() already reads the OSC response with proper timeout
-	// 2. Any remaining OSC data is harmless and will be ignored by readLineFromChannel
-	// 3. Aggressively reading here risks consuming user input that arrives quickly
-	//
-	// If there are any remaining OSC bytes, they will be handled naturally by
-	// the input processing logic which knows how to distinguish between
-	// escape sequences and user input.
-}
-
-// getGrayText returns the appropriate gray/black text color based on terminal mode
-func (s *Server) getGrayText(channel *sshbuf.Channel) string {
-	mode := s.detectTerminalMode(channel)
-	s.clearOSCResponse(channel)
-
-	if mode == TerminalModeLight {
-		return "\033[0;30m" // Black text for light terminals
-	}
-	return "\033[2;37m" // Gray text for dark terminals
 }
