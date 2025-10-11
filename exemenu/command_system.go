@@ -205,7 +205,10 @@ func (ctx *CommandContext) WriteInternalError(cmd string, err error, slogDetails
 	guid := uuid.New().String() // for x-ref on support tickets
 	attrs := []any{
 		"error", err,
-		"command_context", ctx,
+		"user_id", ctx.User.ID,
+		"alloc_id", ctx.Alloc.ID,
+		"public_key", ctx.PublicKey,
+		"args", ctx.Args,
 		"guid", guid,
 	}
 	attrs = append(attrs, slogDetails...)
