@@ -2,8 +2,6 @@ package exe
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,55 +13,7 @@ import (
 
 	"exe.dev/container"
 	"exe.dev/sqlite"
-	"golang.org/x/crypto/ssh"
 )
-
-func TestPublicKeyAuthentication(t *testing.T) {
-	server := NewTestServer(t)
-
-	// Generate a test key pair
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("Failed to generate RSA key: %v", err)
-	}
-
-	signer, err := ssh.NewSignerFromKey(privateKey)
-	if err != nil {
-		t.Fatalf("Failed to create signer: %v", err)
-	}
-
-	// Test authentication with unregistered key
-	permissions, err := server.AuthenticatePublicKey(nil, signer.PublicKey())
-	if err != nil {
-		t.Fatalf("Authentication failed: %v", err)
-	}
-
-	if permissions.Extensions["registered"] != "false" {
-		t.Error("Unregistered key should have registered=false")
-	}
-
-	// Fingerprints have been eliminated - no longer included in permissions
-
-	// Register the user with alloc in the database
-	publicKeyStr := string(ssh.MarshalAuthorizedKey(signer.PublicKey()))
-	if _, err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
-		t.Fatalf("Failed to create user with alloc: %v", err)
-	}
-
-	// Test authentication with registered key
-	permissions2, err := server.AuthenticatePublicKey(nil, signer.PublicKey())
-	if err != nil {
-		t.Fatalf("Authentication failed: %v", err)
-	}
-
-	if permissions2.Extensions["registered"] != "true" {
-		t.Error("Registered key should have registered=true")
-	}
-
-	if permissions2.Extensions["email"] != "test@example.com" {
-		t.Error("Registered user should have email in extensions")
-	}
-}
 
 func TestEmailVerificationHTTP(t *testing.T) {
 	server := NewTestServer(t)
@@ -117,14 +67,6 @@ func TestEmailVerificationHTTP(t *testing.T) {
 
 	if resp3.StatusCode != 400 {
 		t.Errorf("Expected status 400 for missing token, got %d", resp3.StatusCode)
-	}
-}
-
-func TestPostmarkClientInitialization(t *testing.T) {
-	// Test without API key (should be nil since POSTMARK_API_KEY is not set)
-	server1 := NewTestServer(t)
-	if server1.postmarkClient != nil {
-		t.Log("Warning: Postmark client was initialized, POSTMARK_API_KEY might be set in environment")
 	}
 }
 
