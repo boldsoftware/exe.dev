@@ -532,17 +532,13 @@ type terminalAuthKey struct{}
 
 // isTerminalRequest determines if a request is for a terminal subdomain
 func (s *Server) isTerminalRequest(host string) bool {
+	return isTerminalRequestWithBase(host, s.terminalBaseHostname())
+}
+
+func isTerminalRequestWithBase(host, base string) bool {
 	// Extract hostname (strip port if present)
 	hostname := stripPort(host)
-
-	// Check for terminal patterns
-	if s.devMode != "" {
-		// Development mode: box.xterm.localhost
-		return strings.HasSuffix(hostname, ".xterm.localhost")
-	} else {
-		// Production mode: box.xterm.exe.dev
-		return strings.HasSuffix(hostname, ".xterm.exe.dev")
-	}
+	return strings.HasSuffix(hostname, base)
 }
 
 // handleTerminalRequest handles requests to terminal subdomains
@@ -587,15 +583,19 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// parseTerminalHostname extracts box name from terminal hostname
-func (s *Server) parseTerminalHostname(hostname string) (string, error) {
+func (s *Server) terminalBaseHostname() string {
 	// Development: box.xterm.localhost
 	// Production: box.xterm.exe.dev
 	base := ".xterm.exe.dev"
 	if s.devMode != "" {
 		base = ".xterm.localhost"
 	}
-	return parseTerminalHostnameWithBase(hostname, base)
+	return base
+}
+
+// parseTerminalHostname extracts box name from terminal hostname
+func (s *Server) parseTerminalHostname(hostname string) (string, error) {
+	return parseTerminalHostnameWithBase(hostname, s.terminalBaseHostname())
 }
 
 func parseTerminalHostnameWithBase(hostname, base string) (string, error) {

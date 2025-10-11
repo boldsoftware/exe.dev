@@ -9,8 +9,6 @@ import (
 )
 
 func TestTerminalRouting(t *testing.T) {
-	server := NewTestServer(t)
-
 	// Test that terminal subdomains are detected correctly
 	tests := []struct {
 		name     string
@@ -19,7 +17,7 @@ func TestTerminalRouting(t *testing.T) {
 	}{
 		{"localhost terminal", "machine.xterm.localhost", true},
 		{"localhost terminal with port", "machine.xterm.localhost:8080", true},
-		{"production terminal", "machine.xterm.exe.dev", false}, // dev mode server
+		{"production terminal", "machine.xterm.exe.dev", false}, // testing in dev mode
 		{"regular proxy", "machine.localhost", false},
 		{"main domain", "localhost", false},
 		{"invalid", "xterm.localhost", false},
@@ -27,7 +25,7 @@ func TestTerminalRouting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := server.isTerminalRequest(tt.host)
+			result := isTerminalRequestWithBase(tt.host, ".xterm.localhost")
 			if result != tt.expected {
 				t.Errorf("isTerminalRequest(%q) = %v, want %v", tt.host, result, tt.expected)
 			}
