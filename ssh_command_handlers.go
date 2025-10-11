@@ -544,6 +544,10 @@ done:
 	}
 
 	totalTime := time.Since(startTime)
+	// Record user-perceived box creation time metric (observe only on success)
+	if ss.server != nil && ss.server.sshMetrics != nil {
+		ss.server.sshMetrics.boxCreationDur.Observe(totalTime.Seconds())
+	}
 	sshCommand := ss.server.formatSSHConnectionInfo(boxName)
 	httpsProxyAddr := ss.server.httpsProxyAddress(boxName)
 	if showSpinner {

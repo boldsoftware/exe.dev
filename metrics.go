@@ -3,12 +3,12 @@ package exe
 import "github.com/prometheus/client_golang/prometheus"
 
 // SSHMetrics holds SSH server metrics
-// (moved from exe.go to metrics.go to keep main server file lean)
 type SSHMetrics struct {
 	connectionsTotal   *prometheus.CounterVec
 	connectionsCurrent prometheus.Gauge
 	authAttempts       *prometheus.CounterVec
 	sessionDuration    *prometheus.HistogramVec
+	boxCreationDur     prometheus.Histogram
 }
 
 // NewSSHMetrics creates and registers SSH metrics
@@ -42,6 +42,13 @@ func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
 			},
 			[]string{"reason"},
 		),
+		boxCreationDur: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "box_creation_time_seconds",
+				Help:    "Time to create a box from the user's perspective.",
+				Buckets: []float64{0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.5, 4, 5, 8},
+			},
+		),
 	}
 
 	registry.MustRegister(
@@ -49,6 +56,7 @@ func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
 		metrics.connectionsCurrent,
 		metrics.authAttempts,
 		metrics.sessionDuration,
+		metrics.boxCreationDur,
 	)
 
 	return metrics
