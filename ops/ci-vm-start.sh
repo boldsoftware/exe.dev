@@ -64,14 +64,16 @@ if [[ ! -f "${SETUP_SCRIPT_PATH}" ]]; then
 	exit 1
 fi
 SETUP_HASH="$(hash_file "${SETUP_SCRIPT_PATH}")"
-SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH}"
+
+# We re-build the VM snapshot once a day. If you want to disable
+# using snapshots, change SNAPSHOT_DIR to be something unique, and, voila.
+SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH}-$(date +%Y%m%d)"
 SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
 LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH}.qcow2"
 SNAPSHOT_AVAILABLE=0
-# TODO: reenable when snapshots are stable
-#if [[ -f "${SNAPSHOT_BASE}" ]]; then
-#	SNAPSHOT_AVAILABLE=1
-#fi
+if [[ -f "${SNAPSHOT_BASE}" ]]; then
+	SNAPSHOT_AVAILABLE=1
+fi
 
 if [[ ! -f "${BASE_IMG}" ]]; then
 	echo "Base image not found: ${BASE_IMG}" >&2
@@ -123,11 +125,42 @@ package_update: true
 packages:
   - qemu-guest-agent
 runcmd:
+  - echo runcmd
   - systemctl enable --now qemu-guest-agent
-  - mkdir -p /data
-  - chmod 755 /data
-  - mkdir -p /local
-  - chmod 755 /local
+  - mkdir -p /data && chmod 755 /data
+  - mkdir -p /local && chmod 755 /local
+  # Clean up stale container state from the snapshot before restarting services.
+  # Containerd/nydus runtime state (task directories, metadata) persists in the snapshot
+  # and becomes stale when the machine-id changes on clone, causing kata verification to fail.
+  # Stop services, clean persistent task state, prune container metadata, then restart fresh.
+  - systemctl stop containerd || true
+  - rm -rf /var/lib/containerd/io.containerd.runtime.v2.task/exe/* || true
+  - rm -rf /run/containerd/io.containerd.runtime.v2.task/exe/* || true
+  - systemctl start nydus-snapshotter || true
+  - systemctl start containerd || true
+  # Clean up stale container metadata in the exe namespace from the snapshot.
+  # This removes container references but doesn't affect cached images.
+  - nerdctl --namespace exe container prune --force || true
+bootcmd:
+  # Regenerate machine-id so DHCP/leases don't persist across clones
+  - [bash, -c, 'rm -f /etc/machine-id /var/lib/dbus/machine-id; systemd-machine-id-setup']
+  # Remove systemd-networkd DUID to force fresh DHCP client ID on each clone
+  - [bash, -c, 'rm -rf /var/lib/systemd/networkd/*']
+  # Configure MAC-based DHCP BEFORE network starts (must match actual interface name)
+  - |
+    cat >/etc/netplan/60-dhcp-mac.yaml <<'NETPLAN'
+    network:
+      version: 2
+      renderer: networkd
+      ethernets:
+        enp1s0:
+          match:
+            name: enp1s0
+          dhcp4: true
+          dhcp6: false
+          dhcp-identifier: mac
+    NETPLAN
+  - [netplan, generate]
 EOF
 
 cat >"${TMPDIR}/meta-data" <<EOF
@@ -281,7 +314,7 @@ fi
 OUTDIR="${OUTDIR:-$PWD}"
 mkdir -p "${OUTDIR}"
 ENVFILE="${OUTDIR}/${NAME}.env"
-cat >"${ENVFILE}" <<EOF
+tee "${ENVFILE}" <<EOF
 VM_NAME=${NAME}
 VM_IP=${IP}
 VM_USER=${USER_NAME}

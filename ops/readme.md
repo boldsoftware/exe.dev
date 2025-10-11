@@ -31,3 +31,16 @@ aws ec2 describe-instances \
   --query "Reservations[].Instances[].[InstanceId,PublicIpAddress,Tags[?Key=='Name'].Value|[0]]" \
   --output table
 ```
+
+# CI
+
+If you get yourself a user in CI, you can do
+
+```
+export NAME=$(whoami)-$(date +%s)
+ops/ci-vm-start.sh
+# source the generated file
+source $NAME.env
+export CTR_HOST=ssh://$VM_USER@$VM_IP
+time go test -count -v -parallel=1 ./e1e -vexed |& ts '%.s' | tee test.out
+```

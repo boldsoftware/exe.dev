@@ -425,9 +425,19 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 	testCmd := m.execNerdctl(ctx, host, args...)
 
 	output, err := testCmd.CombinedOutput()
+	outputStr := string(output)
+
+	// Check if output contains our test string FIRST - if the test succeeded, we don't care about exit code
+	// The kata runtime sometimes exits with non-zero codes due to cleanup messages like "forward signal child exited"
+	// but the container actually ran successfully
+	if strings.Contains(outputStr, "kata-test") {
+		slog.Info("Kata runtime successfully verified", "host", host)
+		return nil
+	}
+
+	// If we got here, the test didn't produce the expected output
 	if err != nil {
 		// Check if this is a transient name collision; retry once with a random suffix
-		outputStr := string(output)
 		if strings.Contains(outputStr, "name \"") && strings.Contains(outputStr, "is already used") {
 			// Retry with a unique name
 			retryBytes := make([]byte, 4)
@@ -436,7 +446,7 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 			_ = m.execNerdctl(ctx, host, "rm", "-f", retryName).Run()
 			retryArgs := []string{"--snapshotter", "nydus", "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", retryName, "alpine:latest", "echo", "kata-test"}
 			retryCmd := m.execNerdctl(ctx, host, retryArgs...)
-			if rOut, rErr := retryCmd.CombinedOutput(); rErr == nil {
+			if rOut, rErr := retryCmd.CombinedOutput(); rErr == nil || strings.Contains(string(rOut), "kata-test") {
 				if strings.Contains(string(rOut), "kata-test") {
 					slog.Info("Kata runtime successfully verified (after name collision retry)", "host", host)
 					return nil
@@ -459,13 +469,8 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		return fmt.Errorf("failed to verify Kata runtime: %w: %s", err, outputStr)
 	}
 
-	// Check if output contains our test string
-	if !strings.Contains(string(output), "kata-test") {
-		return fmt.Errorf("Kata runtime test container didn't produce expected output: %s", output)
-	}
-
-	slog.Info("Kata runtime successfully verified", "host", host)
-	return nil
+	// Got no error but also no expected output
+	return fmt.Errorf("Kata runtime test container didn't produce expected output: %s", outputStr)
 }
 
 // discoverContainers discovers existing containers on a host

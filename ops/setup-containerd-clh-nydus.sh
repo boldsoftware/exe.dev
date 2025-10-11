@@ -689,17 +689,13 @@ for image in "${IMAGES[@]}"; do
 done
 
 echo ""
-echo "Testing container/VM infrastructure piece by piece..."
+echo "Testing kata runtime with nydus snapshotter..."
 
 set -x
-sudo nerdctl -n exe run alpine true
-sudo nerdctl -n exe --snapshotter nydus run alpine true
-sudo nerdctl -n exe run --net none --runtime io.containerd.kata.v2 alpine true
-sudo nerdctl -n exe run --runtime io.containerd.kata.v2 alpine true
-sudo nerdctl -n exe --snapshotter nydus run --runtime io.containerd.kata.v2 alpine true
+sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 alpine true
 set +x
 
-echo "VMs work!"
+echo "Kata runtime verified!"
 
 echo ""
 echo "=== Setup complete ==="
