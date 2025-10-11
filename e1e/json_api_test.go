@@ -48,6 +48,16 @@ func TestExeDevAPI(t *testing.T) {
 		t.Errorf("expected at least one current SSH key in whoami output, got none")
 	}
 
+	// Also verify plain-text whoami output without PTY contains the email.
+	// This exercises the non-interactive exec path and ensures clean output formatting.
+	whoPlain, err := runExeDevSSHCommand(t, keyFile, "whoami")
+	if err != nil {
+		t.Fatalf("failed to run whoami (plain): %v\n%s", err, whoPlain)
+	}
+	if !strings.Contains(string(whoPlain), who.Email) {
+		t.Fatalf("expected whoami output to include email %q, got: %s", who.Email, string(whoPlain))
+	}
+
 	newOut, err := runExeDevSSHCommand(t, keyFile, "new", "--command=bash", "--json")
 	if err != nil {
 		t.Fatalf("failed to run new box command: %v\n%s", err, newOut)
