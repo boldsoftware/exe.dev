@@ -533,10 +533,7 @@ type terminalAuthKey struct{}
 // isTerminalRequest determines if a request is for a terminal subdomain
 func (s *Server) isTerminalRequest(host string) bool {
 	// Extract hostname (strip port if present)
-	hostname := host
-	if idx := strings.LastIndex(host, ":"); idx > 0 {
-		hostname = host[:idx]
-	}
+	hostname := stripPort(host)
 
 	// Check for terminal patterns
 	if s.devMode != "" {
@@ -602,12 +599,7 @@ func (s *Server) parseTerminalHostname(hostname string) (string, error) {
 }
 
 func parseTerminalHostnameWithBase(hostname, base string) (string, error) {
-	// Remove port if present
-	host, _, err := net.SplitHostPort(hostname)
-	if err == nil {
-		hostname = host
-	}
-
+	hostname = stripPort(hostname)
 	// Extract box name from hostname.
 	boxName, ok := strings.CutSuffix(hostname, base)
 	if !ok {

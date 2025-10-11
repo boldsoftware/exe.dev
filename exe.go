@@ -824,10 +824,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 // getDomain extracts the base domain from a host
 func getDomain(host string) string {
-	// Remove port if present
-	if idx := strings.LastIndex(host, ":"); idx > 0 {
-		host = host[:idx]
-	}
+	host = stripPort(host)
 
 	// Check for localhost-based domains (dev mode)
 	if strings.HasSuffix(host, ".localhost") || host == "localhost" {

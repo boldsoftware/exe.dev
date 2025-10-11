@@ -1283,10 +1283,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract hostname without port for display
-	hostname := returnHost
-	if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
-		hostname = returnHost[:idx]
-	}
+	hostname := stripPort(returnHost)
 
 	// Parse hostname to get box name (including custom domains via CNAME)
 	boxName, err := s.resolveBoxName(r.Context(), hostname)
@@ -1501,10 +1498,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 		if s.isTerminalRequest(returnHost) {
 			s.slog().Debug("[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
 			// Parse hostname to extract box name
-			hostname := returnHost
-			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
-				hostname = returnHost[:idx]
-			}
+			hostname := stripPort(returnHost)
 
 			boxName, err := s.parseTerminalHostname(hostname)
 			if err != nil {
@@ -1529,10 +1523,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 		} else if s.isProxyRequest(returnHost) {
 			s.slog().Debug("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
 			// Parse hostname to extract box name (including custom domains via CNAME)
-			hostname := returnHost
-			if idx := strings.LastIndex(returnHost, ":"); idx > 0 {
-				hostname = returnHost[:idx]
-			}
+			hostname := stripPort(returnHost)
 
 			boxName, err := s.resolveBoxName(r.Context(), hostname)
 			if err != nil || boxName == "" {
@@ -1762,15 +1753,19 @@ func getScheme(r *http.Request) string {
 
 // isMainDomain checks if the given host (with optional port) is the main domain
 func (s *Server) isMainDomain(host string) bool {
-	// Strip port if present
-	hostname := host
-	if idx := strings.LastIndex(host, ":"); idx > 0 {
-		hostname = host[:idx]
-	}
-
+	hostname := stripPort(host)
 	mainDomain := s.getMainDomain()
 
 	// Check if it's exactly the main domain or www subdomain
 	return hostname == mainDomain || hostname == "www."+mainDomain ||
 		(s.devMode != "" && (hostname == "localhost" || hostname == "exe.local"))
+}
+
+func stripPort(host string) string {
+	hostname, _, err := net.SplitHostPort(host)
+	if err == nil {
+		// Had a port: return just the hostname.
+		return hostname
+	}
+	return host
 }
