@@ -131,12 +131,14 @@ func TestTerminalCleanupTimer(t *testing.T) {
 
 	// Create a mock terminal session that's old
 	sessionKey := "test-user:test-machine:1"
-	terminalSessions[sessionKey] = &TerminalSession{
+	sess := &TerminalSession{
 		EventsClients: make(map[chan []byte]bool),
-		LastActivity:  time.Now().Add(-15 * time.Minute), // 15 minutes ago
 		BoxName:       "test-box",
 		UserID:        "test-user",
 	}
+	old := time.Now().Add(-15 * time.Minute)
+	sess.LastActivity.Store(&old)
+	terminalSessions[sessionKey] = sess
 
 	// Run cleanup
 	cleanupInactiveTerminals()

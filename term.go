@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -32,9 +33,22 @@ type TerminalSession struct {
 	EventsClients     map[chan []byte]bool
 	LastEventClientID int
 	EventsMutex       sync.Mutex
-	LastActivity      time.Time
+	LastActivity      atomic.Pointer[time.Time]
 	BoxName           string
 	UserID            string
+}
+
+func (ts *TerminalSession) LastActivityTime() time.Time {
+	t := ts.LastActivity.Load()
+	if t != nil {
+		return *t
+	}
+	return time.Time{}
+}
+
+func (ts *TerminalSession) UpdateLastActivity() {
+	now := time.Now()
+	ts.LastActivity.Store(&now)
 }
 
 // TerminalMessage represents a message sent from the client for terminal resize events
@@ -46,10 +60,11 @@ type TerminalMessage struct {
 
 // Global terminal session storage
 var (
+	cleanupTicker *time.Ticker
+	cleanupDone   chan bool
+
+	terminalSessionsMutex sync.RWMutex // protects terminalSessions map
 	terminalSessions      = make(map[string]*TerminalSession)
-	terminalSessionsMutex sync.RWMutex
-	cleanupTicker         *time.Ticker
-	cleanupDone           chan bool
 )
 
 // Initialize terminal cleanup on package init
@@ -79,7 +94,7 @@ func cleanupInactiveTerminals() {
 
 	cutoff := time.Now().Add(-10 * time.Minute)
 	for sessionID, session := range terminalSessions {
-		if session.LastActivity.Before(cutoff) {
+		if session.LastActivityTime().Before(cutoff) {
 			slog.Info("Cleaning up inactive terminal session", "session_id", sessionID)
 			cleanupTerminalSession(session)
 			delete(terminalSessions, sessionID)
@@ -227,10 +242,7 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 		terminalSessionsMutex.Unlock()
 	}
 
-	// Update last activity time
-	terminalSessionsMutex.Lock()
-	session.LastActivity = time.Now()
-	terminalSessionsMutex.Unlock()
+	session.UpdateLastActivity()
 
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -313,8 +325,7 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update activity time
-	session.LastActivity = time.Now()
+	session.UpdateLastActivity()
 
 	// Read request body
 	body, err := io.ReadAll(r.Body)
@@ -357,12 +368,11 @@ func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
 // createTerminalSession creates a new terminal session for a user's box
 func (s *Server) createTerminalSession(ctx context.Context, userID, boxName string) (*TerminalSession, error) {
 	session := &TerminalSession{
-		EventsClients:     make(map[chan []byte]bool),
-		LastEventClientID: 0,
-		LastActivity:      time.Now(),
-		BoxName:           boxName,
-		UserID:            userID,
+		EventsClients: make(map[chan []byte]bool),
+		BoxName:       boxName,
+		UserID:        userID,
 	}
+	session.UpdateLastActivity()
 
 	// Get box information
 	box, err := s.boxForNameUserID(ctx, boxName, userID)
@@ -484,7 +494,7 @@ func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout
 			if n > 0 {
 				data := make([]byte, n)
 				copy(data, buf[:n])
-				session.LastActivity = time.Now()
+				session.UpdateLastActivity()
 				session.EventsMutex.Lock()
 				for ch := range session.EventsClients {
 					select {
