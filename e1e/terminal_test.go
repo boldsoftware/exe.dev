@@ -54,6 +54,33 @@ func TestTerminalPermissions(t *testing.T) {
 		}
 	})
 
+	// Test 2b: Terminal favicon is served for authenticated user
+	t.Run("favicon_served", func(t *testing.T) {
+		client := createAuthenticatedTerminalClient(t, box, cookies)
+		faviconURL := fmt.Sprintf("http://%s.xterm.localhost:%d/favicon.ico", box, Env.exed.HTTPPort)
+		req, err := localhostRequestWithHostHeader("GET", faviconURL, nil)
+		if err != nil {
+			t.Fatalf("failed to make http request: %v", err)
+		}
+		req.Host = fmt.Sprintf("%s.xterm.localhost:%d", box, Env.exed.HTTPPort)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to request favicon: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 200 for favicon.ico, got %d: %s", resp.StatusCode, string(b))
+		}
+
+		ct := resp.Header.Get("Content-Type")
+		if ct == "" || !strings.HasPrefix(ct, "image/") {
+			t.Fatalf("expected image/* content type for favicon, got %q", ct)
+		}
+	})
+
 	// Test 3: Non-existent box - should see access denied
 	t.Run("nonexistent_box_shows_access_denied", func(t *testing.T) {
 		resp, body := terminalRequestWithAuth(t, "nonexistent", cookies)
