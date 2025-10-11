@@ -155,7 +155,7 @@ type Server struct {
 	certManager         *autocert.Manager
 	wildcardCertManager *porkbun.WildcardCertManager
 	lookupCNAMEFunc     func(context.Context, string) (string, error) // for tests
-	stopCobble          func() error
+	stopCobble          func()
 
 	// Tailscale HTTPS (preloaded at startup)
 	tsCert   *tls.Certificate

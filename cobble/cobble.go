@@ -42,7 +42,7 @@ type Config struct {
 }
 
 type Stone struct {
-	stop   func() error
+	stop   func()
 	client *acme.Client
 }
 
@@ -50,8 +50,21 @@ func (s *Stone) Client() *acme.Client {
 	return s.client
 }
 
-func (s *Stone) Stop() error {
-	return s.stop()
+func (s *Stone) Stop() {
+	s.stop()
+}
+
+type laters []func()
+
+func (l *laters) do(f func()) {
+	*l = append(*l, f)
+}
+
+func (l *laters) run() {
+	defer func() { clear(*l) }()
+	for _, f := range *l {
+		f()
+	}
 }
 
 // Start starts a Pebble ACME test server and returns an ACME client
@@ -60,7 +73,7 @@ func (s *Stone) Stop() error {
 // It runs in a temporary directory with the files in config copied
 // into it before starting.
 // It assumes config.json file is present in the root of config.
-func Start(ctx context.Context, cfg *Config) (*Stone, error) {
+func Start(ctx context.Context, cfg *Config) (_ *Stone, err error) {
 	if cfg == nil {
 		cfg = &Config{}
 	}
@@ -74,11 +87,14 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 	cfg.Certs = cmp.Or(cfg.Certs, fs.FS(defaultCerts))
 	cfg.Log = cmp.Or(cfg.Log, io.Writer(os.Stdout))
 
+	var later laters
+
 	if cfg.Dir == "" {
 		dir, err := os.MkdirTemp("", "cobble-pebble-")
 		if err != nil {
 			return nil, err
 		}
+		later.do(func() { os.RemoveAll(dir) })
 		cfg.Dir = dir
 	}
 
@@ -91,15 +107,27 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	// The cancel is called in the stop function passed to Stone.
+	later.do(cancel)
+
+	defer func() {
+		// Callers are expected to call Stop() to clean up,
+		// but if we fail before returning the Stone,
+		// we need to clean up ourselves, otherwise
+		// we leak the temp dir and a running Pebble process, if
+		// started.
+		if err != nil {
+			later.run()
+		}
+	}()
 
 	buildCmd := exec.CommandContext(ctx, "go", "build",
 		"-o", cfg.Dir,
 		"github.com/letsencrypt/pebble/cmd/pebble",
 	)
+	later.do(func() { os.Remove(filepath.Join(cfg.Dir, "pebble")) })
+
 	logs, err := buildCmd.CombinedOutput()
 	if err != nil {
-		cancel()
 		return nil, fmt.Errorf("%v: %w: %s", buildCmd, err, logs)
 	}
 
@@ -124,9 +152,14 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 
 	fmt.Fprintf(cfg.Log, "Starting Pebble: %v\n", cmd)
 	if err := cmd.Start(); err != nil {
-		cancel()
 		return nil, err
 	}
+
+	later.do(func() {
+		fmt.Fprintln(cfg.Log, "Stopping Pebble")
+		cancel()
+		cmd.Wait()
+	})
 
 	// Configure the ACME client to trust Pebble's management server certificate
 	// (from testdata/pebble/certs/cert.pem) which is used for the HTTPS endpoints
@@ -185,7 +218,7 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 			DirectoryURL: fmt.Sprintf("https://%s/dir", cfg.ListenAddress),
 			HTTPClient:   httpClient,
 		},
-		stop: func() error { cancel(); return cmd.Wait() },
+		stop: later.run,
 	}
 	return stone, nil
 }
