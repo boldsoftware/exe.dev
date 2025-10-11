@@ -529,7 +529,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
-    	shm := "/dev/shm"
+	shm := "/dev/shm"
 	if st, err := os.Stat(shm); err != nil || !st.IsDir() {
 		shm = ""
 	}
