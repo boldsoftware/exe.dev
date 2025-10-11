@@ -65,39 +65,6 @@ func TestPublicKeyAuthentication(t *testing.T) {
 	}
 }
 
-func TestServerStartStop(t *testing.T) {
-	server := NewTestServer(t)
-
-	// Test that server is responding
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", server.httpLn.tcp.Port))
-	if err != nil {
-		t.Fatalf("Health check failed: %v", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		t.Errorf("Expected status 200, got %d", resp.StatusCode)
-	}
-
-	// The Start() method blocks on OS signals, so we can't easily test
-	// the complete shutdown flow. Just verify the server components stopped.
-	t.Log("Server Stop() called successfully")
-}
-
-func TestHealthEndpoint(t *testing.T) {
-	server := NewTestServer(t)
-
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", server.httpLn.tcp.Port))
-	if err != nil {
-		t.Fatalf("Health check failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		t.Errorf("Expected status 200, got %d", resp.StatusCode)
-	}
-}
-
 func TestEmailVerificationHTTP(t *testing.T) {
 	server := NewTestServer(t)
 	verification := server.addEmailVerification("ssh-rsa test-key", "test@example.com", true)

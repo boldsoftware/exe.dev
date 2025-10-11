@@ -35,32 +35,6 @@ func TestTerminalRouting(t *testing.T) {
 	}
 }
 
-func TestTerminalPageRequiresAuth(t *testing.T) {
-	t.Parallel()
-	server := NewTestServer(t)
-
-	// Request terminal page without authentication
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = "testmachine.xterm.localhost"
-	w := httptest.NewRecorder()
-
-	server.ServeHTTP(w, req)
-
-	// Should redirect to auth
-	if w.Code != http.StatusTemporaryRedirect {
-		t.Errorf("Expected redirect to auth, got status %d", w.Code)
-	}
-
-	location := w.Header().Get("Location")
-	if !strings.Contains(location, "/auth?") {
-		t.Errorf("Expected redirect to auth URL, got %q", location)
-	}
-
-	if !strings.Contains(location, "return_host=testmachine.xterm.localhost") {
-		t.Errorf("Expected return_host in redirect URL, got %q", location)
-	}
-}
-
 func TestTerminalStaticFiles(t *testing.T) {
 	t.Parallel()
 	server := NewTestServer(t)

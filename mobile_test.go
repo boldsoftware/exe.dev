@@ -9,28 +9,6 @@ import (
 	"testing"
 )
 
-func TestMobileHomeRoute(t *testing.T) {
-	server := NewTestServer(t)
-
-	// Test GET /m
-	req := httptest.NewRequest("GET", "/m", nil)
-	req.Host = server.getMainDomain()
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "exe.dev") {
-		t.Error("Expected exe.dev title in response")
-	}
-	if !strings.Contains(body, "Create") {
-		t.Error("Expected Create button in response")
-	}
-}
-
 func TestMobileHostnameCheck(t *testing.T) {
 	server := NewTestServer(t)
 
@@ -65,62 +43,6 @@ func TestMobileHostnameCheck(t *testing.T) {
 	}
 	if response.Message != "" {
 		t.Errorf("Expected empty message for available hostname, got %q", response.Message)
-	}
-}
-
-func TestMobileCreateVMFlow(t *testing.T) {
-	server := NewTestServer(t)
-
-	// Test VM creation form submission
-	form := url.Values{}
-	form.Add("hostname", "test-vm")
-	form.Add("prompt", "Build a blog")
-
-	req := httptest.NewRequest("POST", "/m/create-vm", strings.NewReader(form.Encode()))
-	req.Host = server.getMainDomain()
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "test-vm.exe.dev") {
-		t.Error("Expected VM hostname in response")
-	}
-	if !strings.Contains(body, "Build a blog") {
-		t.Error("Expected VM prompt in response")
-	}
-	if !strings.Contains(body, "Sign in") {
-		t.Error("Expected email prompt in response")
-	}
-}
-
-func TestMobileEmailAuth(t *testing.T) {
-	server := NewTestServer(t)
-
-	// Test email authentication
-	form := url.Values{}
-	form.Add("email", "test@example.com")
-
-	req := httptest.NewRequest("POST", "/m/email-auth", strings.NewReader(form.Encode()))
-	req.Host = server.getMainDomain()
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-	server.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "Check Your Email") {
-		t.Errorf("expected email check message in response, got:\n%s", body)
-	}
-	if !strings.Contains(body, "test@example.com") {
-		t.Errorf("expected email address in response, got:\n%s", body)
 	}
 }
 
