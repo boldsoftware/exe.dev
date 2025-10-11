@@ -871,7 +871,7 @@ func makePty(t *testing.T, name string) *expectPty {
 	opts := []expect.ConsoleOpt{
 		// TODO: reduce this timeout.
 		// josh increased it on sep 15 because performance regressions in box startup made it necessary to avoid flakiness.
-		expect.WithDefaultRefreshingTimeout(45 * time.Second),
+		expect.WithDefaultRefreshingTimeout(time.Minute),
 	}
 	if *flagVerbosePty {
 		opts = append(opts, expect.WithStdout(os.Stdout))
