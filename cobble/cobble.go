@@ -88,6 +88,16 @@ func Start(ctx context.Context, cfg *Config) (_ *Stone, err error) {
 	cfg.Log = cmp.Or(cfg.Log, io.Writer(os.Stdout))
 
 	var later laters
+	defer func() {
+		// Callers are expected to call Stop() to clean up,
+		// but if we fail before returning the Stone,
+		// we need to clean up ourselves, otherwise
+		// we leak the temp dir and a running Pebble process, if
+		// started.
+		if err != nil {
+			later.run()
+		}
+	}()
 
 	if cfg.Dir == "" {
 		dir, err := os.MkdirTemp("", "cobble-pebble-")
@@ -108,17 +118,6 @@ func Start(ctx context.Context, cfg *Config) (_ *Stone, err error) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	later.do(cancel)
-
-	defer func() {
-		// Callers are expected to call Stop() to clean up,
-		// but if we fail before returning the Stone,
-		// we need to clean up ourselves, otherwise
-		// we leak the temp dir and a running Pebble process, if
-		// started.
-		if err != nil {
-			later.run()
-		}
-	}()
 
 	buildCmd := exec.CommandContext(ctx, "go", "build",
 		"-o", cfg.Dir,
