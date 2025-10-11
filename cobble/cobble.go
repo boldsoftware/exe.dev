@@ -99,6 +99,7 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 	)
 	logs, err := buildCmd.CombinedOutput()
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("%v: %w: %s", buildCmd, err, logs)
 	}
 
@@ -123,6 +124,7 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 
 	fmt.Fprintf(cfg.Log, "Starting Pebble: %v\n", cmd)
 	if err := cmd.Start(); err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -131,9 +133,11 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 	certPool := x509.NewCertPool()
 	pebbleCert, err := fs.ReadFile(cfg.Certs, "certs/cert.pem")
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	if !certPool.AppendCertsFromPEM(pebbleCert) {
+		cancel()
 		return nil, errors.New("failed to append Pebble server certificate to cert pool")
 	}
 
@@ -150,10 +154,12 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 	start := time.Now()
 	for {
 		if time.Since(start) > 10*time.Second {
+			cancel()
 			return nil, errors.New("timed out waiting for Pebble to start")
 		}
 		req, err := http.NewRequestWithContext(ctx, "GET", directoryURL, nil)
 		if err != nil {
+			cancel()
 			return nil, err
 		}
 		resp, err := httpClient.Do(req)
@@ -169,6 +175,7 @@ func Start(ctx context.Context, cfg *Config) (*Stone, error) {
 	// Generate a new ECDSA key for the ACME client
 	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
