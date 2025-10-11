@@ -49,10 +49,7 @@ func (m *mockConnection) UniqueID() string {
 
 func TestKeyboardInteractiveAuthentication(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
-
-	// Create piper plugin
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(nil, 0)
 
 	// Create mock connection metadata
 	mockConn := &mockConnection{
@@ -87,10 +84,7 @@ func TestKeyboardInteractiveAuthentication(t *testing.T) {
 
 func TestAuthMethodAdvertisement(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
-
-	// Create piper plugin
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(nil, 0)
 
 	// Create mock connection metadata
 	mockConn := &mockConnection{
@@ -121,10 +115,7 @@ func TestAuthMethodAdvertisement(t *testing.T) {
 
 func TestKeyboardInteractiveNoRetries(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
-
-	// Create piper plugin
-	piper := NewPiperPlugin(server, 0)
+	piper := NewPiperPlugin(nil, 0)
 
 	// Create mock connection metadata with same unique ID
 	mockConn := &mockConnection{
