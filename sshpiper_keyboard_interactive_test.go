@@ -82,37 +82,6 @@ func TestKeyboardInteractiveAuthentication(t *testing.T) {
 	t.Logf("✅ Keyboard interactive authentication correctly denies access with helpful message: %v", err)
 }
 
-func TestAuthMethodAdvertisement(t *testing.T) {
-	t.Parallel()
-	piper := NewPiperPlugin(nil, 0)
-
-	// Create mock connection metadata
-	mockConn := &mockConnection{
-		user: "testuser",
-		addr: "127.0.0.1:12345",
-	}
-
-	// Test next auth methods
-	methods, err := piper.handleNextAuthMethods(mockConn)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	// Should advertise both publickey and keyboard-interactive
-	expectedMethods := []string{"publickey", "keyboard-interactive"}
-	if len(methods) != len(expectedMethods) {
-		t.Fatalf("Expected %d methods, got %d: %v", len(expectedMethods), len(methods), methods)
-	}
-
-	for i, expected := range expectedMethods {
-		if methods[i] != expected {
-			t.Errorf("Expected method %d to be %s, got %s", i, expected, methods[i])
-		}
-	}
-
-	t.Logf("✅ NextAuthMethods correctly advertises both publickey and keyboard-interactive: %v", methods)
-}
-
 func TestKeyboardInteractiveNoRetries(t *testing.T) {
 	t.Parallel()
 	piper := NewPiperPlugin(nil, 0)

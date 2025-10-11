@@ -40,6 +40,8 @@ func TestRequiresSSHKey(t *testing.T) {
 	pty.want("SSH keys are required to access exe.dev")
 	pty.want("Press Enter to close this connection.")
 	pty.sendLine("")
+	// Confirm we have the correct auth methods advertised.
+	pty.want("Permission denied (publickey,keyboard-interactive).")
 	pty.wantEOF()
 }
 
