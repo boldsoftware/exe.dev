@@ -1182,7 +1182,7 @@ func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *exemenu.Command
 func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	// Generate a verification token using the same system as email authentication.
 	// The verification code for email is anti-phishing, but not needed here since the user directly acquires the link.
-	token := ss.server.generateRegistrationToken()
+	token := generateRegistrationToken()
 
 	// Store verification in database using the existing email verification table
 	err := ss.server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {

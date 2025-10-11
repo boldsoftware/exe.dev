@@ -634,13 +634,13 @@ func (s *Server) GetPublicKeyFingerprint(key ssh.PublicKey) string {
 }
 
 // generateRegistrationToken creates a random registration token
-func (s *Server) generateRegistrationToken() string {
+func generateRegistrationToken() string {
 	txt := crand.Text()
 	return txt[:len(txt)/2] // we don't need a super long token, no birthday attacks here, 64 bits is plenty
 }
 
 // generatePairingCode returns a zero-padded six digit string for anti-phishing checks.
-func (s *Server) generatePairingCode() string {
+func generatePairingCode() string {
 	max := big.NewInt(1_000_000)
 	n, err := crand.Int(crand.Reader, max)
 	if err != nil {
@@ -1274,7 +1274,7 @@ func dedupeStrings(values []string) []string {
 }
 
 // isValidEmail performs basic email validation
-func (s *Server) isValidEmail(email string) bool {
+func isValidEmail(email string) bool {
 	if email == "" {
 		return false
 	}

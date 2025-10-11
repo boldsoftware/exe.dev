@@ -1052,7 +1052,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Generate verification token
-	token := s.generateRegistrationToken()
+	token := generateRegistrationToken()
 
 	// Store verification in database (reuse existing email_verifications table)
 	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {

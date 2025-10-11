@@ -409,13 +409,13 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Basic email validation
-	if !s.isValidEmail(email) {
+	if !isValidEmail(email) {
 		http.Error(w, "Invalid email format", http.StatusBadRequest)
 		return
 	}
 
 	// Generate verification token
-	token := s.generateRegistrationToken()
+	token := generateRegistrationToken()
 
 	// Store email verification token in database
 	err := s.storeEmailVerification(r.Context(), email, token)

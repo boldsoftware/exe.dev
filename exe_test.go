@@ -71,10 +71,8 @@ func TestEmailVerificationHTTP(t *testing.T) {
 }
 
 func TestTokenGeneration(t *testing.T) {
-	server := NewTestServer(t)
-
-	token1 := server.generateRegistrationToken()
-	token2 := server.generateRegistrationToken()
+	token1 := generateRegistrationToken()
+	token2 := generateRegistrationToken()
 
 	if token1 == token2 {
 		t.Error("Generated tokens should be unique")
@@ -86,8 +84,6 @@ func TestTokenGeneration(t *testing.T) {
 }
 
 func TestEmailValidation(t *testing.T) {
-	server := NewTestServer(t)
-
 	tests := []struct {
 		email string
 		valid bool
@@ -102,7 +98,7 @@ func TestEmailValidation(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := server.isValidEmail(tt.email)
+		result := isValidEmail(tt.email)
 		if result != tt.valid {
 			t.Errorf("isValidEmail(%q) = %v, want %v", tt.email, result, tt.valid)
 		}

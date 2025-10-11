@@ -553,7 +553,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Validate email
 	var email string
 	suggested := ghInfo.Email
-	for !ss.server.isValidEmail(email) {
+	for !isValidEmail(email) {
 		if email != "" {
 			fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
 		}
@@ -898,8 +898,8 @@ The EXE.DEV team`, verifyURL)
 }
 
 func (s *Server) addEmailVerification(publicKey, email string, isNewAccount bool) *EmailVerification {
-	token := s.generateRegistrationToken()
-	pairingCode := s.generatePairingCode()
+	token := generateRegistrationToken()
+	pairingCode := generatePairingCode()
 
 	verification := &EmailVerification{
 		PublicKey:    publicKey,
