@@ -33,6 +33,7 @@ import (
 	templatespkg "exe.dev/templates"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	_ "modernc.org/sqlite"
 	"tailscale.com/client/tailscale"
@@ -132,6 +133,7 @@ func (s *Server) setupHTTPSServer() {
 		Handler: s.prepareHandler(),
 		TLSConfig: &tls.Config{
 			GetCertificate: s.getCertificate,
+			NextProtos:     []string{"h2", "http/1.1", acme.ALPNProto},
 		},
 	}
 
