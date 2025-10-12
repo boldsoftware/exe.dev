@@ -1,6 +1,7 @@
 package exemenu
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -522,6 +523,7 @@ func NewANSIFilterWriter(w io.Writer) *ANSIFilterWriter {
 // Write implements io.Writer interface
 func (fw *ANSIFilterWriter) Write(p []byte) (n int, err error) {
 	cleaned := []byte(ansi.Strip(string(p)))
+	cleaned = bytes.ReplaceAll(cleaned, []byte("\r\n"), []byte("\n"))
 	_, err = fw.writer.Write(cleaned)
 	if err != nil {
 		return 0, err

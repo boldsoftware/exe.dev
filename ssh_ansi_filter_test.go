@@ -47,8 +47,7 @@ func TestCommandSystemUsesANSIFilterInExecMode(t *testing.T) {
 		t.Errorf("Shell mode should preserve ANSI codes, but they were missing from: %q", shellResult)
 	}
 
-	// Verify content is otherwise the same
-	expectedFiltered := "Command: help\r\nUsage: show help\r\nGreen text"
+	expectedFiltered := "Command: help\nUsage: show help\nGreen text"
 	if execResult != expectedFiltered {
 		t.Errorf("Filtered content doesn't match expected.\nExpected: %q\nGot: %q", expectedFiltered, execResult)
 	}
@@ -173,7 +172,7 @@ func TestANSIFilterWriterDirectly(t *testing.T) {
 		{
 			name:     "real command output example",
 			input:    "\033[1;33mCommand: help\033[0m\r\n\033[1mUsage:\033[0m show help",
-			expected: "Command: help\r\nUsage: show help",
+			expected: "Command: help\nUsage: show help",
 		},
 	}
 
