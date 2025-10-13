@@ -350,11 +350,7 @@ func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data
 
 // ServeHTTP implements http.Handler for the HTTP server
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	stopping := s.stopping
-	s.mu.RUnlock()
-
-	if stopping {
+	if s.stopping.Load() {
 		http.Error(w, "Server is shutting down", http.StatusServiceUnavailable)
 		return
 	}

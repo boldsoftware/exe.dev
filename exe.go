@@ -27,6 +27,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -205,8 +206,7 @@ type Server struct {
 
 	docs *docspkg.Handler
 
-	mu       sync.RWMutex
-	stopping bool
+	stopping atomic.Bool
 }
 
 // A listener is a listening port, along with address information.
@@ -1616,9 +1616,9 @@ func (s *Server) updateBoxStatus(ctx context.Context, boxID int, status string) 
 
 // Start starts HTTP, HTTPS (if configured), and SSH servers
 func (s *Server) Start() error {
-	s.mu.Lock()
-	s.stopping = false
-	s.mu.Unlock()
+	if s.stopping.Load() {
+		return fmt.Errorf("illegal start after stop")
+	}
 
 	// Create a cancellable context for startup
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2042,9 +2042,7 @@ func generateBillingAccountID() (string, error) {
 
 // Stop gracefully shuts down all servers
 func (s *Server) Stop() error {
-	s.mu.Lock()
-	s.stopping = true
-	s.mu.Unlock()
+	s.stopping.Store(true)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
