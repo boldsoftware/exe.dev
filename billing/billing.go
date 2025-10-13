@@ -50,21 +50,24 @@ type Billing interface {
 type billingService struct {
 	db     *sqlite.DB
 	client *client.API
+	log    *slog.Logger
 }
 
 // New creates a new BillingService
-func New(db *sqlite.DB) Billing {
+func New(log *slog.Logger, db *sqlite.DB) Billing {
 	return &billingService{
 		db:     db,
 		client: createStripeClient(),
+		log:    log,
 	}
 }
 
 // NewWithClient creates a new BillingService with custom client
-func NewWithClient(db *sqlite.DB, stripeClient *client.API) Billing {
+func NewWithClient(log *slog.Logger, db *sqlite.DB, stripeClient *client.API) Billing {
 	return &billingService{
 		db:     db,
 		client: stripeClient,
+		log:    log,
 	}
 }
 
@@ -128,7 +131,7 @@ func (bs *billingService) SetupBilling(allocID, billingEmail, cardNumber, expMon
 	}
 	customerID, err := bs.createStripeCustomer(billingEmail, cardNumber, expMonth, expYear, cvc)
 	if err != nil {
-		slog.Error("billingService.SetupBilling", "createStripeCustomer error", err)
+		bs.log.Error("billingService.SetupBilling", "createStripeCustomer error", err)
 		customerID = "fake-stripe_customer_id-for-" + newBillingAccountID
 		// return err
 	}
@@ -226,7 +229,7 @@ func (bs *billingService) createStripeCustomer(email, cardNumber, expMonth, expY
 
 	pm, err := bs.client.PaymentMethods.New(pmParams)
 	if err != nil {
-		slog.Error("billingService.createStripeCustomer", "create payment method error", err)
+		bs.log.Error("billingService.createStripeCustomer", "create payment method error", err)
 		// return "", fmt.Errorf("failed to create payment method: %v", err)
 	}
 

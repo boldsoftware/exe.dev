@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/testutil"
 )
 
 func NewTestServer(t *testing.T, dockerhosts ...string) *Server {
@@ -25,7 +27,7 @@ func newUnstartedServer(t *testing.T, dockerhosts ...string) *Server {
 	name := strings.ReplaceAll(t.Name(), "/", "_") // unique in-memory sqlite database per test
 	dsn := fmt.Sprintf("file:%s-%d?mode=memory&cache=shared", name, time.Now().UnixNano())
 
-	s, err := NewServer(":0", ":0", ":0", ":0", dsn, "test", "", 2222, "ghuser/whoami.sqlite3", dockerhosts)
+	s, err := NewServer(testutil.Slogger(t), ":0", ":0", ":0", ":0", dsn, "test", "", 2222, "ghuser/whoami.sqlite3", dockerhosts)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

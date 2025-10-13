@@ -3,6 +3,7 @@
 package cobble
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/ecdsa"
@@ -20,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -46,25 +48,34 @@ type Stone struct {
 	client *acme.Client
 }
 
-func (s *Stone) Client() *acme.Client {
-	return s.client
+type lineWriter struct {
+	w   io.Writer
+	buf []byte
 }
 
-func (s *Stone) Stop() {
-	s.stop()
-}
-
-type laters []func()
-
-func (l *laters) do(f func()) {
-	*l = append(*l, f)
-}
-
-func (l *laters) run() {
-	defer func() { clear(*l) }()
-	for _, f := range *l {
-		f()
+func (lw *lineWriter) Write(p []byte) (n int, err error) {
+	for line := range bytes.Lines(p) {
+		if line[len(line)-1] != '\n' {
+			lw.buf = append(lw.buf, line...)
+			continue
+		}
+		if len(lw.buf) > 0 {
+			if _, err := lw.w.Write(lw.buf); err != nil {
+				return 0, err
+			}
+			lw.buf = lw.buf[:0]
+		}
+		if _, err := lw.w.Write(line); err != nil {
+			return len(p), err
+		}
 	}
+	return len(p), nil
+}
+
+func (lw *lineWriter) Flush() error {
+	_, err := lw.w.Write(lw.buf)
+	lw.buf = lw.buf[:0]
+	return err
 }
 
 // Start starts a Pebble ACME test server and returns an ACME client
@@ -146,8 +157,8 @@ func Start(ctx context.Context, cfg *Config) (_ *Stone, err error) {
 		// Disable artificial sleep delays in the validation path to run at full speed.
 		"PEBBLE_VA_NOSLEEP=1",
 	)
-	cmd.Stdout = cfg.Log
-	cmd.Stderr = cfg.Log
+	cmd.Stdout = &lineWriter{w: cfg.Log}
+	cmd.Stderr = &lineWriter{w: cfg.Log}
 
 	fmt.Fprintf(cfg.Log, "Starting Pebble: %v\n", cmd)
 	if err := cmd.Start(); err != nil {
@@ -155,6 +166,8 @@ func Start(ctx context.Context, cfg *Config) (_ *Stone, err error) {
 	}
 
 	later.do(func() {
+		cmd.Stdout.(*lineWriter).Flush()
+		cmd.Stderr.(*lineWriter).Flush()
 		fmt.Fprintln(cfg.Log, "Stopping Pebble")
 		cancel()
 		cmd.Wait()
@@ -220,6 +233,29 @@ func Start(ctx context.Context, cfg *Config) (_ *Stone, err error) {
 		stop: later.run,
 	}
 	return stone, nil
+}
+
+func (s *Stone) Client() *acme.Client {
+	return s.client
+}
+
+func (s *Stone) Stop() {
+	s.stop()
+}
+
+type laters []func()
+
+func (l *laters) do(f func()) {
+	*l = append(*l, f)
+}
+
+// run runs all the deferred functions in LIFO order and then clears the list
+// memory.
+func (l *laters) run() {
+	defer func() { clear(*l) }()
+	for _, f := range slices.Backward(*l) {
+		f()
+	}
 }
 
 func writeConfig(dir string, cfg *Config) (path string, _ error) {

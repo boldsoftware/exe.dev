@@ -89,6 +89,7 @@ type llmGateway struct {
 	apiKeys         APIKeys
 	devMode         bool      // if true, accept "dev.key" as a valid API key
 	testDebitDone   chan bool // for testing -- if non-nil, best effort send every time a debit occurs
+	log             *slog.Logger
 }
 
 type APIKeys struct {
@@ -102,7 +103,7 @@ type boxKeyAuthority interface {
 	SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error)
 }
 
-func NewGateway(accountant *accounting.Accountant, db *sqlite.DB, boxKeyAuthority boxKeyAuthority,
+func NewGateway(log *slog.Logger, accountant *accounting.Accountant, db *sqlite.DB, boxKeyAuthority boxKeyAuthority,
 	apiKeys APIKeys, devMode bool,
 ) *llmGateway {
 	ret := &llmGateway{
@@ -112,16 +113,17 @@ func NewGateway(accountant *accounting.Accountant, db *sqlite.DB, boxKeyAuthorit
 		boxKeyAuthority: boxKeyAuthority,
 		apiKeys:         apiKeys,
 		devMode:         devMode,
+		log:             log,
 	}
 	if apiKeys.Anthropic == "" || apiKeys.Fireworks == "" || apiKeys.OpenAI == "" {
-		slog.Warn("NewGateway: not all apiKeys are set", "apiKeys", apiKeys)
+		log.Warn("NewGateway: not all apiKeys are set", "apiKeys", apiKeys)
 	}
 	return ret
 }
 
-func httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) {
+func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) {
 	http.Error(w, errstr, code)
-	slog.Error("llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr)
+	m.log.Error("llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr)
 }
 
 func (a *llmGateway) checkCredits(ctx context.Context, billingAccountID string) error {
@@ -133,7 +135,7 @@ func (a *llmGateway) checkCredits(ctx context.Context, billingAccountID string) 
 		return err
 	})
 	if err != nil {
-		slog.Error("accountingTransport.checkCredits: GetBalance failed", "error", err)
+		a.log.Error("accountingTransport.checkCredits: GetBalance failed", "error", err)
 		// Fallback to allowing the request if we can't check balance
 		return nil
 	}
@@ -146,12 +148,12 @@ func (a *llmGateway) checkCredits(ctx context.Context, billingAccountID string) 
 }
 
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	slog.Info("llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
+	m.log.Info("llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
 
 	// authenticate request
 	boxName, err := m.boxKeyAuth(r.Context(), r)
 	if err != nil {
-		httpError(w, r, "box key auth failed: "+err.Error(), http.StatusUnauthorized)
+		m.httpError(w, r, "box key auth failed: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -162,15 +164,15 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return err
 	})
 	if err != nil {
-		slog.Error("llmGateway.ServeHTTP", "BillingAccountForBox error", err)
+		m.log.Error("llmGateway.ServeHTTP", "BillingAccountForBox error", err)
 	}
 
-	slog.Info("gateway proxying request -->", "method", r.Method, "url", r.URL)
+	m.log.Info("gateway proxying request -->", "method", r.Method, "url", r.URL)
 	endpointPath := strings.TrimPrefix(r.URL.Path, "/_/gateway/")
 	parts := strings.Split(endpointPath, "/")
 	alias := parts[0]
 	remainder := endpointPath[len(alias):]
-	slog.Info("llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder)
+	m.log.Info("llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder)
 
 	requestsCounter.WithLabelValues("attempted", alias).Inc()
 
@@ -194,11 +196,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "fireworks":
 		proxy, err = m.createFireworksProxy(billingID)
 	default:
-		httpError(w, r, "unrecognized origin alias", http.StatusNotFound)
+		m.httpError(w, r, "unrecognized origin alias", http.StatusNotFound)
 		return
 	}
 	if err != nil {
-		httpError(w, r, err.Error(), http.StatusInternalServerError)
+		m.httpError(w, r, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	proxy.ServeHTTP(w, r)
@@ -214,11 +216,12 @@ func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.Re
 		db:               m.db,
 		billingAccountID: billingAccountID,
 		apiType:          "anthropic",
+		log:              m.log,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			slog.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
+			m.log.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Anthropic)
 			r.Out.Host = "api.anthropic.com"
 			r.Out.URL.Scheme = "https"
@@ -227,8 +230,8 @@ func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.Re
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			slog.Error("anthropic api gateway", "error", err)
-			httpError(w, r, "anthropic api gateway error: "+err.Error(), http.StatusBadGateway)
+			m.log.Error("anthropic api gateway", "error", err)
+			m.httpError(w, r, "anthropic api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
 
@@ -245,11 +248,12 @@ func (m *llmGateway) createOpenAIProxy(billingAccountID string) (*httputil.Rever
 		db:               m.db,
 		billingAccountID: billingAccountID,
 		apiType:          "openai",
+		log:              m.log,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			slog.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
+			m.log.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.OpenAI)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.OpenAI)
 			r.Out.Host = "api.openai.com"
@@ -259,8 +263,8 @@ func (m *llmGateway) createOpenAIProxy(billingAccountID string) (*httputil.Rever
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			slog.Error("openai api gateway", "error", err)
-			httpError(w, r, "openai api gateway error: "+err.Error(), http.StatusBadGateway)
+			m.log.Error("openai api gateway", "error", err)
+			m.httpError(w, r, "openai api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
 
@@ -277,11 +281,12 @@ func (m *llmGateway) createFireworksProxy(billingAccountID string) (*httputil.Re
 		db:               m.db,
 		billingAccountID: billingAccountID,
 		apiType:          "fireworks",
+		log:              m.log,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.Header.Del("Authorization") // Remove our bearer token so we don't leak them to the origin server.
-			slog.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
+			m.log.Info("ReverseProxy.Rewrite", "r.Out.URL", r.Out.URL, "r.Out.Host", r.Out.Host, "r.Out.Header", r.Out.Header)
 			r.Out.Header.Set("Authorization", "Bearer "+m.apiKeys.Fireworks)
 			r.Out.Header.Set("X-API-Key", m.apiKeys.Fireworks)
 			r.Out.Host = "api.fireworks.ai"
@@ -291,8 +296,8 @@ func (m *llmGateway) createFireworksProxy(billingAccountID string) (*httputil.Re
 		Transport:      transport,
 		ModifyResponse: transport.modifyResponse,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			slog.Error("fireworks api gateway", "error", err)
-			httpError(w, r, "fireworks api gateway error: "+err.Error(), http.StatusBadGateway)
+			m.log.Error("fireworks api gateway", "error", err)
+			m.httpError(w, r, "fireworks api gateway error: "+err.Error(), http.StatusBadGateway)
 		},
 	}
 

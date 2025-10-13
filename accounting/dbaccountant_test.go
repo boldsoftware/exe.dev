@@ -9,6 +9,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
+	"exe.dev/testutil"
 	_ "modernc.org/sqlite"
 )
 
@@ -27,7 +28,7 @@ func setupTestDB(t *testing.T) (*sqlite.DB, func()) {
 		t.Fatalf("Failed to open database: %v", err)
 	}
 
-	if err := exedb.RunMigrations(rawDB); err != nil {
+	if err := exedb.RunMigrations(testutil.Slogger(t), rawDB); err != nil {
 		rawDB.Close()
 		os.Remove(dbPath)
 		t.Fatalf("Failed to run migrations: %v", err)

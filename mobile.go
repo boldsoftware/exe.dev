@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -163,7 +162,7 @@ func (s *Server) removeCreationStream(userID, hostname string) {
 func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID string) {
 	// Check if already creating
 	if cs := s.getCreationStream(userID, hostname); cs != nil {
-		slog.Info("Box creation already in progress", "hostname", hostname, "user_id", userID)
+		s.slog().Info("Box creation already in progress", "hostname", hostname, "user_id", userID)
 		return
 	}
 
@@ -173,14 +172,14 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 	// Get user's allocation
 	alloc, err := s.getUserAlloc(ctx, userID)
 	if err != nil || alloc == nil {
-		slog.Error("Failed to get user allocation for box creation", "error", err, "user_id", userID)
+		s.slog().Error("Failed to get user allocation for box creation", "error", err, "user_id", userID)
 		cs.MarkDone(fmt.Errorf("failed to get user allocation: %w", err))
 		return
 	}
 
 	// Check if hostname is available
 	if !s.isBoxNameAvailable(ctx, hostname) {
-		slog.Error("Box name not available", "hostname", hostname)
+		s.slog().Error("Box name not available", "hostname", hostname)
 		cs.MarkDone(fmt.Errorf("box name %q is not available", hostname))
 		return
 	}
@@ -192,7 +191,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		defer cancel()
 
 		// Set up the command context
-		ss := NewSSHServer(s, billing.New(s.db))
+		ss := NewSSHServer(s, billing.New(s.slog(), s.db))
 		fs := newCommandFlags()
 		_ = fs.Set("name", hostname)
 		if prompt != "" {
@@ -225,11 +224,11 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 			_, updateErr := tx.Conn().ExecContext(ctx, `UPDATE boxes SET creation_log = ? WHERE name = ?`, creationLog, hostname)
 			return updateErr
 		}); saveErr != nil {
-			slog.Error("Failed to save creation log", "error", saveErr, "hostname", hostname)
+			s.slog().Error("Failed to save creation log", "error", saveErr, "hostname", hostname)
 		}
 
 		if err != nil {
-			slog.Error("Box creation failed", "hostname", hostname, "error", err)
+			s.slog().Error("Box creation failed", "hostname", hostname, "error", err)
 			cs.MarkDone(err)
 			return
 		}
@@ -239,11 +238,11 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 			_, err := tx.Conn().ExecContext(ctx, `DELETE FROM mobile_pending_vm WHERE user_id = ? AND hostname = ?`, userID, hostname)
 			return err
 		}); err != nil {
-			slog.Error("Failed to delete pending mobile VM", "error", err, "user_id", userID, "hostname", hostname)
+			s.slog().Error("Failed to delete pending mobile VM", "error", err, "user_id", userID, "hostname", hostname)
 		}
 
 		cs.MarkDone(nil)
-		slog.Info("Box creation completed", "hostname", hostname)
+		s.slog().Info("Box creation completed", "hostname", hostname)
 	}()
 }
 
@@ -375,7 +374,7 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	hostname := strings.TrimSpace(r.FormValue("hostname"))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 
-	slog.Info("Mobile VM creation request", "hostname", hostname, "prompt", prompt)
+	s.slog().Info("Mobile VM creation request", "hostname", hostname, "prompt", prompt)
 
 	// If user is logged in, start creation immediately and redirect to dashboard
 	if userID, err := s.validateAuthCookie(r); err == nil {
@@ -421,7 +420,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	// Store email verification token in database
 	err := s.storeEmailVerification(r.Context(), email, token)
 	if err != nil {
-		slog.Error("Failed to store email verification", "error", err)
+		s.slog().Error("Failed to store email verification", "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
 		return
 	}
@@ -432,7 +431,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 		return q.GetUserIDByEmail(ctx, email)
 	})
 	if err != nil {
-		slog.Error("Failed to lookup user after email auth", "email", email, "error", err)
+		s.slog().Error("Failed to lookup user after email auth", "email", email, "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
 		return
 	}
@@ -441,7 +440,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 			_, err := tx.Conn().ExecContext(ctx, `INSERT OR REPLACE INTO mobile_pending_vm (token, user_id, hostname, prompt) VALUES (?, ?, ?, ?)`, token, userID, hostname, prompt)
 			return err
 		}); err != nil {
-			slog.Error("Failed to store pending mobile VM", "error", err)
+			s.slog().Error("Failed to store pending mobile VM", "error", err)
 			http.Error(w, "Failed to process request", http.StatusInternalServerError)
 			return
 		}
@@ -467,7 +466,7 @@ The exe.dev team`, verifyURL, token)
 
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
-		slog.Error("Failed to send verification email", "error", err)
+		s.slog().Error("Failed to send verification email", "error", err)
 		http.Error(w, "Failed to send email", http.StatusInternalServerError)
 		return
 	}
@@ -505,7 +504,7 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 	// Create auth cookie
 	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
 	if err != nil {
-		slog.Error("Failed to create auth cookie", "error", err)
+		s.slog().Error("Failed to create auth cookie", "error", err)
 		http.Error(w, "Authentication failed", http.StatusInternalServerError)
 		return
 	}
@@ -531,7 +530,7 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 			http.Redirect(w, r, "/~", http.StatusSeeOther)
 			return
 		}
-		slog.Error("Failed to query pending mobile VM by token", "error", err)
+		s.slog().Error("Failed to query pending mobile VM by token", "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
 		return
 	}
@@ -562,7 +561,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 	// Create auth cookie
 	cookieValue, err := s.createAuthCookie(r.Context(), userID, r.Host)
 	if err != nil {
-		slog.Error("Failed to create auth cookie", "error", err)
+		s.slog().Error("Failed to create auth cookie", "error", err)
 		http.Error(w, "Authentication failed", http.StatusInternalServerError)
 		return
 	}
@@ -588,7 +587,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 			http.Redirect(w, r, "/~", http.StatusSeeOther)
 			return
 		}
-		slog.Error("Failed to query pending mobile VM by user_id", "error", err)
+		s.slog().Error("Failed to query pending mobile VM by user_id", "error", err)
 		http.Error(w, "Failed to process request", http.StatusInternalServerError)
 		return
 	}

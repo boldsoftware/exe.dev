@@ -28,7 +28,7 @@ type SSHDetails struct {
 }
 
 // RunMigrations executes database migrations in order
-func RunMigrations(db *sql.DB) error {
+func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 	// Read all migration files
 	entries, err := migrationFS.ReadDir("schema")
 	if err != nil {
@@ -117,7 +117,7 @@ func executeMigration(db *sql.DB, filename string) error {
 
 // InitDataSubdir ensures data_subdir is set in db's server_meta,
 // creating a random subdirectory name if it doesn't exist.
-func InitDataSubdir(db *sqlite.DB) (string, error) {
+func InitDataSubdir(log *slog.Logger, db *sqlite.DB) (string, error) {
 	var dataSubdir string
 
 	// Use a transaction to read and potentially write
@@ -128,7 +128,7 @@ func InitDataSubdir(db *sqlite.DB) (string, error) {
 			if dataSubdir == "" {
 				return fmt.Errorf("data_subdir is empty in server_meta")
 			}
-			slog.Debug("using existing data_subdir", "subdir", dataSubdir)
+			log.Debug("using existing data_subdir", "subdir", dataSubdir)
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -148,7 +148,7 @@ func InitDataSubdir(db *sqlite.DB) (string, error) {
 			return fmt.Errorf("failed to set data_subdir in server_meta: %w", err)
 		}
 
-		slog.Info("initialized new data_subdir", "subdir", dataSubdir)
+		log.Info("initialized new data_subdir", "subdir", dataSubdir)
 		return nil
 	})
 	if err != nil {

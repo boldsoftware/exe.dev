@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"exe.dev/sqlite"
+	"exe.dev/testutil"
 	_ "modernc.org/sqlite"
 )
 
@@ -31,7 +32,7 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 		t.Fatalf("failed to initialize sqlite database: %v", err)
 	}
 
-	if err := RunMigrations(db); err != nil {
+	if err := RunMigrations(testutil.Slogger(t), db); err != nil {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 
@@ -48,7 +49,7 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 		}
 	}
 
-	if err := RunMigrations(db); err != nil {
+	if err := RunMigrations(testutil.Slogger(t), db); err != nil {
 		t.Fatalf("second migrations run failed: %v", err)
 	}
 

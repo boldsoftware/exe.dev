@@ -9,6 +9,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
+	"exe.dev/testutil"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
 	"github.com/stripe/stripe-mock/embedded"
@@ -28,7 +29,7 @@ func NewWithMockStripe(t *testing.T, db *sqlite.DB) (Billing, func()) {
 	})
 
 	// Create billing service with mock client
-	return NewWithClient(db, stripeClient), func() { mockServer.Close() }
+	return NewWithClient(testutil.Slogger(t), db, stripeClient), func() { mockServer.Close() }
 }
 
 func newMockStripeServer(t *testing.T) *httptest.Server {
@@ -72,7 +73,7 @@ func NewTestDB(t *testing.T) *sqlite.DB {
 	}
 	t.Cleanup(func() { sqlDB.Close() })
 
-	if err := exedb.RunMigrations(sqlDB); err != nil {
+	if err := exedb.RunMigrations(testutil.Slogger(t), sqlDB); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
 

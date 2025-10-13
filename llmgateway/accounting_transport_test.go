@@ -15,6 +15,7 @@ import (
 	"exe.dev/accounting"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
+	"exe.dev/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -49,7 +50,7 @@ func createTestDB(t *testing.T) (*sqlite.DB, func()) {
 		t.Fatalf("Failed to open database: %v", err)
 	}
 
-	if err := exedb.RunMigrations(rawDB); err != nil {
+	if err := exedb.RunMigrations(testutil.Slogger(t), rawDB); err != nil {
 		rawDB.Close()
 		os.Remove(dbPath)
 		t.Fatalf("Failed to run migrations: %v", err)
@@ -72,7 +73,7 @@ func createTestDB(t *testing.T) (*sqlite.DB, func()) {
 }
 
 // Factory function to create an accountingTransport for testing
-func newTestAccountingTransport(balance float64, balanceErr error, rt http.RoundTripper, billingAccountID string) (*accountingTransport, *accounting.Accountant, *sqlite.DB) {
+func newTestAccountingTransport(t *testing.T, balance float64, balanceErr error, rt http.RoundTripper, billingAccountID string) (*accountingTransport, *accounting.Accountant, *sqlite.DB) {
 	db, _ := createTestDB(&testing.T{})
 	accountant := accounting.NewAccountant()
 
@@ -98,6 +99,7 @@ func newTestAccountingTransport(balance float64, balanceErr error, rt http.Round
 		baseURL:          "https://example.com",
 		apiType:          "anthropic", // Default to anthropic for tests
 		testDebitDone:    make(chan bool, 1),
+		log:              testutil.Slogger(t),
 	}, accountant, db
 }
 
@@ -137,7 +139,7 @@ func TestAccountingTransportCheckCredits(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a test accountingTransport with our accountant
-			at, act, db := newTestAccountingTransport(tt.balance, nil, nil, tt.name)
+			at, act, db := newTestAccountingTransport(t, tt.balance, nil, nil, tt.name)
 			defer db.Close()
 
 			// Test the checkCredits method
@@ -164,7 +166,7 @@ func TestAccountingTransportCheckCredits(t *testing.T) {
 		BillingAccountID := "123"
 
 		// Get error from test implementation
-		testTransport, _, db := newTestAccountingTransport(balance, nil, nil, BillingAccountID)
+		testTransport, _, db := newTestAccountingTransport(t, balance, nil, nil, BillingAccountID)
 		defer db.Close()
 		testErr := testTransport.checkCredits(context.Background(), BillingAccountID)
 
@@ -206,7 +208,7 @@ func TestAccountingTransportRoundTrip(t *testing.T) {
 			mockRT := &mockTransport{response: mockResp}
 
 			// Create an actual accountingTransport with our accountant
-			at, _, db := newTestAccountingTransport(tt.balance, nil, mockRT, "123")
+			at, _, db := newTestAccountingTransport(t, tt.balance, nil, mockRT, "123")
 			defer db.Close()
 
 			// Create a test request
@@ -245,7 +247,7 @@ func TestModifyResponseAnthropic(t *testing.T) {
 	resp.Header.Add("Content-type", "application/json")
 
 	// Create accounting transport
-	at, act, db := newTestAccountingTransport(100.0, nil, nil, "123")
+	at, act, db := newTestAccountingTransport(t, 100.0, nil, nil, "123")
 	defer db.Close()
 	at.apiType = "anthropic"
 
@@ -296,7 +298,7 @@ func TestModifyResponseGzipped(t *testing.T) {
 	resp.Header.Set("Content-Encoding", "gzip")
 	resp.Header.Add("Content-type", "application/json")
 	// Create accounting transport
-	at, act, db := newTestAccountingTransport(100.0, nil, nil, "123")
+	at, act, db := newTestAccountingTransport(t, 100.0, nil, nil, "123")
 	defer db.Close()
 	at.apiType = "anthropic"
 
@@ -327,7 +329,7 @@ func TestModifyResponseErrorCases(t *testing.T) {
 			Header:     make(http.Header),
 		}
 
-		at, _, db := newTestAccountingTransport(100.0, nil, nil, "123")
+		at, _, db := newTestAccountingTransport(t, 100.0, nil, nil, "123")
 		defer db.Close()
 		err := at.modifyResponse(resp)
 		assert.NoError(t, err, "Should not error for non-200 responses")
@@ -345,7 +347,7 @@ func TestModifyResponseErrorCases(t *testing.T) {
 		}
 		resp.Header.Add("Content-type", "application/json")
 
-		at, _, db := newTestAccountingTransport(100.0, nil, nil, "123")
+		at, _, db := newTestAccountingTransport(t, 100.0, nil, nil, "123")
 		defer db.Close()
 		at.apiType = "anthropic"
 		err := at.modifyResponse(resp)

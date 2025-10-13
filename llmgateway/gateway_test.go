@@ -14,6 +14,7 @@ import (
 	"exe.dev/accounting"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
+	"exe.dev/testutil"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
@@ -36,7 +37,7 @@ func setupTestAccountant(t *testing.T, billingAccountID string, balance float64)
 		t.Fatalf("Failed to open database: %v", err)
 	}
 
-	if err := exedb.RunMigrations(rawDB); err != nil {
+	if err := exedb.RunMigrations(testutil.Slogger(t), rawDB); err != nil {
 		rawDB.Close()
 		os.Remove(dbPath)
 		t.Fatalf("Failed to run migrations: %v", err)
@@ -148,6 +149,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *accounting.Accountant, *sqlit
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
 		devMode:         false,
 		testDebitDone:   make(chan bool, 10), // Buffered for tests
+		log:             testutil.Slogger(t),
 	}
 
 	return gateway, accountant, db, mockAuth, keyPair
@@ -183,6 +185,7 @@ func TestGateway_BillingIntegration_CheckCredits_InsufficientBalance(t *testing.
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
 		devMode:         false,
+		log:             testutil.Slogger(t),
 	}
 
 	// Test checkCredits with insufficient balance
@@ -216,6 +219,7 @@ func TestGateway_BillingIntegration_CheckCredits_BalanceCheckFails(t *testing.T)
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
 		devMode:         false,
+		log:             testutil.Slogger(t),
 	}
 
 	// Test checkCredits when balance check fails - should allow request (fallback)
@@ -475,6 +479,7 @@ func TestGateway_ServeHTTP_InsufficientCredits(t *testing.T) {
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
 		devMode:         false,
+		log:             testutil.Slogger(t),
 	}
 
 	// Create authenticated request

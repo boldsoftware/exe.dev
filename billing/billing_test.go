@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"exe.dev/sqlite"
+	"exe.dev/testutil"
 	"exe.dev/vouch"
 	"github.com/stripe/stripe-go/v76"
 	_ "modernc.org/sqlite"
@@ -137,7 +138,7 @@ func TestEnvironmentBasedMocking(t *testing.T) {
 	db := NewTestDB(t)
 
 	// Use standard constructor - should pick up environment variables
-	billing := New(db)
+	billing := New(testutil.Slogger(t), db)
 
 	// Create test user and allocation
 	userID := "test-user-env-" + time.Now().Format("20060102150405")

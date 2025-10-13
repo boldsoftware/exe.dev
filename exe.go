@@ -207,6 +207,15 @@ type Server struct {
 	docs *docspkg.Handler
 
 	stopping atomic.Bool
+
+	log *slog.Logger
+}
+
+func (s *Server) slog() *slog.Logger {
+	if s.log != nil {
+		return s.log
+	}
+	return slog.Default()
 }
 
 // A listener is a listening port, along with address information.
@@ -238,7 +247,7 @@ func unusedListener(addr string) *listener {
 	return &listener{origAddr: addr}
 }
 
-func startListener(typ, addr string) (*listener, error) {
+func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -254,23 +263,27 @@ func startListener(typ, addr string) (*listener, error) {
 	}, nil
 }
 
-var setStripeKey = sync.OnceFunc(func() {
-	stripeKey := os.Getenv("STRIPE_API_KEY")
-	if stripeKey == "" {
-		stripeKey = "sk_test_51QxIgSGWIXq1kJnoiKwEcehJeO68QFsueLGymU9zR5jsJtMup5arFZZlHYaOzG3Bsw2GfnIG9H3Jv8Be10vqK1nW001hUxrS2g"
-		if testing.Testing() {
-			slog.Info("using default Stripe test key")
-		}
-	}
-	stripe.Key = stripeKey
-})
+var setStripeKeyOnce sync.Once
 
-func runMigrations(db *sql.DB) error {
+func setStripeKey(log *slog.Logger) {
+	setStripeKeyOnce.Do(func() {
+		stripeKey := os.Getenv("STRIPE_API_KEY")
+		if stripeKey == "" {
+			stripeKey = "sk_test_51QxIgSGWIXq1kJnoiKwEcehJeO68QFsueLGymU9zR5jsJtMup5arFZZlHYaOzG3Bsw2GfnIG9H3Jv8Be10vqK1nW001hUxrS2g"
+			if testing.Testing() {
+				log.Info("using default Stripe test key")
+			}
+		}
+		stripe.Key = stripeKey
+	})
+}
+
+func runMigrations(slog *slog.Logger, db *sql.DB) error {
 	// Set busy_timeout to handle database lock contention during restarts
 	if _, err := db.Exec("PRAGMA busy_timeout=1000"); err != nil {
 		return fmt.Errorf("failed to set busy_timeout: %w", err)
 	}
-	if err := exedb.RunMigrations(db); err != nil {
+	if err := exedb.RunMigrations(slog, db); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 	slog.Debug("database migrations complete")
@@ -278,12 +291,12 @@ func runMigrations(db *sql.DB) error {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses []string) (*Server, error) {
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses []string) (*Server, error) {
 	rawDB, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open exed database: %w", err)
 	}
-	if err := runMigrations(rawDB); err != nil {
+	if err := runMigrations(slog, rawDB); err != nil {
 		rawDB.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
@@ -298,7 +311,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	slog.Debug("opened database connection pool", "dbPath", dbPath, "nReaders", nReaders)
 
 	// Initialize data subdirectory for container isolation
-	dataSubdir, err := exedb.InitDataSubdir(db)
+	dataSubdir, err := exedb.InitDataSubdir(slog, db)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize data subdir: %w", err)
@@ -319,14 +332,14 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		slog.Warn("failed to create GitHub user key lookup client", "error", err)
 	}
 
-	setStripeKey()
+	setStripeKey(slog)
 	var baseURL string
 	var httpLn *listener
 	var httpsLn *listener
 	if httpsAddr != "" {
 		// HTTPS is configured, use https://exe.dev
 		baseURL = "https://exe.dev"
-		httpsLn, err = startListener("https", httpsAddr)
+		httpsLn, err = startListener(slog, "https", httpsAddr)
 		if err != nil {
 			db.Close()
 			return nil, fmt.Errorf("failed to listen on HTTPS address %q: %w", httpsAddr, err)
@@ -335,7 +348,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 		httpsLn = unusedListener(httpsAddr)
 	}
 
-	httpLn, err = startListener("http", httpAddr)
+	httpLn, err = startListener(slog, "http", httpAddr)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
@@ -344,13 +357,13 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
 	slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
 
-	sshLn, err := startListener("ssh", sshAddr)
+	sshLn, err := startListener(slog, "ssh", sshAddr)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to listen on SSH address %q: %w", sshAddr, err)
 	}
 
-	pluginLn, err := startListener("plugin", pluginAddr)
+	pluginLn, err := startListener(slog, "plugin", pluginAddr)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", pluginAddr, err)
@@ -466,6 +479,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 
 		accountant: accounting.NewAccountant(),
 		docs:       docsHandler,
+		log:        slog,
 	}
 
 	s.setupHTTPServer()
@@ -491,7 +505,7 @@ func NewServer(httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEm
 	go func() {
 		s.ready.Wait()
 		// The following log line signals to e2e tests that they may proceed with using the server (better than sleeps!)
-		slog.Info("server started", "url", s.BaseURL)
+		s.slog().Info("server started", "url", s.BaseURL)
 	}()
 
 	return s, nil
@@ -591,7 +605,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 			return fmt.Errorf("failed to store host key: %w", err)
 		}
 
-		slog.Debug("Generated and stored new SSH host key", "fingerprint", fingerprint)
+		s.slog().Debug("Generated and stored new SSH host key", "fingerprint", fingerprint)
 		s.sshConfig.AddHostKey(signer)
 		s.sshHostKey = signer
 
@@ -605,7 +619,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 		}
 
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
-		slog.Debug("Loaded existing SSH host key", "fingerprint", fingerprint)
+		s.slog().Debug("Loaded existing SSH host key", "fingerprint", fingerprint)
 		s.sshConfig.AddHostKey(signer)
 		s.sshHostKey = signer
 	}
@@ -650,13 +664,13 @@ func (s *Server) sendEmail(to, subject, body string) error {
 	if s.fakeHTTPEmail != "" {
 		err := s.sendFakeEmail(to, subject, body)
 		if err != nil {
-			slog.Warn("failed to send fake email", "to", to, "subject", subject, "error", err)
+			s.slog().Warn("failed to send fake email", "to", to, "subject", subject, "error", err)
 		}
 	}
 
 	// In dev mode, always just log the email
 	if s.devMode != "" {
-		slog.Info("DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
+		s.slog().Info("DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
 		return nil
 	}
 
@@ -675,9 +689,9 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	_, err := s.postmarkClient.SendEmail(email)
 	if err != nil {
-		slog.Error("failed to send email", "to", to, "subject", subject, "error", err)
+		s.slog().Error("failed to send email", "to", to, "subject", subject, "error", err)
 	} else {
-		slog.Info("email sent successfully", "to", to, "subject", subject)
+		s.slog().Info("email sent successfully", "to", to, "subject", subject)
 	}
 	return err
 }
@@ -705,7 +719,7 @@ func (s *Server) sendFakeEmail(to, subject, body string) error {
 		return fmt.Errorf("fake email server returned error: %s", resp.Status)
 	}
 
-	slog.Info("fake email sent successfully via HTTP", "to", to, "subject", subject)
+	s.slog().Info("fake email sent successfully via HTTP", "to", to, "subject", subject)
 	return nil
 }
 
@@ -720,10 +734,10 @@ func (s *Server) logAuthAttempt(conn ssh.ConnMetadata, method string, err error)
 
 	if err != nil {
 		// Log failed authentication attempts with more detail for security monitoring
-		slog.Warn("SSH auth failed", "method", method, "user", user, "remote_addr", remoteAddr, "client_version", clientVersion, "error", err)
+		s.slog().Warn("SSH auth failed", "method", method, "user", user, "remote_addr", remoteAddr, "client_version", clientVersion, "error", err)
 	} else {
 		// Log successful authentication
-		slog.Info("SSH auth success", "method", method, "user", user, "remote_addr", remoteAddr, "client_version", clientVersion)
+		s.slog().Info("SSH auth success", "method", method, "user", user, "remote_addr", remoteAddr, "client_version", clientVersion)
 	}
 }
 
@@ -743,23 +757,23 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 		user = "<nil>"
 		remoteAddr = "<nil>"
 	}
-	slog.Debug("Authentication request", "user", user, "remote_addr", remoteAddr, "key_type", key.Type())
+	s.slog().Debug("Authentication request", "user", user, "remote_addr", remoteAddr, "key_type", key.Type())
 
 	// Check if this is a proxy connection from sshpiper
-	slog.Debug("Checking if key is a proxy key")
+	s.slog().Debug("Checking if key is a proxy key")
 	if originalUserKey, localAddress, isProxy := s.lookupEphemeralProxyKey(key); isProxy {
-		slog.Debug("Ephemeral proxy authentication detected", "user", user, "local_address", localAddress)
+		s.slog().Debug("Ephemeral proxy authentication detected", "user", user, "local_address", localAddress)
 		return s.authenticateProxyUserWithLocalAddress(ctx, user, originalUserKey, localAddress)
 	} else {
-		slog.Debug("Not a proxy key, treating as direct user connection")
+		s.slog().Debug("Not a proxy key, treating as direct user connection")
 	}
 	// Log non-proxy connections for monitoring - in production, all connections should come via proxy
-	slog.Warn("Direct connection to exed - should come via proxy", "remote_addr", remoteAddr)
+	s.slog().Warn("Direct connection to exed - should come via proxy", "remote_addr", remoteAddr)
 
 	// First check if this key is already registered in ssh_keys table
 	email, verified, err := s.GetEmailBySSHKey(ctx, publicKeyStr)
 	if err != nil {
-		slog.Error("Database error checking SSH key", "error", err)
+		s.slog().Error("Database error checking SSH key", "error", err)
 	}
 
 	if email != "" && verified {
@@ -969,7 +983,7 @@ func (s *Server) validateEmailVerificationByToken(ctx context.Context, token str
 		return queries.DeleteEmailVerificationByToken(ctx, token)
 	})
 	if err != nil {
-		slog.Error("Failed to delete email verification token", "error", err)
+		s.slog().Error("Failed to delete email verification token", "error", err)
 	}
 
 	return userID, nil
@@ -1007,7 +1021,7 @@ func (s *Server) validateAuthToken(ctx context.Context, token, expectedSubdomain
 		return queries.UpdateAuthTokenUsedAt(ctx, token)
 	})
 	if err != nil {
-		slog.Error("Failed to mark token as used", "error", err)
+		s.slog().Error("Failed to mark token as used", "error", err)
 	}
 
 	return authToken.UserID, nil
@@ -1021,9 +1035,9 @@ type SSHClient interface {
 
 // findBoxByNameForUser finds a box by name that the user has access to
 func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName string) *exedb.Box {
-	slog.Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
+	s.slog().Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
 	if !boxname.Valid(boxName) {
-		slog.Info("invalid box name format", "box", boxName)
+		s.slog().Info("invalid box name format", "box", boxName)
 		return nil
 	}
 
@@ -1035,7 +1049,7 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 		})
 	})
 	if err != nil {
-		slog.Info("FindBoxByNameForUser: box not found", "box", boxName, "error", err)
+		s.slog().Info("FindBoxByNameForUser: box not found", "box", boxName, "error", err)
 		return nil
 	}
 
@@ -1171,7 +1185,7 @@ func (s *Server) isBoxNameAvailable(ctx context.Context, name string) bool {
 		return queries.BoxWithNameExists(ctx, name)
 	})
 	if err != nil {
-		slog.Warn("failed to check box name availability", "error", err, "box_name", name)
+		s.slog().Warn("failed to check box name availability", "error", err, "box_name", name)
 		return false
 	}
 	return box == 0
@@ -1182,7 +1196,7 @@ func (s *Server) boxByNameExists(ctx context.Context, name string) bool {
 		return queries.BoxWithNameExists(ctx, name)
 	})
 	if err != nil {
-		slog.Warn("failed to check box name existence", "error", err, "box_name", name)
+		s.slog().Warn("failed to check box name existence", "error", err, "box_name", name)
 		return false
 	}
 	return box > 0
@@ -1218,7 +1232,7 @@ func (s *Server) getBoxesByHostVariants(ctx context.Context, host string) ([]*ex
 	for _, key := range s.hostLookupKeys(host) {
 		boxes, err := s.getBoxesByHost(ctx, key)
 		if err != nil {
-			slog.Debug("getBoxesByHost lookup failed", "hostKey", key, "error", err)
+			s.slog().Debug("getBoxesByHost lookup failed", "hostKey", key, "error", err)
 			continue
 		}
 		for _, box := range boxes {
@@ -1292,13 +1306,13 @@ func (s *Server) listContainersWithRetry(ctx context.Context, host string) ([]*c
 		containers, err := s.containerManager.ListContainersOnHost(ctx, host)
 		if err == nil {
 			if attempt > 1 {
-				slog.Info("Successfully listed containers on host after retry", "host", host, "attempts", attempt)
+				s.slog().Info("Successfully listed containers on host after retry", "host", host, "attempts", attempt)
 			}
 			return containers, nil
 		}
 
 		lastErr = err
-		slog.Warn("Failed to list containers on host", "host", host, "attempt", attempt, "error", err)
+		s.slog().Warn("Failed to list containers on host", "host", host, "attempt", attempt, "error", err)
 
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("timed out listing containers on host %s after %d attempts: %w", host, attempt, lastErr)
@@ -1327,21 +1341,21 @@ func (s *Server) syncAllocsWithHosts(ctx context.Context) error {
 	// Get the list of container hosts
 	hosts := s.containerManager.GetHosts()
 	if len(hosts) == 0 {
-		slog.Warn("No container hosts available for alloc sync")
+		s.slog().Warn("No container hosts available for alloc sync")
 		return nil
 	}
 
-	slog.Info("Starting allocation sync with container hosts", "hostCount", len(hosts))
+	s.slog().Info("Starting allocation sync with container hosts", "hostCount", len(hosts))
 
 	// Process each host
 	for _, host := range hosts {
 		if err := s.syncAllocsForHost(ctx, host); err != nil {
-			slog.Error("Failed to sync allocations for host", "host", host, "error", err)
+			s.slog().Error("Failed to sync allocations for host", "host", host, "error", err)
 			// Continue with other hosts even if one fails
 		}
 	}
 
-	slog.Info("Allocation sync completed")
+	s.slog().Info("Allocation sync completed")
 	return nil
 }
 
@@ -1382,9 +1396,9 @@ func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
 	for truncatedID, alloc := range dbAllocMap {
 		if !hostAllocMap[truncatedID] {
 			// Create the allocation on the host (now a no-op but kept for compatibility)
-			slog.Info("Creating missing allocation on host", "allocID", alloc.AllocID, "host", host)
+			s.slog().Info("Creating missing allocation on host", "allocID", alloc.AllocID, "host", host)
 			if err := s.containerManager.CreateAlloc(ctx, alloc.AllocID); err != nil {
-				slog.Error("Failed to create allocation on host", "allocID", alloc.AllocID, "host", host, "error", err)
+				s.slog().Error("Failed to create allocation on host", "allocID", alloc.AllocID, "host", host, "error", err)
 				// Continue with other allocations
 			}
 		}
@@ -1393,9 +1407,9 @@ func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
 	// Delete allocations that are on host but not in DB
 	for allocID := range hostAllocMap {
 		if _, exists := dbAllocMap[allocID]; !exists {
-			slog.Info("Removing orphaned allocation from host", "allocID", allocID, "host", host)
+			s.slog().Info("Removing orphaned allocation from host", "allocID", allocID, "host", host)
 			if err := s.containerManager.DeleteAlloc(ctx, allocID, host); err != nil {
-				slog.Error("Failed to delete allocation from host", "allocID", allocID, "host", host, "error", err)
+				s.slog().Error("Failed to delete allocation from host", "allocID", allocID, "host", host, "error", err)
 				// Continue with other allocations
 			}
 		}
@@ -1414,21 +1428,21 @@ func (s *Server) syncContainersWithHosts(ctx context.Context) error {
 	// Get the list of container hosts
 	hosts := s.containerManager.GetHosts()
 	if len(hosts) == 0 {
-		slog.Warn("No container hosts available for container sync")
+		s.slog().Warn("No container hosts available for container sync")
 		return nil
 	}
 
-	slog.Info("Starting container sync with container hosts", "hostCount", len(hosts))
+	s.slog().Info("Starting container sync with container hosts", "hostCount", len(hosts))
 
 	// Process each host
 	for _, host := range hosts {
 		if err := s.syncContainersForHost(ctx, host); err != nil {
-			slog.Error("Failed to sync containers for host", "host", host, "error", err)
+			s.slog().Error("Failed to sync containers for host", "host", host, "error", err)
 			// Continue with other hosts even if one fails
 		}
 	}
 
-	slog.Info("Container sync completed")
+	s.slog().Info("Container sync completed")
 	return nil
 }
 
@@ -1474,7 +1488,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 		if hostContainer != nil {
 			containerStatus = hostContainer.Status.String()
 		}
-		slog.Debug("syncContainersForHost status",
+		s.slog().Debug("syncContainersForHost status",
 			"host", host,
 			"box", box.Name,
 			"boxStatus", box.Status,
@@ -1492,19 +1506,19 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 			{
 				diskExists, err := nerdctlMgr.VerifyDisk(ctx, host, box.ID)
 				if err != nil {
-					slog.Error("Failed to verify disk", "box", box.Name, "error", err)
+					s.slog().Error("Failed to verify disk", "box", box.Name, "error", err)
 					continue
 				}
 
 				if !diskExists {
 					// Disk missing - mark box as broken
-					slog.Error("Container disk missing, marking as failed", "box", box.Name, "diskPath", diskPath)
+					s.slog().Error("Container disk missing, marking as failed", "box", box.Name, "diskPath", diskPath)
 					if err := s.updateBoxStatus(ctx, box.ID, "failed"); err != nil {
-						slog.Error("Failed to mark box as failed", "box", box.Name, "error", err)
+						s.slog().Error("Failed to mark box as failed", "box", box.Name, "error", err)
 					}
 				} else {
 					// Disk exists - recreate container
-					slog.Info("Recreating container from persistent disk", "box", box.Name, "boxID", box.ID)
+					s.slog().Info("Recreating container from persistent disk", "box", box.Name, "boxID", box.ID)
 
 					// Reconstruct SSH keys from the box record
 					var existingSSHKeys *container.ContainerSSHKeys
@@ -1515,7 +1529,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 							ClientPrivateKey:  string(box.SSHClientPrivateKey),
 							SSHPort:           int(*box.SSHPort),
 						}
-						slog.Info("Using existing SSH keys from database for container recreation", "boxID", box.ID)
+						s.slog().Info("Using existing SSH keys from database for container recreation", "boxID", box.ID)
 					}
 
 					// Create a new container using the existing disk
@@ -1530,12 +1544,12 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 					}
 
 					// Recreate the container (CreateContainer will reuse the existing disk)
-					slog.Info("Calling CreateContainer to recreate from disk", "boxID", box.ID, "oldContainerID", containerID)
+					s.slog().Info("Calling CreateContainer to recreate from disk", "boxID", box.ID, "oldContainerID", containerID)
 					newContainer, err := nerdctlMgr.CreateContainer(ctx, req)
 					if err != nil {
-						slog.Error("Failed to recreate container from disk", "box", box.Name, "error", err)
+						s.slog().Error("Failed to recreate container from disk", "box", box.Name, "error", err)
 						if err := s.updateBoxStatus(ctx, box.ID, "failed"); err != nil {
-							slog.Error("Failed to mark box as failed", "box", box.Name, "error", err)
+							s.slog().Error("Failed to mark box as failed", "box", box.Name, "error", err)
 						}
 					} else {
 						// Update box with new container ID
@@ -1545,9 +1559,9 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 								ID:          box.ID,
 							})
 						}); err != nil {
-							slog.Error("Failed to update box with new container ID", "box", box.Name, "error", err)
+							s.slog().Error("Failed to update box with new container ID", "box", box.Name, "error", err)
 						} else {
-							slog.Info("Successfully recreated container from disk",
+							s.slog().Info("Successfully recreated container from disk",
 								"box", box.Name,
 								"oldContainerID", containerID,
 								"newContainerID", newContainer.ID)
@@ -1557,18 +1571,18 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 			}
 		} else if hostContainer.Status != "running" && box.Status == "running" {
 			// Container exists but isn't running when it should be
-			slog.Info("Restarting stopped container", "box", box.Name, "containerID", containerID)
+			s.slog().Info("Restarting stopped container", "box", box.Name, "containerID", containerID)
 			if err := s.containerManager.StartContainer(ctx, box.AllocID, containerID); err != nil {
-				slog.Error("Failed to restart container", "box", box.Name, "error", err)
+				s.slog().Error("Failed to restart container", "box", box.Name, "error", err)
 				if err := s.updateBoxStatus(ctx, box.ID, "stopped"); err != nil {
-					slog.Error("Failed to update box status", "box", box.Name, "error", err)
+					s.slog().Error("Failed to update box status", "box", box.Name, "error", err)
 				}
 			}
 		} else if hostContainer.Status == "running" && box.Status != "running" {
 			// Update database to reflect actual container state
-			slog.Info("Updating box status to match container", "box", box.Name, "status", hostContainer.Status)
+			s.slog().Info("Updating box status to match container", "box", box.Name, "status", hostContainer.Status)
 			if err := s.updateBoxStatus(ctx, box.ID, string(hostContainer.Status)); err != nil {
-				slog.Error("Failed to update box status", "box", box.Name, "error", err)
+				s.slog().Error("Failed to update box status", "box", box.Name, "error", err)
 			}
 		}
 
@@ -1586,7 +1600,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 
 			// For now, just log orphaned containers but don't delete immediately
 			// This provides a grace period and allows for manual investigation
-			slog.Warn("Found potentially orphaned container on host - NOT deleting automatically",
+			s.slog().Warn("Found potentially orphaned container on host - NOT deleting automatically",
 				"containerID", containerID,
 				"name", c.Name,
 				"allocID", c.AllocID,
@@ -1627,9 +1641,9 @@ func (s *Server) Start() error {
 	// Start HTTP server in a goroutine if configured
 	if s.httpLn.ln != nil {
 		go func() {
-			slog.Debug("HTTP server starting", "addr", s.httpLn)
+			s.slog().Debug("HTTP server starting", "addr", s.httpLn)
 			if err := s.httpServer.Serve(s.httpLn.ln); err != nil && err != http.ErrServerClosed {
-				slog.Error("HTTP server startup failed", "error", err)
+				s.slog().Error("HTTP server startup failed", "error", err)
 				cancel()
 			}
 		}()
@@ -1638,15 +1652,15 @@ func (s *Server) Start() error {
 	// Start HTTPS server in a goroutine if configured
 	if s.httpsLn.ln != nil {
 		go func() {
-			slog.Info("HTTPS server starting with Let's Encrypt for exe.dev", "addr", s.httpsLn)
+			s.slog().Info("HTTPS server starting with Let's Encrypt for exe.dev", "addr", s.httpsLn)
 			if err := s.httpsServer.ServeTLS(s.httpsLn.ln, "", ""); err != nil && err != http.ErrServerClosed {
-				slog.Error("HTTPS server startup failed", "error", err)
+				s.slog().Error("HTTPS server startup failed", "error", err)
 				cancel()
 			}
 		}()
 
 		if s.wildcardCertManager != nil {
-			slog.Info("Using DNS challenges for wildcard main domain certificate")
+			s.slog().Info("Using DNS challenges for wildcard main domain certificate")
 		}
 	}
 
@@ -1654,15 +1668,15 @@ func (s *Server) Start() error {
 	for _, proxyLn := range s.proxyLns {
 		go func(ln *listener) {
 			if s.httpsLn.ln != nil {
-				slog.Info("Proxy listener starting with HTTPS handler", "addr", ln.tcp.String())
+				s.slog().Info("Proxy listener starting with HTTPS handler", "addr", ln.tcp.String())
 				if err := s.httpsServer.ServeTLS(proxyLn.ln, "", ""); err != nil && err != http.ErrServerClosed {
-					slog.Error("Proxy listener startup failed (HTTPS)", "error", err, "addr", ln)
+					s.slog().Error("Proxy listener startup failed (HTTPS)", "error", err, "addr", ln)
 					cancel()
 				}
 			} else {
-				slog.Info("Proxy listener starting with HTTP handler", "addr", ln.tcp.String())
+				s.slog().Info("Proxy listener starting with HTTP handler", "addr", ln.tcp.String())
 				if err := s.httpServer.Serve(ln.ln); err != nil && err != http.ErrServerClosed {
-					slog.Error("Proxy listener startup failed (HTTP)", "error", err, "addr", ln)
+					s.slog().Error("Proxy listener startup failed (HTTP)", "error", err, "addr", ln)
 					cancel()
 				}
 			}
@@ -1671,20 +1685,20 @@ func (s *Server) Start() error {
 
 	// Start SSH server in a goroutine
 	go func() {
-		billing := billing.New(s.db)
+		billing := billing.New(s.slog(), s.db)
 		s.sshServer = NewSSHServer(s, billing)
 		if err := s.sshServer.Start(s.sshLn.ln); err != nil {
-			slog.Error("SSH server startup failed", "error", err)
+			s.slog().Error("SSH server startup failed", "error", err)
 			cancel()
 		}
 	}()
 
 	// Start piper plugin server in a goroutine
-	slog.Info("piper plugin server listening", "addr", s.pluginLn.addr, "port", s.pluginLn.tcp.Port)
+	s.slog().Info("piper plugin server listening", "addr", s.pluginLn.addr, "port", s.pluginLn.tcp.Port)
 	s.piperPlugin = NewPiperPlugin(s, s.sshLn.tcp.Port)
 	go func() {
 		if err := s.piperPlugin.Serve(s.pluginLn.ln); err != nil {
-			slog.Error("Piper plugin server startup failed", "error", err)
+			s.slog().Error("Piper plugin server startup failed", "error", err)
 			cancel()
 		}
 	}()
@@ -1693,28 +1707,28 @@ func (s *Server) Start() error {
 		// In dev mode, automatically start sshpiper if not already running
 		go s.autoStartSSHPiper(ctx)
 
-		slog.Info("SSH server started in local dev mode. Connect with:")
-		slog.Info(fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
+		s.slog().Info("SSH server started in local dev mode. Connect with:")
+		s.slog().Info(fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
 	}
 
 	// Sync allocations and containers with container hosts before accepting connections
 	if s.containerManager != nil {
 		// First sync allocations (networks)
 		if err := s.syncAllocsWithHosts(ctx); err != nil {
-			slog.Error("Failed to sync allocations with container hosts", "error", err)
+			s.slog().Error("Failed to sync allocations with container hosts", "error", err)
 			// Continue anyway - we can sync later
 		}
 
 		// Then sync containers
 		if err := s.syncContainersWithHosts(ctx); err != nil {
-			slog.Error("Failed to sync containers with container hosts", "error", err)
+			s.slog().Error("Failed to sync containers with container hosts", "error", err)
 			// Continue anyway - we can sync later
 		}
 	}
 
 	// Start tag resolver and host updater for keeping container images fresh
 	if s.tagResolver != nil && s.hostUpdater != nil {
-		slog.Info("Starting tag resolver for image freshness management")
+		s.slog().Info("Starting tag resolver for image freshness management")
 		s.tagResolver.Start(ctx)
 		s.hostUpdater.Start(ctx)
 	}
@@ -1727,10 +1741,10 @@ func (s *Server) Start() error {
 
 	select {
 	case <-sigChan:
-		slog.Info("Shutting down servers...")
+		s.slog().Info("Shutting down servers...")
 		return s.Stop()
 	case <-ctx.Done():
-		slog.Error("Server startup failed, shutting down")
+		s.slog().Error("Server startup failed, shutting down")
 		s.Stop()
 		return fmt.Errorf("server startup failed")
 	}
@@ -1740,13 +1754,13 @@ func (s *Server) Start() error {
 func (s *Server) autoStartSSHPiper(ctx context.Context) {
 	// Check if sshpiper is already running on the specified port
 	if s.isPortListening(fmt.Sprintf("localhost:%d", s.piperdPort)) {
-		slog.Info("sshpiper already running", "port", s.piperdPort)
+		s.slog().Info("sshpiper already running", "port", s.piperdPort)
 		return
 	}
 
 	// Use the actual piper TCP address
 	if s.pluginLn.tcp == nil {
-		slog.Error("Piper TCP address not available")
+		s.slog().Error("Piper TCP address not available")
 		return
 	}
 
@@ -1754,28 +1768,28 @@ func (s *Server) autoStartSSHPiper(ctx context.Context) {
 
 	// First, wait for the piper plugin to be ready
 	if !s.waitForPort(ctx, piperPluginAddr, 30*time.Second) {
-		slog.Error("Timed out waiting for piper plugin to start", "addr", piperPluginAddr)
+		s.slog().Error("Timed out waiting for piper plugin to start", "addr", piperPluginAddr)
 		return
 	}
 
 	// Start sshpiper.sh with the piper plugin port
-	slog.Info("Starting sshpiper.sh automatically in dev mode", "piperPluginPort", s.pluginLn.tcp.Port)
+	s.slog().Info("Starting sshpiper.sh automatically in dev mode", "piperPluginPort", s.pluginLn.tcp.Port)
 
 	cmd := exec.CommandContext(ctx, "./sshpiper.sh", fmt.Sprint(s.pluginLn.tcp.Port))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		slog.Error("Failed to start sshpiper.sh", "error", err)
+		s.slog().Error("Failed to start sshpiper.sh", "error", err)
 		return
 	}
 
 	// Wait for the process in a separate goroutine
 	go func() {
 		if err := cmd.Wait(); err != nil {
-			slog.Error("sshpiper.sh exited with error", "error", err)
+			s.slog().Error("sshpiper.sh exited with error", "error", err)
 		} else {
-			slog.Info("sshpiper.sh exited normally")
+			s.slog().Info("sshpiper.sh exited normally")
 		}
 	}()
 }
@@ -2049,13 +2063,13 @@ func (s *Server) Stop() error {
 
 	// Shutdown HTTP server
 	if err := s.httpServer.Shutdown(ctx); err != nil {
-		slog.Error("HTTP server shutdown error", "error", err)
+		s.slog().Error("HTTP server shutdown error", "error", err)
 	}
 
 	// Shutdown HTTPS server if running
 	if s.httpsServer != nil {
 		if err := s.httpsServer.Shutdown(ctx); err != nil {
-			slog.Error("HTTPS server shutdown error", "error", err)
+			s.slog().Error("HTTPS server shutdown error", "error", err)
 		}
 	}
 
@@ -2076,7 +2090,7 @@ func (s *Server) Stop() error {
 		s.stopCobble()
 	}
 
-	slog.Debug("Servers stopped")
+	s.slog().Debug("Servers stopped")
 	return nil
 }
 
@@ -2094,20 +2108,20 @@ func (s *Server) lookupEphemeralProxyKey(proxyKey ssh.PublicKey) ([]byte, string
 	// Get the original user key from the piper plugin
 	// The piper plugin is always configured when SSH proxy is enabled
 	if s.piperPlugin == nil {
-		slog.Error("Piper plugin not configured but proxy key received")
+		s.slog().Error("Piper plugin not configured but proxy key received")
 		return nil, "", false
 	}
 
 	proxyFingerprint := s.GetPublicKeyFingerprint(proxyKey)
-	slog.Debug("Looking up proxy key", "fingerprint", proxyFingerprint[:16])
+	s.slog().Debug("Looking up proxy key", "fingerprint", proxyFingerprint[:16])
 
 	originalUserKey, localAddress, exists := s.piperPlugin.lookupOriginalUserKey(proxyFingerprint)
 	if !exists {
-		slog.Debug("Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
+		s.slog().Debug("Proxy key not found or expired", "fingerprint", proxyFingerprint[:16])
 		return nil, "", false // Not a proxy key or expired
 	}
 
-	slog.Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "proxy_fingerprint", proxyFingerprint[:16])
+	s.slog().Debug("Found original user key for proxy key", "key_length", len(originalUserKey), "local_address", localAddress, "proxy_fingerprint", proxyFingerprint[:16])
 	return originalUserKey, localAddress, true
 }
 
@@ -2122,25 +2136,25 @@ func (s *Server) authenticateProxyUser(ctx context.Context, username string, ori
 	originalFingerprint := s.GetPublicKeyFingerprint(originalUserKey)
 	originalKeyStr := string(ssh.MarshalAuthorizedKey(originalUserKey))
 
-	slog.Debug("Authenticating original user", "fingerprint", originalFingerprint, "username", username)
+	s.slog().Debug("Authenticating original user", "fingerprint", originalFingerprint, "username", username)
 
 	// Look up the user by their original public key
 	email, verified, err := s.GetEmailBySSHKey(ctx, originalKeyStr)
 	if err != nil {
-		slog.Error("Database error checking SSH key", "fingerprint", originalFingerprint, "error", err)
+		s.slog().Error("Database error checking SSH key", "fingerprint", originalFingerprint, "error", err)
 	}
 
 	if email != "" && verified {
 		// This is a verified key, check if user has an alloc
 		user, err := s.GetUserByEmail(ctx, email)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			slog.Error("Database error getting user", "email", email, "error", err)
+			s.slog().Error("Database error getting user", "email", email, "error", err)
 		}
 
 		if user != nil {
 			alloc, err := s.getUserAlloc(ctx, user.UserID)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				slog.Error("Database error getting alloc for user", "userID", user.UserID, "error", err)
+				s.slog().Error("Database error getting alloc for user", "userID", user.UserID, "error", err)
 			}
 
 			if alloc != nil {
@@ -2186,11 +2200,11 @@ func (s *Server) authenticateProxyUser(ctx context.Context, username string, ori
 // authenticateProxyUserWithLocalAddress authenticates a user through an ephemeral proxy connection
 // and includes the local address for ipAllocator routing
 func (s *Server) authenticateProxyUserWithLocalAddress(ctx context.Context, username string, originalUserKeyBytes []byte, localAddress string) (*ssh.Permissions, error) {
-	slog.Info("authenticateProxyUserWithLocalAddress", "username", username, "localAddress", localAddress, "keyBytes", len(originalUserKeyBytes))
+	s.slog().Info("authenticateProxyUserWithLocalAddress", "username", username, "localAddress", localAddress, "keyBytes", len(originalUserKeyBytes))
 
 	// Check for special container-logs username format and easter egg careers usernames
 	if strings.HasPrefix(username, "container-logs:") || slices.Contains(boxname.JobsRelated, username) {
-		slog.Info("Detected special container-logs username, bypassing normal auth", "username", username)
+		s.slog().Info("Detected special container-logs username, bypassing normal auth", "username", username)
 		// This is a special request to show container logs
 		// We don't need to authenticate the user normally, just pass through
 		// The SSH server will handle this specially

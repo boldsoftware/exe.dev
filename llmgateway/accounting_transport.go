@@ -35,6 +35,7 @@ type accountingTransport struct {
 	baseURL          string
 	apiType          string
 	testDebitDone    chan bool // for testing -- if non-nil, best effort send every time a debit occurs
+	log              *slog.Logger
 }
 
 func (a *accountingTransport) checkCredits(ctx context.Context, billingAccountID string) error {
@@ -46,7 +47,7 @@ func (a *accountingTransport) checkCredits(ctx context.Context, billingAccountID
 		return err
 	})
 	if err != nil {
-		slog.Error("accountingTransport.checkCredits", "error", err)
+		a.log.Error("accountingTransport.checkCredits", "error", err)
 		// Fallback to allowing the request if we can't check balance
 		return nil
 	}
@@ -125,7 +126,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		data, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			slog.Error("couldn't read unary response body", "error", err)
+			a.log.Error("couldn't read unary response body", "error", err)
 			return err
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(data))
@@ -134,19 +135,19 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		if slices.Contains(contentEncoding, "gzip") {
 			gzReader, err := gzip.NewReader(bytes.NewReader(data))
 			if err != nil {
-				slog.Error("accountingTransport couldn't create new gzip reader for unary response body", "error", err)
+				a.log.Error("accountingTransport couldn't create new gzip reader for unary response body", "error", err)
 				return err
 			}
 			decoded, err := io.ReadAll(gzReader)
 			if err != nil {
-				slog.Error("accountingTransport couldn't read gzip reader for unary response body", "error", err)
+				a.log.Error("accountingTransport couldn't read gzip reader for unary response body", "error", err)
 				return err
 			}
 			gzReader.Close()
 			data = decoded
 		}
 		if err := a.processResponseData(ctx, data); err != nil {
-			slog.Error("accountingTransport couldn't process unary JSON response", "processResponseData error", err)
+			a.log.Error("accountingTransport couldn't process unary JSON response", "processResponseData error", err)
 			return err
 		}
 
@@ -168,13 +169,13 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 					data := strings.TrimPrefix(line, "data:")
 					// Process the event data, which may include details for accounting.
 					if err := a.processResponseData(ctx, []byte(data)); err != nil {
-						slog.Error("Proxy SSE scanner", "processResponseData error", err)
+						a.log.Error("Proxy SSE scanner", "processResponseData error", err)
 					}
 				}
 				fmt.Fprintln(bodyWriter, line)
 			}
 			if err := scanner.Err(); err != nil {
-				slog.Error("Proxy SSE scanner", "error", err)
+				a.log.Error("Proxy SSE scanner", "error", err)
 			}
 			bodyWriter.Close()
 		}()
@@ -182,7 +183,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 		// We just log this rather than return an error, so that the request still gets
 		// proxied. We just don't have a way to debit any charges based on usage data that
 		// may have been included in the response.
-		slog.Error("accountingTransport.modifyResponse", "unrecognized content type", contentType)
+		a.log.Error("accountingTransport.modifyResponse", "unrecognized content type", contentType)
 	}
 
 	if a.testDebitDone != nil {
@@ -199,7 +200,7 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 	case "anthropic":
 		var ui anthropicResponseUsageInfo
 		if err := json.Unmarshal(data, &ui); err != nil {
-			slog.Error("anthropic json decode", "data", string(data), "error", err)
+			m.log.Error("anthropic json decode", "data", string(data), "error", err)
 			return fmt.Errorf("json decode error: %w", err)
 		}
 		if ui.Usage == nil {
@@ -209,7 +210,7 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 		usageDebit.Usage = *ui.Usage
 		usageDebit.Model = ui.Model
 		usageDebit.MessageID = ui.ID
-		slog.Info("debitResponse", "anthropicResponseUsageInfo", ui)
+		m.log.Info("debitResponse", "anthropicResponseUsageInfo", ui)
 	case "openai", "fireworks":
 		if len(data) == 0 {
 			return fmt.Errorf("empty openai response, skipping accounting")
@@ -229,7 +230,7 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 
 		// If token counts are zero, set a minimal token count to avoid accounting errors
 		if promptTokens == 0 && completionTokens == 0 {
-			slog.Debug("openai response has zero token counts, using defaults")
+			m.log.Debug("openai response has zero token counts, using defaults")
 			promptTokens = 1
 			completionTokens = 1
 		}
@@ -244,10 +245,10 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 		usageDebit.Usage = usage
 		usageDebit.Model = model
 		usageDebit.MessageID = oi.ID
-		slog.Info("debitResponse", "openaiResponseUsageInfo", oi)
+		m.log.Info("debitResponse", "openaiResponseUsageInfo", oi)
 
 	default:
-		slog.Error("accountingTransport.processResponseData: unknown API type", "apiType", m.apiType)
+		m.log.Error("accountingTransport.processResponseData: unknown API type", "apiType", m.apiType)
 	}
 
 	uc := accounting.UsageCost(usageDebit.Model, usageDebit.Usage)
@@ -257,7 +258,7 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 		return m.accountant.DebitUsage(ctx, tx, usageDebit)
 	})
 	if err != nil {
-		slog.Error("accountingTransport.debitResponse: couldn't debit usage", "error", err)
+		m.log.Error("accountingTransport.debitResponse: couldn't debit usage", "error", err)
 	}
 
 	// Update Prometheus metrics

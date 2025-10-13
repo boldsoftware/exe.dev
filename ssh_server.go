@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
-	"log/slog"
 	"net"
 	"slices"
 	"strings"
@@ -82,9 +80,9 @@ func (ss *SSHServer) Start(ln net.Listener) error {
 	if ss.server.sshHostKey != nil {
 		// Use the stored host key from the main server configuration
 		ss.srv.AddHostKey(ss.server.sshHostKey)
-		log.Printf("Added host key from main server configuration")
+		ss.server.slog().Info("added host key from main server configuration")
 	} else {
-		log.Printf("Warning: No host key found in main server configuration")
+		ss.server.slog().Warn("no host key found in main server configuration")
 	}
 
 	return ss.srv.Serve(ln)
@@ -185,7 +183,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	// Convert gliderlabs public key to golang.org/x/crypto/ssh public key for compatibility
 	goKey, err := gossh.ParsePublicKey(key.Marshal())
 	if err != nil {
-		log.Printf("Failed to parse public key: %v", err)
+		ss.server.slog().Error("failed to parse public key", "error", err)
 		return false
 	}
 
@@ -198,7 +196,7 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 	// Use existing authentication logic
 	perms, err := ss.server.AuthenticatePublicKey(connMeta, goKey)
 	if err != nil {
-		log.Printf("Authentication failed: %v", err)
+		ss.server.slog().Error("authentication failed", "error", err)
 		// Increment failed auth metric
 		ss.server.sshMetrics.authAttempts.WithLabelValues("failed", "public_key").Inc()
 		return false
@@ -348,7 +346,7 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 
 // runMainShellWithReadline implements the main menu using a simple line reader
 func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey string, user *exedb.User) {
-	slog.Debug("start runMainShellWithReadline", "public_key", publicKey, "email", user.Email)
+	ss.server.slog().Debug("start runMainShellWithReadline", "public_key", publicKey, "email", user.Email)
 	// Show welcome message, hints, tips, etc.
 	ss.displayWelcomeTip(s, user)
 
@@ -377,7 +375,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		return
 	}
 
-	slog.Info("starting repl", "public_key", publicKey, "email", user.Email)
+	ss.server.slog().Info("starting repl", "public_key", publicKey, "email", user.Email)
 	for {
 		// Read line with tab completion
 		line, err := ss.readLineWithCompletion(terminal, user, alloc, publicKey, s)
@@ -391,7 +389,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		if line == "" {
 			continue
 		}
-		slog.Debug("Command received: " + line)
+		ss.server.slog().Debug("command received", "line", line)
 
 		parts, err := shlex.Split(strings.TrimSpace(line), true)
 		if err != nil {
@@ -420,6 +418,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 			SSHSession: s,
 			Terminal:   terminal, // Interactive terminal available
 			DevMode:    ss.server.devMode == "local",
+			Logger:     ss.server.slog(),
 		}
 
 		// Execute command using new system
@@ -541,7 +540,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Attempt to identify this as a GitHub user based on their validated public key.
 	ghInfo, err := ss.server.githubUser.InfoString(s.Context(), publicKey)
 	if err != nil {
-		slog.InfoContext(s.Context(), "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
+		ss.server.slog().InfoContext(s.Context(), "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
 	}
 
 	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a box over ssh\033[0m\r\n")
@@ -578,16 +577,16 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	if needsEmailVerification {
 		user, err = ss.waitForEmailVerification(s, publicKey, email)
 		if err != nil || user == nil {
-			slog.Error("email verification failed", "email", email, "error", err)
+			ss.server.slog().Error("email verification failed", "email", email, "error", err)
 			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
 			return
 		}
 	} else {
 		// Email matches GitHub's. Rely on their verification; create user directly now.
-		slog.Info("email matches GitHub, skipping verification", "email", email)
+		ss.server.slog().Info("email matches GitHub, skipping verification", "email", email)
 		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey)
 		if err != nil {
-			slog.Error("failed to create user with SSH key during github auto-verification", "error", err)
+			ss.server.slog().Error("failed to create user with SSH key during github auto-verification", "error", err)
 			fmt.Fprintf(s, "\r\n\033[1;31minternal error: failed to create user account\033[0m\r\n")
 			return
 		}
@@ -598,7 +597,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Get user's alloc for the menu
 	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
 	if err != nil || alloc == nil {
-		slog.Error("user has no allocation after registration", "user_id", user.UserID, "email", user.Email, "error", err)
+		ss.server.slog().Error("user has no allocation after registration", "user_id", user.UserID, "email", user.Email, "error", err)
 		fmt.Fprintf(s, "internal error: no associated alloc found for %v\r\n", user.Email)
 		s.Close()
 		return
@@ -614,7 +613,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 }
 
 func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, email string) (*exedb.User, error) {
-	slog.Debug("starting email verification", "email", email)
+	ss.server.slog().Debug("starting email verification", "email", email)
 	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
 		switch {
@@ -701,7 +700,7 @@ func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, e
 		})
 	})
 	if storeErr != nil {
-		slog.Warn("failed to store SSH key after registration", "user_id", user.UserID, "email", user.Email, "error", storeErr)
+		ss.server.slog().Warn("failed to store SSH key after registration", "user_id", user.UserID, "email", user.Email, "error", storeErr)
 		// Don't fail here, the key might already exist (TODO: is this right??)
 	}
 
@@ -766,10 +765,11 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		SSHSession: sshSessionAdapter{s},
 		Terminal:   nil, // No interactive terminal for exec mode
 		DevMode:    ss.server.devMode == "local",
+		Logger:     ss.server.slog(),
 	}
 
 	rc := ss.commands.ExecuteCommand(s.Context(), cc, cmd) // Just the command name
-	slog.Debug("ssh exec command completed", "command", strings.Join(cmd, " "), "rc", rc)
+	ss.server.slog().Debug("ssh exec command completed", "command", strings.Join(cmd, " "), "rc", rc)
 	if rc > 0 {
 		s.Close()
 		s.Exit(rc)
@@ -962,6 +962,7 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb
 			SSHSession: s,
 			Terminal:   terminal,
 			DevMode:    ss.server.devMode == "local",
+			Logger:     ss.server.slog(),
 		}
 
 		// Get completions

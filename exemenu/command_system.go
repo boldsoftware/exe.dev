@@ -119,6 +119,7 @@ type CommandContext struct {
 	// I/O interfaces
 	Output   io.Writer      // where to write output
 	Terminal *term.Terminal // for interactive input (nil for non-interactive)
+	Logger   *slog.Logger   // for structured logging
 
 	// ForceSpinner overrides spinner auto-detection for non-SSH contexts
 	// (e.g., HTTP/SSE driven flows). When true, progress spinner output
@@ -148,6 +149,14 @@ type AllocInfo struct {
 	Region           string
 	BillingAccountID string
 	CreatedAt        *time.Time
+}
+
+// slog returns the logger for this context, defaulting to slog.Default() if not set.
+func (ctx *CommandContext) slog() *slog.Logger {
+	if ctx.Logger != nil {
+		return ctx.Logger
+	}
+	return slog.Default()
 }
 
 // Write is a convenience method for writing to the output.
@@ -183,7 +192,7 @@ func (ctx *CommandContext) WriteJSON(x any) {
 	var data []byte
 	var err error
 	var nl string
-	slog.Info("writing JSON output", "data", x, "interactive", ctx.IsInteractive())
+	ctx.slog().Info("writing JSON output", "data", x, "interactive", ctx.IsInteractive())
 	if ctx.IsInteractive() {
 		data, err = json.MarshalIndent(x, "", "  ")
 		nl = "\r\n"
@@ -212,7 +221,7 @@ func (ctx *CommandContext) WriteInternalError(cmd string, err error, slogDetails
 		"guid", guid,
 	}
 	attrs = append(attrs, slogDetails...)
-	slog.Error("ssh command failed unexpectedly", attrs...)
+	ctx.slog().Error("ssh command failed unexpectedly", attrs...)
 	ctx.WriteError("%q: internal error, error ID: %s", cmd, guid)
 }
 
