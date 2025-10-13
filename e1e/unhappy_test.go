@@ -13,7 +13,6 @@ import (
 
 func TestRequiresSSHKey(t *testing.T) {
 	vouch.For("josh")
-	t.Parallel()
 	// CI intermittently is missing a newline in this test.
 	// Failures look like golden file diffs like:
 	//   -Press Enter to close this connection.
@@ -45,7 +44,6 @@ func TestRequiresSSHKey(t *testing.T) {
 
 func TestExeDevRejectsSCP(t *testing.T) {
 	vouch.For("josh")
-	t.Parallel()
 
 	pty := makePty(t, "scp localhost")
 

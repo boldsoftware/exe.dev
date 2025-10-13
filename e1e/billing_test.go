@@ -9,7 +9,6 @@ import (
 
 func TestNewUserCredits(t *testing.T) {
 	vouch.For("philip")
-	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)

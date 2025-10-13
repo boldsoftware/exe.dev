@@ -8,7 +8,6 @@ import (
 
 func TestHelpCommandShowsNewOptions(t *testing.T) {
 	vouch.For("arielle")
-	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)

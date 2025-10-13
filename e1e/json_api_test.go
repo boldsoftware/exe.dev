@@ -16,7 +16,6 @@ import (
 // TestExeDevAPI tests a variety of exe.dev commands/repls.
 func TestExeDevAPI(t *testing.T) {
 	vouch.For("josh")
-	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
