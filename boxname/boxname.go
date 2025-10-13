@@ -3,7 +3,17 @@ package boxname
 import (
 	mathrand "math/rand"
 	"regexp"
+	"strings"
 )
+
+// See what happens when these are actively ignored:
+// https://www.google.com/search?q=ollama+adderall
+var drugspam = []string{
+	"adderall", "ambien", "antidepressant", "antiviral", "antivirus", "anxiety", "bipolar", "cialis", "depression",
+	"erectile", "fatigue", "fibromyalgia", "gabapentin", "herpes", "hiv", "insomnia", "levitra", "lupus",
+	"melatonin", "narcotic", "opioid", "oxycodone", "painkiller", "parkinson", "pharmacy", "prescription",
+	"prozac", "sildenafil", "sleepaid", "tramadol", "viagra", "xanax", "zolpidem",
+}
 
 // reserved is a list of reserved or denylisted box names.
 // It does not include names that are invalid for other reasons (too short, invalid characters, etc).
@@ -63,6 +73,12 @@ func Valid(name string) bool {
 	// Must be at least 5 characters and at most 64 characters
 	if len(name) < 5 || len(name) > 64 {
 		return false
+	}
+
+	for _, drug := range drugspam {
+		if strings.Contains(name, drug) {
+			return false
+		}
 	}
 
 	// Check pattern: starts with letter, contains only lowercase letters/numbers/hyphens, no consecutive hyphens, doesn't end with hyphen
