@@ -239,16 +239,21 @@ WaitForSocket:
 
 // alive reports whether conn is still working via the control socket.
 func (conn *Connection) alive() bool {
+	return reachableVia(conn.host, conn.controlPath)
+}
+
+// reachableVia reports whether host is reachable via controlPath.
+func reachableVia(host, controlPath string) bool {
 	checkCmd := exec.Command("ssh",
-		"-o", fmt.Sprintf("ControlPath=%s", conn.controlPath),
+		"-o", fmt.Sprintf("ControlPath=%s", controlPath),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-O", "check",
-		conn.host,
+		host,
 	)
 	err := checkCmd.Run()
 	if err != nil {
-		slog.Info("[SSH-POOL] Connection appears dead", "host", conn.host, "error", err)
+		slog.Info("[SSH-POOL] Connection appears dead", "host", host, "error", err)
 		return false
 	}
 	return true
