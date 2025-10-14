@@ -525,20 +525,33 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
-	bin, err := os.CreateTemp("", "exed_test_bin_*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	// Choose binary: use PREBUILT_EXED if provided, otherwise build a temp binary.
+	var binPath string
+	if prebuilt := os.Getenv("PREBUILT_EXED"); prebuilt != "" {
+		st, err := os.Stat(prebuilt)
+		if err != nil {
+			return nil, fmt.Errorf("PREBUILT_EXED not usable: %w", err)
+		}
+		if st.IsDir() {
+			return nil, fmt.Errorf("PREBUILT_EXED points to a directory, need a file: %s", prebuilt)
+		}
+		binPath = prebuilt
+	} else {
+		bin, err := os.CreateTemp("", "exed_test_bin_*")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create temp file: %w", err)
+		}
+		bin.Close()
+		binPath = bin.Name()
+		buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
+		if out, err := buildCmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("failed to build exed: %w\n%s", err, out)
+		}
 	}
-	bin.Close()
-	binPath := bin.Name()
+
 	coverDir, err := os.MkdirTemp("", "e1e-exed-cov-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create coverage dir: %w", err)
-	}
-
-	buildCmd := exec.Command("go", "build", "-race", "-cover", "-covermode=atomic", "-coverpkg=exe.dev/...", "-o", binPath, "../cmd/exed")
-	if out, err := buildCmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("failed to build exed: %w\n%s", err, out)
 	}
 
 	emailServerURL := fmt.Sprintf("http://localhost:%d", emailServerPort)
