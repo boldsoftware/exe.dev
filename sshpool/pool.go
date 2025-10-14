@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -17,17 +18,21 @@ import (
 type Connection struct {
 	host        string
 	controlPath string
-	mu          sync.Mutex
-	lastUsed    time.Time
 	ctx         context.Context
 	cancel      context.CancelFunc
+	lastUsed    atomic.Pointer[time.Time]
+}
+
+func (c *Connection) updateLastUsed() {
+	now := time.Now()
+	c.lastUsed.Store(&now)
 }
 
 // Pool manages persistent SSH connections
 type Pool struct {
-	connections map[string]*Connection
-	mu          sync.Mutex
 	baseDir     string
+	mu          sync.Mutex // protects following fields
+	connections map[string]*Connection
 	bypassUntil map[string]time.Time
 }
 
@@ -81,14 +86,12 @@ func (p *Pool) cleanupStaleConnections() {
 		p.mu.Lock()
 		now := time.Now()
 		for host, conn := range p.connections {
-			conn.mu.Lock()
-			if now.Sub(conn.lastUsed) > 10*time.Minute {
+			if now.Sub(*conn.lastUsed.Load()) > 10*time.Minute {
 				slog.Info("[SSH-POOL] Closing stale connection", "host", host)
 				conn.cancel()
 				os.Remove(conn.controlPath)
 				delete(p.connections, host)
 			}
-			conn.mu.Unlock()
 		}
 		p.mu.Unlock()
 	}
@@ -111,9 +114,7 @@ func (p *Pool) getConnection(ctx context.Context, host string) (*Connection, err
 	if exists {
 		// Check if the connection is still alive
 		if conn.alive() {
-			conn.mu.Lock()
-			conn.lastUsed = time.Now()
-			conn.mu.Unlock()
+			conn.updateLastUsed()
 			return conn, nil
 		}
 
@@ -226,10 +227,10 @@ WaitForSocket:
 	conn := &Connection{
 		host:        host,
 		controlPath: controlPath,
-		lastUsed:    time.Now(),
 		ctx:         connCtx,
 		cancel:      cancel,
 	}
+	conn.updateLastUsed()
 
 	p.connections[host] = conn
 	slog.Info("[SSH-POOL] Established new SSH connection", "host", host)
