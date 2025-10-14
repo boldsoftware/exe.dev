@@ -244,7 +244,7 @@ func (m *docViewerModel) View() string {
 		return fmt.Sprintf("error rendering doc: %v", m.err)
 	}
 
-	header := fmt.Sprintf("\033[1m%s\033[0m  (%s)  - press q to exit\n\n", m.title, m.slug)
+	header := fmt.Sprintf("\033[1m%s\033[0m (%s) - press q to exit\n", m.title, m.slug)
 	return header + m.viewport.View()
 }
 
