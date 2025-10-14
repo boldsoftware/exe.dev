@@ -137,17 +137,9 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sqlite.New: %w", err)
 	}
-
-	return NewFromDB(db, readerCount)
-}
-
-// NewFromDB initializes a sqlite connection pool using an existing *sql.DB.
-// This is useful when the caller needs to run setup (e.g. migrations) on the
-// same in-memory database connection before creating the pool.
-func NewFromDB(db *sql.DB, readerCount int) (*DB, error) {
 	numConns := readerCount + 1
 	if err := InitDB(db, numConns); err != nil {
-		return nil, fmt.Errorf("sqlite.New[FromDB]: %w", err)
+		return nil, fmt.Errorf("sqlite.New: %w", err)
 	}
 
 	var conns []*sql.Conn
@@ -155,7 +147,7 @@ func NewFromDB(db *sql.DB, readerCount int) (*DB, error) {
 		conn, err := db.Conn(context.Background())
 		if err != nil {
 			db.Close()
-			return nil, fmt.Errorf("sqlite.New[FromDB]: %w", err)
+			return nil, fmt.Errorf("sqlite.New: %w", err)
 		}
 		conns = append(conns, conn)
 	}
@@ -169,7 +161,7 @@ func NewFromDB(db *sql.DB, readerCount int) (*DB, error) {
 	for _, conn := range conns[1:] {
 		if _, err := conn.ExecContext(context.Background(), "PRAGMA query_only=1;"); err != nil {
 			db.Close()
-			return nil, fmt.Errorf("sqlite.New[FromDB] query_only: %w", err)
+			return nil, fmt.Errorf("sqlite.New query_only: %w", err)
 		}
 		p.readers <- conn
 	}

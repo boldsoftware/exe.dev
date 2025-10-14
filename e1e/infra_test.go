@@ -199,6 +199,7 @@ type testEnv struct {
 }
 
 type exedInstance struct {
+	DBPath          string
 	Cmd             *exec.Cmd
 	Ctx             context.Context // cancelled when Cmd exits
 	SSHPort         int             // direct SSH port, not via sshpiper
@@ -279,6 +280,9 @@ func (e *testEnv) context(t *testing.T) context.Context {
 func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 	if e == nil {
 		return
+	}
+	if e.exed.DBPath != "" {
+		os.Remove(e.exed.DBPath)
 	}
 	if e.exed.Cmd != nil && e.exed.Cmd.Process != nil {
 		e.exed.Cmd.Process.Kill()
@@ -549,6 +553,16 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		}
 	}
 
+	shm := "/dev/shm"
+	if st, err := os.Stat(shm); err != nil || !st.IsDir() {
+		shm = ""
+	}
+	dbPath, err := os.CreateTemp(shm, "exed_test_*.db")
+	if err != nil {
+		return nil, err
+	}
+	dbPath.Close()
+
 	coverDir, err := os.MkdirTemp("", "e1e-exed-cov-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create coverage dir: %w", err)
@@ -560,7 +574,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		whoamiPath = "/root/whoami.sqlite3"
 	}
 	exedCmd := exec.Command(binPath,
-		"-db=MEMORY",
+		"-db="+dbPath.Name(),
 		"-dev=test",
 		"-http=:0",
 		"-ssh=:0",
@@ -706,6 +720,7 @@ ProcessLogs:
 	}()
 
 	instance := &exedInstance{
+		DBPath:          dbPath.Name(),
 		Cmd:             exedCmd,
 		Ctx:             cmdCtx,
 		SSHPort:         sshPort,

@@ -1,10 +1,8 @@
 package exe
 
 import (
-	"fmt"
-	"strings"
+	"path/filepath"
 	"testing"
-	"time"
 
 	"exe.dev/testutil"
 )
@@ -23,11 +21,8 @@ func (s *Server) startAndAwaitReady() {
 
 func newUnstartedServer(t *testing.T, dockerhosts ...string) *Server {
 	t.Helper()
-
-	name := strings.ReplaceAll(t.Name(), "/", "_") // unique in-memory sqlite database per test
-	dsn := fmt.Sprintf("file:%s-%d?mode=memory&cache=shared", name, time.Now().UnixNano())
-
-	s, err := NewServer(testutil.Slogger(t), ":0", ":0", ":0", ":0", dsn, "test", "", 2222, "ghuser/whoami.sqlite3", dockerhosts)
+	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
+	s, err := NewServer(testutil.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "ghuser/whoami.sqlite3", dockerhosts)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
