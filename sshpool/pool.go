@@ -318,6 +318,7 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 		"-o", fmt.Sprintf("ControlPath=%s", conn.controlPath),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=5",
 		"-o", "LogLevel=ERROR",
 		host,
@@ -350,6 +351,7 @@ func (p *Pool) execDirectSSH(ctx context.Context, host string, args ...string) *
 	sshArgs := []string{
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=5",
 		"-o", "LogLevel=ERROR",
 		host,
@@ -409,6 +411,9 @@ func (p *Pool) SCP(ctx context.Context, host string, remoteDest string, localPat
 		"-o", "ControlPath=" + controlPath,
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "BatchMode=yes",
+		"-o", "ConnectTimeout=5",
+		"-o", "LogLevel=ERROR",
 	}
 	scpArgs = append(scpArgs, localPaths...)
 	scpArgs = append(scpArgs, fmt.Sprintf("%s:%s", sshHost, remoteDest))
