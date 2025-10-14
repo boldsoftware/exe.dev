@@ -12,7 +12,7 @@ type mockKeyboardChallenge struct {
 	index     int
 }
 
-func (m *mockKeyboardChallenge) challenge(user, instruction string, question string, echo bool) (string, error) {
+func (m *mockKeyboardChallenge) challenge(user, instruction, question string, echo bool) (string, error) {
 	if m.index >= len(m.responses) {
 		return "", fmt.Errorf("no more responses available")
 	}
@@ -133,7 +133,7 @@ func TestKeyboardInteractiveNoRetries(t *testing.T) {
 	}
 
 	challengeCallCount := 0
-	mockClient := func(user, instruction string, question string, echo bool) (string, error) {
+	mockClient := func(user, instruction, question string, echo bool) (string, error) {
 		challengeCallCount++
 		return "", nil // User presses Enter
 	}

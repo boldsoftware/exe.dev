@@ -77,7 +77,7 @@ type proxyExpectation struct {
 	httpCode int
 }
 
-func localhostRequestWithHostHeader(method string, urlS string, body io.Reader) (*http.Request, error) {
+func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.Request, error) {
 	url, err := url.Parse(urlS)
 	if err != nil {
 		return nil, err

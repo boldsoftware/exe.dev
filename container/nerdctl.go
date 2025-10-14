@@ -609,7 +609,7 @@ func (m *NerdctlManager) ListAllocs(ctx context.Context, host string) ([]string,
 
 // DeleteAlloc is now a no-op since we don't use per-allocation networks
 // Kept for API compatibility but can be removed in the future
-func (m *NerdctlManager) DeleteAlloc(ctx context.Context, allocID string, host string) error {
+func (m *NerdctlManager) DeleteAlloc(ctx context.Context, allocID, host string) error {
 	// No longer using per-allocation networks
 	// Container cleanup is handled separately
 	return nil

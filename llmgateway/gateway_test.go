@@ -72,7 +72,7 @@ func setupTestAccountant(t *testing.T, billingAccountID string, balance float64)
 }
 
 // setupTestBox creates a box in the database linked to a billing account
-func setupTestBox(t *testing.T, db *sqlite.DB, boxName string, billingAccountID string) {
+func setupTestBox(t *testing.T, db *sqlite.DB, boxName, billingAccountID string) {
 	err := db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 

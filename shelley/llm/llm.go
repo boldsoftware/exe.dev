@@ -326,7 +326,7 @@ func ErrorfToolOut(format string, args ...any) ToolOut {
 // DumpToFile writes LLM communication content to a timestamped file in ~/.cache/sketch/.
 // For requests, it includes the URL followed by the content. For responses, it only includes the content.
 // The typ parameter is used as a prefix in the filename ("request", "response").
-func DumpToFile(typ string, url string, content []byte) error {
+func DumpToFile(typ, url string, content []byte) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return err

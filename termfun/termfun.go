@@ -28,7 +28,7 @@ func linearToSrgb(c float64) float64 {
 	return (1.055*math.Pow(c, 1.0/2.4) - 0.055) * 255
 }
 
-func lerp(a, b float64, t float64) float64 {
+func lerp(a, b, t float64) float64 {
 	return a + (b-a)*t
 }
 

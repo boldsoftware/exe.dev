@@ -57,7 +57,7 @@ func mustRead(t *testing.T, r io.Reader, pattern string, timeout time.Duration, 
 }
 
 // mustWrite writes data to the writer and fails the test on error.
-func mustWrite(t *testing.T, w io.Writer, data string, context string) {
+func mustWrite(t *testing.T, w io.Writer, data, context string) {
 	t.Helper()
 
 	n, err := w.Write([]byte(data))

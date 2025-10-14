@@ -385,7 +385,7 @@ func (p *Pool) Close() {
 // SCP transfers files to remoteDest on host, preserving their permissions
 // remoteDest is the destination directory, localPaths are the source files or directories
 // If a localPath is a directory, it will be copied recursively
-func (p *Pool) SCP(ctx context.Context, host string, remoteDest string, localPaths ...string) error {
+func (p *Pool) SCP(ctx context.Context, host, remoteDest string, localPaths ...string) error {
 	if len(localPaths) == 0 {
 		return nil
 	}

@@ -481,7 +481,7 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 	return nil
 }
 
-func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout io.Reader, stderr io.Reader) {
+func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout, stderr io.Reader) {
 	defer func() {
 		cleanupTerminalSession(session)
 	}()

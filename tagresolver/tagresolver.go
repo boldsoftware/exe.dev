@@ -274,7 +274,7 @@ func (tr *TagResolver) refreshTag(ctx context.Context, tag TagResolution) error 
 }
 
 // ResolveTag resolves a tag to a digest, checking upstream if necessary
-func (tr *TagResolver) ResolveTag(ctx context.Context, image string, platform string) (string, error) {
+func (tr *TagResolver) ResolveTag(ctx context.Context, image, platform string) (string, error) {
 	// Parse the image reference
 	registry, repository, tag := parseImageReference(image)
 

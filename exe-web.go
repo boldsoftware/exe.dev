@@ -1129,7 +1129,7 @@ The exe.dev team`, verifyEmailURL)
 }
 
 // showAuthError displays an authentication error page
-func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message string, command string) {
+func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message, command string) {
 	data := struct {
 		Message     string
 		Command     string
@@ -1145,7 +1145,7 @@ func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message s
 }
 
 // showAuthEmailSent displays the email sent confirmation page
-func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email string, devURL string) {
+func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email, devURL string) {
 	data := struct {
 		Email       string
 		QueryString string

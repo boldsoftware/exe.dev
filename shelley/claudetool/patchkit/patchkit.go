@@ -332,7 +332,7 @@ func trimSpaceAll(x []string) []string {
 
 // improveNeedle adjusts both needle and replacement in tandem to better match haystack.
 // Note that we adjust search and replace together.
-func improveNeedle(haystack string, needle, replacement string, matchLine int) (string, string) {
+func improveNeedle(haystack, needle, replacement string, matchLine int) (string, string) {
 	// TODO: we make new slices too much
 	needleLines := slices.Collect(strings.Lines(needle))
 	if len(needleLines) == 0 {

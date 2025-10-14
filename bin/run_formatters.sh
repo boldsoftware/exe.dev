@@ -37,7 +37,7 @@ if [ "$CHECK_MODE" = true ]; then
 else
   # In fix mode, we apply the formatting
   echo "Formatting Go code with gofumpt..."
-  find . -name "*.go" -exec gofumpt -w {} +
+  find . -name "*.go" -not -path "./sshpiper/*" -exec gofumpt -extra -w {} +
   echo "✓ Go code formatted"
 fi
 echo ""

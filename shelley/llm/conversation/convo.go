@@ -22,18 +22,18 @@ import (
 type Listener interface {
 	// TODO: Content is leaking an anthropic API; should we avoid it?
 	// TODO: Where should we include start/end time and usage?
-	OnToolCall(ctx context.Context, convo *Convo, toolCallID string, toolName string, toolInput json.RawMessage, content llm.Content)
-	OnToolResult(ctx context.Context, convo *Convo, toolCallID string, toolName string, toolInput json.RawMessage, content llm.Content, result *string, err error)
+	OnToolCall(ctx context.Context, convo *Convo, toolCallID, toolName string, toolInput json.RawMessage, content llm.Content)
+	OnToolResult(ctx context.Context, convo *Convo, toolCallID, toolName string, toolInput json.RawMessage, content llm.Content, result *string, err error)
 	OnRequest(ctx context.Context, convo *Convo, requestID string, msg *llm.Message)
 	OnResponse(ctx context.Context, convo *Convo, requestID string, msg *llm.Response)
 }
 
 type NoopListener struct{}
 
-func (n *NoopListener) OnToolCall(ctx context.Context, convo *Convo, id string, toolName string, toolInput json.RawMessage, content llm.Content) {
+func (n *NoopListener) OnToolCall(ctx context.Context, convo *Convo, id, toolName string, toolInput json.RawMessage, content llm.Content) {
 }
 
-func (n *NoopListener) OnToolResult(ctx context.Context, convo *Convo, id string, toolName string, toolInput json.RawMessage, content llm.Content, result *string, err error) {
+func (n *NoopListener) OnToolResult(ctx context.Context, convo *Convo, id, toolName string, toolInput json.RawMessage, content llm.Content, result *string, err error) {
 }
 
 func (n *NoopListener) OnResponse(ctx context.Context, convo *Convo, id string, msg *llm.Response) {

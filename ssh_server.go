@@ -612,7 +612,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	ss.runMainShellWithReadline(sshSessionAdapter{s}, publicKey, user)
 }
 
-func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey string, email string) (*exedb.User, error) {
+func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey, email string) (*exedb.User, error) {
 	ss.server.slog().Debug("starting email verification", "email", email)
 	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
