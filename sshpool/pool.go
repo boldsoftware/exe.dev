@@ -396,10 +396,7 @@ func (p *Pool) SCP(ctx context.Context, host string, remoteDest string, localPat
 	var controlPathArg string
 	conn, err := p.getConnection(ctx, host)
 	if err == nil {
-		conn.mu.Lock()
-		conn.lastUsed = time.Now()
 		controlPathArg = fmt.Sprintf("ControlPath=%s", conn.controlPath)
-		conn.mu.Unlock()
 	} else {
 		controlPathArg = "ControlMaster=no" // Disable ControlMaster if we couldn't get a pooled connection
 	}
