@@ -254,7 +254,7 @@ func reachableVia(host, controlPath string) bool {
 	)
 	err := checkCmd.Run()
 	if err != nil {
-		slog.Info("[SSH-POOL] Connection appears dead", "host", host, "error", err)
+		// slog.Info("[SSH-POOL] Connection appears dead", "host", host, "error", err)
 		return false
 	}
 	return true
