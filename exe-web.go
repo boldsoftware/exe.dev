@@ -297,7 +297,11 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	// 2) Main domain handling
 	if serverName == s.getMainDomain() || serverName == s.getMainDomain("www") || strings.HasSuffix(serverName, "."+s.getMainDomain()) {
 		if s.wildcardCertManager != nil {
-			return s.wildcardCertManager.GetCertificate(hello)
+			cert, err := s.wildcardCertManager.GetCertificate(hello)
+			if err != nil {
+				s.slog().Error("wildcard GetCertificate failed; giving up", "error", err)
+			}
+			return cert, err
 		}
 
 		// fall through to standard autocert for custom domains
