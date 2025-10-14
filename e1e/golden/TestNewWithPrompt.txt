@@ -41,10 +41,9 @@ exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testnewwithprompt --prompt="hello" --pr
 Creating e1e-BOX_TIMESTAMP-testnewwithprompt (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:
 
-ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testnewwithprompt@localhost
 http://e1e-BOX_TIMESTAMP-testnewwithprompt.localhost:EXED_HTTP_PORT (→ port 8000)
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testnewwithprompt@localhost
 
-🐌 Talk to Shelley, exe.dev's agent, on your box at http://e1e-BOX_TIMESTAMP-testnewwithprompt.localhost:9999
 
 🤖 Running prompt through Shelley...
 

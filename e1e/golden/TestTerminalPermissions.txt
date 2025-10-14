@@ -41,8 +41,8 @@ exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testterminalpermissions --command="/bin
 Creating e1e-BOX_TIMESTAMP-testterminalpermissions (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:
 
-ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testterminalpermissions@localhost
 http://e1e-BOX_TIMESTAMP-testterminalpermissions.localhost:EXED_HTTP_PORT (→ port 8000)
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testterminalpermissions@localhost
 
 exe.dev ▶ list
 Your boxes:

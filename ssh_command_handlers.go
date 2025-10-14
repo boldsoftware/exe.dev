@@ -572,11 +572,8 @@ done:
 		return nil
 	}
 	if cc.IsInteractive() {
-		cc.Write("Ready in %.1fs! Access with:\r\n\r\n\033[1m%s\033[0m\r\n\033[1m%s\033[0m (→ port %d)\r\n\r\n",
-			totalTime.Seconds(), sshCommand, httpsProxyAddr, proxyPort)
-		if shelleyUrl != "" {
-			cc.Write("🐌 Talk to Shelley, exe.dev's agent, on your box at %s\r\n", shelleyUrl)
-		}
+		cc.Write("Ready in %.1fs! Access with:\r\n\r\n%s (→ port %d)\r\n\033[1m%s\033[0m\r\n\r\n",
+			totalTime.Seconds(), httpsProxyAddr, proxyPort, sshCommand)
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
 		cc.Write("%s\r\n%s\r\n", sshCommand, httpsProxyAddr)

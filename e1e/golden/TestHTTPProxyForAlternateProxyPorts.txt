@@ -41,8 +41,8 @@ exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports --c
 Creating e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME! Access with:
 
-ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports@localhost
 http://e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports.localhost:EXED_HTTP_PORT (→ port 8000)
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testhttpproxyforalternateproxyports@localhost
 
 exe.dev ▶ list
 Your boxes:
