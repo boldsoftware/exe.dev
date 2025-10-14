@@ -408,6 +408,13 @@ func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) err
 		}
 	}
 
+	// Fast path: verify via shim binary to avoid booting a VM
+	shimCmd := m.ExecSSHCommand(ctx, host, "containerd-shim-kata-v2", "-v")
+	if _, shimErr := shimCmd.Output(); shimErr == nil {
+		slog.Info("Kata runtime verified via shim binary", "host", host)
+		return nil
+	}
+
 	// Fall back to the full container test if quick check failed or was inconclusive
 	// The most reliable way to check if Kata is available is to try using it
 	// nerdctl info doesn't reliably report available runtimes
