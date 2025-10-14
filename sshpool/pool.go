@@ -110,7 +110,7 @@ func (p *Pool) getConnection(ctx context.Context, host string) (*Connection, err
 
 	if exists {
 		// Check if the connection is still alive
-		if p.isConnectionAlive(conn) {
+		if conn.alive() {
 			conn.mu.Lock()
 			conn.lastUsed = time.Now()
 			conn.mu.Unlock()
@@ -135,7 +135,7 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 
 	// Check again if someone else created it while we were waiting for the lock
 	if conn, exists := p.connections[host]; exists {
-		if p.isConnectionAlive(conn) {
+		if conn.alive() {
 			return conn, nil
 		}
 	}
@@ -237,29 +237,21 @@ WaitForSocket:
 	return conn, nil
 }
 
-// isConnectionAlive checks if an SSH connection is still working
-func (p *Pool) isConnectionAlive(conn *Connection) bool {
-	// Check if control socket exists
-	if _, err := os.Stat(conn.controlPath); err != nil {
-		return false
-	}
-
-	// Try to run a simple command through the connection
+// alive reports whether conn is still working via the control socket.
+func (conn *Connection) alive() bool {
 	checkCmd := exec.Command("ssh",
 		"-o", fmt.Sprintf("ControlPath=%s", conn.controlPath),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-O", "check",
 		conn.host,
-		"echo", "alive",
 	)
-
-	output, err := checkCmd.CombinedOutput()
+	err := checkCmd.Run()
 	if err != nil {
 		slog.Info("[SSH-POOL] Connection appears dead", "host", conn.host, "error", err)
 		return false
 	}
-
-	return strings.TrimSpace(string(output)) == "alive"
+	return true
 }
 
 func (p *Pool) shouldBypass(host string) bool {
