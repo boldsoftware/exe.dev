@@ -393,22 +393,22 @@ func (p *Pool) SCP(ctx context.Context, host string, remoteDest string, localPat
 	sshHost := strings.TrimPrefix(host, "ssh://")
 
 	// Get or create the connection to ensure control socket exists
+	var controlPathArg string
 	conn, err := p.getConnection(ctx, host)
-	if err != nil {
-		return fmt.Errorf("failed to get SSH connection: %w", err)
+	if err == nil {
+		conn.mu.Lock()
+		conn.lastUsed = time.Now()
+		controlPathArg = fmt.Sprintf("ControlPath=%s", conn.controlPath)
+		conn.mu.Unlock()
+	} else {
+		controlPathArg = "ControlMaster=no" // Disable ControlMaster if we couldn't get a pooled connection
 	}
-
-	// Update last used time
-	conn.mu.Lock()
-	conn.lastUsed = time.Now()
-	controlPath := conn.controlPath
-	conn.mu.Unlock()
 
 	// Build scp command with all files at once
 	// scp preserves permissions by default with -p flag
 	scpArgs := []string{
 		"-rp", // Recursive and preserve modification times, access times, and modes
-		"-o", "ControlPath=" + controlPath,
+		"-o", controlPathArg,
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "BatchMode=yes",
