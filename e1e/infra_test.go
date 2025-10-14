@@ -1338,7 +1338,7 @@ NextLine:
 	}
 
 	lines := screen.Display()
-	for lines[len(lines)-1] == "" {
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
 	// Some ptys like to use a bunch of trailing spaces followed by a series of \b,
