@@ -3,7 +3,6 @@ package sshpool
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -381,48 +380,6 @@ func (p *Pool) Close() {
 
 	p.connections = make(map[string]*Connection)
 	os.RemoveAll(p.baseDir)
-}
-
-// StreamCommand executes a command with streaming output through a pooled connection
-func (p *Pool) StreamCommand(ctx context.Context, host string, stdin io.Reader, stdout, stderr io.Writer, args ...string) error {
-	cmd := p.ExecCommand(ctx, host, args...)
-
-	if stdin != nil {
-		cmd.Stdin = stdin
-	}
-	if stdout != nil {
-		cmd.Stdout = stdout
-	}
-	if stderr != nil {
-		cmd.Stderr = stderr
-	}
-
-	return cmd.Run()
-}
-
-// CheckHostConnection verifies that we can connect to a host
-func (p *Pool) CheckHostConnection(ctx context.Context, host string) error {
-	// Try to ensure a ControlMaster exists; if we're in bypass mode, continue with direct SSH.
-	if _, err := p.getConnection(ctx, host); err != nil {
-		// If we're bypassing ControlMaster for this host, still attempt a direct command via ExecCommand,
-		// which already handles bypass. Only fail fast for other errors.
-		if !strings.Contains(err.Error(), "bypassing ControlMaster") {
-			return err
-		}
-	}
-
-	// Run a simple test command using the normal ExecCommand path (handles pooling or bypass)
-	testCmd := p.ExecCommand(ctx, host, "echo", "test")
-	output, err := testCmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to execute test command on %s: %w", host, err)
-	}
-
-	if strings.TrimSpace(string(output)) != "test" {
-		return fmt.Errorf("unexpected output from test command on %s: %s", host, output)
-	}
-
-	return nil
 }
 
 // SCP transfers files to remoteDest on host, preserving their permissions

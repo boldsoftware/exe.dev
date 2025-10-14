@@ -128,33 +128,4 @@ func TestPool(t *testing.T) {
 			t.Errorf("Recovery command output mismatch: %s", output)
 		}
 	})
-
-	// Test 5: Stream command with stdin/stdout
-	t.Run("StreamCommand", func(t *testing.T) {
-		stdin := strings.NewReader("hello world")
-		var stdout strings.Builder
-
-		err := pool.StreamCommand(ctx, testHost, stdin, &stdout, nil, "cat")
-		if err != nil {
-			t.Fatalf("Stream command failed: %v", err)
-		}
-
-		if stdout.String() != "hello world" {
-			t.Errorf("Stream output mismatch: got '%s', want 'hello world'", stdout.String())
-		}
-	})
-
-	// Test 6: Check host connection
-	t.Run("CheckHostConnection", func(t *testing.T) {
-		err := pool.CheckHostConnection(ctx, testHost)
-		if err != nil {
-			t.Errorf("Failed to check host connection: %v", err)
-		}
-
-		// Check invalid host
-		err = pool.CheckHostConnection(ctx, "invalid-host.local")
-		if err == nil {
-			t.Error("Expected error for invalid host check")
-		}
-	})
 }
