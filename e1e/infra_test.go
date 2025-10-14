@@ -500,7 +500,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 		}
 	}()
 
-	timeout := 15 * time.Second
+	timeout := time.Minute
 	if os.Getenv("CI") != "" {
 		timeout = 2 * time.Minute
 	}
@@ -669,7 +669,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		}
 	}()
 
-	timeout := 30 * time.Second
+	timeout := time.Minute
 	if os.Getenv("CI") != "" {
 		timeout = 2 * time.Minute
 	}
