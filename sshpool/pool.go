@@ -199,11 +199,11 @@ WaitForSocket:
 		default:
 		}
 
-		if _, err := os.Stat(controlPath); err == nil {
+		if reachableVia(host, controlPath) {
 			socketCreated = true
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	if !socketCreated {
