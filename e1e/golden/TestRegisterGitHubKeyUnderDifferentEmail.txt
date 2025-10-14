@@ -7,9 +7,13 @@
 ~~~ EXE.DEV ~~~
 
 EXE.DEV: get a box over ssh
-Hello, @fakeuser1. (Surprised? http://localhost:EXED_HTTP_PORT/docs/ssh-github)
 
-Please confirm your email address: also-fake-for-tests@example.combinatorics
+✨ Recognized @fakeuser1's public GitHub SSH key. ✨
+(This key and email are public on GitHub; see http://localhost:EXED_HTTP_PORT/docs/ssh-github)
+Confirm this email to log in instantly,
+or enter a different one to get a magic login link.
+
+Email: also-fake-for-tests@example.combinatorics
 
 [DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
 

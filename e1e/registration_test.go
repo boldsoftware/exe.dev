@@ -201,7 +201,7 @@ func TestRegisterGitHubKey(t *testing.T) {
 
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	pty.want("Please confirm your email address:")
+	pty.want("Email:")
 	pty.want("fake-for-tests@example.com")
 	pty.sendLine("")
 
@@ -227,7 +227,7 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	pty.want("Please confirm your email address:")
+	pty.want("Email:")
 	pty.want(ghuser.FakeEmail1)
 	// change email from "fake-for-tests@example.com" to "fake-for-tests@example.combinatorics"
 	suffix := "binatorics"

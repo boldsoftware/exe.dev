@@ -545,7 +545,10 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 
 	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a box over ssh\033[0m\r\n")
 	if ghInfo.Email != "" {
-		fmt.Fprintf(s, "Hello, @%s. (Surprised? %s/docs/ssh-github)\r\n\r\n", ghInfo.Login, ss.server.getBaseURL())
+		fmt.Fprintf(s, "\r\n✨ Recognized \033[1m@%s\033[0m's public GitHub SSH key. ✨\r\n", ghInfo.Login)
+		fmt.Fprintf(s, "(This key and email are public on GitHub; see %s/docs/ssh-github)\r\n", ss.server.getBaseURL())
+		fmt.Fprintf(s, "Confirm this email to log in instantly,\r\n")
+		fmt.Fprintf(s, "or enter a different one to get a magic login link.\r\n\r\n")
 	} else {
 		fmt.Fprint(s, "To sign up, verify your email and set up billing.\r\n\r\n")
 	}
@@ -557,11 +560,11 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		if email != "" {
 			fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
 		}
-		verb := "enter"
+		prompt := "Please enter your email address:"
 		if suggested != "" {
-			verb = "confirm"
+			prompt = "Email:"
 		}
-		fmt.Fprintf(s, "\033[1mPlease %s your email address:\033[0m ", verb)
+		fmt.Fprintf(s, "\033[1m%s\033[0m ", prompt)
 		var pressedEnter bool
 		email, pressedEnter = ss.readLineWithEchoAndDefault(s, suggested)
 		if email == "" || !pressedEnter {
