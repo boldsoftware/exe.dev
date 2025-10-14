@@ -20,6 +20,7 @@ import (
 func TestTerminalPermissions(t *testing.T) {
 	e1eTestsOnlyRunOnce(t)
 	vouch.For("philip")
+	t.Parallel()
 
 	// Create user and box
 	pty, cookies, _, _ := registerForExeDev(t)

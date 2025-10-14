@@ -13,6 +13,7 @@ import (
 
 func TestSSHWorks(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
@@ -74,6 +75,7 @@ func TestSSHWorks(t *testing.T) {
 
 func TestBadBoxName(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, _, _ := registerForExeDev(t)
@@ -88,6 +90,7 @@ func TestBadBoxName(t *testing.T) {
 
 func TestNewWithPrompt(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, _, _ := registerForExeDev(t)

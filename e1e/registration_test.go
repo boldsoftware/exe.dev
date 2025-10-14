@@ -18,6 +18,7 @@ import (
 
 func TestNewKeyRegistration(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	keyFile, publicKey := genSSHKey(t)
@@ -44,6 +45,7 @@ func TestNewKeyRegistration(t *testing.T) {
 
 func TestRegistrationHappensOnce(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	keyFile, publicKey := genSSHKey(t)
@@ -90,6 +92,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 
 func TestRegisterMultipleKeys(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	for i := range 3 {
@@ -125,6 +128,7 @@ func TestRegisterMultipleKeys(t *testing.T) {
 
 func TestRegisterWebThenKey(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	email := t.Name() + "@example.com"
@@ -186,6 +190,7 @@ func TestRegisterWebThenKey(t *testing.T) {
 
 func TestRegisterGitHubKey(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	keyDir := t.TempDir()
@@ -211,6 +216,7 @@ func TestRegisterGitHubKey(t *testing.T) {
 
 func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 	vouch.For("josh")
+	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	keyDir := t.TempDir()

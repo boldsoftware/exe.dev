@@ -300,6 +300,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 // TODO: This doesn't do the auth dance so it's only testing the public stuff right now.
 func TestHTTPProxyBasic(t *testing.T) {
 	vouch.For("philip")
+	t.Parallel()
 
 	pty, _, keyFile, _ := registerForExeDev(t)
 	boxName := newBox(t, pty)
