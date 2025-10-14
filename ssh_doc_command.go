@@ -3,6 +3,7 @@ package exe
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	docspkg "exe.dev/docs"
@@ -69,9 +70,12 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 		title += " [hidden]"
 	}
 	model := newDocViewerModel(title, slug, entry.Markdown, width, height)
+	// Protect against over-reading input beyond the quit key so the next
+	// character typed after exiting the doc viewer is not lost.
+	qin := newQuitAwareReader(cc.SSHSession)
 	program := tea.NewProgram(model,
 		tea.WithContext(ctx),
-		tea.WithInput(cc.SSHSession),
+		tea.WithInput(qin),
 		tea.WithOutput(cc.SSHSession),
 	)
 
@@ -153,6 +157,37 @@ type docViewerModel struct {
 	width    int
 	height   int
 	err      error
+}
+
+// quitAwareReader wraps an io.Reader and stops reading after it observes a
+// quit key used by the doc viewer ("q" or Ctrl+C). It reads one byte at a time
+// to avoid pulling extra input beyond the quit key, preventing the next
+// character after exiting from being consumed here.
+type quitAwareReader struct {
+	r        io.Reader
+	quitSeen bool
+}
+
+func newQuitAwareReader(r io.Reader) *quitAwareReader {
+	return &quitAwareReader{r: r}
+}
+
+func (q *quitAwareReader) Read(p []byte) (int, error) {
+	if q.quitSeen {
+		return 0, io.EOF
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+	// Read at most one byte at a time to avoid over-reading beyond the quit key.
+	n, err := q.r.Read(p[:1])
+	if n == 1 {
+		switch p[0] {
+		case 'q', 3: // 'q' or Ctrl+C
+			q.quitSeen = true
+		}
+	}
+	return n, err
 }
 
 func newDocViewerModel(title, slug, markdown string, width, height int) *docViewerModel {
