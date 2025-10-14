@@ -55,9 +55,11 @@ func shellQuoteCommand(args []string) string {
 
 // New creates a new SSH connection pool
 func New() *Pool {
-	// Create a temporary directory for control sockets
-	baseDir := "/tmp/exe-ssh-control"
-	os.MkdirAll(baseDir, 0o700)
+	// Create a unique temporary directory for control sockets
+	baseDir, err := os.MkdirTemp("", "exe-ssh-control-")
+	if err != nil {
+		panic(fmt.Errorf("failed to create SSH control temp dir: %w", err))
+	}
 
 	pool := &Pool{
 		connections: make(map[string]*Connection),
