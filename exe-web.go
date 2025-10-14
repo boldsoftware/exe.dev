@@ -425,6 +425,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		return
+	case "/alpha", "/beta":
+		// Redirect aliases to the canonical welcome page
+		http.Redirect(w, r, "/welcome", http.StatusTemporaryRedirect)
+		return
 	case "/~", "/~/":
 		// User dashboard - require authentication
 		userID, err := s.validateAuthCookie(r)
