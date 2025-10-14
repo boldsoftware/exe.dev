@@ -333,9 +333,7 @@ func (s *Server) setupProxyServers() {
 		}
 
 		s.proxyLns = append(s.proxyLns, ln)
-
-		s.slog().Debug("proxy listener configured", "addr", ln.tcp.String(), "port", ln.tcp.Port)
-
+		// s.slog().Debug("proxy listener configured", "addr", ln.tcp.String(), "port", ln.tcp.Port)
 	}
 }
 

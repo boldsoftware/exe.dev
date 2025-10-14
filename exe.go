@@ -1665,7 +1665,7 @@ func (s *Server) Start() error {
 	for _, proxyLn := range s.proxyLns {
 		go func(ln *listener) {
 			if s.httpsLn.ln != nil {
-				s.slog().Info("Proxy listener starting with HTTPS handler", "addr", ln.tcp.String())
+				// s.slog().Info("Proxy listener starting with HTTPS handler", "addr", ln.tcp.String())
 				if err := s.httpsServer.ServeTLS(proxyLn.ln, "", ""); err != nil && err != http.ErrServerClosed {
 					s.slog().Error("Proxy listener startup failed (HTTPS)", "error", err, "addr", ln)
 					cancel()
