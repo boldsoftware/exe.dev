@@ -354,13 +354,27 @@ func parseMarkdownDoc(relPath string, data []byte) (Entry, error) {
 		return Entry{}, err
 	}
 	entry.Slug = slug
-	body, err := stripMarkdownFrontMatter(data)
-	if err != nil {
-		return Entry{}, err
-	}
-	entry.Markdown = string(body)
+	// Store markdown without front matter for terminal rendering.
+	entry.Markdown = string(stripFrontMatter(data))
 	entry.Content = template.HTML(buf.String())
 	return entry, nil
+}
+
+// stripFrontMatter removes a leading YAML front matter block delimited by lines containing only "---".
+// If no such block exists at the file start, the original content is returned unchanged.
+func stripFrontMatter(data []byte) []byte {
+	const start = "---\n"
+	rest, ok := bytes.CutPrefix(data, []byte(start))
+	if !ok {
+		return data
+	}
+	const end = "\n---\n"
+	idx := bytes.Index(rest, []byte(end))
+	if idx == -1 {
+		return data
+	}
+	// Skip past the closing delimiter and return the remainder.
+	return rest[idx+len(end):]
 }
 
 func entryFromMetadata(docPath string, metadata map[string]any) (Entry, error) {
@@ -523,41 +537,4 @@ func parseTags(content string) (tags []string) {
 		}
 	}
 	return tags
-}
-
-func stripMarkdownFrontMatter(data []byte) ([]byte, error) {
-	content := bytes.TrimSpace(data)
-	if !bytes.HasPrefix(content, []byte("---")) {
-		return nil, fmt.Errorf("markdown doc missing YAML front matter opening delimiter")
-	}
-
-	newlineIdx := bytes.IndexByte(content, '\n')
-	if newlineIdx == -1 {
-		return nil, fmt.Errorf("markdown doc missing closing YAML front matter delimiter")
-	}
-
-	remaining := content[newlineIdx+1:]
-
-	lineStart := 0
-	for lineStart < len(remaining) {
-		lineEnd := bytes.IndexByte(remaining[lineStart:], '\n')
-		var line []byte
-		var nextStart int
-		if lineEnd == -1 {
-			line = remaining[lineStart:]
-			nextStart = len(remaining)
-		} else {
-			line = remaining[lineStart : lineStart+lineEnd]
-			nextStart = lineStart + lineEnd + 1
-		}
-
-		line = bytes.TrimSuffix(line, []byte("\r"))
-		if bytes.Equal(line, []byte("---")) {
-			return remaining[nextStart:], nil
-		}
-
-		lineStart = nextStart
-	}
-
-	return nil, fmt.Errorf("markdown doc missing closing YAML front matter delimiter")
 }

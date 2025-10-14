@@ -17,7 +17,7 @@ Hello **world**!
 		t.Fatalf("parseMarkdownDoc returned error: %v", err)
 	}
 
-	if entry.Markdown != "Hello **world**!" {
+	if entry.Markdown != "Hello **world**!\n" {
 		t.Fatalf("unexpected markdown body: %q", entry.Markdown)
 	}
 }
