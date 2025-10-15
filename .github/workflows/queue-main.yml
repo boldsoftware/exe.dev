@@ -165,12 +165,33 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Abort stale rebase (pre-checkout)
+        run: |
+          # On self-hosted runners the workspace persists; clear any stale rebase state
+          if [ -d .git ]; then
+            git rebase --abort || true
+            # Ensure no leftover rebase directories remain
+            REBASE_MERGE=$(git rev-parse --git-path rebase-merge 2>/dev/null || true)
+            REBASE_APPLY=$(git rev-parse --git-path rebase-apply 2>/dev/null || true)
+            [ -n "$REBASE_MERGE" ] && rm -rf "$REBASE_MERGE" || true
+            [ -n "$REBASE_APPLY" ] && rm -rf "$REBASE_APPLY" || true
+          fi
+        shell: bash
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.formatting.outputs.commit_sha }}
           fetch-depth: 0
-      - name: Abort any pending rebase
-        run: git rebase --abort || true # '|| true' prevents the step from failing if no rebase is in progress
+      - name: Verify expected commit checked out
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ needs.formatting.outputs.commit_sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          echo "Expected commit: $EXPECTED"
+          echo "Actual commit:   $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "Commit mismatch after checkout; failing push-to-main."
+            exit 1
+          fi
         shell: bash
       - name: Push to main
         run: |
@@ -184,9 +205,9 @@ jobs:
           echo "Current HEAD: $(git rev-parse HEAD)"
           echo "Origin main: $(git rev-parse origin/main)"
 
-          # Check if we can fast-forward
-          if git merge-base --is-ancestor HEAD origin/main; then
-            echo "Already up to date with main"
+          # Check if main can be fast-forwarded to HEAD
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "Fast-forward main to HEAD"
             git push origin HEAD:main
           elif git rebase origin/main; then
             echo "Successfully rebased onto main"
