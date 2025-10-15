@@ -53,6 +53,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		pipx psmisc bsdmainutils sudo socat \
 		openssh-server openssh-client \
 		iputils-ping socat netcat-openbsd \
+		libcap2-bin \
 		unzip util-linux rsync \
 		ubuntu-server ubuntu-dev-tools ubuntu-standard \
 		man-db manpages manpages-dev \
@@ -62,6 +63,8 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		libglib2.0-0 libnss3 libx11-6 libxcomposite1 libxdamage1 \
 		libxext6 libxi6 libxrandr2 libgbm1 libgtk-3-0 \
 		fonts-noto-color-emoji fonts-symbola && \
+	# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
+	setcap cap_net_raw=+ep /usr/bin/ping && \
 	fc-cache -f -v && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/*
