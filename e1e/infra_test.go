@@ -1271,9 +1271,10 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 	pty.want(publicKey)
 	pty.wantPrompt()
 
-	t.Logf("INFO: exed is running on http://localhost:%d 'your' e-mail is %s", Env.exed.HTTPPort, email)
-	t.Logf("INFO: connect to this exed/sshpiper with:\nssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %d -i %s localhost\n",
-		Env.piperd.SSHPort, keyFile)
+	// t.Logf("test: %s", t.Name())
+	// t.Logf("exed: http://localhost:%d", Env.exed.HTTPPort)
+	// t.Logf("email: %s", email)
+	// t.Logf("connect:\nssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %d -i %s localhost\n", Env.piperd.SSHPort, keyFile)
 
 	return pty, cookies, keyFile, email
 }
