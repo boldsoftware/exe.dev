@@ -1081,7 +1081,12 @@ func (ss *SSHServer) deleteBillingInfo(cc *exemenu.CommandContext, billingInfo *
 
 func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	if len(cc.Args) != 1 {
-		return cc.Errorf("please specify exactly one box name to route, got %d", len(cc.Args))
+		if !cc.WantJSON() {
+			cmd := ss.commands.FindCommand([]string{"proxy"})
+			cmd.Help(cc)
+			cc.Write("\r\n")
+		}
+		return cc.Errorf("please specify exactly one box name to route")
 	}
 	boxName := cc.Args[0]
 
