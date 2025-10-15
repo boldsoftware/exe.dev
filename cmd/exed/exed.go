@@ -117,6 +117,16 @@ func run() error {
 			"suggestion", "Use -containerd-addresses flag, or set CTR_HOST env var")
 	}
 
+	switch strings.ToLower(*dbPath) {
+	case "tmp":
+		f, err := os.CreateTemp("", "exe.db")
+		if err != nil {
+			return fmt.Errorf("failed to create temp db file: %w", err)
+		}
+		*dbPath = f.Name()
+		slog.Info("created temporary exe.db", "path", *dbPath)
+	}
+
 	server, err := exe.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
