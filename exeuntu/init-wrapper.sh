@@ -18,5 +18,13 @@ mkdir -p /run/systemd
 if [[ ! -f /sys/fs/cgroup/cgroup.controllers ]]; then
 	mount -t cgroup2 none /sys/fs/cgroup
 fi
+
+if [[ -w /proc/sys/net/ipv4/ip_unprivileged_port_start ]]; then
+	printf '0\n' > /proc/sys/net/ipv4/ip_unprivileged_port_start
+fi
+if [[ -w /proc/sys/net/ipv6/ip_unprivileged_port_start ]]; then
+	printf '0\n' > /proc/sys/net/ipv6/ip_unprivileged_port_start
+fi
+
 echo "Starting systemd..."
 exec /sbin/init --log-level=debug --log-target=syslog --show-status=true
