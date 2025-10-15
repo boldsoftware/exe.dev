@@ -39,9 +39,15 @@ SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testhttpproxybasic
 Creating e1e-BOX_TIMESTAMP-testhttpproxybasic (medium) using image boldsoftware/exeuntu...
-Ready in ELAPSED_TIME! Access with:
+Ready in ELAPSED_TIME!
 
-http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT (→ port 8000)
+Coding agent
+http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:9999
+
+App (HTTPS proxy → :8000)
+http://e1e-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT
+
+SSH
 ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testhttpproxybasic@localhost
 
 exe.dev ▶ list

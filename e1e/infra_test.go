@@ -1307,8 +1307,10 @@ func newBox(t *testing.T, pty *expectPty, opts ...BoxOpts) string {
 	pty.sendLine(cmdLine)
 	pty.reject("Sorry")
 	pty.wantRe("Creating .*" + boxNameRe)
-	// break onto two lines because ANSI codes
-	pty.want("Access with")
+	// Calls to action
+	pty.want("App")
+	pty.want("http://")
+	pty.want("SSH")
 	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)
 
 	// Confirm it is there.

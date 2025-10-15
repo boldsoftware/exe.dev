@@ -101,10 +101,13 @@ func TestNewWithPrompt(t *testing.T) {
 	pty.sendLine(fmt.Sprintf("new --name=%s --prompt=%q --prompt-model=predictable", boxName, prompt))
 	pty.reject("Sorry")
 	pty.wantRe("Creating .*" + boxName)
-	pty.want("Access with")
+	// Calls to action
+	pty.want("Coding agent")
+	pty.want("App")
+	pty.want("SSH")
 
 	// Expect Shelley prompt execution to start
-	pty.want("Running prompt through Shelley...")
+	pty.want("Shelley...")
 
 	// With predictable model, we should get a quick response
 	pty.want("Well, hi there!") // Expected response from predictable service for "hello"

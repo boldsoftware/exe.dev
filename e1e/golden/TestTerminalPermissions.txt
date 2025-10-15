@@ -39,9 +39,12 @@ SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testterminalpermissions --command="/bin/bash"
 Creating e1e-BOX_TIMESTAMP-testterminalpermissions (medium) using image boldsoftware/exeuntu...
-Ready in ELAPSED_TIME! Access with:
+Ready in ELAPSED_TIME!
 
-http://e1e-BOX_TIMESTAMP-testterminalpermissions.localhost:EXED_HTTP_PORT (→ port 8000)
+App (HTTPS proxy → :8000)
+http://e1e-BOX_TIMESTAMP-testterminalpermissions.localhost:EXED_HTTP_PORT
+
+SSH
 ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testterminalpermissions@localhost
 
 exe.dev ▶ list

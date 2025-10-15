@@ -571,17 +571,40 @@ done:
 		cc.WriteJSON(out)
 		return nil
 	}
+	var services [][3]string // [description, parenthetical, call to action]
+	if shelleyUrl != "" {
+		services = append(services,
+			[3]string{"Coding agent", "", shelleyUrl},
+		)
+	}
+	services = append(services,
+		[3]string{"App", fmt.Sprintf("HTTPS proxy → :%d", proxyPort), httpsProxyAddr},
+		[3]string{"SSH", "", sshCommand}, // show SSH last, to make it most prominent
+	)
 	if cc.IsInteractive() {
-		cc.Write("Ready in %.1fs! Access with:\r\n\r\n%s (→ port %d)\r\n\033[1m%s\033[0m\r\n\r\n",
-			totalTime.Seconds(), httpsProxyAddr, proxyPort, sshCommand)
+		cc.Write("Ready in %.1fs!\r\n\r\n", totalTime.Seconds())
+		for _, svc := range services {
+			parenthetical := ""
+			if svc[1] != "" {
+				parenthetical = " \033[2m(" + svc[1] + ")\033[0m"
+			}
+			cc.Write("\033[1m%s\033[0m%s\r\n%s\r\n\r\n", svc[0], parenthetical, svc[2])
+		}
 	} else {
 		// Non-interactive session: output clean SSH command to stdout
-		cc.Write("%s\r\n%s\r\n", sshCommand, httpsProxyAddr)
+		cc.Write("\r\n")
+		for _, svc := range services {
+			parenthetical := ""
+			if svc[1] != "" {
+				parenthetical = " (" + svc[1] + ")"
+			}
+			cc.Write("%s%s\r\n%s\r\n\r\n", svc[0], parenthetical, svc[2])
+		}
 	}
 
 	// If prompt was provided, run it through Shelley
 	if prompt != "" {
-		cc.Write("\r\n🤖 Running prompt through Shelley...\r\n\r\n")
+		cc.Write("\r\nSending prompt to Shelley...\r\n\r\n")
 
 		// Get the box and SSH details for Shelley integration
 		var box *exedb.Box
