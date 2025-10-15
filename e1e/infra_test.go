@@ -5,6 +5,7 @@ package e1e
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -24,6 +25,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -251,9 +253,23 @@ func (t *testEnv) addCanonicalization(in any, canon string) {
 func (t *testEnv) canonicalizeString(s string) string {
 	t.canonicalizeMu.Lock()
 	defer t.canonicalizeMu.Unlock()
-	kv := make([]string, 0, len(t.canonicalize)*2)
+	// Build replacements and sort by key length descending to avoid
+	// substring collisions. Replace longest keys first.
+	pairs := make([][2]string, 0, len(t.canonicalize))
 	for k, v := range t.canonicalize {
-		kv = append(kv, k, v)
+		pairs = append(pairs, [2]string{k, v})
+	}
+	slices.SortFunc(pairs, func(a, b [2]string) int {
+		// primary: length of key (desc)
+		if lenA, lenB := len(a[0]), len(b[0]); lenA != lenB {
+			return cmp.Compare(lenB, lenA)
+		}
+		// secondary: key lexicographic (asc) for determinism
+		return cmp.Compare(a[0], b[0])
+	})
+	kv := make([]string, 0, len(pairs)*2)
+	for _, p := range pairs {
+		kv = append(kv, p[0], p[1])
 	}
 	s = strings.NewReplacer(kv...).Replace(s)
 	// now canonicalize some other stuff using regexps :/
