@@ -330,7 +330,7 @@ func (s *Server) handleMobileHostnameCheck(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	name := strings.TrimSpace(request.Hostname)
+	name := strings.ToLower(strings.TrimSpace(request.Hostname))
 	if name == "" {
 		http.Error(w, "Box name is required", http.StatusBadRequest)
 		return
@@ -371,7 +371,7 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hostname := strings.TrimSpace(r.FormValue("hostname"))
+	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 
 	s.slog().Info("Mobile VM creation request", "hostname", hostname, "prompt", prompt)
@@ -401,7 +401,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	email := strings.TrimSpace(r.FormValue("email"))
-	hostname := strings.TrimSpace(r.FormValue("hostname"))
+	hostname := strings.ToLower(strings.TrimSpace(r.FormValue("hostname")))
 	prompt := strings.TrimSpace(r.FormValue("prompt"))
 	if email == "" {
 		http.Error(w, "Email is required", http.StatusBadRequest)
