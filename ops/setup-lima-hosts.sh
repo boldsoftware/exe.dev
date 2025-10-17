@@ -7,9 +7,7 @@ trap 'echo Error in $0 at line $LINENO: $(cd "'"${PWD}"'" && awk "NR == $LINENO"
 LIMA_BASE="exe-ctr-base"
 LIMA_HOST_A="exe-ctr"
 LIMA_HOST_B="exe-ctr-tests"
-CPUS=8
-MEMORY=8
-DISK=100
+DATA_DISK_SIZE="100GiB"
 
 # Determine repo ops dir
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,8 +16,71 @@ if [[ ! -f "$SETUP_SCRIPT_PATH" ]]; then
 	echo "Required setup script not found: $SETUP_SCRIPT_PATH" >&2
 	exit 1
 fi
+LIMA_CONFIG_PATH="${OPS_DIR}/lima-with-data.yaml"
+if [[ ! -f "$LIMA_CONFIG_PATH" ]]; then
+	echo "Required Lima config not found: $LIMA_CONFIG_PATH" >&2
+	exit 1
+fi
+PROVISION_SCRIPT_PATH="${OPS_DIR}/lima-provision.sh"
+if [[ ! -f "$PROVISION_SCRIPT_PATH" ]]; then
+	echo "Required Lima provision script not found: $PROVISION_SCRIPT_PATH" >&2
+	exit 1
+fi
 
 LIMA_DIR="$HOME/.lima"
+BOOTSTRAP_STAGING="/tmp/exe-bootstrap"
+
+data_disk_name() {
+	echo "data-$1"
+}
+
+data_disk_path() {
+	local disk
+	disk="$(data_disk_name "$1")"
+	echo "${LIMA_DIR}/_disks/${disk}/datadisk"
+}
+
+set_disk_expr() {
+	local disk="$1"
+	printf '.additionalDisks[0].name = "%s"' "${disk}"
+}
+
+delete_data_disk() {
+	local instance="$1"
+	local disk
+	disk="$(data_disk_name "$instance")"
+	if limactl --tty=false disk delete "${disk}" >/dev/null 2>&1; then
+		return 0
+	fi
+	rm -rf "${LIMA_DIR}/_disks/${disk}" >/dev/null 2>&1 || true
+}
+
+create_fresh_data_disk() {
+	local instance="$1"
+	local disk
+	disk="$(data_disk_name "$instance")"
+	echo "Creating Lima disk ${disk} (${DATA_DISK_SIZE})..."
+	delete_data_disk "${instance}"
+	limactl --tty=false disk create "${disk}" --size "${DATA_DISK_SIZE}"
+}
+
+clone_data_disk() {
+	local src_instance="$1"
+	local dst_instance="$2"
+	local src_disk
+	src_disk="$(data_disk_name "$src_instance")"
+	local dst_disk
+	dst_disk="$(data_disk_name "$dst_instance")"
+	local src_path
+	src_path="$(data_disk_path "$src_instance")"
+	if [[ ! -f "${src_path}" ]]; then
+		echo "Error: source data disk not found at ${src_path}" >&2
+		exit 1
+	fi
+	echo "Cloning Lima disk ${src_disk} -> ${dst_disk}..."
+	delete_data_disk "${dst_instance}"
+	limactl --tty=false disk import "${dst_disk}" "${src_path}"
+}
 
 # Provision a fresh Lima VM with containerd + Kata + Nydus
 provision_base_vm() {
@@ -29,64 +90,34 @@ provision_base_vm() {
 		return 1
 	fi
 
-	# Create ubuntu user for compatibility
-	echo "Creating ubuntu user for compatibility with production..."
-	limactl shell ${LIMA_BASE} -- sudo useradd -m -s /bin/bash ubuntu 2>/dev/null || true
-	echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | limactl shell ${LIMA_BASE} -- sudo tee /etc/sudoers.d/ubuntu >/dev/null
-
-	# Set up data and local directories
-	echo "Setting up /data and /local directories for Lima..."
-	limactl shell ${LIMA_BASE} -- sudo mkdir -p /data
-	limactl shell ${LIMA_BASE} -- sudo chmod 755 /data
-	limactl shell ${LIMA_BASE} -- sudo mkdir -p /local
-	limactl shell ${LIMA_BASE} -- sudo chmod 755 /local
-
 	# Download dependencies locally if not cached
 	VM_ARCH="arm64"
 	echo "Ensuring dependencies are downloaded for $VM_ARCH..."
 	"${script_dir}/download-ctr-host.sh" "$VM_ARCH"
 
-	echo "Copying setup script and config files to VM..."
-	# Copy to /tmp first to avoid read-only filesystem issues
-	limactl shell ${LIMA_BASE} -- cp "${script_dir}/setup-containerd-clh-nydus.sh" /tmp/setup-containerd-clh-nydus.sh
-	limactl shell ${LIMA_BASE} -- cp "${script_dir}/kata-config-clh.toml" /tmp/kata-config-clh.toml
+	echo "Preparing bootstrap assets for VM..."
+	limactl shell ${LIMA_BASE} -- sudo rm -rf "${BOOTSTRAP_STAGING}"
+	limactl shell ${LIMA_BASE} -- sudo mkdir -p "${BOOTSTRAP_STAGING}"
+	limactl shell ${LIMA_BASE} -- sudo chmod 1777 "${BOOTSTRAP_STAGING}"
 
-	# Copy pre-downloaded tarballs to VM
+	limactl cp "${script_dir}/setup-containerd-clh-nydus.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-containerd-clh-nydus.sh"
+	limactl cp "${script_dir}/kata-config-clh.toml" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/kata-config-clh.toml"
+
 	echo "Copying pre-downloaded dependencies to VM..."
 	CACHE_DIR="$HOME/.cache/exedops"
 	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
 		if [ -f "$file" ]; then
 			basename=$(basename "$file")
 			echo "  Copying $basename..."
-			limactl shell ${LIMA_BASE} -- cp "$file" /tmp/$basename
+			limactl cp "$file" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/$basename"
 		fi
 	done
 
-	# Move files: setup script to /root; assets to canonical ASSETS_DIR=/home/ubuntu/.cache/exedops
-	limactl shell ${LIMA_BASE} -- sudo mv /tmp/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh
-	limactl shell ${LIMA_BASE} -- sudo chmod +x /root/setup-containerd-clh-nydus.sh
-	limactl shell ${LIMA_BASE} -- sudo mkdir -p /home/ubuntu/.cache/exedops
-	limactl shell ${LIMA_BASE} -- sudo mv /tmp/kata-config-clh.toml /home/ubuntu/.cache/exedops/kata-config-clh.toml
-	limactl shell ${LIMA_BASE} -- sudo bash -c 'for f in /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.tgz /tmp/*.tar /tmp/*.service /tmp/runc-* /tmp/ch-remote-static-*; do [ -e "$f" ] && mv "$f" /home/ubuntu/.cache/exedops/; done'
+	echo "Running bootstrap script in VM (this will take a few minutes)..."
+	limactl shell ${LIMA_BASE} -- sudo bash /usr/local/bin/lima-provision.sh bootstrap
 
-	echo "=========================================="
-	echo "Starting containerd setup in VM"
-	echo "=========================================="
-	echo "Running setup script in VM (this will take a few minutes)..."
-	# Set CI environment variable since Lima VMs are ephemeral-like
-	# Set ALLOW_DEV_HOST_ACCESS to allow containers to access Mac host on port 8080 for development
-	limactl shell ${LIMA_BASE} -- sudo CI=1 ALLOW_DEV_HOST_ACCESS=1 /root/setup-containerd-clh-nydus.sh
-
-	echo "=========================================="
-	echo "Lima-specific cofiguration..."
-	echo "=========================================="
-	# avahi-daemon makes *.local domains work; docker-registry runs a local registery, insecure (http), at port 5000
-	limactl shell ${LIMA_BASE} sudo apt-get -y install avahi-daemon docker-registry
 	# Copy default SSH keys to root's login, so ssh root@lima-exe-ctr.local works
 	(cat ~/.ssh/id_*.pub | limactl shell ${LIMA_BASE} sudo tee /root/.authorized_keys) || true
-
-	echo "Saving containerd configuration for persistence..."
-	limactl shell ${LIMA_BASE} -- sudo cp /etc/containerd/config.toml /home/ubuntu/containerd-config.toml.backup 2>/dev/null || true
 }
 
 echo "=== Setting up Lima hosts for exe.dev containerd testing ==="
@@ -108,15 +139,17 @@ limactl delete exe-ctr-base --tty=false -f 2>/dev/null || true
 limactl delete exe-ctr --tty=false -f 2>/dev/null || true
 limactl delete exe-ctr-tests --tty=false -f 2>/dev/null || true
 
+delete_data_disk "${LIMA_BASE}"
+delete_data_disk "${LIMA_HOST_A}"
+delete_data_disk "${LIMA_HOST_B}"
+
+create_fresh_data_disk "${LIMA_BASE}"
+
 echo "Creating base Lima instance: ${LIMA_BASE}"
+base_disk_name="$(data_disk_name "${LIMA_BASE}")"
 limactl create --tty=false --name=${LIMA_BASE} \
-	--vm-type=vz \
-	--cpus=${CPUS} \
-	--memory=${MEMORY} \
-	--network=vzNAT \
-	--disk=${DISK} \
-	--set ".nestedVirtualization=true" \
-	template://ubuntu-24.04
+	--set "$(set_disk_expr "${base_disk_name}")" \
+	"${LIMA_CONFIG_PATH}"
 limactl start --tty=false ${LIMA_BASE}
 
 echo "Checking for KVM support in VM..."
@@ -137,10 +170,13 @@ echo "Stopping base instance before cloning..."
 limactl stop ${LIMA_BASE}
 
 echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_A}..."
-limactl clone --tty=false ${LIMA_BASE} ${LIMA_HOST_A}
+limactl clone --tty=false --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_A}")")" ${LIMA_BASE} ${LIMA_HOST_A}
 
 echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_B}..."
-limactl clone --tty=false ${LIMA_BASE} ${LIMA_HOST_B}
+limactl clone --tty=false --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_B}")")" ${LIMA_BASE} ${LIMA_HOST_B}
+
+clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_A}"
+clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_B}"
 
 echo "Starting ${LIMA_HOST_A}..."
 limactl start --tty=false ${LIMA_HOST_A}

@@ -1,0 +1,27 @@
+minimumLimaVersion: 1.1.0
+
+vmType: vz
+cpus: 8
+memory: 8GiB
+disk: 100GiB
+nestedVirtualization: true
+
+base:
+  - template://ubuntu-24.04
+
+networks:
+  - vzNAT: true
+
+additionalDisks:
+  - name: data
+    size: 100GiB
+
+provision:
+  - mode: data
+    path: /usr/local/bin/lima-provision.sh
+    file: ./lima-provision.sh
+    owner: "root:root"
+    permissions: 755
+  - mode: system
+    script: |
+      bash /usr/local/bin/lima-provision.sh data-disk
