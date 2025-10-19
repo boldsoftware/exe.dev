@@ -21,7 +21,7 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT user_id, email, created_at, default_billing_account_id
+SELECT user_id, email, created_at
 FROM users
 WHERE email = ?
 `
@@ -29,12 +29,7 @@ WHERE email = ?
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.queryRow(ctx, q.getUserByEmailStmt, getUserByEmail, email)
 	var i User
-	err := row.Scan(
-		&i.UserID,
-		&i.Email,
-		&i.CreatedAt,
-		&i.DefaultBillingAccountID,
-	)
+	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
 	return i, err
 }
 
@@ -50,7 +45,7 @@ func (q *Queries) GetUserIDByEmail(ctx context.Context, email string) (string, e
 }
 
 const getUserWithDetails = `-- name: GetUserWithDetails :one
-SELECT user_id, email, created_at, default_billing_account_id
+SELECT user_id, email, created_at
 FROM users
 WHERE user_id = ?
 `
@@ -58,26 +53,20 @@ WHERE user_id = ?
 func (q *Queries) GetUserWithDetails(ctx context.Context, userID string) (User, error) {
 	row := q.queryRow(ctx, q.getUserWithDetailsStmt, getUserWithDetails, userID)
 	var i User
-	err := row.Scan(
-		&i.UserID,
-		&i.Email,
-		&i.CreatedAt,
-		&i.DefaultBillingAccountID,
-	)
+	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
 	return i, err
 }
 
 const insertUser = `-- name: InsertUser :exec
-INSERT INTO users (user_id, email, default_billing_account_id) VALUES (?, ?, ?)
+INSERT INTO users (user_id, email) VALUES (?, ?)
 `
 
 type InsertUserParams struct {
-	UserID                  string `db:"user_id" json:"user_id"`
-	Email                   string `db:"email" json:"email"`
-	DefaultBillingAccountID string `db:"default_billing_account_id" json:"default_billing_account_id"`
+	UserID string `db:"user_id" json:"user_id"`
+	Email  string `db:"email" json:"email"`
 }
 
 func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
-	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email, arg.DefaultBillingAccountID)
+	_, err := q.exec(ctx, q.insertUserStmt, insertUser, arg.UserID, arg.Email)
 	return err
 }

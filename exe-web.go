@@ -50,7 +50,7 @@ func (s *Server) prepareHandler() http.Handler {
 		s.metricsRegistry,
 		servMux)
 
-	h := LoggerMiddleware(slog.Default())(instrumentedHandler)
+	h := LoggerMiddleware(s.log)(instrumentedHandler)
 	return h
 }
 
@@ -69,7 +69,7 @@ func (s *Server) prepareLlmGateway() http.Handler {
 	fireworksAPIKey := os.Getenv("FIREWORKS_API_KEY")
 	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
 
-	lg := llmgateway.NewGateway(s.slog(), s.accountant, s.db, s, llmgateway.APIKeys{
+	lg := llmgateway.NewGateway(s.slog(), s.db, s, llmgateway.APIKeys{
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,

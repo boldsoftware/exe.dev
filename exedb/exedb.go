@@ -84,6 +84,7 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 		if len(matches) != 2 {
 			return fmt.Errorf("invalid migration filename format: %s", migration)
 		}
+
 		migrationNumber, err := strconv.Atoi(matches[1])
 		if err != nil {
 			return fmt.Errorf("failed to parse migration number from %s: %w", migration, err)
@@ -93,6 +94,11 @@ func RunMigrations(slog *slog.Logger, db *sql.DB) error {
 			slog.Info("running migration", "file", migration, "number", migrationNumber)
 			if err := executeMigration(db, migration); err != nil {
 				return fmt.Errorf("failed to execute migration %s: %w", migration, err)
+			}
+
+			_, err = db.Exec("INSERT INTO migrations (migration_number, migration_name) VALUES (?, ?)", migrationNumber, migration)
+			if err != nil {
+				return fmt.Errorf("failed to record migration %s in migrations table: %w", migration, err)
 			}
 		}
 	}

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"exe.dev/billing"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	"exe.dev/testutil"
 )
 
 // MockOutput captures output for testing
@@ -33,11 +33,10 @@ func createTestContext(sshServer *SSHServer, user *exedb.User, alloc *exedb.Allo
 	var allocInfo *exemenu.AllocInfo
 	if alloc != nil {
 		allocInfo = &exemenu.AllocInfo{
-			ID:               alloc.AllocID,
-			Type:             string(alloc.AllocType),
-			Region:           string(alloc.Region),
-			BillingAccountID: alloc.BillingAccountID,
-			CreatedAt:        alloc.CreatedAt,
+			ID:        alloc.AllocID,
+			Type:      string(alloc.AllocType),
+			Region:    string(alloc.Region),
+			CreatedAt: alloc.CreatedAt,
 		}
 	}
 	return &exemenu.CommandContext{
@@ -91,13 +90,8 @@ func TestCommandTree_FindCommand(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:     "find billing setup subcommand",
-			path:     []string{"billing", "setup"},
-			wantName: "setup",
-		},
-		{
 			name:    "nonexistent sub-subcommand",
-			path:    []string{"billing", "setup", "foo", "bar"},
+			path:    []string{"42", "setup", "foo", "bar"},
 			wantNil: true,
 		},
 	}
@@ -153,9 +147,8 @@ func TestCommandContext_HelperMethods(t *testing.T) {
 
 func TestHelpCommand(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{}
-	billing := &billing.MockService{}
-	sshServer := &SSHServer{server: server, billing: billing}
+	server := &Server{log: testutil.Slogger(t)}
+	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
@@ -183,16 +176,6 @@ func TestHelpCommand(t *testing.T) {
 		}
 		if !strings.Contains(result, "exit") {
 			t.Errorf("Help output should contain 'exit'")
-		}
-		// Check that billing subcommands are now shown in general help
-		if !strings.Contains(result, "billing balance") {
-			t.Errorf("Help output should contain 'billing balance' subcommand")
-		}
-		if !strings.Contains(result, "billing setup") {
-			t.Errorf("Help output should contain 'billing setup' subcommand")
-		}
-		if !strings.Contains(result, "billing update") {
-			t.Errorf("Help output should contain 'billing update' subcommand")
 		}
 	})
 
@@ -234,9 +217,8 @@ func TestHelpCommand(t *testing.T) {
 
 func TestExecuteCommand(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{}
-	billing := &billing.MockService{}
-	sshServer := &SSHServer{server: server, billing: billing}
+	server := &Server{log: testutil.Slogger(t)}
+	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
@@ -289,57 +271,6 @@ func TestExecuteCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("execute nonexistent subcommand", func(t *testing.T) {
-		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
-		ctx := context.Background()
-
-		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "nonexistent"})
-		if rc == 0 {
-			t.Errorf("ExecuteCommand() should fail for nonexistent subcommand")
-		}
-		result := output.String()
-		if !strings.Contains(result, `subcommand "nonexistent" not found`) {
-			t.Errorf("Output should indicate missing subcommand, got:\n%s\n", result)
-		}
-	})
-
-	t.Run("execute subcommand", func(t *testing.T) {
-		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
-		ctx := context.Background()
-		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
-		if rc == 0 {
-			t.Errorf("ExecuteCommand() should fail for billing setup without SSH session")
-		}
-
-		result := output.String()
-		if !strings.Contains(result, "Interactive billing setup requires SSH session") {
-			t.Errorf("Expected SSH session error in output, got:\n%s", result)
-		}
-	})
-
-	t.Run("execute subcommand with args (production scenario)", func(t *testing.T) {
-		output := &MockOutput{}
-		// This reproduces the production scenario where cc.Args contains the second part of the command
-		// User types "billing setup", shlex.Split creates ["billing", "setup"],
-		// parts[1:] creates ["setup"] which becomes cc.Args
-		cc := createTestContext(sshServer, user, alloc, output, []string{"setup"})
-		ctx := context.Background()
-		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"billing", "setup"})
-		if rc == 0 {
-			t.Errorf("ExecuteCommand() should fail for billing setup without SSH session")
-		}
-
-		result := output.String()
-		if !strings.Contains(result, "Interactive billing setup requires SSH session") {
-			t.Errorf("Expected SSH session error in output, got:\n%s", result)
-		}
-		if strings.Contains(result, "does not take positional arguments") {
-			t.Errorf("Got positional args error (this is the bug): %s", result)
-		}
-	})
-
 	t.Run("execute command with args", func(t *testing.T) {
 		output := &MockOutput{}
 		cc := createTestContext(sshServer, user, alloc, output, []string{"whoami"})
@@ -357,60 +288,10 @@ func TestExecuteCommand(t *testing.T) {
 	})
 }
 
-func TestBillingCommandConditionalBehavior(t *testing.T) {
-	// Create test server with proper database setup
-	server := NewTestServer(t)
-	mockBilling := &billing.MockService{}
-	sshServer := &SSHServer{server: server, billing: mockBilling}
-	sshServer.commands = NewCommandTree(sshServer)
-
-	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
-
-	t.Run("billing setup flow when no billing exists", func(t *testing.T) {
-		// Mock billing service to return no billing info
-		mockBilling.BillingInfo = &billing.BillingInfo{
-			HasBilling: false,
-		}
-
-		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
-		ctx := context.Background()
-
-		err := sshServer.handleBillingCommand(ctx, cc)
-		// This would normally trigger billing setup, but our legacy wrapper
-		// would need to handle the interactive flow. For now, we're testing
-		// that the conditional logic works correctly.
-		if err != nil {
-			t.Logf("Expected error due to legacy wrapper limitation: %v", err)
-		}
-	})
-
-	t.Run("billing info display when billing exists", func(t *testing.T) {
-		// Mock billing service to return existing billing info
-		mockBilling.BillingInfo = &billing.BillingInfo{
-			HasBilling:       true,
-			Email:            "billing@example.com",
-			StripeCustomerID: "cus_test123",
-		}
-
-		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
-		ctx := context.Background()
-
-		err := sshServer.handleBillingCommand(ctx, cc)
-		// This would show existing billing info
-		if err != nil {
-			t.Logf("Expected error due to legacy wrapper limitation: %v", err)
-		}
-	})
-}
-
 func TestGetAvailableCommands(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{}
-	billing := &billing.MockService{}
-	sshServer := &SSHServer{server: server, billing: billing}
+	server := &Server{log: testutil.Slogger(t)}
+	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
@@ -427,7 +308,7 @@ func TestGetAvailableCommands(t *testing.T) {
 			commandNames[cmd.Name] = true
 		}
 
-		expectedCommands := []string{"help", "doc", "list", "new", "delete", "billing", "whoami"}
+		expectedCommands := []string{"help", "doc", "list", "new", "delete", "whoami"}
 		for _, expected := range expectedCommands {
 			if !commandNames[expected] {
 				t.Errorf("Expected command %s not found in available commands", expected)
@@ -438,9 +319,8 @@ func TestGetAvailableCommands(t *testing.T) {
 
 func TestCommandFlagParsing(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{}
-	billing := &billing.MockService{}
-	sshServer := &SSHServer{server: server, billing: billing}
+	server := &Server{log: testutil.Slogger(t)}
+	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
@@ -627,8 +507,7 @@ func TestCommandFlagParsing(t *testing.T) {
 func TestSubcommandFlagParsing(t *testing.T) {
 	// Create test server and dependencies
 	server := &Server{}
-	billing := &billing.MockService{}
-	sshServer := &SSHServer{server: server, billing: billing}
+	sshServer := &SSHServer{server: server}
 
 	// Create a custom command tree with subcommands that have flags for testing
 	testFlagSetFunc := func() *flag.FlagSet {
@@ -791,9 +670,8 @@ func TestSubcommandFlagParsing(t *testing.T) {
 
 func TestFlagParsingErrorHandling(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{}
-	billing := &billing.MockService{}
-	sshServer := &SSHServer{server: server, billing: billing}
+	server := &Server{log: testutil.Slogger(t)}
+	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}

@@ -48,9 +48,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteAuthCookiesByUserIDStmt, err = db.PrepareContext(ctx, deleteAuthCookiesByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookiesByUserID: %w", err)
 	}
-	if q.deleteBillingAccountStmt, err = db.PrepareContext(ctx, deleteBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteBillingAccount: %w", err)
-	}
 	if q.deleteBoxStmt, err = db.PrepareContext(ctx, deleteBox); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBox: %w", err)
 	}
@@ -63,9 +60,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAllUserEventsStmt, err = db.PrepareContext(ctx, getAllUserEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllUserEvents: %w", err)
 	}
-	if q.getAllocBillingInfoStmt, err = db.PrepareContext(ctx, getAllocBillingInfo); err != nil {
-		return nil, fmt.Errorf("error preparing query GetAllocBillingInfo: %w", err)
-	}
 	if q.getAllocByUserIDStmt, err = db.PrepareContext(ctx, getAllocByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllocByUserID: %w", err)
 	}
@@ -77,15 +71,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getAuthTokenInfoStmt, err = db.PrepareContext(ctx, getAuthTokenInfo); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAuthTokenInfo: %w", err)
-	}
-	if q.getBillingAccountStmt, err = db.PrepareContext(ctx, getBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBillingAccount: %w", err)
-	}
-	if q.getBillingAccountByAllocIDStmt, err = db.PrepareContext(ctx, getBillingAccountByAllocID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBillingAccountByAllocID: %w", err)
-	}
-	if q.getBillingAccountByStripeCustomerStmt, err = db.PrepareContext(ctx, getBillingAccountByStripeCustomer); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBillingAccountByStripeCustomer: %w", err)
 	}
 	if q.getBoxByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxByNameAndAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByNameAndAlloc: %w", err)
@@ -108,14 +93,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesForUserDashboardStmt, err = db.PrepareContext(ctx, getBoxesForUserDashboard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesForUserDashboard: %w", err)
 	}
-	if q.getCreditBalanceForBillingAccountStmt, err = db.PrepareContext(ctx, getCreditBalanceForBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetCreditBalanceForBillingAccount: %w", err)
-	}
 	if q.getCtrhostByAllocIDStmt, err = db.PrepareContext(ctx, getCtrhostByAllocID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCtrhostByAllocID: %w", err)
-	}
-	if q.getDebitBalanceForBillingAccountStmt, err = db.PrepareContext(ctx, getDebitBalanceForBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetDebitBalanceForBillingAccount: %w", err)
 	}
 	if q.getEmailBySSHKeyStmt, err = db.PrepareContext(ctx, getEmailBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBySSHKey: %w", err)
@@ -162,21 +141,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTagsNeedingRefreshStmt, err = db.PrepareContext(ctx, getTagsNeedingRefresh); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTagsNeedingRefresh: %w", err)
 	}
-	if q.getUsageCreditStmt, err = db.PrepareContext(ctx, getUsageCredit); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUsageCredit: %w", err)
-	}
-	if q.getUsageCreditsByBillingAccountStmt, err = db.PrepareContext(ctx, getUsageCreditsByBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUsageCreditsByBillingAccount: %w", err)
-	}
-	if q.getUsageDebitStmt, err = db.PrepareContext(ctx, getUsageDebit); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUsageDebit: %w", err)
-	}
-	if q.getUsageDebitByMessageIDStmt, err = db.PrepareContext(ctx, getUsageDebitByMessageID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUsageDebitByMessageID: %w", err)
-	}
-	if q.getUsageDebitsByBillingAccountStmt, err = db.PrepareContext(ctx, getUsageDebitsByBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUsageDebitsByBillingAccount: %w", err)
-	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
@@ -207,9 +171,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertAuthCookieStmt, err = db.PrepareContext(ctx, insertAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAuthCookie: %w", err)
 	}
-	if q.insertBillingAccountStmt, err = db.PrepareContext(ctx, insertBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertBillingAccount: %w", err)
-	}
 	if q.insertBoxStmt, err = db.PrepareContext(ctx, insertBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertBox: %w", err)
 	}
@@ -237,17 +198,8 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertTagResolutionWithMetadataStmt, err = db.PrepareContext(ctx, insertTagResolutionWithMetadata); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTagResolutionWithMetadata: %w", err)
 	}
-	if q.insertUsageCreditStmt, err = db.PrepareContext(ctx, insertUsageCredit); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertUsageCredit: %w", err)
-	}
-	if q.insertUsageDebitStmt, err = db.PrepareContext(ctx, insertUsageDebit); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertUsageDebit: %w", err)
-	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
-	}
-	if q.linkAllocToBillingAccountStmt, err = db.PrepareContext(ctx, linkAllocToBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query LinkAllocToBillingAccount: %w", err)
 	}
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
@@ -255,20 +207,11 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.sSHKeyForBoxNamedStmt, err = db.PrepareContext(ctx, sSHKeyForBoxNamed); err != nil {
 		return nil, fmt.Errorf("error preparing query SSHKeyForBoxNamed: %w", err)
 	}
-	if q.updateAllocBillingAccountStmt, err = db.PrepareContext(ctx, updateAllocBillingAccount); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateAllocBillingAccount: %w", err)
-	}
 	if q.updateAuthCookieLastUsedStmt, err = db.PrepareContext(ctx, updateAuthCookieLastUsed); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthCookieLastUsed: %w", err)
 	}
 	if q.updateAuthTokenUsedAtStmt, err = db.PrepareContext(ctx, updateAuthTokenUsedAt); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAuthTokenUsedAt: %w", err)
-	}
-	if q.updateBillingAccountEmailStmt, err = db.PrepareContext(ctx, updateBillingAccountEmail); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBillingAccountEmail: %w", err)
-	}
-	if q.updateBillingAccountStripeStmt, err = db.PrepareContext(ctx, updateBillingAccountStripe); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBillingAccountStripe: %w", err)
 	}
 	if q.updateBoxContainerAndStatusStmt, err = db.PrepareContext(ctx, updateBoxContainerAndStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxContainerAndStatus: %w", err)
@@ -305,9 +248,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateTagResolutionTTLStmt, err = db.PrepareContext(ctx, updateTagResolutionTTL); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionTTL: %w", err)
-	}
-	if q.updateUsageCreditStatusStmt, err = db.PrepareContext(ctx, updateUsageCreditStatus); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateUsageCreditStatus: %w", err)
 	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
@@ -363,11 +303,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteAuthCookiesByUserIDStmt: %w", cerr)
 		}
 	}
-	if q.deleteBillingAccountStmt != nil {
-		if cerr := q.deleteBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteBillingAccountStmt: %w", cerr)
-		}
-	}
 	if q.deleteBoxStmt != nil {
 		if cerr := q.deleteBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteBoxStmt: %w", cerr)
@@ -388,11 +323,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getAllUserEventsStmt: %w", cerr)
 		}
 	}
-	if q.getAllocBillingInfoStmt != nil {
-		if cerr := q.getAllocBillingInfoStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getAllocBillingInfoStmt: %w", cerr)
-		}
-	}
 	if q.getAllocByUserIDStmt != nil {
 		if cerr := q.getAllocByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAllocByUserIDStmt: %w", cerr)
@@ -411,21 +341,6 @@ func (q *Queries) Close() error {
 	if q.getAuthTokenInfoStmt != nil {
 		if cerr := q.getAuthTokenInfoStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAuthTokenInfoStmt: %w", cerr)
-		}
-	}
-	if q.getBillingAccountStmt != nil {
-		if cerr := q.getBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBillingAccountStmt: %w", cerr)
-		}
-	}
-	if q.getBillingAccountByAllocIDStmt != nil {
-		if cerr := q.getBillingAccountByAllocIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBillingAccountByAllocIDStmt: %w", cerr)
-		}
-	}
-	if q.getBillingAccountByStripeCustomerStmt != nil {
-		if cerr := q.getBillingAccountByStripeCustomerStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBillingAccountByStripeCustomerStmt: %w", cerr)
 		}
 	}
 	if q.getBoxByNameAndAllocStmt != nil {
@@ -463,19 +378,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxesForUserDashboardStmt: %w", cerr)
 		}
 	}
-	if q.getCreditBalanceForBillingAccountStmt != nil {
-		if cerr := q.getCreditBalanceForBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getCreditBalanceForBillingAccountStmt: %w", cerr)
-		}
-	}
 	if q.getCtrhostByAllocIDStmt != nil {
 		if cerr := q.getCtrhostByAllocIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getCtrhostByAllocIDStmt: %w", cerr)
-		}
-	}
-	if q.getDebitBalanceForBillingAccountStmt != nil {
-		if cerr := q.getDebitBalanceForBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getDebitBalanceForBillingAccountStmt: %w", cerr)
 		}
 	}
 	if q.getEmailBySSHKeyStmt != nil {
@@ -553,31 +458,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTagsNeedingRefreshStmt: %w", cerr)
 		}
 	}
-	if q.getUsageCreditStmt != nil {
-		if cerr := q.getUsageCreditStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUsageCreditStmt: %w", cerr)
-		}
-	}
-	if q.getUsageCreditsByBillingAccountStmt != nil {
-		if cerr := q.getUsageCreditsByBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUsageCreditsByBillingAccountStmt: %w", cerr)
-		}
-	}
-	if q.getUsageDebitStmt != nil {
-		if cerr := q.getUsageDebitStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUsageDebitStmt: %w", cerr)
-		}
-	}
-	if q.getUsageDebitByMessageIDStmt != nil {
-		if cerr := q.getUsageDebitByMessageIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUsageDebitByMessageIDStmt: %w", cerr)
-		}
-	}
-	if q.getUsageDebitsByBillingAccountStmt != nil {
-		if cerr := q.getUsageDebitsByBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUsageDebitsByBillingAccountStmt: %w", cerr)
-		}
-	}
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
@@ -628,11 +508,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertAuthCookieStmt: %w", cerr)
 		}
 	}
-	if q.insertBillingAccountStmt != nil {
-		if cerr := q.insertBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertBillingAccountStmt: %w", cerr)
-		}
-	}
 	if q.insertBoxStmt != nil {
 		if cerr := q.insertBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertBoxStmt: %w", cerr)
@@ -678,24 +553,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertTagResolutionWithMetadataStmt: %w", cerr)
 		}
 	}
-	if q.insertUsageCreditStmt != nil {
-		if cerr := q.insertUsageCreditStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertUsageCreditStmt: %w", cerr)
-		}
-	}
-	if q.insertUsageDebitStmt != nil {
-		if cerr := q.insertUsageDebitStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertUsageDebitStmt: %w", cerr)
-		}
-	}
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
-		}
-	}
-	if q.linkAllocToBillingAccountStmt != nil {
-		if cerr := q.linkAllocToBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing linkAllocToBillingAccountStmt: %w", cerr)
 		}
 	}
 	if q.recordUserEventStmt != nil {
@@ -708,11 +568,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing sSHKeyForBoxNamedStmt: %w", cerr)
 		}
 	}
-	if q.updateAllocBillingAccountStmt != nil {
-		if cerr := q.updateAllocBillingAccountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateAllocBillingAccountStmt: %w", cerr)
-		}
-	}
 	if q.updateAuthCookieLastUsedStmt != nil {
 		if cerr := q.updateAuthCookieLastUsedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAuthCookieLastUsedStmt: %w", cerr)
@@ -721,16 +576,6 @@ func (q *Queries) Close() error {
 	if q.updateAuthTokenUsedAtStmt != nil {
 		if cerr := q.updateAuthTokenUsedAtStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAuthTokenUsedAtStmt: %w", cerr)
-		}
-	}
-	if q.updateBillingAccountEmailStmt != nil {
-		if cerr := q.updateBillingAccountEmailStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBillingAccountEmailStmt: %w", cerr)
-		}
-	}
-	if q.updateBillingAccountStripeStmt != nil {
-		if cerr := q.updateBillingAccountStripeStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBillingAccountStripeStmt: %w", cerr)
 		}
 	}
 	if q.updateBoxContainerAndStatusStmt != nil {
@@ -791,11 +636,6 @@ func (q *Queries) Close() error {
 	if q.updateTagResolutionTTLStmt != nil {
 		if cerr := q.updateTagResolutionTTLStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateTagResolutionTTLStmt: %w", cerr)
-		}
-	}
-	if q.updateUsageCreditStatusStmt != nil {
-		if cerr := q.updateUsageCreditStatusStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateUsageCreditStatusStmt: %w", cerr)
 		}
 	}
 	if q.upsertSSHHostKeyStmt != nil {
@@ -860,19 +700,14 @@ type Queries struct {
 	deleteAuthCookieStmt                   *sql.Stmt
 	deleteAuthCookieByValueStmt            *sql.Stmt
 	deleteAuthCookiesByUserIDStmt          *sql.Stmt
-	deleteBillingAccountStmt               *sql.Stmt
 	deleteBoxStmt                          *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	getAllUserEventsStmt                   *sql.Stmt
-	getAllocBillingInfoStmt                *sql.Stmt
 	getAllocByUserIDStmt                   *sql.Stmt
 	getAllocsByHostStmt                    *sql.Stmt
 	getAuthCookieInfoStmt                  *sql.Stmt
 	getAuthTokenInfoStmt                   *sql.Stmt
-	getBillingAccountStmt                  *sql.Stmt
-	getBillingAccountByAllocIDStmt         *sql.Stmt
-	getBillingAccountByStripeCustomerStmt  *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxIDAndAllocByNameStmt             *sql.Stmt
@@ -880,9 +715,7 @@ type Queries struct {
 	getBoxesByHostStmt                     *sql.Stmt
 	getBoxesForAllocStmt                   *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
-	getCreditBalanceForBillingAccountStmt  *sql.Stmt
 	getCtrhostByAllocIDStmt                *sql.Stmt
-	getDebitBalanceForBillingAccountStmt   *sql.Stmt
 	getEmailBySSHKeyStmt                   *sql.Stmt
 	getEmailByUserIDStmt                   *sql.Stmt
 	getEmailVerificationByEmailStmt        *sql.Stmt
@@ -898,11 +731,6 @@ type Queries struct {
 	getTagResolutionStmt                   *sql.Stmt
 	getTagResolutionsByAgeStmt             *sql.Stmt
 	getTagsNeedingRefreshStmt              *sql.Stmt
-	getUsageCreditStmt                     *sql.Stmt
-	getUsageCreditsByBillingAccountStmt    *sql.Stmt
-	getUsageDebitStmt                      *sql.Stmt
-	getUsageDebitByMessageIDStmt           *sql.Stmt
-	getUsageDebitsByBillingAccountStmt     *sql.Stmt
 	getUserByEmailStmt                     *sql.Stmt
 	getUserEventCountStmt                  *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
@@ -913,7 +741,6 @@ type Queries struct {
 	incrementSeenOnHostsStmt               *sql.Stmt
 	insertAllocStmt                        *sql.Stmt
 	insertAuthCookieStmt                   *sql.Stmt
-	insertBillingAccountStmt               *sql.Stmt
 	insertBoxStmt                          *sql.Stmt
 	insertDeletedBoxStmt                   *sql.Stmt
 	insertEmailVerificationStmt            *sql.Stmt
@@ -923,17 +750,11 @@ type Queries struct {
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
 	insertTagResolutionHistoryStmt         *sql.Stmt
 	insertTagResolutionWithMetadataStmt    *sql.Stmt
-	insertUsageCreditStmt                  *sql.Stmt
-	insertUsageDebitStmt                   *sql.Stmt
 	insertUserStmt                         *sql.Stmt
-	linkAllocToBillingAccountStmt          *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
 	sSHKeyForBoxNamedStmt                  *sql.Stmt
-	updateAllocBillingAccountStmt          *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
 	updateAuthTokenUsedAtStmt              *sql.Stmt
-	updateBillingAccountEmailStmt          *sql.Stmt
-	updateBillingAccountStripeStmt         *sql.Stmt
 	updateBoxContainerAndStatusStmt        *sql.Stmt
 	updateBoxContainerIDAndStatusStmt      *sql.Stmt
 	updateBoxRoutesStmt                    *sql.Stmt
@@ -946,7 +767,6 @@ type Queries struct {
 	updateTagResolutionDigestStmt          *sql.Stmt
 	updateTagResolutionMetadataStmt        *sql.Stmt
 	updateTagResolutionTTLStmt             *sql.Stmt
-	updateUsageCreditStatusStmt            *sql.Stmt
 	upsertSSHHostKeyStmt                   *sql.Stmt
 	upsertSSHKeyForUserStmt                *sql.Stmt
 	upsertTagResolutionStmt                *sql.Stmt
@@ -964,19 +784,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteAuthCookieStmt:                   q.deleteAuthCookieStmt,
 		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
 		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
-		deleteBillingAccountStmt:               q.deleteBillingAccountStmt,
 		deleteBoxStmt:                          q.deleteBoxStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
-		getAllocBillingInfoStmt:                q.getAllocBillingInfoStmt,
 		getAllocByUserIDStmt:                   q.getAllocByUserIDStmt,
 		getAllocsByHostStmt:                    q.getAllocsByHostStmt,
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
-		getBillingAccountStmt:                  q.getBillingAccountStmt,
-		getBillingAccountByAllocIDStmt:         q.getBillingAccountByAllocIDStmt,
-		getBillingAccountByStripeCustomerStmt:  q.getBillingAccountByStripeCustomerStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxIDAndAllocByNameStmt:             q.getBoxIDAndAllocByNameStmt,
@@ -984,9 +799,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
 		getBoxesForAllocStmt:                   q.getBoxesForAllocStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
-		getCreditBalanceForBillingAccountStmt:  q.getCreditBalanceForBillingAccountStmt,
 		getCtrhostByAllocIDStmt:                q.getCtrhostByAllocIDStmt,
-		getDebitBalanceForBillingAccountStmt:   q.getDebitBalanceForBillingAccountStmt,
 		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
 		getEmailVerificationByEmailStmt:        q.getEmailVerificationByEmailStmt,
@@ -1002,11 +815,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTagResolutionStmt:                   q.getTagResolutionStmt,
 		getTagResolutionsByAgeStmt:             q.getTagResolutionsByAgeStmt,
 		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
-		getUsageCreditStmt:                     q.getUsageCreditStmt,
-		getUsageCreditsByBillingAccountStmt:    q.getUsageCreditsByBillingAccountStmt,
-		getUsageDebitStmt:                      q.getUsageDebitStmt,
-		getUsageDebitByMessageIDStmt:           q.getUsageDebitByMessageIDStmt,
-		getUsageDebitsByBillingAccountStmt:     q.getUsageDebitsByBillingAccountStmt,
 		getUserByEmailStmt:                     q.getUserByEmailStmt,
 		getUserEventCountStmt:                  q.getUserEventCountStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
@@ -1017,7 +825,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementSeenOnHostsStmt:               q.incrementSeenOnHostsStmt,
 		insertAllocStmt:                        q.insertAllocStmt,
 		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
-		insertBillingAccountStmt:               q.insertBillingAccountStmt,
 		insertBoxStmt:                          q.insertBoxStmt,
 		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
@@ -1027,17 +834,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
 		insertTagResolutionWithMetadataStmt:    q.insertTagResolutionWithMetadataStmt,
-		insertUsageCreditStmt:                  q.insertUsageCreditStmt,
-		insertUsageDebitStmt:                   q.insertUsageDebitStmt,
 		insertUserStmt:                         q.insertUserStmt,
-		linkAllocToBillingAccountStmt:          q.linkAllocToBillingAccountStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
-		updateAllocBillingAccountStmt:          q.updateAllocBillingAccountStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,
 		updateAuthTokenUsedAtStmt:              q.updateAuthTokenUsedAtStmt,
-		updateBillingAccountEmailStmt:          q.updateBillingAccountEmailStmt,
-		updateBillingAccountStripeStmt:         q.updateBillingAccountStripeStmt,
 		updateBoxContainerAndStatusStmt:        q.updateBoxContainerAndStatusStmt,
 		updateBoxContainerIDAndStatusStmt:      q.updateBoxContainerIDAndStatusStmt,
 		updateBoxRoutesStmt:                    q.updateBoxRoutesStmt,
@@ -1050,7 +851,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
 		updateTagResolutionMetadataStmt:        q.updateTagResolutionMetadataStmt,
 		updateTagResolutionTTLStmt:             q.updateTagResolutionTTLStmt,
-		updateUsageCreditStatusStmt:            q.updateUsageCreditStatusStmt,
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,

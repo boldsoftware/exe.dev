@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"exe.dev/billing"
 	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -191,7 +190,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		defer cancel()
 
 		// Set up the command context
-		ss := NewSSHServer(s, billing.New(s.slog(), s.db))
+		ss := NewSSHServer(s)
 		fs := newCommandFlags()
 		_ = fs.Set("name", hostname)
 		if prompt != "" {
@@ -201,11 +200,10 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		cc := &exemenu.CommandContext{
 			User: &exemenu.UserInfo{ID: userID},
 			Alloc: &exemenu.AllocInfo{
-				ID:               alloc.AllocID,
-				Type:             string(alloc.AllocType),
-				Region:           string(alloc.Region),
-				BillingAccountID: alloc.BillingAccountID,
-				CreatedAt:        alloc.CreatedAt,
+				ID:        alloc.AllocID,
+				Type:      string(alloc.AllocType),
+				Region:    string(alloc.Region),
+				CreatedAt: alloc.CreatedAt,
 			},
 			FlagSet:      fs,
 			Output:       cs,

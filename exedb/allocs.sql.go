@@ -20,20 +20,8 @@ func (q *Queries) AllocExistsForUser(ctx context.Context, userID string) (int64,
 	return column_1, err
 }
 
-const getAllocBillingInfo = `-- name: GetAllocBillingInfo :one
-SELECT billing_account_id
-FROM allocs WHERE alloc_id = ?
-`
-
-func (q *Queries) GetAllocBillingInfo(ctx context.Context, allocID string) (string, error) {
-	row := q.queryRow(ctx, q.getAllocBillingInfoStmt, getAllocBillingInfo, allocID)
-	var billing_account_id string
-	err := row.Scan(&billing_account_id)
-	return billing_account_id, err
-}
-
 const getAllocByUserID = `-- name: GetAllocByUserID :one
-SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, billing_account_id
+SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at
 FROM allocs
 WHERE user_id = ?
 LIMIT 1
@@ -49,13 +37,12 @@ func (q *Queries) GetAllocByUserID(ctx context.Context, userID string) (Alloc, e
 		&i.Region,
 		&i.Ctrhost,
 		&i.CreatedAt,
-		&i.BillingAccountID,
 	)
 	return i, err
 }
 
 const getAllocsByHost = `-- name: GetAllocsByHost :many
-SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at, billing_account_id
+SELECT alloc_id, user_id, alloc_type, region, ctrhost, created_at
 FROM allocs
 WHERE ctrhost = ?
 `
@@ -76,7 +63,6 @@ func (q *Queries) GetAllocsByHost(ctx context.Context, ctrhost string) ([]Alloc,
 			&i.Region,
 			&i.Ctrhost,
 			&i.CreatedAt,
-			&i.BillingAccountID,
 		); err != nil {
 			return nil, err
 		}
@@ -103,17 +89,16 @@ func (q *Queries) GetCtrhostByAllocID(ctx context.Context, allocID string) (stri
 }
 
 const insertAlloc = `-- name: InsertAlloc :exec
-INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost, billing_account_id)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO allocs (alloc_id, user_id, alloc_type, region, ctrhost)
+VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertAllocParams struct {
-	AllocID          string `db:"alloc_id" json:"alloc_id"`
-	UserID           string `db:"user_id" json:"user_id"`
-	AllocType        string `db:"alloc_type" json:"alloc_type"`
-	Region           string `db:"region" json:"region"`
-	Ctrhost          string `db:"ctrhost" json:"ctrhost"`
-	BillingAccountID string `db:"billing_account_id" json:"billing_account_id"`
+	AllocID   string `db:"alloc_id" json:"alloc_id"`
+	UserID    string `db:"user_id" json:"user_id"`
+	AllocType string `db:"alloc_type" json:"alloc_type"`
+	Region    string `db:"region" json:"region"`
+	Ctrhost   string `db:"ctrhost" json:"ctrhost"`
 }
 
 func (q *Queries) InsertAlloc(ctx context.Context, arg InsertAllocParams) error {
@@ -123,21 +108,6 @@ func (q *Queries) InsertAlloc(ctx context.Context, arg InsertAllocParams) error 
 		arg.AllocType,
 		arg.Region,
 		arg.Ctrhost,
-		arg.BillingAccountID,
 	)
-	return err
-}
-
-const updateAllocBillingAccount = `-- name: UpdateAllocBillingAccount :exec
-UPDATE allocs SET billing_account_id = ? WHERE alloc_id = ?
-`
-
-type UpdateAllocBillingAccountParams struct {
-	BillingAccountID string `db:"billing_account_id" json:"billing_account_id"`
-	AllocID          string `db:"alloc_id" json:"alloc_id"`
-}
-
-func (q *Queries) UpdateAllocBillingAccount(ctx context.Context, arg UpdateAllocBillingAccountParams) error {
-	_, err := q.exec(ctx, q.updateAllocBillingAccountStmt, updateAllocBillingAccount, arg.BillingAccountID, arg.AllocID)
 	return err
 }

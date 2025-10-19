@@ -14,14 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/accounting"
-	"exe.dev/billing"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sqlite"
-	"golang.org/x/term"
 )
 
 // TODO(philip): Probably can be done in Shelley itself as part of the system prompt.
@@ -120,44 +117,6 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Hidden:      true,
 			Description: "Apply for a job at exe.dev",
 			Handler:     ss.handleJobCommand,
-		},
-		{
-			Name:        "billing",
-			Description: "Manage billing and payment info",
-			Handler:     ss.handleBillingCommand,
-			FlagSetFunc: jsonOnlyFlags("billing"),
-			Subcommands: []*exemenu.Command{
-				{
-					Name:        "balance",
-					Description: "Get current balance of billing account",
-					Usage:       "billing balance",
-					Handler:     ss.handleBillingBalance,
-				},
-				{
-					Name:        "setup",
-					Description: "Set up billing information",
-					Usage:       "billing setup",
-					Handler:     ss.handleBillingSetup,
-				},
-				{
-					Name:        "update",
-					Description: "Update billing email address",
-					Usage:       "billing update",
-					Handler:     ss.handleBillingUpdateEmailCommand,
-				},
-				{
-					Name:        "delete",
-					Description: "Delete billing information",
-					Usage:       "billing delete",
-					Handler:     ss.handleBillingDeleteCommand,
-				},
-				{
-					Name:        "fund",
-					Description: "[dev mode] add credits to billing account",
-					Usage:       "fund",
-					Handler:     ss.handleBillingFundCommand,
-				},
-			},
 		},
 		{
 			Name:              "proxy",
@@ -749,203 +708,6 @@ func (ss *SSHServer) handleJobCommand(ctx context.Context, cc *exemenu.CommandCo
 	return nil
 }
 
-func (ss *SSHServer) handleBillingCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
-	if err != nil {
-		return err
-	}
-	balance, err := withAccountantRxRes(ss.server, ctx, func(ctx context.Context, accountant *accounting.Accountant, rx *sqlite.Rx) (float64, error) {
-		return accountant.GetBalance(ctx, rx, billingInfo.BillingAccountID)
-	})
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get balance: %v\033[0m", err)
-		return err
-	}
-
-	if cc.WantJSON() {
-		billing := map[string]any{
-			"configured":          billingInfo.HasBilling,
-			"email":               billingInfo.Email,
-			"stripe_customer_id":  billingInfo.StripeCustomerID,
-			"current_balance_usd": balance,
-		}
-		cc.WriteJSON(billing)
-		return nil
-	}
-
-	cc.Writeln("\033[1;36mBilling Information:\033[0m")
-	cc.Writeln("")
-	if billingInfo.Email != "" {
-		cc.Writeln("  Email: \033[1m%s\033[0m", billingInfo.Email)
-	}
-	if billingInfo.StripeCustomerID != "" {
-		cc.Writeln("  Stripe Customer ID: \033[1m%s\033[0m", billingInfo.StripeCustomerID)
-	}
-	cc.Writeln("  Current Balance: \033[1;32m%.2f\033[0m", balance)
-	if billingInfo.HasBilling {
-		cc.Writeln("  Status: \033[1;32mConfigured\033[0m")
-	} else {
-		cc.Writeln("  Status: \033[1;32mNot Configured\033[0m")
-		cc.Writeln("  run `billing setup` to configure")
-	}
-	return nil
-}
-
-func (ss *SSHServer) handleBillingDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
-		return err
-	}
-	return ss.deleteBillingInfo(cc, billingInfo)
-}
-
-func (ss *SSHServer) handleBillingFundCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
-		return err
-	}
-	credit := accounting.UsageCredit{
-		BillingAccountID: billingInfo.BillingAccountID,
-		Amount:           25.0,
-		PaymentMethod:    "dev mode fund command",
-		Status:           "completed",
-	}
-	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		return ss.server.accountant.CreditUsage(ctx, tx, credit)
-	})
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to credit account: %v\033[0m", err)
-		return err
-	}
-	return nil
-}
-
-func (ss *SSHServer) handleBillingUpdateEmailCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
-		return err
-	}
-	return ss.updateBillingEmail(cc, billingInfo)
-}
-
-func (ss *SSHServer) handleBillingBalance(ctx context.Context, cc *exemenu.CommandContext) error {
-	billingInfo, err := ss.billing.GetBillingInfoByAccount(ctx, cc.Alloc.BillingAccountID)
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get billing info: %v\033[0m", err)
-		return err
-	}
-	balance, err := withAccountantRxRes(ss.server, ctx, func(ctx context.Context, accountant *accounting.Accountant, rx *sqlite.Rx) (float64, error) {
-		return accountant.GetBalance(ctx, rx, billingInfo.BillingAccountID)
-	})
-	if err != nil {
-		cc.Writeln("\033[1;31mError: Failed to get balance: %v\033[0m", err)
-		return err
-	}
-
-	if cc.WantJSON() {
-		billing := map[string]any{
-			"current_balance_usd": balance,
-		}
-		cc.WriteJSON(billing)
-		return nil
-	}
-	cc.Writeln("Current balance: $%.2f", balance)
-	return nil
-}
-
-func (ss *SSHServer) handleBillingSetup(ctx context.Context, cc *exemenu.CommandContext) error {
-	cc.Writeln("\033[1;33mBilling Setup\033[0m")
-	cc.Writeln("")
-	cc.Writeln("You need to set up billing information to continue using exe.dev.")
-	cc.Writeln("")
-
-	// Requires ssh.Session for terminal interaction
-	if cc.SSHSession == nil {
-		cc.Writeln("\033[1;31mError: Interactive billing setup requires SSH session\033[0m")
-		return fmt.Errorf("interactive billing setup requires SSH session")
-	}
-
-	terminal := term.NewTerminal(cc.SSHSession, "")
-
-	// Get billing email
-	terminal.SetPrompt("Billing email (press Enter to use " + cc.User.Email + "): ")
-	billingEmail, err := terminal.ReadLine()
-	if err != nil {
-		cc.Writeln("Billing setup cancelled.")
-		return nil
-	}
-
-	if strings.TrimSpace(billingEmail) == "" {
-		billingEmail = cc.User.Email
-	}
-
-	// Validate email
-	if !ss.billing.ValidateEmail(billingEmail) {
-		cc.Writeln("\033[1;31mInvalid email format.\033[0m")
-		return nil
-	}
-
-	// Get credit card info
-	cc.Writeln("Now we need to verify your payment method.")
-	cc.Writeln("Please enter a credit card number to verify your payment method.")
-	cc.Writeln("For testing, you can use: \033[1m4242424242424242\033[0m (Visa test card)")
-	cc.Writeln("")
-
-	terminal.SetPrompt("Credit card number: ")
-	cardNumber, err := terminal.ReadLine()
-	if err != nil {
-		cc.Writeln("Billing setup cancelled.")
-		return nil
-	}
-
-	cardNumber = strings.ReplaceAll(strings.TrimSpace(cardNumber), " ", "")
-	if len(cardNumber) < 13 {
-		cc.Writeln("\033[1;31mInvalid card number.\033[0m")
-		return nil
-	}
-
-	// Get expiry month
-	terminal.SetPrompt("Expiry month (MM): ")
-	expMonth, err := terminal.ReadLine()
-	if err != nil {
-		cc.Writeln("Billing setup cancelled.")
-		return nil
-	}
-
-	// Get expiry year
-	terminal.SetPrompt("Expiry year (YYYY): ")
-	expYear, err := terminal.ReadLine()
-	if err != nil {
-		cc.Writeln("Billing setup cancelled.")
-		return nil
-	}
-
-	// Get CVC
-	terminal.SetPrompt("CVC: ")
-	cvc, err := terminal.ReadLine()
-	if err != nil {
-		cc.Writeln("Billing setup cancelled.")
-		return nil
-	}
-
-	// Setup billing using the billing service
-	cc.Writeln("Processing payment method...")
-
-	err = ss.billing.SetupBilling(cc.Alloc.ID, billingEmail, cardNumber, expMonth, expYear, cvc)
-	if err != nil {
-		cc.Writeln("\033[1;31mError setting up billing: %v\033[0m", err)
-		return nil
-	}
-
-	cc.Writeln("\033[1;32m✓ Billing setup completed successfully!\033[0m")
-	cc.Writeln("Your payment method has been verified and saved.")
-	cc.Writeln("")
-	return nil
-}
-
 func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.CommandContext) error {
 	type sshKeyRow struct {
 		PublicKey string `json:"public_key"`
@@ -1002,84 +764,6 @@ func (ss *SSHServer) handleWhoamiCommand(ctx context.Context, cc *exemenu.Comman
 		}
 		cc.Writeln("")
 	}
-	return nil
-}
-
-func (ss *SSHServer) updateBillingEmail(cc *exemenu.CommandContext, billingInfo *billing.BillingInfo) error {
-	cc.Writeln("\033[1;33mUpdate Billing Email\033[0m")
-	cc.Writeln("")
-
-	if cc.SSHSession == nil {
-		cc.Writeln("\033[1;31mError: Interactive billing email update requires SSH session\033[0m")
-		return fmt.Errorf("interactive billing email update requires SSH session")
-	}
-	terminal := term.NewTerminal(cc.SSHSession, "")
-	terminal.SetPrompt("New billing email: ")
-
-	newEmail, err := terminal.ReadLine()
-	if err != nil {
-		cc.Writeln("Update cancelled.")
-		return nil
-	}
-
-	newEmail = strings.TrimSpace(newEmail)
-	if !ss.billing.ValidateEmail(newEmail) {
-		cc.Writeln("\033[1;31mInvalid email format.\033[0m")
-		return nil
-	}
-
-	cc.Writeln("Updating billing email...")
-
-	// Update billing email using billing service
-	err = ss.billing.UpdateBillingAccountEmail(billingInfo.BillingAccountID, billingInfo.StripeCustomerID, newEmail)
-	if err != nil {
-		cc.Writeln("\033[1;31mError updating billing email: %v\033[0m", err)
-		return nil
-	}
-
-	cc.Writeln("\033[1;32m✓ Billing email updated successfully!\033[0m")
-	cc.Writeln("")
-	return nil
-}
-
-func (ss *SSHServer) deleteBillingInfo(cc *exemenu.CommandContext, billingInfo *billing.BillingInfo) error {
-	cc.Writeln("\033[1;33mDelete Billing Information\033[0m")
-	cc.Writeln("")
-	cc.Writeln("\033[1;31mWarning: This will remove all billing information from your account.\033[0m")
-	cc.Writeln("You will need to set up billing again to continue using exe.dev.")
-	cc.Writeln("")
-
-	if cc.SSHSession == nil {
-		cc.Writeln("\033[1;31mError: Interactive billing deletion requires SSH session\033[0m")
-		return fmt.Errorf("interactive billing deletion requires SSH session")
-
-	}
-	terminal := term.NewTerminal(cc.SSHSession, "")
-	terminal.SetPrompt("Are you sure? Type 'yes' to confirm: ")
-
-	confirmation, err := terminal.ReadLine()
-	if err != nil {
-		cc.Writeln("Operation cancelled.")
-		return nil
-	}
-
-	if strings.ToLower(strings.TrimSpace(confirmation)) != "yes" {
-		cc.Writeln("Operation cancelled.")
-		return nil
-	}
-
-	cc.Writeln("Deleting billing information...")
-
-	// Delete billing info using billing service
-	err = ss.billing.DeleteBillingAccount(billingInfo.BillingAccountID)
-	if err != nil {
-		cc.Writeln("\033[1;31mError deleting billing info: %v\033[0m", err)
-		return nil
-	}
-
-	cc.Writeln("\033[1;32m✓ Billing information deleted successfully!\033[0m")
-	cc.Writeln("You can set up billing again using the 'billing' command.")
-	cc.Writeln("")
 	return nil
 }
 
@@ -1242,17 +926,6 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 	cc.Writeln("\033[2mExpires in 15 minutes.\033[0m")
 	cc.Writeln("")
 	return nil
-}
-
-// withAccountantRxRes executes a function with the accountant and a read transaction, returning a value
-func withAccountantRxRes[T any](s *Server, ctx context.Context, fn func(context.Context, *accounting.Accountant, *sqlite.Rx) (T, error)) (T, error) {
-	var result T
-	err := s.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		var err error
-		result, err = fn(ctx, s.accountant, rx)
-		return err
-	})
-	return result, err
 }
 
 func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {

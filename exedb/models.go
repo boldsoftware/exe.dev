@@ -9,13 +9,12 @@ import (
 )
 
 type Alloc struct {
-	AllocID          string     `db:"alloc_id" json:"alloc_id"`
-	UserID           string     `db:"user_id" json:"user_id"`
-	AllocType        string     `db:"alloc_type" json:"alloc_type"`
-	Region           string     `db:"region" json:"region"`
-	Ctrhost          string     `db:"ctrhost" json:"ctrhost"`
-	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
-	BillingAccountID string     `db:"billing_account_id" json:"billing_account_id"`
+	AllocID   string     `db:"alloc_id" json:"alloc_id"`
+	UserID    string     `db:"user_id" json:"user_id"`
+	AllocType string     `db:"alloc_type" json:"alloc_type"`
+	Region    string     `db:"region" json:"region"`
+	Ctrhost   string     `db:"ctrhost" json:"ctrhost"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
 type AuthCookie struct {
@@ -34,15 +33,6 @@ type AuthToken struct {
 	ExpiresAt   time.Time  `db:"expires_at" json:"expires_at"`
 	UsedAt      *time.Time `db:"used_at" json:"used_at"`
 	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
-}
-
-type BillingAccount struct {
-	BillingAccountID string     `db:"billing_account_id" json:"billing_account_id"`
-	Name             string     `db:"name" json:"name"`
-	BillingEmail     *string    `db:"billing_email" json:"billing_email"`
-	StripeCustomerID *string    `db:"stripe_customer_id" json:"stripe_customer_id"`
-	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt        *time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type Box struct {
@@ -159,35 +149,10 @@ type TagResolutionHistory struct {
 	ChangedAt  int64   `db:"changed_at" json:"changed_at"`
 }
 
-type UsageCredit struct {
-	ID               int64      `db:"id" json:"id"`
-	BillingAccountID string     `db:"billing_account_id" json:"billing_account_id"`
-	Amount           float64    `db:"amount" json:"amount"`
-	PaymentMethod    string     `db:"payment_method" json:"payment_method"`
-	PaymentID        string     `db:"payment_id" json:"payment_id"`
-	Status           string     `db:"status" json:"status"`
-	Data             *string    `db:"data" json:"data"`
-	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
-}
-
-type UsageDebit struct {
-	ID                       int64      `db:"id" json:"id"`
-	BillingAccountID         string     `db:"billing_account_id" json:"billing_account_id"`
-	Model                    string     `db:"model" json:"model"`
-	MessageID                string     `db:"message_id" json:"message_id"`
-	InputTokens              int64      `db:"input_tokens" json:"input_tokens"`
-	CacheCreationInputTokens int64      `db:"cache_creation_input_tokens" json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int64      `db:"cache_read_input_tokens" json:"cache_read_input_tokens"`
-	OutputTokens             int64      `db:"output_tokens" json:"output_tokens"`
-	CostUsd                  float64    `db:"cost_usd" json:"cost_usd"`
-	CreatedAt                *time.Time `db:"created_at" json:"created_at"`
-}
-
 type User struct {
-	UserID                  string     `db:"user_id" json:"user_id"`
-	Email                   string     `db:"email" json:"email"`
-	CreatedAt               *time.Time `db:"created_at" json:"created_at"`
-	DefaultBillingAccountID string     `db:"default_billing_account_id" json:"default_billing_account_id"`
+	UserID    string     `db:"user_id" json:"user_id"`
+	Email     string     `db:"email" json:"email"`
+	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
 type UserEvent struct {

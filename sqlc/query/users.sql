@@ -2,7 +2,7 @@
 SELECT user_id FROM users WHERE email = ?;
 
 -- name: InsertUser :exec
-INSERT INTO users (user_id, email, default_billing_account_id) VALUES (?, ?, ?);
+INSERT INTO users (user_id, email) VALUES (?, ?);
 
 -- name: GetUserWithDetails :one
 SELECT *

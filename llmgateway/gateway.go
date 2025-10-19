@@ -9,13 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/accounting"
 	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
 )
 
-// Prometheus metrics for accounting
+// Prometheus metrics
 var (
 	// Single counter for all token types with token_type label
 	tokensCounter = prometheus.NewCounterVec(
@@ -64,8 +63,8 @@ var (
 	)
 )
 
-// RegisterAccountingMetrics registers all accounting metrics with the provided registry
-func RegisterAccountingMetrics(registry *prometheus.Registry) {
+// RegisterMetrics registers all metrics with the provided registry
+func RegisterMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(
 		tokensCounter,
 		costUSDCounter,
@@ -78,12 +77,10 @@ func RegisterAccountingMetrics(registry *prometheus.Registry) {
 // llmGateway is a proxy for API calls to various LLM services.
 // - Authenticates client requests to verify that they are coming from known box names.
 // - Performs account balance checks before allowing requests to continue.
-// - Debits an associated billing account with the cost of handling the API call
 // - Designed to work with client applications that have configurable API endpoints and auth headers.
 type llmGateway struct {
 	now             func() time.Time
 	mux             http.ServeMux
-	accountant      *accounting.Accountant
 	db              *sqlite.DB
 	boxKeyAuthority boxKeyAuthority
 	apiKeys         APIKeys
@@ -103,12 +100,9 @@ type boxKeyAuthority interface {
 	SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error)
 }
 
-func NewGateway(log *slog.Logger, accountant *accounting.Accountant, db *sqlite.DB, boxKeyAuthority boxKeyAuthority,
-	apiKeys APIKeys, devMode bool,
-) *llmGateway {
+func NewGateway(log *slog.Logger, db *sqlite.DB, boxKeyAuthority boxKeyAuthority, apiKeys APIKeys, devMode bool) *llmGateway {
 	ret := &llmGateway{
 		now:             time.Now,
-		accountant:      accountant,
 		db:              db,
 		boxKeyAuthority: boxKeyAuthority,
 		apiKeys:         apiKeys,
@@ -126,45 +120,14 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr st
 	m.log.Error("llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr)
 }
 
-func (a *llmGateway) checkCredits(ctx context.Context, billingAccountID string) error {
-	// Get the current balance for the user
-	var balance float64
-	err := a.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		var err error
-		balance, err = a.accountant.GetBalance(ctx, rx, billingAccountID)
-		return err
-	})
-	if err != nil {
-		a.log.Error("accountingTransport.checkCredits: GetBalance failed", "error", err)
-		// Fallback to allowing the request if we can't check balance
-		return nil
-	}
-
-	// If balance is insufficient, reject the request
-	if balance <= 0 {
-		return fmt.Errorf("your account balance of $%.2f is insufficient - please purchase more credits at %s, and then ask the agent to continue", balance, "https://exe.dev/buy")
-	}
-	return nil
-}
-
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.log.Info("llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
 
 	// authenticate request
-	boxName, err := m.boxKeyAuth(r.Context(), r)
+	_, err := m.boxKeyAuth(r.Context(), r)
 	if err != nil {
 		m.httpError(w, r, "box key auth failed: "+err.Error(), http.StatusUnauthorized)
 		return
-	}
-
-	var billingID string
-	err = m.db.Rx(r.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		var err error
-		billingID, err = m.accountant.BillingAccountForBox(ctx, rx, boxName)
-		return err
-	})
-	if err != nil {
-		m.log.Error("llmGateway.ServeHTTP", "BillingAccountForBox error", err)
 	}
 
 	m.log.Info("gateway proxying request -->", "method", r.Method, "url", r.URL)
@@ -190,11 +153,11 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var proxy *httputil.ReverseProxy
 	switch alias {
 	case "anthropic":
-		proxy, err = m.createAnthropicProxy(billingID)
+		proxy, err = m.createAnthropicProxy()
 	case "openai":
-		proxy, err = m.createOpenAIProxy(billingID)
+		proxy, err = m.createOpenAIProxy()
 	case "fireworks":
-		proxy, err = m.createFireworksProxy(billingID)
+		proxy, err = m.createFireworksProxy()
 	default:
 		m.httpError(w, r, "unrecognized origin alias", http.StatusNotFound)
 		return
@@ -206,17 +169,15 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
-func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.ReverseProxy, error) {
+func (m *llmGateway) createAnthropicProxy() (*httputil.ReverseProxy, error) {
 	if m.apiKeys.Anthropic == "" {
 		return nil, fmt.Errorf("anthropic api key not configured")
 	}
 	transport := &accountingTransport{
-		RoundTripper:     http.DefaultTransport,
-		accountant:       m.accountant,
-		db:               m.db,
-		billingAccountID: billingAccountID,
-		apiType:          "anthropic",
-		log:              m.log,
+		RoundTripper: http.DefaultTransport,
+		db:           m.db,
+		apiType:      "anthropic",
+		log:          m.log,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -238,17 +199,15 @@ func (m *llmGateway) createAnthropicProxy(billingAccountID string) (*httputil.Re
 	return proxy, nil
 }
 
-func (m *llmGateway) createOpenAIProxy(billingAccountID string) (*httputil.ReverseProxy, error) {
+func (m *llmGateway) createOpenAIProxy() (*httputil.ReverseProxy, error) {
 	if m.apiKeys.OpenAI == "" {
 		return nil, fmt.Errorf("anthropic api key not configured")
 	}
 	transport := &accountingTransport{
-		RoundTripper:     http.DefaultTransport,
-		accountant:       m.accountant,
-		db:               m.db,
-		billingAccountID: billingAccountID,
-		apiType:          "openai",
-		log:              m.log,
+		RoundTripper: http.DefaultTransport,
+		db:           m.db,
+		apiType:      "openai",
+		log:          m.log,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -271,17 +230,15 @@ func (m *llmGateway) createOpenAIProxy(billingAccountID string) (*httputil.Rever
 	return proxy, nil
 }
 
-func (m *llmGateway) createFireworksProxy(billingAccountID string) (*httputil.ReverseProxy, error) {
+func (m *llmGateway) createFireworksProxy() (*httputil.ReverseProxy, error) {
 	if m.apiKeys.Fireworks == "" {
 		return nil, fmt.Errorf("fireworks api key not configured")
 	}
 	transport := &accountingTransport{
-		RoundTripper:     http.DefaultTransport,
-		accountant:       m.accountant,
-		db:               m.db,
-		billingAccountID: billingAccountID,
-		apiType:          "fireworks",
-		log:              m.log,
+		RoundTripper: http.DefaultTransport,
+		db:           m.db,
+		apiType:      "fireworks",
+		log:          m.log,
 	}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {

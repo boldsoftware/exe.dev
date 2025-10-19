@@ -28,11 +28,15 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 		}
 	})
 
+	t.Logf("using temporary database at %q", dbPath)
+
 	if err := sqlite.InitDB(db, 1); err != nil {
 		t.Fatalf("failed to initialize sqlite database: %v", err)
 	}
 
-	if err := RunMigrations(testutil.Slogger(t), db); err != nil {
+	log := testutil.Slogger(t)
+
+	if err := RunMigrations(log, db); err != nil {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 
@@ -49,7 +53,7 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 		}
 	}
 
-	if err := RunMigrations(testutil.Slogger(t), db); err != nil {
+	if err := RunMigrations(log, db); err != nil {
 		t.Fatalf("second migrations run failed: %v", err)
 	}
 

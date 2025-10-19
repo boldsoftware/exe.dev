@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"exe.dev/accounting"
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
 	"exe.dev/testutil"
@@ -20,77 +20,16 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// setupTestAccountant creates a simple test accountant with balance
-func setupTestAccountant(t *testing.T, billingAccountID string, balance float64) (*accounting.Accountant, *sqlite.DB) {
-	// Create temp database file
-	tmpFile, err := os.CreateTemp("", "gateway-test-*.db")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	tmpFile.Close()
-	dbPath := tmpFile.Name()
-
-	// Run migrations
-	rawDB, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		os.Remove(dbPath)
-		t.Fatalf("Failed to open database: %v", err)
-	}
-
-	if err := exedb.RunMigrations(testutil.Slogger(t), rawDB); err != nil {
-		rawDB.Close()
-		os.Remove(dbPath)
-		t.Fatalf("Failed to run migrations: %v", err)
-	}
-	rawDB.Close()
-
-	// Open with sqlite wrapper
-	db, err := sqlite.New(dbPath, 1)
-	if err != nil {
-		os.Remove(dbPath)
-		t.Fatalf("Failed to open sqlite database: %v", err)
-	}
-
-	accountant := accounting.NewAccountant()
-
-	// Add balance if specified
-	if balance > 0 {
-		credit := accounting.UsageCredit{
-			BillingAccountID: billingAccountID,
-			Amount:           balance,
-			PaymentMethod:    "test",
-			PaymentID:        "test-payment",
-			Status:           "completed",
-		}
-		err = db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-			return accountant.CreditUsage(ctx, tx, credit)
-		})
-		require.NoError(t, err)
-	}
-
-	return accountant, db
-}
-
 // setupTestBox creates a box in the database linked to a billing account
-func setupTestBox(t *testing.T, db *sqlite.DB, boxName, billingAccountID string) {
+func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 	err := db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 
-		// Create billing account
-		err := queries.InsertBillingAccount(ctx, exedb.InsertBillingAccountParams{
-			BillingAccountID: billingAccountID,
-			Name:             "Test Account",
-		})
-		if err != nil {
-			return fmt.Errorf("insert billing account: %w", err)
-		}
-
 		// Create user
 		userID := "test-user-" + boxName
-		err = queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID:                  userID,
-			Email:                   "test@example.com",
-			DefaultBillingAccountID: billingAccountID,
+		err := queries.InsertUser(ctx, exedb.InsertUserParams{
+			UserID: userID,
+			Email:  "test@example.com",
 		})
 		if err != nil {
 			return fmt.Errorf("insert user: %w", err)
@@ -99,12 +38,11 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName, billingAccountID string)
 		// Create alloc
 		allocID := "test-alloc-" + boxName
 		err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-			AllocID:          allocID,
-			UserID:           userID,
-			AllocType:        "test",
-			Region:           "test-region",
-			Ctrhost:          "test-ctrhost",
-			BillingAccountID: billingAccountID,
+			AllocID:   allocID,
+			UserID:    userID,
+			AllocType: "test",
+			Region:    "test-region",
+			Ctrhost:   "test-ctrhost",
 		})
 		if err != nil {
 			return fmt.Errorf("insert alloc: %w", err)
@@ -126,8 +64,36 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName, billingAccountID string)
 		return nil
 	})
 	require.NoError(t, err)
-} // setupTestGateway creates a test gateway with mocked dependencies
-func setupTestGateway(t *testing.T) (*llmGateway, *accounting.Accountant, *sqlite.DB, *mockBoxKeyAuthority, *testKeyPair) {
+}
+
+// newDB creates a simple test accountant with balance
+func newDB(t *testing.T, balance float64) *sqlite.DB {
+	// Run migrations
+	dbPath := filepath.Join(t.TempDir(), "gateway_test.db")
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		os.Remove(dbPath)
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	if err := exedb.RunMigrations(testutil.Slogger(t), rawDB); err != nil {
+		rawDB.Close()
+		os.Remove(dbPath)
+		t.Fatalf("Failed to run migrations: %v", err)
+	}
+	rawDB.Close()
+
+	// Open with sqlite wrapper
+	db, err := sqlite.New(dbPath, 1)
+	if err != nil {
+		os.Remove(dbPath)
+		t.Fatalf("Failed to open sqlite database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+// setupTestGateway creates a test gateway with mocked dependencies
+func setupTestGateway(t *testing.T) (*llmGateway, *sqlite.DB, *mockBoxKeyAuthority, *testKeyPair) {
 	keyPair := generateTestKeys(t)
 
 	mockAuth := &mockBoxKeyAuthority{
@@ -136,14 +102,13 @@ func setupTestGateway(t *testing.T) (*llmGateway, *accounting.Accountant, *sqlit
 		},
 	}
 
-	accountant, db := setupTestAccountant(t, "billing-123", 10.0)
+	db := newDB(t, 10.0)
 
-	// Create the box and link it to the billing account
-	setupTestBox(t, db, "test-box", "billing-123")
+	// Create the box.
+	setupTestBox(t, db, "test-box")
 
 	gateway := &llmGateway{
 		now:             time.Now,
-		accountant:      accountant,
 		db:              db,
 		boxKeyAuthority: mockAuth,
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
@@ -152,110 +117,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *accounting.Accountant, *sqlit
 		log:             testutil.Slogger(t),
 	}
 
-	return gateway, accountant, db, mockAuth, keyPair
-}
-
-func TestGateway_BillingIntegration_CheckCredits_SufficientBalance(t *testing.T) {
-	gateway, _, db, _, _ := setupTestGateway(t)
-	defer db.Close()
-
-	// Test checkCredits with sufficient balance
-	err := gateway.checkCredits(context.Background(), "billing-123")
-	if err != nil {
-		t.Errorf("Expected no error for sufficient balance, got: %v", err)
-	}
-}
-
-func TestGateway_BillingIntegration_CheckCredits_InsufficientBalance(t *testing.T) {
-	// Set up with no initial balance
-	accountant, db := setupTestAccountant(t, "billing-123", 0.0)
-	defer db.Close()
-
-	keyPair := generateTestKeys(t)
-	mockAuth := &mockBoxKeyAuthority{
-		keys: map[string]ssh.PublicKey{
-			"test-box": keyPair.sshPublicKey,
-		},
-	}
-
-	gateway := &llmGateway{
-		now:             time.Now,
-		accountant:      accountant,
-		db:              db,
-		boxKeyAuthority: mockAuth,
-		apiKeys:         APIKeys{Anthropic: "test-api-key"},
-		devMode:         false,
-		log:             testutil.Slogger(t),
-	}
-
-	// Test checkCredits with insufficient balance
-	err := gateway.checkCredits(context.Background(), "billing-123")
-	if err == nil {
-		t.Error("Expected error for insufficient balance")
-		return
-	}
-	if !strings.Contains(err.Error(), "insufficient") {
-		t.Errorf("Expected insufficient balance error, got: %v", err)
-	}
-}
-
-func TestGateway_BillingIntegration_CheckCredits_BalanceCheckFails(t *testing.T) {
-	// Create a corrupted database to simulate errors
-	tmpFile, _ := os.CreateTemp("", "test-*.db")
-	tmpFile.Close()
-	db, _ := sqlite.New(tmpFile.Name(), 1)
-	db.Close() // Close immediately to cause errors
-	os.Remove(tmpFile.Name())
-
-	accountant := accounting.NewAccountant()
-	mockAuth := &mockBoxKeyAuthority{
-		keys: map[string]ssh.PublicKey{},
-	}
-
-	gateway := &llmGateway{
-		now:             time.Now,
-		accountant:      accountant,
-		db:              db,
-		boxKeyAuthority: mockAuth,
-		apiKeys:         APIKeys{Anthropic: "test-api-key"},
-		devMode:         false,
-		log:             testutil.Slogger(t),
-	}
-
-	// Test checkCredits when balance check fails - should allow request (fallback)
-	err := gateway.checkCredits(context.Background(), "billing-123")
-	if err != nil {
-		t.Errorf("Expected no error on balance check failure (fallback), got: %v", err)
-	}
-}
-
-func TestGateway_BillingIntegration_BillingAccountLookup(t *testing.T) {
-	_, accountant, db, _, _ := setupTestGateway(t)
-	defer db.Close()
-
-	// Test successful lookup for box that exists
-	err := db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
-		billingID, err := accountant.BillingAccountForBox(ctx, rx, "test-box")
-		if err != nil {
-			return err
-		}
-		if billingID != "billing-123" {
-			t.Errorf("Expected billing ID 'billing-123', got '%s'", billingID)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Errorf("Expected successful lookup for test-box, got error: %v", err)
-	}
-
-	// Test failed lookup for nonexistent box
-	err = db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
-		_, err := accountant.BillingAccountForBox(ctx, rx, "nonexistent-box")
-		return err
-	})
-	if err == nil {
-		t.Error("Expected error for nonexistent box")
-	}
+	return gateway, db, mockAuth, keyPair
 }
 
 func TestGateway_ProxyFunctionality_URLParsing(t *testing.T) {
@@ -303,8 +165,7 @@ func TestGateway_ProxyFunctionality_URLParsing(t *testing.T) {
 }
 
 func TestGateway_ProxyFunctionality_HeaderFiltering(t *testing.T) {
-	gateway, _, db, _, _ := setupTestGateway(t)
-	defer db.Close()
+	gateway, _, _, _ := setupTestGateway(t)
 
 	// Create a mock request with various headers
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages", nil)
@@ -347,8 +208,7 @@ func TestGateway_ProxyFunctionality_HeaderFiltering(t *testing.T) {
 // This test will make a real HTTP call (which will fail) but allows us to test
 // the request preprocessing, authentication, and billing check logic
 func TestGateway_ServeHTTP_RequestProcessing(t *testing.T) {
-	gateway, _, db, _, keyPair := setupTestGateway(t)
-	defer db.Close()
+	gateway, _, _, keyPair := setupTestGateway(t)
 
 	// Create authenticated request
 	token := NewBearerToken("test-box", time.Now().Add(-5*time.Minute), 3600)
@@ -382,9 +242,8 @@ func TestGateway_ServeHTTP_RequestProcessing(t *testing.T) {
 }
 
 func TestGateway_ServeHTTP_DevKeyAuthentication(t *testing.T) {
-	gateway, _, db, _, _ := setupTestGateway(t)
+	gateway, _, _, _ := setupTestGateway(t)
 	gateway.devMode = true // Enable dev mode
-	defer db.Close()
 
 	// Test with dev.key:test-box in Authorization header
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
@@ -418,9 +277,8 @@ func TestGateway_ServeHTTP_DevKeyAuthentication(t *testing.T) {
 }
 
 func TestGateway_ServeHTTP_DevKeyDisabledInProduction(t *testing.T) {
-	gateway, _, db, _, _ := setupTestGateway(t)
+	gateway, _, _, _ := setupTestGateway(t)
 	gateway.devMode = false // Production mode
-	defer db.Close()
 
 	// Test with dev.key:test-box in Authorization header
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
@@ -438,8 +296,7 @@ func TestGateway_ServeHTTP_DevKeyDisabledInProduction(t *testing.T) {
 }
 
 func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
-	gateway, _, db, _, _ := setupTestGateway(t)
-	defer db.Close()
+	gateway, _, _, _ := setupTestGateway(t)
 
 	// Create request without authentication
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
@@ -460,57 +317,8 @@ func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
 	}
 }
 
-func TestGateway_ServeHTTP_InsufficientCredits(t *testing.T) {
-	// Create gateway with no balance
-	accountant, db := setupTestAccountant(t, "billing-123", 0.0)
-	defer db.Close()
-
-	keyPair := generateTestKeys(t)
-	mockAuth := &mockBoxKeyAuthority{
-		keys: map[string]ssh.PublicKey{
-			"test-box": keyPair.sshPublicKey,
-		},
-	}
-
-	gateway := &llmGateway{
-		now:             time.Now,
-		accountant:      accountant,
-		db:              db,
-		boxKeyAuthority: mockAuth,
-		apiKeys:         APIKeys{Anthropic: "test-api-key"},
-		devMode:         false,
-		log:             testutil.Slogger(t),
-	}
-
-	// Create authenticated request
-	token := NewBearerToken("test-box", time.Now().Add(-5*time.Minute), 3600)
-	tokenEncoded, err := token.Encode(keyPair.sshPrivateKey)
-	if err != nil {
-		t.Fatalf("Failed to encode token: %v", err)
-	}
-
-	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req.Header.Set("Authorization", "Bearer "+tokenEncoded)
-	req.Header.Set("Content-Type", "application/json")
-
-	rr := httptest.NewRecorder()
-	gateway.ServeHTTP(rr, req)
-
-	// Should return 402 Payment Required
-	if rr.Code != http.StatusPaymentRequired {
-		t.Errorf("Expected status 402, got %d", rr.Code)
-	}
-
-	// Should contain insufficient funds message
-	if !strings.Contains(rr.Body.String(), "insufficient") {
-		t.Errorf("Expected insufficient credits message, got: %s", rr.Body.String())
-	}
-}
-
 func TestGateway_ServeHTTP_UpstreamCallAttempt(t *testing.T) {
-	gateway, _, db, _, keyPair := setupTestGateway(t)
-	defer db.Close()
+	gateway, _, _, keyPair := setupTestGateway(t)
 
 	// Create authenticated request
 	token := NewBearerToken("test-box", time.Now().Add(-5*time.Minute), 3600)

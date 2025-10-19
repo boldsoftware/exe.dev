@@ -7,7 +7,7 @@
 ~~~ EXE.DEV ~~~
 
 EXE.DEV: get a box over ssh
-To sign up, verify your email and set up billing.
+To sign up, please verify your email.
 
 Please enter your email address: TestHTTPProxyForAlternateProxyPorts@example.com
 

@@ -1,6 +1,8 @@
 // Package exe implements the bulk of the exed server.
 package exe
 
+//go:generate go tool sqlc generate
+
 import (
 	"context"
 	crand "crypto/rand"
@@ -29,11 +31,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"testing"
 	"time"
 
-	"exe.dev/accounting"
-	"exe.dev/billing"
 	"exe.dev/boxname"
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
@@ -48,7 +47,6 @@ import (
 	"github.com/keighl/postmark"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stripe/stripe-go/v76"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
@@ -190,9 +188,8 @@ type Server struct {
 	// For expedited onboarding for existing GitHub users who show up with their GitHub SSH key
 	githubUser *ghuser.Client
 
-	// Email and billing services
+	// Email service
 	postmarkClient *postmark.Client
-	stripeKey      string
 	fakeHTTPEmail  string // fake HTTP email server URL for sending emails (for e2e tests)
 
 	devMode string // Development mode: "" (production) or "local" (Docker) or "test" for test mode
@@ -203,8 +200,6 @@ type Server struct {
 
 	// Data isolation
 	dataSubdir string // subdirectory under /data for container isolation
-
-	accountant *accounting.Accountant
 
 	docs *docspkg.Handler
 
@@ -268,21 +263,6 @@ func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
 	}, nil
 }
 
-var setStripeKeyOnce sync.Once
-
-func setStripeKey(log *slog.Logger) {
-	setStripeKeyOnce.Do(func() {
-		stripeKey := os.Getenv("STRIPE_API_KEY")
-		if stripeKey == "" {
-			stripeKey = "sk_test_51QxIgSGWIXq1kJnoiKwEcehJeO68QFsueLGymU9zR5jsJtMup5arFZZlHYaOzG3Bsw2GfnIG9H3Jv8Be10vqK1nW001hUxrS2g"
-			if testing.Testing() {
-				log.Info("using default Stripe test key")
-			}
-		}
-		stripe.Key = stripeKey
-	})
-}
-
 func runMigrations(slog *slog.Logger, dbPath string) error {
 	rawDB, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -337,7 +317,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		slog.Warn("failed to create GitHub user key lookup client", "error", err)
 	}
 
-	setStripeKey(slog)
 	var baseURL string
 	var httpLn *listener
 	var httpsLn *listener
@@ -479,20 +458,18 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		magicSecrets:       make(map[string]*MagicSecret),
 		creationStreams:    make(map[creationStreamKey]*CreationStream),
 		sessions:           make(map[*sshbuf.Channel]*UserSession),
+		githubUser:         ghu,
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,
-		stripeKey:          stripe.Key,
-		githubUser:         ghu,
 		devMode:            devMode,
 
 		metricsRegistry: metricsRegistry,
 		sshMetrics:      sshMetrics,
 		dataSubdir:      dataSubdir,
 
-		accountant: accounting.NewAccountant(),
-		docs:       docsHandler,
-		templates:  tmpl,
-		log:        slog,
+		docs:      docsHandler,
+		templates: tmpl,
+		log:       slog,
 	}
 
 	s.setupHTTPServer()
@@ -909,25 +886,12 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 				return fmt.Errorf("failed to generate user ID: %w", err)
 			}
 
-			// Create user default billing account
-			billingAccountID, err := s.createBillingAccount(ctx, queries, email)
-			if err != nil {
-				return fmt.Errorf("failed to createe billing account: %w", err)
-			}
-
 			err = queries.InsertUser(ctx, exedb.InsertUserParams{
-				UserID:                  userID,
-				Email:                   email,
-				DefaultBillingAccountID: billingAccountID,
+				UserID: userID,
+				Email:  email,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create user: %w", err)
-			}
-
-			// Apply new user credits using the current transaction
-			err = s.accountant.ApplyNewUserCredits(ctx, tx, billingAccountID)
-			if err != nil {
-				return fmt.Errorf("failed to apply new user credits: %w", err)
 			}
 
 			// Create user allocation
@@ -938,12 +902,11 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 
 			ctrhost := s.selectCtrhostForNewAlloc()
 			err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-				AllocID:          allocID,
-				UserID:           userID,
-				AllocType:        "shared",
-				Region:           "default",
-				Ctrhost:          ctrhost,
-				BillingAccountID: billingAccountID,
+				AllocID:   allocID,
+				UserID:    userID,
+				AllocType: "shared",
+				Region:    "default",
+				Ctrhost:   ctrhost,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create allocation: %w", err)
@@ -961,22 +924,6 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 			ExpiresAt: expiresAt,
 		})
 	})
-}
-
-func (s *Server) createBillingAccount(ctx context.Context, queries *exedb.Queries, email string) (string, error) {
-	billingAccountID, err := generateBillingAccountID()
-	if err != nil {
-		return "", err
-	}
-	err = queries.InsertBillingAccount(ctx, exedb.InsertBillingAccountParams{
-		BillingAccountID: billingAccountID,
-		Name:             email + " (billing account)",
-		BillingEmail:     &email,
-	})
-	if err != nil {
-		return "", err
-	}
-	return billingAccountID, nil
 }
 
 // validateEmailVerificationByToken validates verification using a token
@@ -1695,8 +1642,7 @@ func (s *Server) Start() error {
 
 	// Start SSH server in a goroutine
 	go func() {
-		billing := billing.New(s.slog(), s.db)
-		s.sshServer = NewSSHServer(s, billing)
+		s.sshServer = NewSSHServer(s)
 		if err := s.sshServer.Start(s.sshLn.ln); err != nil {
 			s.slog().Error("SSH server startup failed", "error", err)
 			cancel()
@@ -1885,7 +1831,7 @@ func (s *Server) userWithEmail(ctx context.Context, email string) (*exedb.User, 
 	return &user, nil
 }
 
-// createUser creates a new user with their resource allocation and default billing account.
+// createUser creates a new user with their resource allocation.
 func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
 	var allocID string
 	var user exedb.User
@@ -1901,25 +1847,12 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 			return err
 		}
 
-		// Generate billing account ID
-		billingAccountID, err := s.createBillingAccount(ctx, queries, email)
-		if err != nil {
-			return err
-		}
-
 		err = queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID:                  userID,
-			Email:                   email,
-			DefaultBillingAccountID: billingAccountID,
+			UserID: userID,
+			Email:  email,
 		})
 		if err != nil {
 			return err
-		}
-
-		// Apply new user credits
-		err = s.accountant.ApplyNewUserCredits(ctx, tx, billingAccountID)
-		if err != nil {
-			return fmt.Errorf("failed to apply new user credits: %w", err)
 		}
 
 		// Add the SSH key to ssh_keys table
@@ -1942,12 +1875,11 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 
 		// Create alloc for the user
 		err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-			AllocID:          allocID,
-			UserID:           userID,
-			AllocType:        string(AllocTypeMedium),
-			Region:           string(RegionAWSUSWest2),
-			Ctrhost:          ctrhost,
-			BillingAccountID: billingAccountID,
+			AllocID:   allocID,
+			UserID:    userID,
+			AllocType: string(AllocTypeMedium),
+			Region:    string(RegionAWSUSWest2),
+			Ctrhost:   ctrhost,
 		})
 		if err != nil {
 			return err
@@ -1978,7 +1910,6 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*exedb.Alloc,
 			return nil, err
 		}
 
-		// Get user's email for billing
 		user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
 			return queries.GetUserWithDetails(ctx, userID)
 		})
@@ -1990,12 +1921,11 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*exedb.Alloc,
 
 		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-				AllocID:          allocID,
-				UserID:           userID,
-				AllocType:        string(AllocTypeMedium),
-				Region:           string(RegionAWSUSWest2),
-				Ctrhost:          ctrhost,
-				BillingAccountID: user.DefaultBillingAccountID,
+				AllocID:   allocID,
+				UserID:    user.UserID,
+				AllocType: string(AllocTypeMedium),
+				Region:    string(RegionAWSUSWest2),
+				Ctrhost:   ctrhost,
 			})
 		})
 		if err != nil {
@@ -2052,16 +1982,6 @@ func generateAllocID() (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("alloc_%s", hex.EncodeToString(bytes)), nil
-}
-
-// generateBillingAccountID generates a unique billing account ID
-func generateBillingAccountID() (string, error) {
-	// Generate a random ID with "billing_" prefix
-	bytes := make([]byte, 12)
-	if _, err := crand.Read(bytes); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("billing_%s", hex.EncodeToString(bytes)), nil
 }
 
 // Stop gracefully shuts down all servers

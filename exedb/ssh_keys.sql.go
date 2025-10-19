@@ -92,23 +92,18 @@ func (q *Queries) GetUserIDBySSHKey(ctx context.Context, publicKey string) (stri
 }
 
 const getUserWithEmail = `-- name: GetUserWithEmail :one
-SELECT user_id, email, created_at, default_billing_account_id FROM users WHERE email = ?
+SELECT user_id, email, created_at FROM users WHERE email = ?
 `
 
 func (q *Queries) GetUserWithEmail(ctx context.Context, email string) (User, error) {
 	row := q.queryRow(ctx, q.getUserWithEmailStmt, getUserWithEmail, email)
 	var i User
-	err := row.Scan(
-		&i.UserID,
-		&i.Email,
-		&i.CreatedAt,
-		&i.DefaultBillingAccountID,
-	)
+	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
 	return i, err
 }
 
 const getUserWithSSHKey = `-- name: GetUserWithSSHKey :one
-SELECT u.user_id, u.email, u.created_at, u.default_billing_account_id
+SELECT u.user_id, u.email, u.created_at
 FROM users u
 JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?
@@ -117,12 +112,7 @@ WHERE s.public_key = ?
 func (q *Queries) GetUserWithSSHKey(ctx context.Context, publicKey string) (User, error) {
 	row := q.queryRow(ctx, q.getUserWithSSHKeyStmt, getUserWithSSHKey, publicKey)
 	var i User
-	err := row.Scan(
-		&i.UserID,
-		&i.Email,
-		&i.CreatedAt,
-		&i.DefaultBillingAccountID,
-	)
+	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
 	return i, err
 }
 

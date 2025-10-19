@@ -22,58 +22,22 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/accounting"
 	"exe.dev/sqlite"
 )
 
 // accountingTransport wraps http transactions to check and track the client's credit usage
 type accountingTransport struct {
 	http.RoundTripper
-	accountant       *accounting.Accountant
-	db               *sqlite.DB
-	billingAccountID string
-	baseURL          string
-	apiType          string
-	testDebitDone    chan bool // for testing -- if non-nil, best effort send every time a debit occurs
-	log              *slog.Logger
-}
-
-func (a *accountingTransport) checkCredits(ctx context.Context, billingAccountID string) error {
-	// Get the current balance for the user
-	var balance float64
-	err := a.db.Rx(ctx, func(ctx context.Context, rx *sqlite.Rx) error {
-		var err error
-		balance, err = a.accountant.GetBalance(ctx, rx, billingAccountID)
-		return err
-	})
-	if err != nil {
-		a.log.Error("accountingTransport.checkCredits", "error", err)
-		// Fallback to allowing the request if we can't check balance
-		return nil
-	}
-
-	// If balance is negative, reject the request
-	if balance <= 0 {
-		return fmt.Errorf("your account balance of $%.2f is insufficient - please purchase more credits at %s, and then ask the agent to continue", balance, a.baseURL+"/buy")
-	}
-	return nil
+	db            *sqlite.DB
+	baseURL       string
+	apiType       string
+	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
+	log           *slog.Logger
 }
 
 // RoundTrip enforces credit usage limits and records some metrics.
 func (a *accountingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	// TODO: restore latency measurements
-
-	if err := a.checkCredits(r.Context(), a.billingAccountID); err != nil {
-		// Increment the requests counter with status="payment_required"
-		requestsCounter.WithLabelValues("payment_required", a.apiType).Inc()
-		return &http.Response{
-			StatusCode:    http.StatusPaymentRequired,
-			Header:        make(http.Header),
-			Body:          io.NopCloser(bytes.NewBufferString(err.Error())),
-			ContentLength: int64(len(err.Error())),
-			Request:       r,
-		}, nil
-	}
 
 	// Increment the requests counter with status="attempted"
 	requestsCounter.WithLabelValues("attempted", a.apiType).Inc()
@@ -193,8 +157,24 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 	return nil
 }
 
+type Usage struct {
+	InputTokens              uint64  `json:"input_tokens"`
+	CacheCreationInputTokens uint64  `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     uint64  `json:"cache_read_input_tokens"`
+	OutputTokens             uint64  `json:"output_tokens"`
+	CostUSD                  float64 `json:"cost_usd"`
+}
+
+type UsageDebit struct {
+	Usage Usage `json:"usage"`
+
+	Model     string    `json:"model"`
+	MessageID string    `json:"message_id"`
+	Created   time.Time `json:"created"`
+}
+
 func (m *accountingTransport) processResponseData(ctx context.Context, data []byte) error {
-	usageDebit := accounting.UsageDebit{BillingAccountID: m.billingAccountID, Created: time.Now()}
+	usageDebit := UsageDebit{Created: time.Now()}
 
 	switch m.apiType {
 	case "anthropic":
@@ -235,7 +215,7 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 			completionTokens = 1
 		}
 
-		usage := accounting.Usage{
+		usage := Usage{
 			InputTokens:  uint64(promptTokens),
 			OutputTokens: uint64(completionTokens),
 		}
@@ -251,16 +231,6 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 		m.log.Error("accountingTransport.processResponseData: unknown API type", "apiType", m.apiType)
 	}
 
-	uc := accounting.UsageCost(usageDebit.Model, usageDebit.Usage)
-	usageDebit.Usage.CostUSD = uc.USD()
-
-	err := m.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		return m.accountant.DebitUsage(ctx, tx, usageDebit)
-	})
-	if err != nil {
-		m.log.Error("accountingTransport.debitResponse: couldn't debit usage", "error", err)
-	}
-
 	// Update Prometheus metrics
 	usage := usageDebit.Usage
 	model := usageDebit.Model
@@ -274,9 +244,9 @@ func (m *accountingTransport) processResponseData(ctx context.Context, data []by
 
 // anthropicResponseUsageInfo extracts usage-relevant information from an Anthropic response.
 type anthropicResponseUsageInfo struct {
-	ID    string            `json:"id"`
-	Model string            `json:"model"`
-	Usage *accounting.Usage `json:"usage"`
+	ID    string `json:"id"`
+	Model string `json:"model"`
+	Usage *Usage `json:"usage"`
 }
 
 // openaiResponseUsageInfo extracts usage-relevant information from an openai-compatible response.

@@ -2,14 +2,12 @@ package exe
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"exe.dev/accounting"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/sqlite"
@@ -31,10 +29,10 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
-	// Get the user to find their alloc and billing account
-	var userID, allocID, billingAccountID string
+	// Get the user to find their alloc.
+	var userID, allocID string
 	err := server.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT u.user_id, a.alloc_id, u.default_billing_account_id FROM users u JOIN allocs a ON u.user_id = a.user_id WHERE u.email = ?`, "test@example.com").Scan(&userID, &allocID, &billingAccountID)
+		return rx.QueryRow(`SELECT u.user_id, a.alloc_id FROM users u JOIN allocs a ON u.user_id = a.user_id WHERE u.email = ?`, "test@example.com").Scan(&userID, &allocID)
 	})
 	if err != nil {
 		t.Fatalf("Failed to get user and alloc: %v", err)
@@ -71,12 +69,8 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to encode bearer token: %v", err)
 	}
 
-	// Use server's real accountant
-	// Note: The user already has $100 in new user credits from createUser
-	accountant := server.accountant
-
 	// Use the exe.Server as boxKeyAuthority (it implements the interface)
-	gateway := llmgateway.NewGateway(testutil.Slogger(t), accountant, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
+	gateway := llmgateway.NewGateway(testutil.Slogger(t), server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
 
 	// Create test HTTP server with the gateway
 	testServer := httptest.NewServer(gateway)
@@ -145,49 +139,6 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("Expected status 401 (Unauthorized), got %d", resp.StatusCode)
-		}
-	})
-
-	t.Run("insufficient balance", func(t *testing.T) {
-		// Drain the user's balance to create insufficient balance scenario
-		// User has $100 from new user credits, so debit $150 to make balance negative
-		debit := accounting.UsageDebit{
-			Usage: accounting.Usage{
-				CostUSD: 150.0,
-			},
-			BillingAccountID: billingAccountID,
-			Created:          time.Now(),
-		}
-		err := server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
-			return accountant.DebitUsage(ctx, tx, debit)
-		})
-		if err != nil {
-			t.Fatalf("Failed to debit balance: %v", err)
-		}
-
-		// Now create gateway - it will see the negative balance
-		negativeGateway := llmgateway.NewGateway(testutil.Slogger(t), accountant, server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
-		negativeServer := httptest.NewServer(negativeGateway)
-		defer negativeServer.Close()
-
-		req, err := http.NewRequest("POST", negativeServer.URL+"/_/gateway/anthropic", strings.NewReader(`{"message": "test"}`))
-		if err != nil {
-			t.Fatalf("Failed to create request: %v", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+tokenEncoded)
-
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("Request failed: %v", err)
-		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusPaymentRequired {
-			t.Errorf("Expected status 402 (Payment Required), got %d\n%s", resp.StatusCode, string(body))
 		}
 	})
 }

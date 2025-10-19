@@ -5,13 +5,14 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	"exe.dev/testutil"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCompletionIntegration(t *testing.T) {
 	// Create a test SSH server with the real command tree
-	server := &Server{}
-	sshServer := NewSSHServer(server, nil) // nil billing for completion testing
+	server := &Server{log: testutil.Slogger(t)}
+	sshServer := NewSSHServer(server)
 
 	// Create test user and alloc context
 	user := &exedb.User{
@@ -61,7 +62,7 @@ func TestCompletionIntegration(t *testing.T) {
 			name:     "complete with space - list commands",
 			line:     "",
 			cursor:   0,
-			expected: []string{"help", "?", "list", "ls", "new", "delete", "alloc", "billing", "route", "whoami", "exit"},
+			expected: []string{"help", "?", "doc", "list", "ls", "new", "delete", "rm", "proxy", "whoami", "browser", "exit"},
 		},
 		{
 			name:     "complete delete with space - should use box completer (but no containers in test)",
@@ -100,7 +101,7 @@ func TestCompletionIntegration(t *testing.T) {
 // TestApplySingleCompletion tests the single completion logic
 func TestApplySingleCompletion(t *testing.T) {
 	server := &Server{}
-	sshServer := NewSSHServer(server, nil)
+	sshServer := NewSSHServer(server)
 
 	tests := []struct {
 		name         string

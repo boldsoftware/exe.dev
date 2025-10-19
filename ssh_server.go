@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"exe.dev/billing"
 	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
@@ -41,15 +40,13 @@ func (m *minimalConnMetadata) LocalAddr() net.Addr   { return nil }
 type SSHServer struct {
 	server   *Server
 	srv      *ssh.Server
-	billing  billing.Billing
 	commands *exemenu.CommandTree
 }
 
 // NewSSHServer creates a new SSH server using gliderlabs/ssh
-func NewSSHServer(s *Server, billing billing.Billing) *SSHServer {
+func NewSSHServer(s *Server) *SSHServer {
 	ss := &SSHServer{
-		server:  s,
-		billing: billing,
+		server: s,
 	}
 	// TODO: untangle this circular reference btw CommandTree and SSHServer.
 	ss.commands = NewCommandTree(ss)
@@ -406,11 +403,10 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 				Email: user.Email,
 			},
 			Alloc: &exemenu.AllocInfo{
-				ID:               alloc.AllocID,
-				Type:             string(alloc.AllocType),
-				Region:           string(alloc.Region),
-				BillingAccountID: alloc.BillingAccountID,
-				CreatedAt:        alloc.CreatedAt,
+				ID:        alloc.AllocID,
+				Type:      string(alloc.AllocType),
+				Region:    string(alloc.Region),
+				CreatedAt: alloc.CreatedAt,
 			},
 			PublicKey:  publicKey,
 			Args:       []string{}, // ExecuteCommand will determine the real args
@@ -550,7 +546,7 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 		fmt.Fprintf(s, "Confirm this email to log in instantly,\r\n")
 		fmt.Fprintf(s, "or enter a different one to get a magic login link.\r\n\r\n")
 	} else {
-		fmt.Fprint(s, "To sign up, verify your email and set up billing.\r\n\r\n")
+		fmt.Fprint(s, "To sign up, please verify your email.\r\n\r\n")
 	}
 
 	// Validate email
@@ -756,11 +752,10 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 			Email: user.Email,
 		},
 		Alloc: &exemenu.AllocInfo{
-			ID:               alloc.AllocID,
-			Type:             string(alloc.AllocType),
-			Region:           string(alloc.Region),
-			BillingAccountID: alloc.BillingAccountID,
-			CreatedAt:        alloc.CreatedAt,
+			ID:        alloc.AllocID,
+			Type:      string(alloc.AllocType),
+			Region:    string(alloc.Region),
+			CreatedAt: alloc.CreatedAt,
 		},
 		PublicKey:  publicKey,
 		Args:       cmd[1:],                        // Skip the command name itself
@@ -954,11 +949,10 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb
 				Email: user.Email,
 			},
 			Alloc: &exemenu.AllocInfo{
-				ID:               alloc.AllocID,
-				Type:             string(alloc.AllocType),
-				Region:           string(alloc.Region),
-				BillingAccountID: alloc.BillingAccountID,
-				CreatedAt:        alloc.CreatedAt,
+				ID:        alloc.AllocID,
+				Type:      string(alloc.AllocType),
+				Region:    string(alloc.Region),
+				CreatedAt: alloc.CreatedAt,
 			},
 			PublicKey:  publicKey,
 			Output:     s,
