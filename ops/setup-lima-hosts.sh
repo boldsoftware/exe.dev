@@ -105,6 +105,18 @@ provision_base_vm() {
 
 	echo "Copying pre-downloaded dependencies to VM..."
 	CACHE_DIR="$HOME/.cache/exedops"
+	
+	# Copy custom kernel if it exists
+	KERNEL_BUILDER_DIR="${script_dir}/kernel-builder/output"
+	if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
+		echo "  Copying custom kernel with nftables support..."
+		limactl cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/vmlinux-6.12.42-nftables"
+		limactl cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/config-6.12.42-nftables"
+	else
+		echo "  WARNING: Custom kernel not found at ${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables"
+		echo "  Run 'cd ${script_dir}/kernel-builder && make' to build it first"
+	fi
+	
 	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
 		if [ -f "$file" ]; then
 			basename=$(basename "$file")

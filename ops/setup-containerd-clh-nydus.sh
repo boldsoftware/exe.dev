@@ -103,6 +103,25 @@ echo "Installing cloud-hypervisor remote v${CLOUD_HYPERVISOR_VERSION}..."
 sudo cp "${ASSETS_DIR}/ch-remote-static-${CLOUD_HYPERVISOR_VERSION}-${ARCH}" /opt/kata/bin/ch-remote
 sudo chmod +x /opt/kata/bin/ch-remote
 
+# Install custom kernel with nftables support (if available)
+CUSTOM_KERNEL="${ASSETS_DIR}/vmlinux-6.12.42-nftables"
+CUSTOM_CONFIG="${ASSETS_DIR}/config-6.12.42-nftables"
+if [ -f "$CUSTOM_KERNEL" ]; then
+	echo "Installing custom kernel with nftables support..."
+	sudo cp "$CUSTOM_KERNEL" /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
+	sudo chmod +x /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
+	
+	if [ -f "$CUSTOM_CONFIG" ]; then
+		sudo cp "$CUSTOM_CONFIG" /opt/kata/share/kata-containers/config-6.12.42-nftables
+	fi
+	
+	# Update the vmlinux.container symlink to point to our custom kernel
+	sudo ln -sf vmlinux-6.12.42-nftables /opt/kata/share/kata-containers/vmlinux.container
+	echo "Custom kernel installed and activated"
+else
+	echo "No custom kernel found at $CUSTOM_KERNEL, using default Kata kernel"
+fi
+
 # Link Kata binaries
 sudo ln -sf /opt/kata/bin/kata-runtime /usr/local/bin/kata-runtime
 sudo ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim-kata-v2

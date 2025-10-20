@@ -282,6 +282,17 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
 	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/.cache/exedops/kata-config-clh.toml"
 
+	# Copy custom kernel if available
+	KERNEL_BUILDER_DIR="${SCRIPT_DIR}/kernel-builder/output"
+	if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
+		echo "Copying custom kernel with nftables support..."
+		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/vmlinux-6.12.42-nftables"
+		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/config-6.12.42-nftables"
+	else
+		echo "WARNING: Custom kernel not found at ${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables"
+		echo "Run 'cd ${SCRIPT_DIR}/kernel-builder && make' to build it first"
+	fi
+
 	# Copy pre-downloaded tarballs to VM
 	echo "Copying pre-downloaded dependencies to VM ${IP}..."
 	CACHE_DIR="$HOME/.cache/exedops"
