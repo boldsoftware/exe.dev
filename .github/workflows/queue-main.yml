@@ -136,6 +136,7 @@ jobs:
     needs: [commit-validation, formatting, test]
     permissions:
       contents: write
+      actions: write
     steps:
       - name: Abort stale rebase (pre-checkout)
         run: |
