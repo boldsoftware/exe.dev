@@ -180,7 +180,7 @@ RUN ARCH=$(uname -m) && \
 	wget -q -O node.tar.xz "https://nodejs.org/dist/v22.20.0/node-v22.20.0-linux-${NODE_ARCH}.tar.xz" && \
 	tar -C /usr/local --strip-components=1 -xJf node.tar.xz && \
 	rm node.tar.xz && \
-	node --version && npm --version npm install -g @anthropic-ai/claude-code codex
+	node --version && npm --version && npm install -g @anthropic-ai/claude-code codex
 
 # Copy the pre-built static binaries from the builder stage
 COPY --from=go-builder /src/generate-gateway-token/generate-gateway-token /usr/local/bin/generate-gateway-token
