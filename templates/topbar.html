@@ -4,25 +4,11 @@
 <header>
   <div class="nav-container">
     <div class="nav-left">
-      <a href="/" class="nav-logo">
-        <img src="/static/exy.png" alt="exe.dev logo" />
-        exe.dev
-      </a>
-      <div class="nav-links">
-        <a href="/docs">docs</a>
-      </div>
-    </div>
-    <div class="nav-right">
-      <a href="/soon" class="btn btn-waitlist">Join the waitlist</a>
-      <a href="/auth?redirect=/" class="btn">Sign in</a>
-    </div>
-  </div>
-</header>
-{{end}} {{define "topbar_loggedin"}}
-<header>
-  <div class="nav-container">
-    <div class="nav-left">
+      {{if .IsLoggedIn}}
       <a href="/~" class="nav-logo">
+      {{else}}
+      <a href="/" class="nav-logo">
+      {{end}}
         <img src="/static/exy.png" alt="exe.dev logo" />
         exe.dev
       </a>
@@ -31,7 +17,8 @@
       </div>
     </div>
     <div class="nav-right">
-      {{if eq .ActivePage "boxes"}}
+      {{if .IsLoggedIn}}
+      {{if and .ActivePage (eq .ActivePage "boxes")}}
       <span class="btn btn-active">
         <svg
           viewBox="0 0 24 24"
@@ -73,7 +60,7 @@
         </svg>
         <span class="btn-text">Boxes</span>
       </a>
-      {{end}} {{if eq .ActivePage "shell"}}
+      {{end}} {{if and .ActivePage (eq .ActivePage "shell")}}
       <span class="btn btn-active">
         <svg
           viewBox="0 0 24 24"
@@ -111,7 +98,7 @@
         </svg>
         <span class="btn-text">Shell</span>
       </a>
-      {{end}} {{if eq .ActivePage "profile"}}
+      {{end}} {{if and .ActivePage (eq .ActivePage "profile")}}
       <span class="btn btn-active">
         <svg
           viewBox="0 0 24 24"
@@ -169,6 +156,10 @@
         </svg>
         <span class="btn-text">Sign out</span>
       </a>
+      {{else}}
+      <a href="/soon" class="btn btn-waitlist">Join the waitlist</a>
+      <a href="/auth?redirect=/" class="btn">Sign in</a>
+      {{end}}
     </div>
   </div>
 </header>

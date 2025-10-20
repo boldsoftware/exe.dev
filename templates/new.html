@@ -1,157 +1,5 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EXE.DEV - Create New Box</title>
-    <link rel="stylesheet" href="/static/exe.css">
-    <link rel="stylesheet" href="/static/topbar.css">
-    <link rel="stylesheet" href="/static/form.css">
-    <style>
-        body {
-            min-height: 100vh;
-            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        }
-        
-        .form-input-large {
-            font-size: 18px;
-            padding: 14px 16px;
-        }
-        
-        .form-input-suffix-large {
-            font-size: 18px;
-        }
-        
-        /* Mobile responsive styles */
-        @media (max-width: 768px) {
-            body {
-                padding: 0;
-                background-color: #fff;
-            }
-            
-            .form-container {
-                padding: 16px 0;
-                max-width: 100%;
-            }
-            
-            .form-card {
-                border: none;
-                border-radius: 0;
-                padding: 20px 16px;
-                box-shadow: none;
-            }
-            
-            .form-title {
-                font-size: 20px;
-                margin-bottom: 20px;
-            }
-            
-            .form-input-group {
-                flex-direction: row;
-                align-items: center;
-                gap: 6px;
-            }
-            
-            .form-input-large {
-                font-size: 16px;
-                padding: 12px 10px;
-                text-align: left;
-                flex: 1;
-                min-width: 0;
-            }
-            
-            .form-input-suffix-large {
-                font-size: 14px;
-                color: #666;
-                flex-shrink: 0;
-            }
-            
-            .form-button {
-                font-size: 16px;
-                padding: 14px 16px;
-            }
-            
-            .form-group {
-                margin-bottom: 16px;
-            }
-            
-            .form-label {
-                font-size: 13px;
-                margin-bottom: 6px;
-            }
-            
-            .form-hint {
-                font-size: 12px;
-                margin-top: 4px;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .form-card {
-                padding: 16px 12px;
-            }
-            
-            .form-title {
-                font-size: 18px;
-                margin-bottom: 16px;
-            }
-            
-            .form-input-large {
-                font-size: 15px;
-                padding: 11px 8px;
-            }
-            
-            .form-input-suffix-large {
-                font-size: 13px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <header>
-        <div class="nav-container">
-            <div class="nav-left">
-                <a href="{{if .IsLoggedIn}}/~{{else}}/{{end}}" class="nav-logo">
-                    <img src="/static/exy.png" alt="exe.dev logo" />
-                    exe.dev
-                </a>
-                <div class="nav-links">
-                    <a href="/docs">docs</a>
-                </div>
-            </div>
-            <div class="nav-right">
-                {{if .IsLoggedIn}}
-                <a href="/shell" class="btn">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                        <polyline points="4,17 10,11 4,5"></polyline>
-                        <line x1="12" y1="19" x2="20" y2="19"></line>
-                    </svg>
-                    Shell
-                </a>
-                <a href="/~" class="btn">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                    Boxes
-                </a>
-                <a href="/user" class="btn">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">
-                        <circle cx="12" cy="8" r="4"></circle>
-                        <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"></path>
-                    </svg>
-                    Profile
-                </a>
-                <a href="/logout" class="btn">Sign out</a>
-                {{else}}
-                <a href="/auth?redirect=/new" class="btn">Sign in</a>
-                {{end}}
-            </div>
-        </div>
-    </header>
-    
+{{define "new_content"}}
+<div class="new-view">
     <div class="form-container">
         <div class="form-card">
             <h1 class="form-title">Create a New Box</h1>
@@ -192,86 +40,118 @@
             </form>
         </div>
     </div>
+</div>
+{{end}}
+
+
+
+{{define "new_script"}}
+<script>
+    // Placeholder text rotation
+    const placeholders = [
+        'Run a Jupyter notebook...',
+        'Deploy a web app...',
+        'Create an API...',
+        'Launch a game server...',
+        'Build a chatbot...',
+        'Set up CI/CD...',
+        'Set up a database...',
+        'Build a blog...'
+    ];
     
-    <script>
-        // Placeholder text rotation
-        const placeholders = [
-            'Run a Jupyter notebook...',
-            'Deploy a web app...',
-            'Create an API...',
-            'Launch a game server...',
-            'Build a chatbot...',
-            'Set up CI/CD...',
-            'Set up a database...',
-            'Build a blog...'
-        ];
+    let currentPlaceholderIndex = 0;
+    const promptInput = document.getElementById('prompt');
+    
+    function rotatePlaceholder() {
+        if (promptInput.value === '' && document.activeElement !== promptInput) {
+            currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholders.length;
+            promptInput.placeholder = placeholders[currentPlaceholderIndex];
+        }
+    }
+    
+    setInterval(rotatePlaceholder, 5000);
+    
+    // Hostname availability checking
+    const hostnameInput = document.getElementById('hostname');
+    const hostnameHint = document.getElementById('hostname-hint');
+    const createButton = document.getElementById('create-button');
+    
+    let checkTimeout;
+    
+    function checkHostnameAvailability() {
+        const hostname = hostnameInput.value.trim();
         
-        let currentPlaceholderIndex = 0;
-        const promptInput = document.getElementById('prompt');
-        
-        function rotatePlaceholder() {
-            if (promptInput.value === '' && document.activeElement !== promptInput) {
-                currentPlaceholderIndex = (currentPlaceholderIndex + 1) % placeholders.length;
-                promptInput.placeholder = placeholders[currentPlaceholderIndex];
-            }
+        if (!hostname) {
+            hostnameHint.innerHTML = '';
+            hostnameHint.className = 'form-hint';
+            createButton.disabled = true;
+            return;
         }
         
-        setInterval(rotatePlaceholder, 5000);
+        // Show spinner
+        hostnameHint.innerHTML = '<span class="spinner"></span>Checking availability...';
+        hostnameHint.className = 'form-hint';
         
-        // Hostname availability checking
-        const hostnameInput = document.getElementById('hostname');
-        const hostnameHint = document.getElementById('hostname-hint');
-        const createButton = document.getElementById('create-button');
-        
-        let checkTimeout;
-        
-        function checkHostnameAvailability() {
-            const hostname = hostnameInput.value.trim();
-            
-            if (!hostname) {
-                hostnameHint.innerHTML = '';
+        fetch('/check-hostname', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ hostname: hostname }),
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.valid && data.available) {
+                hostnameHint.textContent = '';
                 hostnameHint.className = 'form-hint';
-                createButton.disabled = true;
-                return;
-            }
-            
-            // Show spinner
-            hostnameHint.innerHTML = '<span class="spinner"></span>Checking availability...';
-            hostnameHint.className = 'form-hint';
-            
-            fetch('/check-hostname', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ hostname: hostname }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.valid && data.available) {
-                    hostnameHint.textContent = '';
-                    hostnameHint.className = 'form-hint';
-                    createButton.disabled = false;
-                } else {
-                    hostnameHint.textContent = '✗ ' + data.message;
-                    hostnameHint.className = 'form-hint error';
-                    createButton.disabled = true;
-                }
-            })
-            .catch(error => {
-                hostnameHint.textContent = '✗ Error checking availability';
+                createButton.disabled = false;
+            } else {
+                hostnameHint.textContent = '✗ ' + data.message;
                 hostnameHint.className = 'form-hint error';
                 createButton.disabled = true;
-            });
-        }
-        
-        hostnameInput.addEventListener('input', function() {
-            clearTimeout(checkTimeout);
-            checkTimeout = setTimeout(checkHostnameAvailability, 500);
+            }
+        })
+        .catch(error => {
+            hostnameHint.textContent = '✗ Error checking availability';
+            hostnameHint.className = 'form-hint error';
+            createButton.disabled = true;
         });
-        
-        // Check initial hostname
-        checkHostnameAvailability();
-    </script>
+    }
+    
+    hostnameInput.addEventListener('input', function() {
+        clearTimeout(checkTimeout);
+        checkTimeout = setTimeout(checkHostnameAvailability, 500);
+    });
+    
+    // Check initial hostname
+    checkHostnameAvailability();
+</script>
+{{end}}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create a New Box - EXE.DEV</title>
+    <link rel="stylesheet" href="/static/exe.css">
+    {{template "topbar_style" .}}
+    <link rel="stylesheet" href="/static/form.css">
+    <link rel="stylesheet" href="/static/new.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            overflow-x: hidden;
+            align-items: stretch;
+            background: #fff;
+        }
+    </style>
+</head>
+<body>
+    {{template "topbar" .}}
+    {{template "new_content" .}}
+    {{template "new_script" .}}
 </body>
 </html>

@@ -1,0 +1,100 @@
+.new-view {
+    display: block;
+    min-height: 100vh;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: #fff;
+}
+
+.form-input-large {
+    font-size: 18px;
+    padding: 14px 16px;
+}
+
+.form-input-suffix-large {
+    font-size: 18px;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    body {
+        padding: 0;
+        background: #fff;
+        background-image: none;
+    }
+    
+    .form-container {
+        padding: 16px 0;
+        max-width: 100%;
+    }
+    
+    .form-card {
+        border: none;
+        border-radius: 0;
+        padding: 20px 16px;
+        box-shadow: none;
+    }
+    
+    .form-title {
+        font-size: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .form-input-group {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .form-input-large {
+        font-size: 16px;
+        padding: 12px 10px;
+        text-align: left;
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .form-input-suffix-large {
+        font-size: 14px;
+        color: #666;
+        flex-shrink: 0;
+    }
+    
+    .form-button {
+        font-size: 16px;
+        padding: 14px 16px;
+    }
+    
+    .form-group {
+        margin-bottom: 16px;
+    }
+    
+    .form-label {
+        font-size: 13px;
+        margin-bottom: 6px;
+    }
+    
+    .form-hint {
+        font-size: 12px;
+        margin-top: 4px;
+    }
+}
+
+@media (max-width: 480px) {
+    .form-card {
+        padding: 16px 12px;
+    }
+    
+    .form-title {
+        font-size: 18px;
+        margin-bottom: 16px;
+    }
+    
+    .form-input-large {
+        font-size: 15px;
+        padding: 11px 8px;
+    }
+    
+    .form-input-suffix-large {
+        font-size: 13px;
+    }
+}

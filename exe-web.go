@@ -30,7 +30,6 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
-	templatespkg "exe.dev/templates"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/acme"
@@ -339,18 +338,8 @@ func (s *Server) setupProxyServers() {
 
 // renderTemplate is a helper method that handles template parsing and execution
 func (s *Server) renderTemplate(w http.ResponseWriter, templateName string, data interface{}) error {
-	funcMap := template.FuncMap{
-		"contains": strings.Contains,
-	}
-	tmpl, err := template.New(templateName).Funcs(funcMap).ParseFS(templatespkg.Files, "topbar.html", templateName)
-	if err != nil {
-		s.slog().Error("Failed to parse template", "error", err, "template", templateName)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return err
-	}
-
 	w.Header().Set("Content-Type", "text/html")
-	if err := tmpl.ExecuteTemplate(w, templateName, data); err != nil {
+	if err := s.templates.ExecuteTemplate(w, templateName, data); err != nil {
 		s.slog().Error("Failed to execute template", "error", err, "template", templateName)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return err
@@ -414,12 +403,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/welcome":
 		// Serve responsive page (desktop welcome, mobile new box form)
 		hostnameSuggestion := boxname.Random()
+		// Check if user is logged in
+		_, err := s.validateAuthCookie(r)
+		isLoggedIn := err == nil
 		data := struct {
 			HostnameSuggestion string
+			IsLoggedIn         bool
+			ActivePage         string
 		}{
 			HostnameSuggestion: hostnameSuggestion,
+			IsLoggedIn:         isLoggedIn,
+			ActivePage:         "",
 		}
-		if err := s.renderTemplate(w, "welcome.html", data); err != nil {
+		if err := s.renderTemplate(w, "welcome-or-new.html", data); err != nil {
 			return
 		}
 		return
@@ -1650,6 +1646,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		SSHKeys:    sshKeys,
 		Boxes:      boxes,
 		ActivePage: "boxes",
+		IsLoggedIn: true,
 	}
 
 	// Render template
@@ -1693,6 +1690,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		User:       user,
 		SSHKeys:    sshKeys,
 		ActivePage: "profile",
+		IsLoggedIn: true,
 	}
 
 	// Render template

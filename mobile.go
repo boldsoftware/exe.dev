@@ -301,17 +301,25 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, "new.html", data)
 }
 
-// handleMobileNew renders the responsive welcome/new page
+// handleMobileNew renders the new box form
 func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
-	// Always show the responsive page (desktop welcome, mobile create)
+	// Always show the new box form
 	hostnameSuggestion := boxname.Random()
+
+	// Check if user is logged in
+	_, err := s.validateAuthCookie(r)
+	isLoggedIn := err == nil
 
 	data := struct {
 		HostnameSuggestion string
+		IsLoggedIn         bool
+		ActivePage         string
 	}{
 		HostnameSuggestion: hostnameSuggestion,
+		IsLoggedIn:         isLoggedIn,
+		ActivePage:         "",
 	}
-	s.renderTemplate(w, "welcome.html", data)
+	s.renderTemplate(w, "new.html", data)
 }
 
 // handleMobileHostnameCheck checks if a hostname is available

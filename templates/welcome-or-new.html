@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EXE.DEV - just use ssh</title>
+    <link rel="stylesheet" href="/static/exe.css">
+    {{template "topbar_style" .}}
+    <link rel="stylesheet" href="/static/form.css">
+    <link rel="stylesheet" href="/static/welcome.css">
+    <link rel="stylesheet" href="/static/new.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            text-align: center;
+            overflow-x: hidden;
+            align-items: stretch;
+        }
+
+        /* Desktop: show welcome, hide new */
+        .welcome-view {
+            display: flex;
+        }
+        
+        .new-view {
+            display: none;
+        }
+
+        /* Mobile: hide welcome, show new */
+        @media (max-width: 768px) {
+            .welcome-view {
+                display: none;
+            }
+
+            .new-view {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    {{template "topbar" .}}
+    {{template "welcome_content" .}}
+    {{template "new_content" .}}
+    {{template "new_script" .}}
+</body>
+</html>

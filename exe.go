@@ -44,6 +44,7 @@ import (
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
 	"exe.dev/tagresolver"
+	templatespkg "exe.dev/templates"
 	"github.com/keighl/postmark"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -93,6 +94,7 @@ type UserPageData struct {
 	SSHKeys    []SSHKey
 	Boxes      []BoxDisplayInfo
 	ActivePage string
+	IsLoggedIn bool
 }
 
 // SSHKey represents an SSH key for the user page
@@ -205,6 +207,9 @@ type Server struct {
 	accountant *accounting.Accountant
 
 	docs *docspkg.Handler
+
+	// HTML templates (parsed at startup)
+	templates *template.Template
 
 	stopping atomic.Bool
 
@@ -452,6 +457,13 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 	docsHandler := docspkg.NewHandler(docsStore, includeUnpublishedDocs)
 
+	// Parse all HTML templates at startup
+	tmpl, err := templatespkg.Parse()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+
 	s := &Server{
 		httpLn:             httpLn,
 		httpsLn:            httpsLn,
@@ -479,6 +491,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 
 		accountant: accounting.NewAccountant(),
 		docs:       docsHandler,
+		templates:  tmpl,
 		log:        slog,
 	}
 

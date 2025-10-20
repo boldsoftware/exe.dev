@@ -1,0 +1,93 @@
+.welcome-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+}
+
+.content-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    margin: 40px auto 50px;
+    flex-wrap: wrap;
+}
+
+.content-section.command-row {
+    flex-direction: column;
+    gap: 20px;
+    margin: 30px auto;
+}
+
+.content-section.command-row .description {
+    text-align: center;
+    max-width: 600px;
+}
+
+.blowfish-logo {
+    width: 200px;
+    height: auto;
+}
+
+.woodcut-icon {
+    width: 120px;
+    height: auto;
+    margin-bottom: 20px;
+}
+
+.https-section {
+    display: flex;
+    align-items: center;
+    gap: 40px;
+    justify-content: center;
+    margin: 30px auto;
+}
+
+.woodcut-icon-side {
+    width: 180px;
+    height: auto;
+    flex-shrink: 0;
+}
+
+.https-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.description {
+    font-size: 18px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-variant: small-caps;
+    color: #444;
+    line-height: 1.8;
+    max-width: 420px;
+    font-weight: 400;
+    text-align: left;
+}
+
+.description strong {
+    font-weight: bold;
+}
+
+.command-block {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: clamp(20px, 3.5vw, 28px);
+    color: #000;
+    background: rgba(255, 255, 248, 0.95);
+    padding: 20px 40px;
+    border-radius: 12px;
+    display: inline-block;
+    margin-top: 20px;
+    letter-spacing: 0.05em;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    white-space: nowrap;
+    text-align: left;
+    max-width: 100%;
+    overflow-x: auto;
+}

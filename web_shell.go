@@ -77,6 +77,7 @@ func (s *Server) handleWebShell(w http.ResponseWriter, r *http.Request) {
 	data := UserPageData{
 		User:       user,
 		ActivePage: "shell",
+		IsLoggedIn: true,
 	}
 	s.renderTemplate(w, "shell.html", data)
 }
