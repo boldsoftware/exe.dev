@@ -14,6 +14,7 @@ Restart=always
 RestartSec=5
 Environment=HOME=/home/exedev
 Environment=USER=exedev
+Environment=PATH=/headless-shell:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 KillMode=process
 TimeoutStopSec=10
 
