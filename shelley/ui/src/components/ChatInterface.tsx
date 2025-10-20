@@ -237,9 +237,15 @@ function ChatInterface({
   const [error, setError] = useState<string | null>(null);
   const models = window.__SHELLEY_INIT__?.models || [];
   const [selectedModel, setSelectedModel] = useState<string>(() => {
+    // Use the default_model from server initialization if available
+    const defaultModel = window.__SHELLEY_INIT__?.default_model;
+    if (defaultModel) {
+      return defaultModel;
+    }
+    // Fall back to first ready model
     const initModels = window.__SHELLEY_INIT__?.models || [];
     const firstReady = initModels.find((m) => m.ready);
-    return firstReady?.id || "qwen3-coder-fireworks";
+    return firstReady?.id || "claude-sonnet-4.5";
   });
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
