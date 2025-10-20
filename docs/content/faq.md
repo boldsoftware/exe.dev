@@ -26,3 +26,9 @@ vscode://vscode-remote/ssh-remote+<box-name>@exe.dev/app?windowId=_blank
 ```
 The `app` in that URL is the path on the filesystem for VSCode to
 consider as your workspace.
+
+# Q: Why is it `ssh name@exe.dev` and not `ssh name.exe.dev`?
+
+We can make `https://name.exe.dev/` work because HTTP has a "Host:" header that
+lets us direct traffic appropriately. The SSH protocol only has the IP address
+that's being connected to.
