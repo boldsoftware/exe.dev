@@ -133,6 +133,11 @@ elif sudo docker ps >/dev/null 2>&1; then
 else
 	echo "ERROR: 'docker' is required for image caching." >&2
 	echo "       Please install Docker and re-run." >&2
+	if command -v colima >/dev/null 2>&1; then
+		if ! colima status >/dev/null 2>&1; then
+			echo "       Colima detected but not running. Start it with: colima start" >&2
+		fi
+	fi
 	exit 1
 fi
 if ! command -v jq >/dev/null 2>&1; then
