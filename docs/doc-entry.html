@@ -280,7 +280,7 @@
       <!-- Main Content -->
       <main class="main">
         {{with .Entry}}
-        <a class="back-to-list" href="/docs">&larr; All docs</a>
+        <a class="back-to-list" href="/docs/list">&larr; All docs</a>
         <h1 class="doc-title">{{.Title}}{{if and $.ShowHidden (not .Published)}} [draft]{{end}}</h1>
 
         <div class="doc-content">{{.Content}}</div>

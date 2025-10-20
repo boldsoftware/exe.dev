@@ -239,6 +239,17 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 	path := r.URL.Path
 
 	if path == "/docs" || path == "/docs/" {
+		// Redirect to the first doc page
+		if h.store.defaultPath != "" {
+			http.Redirect(w, r, h.store.defaultPath, http.StatusTemporaryRedirect)
+			return true
+		}
+		// Fallback to TOC if no default path
+		h.renderDocsList(w, r)
+		return true
+	}
+
+	if path == "/docs/list" {
 		h.renderDocsList(w, r)
 		return true
 	}
@@ -251,11 +262,6 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 
 	if entry, ok := h.store.Entry(path); ok {
 		h.renderDocEntry(w, r, entry)
-		return true
-	}
-
-	if path == "/docs/list" {
-		h.renderDocsList(w, r)
 		return true
 	}
 
