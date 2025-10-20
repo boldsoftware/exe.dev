@@ -2,7 +2,7 @@
 FROM docker.io/chromedp/headless-shell:stable AS chrome
 
 # Build generate-gateway-token and shelley as static binaries
-FROM golang:1.25.1-alpine AS go-builder
+FROM golang:1.25.3-alpine AS go-builder
 ARG TARGETARCH
 ARG TARGETOS=linux
 
