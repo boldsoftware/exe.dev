@@ -1075,7 +1075,7 @@ func (s *Server) shelleyURL(boxName string) string {
 // vscodeURL returns the VSCode remote SSH URL for a box.
 func (s *Server) vscodeURL(boxName string) string {
 	connStr := s.sshConnectionString(boxName)
-	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/app?windowId=_blank", connStr)
+	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/home/exedev/src?windowId=_blank", connStr)
 }
 
 // preCreateBox creates a box entry before the container is created, returns the box ID
