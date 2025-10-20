@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -49,11 +50,14 @@ type Stone struct {
 }
 
 type lineWriter struct {
+	mu  sync.Mutex
 	w   io.Writer
 	buf []byte
 }
 
 func (lw *lineWriter) Write(p []byte) (n int, err error) {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
 	for line := range bytes.Lines(p) {
 		if line[len(line)-1] != '\n' {
 			lw.buf = append(lw.buf, line...)
@@ -73,6 +77,8 @@ func (lw *lineWriter) Write(p []byte) (n int, err error) {
 }
 
 func (lw *lineWriter) Flush() error {
+	lw.mu.Lock()
+	defer lw.mu.Unlock()
 	_, err := lw.w.Write(lw.buf)
 	lw.buf = lw.buf[:0]
 	return err
