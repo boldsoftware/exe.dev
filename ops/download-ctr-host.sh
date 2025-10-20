@@ -123,7 +123,14 @@ IMAGES=(
 #############################################
 # We want the host to download images once into cache so VMs don't re-pull.
 # Require Docker (and jq for JSON parsing) for digest checks and saving.
-if ! sudo docker ps >/dev/null 2>&1; then
+
+# Detect if docker needs sudo
+DOCKER_CMD="docker"
+if docker ps >/dev/null 2>&1; then
+	DOCKER_CMD="docker"
+elif sudo docker ps >/dev/null 2>&1; then
+	DOCKER_CMD="sudo docker"
+else
 	echo "ERROR: 'docker' is required for image caching." >&2
 	echo "       Please install Docker and re-run." >&2
 	exit 1
@@ -171,9 +178,9 @@ for image in "${IMAGES[@]}"; do
 
 	if [ $need_download -eq 1 ]; then
 		echo "Downloading $image for linux/$ARCH..."
-		if sudo docker pull --platform="linux/$ARCH" "$image"; then
+		if $DOCKER_CMD pull --platform="linux/$ARCH" "$image"; then
 			echo "  Saving to tar..."
-			if sudo docker save "$image" > "$base_tar"; then
+			if $DOCKER_CMD save "$image" > "$base_tar"; then
 				echo "$remote_digest" >"$digest_file"
 				echo "  ✓ Saved $base_tar with digest $remote_digest"
 			else
