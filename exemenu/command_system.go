@@ -81,7 +81,7 @@ func (c *Command) Help(cc *CommandContext) error {
 				if f.Usage == "" {
 					return
 				}
-				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\t\r\n", f.Name, f.Usage)
+				fmt.Fprintf(tabw, "  \033[1m--%s\033[0m\t%s\r\n", f.Name, f.Usage)
 			})
 			tabw.Flush()
 		}
@@ -99,7 +99,7 @@ func (c *Command) Help(cc *CommandContext) error {
 			if sub.Hidden {
 				continue
 			}
-			fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\t\r\n", sub.Name, sub.Description)
+			fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s\r\n", sub.Name, sub.Description)
 		}
 		tabw.Flush()
 	}
@@ -315,7 +315,7 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 		if cmd.Hidden {
 			hidden = " [hidden]"
 		}
-		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s%s\t\r\n", nameStr, cmd.Description, hidden)
+		fmt.Fprintf(tabw, "  \033[1m%s\033[0m\t  - %s%s\r\n", nameStr, cmd.Description, hidden)
 
 		// Show subcommands if any exist
 		for _, sub := range cmd.Subcommands {
@@ -327,7 +327,7 @@ func (ct *CommandTree) Help(cc *CommandContext) {
 			if sub.Hidden {
 				subHidden = " [hidden]"
 			}
-			fmt.Fprintf(tabw, "    \033[2m%s\033[0m\t    %s%s\t\r\n", subNameStr, sub.Description, subHidden)
+			fmt.Fprintf(tabw, "    \033[2m%s\033[0m\t    %s%s\r\n", subNameStr, sub.Description, subHidden)
 		}
 	}
 	tabw.Flush()
