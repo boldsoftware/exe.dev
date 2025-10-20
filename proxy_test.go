@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
 
@@ -686,4 +687,145 @@ func TestProxyStreaming(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Errorf("Expected Content-Type 'text/event-stream', got %q", ct)
 	}
+}
+
+func TestAuthConfirmSkipForOwner(t *testing.T) {
+	t.Parallel()
+
+	boxReturnHost := func(s *Server, boxName string) string {
+		host := fmt.Sprintf("%s.%s", boxName, s.getMainDomain())
+		if s.httpLn != nil && s.httpLn.tcp != nil && s.httpLn.tcp.Port != 80 {
+			host = fmt.Sprintf("%s:%d", host, s.httpLn.tcp.Port)
+		}
+		return host
+	}
+
+	doAuthConfirm := func(t *testing.T, s *Server, secret, returnHost string) *httptest.ResponseRecorder {
+		t.Helper()
+		params := url.Values{
+			"secret":      {secret},
+			"return_host": {returnHost},
+		}
+		authURL := fmt.Sprintf("http://%s/auth/confirm?%s", s.getMainDomainWithPort(), params.Encode())
+
+		req := createTestRequestForServer(http.MethodGet, authURL, s.getMainDomainWithPort(), s)
+		w := httptest.NewRecorder()
+
+		s.ServeHTTP(w, req)
+		return w
+	}
+
+	createUser := func(t *testing.T, s *Server, email string) (userID, allocID string) {
+		t.Helper()
+		keySuffix := strings.ReplaceAll(email, "@", "_")
+		publicKey := fmt.Sprintf("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI%s_%s", keySuffix, t.Name())
+		user, err := s.createUser(t.Context(), publicKey, email)
+		if err != nil {
+			t.Fatalf("createUser(%q): %v", email, err)
+		}
+		alloc, err := s.getUserAlloc(t.Context(), user.UserID)
+		if err != nil {
+			t.Fatalf("getUserAlloc(%q): %v", user.UserID, err)
+		}
+		return user.UserID, alloc.AllocID
+	}
+
+	createSecret := func(t *testing.T, s *Server, userID, boxName, redirect string) string {
+		t.Helper()
+		secret, err := s.createMagicSecret(userID, boxName, redirect)
+		if err != nil {
+			t.Fatalf("createMagicSecret: %v", err)
+		}
+		return secret
+	}
+
+	const redirectPath = "/after-login"
+
+	t.Run("owner_skips_confirmation", func(t *testing.T) {
+		t.Parallel()
+
+		server := newTestServer(t)
+		userID, allocID := createUser(t, server, "owner@example.com")
+
+		const boxName = "ownedbox"
+		server.createTestBox(t, userID, allocID, boxName, "container-owner", "busybox:latest")
+
+		secret := createSecret(t, server, userID, boxName, redirectPath)
+		returnHost := boxReturnHost(server, boxName)
+
+		resp := doAuthConfirm(t, server, secret, returnHost)
+		if resp.Code != http.StatusTemporaryRedirect {
+			t.Fatalf("expected redirect for owner, got %d", resp.Code)
+		}
+
+		loc, err := resp.Result().Location()
+		if err != nil {
+			t.Fatalf("failed to get Location header: %v", err)
+		}
+		if loc.Scheme != "http" {
+			t.Errorf("expected http scheme, got %q", loc.Scheme)
+		}
+		if loc.Host != returnHost {
+			t.Errorf("expected redirect host %q, got %q", returnHost, loc.Host)
+		}
+		if loc.Path != "/__exe.dev/auth" {
+			t.Errorf("expected redirect path /__exe.dev/auth, got %q", loc.Path)
+		}
+
+		q := loc.Query()
+		if q.Get("secret") != secret {
+			t.Errorf("expected secret %q, got %q", secret, q.Get("secret"))
+		}
+		if q.Get("redirect") != redirectPath {
+			t.Errorf("expected redirect path %q, got %q", redirectPath, q.Get("redirect"))
+		}
+	})
+
+	t.Run("non_owner_sees_confirmation", func(t *testing.T) {
+		t.Parallel()
+
+		server := newTestServer(t)
+		ownerID, _ := createUser(t, server, "owner@example.com")
+		guestID, guestAllocID := createUser(t, server, "guest@example.com")
+
+		const boxName = "sharedbox"
+		defaultRoute := exedb.DefaultRouteJSON()
+		err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+			_, err := tx.Exec(`
+				INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+				                   ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, guestAllocID, boxName, "running", "busybox:latest", "container-shared", ownerID, defaultRoute,
+				"test-key", "test-keys", "test-client-key", 2222)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("failed to insert shared box: %v", err)
+		}
+
+		// Ensure the guest user exists with an allocation so their secrets can refer to it.
+		if guestAllocID == "" {
+			t.Fatal("guest alloc ID should not be empty")
+		}
+
+		secret := createSecret(t, server, guestID, boxName, redirectPath)
+		returnHost := boxReturnHost(server, boxName)
+
+		resp := doAuthConfirm(t, server, secret, returnHost)
+		body := resp.Body.String()
+
+		if resp.Code != http.StatusOK {
+			t.Fatalf("expected confirmation page (200), got %d. Body: %s", resp.Code, body)
+		}
+
+		if !strings.Contains(body, "Confirm Login") {
+			t.Errorf("expected confirmation heading, got %q", body)
+		}
+		if !strings.Contains(body, "guest@example.com") {
+			t.Errorf("expected guest email on confirmation page, got %q", body)
+		}
+		if !strings.Contains(body, boxName) {
+			t.Errorf("expected box name on confirmation page, got %q", body)
+		}
+	})
 }

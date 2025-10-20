@@ -1278,12 +1278,34 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 
 	// Extract hostname without port for display
 	hostname := stripPort(returnHost)
-
-	// Parse hostname to get box name (including custom domains via CNAME)
 	boxName, err := s.resolveBoxName(r.Context(), hostname)
-	if err != nil || boxName == "" {
-		s.slog().Info("handleAuthConfirm failed to resolve box name", "hostname", hostname, "error", err)
-		http.Error(w, "invalid hostname format", http.StatusBadRequest)
+	if err != nil {
+		// TODO(bmizerany): return a nicer error page
+		http.Error(w, "Failed to resolve box name", http.StatusInternalServerError)
+		return
+	}
+
+	box := s.FindBoxByNameForUser(r.Context(), magicSecret.UserID, boxName)
+	if box == nil {
+		http.Error(w, "Box not found", http.StatusInternalServerError)
+		return
+	}
+
+	var hasAccess bool
+	accessType, err := s.hasUserAccessToBox(r.Context(), magicSecret.UserID, box)
+	if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
+		hasAccess = true
+	}
+
+	// If user owns the box, skip confirmation and redirect directly
+	if hasAccess {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
+			scheme, returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
+		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
 		return
 	}
 

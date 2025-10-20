@@ -127,6 +127,77 @@ func TestHTTPProxy(t *testing.T) {
 		})
 	})
 
+	t.Run("auth_confirm_owner_skip", func(t *testing.T) {
+		altPort := Env.exed.ExtraPorts[0]
+		serveHTTP(t, altPort)
+
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatalf("failed to create cookie jar: %v", err)
+		}
+		setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", altPort), cookies)
+
+		client := noRedirectClient(jar)
+		proxyURL := fmt.Sprintf("http://%s.localhost:%d/", box, altPort)
+
+		req, err := localhostRequestWithHostHeader(http.MethodGet, proxyURL, nil)
+		if err != nil {
+			t.Fatalf("failed to create request: %v", err)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to do request: %v", err)
+		}
+
+		redirectCount := 0
+		for resp.StatusCode == http.StatusTemporaryRedirect {
+			if redirectCount > 10 {
+				resp.Body.Close()
+				t.Fatalf("too many redirects")
+			}
+
+			location, err := resp.Location()
+			if err != nil {
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				t.Fatalf("failed to get redirect location: %v (status %d, body %s)", err, resp.StatusCode, body)
+			}
+			resp.Body.Close()
+
+			req, err = localhostRequestWithHostHeader(http.MethodGet, location.String(), nil)
+			if err != nil {
+				t.Fatalf("failed to create redirect request: %v", err)
+			}
+
+			isConfirm := strings.Contains(location.Path, "/auth/confirm")
+			resp, err = client.Do(req)
+			if err != nil {
+				t.Fatalf("failed to follow redirect: %v", err)
+			}
+			if isConfirm && resp.StatusCode == http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				t.Fatalf("owner flow should skip confirmation page, but confirmation page rendered: %s", body)
+			}
+
+			redirectCount++
+		}
+
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("failed to read final response body: %v", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected final status 200, got %d. Body: %s", resp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), "alive") {
+			t.Fatalf("expected final body to contain 'alive', got %s", body)
+		}
+	})
+
 	t.Run("alternate_ports", func(t *testing.T) {
 		serveHTTP(t, Env.exed.ExtraPorts[0])
 
@@ -279,7 +350,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			return
 		}
 		if resp.StatusCode != http.StatusTemporaryRedirect {
-			t.Errorf("expected redirect to /auth/confirm, got status %d", resp.StatusCode)
+			t.Errorf("expected redirect after auth, got status %d", resp.StatusCode)
 		}
 		u, err = resp.Location()
 		if err != nil {
@@ -288,31 +359,33 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 		}
 		// t.Logf("Got redirect to confirm page: %s", u.String())
 
-		// Now we scream through the confirm screen by adding "action=confirm" to the URL
-		q := u.Query()
-		q.Set("action", "confirm")
-		u.RawQuery = q.Encode()
-		req, err = http.NewRequest("GET", u.String(), nil)
-		if err != nil {
-			t.Errorf("failed to make http request: %v", err)
-			return
+		// Check if we got /auth/confirm or directly to /__exe.dev/auth (owner skip)
+		if strings.Contains(u.String(), "/auth/confirm") {
+			// Not owner, need to manually confirm
+			q := u.Query()
+			q.Set("action", "confirm")
+			u.RawQuery = q.Encode()
+			req, err = localhostRequestWithHostHeader("GET", u.String(), nil)
+			if err != nil {
+				t.Errorf("failed to make http request: %v", err)
+				return
+			}
+			resp, err = client.Do(req)
+			if err != nil {
+				t.Errorf("failed to do http request: %v", err)
+				return
+			}
+			t.Logf("Last request was to: %s", req.URL.String())
+			if resp.StatusCode != http.StatusTemporaryRedirect {
+				t.Errorf("expected redirect after confirmation, got status %d", resp.StatusCode)
+			}
+			u, err = resp.Location()
+			if err != nil {
+				t.Fatalf("failed to get redirect location: %v", err)
+				return
+			}
 		}
-		resp, err = client.Do(req)
-		if err != nil {
-			t.Errorf("failed to do http request: %v", err)
-			return
-		}
-		t.Logf("Last request was to: %s", req.URL.String())
-
-		// Now we should get a redirect to /__exe.dev/auth
-		if resp.StatusCode != http.StatusTemporaryRedirect {
-			t.Errorf("expected redirect during auth dance, got status %d", resp.StatusCode)
-		}
-		u, err = resp.Location()
-		if err != nil {
-			t.Fatalf("failed to get redirect location: %v", err)
-			return
-		}
+		// At this point u should be the /__exe.dev/auth URL
 		t.Logf("Got redirect to %s", u.String())
 		if !strings.Contains(u.String(), "__exe.dev/auth?secret=") {
 			t.Errorf("expected redirect to __exe.dev/auth, got %s", u.String())
