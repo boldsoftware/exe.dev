@@ -315,7 +315,11 @@ func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
 func (s *Server) getMainDomain(sub ...string) string {
 	domain := "exe.dev"
 	if s.devMode != "" {
-		domain = "exe.local"
+		if s.httpsLn != nil && s.httpsLn.ln != nil {
+			domain = "exe.local"
+		} else {
+			domain = "localhost"
+		}
 	}
 	if len(sub) > 0 && sub[0] != "" {
 		return sub[0] + "." + domain
