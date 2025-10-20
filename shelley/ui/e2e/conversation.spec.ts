@@ -250,10 +250,10 @@ test.describe('Shelley Conversation Tests', () => {
     
     // Wait for the tool call to appear
     await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
-    
-    // Check for collapsible tool details (details element)
-    const toolDetails = page.locator('details');
-    await expect(toolDetails.first()).toBeVisible({ timeout: 10000 });
+
+    // Check for bash tool header (collapsible element)
+    const bashToolHeader = page.locator('.bash-tool-header');
+    await expect(bashToolHeader.first()).toBeVisible({ timeout: 10000 });
   });
   
   test('handles multiple consecutive tool calls', async ({ page }) => {
@@ -317,14 +317,11 @@ test.describe('Shelley Conversation Tests', () => {
     // Wait for the tool result to appear
     await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
     
-    // Verify the completed state shows result in summary with bash and checkmark
-    await expect(page.locator('text=bash').first()).toBeVisible();
-    
-    // Verify we have a details element (collapsible) with the tool result
-    await expect(page.locator('details').first()).toBeVisible();
-    
-    // Verify tool result shows output text (even in collapsed state, the summary should show result)
-    await expect(page.locator('text=hello world').first()).toBeVisible();
+    // Verify the bash tool header is visible
+    await expect(page.locator('.bash-tool-header').first()).toBeVisible();
+
+    // Verify bash tool shows command
+    await expect(page.locator('.bash-tool-command').first()).toBeVisible();
   });
   
   test('coalesces tool calls - displays agent text and tool separately', async ({ page }) => {

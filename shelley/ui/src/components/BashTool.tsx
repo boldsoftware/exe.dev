@@ -40,7 +40,7 @@ function BashTool({ toolInput, isRunning, toolResult, hasError, executionTime }:
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
-    <div className="bash-tool">
+    <div className="bash-tool" data-testid={isComplete ? "tool-call-completed" : "tool-call-running"}>
       <div className="bash-tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="bash-tool-summary">
           <span className={`bash-tool-emoji ${isRunning ? "running" : ""}`}>🛠️</span>

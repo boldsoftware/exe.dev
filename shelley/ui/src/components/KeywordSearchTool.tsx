@@ -53,7 +53,7 @@ function KeywordSearchTool({
   const isComplete = !isRunning && toolResult !== undefined;
 
   return (
-    <div className="tool">
+    <div className="tool" data-testid={isComplete ? "tool-call-completed" : "tool-call-running"}>
       <div className="tool-header" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="tool-summary">
           <span className={`tool-emoji ${isRunning ? "running" : ""}`}>🔍</span>

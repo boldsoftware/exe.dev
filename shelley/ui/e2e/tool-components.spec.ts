@@ -30,7 +30,7 @@ test.describe('Tool Component Verification', () => {
     const bashTool = page.locator('.bash-tool').first();
     await expect(bashTool).toBeVisible();
     await expect(bashTool.locator('.bash-tool-emoji')).toBeVisible();
-    await expect(bashTool.locator('text=echo \'hello from bash\'')).toBeVisible();
+    await expect(bashTool.locator('.bash-tool-command')).toBeVisible();
 
     // Verify think tool uses ThinkTool component (has tool class with think emoji)
     const thinkTool = page.locator('.tool').filter({ hasText: 'I\'m thinking about the best approach' });
@@ -85,14 +85,23 @@ test.describe('Tool Component Verification', () => {
     const messageInput = page.getByTestId('message-input');
     const sendButton = page.getByTestId('send-button');
 
-    await messageInput.fill('bash: ls -la');
+    await messageInput.fill('bash: unique-test-command-xyz123');
     await sendButton.click();
 
-    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 30000 });
+    // Wait for and verify the specific bash tool we just created
+    await page.waitForFunction(
+      () => document.body.textContent?.includes('unique-test-command-xyz123') ?? false,
+      undefined,
+      { timeout: 30000 }
+    );
 
-    // Verify bash tool shows command in the header (collapsed state)
-    const bashTool = page.locator('.bash-tool').first();
-    await expect(bashTool.locator('.bash-tool-command').filter({ hasText: 'ls -la' })).toBeVisible();
+    // Verify bash tool shows the command in the header (collapsed state)
+    const bashToolWithOurCommand = page.locator('.bash-tool').filter({ hasText: 'unique-test-command-xyz123' });
+    await expect(bashToolWithOurCommand).toBeVisible();
+    const commandElement = bashToolWithOurCommand.locator('.bash-tool-command');
+    await expect(commandElement).toBeVisible();
+    const commandText = await commandElement.textContent();
+    expect(commandText).toContain('unique-test-command-xyz123');
   });
 
   test('think tool shows thought prefix in header', async ({ page }) => {

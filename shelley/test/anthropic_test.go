@@ -84,8 +84,9 @@ func TestWithAnthropicAPI(t *testing.T) {
 		}
 
 		// Send a simple message
-		chatReq := map[string]string{
+		chatReq := map[string]interface{}{
 			"message": "Hello! Please introduce yourself briefly and tell me what you can help me with. Keep your response under 50 words.",
+			"model":   "claude-haiku-3.5",
 		}
 		reqBody, _ := json.Marshal(chatReq)
 
@@ -192,8 +193,9 @@ func TestWithAnthropicAPI(t *testing.T) {
 		}
 
 		// Ask Claude to think about something
-		chatReq := map[string]string{
+		chatReq := map[string]interface{}{
 			"message": "Please use the think tool to plan how you would help someone learn to code. Keep it brief.",
+			"model":   "claude-haiku-3.5",
 		}
 		reqBody, _ := json.Marshal(chatReq)
 
