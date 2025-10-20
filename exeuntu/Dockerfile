@@ -10,7 +10,6 @@ ARG TARGETOS=linux
 RUN apk add --no-cache make nodejs npm && \
     node --version && npm --version
 
-# Ensure node and npm are in PATH for subsequent layers
 ENV PATH="/usr/local/bin:${PATH}"
 
 # Copy the generate-gateway-token source code so we can build it
@@ -180,7 +179,7 @@ RUN ARCH=$(uname -m) && \
 	wget -q -O node.tar.xz "https://nodejs.org/dist/v22.20.0/node-v22.20.0-linux-${NODE_ARCH}.tar.xz" && \
 	tar -C /usr/local --strip-components=1 -xJf node.tar.xz && \
 	rm node.tar.xz && \
-	node --version && npm --version && npm install -g @anthropic-ai/claude-code codex
+	node --version && npm --version && npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Copy the pre-built static binaries from the builder stage
 COPY --from=go-builder /src/generate-gateway-token/generate-gateway-token /usr/local/bin/generate-gateway-token
@@ -191,14 +190,16 @@ RUN chmod +x /usr/local/bin/shelley
 
 # Copy the self-contained Chrome bundle from chromedp/headless-shell
 COPY --from=chrome /headless-shell /headless-shell
-ENV PATH="/headless-shell:${PATH}"
+ENV PATH="/usr/local/bin:/headless-shell:${PATH}"
 
 RUN mkdir -p /home/exedev/src && chown exedev:exedev /home/exedev/src
 
 USER exedev
 
 # Add claude settings file
-COPY exeuntu/claude-settings.json /home/exedev/.claude.json
+# TODO(philip,etc.): I've not yet had Claude work with our LLM
+# gateway, so let's just have it installed without for now.
+# COPY exeuntu/claude-settings.json /home/exedev/.claude.json
 
 WORKDIR /home/exedev/src
 
