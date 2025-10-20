@@ -249,7 +249,7 @@ func (s *Server) isProxyRequest(host string) bool {
 		hostname = host
 	}
 	switch strings.ToLower(hostname) {
-	case "", "127.0.0.1", "localhost", s.getMainDomain(), s.getMainDomain("www"):
+	case "", "127.0.0.1", "localhost", s.getMainDomain(), s.getMainDomain("www"), s.tsDomain:
 		return false
 	}
 
