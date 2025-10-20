@@ -62,8 +62,7 @@ deploy-what: ## Show commits that would deploy to production
 	@./ops/deploy-what.sh
 
 run-dev: ## Run exed locally for development
-	@echo "Starting development server..."
-	@echo "Note: Using ghcr.io/boldsoftware/exeuntu:latest image"
+	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
 	@go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223
 
 run-sshpiper: ## Run sshpiper proxy server
