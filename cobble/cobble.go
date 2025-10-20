@@ -252,7 +252,10 @@ func (l *laters) do(f func()) {
 // run runs all the deferred functions in LIFO order and then clears the list
 // memory.
 func (l *laters) run() {
-	defer func() { clear(*l) }()
+	defer func() {
+		clear(*l)
+		*l = nil
+	}()
 	for _, f := range slices.Backward(*l) {
 		f()
 	}
