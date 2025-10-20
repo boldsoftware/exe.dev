@@ -29,8 +29,38 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Run Shelley tests
-        run: ./test_ci.sh
+      - name: Install UI dependencies
+        run: |
+          cd ui
+          npm ci
+
+      - name: Run TypeScript type check
+        run: |
+          cd ui
+          npm run type-check
+
+      - name: Run ESLint
+        run: |
+          cd ui
+          npm run lint
+
+      - name: Build UI
+        run: |
+          cd ui
+          npm run build
+
+      - name: Run Go tests
+        run: go test -v ./...
+
+      - name: Install Playwright browsers
+        run: |
+          cd ui
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E tests
+        run: |
+          cd ui
+          npx playwright test
 
       - name: Upload Playwright report
         if: always()
@@ -39,7 +69,6 @@ jobs:
           name: playwright-report-${{ github.sha }}
           path: shelley/ui/playwright-report/
           retention-days: 7
-        continue-on-error: true
 
       - name: Upload test results
         if: always()
@@ -48,4 +77,3 @@ jobs:
           name: test-results-${{ github.sha }}
           path: shelley/ui/test-results/
           retention-days: 7
-        continue-on-error: true
