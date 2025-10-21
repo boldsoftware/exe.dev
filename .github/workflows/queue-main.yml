@@ -21,14 +21,19 @@ permissions:
   actions: write
 
 jobs:
-  commit-validation:
+  commit-validation-and-formatting:
+    name: Commit Validation and Formatting
     runs-on: [self-hosted, linux, x64]
     permissions:
-      contents: read
+      contents: write # needed for git push
+      actions: write # needed to save caches
+    outputs:
+      commit_sha: ${{ steps.get_commit.outputs.commit_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Validate commits for WIP and DO NOT SUBMIT
         run: |
           set -e
@@ -81,19 +86,6 @@ jobs:
 
           echo "✅ All commits passed validation"
 
-  formatting:
-    needs: commit-validation
-    runs-on: [self-hosted, linux, x64]
-    permissions:
-      contents: write # needed for git push
-      actions: write # needed to save caches
-    outputs:
-      commit_sha: ${{ steps.get_commit.outputs.commit_sha }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
@@ -126,14 +118,14 @@ jobs:
         run: echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
   test:
-    needs: [commit-validation, formatting]
+    needs: [commit-validation-and-formatting]
     uses: ./.github/workflows/_tests.yml
     with:
-      ref: ${{ needs.formatting.outputs.commit_sha }}
+      ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
 
   push-to-main:
     runs-on: [self-hosted, linux, x64]
-    needs: [commit-validation, formatting, test]
+    needs: [commit-validation-and-formatting, test]
     permissions:
       contents: write
       actions: write
@@ -152,12 +144,12 @@ jobs:
         shell: bash
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.formatting.outputs.commit_sha }}
+          ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
           fetch-depth: 0
       - name: Verify expected commit checked out
         run: |
           set -euo pipefail
-          EXPECTED="${{ needs.formatting.outputs.commit_sha }}"
+          EXPECTED="${{ needs.commit-validation-and-formatting.outputs.commit_sha }}"
           ACTUAL="$(git rev-parse HEAD)"
           echo "Expected commit: $EXPECTED"
           echo "Actual commit:   $ACTUAL"
