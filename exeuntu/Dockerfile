@@ -212,7 +212,7 @@ RUN git config --global user.email "system@exe.dev" && \
 
 # Copy welcome source code and build it
 COPY --chown=exedev:exedev exeuntu/welcome/ ./
-RUN make build && go clean -modcache && rm -rf ~/.cache ~/go
+RUN make build
 
 # Switch back to root to install systemd service
 USER root
