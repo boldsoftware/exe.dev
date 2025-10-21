@@ -317,11 +317,19 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	// Check if container is actually running
 	if p.server.containerManager != nil {
 		containerInfo, err := p.server.containerManager.GetContainer(ctx, box.AllocID, *box.ContainerID)
-		slog.Info("Container status check",
-			"component", "piper-plugin", "box_name", box.Name,
-			"container_id", *box.ContainerID, "error", err,
-			"status", string(containerInfo.Status),
-		)
+		if err != nil {
+			slog.Info("piper-plugin container status check failed",
+				"box_name", box.Name,
+				"container_id", *box.ContainerID,
+				"error", err,
+			)
+		} else {
+			slog.Info("piper-plugin container status check",
+				"box_name", box.Name,
+				"container_id", *box.ContainerID,
+				"status", string(containerInfo.Status),
+			)
+		}
 		if err == nil && containerInfo.Status != container.StatusRunning {
 			// Container exists but isn't running - route to exed to show logs
 			// Use a special username format that exed will recognize
