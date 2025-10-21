@@ -31,4 +31,5 @@ fi
 mount -o remount,rw /proc/sys
 
 echo "Starting systemd..."
-exec /sbin/init --log-level=debug --log-target=syslog --show-status=true
+# Add --log-level=debug to see more systemd debugging
+exec /sbin/init --log-target=syslog --show-status=true
