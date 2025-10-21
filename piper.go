@@ -239,17 +239,6 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	}
 	slog.Debug("looked up user for ssh key", "component", "piper-plugin", "public_key", pubKey, "user_id", userID)
 
-	// Special handling for local dev mode - allow any connection as localexe user
-	if p.server.devMode == "local" && conn.User() == "localexe" && userID == "" {
-		// Get the first user from the database for local dev
-		userID, err = withRxRes(p.server, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetFirstUserID(ctx)
-		})
-		if err == nil {
-			slog.Debug("Using first user for local dev mode", "component", "piper-plugin", "user_id", userID)
-		}
-	}
-
 	localAddress := conn.GetMeta("local_address")
 	if localAddress != "" {
 		localAddress, _, err = net.SplitHostPort(localAddress)
