@@ -49,11 +49,14 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 	}
 	waitCmd.Wait()
 
+	// Without auth, should redirect to login page with the original URL as redirect parameter
+	expectedRedirect := fmt.Sprintf("http://%s.localhost:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.localhost%%3A%d%%2F%%3Ffoo%%3D1", box, altPort, box, altPort)
 	proxyAssert(t, box, proxyExpectation{
-		name:     "altport without auth redirects",
-		httpPort: altPort,
-		cookies:  nil,
-		httpCode: http.StatusTemporaryRedirect,
+		name:             "altport without auth redirects",
+		httpPort:         altPort,
+		cookies:          nil,
+		httpCode:         http.StatusTemporaryRedirect,
+		redirectLocation: expectedRedirect,
 	})
 	proxyAssert(t, box, proxyExpectation{
 		name:     "altport with auth succeeds",
@@ -71,10 +74,11 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 }
 
 type proxyExpectation struct {
-	name     string
-	httpPort int
-	cookies  []*http.Cookie
-	httpCode int
+	name             string
+	httpPort         int
+	cookies          []*http.Cookie
+	httpCode         int
+	redirectLocation string // Expected Location header for redirects (optional)
 }
 
 func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.Request, error) {
@@ -293,6 +297,20 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 		}
 		t.Errorf("expected status %d, got %d, body: %s", exp.httpCode, resp.StatusCode, body)
 		return
+	}
+
+	// Check redirect location if expected
+	if exp.redirectLocation != "" {
+		location := resp.Header.Get("Location")
+		if location == "" {
+			t.Errorf("expected redirect location %q, but no Location header found", exp.redirectLocation)
+			return
+		}
+		if location != exp.redirectLocation {
+			t.Errorf("expected redirect location %q, got %q", exp.redirectLocation, location)
+			return
+		}
+		t.Logf("Redirect location matches expected: %s", location)
 	}
 }
 
