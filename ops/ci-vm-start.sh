@@ -16,6 +16,7 @@ USER_NAME="${USER_NAME:-ubuntu}"
 # Cache/snapshot settings (hash of ops/setup-containerd-clh-nydus.sh)
 CACHE_DIR="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
 mkdir -p "${CACHE_DIR}"
+sudo chown $USER "${CACHE_DIR}"
 
 hash_file() {
 	local f="$1"
