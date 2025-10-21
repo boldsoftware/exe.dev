@@ -282,15 +282,32 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
 	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/.cache/exedops/kata-config-clh.toml"
 
-	# Copy custom kernel if available
+	# Build custom kernel if not cached
 	KERNEL_BUILDER_DIR="${SCRIPT_DIR}/kernel-builder/output"
-	if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
+	KERNEL_CACHE_DIR="${CACHE_DIR}/kernel"
+	mkdir -p "${KERNEL_CACHE_DIR}"
+	
+	if [ ! -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
+		echo "Custom kernel not found in cache, building it now..."
+		(cd "${SCRIPT_DIR}/kernel-builder" && make)
+		if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
+			echo "Caching kernel build..."
+			cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables"
+			cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${KERNEL_CACHE_DIR}/config-6.12.42-nftables"
+		else
+			echo "ERROR: Failed to build custom kernel"
+			exit 1
+		fi
+	fi
+
+	# Copy custom kernel from cache to VM
+	if [ -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
 		echo "Copying custom kernel with nftables support..."
-		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/vmlinux-6.12.42-nftables"
-		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/config-6.12.42-nftables"
+		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/vmlinux-6.12.42-nftables"
+		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/config-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/config-6.12.42-nftables"
 	else
-		echo "WARNING: Custom kernel not found at ${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables"
-		echo "Run 'cd ${SCRIPT_DIR}/kernel-builder && make' to build it first"
+		echo "ERROR: Custom kernel not found in cache"
+		exit 1
 	fi
 
 	# Copy pre-downloaded tarballs to VM
