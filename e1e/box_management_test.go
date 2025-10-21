@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
+	"time"
 
 	"exe.dev/vouch"
 )
@@ -120,4 +122,50 @@ func TestNewWithPrompt(t *testing.T) {
 	pty.want("Deleting")
 	pty.wantPrompt()
 	pty.disconnect()
+}
+
+func TestDockerWorks(t *testing.T) {
+	vouch.For("philip")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Create a box with default systemd command.
+	boxName := newBox(t, pty)
+	pty.disconnect()
+
+	// Wait for SSH to be responsive (systemd may take time to initialize).
+	for i := 0; i < 30; i++ {
+		err := boxSSHCommand(t, boxName, keyFile, "true").Run()
+		if err == nil {
+			break
+		}
+		if i == 29 {
+			t.Fatalf("SSH not responsive after 30 seconds")
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	// Wait for docker to be available. Docker uses socket activation and starts on first use,
+	// but we need to give systemd a bit more time after SSH is ready.
+	for i := 0; i < 10; i++ {
+		err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "info").Run()
+		if err == nil {
+			break
+		}
+		if i == 9 {
+			t.Fatalf("docker not available after waiting")
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	// Run a simple docker container to verify Docker works in exeuntu.
+	out, err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "run", "--rm", "alpine:latest", "echo", "hello").CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to run docker command: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "hello") {
+		t.Fatalf("expected 'hello' in docker output, got: %s", out)
+	}
 }
