@@ -26,5 +26,9 @@ if [[ -w /proc/sys/net/ipv6/ip_unprivileged_port_start ]]; then
 	printf '0\n' > /proc/sys/net/ipv6/ip_unprivileged_port_start
 fi
 
+# Kata containers default to mounting this readonly, but Docker needs
+# to write to /proc/sys to set net.ipv4.ip_forward=1
+mount -o remount,rw /proc/sys
+
 echo "Starting systemd..."
 exec /sbin/init --log-level=debug --log-target=syslog --show-status=true

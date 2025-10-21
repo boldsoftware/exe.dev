@@ -61,7 +61,9 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		golang-go git \
 		libglib2.0-0 libnss3 libx11-6 libxcomposite1 libxdamage1 \
 		libxext6 libxi6 libxrandr2 libgbm1 libgtk-3-0 \
-		fonts-noto-color-emoji fonts-symbola && \
+		fonts-noto-color-emoji fonts-symbola \
+		docker.io docker-buildx docker-compose-v2 \
+		&& \
 	# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
 	setcap cap_net_raw=+ep /usr/bin/ping && \
 	fc-cache -f -v && \
@@ -120,7 +122,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		apt-daily-upgrade.timer \
 		apt-daily.timer \
 		plymouth-log.service && \
-	systemctl disable systemd-logind.service getty.target \
+	systemctl disable docker.service systemd-logind.service getty.target \
 		nginx.service \
                    console-getty.service \
 		   atop.service \
