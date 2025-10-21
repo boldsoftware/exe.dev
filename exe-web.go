@@ -983,29 +983,6 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// In dev mode, skip email verification and go straight to auth/confirm
-	if s.devMode != "" && r.Method == "GET" {
-		// Extract redirect parameters
-		redirectURL := r.URL.Query().Get("redirect")
-		returnHost := r.URL.Query().Get("return_host")
-
-		if redirectURL != "" && returnHost != "" {
-			// Get the first user in the database (dev mode convenience)
-			userID, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-				return queries.GetFirstUserID(ctx)
-			})
-			if err != nil {
-				s.slog().Error("Failed to get first user for dev mode auth bypass", "error", err)
-				http.Error(w, "No users found in database. Please create one first.", http.StatusInternalServerError)
-				return
-			}
-
-			// Redirect directly to redirectAfterAuth flow
-			s.redirectAfterAuth(w, r, userID)
-			return
-		}
-	}
-
 	// Handle POST request (email submission)
 	if r.Method == "POST" {
 		s.handleAuthEmailSubmission(w, r)
