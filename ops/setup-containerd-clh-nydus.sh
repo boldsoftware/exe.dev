@@ -659,8 +659,8 @@ echo "Loading baseline images (exeuntu, ubuntu, alpine)..."
 # Images to load
 IMAGES=(
 	"ghcr.io/boldsoftware/exeuntu:latest"
-	"docker.io/library/ubuntu:latest"
 	"ghcr.io/linuxcontainers/alpine:latest"
+	"docker.io/library/ubuntu:latest"
 )
 
 for image in "${IMAGES[@]}"; do
