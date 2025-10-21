@@ -32,3 +32,8 @@ consider as your workspace.
 We can make `https://name.exe.dev/` work because HTTP has a "Host:" header that
 lets us direct traffic appropriately. The SSH protocol only has the IP address
 that's being connected to.
+
+# Q: Can I run docker images?
+
+Sure, why not; it's just a VM. If you start with the `exeuntu` image,
+you can run `docker run --rm alpine:latest echo hello`, and go from there!
