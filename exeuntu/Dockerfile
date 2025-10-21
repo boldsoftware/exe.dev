@@ -226,6 +226,14 @@ RUN cp /home/exedev/src/welcome.service /etc/systemd/system/welcome.service && \
 COPY exeuntu/welcome-manage.polkit /etc/polkit-1/rules.d/50-welcome-manage.rules
 RUN chmod 644 /etc/polkit-1/rules.d/50-welcome-manage.rules
 
+# Install custom MOTD script
+COPY exeuntu/motd-exe.sh /etc/update-motd.d/99-exe-dev
+RUN chmod +x /etc/update-motd.d/99-exe-dev && \
+    # Disable default Ubuntu MOTD scripts we don't need
+    chmod -x /etc/update-motd.d/10-help-text /etc/update-motd.d/50-motd-news && \
+    # Remove the fsck-at-reboot script that errors in containers
+    rm -f /etc/update-motd.d/98-fsck-at-reboot
+
 # Create systemd service for Shelley
 COPY exeuntu/shelley.service /etc/systemd/system/shelley.service
 RUN chmod 644 /etc/systemd/system/shelley.service && systemctl enable shelley.service
