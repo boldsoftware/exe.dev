@@ -14,17 +14,17 @@ export default defineConfig({
   /* Single worker for predictable test database state */
   workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: process.env.CI ? 'html' : 'list',
+  reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: process.env.TEST_SERVER_URL || 'http://localhost:9001',
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'retain-on-failure',
+    trace: 'on-first-retry',
     /* Take screenshots on failure */
     screenshot: 'only-on-failure',
     /* Record video only on failure */
-    video: 'retain-on-failure',
+    video: 'on-first-retry',
   },
 
   /* Just test mobile Chrome for simplicity */

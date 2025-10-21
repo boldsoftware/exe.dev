@@ -8,6 +8,23 @@ on:
       - 'shelley/**'
       - '.github/workflows/shelley-tests.yml'
   workflow_dispatch:
+    inputs:
+      run_playwright:
+        description: 'Run Playwright E2E tests'
+        required: false
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      run_playwright:
+        description: 'Run Playwright E2E tests'
+        required: false
+        type: boolean
+        default: true
+      ref:
+        description: 'Git ref to checkout'
+        required: false
+        type: string
 
 jobs:
   test:
@@ -18,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -53,27 +72,24 @@ jobs:
         run: go test -v ./...
 
       - name: Install Playwright browsers
+        if: inputs.run_playwright != false
         run: |
           cd ui
           npx playwright install --with-deps chromium
 
       - name: Run Playwright E2E tests
+        if: inputs.run_playwright != false
         run: |
           cd ui
           npx playwright test
 
-      - name: Upload Playwright report
-        if: always()
+      - name: Upload Playwright artifacts
+        if: always() && inputs.run_playwright != false
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ github.sha }}
-          path: shelley/ui/playwright-report/
+          name: playwright-artifacts-${{ github.sha }}
+          path: |
+            shelley/ui/playwright-report/
+            shelley/ui/test-results/
           retention-days: 7
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ github.sha }}
-          path: shelley/ui/test-results/
-          retention-days: 7
+          if-no-files-found: ignore

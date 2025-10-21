@@ -123,9 +123,16 @@ jobs:
     with:
       ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
 
+  shelley-test:
+    needs: [commit-validation-and-formatting]
+    uses: ./.github/workflows/shelley-tests.yml
+    with:
+      ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
+      run_playwright: false
+
   push-to-main:
     runs-on: [self-hosted, linux, x64]
-    needs: [commit-validation-and-formatting, test]
+    needs: [commit-validation-and-formatting, test, shelley-test]
     permissions:
       contents: write
       actions: write
