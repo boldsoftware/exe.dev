@@ -257,20 +257,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
 
 	// Check if this is a direct box access attempt
-	// In local dev mode, allow box access even without registration
-	if username != "" && (registered || p.server.devMode == "local") {
-		// If not registered but in local dev mode, use first user
-		if !registered && p.server.devMode == "local" && userID == "" {
-			userID, err = withRxRes(p.server, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-				return queries.GetFirstUserID(ctx)
-			})
-			if err == nil {
-				slog.Debug("Using first user for local dev box access", "component", "piper-plugin", "user_id", userID)
-				registered = true // Pretend they're registered for the checks below
-			}
-		}
-
-		slog.Info("Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered, "devMode", p.server.devMode)
+	if username != "" && registered {
+		slog.Info("Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered)
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
 			slog.Info("Found box, routing to container", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID)
 			return p.handleBoxAccess(box, userID, connID)

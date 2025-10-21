@@ -20,17 +20,6 @@ func (q *Queries) GetEmailByUserID(ctx context.Context, userID string) (string, 
 	return email, err
 }
 
-const getFirstUserID = `-- name: GetFirstUserID :one
-SELECT user_id FROM users LIMIT 1
-`
-
-func (q *Queries) GetFirstUserID(ctx context.Context) (string, error) {
-	row := q.queryRow(ctx, q.getFirstUserIDStmt, getFirstUserID)
-	var user_id string
-	err := row.Scan(&user_id)
-	return user_id, err
-}
-
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT user_id, email, created_at, default_billing_account_id
 FROM users

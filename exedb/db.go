@@ -132,9 +132,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
 	}
-	if q.getFirstUserIDStmt, err = db.PrepareContext(ctx, getFirstUserID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetFirstUserID: %w", err)
-	}
 	if q.getImageMetadataStmt, err = db.PrepareContext(ctx, getImageMetadata); err != nil {
 		return nil, fmt.Errorf("error preparing query GetImageMetadata: %w", err)
 	}
@@ -504,11 +501,6 @@ func (q *Queries) Close() error {
 	if q.getEmailVerificationByTokenStmt != nil {
 		if cerr := q.getEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByTokenStmt: %w", cerr)
-		}
-	}
-	if q.getFirstUserIDStmt != nil {
-		if cerr := q.getFirstUserIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getFirstUserIDStmt: %w", cerr)
 		}
 	}
 	if q.getImageMetadataStmt != nil {
@@ -896,7 +888,6 @@ type Queries struct {
 	getEmailVerificationByEmailStmt        *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
-	getFirstUserIDStmt                     *sql.Stmt
 	getImageMetadataStmt                   *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
@@ -1001,7 +992,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByEmailStmt:        q.getEmailVerificationByEmailStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
-		getFirstUserIDStmt:                     q.getFirstUserIDStmt,
 		getImageMetadataStmt:                   q.getImageMetadataStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
