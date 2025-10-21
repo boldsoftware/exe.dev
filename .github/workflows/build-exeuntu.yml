@@ -1,4 +1,5 @@
 name: Build and Push Exeuntu Images
+run-name: ${{ inputs.commit_subject || github.event.head_commit.message || format('Build exeuntu ({0})', github.sha) }}
 
 on:
   push:
@@ -8,6 +9,11 @@ on:
       - 'shelley/**'
       - '.github/workflows/build-exeuntu.yml'
   workflow_dispatch:
+    inputs:
+      commit_subject:
+        description: 'Commit subject line'
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io

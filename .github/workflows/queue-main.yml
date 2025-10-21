@@ -201,6 +201,7 @@ jobs:
       - name: Trigger exeuntu build
         if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
         run: |
-          gh workflow run build-exeuntu.yml --ref main
+          COMMIT_SUBJECT=$(git log -1 --pretty=%s)
+          gh workflow run build-exeuntu.yml --ref main -f commit_subject="$COMMIT_SUBJECT"
         env:
           GH_TOKEN: ${{ github.token }}
