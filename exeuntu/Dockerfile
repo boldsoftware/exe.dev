@@ -218,9 +218,8 @@ RUN make build
 # Switch back to root to install systemd service
 USER root
 
-# Install and enable the welcome web server systemd service
-RUN cp /home/exedev/src/welcome.service /etc/systemd/system/welcome.service && \
-    systemctl enable welcome.service
+# Install (in a disabled state) a welcome web server systemd service
+RUN cp /home/exedev/src/welcome.service /etc/systemd/system/welcome.service && systemctl disable welcome.service
 
 # Install polkit rule to allow exedev user to manage welcome service
 COPY exeuntu/welcome-manage.polkit /etc/polkit-1/rules.d/50-welcome-manage.rules
