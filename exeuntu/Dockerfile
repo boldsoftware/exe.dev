@@ -162,6 +162,7 @@ RUN usermod -l exedev ubuntu && \
 	mv /home/ubuntu /home/exedev && \
 	usermod -d /home/exedev exedev && \
 	usermod -aG sudo exedev && \
+	usermod -aG docker exedev && \
 	echo 'exedev ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 ENV EXEUNTU=1
