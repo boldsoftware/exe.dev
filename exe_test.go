@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"exe.dev/container"
+	"exe.dev/exedb"
 	"exe.dev/sqlite"
 )
 
@@ -473,4 +474,66 @@ func TestMetricsEndpointProtection(t *testing.T) {
 			t.Errorf("Expected 'remoteaddr check' error in response body, got: %s", body)
 		}
 	})
+}
+
+// TestWebAuthFlowCreatesNewUser tests that the web auth flow creates a new user if they don't exist
+func TestWebAuthFlowCreatesNewUser(t *testing.T) {
+	server := NewTestServer(t)
+
+	email := "newuser@example.com"
+
+	// Verify user doesn't exist yet
+	userID, err := withRxRes(server, context.Background(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetUserIDByEmail(ctx, email)
+	})
+	if err == nil {
+		t.Fatalf("User should not exist yet, but got user ID: %s", userID)
+	}
+
+	// Submit email for authentication
+	form := url.Values{}
+	form.Add("email", email)
+	resp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/auth", server.httpLn.tcp.Port),
+		"application/x-www-form-urlencoded",
+		strings.NewReader(form.Encode()),
+	)
+	if err != nil {
+		t.Fatalf("Failed to POST /auth: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("POST /auth: Expected status 200, got %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	// Verify the response doesn't contain the error message about SSH signup
+	if strings.Contains(string(body), "Please sign up first using SSH") {
+		t.Errorf("Response should not tell user to sign up via SSH: %s", string(body))
+	}
+
+	// Verify user was created
+	userID, err = withRxRes(server, context.Background(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		return queries.GetUserIDByEmail(ctx, email)
+	})
+	if err != nil {
+		t.Fatalf("User should exist after web auth, but got error: %v", err)
+	}
+
+	if userID == "" {
+		t.Fatal("User ID should not be empty")
+	}
+
+	// Verify user allocation was created
+	alloc, err := withRxRes(server, context.Background(), func(ctx context.Context, queries *exedb.Queries) (exedb.Alloc, error) {
+		return queries.GetAllocByUserID(ctx, userID)
+	})
+	if err != nil {
+		t.Fatalf("Failed to get allocation: %v", err)
+	}
+
+	if alloc.AllocID == "" {
+		t.Fatal("User should have an allocation")
+	}
 }

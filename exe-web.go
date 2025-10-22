@@ -1011,21 +1011,46 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Check if user exists
-	userID, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetUserIDByEmail(ctx, email)
+	// Check if user exists, create if not
+	var userID string
+	err := s.withTx(r.Context(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		userID, err = queries.GetUserIDByEmail(ctx, email)
+		if errors.Is(err, sql.ErrNoRows) {
+			// User doesn't exist, create them
+			userID, err = generateUserID()
+			if err != nil {
+				return fmt.Errorf("failed to generate user ID: %w", err)
+			}
+
+			err = queries.InsertUser(ctx, exedb.InsertUserParams{
+				UserID: userID,
+				Email:  email,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create user: %w", err)
+			}
+
+			// Create user allocation
+			allocID, err := generateAllocID()
+			if err != nil {
+				return fmt.Errorf("failed to generate allocation ID: %w", err)
+			}
+
+			err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
+				AllocID: allocID,
+				UserID:  userID,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create allocation: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("failed to check user existence: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			s.showAuthError(
-				w,
-				r,
-				"No account found with this email address. Please sign up first using SSH.",
-				s.formatExeDevConnectionInfo(),
-			)
-			return
-		}
-		s.slog().Error("Database error checking user", "error", err)
+		s.slog().Error("Database error during user lookup/creation", "error", err)
 		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 		return
 	}
