@@ -21,7 +21,6 @@ import (
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
-	"exe.dev/sshpool2"
 )
 
 // exe.dev provides a "magic" proxy for user's boxes. When a user requests https://boxname.exe.dev/,
@@ -690,20 +689,6 @@ func (c *sshConn) Close() error {
 	return nil
 }
 
-// sshDialer implements DialContext by connecting via the ssh pool
-type sshDialer struct {
-	pool    *sshpool2.Pool
-	sshHost string
-	sshPort int
-	signer  ssh.Signer
-	cfg     *ssh.ClientConfig
-}
-
-func (d *sshDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	// Use the pool's Dial method which handles connection reuse, retries, and tracking
-	return d.pool.Dial(network, addr, d.sshHost, d.cfg.User, d.sshPort, d.signer, d.cfg)
-}
-
 // resolveSSHHost resolves the SSH host address from a ctrhost, handling URL formats and dev mode aliases
 func (s *Server) resolveSSHHost(ctrhost string) string {
 	sshHost := "localhost"
@@ -736,7 +721,6 @@ func (s *Server) resolveSSHHost(ctrhost string) string {
 
 // createSSHTunnelTransport creates an HTTP transport that tunnels through SSH to a container
 func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey ssh.Signer) *http.Transport {
-	// Build SSH client config
 	cfg := &ssh.ClientConfig{
 		User:            *box.SSHUser,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshKey)},
@@ -748,13 +732,9 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 	// The sshDialer uses the connection pool for SSH connections
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&sshDialer{
-			pool:    s.sshPool,
-			sshHost: sshHost,
-			sshPort: int(*box.SSHPort),
-			signer:  sshKey,
-			cfg:     cfg,
-		}).DialContext,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return s.sshPool.Dial(network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg)
+		},
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
