@@ -1,11 +1,18 @@
 package sshpool2
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"errors"
 	"fmt"
+	"io"
+	mathrand "math/rand"
 	"net"
+	"strconv"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -99,8 +106,7 @@ func (s *testSSHServer) host() string {
 
 func (s *testSSHServer) port() int {
 	_, portStr, _ := net.SplitHostPort(s.addr)
-	port := 0
-	fmt.Sscanf(portStr, "%d", &port)
+	port, _ := strconv.Atoi(portStr)
 	return port
 }
 
@@ -126,106 +132,296 @@ func newTestClientConfig(t *testing.T) (*ssh.ClientConfig, ssh.Signer) {
 	return config, signer
 }
 
+func mustCloseConn(t *testing.T, conn net.Conn) {
+	t.Helper()
+	if err := conn.Close(); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("close failed: %v", err)
+	}
+}
+
+func getOnlyPooledConn(t *testing.T, pool *Pool) *pooledConn {
+	t.Helper()
+
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	if len(pool.conns) != 1 {
+		t.Fatalf("expected 1 pooled connection, got %d", len(pool.conns))
+	}
+	for _, pc := range pool.conns {
+		return pc
+	}
+	t.Fatal("no pooled connection found")
+	return nil
+}
+
 func TestPoolBasicConnection(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
+
+		pool := &Pool{TTL: 10 * time.Minute}
+		defer pool.Close()
+
+		config, signer := newTestClientConfig(t)
+
+		conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("failed to dial: %v", err)
+		}
+		defer conn.Close()
+
+		if conn == nil {
+			t.Fatal("expected non-nil connection")
+		}
+	})
+}
+
+func TestPooledConnDisconnectedResetsActive(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
+
+		pool := &Pool{TTL: time.Minute}
+		defer pool.Close()
+
+		config, signer := newTestClientConfig(t)
+
+		conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("failed initial dial: %v", err)
+		}
+		pc := getOnlyPooledConn(t, pool)
+
+		mustCloseConn(t, conn)
+
+		pc.mu.Lock()
+		if got := pc.active; got != 1 {
+			t.Fatalf("after initial close: active=%d, want 1", got)
+		}
+		pc.mu.Unlock()
+
+		for i := 0; i < 3; i++ {
+			conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+			if err != nil {
+				t.Fatalf("iteration %d dial failed: %v", i, err)
+			}
+			mustCloseConn(t, conn)
+
+			pc.mu.Lock()
+			if got := pc.active; got != 1 {
+				t.Fatalf("iteration %d: active=%d, want 1", i, got)
+			}
+			if pc.timer == nil {
+				t.Fatalf("iteration %d: timer is nil", i)
+			}
+			pc.mu.Unlock()
+		}
+	})
+}
+
+func TestPooledConnTimersReleaseOnce(t *testing.T) {
 	server := newTestSSHServer(t)
 	defer server.close()
 
-	pool := New(10 * time.Minute)
+	pool := &Pool{TTL: 25 * time.Millisecond}
 	defer pool.Close()
 
 	config, signer := newTestClientConfig(t)
 
-	conn, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
 	if err != nil {
-		t.Fatalf("failed to dial: %v", err)
+		t.Fatalf("failed initial dial: %v", err)
 	}
-	defer conn.Close()
+	pc := getOnlyPooledConn(t, pool)
 
-	if conn == nil {
-		t.Fatal("expected non-nil connection")
+	mustCloseConn(t, conn)
+
+	for i := 0; i < 2; i++ {
+		conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("iteration %d dial failed: %v", i, err)
+		}
+		mustCloseConn(t, conn)
 	}
+
+	pc.mu.Lock()
+	if got := pc.active; got != 1 {
+		pc.mu.Unlock()
+		t.Fatalf("before TTL expiry: active=%d, want 1", got)
+	}
+	pc.mu.Unlock()
+
+	deadline := time.Now().Add(2 * time.Second)
+
+	for {
+		pool.mu.Lock()
+		_, stillPresent := pool.conns[pc.key]
+		pool.mu.Unlock()
+
+		if !stillPresent {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pool entry still present after %v", time.Since(deadline.Add(-2*time.Second)))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	for {
+		pc.mu.Lock()
+		active := pc.active
+		pc.mu.Unlock()
+		if active == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pooledConn.active still %d after release deadline", active)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	conn, err = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("dial after release failed: %v", err)
+	}
+	mustCloseConn(t, conn)
+}
+
+func TestPooledConnActiveCountsWithParallelUse(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
+
+		pool := &Pool{TTL: time.Minute}
+		defer pool.Close()
+
+		config, signer := newTestClientConfig(t)
+
+		conn1, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("first dial failed: %v", err)
+		}
+		pc := getOnlyPooledConn(t, pool)
+
+		conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("second dial failed: %v", err)
+		}
+
+		pc.mu.Lock()
+		if got := pc.active; got != 3 {
+			t.Fatalf("with two open connections: active=%d, want 3", got)
+		}
+		pc.mu.Unlock()
+
+		mustCloseConn(t, conn1)
+
+		pc.mu.Lock()
+		if got := pc.active; got != 2 {
+			t.Fatalf("after closing first connection: active=%d, want 2", got)
+		}
+		pc.mu.Unlock()
+
+		mustCloseConn(t, conn2)
+
+		pc.mu.Lock()
+		if got := pc.active; got != 1 {
+			t.Fatalf("after closing second connection: active=%d, want 1", got)
+		}
+		if pc.timer == nil {
+			t.Fatal("timer should remain set after closing second connection")
+		}
+		pc.mu.Unlock()
+	})
 }
 
 func TestPoolReuseConnection(t *testing.T) {
-	server := newTestSSHServer(t)
-	defer server.close()
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
 
-	pool := New(10 * time.Minute)
-	defer pool.Close()
+		pool := &Pool{TTL: 10 * time.Minute}
+		defer pool.Close()
 
-	config, signer := newTestClientConfig(t)
+		config, signer := newTestClientConfig(t)
 
-	// Make first dial
-	conn1, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
-	if err != nil {
-		t.Fatalf("failed first dial: %v", err)
-	}
-	defer conn1.Close()
+		// Make first dial
+		conn1, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("failed first dial: %v", err)
+		}
+		defer conn1.Close()
 
-	// Make second dial - should reuse the same SSH connection
-	conn2, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
-	if err != nil {
-		t.Fatalf("failed second dial: %v", err)
-	}
-	defer conn2.Close()
+		// Make second dial - should reuse the same SSH connection
+		conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("failed second dial: %v", err)
+		}
+		defer conn2.Close()
 
-	// Check that we only have one SSH connection in the pool
-	pool.mu.Lock()
-	numConns := len(pool.conns)
-	pool.mu.Unlock()
+		// Check that we only have one SSH connection in the pool
+		pool.mu.Lock()
+		numConns := len(pool.conns)
+		pool.mu.Unlock()
 
-	if numConns != 1 {
-		t.Errorf("expected 1 SSH connection in pool, got %d", numConns)
-	}
+		if numConns != 1 {
+			t.Errorf("expected 1 SSH connection in pool, got %d", numConns)
+		}
+	})
 }
 
 func TestPoolDifferentKeys(t *testing.T) {
-	server := newTestSSHServer(t)
-	defer server.close()
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
 
-	pool := New(10 * time.Minute)
-	defer pool.Close()
+		pool := &Pool{TTL: 10 * time.Minute}
+		defer pool.Close()
 
-	config1, signer1 := newTestClientConfig(t)
-	config2, signer2 := newTestClientConfig(t)
+		config1, signer1 := newTestClientConfig(t)
+		config2, signer2 := newTestClientConfig(t)
 
-	// Dial with first key
-	conn1, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config1.User, server.port(), signer1, config1)
-	if err != nil {
-		t.Fatalf("failed first dial: %v", err)
-	}
-	defer conn1.Close()
+		// Dial with first key
+		conn1, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config1.User, server.port(), signer1, config1)
+		if err != nil {
+			t.Fatalf("failed first dial: %v", err)
+		}
+		defer conn1.Close()
 
-	// Dial with different key - should create new SSH connection
-	conn2, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config2.User, server.port(), signer2, config2)
-	if err != nil {
-		t.Fatalf("failed second dial: %v", err)
-	}
-	defer conn2.Close()
+		// Dial with different key - should create new SSH connection
+		conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config2.User, server.port(), signer2, config2)
+		if err != nil {
+			t.Fatalf("failed second dial: %v", err)
+		}
+		defer conn2.Close()
 
-	// Check that we have two SSH connections in the pool
-	pool.mu.Lock()
-	numConns := len(pool.conns)
-	pool.mu.Unlock()
+		// Check that we have two SSH connections in the pool
+		pool.mu.Lock()
+		numConns := len(pool.conns)
+		pool.mu.Unlock()
 
-	if numConns != 2 {
-		t.Errorf("expected 2 SSH connections in pool, got %d", numConns)
-	}
+		if numConns != 2 {
+			t.Errorf("expected 2 SSH connections in pool, got %d", numConns)
+		}
+	})
 }
 
 func TestPoolExpiration(t *testing.T) {
+	// synctest.Test(t, func(t *testing.T) {
 	server := newTestSSHServer(t)
 	defer server.close()
 
 	// Use a very short TTL for testing
 	ttl := 100 * time.Millisecond
-	pool := New(ttl)
+	pool := &Pool{TTL: ttl}
 	defer pool.Close()
 
+	t.Log("early")
 	config, signer := newTestClientConfig(t)
 
 	// Make first dial
-	conn1, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	conn1, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
 	if err != nil {
 		t.Fatalf("failed first dial: %v", err)
 	}
@@ -244,7 +440,7 @@ func TestPoolExpiration(t *testing.T) {
 	}
 
 	// Make a new dial - should create a new SSH connection
-	conn2, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
 	if err != nil {
 		t.Fatalf("failed dial after expiration: %v", err)
 	}
@@ -258,86 +454,359 @@ func TestPoolExpiration(t *testing.T) {
 	if numConns != 1 {
 		t.Errorf("expected 1 connection after re-dial, got %d", numConns)
 	}
+	// })
 }
 
 func TestPoolConcurrentAccess(t *testing.T) {
-	server := newTestSSHServer(t)
-	defer server.close()
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
 
-	pool := New(10 * time.Minute)
-	defer pool.Close()
+		pool := &Pool{TTL: 10 * time.Minute}
+		defer pool.Close()
+
+		config, signer := newTestClientConfig(t)
+
+		// Launch multiple goroutines trying to dial concurrently
+		const numGoroutines = 10
+		conns := make([]net.Conn, numGoroutines)
+		errs := make([]error, numGoroutines)
+		done := make(chan struct{})
+
+		for i := 0; i < numGoroutines; i++ {
+			go func(idx int) {
+				conns[idx], errs[idx] = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+				done <- struct{}{}
+			}(i)
+		}
+
+		// Wait for all goroutines to complete
+		for i := 0; i < numGoroutines; i++ {
+			<-done
+		}
+
+		// Check that all succeeded
+		for i, err := range errs {
+			if err != nil {
+				t.Errorf("goroutine %d failed: %v", i, err)
+			}
+		}
+
+		// Clean up connections
+		for _, conn := range conns {
+			if conn != nil {
+				conn.Close()
+			}
+		}
+
+		// Check that we only have one SSH connection in the pool
+		pool.mu.Lock()
+		numConns := len(pool.conns)
+		pool.mu.Unlock()
+
+		if numConns != 1 {
+			t.Errorf("expected 1 SSH connection in pool, got %d", numConns)
+		}
+	})
+}
+
+func TestDialWithRetriesContextCancel(t *testing.T) {
+	pool := &Pool{TTL: time.Minute}
 
 	config, signer := newTestClientConfig(t)
+	config.Timeout = 10 * time.Millisecond
 
-	// Launch multiple goroutines trying to dial concurrently
-	const numGoroutines = 10
-	conns := make([]net.Conn, numGoroutines)
-	errs := make([]error, numGoroutines)
-	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	start := time.Now()
 
-	for i := 0; i < numGoroutines; i++ {
-		go func(idx int) {
-			conns[idx], errs[idx] = pool.Dial("tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
-			done <- struct{}{}
-		}(i)
+	time.AfterFunc(40*time.Millisecond, cancel)
+
+	retries := []time.Duration{200 * time.Millisecond}
+	conn, errs := pool.DialWithRetries(ctx, "tcp", "127.0.0.1:80", "127.0.0.1", config.User, 65000, signer, config, retries)
+	if conn != nil {
+		t.Fatal("expected nil connection on cancellation")
+	}
+	if len(errs) == 0 {
+		t.Fatal("expected at least one error")
+	}
+	if err := ctx.Err(); !errors.Is(errs[len(errs)-1], err) {
+		t.Fatalf("expected final error %v, got %v", err, errs[len(errs)-1])
 	}
 
-	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
-		<-done
-	}
-
-	// Check that all succeeded
-	for i, err := range errs {
-		if err != nil {
-			t.Errorf("goroutine %d failed: %v", i, err)
-		}
-	}
-
-	// Clean up connections
-	for _, conn := range conns {
-		if conn != nil {
-			conn.Close()
-		}
-	}
-
-	// Check that we only have one SSH connection in the pool
-	pool.mu.Lock()
-	numConns := len(pool.conns)
-	pool.mu.Unlock()
-
-	if numConns != 1 {
-		t.Errorf("expected 1 SSH connection in pool, got %d", numConns)
+	elapsed := time.Since(start)
+	if elapsed >= retries[0] {
+		t.Fatalf("DialWithRetries respected cancellation too late; elapsed=%v, retry delay=%v", elapsed, retries[0])
 	}
 }
 
 func TestPoolClose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
+
+		pool := &Pool{TTL: 10 * time.Minute}
+
+		config, signer := newTestClientConfig(t)
+
+		// Make a dial
+		conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("failed to dial: %v", err)
+		}
+		conn.Close()
+
+		// Close the pool
+		err = pool.Close()
+		if err != nil {
+			t.Fatalf("failed to close pool: %v", err)
+		}
+
+		// Check that all connections were closed
+		pool.mu.Lock()
+		numConns := len(pool.conns)
+		pool.mu.Unlock()
+
+		if numConns != 0 {
+			t.Errorf("expected 0 connections after close, got %d", numConns)
+		}
+	})
+}
+
+func TestPoolRecoversFromClosedClient(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		server := newTestSSHServer(t)
+		defer server.close()
+
+		pool := &Pool{TTL: time.Minute}
+		defer pool.Close()
+
+		config, signer := newTestClientConfig(t)
+
+		conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("failed initial dial: %v", err)
+		}
+		conn.Close()
+
+		pool.mu.Lock()
+		if len(pool.conns) != 1 {
+			pool.mu.Unlock()
+			t.Fatalf("expected 1 pooled connection, got %d", len(pool.conns))
+		}
+		var original *pooledConn
+		for _, candidate := range pool.conns {
+			original = candidate
+		}
+		pool.mu.Unlock()
+
+		if original == nil {
+			t.Fatal("expected pooled connection to exist")
+		}
+
+		if err := original.client.Close(); err != nil {
+			t.Fatalf("failed to close underlying client: %v", err)
+		}
+
+		_, err = pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err == nil {
+			t.Fatal("expected error after closing underlying client")
+		}
+
+		conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+		if err != nil {
+			t.Fatalf("failed dial after retry: %v", err)
+		}
+		conn2.Close()
+
+		pool.mu.Lock()
+		if len(pool.conns) != 1 {
+			pool.mu.Unlock()
+			t.Fatalf("expected 1 pooled connection after recovery, got %d", len(pool.conns))
+		}
+		var replacement *pooledConn
+		for _, candidate := range pool.conns {
+			replacement = candidate
+		}
+		pool.mu.Unlock()
+
+		if replacement == nil {
+			t.Fatal("expected replacement pooled connection")
+		}
+		if replacement == original {
+			t.Fatal("expected pool to replace closed SSH client")
+		}
+	})
+}
+
+func TestTrackedConnDoubleClose(t *testing.T) {
 	server := newTestSSHServer(t)
 	defer server.close()
 
-	pool := New(10 * time.Minute)
+	pool := &Pool{TTL: 20 * time.Millisecond}
+	defer pool.Close()
 
 	config, signer := newTestClientConfig(t)
 
-	// Make a dial
-	conn, err := pool.Dial("tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
 	if err != nil {
-		t.Fatalf("failed to dial: %v", err)
-	}
-	conn.Close()
-
-	// Close the pool
-	err = pool.Close()
-	if err != nil {
-		t.Fatalf("failed to close pool: %v", err)
+		t.Fatalf("failed initial dial: %v", err)
 	}
 
-	// Check that all connections were closed
+	if err := conn.Close(); err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("first close returned unexpected error: %v", err)
+	}
+	if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, io.EOF) {
+		t.Fatalf("second close returned unexpected error: %v", err)
+	}
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		pool.mu.Lock()
+		remaining := len(pool.conns)
+		pool.mu.Unlock()
+		if remaining == 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	pool.mu.Lock()
-	numConns := len(pool.conns)
+	remaining := len(pool.conns)
 	pool.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("expected pooled connection to be removed after double close, still have %d", remaining)
+	}
 
-	if numConns != 0 {
-		t.Errorf("expected 0 connections after close, got %d", numConns)
+	conn2, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+	if err != nil {
+		t.Fatalf("failed dial after double close: %v", err)
+	}
+	conn2.Close()
+}
+
+func TestPoolSoak(t *testing.T) {
+	server := newTestSSHServer(t)
+	defer server.close()
+
+	pool := &Pool{TTL: 40 * time.Millisecond}
+	defer pool.Close()
+
+	config, signer := newTestClientConfig(t)
+
+	ttl := pool.ttl()
+
+	const (
+		workers    = 4
+		iterations = 80
+	)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+
+	var (
+		wg     sync.WaitGroup
+		mu     sync.Mutex
+		nextID int
+		open   = make(map[int]net.Conn)
+	)
+
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		seed := int64(w + 1)
+		go func(seed int64) {
+			defer wg.Done()
+
+			r := mathrand.New(mathrand.NewSource(seed))
+			for i := 0; i < iterations; i++ {
+				if ctx.Err() != nil {
+					return
+				}
+
+				switch r.Intn(3) {
+				case 0:
+					conn, err := pool.DialContext(t.Context(), "tcp", "127.0.0.1:80", server.host(), config.User, server.port(), signer, config)
+					if err != nil {
+						select {
+						case errCh <- fmt.Errorf("dial failed: %w", err):
+						default:
+						}
+						cancel()
+						return
+					}
+
+					mu.Lock()
+					id := nextID
+					nextID++
+					open[id] = conn
+					mu.Unlock()
+
+					if r.Float64() < 0.3 {
+						mu.Lock()
+						delete(open, id)
+						mu.Unlock()
+						conn.Close()
+					}
+				case 1:
+					var selected net.Conn
+
+					mu.Lock()
+					if len(open) > 0 {
+						idx := r.Intn(len(open))
+						j := 0
+						for id, conn := range open {
+							if j == idx {
+								selected = conn
+								delete(open, id)
+								break
+							}
+							j++
+						}
+					}
+					mu.Unlock()
+
+					if selected != nil {
+						selected.Close()
+					} else {
+						time.Sleep(time.Duration(r.Intn(5)+1) * time.Millisecond)
+					}
+				case 2:
+					time.Sleep(time.Duration(r.Intn(5)+1) * time.Millisecond)
+				}
+
+				if r.Float64() < 0.1 {
+					time.Sleep(ttl + 5*time.Millisecond)
+				}
+			}
+		}(seed)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case err := <-errCh:
+		t.Fatalf("ssh pool soak error: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("ssh pool soak timed out")
+	}
+
+	cancel()
+
+	mu.Lock()
+	for _, conn := range open {
+		conn.Close()
+	}
+	mu.Unlock()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("ssh pool soak error: %v", err)
+	default:
 	}
 }

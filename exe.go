@@ -458,7 +458,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		containerManager:   containerManager,
 		tagResolver:        tagResolverInstance,
 		hostUpdater:        hostUpdaterInstance,
-		sshPool:            sshpool2.New(10 * time.Minute),
+		sshPool:            &sshpool2.Pool{TTL: 10 * time.Minute},
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
 		creationStreams:    make(map[creationStreamKey]*CreationStream),

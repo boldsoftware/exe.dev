@@ -721,19 +721,26 @@ func (s *Server) resolveSSHHost(ctrhost string) string {
 
 // createSSHTunnelTransport creates an HTTP transport that tunnels through SSH to a container
 func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey ssh.Signer) *http.Transport {
-	cfg := &ssh.ClientConfig{
-		User:            *box.SSHUser,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshKey)},
-		HostKeyCallback: box.CreateHostKeyCallback(),
-		Timeout:         30 * time.Second,
-	}
-
 	// Build an HTTP transport that dials through SSH to the target on the SSH host.
 	// The sshDialer uses the connection pool for SSH connections
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return s.sshPool.Dial(network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg)
+			cfg := &ssh.ClientConfig{
+				User:            *box.SSHUser,
+				Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshKey)},
+				HostKeyCallback: box.CreateHostKeyCallback(),
+				Timeout:         30 * time.Second,
+			}
+			retries := []time.Duration{
+				100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
+				1 * time.Second, 1 * time.Second, 2 * time.Second, 3 * time.Second,
+			}
+			conn, errs := s.sshPool.DialWithRetries(ctx, network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg, retries)
+			if conn != nil {
+				return conn, nil
+			}
+			return nil, fmt.Errorf("SSH dial failed after retries: %w", errors.Join(errs...))
 		},
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          100,
