@@ -286,6 +286,9 @@ func (p *Pool) removeConn(key connKey) {
 
 // Close shuts down the pool and closes all connections immediately.
 func (p *Pool) Close() error {
+	if p == nil {
+		return nil
+	}
 	p.mu.Lock()
 	conns := make([]*pooledConn, 0, len(p.conns))
 	for _, pc := range p.conns {

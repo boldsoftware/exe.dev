@@ -2008,22 +2008,15 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	// Stop tag resolver and host updater
 	if s.tagResolver != nil {
 		s.tagResolver.Stop()
 	}
 	if s.hostUpdater != nil {
 		s.hostUpdater.Stop()
 	}
-
-	// Close SSH pool
-	if s.sshPool != nil {
-		if err := s.sshPool.Close(); err != nil {
-			s.slog().Error("SSH pool close error", "error", err)
-		}
+	if err := s.sshPool.Close(); err != nil {
+		s.slog().Error("SSH pool close error", "error", err)
 	}
-
-	// Close database connection
 	if s.db != nil {
 		s.db.Close()
 	}
