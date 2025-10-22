@@ -39,3 +39,7 @@ that's being connected to.
 
 Sure, why not; it's just a VM. If you start with the `exeuntu` image,
 you can run `docker run --rm alpine:latest echo hello`, and go from there!
+
+# Q: How do you pronounce "exe"?
+
+We pronounce it "EX-ee". But you don't have to.
