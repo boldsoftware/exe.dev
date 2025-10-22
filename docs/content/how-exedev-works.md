@@ -1,7 +1,7 @@
 ---
 title: How exe.dev works
 description: behind-the-scenes look
-subheading: "4. Other"
+subheading: "5. Other"
 ---
 
 You're an engineer. We're engineers. Let's talk about what's going on under the

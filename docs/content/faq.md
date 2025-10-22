@@ -1,7 +1,7 @@
 ---
 title: Frequent Asked Questions
 description: and some infrequently asked ones too
-subheading: "4. Other"
+subheading: "5. Other"
 suborder: 1
 published: true
 ---
@@ -21,9 +21,11 @@ Host exe.dev
 On your dashboard, at [https://exe.dev/~](https://exe.dev/~), there are links
 to open in VSCode. This leverages VSCode's SSH remote features.
 The link is of the form:
+
 ```
 vscode://vscode-remote/ssh-remote+<box-name>@exe.dev/app?windowId=_blank
 ```
+
 The `app` in that URL is the path on the filesystem for VSCode to
 consider as your workspace.
 

@@ -1,7 +1,7 @@
 ---
 title: Put your agent in a box and let it be
 description: Agent security is unsolved; a virtual machine is pragmatic
-subheading: "3. Editorials"
+subheading: "4. Editorials"
 ---
 
 exe.dev is a great place to run a coding agent securely, with minimal
@@ -14,4 +14,3 @@ or take some screenshots or do some math or prototype some software.
 
 We had a spirited discussion about how to name exe.dev's "unit of compute."
 We settled on "box". In this case, a sandbox.
-
