@@ -134,6 +134,7 @@ type ShellSession interface {
 	io.ReadWriter
 	Context() context.Context
 	Environ() []string
+	User() string
 	Pty() (ssh.Pty, <-chan ssh.Window, bool)
 }
 

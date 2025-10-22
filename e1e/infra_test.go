@@ -789,7 +789,8 @@ func genSSHKey(t *testing.T) (path, publickey string) {
 }
 
 const (
-	banner = "~~~ EXE.DEV ~~~"
+	banner       = "~~~ EXE.DEV ~~~"
+	exeDevPrompt = "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "
 )
 
 type expectPty struct {
@@ -1082,7 +1083,7 @@ func extractVerificationToken(body string) (string, error) {
 
 func sshToExeDev(t *testing.T, keyFile string) *expectPty {
 	pty := sshWithUsername(t, "", keyFile)
-	pty.prompt = "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m "
+	pty.prompt = exeDevPrompt
 	return pty
 }
 

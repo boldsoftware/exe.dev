@@ -90,6 +90,25 @@ func TestBadBoxName(t *testing.T) {
 	pty.disconnect()
 }
 
+func TestNewRejectsBoxMatchingSSHUsername(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	pty.disconnect()
+
+	conflictName := boxName(t)
+	conflictPty := sshWithUsername(t, conflictName, keyFile)
+	conflictPty.prompt = exeDevPrompt
+	conflictPty.wantPrompt()
+
+	conflictPty.sendLine("new --name=" + conflictName)
+	conflictPty.want("cannot match SSH username")
+	conflictPty.wantPrompt()
+	conflictPty.disconnect()
+}
+
 func TestNewWithPrompt(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()

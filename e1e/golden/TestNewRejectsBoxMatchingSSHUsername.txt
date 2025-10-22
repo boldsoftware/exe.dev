@@ -1,0 +1,56 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestNewRejectsBoxMatchingSSHUsername@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+
+
+Verification email sent to: TestNewRejectsBoxMatchingSSHUsername@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ whoami
+Email Address: TestNewRejectsBoxMatchingSSHUsername@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ exit
+Goodbye!
+
+
+●
+● ssh e1e-BOX_TIMESTAMP-testnewrejectsboxmatchingsshusername@localhost
+●
+
+
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testnewrejectsboxmatchingsshusername
+New box name cannot match SSH username. To create a box named e1e-BOX_TIMESTAMP-testnewrejectsboxmatchingsshusername, ssh into this REPL with a different username and try again. If you do this, you will have to use a username other than e1e-BOX_TIMESTAMP-testnewrejectsboxmatchingsshusername to log in to the REPL going forward.
+exe.dev ▶ exit
+Goodbye!

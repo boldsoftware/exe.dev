@@ -258,6 +258,11 @@ func (ws *WebShellSession) Environ() []string {
 	return []string{}
 }
 
+// User returns the username (empty for web sessions)
+func (ws *WebShellSession) User() string {
+	return ""
+}
+
 // Pty returns PTY information and window size change channel
 func (ws *WebShellSession) Pty() (ssh.Pty, <-chan ssh.Window, bool) {
 	if ws.ptyReq == nil {
