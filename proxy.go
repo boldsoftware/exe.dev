@@ -21,6 +21,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
+	"exe.dev/sshpool2"
 )
 
 // exe.dev provides a "magic" proxy for user's boxes. When a user requests https://boxname.exe.dev/,
@@ -689,91 +690,18 @@ func (c *sshConn) Close() error {
 	return nil
 }
 
-// sshDialer implements DialContext by establishing an SSH client connection
-// and then dialing the provided addr through that SSH connection.
+// sshDialer implements DialContext by connecting via the ssh pool
 type sshDialer struct {
-	sshAddr string
+	pool    *sshpool2.Pool
+	sshHost string
+	sshPort int
+	signer  ssh.Signer
 	cfg     *ssh.ClientConfig
 }
 
 func (d *sshDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	// Respect context deadline for the initial TCP connect to the SSH server.
-	var deadline time.Time
-	if dl, ok := ctx.Deadline(); ok {
-		deadline = dl
-	} else {
-		deadline = time.Now().Add(30 * time.Second)
-	}
-
-	// Establish TCP connection to the SSH server
-	dialer := &net.Dialer{Deadline: deadline}
-
-	// Note: The old code combined TCP dial + SSH handshake together. We split them here
-	// but use the same retry pattern for the SSH handshake part.
-	tcpConn, err := dialer.DialContext(ctx, "tcp", d.sshAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Perform SSH handshake on the established TCP connection with retries
-	var client *ssh.Client
-	var sshErrs error
-	sshRetries := []time.Duration{
-		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
-		1 * time.Second, 1 * time.Second,
-		2 * time.Second, 3 * time.Second,
-		0,
-	}
-
-	for i, wait := range sshRetries {
-		cconn, chans, reqs, err := ssh.NewClientConn(tcpConn, d.sshAddr, d.cfg)
-		if err == nil {
-			client = ssh.NewClient(cconn, chans, reqs)
-			break
-		}
-		sshErrs = errors.Join(sshErrs, err)
-		if wait > 0 {
-			select {
-			case <-ctx.Done():
-				_ = tcpConn.Close()
-				return nil, ctx.Err()
-			case <-time.After(wait):
-			}
-		} else if i == len(sshRetries)-1 {
-			_ = tcpConn.Close()
-			return nil, fmt.Errorf("failed SSH handshake with %s: %w", d.sshAddr, sshErrs)
-		}
-	}
-
-	// Dial the target address through the SSH connection with retries
-	var remoteConn net.Conn
-	var remoteErrs error
-	remoteRetries := []time.Duration{
-		0, 100 * time.Millisecond, 200 * time.Millisecond,
-		500 * time.Millisecond, 1 * time.Second, 2 * time.Second, 0,
-	}
-
-	for i, wait := range remoteRetries {
-		var err error
-		remoteConn, err = client.Dial(network, addr)
-		if err == nil {
-			break
-		}
-		remoteErrs = errors.Join(remoteErrs, err)
-		if wait > 0 {
-			select {
-			case <-ctx.Done():
-				_ = client.Close()
-				return nil, ctx.Err()
-			case <-time.After(wait):
-			}
-		} else if i == len(remoteRetries)-1 {
-			_ = client.Close()
-			return nil, fmt.Errorf("failed to dial remote %s via SSH: %w", addr, remoteErrs)
-		}
-	}
-
-	return &sshConn{Conn: remoteConn, client: client}, nil
+	// Use the pool's Dial method which handles connection reuse, retries, and tracking
+	return d.pool.Dial(network, addr, d.sshHost, d.cfg.User, d.sshPort, d.signer, d.cfg)
 }
 
 // resolveSSHHost resolves the SSH host address from a ctrhost, handling URL formats and dev mode aliases
@@ -816,13 +744,17 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 		Timeout:         30 * time.Second,
 	}
 
-	sshAddr := net.JoinHostPort(sshHost, strconv.Itoa(int(*box.SSHPort)))
-
 	// Build an HTTP transport that dials through SSH to the target on the SSH host.
-	// The sshDialer includes built-in retry logic for SSH connection failures
+	// The sshDialer uses the connection pool for SSH connections
 	return &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&sshDialer{sshAddr: sshAddr, cfg: cfg}).DialContext,
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&sshDialer{
+			pool:    s.sshPool,
+			sshHost: sshHost,
+			sshPort: int(*box.SSHPort),
+			signer:  sshKey,
+			cfg:     cfg,
+		}).DialContext,
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,

@@ -42,6 +42,7 @@ import (
 	"exe.dev/porkbun"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
+	"exe.dev/sshpool2"
 	"exe.dev/tagresolver"
 	templatespkg "exe.dev/templates"
 	"github.com/keighl/postmark"
@@ -172,6 +173,9 @@ type Server struct {
 	containerManager *container.NerdctlManager
 	tagResolver      *tagresolver.TagResolver
 	hostUpdater      *tagresolver.HostUpdater
+
+	// SSH connection pooling for HTTP proxying
+	sshPool *sshpool2.Pool
 
 	// In-memory state for active sessions (these don't need persistence)
 	emailVerificationsMu sync.RWMutex
@@ -454,6 +458,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		containerManager:   containerManager,
 		tagResolver:        tagResolverInstance,
 		hostUpdater:        hostUpdaterInstance,
+		sshPool:            sshpool2.New(10 * time.Minute),
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
 		creationStreams:    make(map[creationStreamKey]*CreationStream),
@@ -2009,6 +2014,13 @@ func (s *Server) Stop() error {
 	}
 	if s.hostUpdater != nil {
 		s.hostUpdater.Stop()
+	}
+
+	// Close SSH pool
+	if s.sshPool != nil {
+		if err := s.sshPool.Close(); err != nil {
+			s.slog().Error("SSH pool close error", "error", err)
+		}
 	}
 
 	// Close database connection
