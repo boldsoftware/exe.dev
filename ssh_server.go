@@ -314,6 +314,9 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 	hasSetBrowserCookies := userEvents[userEventSetBrowserCookies] > 0
 	hasRunHelp := userEvents[userEventHasRunHelp] > 0 // TODO: maybe > 1 or > 2? or something recency-based?
 
+	// Check if this is a web shell session
+	_, isWebShell := s.(*WebShellSession)
+
 	line := func(msg string, args ...any) {
 		fmt.Fprintf(s, msg+"\r\n", args...)
 	}
@@ -328,7 +331,7 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 		line("- \033[1mnew\033[0m to create your first box")
 		printedTip = true
 	}
-	if !hasSetBrowserCookies {
+	if !hasSetBrowserCookies && !isWebShell {
 		line("- \033[1mbrowser\033[0m to speed-login on the web")
 		printedTip = true
 	}
