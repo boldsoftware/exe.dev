@@ -296,8 +296,8 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		Auth:          libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
 	}
 
-	slog.Debug("Returning upstream config", "component", "piper-plugin", "host", upstream.Host, "port", upstream.Port, "username", upstream.UserName, "auth_type", "PrivateKey")
-	slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(proxyPrivateKeyPEM), "key_preview", proxyPrivateKeyPEM[:50])
+	// slog.Debug("Returning upstream config", "component", "piper-plugin", "host", upstream.Host, "port", upstream.Port, "username", upstream.UserName, "auth_type", "PrivateKey")
+	// slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(proxyPrivateKeyPEM), "key_preview", proxyPrivateKeyPEM[:50])
 
 	return upstream, nil
 }
@@ -417,11 +417,9 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	slog.Debug("Using database SSH details for box", "component", "piper-plugin", "box_name", box.Name, "host", host, "port", port)
 
 	// Create upstream configuration for direct SSH to container
-	slog.Debug("Creating upstream to container as root", "component", "piper-plugin", "host", host, "port", port)
-	slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(sshDetails.PrivateKey))
-	if len(sshDetails.PrivateKey) > 50 {
-		slog.Debug("Private key preview", "component", "piper-plugin", "key_preview", sshDetails.PrivateKey[:50])
-	}
+	// slog.Debug("Creating upstream to container as root", "component", "piper-plugin", "host", host, "port", port)
+	// slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(sshDetails.PrivateKey))
+	// slog.Debug("Private key preview", "component", "piper-plugin", "key_preview", sshDetails.PrivateKey[:50])
 
 	// Store the expected host key for this connection if available
 	if sshDetails.HostKey != "" {

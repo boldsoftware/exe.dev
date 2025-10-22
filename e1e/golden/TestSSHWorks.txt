@@ -65,7 +65,7 @@ To run a command as administrator (user "root"), use "sudo <command>".
 See "man sudo_root" for details.
 
 
-You are on e1e-BOX_TIMESTAMP-testsshworks. The disk is persistent. You have 'sudo'.
+You are on e1e-BOX_TIMESTAMP-testsshworks.exe.dev. The disk is persistent. You have 'sudo'.
 
 For support and documentation, "ssh exe.dev" or visit https://exe.dev/
 
