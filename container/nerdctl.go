@@ -964,7 +964,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		"--publish", fmt.Sprintf("%d:22", sshPort), // Publish SSH port
 		// hostname matches the box name. We always do ".exe.dev", which doesn't
 		// quiet match development's .localhost proxy mapping.
-		"--hostname", req.Name + ".exe.dev",
+		"--hostname", req.Name+".exe.dev",
 		"--dns", "8.8.8.8", // Google DNS primary
 		"--dns", "8.8.4.4", // Google DNS secondary
 		"--dns-search", "exe.dev", // Search domain for short names
