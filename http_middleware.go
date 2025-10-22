@@ -1,51 +1,13 @@
 package exe
 
 import (
-	"bufio"
 	"context"
 	"log/slog"
 	"net"
 	"net/http"
-	"time"
+
+	sloghttp "github.com/samber/slog-http"
 )
-
-// responseWriter wraps http.ResponseWriter to capture the status code.
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-	written    bool
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	if !rw.written {
-		rw.statusCode = code
-		rw.written = true
-		rw.ResponseWriter.WriteHeader(code)
-	}
-}
-
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	if !rw.written {
-		rw.statusCode = http.StatusOK
-		rw.written = true
-	}
-	return rw.ResponseWriter.Write(b)
-}
-
-// Flush implements http.Flusher to support streaming responses like SSE
-func (rw *responseWriter) Flush() {
-	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
-	}
-}
-
-// Hijack implements http.Hijacker for WebSocket support
-func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	if hijacker, ok := rw.ResponseWriter.(http.Hijacker); ok {
-		return hijacker.Hijack()
-	}
-	return nil, nil, http.ErrNotSupported
-}
 
 // requestLogInfoKey is used to pass request classification info via context.
 type requestLogInfoKey struct{}
@@ -57,6 +19,7 @@ type RequestLogInfo struct {
 }
 
 // WithNewRequestLogInfo attaches a fresh RequestLogInfo to the context.
+// The info can be populated by handlers and will be added as custom attributes in logs.
 func WithNewRequestLogInfo(ctx context.Context) (context.Context, *RequestLogInfo) {
 	info := &RequestLogInfo{}
 	return context.WithValue(ctx, requestLogInfoKey{}, info), info
@@ -72,51 +35,48 @@ func GetRequestLogInfo(ctx context.Context) *RequestLogInfo {
 	return nil
 }
 
-// LoggerMiddleware adds request logging. It logs one line per HTTP request.
+// LoggerMiddleware adds request logging using slog-http. It logs one line per HTTP request.
 func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+	config := sloghttp.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelInfo,
+		WithRequestID:    false,
+	}
+
+	// Wrap slog-http middleware to inject RequestLogInfo and custom attributes
 	return func(next http.Handler) http.Handler {
+		// Wrap the actual handler to capture RequestLogInfo after it runs
+		wrappedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r)
+
+			// After the handler runs, add custom attributes based on RequestLogInfo
+			if info := GetRequestLogInfo(r.Context()); info != nil {
+				if info.IsProxy {
+					sloghttp.AddCustomAttributes(r, slog.Bool("proxy", true))
+				}
+				if info.IsTerminal {
+					sloghttp.AddCustomAttributes(r, slog.Bool("terminal", true))
+				}
+			}
+		})
+
+		// Apply slog-http middleware on top
+		slogMiddleware := sloghttp.NewWithConfig(logger, config)(wrappedHandler)
+
+		// Outermost wrapper adds RequestLogInfo context and local_addr
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Attach RequestLogInfo so downstream handlers can enrich the final log line.
 			ctx, _ := WithNewRequestLogInfo(r.Context())
 			r = r.WithContext(ctx)
 
-			// Wrap the response writer to capture status code
-			wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-			start := time.Now()
-			next.ServeHTTP(wrapped, r)
-			duration := time.Since(start)
-
-			// host and local_addr for richer context
-			host := r.Host
-			localAddr := ""
+			// Add local_addr as custom attribute
 			if conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok && conn != nil {
-				localAddr = conn.String()
+				sloghttp.AddCustomAttributes(r, slog.String("local_addr", conn.String()))
 			}
 
-			// Optional classification if downstream populated it
-			if info := GetRequestLogInfo(r.Context()); info != nil && (info.IsProxy || info.IsTerminal) {
-				logger.Info("HTTP request",
-					"method", r.Method,
-					"path", r.URL.Path,
-					"status", wrapped.statusCode,
-					"host", host,
-					"local_addr", localAddr,
-					"proxy", info.IsProxy,
-					"terminal", info.IsTerminal,
-					"duration", duration,
-				)
-				return
-			}
-
-			logger.Info("HTTP request",
-				"method", r.Method,
-				"path", r.URL.Path,
-				"status", wrapped.statusCode,
-				"host", host,
-				"local_addr", localAddr,
-				"duration", duration,
-			)
+			// Serve the request through slog-http middleware
+			slogMiddleware.ServeHTTP(w, r)
 		})
 	}
 }

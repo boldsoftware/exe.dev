@@ -3,23 +3,19 @@ package server
 import (
 	"log/slog"
 	"net/http"
-	"time"
+
+	sloghttp "github.com/samber/slog-http"
 )
 
-// LoggerMiddleware adds request logging
+// LoggerMiddleware adds request logging using slog-http
 func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			next.ServeHTTP(w, r)
-			duration := time.Since(start)
-			logger.Info("HTTP request",
-				"method", r.Method,
-				"path", r.URL.Path,
-				"duration", duration,
-			)
-		})
+	config := sloghttp.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelInfo,
+		ServerErrorLevel: slog.LevelInfo,
+		WithRequestID:    false,
 	}
+	return sloghttp.NewWithConfig(logger, config)
 }
 
 // CORSMiddleware adds CORS headers

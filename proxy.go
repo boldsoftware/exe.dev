@@ -144,10 +144,6 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		route = exedb.Route{Port: targetPort, Share: "private"}
 	}
 
-	slog.Debug("Proxy routing",
-		"box", boxName, "route_port", route.Port, "route_share", route.Share,
-		"target_port", targetPort, "host", r.Host, "path", r.URL.Path)
-
 	// Apply authentication based on route share setting
 	if route.Share == "private" {
 		// Check if user is authenticated

@@ -73,10 +73,14 @@ func TestLoggerMiddlewareStatusCode(t *testing.T) {
 				t.Fatalf("failed to parse log output: %v\nLog output: %s", err, buf.String())
 			}
 
-			// Check status in log
-			status, ok := logEntry["status"].(float64)
+			// Check status in log (slog-http nests it under response.status)
+			response, ok := logEntry["response"].(map[string]interface{})
 			if !ok {
-				t.Fatalf("status not found in log or wrong type. Log: %v", logEntry)
+				t.Fatalf("response not found in log or wrong type. Log: %v", logEntry)
+			}
+			status, ok := response["status"].(float64)
+			if !ok {
+				t.Fatalf("status not found in response or wrong type. Log: %v", logEntry)
 			}
 
 			if int(status) != tt.expectedStatus {

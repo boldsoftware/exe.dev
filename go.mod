@@ -21,6 +21,7 @@ require (
 	github.com/lmittmann/tint v1.1.2
 	github.com/prometheus/client_golang v1.23.0
 	github.com/regclient/regclient v0.9.2
+	github.com/samber/slog-http v1.8.2
 	github.com/stretchr/testify v1.10.0
 	github.com/tg123/sshpiper v0.0.0-00010101000000-000000000000
 	github.com/veops/go-ansiterm v0.0.5
@@ -120,6 +121,8 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
+	go.opentelemetry.io/otel v1.37.0 // indirect
+	go.opentelemetry.io/otel/trace v1.37.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
