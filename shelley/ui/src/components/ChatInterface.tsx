@@ -637,9 +637,9 @@ function ChatInterface({
         <div className="empty-state">
           <div className="empty-state-content">
             <p className="text-base" style={{ marginBottom: "1rem", lineHeight: "1.6" }}>
-              Shelley is an agent, running on <strong>{hostname}</strong>. You can ask Shelley to
-              do stuff. If you build a web site with Shelley, you can use exe.dev&apos;s proxy
-              features (see{" "}
+              Shelley is an agent, running on <strong>{hostname}</strong>. You can ask Shelley to do
+              stuff. If you build a web site with Shelley, you can use exe.dev&apos;s proxy features
+              (see{" "}
               <a
                 href="https://exe.dev/docs/proxy"
                 target="_blank"
