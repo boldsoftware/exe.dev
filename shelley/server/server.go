@@ -288,9 +288,16 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 		}
 	}
 
+	// Get hostname
+	hostname := "localhost"
+	if h, err := os.Hostname(); err == nil {
+		hostname = h
+	}
+
 	initData := map[string]interface{}{
 		"models":        models,
 		"default_model": defaultModel,
+		"hostname":      hostname,
 	}
 	if s.terminalURL != "" {
 		initData["terminal_url"] = s.terminalURL

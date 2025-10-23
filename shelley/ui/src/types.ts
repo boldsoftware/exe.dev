@@ -70,6 +70,7 @@ export interface Link {
 export interface InitData {
   models: Model[];
   default_model: string;
+  hostname?: string;
   terminal_url?: string;
   links?: Link[];
 }
