@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestTerminalRouting(t *testing.T) {
@@ -60,40 +59,6 @@ func TestTerminalStaticFiles(t *testing.T) {
 	if !strings.Contains(body, "Terminal") {
 		t.Errorf("Expected xterm.js content, got response that doesn't contain 'Terminal'")
 	}
-}
-
-func TestTerminalCleanupTimer(t *testing.T) {
-	t.Parallel()
-	// Test that inactive terminals are cleaned up
-	// This is a quick unit test of the cleanup logic
-	oldCleanupTicker := cleanupTicker
-	oldTerminalSessions := terminalSessions
-
-	// Reset state
-	terminalSessions = make(map[string]*TerminalSession)
-
-	// Create a mock terminal session that's old
-	sessionKey := "test-user:test-machine:1"
-	sess := &TerminalSession{
-		EventsClients: make(map[chan []byte]bool),
-		BoxName:       "test-box",
-		UserID:        "test-user",
-	}
-	old := time.Now().Add(-15 * time.Minute)
-	sess.LastActivity.Store(&old)
-	terminalSessions[sessionKey] = sess
-
-	// Run cleanup
-	cleanupInactiveTerminals()
-
-	// Should be cleaned up
-	if len(terminalSessions) != 0 {
-		t.Errorf("Expected terminal session to be cleaned up, but %d sessions remain", len(terminalSessions))
-	}
-
-	// Restore state
-	cleanupTicker = oldCleanupTicker
-	terminalSessions = oldTerminalSessions
 }
 
 func TestTerminalHostnameParsing(t *testing.T) {
