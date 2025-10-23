@@ -1,0 +1,95 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, please verify your email.
+
+Please enter your email address: testboxsharingwithwebserver-user1@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: testboxsharingwithwebserver-user1@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ whoami
+Email Address: testboxsharingwithwebserver-user1@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testboxsharingwithwebserver --command="/bin/bash"
+Creating e1e-BOX_TIMESTAMP-testboxsharingwithwebserver (medium) using image boldsoftware/exeuntu...
+Ready in ELAPSED_TIME!
+
+App (HTTPS proxy → :8000)
+http://e1e-BOX_TIMESTAMP-testboxsharingwithwebserver.localhost:EXED_HTTP_PORT
+
+SSH
+ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testboxsharingwithwebserver@localhost
+
+exe.dev ▶ list
+Your boxes:
+  • e1e-BOX_TIMESTAMP-testboxsharingwithwebserver - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+exe.dev ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, please verify your email.
+
+Please enter your email address: testboxsharingwithwebserver-user2@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: testboxsharingwithwebserver-user2@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ whoami
+Email Address: testboxsharingwithwebserver-user2@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ exit
+Goodbye!

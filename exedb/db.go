@@ -39,6 +39,24 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.checkTagResolutionExistsStmt, err = db.PrepareContext(ctx, checkTagResolutionExists); err != nil {
 		return nil, fmt.Errorf("error preparing query CheckTagResolutionExists: %w", err)
 	}
+	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
+	}
+	if q.countBoxSharesStmt, err = db.PrepareContext(ctx, countBoxShares); err != nil {
+		return nil, fmt.Errorf("error preparing query CountBoxShares: %w", err)
+	}
+	if q.countPendingBoxSharesStmt, err = db.PrepareContext(ctx, countPendingBoxShares); err != nil {
+		return nil, fmt.Errorf("error preparing query CountPendingBoxShares: %w", err)
+	}
+	if q.createBoxShareStmt, err = db.PrepareContext(ctx, createBoxShare); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateBoxShare: %w", err)
+	}
+	if q.createBoxShareLinkStmt, err = db.PrepareContext(ctx, createBoxShareLink); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateBoxShareLink: %w", err)
+	}
+	if q.createPendingBoxShareStmt, err = db.PrepareContext(ctx, createPendingBoxShare); err != nil {
+		return nil, fmt.Errorf("error preparing query CreatePendingBoxShare: %w", err)
+	}
 	if q.deleteAuthCookieStmt, err = db.PrepareContext(ctx, deleteAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAuthCookie: %w", err)
 	}
@@ -51,8 +69,29 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteBoxStmt, err = db.PrepareContext(ctx, deleteBox); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBox: %w", err)
 	}
+	if q.deleteBoxShareStmt, err = db.PrepareContext(ctx, deleteBoxShare); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxShare: %w", err)
+	}
+	if q.deleteBoxShareByBoxAndUserStmt, err = db.PrepareContext(ctx, deleteBoxShareByBoxAndUser); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxShareByBoxAndUser: %w", err)
+	}
+	if q.deleteBoxShareLinkStmt, err = db.PrepareContext(ctx, deleteBoxShareLink); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxShareLink: %w", err)
+	}
+	if q.deleteBoxShareLinkByBoxAndTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByBoxAndToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByBoxAndToken: %w", err)
+	}
+	if q.deleteBoxShareLinkByTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByToken: %w", err)
+	}
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
+	}
+	if q.deletePendingBoxShareStmt, err = db.PrepareContext(ctx, deletePendingBoxShare); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePendingBoxShare: %w", err)
+	}
+	if q.deletePendingBoxShareByBoxAndEmailStmt, err = db.PrepareContext(ctx, deletePendingBoxShareByBoxAndEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query DeletePendingBoxShareByBoxAndEmail: %w", err)
 	}
 	if q.deletePendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, deletePendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingSSHKeyByToken: %w", err)
@@ -84,6 +123,18 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
 	}
+	if q.getBoxShareLinkByTokenStmt, err = db.PrepareContext(ctx, getBoxShareLinkByToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxShareLinkByToken: %w", err)
+	}
+	if q.getBoxShareLinkByTokenAndBoxIDStmt, err = db.PrepareContext(ctx, getBoxShareLinkByTokenAndBoxID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxShareLinkByTokenAndBoxID: %w", err)
+	}
+	if q.getBoxShareLinksByBoxIDStmt, err = db.PrepareContext(ctx, getBoxShareLinksByBoxID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxShareLinksByBoxID: %w", err)
+	}
+	if q.getBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getBoxSharesByBoxID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxSharesByBoxID: %w", err)
+	}
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
 	}
@@ -92,6 +143,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getBoxesForUserDashboardStmt, err = db.PrepareContext(ctx, getBoxesForUserDashboard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesForUserDashboard: %w", err)
+	}
+	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
 	}
 	if q.getCtrhostByAllocIDStmt, err = db.PrepareContext(ctx, getCtrhostByAllocID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetCtrhostByAllocID: %w", err)
@@ -113,6 +167,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getImageMetadataStmt, err = db.PrepareContext(ctx, getImageMetadata); err != nil {
 		return nil, fmt.Errorf("error preparing query GetImageMetadata: %w", err)
+	}
+	if q.getPendingBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getPendingBoxSharesByBoxID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingBoxSharesByBoxID: %w", err)
+	}
+	if q.getPendingBoxSharesByEmailStmt, err = db.PrepareContext(ctx, getPendingBoxSharesByEmail); err != nil {
+		return nil, fmt.Errorf("error preparing query GetPendingBoxSharesByEmail: %w", err)
 	}
 	if q.getPendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, getPendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyByToken: %w", err)
@@ -144,6 +204,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
+	if q.getUserEmailCountForDateStmt, err = db.PrepareContext(ctx, getUserEmailCountForDate); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserEmailCountForDate: %w", err)
+	}
+	if q.getUserEmailCountsForDateRangeStmt, err = db.PrepareContext(ctx, getUserEmailCountsForDateRange); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserEmailCountsForDateRange: %w", err)
+	}
 	if q.getUserEventCountStmt, err = db.PrepareContext(ctx, getUserEventCount); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserEventCount: %w", err)
 	}
@@ -162,8 +228,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUserWithSSHKeyStmt, err = db.PrepareContext(ctx, getUserWithSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserWithSSHKey: %w", err)
 	}
+	if q.hasUserAccessToBoxStmt, err = db.PrepareContext(ctx, hasUserAccessToBox); err != nil {
+		return nil, fmt.Errorf("error preparing query HasUserAccessToBox: %w", err)
+	}
 	if q.incrementSeenOnHostsStmt, err = db.PrepareContext(ctx, incrementSeenOnHosts); err != nil {
 		return nil, fmt.Errorf("error preparing query IncrementSeenOnHosts: %w", err)
+	}
+	if q.incrementShareLinkUsageStmt, err = db.PrepareContext(ctx, incrementShareLinkUsage); err != nil {
+		return nil, fmt.Errorf("error preparing query IncrementShareLinkUsage: %w", err)
+	}
+	if q.incrementUserEmailCountStmt, err = db.PrepareContext(ctx, incrementUserEmailCount); err != nil {
+		return nil, fmt.Errorf("error preparing query IncrementUserEmailCount: %w", err)
 	}
 	if q.insertAllocStmt, err = db.PrepareContext(ctx, insertAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAlloc: %w", err)
@@ -288,6 +363,36 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing checkTagResolutionExistsStmt: %w", cerr)
 		}
 	}
+	if q.countBoxShareLinksStmt != nil {
+		if cerr := q.countBoxShareLinksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxShareLinksStmt: %w", cerr)
+		}
+	}
+	if q.countBoxSharesStmt != nil {
+		if cerr := q.countBoxSharesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.countPendingBoxSharesStmt != nil {
+		if cerr := q.countPendingBoxSharesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countPendingBoxSharesStmt: %w", cerr)
+		}
+	}
+	if q.createBoxShareStmt != nil {
+		if cerr := q.createBoxShareStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createBoxShareStmt: %w", cerr)
+		}
+	}
+	if q.createBoxShareLinkStmt != nil {
+		if cerr := q.createBoxShareLinkStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createBoxShareLinkStmt: %w", cerr)
+		}
+	}
+	if q.createPendingBoxShareStmt != nil {
+		if cerr := q.createPendingBoxShareStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createPendingBoxShareStmt: %w", cerr)
+		}
+	}
 	if q.deleteAuthCookieStmt != nil {
 		if cerr := q.deleteAuthCookieStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAuthCookieStmt: %w", cerr)
@@ -308,9 +413,44 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteBoxStmt: %w", cerr)
 		}
 	}
+	if q.deleteBoxShareStmt != nil {
+		if cerr := q.deleteBoxShareStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxShareStmt: %w", cerr)
+		}
+	}
+	if q.deleteBoxShareByBoxAndUserStmt != nil {
+		if cerr := q.deleteBoxShareByBoxAndUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxShareByBoxAndUserStmt: %w", cerr)
+		}
+	}
+	if q.deleteBoxShareLinkStmt != nil {
+		if cerr := q.deleteBoxShareLinkStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxShareLinkStmt: %w", cerr)
+		}
+	}
+	if q.deleteBoxShareLinkByBoxAndTokenStmt != nil {
+		if cerr := q.deleteBoxShareLinkByBoxAndTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxShareLinkByBoxAndTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteBoxShareLinkByTokenStmt != nil {
+		if cerr := q.deleteBoxShareLinkByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxShareLinkByTokenStmt: %w", cerr)
+		}
+	}
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
+		}
+	}
+	if q.deletePendingBoxShareStmt != nil {
+		if cerr := q.deletePendingBoxShareStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePendingBoxShareStmt: %w", cerr)
+		}
+	}
+	if q.deletePendingBoxShareByBoxAndEmailStmt != nil {
+		if cerr := q.deletePendingBoxShareByBoxAndEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deletePendingBoxShareByBoxAndEmailStmt: %w", cerr)
 		}
 	}
 	if q.deletePendingSSHKeyByTokenStmt != nil {
@@ -363,6 +503,26 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
 		}
 	}
+	if q.getBoxShareLinkByTokenStmt != nil {
+		if cerr := q.getBoxShareLinkByTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxShareLinkByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getBoxShareLinkByTokenAndBoxIDStmt != nil {
+		if cerr := q.getBoxShareLinkByTokenAndBoxIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxShareLinkByTokenAndBoxIDStmt: %w", cerr)
+		}
+	}
+	if q.getBoxShareLinksByBoxIDStmt != nil {
+		if cerr := q.getBoxShareLinksByBoxIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxShareLinksByBoxIDStmt: %w", cerr)
+		}
+	}
+	if q.getBoxSharesByBoxIDStmt != nil {
+		if cerr := q.getBoxSharesByBoxIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxSharesByBoxIDStmt: %w", cerr)
+		}
+	}
 	if q.getBoxesByHostStmt != nil {
 		if cerr := q.getBoxesByHostStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesByHostStmt: %w", cerr)
@@ -376,6 +536,11 @@ func (q *Queries) Close() error {
 	if q.getBoxesForUserDashboardStmt != nil {
 		if cerr := q.getBoxesForUserDashboardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesForUserDashboardStmt: %w", cerr)
+		}
+	}
+	if q.getBoxesSharedWithUserStmt != nil {
+		if cerr := q.getBoxesSharedWithUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
 		}
 	}
 	if q.getCtrhostByAllocIDStmt != nil {
@@ -411,6 +576,16 @@ func (q *Queries) Close() error {
 	if q.getImageMetadataStmt != nil {
 		if cerr := q.getImageMetadataStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getImageMetadataStmt: %w", cerr)
+		}
+	}
+	if q.getPendingBoxSharesByBoxIDStmt != nil {
+		if cerr := q.getPendingBoxSharesByBoxIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingBoxSharesByBoxIDStmt: %w", cerr)
+		}
+	}
+	if q.getPendingBoxSharesByEmailStmt != nil {
+		if cerr := q.getPendingBoxSharesByEmailStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getPendingBoxSharesByEmailStmt: %w", cerr)
 		}
 	}
 	if q.getPendingSSHKeyByTokenStmt != nil {
@@ -463,6 +638,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
 		}
 	}
+	if q.getUserEmailCountForDateStmt != nil {
+		if cerr := q.getUserEmailCountForDateStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserEmailCountForDateStmt: %w", cerr)
+		}
+	}
+	if q.getUserEmailCountsForDateRangeStmt != nil {
+		if cerr := q.getUserEmailCountsForDateRangeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserEmailCountsForDateRangeStmt: %w", cerr)
+		}
+	}
 	if q.getUserEventCountStmt != nil {
 		if cerr := q.getUserEventCountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserEventCountStmt: %w", cerr)
@@ -493,9 +678,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUserWithSSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.hasUserAccessToBoxStmt != nil {
+		if cerr := q.hasUserAccessToBoxStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing hasUserAccessToBoxStmt: %w", cerr)
+		}
+	}
 	if q.incrementSeenOnHostsStmt != nil {
 		if cerr := q.incrementSeenOnHostsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing incrementSeenOnHostsStmt: %w", cerr)
+		}
+	}
+	if q.incrementShareLinkUsageStmt != nil {
+		if cerr := q.incrementShareLinkUsageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing incrementShareLinkUsageStmt: %w", cerr)
+		}
+	}
+	if q.incrementUserEmailCountStmt != nil {
+		if cerr := q.incrementUserEmailCountStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing incrementUserEmailCountStmt: %w", cerr)
 		}
 	}
 	if q.insertAllocStmt != nil {
@@ -697,11 +897,24 @@ type Queries struct {
 	boxWithNameExistsStmt                  *sql.Stmt
 	boxWithOwnerNamedStmt                  *sql.Stmt
 	checkTagResolutionExistsStmt           *sql.Stmt
+	countBoxShareLinksStmt                 *sql.Stmt
+	countBoxSharesStmt                     *sql.Stmt
+	countPendingBoxSharesStmt              *sql.Stmt
+	createBoxShareStmt                     *sql.Stmt
+	createBoxShareLinkStmt                 *sql.Stmt
+	createPendingBoxShareStmt              *sql.Stmt
 	deleteAuthCookieStmt                   *sql.Stmt
 	deleteAuthCookieByValueStmt            *sql.Stmt
 	deleteAuthCookiesByUserIDStmt          *sql.Stmt
 	deleteBoxStmt                          *sql.Stmt
+	deleteBoxShareStmt                     *sql.Stmt
+	deleteBoxShareByBoxAndUserStmt         *sql.Stmt
+	deleteBoxShareLinkStmt                 *sql.Stmt
+	deleteBoxShareLinkByBoxAndTokenStmt    *sql.Stmt
+	deleteBoxShareLinkByTokenStmt          *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
+	deletePendingBoxShareStmt              *sql.Stmt
+	deletePendingBoxShareByBoxAndEmailStmt *sql.Stmt
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	getAllUserEventsStmt                   *sql.Stmt
 	getAllocByUserIDStmt                   *sql.Stmt
@@ -712,9 +925,14 @@ type Queries struct {
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxIDAndAllocByNameStmt             *sql.Stmt
 	getBoxSSHDetailsStmt                   *sql.Stmt
+	getBoxShareLinkByTokenStmt             *sql.Stmt
+	getBoxShareLinkByTokenAndBoxIDStmt     *sql.Stmt
+	getBoxShareLinksByBoxIDStmt            *sql.Stmt
+	getBoxSharesByBoxIDStmt                *sql.Stmt
 	getBoxesByHostStmt                     *sql.Stmt
 	getBoxesForAllocStmt                   *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
+	getBoxesSharedWithUserStmt             *sql.Stmt
 	getCtrhostByAllocIDStmt                *sql.Stmt
 	getEmailBySSHKeyStmt                   *sql.Stmt
 	getEmailByUserIDStmt                   *sql.Stmt
@@ -722,6 +940,8 @@ type Queries struct {
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
 	getImageMetadataStmt                   *sql.Stmt
+	getPendingBoxSharesByBoxIDStmt         *sql.Stmt
+	getPendingBoxSharesByEmailStmt         *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
 	getSSHHostKeyStmt                      *sql.Stmt
@@ -732,13 +952,18 @@ type Queries struct {
 	getTagResolutionsByAgeStmt             *sql.Stmt
 	getTagsNeedingRefreshStmt              *sql.Stmt
 	getUserByEmailStmt                     *sql.Stmt
+	getUserEmailCountForDateStmt           *sql.Stmt
+	getUserEmailCountsForDateRangeStmt     *sql.Stmt
 	getUserEventCountStmt                  *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
 	getUserWithEmailStmt                   *sql.Stmt
 	getUserWithSSHKeyStmt                  *sql.Stmt
+	hasUserAccessToBoxStmt                 *sql.Stmt
 	incrementSeenOnHostsStmt               *sql.Stmt
+	incrementShareLinkUsageStmt            *sql.Stmt
+	incrementUserEmailCountStmt            *sql.Stmt
 	insertAllocStmt                        *sql.Stmt
 	insertAuthCookieStmt                   *sql.Stmt
 	insertBoxStmt                          *sql.Stmt
@@ -781,11 +1006,24 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
 		checkTagResolutionExistsStmt:           q.checkTagResolutionExistsStmt,
+		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
+		countBoxSharesStmt:                     q.countBoxSharesStmt,
+		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
+		createBoxShareStmt:                     q.createBoxShareStmt,
+		createBoxShareLinkStmt:                 q.createBoxShareLinkStmt,
+		createPendingBoxShareStmt:              q.createPendingBoxShareStmt,
 		deleteAuthCookieStmt:                   q.deleteAuthCookieStmt,
 		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
 		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
 		deleteBoxStmt:                          q.deleteBoxStmt,
+		deleteBoxShareStmt:                     q.deleteBoxShareStmt,
+		deleteBoxShareByBoxAndUserStmt:         q.deleteBoxShareByBoxAndUserStmt,
+		deleteBoxShareLinkStmt:                 q.deleteBoxShareLinkStmt,
+		deleteBoxShareLinkByBoxAndTokenStmt:    q.deleteBoxShareLinkByBoxAndTokenStmt,
+		deleteBoxShareLinkByTokenStmt:          q.deleteBoxShareLinkByTokenStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
+		deletePendingBoxShareStmt:              q.deletePendingBoxShareStmt,
+		deletePendingBoxShareByBoxAndEmailStmt: q.deletePendingBoxShareByBoxAndEmailStmt,
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
 		getAllocByUserIDStmt:                   q.getAllocByUserIDStmt,
@@ -796,9 +1034,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxIDAndAllocByNameStmt:             q.getBoxIDAndAllocByNameStmt,
 		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
+		getBoxShareLinkByTokenStmt:             q.getBoxShareLinkByTokenStmt,
+		getBoxShareLinkByTokenAndBoxIDStmt:     q.getBoxShareLinkByTokenAndBoxIDStmt,
+		getBoxShareLinksByBoxIDStmt:            q.getBoxShareLinksByBoxIDStmt,
+		getBoxSharesByBoxIDStmt:                q.getBoxSharesByBoxIDStmt,
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
 		getBoxesForAllocStmt:                   q.getBoxesForAllocStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
+		getBoxesSharedWithUserStmt:             q.getBoxesSharedWithUserStmt,
 		getCtrhostByAllocIDStmt:                q.getCtrhostByAllocIDStmt,
 		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
@@ -806,6 +1049,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
 		getImageMetadataStmt:                   q.getImageMetadataStmt,
+		getPendingBoxSharesByBoxIDStmt:         q.getPendingBoxSharesByBoxIDStmt,
+		getPendingBoxSharesByEmailStmt:         q.getPendingBoxSharesByEmailStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
@@ -816,13 +1061,18 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getTagResolutionsByAgeStmt:             q.getTagResolutionsByAgeStmt,
 		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
 		getUserByEmailStmt:                     q.getUserByEmailStmt,
+		getUserEmailCountForDateStmt:           q.getUserEmailCountForDateStmt,
+		getUserEmailCountsForDateRangeStmt:     q.getUserEmailCountsForDateRangeStmt,
 		getUserEventCountStmt:                  q.getUserEventCountStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
 		getUserWithEmailStmt:                   q.getUserWithEmailStmt,
 		getUserWithSSHKeyStmt:                  q.getUserWithSSHKeyStmt,
+		hasUserAccessToBoxStmt:                 q.hasUserAccessToBoxStmt,
 		incrementSeenOnHostsStmt:               q.incrementSeenOnHostsStmt,
+		incrementShareLinkUsageStmt:            q.incrementShareLinkUsageStmt,
+		incrementUserEmailCountStmt:            q.incrementUserEmailCountStmt,
 		insertAllocStmt:                        q.insertAllocStmt,
 		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
 		insertBoxStmt:                          q.insertBoxStmt,

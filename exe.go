@@ -78,22 +78,33 @@ const (
 // BoxDisplayInfo represents a box with additional display information
 type BoxDisplayInfo struct {
 	exedb.Box
-	SSHCommand  string
-	ProxyURL    string
-	TerminalURL string
-	ShelleyURL  string
-	VSCodeURL   template.URL
-	ProxyPort   int
-	ProxyShare  string
+	SSHCommand      string
+	ProxyURL        string
+	TerminalURL     string
+	ShelleyURL      string
+	VSCodeURL       template.URL
+	ProxyPort       int
+	ProxyShare      string
+	SharedUserCount int64              // Number of users box is shared with (pending + active)
+	ShareLinkCount  int64              // Number of active share links
+	TotalShareCount int64              // Total shares (users + links)
+	SharedEmails    []string           // List of emails box is shared with
+	ShareLinks      []BoxShareLinkInfo // List of share links with URLs
+}
+
+type BoxShareLinkInfo struct {
+	Token string
+	URL   string
 }
 
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
-	User       exedb.User
-	SSHKeys    []SSHKey
-	Boxes      []BoxDisplayInfo
-	ActivePage string
-	IsLoggedIn bool
+	User        exedb.User
+	SSHKeys     []SSHKey
+	Boxes       []BoxDisplayInfo
+	SharedBoxes []SharedBoxDisplayInfo
+	ActivePage  string
+	IsLoggedIn  bool
 }
 
 // SSHKey represents an SSH key for the user page
@@ -1897,6 +1908,11 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Resolve any pending shares for this email
+	if err := s.resolvePendingShares(ctx, email, user.UserID); err != nil {
+		return nil, fmt.Errorf("failed to resolve pending shares: %w", err)
 	}
 
 	return &user, nil

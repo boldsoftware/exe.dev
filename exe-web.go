@@ -463,6 +463,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleAuth(w, r)
 	case "/auth/confirm":
 		s.handleAuthConfirm(w, r)
+
 	case "/logout":
 		s.handleLogout(w, r)
 	case "/logged-out":
@@ -1549,6 +1550,41 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 				return
 			}
 
+			// Check if user has access to the box before creating magic secret
+			box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+				return queries.BoxNamed(ctx, boxName)
+			})
+			if err != nil {
+				s.slog().Info("redirectAfterAuth box not found", "box_name", boxName, "error", err)
+				http.Error(w, "box not found", http.StatusNotFound)
+				return
+			}
+
+			accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
+			if err != nil {
+				s.slog().Error("redirectAfterAuth failed to check access", "error", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			if accessType == BoxAccessNone {
+				// Check if there's a valid share link token in the redirect URL
+				hasShareLinkAccess := false
+				if parsedRedirect, err := url.Parse(redirectURL); err == nil {
+					if shareToken := parsedRedirect.Query().Get("share"); shareToken != "" {
+						if valid, err := s.validateShareLinkForBox(r.Context(), shareToken, box.ID); err == nil && valid {
+							hasShareLinkAccess = true
+							s.slog().Debug("redirectAfterAuth: valid share link found", "box_name", boxName, "user_id", userID)
+						}
+					}
+				}
+				if !hasShareLinkAccess {
+					s.slog().Info("redirectAfterAuth access denied", "box_name", boxName, "user_id", userID)
+					// Return 404 to not leak box existence
+					http.Error(w, "box not found", http.StatusNotFound)
+					return
+				}
+			}
+
 			// Create magic secret for the proxy subdomain
 			secret, err := s.createMagicSecret(userID, boxName, redirectURL)
 			if err != nil {
@@ -1636,14 +1672,24 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		}
 
 		route := box.GetRoute()
+		// Get sharing information
+		sharedUserCount, shareLinkCount, _ := s.countTotalShares(r.Context(), box.ID)
+		sharedEmails := s.getSharedEmails(r.Context(), box.ID)
+		shareLinks := s.getShareLinks(r.Context(), box.ID, result.Name)
+
 		boxInfo := BoxDisplayInfo{
-			Box:         box,
-			SSHCommand:  s.formatSSHConnectionInfo(result.Name),
-			ProxyURL:    s.httpsProxyAddress(result.Name),
-			TerminalURL: s.terminalURL(result.Name),
-			VSCodeURL:   template.URL(s.vscodeURL(result.Name)),
-			ProxyPort:   route.Port,
-			ProxyShare:  route.Share,
+			Box:             box,
+			SSHCommand:      s.formatSSHConnectionInfo(result.Name),
+			ProxyURL:        s.httpsProxyAddress(result.Name),
+			TerminalURL:     s.terminalURL(result.Name),
+			VSCodeURL:       template.URL(s.vscodeURL(result.Name)),
+			ProxyPort:       route.Port,
+			ProxyShare:      route.Share,
+			SharedUserCount: sharedUserCount,
+			ShareLinkCount:  shareLinkCount,
+			TotalShareCount: sharedUserCount + shareLinkCount,
+			SharedEmails:    sharedEmails,
+			ShareLinks:      shareLinks,
 		}
 		// Only set ShelleyURL for exeuntu images
 		if strings.Contains(result.Image, "exeuntu") {
@@ -1655,13 +1701,31 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		s.slog().Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
 
-	// Prepare template data
+	// Get boxes shared with this user
+	sharedBoxResults, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) ([]exedb.GetBoxesSharedWithUserRow, error) {
+		return queries.GetBoxesSharedWithUser(ctx, user.UserID)
+	})
+	if err != nil {
+		s.slog().Error("Failed to get shared boxes for dashboard", "error", err, "user_id", userID)
+	}
+
+	// Convert shared boxes to SharedBoxDisplayInfo
+	sharedBoxes := make([]SharedBoxDisplayInfo, len(sharedBoxResults))
+	for i, result := range sharedBoxResults {
+		sharedBoxInfo := SharedBoxDisplayInfo{
+			Name:       result.Name,
+			OwnerEmail: result.OwnerEmail,
+			ProxyURL:   s.httpsProxyAddress(result.Name),
+		}
+		sharedBoxes[i] = sharedBoxInfo
+	} // Prepare template data
 	data := UserPageData{
-		User:       user,
-		SSHKeys:    sshKeys,
-		Boxes:      boxes,
-		ActivePage: "boxes",
-		IsLoggedIn: true,
+		User:        user,
+		SSHKeys:     sshKeys,
+		Boxes:       boxes,
+		SharedBoxes: sharedBoxes,
+		ActivePage:  "boxes",
+		IsLoggedIn:  true,
 	}
 
 	// Render template

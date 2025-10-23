@@ -55,6 +55,25 @@ type Box struct {
 	CreationLog          *string    `db:"creation_log" json:"creation_log"`
 }
 
+type BoxShare struct {
+	ID               int64      `db:"id" json:"id"`
+	BoxID            int64      `db:"box_id" json:"box_id"`
+	SharedWithUserID string     `db:"shared_with_user_id" json:"shared_with_user_id"`
+	SharedByUserID   string     `db:"shared_by_user_id" json:"shared_by_user_id"`
+	Message          *string    `db:"message" json:"message"`
+	CreatedAt        *time.Time `db:"created_at" json:"created_at"`
+}
+
+type BoxShareLink struct {
+	ID              int64      `db:"id" json:"id"`
+	BoxID           int64      `db:"box_id" json:"box_id"`
+	ShareToken      string     `db:"share_token" json:"share_token"`
+	CreatedByUserID string     `db:"created_by_user_id" json:"created_by_user_id"`
+	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
+	LastUsedAt      *time.Time `db:"last_used_at" json:"last_used_at"`
+	UseCount        *int64     `db:"use_count" json:"use_count"`
+}
+
 type DeletedBox struct {
 	ID        int64   `db:"id" json:"id"`
 	AllocID   string  `db:"alloc_id" json:"alloc_id"`
@@ -82,6 +101,15 @@ type MobilePendingVm struct {
 	Hostname  string     `db:"hostname" json:"hostname"`
 	Prompt    *string    `db:"prompt" json:"prompt"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}
+
+type PendingBoxShare struct {
+	ID              int64      `db:"id" json:"id"`
+	BoxID           int64      `db:"box_id" json:"box_id"`
+	SharedWithEmail string     `db:"shared_with_email" json:"shared_with_email"`
+	SharedByUserID  string     `db:"shared_by_user_id" json:"shared_by_user_id"`
+	Message         *string    `db:"message" json:"message"`
+	CreatedAt       *time.Time `db:"created_at" json:"created_at"`
 }
 
 type PendingSSHKey struct {
@@ -153,6 +181,12 @@ type User struct {
 	UserID    string     `db:"user_id" json:"user_id"`
 	Email     string     `db:"email" json:"email"`
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
+}
+
+type UserDailyEmailCount struct {
+	UserID     string `db:"user_id" json:"user_id"`
+	Date       string `db:"date" json:"date"`
+	EmailCount int64  `db:"email_count" json:"email_count"`
 }
 
 type UserEvent struct {

@@ -133,6 +133,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 				"proxy mybox --port=3000 --public   # expose port 3000 publicly",
 			},
 		},
+		ss.shareCommand(),
 		{
 			Name:        "whoami",
 			Description: "Show your user information including email and all SSH keys.",

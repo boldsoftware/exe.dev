@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -39,19 +38,19 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Ensure the port in the Host header matches the listener's local port
 	conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
 	if !ok {
-		slog.Error("Failed to get local address from request context")
+		s.slog().Error("Failed to get local address from request context")
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	_, localPortStr, err := net.SplitHostPort(conn.String())
 	if err != nil {
-		slog.Error("Failed to parse local address", "error", err)
+		s.slog().Error("Failed to parse local address", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	localPort, err := strconv.Atoi(localPortStr)
 	if err != nil {
-		slog.Error("Failed to convert local port to integer", "error", err)
+		s.slog().Error("Failed to convert local port to integer", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -64,27 +63,27 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		if s.httpsLn != nil && s.httpsLn.tcp != nil {
 			hostHeaderPort = s.httpsLn.tcp.Port
 		} else {
-			slog.Error("Host header didn't have port but we're not using default ports.")
+			s.slog().Error("Host header didn't have port but we're not using default ports.")
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 	} else {
 		hostHeaderPort, err = strconv.Atoi(hostPortStr)
 		if err != nil {
-			slog.Error("Failed to convert host port to integer", "error", err)
+			s.slog().Error("Failed to convert host port to integer", "error", err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 	}
 	if hostHeaderPort != localPort {
-		slog.Warn("Host header port mismatch", "host_port", hostHeaderPort, "local_port", localPort)
+		s.slog().Warn("Host header port mismatch", "host_port", hostHeaderPort, "local_port", localPort)
 		http.Error(w, "internal server error", http.StatusBadRequest)
 		return
 	}
 
 	// Handle magic URL for authentication
 	if r.URL.Path == "/__exe.dev/auth" {
-		slog.Info("[REDIRECT] Magic auth URL accessed", "host", r.Host, "path", r.URL.Path)
+		s.slog().Info("[REDIRECT] Magic auth URL accessed", "host", r.Host, "path", r.URL.Path)
 		s.handleMagicAuth(w, r)
 		return
 	}
@@ -97,14 +96,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Handle logout URL
 	if r.URL.Path == "/__exe.dev/logout" {
-		slog.Info("[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
+		s.slog().Info("[REDIRECT] Logout URL accessed", "host", r.Host, "path", r.URL.Path)
 		s.handleProxyLogout(w, r)
 		return
 	}
 
 	// Reject HTTPS requests to localhost domains in dev mode
 	if r.TLS != nil && s.devMode != "" && strings.HasSuffix(hostHeaderHost, ".localhost") {
-		slog.Warn("HTTPS not supported for localhost domains", "host", r.Host)
+		s.slog().Warn("HTTPS not supported for localhost domains", "host", r.Host)
 		http.Error(w, "HTTPS not supported for localhost domains. Use exe.local instead.", http.StatusBadRequest)
 		return
 	}
@@ -112,7 +111,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Parse hostname to extract box name and optional explicit target port
 	boxName, err := s.resolveBoxName(r.Context(), hostHeaderHost)
 	if err != nil {
-		slog.Warn("Failed to resolve box name", "host", r.Host, "error", err)
+		s.slog().Warn("Failed to resolve box name", "host", r.Host, "error", err)
 		http.Error(w, "Invalid Hostname", http.StatusBadRequest)
 		return
 	}
@@ -149,21 +148,37 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		// Check if user is authenticated
 		userID, authenticated := s.getAuthenticatedUserID(r)
 		if !authenticated {
-			// User not authenticated, redirect to auth
+			// Not authenticated - redirect to auth (preserving share token if present)
+			// The share link will be checked again after authentication
 			s.redirectToAuth(w, r)
 			return
 		}
 
-		// User is authenticated, check if they have access to this box
-		// Box must belong to user's alloc
-		alloc, err := s.getUserAlloc(r.Context(), userID)
-		if err != nil || alloc == nil {
-			http.Error(w, "Error checking user allocation", http.StatusInternalServerError)
-			return
+		// User is authenticated - check if they have access
+		hasAccess := false
+
+		// Check access
+		accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
+		if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
+			hasAccess = true
 		}
-		if box.AllocID != alloc.AllocID {
-			// User is authenticated but box belongs to different alloc
-			// Tempting to return a 401/403, but that leaks the existence of the box.
+
+		// Check share link access
+		if !hasAccess && s.checkShareLinkAccess(r, box.ID) {
+			if shareToken := r.URL.Query().Get("share"); shareToken != "" {
+				// Valid share link - increment usage
+				_ = s.incrementShareLinkUsage(r.Context(), shareToken)
+
+				// Auto-create email-based share for this user
+				// This allows the user to access the box even if the share link is later revoked
+				_ = s.autoCreateShareFromLink(r.Context(), userID, box.ID, shareToken)
+			}
+			hasAccess = true
+		}
+
+		if !hasAccess {
+			// User is authenticated but doesn't have access
+			// Don't leak box existence
 			http.Error(w, "Box not found", http.StatusNotFound)
 			return
 		}
@@ -198,7 +213,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Proxy the request to the container
 	err = s.proxyToContainer(w, r, &box, route)
 	if err != nil {
-		slog.Debug("Failed to proxy request", "error", err, "box", boxName)
+		s.slog().Debug("Failed to proxy request", "error", err, "box", boxName)
 
 		// Determine if the requester is the owner of the box's alloc
 		isOwner := false
@@ -419,7 +434,7 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 		"redirect": {returnURL.String()},
 	})
 
-	slog.Debug("[REDIRECT] redirectToAuth", "from", returnURL, "to", authURL)
+	s.slog().Debug("[REDIRECT] redirectToAuth", "from", returnURL, "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
@@ -429,7 +444,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	secret := r.URL.Query().Get("secret")
 	redirectURL := r.URL.Query().Get("redirect")
 
-	slog.Debug("[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:min(10, len(secret))]+"...", "redirect", redirectURL)
+	s.slog().Debug("[REDIRECT] handleMagicAuth called", "host", r.Host, "secret", secret[:min(10, len(secret))]+"...", "redirect", redirectURL)
 
 	if secret == "" {
 		http.Error(w, "Missing secret parameter", http.StatusBadRequest)
@@ -439,7 +454,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	// Validate and consume the magic secret
 	magicSecret, err := s.validateMagicSecret(secret)
 	if err != nil {
-		slog.Debug("[REDIRECT] Magic secret validation failed", "error", err)
+		s.slog().Debug("[REDIRECT] Magic secret validation failed", "error", err)
 		http.Error(w, "Invalid or expired secret", http.StatusUnauthorized)
 		return
 	}
@@ -468,14 +483,14 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 		finalRedirect = "/" // Default fallback
 	}
 
-	slog.Debug("[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
+	s.slog().Debug("[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
 	http.Redirect(w, r, finalRedirect, http.StatusTemporaryRedirect)
 }
 
 // handleProxyLogin handles the login URL /__exe.dev/login
 // It redirects to the main domain auth flow with redirect and return_host parameters
 func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
-	slog.Debug("[REDIRECT] handleProxyLogin called", "host", r.Host)
+	s.slog().Debug("[REDIRECT] handleProxyLogin called", "host", r.Host)
 
 	redirect := r.URL.Query().Get("redirect")
 	if redirect == "" {
@@ -517,7 +532,7 @@ func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
 	authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s",
 		scheme, mainHost, url.QueryEscape(redirect), url.QueryEscape(r.Host))
 
-	slog.Debug("[REDIRECT] handleProxyLogin redirecting to main domain", "to", authURL)
+	s.slog().Debug("[REDIRECT] handleProxyLogin redirecting to main domain", "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
@@ -563,7 +578,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 			return queries.DeleteAuthCookieByValue(ctx, cookieValue)
 		})
 		if err != nil {
-			slog.Error("Failed to delete specific proxy auth cookie from database", "error", err)
+			s.slog().Error("Failed to delete specific proxy auth cookie from database", "error", err)
 		}
 	}
 
@@ -711,7 +726,7 @@ func (s *Server) resolveSSHHost(ctrhost string) string {
 	if s.devMode != "" {
 		if _, err := net.LookupHost(sshHost); err != nil {
 			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
-				slog.Debug("Resolved host via SSH config for dev", "alias", sshHost, "ip", ip)
+				s.slog().Debug("Resolved host via SSH config for dev", "alias", sshHost, "ip", ip)
 				sshHost = ip
 			}
 		}
@@ -770,7 +785,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 				return queries.GetEmailByUserID(ctx, userID)
 			})
 			if err != nil {
-				slog.Error("failed to get user email for authenticated proxy headers", "error", err)
+				s.slog().Error("failed to get user email for authenticated proxy headers", "error", err)
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
 			}
@@ -798,11 +813,61 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	// Capture proxy errors and return them to the caller
 	var proxyErr error
 	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		slog.Debug("HTTP proxy error", "error", err, "target_port", targetPort)
+		s.slog().Debug("HTTP proxy error", "error", err, "target_port", targetPort)
 		proxyErr = err
 	}
 
 	// Proxy the request
 	rp.ServeHTTP(w, r)
 	return proxyErr
+}
+
+// checkShareLinkAccess checks if the request has a valid share link token
+func (s *Server) checkShareLinkAccess(r *http.Request, boxID int) bool {
+	shareToken := r.URL.Query().Get("share")
+	if shareToken == "" {
+		return false
+	}
+
+	valid, err := s.validateShareLinkForBox(r.Context(), shareToken, boxID)
+	if err != nil {
+		s.slog().Debug("share link validation error", "error", err)
+		return false
+	}
+
+	return valid
+}
+
+// incrementShareLinkUsage increments the usage counter for a share link
+func (s *Server) incrementShareLinkUsage(ctx context.Context, shareToken string) error {
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.IncrementShareLinkUsage(ctx, shareToken)
+	})
+}
+
+// autoCreateShareFromLink creates an email-based share for a user who accessed via share link
+// This allows the user to retain access even if the share link is later revoked
+func (s *Server) autoCreateShareFromLink(ctx context.Context, userID string, boxID int, shareToken string) error {
+	// Get the share link to find who created it
+	shareLink, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.BoxShareLink, error) {
+		return queries.GetBoxShareLinkByToken(ctx, shareToken)
+	})
+	if err != nil {
+		return err
+	}
+
+	// Create email-based share (will fail silently if already exists due to UNIQUE constraint)
+	return s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		_, err := queries.CreateBoxShare(ctx, exedb.CreateBoxShareParams{
+			BoxID:            int64(boxID),
+			SharedWithUserID: userID,
+			SharedByUserID:   shareLink.CreatedByUserID,
+			Message:          nil, // No message for auto-created shares
+		})
+		// Ignore duplicate errors
+		if err != nil && strings.Contains(err.Error(), "UNIQUE constraint") {
+			return nil
+		}
+		return err
+	})
 }

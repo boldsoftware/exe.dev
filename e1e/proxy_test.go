@@ -202,6 +202,12 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			t.Errorf("failed to do http request: %v", err)
 			return
 		}
+		// If we got the expected status code during the auth dance, we're done
+		// (e.g., 404 when access is denied)
+		if resp.StatusCode == exp.httpCode {
+			// Auth dance failed with expected status - this is success
+			return
+		}
 		if resp.StatusCode != http.StatusTemporaryRedirect {
 			t.Errorf("expected redirect to /auth/confirm, got status %d", resp.StatusCode)
 		}

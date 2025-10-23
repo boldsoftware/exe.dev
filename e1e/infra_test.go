@@ -277,6 +277,8 @@ func (t *testEnv) canonicalizeString(s string) string {
 	s = regexp.MustCompile(`Ready in [0-9.]+s!`).ReplaceAllString(s, `Ready in ELAPSED_TIME!`)
 	s = regexp.MustCompile(`(?m)^.*?@localhost: Permission denied`).ReplaceAllString(s, `USER@localhost: Permission denied`)
 	s = strings.ReplaceAll(s, "Press Enter to close this connection.\n", "Press Enter to close this connection.")
+	// Canonicalize share tokens (26-character alphanumeric tokens that appear in share URLs or standalone)
+	s = regexp.MustCompile(`(share=|\s)([A-Z0-9]{26})\b`).ReplaceAllString(s, `${1}SHARE_TOKEN`)
 	return s
 }
 
@@ -1262,14 +1264,14 @@ func boxName(t *testing.T) string {
 // It returns the open pty after registration, authentication cookies for HTTP access,
 // the private keyFile, and the account email.
 // It is the caller's responsibility to call pty.disconnect() when done.
-func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
+func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, cookies []*http.Cookie, keyFile, returnedEmail string) {
 	keyFile, publicKey := genSSHKey(t)
 	pty = sshToExeDev(t, keyFile)
 	pty.want(banner)
 
 	pty.want("Please enter your email")
-	email = t.Name() + "@example.com"
 	pty.sendLine(email)
+	returnedEmail = email
 	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
 	pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
@@ -1288,12 +1290,12 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 	pty.want(publicKey)
 	pty.wantPrompt()
 
-	// t.Logf("test: %s", t.Name())
-	// t.Logf("exed: http://localhost:%d", Env.exed.HTTPPort)
-	// t.Logf("email: %s", email)
-	// t.Logf("connect:\nssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %d -i %s localhost\n", Env.piperd.SSHPort, keyFile)
+	return
+}
 
-	return pty, cookies, keyFile, email
+func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
+	email = t.Name() + "@example.com"
+	return registerForExeDevWithEmail(t, email)
 }
 
 // BoxOpts holds optional parameters for newBox.

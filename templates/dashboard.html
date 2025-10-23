@@ -479,9 +479,10 @@
     {{template "topbar" .}}
     
     <div class="main-container">
+        {{if .Boxes}}
         <div class="section-header">
             <div class="section-left">
-                <div class="section-title">Boxes</div>
+                <div class="section-title">My Boxes</div>
                 <a href="/new" class="new-box-btn">+ New</a>
             </div>
             <div class="search-box">
@@ -493,13 +494,18 @@
             </div>
         </div>
         
-        {{if .Boxes}}
+        <div class="boxes-list" style="margin-bottom: 40px;">
         <div class="boxes-list">
             {{range .Boxes}}
             <div class="box-row"{{if .CreationLog}} data-has-log="true"{{end}}>
                 <div class="box-main" onclick="handleBoxRowClick(event, this)">
                     <span class="status-dot {{.Status}}" title="{{.Status}}"></span>
                     <span class="box-name">{{.Name}}</span>
+                    {{if eq .ProxyShare "public"}}
+                    <span style="display: inline-flex; align-items: center; padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 3px; font-size: 11px; font-weight: 500; margin-left: 8px;" title="Public - anyone can access">PUBLIC</span>
+                    {{else if gt .TotalShareCount 0}}
+                    <span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: #dbeafe; color: #1e40af; border-radius: 3px; font-size: 11px; margin-left: 8px;" title="Shared with {{.SharedUserCount}} user(s) and {{.ShareLinkCount}} link(s)">👥 {{.TotalShareCount}}</span>
+                    {{end}}
                     <div class="box-actions">
                         {{if ne .Status "pending"}}
                         <button class="copy-btn" onclick="copyToClipboard(this, '{{.SSHCommand}}')" title="SSH">
@@ -561,11 +567,47 @@
                         <span class="box-info-value">{{.Image}}</span>
                         <span class="box-info-label">Proxy:</span>
                         <span class="box-info-value">Port {{.ProxyPort}}, {{.ProxyShare}}</span>
+                        {{if or (gt .SharedUserCount 0) (gt .ShareLinkCount 0)}}
+                        <span class="box-info-label">Shared:</span>
+                        <span class="box-info-value">
+                            {{if gt .SharedUserCount 0}}{{.SharedUserCount}} user{{if ne .SharedUserCount 1}}s{{end}}{{end}}
+                            {{if and (gt .SharedUserCount 0) (gt .ShareLinkCount 0)}}, {{end}}
+                            {{if gt .ShareLinkCount 0}}{{.ShareLinkCount}} link{{if ne .ShareLinkCount 1}}s{{end}}{{end}}
+                        </span>
+                        {{end}}
                         {{if ne .Status "pending"}}
                         <span class="box-info-label">Created:</span>
                         <span class="box-info-value">{{.CreatedAt.Format "Jan 2, 2006 15:04 MST"}}</span>
                         {{end}}
                     </div>
+                    {{if or (gt (len .SharedEmails) 0) (gt (len .ShareLinks) 0)}}
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+                        {{if gt (len .SharedEmails) 0}}
+                        <div style="font-size: 13px; font-weight: 500; color: #6b7280; margin-bottom: 8px;">Shared with users:</div>
+                        <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
+                            {{range .SharedEmails}}
+                            <div style="font-size: 13px; color: #374151; padding: 4px 8px; background: #f9fafb; border-radius: 4px;">{{.}}</div>
+                            {{end}}
+                        </div>
+                        {{end}}
+                        {{if gt (len .ShareLinks) 0}}
+                        <div style="font-size: 13px; font-weight: 500; color: #6b7280; margin-bottom: 8px;">Share links:</div>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            {{range .ShareLinks}}
+                            <div style="display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: #f9fafb; border-radius: 4px;">
+                                <div style="font-size: 12px; color: #374151; font-family: ui-monospace, monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{.URL}}</div>
+                                <button class="copy-btn" onclick="copyToClipboard(this, '{{.URL}}')" title="Copy link" style="padding: 3px 6px; font-size: 11px;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            {{end}}
+                        </div>
+                        {{end}}
+                    </div>
+                    {{end}}
                     {{if ne .Status "pending"}}
                     <div class="box-actions-expanded">
                         <a href="{{.ProxyURL}}" class="action-btn-expanded" target="_blank">
@@ -607,9 +649,47 @@
             {{end}}
         </div>
         {{else}}
-        <div class="no-boxes">
-            <div class="no-boxes-message">No boxes yet. Create one with:</div>
-            <code>ssh exe.dev new --name=myname</code>
+        <div style="margin-bottom: 40px;">
+            <div class="section-header">
+                <div class="section-left">
+                    <div class="section-title">My Boxes</div>
+                    <a href="/new" class="new-box-btn">+ New</a>
+                </div>
+            </div>
+            <div class="no-boxes">
+                <div class="no-boxes-message">No boxes yet. Create one with:</div>
+                <code>ssh exe.dev new --name=myname</code>
+            </div>
+        </div>
+        {{end}}
+        
+        {{if .SharedBoxes}}
+        <div class="section-header">
+            <div class="section-left">
+                <div class="section-title">Shared with Me</div>
+            </div>
+        </div>
+        
+        <div class="boxes-list">
+            {{range .SharedBoxes}}
+            <div class="box-row">
+                <div class="box-main" onclick="handleBoxRowClick(event, this)">
+                    <span class="status-dot running" title="shared"></span>
+                    <span class="box-name">{{.Name}}</span>
+                    <span style="font-size: 11px; color: #999; margin-left: 8px;">by {{.OwnerEmail}}</span>
+                    <div class="box-actions">
+                        <a href="{{.ProxyURL}}" class="action-btn" target="_blank" title="HTTPS">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                            <span class="btn-text">HTTPS</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {{end}}
         </div>
         {{end}}
     </div>
