@@ -77,7 +77,7 @@ URL: http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 Mode: Private
 
 Shared with users:
-  friend@example.com (invited now)
+  friend@example.com (invited INVITE_AGE)
 
 No share links yet. Create one with:
   share add-link e1e-BOX_TIMESTAMP-testsharecommands
@@ -99,7 +99,7 @@ URL: http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 Mode: Private
 
 Shared with users:
-  friend@example.com (invited now)
+  friend@example.com (invited INVITE_AGE)
 
 Share links:
   SHARE_TOKEN (created now, used 0 times)

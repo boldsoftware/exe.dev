@@ -279,6 +279,8 @@ func (t *testEnv) canonicalizeString(s string) string {
 	s = strings.ReplaceAll(s, "Press Enter to close this connection.\n", "Press Enter to close this connection.")
 	// Canonicalize share tokens (26-character alphanumeric tokens that appear in share URLs or standalone)
 	s = regexp.MustCompile(`(share=|\s)([A-Z0-9]{26})\b`).ReplaceAllString(s, `${1}SHARE_TOKEN`)
+	// Canonicalize invitation timestamps
+	s = regexp.MustCompile(`\(invited [^)]+\)`).ReplaceAllString(s, `(invited INVITE_AGE)`)
 	return s
 }
 
