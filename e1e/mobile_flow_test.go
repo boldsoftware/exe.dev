@@ -172,7 +172,7 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	pty.wantPrompt()
 
 	// Cleanup
-	pty.sendLine("delete " + host)
+	pty.sendLine("rm " + host)
 	pty.want("Deleting")
 	pty.wantPrompt()
 	pty.disconnect()

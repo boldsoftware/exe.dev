@@ -90,58 +90,58 @@ func TestExeDevAPI(t *testing.T) {
 	pty.wantRe("Box name .*" + regexp.QuoteMeta(nbo.BoxName) + ".* is not available")
 	pty.wantPrompt()
 
-	listOut, err := runExeDevSSHCommand(t, keyFile, "list", "--json")
+	listOut, err := runExeDevSSHCommand(t, keyFile, "ls", "--json")
 	if err != nil {
-		t.Fatalf("failed to run list command: %v\n%s", err, listOut)
+		t.Fatalf("failed to run ls command: %v\n%s", err, listOut)
 	}
-	t.Logf("list output: %s", listOut)
+	t.Logf("ls output: %s", listOut)
 	var blo boxListOutput
 	err = json.Unmarshal(listOut, &blo)
 	if err != nil {
-		t.Fatalf("failed to parse list output as JSON: %v\n%s", err, listOut)
+		t.Fatalf("failed to parse ls output as JSON: %v\n%s", err, listOut)
 	}
 	boxes := blo.Boxes
 	if len(boxes) != 1 {
-		t.Errorf("expected exactly one box in list output, got %d", len(boxes))
+		t.Errorf("expected exactly one box in ls output, got %d", len(boxes))
 	}
 	box0 := boxes[0]
 	if box0.BoxName != nbo.BoxName {
-		t.Errorf("expected box name %q in list output, got %q", nbo.BoxName, boxes[0].BoxName)
+		t.Errorf("expected box name %q in ls output, got %q", nbo.BoxName, boxes[0].BoxName)
 	}
 	if box0.Status != "running" {
-		t.Errorf("expected status 'running' in list output, got %q", boxes[0].Status)
+		t.Errorf("expected status 'running' in ls output, got %q", boxes[0].Status)
 	}
 	// TODO: check image name
 
-	delOut, err := runExeDevSSHCommand(t, keyFile, "delete", nbo.BoxName, "--json")
+	delOut, err := runExeDevSSHCommand(t, keyFile, "rm", nbo.BoxName, "--json")
 	if err != nil {
-		t.Fatalf("failed to run delete command: %v\n%s", err, delOut)
+		t.Fatalf("failed to run rm command: %v\n%s", err, delOut)
 	}
 	var delResult deleteBoxOutput
 	err = json.Unmarshal(delOut, &delResult)
 	if err != nil {
-		t.Fatalf("failed to parse delete output as JSON: %v\n%s", err, delOut)
+		t.Fatalf("failed to parse rm output as JSON: %v\n%s", err, delOut)
 	}
 	if delResult.BoxName != nbo.BoxName {
-		t.Errorf("expected box name %q in delete output, got %q", nbo.BoxName, delResult.BoxName)
+		t.Errorf("expected box name %q in rm output, got %q", nbo.BoxName, delResult.BoxName)
 	}
 	if delResult.Status != "deleted" {
-		t.Errorf("expected status 'deleted' in delete output, got %q", delResult.Status)
+		t.Errorf("expected status 'deleted' in rm output, got %q", delResult.Status)
 	}
 
 	// Verify the box is gone from the list
-	listOut2, err := runExeDevSSHCommand(t, keyFile, "list", "--json")
+	listOut2, err := runExeDevSSHCommand(t, keyFile, "ls", "--json")
 	if err != nil {
-		t.Fatalf("failed to run list command: %v\n%s", err, listOut2)
+		t.Fatalf("failed to run ls command: %v\n%s", err, listOut2)
 	}
 	var blo2 boxListOutput
 	err = json.Unmarshal(listOut2, &blo2)
 	if err != nil {
-		t.Fatalf("failed to parse list output as JSON: %v\n%s", err, listOut2)
+		t.Fatalf("failed to parse ls output as JSON: %v\n%s", err, listOut2)
 	}
 	boxes2 := blo2.Boxes
 	if len(boxes2) != 0 {
-		t.Errorf("expected zero boxes in list output after deletion, got %d", len(boxes2))
+		t.Errorf("expected zero boxes in ls output after deletion, got %d", len(boxes2))
 	}
 
 	browserOut, err := runExeDevSSHCommand(t, keyFile, "browser", "--json")

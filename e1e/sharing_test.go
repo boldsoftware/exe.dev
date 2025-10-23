@@ -187,7 +187,7 @@ func TestBoxSharingWithWebServer(t *testing.T) {
 
 	// Cleanup
 	pty1 = sshToExeDev(t, keyFile1)
-	pty1.sendLine("delete " + box)
+	pty1.sendLine("rm " + box)
 	pty1.want("Deleting")
 	pty1.wantPrompt()
 	pty1.disconnect()
@@ -290,7 +290,7 @@ func TestShareLinkAccess(t *testing.T) {
 
 	// Cleanup
 	pty1 = sshToExeDev(t, keyFile1)
-	pty1.sendLine("delete " + box)
+	pty1.sendLine("rm " + box)
 	pty1.want("Deleting")
 	pty1.wantPrompt()
 	pty1.disconnect()
@@ -558,7 +558,7 @@ func TestShareCommands(t *testing.T) {
 	pty1.wantPrompt()
 
 	// Cleanup
-	pty1.sendLine("delete " + box)
+	pty1.sendLine("rm " + box)
 	pty1.want("Deleting")
 	pty1.wantPrompt()
 	pty1.disconnect()

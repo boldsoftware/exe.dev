@@ -44,30 +44,24 @@ func TestCompletionIntegration(t *testing.T) {
 			name:     "complete command names",
 			line:     "l",
 			cursor:   1,
-			expected: []string{"list", "ls"},
+			expected: []string{"ls"},
 		},
 		{
-			name:     "complete delete command",
-			line:     "del",
-			cursor:   3,
-			expected: []string{"delete"},
-		},
-		{
-			name:     "complete help command",
-			line:     "?",
+			name:     "complete rm command",
+			line:     "r",
 			cursor:   1,
-			expected: []string{"?"},
+			expected: []string{"rm"},
 		},
 		{
 			name:     "complete with space - list commands",
 			line:     "",
 			cursor:   0,
-			expected: []string{"help", "?", "doc", "list", "ls", "new", "delete", "rm", "proxy", "whoami", "browser", "exit"},
+			expected: []string{"help", "doc", "ls", "new", "rm", "proxy", "share", "whoami", "browser", "exit"},
 		},
 		{
-			name:     "complete delete with space - should use box completer (but no containers in test)",
-			line:     "delete ",
-			cursor:   7,
+			name:     "complete rm with space - should use box completer (but no containers in test)",
+			line:     "rm ",
+			cursor:   3,
 			expected: nil, // No containers available in test mode
 		},
 	}
@@ -83,7 +77,7 @@ func TestCompletionIntegration(t *testing.T) {
 					// Just check that we have a reasonable number of completions
 					assert.True(t, len(result) >= 10, "Should have multiple command completions")
 					// Check that expected commands are in the result
-					for _, expected := range []string{"list", "delete", "help", "new"} {
+					for _, expected := range []string{"ls", "rm", "help", "new"} {
 						assert.Contains(t, result, expected)
 					}
 				} else {
@@ -112,28 +106,20 @@ func TestApplySingleCompletion(t *testing.T) {
 		expectedPos  int
 	}{
 		{
-			name:         "complete at end of word",
-			line:         "del",
-			pos:          3,
-			completion:   "delete",
-			expectedLine: "delete ",
-			expectedPos:  7,
-		},
-		{
 			name:         "complete partial word",
 			line:         "l",
 			pos:          1,
-			completion:   "list",
-			expectedLine: "list ",
-			expectedPos:  5,
+			completion:   "ls",
+			expectedLine: "ls ",
+			expectedPos:  3,
 		},
 		{
 			name:         "complete with existing text after",
-			line:         "delete my existing text",
-			pos:          9, // cursor at end of "my"
+			line:         "ls my existing text",
+			pos:          5, // cursor at end of "my"
 			completion:   "mybox",
-			expectedLine: "delete mybox  existing text",
-			expectedPos:  13,
+			expectedLine: "ls mybox  existing text",
+			expectedPos:  9,
 		},
 	}
 

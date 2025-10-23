@@ -47,7 +47,7 @@ http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess.localhost:EXED_HTTP_PORT
 SSH
 ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess@localhost
 
-exe.dev ▶ list
+exe.dev ▶ ls
 Your boxes:
   • e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
@@ -97,12 +97,12 @@ exe.dev ▶
 ● ssh localhost
 ●
 
-delete e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess
+rm e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess
 
 - browser to speed-login on the web
 - help to see a list of commands
 
-exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess
+exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess
 Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess...
 Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testsharelinkaccess" deleted successfully
 exe.dev ▶ exit

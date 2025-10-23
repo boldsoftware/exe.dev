@@ -946,7 +946,7 @@ func (p *expectPty) disconnect() {
 
 func (p *expectPty) deleteBox(boxName string) {
 	p.t.Helper()
-	p.sendLine("delete " + boxName)
+	p.sendLine("rm " + boxName)
 	p.want("Deleting")
 	p.wantPrompt()
 }
@@ -1425,7 +1425,7 @@ func newBox(t *testing.T, pty *expectPty, opts ...BoxOpts) string {
 	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)
 
 	// Confirm it is there.
-	pty.sendLine("list")
+	pty.sendLine("ls")
 	pty.want("boxes")
 	pty.wantRe(boxNameRe + ".*running.*\n")
 	return boxName

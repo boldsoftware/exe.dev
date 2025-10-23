@@ -31,9 +31,12 @@ type CompletionContext struct {
 
 // Command represents a single command in the command tree
 type Command struct {
-	Name              string
-	Hidden            bool // if true, command is hidden from help and completions
-	Aliases           []string
+	Name   string
+	Hidden bool // if true, command is hidden from help and completions
+
+	// Deprecated: Pick one meaningful name instead.
+	Aliases []string
+
 	Description       string
 	Usage             string
 	FlagSetFunc       func() *flag.FlagSet // Factory to create a new FlagSet for each invocation

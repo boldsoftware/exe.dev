@@ -65,19 +65,14 @@ func TestCommandTree_FindCommand(t *testing.T) {
 			wantName: "help",
 		},
 		{
-			name:     "find help by alias",
-			path:     []string{"?"},
-			wantName: "help",
-		},
-		{
 			name:     "find list command",
-			path:     []string{"list"},
-			wantName: "list",
+			path:     []string{"ls"},
+			wantName: "ls",
 		},
 		{
 			name:     "find list by alias",
-			path:     []string{"ls"},
-			wantName: "list",
+			path:     []string{"role"},
+			wantName: "hireme",
 		},
 		{
 			name:    "nonexistent command",
@@ -86,7 +81,7 @@ func TestCommandTree_FindCommand(t *testing.T) {
 		},
 		{
 			name:    "nonexistent subcommand",
-			path:    []string{"list", "nonexistent"},
+			path:    []string{"ls", "nonexistent"},
 			wantNil: true,
 		},
 		{
@@ -171,8 +166,8 @@ func TestHelpCommand(t *testing.T) {
 		if !strings.Contains(result, "commands") {
 			t.Errorf("Help output should contain 'commands'")
 		}
-		if !strings.Contains(result, "list") {
-			t.Errorf("Help output should contain 'list'")
+		if !strings.Contains(result, "ls") {
+			t.Errorf("Help output should contain 'ls'")
 		}
 		if !strings.Contains(result, "exit") {
 			t.Errorf("Help output should contain 'exit'")
@@ -240,22 +235,6 @@ func TestExecuteCommand(t *testing.T) {
 		}
 	})
 
-	t.Run("execute help with alias", func(t *testing.T) {
-		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
-		ctx := context.Background()
-
-		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"?"})
-		if rc != 0 {
-			t.Errorf("ExecuteCommand() = %d, want 0", rc)
-		}
-
-		result := output.String()
-		if !strings.Contains(result, "EXE.DEV") {
-			t.Errorf("Command output should contain 'EXE.DEV'")
-		}
-	})
-
 	t.Run("execute nonexistent command", func(t *testing.T) {
 		output := &MockOutput{}
 		cc := createTestContext(sshServer, user, alloc, output, []string{})
@@ -308,7 +287,7 @@ func TestGetAvailableCommands(t *testing.T) {
 			commandNames[cmd.Name] = true
 		}
 
-		expectedCommands := []string{"help", "doc", "list", "new", "delete", "whoami"}
+		expectedCommands := []string{"help", "doc", "ls", "new", "rm", "whoami"}
 		for _, expected := range expectedCommands {
 			if !commandNames[expected] {
 				t.Errorf("Expected command %s not found in available commands", expected)

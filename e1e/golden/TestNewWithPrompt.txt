@@ -60,7 +60,7 @@ Sending prompt to Shelley...
 🏁 Shelley finished its turn. Continue the conversation at
   http://e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt.localhost:9999
 
-exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt
+exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt
 Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt...
 Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt" deleted successfully
 exe.dev ▶ exit

@@ -64,7 +64,6 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 	commands := []*exemenu.Command{
 		{
 			Name:              "help",
-			Aliases:           []string{"?"},
 			Description:       "Show help information",
 			Handler:           ss.handleHelpCommand,
 			HasPositionalArgs: true,
@@ -78,8 +77,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			CompleterFunc:     ss.completeDocSlugs,
 		},
 		{
-			Name:        "list",
-			Aliases:     []string{"ls"},
+			Name:        "ls",
 			Description: "List your boxes",
 			Handler:     ss.handleListCommand,
 			FlagSetFunc: jsonOnlyFlags("list"),
@@ -96,12 +94,11 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			},
 		},
 		{
-			Name:              "delete",
+			Name:              "rm",
 			Description:       "Delete a box",
 			Handler:           ss.handleDeleteCommand,
-			FlagSetFunc:       jsonOnlyFlags("delete"),
-			Aliases:           []string{"rm"},
-			Usage:             "delete <box-name>",
+			FlagSetFunc:       jsonOnlyFlags("rm"),
+			Usage:             "rm <box-name>",
 			HasPositionalArgs: true,
 			CompleterFunc:     ss.completeBoxNames,
 		},

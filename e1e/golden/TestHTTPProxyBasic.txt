@@ -50,7 +50,7 @@ http://e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT
 SSH
 ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic@localhost
 
-exe.dev ▶ list
+exe.dev ▶ ls
 Your boxes:
   • e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
@@ -85,12 +85,12 @@ Goodbye!
 ● ssh localhost
 ●
 
-delete e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
+rm e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
 
 - browser to speed-login on the web
 - help to see a list of commands
 
-exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
+exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
 Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic...
 Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic" deleted successfully
 exe.dev ▶ exit

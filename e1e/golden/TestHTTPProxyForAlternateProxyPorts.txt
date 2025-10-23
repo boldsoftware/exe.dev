@@ -47,7 +47,7 @@ http://e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports.localhost
 SSH
 ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports@localhost
 
-exe.dev ▶ list
+exe.dev ▶ ls
 Your boxes:
   • e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
@@ -58,12 +58,12 @@ Goodbye!
 ● ssh localhost
 ●
 
-delete e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports
+rm e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports
 
 - browser to speed-login on the web
 - help to see a list of commands
 
-exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports
+exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports
 Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports...
 Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxyforalternateproxyports" deleted successfully
 exe.dev ▶ exit

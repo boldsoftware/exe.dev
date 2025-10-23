@@ -161,7 +161,7 @@ func TestTerminalPermissions(t *testing.T) {
 
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
-	pty.sendLine("delete " + box)
+	pty.sendLine("rm " + box)
 	pty.want("Deleting")
 	pty.wantPrompt()
 	pty.disconnect()
