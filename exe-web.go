@@ -796,7 +796,7 @@ func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*e
 }
 
 // showEmailVerificationForm shows a confirmation form for email verification
-func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token string, source string) {
+func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token, source string) {
 	var (
 		email string
 		code  string
