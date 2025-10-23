@@ -1290,7 +1290,7 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 	pty.want(publicKey)
 	pty.wantPrompt()
 
-	return
+	return pty, cookies, keyFile, returnedEmail
 }
 
 func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
