@@ -219,7 +219,10 @@ func (p *Pool) connect(key connKey, config *ssh.ClientConfig) (*pooledConn, erro
 	}
 
 	addr := net.JoinHostPort(key.host, strconv.Itoa(key.port))
+	prevTimeout := config.Timeout
+	config.Timeout = 3 * time.Second // fail fast on new connections
 	client, err := ssh.Dial("tcp", addr, config)
+	config.Timeout = prevTimeout
 	if err != nil {
 		return nil, fmt.Errorf("SSH dial failed: %w", err)
 	}
@@ -244,7 +247,10 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 		// This caller should be retrying anyway.
 		return nil, fmt.Errorf("dialThroughClient: SSH connection pool entry is unexpectedly dead, is the TTL set low?")
 	}
-	conn, err := pc.client.DialContext(ctx, network, addr)
+	// use a more aggressive timeout for the dial itself
+	shortCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	conn, err := pc.client.DialContext(shortCtx, network, addr)
 	if err != nil {
 		slog.Info("dial failed", "err", err, "errtype", reflect.TypeOf(err))
 		// Make a best-effort attempt to determine whether the dial failed because the underlying SSH connection is dead.
