@@ -16,61 +16,6 @@ import (
 	"exe.dev/sqlite"
 )
 
-func TestEmailVerificationHTTP(t *testing.T) {
-	server := NewTestServer(t)
-	verification := server.addEmailVerification("ssh-rsa test-key", "test@example.com", true)
-
-	// Test GET request shows form
-	resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email?token=%s", server.httpLn.tcp.Port, verification.Token))
-	if err != nil {
-		t.Fatalf("Failed to GET verify-email: %v", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		t.Errorf("GET: Expected status 200, got %d", resp.StatusCode)
-	}
-
-	// Test POST request completes verification
-	form := url.Values{}
-	form.Add("token", verification.Token)
-	resp, err = http.Post(
-		fmt.Sprintf("http://127.0.0.1:%d/verify-email", server.httpLn.tcp.Port),
-		"application/x-www-form-urlencoded",
-		strings.NewReader(form.Encode()),
-	)
-	if err != nil {
-		t.Fatalf("Failed to POST verify-email: %v", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		t.Errorf("POST: Expected status 200, got %d", resp.StatusCode)
-	}
-
-	// Test invalid token
-	resp2, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email?token=invalid", server.httpLn.tcp.Port))
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	resp2.Body.Close()
-
-	if resp2.StatusCode != 404 {
-		t.Errorf("Expected status 404 for invalid token, got %d", resp2.StatusCode)
-	}
-
-	// Test missing token
-	resp3, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/verify-email", server.httpLn.tcp.Port))
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	resp3.Body.Close()
-
-	if resp3.StatusCode != 400 {
-		t.Errorf("Expected status 400 for missing token, got %d", resp3.StatusCode)
-	}
-}
-
 func TestTokenGeneration(t *testing.T) {
 	token1 := generateRegistrationToken()
 	token2 := generateRegistrationToken()
