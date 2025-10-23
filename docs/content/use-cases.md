@@ -1,7 +1,7 @@
 ---
 title: exe.dev Use Cases
 description: Projects and services you can run on exe.dev
-subheading: "4. Other"
+subheading: "99. Drafts"
 published: false
 ---
 

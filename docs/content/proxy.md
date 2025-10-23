@@ -1,12 +1,11 @@
 ---
-title: HTTP Proxies
+title: exe.dev HTTP Proxies
 description: Publish to the Internet, both privately and publically
 subheading: "2. Features"
+suborder: 1
 ---
 
 <img src="proxy.svg" alt="Diagram of HTTPS Proxy Flow" width="100%"/>
-
-# exe.dev HTTP Proxies
 
 `exe.dev` proxies traffic to https://boxname.exe.dev/ to your box seamlessly, handling
 certificates, TLS termination, and optionally offering basic authentication.
