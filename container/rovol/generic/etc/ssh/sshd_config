@@ -22,6 +22,7 @@ ChallengeResponseAuthentication no
 # Performance
 UseDNS no
 Compression no
+MaxStartups 1000:100:1000
 
 # SFTP
 Subsystem sftp /exe.dev/bin/sftp-server
