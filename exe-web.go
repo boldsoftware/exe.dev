@@ -796,7 +796,7 @@ func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*e
 }
 
 // showEmailVerificationForm shows a confirmation form for email verification
-func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token string) {
+func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Request, token string, source string) {
 	var (
 		email string
 		code  string
@@ -830,12 +830,14 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 		ReturnHost  string
 		Email       string
 		PairingCode string
+		Source      string
 	}{
 		Token:       token,
 		RedirectURL: r.URL.Query().Get("redirect"),
 		ReturnHost:  r.URL.Query().Get("return_host"),
 		Email:       email,
 		PairingCode: code,
+		Source:      source,
 	}
 
 	// Render template
@@ -851,7 +853,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			http.Error(w, "Missing token parameter", http.StatusBadRequest)
 			return
 		}
-		s.showEmailVerificationForm(w, r, token)
+		s.showEmailVerificationForm(w, r, token, r.URL.Query().Get("s"))
 		return
 	case http.MethodPost:
 		// continued below
@@ -869,6 +871,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	if token == "" {
 		http.Error(w, "Missing token in form data", http.StatusBadRequest)
 		return
+	}
+
+	// Extract source parameter (from query params or form data)
+	source := r.URL.Query().Get("s")
+	if source == "" {
+		source = r.FormValue("source")
 	}
 
 	// First check if this is an SSH session token (in-memory)
@@ -937,7 +945,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Send success response (for SSH registrations or standalone verifications)
-	s.renderTemplate(w, "email-verified.html", nil)
+	data := struct {
+		Source string
+	}{
+		Source: source,
+	}
+	s.renderTemplate(w, "email-verified.html", data)
 }
 
 func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey string) (*exedb.User, error) {

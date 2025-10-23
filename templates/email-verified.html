@@ -37,11 +37,16 @@
     <main>
       <div class="auth-box">
         <img src="/static/exy.png" alt="exy the fish" class="exy" />
+        {{if eq .Source "exemenu"}}
+        <h1>Verified!</h1>
+        <p>You can close this tab and return to your terminal.</p>
+        {{else}}
         <h1>Email Verified</h1>
         <p>You can now return to your SSH session.</p>
         <p>If you don't have one, connect with:</p>
         <div class="code-box">ssh exe.dev</div>
         <a class="cta-button" href="/">Return to exe.dev</a>
+        {{end}}
       </div>
     </main>
   </body>

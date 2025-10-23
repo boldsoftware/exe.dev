@@ -15,7 +15,7 @@ or enter a different one to get a magic login link.
 
 Email: also-fake-for-tests@example.combinatorics
 
-[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
 Verification email sent to: also-fake-for-tests@example.combinatorics

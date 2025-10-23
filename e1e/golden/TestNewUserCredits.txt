@@ -11,7 +11,7 @@ To sign up, verify your email and set up billing.
 
 Please enter your email address: TestNewUserCredits@example.com
 
-[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
 Verification email sent to: TestNewUserCredits@example.com

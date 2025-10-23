@@ -39,6 +39,11 @@
             type="hidden"
             name="return_host"
             value="{{.ReturnHost}}"
+          />{{end}}{{if .Source}}
+          <input
+            type="hidden"
+            name="source"
+            value="{{.Source}}"
           />{{end}}
           <input type="hidden" name="token" value="{{.Token}}" />
           <button type="submit" class="button">Confirm</button>

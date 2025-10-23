@@ -11,7 +11,7 @@ To sign up, please verify your email.
 
 Please enter your email address: TestBadBoxName@example.com
 
-[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
 Verification email sent to: TestBadBoxName@example.com

@@ -875,7 +875,7 @@ The EXE.DEV team`, publicKey, verifyURL)
 
 	// Send verification email
 	subject := "Welcome to EXE.DEV - Verify Your Email"
-	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", ss.server.getBaseURL(), verif.Token)
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s&s=exemenu", ss.server.getBaseURL(), verif.Token)
 	body := fmt.Sprintf(`Welcome to EXE.DEV!
 
 Please click the link below to verify your email address:
