@@ -54,8 +54,9 @@ var (
 	flagVerboseSlog   = flag.Bool("vslog", false, "enable verbose logging from slogs")
 	flagCinema        = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
 
-	// testRunID is a random identifier for this test invocation,
-	// used to avoid box name collisions with concurrent test runs
+	// testRunID is a random identifier for this test invocation.
+	// A single container host is often shared across test and dev runs.
+	// We use this ID to understand which boxes were created specifically by this test run.
 	testRunID string
 )
 
