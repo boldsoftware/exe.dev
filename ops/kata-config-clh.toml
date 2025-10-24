@@ -28,6 +28,7 @@ valid_virtio_fs_daemon_paths = ["/opt/kata/libexec/virtiofsd"]
 # DAX cache configuration
 # TODO(philip/crawshaw): To enable DAX, you also need virtio_fs_cache_size > 0,
 # but this fails on Lima at the moment.
+# cloud-sypervisor doesn't support DAX: https://github.com/cloud-hypervisor/cloud-hypervisor/issues/4851
 virtio_fs_cache = "always"
 virtio_fs_cache_size = 0
 virtio_fs_queue_size = 1024
