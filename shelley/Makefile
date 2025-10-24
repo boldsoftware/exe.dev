@@ -10,6 +10,17 @@ build: ui
 	@echo "Building Shelley..."
 	go build -o bin/shelley ./cmd/shelley
 
+# Build for Linux (auto-detect architecture)
+build-linux: ui
+	@echo "Building Shelley for Linux..."
+	@ARCH=$$(uname -m); \
+	case $$ARCH in \
+		x86_64) GOARCH=amd64 ;; \
+		aarch64|arm64) GOARCH=arm64 ;; \
+		*) echo "Unsupported architecture: $$ARCH" && exit 1 ;; \
+	esac; \
+	GOOS=linux GOARCH=$$GOARCH go build -o bin/shelley-linux ./cmd/shelley
+
 # Build for Linux ARM64
 build-linux-aarch64: ui
 	@echo "Building Shelley for Linux ARM64..."
