@@ -17,7 +17,7 @@ import (
 	"html"
 	"io"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
