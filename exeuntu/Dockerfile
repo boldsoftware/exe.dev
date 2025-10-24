@@ -226,7 +226,7 @@ COPY exeuntu/welcome-manage.polkit /etc/polkit-1/rules.d/50-welcome-manage.rules
 RUN chmod 644 /etc/polkit-1/rules.d/50-welcome-manage.rules
 
 # Add custom MOTD to exedev's .bashrc
-COPY motd-snippet.bash /tmp/motd-snippet.bash
+COPY exeuntu/motd-snippet.bash /tmp/motd-snippet.bash
 RUN cat /tmp/motd-snippet.bash >> /home/exedev/.bashrc && rm /tmp/motd-snippet.bash
 
 # Create systemd service for Shelley
