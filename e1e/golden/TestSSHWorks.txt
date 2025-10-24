@@ -69,6 +69,8 @@ You are on e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks.exe.dev. The disk is persist
 
 For support and documentation, "ssh exe.dev" or visit https://exe.dev/
 
+MOTD HINT
+
 exedev@e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks:~$ whoami
 exedev
 exedev@e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks:~$ exit

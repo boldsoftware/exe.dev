@@ -300,6 +300,8 @@ func (t *testEnv) canonicalizeString(s string) string {
 	s = regexp.MustCompile(`\(invited [^)]+\)`).ReplaceAllString(s, `(invited INVITE_AGE)`)
 	// Canonicalize share link creation timestamps (e.g., "created now" or "created 1 second ago")
 	s = regexp.MustCompile(`\(created [^,]+,`).ReplaceAllString(s, `(created SHARE_AGE,`)
+	// Canonicalize random MOTD hints shown when SSHing to a box
+	s = regexp.MustCompile(`(?s)(For support and documentation, "ssh exe\.dev" or visit https://exe\.dev/\n)\n(.+?)\n(exedev@)`).ReplaceAllString(s, "$1\nMOTD HINT\n\n$3")
 	return s
 }
 
