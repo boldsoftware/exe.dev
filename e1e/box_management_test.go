@@ -73,6 +73,13 @@ func TestSSHWorks(t *testing.T) {
 	if string(out) != "key.txt\n" {
 		t.Fatalf("expected key.txt from ls, got %q", out)
 	}
+
+	// Cleanup
+	pty = sshToExeDev(t, keyFile)
+	pty.sendLine("delete " + boxName)
+	pty.want("Deleting")
+	pty.wantPrompt()
+	pty.disconnect()
 }
 
 func TestBadBoxName(t *testing.T) {
@@ -187,4 +194,11 @@ func TestDockerWorks(t *testing.T) {
 	if !strings.Contains(string(out), "hello") {
 		t.Fatalf("expected 'hello' in docker output, got: %s", out)
 	}
+
+	// Cleanup
+	pty = sshToExeDev(t, keyFile)
+	pty.sendLine("delete " + boxName)
+	pty.want("Deleting")
+	pty.wantPrompt()
+	pty.disconnect()
 }

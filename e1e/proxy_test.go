@@ -71,6 +71,13 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 		cookies:  cookies,
 		httpCode: http.StatusBadGateway,
 	})
+
+	// Cleanup
+	pty = sshToExeDev(t, keyFile)
+	pty.sendLine("delete " + box)
+	pty.want("Deleting")
+	pty.wantPrompt()
+	pty.disconnect()
 }
 
 type proxyExpectation struct {
@@ -429,6 +436,13 @@ func TestHTTPProxyBasic(t *testing.T) {
 			t.Errorf("did not get expected directory listing from Python HTTP server, got:\n%s", bodyStr)
 		}
 	}
+
+	// Cleanup
+	pty = sshToExeDev(t, keyFile)
+	pty.sendLine("delete " + boxName)
+	pty.want("Deleting")
+	pty.wantPrompt()
+	pty.disconnect()
 }
 
 // makeProxyRequest makes an HTTP request to boxName, available at httpPort.

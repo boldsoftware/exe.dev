@@ -23,7 +23,7 @@ func TestTerminalPermissions(t *testing.T) {
 	t.Parallel()
 
 	// Create user and box
-	pty, cookies, _, _ := registerForExeDev(t)
+	pty, cookies, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
 	pty.disconnect()
 
@@ -158,6 +158,13 @@ func TestTerminalPermissions(t *testing.T) {
 			}
 		}
 	})
+
+	// Cleanup
+	pty = sshToExeDev(t, keyFile)
+	pty.sendLine("delete " + box)
+	pty.want("Deleting")
+	pty.wantPrompt()
+	pty.disconnect()
 }
 
 // terminalRequest makes a request to the terminal page without authentication

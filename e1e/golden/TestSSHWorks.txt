@@ -37,41 +37,41 @@ exe.dev ▶ whoami
 Email Address: TestSSHWorks@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testsshworks
-Creating e1e-BOX_TIMESTAMP-testsshworks (medium) using image boldsoftware/exeuntu...
+exe.dev ▶ new --name=e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks
+Creating e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 Coding agent
-http://e1e-BOX_TIMESTAMP-testsshworks.localhost:9999
+http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks.localhost:9999
 
 App (HTTPS proxy → :8000)
-http://e1e-BOX_TIMESTAMP-testsshworks.localhost:EXED_HTTP_PORT
+http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks.localhost:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testsshworks@localhost
+ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks@localhost
 
 exe.dev ▶ list
 Your boxes:
-  • e1e-BOX_TIMESTAMP-testsshworks - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+  • e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
 Goodbye!
 
 
 ●
-● ssh e1e-BOX_TIMESTAMP-testsshworks@localhost
+● ssh e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks@localhost
 ●
 
 To run a command as administrator (user "root"), use "sudo <command>".
 See "man sudo_root" for details.
 
 
-You are on e1e-BOX_TIMESTAMP-testsshworks.exe.dev. The disk is persistent. You have 'sudo'.
+You are on e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks.exe.dev. The disk is persistent. You have 'sudo'.
 
 For support and documentation, "ssh exe.dev" or visit https://exe.dev/
 
-exedev@e1e-BOX_TIMESTAMP-testsshworks:~$ whoami
+exedev@e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks:~$ whoami
 exedev
-exedev@e1e-BOX_TIMESTAMP-testsshworks:~$ exit
+exedev@e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks:~$ exit
 logout
 
 
@@ -83,5 +83,21 @@ logout
 - browser to speed-login on the web
 - help to see a list of commands
 
+exe.dev ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+delete e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks
+
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks
+Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks...
+Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testsshworks" deleted successfully
 exe.dev ▶ exit
 Goodbye!

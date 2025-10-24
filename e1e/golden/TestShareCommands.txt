@@ -37,87 +37,87 @@ exe.dev ▶ whoami
 Email Address: TestShareCommands@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testsharecommands --command="/bin/bash"
-Creating e1e-BOX_TIMESTAMP-testsharecommands (medium) using image boldsoftware/exeuntu...
+exe.dev ▶ new --name=e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands --command="/bin/bash"
+Creating e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 App (HTTPS proxy → :8000)
-http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
+http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testsharecommands@localhost
+ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands@localhost
 
 exe.dev ▶ list
 Your boxes:
-  • e1e-BOX_TIMESTAMP-testsharecommands - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
-exe.dev ▶ share show e1e-BOX_TIMESTAMP-testsharecommands
+  • e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+exe.dev ▶ share show e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
 
-Sharing for box 'e1e-BOX_TIMESTAMP-testsharecommands'
-URL: http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
+Sharing for box 'e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands'
+URL: http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 Mode: Private
 
 No shares configured.
 
 To share with someone, use:
-  share add e1e-BOX_TIMESTAMP-testsharecommands user@example.com
-  share add-link e1e-BOX_TIMESTAMP-testsharecommands
+  share add e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands user@example.com
+  share add-link e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
 
-exe.dev ▶ share add e1e-BOX_TIMESTAMP-testsharecommands friend@example.com --message='Welcome to my box'
+exe.dev ▶ share add e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands friend@example.com --message='Welcome to my box'
 
 ✓ Invitation sent to friend@example.com
 
 friend@example.com will receive an email with access instructions.
-You can also share this URL directly: http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
+You can also share this URL directly: http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 (They'll need to log in with friend@example.com to access it)
 
-exe.dev ▶ share show e1e-BOX_TIMESTAMP-testsharecommands
+exe.dev ▶ share show e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
 
-Sharing for box 'e1e-BOX_TIMESTAMP-testsharecommands'
-URL: http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
+Sharing for box 'e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands'
+URL: http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 Mode: Private
 
 Shared with users:
   friend@example.com (invited INVITE_AGE)
 
 No share links yet. Create one with:
-  share add-link e1e-BOX_TIMESTAMP-testsharecommands
+  share add-link e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
 
-exe.dev ▶ share add-share-link e1e-BOX_TIMESTAMP-testsharecommands
+exe.dev ▶ share add-share-link e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
 
 ✓ Share link created
 
 Anyone with this link can access your box after logging in:
-http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT?share=SHARE_TOKEN
+http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT?share=SHARE_TOKEN
 
 To revoke this link, use:
-  share remove-link e1e-BOX_TIMESTAMP-testsharecommands SHARE_TOKEN
+  share remove-link e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands SHARE_TOKEN
 
-exe.dev ▶ share show e1e-BOX_TIMESTAMP-testsharecommands
+exe.dev ▶ share show e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
 
-Sharing for box 'e1e-BOX_TIMESTAMP-testsharecommands'
-URL: http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
+Sharing for box 'e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands'
+URL: http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 Mode: Private
 
 Shared with users:
   friend@example.com (invited INVITE_AGE)
 
 Share links:
-  SHARE_TOKEN (created now, used 0 times)
+  SHARE_TOKEN (created SHARE_AGE, used 0 times)
 
-exe.dev ▶ share remove e1e-BOX_TIMESTAMP-testsharecommands friend@example.com
+exe.dev ▶ share remove e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands friend@example.com
 
-✓ Removed friend@example.com's access to 'e1e-BOX_TIMESTAMP-testsharecommands'
+✓ Removed friend@example.com's access to 'e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands'
 
-exe.dev ▶ share show e1e-BOX_TIMESTAMP-testsharecommands
+exe.dev ▶ share show e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
 
-Sharing for box 'e1e-BOX_TIMESTAMP-testsharecommands'
-URL: http://e1e-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
+Sharing for box 'e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands'
+URL: http://e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands.localhost:EXED_HTTP_PORT
 Mode: Private
 
 No users shared yet.
 
 Share links:
-  SHARE_TOKEN (created now, used 0 times)
+  SHARE_TOKEN (created SHARE_AGE, used 0 times)
 
 exe.dev ▶ help share
 
@@ -136,5 +136,8 @@ Subcommands:
   remove        - Revoke a user's access to a box
   add-link      - Create a shareable link for a box
   remove-link   - Revoke a shareable link
+exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands
+Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands...
+Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testsharecommands" deleted successfully
 exe.dev ▶ exit
 Goodbye!

@@ -185,6 +185,13 @@ func TestBoxSharingWithWebServer(t *testing.T) {
 		httpCode: http.StatusNotFound,
 	})
 
+	// Cleanup
+	pty1 = sshToExeDev(t, keyFile1)
+	pty1.sendLine("delete " + box)
+	pty1.want("Deleting")
+	pty1.wantPrompt()
+	pty1.disconnect()
+
 	// Clean up pty sessions
 	pty2.disconnect()
 }
@@ -280,6 +287,13 @@ func TestShareLinkAccess(t *testing.T) {
 		cookies:  cookies2,
 		httpCode: http.StatusOK,
 	})
+
+	// Cleanup
+	pty1 = sshToExeDev(t, keyFile1)
+	pty1.sendLine("delete " + box)
+	pty1.want("Deleting")
+	pty1.wantPrompt()
+	pty1.disconnect()
 }
 
 // proxyAssertWithQuery is like proxyAssert but adds a query string
@@ -543,6 +557,10 @@ func TestShareCommands(t *testing.T) {
 	pty1.want("remove-link")
 	pty1.wantPrompt()
 
+	// Cleanup
+	pty1.sendLine("delete " + box)
+	pty1.want("Deleting")
+	pty1.wantPrompt()
 	pty1.disconnect()
 
 	// Don't need to clean up - test tracks keyFile and email for canonicalization

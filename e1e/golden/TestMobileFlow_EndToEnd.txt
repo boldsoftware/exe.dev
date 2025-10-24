@@ -1,0 +1,39 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestMobileFlow_EndToEnd@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-device?token=EMAIL_VERIFICATION_TOKEN
+
+
+Verification email sent to: TestMobileFlow_EndToEnd@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your new ssh key has been added to your existing account.
+
+Press any key to continue...
+
+
+Welcome to EXE.DEV!
+
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testmobileflow-endtoend
+Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testmobileflow-endtoend...
+Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testmobileflow-endtoend" deleted successfully
+exe.dev ▶ exit
+Goodbye!

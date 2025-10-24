@@ -37,19 +37,19 @@ exe.dev ▶ whoami
 Email Address: testboxsharingwithwebserver-user1@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=e1e-BOX_TIMESTAMP-testboxsharingwithwebserver --command="/bin/bash"
-Creating e1e-BOX_TIMESTAMP-testboxsharingwithwebserver (medium) using image boldsoftware/exeuntu...
+exe.dev ▶ new --name=e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver --command="/bin/bash"
+Creating e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 App (HTTPS proxy → :8000)
-http://e1e-BOX_TIMESTAMP-testboxsharingwithwebserver.localhost:EXED_HTTP_PORT
+http://e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver.localhost:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT e1e-BOX_TIMESTAMP-testboxsharingwithwebserver@localhost
+ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver@localhost
 
 exe.dev ▶ list
 Your boxes:
-  • e1e-BOX_TIMESTAMP-testboxsharingwithwebserver - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+  • e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
 Goodbye!
 
@@ -91,5 +91,21 @@ exe.dev ▶ whoami
 Email Address: testboxsharingwithwebserver-user2@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
+exe.dev ▶
+
+●
+● ssh localhost
+●
+
+delete e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver
+
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ delete e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver
+Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver...
+Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testboxsharingwithwebserver" deleted successfully
 exe.dev ▶ exit
+Goodbye!
+exit
 Goodbye!

@@ -149,4 +149,31 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	if dashResp.StatusCode != http.StatusOK || !strings.Contains(string(dashBody), host) {
 		t.Fatalf("Dashboard unexpected: status=%d contains host? %v", dashResp.StatusCode, strings.Contains(string(dashBody), host))
 	}
+
+	// 7) Register SSH key and cleanup
+	// Now that the account exists via email, add an SSH key
+	keyFile, _ := genSSHKey(t)
+	pty := sshToExeDev(t, keyFile)
+	pty.want(banner)
+	pty.want("Please enter your email")
+	pty.sendLine(email)
+	pty.wantRe("Verification email sent to")
+	pty.wantRe("Pairing code:")
+
+	// Click verification link from email
+	emailMsg2 := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, emailMsg2)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
+	pty.wantRe("key.*added")
+	pty.want("Press any key to continue")
+	pty.sendLine("")
+	pty.wantPrompt()
+
+	// Cleanup
+	pty.sendLine("delete " + host)
+	pty.want("Deleting")
+	pty.wantPrompt()
+	pty.disconnect()
 }

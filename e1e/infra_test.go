@@ -8,7 +8,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -17,6 +17,7 @@ import (
 	"html"
 	"io"
 	"log/slog"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -52,11 +53,18 @@ var (
 	flagVerbosePty    = flag.Bool("vpty", false, "enable verbose logging from pty connections")
 	flagVerboseSlog   = flag.Bool("vslog", false, "enable verbose logging from slogs")
 	flagCinema        = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
+
+	// testRunID is a random identifier for this test invocation,
+	// used to avoid box name collisions with concurrent test runs
+	testRunID string
 )
 
 func TestMain(m *testing.M) {
 	vouch.For("josh")
 	flag.Parse()
+
+	// Generate unique test run ID to avoid box name collisions
+	testRunID = fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
 
 	if testing.Short() {
 		// ain't nothing short about these tests
@@ -101,7 +109,9 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	env, err := setup(ctrHost)
 	if err != nil {
 		slog.Error("test setup failed", "error", err)
-		env.Close(nil)
+		if closeErr := env.Close(nil); closeErr != nil {
+			slog.Error("cleanup failed", "error", closeErr)
+		}
 		os.Exit(1)
 	}
 
@@ -119,7 +129,13 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	Env = env
 	slog.Info("running tests")
 	code := m.Run()
-	env.Close(<-containerManagerC)
+	if err := env.Close(<-containerManagerC); err != nil {
+		slog.Error("test cleanup failed", "error", err)
+		fmt.Fprintf(os.Stderr, "\n\nERROR: %v\n\n", err)
+		if code == 0 {
+			code = 1
+		}
+	}
 
 	for _, f := range logFiles {
 		if f == nil {
@@ -281,6 +297,8 @@ func (t *testEnv) canonicalizeString(s string) string {
 	s = regexp.MustCompile(`(share=|\s)([A-Z0-9]{26})\b`).ReplaceAllString(s, `${1}SHARE_TOKEN`)
 	// Canonicalize invitation timestamps
 	s = regexp.MustCompile(`\(invited [^)]+\)`).ReplaceAllString(s, `(invited INVITE_AGE)`)
+	// Canonicalize share link creation timestamps (e.g., "created now" or "created 1 second ago")
+	s = regexp.MustCompile(`\(created [^,]+,`).ReplaceAllString(s, `(created SHARE_AGE,`)
 	return s
 }
 
@@ -297,10 +315,21 @@ func (e *testEnv) context(t *testing.T) context.Context {
 	return c
 }
 
-func (e *testEnv) Close(containerManager *container.NerdctlManager) {
+func (e *testEnv) Close(containerManager *container.NerdctlManager) error {
 	if e == nil {
-		return
+		return nil
 	}
+
+	// Check that all boxes have been cleaned up before killing exed
+	var checkErr error
+	if e.exed.Cmd != nil && e.exed.Cmd.Process != nil {
+		if err := e.checkBoxesCleanedUp(); err != nil {
+			slog.Error("boxes not cleaned up", "error", err)
+			checkErr = err
+			// Continue with cleanup even if check failed
+		}
+	}
+
 	if e.exed.DBPath != "" {
 		os.Remove(e.exed.DBPath)
 	}
@@ -332,6 +361,55 @@ func (e *testEnv) Close(containerManager *container.NerdctlManager) {
 			slog.Error("failed to write exed coverage profile", "cmd", cmd.String(), "error", err, "output", string(out))
 		}
 	}
+	return checkErr
+}
+
+func (e *testEnv) checkBoxesCleanedUp() error {
+	url := fmt.Sprintf("http://localhost:%d/debug/boxes?format=json", e.exed.HTTPPort)
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to check boxes: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code checking boxes: %d", resp.StatusCode)
+	}
+
+	var boxes []struct {
+		Host   string `json:"host"`
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&boxes); err != nil {
+		return fmt.Errorf("failed to decode boxes JSON: %w", err)
+	}
+
+	// Log all boxes for debugging
+	if len(boxes) > 0 {
+		var allBoxNames []string
+		for _, box := range boxes {
+			allBoxNames = append(allBoxNames, box.Name)
+		}
+		slog.Info("boxes at cleanup", "boxes", allBoxNames)
+	}
+
+	// Only check boxes from this specific test run
+	boxPrefix := fmt.Sprintf("e1e-%s-", testRunID)
+	var e1eBoxes []string
+	for _, box := range boxes {
+		if strings.HasPrefix(box.Name, boxPrefix) {
+			e1eBoxes = append(e1eBoxes, box.Name)
+		}
+	}
+
+	if len(e1eBoxes) > 0 {
+		return fmt.Errorf("e1e boxes not cleaned up: %v", e1eBoxes)
+	}
+
+	return nil
 }
 
 type tcpProxy struct {
@@ -760,7 +838,7 @@ ProcessLogs:
 // for testing convenience.
 func genSSHKey(t *testing.T) (path, publickey string) {
 	t.Helper()
-	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	_, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
 	if err != nil {
 		t.Fatalf("failed to generate ed25519 key: %v", err)
 	}
@@ -1249,7 +1327,7 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup
 func boxName(t *testing.T) string {
 	t.Helper()
-	// Create unique-ish test-specific box names: "e1e-{timestamp}-{testname}"
+	// Create unique-ish test-specific box names: "e1e-{runid}-{timestamp}-{testname}"
 	// This avoids collisions between test runs and makes cleanup easy
 	timestamp := fmt.Sprintf("%05d", time.Now().Unix()%100_000)
 	testName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
@@ -1258,8 +1336,9 @@ func boxName(t *testing.T) string {
 	// Collapse multiple hyphens and trim
 	testName = regexp.MustCompile(`-+`).ReplaceAllString(testName, "-")
 	testName = strings.Trim(testName, "-")
+	Env.addCanonicalization(testRunID, "BOX_RUNID")
 	Env.addCanonicalization(timestamp, "BOX_TIMESTAMP")
-	return fmt.Sprintf("e1e-%s-%s", timestamp, testName)
+	return fmt.Sprintf("e1e-%s-%s-%s", testRunID, timestamp, testName)
 }
 
 // registerForExeDev is a convenience command to register for an exe.dev account.
