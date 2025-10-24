@@ -947,6 +947,7 @@ func (p *expectPty) disconnect() {
 func (p *expectPty) deleteBox(boxName string) {
 	p.t.Helper()
 	p.sendLine("rm " + boxName)
+	p.reject("internal error")
 	p.want("Deleting")
 	p.wantPrompt()
 }
