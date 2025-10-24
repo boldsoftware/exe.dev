@@ -263,7 +263,7 @@ func TestShareLinkAccess(t *testing.T) {
 
 	// After accessing via share link, user2 should get an email-based share
 	// So they can access even without the share token
-	time.Sleep(1 * time.Second) // Give the auto-create share time to complete
+	time.Sleep(100 * time.Millisecond) // TODO: poll instead of unilaterally sleeping
 	proxyAssert(t, box, proxyExpectation{
 		name:     "user2 can access without share link after first access",
 		httpPort: httpPort,

@@ -132,8 +132,8 @@ func TestTerminalPermissions(t *testing.T) {
 					connected = true
 				case err := <-errChan:
 					t.Logf("failed to connect to terminal, retrying: %v", err)
-					time.Sleep(200 * time.Millisecond)
-				case <-time.After(500 * time.Millisecond):
+					time.Sleep(100 * time.Millisecond)
+				case <-time.After(100 * time.Millisecond):
 					t.Logf("terminal connection attempt timed out, retrying")
 				}
 			}

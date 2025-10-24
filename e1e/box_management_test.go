@@ -158,28 +158,29 @@ func TestDockerWorks(t *testing.T) {
 	pty.disconnect()
 
 	// Wait for SSH to be responsive (systemd may take time to initialize).
-	for i := 0; i < 30; i++ {
-		err := boxSSHCommand(t, boxName, keyFile, "true").Run()
+	var err error
+	for range 150 {
+		err = boxSSHCommand(t, boxName, keyFile, "true").Run()
 		if err == nil {
 			break
 		}
-		if i == 29 {
-			t.Fatalf("SSH not responsive after 30 seconds")
-		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("box ssh did not come up, last error: %v", err)
 	}
 
 	// Wait for docker to be available. Docker uses socket activation and starts on first use,
 	// but we need to give systemd a bit more time after SSH is ready.
-	for i := 0; i < 10; i++ {
-		err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "info").Run()
+	for range 150 {
+		err = boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "info").Run()
 		if err == nil {
 			break
 		}
-		if i == 9 {
-			t.Fatalf("docker not available after waiting")
-		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("docker not available after waiting, last error: %v", err)
 	}
 
 	// Run a simple docker container to verify Docker works in exeuntu.
