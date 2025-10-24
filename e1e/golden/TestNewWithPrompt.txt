@@ -37,31 +37,31 @@ exe.dev ▶ whoami
 Email Address: TestNewWithPrompt@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt --prompt="hello" --prompt-model=predictable
-Creating e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt (medium) using image boldsoftware/exeuntu...
+exe.dev ▶ new --name=BOX_NAME --prompt="hello" --prompt-model=predictable
+Creating BOX_NAME (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 Coding agent
-http://e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt.localhost:9999
+http://BOX_NAME.localhost:9999
 
 App (HTTPS proxy → :8000)
-http://e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt.localhost:EXED_HTTP_PORT
+http://BOX_NAME.localhost:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt@localhost
+ssh -p SSH_PORT BOX_NAME@localhost
 
 
 Sending prompt to Shelley...
 
 🐌 Connected to Shelley
-🐌 Follow along at http://e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt.localhost:9999
+🐌 Follow along at http://BOX_NAME.localhost:9999
 
 🤖 Well, hi there!
 🏁 Shelley finished its turn. Continue the conversation at
-  http://e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt.localhost:9999
+  http://BOX_NAME.localhost:9999
 
-exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt
-Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt...
-Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testnewwithprompt" deleted successfully
+exe.dev ▶ rm BOX_NAME
+Deleting BOX_NAME...
+Box "BOX_NAME" deleted successfully
 exe.dev ▶ exit
 Goodbye!

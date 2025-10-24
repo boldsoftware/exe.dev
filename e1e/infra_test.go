@@ -1335,21 +1335,25 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 	return cookies
 }
 
+var boxCounter atomic.Int32
+
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup
 func boxName(t *testing.T) string {
 	t.Helper()
-	// Create unique-ish test-specific box names: "e1e-{runid}-{timestamp}-{testname}"
-	// This avoids collisions between test runs and makes cleanup easy
-	timestamp := fmt.Sprintf("%05d", time.Now().Unix()%100_000)
+	// Create a unique test-specific box name: "e1e-{runid}-{counter}-{testname}"
+	// runid provides cross-process uniqueness.
+	// counter covers within-process uniqueness.
+	// e1e prefix and testname are for debuggability.
+	counter := fmt.Sprintf("%04x", boxCounter.Add(1))
 	testName := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-"))
 	// Sanitize to allowed charset [a-z0-9-] to satisfy isValidBoxName
 	testName = regexp.MustCompile(`[^a-z0-9-]+`).ReplaceAllString(testName, "-")
 	// Collapse multiple hyphens and trim
 	testName = regexp.MustCompile(`-+`).ReplaceAllString(testName, "-")
 	testName = strings.Trim(testName, "-")
-	Env.addCanonicalization(testRunID, "BOX_RUNID")
-	Env.addCanonicalization(timestamp, "BOX_TIMESTAMP")
-	return fmt.Sprintf("e1e-%s-%s-%s", testRunID, timestamp, testName)
+	boxName := fmt.Sprintf("e1e-%s-%s-%s", testRunID, counter, testName)
+	Env.addCanonicalization(boxName, "BOX_NAME")
+	return boxName
 }
 
 // registerForExeDev is a convenience command to register for an exe.dev account.

@@ -37,22 +37,22 @@ exe.dev ▶ whoami
 Email Address: TestHTTPProxyBasic@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
-Creating e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic (medium) using image boldsoftware/exeuntu...
+exe.dev ▶ new --name=BOX_NAME
+Creating BOX_NAME (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 Coding agent
-http://e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic.localhost:9999
+http://BOX_NAME.localhost:9999
 
 App (HTTPS proxy → :8000)
-http://e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic.localhost:EXED_HTTP_PORT
+http://BOX_NAME.localhost:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic@localhost
+ssh -p SSH_PORT BOX_NAME@localhost
 
 exe.dev ▶ ls
 Your boxes:
-  • e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+  • BOX_NAME - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
 Goodbye!
 
@@ -61,19 +61,19 @@ Goodbye!
 ● ssh localhost
 ●
 
-proxy e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic --port=8080 --public
+proxy BOX_NAME --port=8080 --public
 
 - browser to speed-login on the web
 - help to see a list of commands
 
-exe.dev ▶ proxy e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic --port=8080 --public
+exe.dev ▶ proxy BOX_NAME --port=8080 --public
 ✓ Route updated successfully
   Port: 8080
   Share: public
 
-exe.dev ▶ proxy e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
+exe.dev ▶ proxy BOX_NAME
 
-Route configuration for box 'e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic':
+Route configuration for box 'BOX_NAME':
   Port: 8080
   Share: public
 
@@ -85,13 +85,13 @@ Goodbye!
 ● ssh localhost
 ●
 
-rm e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
+rm BOX_NAME
 
 - browser to speed-login on the web
 - help to see a list of commands
 
-exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic
-Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic...
-Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testhttpproxybasic" deleted successfully
+exe.dev ▶ rm BOX_NAME
+Deleting BOX_NAME...
+Box "BOX_NAME" deleted successfully
 exe.dev ▶ exit
 Goodbye!

@@ -37,19 +37,19 @@ exe.dev ▶ whoami
 Email Address: TestTerminalPermissions@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions --command="/bin/bash"
-Creating e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions (medium) using image boldsoftware/exeuntu...
+exe.dev ▶ new --name=BOX_NAME --command="/bin/bash"
+Creating BOX_NAME (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 App (HTTPS proxy → :8000)
-http://e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions.localhost:EXED_HTTP_PORT
+http://BOX_NAME.localhost:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions@localhost
+ssh -p SSH_PORT BOX_NAME@localhost
 
 exe.dev ▶ ls
 Your boxes:
-  • e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+  • BOX_NAME - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
 Goodbye!
 
@@ -58,13 +58,13 @@ Goodbye!
 ● ssh localhost
 ●
 
-rm e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions
+rm BOX_NAME
 
 - browser to speed-login on the web
 - help to see a list of commands
 
-exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions
-Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions...
-Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testterminalpermissions" deleted successfully
+exe.dev ▶ rm BOX_NAME
+Deleting BOX_NAME...
+Box "BOX_NAME" deleted successfully
 exe.dev ▶ exit
 Goodbye!

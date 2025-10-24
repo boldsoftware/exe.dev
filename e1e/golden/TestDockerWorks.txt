@@ -37,22 +37,22 @@ exe.dev ▶ whoami
 Email Address: TestDockerWorks@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
-exe.dev ▶ new --name=e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks
-Creating e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks (medium) using image boldsoftware/exeuntu...
+exe.dev ▶ new --name=BOX_NAME
+Creating BOX_NAME (medium) using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 Coding agent
-http://e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks.localhost:9999
+http://BOX_NAME.localhost:9999
 
 App (HTTPS proxy → :8000)
-http://e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks.localhost:EXED_HTTP_PORT
+http://BOX_NAME.localhost:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks@localhost
+ssh -p SSH_PORT BOX_NAME@localhost
 
 exe.dev ▶ ls
 Your boxes:
-  • e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+  • BOX_NAME - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
 exe.dev ▶ exit
 Goodbye!
 
@@ -61,13 +61,13 @@ Goodbye!
 ● ssh localhost
 ●
 
-rm e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks
+rm BOX_NAME
 
 - browser to speed-login on the web
 - help to see a list of commands
 
-exe.dev ▶ rm e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks
-Deleting e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks...
-Box "e1e-BOX_RUNID-BOX_TIMESTAMP-testdockerworks" deleted successfully
+exe.dev ▶ rm BOX_NAME
+Deleting BOX_NAME...
+Box "BOX_NAME" deleted successfully
 exe.dev ▶ exit
 Goodbye!
