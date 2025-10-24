@@ -111,10 +111,11 @@ func TestTerminalPermissions(t *testing.T) {
 		defer retryTicker.Stop()
 
 		connected := false
+		var lastErr error
 		for !connected {
 			select {
 			case <-retryTimeout:
-				t.Fatal("timeout waiting for box SSH to be ready")
+				t.Fatalf("timeout waiting for box SSH to be ready, last error: %v", lastErr)
 			case <-retryTicker.C:
 				// Create authenticated client for terminal subdomain
 				client = createAuthenticatedTerminalClient(t, box, cookies)
@@ -131,10 +132,12 @@ func TestTerminalPermissions(t *testing.T) {
 					// Terminal is ready
 					connected = true
 				case err := <-errChan:
-					t.Logf("failed to connect to terminal, retrying: %v", err)
+					lastErr = err
+					// t.Logf("failed to connect to terminal, retrying: %v", err)
 					time.Sleep(100 * time.Millisecond)
 				case <-time.After(100 * time.Millisecond):
-					t.Logf("terminal connection attempt timed out, retrying")
+					lastErr = fmt.Errorf("terminal connection attempt timed out")
+					// t.Logf("terminal connection attempt timed out, retrying")
 				}
 			}
 		}
@@ -376,7 +379,7 @@ func createAuthenticatedTerminalClient(t *testing.T, boxName string, baseCookies
 	req.Host = fmt.Sprintf("%s.xterm.localhost:%d", boxName, Env.exed.HTTPPort)
 
 	// Follow the redirect chain
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		resp, err := client.Do(req)
 		if err != nil {
 			t.Fatalf("auth dance request failed: %v", err)

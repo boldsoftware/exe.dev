@@ -121,7 +121,7 @@ func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.
 
 func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 	t.Helper()
-	t.Logf("Testing proxy expectation: %s port %d expected http status %d", exp.name, exp.httpPort, exp.httpCode)
+	// t.Logf("Testing proxy expectation: %s port %d expected http status %d", exp.name, exp.httpPort, exp.httpCode)
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		panic(err)
@@ -203,7 +203,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			t.Fatalf("failed to get redirect location: %v", err)
 			return
 		}
-		t.Logf("Got redirect to main domain auth: %s", u.String())
+		// t.Logf("Got redirect to main domain auth: %s", u.String())
 		// Follow the redirect to /auth (which should then redirect to /auth/confirm with a secret)
 		req, err = http.NewRequest("GET", u.String(), nil)
 		if err != nil {
@@ -229,7 +229,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			t.Fatalf("failed to get redirect location: %v", err)
 			return
 		}
-		t.Logf("Got redirect to confirm page: %s", u.String())
+		// t.Logf("Got redirect to confirm page: %s", u.String())
 
 		// Now we scream through the confirm screen by adding "action=confirm" to the URL
 		q := u.Query()
