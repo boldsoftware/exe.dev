@@ -75,6 +75,12 @@ jobs:
                   echo "---"
                   has_errors=1
               fi
+
+              trimmed_message=$(printf '%s' "$full_message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              if [ -n "$trimmed_message" ] && echo "$trimmed_message" | grep -qE '^[.]+$'; then
+                  echo "❌ ERROR: Commit $commit has a message composed only of dots"
+                  has_errors=1
+              fi
           done
 
           if [ $has_errors -eq 1 ]; then
