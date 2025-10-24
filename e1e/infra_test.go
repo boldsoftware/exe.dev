@@ -941,6 +941,13 @@ func (p *expectPty) disconnect() {
 	p.wantEOF()
 }
 
+func (p *expectPty) deleteBox(boxName string) {
+	p.t.Helper()
+	p.sendLine("delete " + boxName)
+	p.want("Deleting")
+	p.wantPrompt()
+}
+
 func (p *expectPty) wantEOF() {
 	p.t.Helper()
 	if out, err := p.console.ExpectEOF(); err != nil {

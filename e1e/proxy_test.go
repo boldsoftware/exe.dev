@@ -439,9 +439,7 @@ func TestHTTPProxyBasic(t *testing.T) {
 
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
-	pty.sendLine("delete " + boxName)
-	pty.want("Deleting")
-	pty.wantPrompt()
+	pty.deleteBox(boxName)
 	pty.disconnect()
 }
 

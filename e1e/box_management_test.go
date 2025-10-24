@@ -76,9 +76,7 @@ func TestSSHWorks(t *testing.T) {
 
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
-	pty.sendLine("delete " + boxName)
-	pty.want("Deleting")
-	pty.wantPrompt()
+	pty.deleteBox(boxName)
 	pty.disconnect()
 }
 
@@ -144,9 +142,7 @@ func TestNewWithPrompt(t *testing.T) {
 	pty.wantPrompt()
 
 	// Cleanup
-	pty.sendLine("delete " + boxName)
-	pty.want("Deleting")
-	pty.wantPrompt()
+	pty.deleteBox(boxName)
 	pty.disconnect()
 }
 
@@ -197,8 +193,6 @@ func TestDockerWorks(t *testing.T) {
 
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
-	pty.sendLine("delete " + boxName)
-	pty.want("Deleting")
-	pty.wantPrompt()
+	pty.deleteBox(boxName)
 	pty.disconnect()
 }
