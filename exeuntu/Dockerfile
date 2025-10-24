@@ -226,23 +226,8 @@ COPY exeuntu/welcome-manage.polkit /etc/polkit-1/rules.d/50-welcome-manage.rules
 RUN chmod 644 /etc/polkit-1/rules.d/50-welcome-manage.rules
 
 # Add custom MOTD to exedev's .bashrc
-RUN cat >> /home/exedev/.bashrc << 'EOF'
-
-# Print exe.dev welcome message (only in interactive shells without .hushlogin)
-if [[ $- == *i* ]] && [ ! -e "$HOME/.hushlogin" ]; then
-    echo ""
-    echo "You are on $(hostname -f). The disk is persistent. You have 'sudo'."
-    
-    # Check if welcomed process is running on port 8000 as exedev user
-    if lsof -u exedev -i :8000 -sTCP:LISTEN 2>/dev/null | grep -q 'welcomed'; then
-        echo "A web server is running at https://$(hostname)/ (disable with 'systemctl disable --now welcome')."
-    fi
-    
-    echo ""
-    echo 'For support and documentation, "ssh exe.dev" or visit https://exe.dev/'
-    echo ""
-fi
-EOF
+COPY motd-snippet.bash /tmp/motd-snippet.bash
+RUN cat /tmp/motd-snippet.bash >> /home/exedev/.bashrc && rm /tmp/motd-snippet.bash
 
 # Create systemd service for Shelley
 COPY exeuntu/shelley.service /etc/systemd/system/shelley.service
