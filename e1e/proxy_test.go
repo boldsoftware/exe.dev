@@ -31,15 +31,21 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 
 	altPort := Env.exed.ExtraPorts[0]
 
-	// You might want to use "busybox httpd" but Go's http client doesn't like it (gets an EOF),
-	// so don't do that.
-	p := boxSSHCommand(t, box, keyFile, "python3", "-m", "http.server", strconv.Itoa(altPort))
-	if err := p.Start(); err != nil {
-		t.Fatalf("failed to start python HTTP server: %v\n", err)
+	// Make an index.html file to serve.
+	makeIndex := boxSSHCommand(t, box, keyFile, "echo", "alive", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v\n", err)
+	}
+
+	httpdCmd := boxSSHCommand(t, box, keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(altPort), "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
 	}
 	t.Cleanup(func() {
-		p.Process.Kill()
-		p.Wait()
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
 	})
 
 	waitCmd := boxSSHCommand(t, box, keyFile, "timeout", "20", "sh", "-c",
@@ -337,14 +343,22 @@ func TestHTTPProxyBasic(t *testing.T) {
 	boxName := newBox(t, pty)
 	pty.disconnect()
 
+	// Make an index.html file to serve.
+	makeIndex := boxSSHCommand(t, boxName, keyFile, "echo", "alive", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v\n", err)
+	}
+
 	// Start HTTP server on port 8080 in background (non-privileged port)
-	pythonCmd := boxSSHCommand(t, boxName, keyFile, "python3", "-m", "http.server", "8080", ">", "/tmp/http_server.log", "2>&1")
-	if err := pythonCmd.Start(); err != nil {
-		t.Fatalf("failed to start python HTTP server: %v\n", err)
+	httpdCmd := boxSSHCommand(t, boxName, keyFile, "busybox", "httpd", "-f", "-p", "8080", "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
 	}
 	t.Cleanup(func() {
-		pythonCmd.Process.Kill()
-		pythonCmd.Wait()
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
 	})
 
 	// Now test proxy functionality
@@ -419,7 +433,7 @@ func TestHTTPProxyBasic(t *testing.T) {
 				t.Logf("Attempt %d: HTTP status %d", i+1, resp.StatusCode)
 				continue
 			}
-			if strings.Contains(string(body), "Directory listing") || strings.Contains(string(body), "Index of") {
+			if strings.Contains(string(body), "alive") {
 				// Success
 				break
 			}
@@ -432,8 +446,8 @@ func TestHTTPProxyBasic(t *testing.T) {
 			t.Errorf("expected 200 OK for public route, got status %d", resp.StatusCode)
 		}
 		bodyStr := string(body)
-		if !strings.Contains(bodyStr, "Directory listing") && !strings.Contains(bodyStr, "Index of") {
-			t.Errorf("did not get expected directory listing from Python HTTP server, got:\n%s", bodyStr)
+		if !strings.Contains(bodyStr, "alive") {
+			t.Errorf("did not get expected response from busybox HTTP server, got:\n%s", bodyStr)
 		}
 	}
 
