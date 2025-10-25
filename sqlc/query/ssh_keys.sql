@@ -28,9 +28,6 @@ FROM users u
 JOIN ssh_keys s ON u.user_id = s.user_id
 WHERE s.public_key = ?;
 
--- name: GetUserWithEmail :one
-SELECT * FROM users WHERE email = ?;
-
 -- name: UpsertSSHKeyForUser :exec
 INSERT INTO ssh_keys (user_id, public_key)
 VALUES (?, ?)

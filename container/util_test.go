@@ -3,7 +3,6 @@ package container
 import (
 	"context"
 	"math/rand"
-	"os/exec"
 	"testing"
 	"time"
 
@@ -34,12 +33,6 @@ func CreateTestManager(t *testing.T) *NerdctlManager {
 	}
 
 	return manager
-}
-
-// isCommandAvailable checks if a command is available in PATH
-func isCommandAvailable(command string) bool {
-	_, err := exec.LookPath(command)
-	return err == nil
 }
 
 // SkipIfShort skips the test if running in short mode

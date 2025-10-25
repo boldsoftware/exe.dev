@@ -1959,20 +1959,6 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	return &user, nil
 }
 
-// userWithEmail retrieves a user by their email
-func (s *Server) userWithEmail(ctx context.Context, email string) (*exedb.User, error) {
-	user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-		return queries.GetUserWithEmail(ctx, email)
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
 // createUser creates a new user with their resource allocation.
 func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
 	var allocID string

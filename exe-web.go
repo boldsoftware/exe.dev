@@ -641,7 +641,7 @@ func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send confirmation email only on first add
-	if err == nil && wasNew {
+	if wasNew {
 		subject := "You're on the exe.dev waitlist"
 		body := "Hello,\n\nThanks for your interest in exe.dev. You're on the waitlist. We'll reach out as soon as we have space for you.\n\nIn the meantime, we're heads down building a great SSH-first experience.\n\n— exe.dev"
 		if sendErr := s.sendEmail(email, subject, body); sendErr != nil {

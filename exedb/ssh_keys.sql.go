@@ -91,17 +91,6 @@ func (q *Queries) GetUserIDBySSHKey(ctx context.Context, publicKey string) (stri
 	return user_id, err
 }
 
-const getUserWithEmail = `-- name: GetUserWithEmail :one
-SELECT user_id, email, created_at FROM users WHERE email = ?
-`
-
-func (q *Queries) GetUserWithEmail(ctx context.Context, email string) (User, error) {
-	row := q.queryRow(ctx, q.getUserWithEmailStmt, getUserWithEmail, email)
-	var i User
-	err := row.Scan(&i.UserID, &i.Email, &i.CreatedAt)
-	return i, err
-}
-
 const getUserWithSSHKey = `-- name: GetUserWithSSHKey :one
 SELECT u.user_id, u.email, u.created_at
 FROM users u
