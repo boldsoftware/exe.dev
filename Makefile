@@ -50,6 +50,9 @@ ssh-exed: ## ssh to exed production server
 ssh-ci: ## ssh to exed ci server
 	@ssh root@ci.bold.dev
 
+ssh-ctr: ## ssh to ctr-host
+	@ssh ubuntu@exe-ctr-01
+
 ssh-mon: ## ssh to monitoring (prometheus/grafana) server
 	@ssh ubuntu@mon
 
