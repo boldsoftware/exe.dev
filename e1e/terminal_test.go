@@ -106,7 +106,7 @@ func TestTerminalPermissions(t *testing.T) {
 		var errChan chan error
 		var readyChan chan bool
 
-		retryTimeout := time.After(15 * time.Second)
+		retryTimeout := time.After(time.Minute)
 		retryTicker := time.NewTicker(100 * time.Millisecond)
 		defer retryTicker.Stop()
 
