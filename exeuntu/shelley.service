@@ -1,7 +1,5 @@
 [Unit]
 Description=Shelley-the-Agent
-After=network.target
-Wants=network.target
 
 [Service]
 Type=exec

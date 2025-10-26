@@ -1,7 +1,5 @@
 [Unit]
 Description=exe.dev box demo/welcome server
-After=network.target
-Wants=network.target
 
 [Service]
 Type=simple
