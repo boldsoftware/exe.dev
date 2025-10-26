@@ -105,14 +105,14 @@ provision_base_vm() {
 
 	echo "Copying pre-downloaded dependencies to VM..."
 	CACHE_DIR="$HOME/.cache/exedops"
-	
+
 	# Build custom kernel if not cached
 	KERNEL_BUILDER_DIR="${script_dir}/kernel-builder/output"
 	if [ ! -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
 		echo "  Custom kernel not found, building it now..."
 		(cd "${script_dir}/kernel-builder" && make)
 	fi
-	
+
 	# Copy custom kernel
 	if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
 		echo "  Copying custom kernel with nftables support..."
@@ -122,7 +122,7 @@ provision_base_vm() {
 		echo "  ERROR: Failed to build custom kernel"
 		exit 1
 	fi
-	
+
 	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
 		if [ -f "$file" ]; then
 			basename=$(basename "$file")
