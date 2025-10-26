@@ -151,8 +151,11 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 	dashBody, _ := io.ReadAll(dashResp.Body)
 	dashResp.Body.Close()
-	if dashResp.StatusCode != http.StatusOK || !strings.Contains(string(dashBody), host) {
-		t.Fatalf("Dashboard unexpected: status=%d contains host? %v", dashResp.StatusCode, strings.Contains(string(dashBody), host))
+	if dashResp.StatusCode != http.StatusOK {
+		t.Fatalf("Dashboard unexpected status=%d", dashResp.StatusCode)
+	}
+	if !strings.Contains(string(dashBody), host) {
+		t.Fatalf("Dashboard unexpected body, should contain host=%v\n\n%s", host, dashBody)
 	}
 
 	// 7) Register SSH key and cleanup
