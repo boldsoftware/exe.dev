@@ -30,13 +30,20 @@ func TestBoxSharingWithWebServer(t *testing.T) {
 
 	// Start a simple HTTP server on port 8080 inside the box
 	boxInternalPort := 8080
-	p := boxSSHCommand(t, box, keyFile1, "python3", "-m", "http.server", strconv.Itoa(boxInternalPort))
-	if err := p.Start(); err != nil {
-		t.Fatalf("failed to start python HTTP server: %v\n", err)
+	makeIndex := boxSSHCommand(t, box, keyFile1, "echo", "alive", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v\n", err)
+	}
+
+	httpdCmd := boxSSHCommand(t, box, keyFile1, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
 	}
 	t.Cleanup(func() {
-		p.Process.Kill()
-		p.Wait()
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
 	})
 
 	// Wait for server to be ready
@@ -206,13 +213,20 @@ func TestShareLinkAccess(t *testing.T) {
 	pty1.disconnect() // Done with interactive session
 
 	boxInternalPort := 8080
-	p := boxSSHCommand(t, box, keyFile1, "python3", "-m", "http.server", strconv.Itoa(boxInternalPort))
-	if err := p.Start(); err != nil {
-		t.Fatalf("failed to start python HTTP server: %v\n", err)
+	makeIndex := boxSSHCommand(t, box, keyFile1, "echo", "alive", ">", "/home/exedev/index.html")
+	if err := makeIndex.Run(); err != nil {
+		t.Fatalf("failed to create index.html: %v\n", err)
+	}
+
+	httpdCmd := boxSSHCommand(t, box, keyFile1, "busybox", "httpd", "-f", "-p", strconv.Itoa(boxInternalPort), "-h", "/home/exedev")
+	httpdCmd.Stdout = t.Output()
+	httpdCmd.Stderr = t.Output()
+	if err := httpdCmd.Start(); err != nil {
+		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
 	}
 	t.Cleanup(func() {
-		p.Process.Kill()
-		p.Wait()
+		httpdCmd.Process.Kill()
+		httpdCmd.Wait()
 	})
 
 	// Wait for server to be ready
