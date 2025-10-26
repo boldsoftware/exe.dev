@@ -1357,10 +1357,6 @@ func boxName(t *testing.T) string {
 	return boxName
 }
 
-// registerForExeDev is a convenience command to register for an exe.dev account.
-// It returns the open pty after registration, authentication cookies for HTTP access,
-// the private keyFile, and the account email.
-// It is the caller's responsibility to call pty.disconnect() when done.
 func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, cookies []*http.Cookie, keyFile, returnedEmail string) {
 	keyFile, publicKey := genSSHKey(t)
 	pty = sshToExeDev(t, keyFile)
@@ -1390,8 +1386,14 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 	return pty, cookies, keyFile, returnedEmail
 }
 
+// registerForExeDev is a convenience command to register for an exe.dev account.
+// It returns the open pty after registration, authentication cookies for HTTP access,
+// the private keyFile, and the account email.
+// It is the caller's responsibility to call pty.disconnect() when done.
 func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, keyFile, email string) {
-	email = t.Name() + "@example.com"
+	name := t.Name()
+	name = strings.ReplaceAll(name, "/", ".")
+	email = name + "@example.com"
 	return registerForExeDevWithEmail(t, email)
 }
 

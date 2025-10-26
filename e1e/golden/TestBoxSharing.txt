@@ -9,12 +9,12 @@
 EXE.DEV: get a box over ssh
 To sign up, please verify your email.
 
-Please enter your email address: testboxsharingwithwebserver-user1@example.com
+Please enter your email address: owner@test-box-sharing.example
 
 [DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
-Verification email sent to: testboxsharingwithwebserver-user1@example.com
+Verification email sent to: owner@test-box-sharing.example
 Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
@@ -34,7 +34,7 @@ Welcome to EXE.DEV!
 - help to see a list of commands
 
 exe.dev ▶ whoami
-Email Address: testboxsharingwithwebserver-user1@example.com
+Email Address: owner@test-box-sharing.example
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ new --name=BOX_NAME --command="/bin/bash"
@@ -58,45 +58,6 @@ Goodbye!
 ● ssh localhost
 ●
 
-~~~ EXE.DEV ~~~
-
-EXE.DEV: get a box over ssh
-To sign up, please verify your email.
-
-Please enter your email address: testboxsharingwithwebserver-user2@example.com
-
-[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
-
-
-Verification email sent to: testboxsharingwithwebserver-user2@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
-Waiting for email verification...
-✓ Email verified successfully!
-
-
-Registration complete!
-
-Your account has been successfully created.
-
-Press any key to continue...
-
-
-Welcome to EXE.DEV!
-
-- new to create your first box
-- browser to speed-login on the web
-- help to see a list of commands
-
-exe.dev ▶ whoami
-Email Address: testboxsharingwithwebserver-user2@example.com
-SSH Keys:
-  Public Key: SSH_PUBKEY ← current
-exe.dev ▶
-
-●
-● ssh localhost
-●
-
 rm BOX_NAME
 
 - browser to speed-login on the web
@@ -106,6 +67,4 @@ exe.dev ▶ rm BOX_NAME
 Deleting BOX_NAME...
 Box "BOX_NAME" deleted successfully
 exe.dev ▶ exit
-Goodbye!
-exit
 Goodbye!
