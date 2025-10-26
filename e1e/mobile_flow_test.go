@@ -17,6 +17,8 @@ import (
 func TestMobileFlow_EndToEnd(t *testing.T) {
 	// Unique hostname for this test
 	host := boxName(t)
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
 
 	// Build client with cookie jar
 	jar, err := cookiejar.New(nil)
