@@ -89,19 +89,21 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	// Retry until stream is available
 	streamURL := base + "/m/creating/stream?hostname=" + url.QueryEscape(host)
 	var sseResp *http.Response
-	for i := 0; i < 50; i++ {
+	haveStream := false
+	for range 50 {
 		sseResp, err = client2.Get(streamURL)
 		if err != nil {
 			t.Fatalf("GET SSE stream: %v", err)
 		}
 		if sseResp.StatusCode == http.StatusOK && strings.Contains(strings.ToLower(sseResp.Header.Get("Content-Type")), "text/event-stream") {
+			haveStream = true
 			break
 		}
 		sseResp.Body.Close()
-		if i == 49 {
-			t.Fatalf("SSE stream not ready after retries")
-		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if !haveStream {
+		t.Fatalf("SSE stream not ready after retries")
 	}
 	defer sseResp.Body.Close()
 
