@@ -31,6 +31,8 @@ func (c *Connection) updateLastUsed() {
 // Pool manages persistent SSH connections
 type Pool struct {
 	baseDir     string
+	closed      bool
+	closeC      chan struct{}
 	mu          sync.Mutex // protects following fields
 	connections map[string]*Connection
 	bypassUntil map[string]time.Time
@@ -66,6 +68,7 @@ func New() *Pool {
 	}
 
 	pool := &Pool{
+		closeC:      make(chan struct{}),
 		connections: make(map[string]*Connection),
 		baseDir:     baseDir,
 		bypassUntil: make(map[string]time.Time),
@@ -82,7 +85,13 @@ func (p *Pool) cleanupStaleConnections() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for {
+		select {
+		case <-p.closeC:
+			return
+		case <-ticker.C:
+			// continue to cleanup
+		}
 		p.mu.Lock()
 		now := time.Now()
 		for host, conn := range p.connections {
@@ -371,6 +380,11 @@ func (p *Pool) execDirectSSH(ctx context.Context, host string, args ...string) *
 func (p *Pool) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
+	p.closed = true
+	close(p.closeC)
 
 	for host, conn := range p.connections {
 		slog.Info("[SSH-POOL] Closing connection", "host", host)
