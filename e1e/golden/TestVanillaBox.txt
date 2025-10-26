@@ -9,12 +9,12 @@
 EXE.DEV: get a box over ssh
 To sign up, please verify your email.
 
-Please enter your email address: TestDockerWorks@example.com
+Please enter your email address: TestVanillaBox@example.com
 
 [DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
-Verification email sent to: TestDockerWorks@example.com
+Verification email sent to: TestVanillaBox@example.com
 Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
@@ -34,7 +34,7 @@ Welcome to EXE.DEV!
 - help to see a list of commands
 
 exe.dev ▶ whoami
-Email Address: TestDockerWorks@example.com
+Email Address: TestVanillaBox@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ new --name=BOX_NAME

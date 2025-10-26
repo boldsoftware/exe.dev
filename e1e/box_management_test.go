@@ -13,66 +13,110 @@ import (
 	"exe.dev/vouch"
 )
 
-func TestSSHWorks(t *testing.T) {
+// TestVanillaBox tests functionality of a vanilla box.
+// (Vanilla means no flags to new, no subsequent exe.dev-level modifications or mutations.)
+// Unifying these in a single test reduces box creation overhead.
+func TestVanillaBox(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
 	pty, _, keyFile, _ := registerForExeDev(t)
-
-	// Create a box.
 	boxName := newBox(t, pty)
 	pty.disconnect()
 
-	// SSH to it.
-	pty = sshToBox(t, boxName, keyFile)
-	pty.reject("Permission denied") // fail fast on common known failure mode
-	pty.wantPrompt()
-	pty.sendLine("whoami")
-	pty.want("exedev")
-	pty.want("\n") // exedev is also in the prompt! require a newline after it.
-	pty.wantPrompt()
-	pty.disconnect()
+	t.Run("no_second_hint", func(t *testing.T) {
+		pty := sshToExeDev(t, keyFile)
+		// They've created a box, so we should have stopped hinting at them about it.
+		pty.reject("create your first box")
+		pty.wantPrompt()
+		pty.disconnect()
+	})
 
-	pty = sshToExeDev(t, keyFile)
-	// They've created a box, so we should have stopped hinting at them about it.
-	pty.reject("create your first box")
-	pty.wantPrompt()
-	pty.disconnect()
-
-	// Make sure SCP works too.
-	// We need some file to copy up. Use the private key. Why not. It's a file.
-	cmd := exec.CommandContext(t.Context(),
-		"scp",
-		"-F", "/dev/null",
-		"-P", fmt.Sprint(Env.sshPort()),
-		"-o", "IdentityFile="+keyFile,
-		"-o", "IdentityAgent=none",
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "PreferredAuthentications=publickey",
-		"-o", "PubkeyAuthentication=yes",
-		"-o", "PasswordAuthentication=no",
-		"-o", "KbdInteractiveAuthentication=no",
-		"-o", "ChallengeResponseAuthentication=no",
-		"-o", "IdentitiesOnly=yes",
-		keyFile,
-		fmt.Sprintf("%v@localhost:key.txt", boxName),
-	)
-	cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
-	out, err := cmd.CombinedOutput()
+	// Wait for SSH to be responsive (systemd may take time to initialize).
+	var err error
+	for range 150 {
+		err = boxSSHCommand(t, boxName, keyFile, "true").Run()
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	if err != nil {
-		t.Fatalf("failed to run %v: %v\n%s", cmd, err, out)
+		t.Fatalf("box ssh did not come up, last error: %v", err)
 	}
 
-	// Confirm that the file made it there.
-	out, err = boxSSHCommand(t, boxName, keyFile, "ls", "key.txt").CombinedOutput()
-	if err != nil {
-		t.Fatalf("failed to run ls key.txt: %v\n%s", err, out)
-	}
-	if string(out) != "key.txt\n" {
-		t.Fatalf("expected key.txt from ls, got %q", out)
-	}
+	t.Run("ssh", func(t *testing.T) {
+		pty := sshToBox(t, boxName, keyFile)
+		pty.reject("Permission denied") // fail fast on common known failure mode
+		pty.wantPrompt()
+		pty.sendLine("whoami")
+		pty.want("exedev")
+		pty.want("\n") // exedev is also in the prompt! require a newline after it.
+		pty.wantPrompt()
+		pty.disconnect()
+	})
+
+	t.Run("scp", func(t *testing.T) {
+		// Make sure SCP works too.
+		// We need some file to copy up. Use the private key. Why not. It's a file.
+		cmd := exec.CommandContext(t.Context(),
+			"scp",
+			"-F", "/dev/null",
+			"-P", fmt.Sprint(Env.sshPort()),
+			"-o", "IdentityFile="+keyFile,
+			"-o", "IdentityAgent=none",
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "PreferredAuthentications=publickey",
+			"-o", "PubkeyAuthentication=yes",
+			"-o", "PasswordAuthentication=no",
+			"-o", "KbdInteractiveAuthentication=no",
+			"-o", "ChallengeResponseAuthentication=no",
+			"-o", "IdentitiesOnly=yes",
+			keyFile,
+			fmt.Sprintf("%v@localhost:key.txt", boxName),
+		)
+		cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to run %v: %v\n%s", cmd, err, out)
+		}
+
+		// Confirm that the file made it there.
+		out, err = boxSSHCommand(t, boxName, keyFile, "ls", "key.txt").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to run ls key.txt: %v\n%s", err, out)
+		}
+		if string(out) != "key.txt\n" {
+			t.Fatalf("expected key.txt from ls, got %q", out)
+		}
+	})
+
+	t.Run("docker", func(t *testing.T) {
+		// Wait for docker to be available. Docker uses socket activation and starts on first use,
+		// but we need to give systemd a bit more time after SSH is ready.
+		var err error
+		for range 150 {
+			err = boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "info").Run()
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if err != nil {
+			t.Fatalf("docker not available after waiting, last error: %v", err)
+		}
+
+		// Run a simple docker container to verify Docker works in exeuntu.
+		out, err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "run", "--rm", "alpine:latest", "echo", "hello").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to run docker command: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "hello") {
+			t.Fatalf("expected 'hello' in docker output, got: %s", out)
+		}
+	})
 
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
@@ -141,58 +185,6 @@ func TestNewWithPrompt(t *testing.T) {
 	pty.wantPrompt()
 
 	// Cleanup
-	pty.deleteBox(boxName)
-	pty.disconnect()
-}
-
-func TestDockerWorks(t *testing.T) {
-	vouch.For("philip")
-	t.Parallel()
-	e1eTestsOnlyRunOnce(t)
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-
-	// Create a box with default systemd command.
-	boxName := newBox(t, pty)
-	pty.disconnect()
-
-	// Wait for SSH to be responsive (systemd may take time to initialize).
-	var err error
-	for range 150 {
-		err = boxSSHCommand(t, boxName, keyFile, "true").Run()
-		if err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil {
-		t.Fatalf("box ssh did not come up, last error: %v", err)
-	}
-
-	// Wait for docker to be available. Docker uses socket activation and starts on first use,
-	// but we need to give systemd a bit more time after SSH is ready.
-	for range 150 {
-		err = boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "info").Run()
-		if err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil {
-		t.Fatalf("docker not available after waiting, last error: %v", err)
-	}
-
-	// Run a simple docker container to verify Docker works in exeuntu.
-	out, err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "run", "--rm", "alpine:latest", "echo", "hello").CombinedOutput()
-	if err != nil {
-		t.Fatalf("failed to run docker command: %v\n%s", err, out)
-	}
-	if !strings.Contains(string(out), "hello") {
-		t.Fatalf("expected 'hello' in docker output, got: %s", out)
-	}
-
-	// Cleanup
-	pty = sshToExeDev(t, keyFile)
 	pty.deleteBox(boxName)
 	pty.disconnect()
 }

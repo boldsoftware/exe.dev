@@ -1,0 +1,12 @@
+
+
+●
+● ssh localhost
+●
+
+
+- browser to speed-login on the web
+- help to see a list of commands
+
+exe.dev ▶ exit
+Goodbye!
