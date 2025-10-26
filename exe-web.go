@@ -28,7 +28,7 @@ import (
 	"exe.dev/cobble"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
-	"exe.dev/porkbun"
+	"exe.dev/route53"
 	"exe.dev/sqlite"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -96,22 +96,15 @@ func (s *Server) setupHTTPSServer() {
 		return
 	}
 
-	// Check if Porkbun API credentials are available for wildcard cert
-	porkbunAPIKey := os.Getenv("PORKBUN_API_KEY")
-	porkbunSecretKey := os.Getenv("PORKBUN_SECRET_API_KEY")
-
-	if porkbunAPIKey != "" && porkbunSecretKey != "" && s.devMode == "" {
-		// Use Porkbun for wildcard certificates with DNS challenge (production only)
-		s.slog().Info("Using Porkbun DNS provider for wildcard TLS certificates")
-		s.wildcardCertManager = porkbun.NewWildcardCertManager(
+	if s.devMode == "" {
+		s.slog().Info("Using Route 53 DNS provider for wildcard TLS certificates")
+		s.wildcardCertManager = route53.NewWildcardCertManager(
 			s.getMainDomain(),
 			"support@"+s.getMainDomain(),
-			porkbunAPIKey,
-			porkbunSecretKey,
 			autocert.DirCache("certs"),
 		)
 	} else {
-		s.slog().Info("Using standard autocert (no wildcard support)", "note", "Set PORKBUN_API_KEY and PORKBUN_SECRET_API_KEY for wildcard certificates")
+		s.slog().Info("Using standard autocert (no wildcard support)", "note", "Wildcard certificates disabled in dev modes")
 	}
 
 	s.certManager = &autocert.Manager{
@@ -276,7 +269,7 @@ func (s *Server) hostPolicy(ctx context.Context, host string) error {
 // getCertificate is the single TLS certificate dispatcher for HTTPS.
 // It serves:
 // - Tailscale node certificate for the machine's Tailscale DNS name
-// - Wildcard exe.dev certificates (via Porkbun DNS-01) when configured
+// - Wildcard exe.dev certificates (via Route 53 DNS-01) when configured
 // - Standard autocert for exe.dev when wildcard manager is not configured
 func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if hello == nil || hello.ServerName == "" {

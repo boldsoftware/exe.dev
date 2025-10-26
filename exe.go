@@ -39,7 +39,7 @@ import (
 	docspkg "exe.dev/docs"
 	"exe.dev/exedb"
 	"exe.dev/ghuser"
-	"exe.dev/porkbun"
+	"exe.dev/route53"
 	"exe.dev/sqlite"
 	"exe.dev/sshbuf"
 	"exe.dev/sshpool2"
@@ -166,7 +166,7 @@ type Server struct {
 	sshServer   *SSHServer
 
 	certManager         *autocert.Manager
-	wildcardCertManager *porkbun.WildcardCertManager
+	wildcardCertManager *route53.WildcardCertManager
 	lookupCNAMEFunc     func(context.Context, string) (string, error) // for tests
 	stopCobble          func()
 
