@@ -478,12 +478,12 @@ The exe.dev team`, verifyURL, token)
 	}
 
 	data := struct {
-		Email  string
-		DevURL string
-		Code   string
+		Email       string
+		QueryString string
+		DevURL      string
 	}{
-		Email: email,
-		Code:  token[:8],
+		Email:       email,
+		QueryString: r.URL.RawQuery,
 	}
 
 	if s.devMode != "" {
