@@ -256,6 +256,7 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 		// Make a best-effort attempt to determine whether the dial failed because the underlying SSH connection is dead.
 		// If so, remove it from the pool, so that subsequent calls will create a new connection.
 		if isSSHConnError(err) {
+			slog.Info("dropping dead ssh connection", "key", pc.key.String(), "err", err)
 			p.removeConn(pc)
 		}
 		pc.disconnected() // balance the connect() call
@@ -267,7 +268,7 @@ func (p *Pool) dialThroughClient(ctx context.Context, pc *pooledConn, network, a
 
 func isSSHConnError(err error) bool {
 	var openErr *ssh.OpenChannelError
-	if errors.As(err, &openErr) {
+	if errors.As(err, &openErr) && openErr.Reason != ssh.ConnectionFailed {
 		return true
 	}
 	if errors.Is(err, net.ErrClosed) {
