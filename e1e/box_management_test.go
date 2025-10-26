@@ -115,7 +115,6 @@ func TestNewRejectsBoxMatchingSSHUsername(t *testing.T) {
 }
 
 func TestNewWithPrompt(t *testing.T) {
-	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
