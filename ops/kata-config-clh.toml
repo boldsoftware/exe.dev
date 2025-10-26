@@ -72,9 +72,9 @@ disable_image_nvdimm = false
 # and we strongly advise users to refer the Cloud Hypervisor official
 # documentation for a better understanding of its internals:
 # https://github.com/cloud-hypervisor/cloud-hypervisor/blob/main/docs/io_throttling.md
-# 
+#
 # Bandwidth rate limiter options
-# 
+#
 # net_rate_limiter_bw_max_rate controls network I/O bandwidth (size in bits/sec
 # for SB/VM).
 # The same value is used for inbound and outbound bandwidth.
@@ -108,9 +108,9 @@ disable_image_nvdimm = false
 # and we strongly advise users to refer the Cloud Hypervisor official
 # documentation for a better understanding of its internals:
 # https://github.com/cloud-hypervisor/cloud-hypervisor/blob/main/docs/io_throttling.md
-# 
+#
 # Bandwidth rate limiter options
-# 
+#
 # disk_rate_limiter_bw_max_rate controls disk I/O bandwidth (size in bits/sec
 # for SB/VM).
 # The same value is used for inbound and outbound bandwidth.
@@ -209,4 +209,3 @@ create_container_timeout = 60
 
 # Base directory of directly attachable network config.
 dan_conf = "/run/kata-containers/dans"
-

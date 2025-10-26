@@ -289,7 +289,7 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 	KERNEL_BUILDER_DIR="${SCRIPT_DIR}/kernel-builder/output"
 	KERNEL_CACHE_DIR="${CACHE_DIR}/kernel"
 	mkdir -p "${KERNEL_CACHE_DIR}"
-	
+
 	if [ ! -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
 		echo "Custom kernel not found in cache, building it now..."
 		(cd "${SCRIPT_DIR}/kernel-builder" && make)

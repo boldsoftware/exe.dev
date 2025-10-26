@@ -110,11 +110,11 @@ if [ -f "$CUSTOM_KERNEL" ]; then
 	echo "Installing custom kernel with nftables support..."
 	sudo cp "$CUSTOM_KERNEL" /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
 	sudo chmod +x /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
-	
+
 	if [ -f "$CUSTOM_CONFIG" ]; then
 		sudo cp "$CUSTOM_CONFIG" /opt/kata/share/kata-containers/config-6.12.42-nftables
 	fi
-	
+
 	# Update the vmlinux.container symlink to point to our custom kernel
 	sudo ln -sf vmlinux-6.12.42-nftables /opt/kata/share/kata-containers/vmlinux.container
 	echo "Custom kernel installed and activated"
