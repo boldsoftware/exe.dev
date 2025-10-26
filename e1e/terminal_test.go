@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
-	"net/url"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -177,11 +175,7 @@ func terminalRequest(t *testing.T, boxName string, cookies []*http.Cookie) (*htt
 	}
 	if cookies != nil {
 		u := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
-		ur, err := url.Parse(u)
-		if err != nil {
-			t.Fatalf("failed to parse URL %q: %v", u, err)
-		}
-		jar.SetCookies(ur, slices.Clone(cookies))
+		setCookiesForJar(t, jar, u, cookies)
 	}
 	client := &http.Client{
 		Jar: jar,
@@ -218,11 +212,7 @@ func terminalRequestWithAuth(t *testing.T, boxName string, cookies []*http.Cooki
 	}
 	// Set cookies for the main domain
 	u := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
-	ur, err := url.Parse(u)
-	if err != nil {
-		t.Fatalf("failed to parse URL %q: %v", u, err)
-	}
-	jar.SetCookies(ur, slices.Clone(cookies))
+	setCookiesForJar(t, jar, u, cookies)
 
 	client := &http.Client{
 		Jar: jar,
@@ -361,8 +351,7 @@ func createAuthenticatedTerminalClient(t *testing.T, boxName string, baseCookies
 
 	// Set base cookies for main domain
 	mainURL := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
-	parsedMainURL, _ := url.Parse(mainURL)
-	jar.SetCookies(parsedMainURL, baseCookies)
+	setCookiesForJar(t, jar, mainURL, baseCookies)
 
 	client := &http.Client{
 		Jar: jar,

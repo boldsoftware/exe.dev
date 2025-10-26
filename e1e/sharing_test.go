@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -320,18 +319,7 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 	}
 	if exp.cookies != nil {
 		u := fmt.Sprintf("http://localhost:%d", exp.httpPort)
-		ur, err := url.Parse(u)
-		if err != nil {
-			t.Fatalf("failed to parse URL %q: %v", u, err)
-			return
-		}
-		// SetCookies seems to modify the cookies, so copy them:
-		cookies := slices.Clone(exp.cookies)
-		for i, c := range cookies {
-			c2 := *c
-			cookies[i] = &c2
-		}
-		jar.SetCookies(ur, exp.cookies)
+		setCookiesForJar(t, jar, u, exp.cookies)
 	}
 	client := &http.Client{
 		Jar: jar,

@@ -1394,6 +1394,23 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 	return registerForExeDevWithEmail(t, email)
 }
 
+func setCookiesForJar(t *testing.T, jar *cookiejar.Jar, rawURL string, cookies []*http.Cookie) {
+	t.Helper()
+	if len(cookies) == 0 {
+		return
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("failed to parse URL %q: %v", rawURL, err)
+	}
+	cloned := make([]*http.Cookie, len(cookies))
+	for i, c := range cookies {
+		cCopy := *c
+		cloned[i] = &cCopy
+	}
+	jar.SetCookies(u, cloned)
+}
+
 // BoxOpts holds optional parameters for newBox.
 type BoxOpts struct {
 	Image   string
