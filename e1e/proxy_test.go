@@ -127,12 +127,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 		u := fmt.Sprintf("http://localhost:%d", exp.httpPort)
 		setCookiesForJar(t, jar, u, exp.cookies)
 	}
-	client := &http.Client{
-		Jar: jar,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := noRedirectClient(jar)
 
 	// We put in a GET parameter here to ensure that all the redirects preserve the parameters.
 	proxyURL := fmt.Sprintf("http://%s.localhost:%d/?foo=1", boxName, exp.httpPort)
@@ -447,11 +442,7 @@ func TestHTTPProxyBasic(t *testing.T) {
 // makeProxyRequest makes an HTTP request to boxName, available at httpPort.
 func makeProxyRequest(t *testing.T, boxName string, httpPort int) (*http.Response, error) {
 	t.Helper()
-	client := &http.Client{}
-	// don't follow redirects
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
+	client := noRedirectClient(nil)
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", httpPort)
 	req, err := http.NewRequest("GET", proxyURL, nil)
 	if err != nil {

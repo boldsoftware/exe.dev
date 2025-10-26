@@ -321,12 +321,7 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 		u := fmt.Sprintf("http://localhost:%d", exp.httpPort)
 		setCookiesForJar(t, jar, u, exp.cookies)
 	}
-	client := &http.Client{
-		Jar: jar,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := noRedirectClient(jar)
 
 	// Build URL with custom query string
 	proxyURL := fmt.Sprintf("http://%s.localhost:%d/?%s", box, exp.httpPort, query)

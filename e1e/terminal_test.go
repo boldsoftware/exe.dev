@@ -177,12 +177,7 @@ func terminalRequest(t *testing.T, boxName string, cookies []*http.Cookie) (*htt
 		u := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
 		setCookiesForJar(t, jar, u, cookies)
 	}
-	client := &http.Client{
-		Jar: jar,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := noRedirectClient(jar)
 
 	terminalURL := fmt.Sprintf("http://%s.xterm.localhost:%d/", boxName, Env.exed.HTTPPort)
 	req, err := localhostRequestWithHostHeader("GET", terminalURL, nil)
@@ -214,12 +209,7 @@ func terminalRequestWithAuth(t *testing.T, boxName string, cookies []*http.Cooki
 	u := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
 	setCookiesForJar(t, jar, u, cookies)
 
-	client := &http.Client{
-		Jar: jar,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := noRedirectClient(jar)
 
 	terminalURL := fmt.Sprintf("http://%s.xterm.localhost:%d/", boxName, Env.exed.HTTPPort)
 	req, err := localhostRequestWithHostHeader("GET", terminalURL, nil)
@@ -353,12 +343,7 @@ func createAuthenticatedTerminalClient(t *testing.T, boxName string, baseCookies
 	mainURL := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
 	setCookiesForJar(t, jar, mainURL, baseCookies)
 
-	client := &http.Client{
-		Jar: jar,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := noRedirectClient(jar)
 
 	// Start with terminal page request
 	terminalURL := fmt.Sprintf("http://%s.xterm.localhost:%d/", boxName, Env.exed.HTTPPort)

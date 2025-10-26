@@ -1396,7 +1396,7 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 
 func setCookiesForJar(t *testing.T, jar *cookiejar.Jar, rawURL string, cookies []*http.Cookie) {
 	t.Helper()
-	if len(cookies) == 0 {
+	if len(cookies) == 0 || jar == nil {
 		return
 	}
 	u, err := url.Parse(rawURL)
@@ -1409,6 +1409,15 @@ func setCookiesForJar(t *testing.T, jar *cookiejar.Jar, rawURL string, cookies [
 		cloned[i] = &cCopy
 	}
 	jar.SetCookies(u, cloned)
+}
+
+func noRedirectClient(jar http.CookieJar) *http.Client {
+	return &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 // BoxOpts holds optional parameters for newBox.

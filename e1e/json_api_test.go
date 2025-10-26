@@ -176,11 +176,7 @@ func TestExeDevAPI(t *testing.T) {
 		t.Fatalf("expected token query parameter in magic_link %q", browser.MagicLink)
 	}
 
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := noRedirectClient(nil)
 	resp, err := client.Get(browser.MagicLink)
 	if err != nil {
 		t.Fatalf("failed to fetch magic_link %q: %v", browser.MagicLink, err)
