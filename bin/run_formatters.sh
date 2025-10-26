@@ -18,7 +18,7 @@ fi
 # Check if gofumpt is installed
 if ! command -v gofumpt &> /dev/null; then
     echo "Error: gofumpt not found. Install it with:"
-    echo "  go install mvdan.cc/gofumpt@v0.9.0"
+    echo "  go install mvdan.cc/gofumpt@v0.9.2"
     exit 1
 fi
 
@@ -26,7 +26,7 @@ fi
 echo "Checking Go formatting..."
 if [ "$CHECK_MODE" = true ]; then
   # In check mode, we want to display the files that need formatting and exit with error if any
-  FILES_TO_FORMAT=$(find . -name "*.go" -exec gofumpt -l {} +)
+  FILES_TO_FORMAT=$(find . -name "*.go" -exec gofumpt -extra -l {} +)
   if [ -n "$FILES_TO_FORMAT" ]; then
     echo "The following Go files need formatting:"
     echo "$FILES_TO_FORMAT"
