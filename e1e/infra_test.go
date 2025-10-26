@@ -137,6 +137,11 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 			code = 1
 		}
 	}
+	close(env.exedSlogErrC)
+	for line := range env.exedSlogErrC {
+		code = 1
+		fmt.Fprintf(os.Stderr, "\n\nexed emitted ERROR log during e1e run:\n%s\n\n", line)
+	}
 
 	for _, f := range logFiles {
 		if f == nil {
@@ -205,10 +210,11 @@ func initLogging() error {
 var Env *testEnv
 
 type testEnv struct {
-	proxy  *tcpProxy
-	exed   exedInstance
-	piperd piperdInstance
-	email  *emailServer
+	proxy        *tcpProxy
+	exed         exedInstance
+	piperd       piperdInstance
+	email        *emailServer
+	exedSlogErrC chan string // receives exed ERROR log lines
 
 	asciinemaMu      sync.Mutex // protects asciinemaWriters
 	asciinemaWriters map[string]*expect.AsciinemaWriter
@@ -466,6 +472,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	env := &testEnv{
 		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
 		canonicalize:     make(map[string]string),
+		exedSlogErrC:     make(chan string, 16),
 	}
 
 	// We have a circular dependency around ports.
@@ -502,7 +509,7 @@ func setup(ctrHost string) (*testEnv, error) {
 
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port, []int{0, 0})
+	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port, []int{0, 0}, env.exedSlogErrC)
 	if err != nil {
 		return env, err
 	}
@@ -627,7 +634,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	return instance, nil
 }
 
-func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int) (*exedInstance, error) {
+func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exedSlogErrC chan string) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
 	// Choose binary: use PREBUILT_EXED if provided, otherwise build a temp binary.
@@ -733,11 +740,12 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 			tee.Write(line)
 			tee.WriteString("\n")
 			teeMu.Unlock()
+			lineStr := string(line)
 			if *flagVerboseExed {
-				fmt.Fprintln(logFileFor("exed"), string(line))
+				fmt.Fprintln(logFileFor("exed"), lineStr)
 			}
 			if seenPanic {
-				fmt.Println(string(line))
+				fmt.Println(lineStr)
 			}
 			// Parse JSON log line.
 			if !json.Valid(line) {
@@ -757,6 +765,12 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 			if err := json.Unmarshal(line, &entry); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to parse log line: %v\n", err)
 				continue
+			}
+			if fmt.Sprint(entry["level"]) == "ERROR" {
+				select {
+				case exedSlogErrC <- lineStr:
+				default:
+				}
 			}
 			switch entry["msg"] {
 			case "listening":
