@@ -105,9 +105,10 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	}
 	defer sseResp.Body.Close()
 
+	buf := new(strings.Builder)
+	tee := io.TeeReader(sseResp.Body, buf)
 	// Read SSE until we see event: done
-	scanner := bufio.NewScanner(sseResp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner := bufio.NewScanner(tee)
 	var curEvent, doneData string
 	done := false
 	deadline := time.Now().Add(8 * time.Minute)
@@ -121,7 +122,9 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "event: ") {
 			curEvent = strings.TrimSpace(strings.TrimPrefix(line, "event: "))
-		} else if strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
 			if curEvent == "done" {
 				doneData = data
@@ -131,10 +134,12 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 		}
 	}
 	if !done || doneData == "" {
+		t.Logf("full SSE stream:\n\n%s\n\n", buf.String())
 		t.Fatalf("did not receive done event; last data: %q", doneData)
 	}
 	parts := strings.Split(doneData, "|")
 	if len(parts) < 2 || !strings.HasPrefix(parts[0], "http") || !strings.HasPrefix(parts[1], "http") {
+		t.Logf("full SSE stream:\n\n%s\n\n", buf.String())
 		t.Fatalf("unexpected done payload: %q", doneData)
 	}
 
