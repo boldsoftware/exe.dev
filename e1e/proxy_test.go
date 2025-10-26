@@ -17,18 +17,14 @@ import (
 	"exe.dev/vouch"
 )
 
-func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
+func TestHTTPProxy(t *testing.T) {
 	vouch.For("philip")
-	// Empirically, this test does not play well with others.
-	// It would be really good to confirm that this does not reflect
-	// a real bug, but for now, skip parallel execution.
-	// t.Parallel()
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
 	pty.disconnect()
-
-	altPort := Env.exed.ExtraPorts[0]
 
 	// Make an index.html file to serve.
 	makeIndex := boxSSHCommand(t, box, keyFile, "echo", "alive", ">", "/home/exedev/index.html")
@@ -36,45 +32,125 @@ func TestHTTPProxyForAlternateProxyPorts(t *testing.T) {
 		t.Fatalf("failed to create index.html: %v\n", err)
 	}
 
-	httpdCmd := boxSSHCommand(t, box, keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(altPort), "-h", "/home/exedev")
-	httpdCmd.Stdout = t.Output()
-	httpdCmd.Stderr = t.Output()
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
+	serveHTTP := func(t *testing.T, port int) {
+		t.Helper()
+
+		httpdCmd := boxSSHCommand(t, box, keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(port), "-h", "/home/exedev")
+		httpdCmd.Stdout = t.Output()
+		httpdCmd.Stderr = t.Output()
+		if err := httpdCmd.Start(); err != nil {
+			t.Fatalf("failed to start busybox HTTP server: %v\n", err)
+		}
+		t.Cleanup(func() {
+			httpdCmd.Process.Kill()
+			httpdCmd.Wait()
+		})
+
+		// TODO: arguably we shouldn't do this waiting.
+		// Instead, exed should be responsible for handling it for us.
+		// Early versions of this test accidentally did just that,
+		// and it was slow and flaky...but best would be to fix _that_
+		// and completely remove this stanza.
+		waitCmd := boxSSHCommand(t, box, keyFile, "timeout", "20", "sh", "-c",
+			fmt.Sprintf("'while ! curl http://localhost:%d/; do sleep 0.5; done'", port))
+		waitCmd.Stdout = t.Output()
+		waitCmd.Stderr = t.Output()
+		if err := waitCmd.Run(); err != nil {
+			t.Fatalf("failed http server unavailable: %v\n", err)
+		}
 	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
+
+	t.Run("default_port", func(t *testing.T) {
+		serveHTTP(t, 8080)
+		httpPort := Env.exed.HTTPPort
+
+		// TODO: do the auth dance to test private routes too.
+
+		t.Run("private_redirect", func(t *testing.T) {
+			resp, err := makeProxyRequest(t, box, httpPort)
+			if err != nil {
+				t.Fatalf("failed to make proxy request: %v", err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusTemporaryRedirect {
+				t.Errorf("expected redirect for private route, got status %d", resp.StatusCode)
+			}
+		})
+
+		t.Run("mark_public", func(t *testing.T) {
+			exeShell := sshToExeDev(t, keyFile)
+			exeShell.sendLine(fmt.Sprintf("proxy %s --port=8080 --public", box))
+			exeShell.want("Route updated successfully")
+			exeShell.wantPrompt()
+
+			exeShell.sendLine(fmt.Sprintf("proxy %s", box))
+			exeShell.want("Port: 8080")
+			exeShell.want("Share: public")
+			exeShell.wantPrompt()
+			exeShell.disconnect()
+		})
+
+		t.Run("public_route", func(t *testing.T) {
+			sleepTimes := []time.Duration{
+				0, 100 * time.Millisecond,
+				200 * time.Millisecond, 300 * time.Millisecond, 500 * time.Millisecond,
+				1 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second,
+				2 * time.Second, 2 * time.Second,
+			}
+			var resp *http.Response
+			var body []byte
+			for _, sleepTime := range sleepTimes {
+				time.Sleep(sleepTime)
+				var err error
+				resp, err = makeProxyRequest(t, box, httpPort)
+				if err != nil {
+					continue
+				}
+				body, err = io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if err != nil || resp.StatusCode != http.StatusOK {
+					continue
+				}
+				if strings.Contains(string(body), "alive") {
+					break
+				}
+			}
+			if resp == nil {
+				t.Fatal("never received HTTP response from proxy")
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("expected HTTP 200 from public route, got %d", resp.StatusCode)
+			}
+			if !strings.Contains(string(body), "alive") {
+				t.Fatalf("expected body to contain 'alive', got %s", body)
+			}
+		})
 	})
 
-	waitCmd := boxSSHCommand(t, box, keyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("while ! curl http://localhost:%d/; do sleep 0.5; done", altPort))
-	if err := waitCmd.Start(); err != nil {
-		t.Fatalf("failed to start wait command: %v\n", err)
-	}
-	waitCmd.Wait()
+	t.Run("alternate_ports", func(t *testing.T) {
+		serveHTTP(t, Env.exed.ExtraPorts[0])
 
-	// Without auth, should redirect to login page with the original URL as redirect parameter
-	expectedRedirect := fmt.Sprintf("http://%s.localhost:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.localhost%%3A%d%%2F%%3Ffoo%%3D1", box, altPort, box, altPort)
-	proxyAssert(t, box, proxyExpectation{
-		name:             "altport without auth redirects",
-		httpPort:         altPort,
-		cookies:          nil,
-		httpCode:         http.StatusTemporaryRedirect,
-		redirectLocation: expectedRedirect,
-	})
-	proxyAssert(t, box, proxyExpectation{
-		name:     "altport with auth succeeds",
-		httpPort: altPort,
-		cookies:  cookies,
-		httpCode: http.StatusOK,
-	})
+		expectedRedirect := fmt.Sprintf("http://%s.localhost:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.localhost%%3A%d%%2F%%3Ffoo%%3D1", box, Env.exed.ExtraPorts[0], box, Env.exed.ExtraPorts[0])
+		proxyAssert(t, box, proxyExpectation{
+			name:             "altport without auth redirects",
+			httpPort:         Env.exed.ExtraPorts[0],
+			cookies:          nil,
+			httpCode:         http.StatusTemporaryRedirect,
+			redirectLocation: expectedRedirect,
+		})
+		proxyAssert(t, box, proxyExpectation{
+			name:     "altport with auth succeeds",
+			httpPort: Env.exed.ExtraPorts[0],
+			cookies:  cookies,
+			httpCode: http.StatusOK,
+		})
 
-	proxyAssert(t, box, proxyExpectation{
-		name:     "other altport with auth fails",
-		httpPort: Env.exed.ExtraPorts[1],
-		cookies:  cookies,
-		httpCode: http.StatusBadGateway,
+		proxyAssert(t, box, proxyExpectation{
+			name:     "other altport with auth fails",
+			httpPort: Env.exed.ExtraPorts[1],
+			cookies:  cookies,
+			httpCode: http.StatusBadGateway,
+		})
 	})
 
 	// Cleanup
@@ -316,131 +392,6 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 		}
 		t.Logf("Redirect location matches expected: %s", location)
 	}
-}
-
-// TestHTTPProxyBasic tests basic HTTP proxy functionality with public and private routes
-// TODO: This doesn't do the auth dance so it's only testing the public stuff right now.
-func TestHTTPProxyBasic(t *testing.T) {
-	vouch.For("philip")
-	t.Parallel()
-
-	pty, _, keyFile, _ := registerForExeDev(t)
-	boxName := newBox(t, pty)
-	pty.disconnect()
-
-	// Make an index.html file to serve.
-	makeIndex := boxSSHCommand(t, boxName, keyFile, "echo", "alive", ">", "/home/exedev/index.html")
-	if err := makeIndex.Run(); err != nil {
-		t.Fatalf("failed to create index.html: %v\n", err)
-	}
-
-	// Start HTTP server on port 8080 in background (non-privileged port)
-	httpdCmd := boxSSHCommand(t, boxName, keyFile, "busybox", "httpd", "-f", "-p", "8080", "-h", "/home/exedev")
-	httpdCmd.Stdout = t.Output()
-	httpdCmd.Stderr = t.Output()
-	if err := httpdCmd.Start(); err != nil {
-		t.Fatalf("failed to start busybox HTTP server: %v\n", err)
-	}
-	t.Cleanup(func() {
-		httpdCmd.Process.Kill()
-		httpdCmd.Wait()
-	})
-
-	// Now test proxy functionality
-	// Get the HTTP port for the test server
-	// TODO(josh): use the url returned by newBox, once it exists.
-	httpPort := Env.exed.HTTPPort
-
-	// Default route should be private (redirect to auth)
-	{
-		t.Log("Testing private route")
-		resp, err := makeProxyRequest(t, boxName, httpPort)
-		if err != nil {
-			t.Fatalf("failed to make proxy request: %v", err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusTemporaryRedirect {
-			t.Errorf("expected redirect for private route, got status %d", resp.StatusCode)
-		}
-	}
-
-	// Make route public via SSH command interface
-	{
-		t.Log("Making route public")
-		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("proxy %s --port=8080 --public", boxName))
-		exeShell.want("Route updated successfully")
-		exeShell.wantPrompt()
-
-		// Verify route is public
-		exeShell.sendLine(fmt.Sprintf("proxy %s", boxName))
-		exeShell.want("Port: 8080")
-		exeShell.want("Share: public")
-		exeShell.wantPrompt()
-		exeShell.disconnect()
-	}
-
-	// Public route should allow direct access (with retry logic)
-	{
-		t.Log("Testing public route")
-		// The HTTP server takes a while to start up, so we retry a few times.
-		sleepTimes := []time.Duration{
-			0, 100 * time.Millisecond,
-			200 * time.Millisecond, 300 * time.Millisecond, 500 * time.Millisecond,
-			1 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second,
-			2 * time.Second, 2 * time.Second,
-		}
-		var resp *http.Response
-		var err error
-		var body []byte
-		for i, sleepTime := range sleepTimes {
-			if sleepTime > 0 {
-				t.Logf("Retrying after %v...", sleepTime)
-				time.Sleep(sleepTime)
-			}
-			resp, err = makeProxyRequest(t, boxName, httpPort)
-			if err != nil {
-				t.Logf("Attempt %d: failed to make proxy request: %v", i+1, err)
-				continue
-			}
-			body, err = io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if err != nil {
-				t.Logf("Attempt %d: failed to read response body: %v", i+1, err)
-				continue
-			}
-			switch resp.StatusCode {
-			case http.StatusOK:
-				// success, continue below
-			case http.StatusBadGateway:
-				t.Logf("Attempt %d: got bad gateway, server not ready yet", i+1)
-				continue
-			default:
-				t.Logf("Attempt %d: HTTP status %d", i+1, resp.StatusCode)
-				continue
-			}
-			if strings.Contains(string(body), "alive") {
-				// Success
-				break
-			}
-			t.Logf("Attempt %d: unexpected body: %s", i+1, string(body))
-		}
-		if resp == nil || err != nil {
-			t.Fatalf("failed to make proxy request after retries: %v", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("expected 200 OK for public route, got status %d", resp.StatusCode)
-		}
-		bodyStr := string(body)
-		if !strings.Contains(bodyStr, "alive") {
-			t.Errorf("did not get expected response from busybox HTTP server, got:\n%s", bodyStr)
-		}
-	}
-
-	// Cleanup
-	pty = sshToExeDev(t, keyFile)
-	pty.deleteBox(boxName)
-	pty.disconnect()
 }
 
 // makeProxyRequest makes an HTTP request to boxName, available at httpPort.

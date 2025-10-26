@@ -9,12 +9,12 @@
 EXE.DEV: get a box over ssh
 To sign up, please verify your email.
 
-Please enter your email address: TestHTTPProxyForAlternateProxyPorts@example.com
+Please enter your email address: TestHTTPProxy@example.com
 
 [DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
 
 
-Verification email sent to: TestHTTPProxyForAlternateProxyPorts@example.com
+Verification email sent to: TestHTTPProxy@example.com
 Pairing code: EMAIL_VERIFICATION_CODE
 Waiting for email verification...
 ✓ Email verified successfully!
@@ -34,7 +34,7 @@ Welcome to EXE.DEV!
 - help to see a list of commands
 
 exe.dev ▶ whoami
-Email Address: TestHTTPProxyForAlternateProxyPorts@example.com
+Email Address: TestHTTPProxy@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ new --name=BOX_NAME --command="/bin/bash"
