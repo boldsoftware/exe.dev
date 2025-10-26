@@ -265,6 +265,10 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			return
 		}
 		u, err = origUrl.Parse(location)
+		if err != nil {
+			t.Fatalf("failed to parse final redirect URL: %v", err)
+			return
+		}
 		t.Logf("Got redirect to %s", u.String())
 		if u.String() != proxyURL {
 			t.Errorf("expected redirect to %s, got %s", proxyURL, u.String())
