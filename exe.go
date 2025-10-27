@@ -73,6 +73,7 @@ const (
 const (
 	// Timeout for long-running operations like box creation and Shelley prompts
 	longOperationTimeout = 30 * time.Minute
+	maxIPShard           = 25
 )
 
 // BoxDisplayInfo represents a box with additional display information
@@ -167,6 +168,7 @@ type Server struct {
 
 	certManager         *autocert.Manager
 	wildcardCertManager *route53.WildcardCertManager
+	dnsProvider         *route53.DNSProvider
 	lookupCNAMEFunc     func(context.Context, string) (string, error) // for tests
 	stopCobble          func()
 
@@ -486,6 +488,10 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		docs:      docsHandler,
 		templates: tmpl,
 		log:       slog,
+	}
+
+	if devMode == "" {
+		s.dnsProvider = route53.NewDNSProvider()
 	}
 
 	s.setupHTTPServer()
@@ -1103,6 +1109,7 @@ func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image 
 
 	routes := exedb.DefaultRouteJSON()
 	var boxID int
+	var assignedShard int
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
@@ -1118,15 +1125,94 @@ func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image 
 		}
 		boxID = int(id)
 
-		// Record user event
-		s.recordUserEventTx(tx, userID, userEventCreatedBox)
+		shard, err := s.allocateIPShard(ctx, queries, userID, boxID)
+		if err != nil {
+			return err
+		}
+		assignedShard = shard
+
 		return nil
 	})
 	if err != nil {
 		return 0, err
 	}
 
+	if s.devMode == "" {
+		if err := s.createBoxCNAME(ctx, name, assignedShard); err != nil {
+			cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
+			if cleanupErr != nil {
+				s.slog().Error("failed to roll back box after DNS error", "box_id", boxID, "cleanup_error", cleanupErr, "dns_error", err)
+			}
+			return 0, err
+		}
+	}
+
+	s.recordUserEventBestEffort(ctx, userID, userEventCreatedBox)
 	return boxID, nil
+}
+
+func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, userID string, boxID int) (int, error) {
+	shards, err := queries.ListIPShardsForUser(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list IP shards for user %s: %w", userID, err)
+	}
+
+	used := make([]bool, maxIPShard+1)
+	for _, shard := range shards {
+		if shard < 1 || shard > maxIPShard {
+			continue
+		}
+		used[int(shard)] = true
+	}
+
+	var assigned int
+	for candidate := 1; candidate <= maxIPShard; candidate++ {
+		if !used[candidate] {
+			assigned = candidate
+			break
+		}
+	}
+
+	if assigned == 0 {
+		return 0, fmt.Errorf("no IP shards available for user %s", userID)
+	}
+
+	if err := queries.InsertBoxIPShard(ctx, int64(boxID), userID, int64(assigned)); err != nil {
+		return 0, fmt.Errorf("failed to assign IP shard for box %d: %w", boxID, err)
+	}
+	return assigned, nil
+}
+
+func (s *Server) createBoxCNAME(ctx context.Context, boxName string, shard int) error {
+	if shard < 1 || shard > maxIPShard {
+		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
+	}
+	if s.dnsProvider == nil {
+		return fmt.Errorf("route53 DNS provider not configured")
+	}
+
+	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	target := fmt.Sprintf("s%03d", shard)
+	_, err := s.dnsProvider.CreateCNAMERecord(dnsCtx, s.getMainDomain(), boxName, target, 5*time.Minute)
+	if err != nil {
+		return fmt.Errorf("failed to create Route53 CNAME for box %s: %w", boxName, err)
+	}
+	return nil
+}
+
+func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
+	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM box_ip_shard WHERE box_id = ?`, boxID); err != nil {
+			return err
+		}
+		queries := exedb.New(tx.Conn())
+		if err := queries.DeleteBox(ctx, boxID); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // updateBoxWithContainer updates a box with container info and SSH keys after container creation
