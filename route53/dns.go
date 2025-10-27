@@ -63,6 +63,13 @@ type recordIdentifier struct {
 	Values []string `json:"values"`
 }
 
+// CNAMERecord represents a Route53 CNAME record
+type CNAMERecord struct {
+	Name   string
+	Target string
+	TTL    int64
+}
+
 func encodeRecordID(name, recordType string, ttl int64, values []string) (string, error) {
 	raw, err := json.Marshal(recordIdentifier{
 		Name:   name,
@@ -233,6 +240,133 @@ func (d *DNSProvider) DeleteRecord(ctx context.Context, domain, recordID string)
 	}
 
 	return nil
+}
+
+// ListCNAMERecords returns all CNAME records for the provided domain.
+func (d *DNSProvider) ListCNAMERecords(ctx context.Context, domain string) ([]CNAMERecord, error) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		return nil, fmt.Errorf("domain is required")
+	}
+
+	zoneID, err := d.getHostedZoneID(ctx, domain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve hosted zone: %w", err)
+	}
+
+	paginator := awsroute53.NewListResourceRecordSetsPaginator(d.client, &awsroute53.ListResourceRecordSetsInput{
+		HostedZoneId: aws.String(zoneID),
+	})
+
+	var records []CNAMERecord
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list CNAME record sets: %w", err)
+		}
+
+		for _, rrset := range page.ResourceRecordSets {
+			if rrset.Type != types.RRTypeCname {
+				continue
+			}
+			if len(rrset.ResourceRecords) == 0 {
+				return nil, fmt.Errorf("CNAME record %s has no target", aws.ToString(rrset.Name))
+			}
+
+			name := strings.TrimSuffix(strings.ToLower(aws.ToString(rrset.Name)), ".")
+			target := strings.TrimSuffix(strings.Trim(strings.ToLower(aws.ToString(rrset.ResourceRecords[0].Value)), "\""), ".")
+
+			var ttl int64
+			if rrset.TTL != nil {
+				ttl = aws.ToInt64(rrset.TTL)
+			}
+
+			records = append(records, CNAMERecord{
+				Name:   name,
+				Target: strings.ToLower(target),
+				TTL:    ttl,
+			})
+		}
+	}
+
+	return records, nil
+}
+
+// CreateCNAMERecord creates or updates a CNAME record for the provided host.
+func (d *DNSProvider) CreateCNAMERecord(ctx context.Context, domain, name, target string, ttl time.Duration) (string, error) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		return "", fmt.Errorf("domain is required")
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return "", fmt.Errorf("record name is required")
+	}
+	if ttl <= 0 {
+		return "", fmt.Errorf("ttl must be greater than zero")
+	}
+	if ttl%time.Second != 0 {
+		return "", fmt.Errorf("ttl must be a whole number of seconds")
+	}
+
+	targetValue, err := normalizeCNAMEValue(domain, target)
+	if err != nil {
+		return "", err
+	}
+
+	zoneID, err := d.getHostedZoneID(ctx, domain)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve hosted zone: %w", err)
+	}
+
+	recordName := buildRecordName(domain, name)
+	fqdn := ensureTrailingDot(recordName)
+	targetFQDN := ensureTrailingDot(targetValue)
+	ttlSeconds := int64(ttl / time.Second)
+
+	_, err = d.client.ChangeResourceRecordSets(ctx, &awsroute53.ChangeResourceRecordSetsInput{
+		HostedZoneId: aws.String(zoneID),
+		ChangeBatch: &types.ChangeBatch{
+			Changes: []types.Change{
+				{
+					Action: types.ChangeActionUpsert,
+					ResourceRecordSet: &types.ResourceRecordSet{
+						Name: aws.String(fqdn),
+						Type: types.RRTypeCname,
+						TTL:  aws.Int64(ttlSeconds),
+						ResourceRecords: []types.ResourceRecord{
+							{Value: aws.String(targetFQDN)},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to upsert CNAME record: %w", err)
+	}
+
+	recordID, err := encodeRecordID(recordName, "CNAME", ttlSeconds, []string{targetValue})
+	if err != nil {
+		return "", fmt.Errorf("failed to encode record id: %w", err)
+	}
+	return recordID, nil
+}
+
+func normalizeCNAMEValue(domain, target string) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", fmt.Errorf("target is required")
+	}
+	target = strings.TrimSuffix(target, ".")
+
+	targetLower := strings.ToLower(target)
+	domainLower := strings.ToLower(domain)
+
+	if strings.Contains(targetLower, ".") && !strings.HasSuffix(targetLower, "."+domainLower) && targetLower != domainLower {
+		return targetLower, nil
+	}
+	return strings.ToLower(buildRecordName(domainLower, targetLower)), nil
 }
 
 // GetRecords retrieves all DNS records for a domain

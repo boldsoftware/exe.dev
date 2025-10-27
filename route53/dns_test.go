@@ -138,3 +138,66 @@ func TestExtractDomain(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeCNAMEValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		domain      string
+		target      string
+		expected    string
+		expectError bool
+	}{
+		{
+			name:     "relative target expands within domain",
+			domain:   "exe.dev",
+			target:   "box1",
+			expected: "box1.exe.dev",
+		},
+		{
+			name:     "target already fully qualified within domain",
+			domain:   "exe.dev",
+			target:   "box2.exe.dev.",
+			expected: "box2.exe.dev",
+		},
+		{
+			name:     "target outside managed domain preserved",
+			domain:   "exe.dev",
+			target:   "service.other.invalid.",
+			expected: "service.other.invalid",
+		},
+		{
+			name:     "target equal to domain allowed",
+			domain:   "exe.dev",
+			target:   "EXE.DEV",
+			expected: "exe.dev",
+		},
+		{
+			name:        "empty target rejected",
+			domain:      "exe.dev",
+			target:      "",
+			expectError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result, err := normalizeCNAMEValue(tc.domain, tc.target)
+			if tc.expectError {
+				if err == nil {
+					t.Fatalf("expected error but got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result != tc.expected {
+				t.Fatalf("expected %q, got %q", tc.expected, result)
+			}
+		})
+	}
+}
