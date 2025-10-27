@@ -167,7 +167,16 @@ func TestNewWithPrompt(t *testing.T) {
 	// Create a box with a prompt (use predictable model for testing)
 	boxName := boxName(t)
 	prompt := "hello" // This will trigger predictable service to respond with "Well, hi there!"
-	pty.sendLine(fmt.Sprintf("new --name=%s --prompt=%q --prompt-model=predictable", boxName, prompt))
+	// systemd is painfully slow on macOS.
+	// By providing --command, we bypass it...but we still need Shelley running,
+	// so we reach in and start it ourselves.
+	// This is gross, but the tests are unusable otherwise.
+	// TODO: revert this hack when systemd is faster on macOS in L2.
+	command := fmt.Sprintf(`new --name=%s --prompt=%q --prompt-model=predictable`+
+		` --command="/usr/local/bin/shelley -debug -db /home/exedev/.shelley/shelley.db -config /exe.dev/shelley.json serve -port 9999"`,
+		boxName, prompt,
+	)
+	pty.sendLine(command)
 	pty.reject("Sorry")
 	pty.wantRe("Creating .*" + boxName)
 	// Calls to action

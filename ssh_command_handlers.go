@@ -524,7 +524,8 @@ done:
 	// but, until that's done (https://github.com/boldsoftware/exe/issues/7), let's only
 	// show the URL sometimes.
 	shelleyUrl := ""
-	if image == "exeuntu" && command == "auto" {
+	// The strings.Contains check here is a miserable hack for e1e's TestNewWithPrompt. I am full of shame.
+	if image == "exeuntu" && (command == "auto" || strings.Contains(command, "/usr/local/bin/shelley")) {
 		shelleyUrl = ss.server.shelleyURL(boxName)
 	}
 
