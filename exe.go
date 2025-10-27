@@ -1008,9 +1008,9 @@ type SSHClient interface {
 
 // findBoxByNameForUser finds a box by name that the user has access to
 func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName string) *exedb.Box {
-	s.slog().Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
+	// s.slog().Debug("FindBoxByNameForUser", "user_id", userID, "box_name", boxName)
 	if !boxname.Valid(boxName) {
-		s.slog().Info("invalid box name format", "box", boxName)
+		// s.slog().Info("invalid box name format", "box", boxName)
 		return nil
 	}
 
