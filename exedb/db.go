@@ -333,6 +333,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertTagResolutionStmt, err = db.PrepareContext(ctx, upsertTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertTagResolution: %w", err)
 	}
+	if q.userHasAuthCookieStmt, err = db.PrepareContext(ctx, userHasAuthCookie); err != nil {
+		return nil, fmt.Errorf("error preparing query UserHasAuthCookie: %w", err)
+	}
 	return &q, nil
 }
 
@@ -853,6 +856,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertTagResolutionStmt: %w", cerr)
 		}
 	}
+	if q.userHasAuthCookieStmt != nil {
+		if cerr := q.userHasAuthCookieStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing userHasAuthCookieStmt: %w", cerr)
+		}
+	}
 	return err
 }
 
@@ -995,6 +1003,7 @@ type Queries struct {
 	upsertSSHHostKeyStmt                   *sql.Stmt
 	upsertSSHKeyForUserStmt                *sql.Stmt
 	upsertTagResolutionStmt                *sql.Stmt
+	userHasAuthCookieStmt                  *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
@@ -1104,5 +1113,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,
+		userHasAuthCookieStmt:                  q.userHasAuthCookieStmt,
 	}
 }

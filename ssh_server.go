@@ -311,7 +311,7 @@ func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User)
 	userEvents := ss.server.allUserEventsBestEffort(s.Context(), user.UserID)
 	hasCreatedBox := userEvents[userEventCreatedBox] > 0
 	hasUsedRepl := userEvents[userEventUsedREPL] > 0
-	hasSetBrowserCookies := userEvents[userEventSetBrowserCookies] > 0
+	hasSetBrowserCookies := ss.server.userHasActiveAuthCookieBestEffort(s.Context(), user.UserID)
 	hasRunHelp := userEvents[userEventHasRunHelp] > 0 // TODO: maybe > 1 or > 2? or something recency-based?
 
 	// Check if this is a web shell session

@@ -2,12 +2,9 @@ package e1e
 
 import (
 	"testing"
-
-	"exe.dev/vouch"
 )
 
 func TestHelpCommandShowsNewOptions(t *testing.T) {
-	vouch.For("arielle")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
 
@@ -25,7 +22,6 @@ func TestHelpCommandShowsNewOptions(t *testing.T) {
 	pty.reject("enter your email")
 	pty.reject("see a list of commands")
 	pty.want("create your first box")
-	pty.want("login on the web")
 	pty.wantPrompt()
 	pty.disconnect()
 }

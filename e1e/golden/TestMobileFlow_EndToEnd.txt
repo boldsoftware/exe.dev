@@ -29,7 +29,6 @@ Press any key to continue...
 
 Welcome to EXE.DEV!
 
-- browser to speed-login on the web
 - help to see a list of commands
 
 exe.dev ▶ rm BOX_NAME

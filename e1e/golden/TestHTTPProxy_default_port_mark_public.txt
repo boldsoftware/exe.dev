@@ -6,7 +6,6 @@
 
 proxy BOX_NAME --port=8080 --public
 
-- browser to speed-login on the web
 - help to see a list of commands
 
 exe.dev ▶ proxy BOX_NAME --port=8080 --public

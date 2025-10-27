@@ -30,7 +30,6 @@ Press any key to continue...
 Welcome to EXE.DEV!
 
 - new to create your first box
-- browser to speed-login on the web
 - help to see a list of commands
 
 exe.dev ▶ whoami
@@ -64,7 +63,6 @@ Goodbye!
 
 
 - new to create your first box
-- browser to speed-login on the web
 
 exe.dev ▶ exit
 Goodbye!

@@ -18,3 +18,11 @@ DELETE FROM auth_cookies WHERE user_id = ?;
 
 -- name: DeleteAuthCookieByValue :exec
 DELETE FROM auth_cookies WHERE cookie_value = ?;
+
+-- name: UserHasAuthCookie :one
+SELECT EXISTS (
+    SELECT 1
+    FROM auth_cookies
+    WHERE user_id = ?
+      AND expires_at > CURRENT_TIMESTAMP
+);

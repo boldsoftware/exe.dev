@@ -1427,6 +1427,27 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 	return userID, nil
 }
 
+// userHasActiveAuthCookie returns true when the user has at least one non-expired auth cookie record.
+func (s *Server) userHasActiveAuthCookie(ctx context.Context, userID string) (bool, error) {
+	hasCookie, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+		return queries.UserHasAuthCookie(ctx, userID)
+	})
+	if err != nil {
+		return false, err
+	}
+	return hasCookie > 0, nil
+}
+
+// userHasActiveAuthCookieBestEffort logs on error and returns false when the query fails.
+func (s *Server) userHasActiveAuthCookieBestEffort(ctx context.Context, userID string) bool {
+	hasCookie, err := s.userHasActiveAuthCookie(ctx, userID)
+	if err != nil {
+		s.slog().Warn("userHasActiveAuthCookie database error", "userID", userID, "error", err)
+		return false
+	}
+	return hasCookie
+}
+
 // createMagicSecret creates a temporary magic secret for proxy authentication
 func (s *Server) createMagicSecret(userID, boxName, redirectURL string) (string, error) {
 	// Generate a random secret

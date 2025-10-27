@@ -90,3 +90,19 @@ func (q *Queries) UpdateAuthCookieLastUsed(ctx context.Context, cookieValue stri
 	_, err := q.exec(ctx, q.updateAuthCookieLastUsedStmt, updateAuthCookieLastUsed, cookieValue)
 	return err
 }
+
+const userHasAuthCookie = `-- name: UserHasAuthCookie :one
+SELECT EXISTS (
+    SELECT 1
+    FROM auth_cookies
+    WHERE user_id = ?
+      AND expires_at > CURRENT_TIMESTAMP
+)
+`
+
+func (q *Queries) UserHasAuthCookie(ctx context.Context, userID string) (int64, error) {
+	row := q.queryRow(ctx, q.userHasAuthCookieStmt, userHasAuthCookie, userID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
