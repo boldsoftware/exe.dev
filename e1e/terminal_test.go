@@ -52,9 +52,13 @@ func TestTerminalPermissions(t *testing.T) {
 		}
 	})
 
+	var client *http.Client
+	t.Run("auth", func(t *testing.T) {
+		client = createAuthenticatedTerminalClient(t, box, cookies)
+	})
+
 	// Test 2b: Terminal favicon is served for authenticated user
 	t.Run("favicon_served", func(t *testing.T) {
-		client := createAuthenticatedTerminalClient(t, box, cookies)
 		faviconURL := fmt.Sprintf("http://%s.xterm.localhost:%d/favicon.ico", box, Env.exed.HTTPPort)
 		req, err := localhostRequestWithHostHeader("GET", faviconURL, nil)
 		if err != nil {
@@ -99,7 +103,6 @@ func TestTerminalPermissions(t *testing.T) {
 	// Test 4: Terminal functionality - send command and receive output
 	t.Run("terminal_send_and_receive", func(t *testing.T) {
 		// Retry connecting to the terminal until successful or timeout
-		var client *http.Client
 		var outputChan chan string
 		var errChan chan error
 		var readyChan chan bool
@@ -115,9 +118,6 @@ func TestTerminalPermissions(t *testing.T) {
 			case <-retryTimeout:
 				t.Fatalf("timeout waiting for box SSH to be ready, last error: %v", lastErr)
 			case <-retryTicker.C:
-				// Create authenticated client for terminal subdomain
-				client = createAuthenticatedTerminalClient(t, box, cookies)
-
 				// Start listening to terminal events in a goroutine
 				outputChan = make(chan string, 100)
 				errChan = make(chan error, 1)
