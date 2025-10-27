@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,9 +28,8 @@ import (
 	"shelley.exe.dev/ui"
 )
 
-// StreamResponse represents the response format for conversation streaming
 // APIMessage is the message format sent to clients
-// It omits llm_data when display_data is available to reduce bandwidth
+// TODO: We could maybe omit llm_data when display_data is available
 type APIMessage struct {
 	MessageID      string    `json:"message_id"`
 	ConversationID string    `json:"conversation_id"`
@@ -42,6 +42,7 @@ type APIMessage struct {
 	DisplayData    *string   `json:"display_data,omitempty"`
 }
 
+// StreamResponse represents the response format for conversation streaming
 type StreamResponse struct {
 	Messages     []APIMessage           `json:"messages"`
 	Conversation generated.Conversation `json:"conversation"`
@@ -76,7 +77,6 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 }
 
 // toAPIMessages converts database messages to API messages
-// For messages with display_data, it omits llm_data to reduce bandwidth
 func toAPIMessages(messages []generated.Message) []APIMessage {
 	apiMessages := make([]APIMessage, len(messages))
 	for i, msg := range messages {
@@ -102,7 +102,7 @@ type Server struct {
 	llmManager          LLMProvider
 	tools               []*llm.Tool
 	activeConversations map[string]*ConversationManager
-	mu                  sync.RWMutex
+	mu                  sync.Mutex
 	logger              *slog.Logger
 	predictableOnly     bool
 	terminalURL         string
@@ -116,13 +116,22 @@ type Subscriber struct {
 	lastSequenceID int64 // Last message sequence_id this subscriber has seen
 }
 
+var errConversationModelMismatch = errors.New("conversation model mismatch")
+
 // ConversationManager manages a single active conversation
 type ConversationManager struct {
 	conversationID string
 	loop           *loop.Loop
+	loopCancel     context.CancelFunc
 	subscribers    map[string]*Subscriber
-	mu             sync.RWMutex
+	mu             sync.Mutex
 	lastActivity   time.Time
+	modelID        string
+	history        []llm.Message
+	system         []llm.SystemContent
+	recordMessage  loop.MessageRecordFunc
+	logger         *slog.Logger
+	tools          []*llm.Tool
 }
 
 // NewServer creates a new server instance
@@ -452,8 +461,7 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 	// Get LLM service for the requested model
 	modelID := req.Model
 	if modelID == "" {
-		// Default to Qwen3 Coder on Fireworks
-		modelID = "qwen3-coder-fireworks"
+		modelID = s.defaultModel
 	}
 
 	llmService, err := s.llmManager.GetService(modelID)
@@ -472,57 +480,71 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 	})
 	if err != nil {
 		s.logger.Error("Failed to count messages", "conversationID", conversationID, "error", err)
-		// Continue processing even if we can't count messages
-	} else {
-		if messageCount == 0 {
-			// This is the first message, store system prompt first
-			systemPrompt, err := GenerateSystemPrompt()
-			if err != nil {
-				s.logger.Error("Failed to generate system prompt", "error", err)
-			} else if systemPrompt != "" {
-				systemMessage := llm.Message{
-					Role:    llm.MessageRoleUser, // Store as user role but with system type
-					Content: []llm.Content{{Type: llm.ContentTypeText, Text: systemPrompt}},
-				}
-				_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
-					ConversationID: conversationID,
-					Type:           db.MessageTypeSystem,
-					LLMData:        systemMessage,
-					UserData:       nil,
-					UsageData:      llm.Usage{},
-				})
-				if err != nil {
-					s.logger.Error("Failed to store system prompt", "conversationID", conversationID, "error", err)
-				} else {
-					s.logger.Info("Stored system prompt (existing conversation)", "conversationID", conversationID, "length", len(systemPrompt))
-				}
-			}
+		http.Error(w, fmt.Sprintf("db error: %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
 
-			// Generate slug in parallel
-			go func() {
-				slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				defer cancel()
-				_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
-				if err != nil {
-					s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
-				} else {
-					// Notify subscribers about the slug update
-					go s.notifySubscribers(context.Background(), conversationID)
-				}
-			}()
+	if messageCount == 0 {
+		// This is the first message, store system prompt first
+		systemPrompt, err := GenerateSystemPrompt()
+		if err != nil {
+			s.logger.Error("Failed to generate system prompt", "error", err)
+			http.Error(w, fmt.Sprintf("error: %s", err.Error()), http.StatusInternalServerError)
+			return
 		}
+		systemMessage := llm.Message{
+			Role:    llm.MessageRoleUser, // Store as user role but with system type
+			Content: []llm.Content{{Type: llm.ContentTypeText, Text: systemPrompt}},
+		}
+		_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
+			ConversationID: conversationID,
+			Type:           db.MessageTypeSystem,
+			LLMData:        systemMessage,
+			UserData:       nil,
+			UsageData:      llm.Usage{},
+		})
+		if err != nil {
+			s.logger.Error("Failed to store system prompt", "conversationID", conversationID, "error", err)
+			http.Error(w, fmt.Sprintf("db error: %s", err.Error()), http.StatusInternalServerError)
+			return
+		}
+
+		s.logger.Info("Stored system prompt (existing conversation)", "conversationID", conversationID, "length", len(systemPrompt))
+
+		// Generate slug in parallel
+		go func() {
+			slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
+			if err != nil {
+				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
+			} else {
+				// Notify subscribers about the slug update
+				go s.notifySubscribers(context.Background(), conversationID)
+			}
+		}()
 	}
 
 	// Get or create conversation manager (after system prompt is stored)
-	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID, llmService, modelID)
 	if err != nil {
+		if errors.Is(err, errConversationModelMismatch) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Update the LLM service for this request
-	manager.loop.SetLLM(llmService)
+	manager.mu.Lock()
+	loopInstance := manager.loop
+	manager.mu.Unlock()
+	if loopInstance == nil {
+		s.logger.Error("Conversation loop not initialized", "conversationID", conversationID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	// Create user message
 	userMessage := llm.Message{
@@ -534,7 +556,7 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 
 	// Queue user message
 	// The conversation loop is already running and will pick up this message
-	manager.loop.QueueUserMessage(userMessage)
+	loopInstance.QueueUserMessage(userMessage)
 
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
@@ -613,15 +635,25 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get or create conversation manager
-	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID, llmService, modelID)
 	if err != nil {
+		if errors.Is(err, errConversationModelMismatch) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// Update the LLM service for this request
-	manager.loop.SetLLM(llmService)
+	manager.mu.Lock()
+	loopInstance := manager.loop
+	manager.mu.Unlock()
+	if loopInstance == nil {
+		s.logger.Error("Conversation loop not initialized", "conversationID", conversationID)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	// Create user message
 	userMessage := llm.Message{
@@ -633,7 +665,7 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 
 	// Queue user message
 	// The conversation loop is already running and will pick up this message
-	manager.loop.QueueUserMessage(userMessage)
+	loopInstance.QueueUserMessage(userMessage)
 
 	// Generate slug in parallel
 	go func() {
@@ -699,7 +731,7 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	w.(http.Flusher).Flush()
 
 	// Get or create conversation manager
-	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID, nil, "")
 	if err != nil {
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
 		return
@@ -740,23 +772,36 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 }
 
 // getOrCreateConversationManager gets an existing conversation manager or creates a new one
-func (s *Server) getOrCreateConversationManager(ctx context.Context, conversationID string) (*ConversationManager, error) {
+func (s *Server) getOrCreateConversationManager(ctx context.Context, conversationID string, llmService llm.Service, modelID string) (*ConversationManager, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	manager, exists := s.activeConversations[conversationID]
+	s.mu.Unlock()
 
-	// Check if manager already exists
-	if manager, exists := s.activeConversations[conversationID]; exists {
+	if exists {
+		var existingModel string
+		manager.mu.Lock()
 		manager.lastActivity = time.Now()
+		existingModel = manager.modelID
+		manager.mu.Unlock()
+
+		if existingModel != "" && modelID != "" && existingModel != modelID {
+			return nil, fmt.Errorf("%w: conversation already uses model %s; requested %s", errConversationModelMismatch, existingModel, modelID)
+		}
+
+		if llmService != nil {
+			if err := manager.ensureLoop(llmService, modelID); err != nil {
+				return nil, err
+			}
+		}
+
 		return manager, nil
 	}
 
-	// Verify conversation exists
 	conversation, err := s.db.GetConversationByID(ctx, conversationID)
 	if err != nil {
 		return nil, fmt.Errorf("conversation not found: %w", err)
 	}
 
-	// Get existing messages to build history
 	var messages []generated.Message
 	err = s.db.Queries(ctx, func(q *generated.Queries) error {
 		var err error
@@ -767,32 +812,24 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 		return nil, fmt.Errorf("failed to get conversation history: %w", err)
 	}
 
-	// Create message record function
 	recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
 		return s.recordMessage(ctx, conversationID, message, usage)
 	}
 
-	// Convert messages to LLM format for history and extract system prompt
 	var history []llm.Message
 	var system []llm.SystemContent
 	for _, msg := range messages {
-		// Extract system prompt from system messages
 		if msg.Type == string(db.MessageTypeSystem) {
 			llmMsg, err := s.convertToLLMMessage(msg)
 			if err != nil {
 				s.logger.Warn("Failed to convert system message to LLM format", "messageID", msg.MessageID, "error", err)
 				continue
 			}
-			// Extract text content from system message
 			for _, content := range llmMsg.Content {
 				if content.Type == llm.ContentTypeText && content.Text != "" {
-					system = append(system, llm.SystemContent{
-						Type: "text",
-						Text: content.Text,
-					})
+					system = append(system, llm.SystemContent{Type: "text", Text: content.Text})
 				}
 			}
-			// Don't add system messages to history - they're sent separately
 			continue
 		}
 		llmMsg, err := s.convertToLLMMessage(msg)
@@ -803,7 +840,6 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 		history = append(history, llmMsg)
 	}
 
-	// Log system prompt info
 	if len(system) > 0 {
 		systemLen := 0
 		for _, sys := range system {
@@ -814,38 +850,104 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 		s.logger.Warn("No system prompt found in database", "conversationID", conversationID, "message_count", len(messages))
 	}
 
-	// Create loop with history (temporarily use predictable service, will be overridden per request)
-	convLoop := loop.NewLoop(loop.Config{
-		LLM:           loop.NewPredictableService(),
+	manager = &ConversationManager{
+		conversationID: conversationID,
+		subscribers:    make(map[string]*Subscriber),
+		lastActivity:   time.Now(),
+		history:        history,
+		system:         system,
+		recordMessage:  recordMessage,
+		logger:         s.logger.With("conversationID", conversationID),
+		tools:          append([]*llm.Tool(nil), s.tools...),
+	}
+
+	s.mu.Lock()
+	s.activeConversations[conversationID] = manager
+	s.mu.Unlock()
+	_ = conversation // avoid unused variable
+
+	if llmService != nil {
+		if err := manager.ensureLoop(llmService, modelID); err != nil {
+			s.mu.Lock()
+			delete(s.activeConversations, conversationID)
+			s.mu.Unlock()
+			return nil, err
+		}
+	}
+
+	return manager, nil
+}
+
+func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) error {
+	cm.mu.Lock()
+	if cm.loop != nil {
+		existingModel := cm.modelID
+		cm.mu.Unlock()
+		if existingModel != "" && modelID != "" && existingModel != modelID {
+			return fmt.Errorf("%w: conversation already uses model %s; requested %s", errConversationModelMismatch, existingModel, modelID)
+		}
+		return nil
+	}
+
+	history := append([]llm.Message(nil), cm.history...)
+	system := append([]llm.SystemContent(nil), cm.system...)
+	recordMessage := cm.recordMessage
+	tools := append([]*llm.Tool(nil), cm.tools...)
+	logger := cm.logger
+	cm.mu.Unlock()
+
+	loopInstance := loop.NewLoop(loop.Config{
+		LLM:           service,
 		History:       history,
-		Tools:         s.tools,
+		Tools:         tools,
 		RecordMessage: recordMessage,
-		Logger:        s.logger.With("conversationID", conversationID),
+		Logger:        logger,
 		System:        system,
 	})
 
-	// Create manager
-	manager := &ConversationManager{
-		conversationID: conversationID,
-		loop:           convLoop,
-		subscribers:    make(map[string]*Subscriber),
-		lastActivity:   time.Now(),
+	processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+
+	cm.mu.Lock()
+	if cm.loop != nil {
+		cm.mu.Unlock()
+		cancel()
+		existingModel := cm.modelID
+		if existingModel != "" && modelID != "" && existingModel != modelID {
+			return fmt.Errorf("%w: conversation already uses model %s; requested %s", errConversationModelMismatch, existingModel, modelID)
+		}
+		return nil
 	}
+	cm.loop = loopInstance
+	cm.loopCancel = cancel
+	cm.modelID = modelID
+	cm.history = nil
+	cm.system = nil
+	cm.mu.Unlock()
 
-	s.activeConversations[conversationID] = manager
-	_ = conversation // avoid unused variable
-
-	// Start the conversation loop once when the manager is created
-	// The loop will continuously process queued messages until the context is canceled
 	go func() {
-		processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
-		defer cancel()
-		if err := convLoop.Go(processCtx); err != nil && err != context.DeadlineExceeded {
-			s.logger.Error("Conversation loop stopped", "conversationID", conversationID, "error", err)
+		if err := loopInstance.Go(processCtx); err != nil && err != context.DeadlineExceeded {
+			if logger != nil {
+				logger.Error("Conversation loop stopped", "error", err)
+			} else {
+				slog.Default().Error("Conversation loop stopped", "error", err)
+			}
 		}
 	}()
 
-	return manager, nil
+	return nil
+}
+
+func (cm *ConversationManager) stopLoop() {
+	cm.mu.Lock()
+	cancel := cm.loopCancel
+	cm.loopCancel = nil
+	cm.loop = nil
+	cm.modelID = ""
+	cm.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // ExtractDisplayData extracts display data from message content for storage
@@ -962,9 +1064,9 @@ func (s *Server) convertToLLMMessage(msg generated.Message) (llm.Message, error)
 
 // notifySubscribers sends updated messages and conversation data to all subscribers
 func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
-	s.mu.RLock()
+	s.mu.Lock()
 	manager, exists := s.activeConversations[conversationID]
-	s.mu.RUnlock()
+	s.mu.Unlock()
 
 	if !exists {
 		return
@@ -1066,6 +1168,8 @@ func (s *Server) Cleanup() {
 	for id, manager := range s.activeConversations {
 		// Remove managers that have been inactive for more than 30 minutes
 		if now.Sub(manager.lastActivity) > 30*time.Minute {
+			manager.stopLoop()
+
 			// Collect subscriber IDs then unsubscribe outside the manager lock to avoid double-closing channels
 			manager.mu.Lock()
 			subscriberIDs := make([]string, 0, len(manager.subscribers))

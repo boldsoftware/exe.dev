@@ -15,63 +15,57 @@ handling LLM interactions, tool execution, and message recording.
 
 ## Basic Usage
 
-// TODOX: 1. The LLM should be passed in explicitly at creation. No auto-configuring
-// or implicit stuff.
-// 2. The loop should run until the end of turn. You can still inject messages
-// during a turn, but it should exit after the turn ends.
-
 ```go
 // Create tools (using claudetool package or custom tools)
 tools := []*llm.Tool{bashTool, patchTool, thinkTool}
 
-// Define message recording function (typically saves to database)
+// Define message recording function (typically saves to the database)
 recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
     return messageService.Create(ctx, db.CreateMessageParams{
         ConversationID: conversationID,
-        Type: getMessageType(message.Role),
-        LLMData: message,
-        UsageData: usage,
+        Type:            getMessageType(message.Role),
+        LLMData:         message,
+        UsageData:       usage,
     })
 }
 
-// Create loop with conversation history
-history := []llm.Message{ /* existing messages */ }
-loop := loop.NewLoop(history, tools, recordMessage)
+// Create loop with explicit LLM configuration
+agentLoop := loop.NewLoop(loop.Config{
+    LLM:           &ant.Service{APIKey: apiKey},
+    History:       history, // existing conversation history
+    Tools:         tools,
+    RecordMessage: recordMessage,
+    Logger:        logger,
+    System:        systemPrompt, // []llm.SystemContent
+})
 
-// Auto-configure LLM (uses ANTHROPIC_API_KEY if available, otherwise predictable service)
-// Or set explicitly:
-loop.SetLLM(&ant.Service{APIKey: apiKey})
+// Queue user messages for the current turn
+agentLoop.QueueUserMessage(llm.UserStringMessage("Hello, please help me with something"))
 
-// Queue user messages
-loop.QueueUserMessage(llm.UserStringMessage("Hello, please help me with something"))
-
-// Run the conversation loop
+// Run the conversation turn
 ctx := context.Background()
-err := loop.Go(ctx) // Runs until context canceled
+if err := agentLoop.ProcessOneTurn(ctx); err != nil {
+    log.Fatalf("conversation failed: %v", err)
+}
 ```
 
 ## Testing with PredictableService
 
-// TODOX: Instead of configuring the predictable service every time,
-// let's just always configure it!
-
-The `PredictableService` allows you to create deterministic tests:
+The `PredictableService` records requests and returns deterministic responses that are convenient for tests:
 
 ```go
 service := loop.NewPredictableService()
-service.SetResponses([]loop.PredictableResponse{
-    {
-        Content: "I'll help you with that.",
-        StopReason: llm.StopReasonStopSequence,
-        Usage: llm.Usage{InputTokens: 10, OutputTokens: 8},
-    },
-    {
-        Content: "Let me use a tool.",
-        ToolCalls: []loop.PredictableToolCall{
-            {ID: "tool-1", Name: "bash", Input: json.RawMessage(`{"command": "ls"}`)}},
-        StopReason: llm.StopReasonToolUse,
-    },
+
+testLoop := loop.NewLoop(loop.Config{
+    LLM:           service,
+    RecordMessage: func(context.Context, llm.Message, llm.Usage) error { return nil },
 })
 
-loop.SetLLM(service)
+testLoop.QueueUserMessage(llm.UserStringMessage("hello"))
+if err := testLoop.ProcessOneTurn(context.Background()); err != nil {
+    t.Fatalf("loop failed: %v", err)
+}
+
+last := service.GetLastRequest()
+require.NotNil(t, last)
 ```

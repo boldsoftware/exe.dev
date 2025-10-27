@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"shelley.exe.dev/llm"
@@ -14,6 +15,7 @@ import (
 type PredictableService struct {
 	// TokenContextWindow size
 	tokenContextWindow int
+	mu                 sync.Mutex
 	// Recent requests for testing inspection
 	recentRequests []*llm.Request
 }
@@ -33,11 +35,13 @@ func (s *PredictableService) TokenContextWindow() int {
 // Do processes a request and returns a predictable response based on the input text
 func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	// Store request for testing inspection
+	s.mu.Lock()
 	s.recentRequests = append(s.recentRequests, req)
 	// Keep only last 10 requests
 	if len(s.recentRequests) > 10 {
 		s.recentRequests = s.recentRequests[len(s.recentRequests)-10:]
 	}
+	s.mu.Unlock()
 	// Extract the text content from the last user message
 	var inputText string
 	if len(req.Messages) > 0 {
@@ -228,11 +232,23 @@ func (s *PredictableService) makePatchToolResponse(filePath string) *llm.Respons
 
 // GetRecentRequests returns the recent requests made to this service
 func (s *PredictableService) GetRecentRequests() []*llm.Request {
-	return s.recentRequests
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.recentRequests) == 0 {
+		return nil
+	}
+
+	requests := make([]*llm.Request, len(s.recentRequests))
+	copy(requests, s.recentRequests)
+	return requests
 }
 
 // GetLastRequest returns the most recent request, or nil if none
 func (s *PredictableService) GetLastRequest() *llm.Request {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if len(s.recentRequests) == 0 {
 		return nil
 	}
@@ -241,6 +257,9 @@ func (s *PredictableService) GetLastRequest() *llm.Request {
 
 // ClearRequests clears the request history
 func (s *PredictableService) ClearRequests() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.recentRequests = nil
 }
 

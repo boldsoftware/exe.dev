@@ -55,13 +55,6 @@ func NewLoop(config Config) *Loop {
 	}
 }
 
-// SetLLM updates the LLM service (used by server for per-request service selection)
-func (l *Loop) SetLLM(service llm.Service) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.llm = service
-}
-
 // QueueUserMessage adds a user message to the queue to be processed
 func (l *Loop) QueueUserMessage(message llm.Message) {
 	l.mu.Lock()
@@ -184,6 +177,7 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	messages := append([]llm.Message(nil), l.history...)
 	tools := l.tools
 	system := l.system
+	llmService := l.llm
 	l.mu.Unlock()
 
 	// Enable prompt caching: set cache flag on last tool and last user message content
@@ -222,7 +216,7 @@ func (l *Loop) processLLMRequest(ctx context.Context) error {
 	}
 	l.logger.Debug("sending LLM request", "message_count", len(messages), "tool_count", len(tools), "system_items", len(system), "system_length", systemLen)
 
-	resp, err := l.llm.Do(ctx, req)
+	resp, err := llmService.Do(ctx, req)
 	if err != nil {
 		// Record the error as a message so it can be displayed in the UI
 		errorMessage := llm.Message{
