@@ -687,7 +687,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	// Use the existing sendVerificationEmail logic
 	email := postmark.Email{
-		From:     "support@exe.dev",
+		From:     "exe.dev <support@exe.dev>",
 		To:       to,
 		Subject:  subject,
 		TextBody: body,
