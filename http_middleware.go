@@ -50,6 +50,16 @@ func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 		wrappedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r)
 
+			// TODO: only add these attributes on server errors?
+			// (We could use our own http.ResponseWriter wrapper to capture status code.)
+			sloghttp.AddCustomAttributes(r, slog.String("method", r.Method))
+			if host := r.Host; host != "" {
+				sloghttp.AddCustomAttributes(r, slog.String("host", host))
+			}
+			if uri := r.URL.RequestURI(); uri != "" {
+				sloghttp.AddCustomAttributes(r, slog.String("uri", uri))
+			}
+
 			// After the handler runs, add custom attributes based on RequestLogInfo
 			if info := GetRequestLogInfo(r.Context()); info != nil {
 				if info.IsProxy {
