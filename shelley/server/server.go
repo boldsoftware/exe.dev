@@ -25,6 +25,7 @@ import (
 	"shelley.exe.dev/loop"
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/slug"
+	"shelley.exe.dev/subpub"
 	"shelley.exe.dev/ui"
 )
 
@@ -110,12 +111,6 @@ type Server struct {
 	links               []Link
 }
 
-// Subscriber represents a client subscribed to conversation updates
-type Subscriber struct {
-	channel        chan StreamResponse
-	lastSequenceID int64 // Last message sequence_id this subscriber has seen
-}
-
 var errConversationModelMismatch = errors.New("conversation model mismatch")
 
 // ConversationManager manages a single active conversation
@@ -123,7 +118,6 @@ type ConversationManager struct {
 	conversationID string
 	loop           *loop.Loop
 	loopCancel     context.CancelFunc
-	subscribers    map[string]*Subscriber
 	mu             sync.Mutex
 	lastActivity   time.Time
 	modelID        string
@@ -132,6 +126,8 @@ type ConversationManager struct {
 	recordMessage  loop.MessageRecordFunc
 	logger         *slog.Logger
 	tools          []*llm.Tool
+
+	subpub *subpub.SubPub[StreamResponse]
 }
 
 // NewServer creates a new server instance
@@ -737,37 +733,21 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Subscribe to updates
-	subscriptionID := fmt.Sprintf("%d", time.Now().UnixNano())
-	updateChan := make(chan StreamResponse, 10)
-	manager.subscribe(subscriptionID, updateChan)
-	defer manager.unsubscribe(subscriptionID)
-
-	// Track the last sequence_id and seen message IDs for this subscriber
-	var lastSequenceID int64 = 0
+	// Subscribe to new messages after the last one we sent
+	last := int64(-1)
 	if len(messages) > 0 {
-		lastSequenceID = messages[len(messages)-1].SequenceID
+		last = messages[len(messages)-1].SequenceID
 	}
-	manager.mu.Lock()
-	if sub, exists := manager.subscribers[subscriptionID]; exists {
-		sub.lastSequenceID = lastSequenceID
-	}
-	manager.mu.Unlock()
-
-	// Listen for updates or context cancellation
+	next := manager.subpub.Subscribe(ctx, last)
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case streamData, ok := <-updateChan:
-			if !ok {
-				return
-			}
-			// Always forward updates, even if only the conversation changed (e.g., slug added)
-			data, _ := json.Marshal(streamData)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			w.(http.Flusher).Flush()
+		streamData, cont := next()
+		if !cont {
+			break
 		}
+		// Always forward updates, even if only the conversation changed (e.g., slug added)
+		data, _ := json.Marshal(streamData)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		w.(http.Flusher).Flush()
 	}
 }
 
@@ -852,13 +832,13 @@ func (s *Server) getOrCreateConversationManager(ctx context.Context, conversatio
 
 	manager = &ConversationManager{
 		conversationID: conversationID,
-		subscribers:    make(map[string]*Subscriber),
 		lastActivity:   time.Now(),
 		history:        history,
 		system:         system,
 		recordMessage:  recordMessage,
 		logger:         s.logger.With("conversationID", conversationID),
 		tools:          append([]*llm.Tool(nil), s.tools...),
+		subpub:         subpub.New[StreamResponse](),
 	}
 
 	s.mu.Lock()
@@ -1072,91 +1052,35 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 		return
 	}
 
-	// Get conversation data (this is always sent)
+	// Get conversation data and all messages
 	var conversation generated.Conversation
+	var messages []generated.Message
 	err := s.db.Queries(ctx, func(q *generated.Queries) error {
 		var err error
 		conversation, err = q.GetConversation(ctx, conversationID)
+		if err != nil {
+			return err
+		}
+		messages, err = q.ListMessages(ctx, conversationID)
 		return err
 	})
 	if err != nil {
-		s.logger.Error("Failed to get conversation for notification", "conversationID", conversationID, "error", err)
+		s.logger.Error("Failed to get conversation data for notification", "conversationID", conversationID, "error", err)
 		return
 	}
 
-	// Notify subscribers with incremental updates
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-
-	for subscriptionID, sub := range manager.subscribers {
-		var messages []generated.Message
-
-		// Get messages since the last message this subscriber has seen
-		if sub.lastSequenceID == 0 {
-			// New subscriber or no messages seen yet - send all messages
-			err := s.db.Queries(ctx, func(q *generated.Queries) error {
-				var err error
-				messages, err = q.ListMessages(ctx, conversationID)
-				return err
-			})
-			if err != nil {
-				s.logger.Error("Failed to get all messages for new subscriber", "conversationID", conversationID, "subscriptionID", subscriptionID, "error", err)
-				continue
-			}
-		} else {
-			// Existing subscriber - send only new messages
-			err := s.db.Queries(ctx, func(q *generated.Queries) error {
-				var err error
-				messages, err = q.ListMessagesSince(ctx, generated.ListMessagesSinceParams{
-					ConversationID: conversationID,
-					SequenceID:     sub.lastSequenceID,
-				})
-				return err
-			})
-			if err != nil {
-				s.logger.Error("Failed to get new messages for subscriber", "conversationID", conversationID, "subscriptionID", subscriptionID, "error", err)
-				continue
-			}
-		}
-
-		// Update the subscriber's last seen sequence_id
-		if len(messages) > 0 {
-			sub.lastSequenceID = messages[len(messages)-1].SequenceID
-		}
-
-		// Send the update even if there are no new messages so clients can react to conversation-only changes (e.g., slug updates)
-		streamData := StreamResponse{
-			Messages:     toAPIMessages(messages),
-			Conversation: conversation,
-		}
-
-		select {
-		case sub.channel <- streamData:
-		default:
-			// Channel is full, skip this subscriber
-			s.logger.Warn("Subscriber channel full, skipping update", "conversationID", conversationID, "subscriptionID", subscriptionID)
-		}
+	// Determine the latest sequence ID
+	var latestSequenceID int64
+	if len(messages) > 0 {
+		latestSequenceID = messages[len(messages)-1].SequenceID
 	}
-}
 
-// subscribe adds a subscriber to a conversation
-func (cm *ConversationManager) subscribe(id string, ch chan StreamResponse) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	cm.subscribers[id] = &Subscriber{
-		channel:        ch,
-		lastSequenceID: 0, // Will be set after first message batch
+	// Publish to all subscribers
+	streamData := StreamResponse{
+		Messages:     toAPIMessages(messages),
+		Conversation: conversation,
 	}
-}
-
-// unsubscribe removes a subscriber from a conversation
-func (cm *ConversationManager) unsubscribe(id string) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	if sub, exists := cm.subscribers[id]; exists {
-		close(sub.channel)
-		delete(cm.subscribers, id)
-	}
+	manager.subpub.Publish(latestSequenceID, streamData)
 }
 
 // Cleanup removes inactive conversation managers
@@ -1169,19 +1093,6 @@ func (s *Server) Cleanup() {
 		// Remove managers that have been inactive for more than 30 minutes
 		if now.Sub(manager.lastActivity) > 30*time.Minute {
 			manager.stopLoop()
-
-			// Collect subscriber IDs then unsubscribe outside the manager lock to avoid double-closing channels
-			manager.mu.Lock()
-			subscriberIDs := make([]string, 0, len(manager.subscribers))
-			for subscriberID := range manager.subscribers {
-				subscriberIDs = append(subscriberIDs, subscriberID)
-			}
-			manager.mu.Unlock()
-
-			for _, subscriberID := range subscriberIDs {
-				manager.unsubscribe(subscriberID)
-			}
-
 			delete(s.activeConversations, id)
 			s.logger.Debug("Cleaned up inactive conversation", "conversationID", id)
 		}
