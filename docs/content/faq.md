@@ -6,6 +6,18 @@ suborder: 1
 published: true
 ---
 
+# Q: What is the host key for exe.dev?
+
+When you first `ssh exe.dev` you are looking for the fingerprint:
+
+```
+SHA256:JJOP/lwiBGOMilfONPWZCXUrfK154cnJFXcqlsi6lPo.
+```
+
+Ensuring that fingerprint is displayed the first time means that
+and all future connections from that device are going directly
+to `exe.dev`.
+
 # Q: How do I use a specific SSH key for exe.dev?
 
 If you want to specify which key to use, use `ssh -i ~/.ssh/id_ed25519_exe exe.dev` or add the following stanza to your `~/.ssh/config`:
