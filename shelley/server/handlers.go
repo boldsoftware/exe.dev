@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"shelley.exe.dev/claudetool/browse"
-	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/slug"
@@ -192,11 +191,6 @@ func (s *Server) handleConversations(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	s.handleGetConversations(w, r)
-}
-
-// handleGetConversations handles GET /conversations
-func (s *Server) handleGetConversations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	limit := 5000
 	offset := 0
@@ -328,77 +322,14 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// Check if this is the first message and store system prompt before creating manager
-	var messageCount int64
-	err = s.db.Queries(ctx, func(q *generated.Queries) error {
-		var err error
-		messageCount, err = q.CountMessagesInConversation(ctx, conversationID)
-		return err
-	})
-	if err != nil {
-		s.logger.Error("Failed to count messages", "conversationID", conversationID, "error", err)
-		http.Error(w, fmt.Sprintf("db error: %s", err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	if messageCount == 0 {
-		// This is the first message, store system prompt first
-		systemPrompt, err := GenerateSystemPrompt()
-		if err != nil {
-			s.logger.Error("Failed to generate system prompt", "error", err)
-			http.Error(w, fmt.Sprintf("error: %s", err.Error()), http.StatusInternalServerError)
-			return
-		}
-		systemMessage := llm.Message{
-			Role:    llm.MessageRoleUser, // Store as user role but with system type
-			Content: []llm.Content{{Type: llm.ContentTypeText, Text: systemPrompt}},
-		}
-		_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
-			ConversationID: conversationID,
-			Type:           db.MessageTypeSystem,
-			LLMData:        systemMessage,
-			UserData:       nil,
-			UsageData:      llm.Usage{},
-		})
-		if err != nil {
-			s.logger.Error("Failed to store system prompt", "conversationID", conversationID, "error", err)
-			http.Error(w, fmt.Sprintf("db error: %s", err.Error()), http.StatusInternalServerError)
-			return
-		}
-
-		s.logger.Info("Stored system prompt (existing conversation)", "conversationID", conversationID, "length", len(systemPrompt))
-
-		// Generate slug in parallel
-		go func() {
-			slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
-			if err != nil {
-				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
-			} else {
-				// Notify subscribers about the slug update
-				go s.notifySubscribers(context.Background(), conversationID)
-			}
-		}()
-	}
-
-	// Get or create conversation manager (after system prompt is stored)
-	manager, err := s.getOrCreateConversationManager(ctx, conversationID, llmService, modelID)
+	// Get or create conversation manager
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
 	if err != nil {
 		if errors.Is(err, errConversationModelMismatch) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	manager.mu.Lock()
-	loopInstance := manager.loop
-	manager.mu.Unlock()
-	if loopInstance == nil {
-		s.logger.Error("Conversation loop not initialized", "conversationID", conversationID)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -411,9 +342,29 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 		},
 	}
 
-	// Queue user message
-	// The conversation loop is already running and will pick up this message
-	loopInstance.QueueUserMessage(userMessage)
+	firstMessage, err := manager.AcceptUserMessage(ctx, llmService, modelID, userMessage)
+	if err != nil {
+		if errors.Is(err, errConversationModelMismatch) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.logger.Error("Failed to accept user message", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if firstMessage {
+		go func() {
+			slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
+			if err != nil {
+				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
+			} else {
+				go s.notifySubscribers(context.Background(), conversationID)
+			}
+		}()
+	}
 
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
@@ -463,51 +414,14 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	}
 	conversationID := conversation.ConversationID
 
-	// Generate and store system prompt as first message
-	systemPrompt, err := GenerateSystemPrompt()
-	if err != nil {
-		s.logger.Error("Failed to generate system prompt", "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	if systemPrompt != "" {
-		systemMessage := llm.Message{
-			Role:    llm.MessageRoleUser, // Store as user role but with system type
-			Content: []llm.Content{{Type: llm.ContentTypeText, Text: systemPrompt}},
-		}
-		_, err = s.db.CreateMessage(ctx, db.CreateMessageParams{
-			ConversationID: conversationID,
-			Type:           db.MessageTypeSystem,
-			LLMData:        systemMessage,
-			UserData:       nil,
-			UsageData:      llm.Usage{},
-		})
-		if err != nil {
-			s.logger.Error("Failed to store system prompt", "conversationID", conversationID, "error", err)
-			// Continue anyway - not critical
-		} else {
-			s.logger.Debug("Stored system prompt", "conversationID", conversationID, "length", len(systemPrompt))
-		}
-	}
-
 	// Get or create conversation manager
-	manager, err := s.getOrCreateConversationManager(ctx, conversationID, llmService, modelID)
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
 	if err != nil {
 		if errors.Is(err, errConversationModelMismatch) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	manager.mu.Lock()
-	loopInstance := manager.loop
-	manager.mu.Unlock()
-	if loopInstance == nil {
-		s.logger.Error("Conversation loop not initialized", "conversationID", conversationID)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -520,22 +434,29 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	// Queue user message
-	// The conversation loop is already running and will pick up this message
-	loopInstance.QueueUserMessage(userMessage)
-
-	// Generate slug in parallel
-	go func() {
-		slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
-		if err != nil {
-			s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
-		} else {
-			// Notify subscribers about the slug update
-			go s.notifySubscribers(context.Background(), conversationID)
+	firstMessage, err := manager.AcceptUserMessage(ctx, llmService, modelID, userMessage)
+	if err != nil {
+		if errors.Is(err, errConversationModelMismatch) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-	}()
+		s.logger.Error("Failed to accept user message", "conversationID", conversationID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if firstMessage {
+		go func() {
+			slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
+			if err != nil {
+				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
+			} else {
+				go s.notifySubscribers(context.Background(), conversationID)
+			}
+		}()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -588,7 +509,7 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	w.(http.Flusher).Flush()
 
 	// Get or create conversation manager
-	manager, err := s.getOrCreateConversationManager(ctx, conversationID, nil, "")
+	manager, err := s.getOrCreateConversationManager(ctx, conversationID)
 	if err != nil {
 		s.logger.Error("Failed to get conversation manager", "conversationID", conversationID, "error", err)
 		return

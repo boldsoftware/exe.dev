@@ -14,11 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	"tailscale.com/util/singleflight"
+
 	"shelley.exe.dev/db"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/models"
-	"shelley.exe.dev/subpub"
 	"shelley.exe.dev/ui"
 )
 
@@ -102,6 +103,7 @@ type Server struct {
 	terminalURL         string
 	defaultModel        string
 	links               []Link
+	conversationGroup   singleflight.Group[string, *ConversationManager]
 }
 
 // NewServer creates a new server instance
@@ -133,110 +135,31 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/", s.staticHandler(ui.Assets()))
 }
 
-// getOrCreateConversationManager gets an existing conversation manager or creates a new one
-func (s *Server) getOrCreateConversationManager(ctx context.Context, conversationID string, llmService llm.Service, modelID string) (*ConversationManager, error) {
-	s.mu.Lock()
-	manager, exists := s.activeConversations[conversationID]
-	s.mu.Unlock()
-
-	if exists {
-		var existingModel string
-		manager.mu.Lock()
-		manager.lastActivity = time.Now()
-		existingModel = manager.modelID
-		manager.mu.Unlock()
-
-		if existingModel != "" && modelID != "" && existingModel != modelID {
-			return nil, fmt.Errorf("%w: conversation already uses model %s; requested %s", errConversationModelMismatch, existingModel, modelID)
+// getOrCreateConversationManager gets an existing conversation manager or creates a new one.
+func (s *Server) getOrCreateConversationManager(ctx context.Context, conversationID string) (*ConversationManager, error) {
+	manager, err, _ := s.conversationGroup.Do(conversationID, func() (*ConversationManager, error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if manager, exists := s.activeConversations[conversationID]; exists {
+			manager.Touch()
+			return manager, nil
 		}
 
-		if llmService != nil {
-			if err := manager.ensureLoop(llmService, modelID); err != nil {
-				return nil, err
-			}
+		recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
+			return s.recordMessage(ctx, conversationID, message, usage)
 		}
 
-		return manager, nil
-	}
-
-	conversation, err := s.db.GetConversationByID(ctx, conversationID)
-	if err != nil {
-		return nil, fmt.Errorf("conversation not found: %w", err)
-	}
-
-	var messages []generated.Message
-	err = s.db.Queries(ctx, func(q *generated.Queries) error {
-		var err error
-		messages, err = q.ListMessages(ctx, conversationID)
-		return err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get conversation history: %w", err)
-	}
-
-	recordMessage := func(ctx context.Context, message llm.Message, usage llm.Usage) error {
-		return s.recordMessage(ctx, conversationID, message, usage)
-	}
-
-	var history []llm.Message
-	var system []llm.SystemContent
-	for _, msg := range messages {
-		if msg.Type == string(db.MessageTypeSystem) {
-			llmMsg, err := s.convertToLLMMessage(msg)
-			if err != nil {
-				s.logger.Warn("Failed to convert system message to LLM format", "messageID", msg.MessageID, "error", err)
-				continue
-			}
-			for _, content := range llmMsg.Content {
-				if content.Type == llm.ContentTypeText && content.Text != "" {
-					system = append(system, llm.SystemContent{Type: "text", Text: content.Text})
-				}
-			}
-			continue
-		}
-		llmMsg, err := s.convertToLLMMessage(msg)
-		if err != nil {
-			s.logger.Warn("Failed to convert message to LLM format", "messageID", msg.MessageID, "error", err)
-			continue
-		}
-		history = append(history, llmMsg)
-	}
-
-	if len(system) > 0 {
-		systemLen := 0
-		for _, sys := range system {
-			systemLen += len(sys.Text)
-		}
-		s.logger.Info("Loaded system prompt from database", "conversationID", conversationID, "system_items", len(system), "total_length", systemLen)
-	} else {
-		s.logger.Warn("No system prompt found in database", "conversationID", conversationID, "message_count", len(messages))
-	}
-
-	manager = &ConversationManager{
-		conversationID: conversationID,
-		lastActivity:   time.Now(),
-		history:        history,
-		system:         system,
-		recordMessage:  recordMessage,
-		logger:         s.logger.With("conversationID", conversationID),
-		tools:          append([]*llm.Tool(nil), s.tools...),
-		subpub:         subpub.New[StreamResponse](),
-	}
-
-	s.mu.Lock()
-	s.activeConversations[conversationID] = manager
-	s.mu.Unlock()
-	_ = conversation // avoid unused variable
-
-	if llmService != nil {
-		if err := manager.ensureLoop(llmService, modelID); err != nil {
-			s.mu.Lock()
-			delete(s.activeConversations, conversationID)
-			s.mu.Unlock()
+		manager := NewConversationManager(conversationID, s.db, s.logger, s.tools, recordMessage)
+		if err := manager.Hydrate(ctx); err != nil {
 			return nil, err
 		}
-	}
 
+		s.activeConversations[conversationID] = manager
+		return manager, nil
+	})
+	if err != nil {
+		return nil, err
+	}
 	return manager, nil
 }
 
@@ -269,7 +192,7 @@ func ExtractDisplayData(message llm.Message) interface{} {
 	return nil
 }
 
-// recordMessage records a new message to the database
+// recordMessage records a new message to the database and also notifies subscribers
 func (s *Server) recordMessage(ctx context.Context, conversationID string, message llm.Message, usage llm.Usage) error {
 	// Convert LLM message to database format
 	messageType, err := s.getMessageType(message)
@@ -303,12 +226,10 @@ func (s *Server) recordMessage(ctx context.Context, conversationID string, messa
 	// Touch active manager activity time if present
 	s.mu.Lock()
 	mgr, ok := s.activeConversations[conversationID]
-	s.mu.Unlock()
 	if ok {
-		mgr.mu.Lock()
-		mgr.lastActivity = time.Now()
-		mgr.mu.Unlock()
+		mgr.Touch()
 	}
+	s.mu.Unlock()
 
 	// Notify subscribers
 	go s.notifySubscribers(ctx, conversationID)
@@ -344,7 +265,7 @@ func (s *Server) getMessageType(message llm.Message) (db.MessageType, error) {
 }
 
 // convertToLLMMessage converts a database message to an LLM message
-func (s *Server) convertToLLMMessage(msg generated.Message) (llm.Message, error) {
+func convertToLLMMessage(msg generated.Message) (llm.Message, error) {
 	var llmMsg llm.Message
 	if msg.LlmData == nil {
 		return llm.Message{}, fmt.Errorf("message has no LLM data")
@@ -389,6 +310,7 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 	}
 
 	// Publish to all subscribers
+	// TODO(philip): We're re-publishing ALL the messages, and that's wrong. We should only be publishing new stuff.
 	streamData := StreamResponse{
 		Messages:     toAPIMessages(messages),
 		Conversation: conversation,
