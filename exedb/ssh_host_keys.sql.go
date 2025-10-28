@@ -10,18 +10,19 @@ import (
 )
 
 const getSSHHostKey = `-- name: GetSSHHostKey :one
-SELECT private_key, public_key FROM ssh_host_key WHERE id = 1
+SELECT private_key, public_key, cert_sig FROM ssh_host_key WHERE id = 1
 `
 
 type GetSSHHostKeyRow struct {
-	PrivateKey string `db:"private_key" json:"private_key"`
-	PublicKey  string `db:"public_key" json:"public_key"`
+	PrivateKey string  `db:"private_key" json:"private_key"`
+	PublicKey  string  `db:"public_key" json:"public_key"`
+	CertSig    *string `db:"cert_sig" json:"cert_sig"`
 }
 
 func (q *Queries) GetSSHHostKey(ctx context.Context) (GetSSHHostKeyRow, error) {
 	row := q.queryRow(ctx, q.getSSHHostKeyStmt, getSSHHostKey)
 	var i GetSSHHostKeyRow
-	err := row.Scan(&i.PrivateKey, &i.PublicKey)
+	err := row.Scan(&i.PrivateKey, &i.PublicKey, &i.CertSig)
 	return i, err
 }
 

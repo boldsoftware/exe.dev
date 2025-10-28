@@ -134,6 +134,7 @@ type SshHostKey struct {
 	Fingerprint string     `db:"fingerprint" json:"fingerprint"`
 	CreatedAt   *time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt   *time.Time `db:"updated_at" json:"updated_at"`
+	CertSig     *string    `db:"cert_sig" json:"cert_sig"`
 }
 
 type SshKey struct {
