@@ -28,7 +28,7 @@ const (
 )
 
 const (
-	Claude35Haiku  = "claude-3-5-haiku-20241022"
+	Claude45Haiku  = "claude-haiku-4-5-20251001"
 	Claude37Sonnet = "claude-3-7-sonnet-20250219"
 	Claude4Sonnet  = "claude-sonnet-4-20250514"
 	Claude45Sonnet = "claude-sonnet-4-5-20250929"
@@ -65,7 +65,7 @@ func (s *Service) TokenContextWindow() int {
 	switch model {
 	case Claude37Sonnet, Claude4Sonnet, Claude45Sonnet:
 		return 200000
-	case Claude35Haiku:
+	case Claude45Haiku:
 		return 200000
 	case Claude4Opus, Claude41Opus:
 		return 200000

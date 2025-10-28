@@ -21,7 +21,7 @@ func TestLoopWithClaude(t *testing.T) {
 	loop := NewLoop(Config{
 		LLM: &ant.Service{
 			APIKey: apiKey,
-			Model:  ant.Claude35Haiku, // Use cheaper model for testing
+			Model:  ant.Claude45Haiku, // Use cheaper model for testing
 		},
 		History: []llm.Message{},
 		Tools:   []*llm.Tool{},

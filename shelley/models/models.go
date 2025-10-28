@@ -188,15 +188,15 @@ func All() []Model {
 			},
 		},
 		{
-			ID:              "claude-haiku-3.5",
+			ID:              "claude-haiku-4.5",
 			Provider:        ProviderAnthropic,
-			Description:     "Claude Haiku 3.5",
+			Description:     "Claude Haiku 4.5",
 			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
 			Factory: func(config *Config) (llm.Service, error) {
 				if config.AnthropicAPIKey == "" {
-					return nil, fmt.Errorf("claude-haiku-3.5 requires ANTHROPIC_API_KEY")
+					return nil, fmt.Errorf("claude-haiku-4.5 requires ANTHROPIC_API_KEY")
 				}
-				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude35Haiku}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Haiku}
 				if url := config.getAnthropicURL(); url != "" {
 					svc.URL = url
 				}
