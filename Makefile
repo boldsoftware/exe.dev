@@ -109,6 +109,9 @@ clean: ## Clean build artifacts
 	@go clean
 	@echo "✓ Clean complete"
 
+rmdb: ## Remove local exed database
+	@rm -f exe.db*
+
 fmt: ## Format Go code
 	@echo "Formatting code..."
 	@go fmt ./...
