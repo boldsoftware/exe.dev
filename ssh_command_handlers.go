@@ -419,7 +419,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 					currentStatus = "Pulling image"
 				}
 			case container.CreateStart:
-				currentStatus = "Starting container"
+				currentStatus = "Starting box"
 			case container.CreateSSH:
 				currentStatus = "Configuring SSH"
 			case container.CreateDone:
