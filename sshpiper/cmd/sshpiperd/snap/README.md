@@ -22,6 +22,8 @@ sudo snap restart sshpiperd
  * `sshpiperd.port` listening port
  * `sshpiperd.server-key` server key files, support wildcard
  * `sshpiperd.server-key-data` server key in base64 format, server-key, server-key-generate-mode will be ignored if set
+ * `sshpiperd.server-cert` server certificate files, support wildcard
+ * `sshpiperd.server-cert-data` server certificate in base64 format, server-cert will be ignored if set
  * `sshpiperd.server-key-generate-mode` server key generate mode, one of: disable, notexist, always. generated key will be written to `server-key` if  * no`texist or always
  * `sshpiperd.login-grace-time` sshpiperd forcely close the connection after this time if the pipe has not successfully established
  * `sshpiperd.log-level` log level, one of: trace, debug, info, warn, error, fatal, panic
@@ -51,4 +53,3 @@ sudo snap restart sshpiperd
 
  * `failtoban.max-failures` max failures
  * `failtoban.ban-duration` ban duration
-

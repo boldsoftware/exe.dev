@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"crypto/md5"
 	"crypto/rand"
@@ -79,15 +78,6 @@ func newDaemon(ctx *cli.Context) (*daemon, error) {
 	// however, this is to make sure that the default values are set no matter sshiper.go calls SetDefaults or not
 	config.SetDefaults()
 
-	hostSigners := make([]ssh.Signer, 0)
-	hostSignerByKey := make(map[string]ssh.Signer)
-
-	addHostSigner := func(s ssh.Signer) {
-		keyID := string(s.PublicKey().Marshal())
-		hostSigners = append(hostSigners, s)
-		hostSignerByKey[keyID] = s
-	}
-
 	keybase64 := ctx.String("server-key-data")
 	if keybase64 != "" {
 		log.Infof("parsing host key in base64 params")
@@ -102,7 +92,7 @@ func newDaemon(ctx *cli.Context) (*daemon, error) {
 			return nil, err
 		}
 
-		addHostSigner(private)
+		config.AddHostKey(private)
 	} else {
 		keyfile := ctx.String("server-key")
 		privateKeyFiles, err := filepath.Glob(keyfile)
@@ -148,77 +138,8 @@ func newDaemon(ctx *cli.Context) (*daemon, error) {
 				return nil, err
 			}
 
-			addHostSigner(private)
+			config.AddHostKey(private)
 		}
-	}
-
-	if len(hostSigners) == 0 {
-		return nil, fmt.Errorf("no server key loaded")
-	}
-
-	certSignersByKey := make(map[string][]ssh.Signer)
-
-	loadCertificates := func(data []byte, source string) error {
-		signers, err := certificateSignersFromData(data, source, hostSignerByKey)
-		if err != nil {
-			return err
-		}
-
-		for idx, entry := range signers {
-			log.Infof("loading host certificate %v (entry %d)", source, idx+1)
-			certSignersByKey[entry.hostKeyID] = append(certSignersByKey[entry.hostKeyID], entry.signer)
-		}
-
-		return nil
-	}
-
-	certBase64 := ctx.String("server-cert-data")
-	if certBase64 != "" {
-		log.Infof("parsing host certificate in base64 params")
-
-		certBytes, err := base64.StdEncoding.DecodeString(certBase64)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := loadCertificates(certBytes, "base64 parameter"); err != nil {
-			return nil, err
-		}
-	}
-
-	certPattern := ctx.String("server-cert")
-	if certPattern != "" {
-		certFiles, err := filepath.Glob(certPattern)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(certFiles) == 0 {
-			log.Warnf("no server certificate found matching pattern %v", certPattern)
-		}
-
-		for _, certFile := range certFiles {
-			certBytes, err := os.ReadFile(certFile)
-			if err != nil {
-				return nil, err
-			}
-
-			if err := loadCertificates(certBytes, certFile); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	for _, signer := range hostSigners {
-		keyID := string(signer.PublicKey().Marshal())
-
-		if certSigners := certSignersByKey[keyID]; len(certSigners) > 0 {
-			for _, certSigner := range certSigners {
-				config.AddHostKey(certSigner)
-			}
-		}
-
-		config.AddHostKey(signer)
 	}
 
 	lis, err := net.Listen("tcp", net.JoinHostPort(ctx.String("address"), ctx.String("port")))
@@ -295,53 +216,6 @@ func newDaemon(ctx *cli.Context) (*daemon, error) {
 		lis:            lis,
 		loginGraceTime: ctx.Duration("login-grace-time"),
 	}, nil
-}
-
-type hostCertificateSigner struct {
-	hostKeyID string
-	signer    ssh.Signer
-}
-
-func certificateSignersFromData(data []byte, source string, hostSignerByKey map[string]ssh.Signer) ([]hostCertificateSigner, error) {
-	rest := bytes.TrimSpace(data)
-	signers := make([]hostCertificateSigner, 0)
-
-	for len(rest) > 0 {
-		pub, _, _, remainder, err := ssh.ParseAuthorizedKey(rest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse host certificate from %v: %w", source, err)
-		}
-
-		cert, ok := pub.(*ssh.Certificate)
-		if !ok {
-			return nil, fmt.Errorf("entry in %v is not an SSH certificate", source)
-		}
-
-		hostKeyID := string(cert.Key.Marshal())
-		hostSigner, ok := hostSignerByKey[hostKeyID]
-		if !ok {
-			return nil, fmt.Errorf("no matching host key loaded for certificate in %v", source)
-		}
-
-		certCopy := *cert
-		certSigner, err := ssh.NewCertSigner(&certCopy, hostSigner)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build host certificate signer for %v: %w", source, err)
-		}
-
-		signers = append(signers, hostCertificateSigner{
-			hostKeyID: hostKeyID,
-			signer:    certSigner,
-		})
-
-		rest = bytes.TrimSpace(remainder)
-	}
-
-	if len(signers) == 0 {
-		return nil, fmt.Errorf("no host certificate entries found in %v", source)
-	}
-
-	return signers, nil
 }
 
 func (d *daemon) install(plugins ...*plugin.GrpcPlugin) error {

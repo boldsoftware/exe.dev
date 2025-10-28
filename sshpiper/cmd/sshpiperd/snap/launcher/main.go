@@ -138,6 +138,20 @@ func loadFromSnapctl() map[string][][]string {
 	}
 
 	{
+		v, _ := get("sshpiperd.server-cert")
+		if v != "" {
+			flags["sshpiperd"] = append(flags["sshpiperd"], []string{"server-cert", v})
+		}
+	}
+
+	{
+		v, _ := get("sshpiperd.server-cert-data")
+		if v != "" {
+			flags["sshpiperd"] = append(flags["sshpiperd"], []string{"server-cert-data", v})
+		}
+	}
+
+	{
 		v, _ := get("workingdir.root")
 		if v == "" {
 			v = "workingdir"

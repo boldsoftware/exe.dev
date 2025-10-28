@@ -75,6 +75,22 @@ Here illustrates the example of `addional challenge` before the `fixed` plugin.
 ./out/sshpiperd -i /tmp/sshpiperkey --server-key-generate-mode notexist --log-level=trace ./out/simplemath -- ./out/fixed --target 127.0.0.1:5522
 ```
 
+### Host certificates
+
+If you use an SSH certificate authority to sign your host keys, `sshpiperd` can serve the signed certificates to downstream clients. Load host certificates alongside the corresponding private keys using either file paths:
+
+```
+./out/sshpiperd --server-key /etc/ssh/ssh_host_ed25519_key --server-cert /etc/ssh/ssh_host_ed25519_key-cert.pub …
+```
+
+or by providing both the key and certificate as base64-encoded data:
+
+```
+./out/sshpiperd --server-key-data <base64-private-key> --server-cert-data <base64-host-certificate> …
+```
+
+Each certificate must match a host key that is also loaded; otherwise startup fails.
+
 ## Plugins
 
 ### icons
