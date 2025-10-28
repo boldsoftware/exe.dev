@@ -41,6 +41,10 @@ vscode://vscode-remote/ssh-remote+<box-name>@exe.dev/app?windowId=_blank
 The `app` in that URL is the path on the filesystem for VSCode to
 consider as your workspace.
 
+# Q: How do I copy files to/from my box?
+
+Use `scp`. For example, `scp <local-file> <box-name>@exe.dev:`.
+
 # Q: Why is it `ssh name@exe.dev` and not `ssh name.exe.dev`?
 
 We can make `https://name.exe.dev/` work because HTTP has a "Host:" header that
