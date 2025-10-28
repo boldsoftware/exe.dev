@@ -1,0 +1,82 @@
+Demo by: Phil
+Git SHA: a3594cd4689130c82f7b6b411604f345e54f1d3b
+
+Josh works on healthcare data interoperability.
+
+He was delighted, I'd say, by the GitHub auth. First time I saw this work.
+At first he thought we looked it up by his username, but he understood that
+his e-mail was public and that we used his key. He used the magic browser link
+right away after login, which was nice.
+
+He used "new" and it was kind of slow, because of pulling. Second time was fast.
+Our UI says "starting container" and it should say "starting box". (Commit queued.)
+
+The agent didn't work. (Commit queued.) This was a bummer, since this is the first
+thing that Josh went to.
+
+I think there's some confusion between the agent link, the xterm link (oh, it's
+no a separate domain!), and the proxy link.
+
+Josh tried a bunch of netcat stuff to listen. His client kept saying
+"can't talk HTTP to an HTTPS server", and Josh colorfully said, "it's not an
+https server, fuck you".
+
+When Josh typed "help", he saw "share a box with others" and decided
+that was for sharing the box not the HTTP port. That copy needs updating.
+
+When Josh went to Shelley the first time, he went to his minimax demo
+to see what he tried to ask an agent to do yesterday. They have lots of
+examples you can do...
+
+Josh found the proxy command and was pleased that tab complete for box names worked, "look at that".
+
+Netcat couldn't open port 80. I thought we changed perms that you could, 
+but it doesn't work. https://github.com/boldsoftware/exe/issues/54
+
+"How do I copy files?" Not that anyone will read the docs, but I added a faq entry.
+
+For the SSH hostnames, Josh's reaction to my "unforutnately it's @", was, "oh, hey, that's
+cute."
+
+Josh was a big user of the web terminal. "Why are these two terminal windows
+bound to the same terminal; I really want them to be different sessions; that
+defies my expectations"
+
+"npm run dev" failed; eswatch failed (see below).
+
+Josh: "occoupies a space for which I now use some bcombo of "a random k8s thing",
+"fly.io", and GH codespaces, but don't use that all that much.
+
+Overall:
+* Login, creation all worked fine.
+* Agent was busted but that's just a bug.
+* We did not convey the "you have a disk and HTTPS access thing" yet.
+
+
+
+```
+npm run dev error:
+
+node:internal/fs/watchers:254
+    const error = new UVException({
+                  ^
+
+Error: ENOSPC: System limit for number of file watchers reached, watch '/home/exedev/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.3.linux-amd64/src/cmd/go/testdata/script/test_fuzz_chatty.txt'
+    at FSWatcher.<computed> (node:internal/fs/watchers:254:19)
+    at Object.watch (node:fs:2549:36)
+    at createFsWatchInstance (file:///home/exedev/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:22195:17)
+    at setFsWatchListener (file:///home/exedev/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:22242:15)
+    at NodeFsHandler._watchWithNodeFs (file:///home/exedev/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:22397:14)
+    at NodeFsHandler._handleFile (file:///home/exedev/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:22461:23)
+    at NodeFsHandler._addToNodeFs (file:///home/exedev/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:22703:21)
+Emitted 'error' event on FSWatcher instance at:
+    at FSWatcher._handleError (file:///home/exedev/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:23896:10)
+    at NodeFsHandler._addToNodeFs (file:///home/exedev/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:22711:18) {
+  errno: -28,
+  syscall: 'watch',
+  code: 'ENOSPC',
+  path: '/home/exedev/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.3.linux-amd64/src/cmd/go/testdata/script/test_fuzz_chatty.txt',
+  filename: '/home/exedev/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.3.linux-amd64/src/cmd/go/testdata/script/test_fuzz_chatty.txt'
+}
+
+```
