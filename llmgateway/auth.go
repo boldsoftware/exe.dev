@@ -61,6 +61,8 @@ func DecodeBearerToken(token string) (*bearerTokenClaim, []byte, []byte, error) 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("decoding bearer token signature: %w", err)
 	}
+	// We want the "short" hostname. As of writing, nerdctl sends long hostnames to the gateway.
+	ret.BoxName = strings.TrimSuffix(ret.BoxName, ".exe.dev")
 	return ret, claimBytes, sigBytes, nil
 }
 
