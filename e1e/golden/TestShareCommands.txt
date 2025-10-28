@@ -122,7 +122,7 @@ exe.dev ▶ help share
 
 Command: share
 
-Share box access with others
+Share HTTPS box access with others
 
 Usage: share <subcommand> <box> [args...]
 

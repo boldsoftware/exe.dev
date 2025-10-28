@@ -33,7 +33,7 @@ func shareAddFlags() *flag.FlagSet {
 func (ss *SSHServer) shareCommand() *exemenu.Command {
 	return &exemenu.Command{
 		Name:        "share",
-		Description: "Share box access with others",
+		Description: "Share HTTPS box access with others",
 		Usage:       "share <subcommand> <box> [args...]",
 		Handler:     ss.handleShareHelp,
 		FlagSetFunc: jsonOnlyFlags("share"),
