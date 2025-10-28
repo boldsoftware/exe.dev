@@ -746,13 +746,18 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 			t.Fatalf("Expected status 201, got %d: %s", resp.StatusCode, body)
 		}
 
-		// Wait a moment for async processing
-		time.Sleep(100 * time.Millisecond)
-
-		// Check that the predictable service received a request with system prompt
-		lastReq := predictableService.GetLastRequest()
+		// Poll for async processing completion
+		// We need to wait for a request WITH a system prompt, not just any request
+		var lastReq *llm.Request
+		for i := 0; i < 50; i++ {
+			lastReq = predictableService.GetLastRequest()
+			if lastReq != nil && len(lastReq.System) > 0 {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 		if lastReq == nil {
-			t.Fatal("No request was sent to the LLM service")
+			t.Fatal("No request was sent to the LLM service after 5 seconds")
 		}
 
 		if len(lastReq.System) == 0 {
@@ -803,7 +808,19 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 		}
 
 		conversationID := createResp.ConversationID
-		time.Sleep(100 * time.Millisecond)
+
+		// Wait for first message to be processed
+		var firstReq *llm.Request
+		for i := 0; i < 50; i++ {
+			firstReq = predictableService.GetLastRequest()
+			if firstReq != nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if firstReq == nil {
+			t.Fatal("First request was not sent to the LLM service after 5 seconds")
+		}
 
 		// Clear requests and send second message
 		predictableService.ClearRequests()
@@ -824,12 +841,18 @@ func TestSystemPromptSentToLLM(t *testing.T) {
 			t.Fatalf("Expected status 202, got %d: %s", resp2.StatusCode, body)
 		}
 
-		time.Sleep(100 * time.Millisecond)
-
-		// Check that system prompt is still included in subsequent request
-		lastReq := predictableService.GetLastRequest()
+		// Poll for second message to be processed
+		// We need to wait for a request WITH a system prompt, not just any request
+		var lastReq *llm.Request
+		for i := 0; i < 50; i++ {
+			lastReq = predictableService.GetLastRequest()
+			if lastReq != nil && len(lastReq.System) > 0 {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 		if lastReq == nil {
-			t.Fatal("No request was sent to the LLM service")
+			t.Fatal("No request was sent to the LLM service after 5 seconds")
 		}
 
 		if len(lastReq.System) == 0 {
