@@ -5,24 +5,24 @@ on:
     branches:
       - main
     paths:
-      - 'shelley/**'
-      - '.github/workflows/shelley-tests.yml'
+      - "shelley/**"
+      - ".github/workflows/shelley-tests.yml"
   workflow_dispatch:
     inputs:
       run_playwright:
-        description: 'Run Playwright E2E tests'
+        description: "Run Playwright E2E tests"
         required: false
         type: boolean
         default: true
   workflow_call:
     inputs:
       run_playwright:
-        description: 'Run Playwright E2E tests'
+        description: "Run Playwright E2E tests"
         required: false
         type: boolean
         default: true
       ref:
-        description: 'Git ref to checkout'
+        description: "Git ref to checkout"
         required: false
         type: string
 
@@ -46,7 +46,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Install UI dependencies
         run: |
@@ -69,7 +69,7 @@ jobs:
           npm run build
 
       - name: Run Go tests
-        run: go test -v ./...
+        run: go test -v -race ./...
 
       - name: Install Playwright browsers
         if: inputs.run_playwright != false
