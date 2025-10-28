@@ -1387,8 +1387,6 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
 	pty.wantPrompt()
 

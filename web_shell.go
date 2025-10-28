@@ -226,6 +226,26 @@ func (ws *WebShellSession) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
+func (ws *WebShellSession) ReadByteContext(ctx context.Context) (byte, error) {
+	var buf [1]byte
+	for {
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			default:
+			}
+		}
+		n, err := ws.Read(buf[:])
+		if n == 1 {
+			return buf[0], err
+		}
+		if err != nil {
+			return 0, err
+		}
+	}
+}
+
 func (ws *WebShellSession) Write(p []byte) (n int, err error) {
 	ws.writeMutex.Lock()
 	defer ws.writeMutex.Unlock()
@@ -269,4 +289,14 @@ func (ws *WebShellSession) Pty() (ssh.Pty, <-chan ssh.Window, bool) {
 		return ssh.Pty{}, nil, false
 	}
 	return *ws.ptyReq, ws.winCh, true
+}
+
+func (ws *WebShellSession) Push(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	ws.readMutex.Lock()
+	ws.readBuf = append(append([]byte{}, data...), ws.readBuf...)
+	ws.readCond.Broadcast()
+	ws.readMutex.Unlock()
 }

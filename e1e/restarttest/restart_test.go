@@ -1018,8 +1018,6 @@ func (s *restartSuite) registerForExeDev() (pty *expectPty, cookies []*http.Cook
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 	pty.want("Welcome to EXE.DEV!")
 	pty.wantPrompt()
 

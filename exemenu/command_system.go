@@ -135,6 +135,8 @@ type CommandContext struct {
 // the command system from both SSH and web-based sessions at /shell.
 type ShellSession interface {
 	io.ReadWriter
+	ReadByteContext(context.Context) (byte, error)
+	Push([]byte)
 	Context() context.Context
 	Environ() []string
 	User() string

@@ -179,8 +179,6 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
 	pty.wantRe("key.*added")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 	pty.wantPrompt()
 
 	// Cleanup

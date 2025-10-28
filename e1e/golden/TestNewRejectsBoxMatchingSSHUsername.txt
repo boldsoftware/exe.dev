@@ -24,7 +24,7 @@ Registration complete!
 
 Your account has been successfully created.
 
-Press any key to continue...
+
 
 
 Welcome to EXE.DEV!

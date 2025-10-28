@@ -24,7 +24,7 @@ Registration complete!
 
 Your new ssh key has been added to your existing account.
 
-Press any key to continue...
+
 
 
 Welcome to EXE.DEV!

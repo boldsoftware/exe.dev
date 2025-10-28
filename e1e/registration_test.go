@@ -33,8 +33,6 @@ func TestNewKeyRegistration(t *testing.T) {
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
 	pty.wantPrompt()
 	pty.sendLine("whoami")
@@ -61,8 +59,6 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	clickVerifyLinkInEmail(t, emailMsg)
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 	// Check that we show welcome message for first login.
 	pty.want("Welcome to EXE.DEV!")
 	pty.want("create your first box")
@@ -113,8 +109,6 @@ func TestRegisterMultipleKeys(t *testing.T) {
 		} else {
 			pty.wantRe("key.*added")
 		}
-		pty.want("Press any key to continue")
-		pty.sendLine("")
 		if i == 0 {
 			pty.want("Welcome to EXE.DEV!") // welcome message only on first time
 		}
@@ -176,8 +170,6 @@ func TestRegisterWebThenKey(t *testing.T) {
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
 	pty.want("Your new ssh key has been added to your existing account.")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 	pty.want("Welcome to EXE.DEV!")
 	pty.want("create your first box")
 	pty.wantPrompt()
@@ -243,8 +235,6 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 	pty.want("Welcome to EXE.DEV!")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
@@ -283,8 +273,6 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 
 	pty.want("Email verified successfully")
 	pty.want("Registration complete")
-	pty.want("Press any key to continue")
-	pty.sendLine("")
 
 	// After first-time registration, we show a welcome message and a prompt.
 	pty.want("Welcome to EXE.DEV!")

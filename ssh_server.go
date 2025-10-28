@@ -9,13 +9,13 @@ import (
 	"net"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sqlite"
+	"exe.dev/sshsession"
 	"exe.dev/termfun"
 	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
@@ -212,7 +212,8 @@ func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) b
 }
 
 // handleSession handles SSH sessions
-func (ss *SSHServer) handleSession(s ssh.Session) {
+func (ss *SSHServer) handleSession(rawSession ssh.Session) {
+	s := sshsession.NewManaged(rawSession)
 	defer s.Close()
 
 	// Track SSH connection
@@ -267,9 +268,7 @@ func (ss *SSHServer) handleSession(s ssh.Session) {
 }
 
 // handleShell handles interactive shell sessions with readline
-func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered bool) {
-	// publicKey is already passed as parameter from context
-
+func (ss *SSHServer) handleShell(s sshsession.Session, publicKey string, registered bool) {
 	if !registered {
 		// Handle registration flow
 		ss.handleRegistration(s, publicKey)
@@ -294,16 +293,8 @@ func (ss *SSHServer) handleShell(s ssh.Session, publicKey string, registered boo
 		return
 	}
 
-	ss.runMainShellWithReadline(sshSessionAdapter{s}, publicKey, user)
-}
-
-// sshSessionAdapter adapts ssh.Session to exemenu.ShellSession
-type sshSessionAdapter struct {
-	ssh.Session
-}
-
-func (a sshSessionAdapter) Context() context.Context {
-	return a.Session.Context()
+	shell := sshsession.NewShell(s)
+	ss.runMainShellWithReadline(shell, publicKey, user)
 }
 
 func (ss *SSHServer) displayWelcomeTip(s exemenu.ShellSession, user *exedb.User) {
@@ -533,7 +524,7 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 }
 
 // handleRegistration handles the registration flow using readline
-func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
+func (ss *SSHServer) handleRegistration(s sshsession.Session, publicKey string) {
 	ss.showAnimatedWelcome(s)
 
 	// Attempt to identify this as a GitHub user based on their validated public key.
@@ -611,10 +602,11 @@ func (ss *SSHServer) handleRegistration(s ssh.Session, publicKey string) {
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
 	// This avoids issues with partially consumed readers
-	ss.runMainShellWithReadline(sshSessionAdapter{s}, publicKey, user)
+	shell := sshsession.NewShell(s)
+	ss.runMainShellWithReadline(shell, publicKey, user)
 }
 
-func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey, email string) (*exedb.User, error) {
+func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, email string) (*exedb.User, error) {
 	ss.server.slog().Debug("starting email verification", "email", email)
 	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
@@ -631,39 +623,22 @@ func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey, email st
 	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
 	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
-	// Create channels and atomic bool for coordinating with Ctrl+C handler
-	ctrlCChan := make(chan struct{})
-	goroutineDone := make(chan struct{})
-	var verificationComplete atomic.Bool
+	ctrlCChan := make(chan struct{}, 1)
+	inputCtx, cancelInput := context.WithCancel(s.Context())
+	defer cancelInput()
 
-	// Start goroutine to handle Ctrl+C and discard other input during verification
 	go func() {
-		defer close(goroutineDone)
-		buf := make([]byte, 1)
 		for {
-			n, err := s.Read(buf)
+			b, err := s.ReadByteContext(inputCtx)
 			if err != nil {
-				// Connection closed or error
 				return
 			}
-			if n > 0 {
-				// Check if verification is complete
-				if verificationComplete.Load() {
-					// Verification complete, exit goroutine
-					return
+			if b == 3 {
+				select {
+				case ctrlCChan <- struct{}{}:
+				default:
 				}
-
-				// Check for Ctrl+C
-				if buf[0] == 3 { // Ctrl+C
-					select {
-					case <-ctrlCChan:
-						// Already closed
-					default:
-						close(ctrlCChan)
-					}
-					return
-				}
-				// Discard any other input during verification
+				return
 			}
 		}
 	}()
@@ -671,18 +646,16 @@ func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey, email st
 	// Wait for email verification with Ctrl+C support
 	select {
 	case <-verification.CompleteChan:
+		cancelInput() // stop the reader immediately now that input is no longer needed
 		fmt.Fprintf(s, "%s✓ Email verified successfully!%s\r\n\r\n", "\033[1;32m", "\033[0m")
-		// Signal the goroutine that verification is complete
-		verificationComplete.Store(true)
 	case <-ctrlCChan:
+		cancelInput() // ensure the goroutine exits before we bubble up the cancellation
 		return nil, fmt.Errorf("Registration cancelled")
 	case <-time.After(10 * time.Minute):
-		verificationComplete.Store(true) // Stop the goroutine
-		<-goroutineDone                  // Wait for goroutine to exit
+		cancelInput() // ensure the goroutine exits before reporting the timeout
 		return nil, fmt.Errorf("Email verification timed out. Please try again.")
 	case <-s.Context().Done():
-		// Session disconnected
-		verificationComplete.Store(true) // Stop the goroutine
+		cancelInput() // ensure the goroutine exits before propagating session closure
 		return nil, fmt.Errorf("session disconnected")
 	}
 
@@ -713,15 +686,11 @@ func (ss *SSHServer) waitForEmailVerification(s ssh.Session, publicKey, email st
 	} else {
 		fmt.Fprintf(s, "Your new ssh key has been added to your existing account.\r\n\r\n")
 	}
-	fmt.Fprintf(s, "%sPress any key to continue...%s", "\033[1;36m", "\033[0m")
-
-	// Wait for the goroutine to exit (user presses Enter or any key)
-	<-goroutineDone
 	return user, nil
 }
 
 // handleExec handles exec commands
-func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, registered bool) {
+func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey string, registered bool) {
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
@@ -763,7 +732,7 @@ func (ss *SSHServer) handleExec(s ssh.Session, cmd []string, publicKey string, r
 		PublicKey:  publicKey,
 		Args:       cmd[1:],                        // Skip the command name itself
 		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
-		SSHSession: sshSessionAdapter{s},
+		SSHSession: sshsession.NewShell(s),
 		Terminal:   nil, // No interactive terminal for exec mode
 		DevMode:    ss.server.devMode == "local",
 		Logger:     ss.server.slog(),

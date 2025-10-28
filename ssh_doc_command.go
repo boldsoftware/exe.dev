@@ -70,12 +70,14 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 		title += " [hidden]"
 	}
 	model := newDocViewerModel(title, slug, entry.Markdown, width, height)
-	// Protect against over-reading input beyond the quit key so the next
-	// character typed after exiting the doc viewer is not lost.
-	qin := newQuitAwareReader(cc.SSHSession)
+	input := &docSessionInput{
+		readByte: func() (byte, error) {
+			return cc.SSHSession.ReadByteContext(ctx)
+		},
+	}
 	program := tea.NewProgram(model,
 		tea.WithContext(ctx),
-		tea.WithInput(qin),
+		tea.WithInput(input),
 		tea.WithOutput(cc.SSHSession),
 	)
 
@@ -159,35 +161,30 @@ type docViewerModel struct {
 	err      error
 }
 
-// quitAwareReader wraps an io.Reader and stops reading after it observes a
-// quit key used by the doc viewer ("q" or Ctrl+C). It reads one byte at a time
-// to avoid pulling extra input beyond the quit key, preventing the next
-// character after exiting from being consumed here.
-type quitAwareReader struct {
-	r        io.Reader
+type docSessionInput struct {
+	readByte func() (byte, error)
 	quitSeen bool
 }
 
-func newQuitAwareReader(r io.Reader) *quitAwareReader {
-	return &quitAwareReader{r: r}
-}
-
-func (q *quitAwareReader) Read(p []byte) (int, error) {
-	if q.quitSeen {
+func (d *docSessionInput) Read(p []byte) (int, error) {
+	if d.quitSeen {
 		return 0, io.EOF
 	}
 	if len(p) == 0 {
 		return 0, nil
 	}
-	// Read at most one byte at a time to avoid over-reading beyond the quit key.
-	n, err := q.r.Read(p[:1])
-	if n == 1 {
-		switch p[0] {
-		case 'q', 3: // 'q' or Ctrl+C
-			q.quitSeen = true
-		}
+	b, err := d.readByte()
+	if err != nil {
+		return 0, err
 	}
-	return n, err
+	p[0] = b
+	if b == 'q' || b == 3 {
+		// Bubble Tea treats a non-nil error from Read as a fatal input failure,
+		// so we return the quit byte with nil error on the first read and only
+		// surface io.EOF on subsequent reads to let the program exit cleanly.
+		d.quitSeen = true
+	}
+	return 1, nil
 }
 
 func newDocViewerModel(title, slug, markdown string, width, height int) *docViewerModel {
