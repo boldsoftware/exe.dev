@@ -250,6 +250,7 @@ function ChatInterface({
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [agentWorking, setAgentWorking] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
@@ -450,6 +451,21 @@ function ChatInterface({
       reconnectTimeoutRef.current = null;
     }
     setupMessageStream();
+  };
+
+  const handleCancel = async () => {
+    if (!conversationId || cancelling) return;
+
+    try {
+      setCancelling(true);
+      await api.cancelConversation(conversationId);
+      setAgentWorking(false);
+    } catch (err) {
+      console.error("Failed to cancel conversation:", err);
+      setError("Failed to cancel. Please try again.");
+    } finally {
+      setCancelling(false);
+    }
   };
 
   const getDisplayTitle = () => {
@@ -923,6 +939,47 @@ function ChatInterface({
               </svg>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Cancel button - shown when agent is working */}
+      {agentWorking && conversationId && (
+        <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid var(--border-color)" }}>
+          <button
+            onClick={handleCancel}
+            disabled={cancelling}
+            style={{
+              width: "100%",
+              padding: "0.5rem 1rem",
+              backgroundColor: "var(--error-bg)",
+              color: "var(--error-text)",
+              border: "1px solid var(--error-text)",
+              borderRadius: "0.375rem",
+              cursor: cancelling ? "not-allowed" : "pointer",
+              fontSize: "0.875rem",
+              fontWeight: "500",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+              opacity: cancelling ? 0.6 : 1,
+            }}
+          >
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              style={{ width: "1rem", height: "1rem" }}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            {cancelling ? "Cancelling..." : "Cancel"}
+          </button>
         </div>
       )}
 

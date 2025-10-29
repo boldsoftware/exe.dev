@@ -13,7 +13,16 @@ import (
 	"shelley.exe.dev/llm"
 )
 
-// PredictableService is an LLM service that returns predictable responses for testing
+// PredictableService is an LLM service that returns predictable responses for testing.
+//
+// To add new test patterns, update the Do() method directly by adding cases to the switch
+// statement or new prefix checks. Do not extend or wrap this service - modify it in place.
+// Available patterns include:
+//   - "echo: <text>" - echoes the text back
+//   - "bash: <command>" - triggers bash tool with command
+//   - "think: <thoughts>" - triggers think tool
+//   - "delay: <seconds>" - delays response by specified seconds
+//   - See Do() method for complete list of supported patterns
 type PredictableService struct {
 	// TokenContextWindow size
 	tokenContextWindow int

@@ -49,6 +49,15 @@ class ApiService {
   createMessageStream(conversationId: string): EventSource {
     return new EventSource(`${this.baseUrl}/conversation/${conversationId}/stream`);
   }
+
+  async cancelConversation(conversationId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/conversation/${conversationId}/cancel`, {
+      method: "POST",
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to cancel conversation: ${response.statusText}`);
+    }
+  }
 }
 
 export const api = new ApiService();

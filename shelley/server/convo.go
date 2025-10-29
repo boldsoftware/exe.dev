@@ -23,6 +23,7 @@ type ConversationManager struct {
 	db             *db.DB
 	loop           *loop.Loop
 	loopCancel     context.CancelFunc
+	loopCtx        context.Context
 	mu             sync.Mutex
 	lastActivity   time.Time
 	modelID        string
@@ -268,13 +269,14 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	}
 	cm.loop = loopInstance
 	cm.loopCancel = cancel
+	cm.loopCtx = processCtx
 	cm.modelID = modelID
 	cm.history = nil
 	cm.system = nil
 	cm.mu.Unlock()
 
 	go func() {
-		if err := loopInstance.Go(processCtx); err != nil && err != context.DeadlineExceeded {
+		if err := loopInstance.Go(processCtx); err != nil && err != context.DeadlineExceeded && err != context.Canceled {
 			if logger != nil {
 				logger.Error("Conversation loop stopped", "error", err)
 			} else {
@@ -290,6 +292,7 @@ func (cm *ConversationManager) stopLoop() {
 	cm.mu.Lock()
 	cancel := cm.loopCancel
 	cm.loopCancel = nil
+	cm.loopCtx = nil
 	cm.loop = nil
 	cm.modelID = ""
 	cm.mu.Unlock()
@@ -297,4 +300,116 @@ func (cm *ConversationManager) stopLoop() {
 	if cancel != nil {
 		cancel()
 	}
+}
+
+// CancelConversation cancels the current conversation loop and records a cancelled tool result if a tool was in progress
+func (cm *ConversationManager) CancelConversation(ctx context.Context) error {
+	cm.mu.Lock()
+	loopInstance := cm.loop
+	loopCtx := cm.loopCtx
+	cancel := cm.loopCancel
+	cm.mu.Unlock()
+
+	if loopInstance == nil {
+		cm.logger.Info("No active loop to cancel")
+		return nil
+	}
+
+	cm.logger.Info("Cancelling conversation")
+
+	// Check if there's an in-progress tool call by examining the history
+	history := loopInstance.GetHistory()
+	var inProgressToolID string
+	var inProgressToolName string
+
+	// Find the most recent tool use without a corresponding tool result
+	for i := len(history) - 1; i >= 0; i-- {
+		msg := history[i]
+		if msg.Role == llm.MessageRoleAssistant {
+			// Check for tool uses in this message
+			for _, content := range msg.Content {
+				if content.Type == llm.ContentTypeToolUse {
+					inProgressToolID = content.ID
+					inProgressToolName = content.ToolName
+					break
+				}
+			}
+			if inProgressToolID != "" {
+				break
+			}
+		} else if msg.Role == llm.MessageRoleUser {
+			// Check if this contains a tool result for our tool ID
+			hasResult := false
+			for _, content := range msg.Content {
+				if content.Type == llm.ContentTypeToolResult && content.ToolUseID == inProgressToolID {
+					hasResult = true
+					break
+				}
+			}
+			if hasResult {
+				inProgressToolID = ""
+				inProgressToolName = ""
+			}
+		}
+	}
+
+	// Cancel the context
+	if cancel != nil {
+		cancel()
+	}
+
+	// Wait briefly for the loop to stop
+	if loopCtx != nil {
+		select {
+		case <-loopCtx.Done():
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+
+	// Record cancellation messages
+	if inProgressToolID != "" {
+		// If there was an in-progress tool, record a cancelled result
+		cm.logger.Info("Recording cancelled tool result", "tool_id", inProgressToolID, "tool_name", inProgressToolName)
+		cancelTime := time.Now()
+		cancelledMessage := llm.Message{
+			Role: llm.MessageRoleUser,
+			Content: []llm.Content{
+				{
+					Type:             llm.ContentTypeToolResult,
+					ToolUseID:        inProgressToolID,
+					ToolError:        true,
+					ToolResult:       []llm.Content{{Type: llm.ContentTypeText, Text: "Tool execution cancelled by user"}},
+					ToolUseStartTime: &cancelTime,
+					ToolUseEndTime:   &cancelTime,
+				},
+			},
+		}
+
+		if err := cm.recordMessage(ctx, cancelledMessage, llm.Usage{}); err != nil {
+			cm.logger.Error("Failed to record cancelled tool result", "error", err)
+			return fmt.Errorf("failed to record cancelled tool result: %w", err)
+		}
+	}
+
+	// Always record an assistant message with EndOfTurn to properly end the turn
+	// This ensures agentWorking() returns false, even if no tool was executing
+	endTurnMessage := llm.Message{
+		Role:      llm.MessageRoleAssistant,
+		Content:   []llm.Content{{Type: llm.ContentTypeText, Text: "[Operation cancelled]"}},
+		EndOfTurn: true,
+	}
+
+	if err := cm.recordMessage(ctx, endTurnMessage, llm.Usage{}); err != nil {
+		cm.logger.Error("Failed to record end turn message", "error", err)
+		return fmt.Errorf("failed to record end turn message: %w", err)
+	}
+
+	cm.mu.Lock()
+	cm.loopCancel = nil
+	cm.loopCtx = nil
+	cm.loop = nil
+	cm.modelID = ""
+	cm.mu.Unlock()
+
+	return nil
 }
