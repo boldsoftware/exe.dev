@@ -902,86 +902,58 @@ function ChatInterface({
         )}
       </div>
 
-      {/* Disconnect banner */}
-      {isDisconnected && (
-        <div className="disconnect-banner">
-          <div className="disconnect-banner-content">
-            <p className="disconnect-message">Disconnected</p>
-            <button onClick={handleManualReconnect} className="btn-reconnect">
-              Retry
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Error banner */}
-      {error && (
-        <div className="error-banner">
-          <div className="error-banner-content">
-            <p className="error-message">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="btn-icon"
-              style={{ color: "var(--error-text)" }}
-            >
-              <svg
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                style={{ width: "1rem", height: "1rem" }}
+      {/* Unified Status Bar */}
+      <div className="status-bar">
+        <div className="status-bar-content">
+          {isDisconnected ? (
+            // Disconnected state
+            <>
+              <span className="status-message status-warning">Disconnected</span>
+              <button onClick={handleManualReconnect} className="status-button status-button-primary">
+                Retry
+              </button>
+            </>
+          ) : error ? (
+            // Error state
+            <>
+              <span className="status-message status-error">{error}</span>
+              <button onClick={() => setError(null)} className="status-button status-button-text">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </>
+          ) : agentWorking && conversationId ? (
+            // Agent working - show cancel button
+            <>
+              <span className="status-message">Agent working...</span>
+              <button
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="status-button status-button-cancel"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </div>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+                {cancelling ? "Cancelling..." : "Cancel"}
+              </button>
+            </>
+          ) : (
+            // Idle state - show ready message
+            <span className="status-message status-ready">Ready</span>
+          )}
         </div>
-      )}
-
-      {/* Cancel button - shown when agent is working */}
-      {agentWorking && conversationId && (
-        <div style={{ padding: "0.75rem 1rem", borderTop: "1px solid var(--border-color)" }}>
-          <button
-            onClick={handleCancel}
-            disabled={cancelling}
-            style={{
-              width: "100%",
-              padding: "0.5rem 1rem",
-              backgroundColor: "var(--error-bg)",
-              color: "var(--error-text)",
-              border: "1px solid var(--error-text)",
-              borderRadius: "0.375rem",
-              cursor: cancelling ? "not-allowed" : "pointer",
-              fontSize: "0.875rem",
-              fontWeight: "500",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "0.5rem",
-              opacity: cancelling ? 0.6 : 1,
-            }}
-          >
-            <svg
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              style={{ width: "1rem", height: "1rem" }}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-            {cancelling ? "Cancelling..." : "Cancel"}
-          </button>
-        </div>
-      )}
+      </div>
 
       {/* Message input */}
       <MessageInput
