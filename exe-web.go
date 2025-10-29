@@ -1025,33 +1025,16 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		userID, err = queries.GetUserIDByEmail(ctx, email)
 		if errors.Is(err, sql.ErrNoRows) {
 			// User doesn't exist, create them
-			userID, err = generateUserID()
+			userID, err = s.createUserRecord(ctx, queries, email)
 			if err != nil {
-				return fmt.Errorf("failed to generate user ID: %w", err)
+				return err
 			}
-
-			err = queries.InsertUser(ctx, exedb.InsertUserParams{
-				UserID: userID,
-				Email:  email,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create user: %w", err)
+			if _, err := s.createAllocForUser(ctx, queries, userID); err != nil {
+				return err
 			}
-
-			// Create user allocation
-			allocID, err := generateAllocID()
-			if err != nil {
-				return fmt.Errorf("failed to generate allocation ID: %w", err)
-			}
-
-			err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-				AllocID: allocID,
-				UserID:  userID,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create allocation: %w", err)
-			}
-		} else if err != nil {
+			return nil
+		}
+		if err != nil {
 			return fmt.Errorf("failed to check user existence: %w", err)
 		}
 		return nil

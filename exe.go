@@ -943,35 +943,13 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 		userID, err := queries.GetUserIDByEmail(ctx, email)
 		if errors.Is(err, sql.ErrNoRows) {
 			// User doesn't exist, create them
-			userID, err = generateUserID()
+			userID, err = s.createUserRecord(ctx, queries, email)
 			if err != nil {
-				return fmt.Errorf("failed to generate user ID: %w", err)
+				return err
 			}
 
-			err = queries.InsertUser(ctx, exedb.InsertUserParams{
-				UserID: userID,
-				Email:  email,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create user: %w", err)
-			}
-
-			// Create user allocation
-			allocID, err := generateAllocID()
-			if err != nil {
-				return fmt.Errorf("failed to generate alloc ID: %w", err)
-			}
-
-			ctrhost := s.selectCtrhostForNewAlloc()
-			err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-				AllocID:   allocID,
-				UserID:    userID,
-				AllocType: "shared",
-				Region:    "default",
-				Ctrhost:   ctrhost,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to create allocation: %w", err)
+			if _, err := s.createAllocForUser(ctx, queries, userID); err != nil {
+				return err
 			}
 		} else if err != nil {
 			return fmt.Errorf("failed to check user: %w", err)
@@ -1963,59 +1941,70 @@ func (s *Server) getUserByPublicKey(ctx context.Context, publicKeyStr string) (*
 	return &user, nil
 }
 
+// createUserRecord creates a user record and returns the new user ID.
+func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, email string) (string, error) {
+	userID, err := generateUserID()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate user ID: %w", err)
+	}
+
+	if err := queries.InsertUser(ctx, exedb.InsertUserParams{
+		UserID: userID,
+		Email:  email,
+	}); err != nil {
+		return "", fmt.Errorf("failed to create user: %w", err)
+	}
+
+	return userID, nil
+}
+
+// createAllocForUser provisions an allocation for the given user and returns the new alloc ID.
+func (s *Server) createAllocForUser(ctx context.Context, queries *exedb.Queries, userID string) (string, error) {
+	allocID, err := generateAllocID()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate alloc ID: %w", err)
+	}
+
+	ctrhost := s.selectCtrhostForNewAlloc()
+
+	if err := queries.InsertAlloc(ctx, exedb.InsertAllocParams{
+		AllocID:   allocID,
+		UserID:    userID,
+		AllocType: string(AllocTypeMedium),
+		Region:    string(RegionAWSUSWest2),
+		Ctrhost:   ctrhost,
+	}); err != nil {
+		return "", fmt.Errorf("failed to create allocation: %w", err)
+	}
+
+	return allocID, nil
+}
+
 // createUser creates a new user with their resource allocation.
 func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
-	var allocID string
 	var user exedb.User
 
 	// First create the user and allocation in the database
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		// Create user
 		queries := exedb.New(tx.Conn())
 
-		// Generate user ID
-		userID, err := generateUserID()
-		if err != nil {
-			return err
-		}
-
-		err = queries.InsertUser(ctx, exedb.InsertUserParams{
-			UserID: userID,
-			Email:  email,
-		})
+		userID, err := s.createUserRecord(ctx, queries, email)
 		if err != nil {
 			return err
 		}
 
 		// Add the SSH key to ssh_keys table
-		err = queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
+		if err := queries.InsertSSHKey(ctx, exedb.InsertSSHKeyParams{
 			UserID:    userID,
 			PublicKey: publicKey,
-		})
-		if err != nil {
+		}); err != nil {
 			return err
 		}
 
-		// Generate alloc ID
-		allocID, err = generateAllocID()
-		if err != nil {
+		if _, err := s.createAllocForUser(ctx, queries, userID); err != nil {
 			return err
 		}
 
-		// Select a container host for this alloc
-		ctrhost := s.selectCtrhostForNewAlloc()
-
-		// Create alloc for the user
-		err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-			AllocID:   allocID,
-			UserID:    userID,
-			AllocType: string(AllocTypeMedium),
-			Region:    string(RegionAWSUSWest2),
-			Ctrhost:   ctrhost,
-		})
-		if err != nil {
-			return err
-		}
 		user, err = queries.GetUserWithDetails(ctx, userID)
 		if err != nil {
 			return err
@@ -2042,30 +2031,16 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*exedb.Alloc,
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// User exists but has no alloc yet - create one
-		allocID, err := generateAllocID()
-		if err != nil {
-			return nil, err
-		}
-
-		user, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		if _, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
 			return queries.GetUserWithDetails(ctx, userID)
-		})
-		if err != nil {
+		}); err != nil {
 			return nil, err
 		}
 
-		ctrhost := s.selectCtrhostForNewAlloc()
-
-		err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			return queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-				AllocID:   allocID,
-				UserID:    user.UserID,
-				AllocType: string(AllocTypeMedium),
-				Region:    string(RegionAWSUSWest2),
-				Ctrhost:   ctrhost,
-			})
-		})
-		if err != nil {
+		if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+			_, err := s.createAllocForUser(ctx, queries, userID)
+			return err
+		}); err != nil {
 			return nil, err
 		}
 
