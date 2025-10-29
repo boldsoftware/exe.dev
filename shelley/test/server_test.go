@@ -222,8 +222,11 @@ func TestServerEndToEnd(t *testing.T) {
 
 	// Test that slug updates are reflected in the stream
 	t.Run("SlugUpdateStream", func(t *testing.T) {
+		// Create a context that won't be canceled unexpectedly
+		ctx := context.Background()
+
 		// Create a conversation without a slug
-		conv, err := database.CreateConversation(context.Background(), nil, true)
+		conv, err := database.CreateConversation(ctx, nil, true)
 		if err != nil {
 			t.Fatalf("Failed to create conversation: %v", err)
 		}
@@ -248,16 +251,27 @@ func TestServerEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to send chat message: %v", err)
 		}
-		chatResp.Body.Close()
+		defer chatResp.Body.Close()
+
+		// Check response status before continuing
+		if chatResp.StatusCode != http.StatusAccepted {
+			t.Fatalf("Expected status 202, got %d", chatResp.StatusCode)
+		}
 
 		// Wait longer for slug generation (it happens asynchronously)
-		for i := 0; i < 20; i++ {
-			time.Sleep(500 * time.Millisecond)
+		// Poll every 100ms instead of 500ms for faster feedback
+		for i := 0; i < 100; i++ {
+			time.Sleep(100 * time.Millisecond)
 
 			// Check if slug was generated
-			updatedConv, err := database.GetConversationByID(context.Background(), conv.ConversationID)
+			updatedConv, err := database.GetConversationByID(ctx, conv.ConversationID)
 			if err != nil {
-				t.Fatalf("Failed to get updated conversation: %v", err)
+				// Don't fail immediately on error - the conversation might be temporarily locked
+				// Only fail if we've exhausted all retries
+				if i == 99 {
+					t.Fatalf("Failed to get updated conversation after all retries: %v", err)
+				}
+				continue
 			}
 
 			if updatedConv.Slug != nil {
