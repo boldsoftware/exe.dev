@@ -2,6 +2,7 @@
 package exe
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -106,16 +107,16 @@ func (p *PiperPlugin) getExpectedHostKeyForConnection(connID string) (string, bo
 }
 
 // getServerHostKey retrieves the exed server's host key from the database
-func (p *PiperPlugin) getServerHostKey() (string, error) {
+func (p *PiperPlugin) getServerHostKey() (string, *string, error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
-	publicKey, err := withRxRes(p.server, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetSSHHostPublicKey(ctx)
+	row, err := withRxRes(p.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
+		return queries.GetSSHHostKey(ctx)
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get server host key: %w", err)
+		return "", nil, fmt.Errorf("failed to get server host key: %w", err)
 	}
-	return publicKey, nil
+	return row.PublicKey, row.CertSig, nil
 }
 
 // ListenAndServe starts the sshpiper plugin gRPC server, listening on addr.
@@ -550,14 +551,40 @@ func (p *PiperPlugin) handleVerifyHostKey(conn libplugin.ConnMetadata, hostname,
 
 	// No stored expected key - this is a connection to the main exed server
 	// Validate against the server's host key from the database
-	serverHostKey, err := p.getServerHostKey()
+	serverHostKey, serverCert, err := p.getServerHostKey()
 	if err != nil {
 		slog.Debug("Failed to get server host key", "component", "piper-plugin", "error", err)
 		return fmt.Errorf("host key validation failed for %s", hostname)
 	}
 	slog.Debug("Got server host key", "component", "piper-plugin", "hostname", hostname, "server_key", serverHostKey[:50]+"...")
 
-	if strings.TrimSpace(serverHostKey) == strings.TrimSpace(receivedKey) {
+	trimmedReceived := strings.TrimSpace(receivedKey)
+	trimmedExpectedKey := strings.TrimSpace(serverHostKey)
+
+	if serverCert != nil {
+		trimmedExpectedCert := strings.TrimSpace(*serverCert)
+		if trimmedExpectedCert != "" {
+			if trimmedExpectedCert == trimmedReceived {
+				slog.Debug("Host cert validation successful for exed server (cert match)",
+					"component", "piper-plugin", "hostname", hostname)
+				return nil
+			}
+
+			if cert, ok := pubKey.(*ssh.Certificate); ok {
+				expectedKeyPub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(trimmedExpectedKey))
+				if err != nil {
+					expectedKeyPub, _, _, _, err = ssh.ParseAuthorizedKey([]byte(trimmedExpectedKey + "\n"))
+				}
+				if err == nil && bytes.Equal(cert.Key.Marshal(), expectedKeyPub.Marshal()) {
+					slog.Debug("Host cert validation successful for exed server (underlying key match)",
+						"component", "piper-plugin", "hostname", hostname, "cert_key_id", cert.KeyId)
+					return nil
+				}
+			}
+		}
+	}
+
+	if trimmedExpectedKey == trimmedReceived {
 		slog.Debug("Host key validation successful for exed server",
 			"component", "piper-plugin", "hostname", hostname)
 		return nil

@@ -569,6 +569,44 @@ func (s *Server) setupSSHServer() {
 	}
 }
 
+func (s *Server) installSSHHostKey(signer ssh.Signer, certSig *string) error {
+	if certSig != nil {
+		certData := strings.TrimSpace(*certSig)
+		if certData != "" {
+			pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(certData))
+			if err != nil {
+				return fmt.Errorf("failed to parse stored host certificate: %w", err)
+			}
+			cert, ok := pubKey.(*ssh.Certificate)
+			if !ok {
+				return fmt.Errorf("stored host certificate is not an SSH certificate")
+			}
+			certSigner, err := ssh.NewCertSigner(cert, signer)
+			if err != nil {
+				return fmt.Errorf("failed to construct host certificate signer: %w", err)
+			}
+			s.sshConfig.AddHostKey(certSigner)
+			s.sshHostKey = certSigner
+			s.slog().Debug("Loaded SSH host certificate",
+				"key_id", cert.KeyId,
+				"principals", cert.ValidPrincipals,
+				"valid_after", time.Unix(int64(cert.ValidAfter), 0),
+				"valid_before", func() any {
+					if cert.ValidBefore == ssh.CertTimeInfinity {
+						return "infinite"
+					}
+					return time.Unix(int64(cert.ValidBefore), 0)
+				}(),
+			)
+			return nil
+		}
+	}
+
+	s.sshConfig.AddHostKey(signer)
+	s.sshHostKey = signer
+	return nil
+}
+
 // generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
 func (s *Server) generateHostKey(ctx context.Context) error {
 	// Try to load existing host key from database
@@ -617,9 +655,10 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 			return fmt.Errorf("failed to store host key: %w", err)
 		}
 
+		if err := s.installSSHHostKey(signer, nil); err != nil {
+			return err
+		}
 		s.slog().Debug("Generated and stored new SSH host key", "fingerprint", fingerprint)
-		s.sshConfig.AddHostKey(signer)
-		s.sshHostKey = signer
 
 	} else if err != nil {
 		return fmt.Errorf("failed to query host key: %w", err)
@@ -631,9 +670,10 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 		}
 
 		fingerprint := s.GetPublicKeyFingerprint(signer.PublicKey())
+		if err := s.installSSHHostKey(signer, hostKey.CertSig); err != nil {
+			return err
+		}
 		s.slog().Debug("Loaded existing SSH host key", "fingerprint", fingerprint)
-		s.sshConfig.AddHostKey(signer)
-		s.sshHostKey = signer
 	}
 
 	return nil
