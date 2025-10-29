@@ -909,7 +909,10 @@ function ChatInterface({
             // Disconnected state
             <>
               <span className="status-message status-warning">Disconnected</span>
-              <button onClick={handleManualReconnect} className="status-button status-button-primary">
+              <button
+                onClick={handleManualReconnect}
+                className="status-button status-button-primary"
+              >
                 Retry
               </button>
             </>
