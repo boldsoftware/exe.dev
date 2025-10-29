@@ -104,7 +104,7 @@ func Random() string {
 		// WWII / older phonetics
 		"able", "baker", "dog", "easy", "fox", "george", "how", "item", "jig", "king", "love", "nan",
 		"oboe", "prep", "queen", "roger", "sugar", "tare", "uncle", "victory", "william", "xray",
-		"yoke", "zebra",
+		"yolk", "zebra",
 
 		// Nature & elements
 		"earth", "wind", "fire", "water", "stone", "tree", "river", "mountain", "cloud", "storm",
