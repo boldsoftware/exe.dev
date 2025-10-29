@@ -249,6 +249,7 @@ function ChatInterface({
   });
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [agentWorking, setAgentWorking] = useState(false);
   const terminalURL = window.__SHELLEY_INIT__?.terminal_url || null;
   const links = window.__SHELLEY_INIT__?.links || [];
   const hostname = window.__SHELLEY_INIT__?.hostname || "localhost";
@@ -263,6 +264,7 @@ function ChatInterface({
   // Load messages and set up streaming
   useEffect(() => {
     if (conversationId) {
+      setAgentWorking(false);
       loadMessages();
       setupMessageStream();
     } else {
@@ -307,8 +309,12 @@ function ChatInterface({
     try {
       setLoading(true);
       setError(null);
-      const msgs = await api.getMessages(conversationId);
-      setMessages(msgs);
+      const response = await api.getConversation(conversationId);
+      setMessages(response.messages ?? []);
+      setAgentWorking(Boolean(response.agent_working));
+      if (onConversationUpdate) {
+        onConversationUpdate(response.conversation);
+      }
     } catch (err) {
       console.error("Failed to load messages:", err);
       setError("Failed to load messages");
@@ -331,18 +337,21 @@ function ChatInterface({
     eventSource.onmessage = (event) => {
       try {
         const streamResponse: StreamResponse = JSON.parse(event.data);
+        const incomingMessages = Array.isArray(streamResponse.messages)
+          ? streamResponse.messages
+          : [];
 
         // Merge new messages without losing existing ones.
         // If no new messages (e.g., only conversation/slug update), keep existing list.
-        if (Array.isArray(streamResponse.messages) && streamResponse.messages.length > 0) {
+        if (incomingMessages.length > 0) {
           setMessages((prev) => {
             const byId = new Map<string, Message>();
             for (const m of prev) byId.set(m.message_id, m);
-            for (const m of streamResponse.messages) byId.set(m.message_id, m);
+            for (const m of incomingMessages) byId.set(m.message_id, m);
             // Preserve original order, then append truly new ones in the order received
             const result: Message[] = [];
             for (const m of prev) result.push(byId.get(m.message_id)!);
-            for (const m of streamResponse.messages) {
+            for (const m of incomingMessages) {
               if (!prev.find((p) => p.message_id === m.message_id)) result.push(m);
             }
             return result;
@@ -352,6 +361,10 @@ function ChatInterface({
         // Update conversation data if provided
         if (onConversationUpdate) {
           onConversationUpdate(streamResponse.conversation);
+        }
+
+        if (typeof streamResponse.agent_working === "boolean") {
+          setAgentWorking(streamResponse.agent_working);
         }
       } catch (err) {
         console.error("Failed to parse message stream data:", err);
@@ -405,6 +418,7 @@ function ChatInterface({
     try {
       setSending(true);
       setError(null);
+      setAgentWorking(true);
 
       // If no conversation ID, this is the first message
       if (!conversationId && onFirstMessage) {
@@ -418,6 +432,7 @@ function ChatInterface({
     } catch (err) {
       console.error("Failed to send message:", err);
       setError("Failed to send message. Please try again.");
+      setAgentWorking(false);
     } finally {
       setSending(false);
     }
@@ -669,7 +684,7 @@ function ChatInterface({
 
     const coalescedItems = processMessages();
 
-    return coalescedItems.map((item, index) => {
+    const rendered = coalescedItems.map((item, index) => {
       if (item.type === "message" && item.message) {
         return <MessageComponent key={item.message.message_id} message={item.message} />;
       } else if (item.type === "tool") {
@@ -689,6 +704,8 @@ function ChatInterface({
       }
       return null;
     });
+
+    return rendered;
   };
 
   return (
@@ -848,6 +865,22 @@ function ChatInterface({
         ) : (
           <div className="messages-list">
             {renderMessages()}
+            {agentWorking && (
+              <div
+                key="agent-thinking"
+                className="thinking-indicator"
+                role="status"
+                aria-live="polite"
+                aria-label="Agent is thinking"
+                data-testid="agent-thinking"
+              >
+                <span className="thinking-dots" aria-hidden="true">
+                  <span>.</span>
+                  <span>.</span>
+                  <span>.</span>
+                </span>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}

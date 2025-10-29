@@ -144,24 +144,24 @@ func TestServerEndToEnd(t *testing.T) {
 			t.Fatalf("Expected status 200, got %d", msgResp.StatusCode)
 		}
 
-		var messages []generated.Message
-		if err := json.NewDecoder(msgResp.Body).Decode(&messages); err != nil {
+		var payload server.StreamResponse
+		if err := json.NewDecoder(msgResp.Body).Decode(&payload); err != nil {
 			t.Fatalf("Failed to decode messages: %v", err)
 		}
 
 		// Should have at least system and user messages
-		if len(messages) < 2 {
-			t.Fatalf("Expected at least 2 messages (system + user), got %d", len(messages))
+		if len(payload.Messages) < 2 {
+			t.Fatalf("Expected at least 2 messages (system + user), got %d", len(payload.Messages))
 		}
 
 		// First message should be system prompt
-		if messages[0].Type != "system" {
-			t.Fatalf("Expected first message to be system, got %s", messages[0].Type)
+		if payload.Messages[0].Type != "system" {
+			t.Fatalf("Expected first message to be system, got %s", payload.Messages[0].Type)
 		}
 
 		// Second message should be from user
-		if messages[1].Type != "user" {
-			t.Fatalf("Expected second message to be user, got %s", messages[1].Type)
+		if payload.Messages[1].Type != "user" {
+			t.Fatalf("Expected second message to be user, got %s", payload.Messages[1].Type)
 		}
 	})
 

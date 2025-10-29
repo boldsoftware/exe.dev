@@ -48,7 +48,11 @@ getAvailablePort().then(port => {
     '--port', port.toString()
   ], {
     cwd: path.join(__dirname, '../..'),
-    stdio: 'inherit'
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      PREDICTABLE_DELAY_MS: process.env.PREDICTABLE_DELAY_MS || '400'
+    }
   });
 
   // Cleanup function for temporary directory and database files

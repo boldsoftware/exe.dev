@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"go.skia.org/infra/go/go2ts"
 	"shelley.exe.dev/db"
@@ -51,18 +52,42 @@ func TS() *go2ts.Go2TS {
 			db.MessageTypeAgent,
 			db.MessageTypeTool,
 			db.MessageTypeError,
+			db.MessageTypeSystem,
 		},
 	)
 
 	// Database struct types
 	generator.AddMultiple(
 		generated.Conversation{},
-		generated.Message{},
 		llm.Usage{},
+	)
+
+	generator.AddMultiple(
+		apiMessageForTS{},
+		streamResponseForTS{},
 	)
 
 	// Generate clean nominal types
 	generator.GenerateNominalTypes = true
 
 	return generator
+}
+
+type apiMessageForTS struct {
+	MessageID      string    `json:"message_id"`
+	ConversationID string    `json:"conversation_id"`
+	SequenceID     int64     `json:"sequence_id"`
+	Type           string    `json:"type"`
+	LlmData        *string   `json:"llm_data,omitempty"`
+	UserData       *string   `json:"user_data,omitempty"`
+	UsageData      *string   `json:"usage_data,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	DisplayData    *string   `json:"display_data,omitempty"`
+	EndOfTurn      *bool     `json:"end_of_turn,omitempty"`
+}
+
+type streamResponseForTS struct {
+	Messages     []apiMessageForTS      `json:"messages"`
+	Conversation generated.Conversation `json:"conversation"`
+	AgentWorking bool                   `json:"agent_working"`
 }

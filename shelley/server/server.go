@@ -35,12 +35,14 @@ type APIMessage struct {
 	UsageData      *string   `json:"usage_data,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	DisplayData    *string   `json:"display_data,omitempty"`
+	EndOfTurn      *bool     `json:"end_of_turn,omitempty"`
 }
 
 // StreamResponse represents the response format for conversation streaming
 type StreamResponse struct {
 	Messages     []APIMessage           `json:"messages"`
 	Conversation generated.Conversation `json:"conversation"`
+	AgentWorking bool                   `json:"agent_working"`
 }
 
 // LLMProvider is an interface for getting LLM services
@@ -75,6 +77,14 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 func toAPIMessages(messages []generated.Message) []APIMessage {
 	apiMessages := make([]APIMessage, len(messages))
 	for i, msg := range messages {
+		var endOfTurnPtr *bool
+		if msg.LlmData != nil && msg.Type == string(db.MessageTypeAgent) {
+			if endOfTurn, ok := extractEndOfTurn(*msg.LlmData); ok {
+				endOfTurnCopy := endOfTurn
+				endOfTurnPtr = &endOfTurnCopy
+			}
+		}
+
 		apiMsg := APIMessage{
 			MessageID:      msg.MessageID,
 			ConversationID: msg.ConversationID,
@@ -85,10 +95,51 @@ func toAPIMessages(messages []generated.Message) []APIMessage {
 			UsageData:      msg.UsageData,
 			CreatedAt:      msg.CreatedAt,
 			DisplayData:    msg.DisplayData,
+			EndOfTurn:      endOfTurnPtr,
 		}
 		apiMessages[i] = apiMsg
 	}
 	return apiMessages
+}
+
+func extractEndOfTurn(raw string) (bool, bool) {
+	var message llm.Message
+	if err := json.Unmarshal([]byte(raw), &message); err != nil {
+		return false, false
+	}
+	return message.EndOfTurn, true
+}
+
+func agentWorking(messages []APIMessage) bool {
+	if len(messages) == 0 {
+		return false
+	}
+
+	last := messages[len(messages)-1]
+	if last.Type == string(db.MessageTypeAgent) {
+		if last.EndOfTurn == nil {
+			return true
+		}
+		return !*last.EndOfTurn
+	}
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
+		if msg.Type != string(db.MessageTypeAgent) {
+			continue
+		}
+		if msg.EndOfTurn == nil {
+			return true
+		}
+		if !*msg.EndOfTurn {
+			return true
+		}
+		// Agent ended turn, but newer non-agent messages exist, so agent is working again.
+		return true
+	}
+
+	// No agent message found yet but conversation has activity, assume agent is working.
+	return true
 }
 
 // Server manages the HTTP API and active conversations
@@ -311,9 +362,11 @@ func (s *Server) notifySubscribers(ctx context.Context, conversationID string) {
 
 	// Publish to all subscribers
 	// TODO(philip): We're re-publishing ALL the messages, and that's wrong. We should only be publishing new stuff.
+	apiMessages := toAPIMessages(messages)
 	streamData := StreamResponse{
-		Messages:     toAPIMessages(messages),
+		Messages:     apiMessages,
 		Conversation: conversation,
+		AgentWorking: agentWorking(apiMessages),
 	}
 	manager.subpub.Publish(latestSequenceID, streamData)
 }

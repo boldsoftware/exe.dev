@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,13 +20,29 @@ type PredictableService struct {
 	mu                 sync.Mutex
 	// Recent requests for testing inspection
 	recentRequests []*llm.Request
+	responseDelay  time.Duration
 }
 
 // NewPredictableService creates a new predictable LLM service
 func NewPredictableService() *PredictableService {
-	return &PredictableService{
+	svc := &PredictableService{
 		tokenContextWindow: 200000,
 	}
+
+	if delayEnv := os.Getenv("PREDICTABLE_DELAY_MS"); delayEnv != "" {
+		if ms, err := strconv.Atoi(delayEnv); err == nil && ms > 0 {
+			svc.responseDelay = time.Duration(ms) * time.Millisecond
+		}
+	}
+
+	return svc
+}
+
+// SetResponseDelay configures an artificial delay before returning responses. Useful for testing.
+func (s *PredictableService) SetResponseDelay(delay time.Duration) {
+	s.mu.Lock()
+	s.responseDelay = delay
+	s.mu.Unlock()
 }
 
 // TokenContextWindow returns the maximum token context window size
@@ -36,12 +54,21 @@ func (s *PredictableService) TokenContextWindow() int {
 func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	// Store request for testing inspection
 	s.mu.Lock()
+	delay := s.responseDelay
 	s.recentRequests = append(s.recentRequests, req)
 	// Keep only last 10 requests
 	if len(s.recentRequests) > 10 {
 		s.recentRequests = s.recentRequests[len(s.recentRequests)-10:]
 	}
 	s.mu.Unlock()
+
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	// Extract the text content from the last user message
 	var inputText string
 	if len(req.Messages) > 0 {

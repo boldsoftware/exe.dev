@@ -15,7 +15,6 @@ import (
 
 	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/db"
-	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
 	"shelley.exe.dev/server"
 )
@@ -118,33 +117,33 @@ func TestWithAnthropicAPI(t *testing.T) {
 			t.Fatalf("Expected status 200, got %d", msgResp.StatusCode)
 		}
 
-		var messages []generated.Message
-		if err := json.NewDecoder(msgResp.Body).Decode(&messages); err != nil {
+		var payload server.StreamResponse
+		if err := json.NewDecoder(msgResp.Body).Decode(&payload); err != nil {
 			t.Fatalf("Failed to decode messages: %v", err)
 		}
 
 		// Should have system message, user message and assistant response
-		if len(messages) < 3 {
-			msgTypes := make([]string, len(messages))
-			for i, msg := range messages {
+		if len(payload.Messages) < 3 {
+			msgTypes := make([]string, len(payload.Messages))
+			for i, msg := range payload.Messages {
 				msgTypes[i] = msg.Type
 			}
-			t.Fatalf("Expected at least 3 messages (system + user + assistant), got %d: %v", len(messages), msgTypes)
+			t.Fatalf("Expected at least 3 messages (system + user + assistant), got %d: %v", len(payload.Messages), msgTypes)
 		}
 
 		// Check first message is system prompt
-		if messages[0].Type != "system" {
-			t.Fatalf("Expected first message to be system, got %s", messages[0].Type)
+		if payload.Messages[0].Type != "system" {
+			t.Fatalf("Expected first message to be system, got %s", payload.Messages[0].Type)
 		}
 
 		// Check user message is second
-		if messages[1].Type != "user" {
-			t.Fatalf("Expected second message to be user, got %s", messages[1].Type)
+		if payload.Messages[1].Type != "user" {
+			t.Fatalf("Expected second message to be user, got %s", payload.Messages[1].Type)
 		}
 
 		// Check assistant response
 		assistantFound := false
-		for _, msg := range messages {
+		for _, msg := range payload.Messages {
 			if msg.Type == "agent" {
 				assistantFound = true
 				if msg.LlmData == nil {
@@ -223,19 +222,19 @@ func TestWithAnthropicAPI(t *testing.T) {
 		}
 		defer msgResp.Body.Close()
 
-		var messages []generated.Message
-		if err := json.NewDecoder(msgResp.Body).Decode(&messages); err != nil {
+		var payload server.StreamResponse
+		if err := json.NewDecoder(msgResp.Body).Decode(&payload); err != nil {
 			t.Fatalf("Failed to decode messages: %v", err)
 		}
 
 		// Should have multiple messages due to tool use
-		if len(messages) < 3 {
-			t.Logf("Got %d messages, expected at least 3 for tool use interaction", len(messages))
+		if len(payload.Messages) < 3 {
+			t.Logf("Got %d messages, expected at least 3 for tool use interaction", len(payload.Messages))
 			// This might not always be the case depending on Claude's response
 		}
 
 		// Log all messages for debugging
-		for i, msg := range messages {
+		for i, msg := range payload.Messages {
 			t.Logf("Message %d: Type=%s", i, msg.Type)
 			if msg.LlmData != nil {
 				var llmMsg llm.Message

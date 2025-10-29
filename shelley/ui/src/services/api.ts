@@ -1,4 +1,4 @@
-import { Conversation, Message, ChatRequest } from "../types";
+import { Conversation, StreamResponse, ChatRequest } from "../types";
 
 class ApiService {
   private baseUrl = "/api";
@@ -25,7 +25,7 @@ class ApiService {
     return response.json();
   }
 
-  async getMessages(conversationId: string): Promise<Message[]> {
+  async getConversation(conversationId: string): Promise<StreamResponse> {
     const response = await fetch(`${this.baseUrl}/conversation/${conversationId}`);
     if (!response.ok) {
       throw new Error(`Failed to get messages: ${response.statusText}`);

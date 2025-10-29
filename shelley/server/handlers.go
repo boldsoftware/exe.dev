@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -266,20 +267,36 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 	}
 
 	ctx := r.Context()
-	var messages []generated.Message
+	var (
+		messages     []generated.Message
+		conversation generated.Conversation
+	)
 	err := s.db.Queries(ctx, func(q *generated.Queries) error {
 		var err error
 		messages, err = q.ListMessages(ctx, conversationID)
+		if err != nil {
+			return err
+		}
+		conversation, err = q.GetConversation(ctx, conversationID)
 		return err
 	})
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.Error(w, "Conversation not found", http.StatusNotFound)
+			return
+		}
 		s.logger.Error("Failed to get conversation messages", "conversationID", conversationID, "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(toAPIMessages(messages))
+	apiMessages := toAPIMessages(messages)
+	json.NewEncoder(w).Encode(StreamResponse{
+		Messages:     apiMessages,
+		Conversation: conversation,
+		AgentWorking: agentWorking(apiMessages),
+	})
 }
 
 // ChatRequest represents a chat message from the user
@@ -500,9 +517,11 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 	}
 
 	// Send current messages and conversation data
+	apiMessages := toAPIMessages(messages)
 	streamData := StreamResponse{
-		Messages:     toAPIMessages(messages),
+		Messages:     apiMessages,
 		Conversation: conversation,
+		AgentWorking: agentWorking(apiMessages),
 	}
 	data, _ := json.Marshal(streamData)
 	fmt.Fprintf(w, "data: %s\n\n", data)

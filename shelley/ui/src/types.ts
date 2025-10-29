@@ -1,7 +1,8 @@
 // Types for Shelley UI
 import {
   Conversation as GeneratedConversation,
-  Message as GeneratedMessage,
+  ApiMessageForTS,
+  StreamResponseForTS,
   Usage as GeneratedUsage,
   MessageType as GeneratedMessageType,
 } from "./generated-types";
@@ -12,7 +13,7 @@ export type Usage = GeneratedUsage;
 export type MessageType = GeneratedMessageType;
 
 // Extend the generated Message type with parsed data
-export interface Message extends Omit<GeneratedMessage, "type"> {
+export interface Message extends Omit<ApiMessageForTS, "type"> {
   type: MessageType;
 }
 
@@ -54,9 +55,8 @@ export interface ChatRequest {
   model?: string;
 }
 // StreamResponse represents the streaming response format
-export interface StreamResponse {
+export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
   messages: Message[];
-  conversation: Conversation;
 }
 
 // Link represents a custom link that can be added to the UI

@@ -58,23 +58,76 @@ test.describe('Shelley Conversation Tests', () => {
   test('responds differently to lowercase hello', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
-    
+
     const messageInput = page.getByTestId('message-input');
     const sendButton = page.getByTestId('send-button');
-    
+
     // Send "hello" (lowercase) and expect different response
     await messageInput.fill('hello');
     await sendButton.click();
-    
+
     // The predictable model responds to "hello" with "Well, hi there!"
     await page.waitForFunction(
       () => document.body.textContent?.includes('Well, hi there!') ?? false,
       undefined,
       { timeout: 30000 }
     );
-    
+
     // Verify the hello message and response are both visible
     await expect(page.getByText('Well, hi there!').first()).toBeVisible();
+  });
+
+  test('shows thinking indicator while awaiting response', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+
+    const messageInput = page.getByTestId('message-input');
+    const sendButton = page.getByTestId('send-button');
+
+    await messageInput.fill('hello');
+    await sendButton.click();
+
+    const thinkingIndicator = page.getByTestId('agent-thinking');
+    await expect(thinkingIndicator).toBeVisible({ timeout: 2000 });
+
+    await page.waitForFunction(
+      () => document.body.textContent?.includes('Well, hi there!') ?? false,
+      undefined,
+      { timeout: 30000 }
+    );
+
+    await expect(thinkingIndicator).toBeHidden({ timeout: 10000 });
+  });
+
+  test('shows thinking indicator on follow-up messages', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+
+    const messageInput = page.getByTestId('message-input');
+    const sendButton = page.getByTestId('send-button');
+
+    await messageInput.fill('hello');
+    await sendButton.click();
+
+    await page.waitForFunction(
+      () => document.body.textContent?.includes('Well, hi there!') ?? false,
+      undefined,
+      { timeout: 30000 }
+    );
+
+    await messageInput.fill('echo: follow up');
+    await sendButton.click();
+
+    const thinkingIndicator = page.getByTestId('agent-thinking');
+    await expect(thinkingIndicator).toBeVisible({ timeout: 2000 });
+
+    await page.waitForFunction(
+      () => document.body.textContent?.includes('follow up') ?? false,
+      undefined,
+      { timeout: 30000 }
+    );
+
+    await expect(thinkingIndicator).toBeHidden({ timeout: 10000 });
   });
   
   test('can use bash tool', async ({ page }) => {
