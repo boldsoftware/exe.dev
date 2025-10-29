@@ -61,7 +61,11 @@ func shellQuoteCommand(args []string) string {
 
 // New creates a new SSH connection pool
 func New() *Pool {
-	// Create a unique temporary directory for control sockets
+	// Create a unique temporary directory for control sockets.
+	// The first arg here is "/tmp" instead of "" because unix domain sockets have path length limits.
+	// Previously:
+	//   - https://github.com/tailscale/tailscale/commit/f80193fa4c3b0d5b2e5ed50cec0402cf5114a5fe
+	//   - https://github.com/golang/go/issues/62614
 	baseDir, err := os.MkdirTemp("/tmp", "exe-ssh-control-")
 	if err != nil {
 		panic(fmt.Errorf("failed to create SSH control temp dir: %w", err))
