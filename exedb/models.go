@@ -55,6 +55,12 @@ type Box struct {
 	CreationLog          *string    `db:"creation_log" json:"creation_log"`
 }
 
+type BoxIPShard struct {
+	BoxID   int64  `db:"box_id" json:"box_id"`
+	UserID  string `db:"user_id" json:"user_id"`
+	IPShard int64  `db:"ip_shard" json:"ip_shard"`
+}
+
 type BoxShare struct {
 	ID               int64      `db:"id" json:"id"`
 	BoxID            int64      `db:"box_id" json:"box_id"`

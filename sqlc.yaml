@@ -18,6 +18,8 @@ sql:
           - column: "boxes.id"
             go_type: "int"
         rename:
+          box_ip_shard: "BoxIPShard"
+          ip_shard: "IPShard"
           ssh_server_identity_key: "SSHServerIdentityKey"
           ssh_authorized_keys: "SSHAuthorizedKeys"
           ssh_ca_public_key: "SSHCAPublicKey"

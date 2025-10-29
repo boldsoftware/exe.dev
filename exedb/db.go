@@ -120,6 +120,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxIDAndAllocByNameStmt, err = db.PrepareContext(ctx, getBoxIDAndAllocByName); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxIDAndAllocByName: %w", err)
 	}
+	if q.getBoxIPShardStmt, err = db.PrepareContext(ctx, getBoxIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxIPShard: %w", err)
+	}
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
 	}
@@ -246,6 +249,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertBoxStmt, err = db.PrepareContext(ctx, insertBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertBox: %w", err)
 	}
+	if q.insertBoxIPShardStmt, err = db.PrepareContext(ctx, insertBoxIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertBoxIPShard: %w", err)
+	}
 	if q.insertDeletedBoxStmt, err = db.PrepareContext(ctx, insertDeletedBox); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertDeletedBox: %w", err)
 	}
@@ -272,6 +278,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
+	}
+	if q.listIPShardsForUserStmt, err = db.PrepareContext(ctx, listIPShardsForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query ListIPShardsForUser: %w", err)
 	}
 	if q.recordUserEventStmt, err = db.PrepareContext(ctx, recordUserEvent); err != nil {
 		return nil, fmt.Errorf("error preparing query RecordUserEvent: %w", err)
@@ -498,6 +507,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxIDAndAllocByNameStmt: %w", cerr)
 		}
 	}
+	if q.getBoxIPShardStmt != nil {
+		if cerr := q.getBoxIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxIPShardStmt: %w", cerr)
+		}
+	}
 	if q.getBoxSSHDetailsStmt != nil {
 		if cerr := q.getBoxSSHDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
@@ -708,6 +722,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertBoxStmt: %w", cerr)
 		}
 	}
+	if q.insertBoxIPShardStmt != nil {
+		if cerr := q.insertBoxIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertBoxIPShardStmt: %w", cerr)
+		}
+	}
 	if q.insertDeletedBoxStmt != nil {
 		if cerr := q.insertDeletedBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertDeletedBoxStmt: %w", cerr)
@@ -751,6 +770,11 @@ func (q *Queries) Close() error {
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
+		}
+	}
+	if q.listIPShardsForUserStmt != nil {
+		if cerr := q.listIPShardsForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listIPShardsForUserStmt: %w", cerr)
 		}
 	}
 	if q.recordUserEventStmt != nil {
@@ -924,6 +948,7 @@ type Queries struct {
 	getBoxByNameAndAllocStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxIDAndAllocByNameStmt             *sql.Stmt
+	getBoxIPShardStmt                      *sql.Stmt
 	getBoxSSHDetailsStmt                   *sql.Stmt
 	getBoxShareLinkByTokenStmt             *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt     *sql.Stmt
@@ -966,6 +991,7 @@ type Queries struct {
 	insertAllocStmt                        *sql.Stmt
 	insertAuthCookieStmt                   *sql.Stmt
 	insertBoxStmt                          *sql.Stmt
+	insertBoxIPShardStmt                   *sql.Stmt
 	insertDeletedBoxStmt                   *sql.Stmt
 	insertEmailVerificationStmt            *sql.Stmt
 	insertOrReplaceEmailVerificationStmt   *sql.Stmt
@@ -975,6 +1001,7 @@ type Queries struct {
 	insertTagResolutionHistoryStmt         *sql.Stmt
 	insertTagResolutionWithMetadataStmt    *sql.Stmt
 	insertUserStmt                         *sql.Stmt
+	listIPShardsForUserStmt                *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
 	sSHKeyForBoxNamedStmt                  *sql.Stmt
 	updateAuthCookieLastUsedStmt           *sql.Stmt
@@ -1033,6 +1060,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxIDAndAllocByNameStmt:             q.getBoxIDAndAllocByNameStmt,
+		getBoxIPShardStmt:                      q.getBoxIPShardStmt,
 		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
 		getBoxShareLinkByTokenStmt:             q.getBoxShareLinkByTokenStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:     q.getBoxShareLinkByTokenAndBoxIDStmt,
@@ -1075,6 +1103,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertAllocStmt:                        q.insertAllocStmt,
 		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
 		insertBoxStmt:                          q.insertBoxStmt,
+		insertBoxIPShardStmt:                   q.insertBoxIPShardStmt,
 		insertDeletedBoxStmt:                   q.insertDeletedBoxStmt,
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
 		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
@@ -1084,6 +1113,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
 		insertTagResolutionWithMetadataStmt:    q.insertTagResolutionWithMetadataStmt,
 		insertUserStmt:                         q.insertUserStmt,
+		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,
 		sSHKeyForBoxNamedStmt:                  q.sSHKeyForBoxNamedStmt,
 		updateAuthCookieLastUsedStmt:           q.updateAuthCookieLastUsedStmt,

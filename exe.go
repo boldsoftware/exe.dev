@@ -1217,7 +1217,11 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 		return 0, fmt.Errorf("no IP shards available for user %s", userID)
 	}
 
-	if err := queries.InsertBoxIPShard(ctx, int64(boxID), userID, int64(assigned)); err != nil {
+	if err := queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
+		BoxID:   int64(boxID),
+		UserID:  userID,
+		IPShard: int64(assigned),
+	}); err != nil {
 		return 0, fmt.Errorf("failed to assign IP shard for box %d: %w", boxID, err)
 	}
 	return assigned, nil
