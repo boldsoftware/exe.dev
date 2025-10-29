@@ -62,7 +62,7 @@ func shellQuoteCommand(args []string) string {
 // New creates a new SSH connection pool
 func New() *Pool {
 	// Create a unique temporary directory for control sockets
-	baseDir, err := os.MkdirTemp("", "exe-ssh-control-")
+	baseDir, err := os.MkdirTemp("/tmp", "exe-ssh-control-")
 	if err != nil {
 		panic(fmt.Errorf("failed to create SSH control temp dir: %w", err))
 	}
@@ -178,6 +178,7 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 	// Start the master connection in the background
 	if err := masterCmd.Start(); err != nil {
 		cancel()
+		slog.Error("[SSH-POOL] Failed to start SSH master connection", "host", host, "error", err)
 		return nil, fmt.Errorf("failed to start SSH master connection to %s: %w", host, err)
 	}
 

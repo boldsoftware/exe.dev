@@ -90,6 +90,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	// Verify Kata runtime is available on all hosts
+	slog.Info("Verifying Kata runtime availability on container hosts")
 	for _, host := range config.ContainerdAddresses {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		if err := manager.verifyKataRuntime(ctx, host); err != nil {
@@ -100,6 +101,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	// Get and cache the host architecture once (it never changes)
+	slog.Info("Getting host architecture on first container host")
 	if len(config.ContainerdAddresses) > 0 {
 		arch, err := manager.getHostArch(context.Background(), config.ContainerdAddresses[0])
 		if err != nil {
@@ -121,6 +123,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 	}
 
 	// Discover existing containers on all hosts with timeout
+	slog.Info("Discovering existing containers on container hosts")
 	for _, host := range config.ContainerdAddresses {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := manager.discoverContainers(ctx, host); err != nil {
@@ -128,6 +131,8 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		}
 		cancel()
 	}
+
+	slog.Info("Discovering existing containers on container hosts")
 
 	return manager, nil
 }
