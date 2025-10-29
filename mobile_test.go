@@ -10,7 +10,7 @@ import (
 )
 
 func TestMobileHostnameCheck(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Test hostname availability check
 	reqBody := `{"hostname": "test-hostname"}`
@@ -47,7 +47,7 @@ func TestMobileHostnameCheck(t *testing.T) {
 }
 
 func TestMobileVMListUnauthorized(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Test VM list without authentication
 	req := httptest.NewRequest("GET", "/m/home", nil)
@@ -67,7 +67,7 @@ func TestMobileVMListUnauthorized(t *testing.T) {
 }
 
 func TestMobileInvalidHostname(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Test invalid hostname check
 	reqBody := `{"hostname": "a"}`
@@ -101,7 +101,7 @@ func TestMobileInvalidHostname(t *testing.T) {
 }
 
 func TestMobileInvalidEmail(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Test invalid email
 	form := url.Values{}

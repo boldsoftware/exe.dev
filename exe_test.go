@@ -54,7 +54,7 @@ func TestEmailValidation(t *testing.T) {
 // TestEmailVerificationRequiresPOST tests that email verification requires POST confirmation
 func TestEmailVerificationRequiresPOST(t *testing.T) {
 	// Create server
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Create a test user
 	email := "test@example.com"
@@ -138,7 +138,7 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 
 // TestMetricsEndpoint tests that the /metrics endpoint returns Prometheus metrics
 func TestMetricsEndpoint(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Use httptest.Server for testing
 	testServer := httptest.NewServer(server)
@@ -195,7 +195,7 @@ func TestMetricsEndpoint(t *testing.T) {
 
 // TestHTTPMetricsInstrumentation tests that HTTP requests are being instrumented
 func TestHTTPMetricsInstrumentation(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Use httptest.Server for testing
 	testServer := httptest.NewServer(server)
@@ -248,7 +248,7 @@ func (s *Server) createTestBox(t *testing.T, userID, allocID, name, containerID,
 }
 
 func TestSSHIdentityKeyForBox(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Create a test user and alloc
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
@@ -423,7 +423,7 @@ func TestMetricsEndpointProtection(t *testing.T) {
 
 // TestWebAuthFlowCreatesNewUser tests that the web auth flow creates a new user if they don't exist
 func TestWebAuthFlowCreatesNewUser(t *testing.T) {
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	email := "newuser@example.com"
 

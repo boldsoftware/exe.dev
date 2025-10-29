@@ -7,9 +7,9 @@ import (
 	"exe.dev/testutil"
 )
 
-func NewTestServer(t *testing.T, dockerhosts ...string) *Server {
+func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	s := newUnstartedServer(t, dockerhosts...)
+	s := newUnstartedServer(t)
 	s.startAndAwaitReady()
 	return s
 }
@@ -19,10 +19,10 @@ func (s *Server) startAndAwaitReady() {
 	s.ready.Wait()
 }
 
-func newUnstartedServer(t testing.TB, dockerhosts ...string) *Server {
+func newUnstartedServer(t testing.TB) *Server {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
-	s, err := NewServer(testutil.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "", dockerhosts)
+	s, err := NewServer(testutil.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "", nil)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

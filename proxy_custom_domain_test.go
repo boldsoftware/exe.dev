@@ -24,7 +24,7 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 	defer slog.SetDefault(slog0)
 
 	t.Parallel()
-	server := NewTestServer(t)
+	server := newTestServer(t)
 	server.magicSecrets = make(map[string]*MagicSecret)
 
 	// Create test user and box

@@ -21,7 +21,7 @@ import (
 
 func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	// Create exe.Server for full integration
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Create a test user and alloc
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"

@@ -34,7 +34,7 @@ func TestTerminalRouting(t *testing.T) {
 
 func TestTerminalStaticFiles(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Create a test user and auth them
 	userID := "test-user-id"

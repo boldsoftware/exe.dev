@@ -65,7 +65,7 @@ func createTestRequestForServer(method, url, host string, server *Server) *http.
 
 func TestProxyLogoutFlow(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
+	server := newTestServer(t)
 	server.magicSecrets = make(map[string]*MagicSecret)
 
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest..."

@@ -44,7 +44,7 @@ func TestProxyHostnameParsing(t *testing.T) {
 
 func TestBoxCreationWithRoute(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	// Set up test user and alloc
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
@@ -103,7 +103,7 @@ func TestBoxCreationWithRoute(t *testing.T) {
 
 func TestHandleProxyRequest(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
+	server := newTestServer(t)
 	mainDomain := server.getMainDomain()
 
 	// Create test user and alloc

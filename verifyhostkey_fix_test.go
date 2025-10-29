@@ -38,7 +38,7 @@ func generateTestHostKey(t *testing.T, keyName string) []byte {
 func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 	t.Parallel()
 
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	piper := NewPiperPlugin(server, 0)
 	mockConn := mockConnMetadata{
@@ -93,7 +93,7 @@ func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 // TestVerifyHostKeyAcceptsKnownKeys verifies that stored host keys are properly validated
 func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	piper := NewPiperPlugin(server, 0)
 	testMachineName := "test-machine"
@@ -126,7 +126,7 @@ func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 // TestVerifyHostKeyExpiration verifies that expired host keys are rejected
 func TestVerifyHostKeyExpiration(t *testing.T) {
 	t.Parallel()
-	server := NewTestServer(t)
+	server := newTestServer(t)
 
 	piper := NewPiperPlugin(server, 0)
 	testMachineName := "expire-test-machine"
