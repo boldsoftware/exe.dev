@@ -327,32 +327,6 @@ func (m *NerdctlManager) getGatewayIP(ctx context.Context, host string) (string,
 	return ip, nil
 }
 
-// supportsAnnotations checks whether nerdctl run supports --annotation on the given host.
-func (m *NerdctlManager) supportsAnnotations(ctx context.Context, host string) bool {
-	host = strings.TrimPrefix(host, "ssh://")
-	m.mu.RLock()
-	v, ok := m.annSupport[host]
-	m.mu.RUnlock()
-	if ok {
-		return v
-	}
-	// Probe once: nerdctl run --help and look for "--annotation"
-	cmd := m.sshPool.ExecCommand(ctx, host, "sudo", "nerdctl", "run", "--help")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// Assume not supported on error; cache false to avoid repeated probes
-		m.mu.Lock()
-		m.annSupport[host] = false
-		m.mu.Unlock()
-		return false
-	}
-	supported := strings.Contains(string(out), "--annotation")
-	m.mu.Lock()
-	m.annSupport[host] = supported
-	m.mu.Unlock()
-	return supported
-}
-
 // ExecSSHCommand executes a command via SSH on a remote host
 func (m *NerdctlManager) ExecSSHCommand(ctx context.Context, host string, args ...string) *exec.Cmd {
 	// Parse SSH format if present
@@ -996,18 +970,6 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		"--tmpfs", "/tmp",
 		"--tmpfs", "/sys/fs/cgroup:rw",
 	)
-	// Optional: add OCI/Kata annotations if supported by nerdctl.
-	// Prefer unified CLH restore annotation when a snapshot is present on host.
-	if m.supportsAnnotations(ctx, host) {
-		ann := make(map[string]string)
-		// ann["io.katacontainers.config.hypervisor.kernel_params"] = "agent.hotplug_timeout=10s"
-		// ann["io.katacontainers.config.hypervisor.default_vcpus"] = "2"
-		// ann["io.katacontainers.config.hypervisor.default_memory"] = "4096"
-
-		for k, v := range ann {
-			runArgs = append(runArgs, "--annotation", fmt.Sprintf("%s=%s", k, v))
-		}
-	}
 
 	// Prepare container-specific /exe.dev directory with SSH keys
 	containerExeDevPath := prep.containerExeDevPath

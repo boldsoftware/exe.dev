@@ -395,20 +395,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 			config.ExedListeningPort = httpLn.tcp.Port
 		}
 
-		// Optional: load OCI/Kata annotations from environment as JSON
-		// Example: EXE_KATA_ANNOTATIONS='{"io.katacontainers.config.hypervisor.restore_snapshot":"/var/lib/cloud-hypervisor/snapshots/base.snapshot","io.katacontainers.config.hypervisor.restore_memory":"/var/lib/cloud-hypervisor/snapshots/base.mem"}'
-		if annJSON := os.Getenv("EXE_KATA_ANNOTATIONS"); annJSON != "" {
-			var ann map[string]string
-			if err := json.Unmarshal([]byte(annJSON), &ann); err != nil {
-				db.Close()
-				return nil, fmt.Errorf("invalid EXE_KATA_ANNOTATIONS JSON: %w", err)
-			}
-			config.KataAnnotations = ann
-			slog.Info("Kata annotations configured", "count", len(ann))
-		} else {
-			slog.Debug("No Kata annotations configured (EXE_KATA_ANNOTATIONS is empty)")
-		}
-
 		var managerErr error
 		containerManager, managerErr = container.NewNerdctlManager(config)
 		if managerErr != nil {

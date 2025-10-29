@@ -18,11 +18,6 @@ type Config struct {
 	DefaultMemoryRequest string `json:"default_memory_request"`
 	DefaultStorageSize   string `json:"default_storage_size"`
 
-	// Optional OCI/Kata annotations to attach to created containers.
-	// Keys and values are passed verbatim. Use this to enable Kata/CLH
-	// snapshot-restore or other runtime-specific behaviors when supported.
-	KataAnnotations map[string]string `json:"kata_annotations"`
-
 	// DataSubdir is the subdirectory under /data for container isolation
 	DataSubdir string `json:"data_subdir"`
 
