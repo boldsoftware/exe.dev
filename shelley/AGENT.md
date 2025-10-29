@@ -17,3 +17,4 @@
    input.dispatchEvent(new Event('input', { bubbles: true }));
    ```
    Simply setting `input.value = '...'` won't work because React won't detect the change.
+9. Commit your changes before finishing your turn.

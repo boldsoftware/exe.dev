@@ -38,13 +38,6 @@ func NewPredictableService() *PredictableService {
 	return svc
 }
 
-// SetResponseDelay configures an artificial delay before returning responses. Useful for testing.
-func (s *PredictableService) SetResponseDelay(delay time.Duration) {
-	s.mu.Lock()
-	s.responseDelay = delay
-	s.mu.Unlock()
-}
-
 // TokenContextWindow returns the maximum token context window size
 func (s *PredictableService) TokenContextWindow() int {
 	return s.tokenContextWindow
@@ -135,6 +128,20 @@ func (s *PredictableService) Do(ctx context.Context, req *llm.Request) (*llm.Res
 		if strings.HasPrefix(inputText, "screenshot: ") {
 			selector := strings.TrimSpace(strings.TrimPrefix(inputText, "screenshot: "))
 			return s.makeScreenshotToolResponse(selector), nil
+		}
+
+		if strings.HasPrefix(inputText, "delay: ") {
+			delayStr := strings.TrimPrefix(inputText, "delay: ")
+			delaySeconds, err := strconv.ParseFloat(delayStr, 64)
+			if err == nil && delaySeconds > 0 {
+				delayDuration := time.Duration(delaySeconds * float64(time.Second))
+				select {
+				case <-time.After(delayDuration):
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return s.makeResponse(fmt.Sprintf("Delayed for %s seconds", delayStr)), nil
 		}
 
 		// Default response for undefined inputs

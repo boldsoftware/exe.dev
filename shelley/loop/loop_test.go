@@ -197,6 +197,33 @@ func TestPredictableServiceDefaultResponse(t *testing.T) {
 	}
 }
 
+func TestPredictableServiceDelay(t *testing.T) {
+	service := NewPredictableService()
+
+	ctx := context.Background()
+	req := &llm.Request{
+		Messages: []llm.Message{
+			{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "delay: 0.1"}}},
+		},
+	}
+
+	start := time.Now()
+	resp, err := service.Do(ctx, req)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("delay test failed: %v", err)
+	}
+
+	if elapsed < 100*time.Millisecond {
+		t.Errorf("expected delay of at least 100ms, got %v", elapsed)
+	}
+
+	if resp.Content[0].Text != "Delayed for 0.1 seconds" {
+		t.Errorf("unexpected response text: %s", resp.Content[0].Text)
+	}
+}
+
 func TestLoopWithPredictableService(t *testing.T) {
 	var recordedMessages []llm.Message
 	var recordedUsages []llm.Usage
