@@ -122,7 +122,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		apt-daily-upgrade.timer \
 		apt-daily.timer \
 		plymouth-log.service && \
-	systemctl disable docker.service systemd-logind.service getty.target \
+	systemctl disable docker.service containerd.service systemd-logind.service getty.target \
 		nginx.service \
                    console-getty.service \
 		   atop.service \
