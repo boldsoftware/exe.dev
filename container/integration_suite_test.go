@@ -23,11 +23,16 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Ubuntu container with SSH + rovol checks + SSH handshake
 	t.Run("UbuntuSSHAndRovol", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ssh-%d", time.Now().UnixNano())
+		host, err := manager.SelectHost(allocID)
+		if err != nil {
+			t.Fatalf("SelectHost failed: %v", err)
+		}
 		req := &CreateContainerRequest{
 			AllocID: allocID,
 			Name:    "sshtest",
 			Image:   "ubuntu:22.04",
 			BoxID:   GenerateTestBoxID(),
+			Host:    host,
 		}
 
 		c, err := manager.CreateContainer(ctx, req)
@@ -103,12 +108,17 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	t.Run("ListContainers", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-list-%d", time.Now().UnixNano())
 		var created [](*Container)
+		host, err := manager.SelectHost(allocID)
+		if err != nil {
+			t.Fatalf("SelectHost failed: %v", err)
+		}
 		for i := 0; i < 3; i++ {
 			req := &CreateContainerRequest{
 				AllocID: allocID,
 				Name:    fmt.Sprintf("c%d", i),
 				Image:   "alpine:latest",
 				BoxID:   GenerateTestBoxID(),
+				Host:    host,
 			}
 			c, err := manager.CreateContainer(ctx, req)
 			if err != nil {
@@ -135,12 +145,17 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Start/Stop cycle
 	t.Run("StartStop", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-ss-%d", time.Now().UnixNano())
+		host, err := manager.SelectHost(allocID)
+		if err != nil {
+			t.Fatalf("SelectHost failed: %v", err)
+		}
 		req := &CreateContainerRequest{
 			AllocID:         allocID,
 			Name:            "startstop",
 			Image:           "alpine:latest",
 			CommandOverride: "sleep 3600",
 			BoxID:           GenerateTestBoxID(),
+			Host:            host,
 		}
 		c, err := manager.CreateContainer(ctx, req)
 		if err != nil {
@@ -160,11 +175,16 @@ func TestContainerIntegrationSuite(t *testing.T) {
 	// Subtest: Exec
 	t.Run("Exec", func(t *testing.T) {
 		allocID := fmt.Sprintf("suite-exec-%d", time.Now().UnixNano())
+		host, err := manager.SelectHost(allocID)
+		if err != nil {
+			t.Fatalf("SelectHost failed: %v", err)
+		}
 		req := &CreateContainerRequest{
 			AllocID: allocID,
 			Name:    "exec",
 			Image:   "alpine:latest",
 			BoxID:   GenerateTestBoxID(),
+			Host:    host,
 		}
 		c, err := manager.CreateContainer(ctx, req)
 		if err != nil {

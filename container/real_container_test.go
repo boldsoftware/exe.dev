@@ -32,8 +32,14 @@ func TestRealContainerSSHSetup(t *testing.T) {
 	// Create container request
 	ctx := t.Context()
 
+	allocID := "test-alloc"
+	host, err := manager.SelectHost(allocID)
+	if err != nil {
+		t.Fatalf("SelectHost failed: %v", err)
+	}
+
 	req := &CreateContainerRequest{
-		AllocID:       "test-alloc",
+		AllocID:       allocID,
 		Name:          "ssh-test-container",
 		Image:         "ubuntu:22.04",
 		Size:          "small",
@@ -42,6 +48,7 @@ func TestRealContainerSSHSetup(t *testing.T) {
 		StorageSize:   "1Gi",
 		Ephemeral:     false, // Keep it around long enough to check
 		BoxID:         GenerateTestBoxID(),
+		Host:          host,
 	}
 
 	container, err := manager.CreateContainer(ctx, req)

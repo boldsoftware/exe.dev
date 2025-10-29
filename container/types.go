@@ -138,6 +138,7 @@ type CreateContainerRequest struct {
 	BoxID      int    `json:"box_id"`               // Box ID for persistent disk path
 	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"
 	Dockerfile string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
+	Host       string `json:"host,omitempty"`       // Target container host (required)
 
 	// Resource configuration
 	Size          string `json:"size,omitempty"`           // T-shirt size: micro, small, medium, large, xlarge

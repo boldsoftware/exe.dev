@@ -554,37 +554,42 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 // are is going to require manual experimentation.
 const perHostCreateLimit = 2
 
-// selectHost selects a host from available hosts (round-robin for now)
-func (m *NerdctlManager) selectHost(ctx context.Context, allocID string) (ctrHost string, releaseFn func(), err error) {
-	// For now, just return the first host
-	//
+// SelectHost selects a host from available hosts (round-robin for now)
+func (m *NerdctlManager) SelectHost(allocID string) (string, error) {
+	if len(m.hosts) == 0 {
+		return "", fmt.Errorf("no container hosts configured")
+	}
+
 	// TODO: it is *critical* we have a stable mapping of allocID -> hostname.
 	// So much so, that if the host disappears, the allocID should continue
 	// to map to the missing host.
 	_ = allocID // TODO
-	ctrHost = m.hosts[0]
+	return m.hosts[0], nil
+}
+
+func (m *NerdctlManager) acquireCreateSlot(ctx context.Context, host string) (func(), error) {
+	if host == "" {
+		return nil, fmt.Errorf("acquireCreateSlot: empty host")
+	}
 
 	m.perHostCreateLimit.mu.Lock()
 	if m.perHostCreateLimit.m == nil {
 		m.perHostCreateLimit.m = make(map[string]chan struct{})
 	}
-	ch := m.perHostCreateLimit.m[ctrHost]
+	ch := m.perHostCreateLimit.m[host]
 	if ch == nil {
 		ch = make(chan struct{}, perHostCreateLimit)
-		m.perHostCreateLimit.m[ctrHost] = ch
+		m.perHostCreateLimit.m[host] = ch
 	}
 	m.perHostCreateLimit.mu.Unlock()
 
 	select {
 	case ch <- struct{}{}:
+		releaseFn := func() { <-ch }
+		return releaseFn, nil
 	case <-ctx.Done():
-		return "", nil, fmt.Errorf("selectHost: %w", ctx.Err())
+		return nil, fmt.Errorf("acquireCreateSlot: %w", ctx.Err())
 	}
-
-	releaseFn = func() {
-		<-ch
-	}
-	return ctrHost, releaseFn, nil
 }
 
 // CreateAlloc is now a no-op since we use a single default bridge network
@@ -813,8 +818,12 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		return nil, fmt.Errorf("BoxID is required and cannot be 0")
 	}
 
-	// Select a host
-	host, releaseFn, err := m.selectHost(ctx, req.AllocID)
+	// Use the host provided for this allocation
+	host := req.Host
+	if host == "" {
+		return nil, fmt.Errorf("host is required for container creation")
+	}
+	releaseFn, err := m.acquireCreateSlot(ctx, host)
 	if err != nil {
 		return nil, err
 	}

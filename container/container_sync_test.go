@@ -35,11 +35,17 @@ func TestContainerSync(t *testing.T) {
 	}()
 
 	// Test 1: Create a container
+	host, err := manager.SelectHost(allocID)
+	if err != nil {
+		t.Fatalf("SelectHost failed: %v", err)
+	}
+
 	req := &CreateContainerRequest{
 		AllocID: allocID,
 		Name:    "synctest",
 		Image:   "ubuntu:latest",
 		BoxID:   GenerateTestBoxID(),
+		Host:    host,
 	}
 
 	container, err := manager.CreateContainer(ctx, req)

@@ -330,12 +330,19 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
 
+	runtimeHost, err := ss.server.containerManager.SelectHost(cc.Alloc.ID)
+	if err != nil {
+		cc.Write("\033[1;31mError: Failed to select container host: %v\033[0m\r\n", err)
+		return fmt.Errorf("failed to select container host: %w", err)
+	}
+
 	// Create container request with progress callback
 	req := &container.CreateContainerRequest{
 		AllocID:         cc.Alloc.ID,
 		Name:            boxName,
 		BoxID:           boxID,
 		Image:           image,
+		Host:            runtimeHost,
 		Size:            size,
 		CPURequest:      sizePreset.CPURequest,
 		MemoryRequest:   sizePreset.MemoryRequest,

@@ -1619,6 +1619,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 						Name:    box.Name,
 						BoxID:   box.ID,
 						Image:   box.Image,
+						Host:    host,
 						// We don't have size info stored, use default
 						Size:            "small",
 						ExistingSSHKeys: existingSSHKeys,
@@ -1965,7 +1966,10 @@ func (s *Server) createAllocForUser(ctx context.Context, queries *exedb.Queries,
 		return "", fmt.Errorf("failed to generate alloc ID: %w", err)
 	}
 
-	ctrhost := s.selectCtrhostForNewAlloc()
+	ctrhost, err := s.selectCtrhostForNewAlloc(allocID)
+	if err != nil {
+		return "", err
+	}
 
 	if err := queries.InsertAlloc(ctx, exedb.InsertAllocParams{
 		AllocID:   allocID,
@@ -2055,35 +2059,44 @@ func (s *Server) getUserAlloc(ctx context.Context, userID string) (*exedb.Alloc,
 }
 
 // selectCtrhostForNewAlloc selects the best container host for a new alloc
-func (s *Server) selectCtrhostForNewAlloc() string {
-	// Get the list of available hosts from the container manager
-	if s.containerManager != nil {
-		hosts := s.containerManager.GetHosts()
-		if len(hosts) > 0 {
-			// Use the first available host for now.
-			chosen := hosts[0]
+func (s *Server) selectCtrhostForNewAlloc(allocID string) (string, error) {
+	if s.containerManager == nil {
+		// This is a right mess.
+		// Our container manager is too expensive to spin up for a bunch of unit tests, so we don't.
+		// But then we end up with a bunch of special cases to allow other code to work without it.
+		// Co-pilot keeps feeding me ghost text about how we should use mocks and/or dependency injection.
+		// Codex and Claude are keen to as well.
+		// I refuse. This is a symptom of bad (missing) layering, and extra abstractions will not improve matters.
+		// TODO: find a path out of this misery.
+		if s.devMode == "" {
+			// should be impossible
+			return "", fmt.Errorf("container manager not configured")
+		}
+		// Unit tests, just return obviously fake host.
+		return "fake_ctrhost", nil
+	}
 
-			// In dev/test, store a direct TCP/IP dial address so piper/proxy can reach
-			// the Lima VM without relying on SSH alias DNS.
-			if s.devMode != "" {
-				// Strip ssh:// prefix for alias resolution
-				alias := strings.TrimPrefix(chosen, "ssh://")
-				if alias == "" {
-					alias = chosen
-				}
-				if dial := ctrhosttest.DetectDialAddr(); dial != "" {
-					return dial
-				}
-				// As a fallback, try resolving this alias specifically
-				if ip := ctrhosttest.ResolveHostFromSSHConfig(alias); ip != "" {
-					return "tcp://" + ip
-				}
-			}
-			return chosen
+	chosen, err := s.containerManager.SelectHost(allocID)
+	if err != nil {
+		return "", fmt.Errorf("failed to select container host: %w", err)
+	}
+
+	// In dev/test, store a direct TCP/IP dial address so piper/proxy can reach
+	// the Lima VM without relying on SSH alias DNS.
+	if s.devMode != "" {
+		alias := strings.TrimPrefix(chosen, "ssh://")
+		if alias == "" {
+			alias = chosen
+		}
+		if dial := ctrhosttest.DetectDialAddr(); dial != "" {
+			return dial, nil
+		}
+		if ip := ctrhosttest.ResolveHostFromSSHConfig(alias); ip != "" {
+			return "tcp://" + ip, nil
 		}
 	}
-	// Fallback to "local" if no container manager or no hosts
-	return "local"
+
+	return chosen, nil
 }
 
 // generateAllocID generates a unique allocation ID
