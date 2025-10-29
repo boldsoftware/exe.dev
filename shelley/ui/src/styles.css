@@ -6,15 +6,28 @@
 body {
   margin: 0;
   font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
-  line-height: 1.5;
+    "SF Mono",
+    Monaco,
+    "Cascadia Code",
+    "Roboto Mono",
+    Consolas,
+    "Courier New",
+    monospace;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
 }
 
 /* CSS Variables */
 :root {
+  --font-mono:
+    "SF Mono",
+    Monaco,
+    "Cascadia Code",
+    "Roboto Mono",
+    Consolas,
+    "Courier New",
+    monospace;
   --primary: #2563eb;
   --primary-dark: #1d4ed8;
   --bg-base: #ffffff;
@@ -142,14 +155,17 @@ body {
 
 .text-sm {
   font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .text-xs {
   font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .text-lg {
   font-size: 1.125rem;
+  line-height: 1.6;
 }
 
 .font-medium {
@@ -234,8 +250,8 @@ button {
 }
 
 .btn {
-  padding: 0.5rem;
-  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
   transition: background-color 0.2s;
 }
 
@@ -252,9 +268,10 @@ button {
   padding: 0.5rem 1rem;
   background: var(--primary);
   color: white;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   font-weight: 500;
   transition: background-color 0.2s;
+  letter-spacing: -0.01em;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -310,11 +327,12 @@ button {
 }
 
 .header-title {
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -0.02em;
 }
 
 .header-actions {
@@ -719,8 +737,7 @@ button {
 }
 
 .tool-command {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -793,8 +810,7 @@ button {
 }
 
 .tool-code {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   background: var(--bg-base);
   border: 1px solid var(--border);
@@ -862,8 +878,7 @@ button {
 }
 
 .bash-tool-command {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -936,8 +951,7 @@ button {
 }
 
 .bash-tool-code {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   background: var(--bg-base);
   border: 1px solid var(--border);
@@ -1004,8 +1018,7 @@ button {
 }
 
 .patch-tool-filename {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -1079,8 +1092,7 @@ button {
 }
 
 .patch-tool-diff {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   background: var(--bg-base);
   border: 1px solid var(--border);
@@ -1128,8 +1140,7 @@ button {
 }
 
 .patch-tool-error-message {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   background: var(--error-bg);
   border: 1px solid var(--error-border);
@@ -1190,8 +1201,7 @@ button {
 }
 
 .screenshot-tool-filename {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -1281,8 +1291,7 @@ button {
 }
 
 .screenshot-tool-error-message {
-  font-family:
-    "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   background: var(--error-bg);
   border: 1px solid var(--error-border);
@@ -1316,13 +1325,13 @@ button {
   max-height: 200px;
   padding: 0.625rem 1.25rem;
   border: 1.5px solid var(--border);
-  border-radius: 24px;
+  border-radius: 4px;
   resize: none;
   background: var(--bg-base);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 1rem;
-  line-height: 1.5;
+  font-size: 0.875rem;
+  line-height: 1.6;
   transition:
     border-color 0.2s,
     box-shadow 0.2s;
