@@ -812,11 +812,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	}
 	sshPort := 10000 + offset
 
-	// Build run command with nydus snapshotter
 	runArgs := []string{
 		"--snapshotter", "nydus",
 		"run", "-d",
-		"--runtime", "io.containerd.kata.v2", // Use Kata for security
+		"--runtime", "io.containerd.kata.v2",
 		"--name", containerName,
 		"--network", networkName,
 	}
@@ -826,6 +825,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// Add remaining args
 	runArgs = append(runArgs,
+		// Note that unlike docker using port 0 doesn't work with nerdctl
 		"--publish", fmt.Sprintf("%d:22", sshPort), // Publish SSH port
 		// hostname matches the box name. We always do ".exe.dev", which doesn't
 		// quiet match development's .localhost proxy mapping.
@@ -1077,6 +1077,7 @@ func (m *NerdctlManager) applyPortIsolation(ctx context.Context, host, container
 }
 
 // waitForContainerRunning waits for a container to reach "running" status and returns its IP address
+// Oddly, network isolation is also applied here, so this is a required step!
 func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, containerID, networkName string, cleanupFunc func()) (string, error) {
 	startTime := time.Now()
 	const maxWaitTime = 30 * time.Second
@@ -1187,9 +1188,7 @@ func (m *NerdctlManager) waitForContainerRunning(ctx context.Context, host, cont
 
 // getHostArch gets the architecture of the host
 func (m *NerdctlManager) getHostArch(ctx context.Context, host string) (string, error) {
-	// Use SSH pool for better performance
 	cmd := m.sshPool.ExecCommand(ctx, host, "uname", "-m")
-
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get architecture: %w", err)
@@ -1379,8 +1378,7 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 		}
 	}
 
-	// TODO: Clean up network if this was the last container in the allocation
-	// For now, leave networks up to avoid disrupting other containers
+	// There's only one network (I believe), so no need to clean that up.
 
 	return nil
 }
@@ -1503,8 +1501,10 @@ func (m *NerdctlManager) listContainersWithFilterOnHost(ctx context.Context, hos
 	return containers, nil
 }
 
-// ExecuteInContainer executes a command inside a container
-func (m *NerdctlManager) ExecuteInContainer(ctx context.Context, allocID, containerID string, command []string, stdin io.Reader, stdout, stderr io.Writer) error {
+// executeInContainer executes a command inside a container
+// Note: we've had issues with redirecting stdin with nerdctl exec
+// Note: this only seems to be used in tests
+func (m *NerdctlManager) executeInContainer(ctx context.Context, allocID, containerID string, command []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	container, err := m.GetContainer(ctx, allocID, containerID)
 	if err != nil {
 		return err

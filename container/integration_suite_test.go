@@ -93,12 +93,12 @@ func TestContainerIntegrationSuite(t *testing.T) {
 
 		// Verify /exe.dev mounted and is read-only
 		var listOut strings.Builder
-		if err := manager.ExecuteInContainer(ctx, req.AllocID, c.ID, []string{"ls", "-la", "/exe.dev"}, nil, &listOut, nil); err != nil {
+		if err := manager.executeInContainer(ctx, req.AllocID, c.ID, []string{"ls", "-la", "/exe.dev"}, nil, &listOut, nil); err != nil {
 			t.Errorf("Listing /exe.dev failed: %v", err)
 		}
 		// Try write
 		var writeOut strings.Builder
-		_ = manager.ExecuteInContainer(ctx, req.AllocID, c.ID, []string{"sh", "-c", "touch /exe.dev/test 2>&1"}, nil, &writeOut, nil)
+		_ = manager.executeInContainer(ctx, req.AllocID, c.ID, []string{"sh", "-c", "touch /exe.dev/test 2>&1"}, nil, &writeOut, nil)
 		if !strings.Contains(writeOut.String(), "Read-only file system") {
 			t.Logf("/exe.dev write attempt output: %s", writeOut.String())
 		}
@@ -192,7 +192,7 @@ func TestContainerIntegrationSuite(t *testing.T) {
 		}
 		defer CleanupContainer(t, manager, allocID, c.ID)
 		var stdout strings.Builder
-		if err := manager.ExecuteInContainer(ctx, allocID, c.ID, []string{"echo", "hello"}, nil, &stdout, nil); err != nil {
+		if err := manager.executeInContainer(ctx, allocID, c.ID, []string{"echo", "hello"}, nil, &stdout, nil); err != nil {
 			t.Fatalf("Exec failed: %v", err)
 		}
 		if strings.TrimSpace(stdout.String()) != "hello" {
