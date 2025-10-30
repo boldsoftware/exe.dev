@@ -3,7 +3,6 @@ package container
 import (
 	"bufio"
 	"context"
-	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -88,17 +87,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		hosts:          config.ContainerdAddresses,
 		sshPool:        sshpool.New(),
 		gatewayIPCache: make(map[string]string),
-	}
-
-	// Verify Kata runtime is available on all hosts
-	slog.Info("Verifying Kata runtime availability on container hosts")
-	for _, host := range config.ContainerdAddresses {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		if err := manager.verifyKataRuntime(ctx, host); err != nil {
-			cancel()
-			return nil, fmt.Errorf("CRITICAL: Kata runtime not available on host %s: %w", host, err)
-		}
-		cancel()
 	}
 
 	// Get and cache the host architecture once (it never changes)
@@ -351,98 +339,6 @@ func isHexString(s string) bool {
 		return false
 	}
 	return true
-}
-
-// verifyKataRuntime verifies that Kata runtime is available and properly configured
-func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) error {
-	// First, do a quick check if kata-runtime binary exists
-	// This is much faster than running a container
-	kataCheckCmd := m.ExecSSHCommand(ctx, host, "kata-runtime", "--version")
-
-	kataOutput, kataErr := kataCheckCmd.Output()
-	if kataErr == nil {
-		// Kata binary exists, now do a quick runtime check
-		// Just check if the runtime is registered with containerd
-		checkArgs := []string{"info", "--format", "json"}
-		infoCmd := m.execNerdctl(ctx, host, checkArgs...)
-		infoOutput, infoErr := infoCmd.Output()
-
-		if infoErr == nil && strings.Contains(string(infoOutput), "kata") {
-			slog.Info("Kata runtime verified via quick check", "host", host, "version", strings.TrimSpace(string(kataOutput)))
-			return nil
-		}
-	}
-
-	// Fast path: verify via shim binary to avoid booting a VM
-	shimCmd := m.ExecSSHCommand(ctx, host, "containerd-shim-kata-v2", "-v")
-	if _, shimErr := shimCmd.Output(); shimErr == nil {
-		slog.Info("Kata runtime verified via shim binary", "host", host)
-		return nil
-	}
-
-	// Fall back to the full container test if quick check failed or was inconclusive
-	// The most reliable way to check if Kata is available is to try using it
-	// nerdctl info doesn't reliably report available runtimes
-
-	// Try to run a simple test container with Kata runtime
-	testContainerName := fmt.Sprintf("kata-test-%d", time.Now().UnixNano())
-
-	// Build the test command with nydus snapshotter
-	// Use --network none to avoid CNI issues during verification
-	args := []string{"--snapshotter", "nydus", "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", testContainerName, "alpine:latest", "echo", "kata-test"}
-
-	// Best-effort cleanup in case a previous run left the name behind
-	_ = m.execNerdctl(ctx, host, "rm", "-f", testContainerName).Run()
-
-	testCmd := m.execNerdctl(ctx, host, args...)
-
-	output, err := testCmd.CombinedOutput()
-	outputStr := string(output)
-
-	// Check if output contains our test string FIRST - if the test succeeded, we don't care about exit code
-	// The kata runtime sometimes exits with non-zero codes due to cleanup messages like "forward signal child exited"
-	// but the container actually ran successfully
-	if strings.Contains(outputStr, "kata-test") {
-		slog.Info("Kata runtime successfully verified", "host", host)
-		return nil
-	}
-
-	// If we got here, the test didn't produce the expected output
-	if err != nil {
-		// Check if this is a transient name collision; retry once with a random suffix
-		if strings.Contains(outputStr, "name \"") && strings.Contains(outputStr, "is already used") {
-			// Retry with a unique name
-			retryBytes := make([]byte, 4)
-			_, _ = cryptorand.Read(retryBytes)
-			retryName := fmt.Sprintf("%s-%s", testContainerName, hex.EncodeToString(retryBytes))
-			_ = m.execNerdctl(ctx, host, "rm", "-f", retryName).Run()
-			retryArgs := []string{"--snapshotter", "nydus", "run", "--runtime", "io.containerd.kata.v2", "--rm", "--network", "none", "--name", retryName, "alpine:latest", "echo", "kata-test"}
-			retryCmd := m.execNerdctl(ctx, host, retryArgs...)
-			if rOut, rErr := retryCmd.CombinedOutput(); rErr == nil || strings.Contains(string(rOut), "kata-test") {
-				if strings.Contains(string(rOut), "kata-test") {
-					slog.Info("Kata runtime successfully verified (after name collision retry)", "host", host)
-					return nil
-				}
-			}
-			// Fall through to error handling if retry did not succeed
-		}
-
-		// Check if it's because Kata isn't available
-		if strings.Contains(outputStr, "not found") || strings.Contains(outputStr, "unknown runtime") ||
-			strings.Contains(outputStr, "kata") || strings.Contains(outputStr, "runtime") {
-			// We already checked kata-runtime binary above, so just report the error
-			if kataErr != nil {
-				return fmt.Errorf("Kata runtime not available: nerdctl test failed (%v) and kata-runtime binary check failed (%v)", err, kataErr)
-			}
-			// kata-runtime exists but nerdctl can't use it
-			return fmt.Errorf("Kata runtime binary found but not usable via nerdctl: %v: %s", err, outputStr)
-		}
-		// Some other error
-		return fmt.Errorf("failed to verify Kata runtime: %w: %s", err, outputStr)
-	}
-
-	// Got no error but also no expected output
-	return fmt.Errorf("Kata runtime test container didn't produce expected output: %s", outputStr)
 }
 
 // discoverContainers discovers existing containers on a host
