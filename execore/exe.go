@@ -39,7 +39,6 @@ import (
 	"exe.dev/ghuser"
 	"exe.dev/route53"
 	"exe.dev/sqlite"
-	"exe.dev/sshbuf"
 	"exe.dev/sshpool2"
 	"exe.dev/tagresolver"
 	templatespkg "exe.dev/templates"
@@ -132,16 +131,6 @@ type MagicSecret struct {
 	CreatedAt   time.Time
 }
 
-// UserSession represents an active SSH user session
-type UserSession struct {
-	UserID    string
-	Email     string
-	TeamName  string
-	IsAdmin   bool
-	PublicKey string
-	CreatedAt time.Time
-}
-
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
 	httpLn     *listener
@@ -195,9 +184,6 @@ type Server struct {
 	magicSecrets         map[string]*MagicSecret // secret -> magic secret with expiration
 	creationStreamsMu    sync.Mutex
 	creationStreams      map[creationStreamKey]*CreationStream // (userID, hostname) -> creation stream
-
-	// User sessions for tracking authenticated users
-	sessions map[*sshbuf.Channel]*UserSession // channel -> user session
 
 	// GitHub keys -> GitHub user info client
 	// For expedited onboarding for existing GitHub users who show up with their GitHub SSH key
@@ -459,7 +445,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
 		creationStreams:    make(map[creationStreamKey]*CreationStream),
-		sessions:           make(map[*sshbuf.Channel]*UserSession),
 		githubUser:         ghu,
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,
