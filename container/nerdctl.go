@@ -371,24 +371,19 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 		}
 
 		// Decode Labels which may be a map or a string of comma-separated key=value pairs
+		// TODO: nerdctl seems to just concatenate labels with commas without appropriate escaping.
 		labels := map[string]string{}
 		if len(containerInfo.Labels) > 0 && string(containerInfo.Labels) != "null" {
-			// Try map[string]string first
-			var m map[string]string
-			if err := json.Unmarshal(containerInfo.Labels, &m); err == nil {
-				labels = m
-			} else {
-				// Try string form: "k=v,k2=v2"
-				var s string
-				if err := json.Unmarshal(containerInfo.Labels, &s); err == nil {
-					s = strings.TrimSpace(s)
-					if s != "" {
-						parts := strings.Split(s, ",")
-						for _, p := range parts {
-							kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
-							if len(kv) == 2 {
-								labels[kv[0]] = kv[1]
-							}
+			// Try string form: "k=v,k2=v2"
+			var s string
+			if err := json.Unmarshal(containerInfo.Labels, &s); err == nil {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					parts := strings.Split(s, ",")
+					for _, p := range parts {
+						kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
+						if len(kv) == 2 {
+							labels[kv[0]] = kv[1]
 						}
 					}
 				}
@@ -399,10 +394,6 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 		if labels["managed_by"] != "exe" {
 			continue
 		}
-
-		// Note: Runtime information is not available via nerdctl inspect
-		// We enforce Kata runtime on all new containers created by this manager
-		// Existing containers discovered here may have been created with different settings
 	}
 
 	return nil
