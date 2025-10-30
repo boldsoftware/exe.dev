@@ -4,7 +4,6 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"runtime"
 )
 
 //go:embed rovol/**
@@ -24,11 +23,6 @@ func GetRovolFS(arch string) (fs.FS, error) {
 
 	// Return a sub-filesystem for the specific architecture
 	return fs.Sub(rovolFS, fmt.Sprintf("rovol/%s", arch))
-}
-
-// GetCurrentArchRovolFS returns the embedded filesystem for the current architecture
-func GetCurrentArchRovolFS() (fs.FS, error) {
-	return GetRovolFS(runtime.GOARCH)
 }
 
 // GetGenericRovolFS returns the generic, architecture-agnostic subtree
