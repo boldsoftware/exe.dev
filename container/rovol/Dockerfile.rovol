@@ -119,7 +119,7 @@ RUN make defconfig && \
 
 
 # Build dtach using our shared script
-COPY build-dtach.sh /build-dtach.sh
+COPY container/rovol/build-dtach.sh /build-dtach.sh
 RUN /build-dtach.sh ${TARGETARCH}
 RUN cp -v /src/dtach/dtach-*/dtach /out/exe.dev/bin/
 
