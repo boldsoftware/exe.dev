@@ -1,7 +1,6 @@
 package container
 
 import (
-	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -37,57 +36,6 @@ func TestBuildArgs_NoExetini_NoneOrExeuntu(t *testing.T) {
 		t.Fatalf("none override: got %v, want %v", got1, want)
 	}
 	// No longer testing isExeuntu since that parameter was removed
-}
-
-func TestParseImageInspectJSON_Array(t *testing.T) {
-	// Simulate nerdctl image inspect output (array of objects)
-	payload := []map[string]any{
-		{
-			"Config": map[string]any{
-				"Entrypoint": []string{"docker-entrypoint.sh"},
-				"Cmd":        []string{"node"},
-				"User":       "node",
-			},
-		},
-	}
-	data, _ := json.Marshal(payload)
-	cfg, err := parseImageInspectJSON(data)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !reflect.DeepEqual(cfg.Entrypoint, []string{"docker-entrypoint.sh"}) {
-		t.Fatalf("entrypoint mismatch: %v", cfg.Entrypoint)
-	}
-	if !reflect.DeepEqual(cfg.Cmd, []string{"node"}) {
-		t.Fatalf("cmd mismatch: %v", cfg.Cmd)
-	}
-	if cfg.User != "node" {
-		t.Fatalf("user mismatch: %s", cfg.User)
-	}
-}
-
-func TestParseImageInspectJSON_SingleObject(t *testing.T) {
-	payload := map[string]any{
-		"Config": map[string]any{
-			"Entrypoint": []string{"/bin/start"},
-			"Cmd":        []string{"--serve"},
-			"User":       "root",
-		},
-	}
-	data, _ := json.Marshal(payload)
-	cfg, err := parseImageInspectJSON(data)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !reflect.DeepEqual(cfg.Entrypoint, []string{"/bin/start"}) {
-		t.Fatalf("entrypoint mismatch: %v", cfg.Entrypoint)
-	}
-	if !reflect.DeepEqual(cfg.Cmd, []string{"--serve"}) {
-		t.Fatalf("cmd mismatch: %v", cfg.Cmd)
-	}
-	if cfg.User != "root" {
-		t.Fatalf("user mismatch: %s", cfg.User)
-	}
 }
 
 func TestChooseBestPortToRoute(t *testing.T) {

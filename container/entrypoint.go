@@ -1,43 +1,10 @@
 package container
 
 import (
-	"encoding/json"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
-
-	"exe.dev/tagresolver"
 )
-
-// parseImageInspectJSON parses nerdctl/docker image inspect JSON.
-// It tolerates both an array of objects (normal) and a single object.
-func parseImageInspectJSON(data []byte) (tagresolver.ImageConfig, error) {
-	// Define the subset of fields we care about
-	type cfg struct {
-		Config struct {
-			Entrypoint []string `json:"Entrypoint"`
-			Cmd        []string `json:"Cmd"`
-			User       string   `json:"User"`
-		} `json:"Config"`
-	}
-
-	// Try array form first
-	var arr []cfg
-	if err := json.Unmarshal(data, &arr); err == nil && len(arr) > 0 {
-		c := arr[0].Config
-		return tagresolver.ImageConfig{Entrypoint: c.Entrypoint, Cmd: c.Cmd, User: c.User}, nil
-	}
-
-	// Try single object form
-	var single cfg
-	if err := json.Unmarshal(data, &single); err == nil {
-		c := single.Config
-		return tagresolver.ImageConfig{Entrypoint: c.Entrypoint, Cmd: c.Cmd, User: c.User}, nil
-	}
-
-	return tagresolver.ImageConfig{}, fmt.Errorf("unrecognized inspect JSON format")
-}
 
 // buildEntrypointAndCmdArgs builds args to append after the image reference in nerdctl run.
 // When useExetini is true, returns exetini args (e.g., -g -- ...) with the right command.
