@@ -1,9 +1,3 @@
--- name: GetBoxesForAlloc :many
-SELECT *
-FROM boxes
-WHERE alloc_id = ?
-ORDER BY name;
-
 -- name: BoxWithNameExists :one
 SELECT EXISTS ( SELECT 1 FROM boxes WHERE name = ? );
 

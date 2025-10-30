@@ -686,24 +686,6 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	return nil
 }
 
-// sshConn wraps a net.Conn obtained via an SSH client and ensures the SSH
-// client is closed when the connection is closed.
-type sshConn struct {
-	net.Conn
-	client *ssh.Client
-}
-
-func (c *sshConn) Close() error {
-	// Close the underlying connection first, then the SSH client.
-	if c.Conn != nil {
-		_ = c.Conn.Close()
-	}
-	if c.client != nil {
-		return c.client.Close()
-	}
-	return nil
-}
-
 // resolveSSHHost resolves the SSH host address from a ctrhost, handling URL formats and dev mode aliases
 func (s *Server) resolveSSHHost(ctrhost string) string {
 	sshHost := "localhost"

@@ -1269,13 +1269,6 @@ func (s *Server) boxByNameExists(ctx context.Context, name string) bool {
 	return box > 0
 }
 
-// getBoxesForAlloc gets all boxes for an allocation
-func (s *Server) getBoxesForAlloc(ctx context.Context, allocID string) ([]exedb.Box, error) {
-	return withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Box, error) {
-		return queries.GetBoxesForAlloc(ctx, allocID)
-	})
-}
-
 // getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
 func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.Box, error) {
 	boxResults, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Box, error) {

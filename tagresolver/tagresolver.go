@@ -38,7 +38,6 @@ type ImageConfig struct {
 type TagResolver struct {
 	db         *sqlite.DB
 	httpClient *http.Client
-	mu         sync.RWMutex
 
 	// Channel for notifying about tag updates
 	updateChan chan TagUpdate

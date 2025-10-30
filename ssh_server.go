@@ -473,13 +473,6 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session) {
 	fmt.Fprintf(s, "\033[%dA", len(asciiArt)-1)
 }
 
-// readLineWithEcho reads a line with echo (for registration)
-// This uses direct byte reading to avoid buffering issues when transitioning to the menu
-func (ss *SSHServer) readLineWithEcho(s ssh.Session) string {
-	str, _ := ss.readLineWithEchoAndDefault(s, "")
-	return str
-}
-
 // readLineWithEchoAndDefault reads a line with echo and optionally pre-fills a default value.
 // It returns the entered line and a boolean indicating whether the user pressed enter.
 func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue string) (string, bool) {

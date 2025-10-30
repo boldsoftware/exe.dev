@@ -245,54 +245,6 @@ func (q *Queries) GetBoxesByHost(ctx context.Context, ctrhost string) ([]Box, er
 	return items, nil
 }
 
-const getBoxesForAlloc = `-- name: GetBoxesForAlloc :many
-SELECT id, alloc_id, name, status, image, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log
-FROM boxes
-WHERE alloc_id = ?
-ORDER BY name
-`
-
-func (q *Queries) GetBoxesForAlloc(ctx context.Context, allocID string) ([]Box, error) {
-	rows, err := q.query(ctx, q.getBoxesForAllocStmt, getBoxesForAlloc, allocID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Box{}
-	for rows.Next() {
-		var i Box
-		if err := rows.Scan(
-			&i.ID,
-			&i.AllocID,
-			&i.Name,
-			&i.Status,
-			&i.Image,
-			&i.ContainerID,
-			&i.CreatedByUserID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.LastStartedAt,
-			&i.Routes,
-			&i.SSHServerIdentityKey,
-			&i.SSHAuthorizedKeys,
-			&i.SSHClientPrivateKey,
-			&i.SSHPort,
-			&i.SSHUser,
-			&i.CreationLog,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getBoxesForUserDashboard = `-- name: GetBoxesForUserDashboard :many
 SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,

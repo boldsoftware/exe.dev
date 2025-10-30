@@ -200,15 +200,3 @@ func TestHandleProxyRequest(t *testing.T) {
 		}
 	}
 }
-
-// TestRouteSorting is no longer needed since we have simplified routing
-// All requests go to the same port with the same sharing setting
-
-// mockSession implements io.Writer for testing
-type mockSession struct {
-	output strings.Builder
-}
-
-func (m *mockSession) Write(p []byte) (n int, err error) {
-	return m.output.Write(p)
-}

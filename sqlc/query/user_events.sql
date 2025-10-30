@@ -5,8 +5,5 @@ ON CONFLICT(user_id, event) DO UPDATE SET
     count = count + 1,
     last_occurred_at = CURRENT_TIMESTAMP;
 
--- name: GetUserEventCount :one
-SELECT COALESCE((SELECT count FROM user_events WHERE user_id = ? AND event = ?), 0) AS event_count;
-
 -- name: GetAllUserEvents :many
 SELECT event, count FROM user_events WHERE user_id = ?;

@@ -141,9 +141,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxesByHostStmt, err = db.PrepareContext(ctx, getBoxesByHost); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesByHost: %w", err)
 	}
-	if q.getBoxesForAllocStmt, err = db.PrepareContext(ctx, getBoxesForAlloc); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxesForAlloc: %w", err)
-	}
 	if q.getBoxesForUserDashboardStmt, err = db.PrepareContext(ctx, getBoxesForUserDashboard); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesForUserDashboard: %w", err)
 	}
@@ -212,9 +209,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserEmailCountsForDateRangeStmt, err = db.PrepareContext(ctx, getUserEmailCountsForDateRange); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserEmailCountsForDateRange: %w", err)
-	}
-	if q.getUserEventCountStmt, err = db.PrepareContext(ctx, getUserEventCount); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUserEventCount: %w", err)
 	}
 	if q.getUserIDByEmailStmt, err = db.PrepareContext(ctx, getUserIDByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDByEmail: %w", err)
@@ -542,11 +536,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxesByHostStmt: %w", cerr)
 		}
 	}
-	if q.getBoxesForAllocStmt != nil {
-		if cerr := q.getBoxesForAllocStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxesForAllocStmt: %w", cerr)
-		}
-	}
 	if q.getBoxesForUserDashboardStmt != nil {
 		if cerr := q.getBoxesForUserDashboardStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesForUserDashboardStmt: %w", cerr)
@@ -660,11 +649,6 @@ func (q *Queries) Close() error {
 	if q.getUserEmailCountsForDateRangeStmt != nil {
 		if cerr := q.getUserEmailCountsForDateRangeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserEmailCountsForDateRangeStmt: %w", cerr)
-		}
-	}
-	if q.getUserEventCountStmt != nil {
-		if cerr := q.getUserEventCountStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUserEventCountStmt: %w", cerr)
 		}
 	}
 	if q.getUserIDByEmailStmt != nil {
@@ -955,7 +939,6 @@ type Queries struct {
 	getBoxShareLinksByBoxIDStmt            *sql.Stmt
 	getBoxSharesByBoxIDStmt                *sql.Stmt
 	getBoxesByHostStmt                     *sql.Stmt
-	getBoxesForAllocStmt                   *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
 	getBoxesSharedWithUserStmt             *sql.Stmt
 	getCtrhostByAllocIDStmt                *sql.Stmt
@@ -979,7 +962,6 @@ type Queries struct {
 	getUserByEmailStmt                     *sql.Stmt
 	getUserEmailCountForDateStmt           *sql.Stmt
 	getUserEmailCountsForDateRangeStmt     *sql.Stmt
-	getUserEventCountStmt                  *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
@@ -1067,7 +1049,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxShareLinksByBoxIDStmt:            q.getBoxShareLinksByBoxIDStmt,
 		getBoxSharesByBoxIDStmt:                q.getBoxSharesByBoxIDStmt,
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
-		getBoxesForAllocStmt:                   q.getBoxesForAllocStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:             q.getBoxesSharedWithUserStmt,
 		getCtrhostByAllocIDStmt:                q.getCtrhostByAllocIDStmt,
@@ -1091,7 +1072,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserByEmailStmt:                     q.getUserByEmailStmt,
 		getUserEmailCountForDateStmt:           q.getUserEmailCountForDateStmt,
 		getUserEmailCountsForDateRangeStmt:     q.getUserEmailCountsForDateRangeStmt,
-		getUserEventCountStmt:                  q.getUserEventCountStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
