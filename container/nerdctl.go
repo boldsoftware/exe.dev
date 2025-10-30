@@ -1759,13 +1759,7 @@ func (m *NerdctlManager) PrepareRovol(ctx context.Context, host string) error {
 func (m *NerdctlManager) VerifyDisk(ctx context.Context, host string, boxID int) (bool, error) {
 	diskPath := m.DataPath(fmt.Sprintf("exed/containers/box-%d", boxID))
 
-	// Check if directory exists
-	checkCmd := m.ExecSSHCommand(ctx, host, "test", "-d", diskPath)
-	if err := checkCmd.Run(); err != nil {
-		return false, nil // Directory doesn't exist
-	}
-
-	// Verify it has expected subdirectories (basic integrity check)
+	// Verify directory exists (impliciltly) and has an exe.dev subdir
 	verifyCmd := m.ExecSSHCommand(ctx, host, "test", "-d", filepath.Join(diskPath, "exe.dev"))
 	if err := verifyCmd.Run(); err != nil {
 		return false, nil // Directory exists but missing exe.dev subdirectory
