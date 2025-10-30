@@ -13,6 +13,7 @@ type Session interface {
 	ReadContext(context.Context, []byte) (int, error)
 	ReadByteContext(context.Context) (byte, error)
 	Push([]byte)
+	CtxReader() *ctxio.Reader
 }
 
 // Managed wraps an SSH session to provide coordinated input handling.
@@ -50,6 +51,10 @@ func (m *Managed) ReadByteContext(ctx context.Context) (byte, error) {
 // Push re-inserts data at the front of the input stream.
 func (m *Managed) Push(data []byte) {
 	m.reader.Insert(data)
+}
+
+func (m *Managed) CtxReader() *ctxio.Reader {
+	return m.reader
 }
 
 // Shell wraps a session to adapt it to the command system requirements.

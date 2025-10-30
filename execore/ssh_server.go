@@ -421,7 +421,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 }
 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
-func (ss *SSHServer) showAnimatedWelcome(s ssh.Session) {
+func (ss *SSHServer) showAnimatedWelcome(s sshsession.Session) {
 	// Skip animation in test mode for faster tests
 	if ss.server.devMode == "test" {
 		fmt.Fprint(s, "~~~ EXE.DEV ~~~\r\n")
@@ -450,7 +450,7 @@ func (ss *SSHServer) showAnimatedWelcome(s ssh.Session) {
 	fmt.Fprint(s, "\r")
 
 	// Query background color (with timeout fallback to black)
-	bg := termfun.QueryBackgroundColor(s, s)
+	bg := termfun.QueryBackgroundColor(s, s.CtxReader())
 
 	// Fade from bright green to background color
 	from := termfun.RGB{R: 80, G: 255, B: 120}

@@ -3,10 +3,13 @@ package termfun
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"testing"
 	"time"
+
+	"exe.dev/ctxio"
 )
 
 func TestSrgbConversion(t *testing.T) {
@@ -143,9 +146,9 @@ func TestQueryBackgroundColor(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var w bytes.Buffer
-			r := strings.NewReader(tt.response)
+			cr := ctxio.NewReader(strings.NewReader(tt.response))
 
-			got := QueryBackgroundColor(&w, r)
+			got := QueryBackgroundColor(&w, cr)
 
 			if got != tt.want {
 				t.Errorf("QueryBackgroundColor() = %v, want %v", got, tt.want)
@@ -155,6 +158,26 @@ func TestQueryBackgroundColor(t *testing.T) {
 				t.Error("Query sequence not sent")
 			}
 		})
+	}
+}
+
+func TestQueryBackgroundColorFragmentedResponse(t *testing.T) {
+	var w bytes.Buffer
+	cr := ctxio.NewReader(io.MultiReader(
+		strings.NewReader("\x1b]11;rgb:12"),
+		strings.NewReader("34/5678/9abc"),
+		strings.NewReader("\x1b\\"),
+	))
+
+	got := QueryBackgroundColor(&w, cr)
+	want := RGB{0x12, 0x56, 0x9a}
+
+	if got != want {
+		t.Errorf("QueryBackgroundColor() fragmented response = %v, want %v", got, want)
+	}
+
+	if !strings.Contains(w.String(), "\x1b]11;?\x07") {
+		t.Error("Query sequence not sent")
 	}
 }
 

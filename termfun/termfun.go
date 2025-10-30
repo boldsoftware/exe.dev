@@ -1,12 +1,15 @@
 package termfun
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"exe.dev/ctxio"
 )
 
 type RGB struct {
@@ -32,71 +35,78 @@ func lerp(a, b, t float64) float64 {
 	return a + (b-a)*t
 }
 
-func QueryBackgroundColor(w io.Writer, r io.Reader) RGB {
+func QueryBackgroundColor(w io.Writer, cr *ctxio.Reader) RGB {
 	fmt.Fprint(w, "\x1b]11;?\x07")
 
-	buf := make([]byte, 256)
-	done := make(chan RGB, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
-	go func() {
-		n, err := r.Read(buf)
-		if err != nil || n == 0 {
-			done <- RGB{0, 0, 0}
-			return
+	buf := new(strings.Builder)
+	var resp string
+	for buf.Len() < 1024 {
+		b, err := cr.ReadByteContext(ctx)
+		if err != nil {
+			return RGB{0, 0, 0}
 		}
-
-		response := string(buf[:n])
-
-		if strings.Contains(response, "rgb:") {
-			parts := strings.Split(response, "rgb:")
-			if len(parts) >= 2 {
-				colorPart := strings.TrimSuffix(parts[1], "\x07")
-				colorPart = strings.TrimSuffix(colorPart, "\x1b\\")
-
-				components := strings.Split(colorPart, "/")
-				if len(components) == 3 {
-					r := parseColorComponent(components[0])
-					g := parseColorComponent(components[1])
-					b := parseColorComponent(components[2])
-					done <- RGB{r, g, b}
-					return
-				}
-			}
+		buf.WriteByte(b)
+		// Check for bell/ST terminators.
+		if s, ok := strings.CutSuffix(buf.String(), "\x07"); ok {
+			resp = s
+			break
 		}
-		done <- RGB{0, 0, 0}
-	}()
+		if s, ok := strings.CutSuffix(buf.String(), "\x1b\\"); ok {
+			resp = s
+			break
+		}
+	}
 
-	select {
-	case rgb := <-done:
-		return rgb
-	case <-time.After(100 * time.Millisecond):
+	if resp == "" {
 		return RGB{0, 0, 0}
 	}
+
+	resp = strings.TrimPrefix(resp, "\x1b]11;")
+	resp = strings.TrimSpace(resp)
+	colorPart, ok := strings.CutPrefix(resp, "rgb:")
+	if !ok {
+		return RGB{0, 0, 0}
+	}
+
+	components := strings.Split(colorPart, "/")
+	if len(components) != 3 {
+		return RGB{0, 0, 0}
+	}
+
+	red := parseColorComponent(components[0])
+	green := parseColorComponent(components[1])
+	blue := parseColorComponent(components[2])
+
+	return RGB{red, green, blue}
 }
 
 func parseColorComponent(s string) float64 {
 	s = strings.TrimSpace(s)
-	if len(s) == 0 {
+	if s == "" {
 		return 0
 	}
 
-	if len(s) <= 2 {
+	// Response length indicates precision: 2 = 8-bit, 4 = 16-bit.
+	// We need to scale accordingly.
+	switch {
+	case len(s) <= 2:
 		val, err := strconv.ParseUint(s, 16, 8)
 		if err != nil {
 			return 0
 		}
 		return float64(val)
-	}
-
-	if len(s) == 4 {
-		val, err := strconv.ParseUint(s[:2], 16, 8)
+	case len(s) <= 4:
+		val, err := strconv.ParseUint(s, 16, 16)
 		if err != nil {
 			return 0
 		}
-		return float64(val)
+		return math.Round(float64(val) / 65535 * 255)
+	default:
+		return 0
 	}
-
-	return 0
 }
 
 func FadeTextInPlace(w io.Writer, lines []string, from, to RGB, dur time.Duration, frames int) {
