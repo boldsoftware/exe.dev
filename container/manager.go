@@ -26,7 +26,8 @@ type Config struct {
 	// When false, shelley.json will use the actual gateway IP.
 	IsProduction bool `json:"is_production"`
 
-	// For dev mode (uses an HTTP port), the port that exed is listening on (default tends to be 8080)
+	// For IsProduction=false, we need the port to build out URLs for the LLM gateway (and xterm)
+	// For production, it's the default SSL port, so we don't use this.
 	ExedListeningPort int `json:"exed_listening_port"`
 }
 
