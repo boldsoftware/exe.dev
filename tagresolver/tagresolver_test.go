@@ -3,10 +3,10 @@ package tagresolver
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -408,20 +408,11 @@ func containsManifestMediaType(accept string) bool {
 	}
 
 	for _, mt := range mediaTypes {
-		if containsString(accept, mt) {
+		if strings.Contains(accept, mt) {
 			return true
 		}
 	}
 	return false
-}
-
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		(s == substr ||
-			fmt.Sprintf("%s", s) == fmt.Sprintf("%s", substr) ||
-			len(s) > len(substr) && s[:len(substr)] == substr ||
-			len(s) > len(substr) && s[len(s)-len(substr):] == substr ||
-			len(s) > len(substr) && containsString(s[1:], substr))
 }
 
 func TestBackgroundRefreshLoop(t *testing.T) {
@@ -481,7 +472,7 @@ func TestGHCRAuthentication(t *testing.T) {
 	}
 
 	// Should return a digest-based reference
-	if !containsString(digest, "@sha256:") {
+	if !strings.Contains(digest, "@sha256:") {
 		t.Errorf("Expected digest reference, got: %s", digest)
 	}
 
