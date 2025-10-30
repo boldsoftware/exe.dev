@@ -1291,14 +1291,14 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var hasAccess bool
+	var isOwner bool
 	accessType, err := s.hasUserAccessToBox(r.Context(), magicSecret.UserID, box)
-	if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
-		hasAccess = true
+	if err == nil && (accessType == BoxAccessOwner) {
+		isOwner = true
 	}
 
 	// If user owns the box, skip confirmation and redirect directly
-	if hasAccess {
+	if isOwner {
 		scheme := "http"
 		if r.TLS != nil {
 			scheme = "https"
