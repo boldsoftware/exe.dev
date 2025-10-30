@@ -670,11 +670,16 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 		return nil, fmt.Errorf("BoxID is required and cannot be 0")
 	}
 
+	if req.Image == "" {
+		return nil, fmt.Errorf("Image is required")
+	}
+
 	// Use the host provided for this allocation
 	host := req.Host
 	if host == "" {
 		return nil, fmt.Errorf("host is required for container creation")
 	}
+	// TODO(philip): Do we really need this throttle? Could just use a semaphore if we do.
 	releaseFn, err := m.acquireCreateSlot(ctx, host)
 	if err != nil {
 		return nil, err
@@ -684,6 +689,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	// Check if we're recreating a container with an existing disk
 	diskExists, _ := m.VerifyDisk(ctx, host, req.BoxID)
 	if diskExists {
+		// TODO(philip): I'm skeptical this case has test coverage or ever runs.
 		// If we're NOT recreating (no existing SSH keys), fail if disk already exists
 		// This prevents accidental reuse of box IDs due to bugs
 		if req.ExistingSSHKeys == nil {
@@ -716,9 +722,7 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 
 	// Prepare image
 	image := req.Image
-	if image == "" {
-		image = "ubuntu:latest"
-	}
+
 	// Use the proper image expansion function
 	image = ExpandImageNameForContainerd(image)
 
