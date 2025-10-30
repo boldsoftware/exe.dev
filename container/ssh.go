@@ -20,7 +20,6 @@ type ContainerSSHKeys struct {
 
 // GenerateContainerSSHKeys generates all SSH key material needed for a container
 // This is adapted from the generateSSHKeys function in bold/skaband/dockerhost
-// TODO(philip): Not totally sure we need certs at all.
 func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 	// Generate server identity key (Ed25519)
 	_, serverPriv, err := ed25519.GenerateKey(crand.Reader)
@@ -55,7 +54,8 @@ func GenerateContainerSSHKeys() (*ContainerSSHKeys, error) {
 		ServerIdentityKey: string(pem.EncodeToMemory(serverPrivKeyPEM)),
 		AuthorizedKeys:    string(ssh.MarshalAuthorizedKey(clientSSHPub)), // Public key for authorized_keys file
 		ClientPrivateKey:  string(pem.EncodeToMemory(clientPrivKeyPEM)),
-		// SSH port is always 22 inside containers (Docker maps to random host ports)
+		// SSH port is always 22 inside containers
+		// (though nerdctl exposes this to a port on the container host)
 		SSHPort: 22,
 	}, nil
 }
