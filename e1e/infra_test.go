@@ -1204,6 +1204,19 @@ func runExeDevSSHCommand(t *testing.T, keyFile string, args ...string) ([]byte, 
 	return out, err
 }
 
+func runParseExeDevJSON[T any](t *testing.T, keyFile string, args ...string) T {
+	t.Helper()
+	var result T
+	out, err := runExeDevSSHCommand(t, keyFile, args...)
+	if err != nil {
+		t.Fatalf("failed to run command: %v\n%s", err, out)
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("failed to parse command output as JSON: %v\n%s", err, out)
+	}
+	return result
+}
+
 func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.Cmd {
 	sshArgs := baseSSHArgs(boxname, keyFile)
 	sshArgs = append(sshArgs, args...)

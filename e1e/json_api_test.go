@@ -1,7 +1,6 @@
 package e1e
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,15 +21,7 @@ func TestExeDevAPI(t *testing.T) {
 	pty, _, keyFile, _ := registerForExeDev(t)
 	defer pty.disconnect()
 
-	whoOut, err := runExeDevSSHCommand(t, keyFile, "whoami", "--json")
-	if err != nil {
-		t.Fatalf("failed to run whoami command: %v\n%s", err, whoOut)
-	}
-	var who whoamiOutput
-	err = json.Unmarshal(whoOut, &who)
-	if err != nil {
-		t.Fatalf("failed to parse whoami output as JSON: %v\n%s", err, whoOut)
-	}
+	who := runParseExeDevJSON[whoamiOutput](t, keyFile, "whoami", "--json")
 	if who.Email == "" {
 		t.Errorf("expected email in whoami output, got empty string")
 	}
@@ -58,15 +49,7 @@ func TestExeDevAPI(t *testing.T) {
 		t.Fatalf("expected whoami output to include email %q, got: %s", who.Email, string(whoPlain))
 	}
 
-	newOut, err := runExeDevSSHCommand(t, keyFile, "new", "--command=bash", "--json")
-	if err != nil {
-		t.Fatalf("failed to run new box command: %v\n%s", err, newOut)
-	}
-	var nbo newBoxOutput
-	err = json.Unmarshal(newOut, &nbo)
-	if err != nil {
-		t.Fatalf("failed to parse new box output as JSON: %v\n%s", err, newOut)
-	}
+	nbo := runParseExeDevJSON[newBoxOutput](t, keyFile, "new", "--command=bash", "--json")
 	// TODO: actually use these values: ssh to the box, curl the https url, list the boxname using the exe.dev server, etc.
 	if nbo.BoxName == "" {
 		t.Errorf("expected box_name in JSON output, got empty string")
@@ -90,16 +73,8 @@ func TestExeDevAPI(t *testing.T) {
 	pty.wantRe("Box name .*" + regexp.QuoteMeta(nbo.BoxName) + ".* is not available")
 	pty.wantPrompt()
 
-	listOut, err := runExeDevSSHCommand(t, keyFile, "ls", "--json")
-	if err != nil {
-		t.Fatalf("failed to run ls command: %v\n%s", err, listOut)
-	}
-	t.Logf("ls output: %s", listOut)
-	var blo boxListOutput
-	err = json.Unmarshal(listOut, &blo)
-	if err != nil {
-		t.Fatalf("failed to parse ls output as JSON: %v\n%s", err, listOut)
-	}
+	blo := runParseExeDevJSON[boxListOutput](t, keyFile, "ls", "--json")
+	t.Logf("ls output: %+v", blo)
 	boxes := blo.Boxes
 	if len(boxes) != 1 {
 		t.Errorf("expected exactly one box in ls output, got %d", len(boxes))
@@ -113,15 +88,7 @@ func TestExeDevAPI(t *testing.T) {
 	}
 	// TODO: check image name
 
-	delOut, err := runExeDevSSHCommand(t, keyFile, "rm", nbo.BoxName, "--json")
-	if err != nil {
-		t.Fatalf("failed to run rm command: %v\n%s", err, delOut)
-	}
-	var delResult deleteBoxOutput
-	err = json.Unmarshal(delOut, &delResult)
-	if err != nil {
-		t.Fatalf("failed to parse rm output as JSON: %v\n%s", err, delOut)
-	}
+	delResult := runParseExeDevJSON[deleteBoxOutput](t, keyFile, "rm", nbo.BoxName, "--json")
 	if delResult.BoxName != nbo.BoxName {
 		t.Errorf("expected box name %q in rm output, got %q", nbo.BoxName, delResult.BoxName)
 	}
@@ -130,29 +97,13 @@ func TestExeDevAPI(t *testing.T) {
 	}
 
 	// Verify the box is gone from the list
-	listOut2, err := runExeDevSSHCommand(t, keyFile, "ls", "--json")
-	if err != nil {
-		t.Fatalf("failed to run ls command: %v\n%s", err, listOut2)
-	}
-	var blo2 boxListOutput
-	err = json.Unmarshal(listOut2, &blo2)
-	if err != nil {
-		t.Fatalf("failed to parse ls output as JSON: %v\n%s", err, listOut2)
-	}
+	blo2 := runParseExeDevJSON[boxListOutput](t, keyFile, "ls", "--json")
 	boxes2 := blo2.Boxes
 	if len(boxes2) != 0 {
 		t.Errorf("expected zero boxes in ls output after deletion, got %d", len(boxes2))
 	}
 
-	browserOut, err := runExeDevSSHCommand(t, keyFile, "browser", "--json")
-	if err != nil {
-		t.Fatalf("failed to run browser command: %v\n%s", err, browserOut)
-	}
-	var browser browserCommandOutput
-	err = json.Unmarshal(browserOut, &browser)
-	if err != nil {
-		t.Fatalf("failed to parse browser output as JSON: %v\n%s", err, browserOut)
-	}
+	browser := runParseExeDevJSON[browserCommandOutput](t, keyFile, "browser", "--json")
 	if browser.MagicLink == "" {
 		t.Fatalf("expected magic_link in browser output, got empty string")
 	}
