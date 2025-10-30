@@ -103,9 +103,9 @@ func (cs *CreationStream) Read(p []byte) (n int, err error) {
 	cs.mu.Lock()
 	cs.lastAccess = time.Now()
 	n, err = cs.buf.Read(p)
-	if n > 0 {
+	if n > 0 || (err != nil && err != io.EOF) {
 		cs.mu.Unlock()
-		return n, nil
+		return n, err
 	}
 	if cs.done {
 		err := cs.err
