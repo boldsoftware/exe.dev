@@ -133,12 +133,11 @@ var ContainerSizes = map[string]ContainerSize{
 
 // CreateContainerRequest represents the parameters for creating a new container
 type CreateContainerRequest struct {
-	AllocID    string `json:"alloc_id"` // Allocation ID for this container
-	Name       string `json:"name"`
-	BoxID      int    `json:"box_id"`               // Box ID for persistent disk path
-	Image      string `json:"image,omitempty"`      // Optional, defaults to "ubuntu"
-	Dockerfile string `json:"dockerfile,omitempty"` // Optional custom Dockerfile
-	Host       string `json:"host,omitempty"`       // Target container host (required)
+	AllocID string `json:"alloc_id"` // Allocation ID for this container
+	Name    string `json:"name"`
+	BoxID   int    `json:"box_id"`          // Box ID for persistent disk path
+	Image   string `json:"image,omitempty"` // Optional, defaults to "ubuntu"
+	Host    string `json:"host,omitempty"`  // Target container host (required)
 
 	// Resource configuration
 	Size          string `json:"size,omitempty"`           // T-shirt size: micro, small, medium, large, xlarge
@@ -146,23 +145,11 @@ type CreateContainerRequest struct {
 	MemoryRequest string `json:"memory_request,omitempty"` // Set by size
 	StorageSize   string `json:"storage_size,omitempty"`   // Can be overridden with --disk
 
-	// Ephemeral flag - if true, no PVC is created
-	Ephemeral bool `json:"ephemeral,omitempty"`
-
-	// Sandbox configuration - allow opting out of sandbox for specific containers
-	DisableSandbox bool `json:"disable_sandbox,omitempty"`
-
 	// Command override: "auto" (default), "none", or custom command string
 	CommandOverride string `json:"command_override,omitempty"`
 
-	// Progress callback - called with progress updates during creation
-	// Only called while CreateContainer is blocking, not after it returns
-	// Deprecated: Use ProgressCallbackEx for detailed progress information
-	ProgressCallback func(progress CreateProgress, imageBytes int64) `json:"-"`
-
-	// ProgressCallbackEx - enhanced callback with detailed progress information
-	// If set, this takes precedence over ProgressCallback
-	ProgressCallbackEx func(info CreateProgressInfo) `json:"-"`
+	// ProgressCallback - callback with detailed progress information
+	ProgressCallback func(info CreateProgressInfo) `json:"-"`
 
 	// ExistingSSHKeys - when recreating a container, pass the existing SSH keys
 	// to preserve host key continuity

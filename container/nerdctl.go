@@ -474,16 +474,13 @@ func (m *NerdctlManager) DeleteAlloc(ctx context.Context, allocID, host string) 
 
 // reportProgress is a helper function to report progress through the appropriate callback
 func reportProgress(req *CreateContainerRequest, phase CreateProgress, imageBytes, downloadedBytes int64, message string) {
-	if req.ProgressCallbackEx != nil {
-		req.ProgressCallbackEx(CreateProgressInfo{
+	if req.ProgressCallback != nil {
+		req.ProgressCallback(CreateProgressInfo{
 			Phase:           phase,
 			ImageBytes:      imageBytes,
 			DownloadedBytes: downloadedBytes,
 			Message:         message,
 		})
-	} else if req.ProgressCallback != nil {
-		// Fall back to old callback for backward compatibility
-		req.ProgressCallback(phase, imageBytes)
 	}
 }
 

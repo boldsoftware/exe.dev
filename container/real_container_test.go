@@ -46,7 +46,6 @@ func TestRealContainerSSHSetup(t *testing.T) {
 		CPURequest:    "100m",
 		MemoryRequest: "512Mi",
 		StorageSize:   "1Gi",
-		Ephemeral:     false, // Keep it around long enough to check
 		BoxID:         GenerateTestBoxID(),
 		Host:          host,
 	}

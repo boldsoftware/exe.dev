@@ -144,39 +144,14 @@ func TestPullProgressCalculation(t *testing.T) {
 	}
 }
 
-func TestProgressCallbackCompatibility(t *testing.T) {
-	// Test that both old and new callbacks work
+func TestProgressCallback(t *testing.T) {
 	req := &CreateContainerRequest{}
 
-	// Test with old callback
-	var oldCalled bool
-	var oldPhase CreateProgress
-	var oldImageBytes int64
-
-	req.ProgressCallback = func(phase CreateProgress, imageBytes int64) {
-		oldCalled = true
-		oldPhase = phase
-		oldImageBytes = imageBytes
-	}
-
-	reportProgress(req, CreatePull, 1000, 500, "test")
-
-	if !oldCalled {
-		t.Error("Old callback was not called")
-	}
-	if oldPhase != CreatePull {
-		t.Errorf("Expected phase CreatePull, got %v", oldPhase)
-	}
-	if oldImageBytes != 1000 {
-		t.Errorf("Expected imageBytes 1000, got %d", oldImageBytes)
-	}
-
-	// Test with new callback
 	req.ProgressCallback = nil
 	var newCalled bool
 	var newInfo CreateProgressInfo
 
-	req.ProgressCallbackEx = func(info CreateProgressInfo) {
+	req.ProgressCallback = func(info CreateProgressInfo) {
 		newCalled = true
 		newInfo = info
 	}
@@ -199,21 +174,9 @@ func TestProgressCallbackCompatibility(t *testing.T) {
 		t.Errorf("Expected message 'Starting', got %s", newInfo.Message)
 	}
 
-	// Test with both callbacks (new should take precedence)
-	req.ProgressCallback = func(phase CreateProgress, imageBytes int64) {
-		oldCalled = true
-	}
-	req.ProgressCallbackEx = func(info CreateProgressInfo) {
-		newCalled = true
-	}
-
-	oldCalled = false
 	newCalled = false
 	reportProgress(req, CreateDone, 3000, 3000, "Done")
 
-	if oldCalled {
-		t.Error("Old callback should not be called when new callback is present")
-	}
 	if !newCalled {
 		t.Error("New callback should be called")
 	}

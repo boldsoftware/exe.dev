@@ -347,7 +347,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		CPURequest:      sizePreset.CPURequest,
 		MemoryRequest:   sizePreset.MemoryRequest,
 		StorageSize:     sizePreset.StorageSize,
-		Ephemeral:       false,
 		CommandOverride: command,
 	}
 
@@ -366,7 +365,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 	// Add progress callback that sends to channel
 	if showSpinner {
-		req.ProgressCallbackEx = func(info container.CreateProgressInfo) {
+		req.ProgressCallback = func(info container.CreateProgressInfo) {
 			select {
 			case progressChan <- progressUpdate{info}:
 			default:
