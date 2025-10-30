@@ -33,10 +33,15 @@ import (
 
 // NerdctlManager manages containers using nerdctl with containerd
 //
-// ⚠️ IMPORTANT: Kata/gVisor Runtime Considerations ⚠️
-// This manager MUST work with Kata runtime for security isolation.
-// NEVER use 'nerdctl exec -i' with stdin redirection - it will cause containers
-// to enter UNKNOWN state with Kata/gVisor runtimes.
+// Our stack is:
+//
+//	exed ssh's to a container host where
+//	nerdctl creates containers by talking to
+//	containerd which uses
+//	Kata containers which starts a VM using
+//	cloud-hypervisor
+//
+// There's also Nydus and virtio-fs.
 type NerdctlManager struct {
 	config   *Config
 	hosts    []string // List of containerd host addresses (SSH hostnames or "local")
@@ -47,15 +52,12 @@ type NerdctlManager struct {
 		m  map[string]chan struct{}
 	}
 
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	sshPool *sshpool.Pool // Pool of persistent SSH connections
 
 	// Tag resolver for image digest management (optional)
 	tagResolver *tagresolver.TagResolver
 	hostUpdater *tagresolver.HostUpdater
-
-	// Cache for nerdctl run --annotation support per host
-	annSupport map[string]bool
 
 	// Cache for gateway IP per host
 	gatewayIPCache map[string]string
@@ -85,7 +87,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		config:         config,
 		hosts:          config.ContainerdAddresses,
 		sshPool:        sshpool.New(),
-		annSupport:     make(map[string]bool),
 		gatewayIPCache: make(map[string]string),
 	}
 
@@ -106,8 +107,7 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		arch, err := manager.getHostArch(context.Background(), config.ContainerdAddresses[0])
 		if err != nil {
 			slog.Warn("Failed to get host architecture", "error", err)
-			// Default to amd64 if we can't determine
-			manager.hostArch = "amd64"
+			return nil, fmt.Errorf("failed to get host architecture: %w", err)
 		} else {
 			// Map architecture names
 			switch arch {
@@ -132,8 +132,6 @@ func NewNerdctlManager(config *Config) (*NerdctlManager, error) {
 		cancel()
 	}
 
-	slog.Info("Discovering existing containers on container hosts")
-
 	return manager, nil
 }
 
@@ -149,8 +147,6 @@ func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...s
 		panic(fmt.Sprintf("execNerdctl: no valid SSH host provided: %q", host))
 	}
 
-	// For remote hosts, use SSH with sudo
-	// Use stdbuf to ensure unbuffered output for progress tracking
 	// Force cgroupfs for Kata (avoid nerdctl defaulting to systemd cgroup manager)
 	nerdctlArgs := []string{"sudo", "nerdctl", "--namespace", "exe", "--cgroup-manager", "cgroupfs"}
 	nerdctlArgs = append(nerdctlArgs, args...)
@@ -304,9 +300,9 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*ta
 // getGatewayIP gets the gateway IP address for a given host, with caching
 func (m *NerdctlManager) getGatewayIP(ctx context.Context, host string) (string, error) {
 	host = strings.TrimPrefix(host, "ssh://")
-	m.mu.RLock()
+	m.mu.Lock()
 	ip, ok := m.gatewayIPCache[host]
-	m.mu.RUnlock()
+	m.mu.Unlock()
 	if ok {
 		return ip, nil
 	}
@@ -337,9 +333,9 @@ func (m *NerdctlManager) ExecSSHCommand(ctx context.Context, host string, args .
 	// Parse SSH format if present
 	host = strings.TrimPrefix(host, "ssh://")
 
-	// Host is required - we always use SSH
 	if host == "" || strings.HasPrefix(host, "/") {
 		// Return a command that will fail with a clear error
+		// TODO(philip): Doesn't seem very clear to me!
 		cmd := exec.CommandContext(ctx, "false")
 		cmd.Env = []string{"ERROR=No valid SSH host provided"}
 		return cmd
@@ -349,26 +345,16 @@ func (m *NerdctlManager) ExecSSHCommand(ctx context.Context, host string, args .
 	return m.sshPool.ExecCommand(ctx, host, sudoArgs...)
 }
 
-// isHexString checks if a string contains only hexadecimal characters
 func isHexString(s string) bool {
-	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
+	_, err := hex.DecodeString(s)
+	if err != nil {
+		return false
 	}
 	return true
 }
 
 // verifyKataRuntime verifies that Kata runtime is available and properly configured
 func (m *NerdctlManager) verifyKataRuntime(ctx context.Context, host string) error {
-	// Ensure nydus directories exist - they're required for the snapshotter
-	// This is needed in case they were deleted or this is a fresh setup
-	mkdirCmd := m.ExecSSHCommand(ctx, host, "sudo", "mkdir", "-p", "/var/lib/containerd-nydus/snapshots")
-	if err := mkdirCmd.Run(); err != nil {
-		slog.Warn("Failed to create nydus directories", "error", err)
-		// Continue anyway - the directories might already exist
-	}
-
 	// First, do a quick check if kata-runtime binary exists
 	// This is much faster than running a container
 	kataCheckCmd := m.ExecSSHCommand(ctx, host, "kata-runtime", "--version")

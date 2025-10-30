@@ -191,7 +191,7 @@ if [ ! -d /local ]; then
 	exit 1
 fi
 sudo mkdir -p "/local/nydus/cache"
-sudo mkdir -p /var/lib/containerd-nydus
+sudo mkdir -p /var/lib/containerd-nydus/snapshots
 sudo mkdir -p /run/containerd-nydus
 
 # Create systemd service for nydus-snapshotter

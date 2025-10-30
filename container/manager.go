@@ -19,6 +19,9 @@ type Config struct {
 	DefaultStorageSize   string `json:"default_storage_size"`
 
 	// DataSubdir is the subdirectory under /data for container isolation
+	// By having a separate subdir, multiple exed instances can co-exist on
+	// the same ctr-host, which is very useful for testing in parallel.
+	// We could also have used the nerdctl "namespace" mechanism for this, but we don't.
 	DataSubdir string `json:"data_subdir"`
 
 	// IsProduction indicates whether this is a production environment.
