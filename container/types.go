@@ -155,27 +155,3 @@ type CreateContainerRequest struct {
 	// to preserve host key continuity
 	ExistingSSHKeys *ContainerSSHKeys `json:"-"`
 }
-
-// BuildRequest represents a request to build a custom Docker image
-type BuildRequest struct {
-	AllocID           string `json:"alloc_id"`
-	Dockerfile        string `json:"dockerfile"`
-	DockerfileContent string `json:"dockerfile_content"`
-	BuildID           string `json:"build_id"`
-}
-
-// BuildResult contains the result of a Docker image build
-type BuildResult struct {
-	BuildID   string `json:"build_id"`
-	ImageName string `json:"image_name"`
-	Status    string `json:"status"`
-	LogsURL   string `json:"logs_url,omitempty"`
-	Error     string `json:"error,omitempty"`
-}
-
-// ContainerConnection represents an active connection to a container
-type ContainerConnection struct {
-	Container *Container `json:"container"`
-	LocalPort int        `json:"local_port"`
-	StopFunc  func()     `json:"-"` // Function to stop the port-forward
-}
