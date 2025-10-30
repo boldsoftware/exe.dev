@@ -9,7 +9,7 @@ echo "Setting up exed testing environment..."
 echo "Creating tmux session with windows..."
 tmux new-session -d -s testing
 tmux new-window -t testing -n exed
-tmux new-window -t testing -n sshpiper  
+tmux new-window -t testing -n sshpiper
 tmux new-window -t testing -n client
 
 echo "Building exed..."

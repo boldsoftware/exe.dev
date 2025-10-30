@@ -14,24 +14,24 @@ echo
 
 # Function to make HTTP requests with better error handling
 make_request() {
-    local method=$1
-    local url=$2
-    local data=$3
-    
-    echo "Making $method request to $url"
-    if [ -n "$data" ]; then
-        echo "Request body: $data"
-    fi
-    
-    if [ -n "$data" ]; then
-        curl -s -X "$method" -H "Content-Type: application/json" -d "$data" "$url" || echo "Request failed"
-    else
-        curl -s -X "$method" "$url" || echo "Request failed"
-    fi
-    
-    echo
-    echo "---"
-    echo
+	local method=$1
+	local url=$2
+	local data=$3
+
+	echo "Making $method request to $url"
+	if [ -n "$data" ]; then
+		echo "Request body: $data"
+	fi
+
+	if [ -n "$data" ]; then
+		curl -s -X "$method" -H "Content-Type: application/json" -d "$data" "$url" || echo "Request failed"
+	else
+		curl -s -X "$method" "$url" || echo "Request failed"
+	fi
+
+	echo
+	echo "---"
+	echo
 }
 
 echo "1. Testing server health by listing conversations..."

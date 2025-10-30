@@ -23,8 +23,8 @@ echo "Checking Tailscale connection to VM..."
 TAILSCALE_HOST="ubuntu@$INSTANCE_NAME"
 
 if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$TAILSCALE_HOST" "echo 'Tailscale SSH connection successful'" >/dev/null 2>&1; then
-    echo -e "${RED}ERROR: Cannot SSH to the production VM via Tailscale${NC}"
-    exit 1
+	echo -e "${RED}ERROR: Cannot SSH to the production VM via Tailscale${NC}"
+	exit 1
 fi
 
 echo -e "${GREEN}✓ Tailscale SSH access verified${NC}"
@@ -42,8 +42,8 @@ echo "Binary name: $BINARY_NAME"
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "/tmp/$BINARY_NAME" ./cmd/exed
 
 if [ ! -f "/tmp/$BINARY_NAME" ]; then
-    echo -e "${RED}ERROR: Failed to build binary${NC}"
-    exit 1
+	echo -e "${RED}ERROR: Failed to build binary${NC}"
+	exit 1
 fi
 
 # Get binary size
@@ -57,15 +57,15 @@ echo -e "${YELLOW}Deploying to VM...${NC}"
 # Copy binary to VM via Tailscale
 echo "Copying binary to VM..."
 if ! scp "/tmp/$BINARY_NAME" "$TAILSCALE_HOST:~/"; then
-    echo -e "${RED}ERROR: Failed to copy binary to VM${NC}"
-    exit 1
+	echo -e "${RED}ERROR: Failed to copy binary to VM${NC}"
+	exit 1
 fi
 
 echo -e "${GREEN}✓ Binary uploaded${NC}"
 
 # Make binary executable and create symlink
 echo "Configuring binary on VM..."
-ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" << EOF
+ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" <<EOF
 # Make binary executable
 chmod +x ~/$BINARY_NAME
 
@@ -116,16 +116,16 @@ echo "Waiting for https://exe.dev/health to respond..."
 
 # Health check loop running on dev machine
 for i in {1..30}; do
-    if curl -s -o /dev/null -w "" https://exe.dev/health 2>/dev/null; then
-        echo -e "${GREEN}✓ Service is responding (attempt $i/30)${NC}"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo -e "${YELLOW}⚠ Service health check timed out after 60 seconds${NC}"
-        echo "Service may still be starting - this is normal for the first restart"
-    else
-        sleep 2
-    fi
+	if curl -s -o /dev/null -w "" https://exe.dev/health 2>/dev/null; then
+		echo -e "${GREEN}✓ Service is responding (attempt $i/30)${NC}"
+		break
+	fi
+	if [ $i -eq 30 ]; then
+		echo -e "${YELLOW}⚠ Service health check timed out after 60 seconds${NC}"
+		echo "Service may still be starting - this is normal for the first restart"
+	else
+		sleep 2
+	fi
 done
 
 echo ""

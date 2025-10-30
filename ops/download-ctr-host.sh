@@ -185,7 +185,7 @@ for image in "${IMAGES[@]}"; do
 		echo "Downloading $image for linux/$ARCH..."
 		if $DOCKER_CMD pull --platform="linux/$ARCH" "$image"; then
 			echo "  Saving to tar..."
-			if $DOCKER_CMD save "$image" > "$base_tar"; then
+			if $DOCKER_CMD save "$image" >"$base_tar"; then
 				echo "$remote_digest" >"$digest_file"
 				echo "  ✓ Saved $base_tar with digest $remote_digest"
 			else

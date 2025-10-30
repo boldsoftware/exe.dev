@@ -8,7 +8,6 @@ DISK_GB="${DISK_GB:-40}" # thin-provisioned
 BASE_IMG="${BASE_IMG:-/var/lib/libvirt/images/ubuntu-24.04-base.qcow2}"
 BASE_IMG_URL="${BASE_IMG_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
 
-
 WORKDIR="${WORKDIR:-/var/lib/libvirt/images}"
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}" # or inject via env
 USER_NAME="${USER_NAME:-ubuntu}"

@@ -11,9 +11,9 @@ cd "$(dirname "$0")"
 echo "Building kernel $KERNEL_VERSION..."
 mkdir -p "$OUTPUT_DIR"
 docker build \
-  --build-arg KERNEL_VERSION="$KERNEL_VERSION" \
-  --output type=local,dest="$OUTPUT_DIR" \
-  .
+	--build-arg KERNEL_VERSION="$KERNEL_VERSION" \
+	--output type=local,dest="$OUTPUT_DIR" \
+	.
 
 echo ""
 echo "Kernel built successfully!"

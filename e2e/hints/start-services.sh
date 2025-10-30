@@ -12,7 +12,7 @@ tmux send-keys -t testing:exed 'cd /app && make run-dev' C-m
 # Wait a moment for exed to start
 sleep 3
 
-# Start sshpiper  
+# Start sshpiper
 echo "Starting sshpiper..."
 tmux send-keys -t testing:sshpiper './sshpiper.sh' C-m
 

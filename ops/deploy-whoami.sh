@@ -18,8 +18,8 @@ B2_OBJECT="whoami3.sqlite3.zst"
 printf 'Deploying %s to %s...\n' "${B2_OBJECT}" "${TAILSCALE_HOST}"
 
 if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "${TAILSCALE_HOST}" "echo >/dev/null"; then
-    printf 'ERROR: unable to reach %s via SSH\n' "${TAILSCALE_HOST}" >&2
-    exit 1
+	printf 'ERROR: unable to reach %s via SSH\n' "${TAILSCALE_HOST}" >&2
+	exit 1
 fi
 
 printf -v REMOTE_DIR_Q '%q' "${REMOTE_DIR}"
