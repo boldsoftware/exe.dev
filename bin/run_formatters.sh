@@ -50,7 +50,11 @@ if [ "$CHECK_MODE" = true ]; then
 else
 	# In fix mode, we apply the formatting
 	echo "Formatting Go code with gofumpt..."
-	find . -name "*.go" -not -path "./sshpiper/*" -exec gofumpt -extra -w {} +
+	# I tried all three approaches here, and xargs with parallelism and batches
+	# of 20 files seemed faster than the other approaches.
+	# time find . -name "*.go" -not -path "./sshpiper/*" -exec gofumpt -extra -w {} +
+	# time gofumpt -extra -w $(git ls-files -- "*.go" | grep -v -E '^sshpiper')
+	git ls-files -- "*.go" | grep -v -E '^sshpiper' | xargs -P $(nproc) -n 20 gofumpt -extra -w
 	echo "✓ Go code formatted"
 fi
 echo ""
