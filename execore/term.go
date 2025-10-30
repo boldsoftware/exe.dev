@@ -1,0 +1,612 @@
+package execore
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
+	"os/exec"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+
+	"exe.dev/boxname"
+	"exe.dev/container"
+	"exe.dev/ctrhosttest"
+	"exe.dev/exedb"
+)
+
+// TerminalSession represents a terminal session with its event channels
+type TerminalSession struct {
+	Cmd               *exec.Cmd
+	sshClient         *ssh.Client
+	sshSession        *ssh.Session
+	sshStdin          io.WriteCloser
+	EventsClients     map[chan []byte]bool
+	LastEventClientID int
+	EventsMutex       sync.Mutex
+	LastActivity      atomic.Pointer[time.Time]
+	BoxName           string
+	UserID            string
+}
+
+func (ts *TerminalSession) LastActivityTime() time.Time {
+	t := ts.LastActivity.Load()
+	if t != nil {
+		return *t
+	}
+	return time.Time{}
+}
+
+func (ts *TerminalSession) UpdateLastActivity() {
+	now := time.Now()
+	ts.LastActivity.Store(&now)
+}
+
+// TerminalMessage represents a message sent from the client for terminal resize events
+type TerminalMessage struct {
+	Type string `json:"type"`
+	Cols uint16 `json:"cols"`
+	Rows uint16 `json:"rows"`
+}
+
+// Global terminal session storage
+var (
+	cleanupTicker *time.Ticker
+	cleanupDone   chan bool
+
+	terminalSessionsMutex sync.RWMutex // protects terminalSessions map
+	terminalSessions      = make(map[string]*TerminalSession)
+)
+
+// Initialize terminal cleanup on package init
+func init() {
+	// Start cleanup goroutine that runs every minute
+	cleanupTicker = time.NewTicker(1 * time.Minute)
+	cleanupDone = make(chan bool)
+	go terminalCleanupLoop()
+}
+
+// terminalCleanupLoop removes inactive terminal sessions
+func terminalCleanupLoop() {
+	for {
+		select {
+		case <-cleanupTicker.C:
+			cleanupInactiveTerminals()
+		case <-cleanupDone:
+			return
+		}
+	}
+}
+
+// cleanupInactiveTerminals removes terminals that have been inactive for more than 10 minutes
+func cleanupInactiveTerminals() {
+	terminalSessionsMutex.Lock()
+	defer terminalSessionsMutex.Unlock()
+
+	cutoff := time.Now().Add(-10 * time.Minute)
+	for sessionID, session := range terminalSessions {
+		if session.LastActivityTime().Before(cutoff) {
+			slog.Info("Cleaning up inactive terminal session", "session_id", sessionID)
+			cleanupTerminalSession(session)
+			delete(terminalSessions, sessionID)
+		}
+	}
+}
+
+// cleanupTerminalSession properly closes all resources for a terminal session
+func cleanupTerminalSession(session *TerminalSession) {
+	// Kill process if it exists
+	if session.Cmd != nil && session.Cmd.Process != nil {
+		session.Cmd.Process.Kill()
+		session.Cmd.Wait()
+	}
+
+	// Close SSH session and client if they exist
+	if session.sshSession != nil {
+		session.sshSession.Close()
+	}
+	if session.sshClient != nil {
+		session.sshClient.Close()
+	}
+
+	// Client channels are closed when the client HTTP connection goes away,
+	// though maybe we should send them a little signal...
+}
+
+// withTerminalAuth is middleware that checks authentication and authorization for terminal access
+// If successful, it adds auth info to the request context and calls the next handler
+// Otherwise, it handles redirects and error pages
+func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get box name from subdomain
+		boxName, err := s.parseTerminalHostname(r.Host)
+		if err != nil {
+			http.Error(w, "Invalid hostname", http.StatusBadRequest)
+			return
+		}
+
+		// Check authentication - terminal requests use exe-auth cookie
+		userID, err := s.validateAuthCookie(r)
+		if err != nil {
+			// Not authenticated - redirect to login
+			scheme := getScheme(r)
+			returnURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
+			mainDomain := s.getMainDomainWithPort()
+			authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s", scheme, mainDomain, url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			return
+		}
+
+		// Check authorization - verify user has access to this box
+		_, err = s.boxForNameUserID(r.Context(), boxName, userID)
+		if err != nil {
+			// User doesn't have access to this box (or it doesn't exist)
+			// Show access denied page
+			scheme := getScheme(r)
+			mainDomain := s.getMainDomainWithPort()
+			dashboardURL := fmt.Sprintf("%s://%s/~", scheme, mainDomain)
+			data := struct {
+				BoxName      string
+				DashboardURL string
+			}{
+				BoxName:      boxName,
+				DashboardURL: dashboardURL,
+			}
+			s.renderTemplate(w, "terminal-access-denied.html", data)
+			return
+		}
+
+		// Add auth info to context
+		ctx := context.WithValue(r.Context(), terminalAuthKey{}, &terminalAuthInfo{
+			UserID:  userID,
+			BoxName: boxName,
+		})
+		next(w, r.WithContext(ctx))
+	}
+}
+
+// getTerminalAuthInfo retrieves terminal auth info from the request context
+func getTerminalAuthInfo(r *http.Request) *terminalAuthInfo {
+	if info, ok := r.Context().Value(terminalAuthKey{}).(*terminalAuthInfo); ok {
+		return info
+	}
+	return nil
+}
+
+// handleTerminalPage serves the terminal HTML page
+func (s *Server) handleTerminalPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Serve the terminal HTML page
+	s.serveStaticFile(w, r, "terminal.html")
+}
+
+// handleTerminalEvents handles SSE connections for terminal output
+func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
+	// Extract terminal ID from URL path
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid terminal ID", http.StatusBadRequest)
+		return
+	}
+	terminalID := parts[3]
+
+	// Get auth info from context
+	authInfo := getTerminalAuthInfo(r)
+	if authInfo == nil {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+	userID := authInfo.UserID
+	boxName := authInfo.BoxName
+
+	// Create session key combining user, box, and terminal ID
+	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
+
+	// Get or create terminal session
+	terminalSessionsMutex.RLock()
+	session, exists := terminalSessions[sessionKey]
+	terminalSessionsMutex.RUnlock()
+
+	if !exists {
+		// Create new terminal session without holding the lock
+		newSession, err := s.createTerminalSession(r.Context(), userID, boxName)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create terminal: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Now acquire write lock to store the session
+		terminalSessionsMutex.Lock()
+		// Check again in case another goroutine created it
+		if existingSession, exists := terminalSessions[sessionKey]; exists {
+			// Someone else created it, close our new one and use existing
+			go cleanupTerminalSession(newSession)
+			session = existingSession
+		} else {
+			terminalSessions[sessionKey] = newSession
+			session = newSession
+		}
+		terminalSessionsMutex.Unlock()
+	}
+
+	session.UpdateLastActivity()
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Create channel for this client
+	events := make(chan []byte, 4096)
+
+	// Register client
+	session.EventsMutex.Lock()
+	clientID := session.LastEventClientID + 1
+	session.LastEventClientID = clientID
+	session.EventsClients[events] = true
+	session.EventsMutex.Unlock()
+
+	// Cleanup when client disconnects
+	defer func() {
+		session.EventsMutex.Lock()
+		delete(session.EventsClients, events)
+		close(events)
+		session.EventsMutex.Unlock()
+	}()
+
+	// Flush headers immediately
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+
+	// Send events to client
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case data := <-events:
+			// Send as base64 encoded SSE event
+			fmt.Fprintf(w, "data: %s\n\n", base64.StdEncoding.EncodeToString(data))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}
+}
+
+// handleTerminalInput processes input to the terminal
+func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract terminal ID from URL path
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "Invalid terminal ID", http.StatusBadRequest)
+		return
+	}
+	terminalID := parts[3]
+
+	// Get auth info from context
+	authInfo := getTerminalAuthInfo(r)
+	if authInfo == nil {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+	userID := authInfo.UserID
+	boxName := authInfo.BoxName
+
+	// Create session key
+	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
+
+	// Find terminal session
+	terminalSessionsMutex.RLock()
+	session, exists := terminalSessions[sessionKey]
+	terminalSessionsMutex.RUnlock()
+
+	if !exists {
+		http.Error(w, "Terminal session not found", http.StatusNotFound)
+		return
+	}
+
+	session.UpdateLastActivity()
+
+	// Read request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	// Check if it's a resize message
+	if len(body) > 0 && body[0] == '{' {
+		var msg TerminalMessage
+		if err := json.Unmarshal(body, &msg); err == nil && msg.Type == "resize" {
+			if msg.Cols > 0 && msg.Rows > 0 {
+				// Handle SSH window change
+				if session.sshSession != nil {
+					_ = session.sshSession.WindowChange(int(msg.Rows), int(msg.Cols))
+				}
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+	}
+
+	// Regular terminal input - send to SSH stdin
+	if session.sshStdin != nil {
+		_, err = session.sshStdin.Write(body)
+	} else {
+		err = fmt.Errorf("no active terminal session")
+	}
+
+	if err != nil {
+		slog.Error("Failed to write to terminal", "error", err)
+		http.Error(w, "Failed to write to terminal", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// createTerminalSession creates a new terminal session for a user's box
+func (s *Server) createTerminalSession(ctx context.Context, userID, boxName string) (*TerminalSession, error) {
+	session := &TerminalSession{
+		EventsClients: make(map[chan []byte]bool),
+		BoxName:       boxName,
+		UserID:        userID,
+	}
+	session.UpdateLastActivity()
+
+	// Get box information
+	box, err := s.boxForNameUserID(ctx, boxName, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get box: %w", err)
+	}
+
+	// Check if box is running
+	if box.Status != "running" {
+		return nil, fmt.Errorf("box is not running (status: %s)", box.Status)
+	}
+
+	// Establish SSH shell session
+	err = s.createContainerExecSession(session, box)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create container session: %w", err)
+	}
+
+	return session, nil
+}
+
+func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box) error {
+	// Replaced nerdctl exec with SSH session creation
+	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil || box.SSHUser == nil {
+		return fmt.Errorf("box missing SSH credentials")
+	}
+	sshKey, err := container.CreateSSHSigner(string(box.SSHClientPrivateKey))
+	if err != nil {
+		return fmt.Errorf("failed to parse SSH private key: %w", err)
+	}
+	sshHost := "localhost"
+	ctrhost, err := withRxRes(s, context.Background(), func(ctx context.Context, q *exedb.Queries) (string, error) {
+		return q.GetCtrhostByAllocID(ctx, box.AllocID)
+	})
+	if err == nil && ctrhost != "" {
+		if strings.Contains(ctrhost, "://") {
+			if u, perr := url.Parse(ctrhost); perr == nil && u.Host != "" {
+				if host, _, herr := net.SplitHostPort(u.Host); herr == nil {
+					sshHost = host
+				} else {
+					sshHost = u.Host
+				}
+			}
+		} else {
+			sshHost = ctrhost
+		}
+	}
+	if s.devMode != "" {
+		if _, herr := net.LookupHost(sshHost); herr != nil {
+			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
+				slog.Debug("[TERMINAL] Resolved host via SSH config", "alias", sshHost, "ip", ip)
+				sshHost = ip
+			}
+		}
+	}
+	sshConfig := &ssh.ClientConfig{
+		User: *box.SSHUser, Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(sshKey),
+		},
+		HostKeyCallback: box.CreateHostKeyCallback(),
+		Timeout:         10 * time.Second,
+	}
+	addr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
+	client, err := ssh.Dial("tcp", addr, sshConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect via SSH: %w", err)
+	}
+	sess, err := client.NewSession()
+	if err != nil {
+		client.Close()
+		return fmt.Errorf("failed to create SSH session: %w", err)
+	}
+	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}
+	if err := sess.RequestPty("xterm-256color", 24, 80, modes); err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to request PTY: %w", err)
+	}
+	stdin, err := sess.StdinPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to get stdin pipe: %w", err)
+	}
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderr, err := sess.StderrPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+	if err := sess.Shell(); err != nil {
+		sess.Close()
+		client.Close()
+		return fmt.Errorf("failed to start remote shell: %w", err)
+	}
+	session.sshClient = client
+	session.sshSession = sess
+	session.sshStdin = stdin
+	go s.readFromSSHSessionAndBroadcast(session, stdout, stderr)
+	return nil
+}
+
+func (s *Server) readFromSSHSessionAndBroadcast(session *TerminalSession, stdout, stderr io.Reader) {
+	defer func() {
+		cleanupTerminalSession(session)
+	}()
+	var wg sync.WaitGroup
+	fn := func(r io.Reader) {
+		defer wg.Done()
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				data := make([]byte, n)
+				copy(data, buf[:n])
+				session.UpdateLastActivity()
+				session.EventsMutex.Lock()
+				for ch := range session.EventsClients {
+					select {
+					case ch <- data:
+					default:
+					}
+				}
+				session.EventsMutex.Unlock()
+			}
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					slog.Error("Failed reading SSH stream", "error", err)
+				}
+				return
+			}
+		}
+	}
+	wg.Add(2)
+	go fn(stdout)
+	go fn(stderr)
+	wg.Wait()
+}
+
+// terminalAuthInfo holds authenticated user and box information
+type terminalAuthInfo struct {
+	UserID  string
+	BoxName string
+}
+
+// terminalAuthKey is the context key for terminal authentication info
+type terminalAuthKey struct{}
+
+// Helper functions for box management
+
+// isTerminalRequest determines if a request is for a terminal subdomain
+func (s *Server) isTerminalRequest(host string) bool {
+	return isTerminalRequestWithBase(host, s.terminalBaseHostname())
+}
+
+func isTerminalRequestWithBase(host, base string) bool {
+	// Extract hostname (strip port if present)
+	hostname := stripPort(host)
+	return strings.HasSuffix(hostname, base)
+}
+
+// handleTerminalRequest handles requests to terminal subdomains
+func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
+	// Handle magic auth URL first (before authentication check)
+	if r.URL.Path == "/__exe.dev/auth" {
+		s.handleMagicAuth(w, r)
+		return
+	}
+
+	// Check authentication for other paths
+	if _, err := s.validateAuthCookie(r); err != nil {
+		// Invalid cookie, redirect to auth
+		scheme := getScheme(r)
+		returnURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
+		mainDomain := s.getMainDomainWithPort()
+		authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s", scheme, mainDomain, url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Route based on path
+	path := r.URL.Path
+	switch {
+	case path == "/":
+		// Serve terminal HTML page - requires auth
+		s.withTerminalAuth(s.handleTerminalPage)(w, r)
+	case strings.HasPrefix(path, "/terminal/events/"):
+		// Handle SSE events - requires auth
+		s.withTerminalAuth(s.handleTerminalEvents)(w, r)
+	case strings.HasPrefix(path, "/terminal/input/"):
+		// Handle terminal input - requires auth
+		s.withTerminalAuth(s.handleTerminalInput)(w, r)
+	case path == "/favicon.ico":
+		s.serveStaticFile(w, r, "favicon.ico")
+	case strings.HasPrefix(path, "/static/"):
+		// Serve static files using existing method
+		filename := strings.TrimPrefix(path, "/static/")
+		s.serveStaticFile(w, r, filename)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *Server) terminalBaseHostname() string {
+	// Development: box.xterm.localhost
+	// Production: box.xterm.exe.dev
+	base := ".xterm.exe.dev"
+	if s.devMode != "" {
+		base = ".xterm.localhost"
+	}
+	return base
+}
+
+// parseTerminalHostname extracts box name from terminal hostname
+func (s *Server) parseTerminalHostname(hostname string) (string, error) {
+	return parseTerminalHostnameWithBase(hostname, s.terminalBaseHostname())
+}
+
+func parseTerminalHostnameWithBase(hostname, base string) (string, error) {
+	hostname = stripPort(hostname)
+	// Extract box name from hostname.
+	boxName, ok := strings.CutSuffix(hostname, base)
+	if !ok {
+		return "", fmt.Errorf("not a terminal hostname")
+	}
+	if !boxname.Valid(boxName) {
+		return "", fmt.Errorf("invalid box name")
+	}
+	return boxName, nil
+}

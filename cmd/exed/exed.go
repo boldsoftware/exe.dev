@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev"
 	"exe.dev/ctrhosttest"
+	"exe.dev/execore"
 	"exe.dev/logging"
 )
 
@@ -127,7 +127,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := exe.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses)
+	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
