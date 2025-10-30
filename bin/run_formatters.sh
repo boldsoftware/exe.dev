@@ -15,11 +15,24 @@ else
   echo "Running in fix mode (formatting will be modified)"
 fi
 
-# Check if gofumpt is installed
 if ! command -v gofumpt &> /dev/null; then
     echo "Error: gofumpt not found. Install it with:"
     echo "  go install mvdan.cc/gofumpt@v0.9.2"
     exit 1
+fi
+
+if ! command -v shfmt &> /dev/null; then
+    echo "Error: shfmt not found. Install it with:"
+    echo "  go install mvdan.cc/sh/v3/cmd/shfmt@v3.12.0"
+    exit 1
+fi
+
+# Shell formatting
+echo "Checking Shell formatting..."
+if [ "$CHECK_MODE" = true ]; then
+	shfmt -w $(git ls-files -- *.sh | grep -v -E '^(tini|sshpiper)')
+else
+	shfmt -d $(git ls-files -- *.sh | grep -v -E '^(tini|sshpiper)')
 fi
 
 # Go formatting with gofumpt

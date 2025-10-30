@@ -103,6 +103,11 @@ jobs:
           chmod +x /tmp/gofumpt
           sudo mv /tmp/gofumpt /usr/local/bin/gofumpt
 
+      - name: Install shfmt
+        run: |
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.12.0
+          sudo cp ~/go/bin/shfmt /usr/local/bin/shfmt
+
       - name: Check and fix formatting
         run: |
           # Run the formatters script

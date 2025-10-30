@@ -7,14 +7,13 @@
 #   docker run -v $(pwd)/container/rovol/arm64:/exe.dev -it ubuntu:24.04 /exe.dev/bin/dtach --help
 # can test whether it's built successfully.
 
-
 set -e
 
 ARCH="$1"
 if [ -z "$ARCH" ]; then
-    echo "Usage: $0 <target_arch>" >&2
-    echo "where target_arch is arm64 or amd64" >&2
-    exit 1
+	echo "Usage: $0 <target_arch>" >&2
+	echo "where target_arch is arm64 or amd64" >&2
+	exit 1
 fi
 
 INTERPRETER="ld-musl.so.1"
@@ -37,8 +36,8 @@ export CFLAGS="-O1 -fno-strict-aliasing -fno-stack-protector"
 export LDFLAGS="-Wl,-rpath,/exe.dev/lib -Wl,--dynamic-linker,/exe.dev/lib/${INTERPRETER}"
 
 ./configure \
-    --prefix=/exe.dev \
-    --bindir=/exe.dev/bin
+	--prefix=/exe.dev \
+	--bindir=/exe.dev/bin
 
 # Build
 make
