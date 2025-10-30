@@ -1,5 +1,7 @@
 package exedb
 
+//go:generate go tool sqlc generate
+
 import (
 	"context"
 	crand "crypto/rand"

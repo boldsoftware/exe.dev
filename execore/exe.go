@@ -1,8 +1,6 @@
 // Package exe implements the bulk of the exed server.
 package execore
 
-//go:generate go tool sqlc -f ../sqlc.yaml generate
-
 import (
 	"context"
 	crand "crypto/rand"

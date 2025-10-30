@@ -20,26 +20,6 @@ jobs:
       - name: Set PATH
         run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
-      - name: Verify sqlc generated code unchanged
-        run: |
-          set -euo pipefail
-          echo "Running 'make sqlc' to verify generated code is up-to-date..."
-          if ! command -v sqlc >/dev/null 2>&1; then
-            echo "sqlc is required but not found in PATH. Install sqlc and retry." >&2
-            exit 1
-          fi
-          make sqlc
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "❌ 'make sqlc' produced uncommitted changes. Commit generated code." >&2
-            echo
-            echo "Changed files:" >&2
-            git status --porcelain >&2
-            echo
-            echo "Diff:" >&2
-            git diff >&2
-            exit 1
-          fi
-
       - name: Verify go generate output unchanged
         run: |
           set -euo pipefail
