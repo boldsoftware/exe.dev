@@ -153,22 +153,6 @@ func (q *Queries) GetBoxDetailsForSetup(ctx context.Context, id int) (GetBoxDeta
 	return i, err
 }
 
-const getBoxIDAndAllocByName = `-- name: GetBoxIDAndAllocByName :one
-SELECT id, alloc_id FROM boxes WHERE name = ?
-`
-
-type GetBoxIDAndAllocByNameRow struct {
-	ID      int    `db:"id" json:"id"`
-	AllocID string `db:"alloc_id" json:"alloc_id"`
-}
-
-func (q *Queries) GetBoxIDAndAllocByName(ctx context.Context, name string) (GetBoxIDAndAllocByNameRow, error) {
-	row := q.queryRow(ctx, q.getBoxIDAndAllocByNameStmt, getBoxIDAndAllocByName, name)
-	var i GetBoxIDAndAllocByNameRow
-	err := row.Scan(&i.ID, &i.AllocID)
-	return i, err
-}
-
 const getBoxSSHDetails = `-- name: GetBoxSSHDetails :one
 SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user
 FROM boxes m
@@ -451,39 +435,5 @@ type UpdateBoxStatusParams struct {
 
 func (q *Queries) UpdateBoxStatus(ctx context.Context, arg UpdateBoxStatusParams) error {
 	_, err := q.exec(ctx, q.updateBoxStatusStmt, updateBoxStatus, arg.Status, arg.ID)
-	return err
-}
-
-const updateBoxStatusRunning = `-- name: UpdateBoxStatusRunning :exec
-UPDATE boxes SET status = 'running', last_started_at = CURRENT_TIMESTAMP
-WHERE name = ?
-`
-
-func (q *Queries) UpdateBoxStatusRunning(ctx context.Context, name string) error {
-	_, err := q.exec(ctx, q.updateBoxStatusRunningStmt, updateBoxStatusRunning, name)
-	return err
-}
-
-const updateBoxStatusRunningByID = `-- name: UpdateBoxStatusRunningByID :exec
-UPDATE boxes SET status = 'running', updated_at = ? WHERE id = ?
-`
-
-type UpdateBoxStatusRunningByIDParams struct {
-	UpdatedAt *time.Time `db:"updated_at" json:"updated_at"`
-	ID        int        `db:"id" json:"id"`
-}
-
-func (q *Queries) UpdateBoxStatusRunningByID(ctx context.Context, arg UpdateBoxStatusRunningByIDParams) error {
-	_, err := q.exec(ctx, q.updateBoxStatusRunningByIDStmt, updateBoxStatusRunningByID, arg.UpdatedAt, arg.ID)
-	return err
-}
-
-const updateBoxStatusStopped = `-- name: UpdateBoxStatusStopped :exec
-UPDATE boxes SET status = 'stopped'
-WHERE name = ?
-`
-
-func (q *Queries) UpdateBoxStatusStopped(ctx context.Context, name string) error {
-	_, err := q.exec(ctx, q.updateBoxStatusStoppedStmt, updateBoxStatusStopped, name)
 	return err
 }

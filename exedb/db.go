@@ -81,9 +81,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteBoxShareLinkByBoxAndTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByBoxAndToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByBoxAndToken: %w", err)
 	}
-	if q.deleteBoxShareLinkByTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByToken); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByToken: %w", err)
-	}
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
 	}
@@ -120,12 +117,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxDetailsForSetupStmt, err = db.PrepareContext(ctx, getBoxDetailsForSetup); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxDetailsForSetup: %w", err)
 	}
-	if q.getBoxIDAndAllocByNameStmt, err = db.PrepareContext(ctx, getBoxIDAndAllocByName); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxIDAndAllocByName: %w", err)
-	}
-	if q.getBoxIPShardStmt, err = db.PrepareContext(ctx, getBoxIPShard); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxIPShard: %w", err)
-	}
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
 	}
@@ -159,9 +150,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailByUserIDStmt, err = db.PrepareContext(ctx, getEmailByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailByUserID: %w", err)
 	}
-	if q.getEmailVerificationByEmailStmt, err = db.PrepareContext(ctx, getEmailVerificationByEmail); err != nil {
-		return nil, fmt.Errorf("error preparing query GetEmailVerificationByEmail: %w", err)
-	}
 	if q.getEmailVerificationByPartialTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByPartialToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByPartialToken: %w", err)
 	}
@@ -186,9 +174,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
 	}
-	if q.getSSHHostPublicKeyStmt, err = db.PrepareContext(ctx, getSSHHostPublicKey); err != nil {
-		return nil, fmt.Errorf("error preparing query GetSSHHostPublicKey: %w", err)
-	}
 	if q.getSSHKeysForUserStmt, err = db.PrepareContext(ctx, getSSHKeysForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHKeysForUser: %w", err)
 	}
@@ -198,9 +183,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getTagResolutionStmt, err = db.PrepareContext(ctx, getTagResolution); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTagResolution: %w", err)
 	}
-	if q.getTagResolutionsByAgeStmt, err = db.PrepareContext(ctx, getTagResolutionsByAge); err != nil {
-		return nil, fmt.Errorf("error preparing query GetTagResolutionsByAge: %w", err)
-	}
 	if q.getTagsNeedingRefreshStmt, err = db.PrepareContext(ctx, getTagsNeedingRefresh); err != nil {
 		return nil, fmt.Errorf("error preparing query GetTagsNeedingRefresh: %w", err)
 	}
@@ -209,9 +191,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserEmailCountForDateStmt, err = db.PrepareContext(ctx, getUserEmailCountForDate); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserEmailCountForDate: %w", err)
-	}
-	if q.getUserEmailCountsForDateRangeStmt, err = db.PrepareContext(ctx, getUserEmailCountsForDateRange); err != nil {
-		return nil, fmt.Errorf("error preparing query GetUserEmailCountsForDateRange: %w", err)
 	}
 	if q.getUserIDByEmailStmt, err = db.PrepareContext(ctx, getUserIDByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserIDByEmail: %w", err)
@@ -306,15 +285,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
 	}
-	if q.updateBoxStatusRunningStmt, err = db.PrepareContext(ctx, updateBoxStatusRunning); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBoxStatusRunning: %w", err)
-	}
-	if q.updateBoxStatusRunningByIDStmt, err = db.PrepareContext(ctx, updateBoxStatusRunningByID); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBoxStatusRunningByID: %w", err)
-	}
-	if q.updateBoxStatusStoppedStmt, err = db.PrepareContext(ctx, updateBoxStatusStopped); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateBoxStatusStopped: %w", err)
-	}
 	if q.updateTagResolutionCheckedStmt, err = db.PrepareContext(ctx, updateTagResolutionChecked); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionChecked: %w", err)
 	}
@@ -323,9 +293,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateTagResolutionMetadataStmt, err = db.PrepareContext(ctx, updateTagResolutionMetadata); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionMetadata: %w", err)
-	}
-	if q.updateTagResolutionTTLStmt, err = db.PrepareContext(ctx, updateTagResolutionTTL); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateTagResolutionTTL: %w", err)
 	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
@@ -439,11 +406,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteBoxShareLinkByBoxAndTokenStmt: %w", cerr)
 		}
 	}
-	if q.deleteBoxShareLinkByTokenStmt != nil {
-		if cerr := q.deleteBoxShareLinkByTokenStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteBoxShareLinkByTokenStmt: %w", cerr)
-		}
-	}
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
@@ -504,16 +466,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxDetailsForSetupStmt: %w", cerr)
 		}
 	}
-	if q.getBoxIDAndAllocByNameStmt != nil {
-		if cerr := q.getBoxIDAndAllocByNameStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxIDAndAllocByNameStmt: %w", cerr)
-		}
-	}
-	if q.getBoxIPShardStmt != nil {
-		if cerr := q.getBoxIPShardStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxIPShardStmt: %w", cerr)
-		}
-	}
 	if q.getBoxSSHDetailsStmt != nil {
 		if cerr := q.getBoxSSHDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
@@ -569,11 +521,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEmailByUserIDStmt: %w", cerr)
 		}
 	}
-	if q.getEmailVerificationByEmailStmt != nil {
-		if cerr := q.getEmailVerificationByEmailStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getEmailVerificationByEmailStmt: %w", cerr)
-		}
-	}
 	if q.getEmailVerificationByPartialTokenStmt != nil {
 		if cerr := q.getEmailVerificationByPartialTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByPartialTokenStmt: %w", cerr)
@@ -614,11 +561,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
 		}
 	}
-	if q.getSSHHostPublicKeyStmt != nil {
-		if cerr := q.getSSHHostPublicKeyStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getSSHHostPublicKeyStmt: %w", cerr)
-		}
-	}
 	if q.getSSHKeysForUserStmt != nil {
 		if cerr := q.getSSHKeysForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHKeysForUserStmt: %w", cerr)
@@ -634,11 +576,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getTagResolutionStmt: %w", cerr)
 		}
 	}
-	if q.getTagResolutionsByAgeStmt != nil {
-		if cerr := q.getTagResolutionsByAgeStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getTagResolutionsByAgeStmt: %w", cerr)
-		}
-	}
 	if q.getTagsNeedingRefreshStmt != nil {
 		if cerr := q.getTagsNeedingRefreshStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getTagsNeedingRefreshStmt: %w", cerr)
@@ -652,11 +589,6 @@ func (q *Queries) Close() error {
 	if q.getUserEmailCountForDateStmt != nil {
 		if cerr := q.getUserEmailCountForDateStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserEmailCountForDateStmt: %w", cerr)
-		}
-	}
-	if q.getUserEmailCountsForDateRangeStmt != nil {
-		if cerr := q.getUserEmailCountsForDateRangeStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getUserEmailCountsForDateRangeStmt: %w", cerr)
 		}
 	}
 	if q.getUserIDByEmailStmt != nil {
@@ -814,21 +746,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
 		}
 	}
-	if q.updateBoxStatusRunningStmt != nil {
-		if cerr := q.updateBoxStatusRunningStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBoxStatusRunningStmt: %w", cerr)
-		}
-	}
-	if q.updateBoxStatusRunningByIDStmt != nil {
-		if cerr := q.updateBoxStatusRunningByIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBoxStatusRunningByIDStmt: %w", cerr)
-		}
-	}
-	if q.updateBoxStatusStoppedStmt != nil {
-		if cerr := q.updateBoxStatusStoppedStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateBoxStatusStoppedStmt: %w", cerr)
-		}
-	}
 	if q.updateTagResolutionCheckedStmt != nil {
 		if cerr := q.updateTagResolutionCheckedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateTagResolutionCheckedStmt: %w", cerr)
@@ -842,11 +759,6 @@ func (q *Queries) Close() error {
 	if q.updateTagResolutionMetadataStmt != nil {
 		if cerr := q.updateTagResolutionMetadataStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateTagResolutionMetadataStmt: %w", cerr)
-		}
-	}
-	if q.updateTagResolutionTTLStmt != nil {
-		if cerr := q.updateTagResolutionTTLStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateTagResolutionTTLStmt: %w", cerr)
 		}
 	}
 	if q.upsertSSHHostKeyStmt != nil {
@@ -927,7 +839,6 @@ type Queries struct {
 	deleteBoxShareByBoxAndUserStmt         *sql.Stmt
 	deleteBoxShareLinkStmt                 *sql.Stmt
 	deleteBoxShareLinkByBoxAndTokenStmt    *sql.Stmt
-	deleteBoxShareLinkByTokenStmt          *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
 	deletePendingBoxShareStmt              *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt *sql.Stmt
@@ -940,8 +851,6 @@ type Queries struct {
 	getAuthTokenInfoStmt                   *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
-	getBoxIDAndAllocByNameStmt             *sql.Stmt
-	getBoxIPShardStmt                      *sql.Stmt
 	getBoxSSHDetailsStmt                   *sql.Stmt
 	getBoxShareLinkByTokenStmt             *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt     *sql.Stmt
@@ -953,7 +862,6 @@ type Queries struct {
 	getCtrhostByAllocIDStmt                *sql.Stmt
 	getEmailBySSHKeyStmt                   *sql.Stmt
 	getEmailByUserIDStmt                   *sql.Stmt
-	getEmailVerificationByEmailStmt        *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
 	getImageMetadataStmt                   *sql.Stmt
@@ -962,15 +870,12 @@ type Queries struct {
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
 	getSSHHostKeyStmt                      *sql.Stmt
-	getSSHHostPublicKeyStmt                *sql.Stmt
 	getSSHKeysForUserStmt                  *sql.Stmt
 	getSSHKeysForUserByEmailStmt           *sql.Stmt
 	getTagResolutionStmt                   *sql.Stmt
-	getTagResolutionsByAgeStmt             *sql.Stmt
 	getTagsNeedingRefreshStmt              *sql.Stmt
 	getUserByEmailStmt                     *sql.Stmt
 	getUserEmailCountForDateStmt           *sql.Stmt
-	getUserEmailCountsForDateRangeStmt     *sql.Stmt
 	getUserIDByEmailStmt                   *sql.Stmt
 	getUserIDBySSHKeyStmt                  *sql.Stmt
 	getUserWithDetailsStmt                 *sql.Stmt
@@ -1002,13 +907,9 @@ type Queries struct {
 	updateBoxRoutesStmt                    *sql.Stmt
 	updateBoxSSHDetailsStmt                *sql.Stmt
 	updateBoxStatusStmt                    *sql.Stmt
-	updateBoxStatusRunningStmt             *sql.Stmt
-	updateBoxStatusRunningByIDStmt         *sql.Stmt
-	updateBoxStatusStoppedStmt             *sql.Stmt
 	updateTagResolutionCheckedStmt         *sql.Stmt
 	updateTagResolutionDigestStmt          *sql.Stmt
 	updateTagResolutionMetadataStmt        *sql.Stmt
-	updateTagResolutionTTLStmt             *sql.Stmt
 	upsertSSHHostKeyStmt                   *sql.Stmt
 	upsertSSHKeyForUserStmt                *sql.Stmt
 	upsertTagResolutionStmt                *sql.Stmt
@@ -1038,7 +939,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteBoxShareByBoxAndUserStmt:         q.deleteBoxShareByBoxAndUserStmt,
 		deleteBoxShareLinkStmt:                 q.deleteBoxShareLinkStmt,
 		deleteBoxShareLinkByBoxAndTokenStmt:    q.deleteBoxShareLinkByBoxAndTokenStmt,
-		deleteBoxShareLinkByTokenStmt:          q.deleteBoxShareLinkByTokenStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
 		deletePendingBoxShareStmt:              q.deletePendingBoxShareStmt,
 		deletePendingBoxShareByBoxAndEmailStmt: q.deletePendingBoxShareByBoxAndEmailStmt,
@@ -1051,8 +951,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
-		getBoxIDAndAllocByNameStmt:             q.getBoxIDAndAllocByNameStmt,
-		getBoxIPShardStmt:                      q.getBoxIPShardStmt,
 		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
 		getBoxShareLinkByTokenStmt:             q.getBoxShareLinkByTokenStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:     q.getBoxShareLinkByTokenAndBoxIDStmt,
@@ -1064,7 +962,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getCtrhostByAllocIDStmt:                q.getCtrhostByAllocIDStmt,
 		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
-		getEmailVerificationByEmailStmt:        q.getEmailVerificationByEmailStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
 		getImageMetadataStmt:                   q.getImageMetadataStmt,
@@ -1073,15 +970,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
-		getSSHHostPublicKeyStmt:                q.getSSHHostPublicKeyStmt,
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
 		getTagResolutionStmt:                   q.getTagResolutionStmt,
-		getTagResolutionsByAgeStmt:             q.getTagResolutionsByAgeStmt,
 		getTagsNeedingRefreshStmt:              q.getTagsNeedingRefreshStmt,
 		getUserByEmailStmt:                     q.getUserByEmailStmt,
 		getUserEmailCountForDateStmt:           q.getUserEmailCountForDateStmt,
-		getUserEmailCountsForDateRangeStmt:     q.getUserEmailCountsForDateRangeStmt,
 		getUserIDByEmailStmt:                   q.getUserIDByEmailStmt,
 		getUserIDBySSHKeyStmt:                  q.getUserIDBySSHKeyStmt,
 		getUserWithDetailsStmt:                 q.getUserWithDetailsStmt,
@@ -1113,13 +1007,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxRoutesStmt:                    q.updateBoxRoutesStmt,
 		updateBoxSSHDetailsStmt:                q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                    q.updateBoxStatusStmt,
-		updateBoxStatusRunningStmt:             q.updateBoxStatusRunningStmt,
-		updateBoxStatusRunningByIDStmt:         q.updateBoxStatusRunningByIDStmt,
-		updateBoxStatusStoppedStmt:             q.updateBoxStatusStoppedStmt,
 		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
 		updateTagResolutionMetadataStmt:        q.updateTagResolutionMetadataStmt,
-		updateTagResolutionTTLStmt:             q.updateTagResolutionTTLStmt,
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,

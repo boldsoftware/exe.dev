@@ -130,62 +130,6 @@ func (q *Queries) GetTagResolution(ctx context.Context, arg GetTagResolutionPara
 	return i, err
 }
 
-const getTagResolutionsByAge = `-- name: GetTagResolutionsByAge :many
-SELECT registry, repository, tag, platform,
-       COALESCE(index_digest, '') as index_digest, 
-       COALESCE(platform_digest, '') as platform_digest,
-       last_checked_at, ttl_seconds,
-       COALESCE(image_size, 0) as image_size
-FROM tag_resolutions
-ORDER BY last_checked_at ASC
-LIMIT ?
-`
-
-type GetTagResolutionsByAgeRow struct {
-	Registry       string `db:"registry" json:"registry"`
-	Repository     string `db:"repository" json:"repository"`
-	Tag            string `db:"tag" json:"tag"`
-	Platform       string `db:"platform" json:"platform"`
-	IndexDigest    string `db:"index_digest" json:"index_digest"`
-	PlatformDigest string `db:"platform_digest" json:"platform_digest"`
-	LastCheckedAt  int64  `db:"last_checked_at" json:"last_checked_at"`
-	TtlSeconds     int64  `db:"ttl_seconds" json:"ttl_seconds"`
-	ImageSize      int64  `db:"image_size" json:"image_size"`
-}
-
-func (q *Queries) GetTagResolutionsByAge(ctx context.Context, limit int64) ([]GetTagResolutionsByAgeRow, error) {
-	rows, err := q.query(ctx, q.getTagResolutionsByAgeStmt, getTagResolutionsByAge, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []GetTagResolutionsByAgeRow{}
-	for rows.Next() {
-		var i GetTagResolutionsByAgeRow
-		if err := rows.Scan(
-			&i.Registry,
-			&i.Repository,
-			&i.Tag,
-			&i.Platform,
-			&i.IndexDigest,
-			&i.PlatformDigest,
-			&i.LastCheckedAt,
-			&i.TtlSeconds,
-			&i.ImageSize,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getTagsNeedingRefresh = `-- name: GetTagsNeedingRefresh :many
 SELECT registry, repository, tag, platform,
        COALESCE(index_digest, '') as index_digest, COALESCE(platform_digest, '') as platform_digest,
@@ -438,33 +382,6 @@ func (q *Queries) UpdateTagResolutionMetadata(ctx context.Context, arg UpdateTag
 		arg.ImageCmd,
 		arg.ImageLabels,
 		arg.ImageExposedPorts,
-		arg.UpdatedAt,
-		arg.Registry,
-		arg.Repository,
-		arg.Tag,
-		arg.Platform,
-	)
-	return err
-}
-
-const updateTagResolutionTTL = `-- name: UpdateTagResolutionTTL :exec
-UPDATE tag_resolutions
-SET ttl_seconds = ?, updated_at = ?
-WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-`
-
-type UpdateTagResolutionTTLParams struct {
-	TtlSeconds int64  `db:"ttl_seconds" json:"ttl_seconds"`
-	UpdatedAt  int64  `db:"updated_at" json:"updated_at"`
-	Registry   string `db:"registry" json:"registry"`
-	Repository string `db:"repository" json:"repository"`
-	Tag        string `db:"tag" json:"tag"`
-	Platform   string `db:"platform" json:"platform"`
-}
-
-func (q *Queries) UpdateTagResolutionTTL(ctx context.Context, arg UpdateTagResolutionTTLParams) error {
-	_, err := q.exec(ctx, q.updateTagResolutionTTLStmt, updateTagResolutionTTL,
-		arg.TtlSeconds,
 		arg.UpdatedAt,
 		arg.Registry,
 		arg.Repository,

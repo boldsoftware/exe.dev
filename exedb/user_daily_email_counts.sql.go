@@ -26,41 +26,6 @@ func (q *Queries) GetUserEmailCountForDate(ctx context.Context, arg GetUserEmail
 	return email_count, err
 }
 
-const getUserEmailCountsForDateRange = `-- name: GetUserEmailCountsForDateRange :many
-SELECT user_id, date, email_count FROM user_daily_email_counts
-WHERE user_id = ? AND date >= ? AND date <= ?
-ORDER BY date DESC
-`
-
-type GetUserEmailCountsForDateRangeParams struct {
-	UserID string `db:"user_id" json:"user_id"`
-	Date   string `db:"date" json:"date"`
-	Date_2 string `db:"date_2" json:"date_2"`
-}
-
-func (q *Queries) GetUserEmailCountsForDateRange(ctx context.Context, arg GetUserEmailCountsForDateRangeParams) ([]UserDailyEmailCount, error) {
-	rows, err := q.query(ctx, q.getUserEmailCountsForDateRangeStmt, getUserEmailCountsForDateRange, arg.UserID, arg.Date, arg.Date_2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []UserDailyEmailCount{}
-	for rows.Next() {
-		var i UserDailyEmailCount
-		if err := rows.Scan(&i.UserID, &i.Date, &i.EmailCount); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const incrementUserEmailCount = `-- name: IncrementUserEmailCount :exec
 INSERT INTO user_daily_email_counts (user_id, date, email_count)
 VALUES (?, ?, 1)

@@ -76,15 +76,6 @@ func (q *Queries) DeleteBoxShareLinkByBoxAndToken(ctx context.Context, arg Delet
 	return err
 }
 
-const deleteBoxShareLinkByToken = `-- name: DeleteBoxShareLinkByToken :exec
-DELETE FROM box_share_links WHERE share_token = ?
-`
-
-func (q *Queries) DeleteBoxShareLinkByToken(ctx context.Context, shareToken string) error {
-	_, err := q.exec(ctx, q.deleteBoxShareLinkByTokenStmt, deleteBoxShareLinkByToken, shareToken)
-	return err
-}
-
 const getBoxShareLinkByToken = `-- name: GetBoxShareLinkByToken :one
 SELECT id, box_id, share_token, created_by_user_id, created_at, last_used_at, use_count FROM box_share_links
 WHERE share_token = ?

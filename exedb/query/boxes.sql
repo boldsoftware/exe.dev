@@ -74,19 +74,5 @@ SELECT * FROM boxes WHERE name = ? AND alloc_id = ?;
 -- name: DeleteBox :exec
 DELETE FROM boxes WHERE id = ?;
 
--- name: UpdateBoxStatusRunning :exec
-UPDATE boxes SET status = 'running', last_started_at = CURRENT_TIMESTAMP
-WHERE name = ?;
-
--- name: UpdateBoxStatusStopped :exec
-UPDATE boxes SET status = 'stopped'
-WHERE name = ?;
-
--- name: GetBoxIDAndAllocByName :one
-SELECT id, alloc_id FROM boxes WHERE name = ?;
-
 -- name: UpdateBoxRoutes :exec
 UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?;
-
--- name: UpdateBoxStatusRunningByID :exec
-UPDATE boxes SET status = 'running', updated_at = ? WHERE id = ?;

@@ -39,21 +39,6 @@ ON CONFLICT(registry, repository, tag, platform) DO UPDATE SET
     image_size = excluded.image_size,
     updated_at = excluded.updated_at;
 
--- name: GetTagResolutionsByAge :many
-SELECT registry, repository, tag, platform,
-       COALESCE(index_digest, '') as index_digest, 
-       COALESCE(platform_digest, '') as platform_digest,
-       last_checked_at, ttl_seconds,
-       COALESCE(image_size, 0) as image_size
-FROM tag_resolutions
-ORDER BY last_checked_at ASC
-LIMIT ?;
-
--- name: UpdateTagResolutionTTL :exec
-UPDATE tag_resolutions
-SET ttl_seconds = ?, updated_at = ?
-WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?;
-
 -- name: GetImageMetadata :one
 SELECT image_user, image_login_user, image_entrypoint, image_cmd, image_labels, image_exposed_ports
 FROM tag_resolutions

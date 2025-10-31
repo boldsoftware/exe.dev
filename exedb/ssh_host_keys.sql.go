@@ -26,17 +26,6 @@ func (q *Queries) GetSSHHostKey(ctx context.Context) (GetSSHHostKeyRow, error) {
 	return i, err
 }
 
-const getSSHHostPublicKey = `-- name: GetSSHHostPublicKey :one
-SELECT public_key FROM ssh_host_key WHERE id = 1
-`
-
-func (q *Queries) GetSSHHostPublicKey(ctx context.Context) (string, error) {
-	row := q.queryRow(ctx, q.getSSHHostPublicKeyStmt, getSSHHostPublicKey)
-	var public_key string
-	err := row.Scan(&public_key)
-	return public_key, err
-}
-
 const upsertSSHHostKey = `-- name: UpsertSSHHostKey :exec
 INSERT INTO ssh_host_key (id, private_key, public_key, fingerprint, created_at, updated_at)
 VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)

@@ -14,11 +14,6 @@ WHERE token = ?;
 INSERT OR REPLACE INTO email_verifications (token, user_id, email, expires_at, verification_code)
 VALUES (?, ?, ?, ?, ?);
 
--- name: GetEmailVerificationByEmail :one
-SELECT user_id, token
-FROM email_verifications
-WHERE email = ?;
-
 -- name: GetEmailVerificationByPartialToken :one
 SELECT user_id
 FROM email_verifications

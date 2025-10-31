@@ -19,24 +19,6 @@ func (q *Queries) DeleteEmailVerificationByToken(ctx context.Context, token stri
 	return err
 }
 
-const getEmailVerificationByEmail = `-- name: GetEmailVerificationByEmail :one
-SELECT user_id, token
-FROM email_verifications
-WHERE email = ?
-`
-
-type GetEmailVerificationByEmailRow struct {
-	UserID string `db:"user_id" json:"user_id"`
-	Token  string `db:"token" json:"token"`
-}
-
-func (q *Queries) GetEmailVerificationByEmail(ctx context.Context, email string) (GetEmailVerificationByEmailRow, error) {
-	row := q.queryRow(ctx, q.getEmailVerificationByEmailStmt, getEmailVerificationByEmail, email)
-	var i GetEmailVerificationByEmailRow
-	err := row.Scan(&i.UserID, &i.Token)
-	return i, err
-}
-
 const getEmailVerificationByPartialToken = `-- name: GetEmailVerificationByPartialToken :one
 SELECT user_id
 FROM email_verifications
