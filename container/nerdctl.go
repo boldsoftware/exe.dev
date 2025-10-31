@@ -202,7 +202,7 @@ func (m *NerdctlManager) inspectImage(ctx context.Context, imageRef string) (*ta
 	}
 
 	// Use regclient to inspect the image remotely
-	rc := regclient.New()
+	rc := regclient.New(regclient.WithDockerCreds())
 	defer rc.Close(ctx, ref.Ref{})
 
 	// Parse the image reference
