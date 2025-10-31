@@ -39,7 +39,8 @@ block_device_driver = "virtio-blk"
 
 reclaim_guest_freed_memory = true
 
-#enable_hugepages = true
+# requires setting /proc/sys/vm/nr_hugepages > 0
+enable_hugepages = true
 
 # Disable the 'seccomp' feature from Cloud Hypervisor, default false
 # disable_seccomp = true
@@ -50,7 +51,9 @@ reclaim_guest_freed_memory = true
 # command line: iommu=pt
 #enable_iommu = true
 
-#enable_debug = true
+# Bizarrely, enabling debug reduced flakiness in CI, maybe.
+# I need the debug to understand where the flakiness is coming from...
+enable_debug = true
 
 # This option specifies the loglevel of the hypervisor
 #
