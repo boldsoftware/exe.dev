@@ -11,7 +11,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/sqlite"
-	"exe.dev/testutil"
+	"exe.dev/tslog"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -70,7 +70,7 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	}
 
 	// Use the exe.Server as boxKeyAuthority (it implements the interface)
-	gateway := llmgateway.NewGateway(testutil.Slogger(t), server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
+	gateway := llmgateway.NewGateway(tslog.Slogger(t), server.db, server, llmgateway.APIKeys{Anthropic: "fake-anthropic-api-key"}, false)
 
 	// Create test HTTP server with the gateway
 	testServer := httptest.NewServer(gateway)

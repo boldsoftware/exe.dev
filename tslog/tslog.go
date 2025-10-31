@@ -1,5 +1,8 @@
-// Package testutil provides utilities for testing.
-package testutil
+// Package tslog provides log/slog support for testing.
+//
+// The ts- prefix does not mean Tailscale. Or TypeScript.
+// It's not even a ts- prefix, it's a t- prefix and an s- prefix.
+package tslog
 
 import (
 	"log/slog"

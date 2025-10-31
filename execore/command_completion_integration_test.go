@@ -5,13 +5,13 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
-	"exe.dev/testutil"
+	"exe.dev/tslog"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCompletionIntegration(t *testing.T) {
 	// Create a test SSH server with the real command tree
-	server := &Server{log: testutil.Slogger(t)}
+	server := &Server{log: tslog.Slogger(t)}
 	sshServer := NewSSHServer(server)
 
 	// Create test user and alloc context

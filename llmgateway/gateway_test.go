@@ -14,7 +14,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/sqlite"
-	"exe.dev/testutil"
+	"exe.dev/tslog"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
@@ -75,7 +75,7 @@ func newDB(t *testing.T, balance float64) *sqlite.DB {
 		os.Remove(dbPath)
 		t.Fatalf("Failed to open database: %v", err)
 	}
-	if err := exedb.RunMigrations(testutil.Slogger(t), rawDB); err != nil {
+	if err := exedb.RunMigrations(tslog.Slogger(t), rawDB); err != nil {
 		rawDB.Close()
 		os.Remove(dbPath)
 		t.Fatalf("Failed to run migrations: %v", err)
@@ -114,7 +114,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *sqlite.DB, *mockBoxKeyAuthori
 		apiKeys:         APIKeys{Anthropic: "test-api-key"},
 		devMode:         false,
 		testDebitDone:   make(chan bool, 10), // Buffered for tests
-		log:             testutil.Slogger(t),
+		log:             tslog.Slogger(t),
 	}
 
 	return gateway, db, mockAuth, keyPair

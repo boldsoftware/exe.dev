@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"exe.dev/exedb"
-	"exe.dev/testutil"
+	"exe.dev/tslog"
 	_ "modernc.org/sqlite"
 )
 
@@ -36,7 +36,7 @@ func setupTestDB(t *testing.T) (*sql.DB, *exedb.Queries) {
 	})
 
 	// Apply migrations
-	if err := exedb.RunMigrations(testutil.Slogger(t), db); err != nil {
+	if err := exedb.RunMigrations(tslog.Slogger(t), db); err != nil {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 

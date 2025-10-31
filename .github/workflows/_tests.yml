@@ -36,6 +36,20 @@ jobs:
             exit 1
           fi
 
+      - name: Ensure non-test code doesn't import tslog
+        run: |
+          set -euo pipefail
+          if git grep -n -- 'exe.dev/tslog' -- '*.go' ':!*_test.go'; then
+            echo "❌ production code should not import exe.dev/tslog" >&2
+            exit 1
+          else
+            status=$?
+            if [ "$status" -ne 1 ]; then
+              echo "git grep failed with exit code $status" >&2
+              exit "$status"
+            fi
+          fi
+
       - name: start ephemeral vm
         id: vm
         run: |

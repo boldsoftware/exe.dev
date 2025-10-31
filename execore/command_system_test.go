@@ -8,7 +8,7 @@ import (
 
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
-	"exe.dev/testutil"
+	"exe.dev/tslog"
 )
 
 // MockOutput captures output for testing
@@ -142,7 +142,7 @@ func TestCommandContext_HelperMethods(t *testing.T) {
 
 func TestHelpCommand(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{log: testutil.Slogger(t)}
+	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
@@ -212,7 +212,7 @@ func TestHelpCommand(t *testing.T) {
 
 func TestExecuteCommand(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{log: testutil.Slogger(t)}
+	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
@@ -269,7 +269,7 @@ func TestExecuteCommand(t *testing.T) {
 
 func TestGetAvailableCommands(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{log: testutil.Slogger(t)}
+	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
@@ -298,7 +298,7 @@ func TestGetAvailableCommands(t *testing.T) {
 
 func TestCommandFlagParsing(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{log: testutil.Slogger(t)}
+	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 
@@ -649,7 +649,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 
 func TestFlagParsingErrorHandling(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{log: testutil.Slogger(t)}
+	server := &Server{log: tslog.Slogger(t)}
 	sshServer := &SSHServer{server: server}
 	sshServer.commands = NewCommandTree(sshServer)
 

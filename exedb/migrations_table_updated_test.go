@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"exe.dev/sqlite"
-	"exe.dev/testutil"
+	"exe.dev/tslog"
 	_ "modernc.org/sqlite"
 )
 
@@ -34,7 +34,7 @@ func TestRunMigrationsUpdateTable(t *testing.T) {
 		t.Fatalf("failed to initialize sqlite database: %v", err)
 	}
 
-	log := testutil.Slogger(t)
+	log := tslog.Slogger(t)
 
 	if err := RunMigrations(log, db); err != nil {
 		t.Fatalf("failed to run migrations: %v", err)
