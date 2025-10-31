@@ -26,7 +26,7 @@ CLOUD_HYPERVISOR_VERSION="47.0"
 NYDUS_SNAPSHOTTER_VERSION="0.15.2"
 NYDUSD_VERSION="2.2.5"
 NERDCTL_VERSION="2.1.3"
-CNI_VERSION="1.8.0"
+CNI_VERSION="1.5.1"
 
 echo "=== Downloading containerd host dependencies for $ARCH ==="
 echo "Cache directory: $CACHE_DIR"

@@ -364,7 +364,7 @@ echo "Installed: $(/usr/local/bin/nerdctl -v 2>&1 || echo failed)"
 echo "=== Installing CNI plugins for networking ==="
 
 # Install CNI plugins (required by nerdctl for its networking)
-CNI_VERSION="1.8.0"
+CNI_VERSION="1.5.1"
 sudo mkdir -p /opt/cni/bin
 echo "Installing CNI plugins ${CNI_VERSION}..."
 cd /tmp
