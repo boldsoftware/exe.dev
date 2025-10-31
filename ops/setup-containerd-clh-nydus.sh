@@ -30,6 +30,11 @@ if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ ! -e /dev/nvme0n1 ]; th
     echo "=== CI/ephemeral VM detected, skipping swap and RAID setup ==="
 fi
 
+# Configure Huge Pages. cloud-hypervisor seems to be happier there, at least in nested virtualization.
+# /proc/meminfo is in KB. Huge pages are 2KB each. This allocates half of memory to huge pages.
+# I don't know what the "right" answer is; we need monitoring too.
+awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo | sudo tee /proc/sys/vm/nr_hugepages
+
 # Swap and /local RAID setup is now handled by environment-specific scripts:
 # - setup-host-part1.sh: Sets up swap and RAID 0 XFS mount for /local on metal instances
 # - ci-vm-start.sh: Creates /local as a directory
