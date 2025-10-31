@@ -326,7 +326,7 @@ func (p *PatchTool) patchParse(m json.RawMessage) (PatchInput, error) {
 			originalErr = err
 		}
 	}
-	return PatchInput{}, fmt.Errorf("failed to unmarshal patch input: %w", originalErr)
+	return PatchInput{}, fmt.Errorf("failed to unmarshal patch input: %w\nJSON: %s", originalErr, string(m))
 }
 
 // patchRun implements the guts of the patch tool.
