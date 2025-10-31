@@ -35,3 +35,9 @@ ON CONFLICT(public_key) DO UPDATE SET user_id = excluded.user_id;
 
 -- name: GetSSHKeysForUserByEmail :many
 SELECT public_key FROM ssh_keys WHERE user_id = (SELECT user_id FROM users WHERE email = ?) ORDER BY public_key;
+
+-- name: DeleteSSHKeyForUser :one
+DELETE FROM ssh_keys
+WHERE user_id = ?
+  AND public_key = ?
+RETURNING 1 AS deleted;

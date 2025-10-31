@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -29,6 +31,7 @@ func TestExeDevAPI(t *testing.T) {
 		t.Errorf("expected at least one SSH key in whoami output, got zero")
 	}
 	foundCurrent := false
+	initialKey := strings.TrimSpace(who.SSHKeys[0].PublicKey)
 	for _, key := range who.SSHKeys {
 		if key.Current {
 			foundCurrent = true
@@ -147,6 +150,32 @@ func TestExeDevAPI(t *testing.T) {
 	if !foundAuthCookie {
 		t.Errorf("expected exe-auth cookie from magic_link response")
 	}
+
+	del := runParseExeDevJSON[deleteSSHKeyOutput](t, keyFile, "delete-ssh-key", initialKey, "--json")
+	if del.PublicKey != initialKey {
+		t.Fatalf("expected deleted key %q, got %q", initialKey, del.PublicKey)
+	}
+	if del.Status != "deleted" {
+		t.Fatalf("expected status deleted from delete-ssh-key, got %q", del.Status)
+	}
+
+	// Confirm pty session is still usable after key deletion,
+	// and that initialKey is not listed.
+	pty.sendLine("whoami")
+	pty.reject(initialKey)
+	pty.wantPrompt()
+
+	// Verify that we can't log in using the deleted key.
+	sshArgs := append(baseSSHArgs("", keyFile), "whoami")
+	cmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
+	cmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected login with deleted key to fail, got success: %q", output)
+	}
+	if s := string(output); !strings.Contains(s, "Please complete registration") && !strings.Contains(s, "Permission denied") {
+		t.Fatalf("expected login with deleted key to fail with a permission error, got: %q", s)
+	}
 }
 
 type newBoxOutput struct {
@@ -176,7 +205,12 @@ type browserCommandOutput struct {
 type whoamiOutput struct {
 	Email   string `json:"email"`
 	SSHKeys []struct {
-		Key     string `json:"key"`
-		Current bool   `json:"current"`
+		PublicKey string `json:"public_key"`
+		Current   bool   `json:"current"`
 	} `json:"ssh_keys"`
+}
+
+type deleteSSHKeyOutput struct {
+	PublicKey string `json:"public_key"`
+	Status    string `json:"status"`
 }

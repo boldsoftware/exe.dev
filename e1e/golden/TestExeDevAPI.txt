@@ -38,5 +38,8 @@ SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ new --name=BOX_NAME
 Box name "BOX_NAME" is not available
+exe.dev ▶ whoami
+Email Address: TestExeDevAPI@example.com
+SSH Keys:
 exe.dev ▶ exit
 Goodbye!

@@ -96,6 +96,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deletePendingSSHKeyByTokenStmt, err = db.PrepareContext(ctx, deletePendingSSHKeyByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingSSHKeyByToken: %w", err)
 	}
+	if q.deleteSSHKeyForUserStmt, err = db.PrepareContext(ctx, deleteSSHKeyForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteSSHKeyForUser: %w", err)
+	}
 	if q.getAllUserEventsStmt, err = db.PrepareContext(ctx, getAllUserEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllUserEvents: %w", err)
 	}
@@ -459,6 +462,11 @@ func (q *Queries) Close() error {
 	if q.deletePendingSSHKeyByTokenStmt != nil {
 		if cerr := q.deletePendingSSHKeyByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deletePendingSSHKeyByTokenStmt: %w", cerr)
+		}
+	}
+	if q.deleteSSHKeyForUserStmt != nil {
+		if cerr := q.deleteSSHKeyForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteSSHKeyForUserStmt: %w", cerr)
 		}
 	}
 	if q.getAllUserEventsStmt != nil {
@@ -924,6 +932,7 @@ type Queries struct {
 	deletePendingBoxShareStmt              *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt *sql.Stmt
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
+	deleteSSHKeyForUserStmt                *sql.Stmt
 	getAllUserEventsStmt                   *sql.Stmt
 	getAllocByUserIDStmt                   *sql.Stmt
 	getAllocsByHostStmt                    *sql.Stmt
@@ -1034,6 +1043,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingBoxShareStmt:              q.deletePendingBoxShareStmt,
 		deletePendingBoxShareByBoxAndEmailStmt: q.deletePendingBoxShareByBoxAndEmailStmt,
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
+		deleteSSHKeyForUserStmt:                q.deleteSSHKeyForUserStmt,
 		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
 		getAllocByUserIDStmt:                   q.getAllocByUserIDStmt,
 		getAllocsByHostStmt:                    q.getAllocsByHostStmt,
