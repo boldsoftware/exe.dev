@@ -12,19 +12,10 @@ WORKDIR="${WORKDIR:-/var/lib/libvirt/images}"
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}" # or inject via env
 USER_NAME="${USER_NAME:-ubuntu}"
 
-# Cache/snapshot settings (hash of ops/setup-containerd-clh-nydus.sh)
+# Cache/snapshot settings (hash of ops/ as determined by git tree (must be checked in))
 CACHE_DIR="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
 mkdir -p "${CACHE_DIR}"
 sudo chown $USER "${CACHE_DIR}"
-
-hash_file() {
-    local f="$1"
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$f" | awk '{print $1}'
-    else
-        shasum -a 256 "$f" | awk '{print $1}'
-    fi
-}
 
 cp_clone_file() {
     # Clone/copy SRC to DEST efficiently if supported by FS
@@ -66,7 +57,7 @@ if [[ ! -f "${SETUP_SCRIPT_PATH}" ]]; then
     echo "Required setup script not found for hashing: ${SETUP_SCRIPT_PATH}" >&2
     exit 1
 fi
-SETUP_HASH="$(hash_file "${SETUP_SCRIPT_PATH}")"
+SETUP_HASH="$(git rev-parse HEAD:ops/)"
 
 # We re-build the VM snapshot once a day. If you want to disable
 # using snapshots, change SNAPSHOT_DIR to be something unique, and, voila.
