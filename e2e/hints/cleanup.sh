@@ -5,8 +5,8 @@ echo "Cleaning up testing environment..."
 
 # Kill tmux session
 if tmux has-session -t testing 2>/dev/null; then
-	echo "Killing tmux session..."
-	tmux kill-session -t testing
+    echo "Killing tmux session..."
+    tmux kill-session -t testing
 fi
 
 # Stop any containers that were created during testing
@@ -18,8 +18,8 @@ ssh colima-exe-ctr sudo nerdctl --namespace=exe ps -a --filter "name=exe-testtes
 read -p "Remove generated SSH keys? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-	rm -f ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
-	echo "SSH keys removed"
+    rm -f ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
+    echo "SSH keys removed"
 fi
 
 # Clean up temporary files

@@ -23,8 +23,8 @@ echo "Checking Tailscale connection to VM..."
 TAILSCALE_HOST="ubuntu@$INSTANCE_NAME"
 
 if ! ssh -o ConnectTimeout=10 -o BatchMode=yes "$TAILSCALE_HOST" "echo 'Tailscale SSH connection successful'" >/dev/null 2>&1; then
-	echo -e "${RED}ERROR: Cannot SSH to the production VM via Tailscale${NC}"
-	exit 1
+    echo -e "${RED}ERROR: Cannot SSH to the production VM via Tailscale${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✓ Tailscale SSH access verified${NC}"
@@ -45,8 +45,8 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY
 cd ..
 
 if [ ! -f "/tmp/$BINARY_NAME" ]; then
-	echo -e "${RED}ERROR: Failed to build sshpiper binary${NC}"
-	exit 1
+    echo -e "${RED}ERROR: Failed to build sshpiper binary${NC}"
+    exit 1
 fi
 
 echo -e "${YELLOW}Building metrics binary...${NC}"
@@ -58,8 +58,8 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$METRIC
 cd ..
 
 if [ ! -f "/tmp/$METRICS_NAME" ]; then
-	echo -e "${RED}ERROR: Failed to build metrics binary${NC}"
-	exit 1
+    echo -e "${RED}ERROR: Failed to build metrics binary${NC}"
+    exit 1
 fi
 
 # Get binary size
@@ -78,13 +78,13 @@ echo -e "${YELLOW}Deploying to VM...${NC}"
 # Copy binaries to VM via Tailscale
 echo "Copying binary to VM..."
 if ! scp "/tmp/$BINARY_NAME" "$TAILSCALE_HOST:~/"; then
-	echo -e "${RED}ERROR: Failed to copy binary to VM${NC}"
-	exit 1
+    echo -e "${RED}ERROR: Failed to copy binary to VM${NC}"
+    exit 1
 fi
 
 if ! scp "/tmp/$METRICS_NAME" "$TAILSCALE_HOST:~/"; then
-	echo -e "${RED}ERROR: Failed to copy metrics binary to VM${NC}"
-	exit 1
+    echo -e "${RED}ERROR: Failed to copy metrics binary to VM${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✓ Binary uploaded${NC}"
@@ -92,8 +92,8 @@ echo -e "${GREEN}✓ Binary uploaded${NC}"
 # Copy systemd service file
 echo "Copying systemd service file..."
 if ! scp "ops/sshpiper.service" "$TAILSCALE_HOST:/etc/systemd/system/sshpiper.service"; then
-	echo -e "${RED}ERROR: Failed to copy service file to VM${NC}"
-	exit 1
+    echo -e "${RED}ERROR: Failed to copy service file to VM${NC}"
+    exit 1
 fi
 
 echo -e "${GREEN}✓ Service file uploaded${NC}"

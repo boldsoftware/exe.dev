@@ -18,53 +18,53 @@ mkdir -p "${CACHE_DIR}"
 sudo chown $USER "${CACHE_DIR}"
 
 hash_file() {
-	local f="$1"
-	if command -v sha256sum >/dev/null 2>&1; then
-		sha256sum "$f" | awk '{print $1}'
-	else
-		shasum -a 256 "$f" | awk '{print $1}'
-	fi
+    local f="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$f" | awk '{print $1}'
+    else
+        shasum -a 256 "$f" | awk '{print $1}'
+    fi
 }
 
 cp_clone_file() {
-	# Clone/copy SRC to DEST efficiently if supported by FS
-	local src="$1"
-	local dest="$2"
-	mkdir -p "$(dirname "$dest")"
-	# Prefer Linux reflink clone on XFS/Btrfs
-	if cp --reflink=always -a "$src" "$dest" 2>/dev/null; then
-		return 0
-	fi
-	if cp --reflink=auto -a "$src" "$dest" 2>/dev/null; then
-		return 0
-	fi
-	# macOS APFS clone
-	if cp -c "$src" "$dest" 2>/dev/null; then
-		return 0
-	fi
-	# Fallback to regular copy
-	if cp -a "$src" "$dest" 2>/dev/null; then
-		return 0
-	fi
-	# Retry with sudo if permission denied (e.g., copying into/out of /var/lib/libvirt/images)
-	if sudo cp --reflink=always -a "$src" "$dest" 2>/dev/null ||
-		sudo cp --reflink=auto -a "$src" "$dest" 2>/dev/null ||
-		sudo cp -a "$src" "$dest" 2>/dev/null; then
-		# If destination is under user cache, ensure ownership is the invoking user
-		if [[ "$dest" == "$HOME/"* ]]; then
-			sudo chown "$(id -u)":"$(id -g)" "$dest" 2>/dev/null || true
-		fi
-		return 0
-	fi
-	return 1
+    # Clone/copy SRC to DEST efficiently if supported by FS
+    local src="$1"
+    local dest="$2"
+    mkdir -p "$(dirname "$dest")"
+    # Prefer Linux reflink clone on XFS/Btrfs
+    if cp --reflink=always -a "$src" "$dest" 2>/dev/null; then
+        return 0
+    fi
+    if cp --reflink=auto -a "$src" "$dest" 2>/dev/null; then
+        return 0
+    fi
+    # macOS APFS clone
+    if cp -c "$src" "$dest" 2>/dev/null; then
+        return 0
+    fi
+    # Fallback to regular copy
+    if cp -a "$src" "$dest" 2>/dev/null; then
+        return 0
+    fi
+    # Retry with sudo if permission denied (e.g., copying into/out of /var/lib/libvirt/images)
+    if sudo cp --reflink=always -a "$src" "$dest" 2>/dev/null ||
+        sudo cp --reflink=auto -a "$src" "$dest" 2>/dev/null ||
+        sudo cp -a "$src" "$dest" 2>/dev/null; then
+        # If destination is under user cache, ensure ownership is the invoking user
+        if [[ "$dest" == "$HOME/"* ]]; then
+            sudo chown "$(id -u)":"$(id -g)" "$dest" 2>/dev/null || true
+        fi
+        return 0
+    fi
+    return 1
 }
 
 # Determine path to setup script to hash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_SCRIPT_PATH="${SCRIPT_DIR}/setup-containerd-clh-nydus.sh"
 if [[ ! -f "${SETUP_SCRIPT_PATH}" ]]; then
-	echo "Required setup script not found for hashing: ${SETUP_SCRIPT_PATH}" >&2
-	exit 1
+    echo "Required setup script not found for hashing: ${SETUP_SCRIPT_PATH}" >&2
+    exit 1
 fi
 SETUP_HASH="$(hash_file "${SETUP_SCRIPT_PATH}")"
 
@@ -75,15 +75,15 @@ SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
 LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH}.qcow2"
 SNAPSHOT_AVAILABLE=0
 if [[ -f "${SNAPSHOT_BASE}" ]]; then
-	SNAPSHOT_AVAILABLE=1
+    SNAPSHOT_AVAILABLE=1
 fi
 
 if [[ ! -f "${BASE_IMG}" ]]; then
-	sudo curl "${BASE_IMG_URL}" -o "${BASE_IMG}"
+    sudo curl "${BASE_IMG_URL}" -o "${BASE_IMG}"
 fi
 if [[ ! -f "${SSH_PUBKEY}" ]]; then
-	echo "SSH pubkey not found: ${SSH_PUBKEY}" >&2
-	exit 1
+    echo "SSH pubkey not found: ${SSH_PUBKEY}" >&2
+    exit 1
 fi
 
 # Ensure workdir exists (may require root)
@@ -94,20 +94,20 @@ SEED="${WORKDIR}/${NAME}-seed.iso"
 # 1) Ephemeral COW disk (from snapshot if available)
 BACKING_IMG="${BASE_IMG}"
 if [[ ${SNAPSHOT_AVAILABLE} -eq 1 ]]; then
-	echo "Found snapshot for setup hash: ${SNAPSHOT_DIR}"
-	# Keep a local copy in WORKDIR for qemu access and to avoid permission issues
-	if [[ ! -f "${LOCAL_BASE_COPY}" ]]; then
-		echo "Cloning snapshot base into WORKDIR (reflink if possible)..."
-		cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
-	fi
-	BACKING_IMG="${LOCAL_BASE_COPY}"
+    echo "Found snapshot for setup hash: ${SNAPSHOT_DIR}"
+    # Keep a local copy in WORKDIR for qemu access and to avoid permission issues
+    if [[ ! -f "${LOCAL_BASE_COPY}" ]]; then
+        echo "Cloning snapshot base into WORKDIR (reflink if possible)..."
+        cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
+    fi
+    BACKING_IMG="${LOCAL_BASE_COPY}"
 fi
 
 if [[ "${BACKING_IMG}" == "${BASE_IMG}" ]]; then
-	sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}" "${DISK_GB}G"
+    sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}" "${DISK_GB}G"
 else
-	# Size is inherited from backing when provided
-	sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}"
+    # Size is inherited from backing when provided
+    sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}"
 fi
 
 # 2) Cloud-init seed (NoCloud)
@@ -172,21 +172,21 @@ EOF
 
 # Create cloud-init ISO (requires permission to write into ${WORKDIR})
 if command -v genisoimage >/dev/null 2>&1; then
-	sudo genisoimage -output "${SEED}" -volid cidata -joliet -rock \
-		"${TMPDIR}/user-data" "${TMPDIR}/meta-data" >/dev/null 2>&1
+    sudo genisoimage -output "${SEED}" -volid cidata -joliet -rock \
+        "${TMPDIR}/user-data" "${TMPDIR}/meta-data" >/dev/null 2>&1
 elif command -v mkisofs >/dev/null 2>&1; then
-	sudo mkisofs -output "${SEED}" -volid cidata -joliet -rock \
-		"${TMPDIR}/user-data" "${TMPDIR}/meta-data" >/dev/null 2>&1
+    sudo mkisofs -output "${SEED}" -volid cidata -joliet -rock \
+        "${TMPDIR}/user-data" "${TMPDIR}/meta-data" >/dev/null 2>&1
 else
-	echo "Neither genisoimage nor mkisofs found on host" >&2
-	exit 1
+    echo "Neither genisoimage nor mkisofs found on host" >&2
+    exit 1
 fi
 
 ensure_libvirt_default_net() {
-	if ! sudo virsh net-info default >/dev/null 2>&1; then
-		echo "Libvirt 'default' network not found; defining a NAT network..."
-		TMPNET=$(mktemp)
-		cat >"$TMPNET" <<'XML'
+    if ! sudo virsh net-info default >/dev/null 2>&1; then
+        echo "Libvirt 'default' network not found; defining a NAT network..."
+        TMPNET=$(mktemp)
+        cat >"$TMPNET" <<'XML'
 <network>
   <name>default</name>
   <forward mode='nat'/>
@@ -198,36 +198,36 @@ ensure_libvirt_default_net() {
   </ip>
 </network>
 XML
-		sudo virsh net-define "$TMPNET"
-		rm -f "$TMPNET"
-	fi
+        sudo virsh net-define "$TMPNET"
+        rm -f "$TMPNET"
+    fi
 
-	if ! sudo virsh net-info default | grep "Active:.*yes"; then
-		echo "Starting libvirt 'default' NAT network..."
-		sudo virsh net-start default
-	fi
-	sudo virsh net-autostart default >/dev/null 2>&1 || true
+    if ! sudo virsh net-info default | grep "Active:.*yes"; then
+        echo "Starting libvirt 'default' NAT network..."
+        sudo virsh net-start default
+    fi
+    sudo virsh net-autostart default >/dev/null 2>&1 || true
 
-	# Ensure IP forwarding is enabled for NAT
-	sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+    # Ensure IP forwarding is enabled for NAT
+    sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 }
 
 # 3) Boot transient VM
 ensure_libvirt_default_net
 echo "Starting VM with virt-install..."
 sudo virt-install \
-	--name "${NAME}" \
-	--memory "${RAM_MB}" \
-	--vcpus "${VCPUS}" \
-	--import \
-	--disk "path=${DISK},format=qcow2,cache=none,discard=unmap" \
-	--disk "path=${SEED},device=cdrom" \
-	--os-variant ubuntu24.04 \
-	--network network=default,model=virtio \
-	--graphics none \
-	--noautoconsole \
-	--wait 0 \
-	--transient
+    --name "${NAME}" \
+    --memory "${RAM_MB}" \
+    --vcpus "${VCPUS}" \
+    --import \
+    --disk "path=${DISK},format=qcow2,cache=none,discard=unmap" \
+    --disk "path=${SEED},device=cdrom" \
+    --os-variant ubuntu24.04 \
+    --network network=default,model=virtio \
+    --graphics none \
+    --noautoconsole \
+    --wait 0 \
+    --transient
 
 echo "VM launched; current domains:"
 sudo virsh list --all || true
@@ -235,109 +235,109 @@ sudo virsh list --all || true
 # 4) Get the VM IP (via DHCP lease; no agent required)
 # Fallback to agent if available.
 get_ip() {
-	# Prefer libvirt lease-based lookup (does not require guest agent)
-	ip=$(sudo virsh domifaddr "${NAME}" --source lease 2>/dev/null | awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1 || true)
-	echo "${ip}"
+    # Prefer libvirt lease-based lookup (does not require guest agent)
+    ip=$(sudo virsh domifaddr "${NAME}" --source lease 2>/dev/null | awk '/ipv4/ {print $4}' | sed 's|/.*||' | head -n1 || true)
+    echo "${ip}"
 }
 
 echo "Waiting for IP..."
 for i in $(seq 1 120); do
-	IP="$(get_ip || true)"
-	if [[ -n "${IP}" ]]; then break; fi
-	echo "  attempt ${i}/120: no IP yet"
-	sleep 1
+    IP="$(get_ip || true)"
+    if [[ -n "${IP}" ]]; then break; fi
+    echo "  attempt ${i}/120: no IP yet"
+    sleep 1
 done
 if [[ -z "${IP:-}" ]]; then
-	echo "Failed to obtain VM IP" >&2
-	exit 1
+    echo "Failed to obtain VM IP" >&2
+    exit 1
 fi
 echo "VM IP: ${IP}"
 
 # 5) Wait for SSH + cloud-init
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5"
 for i in $(seq 1 60); do
-	if ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'true' 2>/dev/null; then break; fi
-	sleep 2
+    if ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'true' 2>/dev/null; then break; fi
+    sleep 2
 done
 ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo cloud-init status --wait || true'
 
 if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
-	echo "No snapshot found; provisioning VM and creating snapshot cache..."
-	# 6) Prepare containerd + nydus + kata on the VM
+    echo "No snapshot found; provisioning VM and creating snapshot cache..."
+    # 6) Prepare containerd + nydus + kata on the VM
 
-	# Detect VM architecture
-	VM_ARCH=$(ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'uname -m')
-	if [ "$VM_ARCH" = "x86_64" ]; then
-		VM_ARCH="amd64"
-	elif [ "$VM_ARCH" = "aarch64" ] || [ "$VM_ARCH" = "arm64" ]; then
-		VM_ARCH="arm64"
-	fi
-	echo "VM architecture: $VM_ARCH"
+    # Detect VM architecture
+    VM_ARCH=$(ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'uname -m')
+    if [ "$VM_ARCH" = "x86_64" ]; then
+        VM_ARCH="amd64"
+    elif [ "$VM_ARCH" = "aarch64" ] || [ "$VM_ARCH" = "arm64" ]; then
+        VM_ARCH="arm64"
+    fi
+    echo "VM architecture: $VM_ARCH"
 
-	# Download dependencies locally if not cached
-	echo "Ensuring dependencies are downloaded for $VM_ARCH..."
+    # Download dependencies locally if not cached
+    echo "Ensuring dependencies are downloaded for $VM_ARCH..."
 
-	"${SCRIPT_DIR}/download-ctr-host.sh" "$VM_ARCH"
+    "${SCRIPT_DIR}/download-ctr-host.sh" "$VM_ARCH"
 
-	echo "Copying setup script and config files to VM ${IP}..."
-	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
-	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
-	scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/.cache/exedops/kata-config-clh.toml"
+    echo "Copying setup script and config files to VM ${IP}..."
+    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
+    ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
+    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/.cache/exedops/kata-config-clh.toml"
 
-	# Build custom kernel if not cached
-	KERNEL_BUILDER_DIR="${SCRIPT_DIR}/kernel-builder/output"
-	KERNEL_CACHE_DIR="${CACHE_DIR}/kernel"
-	mkdir -p "${KERNEL_CACHE_DIR}"
+    # Build custom kernel if not cached
+    KERNEL_BUILDER_DIR="${SCRIPT_DIR}/kernel-builder/output"
+    KERNEL_CACHE_DIR="${CACHE_DIR}/kernel"
+    mkdir -p "${KERNEL_CACHE_DIR}"
 
-	if [ ! -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
-		echo "Custom kernel not found in cache, building it now..."
-		(cd "${SCRIPT_DIR}/kernel-builder" && make)
-		if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
-			echo "Caching kernel build..."
-			cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables"
-			cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${KERNEL_CACHE_DIR}/config-6.12.42-nftables"
-		else
-			echo "ERROR: Failed to build custom kernel"
-			exit 1
-		fi
-	fi
+    if [ ! -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
+        echo "Custom kernel not found in cache, building it now..."
+        (cd "${SCRIPT_DIR}/kernel-builder" && make)
+        if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
+            echo "Caching kernel build..."
+            cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables"
+            cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${KERNEL_CACHE_DIR}/config-6.12.42-nftables"
+        else
+            echo "ERROR: Failed to build custom kernel"
+            exit 1
+        fi
+    fi
 
-	# Copy custom kernel from cache to VM
-	if [ -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
-		echo "Copying custom kernel with nftables support..."
-		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/vmlinux-6.12.42-nftables"
-		scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/config-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/config-6.12.42-nftables"
-	else
-		echo "ERROR: Custom kernel not found in cache"
-		exit 1
-	fi
+    # Copy custom kernel from cache to VM
+    if [ -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
+        echo "Copying custom kernel with nftables support..."
+        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/vmlinux-6.12.42-nftables"
+        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/config-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/config-6.12.42-nftables"
+    else
+        echo "ERROR: Custom kernel not found in cache"
+        exit 1
+    fi
 
-	# Copy pre-downloaded tarballs to VM
-	echo "Copying pre-downloaded dependencies to VM ${IP}..."
-	CACHE_DIR="$HOME/.cache/exedops"
-	mapfile -t files < <(find "$CACHE_DIR" -maxdepth 1 -type f \
-		\( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name 'ch-remote-static-*' -o -name '*.tar' \))
-	rsync -av --progress \
-		-e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-		"${files[@]}" "${USER_NAME}@${IP}:~/.cache/exedops/"
+    # Copy pre-downloaded tarballs to VM
+    echo "Copying pre-downloaded dependencies to VM ${IP}..."
+    CACHE_DIR="$HOME/.cache/exedops"
+    mapfile -t files < <(find "$CACHE_DIR" -maxdepth 1 -type f \
+        \( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name 'ch-remote-static-*' -o -name '*.tar' \))
+    rsync -av --progress \
+        -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+        "${files[@]}" "${USER_NAME}@${IP}:~/.cache/exedops/"
 
-	# Keep assets in canonical ASSETS_DIR (~/.cache/exedops); just place the setup script
-	ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
+    # Keep assets in canonical ASSETS_DIR (~/.cache/exedops); just place the setup script
+    ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
 
-	echo "Executing setup script on VM ${IP} (raw streaming output)..."
-	# Stream exact commands and output directly to CI logs
-	# Set CI environment variable to trigger CI mode in the script
-	ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo CI=1 /bin/bash -x /root/setup-containerd-clh-nydus.sh"
+    echo "Executing setup script on VM ${IP} (raw streaming output)..."
+    # Stream exact commands and output directly to CI logs
+    # Set CI environment variable to trigger CI mode in the script
+    ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo CI=1 /bin/bash -x /root/setup-containerd-clh-nydus.sh"
 
-	# 6b) Create snapshot cache of the prepared disk (clone, leveraging XFS reflink when available)
-	echo "Creating snapshot cache at ${SNAPSHOT_DIR}..."
-	mkdir -p "${SNAPSHOT_DIR}"
-	# Copy/clone the prepared disk into the snapshot location
-	# Note: This clones the qcow2 backing with current state; safe for reuse with overlays.
-	cp_clone_file "${DISK}" "${SNAPSHOT_BASE}"
+    # 6b) Create snapshot cache of the prepared disk (clone, leveraging XFS reflink when available)
+    echo "Creating snapshot cache at ${SNAPSHOT_DIR}..."
+    mkdir -p "${SNAPSHOT_DIR}"
+    # Copy/clone the prepared disk into the snapshot location
+    # Note: This clones the qcow2 backing with current state; safe for reuse with overlays.
+    cp_clone_file "${DISK}" "${SNAPSHOT_BASE}"
 
-	# Also maintain a local copy in WORKDIR for fast reuse within libvirt
-	cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
+    # Also maintain a local copy in WORKDIR for fast reuse within libvirt
+    cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
 fi
 
 # 7) Emit a small envfile for subsequent steps (write to a readable location)

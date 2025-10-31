@@ -13,137 +13,137 @@ DATA_DISK_SIZE="100GiB"
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_SCRIPT_PATH="${OPS_DIR}/setup-containerd-clh-nydus.sh"
 if [[ ! -f "$SETUP_SCRIPT_PATH" ]]; then
-	echo "Required setup script not found: $SETUP_SCRIPT_PATH" >&2
-	exit 1
+    echo "Required setup script not found: $SETUP_SCRIPT_PATH" >&2
+    exit 1
 fi
 LIMA_CONFIG_PATH="${OPS_DIR}/lima-with-data.yaml"
 if [[ ! -f "$LIMA_CONFIG_PATH" ]]; then
-	echo "Required Lima config not found: $LIMA_CONFIG_PATH" >&2
-	exit 1
+    echo "Required Lima config not found: $LIMA_CONFIG_PATH" >&2
+    exit 1
 fi
 PROVISION_SCRIPT_PATH="${OPS_DIR}/lima-provision.sh"
 if [[ ! -f "$PROVISION_SCRIPT_PATH" ]]; then
-	echo "Required Lima provision script not found: $PROVISION_SCRIPT_PATH" >&2
-	exit 1
+    echo "Required Lima provision script not found: $PROVISION_SCRIPT_PATH" >&2
+    exit 1
 fi
 
 LIMA_DIR="$HOME/.lima"
 BOOTSTRAP_STAGING="/tmp/exe-bootstrap"
 
 data_disk_name() {
-	echo "data-$1"
+    echo "data-$1"
 }
 
 data_disk_path() {
-	local disk
-	disk="$(data_disk_name "$1")"
-	echo "${LIMA_DIR}/_disks/${disk}/datadisk"
+    local disk
+    disk="$(data_disk_name "$1")"
+    echo "${LIMA_DIR}/_disks/${disk}/datadisk"
 }
 
 set_disk_expr() {
-	local disk="$1"
-	printf '.additionalDisks[0].name = "%s"' "${disk}"
+    local disk="$1"
+    printf '.additionalDisks[0].name = "%s"' "${disk}"
 }
 
 delete_data_disk() {
-	local instance="$1"
-	local disk
-	disk="$(data_disk_name "$instance")"
-	if limactl --tty=false disk delete "${disk}" >/dev/null 2>&1; then
-		return 0
-	fi
-	rm -rf "${LIMA_DIR}/_disks/${disk}" >/dev/null 2>&1 || true
+    local instance="$1"
+    local disk
+    disk="$(data_disk_name "$instance")"
+    if limactl --tty=false disk delete "${disk}" >/dev/null 2>&1; then
+        return 0
+    fi
+    rm -rf "${LIMA_DIR}/_disks/${disk}" >/dev/null 2>&1 || true
 }
 
 create_fresh_data_disk() {
-	local instance="$1"
-	local disk
-	disk="$(data_disk_name "$instance")"
-	echo "Creating Lima disk ${disk} (${DATA_DISK_SIZE})..."
-	delete_data_disk "${instance}"
-	limactl --tty=false disk create "${disk}" --size "${DATA_DISK_SIZE}"
+    local instance="$1"
+    local disk
+    disk="$(data_disk_name "$instance")"
+    echo "Creating Lima disk ${disk} (${DATA_DISK_SIZE})..."
+    delete_data_disk "${instance}"
+    limactl --tty=false disk create "${disk}" --size "${DATA_DISK_SIZE}"
 }
 
 clone_data_disk() {
-	local src_instance="$1"
-	local dst_instance="$2"
-	local src_disk
-	src_disk="$(data_disk_name "$src_instance")"
-	local dst_disk
-	dst_disk="$(data_disk_name "$dst_instance")"
-	local src_path
-	src_path="$(data_disk_path "$src_instance")"
-	if [[ ! -f "${src_path}" ]]; then
-		echo "Error: source data disk not found at ${src_path}" >&2
-		exit 1
-	fi
-	echo "Cloning Lima disk ${src_disk} -> ${dst_disk}..."
-	delete_data_disk "${dst_instance}"
-	limactl --tty=false disk import "${dst_disk}" "${src_path}"
+    local src_instance="$1"
+    local dst_instance="$2"
+    local src_disk
+    src_disk="$(data_disk_name "$src_instance")"
+    local dst_disk
+    dst_disk="$(data_disk_name "$dst_instance")"
+    local src_path
+    src_path="$(data_disk_path "$src_instance")"
+    if [[ ! -f "${src_path}" ]]; then
+        echo "Error: source data disk not found at ${src_path}" >&2
+        exit 1
+    fi
+    echo "Cloning Lima disk ${src_disk} -> ${dst_disk}..."
+    delete_data_disk "${dst_instance}"
+    limactl --tty=false disk import "${dst_disk}" "${src_path}"
 }
 
 # Provision a fresh Lima VM with containerd + Kata + Nydus
 provision_base_vm() {
-	local script_dir="${OPS_DIR}"
-	if [ ! -f "${script_dir}/setup-containerd-clh-nydus.sh" ]; then
-		echo "Error: setup-containerd-clh-nydus.sh not found in ${script_dir}"
-		return 1
-	fi
+    local script_dir="${OPS_DIR}"
+    if [ ! -f "${script_dir}/setup-containerd-clh-nydus.sh" ]; then
+        echo "Error: setup-containerd-clh-nydus.sh not found in ${script_dir}"
+        return 1
+    fi
 
-	# Download dependencies locally if not cached
-	VM_ARCH="arm64"
-	echo "Ensuring dependencies are downloaded for $VM_ARCH..."
-	"${script_dir}/download-ctr-host.sh" "$VM_ARCH"
+    # Download dependencies locally if not cached
+    VM_ARCH="arm64"
+    echo "Ensuring dependencies are downloaded for $VM_ARCH..."
+    "${script_dir}/download-ctr-host.sh" "$VM_ARCH"
 
-	echo "Preparing bootstrap assets for VM..."
-	limactl shell ${LIMA_BASE} -- sudo rm -rf "${BOOTSTRAP_STAGING}"
-	limactl shell ${LIMA_BASE} -- sudo mkdir -p "${BOOTSTRAP_STAGING}"
-	limactl shell ${LIMA_BASE} -- sudo chmod 1777 "${BOOTSTRAP_STAGING}"
+    echo "Preparing bootstrap assets for VM..."
+    limactl shell ${LIMA_BASE} -- sudo rm -rf "${BOOTSTRAP_STAGING}"
+    limactl shell ${LIMA_BASE} -- sudo mkdir -p "${BOOTSTRAP_STAGING}"
+    limactl shell ${LIMA_BASE} -- sudo chmod 1777 "${BOOTSTRAP_STAGING}"
 
-	limactl cp "${script_dir}/setup-containerd-clh-nydus.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-containerd-clh-nydus.sh"
-	limactl cp "${script_dir}/kata-config-clh.toml" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/kata-config-clh.toml"
+    limactl cp "${script_dir}/setup-containerd-clh-nydus.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-containerd-clh-nydus.sh"
+    limactl cp "${script_dir}/kata-config-clh.toml" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/kata-config-clh.toml"
 
-	echo "Copying pre-downloaded dependencies to VM..."
-	CACHE_DIR="$HOME/.cache/exedops"
+    echo "Copying pre-downloaded dependencies to VM..."
+    CACHE_DIR="$HOME/.cache/exedops"
 
-	# Build custom kernel if not cached
-	KERNEL_BUILDER_DIR="${script_dir}/kernel-builder/output"
-	if [ ! -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
-		echo "  Custom kernel not found, building it now..."
-		(cd "${script_dir}/kernel-builder" && make)
-	fi
+    # Build custom kernel if not cached
+    KERNEL_BUILDER_DIR="${script_dir}/kernel-builder/output"
+    if [ ! -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
+        echo "  Custom kernel not found, building it now..."
+        (cd "${script_dir}/kernel-builder" && make)
+    fi
 
-	# Copy custom kernel
-	if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
-		echo "  Copying custom kernel with nftables support..."
-		limactl cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/vmlinux-6.12.42-nftables"
-		limactl cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/config-6.12.42-nftables"
-	else
-		echo "  ERROR: Failed to build custom kernel"
-		exit 1
-	fi
+    # Copy custom kernel
+    if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
+        echo "  Copying custom kernel with nftables support..."
+        limactl cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/vmlinux-6.12.42-nftables"
+        limactl cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/config-6.12.42-nftables"
+    else
+        echo "  ERROR: Failed to build custom kernel"
+        exit 1
+    fi
 
-	for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
-		if [ -f "$file" ]; then
-			basename=$(basename "$file")
-			echo "  Copying $basename..."
-			limactl cp "$file" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/$basename"
-		fi
-	done
+    for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
+        if [ -f "$file" ]; then
+            basename=$(basename "$file")
+            echo "  Copying $basename..."
+            limactl cp "$file" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/$basename"
+        fi
+    done
 
-	echo "Running bootstrap script in VM (this will take a few minutes)..."
-	limactl shell ${LIMA_BASE} -- sudo bash /usr/local/bin/lima-provision.sh bootstrap
+    echo "Running bootstrap script in VM (this will take a few minutes)..."
+    limactl shell ${LIMA_BASE} -- sudo bash /usr/local/bin/lima-provision.sh bootstrap
 
-	# Copy default SSH keys to root's login, so ssh root@lima-exe-ctr.local works
-	(cat ~/.ssh/id_*.pub | limactl shell ${LIMA_BASE} sudo tee /root/.authorized_keys) || true
+    # Copy default SSH keys to root's login, so ssh root@lima-exe-ctr.local works
+    (cat ~/.ssh/id_*.pub | limactl shell ${LIMA_BASE} sudo tee /root/.authorized_keys) || true
 }
 
 echo "=== Setting up Lima hosts for exe.dev containerd testing ==="
 
 if ! command -v limactl &>/dev/null; then
-	echo "Error: lima is not installed"
-	echo "Install with: brew install lima"
-	exit 1
+    echo "Error: lima is not installed"
+    echo "Install with: brew install lima"
+    exit 1
 fi
 
 # Clean up existing instances if they exist
@@ -166,16 +166,16 @@ create_fresh_data_disk "${LIMA_BASE}"
 echo "Creating base Lima instance: ${LIMA_BASE}"
 base_disk_name="$(data_disk_name "${LIMA_BASE}")"
 limactl create --tty=false --name=${LIMA_BASE} \
-	--set "$(set_disk_expr "${base_disk_name}")" \
-	"${LIMA_CONFIG_PATH}"
+    --set "$(set_disk_expr "${base_disk_name}")" \
+    "${LIMA_CONFIG_PATH}"
 limactl start --tty=false ${LIMA_BASE}
 
 echo "Checking for KVM support in VM..."
 if limactl shell ${LIMA_BASE} -- ls /dev/kvm 2>/dev/null; then
-	echo "✓ KVM is available (/dev/kvm found) - Kata containers should work"
+    echo "✓ KVM is available (/dev/kvm found) - Kata containers should work"
 else
-	echo "⚠️  KVM is not available (/dev/kvm not found) - Kata containers won't work"
-	exit 1
+    echo "⚠️  KVM is not available (/dev/kvm not found) - Kata containers won't work"
+    exit 1
 fi
 
 echo "Testing Lima SSH connection..."
@@ -209,11 +209,11 @@ touch "$HOME/.ssh/config"
 
 # Check if includes are already present
 if ! grep -q "Include ~/.lima/\*/ssh.config" "$HOME/.ssh/config"; then
-	# Add at the beginning of the file
-	echo "Include ~/.lima/*/ssh.config" | cat - "$HOME/.ssh/config" >"$HOME/.ssh/config.tmp" && mv "$HOME/.ssh/config.tmp" "$HOME/.ssh/config"
-	echo "✓ Added Lima SSH config includes"
+    # Add at the beginning of the file
+    echo "Include ~/.lima/*/ssh.config" | cat - "$HOME/.ssh/config" >"$HOME/.ssh/config.tmp" && mv "$HOME/.ssh/config.tmp" "$HOME/.ssh/config"
+    echo "✓ Added Lima SSH config includes"
 else
-	echo "✓ Lima SSH config includes already present"
+    echo "✓ Lima SSH config includes already present"
 fi
 
 echo ""

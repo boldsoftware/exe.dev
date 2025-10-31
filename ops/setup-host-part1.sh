@@ -4,17 +4,17 @@ set -euo pipefail
 
 # Check for machine name parameter
 if [ $# -ne 1 ]; then
-	echo "Usage: $0 <machine-name>"
-	echo "Machine name must be in format: exe-ctr-NN (where NN is a number)"
-	exit 1
+    echo "Usage: $0 <machine-name>"
+    echo "Machine name must be in format: exe-ctr-NN (where NN is a number)"
+    exit 1
 fi
 
 MACHINE_NAME="$1"
 
 # Validate machine name format
 if ! [[ "$MACHINE_NAME" =~ ^exe-ctr-[0-9]+$ ]]; then
-	echo "Error: Machine name must be in format exe-ctr-NN (e.g., exe-ctr-01)"
-	exit 1
+    echo "Error: Machine name must be in format exe-ctr-NN (e.g., exe-ctr-01)"
+    exit 1
 fi
 
 # Get the directory of this script
@@ -38,15 +38,15 @@ SUBNET_ID="subnet-0c7d538b08cd1cecd"
 # Check if machine name already exists in AWS
 echo "Checking if machine name ${MACHINE_NAME} is available..."
 EXISTING_INSTANCE=$(aws ec2 describe-instances \
-	--filters "Name=tag:Name,Values=${MACHINE_NAME}" \
-	"Name=instance-state-name,Values=pending,running,stopping,stopped" \
-	--query 'Reservations[].Instances[].InstanceId' \
-	--output text \
-	--region ${REGION})
+    --filters "Name=tag:Name,Values=${MACHINE_NAME}" \
+    "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+    --query 'Reservations[].Instances[].InstanceId' \
+    --output text \
+    --region ${REGION})
 
 if [ -n "$EXISTING_INSTANCE" ] && [ "$EXISTING_INSTANCE" != "None" ]; then
-	echo "Error: Machine name ${MACHINE_NAME} is already taken by instance ${EXISTING_INSTANCE}"
-	exit 1
+    echo "Error: Machine name ${MACHINE_NAME} is already taken by instance ${EXISTING_INSTANCE}"
+    exit 1
 fi
 
 echo "Machine name ${MACHINE_NAME} is available"
@@ -54,44 +54,44 @@ echo "Machine name ${MACHINE_NAME} is available"
 # Check if security group exists
 echo "Checking security group..."
 SG_ID=$(aws ec2 describe-security-groups \
-	--filters "Name=group-name,Values=${SECURITY_GROUP_NAME}" \
-	--query 'SecurityGroups[0].GroupId' \
-	--output text \
-	--region ${REGION} 2>/dev/null || true)
+    --filters "Name=group-name,Values=${SECURITY_GROUP_NAME}" \
+    --query 'SecurityGroups[0].GroupId' \
+    --output text \
+    --region ${REGION} 2>/dev/null || true)
 
 if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
-	echo "Creating security group ${SECURITY_GROUP_NAME}..."
-	SG_ID=$(aws ec2 create-security-group \
-		--group-name ${SECURITY_GROUP_NAME} \
-		--description "Security group for exe containerd hosts" \
-		--vpc-id $(aws ec2 describe-subnets --subnet-ids ${SUBNET_ID} --query 'Subnets[0].VpcId' --output text --region ${REGION}) \
-		--query 'GroupId' \
-		--output text \
-		--region ${REGION})
+    echo "Creating security group ${SECURITY_GROUP_NAME}..."
+    SG_ID=$(aws ec2 create-security-group \
+        --group-name ${SECURITY_GROUP_NAME} \
+        --description "Security group for exe containerd hosts" \
+        --vpc-id $(aws ec2 describe-subnets --subnet-ids ${SUBNET_ID} --query 'Subnets[0].VpcId' --output text --region ${REGION}) \
+        --query 'GroupId' \
+        --output text \
+        --region ${REGION})
 
-	# Add rules
-	# Allow SSH from anywhere (for Tailscale and initial setup)
-	aws ec2 authorize-security-group-ingress \
-		--group-id ${SG_ID} \
-		--protocol tcp \
-		--port 22 \
-		--cidr 0.0.0.0/0 \
-		--region ${REGION}
+    # Add rules
+    # Allow SSH from anywhere (for Tailscale and initial setup)
+    aws ec2 authorize-security-group-ingress \
+        --group-id ${SG_ID} \
+        --protocol tcp \
+        --port 22 \
+        --cidr 0.0.0.0/0 \
+        --region ${REGION}
 
-	# Allow HTTPS from anywhere
-	aws ec2 authorize-security-group-ingress \
-		--group-id ${SG_ID} \
-		--protocol tcp \
-		--port 443 \
-		--cidr 0.0.0.0/0 \
-		--region ${REGION}
+    # Allow HTTPS from anywhere
+    aws ec2 authorize-security-group-ingress \
+        --group-id ${SG_ID} \
+        --protocol tcp \
+        --port 443 \
+        --cidr 0.0.0.0/0 \
+        --region ${REGION}
 
-	# Allow all traffic from within VPC (for internal communication including ping)
-	aws ec2 authorize-security-group-ingress \
-		--group-id ${SG_ID} \
-		--protocol -1 \
-		--cidr 172.31.0.0/16 \
-		--region ${REGION}
+    # Allow all traffic from within VPC (for internal communication including ping)
+    aws ec2 authorize-security-group-ingress \
+        --group-id ${SG_ID} \
+        --protocol -1 \
+        --cidr 172.31.0.0/16 \
+        --region ${REGION}
 fi
 
 echo "Security group ID: ${SG_ID}"
@@ -99,10 +99,10 @@ echo "Security group ID: ${SG_ID}"
 # Check if IAM role exists
 echo "Checking IAM role..."
 if ! aws iam get-role --role-name ${INSTANCE_ROLE_NAME} >/dev/null 2>&1; then
-	echo "Creating IAM role ${INSTANCE_ROLE_NAME}..."
-	aws iam create-role \
-		--role-name ${INSTANCE_ROLE_NAME} \
-		--assume-role-policy-document '{
+    echo "Creating IAM role ${INSTANCE_ROLE_NAME}..."
+    aws iam create-role \
+        --role-name ${INSTANCE_ROLE_NAME} \
+        --assume-role-policy-document '{
 			"Version": "2012-10-17",
 			"Statement": [
 				{
@@ -113,46 +113,46 @@ if ! aws iam get-role --role-name ${INSTANCE_ROLE_NAME} >/dev/null 2>&1; then
 			]
 		}'
 
-	# Create instance profile
-	aws iam create-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME}
-	aws iam add-role-to-instance-profile \
-		--instance-profile-name ${INSTANCE_PROFILE_NAME} \
-		--role-name ${INSTANCE_ROLE_NAME}
+    # Create instance profile
+    aws iam create-instance-profile --instance-profile-name ${INSTANCE_PROFILE_NAME}
+    aws iam add-role-to-instance-profile \
+        --instance-profile-name ${INSTANCE_PROFILE_NAME} \
+        --role-name ${INSTANCE_ROLE_NAME}
 
-	# Wait for profile to be ready
-	sleep 10
+    # Wait for profile to be ready
+    sleep 10
 fi
 
 # Get latest Ubuntu 24.04 AMI
 echo "Finding latest Ubuntu 24.04 AMI..."
 AMI_ID=$(aws ec2 describe-images \
-	--owners 099720109477 \
-	--filters \
-	"Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" \
-	"Name=architecture,Values=x86_64" \
-	"Name=virtualization-type,Values=hvm" \
-	"Name=state,Values=available" \
-	--query 'Images[0].[ImageId]' \
-	--output text \
-	--region ${REGION})
+    --owners 099720109477 \
+    --filters \
+    "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*" \
+    "Name=architecture,Values=x86_64" \
+    "Name=virtualization-type,Values=hvm" \
+    "Name=state,Values=available" \
+    --query 'Images[0].[ImageId]' \
+    --output text \
+    --region ${REGION})
 
 echo "Using AMI: ${AMI_ID}"
 
 # Check for Tailscale OAuth credentials in environment variables
 if [ -z "$TS_OAUTH_CLIENT_ID" ] || [ -z "$TS_OAUTH_CLIENT_SECRET" ]; then
-	echo "ERROR: Tailscale OAuth credentials not set"
-	echo "Please set the following environment variables:"
-	echo "  export TS_OAUTH_CLIENT_ID=<your-client-id>"
-	echo "  export TS_OAUTH_CLIENT_SECRET=<your-client-secret>"
-	echo ""
-	echo "You can get these credentials from the Tailscale admin console:"
-	echo "  https://login.tailscale.com/admin/settings/oauth"
-	exit 1
+    echo "ERROR: Tailscale OAuth credentials not set"
+    echo "Please set the following environment variables:"
+    echo "  export TS_OAUTH_CLIENT_ID=<your-client-id>"
+    echo "  export TS_OAUTH_CLIENT_SECRET=<your-client-secret>"
+    echo ""
+    echo "You can get these credentials from the Tailscale admin console:"
+    echo "  https://login.tailscale.com/admin/settings/oauth"
+    exit 1
 fi
 
 # Create user data script with Tailscale setup
 USER_DATA=$(
-	cat <<EOF
+    cat <<EOF
 #cloud-config
 users:
   - name: ubuntu
@@ -248,19 +248,19 @@ EOF
 # Create the instance
 echo "Creating instance ${MACHINE_NAME}..."
 INSTANCE_ID=$(aws ec2 run-instances \
-	--image-id ${AMI_ID} \
-	--instance-type ${INSTANCE_TYPE} \
-	--subnet-id ${SUBNET_ID} \
-	--security-group-ids ${SG_ID} \
-	--iam-instance-profile Name=${INSTANCE_PROFILE_NAME} \
-	--user-data "${USER_DATA}" \
-	--block-device-mappings \
-	"DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
-	"DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
-	--tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}}]" \
-	--query 'Instances[0].InstanceId' \
-	--output text \
-	--region ${REGION})
+    --image-id ${AMI_ID} \
+    --instance-type ${INSTANCE_TYPE} \
+    --subnet-id ${SUBNET_ID} \
+    --security-group-ids ${SG_ID} \
+    --iam-instance-profile Name=${INSTANCE_PROFILE_NAME} \
+    --user-data "${USER_DATA}" \
+    --block-device-mappings \
+    "DeviceName=/dev/sda1,Ebs={VolumeSize=${ROOT_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
+    "DeviceName=/dev/xvdf,Ebs={VolumeSize=${DATA_VOLUME_SIZE},VolumeType=gp3,DeleteOnTermination=true}" \
+    --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${MACHINE_NAME}}]" \
+    --query 'Instances[0].InstanceId' \
+    --output text \
+    --region ${REGION})
 
 echo "Instance ${INSTANCE_ID} created"
 
@@ -270,10 +270,10 @@ aws ec2 wait instance-running --instance-ids ${INSTANCE_ID} --region ${REGION}
 
 # Get instance IP (private IP since we're using a private subnet)
 INSTANCE_IP=$(aws ec2 describe-instances \
-	--instance-ids ${INSTANCE_ID} \
-	--query 'Reservations[0].Instances[0].PrivateIpAddress' \
-	--output text \
-	--region ${REGION})
+    --instance-ids ${INSTANCE_ID} \
+    --query 'Reservations[0].Instances[0].PrivateIpAddress' \
+    --output text \
+    --region ${REGION})
 
 echo "Instance is running at ${INSTANCE_IP} (private IP)"
 
@@ -286,23 +286,23 @@ WAIT_INTERVAL=10
 ELAPSED=0
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
-	# Try to SSH to the machine via Tailscale
-	if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
-		echo "✓ Machine is accessible via Tailscale SSH"
-		break
-	fi
+    # Try to SSH to the machine via Tailscale
+    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@${MACHINE_NAME} true 2>/dev/null; then
+        echo "✓ Machine is accessible via Tailscale SSH"
+        break
+    fi
 
-	echo "  Waiting for ${MACHINE_NAME} to be accessible via Tailscale... ($ELAPSED/$MAX_WAIT seconds)"
-	sleep $WAIT_INTERVAL
-	ELAPSED=$((ELAPSED + WAIT_INTERVAL))
+    echo "  Waiting for ${MACHINE_NAME} to be accessible via Tailscale... ($ELAPSED/$MAX_WAIT seconds)"
+    sleep $WAIT_INTERVAL
+    ELAPSED=$((ELAPSED + WAIT_INTERVAL))
 done
 
 if [ $ELAPSED -ge $MAX_WAIT ]; then
-	echo "WARNING: Machine is not accessible via Tailscale after ${MAX_WAIT} seconds"
-	echo "You may need to check the Tailscale setup manually"
-	echo "To debug, you can SSH via exed-01:"
-	echo "  ssh exed-01 'ssh ubuntu@${INSTANCE_IP} sudo tail -100 /var/log/cloud-init-output.log'"
-	exit 1
+    echo "WARNING: Machine is not accessible via Tailscale after ${MAX_WAIT} seconds"
+    echo "You may need to check the Tailscale setup manually"
+    echo "To debug, you can SSH via exed-01:"
+    echo "  ssh exed-01 'ssh ubuntu@${INSTANCE_IP} sudo tail -100 /var/log/cloud-init-output.log'"
+    exit 1
 fi
 
 # Setup volumes on metal instances
@@ -447,19 +447,19 @@ VOLUME_SETUP_SCRIPT
 # Copy and execute the volume setup script
 echo "Setting up volumes (swap, /local, /data) on ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-	/tmp/setup-volumes.sh \
-	"ubuntu@${MACHINE_NAME}:~/"; then
-	echo "ERROR: Failed to copy volume setup script"
-	rm -f /tmp/setup-volumes.sh
-	exit 1
+    /tmp/setup-volumes.sh \
+    "ubuntu@${MACHINE_NAME}:~/"; then
+    echo "ERROR: Failed to copy volume setup script"
+    rm -f /tmp/setup-volumes.sh
+    exit 1
 fi
 
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-	"ubuntu@${MACHINE_NAME}" \
-	'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
-	echo "ERROR: Volume setup failed"
-	rm -f /tmp/setup-volumes.sh
-	exit 1
+    "ubuntu@${MACHINE_NAME}" \
+    'chmod +x ~/setup-volumes.sh && ~/setup-volumes.sh'; then
+    echo "ERROR: Volume setup failed"
+    rm -f /tmp/setup-volumes.sh
+    exit 1
 fi
 
 rm -f /tmp/setup-volumes.sh
@@ -471,12 +471,12 @@ rm -f /tmp/setup-volumes.sh
 # Copy setup script, config, and downloader to the remote host
 echo "Copying setup scripts to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-	"${SCRIPT_DIR}/setup-containerd-clh-nydus.sh" \
-	"${SCRIPT_DIR}/kata-config-clh.toml" \
-	"${SCRIPT_DIR}/download-ctr-host.sh" \
-	"ubuntu@${MACHINE_NAME}:~/"; then
-	echo "ERROR: Failed to copy scripts and config to remote"
-	exit 1
+    "${SCRIPT_DIR}/setup-containerd-clh-nydus.sh" \
+    "${SCRIPT_DIR}/kata-config-clh.toml" \
+    "${SCRIPT_DIR}/download-ctr-host.sh" \
+    "ubuntu@${MACHINE_NAME}:~/"; then
+    echo "ERROR: Failed to copy scripts and config to remote"
+    exit 1
 fi
 
 echo "Running downloads on ${MACHINE_NAME} to cache dependencies..."
@@ -535,8 +535,8 @@ sudo chmod +x /root/setup-containerd-clh-nydus.sh
 '
 
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "ubuntu@${MACHINE_NAME}" "$REMOTE_DOWNLOAD_CMD"; then
-	echo "ERROR: Remote download/setup of dependencies failed"
-	exit 1
+    echo "ERROR: Remote download/setup of dependencies failed"
+    exit 1
 fi
 
 echo ""
@@ -547,10 +547,10 @@ echo "=========================================="
 # Execute the part 2 script from /root
 echo "Executing containerd setup script on ${MACHINE_NAME}..."
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-	"ubuntu@${MACHINE_NAME}" \
-	'sudo /root/setup-containerd-clh-nydus.sh'; then
-	echo "ERROR: Setup script failed"
-	exit 1
+    "ubuntu@${MACHINE_NAME}" \
+    'sudo /root/setup-containerd-clh-nydus.sh'; then
+    echo "ERROR: Setup script failed"
+    exit 1
 fi
 
 echo ""

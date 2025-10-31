@@ -17,8 +17,8 @@ echo "Setting up kernel source..."
 # Find kernel source directory
 KERNEL_SRC=$(find /workspace/kata-containers/tools/packaging/kernel -maxdepth 1 -name "kata-linux-*" -type d | head -1)
 if [ -z "$KERNEL_SRC" ]; then
-	echo "ERROR: Could not find kata-linux source directory" >&2
-	exit 1
+    echo "ERROR: Could not find kata-linux source directory" >&2
+    exit 1
 fi
 
 echo "Found kernel source at: $KERNEL_SRC"
@@ -39,22 +39,22 @@ echo "Preparing output..."
 mkdir -p /output
 
 if [ "$ARCH" = "aarch64" ]; then
-	cp "$KERNEL_SRC/arch/arm64/boot/Image" "/output/vmlinux-${KERNEL_VERSION}-nftables"
+    cp "$KERNEL_SRC/arch/arm64/boot/Image" "/output/vmlinux-${KERNEL_VERSION}-nftables"
 elif [ "$ARCH" = "x86_64" ]; then
-	cp "$KERNEL_SRC/arch/x86/boot/bzImage" "/output/vmlinux-${KERNEL_VERSION}-nftables"
+    cp "$KERNEL_SRC/arch/x86/boot/bzImage" "/output/vmlinux-${KERNEL_VERSION}-nftables"
 else
-	echo "ERROR: Unsupported architecture: $ARCH" >&2
-	exit 1
+    echo "ERROR: Unsupported architecture: $ARCH" >&2
+    exit 1
 fi
 
 cp "$KERNEL_SRC/.config" "/output/config-${KERNEL_VERSION}-nftables"
 
 # Verify nftables is enabled
 if grep -q "CONFIG_NF_TABLES=y" "/output/config-${KERNEL_VERSION}-nftables"; then
-	echo "✓ nftables enabled in kernel config"
+    echo "✓ nftables enabled in kernel config"
 else
-	echo "✗ nftables NOT enabled - build failed" >&2
-	exit 1
+    echo "✗ nftables NOT enabled - build failed" >&2
+    exit 1
 fi
 
 echo "Kernel build complete!"

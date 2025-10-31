@@ -2,82 +2,82 @@
 set -euo pipefail
 
 usage() {
-	echo "usage: $0 [--dump-lines] COVER_PROFILE" >&2
+    echo "usage: $0 [--dump-lines] COVER_PROFILE" >&2
 }
 
 dump_lines=false
 
 while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--dump-lines)
-		dump_lines=true
-		shift
-		;;
-	--help)
-		usage
-		exit 0
-		;;
-	-*)
-		echo "unknown flag: $1" >&2
-		usage
-		exit 1
-		;;
-	*)
-		break
-		;;
-	esac
+    case "$1" in
+    --dump-lines)
+        dump_lines=true
+        shift
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    -*)
+        echo "unknown flag: $1" >&2
+        usage
+        exit 1
+        ;;
+    *)
+        break
+        ;;
+    esac
 done
 
 if [ "$#" -ne 1 ]; then
-	usage
-	exit 1
+    usage
+    exit 1
 fi
 
 profile=$1
 baseline="e1e/e1e.cover"
 
 if ! command -v go >/dev/null 2>&1; then
-	echo "go command not found" >&2
-	exit 1
+    echo "go command not found" >&2
+    exit 1
 fi
 
 if ! command -v python3 >/dev/null 2>&1; then
-	echo "python3 command not found" >&2
-	exit 1
+    echo "python3 command not found" >&2
+    exit 1
 fi
 
 if [ ! -f "$profile" ]; then
-	echo "coverage profile not found: $profile" >&2
-	exit 1
+    echo "coverage profile not found: $profile" >&2
+    exit 1
 fi
 
 if [ ! -f "$baseline" ]; then
-	echo "baseline coverage profile not found: $baseline" >&2
-	exit 1
+    echo "baseline coverage profile not found: $baseline" >&2
+    exit 1
 fi
 
 diff_profile=$(mktemp -t exe-coverage-diff-XXXXXX.cover)
 lines_dump_file=""
 
 if $dump_lines; then
-	lines_dump_file=$(mktemp -t exe-coverage-lines-XXXXXX.txt)
+    lines_dump_file=$(mktemp -t exe-coverage-lines-XXXXXX.txt)
 fi
 
 cleanup() {
-	rm -f "$diff_profile"
-	if [ -n "$lines_dump_file" ] && [ -f "$lines_dump_file" ]; then
-		rm -f "$lines_dump_file"
-	fi
+    rm -f "$diff_profile"
+    if [ -n "$lines_dump_file" ] && [ -f "$lines_dump_file" ]; then
+        rm -f "$lines_dump_file"
+    fi
 }
 trap cleanup EXIT
 
 python_args=("-" "$baseline" "$profile" "$diff_profile")
 if $dump_lines; then
-	python_args+=("$lines_dump_file")
+    python_args+=("$lines_dump_file")
 fi
 
 unique_count=$(
-	python3 "${python_args[@]}" <<'PY'
+    python3 "${python_args[@]}" <<'PY'
 import sys
 from pathlib import Path
 from typing import Optional
@@ -259,18 +259,18 @@ PY
 
 case "$unique_count" in
 '')
-	echo "failed to generate differential coverage" >&2
-	exit 1
-	;;
+    echo "failed to generate differential coverage" >&2
+    exit 1
+    ;;
 0)
-	echo "no differential coverage lines relative to $baseline" >&2
-	exit 0
-	;;
+    echo "no differential coverage lines relative to $baseline" >&2
+    exit 0
+    ;;
 esac
 
 if $dump_lines; then
-	cat "$lines_dump_file"
-	exit 0
+    cat "$lines_dump_file"
+    exit 0
 fi
 
 html_file=$(mktemp -t exe-coverage-XXXXXX.html)
@@ -278,40 +278,40 @@ rm -f "$html_file"
 html_file="${html_file}.html"
 
 if ! go tool cover -html="$diff_profile" -o "$html_file"; then
-	echo "failed to render coverage report" >&2
-	exit 1
+    echo "failed to render coverage report" >&2
+    exit 1
 fi
 
 declare -a openers
 openers=("python3" "open" "xdg-open")
 
 for opener in "${openers[@]}"; do
-	case "$opener" in
-	python3)
-		if python3 - "$html_file" <<'PY'; then
+    case "$opener" in
+    python3)
+        if python3 - "$html_file" <<'PY'; then
 import sys
 import webbrowser
 path = sys.argv[1]
 if not webbrowser.open(f"file://{path}"):
     sys.exit(1)
 PY
-			echo "opened coverage report: $html_file"
-			exit 0
-		fi
-		;;
-	open)
-		if command -v open >/dev/null 2>&1 && open "$html_file" >/dev/null 2>&1; then
-			echo "opened coverage report: $html_file"
-			exit 0
-		fi
-		;;
-	xdg-open)
-		if command -v xdg-open >/dev/null 2>&1 && xdg-open "$html_file" >/dev/null 2>&1; then
-			echo "opened coverage report: $html_file"
-			exit 0
-		fi
-		;;
-	esac
+            echo "opened coverage report: $html_file"
+            exit 0
+        fi
+        ;;
+    open)
+        if command -v open >/dev/null 2>&1 && open "$html_file" >/dev/null 2>&1; then
+            echo "opened coverage report: $html_file"
+            exit 0
+        fi
+        ;;
+    xdg-open)
+        if command -v xdg-open >/dev/null 2>&1 && xdg-open "$html_file" >/dev/null 2>&1; then
+            echo "opened coverage report: $html_file"
+            exit 0
+        fi
+        ;;
+    esac
 done
 
 echo "coverage report written to $html_file" >&2

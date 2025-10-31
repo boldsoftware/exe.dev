@@ -9,20 +9,20 @@ cd "$(dirname "$0")/.."
 #   This edits your tree in place.
 
 if ! command -v gofumpt &>/dev/null; then
-	echo "Error: gofumpt not found. Install it with:"
-	echo "  go install mvdan.cc/gofumpt@v0.9.2"
-	exit 1
+    echo "Error: gofumpt not found. Install it with:"
+    echo "  go install mvdan.cc/gofumpt@v0.9.2"
+    exit 1
 fi
 
 if ! command -v shfmt &>/dev/null; then
-	echo "Error: shfmt not found. Install it with:"
-	echo "  go install mvdan.cc/sh/v3/cmd/shfmt@v3.12.0"
-	exit 1
+    echo "Error: shfmt not found. Install it with:"
+    echo "  go install mvdan.cc/sh/v3/cmd/shfmt@v3.12.0"
+    exit 1
 fi
 
 # Shell formatting
 echo "Checking Shell formatting..."
-shfmt -w $(git ls-files -- "*.sh" | grep -v -E '^(tini|sshpiper)')
+shfmt -i 4 -w $(git ls-files -- "*.sh" | grep -v -E '^(tini|sshpiper)')
 
 # Go formatting with gofumpt
 echo "Checking Go formatting..."

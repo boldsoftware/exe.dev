@@ -4,7 +4,7 @@ set -euo pipefail
 echo "=== Running setup-containerd-clh-nydus.sh ==="
 
 if [ "${EXE_DEBUG_SETUP:-0}" = "1" ]; then
-	set -x
+    set -x
 fi
 
 # On any error, emit useful diagnostics before exiting
@@ -26,8 +26,8 @@ export NEEDRESTART_SUSPEND=1
 # Detect if we're in a CI environment (no NVMe drives, ephemeral VM)
 IS_CI_VM=0
 if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ ! -e /dev/nvme0n1 ]; then
-	IS_CI_VM=1
-	echo "=== CI/ephemeral VM detected, skipping swap and RAID setup ==="
+    IS_CI_VM=1
+    echo "=== CI/ephemeral VM detected, skipping swap and RAID setup ==="
 fi
 
 # Swap and /local RAID setup is now handled by environment-specific scripts:
@@ -40,26 +40,26 @@ echo "=== Installing containerd ==="
 # Install prerequisites
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get install --no-install-recommends --no-upgrade -qq -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-	ca-certificates \
-	curl \
-	gnupg \
-	lsb-release \
-	apt-transport-https \
-	jq \
-	build-essential \
-	pkg-config \
-	libseccomp-dev \
-	wget \
-	net-tools \
-	skopeo >/dev/null 2>&1
+    ca-certificates \
+    curl \
+    gnupg \
+    lsb-release \
+    apt-transport-https \
+    jq \
+    build-essential \
+    pkg-config \
+    libseccomp-dev \
+    wget \
+    net-tools \
+    skopeo >/dev/null 2>&1
 
 # Install containerd from official releases (not apt) for specific version
 CONTAINERD_VERSION="2.1.4"
 ARCH=$(uname -m)
 if [ "$ARCH" = "x86_64" ]; then
-	ARCH="amd64"
+    ARCH="amd64"
 elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-	ARCH="arm64"
+    ARCH="arm64"
 fi
 
 # Directory where artifacts are staged by the downloader (ubuntu user's cache)
@@ -107,19 +107,19 @@ sudo chmod +x /opt/kata/bin/ch-remote
 CUSTOM_KERNEL="${ASSETS_DIR}/vmlinux-6.12.42-nftables"
 CUSTOM_CONFIG="${ASSETS_DIR}/config-6.12.42-nftables"
 if [ -f "$CUSTOM_KERNEL" ]; then
-	echo "Installing custom kernel with nftables support..."
-	sudo cp "$CUSTOM_KERNEL" /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
-	sudo chmod +x /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
+    echo "Installing custom kernel with nftables support..."
+    sudo cp "$CUSTOM_KERNEL" /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
+    sudo chmod +x /opt/kata/share/kata-containers/vmlinux-6.12.42-nftables
 
-	if [ -f "$CUSTOM_CONFIG" ]; then
-		sudo cp "$CUSTOM_CONFIG" /opt/kata/share/kata-containers/config-6.12.42-nftables
-	fi
+    if [ -f "$CUSTOM_CONFIG" ]; then
+        sudo cp "$CUSTOM_CONFIG" /opt/kata/share/kata-containers/config-6.12.42-nftables
+    fi
 
-	# Update the vmlinux.container symlink to point to our custom kernel
-	sudo ln -sf vmlinux-6.12.42-nftables /opt/kata/share/kata-containers/vmlinux.container
-	echo "Custom kernel installed and activated"
+    # Update the vmlinux.container symlink to point to our custom kernel
+    sudo ln -sf vmlinux-6.12.42-nftables /opt/kata/share/kata-containers/vmlinux.container
+    echo "Custom kernel installed and activated"
 else
-	echo "No custom kernel found at $CUSTOM_KERNEL, using default Kata kernel"
+    echo "No custom kernel found at $CUSTOM_KERNEL, using default Kata kernel"
 fi
 
 # Link Kata binaries
@@ -187,8 +187,8 @@ EOF
 # Create nydus working directories
 # /local should already exist (created by environment-specific setup)
 if [ ! -d /local ]; then
-	echo "ERROR: /local directory does not exist. It should be created by the environment setup script."
-	exit 1
+    echo "ERROR: /local directory does not exist. It should be created by the environment setup script."
+    exit 1
 fi
 sudo mkdir -p "/local/nydus/cache"
 sudo mkdir -p /var/lib/containerd-nydus/snapshots
@@ -228,9 +228,9 @@ sudo mkdir -p /etc/kata-containers
 # Kata config file must be placed in ${ASSETS_DIR} by the calling script
 KATA_CONFIG="${ASSETS_DIR}/kata-config-clh.toml"
 if [ ! -f "$KATA_CONFIG" ]; then
-	echo "ERROR: kata-config-clh.toml not found in ${ASSETS_DIR}"
-	echo "The calling script must copy kata-config-clh.toml to ${ASSETS_DIR} before running this script"
-	exit 1
+    echo "ERROR: kata-config-clh.toml not found in ${ASSETS_DIR}"
+    echo "The calling script must copy kata-config-clh.toml to ${ASSETS_DIR} before running this script"
+    exit 1
 fi
 
 echo "Installing Kata configuration from $KATA_CONFIG"
@@ -250,15 +250,15 @@ echo "=== Configuring containerd with Nydus snapshotter ==="
 # For CI VMs and other ephemeral environments, use /var/lib
 # For production metal instances, use /data (already mounted)
 if [ $IS_CI_VM -eq 1 ]; then
-	CONTAINERD_ROOT="/var/lib/containerd"
+    CONTAINERD_ROOT="/var/lib/containerd"
 elif [ -d /data ] && mountpoint -q /data 2>/dev/null; then
-	# Production: /data is a mounted XFS volume
-	CONTAINERD_ROOT="/data/containerd"
-	sudo mkdir -p $CONTAINERD_ROOT
+    # Production: /data is a mounted XFS volume
+    CONTAINERD_ROOT="/data/containerd"
+    sudo mkdir -p $CONTAINERD_ROOT
 else
-	# Fallback: /data exists as a directory
-	CONTAINERD_ROOT="/data/containerd"
-	sudo mkdir -p $CONTAINERD_ROOT
+    # Fallback: /data exists as a directory
+    CONTAINERD_ROOT="/data/containerd"
+    sudo mkdir -p $CONTAINERD_ROOT
 fi
 
 # Configure containerd with nydus as default snapshotter
@@ -337,20 +337,20 @@ NERDCTL_ARCH="$ARCH" # ARCH is normalized earlier to amd64/arm64
 echo "Installing nerdctl ${NERDCTL_VERSION}..."
 TMPD=$(mktemp -d)
 if ! tar -xzf "${ASSETS_DIR}/nerdctl-${NERDCTL_VERSION}-linux-${NERDCTL_ARCH}.tar.gz" -C "$TMPD"; then
-	echo "ERROR: failed to extract nerdctl archive" >&2
-	rm -rf "$TMPD"
-	exit 1
+    echo "ERROR: failed to extract nerdctl archive" >&2
+    rm -rf "$TMPD"
+    exit 1
 fi
 # Find the nerdctl binary within the archive and install
 NC_PATH=""
 if [ -f "$TMPD/nerdctl" ]; then NC_PATH="$TMPD/nerdctl"; fi
 if [ -z "$NC_PATH" ]; then
-	NC_PATH=$(find "$TMPD" -maxdepth 2 -type f -name nerdctl | head -n1 || true)
+    NC_PATH=$(find "$TMPD" -maxdepth 2 -type f -name nerdctl | head -n1 || true)
 fi
 if [ -z "$NC_PATH" ]; then
-	echo "ERROR: nerdctl binary not found in archive" >&2
-	rm -rf "$TMPD"
-	exit 1
+    echo "ERROR: nerdctl binary not found in archive" >&2
+    rm -rf "$TMPD"
+    exit 1
 fi
 sudo install -m 0755 "$NC_PATH" /usr/local/bin/nerdctl
 rm -rf "$TMPD"
@@ -468,37 +468,37 @@ sudo systemctl enable containerd
 # Start nydus-snapshotter first (it must be running before containerd)
 sudo systemctl start nydus-snapshotter
 until systemctl is-active --quiet nydus-snapshotter; do
-	sleep 0.1
+    sleep 0.1
 done
 
 # Now start containerd (which requires nydus-snapshotter)
 sudo systemctl start containerd
 until systemctl is-active --quiet containerd; do
-	sleep 0.1
+    sleep 0.1
 done
 
 echo "Waiting for nydus to register with containerd..."
 NYDUS_OK=0
 for i in {1..120}; do
-	# Check if nydus appears in plugin list with "ok" status
-	if sudo ctr plugin ls 2>/dev/null | grep -E "nydus.*ok" >/dev/null 2>&1; then
-		echo "  Nydus snapshotter registered successfully"
-		NYDUS_OK=1
-		break
-	fi
-	sleep 2
+    # Check if nydus appears in plugin list with "ok" status
+    if sudo ctr plugin ls 2>/dev/null | grep -E "nydus.*ok" >/dev/null 2>&1; then
+        echo "  Nydus snapshotter registered successfully"
+        NYDUS_OK=1
+        break
+    fi
+    sleep 2
 done
 if [ "$NYDUS_OK" -ne 1 ]; then
-	echo "ERROR: Nydus snapshotter not registered with containerd within 2min"
-	echo "Current plugin status:"
-	sudo ctr plugin ls || true
-	exit 1
+    echo "ERROR: Nydus snapshotter not registered with containerd within 2min"
+    echo "Current plugin status:"
+    sudo ctr plugin ls || true
+    exit 1
 fi
 
 # Fix socket permissions
 if [ -S /run/containerd/containerd.sock ]; then
-	sudo chmod 660 /run/containerd/containerd.sock
-	sudo chgrp containerd /run/containerd/containerd.sock
+    sudo chmod 660 /run/containerd/containerd.sock
+    sudo chgrp containerd /run/containerd/containerd.sock
 fi
 
 # Create the exe namespace
@@ -607,16 +607,16 @@ sudo /usr/local/bin/setup-container-isolation.sh
 
 # Ensure rules persist across reboots
 if ! grep -q setup-container-isolation /etc/rc.local 2>/dev/null; then
-	if [ ! -f /etc/rc.local ]; then
-		echo '#!/bin/sh -e' | sudo tee /etc/rc.local >/dev/null
-	fi
-	# Add before exit 0 if it exists, otherwise append
-	if grep -q "^exit 0" /etc/rc.local; then
-		sudo sed -i '/^exit 0/i /usr/local/bin/setup-container-isolation.sh' /etc/rc.local
-	else
-		echo '/usr/local/bin/setup-container-isolation.sh' | sudo tee -a /etc/rc.local >/dev/null
-	fi
-	sudo chmod +x /etc/rc.local
+    if [ ! -f /etc/rc.local ]; then
+        echo '#!/bin/sh -e' | sudo tee /etc/rc.local >/dev/null
+    fi
+    # Add before exit 0 if it exists, otherwise append
+    if grep -q "^exit 0" /etc/rc.local; then
+        sudo sed -i '/^exit 0/i /usr/local/bin/setup-container-isolation.sh' /etc/rc.local
+    else
+        echo '/usr/local/bin/setup-container-isolation.sh' | sudo tee -a /etc/rc.local >/dev/null
+    fi
+    sudo chmod +x /etc/rc.local
 fi
 
 echo "Network settings and isolation configured"
@@ -628,14 +628,14 @@ sudo sed -i '/^#*MaxSessions/d' /etc/ssh/sshd_config
 echo "MaxSessions 50" | sudo tee -a /etc/ssh/sshd_config >/dev/null
 # Handle both regular SSH service and socket-activated SSH
 if systemctl is-active ssh >/dev/null 2>&1; then
-	sudo systemctl reload ssh
+    sudo systemctl reload ssh
 elif systemctl is-active ssh.socket >/dev/null 2>&1; then
-	# Socket-activated SSH - configuration will be picked up on next connection
-	echo "SSH is socket-activated, configuration will apply on next connection"
+    # Socket-activated SSH - configuration will be picked up on next connection
+    echo "SSH is socket-activated, configuration will apply on next connection"
 elif systemctl is-active sshd >/dev/null 2>&1; then
-	sudo systemctl reload sshd
+    sudo systemctl reload sshd
 else
-	echo "Warning: SSH service not found or not active, skipping reload"
+    echo "Warning: SSH service not found or not active, skipping reload"
 fi
 echo "SSH MaxSessions set to 50"
 
@@ -648,9 +648,9 @@ sudo systemctl is-active nydus-snapshotter >/dev/null 2>&1 && echo "✓ nydus-sn
 
 # Check nydus socket
 if [ -S /run/containerd-nydus/containerd-nydus-grpc.sock ]; then
-	echo "✓ Nydus socket exists"
+    echo "✓ Nydus socket exists"
 else
-	echo "✗ Nydus socket missing"
+    echo "✗ Nydus socket missing"
 fi
 
 echo ""
@@ -658,53 +658,53 @@ echo "Loading baseline images (exeuntu, ubuntu, alpine)..."
 
 # Images to load
 IMAGES=(
-	"ghcr.io/boldsoftware/exeuntu:latest"
-	"ghcr.io/linuxcontainers/alpine:latest"
-	"docker.io/library/ubuntu:latest"
+    "ghcr.io/boldsoftware/exeuntu:latest"
+    "ghcr.io/linuxcontainers/alpine:latest"
+    "docker.io/library/ubuntu:latest"
 )
 
 for image in "${IMAGES[@]}"; do
-	image_base=$(echo "$image" | sed 's|/|_|g' | sed 's|:|_|g')
-	base_tar="${ASSETS_DIR}/${image_base}-${ARCH}.tar"
+    image_base=$(echo "$image" | sed 's|/|_|g' | sed 's|:|_|g')
+    base_tar="${ASSETS_DIR}/${image_base}-${ARCH}.tar"
 
-	if [ -f "$base_tar" ]; then
-		echo "Loading $image from cache..."
-		sudo ctr -n exe images import "$base_tar"
-		# If the image is not visible to nerdctl after import, try nerdctl load, then fall back to pull
-		if ! sudo nerdctl -n exe image inspect "$image" >/dev/null 2>&1; then
-			echo "Image not visible to nerdctl after import; trying nerdctl load..."
-			if sudo nerdctl -n exe load -i "$base_tar" >/dev/null 2>&1 &&
-				sudo nerdctl -n exe image inspect "$image" >/dev/null 2>&1; then
-				echo "✓ $image loaded via nerdctl (skip pull)"
-			else
-				echo "Image still not found; pulling $image to complete setup..."
-				sudo nerdctl -n exe --snapshotter nydus pull "$image"
-			fi
-		else
-			echo "✓ $image imported from cache (skip pull)"
-		fi
+    if [ -f "$base_tar" ]; then
+        echo "Loading $image from cache..."
+        sudo ctr -n exe images import "$base_tar"
+        # If the image is not visible to nerdctl after import, try nerdctl load, then fall back to pull
+        if ! sudo nerdctl -n exe image inspect "$image" >/dev/null 2>&1; then
+            echo "Image not visible to nerdctl after import; trying nerdctl load..."
+            if sudo nerdctl -n exe load -i "$base_tar" >/dev/null 2>&1 &&
+                sudo nerdctl -n exe image inspect "$image" >/dev/null 2>&1; then
+                echo "✓ $image loaded via nerdctl (skip pull)"
+            else
+                echo "Image still not found; pulling $image to complete setup..."
+                sudo nerdctl -n exe --snapshotter nydus pull "$image"
+            fi
+        else
+            echo "✓ $image imported from cache (skip pull)"
+        fi
 
-		# Ensure the repo@digest alias exists so code that resolves tags to digests
-		# can find the image without a network pull.
-		# 1) Derive the manifest digest as seen by containerd for this ref.
-		# Extract manifest digest for the imported tag without triggering SIGPIPE under pipefail.
-		# Read full input and print the digest of the exact matching ref, or empty if not found.
-		img_digest=$(sudo ctr -n exe images ls 2>/dev/null | awk -v img="$image" '($1==img){print $3; found=1} END{ if (!found) print "" }')
-		if [ -n "$img_digest" ]; then
-			repo_no_tag="${image%%:*}"
-			digest_ref="${repo_no_tag}@${img_digest}"
-			# 2) If the digest ref is not present, add a tag pointing to the same content.
-			if ! sudo ctr -n exe images ls 2>/dev/null | awk -v ref="$digest_ref" '($1==ref){found=1} END{exit !found}'; then
-				echo "Tagging $image as $digest_ref (repo@digest alias)"
-				sudo ctr -n exe images tag "$image" "$digest_ref" || true
-			fi
-		else
-			echo "Warning: failed to determine manifest digest for $image; skipping alias tag"
-		fi
-	else
-		echo "Pulling $image from registry..."
-		sudo nerdctl -n exe --snapshotter nydus pull "$image"
-	fi
+        # Ensure the repo@digest alias exists so code that resolves tags to digests
+        # can find the image without a network pull.
+        # 1) Derive the manifest digest as seen by containerd for this ref.
+        # Extract manifest digest for the imported tag without triggering SIGPIPE under pipefail.
+        # Read full input and print the digest of the exact matching ref, or empty if not found.
+        img_digest=$(sudo ctr -n exe images ls 2>/dev/null | awk -v img="$image" '($1==img){print $3; found=1} END{ if (!found) print "" }')
+        if [ -n "$img_digest" ]; then
+            repo_no_tag="${image%%:*}"
+            digest_ref="${repo_no_tag}@${img_digest}"
+            # 2) If the digest ref is not present, add a tag pointing to the same content.
+            if ! sudo ctr -n exe images ls 2>/dev/null | awk -v ref="$digest_ref" '($1==ref){found=1} END{exit !found}'; then
+                echo "Tagging $image as $digest_ref (repo@digest alias)"
+                sudo ctr -n exe images tag "$image" "$digest_ref" || true
+            fi
+        else
+            echo "Warning: failed to determine manifest digest for $image; skipping alias tag"
+        fi
+    else
+        echo "Pulling $image from registry..."
+        sudo nerdctl -n exe --snapshotter nydus pull "$image"
+    fi
 done
 
 echo ""
