@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/anmitsu/go-shlex"
 	"github.com/charmbracelet/x/ansi"
@@ -113,7 +112,6 @@ func (c *Command) Help(cc *CommandContext) error {
 type CommandContext struct {
 	// Core context
 	User       *UserInfo
-	Alloc      *AllocInfo
 	PublicKey  string
 	Args       []string
 	FlagSet    *flag.FlagSet // parsed flags for this command
@@ -147,15 +145,6 @@ type ShellSession interface {
 type UserInfo struct {
 	ID    string
 	Email string
-}
-
-// AllocInfo contains allocation details needed by menu commands.
-type AllocInfo struct {
-	ID               string
-	Type             string
-	Region           string
-	BillingAccountID string
-	CreatedAt        *time.Time
 }
 
 // slog returns the logger for this context, defaulting to slog.Default() if not set.
@@ -222,7 +211,6 @@ func (ctx *CommandContext) WriteInternalError(cmd string, err error, slogDetails
 	attrs := []any{
 		"error", err,
 		"user_id", ctx.User.ID,
-		"alloc_id", ctx.Alloc.ID,
 		"public_key", ctx.PublicKey,
 		"args", ctx.Args,
 		"guid", guid,

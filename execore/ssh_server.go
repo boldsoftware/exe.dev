@@ -286,13 +286,6 @@ func (ss *SSHServer) handleShell(s sshsession.Session, publicKey string, registe
 		return
 	}
 
-	// Get or create user's alloc
-	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
-	if err != nil || alloc == nil {
-		fmt.Fprintf(s, "Error: User has no allocation\r\n")
-		return
-	}
-
 	shell := sshsession.NewShell(s)
 	ss.runMainShellWithReadline(shell, publicKey, user)
 }
@@ -360,16 +353,10 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		}
 	}()
 
-	alloc, err := ss.server.getUserAlloc(ctx, user.UserID)
-	if err != nil || alloc == nil {
-		fmt.Fprint(s, "Error: User not associated with any allocation\r\n")
-		return
-	}
-
 	ss.server.slog().Info("starting repl", "public_key", publicKey, "email", user.Email)
 	for {
 		// Read line with tab completion
-		line, err := ss.readLineWithCompletion(terminal, user, alloc, publicKey, s)
+		line, err := ss.readLineWithCompletion(terminal, user, publicKey, s)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Fprint(s, "Goodbye!\r\n")
@@ -395,12 +382,6 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 			User: &exemenu.UserInfo{
 				ID:    user.UserID,
 				Email: user.Email,
-			},
-			Alloc: &exemenu.AllocInfo{
-				ID:        alloc.AllocID,
-				Type:      string(alloc.AllocType),
-				Region:    string(alloc.Region),
-				CreatedAt: alloc.CreatedAt,
 			},
 			PublicKey:  publicKey,
 			Args:       []string{}, // ExecuteCommand will determine the real args
@@ -581,14 +562,6 @@ func (ss *SSHServer) handleRegistration(s sshsession.Session, publicKey string) 
 	}
 
 	// Get user's alloc for the menu
-	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
-	if err != nil || alloc == nil {
-		ss.server.slog().Error("user has no allocation after registration", "user_id", user.UserID, "email", user.Email, "error", err)
-		fmt.Fprintf(s, "internal error: no associated alloc found for %v\r\n", user.Email)
-		s.Close()
-		return
-	}
-
 	// Visual feedback that we're entering the menu
 	fmt.Fprintf(s, "\r\n\r\n")
 
@@ -701,12 +674,6 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 		return
 	}
 
-	alloc, err := ss.server.getUserAlloc(s.Context(), user.UserID)
-	if err != nil || alloc == nil {
-		fmt.Fprint(s, "Error: User not associated with any allocation\r\n")
-		return
-	}
-
 	if len(cmd) == 0 {
 		return
 	}
@@ -715,12 +682,6 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 		User: &exemenu.UserInfo{
 			ID:    user.UserID,
 			Email: user.Email,
-		},
-		Alloc: &exemenu.AllocInfo{
-			ID:        alloc.AllocID,
-			Type:      string(alloc.AllocType),
-			Region:    string(alloc.Region),
-			CreatedAt: alloc.CreatedAt,
 		},
 		PublicKey:  publicKey,
 		Args:       cmd[1:],                        // Skip the command name itself
@@ -892,7 +853,7 @@ func (s *Server) lookUpEmailVerification(token string) *EmailVerification {
 }
 
 // readLineWithCompletion reads a line from the terminal with tab completion support
-func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb.User, alloc *exedb.Alloc, publicKey string, s exemenu.ShellSession) (string, error) {
+func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb.User, publicKey string, s exemenu.ShellSession) (string, error) {
 	// Set up tab completion using AutoCompleteCallback
 	var lastCompletionLine string
 	var lastCompletionPos int
@@ -912,12 +873,6 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb
 			User: &exemenu.UserInfo{
 				ID:    user.UserID,
 				Email: user.Email,
-			},
-			Alloc: &exemenu.AllocInfo{
-				ID:        alloc.AllocID,
-				Type:      string(alloc.AllocType),
-				Region:    string(alloc.Region),
-				CreatedAt: alloc.CreatedAt,
 			},
 			PublicKey:  publicKey,
 			Output:     s,

@@ -24,9 +24,6 @@ func New(db DBTX) *Queries {
 func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	q := Queries{db: db}
 	var err error
-	if q.allocExistsForUserStmt, err = db.PrepareContext(ctx, allocExistsForUser); err != nil {
-		return nil, fmt.Errorf("error preparing query AllocExistsForUser: %w", err)
-	}
 	if q.boxNamedStmt, err = db.PrepareContext(ctx, boxNamed); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxNamed: %w", err)
 	}
@@ -90,12 +87,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getAllUserEventsStmt, err = db.PrepareContext(ctx, getAllUserEvents); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAllUserEvents: %w", err)
 	}
-	if q.getAllocByUserIDStmt, err = db.PrepareContext(ctx, getAllocByUserID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetAllocByUserID: %w", err)
-	}
-	if q.getAllocsByHostStmt, err = db.PrepareContext(ctx, getAllocsByHost); err != nil {
-		return nil, fmt.Errorf("error preparing query GetAllocsByHost: %w", err)
-	}
 	if q.getAuthCookieInfoStmt, err = db.PrepareContext(ctx, getAuthCookieInfo); err != nil {
 		return nil, fmt.Errorf("error preparing query GetAuthCookieInfo: %w", err)
 	}
@@ -128,9 +119,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getBoxesSharedWithUserStmt, err = db.PrepareContext(ctx, getBoxesSharedWithUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxesSharedWithUser: %w", err)
-	}
-	if q.getCtrhostByAllocIDStmt, err = db.PrepareContext(ctx, getCtrhostByAllocID); err != nil {
-		return nil, fmt.Errorf("error preparing query GetCtrhostByAllocID: %w", err)
 	}
 	if q.getEmailBySSHKeyStmt, err = db.PrepareContext(ctx, getEmailBySSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailBySSHKey: %w", err)
@@ -203,9 +191,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.incrementUserEmailCountStmt, err = db.PrepareContext(ctx, incrementUserEmailCount); err != nil {
 		return nil, fmt.Errorf("error preparing query IncrementUserEmailCount: %w", err)
-	}
-	if q.insertAllocStmt, err = db.PrepareContext(ctx, insertAlloc); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertAlloc: %w", err)
 	}
 	if q.insertAuthCookieStmt, err = db.PrepareContext(ctx, insertAuthCookie); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertAuthCookie: %w", err)
@@ -299,11 +284,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 
 func (q *Queries) Close() error {
 	var err error
-	if q.allocExistsForUserStmt != nil {
-		if cerr := q.allocExistsForUserStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing allocExistsForUserStmt: %w", cerr)
-		}
-	}
 	if q.boxNamedStmt != nil {
 		if cerr := q.boxNamedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing boxNamedStmt: %w", cerr)
@@ -409,16 +389,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getAllUserEventsStmt: %w", cerr)
 		}
 	}
-	if q.getAllocByUserIDStmt != nil {
-		if cerr := q.getAllocByUserIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getAllocByUserIDStmt: %w", cerr)
-		}
-	}
-	if q.getAllocsByHostStmt != nil {
-		if cerr := q.getAllocsByHostStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getAllocsByHostStmt: %w", cerr)
-		}
-	}
 	if q.getAuthCookieInfoStmt != nil {
 		if cerr := q.getAuthCookieInfoStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getAuthCookieInfoStmt: %w", cerr)
@@ -472,11 +442,6 @@ func (q *Queries) Close() error {
 	if q.getBoxesSharedWithUserStmt != nil {
 		if cerr := q.getBoxesSharedWithUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxesSharedWithUserStmt: %w", cerr)
-		}
-	}
-	if q.getCtrhostByAllocIDStmt != nil {
-		if cerr := q.getCtrhostByAllocIDStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getCtrhostByAllocIDStmt: %w", cerr)
 		}
 	}
 	if q.getEmailBySSHKeyStmt != nil {
@@ -597,11 +562,6 @@ func (q *Queries) Close() error {
 	if q.incrementUserEmailCountStmt != nil {
 		if cerr := q.incrementUserEmailCountStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing incrementUserEmailCountStmt: %w", cerr)
-		}
-	}
-	if q.insertAllocStmt != nil {
-		if cerr := q.insertAllocStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertAllocStmt: %w", cerr)
 		}
 	}
 	if q.insertAuthCookieStmt != nil {
@@ -788,7 +748,6 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 type Queries struct {
 	db                                     DBTX
 	tx                                     *sql.Tx
-	allocExistsForUserStmt                 *sql.Stmt
 	boxNamedStmt                           *sql.Stmt
 	boxWithNameExistsStmt                  *sql.Stmt
 	boxWithOwnerNamedStmt                  *sql.Stmt
@@ -810,8 +769,6 @@ type Queries struct {
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	deleteSSHKeyForUserStmt                *sql.Stmt
 	getAllUserEventsStmt                   *sql.Stmt
-	getAllocByUserIDStmt                   *sql.Stmt
-	getAllocsByHostStmt                    *sql.Stmt
 	getAuthCookieInfoStmt                  *sql.Stmt
 	getAuthTokenInfoStmt                   *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
@@ -823,7 +780,6 @@ type Queries struct {
 	getBoxesByHostStmt                     *sql.Stmt
 	getBoxesForUserDashboardStmt           *sql.Stmt
 	getBoxesSharedWithUserStmt             *sql.Stmt
-	getCtrhostByAllocIDStmt                *sql.Stmt
 	getEmailBySSHKeyStmt                   *sql.Stmt
 	getEmailByUserIDStmt                   *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
@@ -848,7 +804,6 @@ type Queries struct {
 	incrementSeenOnHostsStmt               *sql.Stmt
 	incrementShareLinkUsageStmt            *sql.Stmt
 	incrementUserEmailCountStmt            *sql.Stmt
-	insertAllocStmt                        *sql.Stmt
 	insertAuthCookieStmt                   *sql.Stmt
 	insertBoxStmt                          *sql.Stmt
 	insertBoxIPShardStmt                   *sql.Stmt
@@ -884,7 +839,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
 		db:                                     tx,
 		tx:                                     tx,
-		allocExistsForUserStmt:                 q.allocExistsForUserStmt,
 		boxNamedStmt:                           q.boxNamedStmt,
 		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
@@ -906,8 +860,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		deleteSSHKeyForUserStmt:                q.deleteSSHKeyForUserStmt,
 		getAllUserEventsStmt:                   q.getAllUserEventsStmt,
-		getAllocByUserIDStmt:                   q.getAllocByUserIDStmt,
-		getAllocsByHostStmt:                    q.getAllocsByHostStmt,
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
@@ -919,7 +871,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxesByHostStmt:                     q.getBoxesByHostStmt,
 		getBoxesForUserDashboardStmt:           q.getBoxesForUserDashboardStmt,
 		getBoxesSharedWithUserStmt:             q.getBoxesSharedWithUserStmt,
-		getCtrhostByAllocIDStmt:                q.getCtrhostByAllocIDStmt,
 		getEmailBySSHKeyStmt:                   q.getEmailBySSHKeyStmt,
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
@@ -944,7 +895,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		incrementSeenOnHostsStmt:               q.incrementSeenOnHostsStmt,
 		incrementShareLinkUsageStmt:            q.incrementShareLinkUsageStmt,
 		incrementUserEmailCountStmt:            q.incrementUserEmailCountStmt,
-		insertAllocStmt:                        q.insertAllocStmt,
 		insertAuthCookieStmt:                   q.insertAuthCookieStmt,
 		insertBoxStmt:                          q.insertBoxStmt,
 		insertBoxIPShardStmt:                   q.insertBoxIPShardStmt,

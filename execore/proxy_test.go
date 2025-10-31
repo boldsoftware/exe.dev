@@ -82,18 +82,13 @@ func TestProxyLogoutFlow(t *testing.T) {
 		t.Fatalf("Failed to get test user: %v", err)
 	}
 
-	alloc, err := server.getUserAlloc(t.Context(), user.UserID)
-	if err != nil {
-		t.Fatalf("Failed to get test user alloc: %v", err)
-	}
-
 	// Create a test box with a private route
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+			INSERT INTO boxes (ctrhost, name, status, image, container_id, created_by_user_id, routes,
 							 ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, alloc.AllocID, "testbox", "running", "test-image", "test-container-id", user.UserID, `[
+		`, "fake_ctrhost", "testbox", "running", "test-image", "test-container-id", user.UserID, `[
 			{
 				"name": "default",
 				"port": 80,
@@ -715,7 +710,7 @@ func TestAuthConfirmSkipForOwner(t *testing.T) {
 		return w
 	}
 
-	createUser := func(t *testing.T, s *Server, email string) (userID, allocID string) {
+	createUser := func(t *testing.T, s *Server, email string) string {
 		t.Helper()
 		keySuffix := strings.ReplaceAll(email, "@", "_")
 		publicKey := fmt.Sprintf("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI%s_%s", keySuffix, t.Name())
@@ -723,11 +718,7 @@ func TestAuthConfirmSkipForOwner(t *testing.T) {
 		if err != nil {
 			t.Fatalf("createUser(%q): %v", email, err)
 		}
-		alloc, err := s.getUserAlloc(t.Context(), user.UserID)
-		if err != nil {
-			t.Fatalf("getUserAlloc(%q): %v", user.UserID, err)
-		}
-		return user.UserID, alloc.AllocID
+		return user.UserID
 	}
 
 	createSecret := func(t *testing.T, s *Server, userID, boxName, redirect string) string {
@@ -745,10 +736,10 @@ func TestAuthConfirmSkipForOwner(t *testing.T) {
 		t.Parallel()
 
 		server := newTestServer(t)
-		userID, allocID := createUser(t, server, "owner@example.com")
+		userID := createUser(t, server, "owner@example.com")
 
 		const boxName = "ownedbox"
-		server.createTestBox(t, userID, allocID, boxName, "container-owner", "busybox:latest")
+		server.createTestBox(t, userID, "fake_ctrhost", boxName, "container-owner", "busybox:latest")
 
 		secret := createSecret(t, server, userID, boxName, redirectPath)
 		returnHost := boxReturnHost(server, boxName)
@@ -785,17 +776,17 @@ func TestAuthConfirmSkipForOwner(t *testing.T) {
 		t.Parallel()
 
 		server := newTestServer(t)
-		ownerID, _ := createUser(t, server, "owner@example.com")
-		guestID, guestAllocID := createUser(t, server, "guest@example.com")
+		ownerID := createUser(t, server, "owner@example.com")
+		guestID := createUser(t, server, "guest@example.com")
 
 		const boxName = "sharedbox"
 		defaultRoute := exedb.DefaultRouteJSON()
 		err := server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 			_, err := tx.Exec(`
-				INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+				INSERT INTO boxes (ctrhost, name, status, image, container_id, created_by_user_id, routes,
 				                   ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`, guestAllocID, boxName, "running", "busybox:latest", "container-shared", ownerID, defaultRoute,
+			`, "fake_ctrhost", boxName, "running", "busybox:latest", "container-shared", ownerID, defaultRoute,
 				"test-key", "test-keys", "test-client-key", 2222)
 			return err
 		})
@@ -803,9 +794,9 @@ func TestAuthConfirmSkipForOwner(t *testing.T) {
 			t.Fatalf("failed to insert shared box: %v", err)
 		}
 
-		// Ensure the guest user exists with an allocation so their secrets can refer to it.
-		if guestAllocID == "" {
-			t.Fatal("guest alloc ID should not be empty")
+		// Ensure the guest user exists with their secrets can refer to them.
+		if guestID == "" {
+			t.Fatal("guest ID should not be empty")
 		}
 
 		secret := createSecret(t, server, guestID, boxName, redirectPath)

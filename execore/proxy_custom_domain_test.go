@@ -41,19 +41,14 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 		t.Fatalf("Failed to get test user: %v", err)
 	}
 
-	alloc, err := server.getUserAlloc(t.Context(), user.UserID)
-	if err != nil {
-		t.Fatalf("Failed to get user alloc: %v", err)
-	}
-
 	// Create a test box with a private route
 	boxName := "mybox"
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
 		_, err := tx.Exec(`
-			INSERT INTO boxes (alloc_id, name, status, image, container_id, created_by_user_id, routes,
+			INSERT INTO boxes (ctrhost, name, status, image, container_id, created_by_user_id, routes,
 			                     ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, alloc.AllocID, boxName, "running", "test-image", "test-container-id", user.UserID, `[
+		`, "fake_ctrhost", boxName, "running", "test-image", "test-container-id", user.UserID, `[
 			{
 				"name": "default",
 				"policy": "private",

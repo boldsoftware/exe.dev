@@ -24,16 +24,6 @@ func TestContainerSync(t *testing.T) {
 	ctx := context.Background()
 	allocID := fmt.Sprintf("synctest-%d", time.Now().UnixNano())
 
-	// Create the allocation (no longer needs IP range)
-	if err := manager.CreateAlloc(ctx, allocID); err != nil {
-		t.Fatalf("Failed to create allocation: %v", err)
-	}
-	defer func() {
-		if err := manager.DeleteAlloc(ctx, allocID, manager.Config().ContainerdAddresses[0]); err != nil {
-			t.Logf("Warning: failed to delete allocation: %v", err)
-		}
-	}()
-
 	// Test 1: Create a container
 	host, err := manager.SelectHost(allocID)
 	if err != nil {

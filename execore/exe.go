@@ -802,25 +802,19 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	}
 
 	if email != "" && verified {
-		// This is a verified key, check if user has an alloc
-		userID, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+		// This is a verified key, check if user exists
+		_, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
 			return queries.GetUserIDByEmail(ctx, email)
 		})
 		if err == nil {
-			// Check if user has an alloc
-			allocExists, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-				return queries.AllocExistsForUser(ctx, userID)
-			})
-			if err == nil && allocExists > 0 {
-				// User is fully registered with an allocation
-				return &ssh.Permissions{
-					Extensions: map[string]string{
-						"registered": "true",
-						"email":      email,
-						"public_key": publicKeyStr,
-					},
-				}, nil
-			}
+			// User exists and has verified their email, they're fully registered
+			return &ssh.Permissions{
+				Extensions: map[string]string{
+					"registered": "true",
+					"email":      email,
+					"public_key": publicKeyStr,
+				},
+			}, nil
 		}
 	}
 
@@ -920,10 +914,6 @@ func (s *Server) storeEmailVerification(ctx context.Context, email, token string
 			if err != nil {
 				return err
 			}
-
-			if _, err := s.createAllocForUser(ctx, queries, userID); err != nil {
-				return err
-			}
 		} else if err != nil {
 			return fmt.Errorf("failed to check user: %w", err)
 		}
@@ -1014,8 +1004,8 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 	// Check if box exists and belongs to the user
 	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: userID,
+			Name:            boxName,
+			CreatedByUserID: userID,
 		})
 	})
 	if err != nil {
@@ -1092,7 +1082,7 @@ func (s *Server) vscodeURL(boxName string) string {
 }
 
 // preCreateBox creates a box entry before the container is created, returns the box ID
-func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image string) (int, error) {
+func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image string) (int, error) {
 	// Validate box name
 	if !boxname.Valid(name) {
 		return 0, fmt.Errorf("invalid box name: %s", name)
@@ -1104,7 +1094,7 @@ func (s *Server) preCreateBox(ctx context.Context, userID, allocID, name, image 
 	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		id, err := queries.InsertBox(ctx, exedb.InsertBoxParams{
-			AllocID:         allocID,
+			Ctrhost:         ctrhost,
 			Name:            name,
 			Status:          "creating",
 			Image:           image,
@@ -1380,88 +1370,17 @@ func (s *Server) listContainersWithRetry(ctx context.Context, host string) ([]*c
 	}
 }
 
-// syncAllocsWithHosts synchronizes allocations between the database and container hosts
+// syncUsersWithHosts synchronizes user namespaces between the database and container hosts
 // This ensures that:
-// 1. All allocations in the database have their networks created on hosts
-// 2. Any allocations not in the database are removed from hosts
-func (s *Server) syncAllocsWithHosts(ctx context.Context) error {
+// 1. All users with boxes on a host have their namespaces created on the host
+// 2. Any user namespaces not in the database are removed from hosts
+func (s *Server) syncUsersWithHosts(_ context.Context) error {
 	// Get the list of container hosts
 	hosts := s.containerManager.GetHosts()
 	if len(hosts) == 0 {
-		s.slog().Warn("No container hosts available for alloc sync")
+		s.slog().Warn("No container hosts available for user sync")
 		return nil
 	}
-
-	s.slog().Info("Starting allocation sync with container hosts", "hostCount", len(hosts))
-
-	// Process each host
-	for _, host := range hosts {
-		if err := s.syncAllocsForHost(ctx, host); err != nil {
-			s.slog().Error("Failed to sync allocations for host", "host", host, "error", err)
-			// Continue with other hosts even if one fails
-		}
-	}
-
-	s.slog().Info("Allocation sync completed")
-	return nil
-}
-
-// syncAllocsForHost synchronizes allocations for a specific container host
-func (s *Server) syncAllocsForHost(ctx context.Context, host string) error {
-	// Get allocations from the database that should be on this host
-	dbAllocs, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.Alloc, error) {
-		return queries.GetAllocsByHost(ctx, host)
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get allocations from database: %w", err)
-	}
-
-	// Get allocations currently on the host
-	hostAllocIDs, err := s.containerManager.ListAllocs(ctx, host)
-	if err != nil {
-		return fmt.Errorf("failed to list allocations on host: %w", err)
-	}
-
-	// Create maps for easier lookup
-	dbAllocMap := make(map[string]*exedb.Alloc)
-	for _, alloc := range dbAllocs {
-		// Truncate allocID to match network naming (max 12 chars)
-		nameLen := len(alloc.AllocID)
-		if nameLen > 12 {
-			nameLen = 12
-		}
-		truncatedID := alloc.AllocID[:nameLen]
-		dbAllocMap[truncatedID] = &alloc
-	}
-
-	hostAllocMap := make(map[string]bool)
-	for _, allocID := range hostAllocIDs {
-		hostAllocMap[allocID] = true
-	}
-
-	// Create allocations that are in DB but not on host
-	for truncatedID, alloc := range dbAllocMap {
-		if !hostAllocMap[truncatedID] {
-			// Create the allocation on the host (now a no-op but kept for compatibility)
-			s.slog().Info("Creating missing allocation on host", "allocID", alloc.AllocID, "host", host)
-			if err := s.containerManager.CreateAlloc(ctx, alloc.AllocID); err != nil {
-				s.slog().Error("Failed to create allocation on host", "allocID", alloc.AllocID, "host", host, "error", err)
-				// Continue with other allocations
-			}
-		}
-	}
-
-	// Delete allocations that are on host but not in DB
-	for allocID := range hostAllocMap {
-		if _, exists := dbAllocMap[allocID]; !exists {
-			s.slog().Info("Removing orphaned allocation from host", "allocID", allocID, "host", host)
-			if err := s.containerManager.DeleteAlloc(ctx, allocID, host); err != nil {
-				s.slog().Error("Failed to delete allocation from host", "allocID", allocID, "host", host, "error", err)
-				// Continue with other allocations
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -1581,7 +1500,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 
 					// Create a new container using the existing disk
 					req := &container.CreateContainerRequest{
-						AllocID: box.AllocID,
+						AllocID: box.CreatedByUserID,
 						Name:    box.Name,
 						BoxID:   box.ID,
 						Image:   box.Image,
@@ -1620,7 +1539,7 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 		} else if hostContainer.Status != "running" && box.Status == "running" {
 			// Container exists but isn't running when it should be
 			s.slog().Info("Restarting stopped container", "box", box.Name, "containerID", containerID)
-			if err := s.containerManager.StartContainer(ctx, box.AllocID, containerID); err != nil {
+			if err := s.containerManager.StartContainer(ctx, box.CreatedByUserID, containerID); err != nil {
 				s.slog().Error("Failed to restart container", "box", box.Name, "error", err)
 				if err := s.updateBoxStatus(ctx, box.ID, "stopped"); err != nil {
 					s.slog().Error("Failed to update box status", "box", box.Name, "error", err)
@@ -1758,11 +1677,11 @@ func (s *Server) Start() error {
 		s.slog().Info(fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
 	}
 
-	// Sync allocations and containers with container hosts before accepting connections
+	// Sync user namespaces and containers with container hosts before accepting connections
 	if s.containerManager != nil {
-		// First sync allocations (networks)
-		if err := s.syncAllocsWithHosts(ctx); err != nil {
-			s.slog().Error("Failed to sync allocations with container hosts", "error", err)
+		// First sync user namespaces
+		if err := s.syncUsersWithHosts(ctx); err != nil {
+			s.slog().Error("Failed to sync user namespaces with container hosts", "error", err)
 			// Continue anyway - we can sync later
 		}
 
@@ -1925,31 +1844,6 @@ func (s *Server) createUserRecord(ctx context.Context, queries *exedb.Queries, e
 	return userID, nil
 }
 
-// createAllocForUser provisions an allocation for the given user and returns the new alloc ID.
-func (s *Server) createAllocForUser(ctx context.Context, queries *exedb.Queries, userID string) (string, error) {
-	allocID, err := generateAllocID()
-	if err != nil {
-		return "", fmt.Errorf("failed to generate alloc ID: %w", err)
-	}
-
-	ctrhost, err := s.selectCtrhostForNewAlloc(allocID)
-	if err != nil {
-		return "", err
-	}
-
-	if err := queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-		AllocID:   allocID,
-		UserID:    userID,
-		AllocType: string(AllocTypeMedium),
-		Region:    string(RegionAWSUSWest2),
-		Ctrhost:   ctrhost,
-	}); err != nil {
-		return "", fmt.Errorf("failed to create allocation: %w", err)
-	}
-
-	return allocID, nil
-}
-
 // createUser creates a new user with their resource allocation.
 func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exedb.User, error) {
 	var user exedb.User
@@ -1971,10 +1865,6 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 			return err
 		}
 
-		if _, err := s.createAllocForUser(ctx, queries, userID); err != nil {
-			return err
-		}
-
 		user, err = queries.GetUserWithDetails(ctx, userID)
 		if err != nil {
 			return err
@@ -1991,88 +1881,6 @@ func (s *Server) createUser(ctx context.Context, publicKey, email string) (*exed
 	}
 
 	return &user, nil
-}
-
-// getUserAlloc gets the alloc for a user (creates one if it doesn't exist)
-func (s *Server) getUserAlloc(ctx context.Context, userID string) (*exedb.Alloc, error) {
-	alloc, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Alloc, error) {
-		return queries.GetAllocByUserID(ctx, userID)
-	})
-
-	if errors.Is(err, sql.ErrNoRows) {
-		// User exists but has no alloc yet - create one
-		if _, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
-			return queries.GetUserWithDetails(ctx, userID)
-		}); err != nil {
-			return nil, err
-		}
-
-		if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-			_, err := s.createAllocForUser(ctx, queries, userID)
-			return err
-		}); err != nil {
-			return nil, err
-		}
-
-		return s.getUserAlloc(ctx, userID)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &alloc, nil
-}
-
-// selectCtrhostForNewAlloc selects the best container host for a new alloc
-func (s *Server) selectCtrhostForNewAlloc(allocID string) (string, error) {
-	if s.containerManager == nil {
-		// This is a right mess.
-		// Our container manager is too expensive to spin up for a bunch of unit tests, so we don't.
-		// But then we end up with a bunch of special cases to allow other code to work without it.
-		// Co-pilot keeps feeding me ghost text about how we should use mocks and/or dependency injection.
-		// Codex and Claude are keen to as well.
-		// I refuse. This is a symptom of bad (missing) layering, and extra abstractions will not improve matters.
-		// TODO: find a path out of this misery.
-		if s.devMode == "" {
-			// should be impossible
-			return "", fmt.Errorf("container manager not configured")
-		}
-		// Unit tests, just return obviously fake host.
-		return "fake_ctrhost", nil
-	}
-
-	chosen, err := s.containerManager.SelectHost(allocID)
-	if err != nil {
-		return "", fmt.Errorf("failed to select container host: %w", err)
-	}
-
-	// In dev/test, store a direct TCP/IP dial address so piper/proxy can reach
-	// the Lima VM without relying on SSH alias DNS.
-	if s.devMode != "" {
-		alias := strings.TrimPrefix(chosen, "ssh://")
-		if alias == "" {
-			alias = chosen
-		}
-		if dial := ctrhosttest.DetectDialAddr(); dial != "" {
-			return dial, nil
-		}
-		if ip := ctrhosttest.ResolveHostFromSSHConfig(alias); ip != "" {
-			return "tcp://" + ip, nil
-		}
-	}
-
-	return chosen, nil
-}
-
-// generateAllocID generates a unique allocation ID
-func generateAllocID() (string, error) {
-	// Generate a random ID with "alloc_" prefix
-	bytes := make([]byte, 12)
-	if _, err := crand.Read(bytes); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("alloc_%s", hex.EncodeToString(bytes)), nil
 }
 
 // Stop gracefully shuts down all servers
@@ -2166,30 +1974,23 @@ func (s *Server) authenticateProxyUser(ctx context.Context, username string, ori
 	}
 
 	if email != "" && verified {
-		// This is a verified key, check if user has an alloc
+		// This is a verified key, check if user exists
 		user, err := s.GetUserByEmail(ctx, email)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			s.slog().Error("Database error getting user", "email", email, "error", err)
 		}
 
 		if user != nil {
-			alloc, err := s.getUserAlloc(ctx, user.UserID)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				s.slog().Error("Database error getting alloc for user", "userID", user.UserID, "error", err)
-			}
-
-			if alloc != nil {
-				// User is fully registered with an alloc
-				return &ssh.Permissions{
-					Extensions: map[string]string{
-						"fingerprint": originalFingerprint,
-						"registered":  "true",
-						"email":       email,
-						"public_key":  originalKeyStr,
-						"proxy_user":  username,
-					},
-				}, nil
-			}
+			// User is fully registered
+			return &ssh.Permissions{
+				Extensions: map[string]string{
+					"fingerprint": originalFingerprint,
+					"registered":  "true",
+					"email":       email,
+					"public_key":  originalKeyStr,
+					"proxy_user":  username,
+				},
+			}, nil
 		}
 	}
 

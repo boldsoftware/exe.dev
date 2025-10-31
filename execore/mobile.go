@@ -168,14 +168,6 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 	// Create the stream first so errors can be written to it
 	cs := s.getOrCreateCreationStream(userID, hostname)
 
-	// Get user's allocation
-	alloc, err := s.getUserAlloc(ctx, userID)
-	if err != nil || alloc == nil {
-		s.slog().Error("Failed to get user allocation for box creation", "error", err, "user_id", userID)
-		cs.MarkDone(fmt.Errorf("failed to get user allocation: %w", err))
-		return
-	}
-
 	// Check if hostname is available
 	if !s.isBoxNameAvailable(ctx, hostname) {
 		s.slog().Error("Box name not available", "hostname", hostname)
@@ -198,13 +190,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		}
 
 		cc := &exemenu.CommandContext{
-			User: &exemenu.UserInfo{ID: userID},
-			Alloc: &exemenu.AllocInfo{
-				ID:        alloc.AllocID,
-				Type:      string(alloc.AllocType),
-				Region:    string(alloc.Region),
-				CreatedAt: alloc.CreatedAt,
-			},
+			User:         &exemenu.UserInfo{ID: userID},
 			FlagSet:      fs,
 			Output:       cs,
 			ForceSpinner: true,
@@ -732,7 +718,7 @@ func (s *Server) handleBoxCreationLog(w http.ResponseWriter, r *http.Request) {
 // getBoxForUserByUserID fetches a box for a user by userID and name
 func (s *Server) getBoxForUserByUserID(ctx context.Context, userID, boxName string) (*exedb.Box, error) {
 	b, err := withRxRes(s, ctx, func(ctx context.Context, q *exedb.Queries) (exedb.Box, error) {
-		return q.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{Name: boxName, UserID: userID})
+		return q.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{Name: boxName, CreatedByUserID: userID})
 	})
 	if err != nil {
 		return nil, err

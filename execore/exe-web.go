@@ -1029,9 +1029,6 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 			if err != nil {
 				return err
 			}
-			if _, err := s.createAllocForUser(ctx, queries, userID); err != nil {
-				return err
-			}
 			return nil
 		}
 		if err != nil {
@@ -1285,14 +1282,19 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	box := s.FindBoxByNameForUser(r.Context(), magicSecret.UserID, boxName)
-	if box == nil {
-		http.Error(w, "Box not found", http.StatusInternalServerError)
+	// Find the box by name. We don't check ownership here because:
+	// 1. The box might be shared with the user
+	// 2. We verify access rights below via hasUserAccessToBox
+	box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxNamed(ctx, boxName)
+	})
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	var isOwner bool
-	accessType, err := s.hasUserAccessToBox(r.Context(), magicSecret.UserID, box)
+	accessType, err := s.hasUserAccessToBox(r.Context(), magicSecret.UserID, &box)
 	if err == nil && (accessType == BoxAccessOwner) {
 		isOwner = true
 	}
@@ -1674,11 +1676,10 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 	for i, result := range boxResults {
 		box := exedb.Box{
 			ID:              result.ID,
-			AllocID:         result.AllocID,
+			CreatedByUserID: result.CreatedByUserID,
 			Name:            result.Name,
 			Status:          result.Status,
 			Image:           result.Image,
-			CreatedByUserID: result.CreatedByUserID,
 			CreatedAt:       result.CreatedAt,
 			UpdatedAt:       result.UpdatedAt,
 			LastStartedAt:   result.LastStartedAt,

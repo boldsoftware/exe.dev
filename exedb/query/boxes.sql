@@ -2,7 +2,7 @@
 SELECT EXISTS ( SELECT 1 FROM boxes WHERE name = ? );
 
 -- name: BoxWithOwnerNamed :one
-SELECT * FROM boxes WHERE name = ? AND boxes.alloc_id = (SELECT allocs.alloc_id FROM allocs WHERE allocs.user_id = ?);
+SELECT * FROM boxes WHERE name = ? AND boxes.created_by_user_id = ?;
 
 -- name: SSHKeyForBoxNamed :one
 SELECT ssh_server_identity_key FROM boxes WHERE name = ?;
@@ -14,7 +14,7 @@ SELECT * FROM boxes WHERE name = ?;
 
 -- name: InsertBox :execlastid
 INSERT INTO boxes (
-    alloc_id, name, status, image, container_id, created_by_user_id, routes
+    ctrhost, name, status, image, container_id, created_by_user_id, routes
 ) VALUES (?, ?, ?, ?, NULL, ?, ?);
 
 -- name: UpdateBoxContainerAndStatus :exec
@@ -32,25 +32,22 @@ WHERE id = ?;
 UPDATE boxes SET container_id = ?, status = 'running' WHERE id = ?;
 
 -- name: GetBoxesForUserDashboard :many
-SELECT m.id, m.alloc_id, m.name, m.status, COALESCE(m.image, '') as image,
+SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        COALESCE(m.container_id, '') as container_id, m.created_by_user_id,
        m.created_at, m.updated_at, m.last_started_at,
        COALESCE(m.creation_log, '') as creation_log
 FROM boxes m
-JOIN allocs a ON m.alloc_id = a.alloc_id
-WHERE a.user_id = ?
+WHERE m.created_by_user_id = ?
 ORDER BY m.updated_at DESC;
 
 -- name: GetBoxesByHost :many
 SELECT b.*
 FROM boxes b
-INNER JOIN allocs a ON b.alloc_id = a.alloc_id
-WHERE a.ctrhost = ? AND b.status != 'failed';
+WHERE b.ctrhost = ? AND b.status != 'failed';
 
 -- name: GetBoxSSHDetails :one
-SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, a.ctrhost, m.ssh_user
+SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, m.ctrhost, m.ssh_user
 FROM boxes m
-JOIN allocs a ON m.alloc_id = a.alloc_id
 WHERE m.id = ?;
 
 -- name: GetBoxDetailsForSetup :one
@@ -69,10 +66,10 @@ SET status = ?, updated_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 
 -- name: GetBoxByNameAndAlloc :one
-SELECT * FROM boxes WHERE name = ? AND alloc_id = ?;
+SELECT * FROM boxes WHERE name = ? AND created_by_user_id = ?;
 
 -- name: DeleteBox :exec
 DELETE FROM boxes WHERE id = ?;
 
 -- name: UpdateBoxRoutes :exec
-UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?;
+UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?;

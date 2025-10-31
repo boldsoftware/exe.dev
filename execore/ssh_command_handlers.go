@@ -105,12 +105,6 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			CompleterFunc:     ss.completeBoxNames,
 		},
 		{
-			Name:        "alloc",
-			Hidden:      true,
-			Description: "Resource allocation info",
-			Handler:     ss.handleAllocCommand,
-		},
-		{
 			Name:        "hireme",
 			Aliases:     boxname.JobsRelated,
 			Hidden:      true,
@@ -206,7 +200,7 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.ID)
+	containers, err := ss.server.containerManager.ListContainers(ctx, cc.User.ID)
 	if err != nil {
 		return err
 	}
@@ -329,26 +323,27 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		err       error
 	}, 1)
 
-	// Pre-create box in database to get its ID
-	imageToStore := container.GetDisplayImageName(image)
-	if image == "exeuntu" {
-		imageToStore = "boldsoftware/exeuntu"
-	}
-	boxID, err := ss.server.preCreateBox(ctx, user.ID, cc.Alloc.ID, boxName, imageToStore)
-	if err != nil {
-		cc.Write("\033[1;31mError: Failed to create box entry: %v\033[0m\r\n", err)
-		return fmt.Errorf("failed to create box entry: %w", err)
-	}
-
-	runtimeHost, err := ss.server.containerManager.SelectHost(cc.Alloc.ID)
+	// Select container host first
+	runtimeHost, err := ss.server.containerManager.SelectHost(cc.User.ID)
 	if err != nil {
 		cc.Write("\033[1;31mError: Failed to select container host: %v\033[0m\r\n", err)
 		return fmt.Errorf("failed to select container host: %w", err)
 	}
 
+	// Pre-create box in database to get its ID
+	imageToStore := container.GetDisplayImageName(image)
+	if image == "exeuntu" {
+		imageToStore = "boldsoftware/exeuntu"
+	}
+	boxID, err := ss.server.preCreateBox(ctx, user.ID, runtimeHost, boxName, imageToStore)
+	if err != nil {
+		cc.Write("\033[1;31mError: Failed to create box entry: %v\033[0m\r\n", err)
+		return fmt.Errorf("failed to create box entry: %w", err)
+	}
+
 	// Create container request with progress callback
 	req := &container.CreateContainerRequest{
-		AllocID:         cc.Alloc.ID,
+		AllocID:         cc.User.ID,
 		Name:            boxName,
 		BoxID:           boxID,
 		Image:           image,
@@ -515,9 +510,9 @@ done:
 		if err := ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 			queries := exedb.New(tx.Conn())
 			return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
-				Name:    box.Name,
-				AllocID: box.AllocID,
-				Routes:  box.Routes,
+				Name:            box.Name,
+				CreatedByUserID: box.CreatedByUserID,
+				Routes:          box.Routes,
 			})
 		}); err != nil {
 			slog.Warn("failed to save auto-routing setup", "box", boxName, "port", bestPort, "error", err)
@@ -610,16 +605,8 @@ done:
 			return fmt.Errorf("failed to create SSH signer for Shelley: %w", err)
 		}
 
-		// Get ctrhost for the allocation
-		var ctrhost string
-		err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-			queries := exedb.New(tx.Conn())
-			ctrhost, err = queries.GetCtrhostByAllocID(ctx, box.AllocID)
-			return err
-		})
-		if err != nil {
-			return fmt.Errorf("failed to get ctrhost for Shelley: %w", err)
-		}
+		// Get ctrhost from the box
+		ctrhost := box.Ctrhost
 
 		if model != "predictable" {
 			prompt = shelleyPreamble + prompt
@@ -645,8 +632,8 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 	boxName := cc.Args[0]
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: cc.User.ID,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 	})
 	if err != nil {
@@ -659,7 +646,7 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 	// Delete the container if it exists
 	if box.ContainerID != nil {
 		ctx := context.Background()
-		err = ss.server.containerManager.DeleteContainer(ctx, box.AllocID, *box.ContainerID)
+		err = ss.server.containerManager.DeleteContainer(ctx, box.CreatedByUserID, *box.ContainerID)
 		if err != nil {
 			return err
 		}
@@ -668,9 +655,10 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 	// Delete from database and track in deleted_boxes
 	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
+		userID := box.CreatedByUserID
 		err := queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
-			ID:      int64(box.ID),
-			AllocID: box.AllocID,
+			ID:     int64(box.ID),
+			UserID: userID,
 		})
 		if err != nil {
 			return fmt.Errorf("tracking deletion: %w", err)
@@ -690,27 +678,6 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		return nil
 	}
 	cc.Write("\033[1;32mBox %q deleted successfully\033[0m\r\n", boxName)
-	return nil
-}
-
-func (ss *SSHServer) handleAllocCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if cc.WantJSON() {
-		allocInfo := map[string]any{
-			"id":      cc.Alloc.ID,
-			"type":    cc.Alloc.Type,
-			"region":  cc.Alloc.Region,
-			"created": cc.Alloc.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		}
-		cc.WriteJSON(allocInfo)
-		return nil
-	}
-	cc.Writeln("\033[1;36mYour Allocation:\033[0m")
-	cc.Writeln("")
-	cc.Writeln("  ID: \033[1m%s\033[0m", cc.Alloc.ID)
-	cc.Writeln("  Type: \033[1m%s\033[0m", cc.Alloc.Type)
-	cc.Writeln("  Region: \033[1m%s\033[0m", cc.Alloc.Region)
-	cc.Writeln("  Created: %s", cc.Alloc.CreatedAt.Format("Jan 2, 2006"))
-	cc.Writeln("")
 	return nil
 }
 
@@ -850,8 +817,8 @@ func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *exemenu.Command
 
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: cc.User.ID,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -936,9 +903,9 @@ func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *exemenu.Command
 	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
-			Routes:  box.Routes,
-			Name:    boxName,
-			AllocID: cc.Alloc.ID,
+			Routes:          box.Routes,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 	})
 	if err != nil {
@@ -1002,12 +969,12 @@ func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *ex
 	if ss == nil || ss.server == nil || ss.server.containerManager == nil {
 		return nil
 	}
-	if cc == nil || cc.Alloc == nil {
+	if cc == nil || cc.User == nil {
 		return nil
 	}
 
 	ctx := context.Background()
-	containers, err := ss.server.containerManager.ListContainers(ctx, cc.Alloc.ID)
+	containers, err := ss.server.containerManager.ListContainers(ctx, cc.User.ID)
 	if err != nil {
 		return nil
 	}

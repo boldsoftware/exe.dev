@@ -229,14 +229,14 @@ func TestHTTPMetricsInstrumentation(t *testing.T) {
 }
 
 // createTestBox is a test helper that generates SSH keys and stores box info in database
-func (s *Server) createTestBox(t *testing.T, userID, allocID, name, containerID, image string) {
+func (s *Server) createTestBox(t *testing.T, userID, ctrhost, name, containerID, image string) {
 	// Generate SSH keys for testing
 	sshKeys, err := container.GenerateContainerSSHKeys()
 	if err != nil {
 		t.Fatalf("failed to generate SSH keys: %v", err)
 	}
 
-	id, err := s.preCreateBox(t.Context(), userID, allocID, name, image)
+	id, err := s.preCreateBox(t.Context(), userID, ctrhost, name, image)
 	if err != nil {
 		t.Fatalf("failed to create box with test SSH keys: %v", err)
 	}
@@ -256,21 +256,22 @@ func TestSSHIdentityKeyForBox(t *testing.T) {
 		t.Fatalf("Failed to create user with alloc: %v", err)
 	}
 
-	// Get the user to find their alloc
-	var userID, allocID string
+	// Get the user ID
+	var userID string
 	err := server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT u.user_id, a.alloc_id FROM users u JOIN allocs a ON u.user_id = a.user_id WHERE u.email = ?`, "test@example.com").Scan(&userID, &allocID)
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "test@example.com").Scan(&userID)
 	})
 	if err != nil {
-		t.Fatalf("Failed to get user and alloc: %v", err)
+		t.Fatalf("Failed to get user: %v", err)
 	}
 
 	boxName := "test-box"
 	containerID := "container-123"
 	image := "ubuntu:latest"
+	ctrhost := "fake_ctrhost"
 
 	t.Run("box exists and has SSH keys", func(t *testing.T) {
-		server.createTestBox(t, userID, allocID, boxName, containerID, image)
+		server.createTestBox(t, userID, ctrhost, boxName, containerID, image)
 
 		// Test successful retrieval
 		publicKey, err := server.SSHIdentityKeyForBox(t.Context(), boxName)
@@ -300,7 +301,7 @@ func TestSSHIdentityKeyForBox(t *testing.T) {
 
 	t.Run("box exists but has no SSH key", func(t *testing.T) {
 		boxNameNoSSH := "box-no-ssh"
-		id, err := server.preCreateBox(t.Context(), userID, allocID, boxNameNoSSH, image)
+		id, err := server.preCreateBox(t.Context(), userID, ctrhost, boxNameNoSSH, image)
 		if err != nil {
 			t.Fatalf("Failed to create box without SSH: %v", err)
 		}
@@ -470,15 +471,15 @@ func TestWebAuthFlowCreatesNewUser(t *testing.T) {
 		t.Fatal("User ID should not be empty")
 	}
 
-	// Verify user allocation was created
-	alloc, err := withRxRes(server, context.Background(), func(ctx context.Context, queries *exedb.Queries) (exedb.Alloc, error) {
-		return queries.GetAllocByUserID(ctx, userID)
+	// Verify user exists (allocations are now part of user creation)
+	user, err := withRxRes(server, context.Background(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+		return queries.GetUserWithDetails(ctx, userID)
 	})
 	if err != nil {
-		t.Fatalf("Failed to get allocation: %v", err)
+		t.Fatalf("Failed to get user details: %v", err)
 	}
 
-	if alloc.AllocID == "" {
-		t.Fatal("User should have an allocation")
+	if user.UserID == "" {
+		t.Fatal("User should exist")
 	}
 }

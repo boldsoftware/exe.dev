@@ -46,15 +46,14 @@ func TestBoxCreationWithRoute(t *testing.T) {
 	t.Parallel()
 	server := newTestServer(t)
 
-	// Set up test user and alloc
+	// Set up test user
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
 	email := "test@example.com"
-	allocID := "alloc-test-123"
 
-	// Create user with alloc
+	// Create user
 	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
-		t.Fatalf("Failed to create user with alloc: %v", err)
+		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Test creating a box
@@ -67,21 +66,14 @@ func TestBoxCreationWithRoute(t *testing.T) {
 		t.Fatalf("Failed to get user ID: %v", err)
 	}
 
-	// Get allocID for this user
-	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID).Scan(&allocID)
-	})
-	if err != nil {
-		t.Fatalf("Failed to get alloc ID: %v", err)
-	}
-
-	server.createTestBox(t, userID, allocID, "test-box", "container123", "ubuntu")
+	// Create test box with userID and ctrhost
+	server.createTestBox(t, userID, "test-ctrhost", "test-box", "container123", "ubuntu")
 
 	// Retrieve the box and check its route
 	box, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   "test-box",
-			UserID: userID,
+			Name:            "test-box",
+			CreatedByUserID: userID,
 		})
 	})
 	if err != nil {
@@ -106,36 +98,33 @@ func TestHandleProxyRequest(t *testing.T) {
 	server := newTestServer(t)
 	mainDomain := server.getMainDomain()
 
-	// Create test user and alloc
+	// Create test user
 	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDtest..."
 	email := "test@example.com"
 
-	// Create user with alloc
+	// Create user
 	_, err := server.createUser(t.Context(), publicKey, email)
 	if err != nil {
-		t.Fatalf("Failed to create user with alloc: %v", err)
+		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Get userID and allocID for box creation
-	var userID, allocID string
+	// Get userID for box creation
+	var userID string
 	err = server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
-		if err := rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID); err != nil {
-			return err
-		}
-		return rx.QueryRow(`SELECT alloc_id FROM allocs WHERE user_id = ?`, userID).Scan(&allocID)
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, email).Scan(&userID)
 	})
 	if err != nil {
-		t.Fatalf("Failed to get user and alloc IDs: %v", err)
+		t.Fatalf("Failed to get user ID: %v", err)
 	}
 
-	// Create a test box
-	server.createTestBox(t, userID, allocID, "web-server", "container123", "nginx")
+	// Create a test box with userID and ctrhost
+	server.createTestBox(t, userID, "test-ctrhost", "web-server", "container123", "nginx")
 
 	// Get the box and set it to public
 	box, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   "web-server",
-			UserID: userID,
+			Name:            "web-server",
+			CreatedByUserID: userID,
 		})
 	})
 	if err != nil {
@@ -151,8 +140,8 @@ func TestHandleProxyRequest(t *testing.T) {
 
 	// Update the box in the database
 	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
-		_, err := tx.Exec(`UPDATE boxes SET routes = ? WHERE name = ? AND alloc_id = ?`,
-			*box.Routes, "web-server", allocID)
+		_, err := tx.Exec(`UPDATE boxes SET routes = ? WHERE name = ? AND created_by_user_id = ?`,
+			*box.Routes, "web-server", userID)
 		return err
 	})
 	if err != nil {

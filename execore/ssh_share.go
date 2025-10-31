@@ -112,8 +112,8 @@ func (ss *SSHServer) handleShareShowCmd(ctx context.Context, cc *exemenu.Command
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: cc.User.ID,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -295,8 +295,8 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: cc.User.ID,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -473,8 +473,8 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: cc.User.ID,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -564,8 +564,8 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 	// Get the box and verify ownership
 	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: cc.User.ID,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -638,8 +638,8 @@ func (ss *SSHServer) handleShareRemoveLinkCmd(ctx context.Context, cc *exemenu.C
 	err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		var err error
 		box, err = queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:   boxName,
-			UserID: cc.User.ID,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
 		})
 		if err != nil {
 			return err

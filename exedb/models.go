@@ -8,15 +8,6 @@ import (
 	"time"
 )
 
-type Alloc struct {
-	AllocID   string     `db:"alloc_id" json:"alloc_id"`
-	UserID    string     `db:"user_id" json:"user_id"`
-	AllocType string     `db:"alloc_type" json:"alloc_type"`
-	Region    string     `db:"region" json:"region"`
-	Ctrhost   string     `db:"ctrhost" json:"ctrhost"`
-	CreatedAt *time.Time `db:"created_at" json:"created_at"`
-}
-
 type AuthCookie struct {
 	CookieValue string     `db:"cookie_value" json:"cookie_value"`
 	UserID      string     `db:"user_id" json:"user_id"`
@@ -37,10 +28,10 @@ type AuthToken struct {
 
 type Box struct {
 	ID                   int        `db:"id" json:"id"`
-	AllocID              string     `db:"alloc_id" json:"alloc_id"`
 	Name                 string     `db:"name" json:"name"`
 	Status               string     `db:"status" json:"status"`
 	Image                string     `db:"image" json:"image"`
+	Ctrhost              string     `db:"ctrhost" json:"ctrhost"`
 	ContainerID          *string    `db:"container_id" json:"container_id"`
 	CreatedByUserID      string     `db:"created_by_user_id" json:"created_by_user_id"`
 	CreatedAt            *time.Time `db:"created_at" json:"created_at"`
@@ -81,9 +72,9 @@ type BoxShareLink struct {
 }
 
 type DeletedBox struct {
-	ID        int64   `db:"id" json:"id"`
-	AllocID   string  `db:"alloc_id" json:"alloc_id"`
-	DeletedAt *string `db:"deleted_at" json:"deleted_at"`
+	ID        int64      `db:"id" json:"id"`
+	UserID    string     `db:"user_id" json:"user_id"`
+	DeletedAt *time.Time `db:"deleted_at" json:"deleted_at"`
 }
 
 type EmailVerification struct {

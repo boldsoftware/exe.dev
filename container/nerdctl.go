@@ -444,32 +444,9 @@ func (m *NerdctlManager) acquireOperationLock(host string) func() {
 	}
 }
 
-// CreateAlloc is now a no-op since we use a single default bridge network
-// Can be removed entirely in the future
-func (m *NerdctlManager) CreateAlloc(ctx context.Context, allocID string) error {
-	// No longer need to create per-allocation networks
-	// All containers use the default bridge network with port isolation
-	return nil
-}
-
 // GetHosts returns the list of configured container hosts
 func (m *NerdctlManager) GetHosts() []string {
 	return m.hosts
-}
-
-// ListAllocs is now a no-op since we don't use per-allocation networks
-// Kept for API compatibility but can be removed in the future
-func (m *NerdctlManager) ListAllocs(ctx context.Context, host string) ([]string, error) {
-	// No longer using per-allocation networks
-	return []string{}, nil
-}
-
-// DeleteAlloc is now a no-op since we don't use per-allocation networks
-// Kept for API compatibility but can be removed in the future
-func (m *NerdctlManager) DeleteAlloc(ctx context.Context, allocID, host string) error {
-	// No longer using per-allocation networks
-	// Container cleanup is handled separately
-	return nil
 }
 
 // reportProgress is a helper function to report progress through the appropriate callback

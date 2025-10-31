@@ -317,7 +317,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 
 	// Check if container is actually running
 	if p.server.containerManager != nil {
-		containerInfo, err := p.server.containerManager.GetContainer(ctx, box.AllocID, *box.ContainerID)
+		containerInfo, err := p.server.containerManager.GetContainer(ctx, box.CreatedByUserID, *box.ContainerID)
 		if err != nil {
 			slog.Info("piper-plugin container status check failed",
 				"box_name", box.Name,
@@ -344,8 +344,8 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 				return nil, fmt.Errorf("failed to generate proxy key: %v", err)
 			}
 
-			// Use special username format: "container-logs:<allocID>:<containerID>:<boxName>"
-			specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.AllocID, *box.ContainerID, box.Name)
+			// Use special username format: "container-logs:<userID>:<containerID>:<boxName>"
+			specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.CreatedByUserID, *box.ContainerID, box.Name)
 
 			return &libplugin.Upstream{
 				Host:          "127.0.0.1",

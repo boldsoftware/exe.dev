@@ -23,26 +23,26 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 	// Create exe.Server for full integration
 	server := newTestServer(t)
 
-	// Create a test user and alloc
+	// Create a test user
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
 	if _, err := server.createUser(context.Background(), publicKeyStr, "test@example.com"); err != nil {
-		t.Fatalf("Failed to create user with alloc: %v", err)
+		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Get the user to find their alloc.
-	var userID, allocID string
+	// Get the user ID
+	var userID string
 	err := server.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
-		return rx.QueryRow(`SELECT u.user_id, a.alloc_id FROM users u JOIN allocs a ON u.user_id = a.user_id WHERE u.email = ?`, "test@example.com").Scan(&userID, &allocID)
+		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "test@example.com").Scan(&userID)
 	})
 	if err != nil {
-		t.Fatalf("Failed to get user and alloc: %v", err)
+		t.Fatalf("Failed to get user: %v", err)
 	}
 
 	// Create a box with SSH keys using the server's helper
 	boxName := "llmgateway-test-box"
 	containerID := "container-123"
 	image := "ubuntu:latest"
-	server.createTestBox(t, userID, allocID, boxName, containerID, image)
+	server.createTestBox(t, userID, "test-ctrhost", boxName, containerID, image)
 
 	// Get the box to extract its SSH server identity key for token creation
 	key, err := withRxRes(server, t.Context(), func(ctx context.Context, queries *exedb.Queries) ([]byte, error) {

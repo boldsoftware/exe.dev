@@ -35,22 +35,9 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 			return fmt.Errorf("insert user: %w", err)
 		}
 
-		// Create alloc
-		allocID := "test-alloc-" + boxName
-		err = queries.InsertAlloc(ctx, exedb.InsertAllocParams{
-			AllocID:   allocID,
-			UserID:    userID,
-			AllocType: "test",
-			Region:    "test-region",
-			Ctrhost:   "test-ctrhost",
-		})
-		if err != nil {
-			return fmt.Errorf("insert alloc: %w", err)
-		}
-
-		// Create box
+		// Create box with user_id and ctrhost
 		_, err = queries.InsertBox(ctx, exedb.InsertBoxParams{
-			AllocID:         allocID,
+			Ctrhost:         "test-ctrhost",
 			Name:            boxName,
 			Status:          "running",
 			Image:           "test-image",

@@ -405,10 +405,8 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 		return fmt.Errorf("failed to parse SSH private key: %w", err)
 	}
 	sshHost := "localhost"
-	ctrhost, err := withRxRes(s, context.Background(), func(ctx context.Context, q *exedb.Queries) (string, error) {
-		return q.GetCtrhostByAllocID(ctx, box.AllocID)
-	})
-	if err == nil && ctrhost != "" {
+	ctrhost := box.Ctrhost
+	if ctrhost != "" {
 		if strings.Contains(ctrhost, "://") {
 			if u, perr := url.Parse(ctrhost); perr == nil && u.Host != "" {
 				if host, _, herr := net.SplitHostPort(u.Host); herr == nil {

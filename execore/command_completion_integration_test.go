@@ -14,22 +14,16 @@ func TestCompletionIntegration(t *testing.T) {
 	server := &Server{log: tslog.Slogger(t)}
 	sshServer := NewSSHServer(server)
 
-	// Create test user and alloc context
+	// Create test user context
 	user := &exedb.User{
 		UserID: "test-user",
 		Email:  "test@example.com",
-	}
-	alloc := &exedb.Alloc{
-		AllocID: "test-alloc",
 	}
 
 	cc := &exemenu.CommandContext{
 		User: &exemenu.UserInfo{
 			ID:    user.UserID,
 			Email: user.Email,
-		},
-		Alloc: &exemenu.AllocInfo{
-			ID: alloc.AllocID,
 		},
 		PublicKey: "test-key",
 	}

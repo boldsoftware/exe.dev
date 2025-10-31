@@ -215,13 +215,11 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.slog().Debug("Failed to proxy request", "error", err, "box", boxName)
 
-		// Determine if the requester is the owner of the box's alloc
+		// Determine if the requester is the owner of the box
 		isOwner := false
 		if userID, ok := s.getAuthenticatedUserID(r); ok {
-			if alloc, aerr := s.getUserAlloc(r.Context(), userID); aerr == nil && alloc != nil {
-				if box.AllocID == alloc.AllocID {
-					isOwner = true
-				}
+			if box.CreatedByUserID == userID {
+				isOwner = true
 			}
 		}
 
@@ -632,16 +630,10 @@ func (s *Server) getBoxForUser(ctx context.Context, publicKey, boxName string) (
 }
 
 func (s *Server) boxForNameUserID(ctx context.Context, boxName, userID string) (*exedb.Box, error) {
-	// TODO: do this in a single query instead of two separate ones
-	alloc, err := s.getUserAlloc(ctx, userID)
-	if err != nil || alloc == nil {
-		return nil, fmt.Errorf("user has no allocation")
-	}
-
 	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
 		return queries.GetBoxByNameAndAlloc(ctx, exedb.GetBoxByNameAndAllocParams{
-			Name:    boxName,
-			AllocID: alloc.AllocID,
+			Name:            boxName,
+			CreatedByUserID: userID,
 		})
 	})
 	if err != nil {
@@ -666,16 +658,8 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 		return fmt.Errorf("failed to parse SSH private key: %w", err)
 	}
 
-	// Get the allocation to find the ctrhost
-	ctrhost, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
-		return queries.GetCtrhostByAllocID(ctx, box.AllocID)
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get allocation ctrhost: %w", err)
-	}
-
-	// Determine SSH host address from the allocation's ctrhost
-	sshHost := s.resolveSSHHost(ctrhost)
+	// Determine SSH host address from the box's ctrhost
+	sshHost := s.resolveSSHHost(box.Ctrhost)
 
 	// Try to proxy to the configured port
 	err = s.proxyViaSSHPortForward(w, r, sshHost, box, sshKey, route.Port)

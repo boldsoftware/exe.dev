@@ -10,15 +10,15 @@ import (
 )
 
 const insertDeletedBox = `-- name: InsertDeletedBox :exec
-INSERT INTO deleted_boxes (id, alloc_id) VALUES (?, ?)
+INSERT INTO deleted_boxes (id, user_id) VALUES (?, ?)
 `
 
 type InsertDeletedBoxParams struct {
-	ID      int64  `db:"id" json:"id"`
-	AllocID string `db:"alloc_id" json:"alloc_id"`
+	ID     int64  `db:"id" json:"id"`
+	UserID string `db:"user_id" json:"user_id"`
 }
 
 func (q *Queries) InsertDeletedBox(ctx context.Context, arg InsertDeletedBoxParams) error {
-	_, err := q.exec(ctx, q.insertDeletedBoxStmt, insertDeletedBox, arg.ID, arg.AllocID)
+	_, err := q.exec(ctx, q.insertDeletedBoxStmt, insertDeletedBox, arg.ID, arg.UserID)
 	return err
 }

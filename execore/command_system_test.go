@@ -25,23 +25,13 @@ func (m *MockOutput) String() string {
 }
 
 // Helper to create test context
-func createTestContext(sshServer *SSHServer, user *exedb.User, alloc *exedb.Alloc, output *MockOutput, args []string) *exemenu.CommandContext {
+func createTestContext(sshServer *SSHServer, user *exedb.User, output *MockOutput, args []string) *exemenu.CommandContext {
 	var userInfo *exemenu.UserInfo
 	if user != nil {
 		userInfo = &exemenu.UserInfo{ID: user.UserID, Email: user.Email}
 	}
-	var allocInfo *exemenu.AllocInfo
-	if alloc != nil {
-		allocInfo = &exemenu.AllocInfo{
-			ID:        alloc.AllocID,
-			Type:      string(alloc.AllocType),
-			Region:    string(alloc.Region),
-			CreatedAt: alloc.CreatedAt,
-		}
-	}
 	return &exemenu.CommandContext{
 		User:      userInfo,
-		Alloc:     allocInfo,
 		PublicKey: "test-key",
 		Args:      args,
 		Output:    output,
@@ -147,11 +137,10 @@ func TestHelpCommand(t *testing.T) {
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	t.Run("general help", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
+		cc := createTestContext(sshServer, user, output, []string{})
 		ctx := context.Background()
 
 		err := sshServer.handleHelpCommand(ctx, cc)
@@ -176,7 +165,7 @@ func TestHelpCommand(t *testing.T) {
 
 	t.Run("specific command help", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{"whoami"})
+		cc := createTestContext(sshServer, user, output, []string{"whoami"})
 		ctx := context.Background()
 
 		err := sshServer.handleHelpCommand(ctx, cc)
@@ -195,7 +184,7 @@ func TestHelpCommand(t *testing.T) {
 
 	t.Run("help for nonexistent command", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{"nonexistent"})
+		cc := createTestContext(sshServer, user, output, []string{"nonexistent"})
 		ctx := context.Background()
 
 		err := sshServer.handleHelpCommand(ctx, cc)
@@ -217,11 +206,10 @@ func TestExecuteCommand(t *testing.T) {
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	t.Run("execute help command", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
+		cc := createTestContext(sshServer, user, output, []string{})
 		ctx := context.Background()
 
 		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
@@ -237,7 +225,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	t.Run("execute nonexistent command", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{})
+		cc := createTestContext(sshServer, user, output, []string{})
 		ctx := context.Background()
 
 		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"nonexistent"})
@@ -252,7 +240,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	t.Run("execute command with args", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, alloc, output, []string{"whoami"})
+		cc := createTestContext(sshServer, user, output, []string{"whoami"})
 		ctx := context.Background()
 		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
 		if rc != 0 {
@@ -274,9 +262,8 @@ func TestGetAvailableCommands(t *testing.T) {
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
-	ctx := createTestContext(sshServer, user, alloc, &MockOutput{}, []string{})
+	ctx := createTestContext(sshServer, user, &MockOutput{}, []string{})
 
 	t.Run("get root commands", func(t *testing.T) {
 		available := sshServer.commands.GetAvailableCommands(ctx)
@@ -303,7 +290,6 @@ func TestCommandFlagParsing(t *testing.T) {
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	tests := []struct {
 		name         string
@@ -439,7 +425,7 @@ func TestCommandFlagParsing(t *testing.T) {
 
 			// Execute the command
 			output := &MockOutput{}
-			cc := createTestContext(sshServer, user, alloc, output, []string{})
+			cc := createTestContext(sshServer, user, output, []string{})
 			ctx := context.Background()
 
 			rc := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
@@ -530,7 +516,6 @@ func TestSubcommandFlagParsing(t *testing.T) {
 	}
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	tests := []struct {
 		name         string
@@ -606,7 +591,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 			capturedContext = nil // Reset
 
 			output := &MockOutput{}
-			cc := createTestContext(sshServer, user, alloc, output, []string{})
+			cc := createTestContext(sshServer, user, output, []string{})
 			ctx := context.Background()
 
 			rc := customTree.ExecuteCommand(ctx, cc, tt.commandPath)
@@ -654,7 +639,6 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 	sshServer.commands = NewCommandTree(sshServer)
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
-	alloc := &exedb.Alloc{AllocID: "test-alloc", UserID: "test-user"}
 
 	tests := []struct {
 		name        string
@@ -684,7 +668,7 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			output := &MockOutput{}
-			cc := createTestContext(sshServer, user, alloc, output, []string{})
+			cc := createTestContext(sshServer, user, output, []string{})
 			ctx := context.Background()
 
 			// For valid flags test, replace handler with a mock to avoid business logic
