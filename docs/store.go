@@ -254,6 +254,11 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
+
+	if path == "/docs/all.md" {
+		h.renderAllDocs(w, r)
+		return true
+	}
 	if strings.HasSuffix(path, "/") && path != "/docs/" {
 		trimmed := strings.TrimSuffix(path, "/")
 		http.Redirect(w, r, trimmed, http.StatusMovedPermanently)
@@ -543,4 +548,45 @@ func parseTags(content string) (tags []string) {
 		}
 	}
 	return tags
+}
+func (h *Handler) renderAllDocs(w http.ResponseWriter, r *http.Request) {
+	buf := new(bytes.Buffer)
+	
+	firstDoc := true
+	for _, entry := range h.store.entries {
+		if !entry.Published && !h.showHidden {
+			continue
+		}
+		
+		if !firstDoc {
+			buf.WriteString("\n\n---\n\n")
+		}
+		firstDoc = false
+		
+		// Add title as H1
+		if entry.Title != "" {
+			buf.WriteString("# ")
+			buf.WriteString(entry.Title)
+			buf.WriteString("\n\n")
+		}
+		
+		// Add subheading if present
+		if entry.Subheading != "" {
+			buf.WriteString("**")
+			buf.WriteString(entry.Subheading)
+			buf.WriteString("**\n\n")
+		}
+		
+		// Add description if present
+		if entry.Description != "" {
+			buf.WriteString("*")
+			buf.WriteString(entry.Description)
+			buf.WriteString("*\n\n")
+		}
+		
+		buf.WriteString(entry.Markdown)
+	}
+	
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
 }

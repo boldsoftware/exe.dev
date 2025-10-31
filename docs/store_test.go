@@ -88,3 +88,76 @@ func TestHandlerDocsRedirect(t *testing.T) {
 		})
 	}
 }
+
+func TestHandlerDocsAllMd(t *testing.T) {
+	store, err := Load(true)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	handler := NewHandler(store, true)
+	if handler == nil {
+		t.Fatal("NewHandler returned nil")
+	}
+
+	req := httptest.NewRequest("GET", "/docs/all.md", nil)
+	w := httptest.NewRecorder()
+
+	handled := handler.Handle(w, req)
+	if !handled {
+		t.Fatal("Handler did not handle /docs/all.md")
+	}
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("got status code %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "text/markdown; charset=utf-8" {
+		t.Errorf("got content type %q, want %q", contentType, "text/markdown; charset=utf-8")
+	}
+
+	body := w.Body.String()
+	if body == "" {
+		t.Fatal("response body is empty")
+	}
+
+	// Verify that all published docs are included
+	for _, entry := range store.entries {
+		if !entry.Published {
+			continue
+		}
+		if entry.Markdown == "" {
+			continue
+		}
+		// Check that the markdown content appears in the combined output
+		// We can't check for exact match due to separators, but we can check for a unique line
+		lines := []string{}
+		for _, line := range []string{entry.Markdown[:min(len(entry.Markdown), 50)]} {
+			lines = append(lines, line)
+		}
+		found := false
+		for _, line := range lines {
+			if len(line) > 0 && contains(body, line) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected to find content from %s in all.md output", entry.Slug)
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+		(len(s) > 0 && (s[:len(substr)] == substr || contains(s[1:], substr))))
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
