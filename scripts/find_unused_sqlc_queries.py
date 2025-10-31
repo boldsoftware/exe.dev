@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -71,7 +72,8 @@ def iter_query_names(query_dir: Path) -> Iterator[Tuple[str, Path]]:
 
 
 def run_rg(query: str, cwd: Path) -> subprocess.CompletedProcess:
-    cmd = ["rg", "--no-heading", "--line-number", "--", query, "."]
+    pattern = rf"\b{re.escape(query)}\b"
+    cmd = ["rg", "--no-heading", "--line-number", "--", pattern, "."]
     return subprocess.run(
         cmd,
         cwd=str(cwd),
