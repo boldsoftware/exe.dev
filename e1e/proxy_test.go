@@ -3,6 +3,7 @@
 package e1e
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -67,7 +68,7 @@ func TestHTTPProxy(t *testing.T) {
 		// TODO: do the auth dance to test private routes too.
 
 		t.Run("private_redirect", func(t *testing.T) {
-			resp, err := makeProxyRequest(t, box, httpPort)
+			resp, err := doProxyRequest(t, box, httpPort)
 			if err != nil {
 				t.Fatalf("failed to make proxy request: %v", err)
 			}
@@ -102,7 +103,7 @@ func TestHTTPProxy(t *testing.T) {
 			for _, sleepTime := range sleepTimes {
 				time.Sleep(sleepTime)
 				var err error
-				resp, err = makeProxyRequest(t, box, httpPort)
+				resp, err = doProxyRequest(t, box, httpPort)
 				if err != nil {
 					continue
 				}
@@ -195,6 +196,124 @@ func TestHTTPProxy(t *testing.T) {
 		}
 		if !strings.Contains(string(body), "alive") {
 			t.Fatalf("expected final body to contain 'alive', got %s", body)
+		}
+	})
+
+	t.Run("basic_auth", func(t *testing.T) {
+		httpPort := Env.exed.HTTPPort
+		serveHTTP(t, 8080)
+
+		exeShell := sshToExeDev(t, keyFile)
+		exeShell.sendLine(fmt.Sprintf("proxy %s --port=8080 --private", box))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+		exeShell.disconnect()
+
+		resp, err := doProxyRequest(t, box, httpPort)
+		if err != nil {
+			t.Fatalf("failed to make proxy request without auth: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected redirect for private route, got status %d", resp.StatusCode)
+		}
+
+		type proxyTokenOutput struct {
+			BoxName string `json:"box_name"`
+			Token   string `json:"token"`
+		}
+		tokenResp := runParseExeDevJSON[proxyTokenOutput](t, keyFile, "proxy-token", box, "--json")
+		token := tokenResp.Token
+		if token == "" {
+			t.Fatal("proxy bearer token output empty")
+		}
+
+		client := noRedirectClient(nil)
+		req := makeProxyRequest(t, box, httpPort)
+		setBasicAuthUserinfo(req, "bad-token")
+		invalidResp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request with invalid basic auth: %v", err)
+		}
+		invalidResp.Body.Close()
+		if invalidResp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected HTTP 307 for invalid basic auth, got %d", invalidResp.StatusCode)
+		}
+
+		req = makeProxyRequest(t, box, httpPort)
+		setBasicAuthUserinfo(req, token)
+		authResp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request with basic auth: %v", err)
+		}
+		defer authResp.Body.Close()
+		body, err := io.ReadAll(authResp.Body)
+		if err != nil {
+			t.Fatalf("failed to read response body: %v", err)
+		}
+		if authResp.StatusCode != http.StatusOK {
+			t.Fatalf("expected HTTP 200 from basic auth request, got %d (body: %s)", authResp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), "alive") {
+			t.Fatalf("expected body to contain 'alive', got %s", body)
+		}
+
+		req = makeProxyRequest(t, box, httpPort)
+		setBasicAuthHeader(req, "bad-token")
+		invalidHeaderResp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request with invalid header auth: %v", err)
+		}
+		invalidHeaderResp.Body.Close()
+		if invalidHeaderResp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected HTTP 307 for invalid header basic auth, got %d", invalidHeaderResp.StatusCode)
+		}
+
+		req = makeProxyRequest(t, box, httpPort)
+		req.Header.Set("Authorization", "Bearer bad-token")
+		invalidBearerResp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request with invalid bearer auth: %v", err)
+		}
+		invalidBearerResp.Body.Close()
+		if invalidBearerResp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected HTTP 307 for invalid bearer auth, got %d", invalidBearerResp.StatusCode)
+		}
+
+		req = makeProxyRequest(t, box, httpPort)
+		req.Header.Set("Authorization", "bearer "+token)
+		lowerBearerResp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request with lowercase bearer auth: %v", err)
+		}
+		defer lowerBearerResp.Body.Close()
+		body, err = io.ReadAll(lowerBearerResp.Body)
+		if err != nil {
+			t.Fatalf("failed to read lowercase bearer response body: %v", err)
+		}
+		if lowerBearerResp.StatusCode != http.StatusOK {
+			t.Fatalf("expected HTTP 200 from lowercase bearer auth request, got %d (body: %s)", lowerBearerResp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), "alive") {
+			t.Fatalf("expected body to contain 'alive' via lowercase bearer auth, got %s", body)
+		}
+
+		req = makeProxyRequest(t, box, httpPort)
+		setBasicAuthHeader(req, token)
+		authHeaderResp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request with header auth: %v", err)
+		}
+		defer authHeaderResp.Body.Close()
+		body, err = io.ReadAll(authHeaderResp.Body)
+		if err != nil {
+			t.Fatalf("failed to read header-auth response body: %v", err)
+		}
+		if authHeaderResp.StatusCode != http.StatusOK {
+			t.Fatalf("expected HTTP 200 from header basic auth request, got %d (body: %s)", authHeaderResp.StatusCode, body)
+		}
+		if !strings.Contains(string(body), "alive") {
+			t.Fatalf("expected body to contain 'alive' via header auth, got %s", body)
 		}
 	})
 
@@ -465,15 +584,29 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 	}
 }
 
-// makeProxyRequest makes an HTTP request to boxName, available at httpPort.
-func makeProxyRequest(t *testing.T, boxName string, httpPort int) (*http.Response, error) {
+// doProxyRequest makes an HTTP request to boxName, available at httpPort.
+func doProxyRequest(t *testing.T, boxName string, httpPort int) (*http.Response, error) {
 	t.Helper()
 	client := noRedirectClient(nil)
+	req := makeProxyRequest(t, boxName, httpPort)
+	return client.Do(req)
+}
+
+func makeProxyRequest(t *testing.T, boxName string, httpPort int) *http.Request {
+	t.Helper()
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", httpPort)
 	req, err := http.NewRequest("GET", proxyURL, nil)
 	if err != nil {
-		return nil, err
+		t.Fatalf("failed to create proxy request: %v", err)
 	}
 	req.Host = fmt.Sprintf("%s.localhost:%d", boxName, httpPort)
-	return client.Do(req)
+	return req
+}
+
+func setBasicAuthHeader(req *http.Request, token string) {
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(token+":")))
+}
+
+func setBasicAuthUserinfo(req *http.Request, token string) {
+	req.URL.User = url.UserPassword(token, "")
 }

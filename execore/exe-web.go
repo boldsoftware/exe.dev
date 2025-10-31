@@ -39,6 +39,8 @@ import (
 	"tailscale.com/net/tsaddr"
 )
 
+const proxyBearerTokenTTL = 30 * 24 * time.Hour
+
 func (s *Server) prepareHandler() http.Handler {
 	lg := s.prepareLlmGateway()
 	servMux := http.NewServeMux()
@@ -1374,6 +1376,26 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 	return cookieValue, nil
 }
 
+// createProxyBearerToken creates a bearer token for HTTP Basic auth proxy access scoped to a box.
+func (s *Server) createProxyBearerToken(ctx context.Context, userID string, boxID int) (string, error) {
+	token := crand.Text()
+	expiresAt := time.Now().Add(proxyBearerTokenTTL)
+
+	err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.InsertProxyBearerToken(ctx, exedb.InsertProxyBearerTokenParams{
+			Token:     token,
+			UserID:    userID,
+			BoxID:     int64(boxID),
+			ExpiresAt: expiresAt,
+		})
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to store proxy bearer token: %w", err)
+	}
+
+	return token, nil
+}
+
 // validateAuthCookie validates the primary authentication cookie and returns the user_id
 func (s *Server) validateAuthCookie(r *http.Request) (string, error) {
 	return s.validateNamedAuthCookie(r, "exe-auth")
@@ -1436,6 +1458,39 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 	})
 
 	return userID, nil
+}
+
+// validateProxyBearerToken ensures a bearer token is valid for the provided box and returns the associated user.
+func (s *Server) validateProxyBearerToken(ctx context.Context, token string, boxID int) (string, error) {
+	if token == "" {
+		return "", fmt.Errorf("empty proxy bearer token")
+	}
+
+	record, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.ProxyBearerToken, error) {
+		return queries.GetProxyBearerToken(ctx, token)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("proxy bearer token not found")
+		}
+		return "", fmt.Errorf("fetching proxy bearer token: %w", err)
+	}
+
+	if record.BoxID != int64(boxID) {
+		return "", fmt.Errorf("proxy bearer token is not valid for this box")
+	}
+
+	if time.Now().After(record.ExpiresAt) {
+		return "", fmt.Errorf("proxy bearer token expired")
+	}
+
+	if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateProxyBearerTokenLastUsed(ctx, token)
+	}); err != nil {
+		s.slog().Warn("failed to update proxy bearer token last used", "error", err)
+	}
+
+	return record.UserID, nil
 }
 
 // userHasActiveAuthCookie returns true when the user has at least one non-expired auth cookie record.

@@ -117,6 +117,15 @@ type PendingSSHKey struct {
 	CreatedAt *time.Time `db:"created_at" json:"created_at"`
 }
 
+type ProxyBearerToken struct {
+	Token      string     `db:"token" json:"token"`
+	UserID     string     `db:"user_id" json:"user_id"`
+	BoxID      int64      `db:"box_id" json:"box_id"`
+	ExpiresAt  time.Time  `db:"expires_at" json:"expires_at"`
+	CreatedAt  *time.Time `db:"created_at" json:"created_at"`
+	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at"`
+}
+
 type ServerMetum struct {
 	Key       string     `db:"key" json:"key"`
 	Value     string     `db:"value" json:"value"`

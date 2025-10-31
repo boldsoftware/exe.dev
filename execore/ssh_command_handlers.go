@@ -125,6 +125,16 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 				"proxy mybox --port=3000 --public   # expose port 3000 publicly",
 			},
 		},
+		{
+			Name:              "proxy-token",
+			Hidden:            true,
+			Description:       "Generate a proxy bearer token",
+			FlagSetFunc:       jsonOnlyFlags("proxy-token"),
+			Handler:           ss.handleProxyTokenCommand,
+			Usage:             "proxy-token <box-name>",
+			HasPositionalArgs: true,
+			CompleterFunc:     ss.completeBoxNames,
+		},
 		ss.shareCommand(),
 		{
 			Name:        "whoami",
@@ -808,6 +818,44 @@ func (ss *SSHServer) handleDeleteSSHKeyCommand(ctx context.Context, cc *exemenu.
 		return nil
 	}
 	cc.Writeln("\033[1;32mDeleted SSH key.\033[0m")
+	return nil
+}
+
+func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) != 1 {
+		return cc.Errorf("please specify exactly one box name")
+	}
+
+	boxName := cc.Args[0]
+
+	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return cc.Errorf("box %q not found", boxName)
+	}
+	if err != nil {
+		return err
+	}
+
+	token, err := ss.server.createProxyBearerToken(ctx, cc.User.ID, box.ID)
+	if err != nil {
+		return err
+	}
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"box_name": boxName,
+			"token":    token,
+		})
+		return nil
+	}
+
+	cc.Writeln("This token may be used as a Bearer token or as a basic auth username to authenticate with the exe.dev proxy for box \033[1m%s\033[0m.", boxName)
+	cc.Writeln("")
+	cc.Writeln("%s", token)
 	return nil
 }
 

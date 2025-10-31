@@ -153,6 +153,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getPendingSSHKeyEmailByPublicKeyStmt, err = db.PrepareContext(ctx, getPendingSSHKeyEmailByPublicKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingSSHKeyEmailByPublicKey: %w", err)
 	}
+	if q.getProxyBearerTokenStmt, err = db.PrepareContext(ctx, getProxyBearerToken); err != nil {
+		return nil, fmt.Errorf("error preparing query GetProxyBearerToken: %w", err)
+	}
 	if q.getSSHHostKeyStmt, err = db.PrepareContext(ctx, getSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSSHHostKey: %w", err)
 	}
@@ -219,6 +222,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertPendingSSHKeyStmt, err = db.PrepareContext(ctx, insertPendingSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertPendingSSHKey: %w", err)
 	}
+	if q.insertProxyBearerTokenStmt, err = db.PrepareContext(ctx, insertProxyBearerToken); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertProxyBearerToken: %w", err)
+	}
 	if q.insertSSHKeyStmt, err = db.PrepareContext(ctx, insertSSHKey); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertSSHKey: %w", err)
 	}
@@ -263,6 +269,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateBoxStatusStmt, err = db.PrepareContext(ctx, updateBoxStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateBoxStatus: %w", err)
+	}
+	if q.updateProxyBearerTokenLastUsedStmt, err = db.PrepareContext(ctx, updateProxyBearerTokenLastUsed); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateProxyBearerTokenLastUsed: %w", err)
 	}
 	if q.updateTagResolutionCheckedStmt, err = db.PrepareContext(ctx, updateTagResolutionChecked); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionChecked: %w", err)
@@ -505,6 +514,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getPendingSSHKeyEmailByPublicKeyStmt: %w", cerr)
 		}
 	}
+	if q.getProxyBearerTokenStmt != nil {
+		if cerr := q.getProxyBearerTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getProxyBearerTokenStmt: %w", cerr)
+		}
+	}
 	if q.getSSHHostKeyStmt != nil {
 		if cerr := q.getSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getSSHHostKeyStmt: %w", cerr)
@@ -615,6 +629,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertPendingSSHKeyStmt: %w", cerr)
 		}
 	}
+	if q.insertProxyBearerTokenStmt != nil {
+		if cerr := q.insertProxyBearerTokenStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertProxyBearerTokenStmt: %w", cerr)
+		}
+	}
 	if q.insertSSHKeyStmt != nil {
 		if cerr := q.insertSSHKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertSSHKeyStmt: %w", cerr)
@@ -688,6 +707,11 @@ func (q *Queries) Close() error {
 	if q.updateBoxStatusStmt != nil {
 		if cerr := q.updateBoxStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateBoxStatusStmt: %w", cerr)
+		}
+	}
+	if q.updateProxyBearerTokenLastUsedStmt != nil {
+		if cerr := q.updateProxyBearerTokenLastUsedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateProxyBearerTokenLastUsedStmt: %w", cerr)
 		}
 	}
 	if q.updateTagResolutionCheckedStmt != nil {
@@ -807,6 +831,7 @@ type Queries struct {
 	getPendingBoxSharesByEmailStmt         *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
 	getPendingSSHKeyEmailByPublicKeyStmt   *sql.Stmt
+	getProxyBearerTokenStmt                *sql.Stmt
 	getSSHHostKeyStmt                      *sql.Stmt
 	getSSHKeysForUserStmt                  *sql.Stmt
 	getSSHKeysForUserByEmailStmt           *sql.Stmt
@@ -829,6 +854,7 @@ type Queries struct {
 	insertEmailVerificationStmt            *sql.Stmt
 	insertOrReplaceEmailVerificationStmt   *sql.Stmt
 	insertPendingSSHKeyStmt                *sql.Stmt
+	insertProxyBearerTokenStmt             *sql.Stmt
 	insertSSHKeyStmt                       *sql.Stmt
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
 	insertTagResolutionHistoryStmt         *sql.Stmt
@@ -844,6 +870,7 @@ type Queries struct {
 	updateBoxRoutesStmt                    *sql.Stmt
 	updateBoxSSHDetailsStmt                *sql.Stmt
 	updateBoxStatusStmt                    *sql.Stmt
+	updateProxyBearerTokenLastUsedStmt     *sql.Stmt
 	updateTagResolutionCheckedStmt         *sql.Stmt
 	updateTagResolutionDigestStmt          *sql.Stmt
 	updateTagResolutionMetadataStmt        *sql.Stmt
@@ -900,6 +927,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getPendingBoxSharesByEmailStmt:         q.getPendingBoxSharesByEmailStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
 		getPendingSSHKeyEmailByPublicKeyStmt:   q.getPendingSSHKeyEmailByPublicKeyStmt,
+		getProxyBearerTokenStmt:                q.getProxyBearerTokenStmt,
 		getSSHHostKeyStmt:                      q.getSSHHostKeyStmt,
 		getSSHKeysForUserStmt:                  q.getSSHKeysForUserStmt,
 		getSSHKeysForUserByEmailStmt:           q.getSSHKeysForUserByEmailStmt,
@@ -922,6 +950,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertEmailVerificationStmt:            q.insertEmailVerificationStmt,
 		insertOrReplaceEmailVerificationStmt:   q.insertOrReplaceEmailVerificationStmt,
 		insertPendingSSHKeyStmt:                q.insertPendingSSHKeyStmt,
+		insertProxyBearerTokenStmt:             q.insertProxyBearerTokenStmt,
 		insertSSHKeyStmt:                       q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
@@ -937,6 +966,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateBoxRoutesStmt:                    q.updateBoxRoutesStmt,
 		updateBoxSSHDetailsStmt:                q.updateBoxSSHDetailsStmt,
 		updateBoxStatusStmt:                    q.updateBoxStatusStmt,
+		updateProxyBearerTokenLastUsedStmt:     q.updateProxyBearerTokenLastUsedStmt,
 		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
 		updateTagResolutionMetadataStmt:        q.updateTagResolutionMetadataStmt,

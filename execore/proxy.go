@@ -146,7 +146,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	// Apply authentication based on route share setting
 	if route.Share == "private" {
 		// Check if user is authenticated
-		userID, authenticated := s.getAuthenticatedUserID(r)
+		userID, authenticated := s.getAuthenticatedUserID(r, box)
 		if !authenticated {
 			// Not authenticated - redirect to auth (preserving share token if present)
 			// The share link will be checked again after authentication
@@ -217,7 +217,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		// Determine if the requester is the owner of the box
 		isOwner := false
-		if userID, ok := s.getAuthenticatedUserID(r); ok {
+		if userID, ok := s.getAuthenticatedUserID(r, box); ok {
 			if box.CreatedByUserID == userID {
 				isOwner = true
 			}
@@ -308,14 +308,36 @@ func (s *Server) parseProxyHostname(hostname string) (box string) {
 }
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
-// Returns (userID, true) if authenticated, ("") if not authenticated
-func (s *Server) getAuthenticatedUserID(r *http.Request) (string, bool) {
-	userID, err := s.validateProxyAuthCookie(r)
-	if err != nil {
-		return "", false
+// Returns (userID, true) if authenticated, ("", false) if not authenticated
+func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string, bool) {
+	if userID, err := s.validateProxyAuthCookie(r); err == nil {
+		return userID, true
 	}
 
-	return userID, true
+	// Basic auth -- token is provided as username, password is ignored
+	if username, _, ok := r.BasicAuth(); ok && username != "" {
+		if userID, err := s.validateProxyBearerToken(r.Context(), username, box.ID); err == nil {
+			r.URL.User = nil
+			return userID, true
+		}
+	}
+
+	// Bearer token auth
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		parts := strings.Fields(authHeader)
+		if len(parts) >= 2 && strings.EqualFold(parts[0], "Bearer") {
+			token := strings.TrimSpace(parts[1])
+			if token != "" {
+				if userID, err := s.validateProxyBearerToken(r.Context(), token, box.ID); err == nil {
+					r.Header.Del("Authorization")
+					return userID, true
+				}
+			}
+		}
+	}
+
+	return "", false
 }
 
 // getMainDomain returns the main domain based on dev mode.
@@ -746,7 +768,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 		defaultDirector(req)
 
 		// Add user info headers if authenticated
-		if userID, ok := s.getAuthenticatedUserID(r); ok {
+		if userID, ok := s.getAuthenticatedUserID(r, *box); ok {
 			email, err := withRxRes(s, req.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
 				return queries.GetEmailByUserID(ctx, userID)
 			})
