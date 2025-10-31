@@ -20,10 +20,6 @@ JOIN users u ON pbs.shared_by_user_id = u.user_id
 WHERE pbs.shared_with_email = ?
 ORDER BY pbs.created_at DESC;
 
--- name: DeletePendingBoxShare :exec
-DELETE FROM pending_box_shares
-WHERE id = ?;
-
 -- name: DeletePendingBoxShareByBoxAndEmail :exec
 DELETE FROM pending_box_shares
 WHERE box_id = ? AND shared_with_email = ?;

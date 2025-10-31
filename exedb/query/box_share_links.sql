@@ -19,9 +19,6 @@ WHERE share_token = ?;
 SELECT * FROM box_share_links
 WHERE share_token = ? AND box_id = ?;
 
--- name: DeleteBoxShareLink :exec
-DELETE FROM box_share_links WHERE id = ?;
-
 -- name: DeleteBoxShareLinkByBoxAndToken :exec
 DELETE FROM box_share_links
 WHERE box_id = ? AND share_token = ?;

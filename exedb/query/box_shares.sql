@@ -31,9 +31,6 @@ JOIN users owner ON b.created_by_user_id = owner.user_id
 WHERE bs.shared_with_user_id = ?
 ORDER BY bs.created_at DESC;
 
--- name: DeleteBoxShare :exec
-DELETE FROM box_shares WHERE id = ?;
-
 -- name: DeleteBoxShareByBoxAndUser :exec
 DELETE FROM box_shares
 WHERE box_id = ? AND shared_with_user_id = ?;

@@ -69,23 +69,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteBoxStmt, err = db.PrepareContext(ctx, deleteBox); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBox: %w", err)
 	}
-	if q.deleteBoxShareStmt, err = db.PrepareContext(ctx, deleteBoxShare); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteBoxShare: %w", err)
-	}
 	if q.deleteBoxShareByBoxAndUserStmt, err = db.PrepareContext(ctx, deleteBoxShareByBoxAndUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxShareByBoxAndUser: %w", err)
-	}
-	if q.deleteBoxShareLinkStmt, err = db.PrepareContext(ctx, deleteBoxShareLink); err != nil {
-		return nil, fmt.Errorf("error preparing query DeleteBoxShareLink: %w", err)
 	}
 	if q.deleteBoxShareLinkByBoxAndTokenStmt, err = db.PrepareContext(ctx, deleteBoxShareLinkByBoxAndToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxShareLinkByBoxAndToken: %w", err)
 	}
 	if q.deleteEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, deleteEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteEmailVerificationByToken: %w", err)
-	}
-	if q.deletePendingBoxShareStmt, err = db.PrepareContext(ctx, deletePendingBoxShare); err != nil {
-		return nil, fmt.Errorf("error preparing query DeletePendingBoxShare: %w", err)
 	}
 	if q.deletePendingBoxShareByBoxAndEmailStmt, err = db.PrepareContext(ctx, deletePendingBoxShareByBoxAndEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query DeletePendingBoxShareByBoxAndEmail: %w", err)
@@ -386,19 +377,9 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteBoxStmt: %w", cerr)
 		}
 	}
-	if q.deleteBoxShareStmt != nil {
-		if cerr := q.deleteBoxShareStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteBoxShareStmt: %w", cerr)
-		}
-	}
 	if q.deleteBoxShareByBoxAndUserStmt != nil {
 		if cerr := q.deleteBoxShareByBoxAndUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteBoxShareByBoxAndUserStmt: %w", cerr)
-		}
-	}
-	if q.deleteBoxShareLinkStmt != nil {
-		if cerr := q.deleteBoxShareLinkStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deleteBoxShareLinkStmt: %w", cerr)
 		}
 	}
 	if q.deleteBoxShareLinkByBoxAndTokenStmt != nil {
@@ -409,11 +390,6 @@ func (q *Queries) Close() error {
 	if q.deleteEmailVerificationByTokenStmt != nil {
 		if cerr := q.deleteEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteEmailVerificationByTokenStmt: %w", cerr)
-		}
-	}
-	if q.deletePendingBoxShareStmt != nil {
-		if cerr := q.deletePendingBoxShareStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing deletePendingBoxShareStmt: %w", cerr)
 		}
 	}
 	if q.deletePendingBoxShareByBoxAndEmailStmt != nil {
@@ -835,12 +811,9 @@ type Queries struct {
 	deleteAuthCookieByValueStmt            *sql.Stmt
 	deleteAuthCookiesByUserIDStmt          *sql.Stmt
 	deleteBoxStmt                          *sql.Stmt
-	deleteBoxShareStmt                     *sql.Stmt
 	deleteBoxShareByBoxAndUserStmt         *sql.Stmt
-	deleteBoxShareLinkStmt                 *sql.Stmt
 	deleteBoxShareLinkByBoxAndTokenStmt    *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
-	deletePendingBoxShareStmt              *sql.Stmt
 	deletePendingBoxShareByBoxAndEmailStmt *sql.Stmt
 	deletePendingSSHKeyByTokenStmt         *sql.Stmt
 	deleteSSHKeyForUserStmt                *sql.Stmt
@@ -935,12 +908,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
 		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
 		deleteBoxStmt:                          q.deleteBoxStmt,
-		deleteBoxShareStmt:                     q.deleteBoxShareStmt,
 		deleteBoxShareByBoxAndUserStmt:         q.deleteBoxShareByBoxAndUserStmt,
-		deleteBoxShareLinkStmt:                 q.deleteBoxShareLinkStmt,
 		deleteBoxShareLinkByBoxAndTokenStmt:    q.deleteBoxShareLinkByBoxAndTokenStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,
-		deletePendingBoxShareStmt:              q.deletePendingBoxShareStmt,
 		deletePendingBoxShareByBoxAndEmailStmt: q.deletePendingBoxShareByBoxAndEmailStmt,
 		deletePendingSSHKeyByTokenStmt:         q.deletePendingSSHKeyByTokenStmt,
 		deleteSSHKeyForUserStmt:                q.deleteSSHKeyForUserStmt,

@@ -59,16 +59,6 @@ func (q *Queries) CreatePendingBoxShare(ctx context.Context, arg CreatePendingBo
 	return i, err
 }
 
-const deletePendingBoxShare = `-- name: DeletePendingBoxShare :exec
-DELETE FROM pending_box_shares
-WHERE id = ?
-`
-
-func (q *Queries) DeletePendingBoxShare(ctx context.Context, id int64) error {
-	_, err := q.exec(ctx, q.deletePendingBoxShareStmt, deletePendingBoxShare, id)
-	return err
-}
-
 const deletePendingBoxShareByBoxAndEmail = `-- name: DeletePendingBoxShareByBoxAndEmail :exec
 DELETE FROM pending_box_shares
 WHERE box_id = ? AND shared_with_email = ?
