@@ -70,7 +70,11 @@ const (
 const (
 	// Timeout for long-running operations like box creation and Shelley prompts
 	longOperationTimeout = 30 * time.Minute
-	maxIPShard           = 25
+	// IP shards are 1-based. (The zero value is intentionally invalid.)
+	// maxIPShard is the largest available shard IDs.
+	// Shards map to IP public IP addresses: sNNN.exe.dev, so ranging from s001.exe.dev to s025.exe.dev.
+	// maxIPShard must match the DB CHECK constraint.
+	maxIPShard = 25
 )
 
 // BoxDisplayInfo represents a box with additional display information
