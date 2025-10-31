@@ -46,9 +46,12 @@ type NerdctlManager struct {
 	hosts    []string // List of containerd host addresses (SSH hostnames or "local")
 	hostArch string   // Cached host architecture (e.g., "arm64", "amd64")
 
-	perHostCreateLimit struct {
-		mu sync.Mutex
-		m  map[string]chan struct{}
+	// perHostOperationLock serializes nerdctl create/delete operations per host
+	// to prevent Kata + CNI netlink race conditions. Only one create OR delete
+	// operation runs at a time per host.
+	perHostOperationLock struct {
+		mu    sync.Mutex
+		locks map[string]*sync.Mutex
 	}
 
 	mu      sync.Mutex
@@ -399,13 +402,6 @@ func (m *NerdctlManager) discoverContainers(ctx context.Context, host string) er
 	return nil
 }
 
-// perHostCreateLimit is the maximum simultaneous create limit.
-//
-// TODO: we need a different limit on easily overloaded, nested KVM
-// setups like lima and production. Figuring out what those limits
-// are is going to require manual experimentation.
-const perHostCreateLimit = 2
-
 // SelectHost selects a host from available hosts (round-robin for now)
 func (m *NerdctlManager) SelectHost(allocID string) (string, error) {
 	if len(m.hosts) == 0 {
@@ -419,28 +415,32 @@ func (m *NerdctlManager) SelectHost(allocID string) (string, error) {
 	return m.hosts[0], nil
 }
 
-func (m *NerdctlManager) acquireCreateSlot(ctx context.Context, host string) (func(), error) {
+// acquireOperationLock acquires an exclusive lock for nerdctl create/delete operations on a host.
+// This prevents Kata + CNI netlink race conditions by ensuring only one operation runs at a time.
+// Returns a release function that must be called (typically via defer) to release the lock.
+func (m *NerdctlManager) acquireOperationLock(host string) func() {
 	if host == "" {
-		return nil, fmt.Errorf("acquireCreateSlot: empty host")
+		panic("acquireOperationLock: empty host")
 	}
 
-	m.perHostCreateLimit.mu.Lock()
-	if m.perHostCreateLimit.m == nil {
-		m.perHostCreateLimit.m = make(map[string]chan struct{})
+	// Get or create the per-host mutex
+	m.perHostOperationLock.mu.Lock()
+	if m.perHostOperationLock.locks == nil {
+		m.perHostOperationLock.locks = make(map[string]*sync.Mutex)
 	}
-	ch := m.perHostCreateLimit.m[host]
-	if ch == nil {
-		ch = make(chan struct{}, perHostCreateLimit)
-		m.perHostCreateLimit.m[host] = ch
+	hostMutex := m.perHostOperationLock.locks[host]
+	if hostMutex == nil {
+		hostMutex = &sync.Mutex{}
+		m.perHostOperationLock.locks[host] = hostMutex
 	}
-	m.perHostCreateLimit.mu.Unlock()
+	m.perHostOperationLock.mu.Unlock()
 
-	select {
-	case ch <- struct{}{}:
-		releaseFn := func() { <-ch }
-		return releaseFn, nil
-	case <-ctx.Done():
-		return nil, fmt.Errorf("acquireCreateSlot: %w", ctx.Err())
+	// Acquire the per-host lock (blocks until available)
+	hostMutex.Lock()
+
+	// Return a function to release the lock
+	return func() {
+		hostMutex.Unlock()
 	}
 }
 
@@ -676,12 +676,11 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	if host == "" {
 		return nil, fmt.Errorf("host is required for container creation")
 	}
-	// TODO(philip): Do we really need this throttle? Could just use a semaphore if we do.
-	releaseFn, err := m.acquireCreateSlot(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-	defer releaseFn()
+
+	// Acquire exclusive lock for this host to prevent Kata + CNI netlink races
+	// Only one create/delete operation runs at a time per host
+	releaseOperationLock := m.acquireOperationLock(host)
+	defer releaseOperationLock()
 
 	// Check if we're recreating a container with an existing disk
 	diskExists, _ := m.VerifyDisk(ctx, host, req.BoxID)
@@ -1310,6 +1309,11 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 	if err != nil {
 		return err
 	}
+
+	// Acquire exclusive lock for this host to prevent Kata + CNI netlink races
+	// Only one create/delete operation runs at a time per host
+	releaseOperationLock := m.acquireOperationLock(container.DockerHost)
+	defer releaseOperationLock()
 
 	// Get the box_id from container labels to identify the disk
 	// We need to use json format and parse it
