@@ -3,7 +3,7 @@ set -euo pipefail
 
 NAME="${NAME:-ci-ubuntu-$(date +%Y%m%d%H%M%S)}"
 VCPUS="${VCPUS:-4}"
-RAM_MB="${RAM_MB:-8192}" # 8GiB
+RAM_MB="${RAM_MB:-4096}" # 4GiB
 DISK_GB="${DISK_GB:-40}" # thin-provisioned
 BASE_IMG="${BASE_IMG:-/var/lib/libvirt/images/ubuntu-24.04-base.qcow2}"
 BASE_IMG_URL="${BASE_IMG_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
