@@ -8,7 +8,7 @@ RETURNING *;
 
 -- name: GetBoxShareLinksByBoxID :many
 SELECT * FROM box_share_links
-WHERE box_id = ?
+WHERE box_id = ? AND created_by_user_id = ?
 ORDER BY created_at DESC;
 
 -- name: GetBoxShareLinkByTokenAndBoxID :one

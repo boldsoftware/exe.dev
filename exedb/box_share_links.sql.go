@@ -94,12 +94,17 @@ func (q *Queries) GetBoxShareLinkByTokenAndBoxID(ctx context.Context, arg GetBox
 
 const getBoxShareLinksByBoxID = `-- name: GetBoxShareLinksByBoxID :many
 SELECT id, box_id, share_token, created_by_user_id, created_at, last_used_at, use_count FROM box_share_links
-WHERE box_id = ?
+WHERE box_id = ? AND created_by_user_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) GetBoxShareLinksByBoxID(ctx context.Context, boxID int64) ([]BoxShareLink, error) {
-	rows, err := q.query(ctx, q.getBoxShareLinksByBoxIDStmt, getBoxShareLinksByBoxID, boxID)
+type GetBoxShareLinksByBoxIDParams struct {
+	BoxID           int64  `db:"box_id" json:"box_id"`
+	CreatedByUserID string `db:"created_by_user_id" json:"created_by_user_id"`
+}
+
+func (q *Queries) GetBoxShareLinksByBoxID(ctx context.Context, arg GetBoxShareLinksByBoxIDParams) ([]BoxShareLink, error) {
+	rows, err := q.query(ctx, q.getBoxShareLinksByBoxIDStmt, getBoxShareLinksByBoxID, arg.BoxID, arg.CreatedByUserID)
 	if err != nil {
 		return nil, err
 	}

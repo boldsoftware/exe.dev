@@ -1699,7 +1699,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			return
 		}
 		sharedEmails := s.getSharedEmails(r.Context(), box.ID)
-		shareLinks := s.getShareLinks(r.Context(), box.ID, result.Name)
+		shareLinks := s.getShareLinks(r.Context(), box.ID, result.Name, user.UserID)
 
 		boxInfo := BoxDisplayInfo{
 			Box:             box,

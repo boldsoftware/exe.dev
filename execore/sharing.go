@@ -176,11 +176,14 @@ func (s *Server) countTotalShares(ctx context.Context, boxID int) (userShares, l
 }
 
 // getShareLinks returns a list of share links with their full URLs
-func (s *Server) getShareLinks(ctx context.Context, boxID int, boxName string) []BoxShareLinkInfo {
+func (s *Server) getShareLinks(ctx context.Context, boxID int, boxName, userID string) []BoxShareLinkInfo {
 	var links []BoxShareLinkInfo
 
 	shareLinks, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.BoxShareLink, error) {
-		return queries.GetBoxShareLinksByBoxID(ctx, int64(boxID))
+		return queries.GetBoxShareLinksByBoxID(ctx, exedb.GetBoxShareLinksByBoxIDParams{
+			BoxID:           int64(boxID),
+			CreatedByUserID: userID,
+		})
 	})
 	if err == nil {
 		for _, sl := range shareLinks {

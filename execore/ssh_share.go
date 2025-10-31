@@ -145,7 +145,10 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 
 	// Get share links
 	shareLinks, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) ([]exedb.BoxShareLink, error) {
-		return queries.GetBoxShareLinksByBoxID(ctx, int64(box.ID))
+		return queries.GetBoxShareLinksByBoxID(ctx, exedb.GetBoxShareLinksByBoxIDParams{
+			BoxID:           int64(box.ID),
+			CreatedByUserID: box.CreatedByUserID,
+		})
 	})
 	if err != nil {
 		return err
