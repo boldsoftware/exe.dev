@@ -527,8 +527,6 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 		return cc.Errorf("no share found for %s", email)
 	}
 
-	userShares, linkShares, _ := ss.server.countTotalShares(ctx, box.ID)
-
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{
 			"status":   "success",
@@ -537,6 +535,8 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 		})
 		return nil
 	}
+
+	userShares, linkShares, _ := ss.server.countTotalShares(ctx, box.ID)
 
 	cc.Writeln("")
 	cc.Writeln("\033[1;32m✓\033[0m Removed %s's access to '%s'", email, box.Name)
