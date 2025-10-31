@@ -18,6 +18,7 @@ fi
 
 # Configuration
 CACHE_DIR="$HOME/.cache/exedops"
+METADATA_DIR="$CACHE_DIR/.metadata"
 CONTAINERD_VERSION="2.1.4"
 RUNC_VERSION="1.1.14"
 KATA_VERSION="3.20.0"
@@ -32,25 +33,84 @@ echo "Cache directory: $CACHE_DIR"
 
 # Create cache directory
 mkdir -p "$CACHE_DIR"
+mkdir -p "$METADATA_DIR"
 
-# Function to download file if not cached
+# Function to download file if stale or not cached
 download_if_needed() {
     local url="$1"
     local filename="$2"
     local filepath="$CACHE_DIR/$filename"
+    local etag_file="${METADATA_DIR}/${filename}.etag"
+    local header_file="${METADATA_DIR}/${filename}.headers.$$"
+    local existing_etag=""
+    local remote_etag=""
+    local status_code=""
 
-    if [ -f "$filepath" ]; then
-        echo "✓ $filename (cached)"
-    else
-        echo "Downloading $filename..."
-        if wget --progress=dot:giga --timeout=30 --tries=3 -O "$filepath.tmp" "$url"; then
-            mv "$filepath.tmp" "$filepath"
-            echo "✓ $filename downloaded"
-        else
-            rm -f "$filepath.tmp"
-            echo "✗ Failed to download $filename"
-            return 1
+    if [ -f "$etag_file" ]; then
+        existing_etag=$(tr -d '\r\n' <"$etag_file" || true)
+    fi
+
+    # Attempt conditional HEAD request when we have an existing file+etag
+    if [ -f "$filepath" ] && [ -n "$existing_etag" ]; then
+        status_code=$(curl -fsSLI \
+            -H "If-None-Match: $existing_etag" \
+            -D "$header_file" \
+            -o /dev/null \
+            -w '%{http_code}' \
+            "$url" 2>/dev/null || true)
+
+        if [ "$status_code" = "304" ]; then
+            rm -f "$header_file"
+            echo "✓ $filename (cached via etag)"
+            return 0
         fi
+
+        if [ -n "$status_code" ] && [ -f "$header_file" ]; then
+            remote_etag=$(grep -i '^etag:' "$header_file" | tail -n1 | cut -d' ' -f2- | tr -d '\r')
+            rm -f "$header_file"
+            if [ -n "$remote_etag" ] && [ "$remote_etag" = "$existing_etag" ]; then
+                echo "✓ $filename (cached via etag)"
+                return 0
+            fi
+        fi
+    fi
+
+    echo "Downloading $filename..."
+    local curl_args=(
+        -fL
+        --retry 3
+        --retry-delay 2
+        --connect-timeout 30
+        -D "$header_file"
+        -o "${filepath}.tmp"
+    )
+
+    if [ -n "$existing_etag" ]; then
+        curl_args+=(-H "If-None-Match: $existing_etag")
+    fi
+
+    if curl "${curl_args[@]}" "$url"; then
+        status_code=$(head -n 1 "$header_file" | awk '{print $2}')
+        remote_etag=$(grep -i '^etag:' "$header_file" | tail -n1 | cut -d' ' -f2- | tr -d '\r')
+        rm -f "$header_file"
+
+        if [ "$status_code" = "304" ]; then
+            rm -f "${filepath}.tmp"
+            echo "✓ $filename (cached via etag)"
+            return 0
+        fi
+
+        mv "${filepath}.tmp" "$filepath"
+        if [ -n "$remote_etag" ]; then
+            printf '%s\n' "$remote_etag" >"$etag_file"
+        else
+            rm -f "$etag_file"
+        fi
+        echo "✓ $filename downloaded"
+    else
+        rm -f "${filepath}.tmp" "$header_file"
+        echo "✗ Failed to download $filename"
+        return 1
     fi
 }
 
