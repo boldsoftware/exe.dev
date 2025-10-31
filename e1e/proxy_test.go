@@ -248,19 +248,17 @@ func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.
 	if err != nil {
 		return nil, err
 	}
-
-	if strings.HasSuffix(host, ".localhost") {
-		originalUrlHost := url.Host
-		url.Host = strings.Replace(url.Host, host, "localhost", 1)
-		req, err := http.NewRequest(method, url.String(), body)
-		if err != nil {
-			return nil, err
-		}
-		req.Host = originalUrlHost
-		return req, nil
-	} else {
+	if !strings.HasSuffix(host, ".localhost") {
 		return http.NewRequest(method, url.String(), body)
 	}
+	originalUrlHost := url.Host
+	url.Host = strings.Replace(url.Host, host, "localhost", 1)
+	req, err := http.NewRequest(method, url.String(), body)
+	if err != nil {
+		return nil, err
+	}
+	req.Host = originalUrlHost
+	return req, nil
 }
 
 func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
