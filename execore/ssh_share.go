@@ -536,7 +536,10 @@ func (ss *SSHServer) handleShareRemoveCmd(ctx context.Context, cc *exemenu.Comma
 		return nil
 	}
 
-	userShares, linkShares, _ := ss.server.countTotalShares(ctx, box.ID)
+	userShares, linkShares, err := ss.server.countTotalShares(ctx, box.ID)
+	if err != nil {
+		return err
+	}
 
 	cc.Writeln("")
 	cc.Writeln("\033[1;32m✓\033[0m Removed %s's access to '%s'", email, box.Name)

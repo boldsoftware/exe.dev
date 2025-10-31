@@ -1692,7 +1692,12 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 
 		route := box.GetRoute()
 		// Get sharing information
-		sharedUserCount, shareLinkCount, _ := s.countTotalShares(r.Context(), box.ID)
+		sharedUserCount, shareLinkCount, err := s.countTotalShares(r.Context(), box.ID)
+		if err != nil {
+			s.slog().Error("Failed to count shares for dashboard", "error", err, "box_id", box.ID, "box_name", result.Name)
+			http.Error(w, "Failed to load sharing information", http.StatusInternalServerError)
+			return
+		}
 		sharedEmails := s.getSharedEmails(r.Context(), box.ID)
 		shareLinks := s.getShareLinks(r.Context(), box.ID, result.Name)
 
