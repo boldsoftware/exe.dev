@@ -18,3 +18,5 @@ sshpiper/metrics
 .DS_Store
 .cache
 tmpkey*
+# so i can 'go test -c ./...', and 'go test -race -c && stress foo.test'
+*.test
