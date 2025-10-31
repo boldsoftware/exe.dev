@@ -832,7 +832,10 @@ func (s *Server) incrementShareLinkUsage(ctx context.Context, shareToken string)
 func (s *Server) autoCreateShareFromLink(ctx context.Context, userID string, boxID int, shareToken string) error {
 	// Get the share link to find who created it
 	shareLink, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.BoxShareLink, error) {
-		return queries.GetBoxShareLinkByToken(ctx, shareToken)
+		return queries.GetBoxShareLinkByTokenAndBoxID(ctx, exedb.GetBoxShareLinkByTokenAndBoxIDParams{
+			ShareToken: shareToken,
+			BoxID:      int64(boxID),
+		})
 	})
 	if err != nil {
 		return err

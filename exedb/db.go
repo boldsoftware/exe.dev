@@ -111,9 +111,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxSSHDetailsStmt, err = db.PrepareContext(ctx, getBoxSSHDetails); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxSSHDetails: %w", err)
 	}
-	if q.getBoxShareLinkByTokenStmt, err = db.PrepareContext(ctx, getBoxShareLinkByToken); err != nil {
-		return nil, fmt.Errorf("error preparing query GetBoxShareLinkByToken: %w", err)
-	}
 	if q.getBoxShareLinkByTokenAndBoxIDStmt, err = db.PrepareContext(ctx, getBoxShareLinkByTokenAndBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxShareLinkByTokenAndBoxID: %w", err)
 	}
@@ -445,11 +442,6 @@ func (q *Queries) Close() error {
 	if q.getBoxSSHDetailsStmt != nil {
 		if cerr := q.getBoxSSHDetailsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxSSHDetailsStmt: %w", cerr)
-		}
-	}
-	if q.getBoxShareLinkByTokenStmt != nil {
-		if cerr := q.getBoxShareLinkByTokenStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getBoxShareLinkByTokenStmt: %w", cerr)
 		}
 	}
 	if q.getBoxShareLinkByTokenAndBoxIDStmt != nil {
@@ -825,7 +817,6 @@ type Queries struct {
 	getBoxByNameAndAllocStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxSSHDetailsStmt                   *sql.Stmt
-	getBoxShareLinkByTokenStmt             *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt     *sql.Stmt
 	getBoxShareLinksByBoxIDStmt            *sql.Stmt
 	getBoxSharesByBoxIDStmt                *sql.Stmt
@@ -922,7 +913,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
-		getBoxShareLinkByTokenStmt:             q.getBoxShareLinkByTokenStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:     q.getBoxShareLinkByTokenAndBoxIDStmt,
 		getBoxShareLinksByBoxIDStmt:            q.getBoxShareLinksByBoxIDStmt,
 		getBoxSharesByBoxIDStmt:                q.getBoxSharesByBoxIDStmt,

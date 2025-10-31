@@ -11,10 +11,6 @@ SELECT * FROM box_share_links
 WHERE box_id = ?
 ORDER BY created_at DESC;
 
--- name: GetBoxShareLinkByToken :one
-SELECT * FROM box_share_links
-WHERE share_token = ?;
-
 -- name: GetBoxShareLinkByTokenAndBoxID :one
 SELECT * FROM box_share_links
 WHERE share_token = ? AND box_id = ?;

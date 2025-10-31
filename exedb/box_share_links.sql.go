@@ -67,26 +67,6 @@ func (q *Queries) DeleteBoxShareLinkByBoxAndToken(ctx context.Context, arg Delet
 	return err
 }
 
-const getBoxShareLinkByToken = `-- name: GetBoxShareLinkByToken :one
-SELECT id, box_id, share_token, created_by_user_id, created_at, last_used_at, use_count FROM box_share_links
-WHERE share_token = ?
-`
-
-func (q *Queries) GetBoxShareLinkByToken(ctx context.Context, shareToken string) (BoxShareLink, error) {
-	row := q.queryRow(ctx, q.getBoxShareLinkByTokenStmt, getBoxShareLinkByToken, shareToken)
-	var i BoxShareLink
-	err := row.Scan(
-		&i.ID,
-		&i.BoxID,
-		&i.ShareToken,
-		&i.CreatedByUserID,
-		&i.CreatedAt,
-		&i.LastUsedAt,
-		&i.UseCount,
-	)
-	return i, err
-}
-
 const getBoxShareLinkByTokenAndBoxID = `-- name: GetBoxShareLinkByTokenAndBoxID :one
 SELECT id, box_id, share_token, created_by_user_id, created_at, last_used_at, use_count FROM box_share_links
 WHERE share_token = ? AND box_id = ?
