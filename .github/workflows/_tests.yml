@@ -69,14 +69,9 @@ jobs:
           export E1E_LOG_DIR
           echo "E1E_LOG_DIR=$E1E_LOG_DIR" >> "$GITHUB_ENV"
 
-          PKGS=$(go list ./... | grep -v 'exe.dev/e1e/restarttest' | grep -v exe.dev/container)
+          PKGS=$(go list ./... | grep -v exe.dev/container)
           gotestsum --format testname -- -race $PKGS
           gotestsum --format testname -- -race exe.dev/container
-
-      - name: Run restart tests
-        run: |
-          echo DISABLED
-          # go test -timeout=5m ./e1e/restarttest
 
       - name: Check golden files unchanged
         run: |
