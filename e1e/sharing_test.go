@@ -44,7 +44,7 @@ func TestBoxSharing(t *testing.T) {
 
 	// Wait for server to be ready
 	waitCmd := boxSSHCommand(t, box, ownerKeyFile, "timeout", "20", "sh", "-c",
-		fmt.Sprintf("'while ! curl http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
+		fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", boxInternalPort))
 	waitCmd.Stdout = t.Output()
 	waitCmd.Stderr = t.Output()
 	if err := waitCmd.Run(); err != nil {

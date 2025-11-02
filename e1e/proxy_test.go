@@ -52,7 +52,7 @@ func TestHTTPProxy(t *testing.T) {
 		// and it was slow and flaky...but best would be to fix _that_
 		// and completely remove this stanza.
 		waitCmd := boxSSHCommand(t, box, keyFile, "timeout", "20", "sh", "-c",
-			fmt.Sprintf("'while ! curl http://localhost:%d/; do sleep 0.5; done'", port))
+			fmt.Sprintf("'while ! curl -s http://localhost:%d/; do sleep 0.5; done'", port))
 		waitCmd.Stdout = t.Output()
 		waitCmd.Stderr = t.Output()
 		if err := waitCmd.Run(); err != nil {
