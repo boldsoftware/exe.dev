@@ -30,10 +30,18 @@ if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ ! -e /dev/nvme0n1 ]; th
     echo "=== CI/ephemeral VM detected, skipping swap and RAID setup ==="
 fi
 
-# Configure Huge Pages. cloud-hypervisor seems to be happier there, at least in nested virtualization.
-# /proc/meminfo is in KB. Huge pages are 2KB each. This allocates half of memory to huge pages.
-# I don't know what the "right" answer is; we need monitoring too.
-awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo | sudo tee /proc/sys/vm/nr_hugepages
+# Configure Huge Pages. cloud-hypervisor refuses to boot if huge pages are enabled in Kata but not
+# actually reserved on the host. /proc/meminfo is reported in KB; default hugepages are 2MB, so
+# divide by 4096 to reserve ~50% of RAM.
+HUGEPAGE_TARGET=$(awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo)
+echo "Setting vm.nr_hugepages=${HUGEPAGE_TARGET}"
+echo "${HUGEPAGE_TARGET}" | sudo tee /proc/sys/vm/nr_hugepages >/dev/null
+sudo mkdir -p /etc/sysctl.d
+cat <<EOF | sudo tee /etc/sysctl.d/90-exe-hugepages.conf >/dev/null
+# Ensure huge pages survive reboots; Kata's enable_hugepages requires them.
+vm.nr_hugepages=${HUGEPAGE_TARGET}
+EOF
+sudo sysctl --system >/dev/null
 
 # Swap and /local RAID setup is now handled by environment-specific scripts:
 # - setup-host-part1.sh: Sets up swap and RAID 0 XFS mount for /local on metal instances
