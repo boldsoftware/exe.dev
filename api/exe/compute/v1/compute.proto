@@ -1,0 +1,225 @@
+syntax = "proto3";
+
+package exe.compute.v1;
+
+option go_package = "exe.dev/api/compute/v1";
+
+service ComputeService {
+  rpc CreateInstance(CreateInstanceRequest) returns (stream CreateInstanceResponse);
+  rpc ListInstances(ListInstancesRequest) returns (stream ListInstancesResponse);
+  rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
+  rpc GetInstanceLogs(GetInstanceLogsRequest) returns (stream GetInstanceLogsResponse);
+  rpc StartInstance(StartInstanceRequest) returns (StartInstanceResponse);
+  rpc StopInstance(StopInstanceRequest) returns (StopInstanceResponse);
+  rpc UpdateInstance(UpdateInstanceRequest) returns (UpdateInstanceResponse);
+  rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
+}
+
+message CreateInstanceRequest {
+  string id = 1;
+  string name = 2; 
+  string image = 3;
+  uint64 cpus = 4;
+  uint64 memory = 5;
+  uint64 disk = 6;
+  repeated string env = 7; 
+  repeated string ssh_keys = 8;
+  Placement placement = 9;
+  string kernel_image = 10;
+  string init_image = 11;
+  repeated string boot_args = 12;
+}
+
+message Placement {
+  string region = 1;
+  string zone = 2;
+}
+
+message Log {
+  enum Type {
+    STDOUT = 0;
+    STDERR = 1;
+  }
+  Type type = 1;
+  string message = 2;
+}
+
+message CreateInstanceStatus {
+  string id = 1;
+  enum State {
+    UNKNOWN = 0;
+    INIT = 1;
+    NETWORK = 2;
+    PULLING = 3;
+    CONFIG = 4;
+    BOOT = 5;
+    COMPLETE = 6;
+  }
+  State state = 2;
+  string message = 3;
+}
+
+message CreateInstanceResponse {
+  oneof Type {
+    CreateInstanceStatus status = 1;
+    Instance instance = 2;
+  }
+}
+
+message ListInstancesRequest {}
+
+message ListInstancesResponse {
+  Instance instance = 1;
+}
+
+message GetInstanceRequest {
+  string id = 1;
+}
+
+message GetInstanceResponse {
+  Instance instance = 1;
+}
+
+message GetInstanceLogsRequest {
+  string id = 1;
+}
+
+message GetInstanceLogsResponse {
+  Log log = 1;
+}
+
+message StartInstanceRequest {
+  string id = 1;
+}
+
+message StartInstanceResponse {}
+
+message StopInstanceRequest {
+  string id = 1;
+}
+
+message StopInstanceResponse {}
+
+message DeleteInstanceRequest {
+  string id = 1;
+  bool force = 2;
+}
+
+message DeleteInstanceResponse {}
+
+message UpdateInstanceRequest {
+  string id = 1;
+  string kernel_image = 2;
+  string init_image = 3;
+}
+
+message UpdateInstanceResponse {}
+
+message Instance {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  VMConfig vm_config = 4;
+  int64 created_at = 5;
+  int64 updated_at = 6;
+  VMState state = 7;
+  string node = 8;
+  Placement placement = 9;
+}
+
+message VMConfig {
+  string id = 1;
+  string name = 2;
+  uint64 cpus = 3;
+  uint64 memory = 4;
+  uint64 disk = 5;
+  string kernel_path = 6;
+  string initramfs_path = 7;
+  string root_disk_path = 8;
+  repeated string args = 9;
+  repeated DirectoryShare shares = 10;
+  NetworkInterface network_interface = 11;
+}
+
+enum VMState {
+  UNKNOWN = 0;
+  CREATED = 1;
+  STARTING = 2;
+  RUNNING = 3;
+  PAUSED = 4;
+  STOPPING = 5;
+  STOPPED = 6;
+  DELETED = 7;
+  UPDATING = 8;
+  ERROR = 9;
+}
+
+message DirectoryShare {
+  string tag = 1;
+  string host_path = 2;
+  bool read_only = 3;
+}
+
+message IPAddress {
+  string ip_v4 = 1;
+  string gateway_v4 = 2;
+}
+
+message NetworkInterface {
+  string name = 1;
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    TYPE_TAP = 1;
+  }
+  Type type = 2;
+  string device_name = 3;
+  string mac_address = 4;
+  IPAddress ip = 5;
+  repeated string nameservers = 6;
+  string ntp_server = 7;
+  string network = 8;
+  string router = 9;
+}
+
+message InstanceFilesystem {
+  string id = 1;
+  string path = 2;
+}
+
+message InstanceFilesystemConfig {
+  string fs_type = 1;
+  uint64 size = 2;
+  string encryption_key = 3;
+}
+
+message InstanceMountConfig {
+  string id = 1;
+  string path = 2;
+}
+
+message Server {
+  string name = 1;
+  string address = 2;
+  int64 updated_at = 3;
+  string runtime_address = 4;
+  string network_manager_address = 5;
+  ServerLocality locality = 6;
+  string version = 7;
+  enum ServerState {
+    UNKNOWN = 0;
+    ERROR = 1;
+    INIT = 2;
+    STARTING = 3;
+    READY = 4;
+    MAINTENANCE = 5;
+    PAUSED = 6;
+    STOPPING = 7;
+    STOPPED = 8;
+  }
+  ServerState state = 8;
+}
+
+message ServerLocality {
+  string region = 1;
+  string zone = 2;
+}
