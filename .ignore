@@ -1,4 +1,5 @@
-static/xterm.js
+execore/static/xterm.js
+execore/static/xterm-addon-web-links.js
 cmd/asciinema-viewer/asciinema-player.min.js
 *.cover
 .gocache
