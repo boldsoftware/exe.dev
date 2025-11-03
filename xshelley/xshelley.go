@@ -85,7 +85,7 @@ func GetShelley(ctx context.Context, goarch string) (string, error) {
 	}
 
 	platformDir := filepath.Join(cacheDirPath, fmt.Sprintf("linux-%s", goarch))
-	if err := os.MkdirAll(platformDir, 0755); err != nil {
+	if err := os.MkdirAll(platformDir, 0o755); err != nil {
 		return "", fmt.Errorf("failed to create platform cache directory: %w", err)
 	}
 
@@ -187,7 +187,7 @@ func updateMetadata(metadataPath, digest, platform string) error {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(metadataPath, data, 0644); err != nil {
+	if err := os.WriteFile(metadataPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 
@@ -216,7 +216,7 @@ func extractShelley(img v1.Image, outputPath string) error {
 
 		// Look for the COPY command that adds shelley to /usr/local/bin
 		if strings.Contains(history.CreatedBy, "shelley") &&
-		   strings.Contains(history.CreatedBy, "/usr/local/bin/shelley") {
+			strings.Contains(history.CreatedBy, "/usr/local/bin/shelley") {
 			targetLayerIdx = i
 			break
 		}
@@ -272,7 +272,7 @@ func extractShelley(img v1.Image, outputPath string) error {
 		// Look for the shelley binary
 		if strings.HasSuffix(header.Name, shelleyPath) || header.Name == shelleyPath {
 			// Extract to output path
-			out, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+			out, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
 			if err != nil {
 				return fmt.Errorf("failed to create output file: %w", err)
 			}

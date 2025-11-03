@@ -208,12 +208,12 @@ func TestInvalidMetadata(t *testing.T) {
 
 	// Create cache dir with invalid metadata
 	platformDir := filepath.Join(cacheDirPath, "linux-amd64")
-	if err := os.MkdirAll(platformDir, 0755); err != nil {
+	if err := os.MkdirAll(platformDir, 0o755); err != nil {
 		t.Fatalf("failed to create platform dir: %v", err)
 	}
 
 	metadataPath := filepath.Join(platformDir, metadataFileName)
-	if err := os.WriteFile(metadataPath, []byte("invalid json"), 0644); err != nil {
+	if err := os.WriteFile(metadataPath, []byte("invalid json"), 0o644); err != nil {
 		t.Fatalf("failed to write invalid metadata: %v", err)
 	}
 
