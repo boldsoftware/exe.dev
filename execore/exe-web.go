@@ -241,29 +241,62 @@ func (s *Server) lookupCNAME(ctx context.Context, host string) (string, error) {
 	return net.DefaultResolver.LookupCNAME(ctx, host)
 }
 
+func (s *Server) lookupA(ctx context.Context, host string) ([]netip.Addr, error) {
+	if s.lookupAFunc != nil {
+		return s.lookupAFunc(ctx, host)
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip4", host)
+}
+
 func (s *Server) hostPolicy(ctx context.Context, host string) error {
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	if host == s.getMainDomain() || host == s.getMainDomain("www") || strings.HasSuffix(host, "."+s.getMainDomain()) {
 		return nil
 	}
 
-	cname, err := s.lookupCNAME(ctx, host)
+	// Here we do a DNS lookup of a user's custom domain that was
+	// pointed at us, to make sure it was. This is either a CNAME
+	// record (for a subdomain) or some sort of ALIAS record that
+	// a DNS provider converts to an A record.
+	if cname, err := s.lookupCNAME(ctx, host); err == nil {
+		// For CNAMEs we make sure the box exists.
+		cname = strings.TrimSuffix(strings.ToLower(cname), ".")
+		if cname != host {
+			name, ok := strings.CutSuffix(cname, "."+s.getMainDomain())
+			if !ok {
+				s.slog().Warn("hostPolicy: CNAME does not point to main domain", "host", host, "cname", cname, "mainDomain", s.getMainDomain())
+				return fmt.Errorf("CNAME does not point to %s: %s -> %s", s.getMainDomain(), host, cname)
+			}
+			if !s.boxByNameExists(ctx, name) {
+				s.slog().Warn("hostPolicy: no box found for subdomain", "subdomain", host)
+				return fmt.Errorf("%w: %s", errBoxNotFound, name)
+			}
+			return nil
+		}
+		// If the canonical name matches the queried host, this may be an apex
+		// domain using an ALIAS/ANAME record. Fall through to check the A record.
+	}
+	ips, err := s.lookupA(ctx, host)
 	if err != nil {
-		s.slog().Warn("hostPolicy: CNAME lookup failed", "host", host, "error", err)
-		return fmt.Errorf("CNAME lookup failed for %s: %w", host, err)
+		s.slog().Warn("hostPolicy: A lookup failed", "host", host, "error", err)
+		return fmt.Errorf("A record lookup failed for %s: %w", host, err)
 	}
 
-	cname = strings.TrimSuffix(strings.ToLower(cname), ".")
-	name, ok := strings.CutSuffix(cname, "."+s.getMainDomain())
-	if !ok {
-		s.slog().Warn("hostPolicy: CNAME does not point to main domain", "host", host, "cname", cname, "mainDomain", s.getMainDomain())
-		return fmt.Errorf("CNAME does not point to %s: %s -> %s", s.getMainDomain(), host, cname)
+	if len(s.PublicIPs) == 0 {
+		s.slog().Warn("hostPolicy: no public IP metadata available", "host", host)
+		return fmt.Errorf("public IP metadata not available for %s", host)
 	}
-	if !s.boxByNameExists(ctx, name) {
-		s.slog().Warn("hostPolicy: no box found for subdomain", "subdomain", host)
-		return fmt.Errorf("%w: %s", errBoxNotFound, name)
+
+	for _, addr := range ips {
+		for _, info := range s.PublicIPs {
+			if addr == info.IP {
+				return nil
+			}
+		}
 	}
-	return nil
+
+	s.slog().Warn("hostPolicy: A record does not point to exe public IP", "host", host, "ips", ips)
+	return fmt.Errorf("A record for %s does not point to exe public IPs: %v", host, ips)
 }
 
 // getCertificate is the single TLS certificate dispatcher for HTTPS.
