@@ -3,7 +3,6 @@ package execore
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/boxname"
@@ -52,11 +53,12 @@ func (ts *TerminalSession) UpdateLastActivity() {
 	ts.LastActivity.Store(&now)
 }
 
-// TerminalMessage represents a message sent from the client for terminal resize events
+// TerminalMessage represents a message sent from the client for terminal operations
 type TerminalMessage struct {
 	Type string `json:"type"`
-	Cols uint16 `json:"cols"`
-	Rows uint16 `json:"rows"`
+	Data string `json:"data,omitempty"` // For input messages
+	Cols uint16 `json:"cols,omitempty"`
+	Rows uint16 `json:"rows,omitempty"`
 }
 
 // Global terminal session storage
@@ -194,8 +196,8 @@ func (s *Server) handleTerminalPage(w http.ResponseWriter, r *http.Request) {
 	s.serveStaticFile(w, r, "terminal.html")
 }
 
-// handleTerminalEvents handles SSE connections for terminal output
-func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
+// handleTerminalWebSocket handles WebSocket connections for terminal sessions
+func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Extract terminal ID from URL path
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
@@ -213,6 +215,16 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 	userID := authInfo.UserID
 	boxName := authInfo.BoxName
 
+	// Upgrade to websocket
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		CompressionMode: websocket.CompressionDisabled,
+	})
+	if err != nil {
+		slog.Error("Failed to upgrade websocket", "error", err)
+		return
+	}
+	defer conn.Close(websocket.StatusInternalError, "internal error")
+
 	// Create session key combining user, box, and terminal ID
 	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
 
@@ -225,7 +237,7 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 		// Create new terminal session without holding the lock
 		newSession, err := s.createTerminalSession(r.Context(), userID, boxName)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to create terminal: %v", err), http.StatusInternalServerError)
+			conn.Close(websocket.StatusInternalError, fmt.Sprintf("Failed to create terminal: %v", err))
 			return
 		}
 
@@ -245,13 +257,11 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 
 	session.UpdateLastActivity()
 
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Create context for this WebSocket connection
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 
-	// Create channel for this client
+	// Create channel for this client's output
 	events := make(chan []byte, 4096)
 
 	// Register client
@@ -269,101 +279,67 @@ func (s *Server) handleTerminalEvents(w http.ResponseWriter, r *http.Request) {
 		session.EventsMutex.Unlock()
 	}()
 
-	// Flush headers immediately
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-
-	// Send events to client
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case data := <-events:
-			// Send as base64 encoded SSE event
-			fmt.Fprintf(w, "data: %s\n\n", base64.StdEncoding.EncodeToString(data))
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
+	// Start goroutine to read output and send to WebSocket
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case data := <-events:
+				msg := map[string]interface{}{
+					"type": "output",
+					"data": base64.StdEncoding.EncodeToString(data),
+				}
+				err := wsjson.Write(ctx, conn, msg)
+				if err != nil {
+					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+						slog.Debug("Websocket write error", "error", err)
+					}
+					cancel()
+					return
+				}
 			}
 		}
-	}
-}
+	}()
 
-// handleTerminalInput processes input to the terminal
-func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+	// Read messages from WebSocket
+	for {
+		select {
+		case <-ctx.Done():
+			conn.Close(websocket.StatusNormalClosure, "")
+			return
+		default:
+		}
 
-	// Extract terminal ID from URL path
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 4 {
-		http.Error(w, "Invalid terminal ID", http.StatusBadRequest)
-		return
-	}
-	terminalID := parts[3]
-
-	// Get auth info from context
-	authInfo := getTerminalAuthInfo(r)
-	if authInfo == nil {
-		http.Error(w, "Authentication required", http.StatusUnauthorized)
-		return
-	}
-	userID := authInfo.UserID
-	boxName := authInfo.BoxName
-
-	// Create session key
-	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
-
-	// Find terminal session
-	terminalSessionsMutex.RLock()
-	session, exists := terminalSessions[sessionKey]
-	terminalSessionsMutex.RUnlock()
-
-	if !exists {
-		http.Error(w, "Terminal session not found", http.StatusNotFound)
-		return
-	}
-
-	session.UpdateLastActivity()
-
-	// Read request body
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
-
-	// Check if it's a resize message
-	if len(body) > 0 && body[0] == '{' {
 		var msg TerminalMessage
-		if err := json.Unmarshal(body, &msg); err == nil && msg.Type == "resize" {
+		err := wsjson.Read(ctx, conn, &msg)
+		if err != nil {
+			if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+				slog.Debug("Websocket read error", "error", err)
+			}
+			return
+		}
+
+		session.UpdateLastActivity()
+
+		switch msg.Type {
+		case "resize":
 			if msg.Cols > 0 && msg.Rows > 0 {
 				// Handle SSH window change
 				if session.sshSession != nil {
 					_ = session.sshSession.WindowChange(int(msg.Rows), int(msg.Cols))
 				}
-				w.WriteHeader(http.StatusOK)
-				return
+			}
+		case "input":
+			// Regular terminal input - send to SSH stdin
+			if session.sshStdin != nil && msg.Data != "" {
+				_, err := session.sshStdin.Write([]byte(msg.Data))
+				if err != nil {
+					slog.Error("Failed to write to terminal", "error", err)
+				}
 			}
 		}
 	}
-
-	// Regular terminal input - send to SSH stdin
-	if session.sshStdin != nil {
-		_, err = session.sshStdin.Write(body)
-	} else {
-		err = fmt.Errorf("no active terminal session")
-	}
-
-	if err != nil {
-		slog.Error("Failed to write to terminal", "error", err)
-		http.Error(w, "Failed to write to terminal", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
 }
 
 // createTerminalSession creates a new terminal session for a user's box
@@ -564,12 +540,9 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	case path == "/":
 		// Serve terminal HTML page - requires auth
 		s.withTerminalAuth(s.handleTerminalPage)(w, r)
-	case strings.HasPrefix(path, "/terminal/events/"):
-		// Handle SSE events - requires auth
-		s.withTerminalAuth(s.handleTerminalEvents)(w, r)
-	case strings.HasPrefix(path, "/terminal/input/"):
-		// Handle terminal input - requires auth
-		s.withTerminalAuth(s.handleTerminalInput)(w, r)
+	case strings.HasPrefix(path, "/terminal/ws/"):
+		// Handle WebSocket connections - requires auth
+		s.withTerminalAuth(s.handleTerminalWebSocket)(w, r)
 	case path == "/favicon.ico":
 		s.serveStaticFile(w, r, "favicon.ico")
 	case strings.HasPrefix(path, "/static/"):

@@ -32,12 +32,11 @@
         class TerminalClient {
             constructor() {
                 this.terminal = null;
-                this.eventSource = null;
+                this.ws = null;
                 this.terminalId = this.getTerminalId();
-                this.inputQueue = [];
-                this.processingInput = false;
                 this.themeManager = new ThemeManager();
                 this.boxName = this.getBoxName();
+                this.connected = false;
                 this.retryCount = 0;
                 this.maxRetries = 5;
             }
@@ -106,7 +105,12 @@
 
             setupEventHandlers() {
                 this.terminal.onData(data => {
-                    this.sendInput(data);
+                    if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({
+                            type: 'input',
+                            data: data
+                        }));
+                    }
                 });
             }
 
@@ -115,42 +119,52 @@
                 this.removeStatusClickListener();
                 
                 // Close existing connection
-                if (this.eventSource) {
-                    this.eventSource.close();
+                if (this.ws) {
+                    this.ws.close();
                 }
 
-                // Connect to SSE endpoint
-                this.eventSource = new EventSource(`/terminal/events/${this.terminalId}`);
+                // Determine websocket URL
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/terminal/ws/${this.terminalId}`;
+                
+                this.ws = new WebSocket(wsUrl);
 
-                this.eventSource.onopen = () => {
+                this.ws.onopen = () => {
+                    this.connected = true;
                     this.retryCount = 0; // Reset retry counter on successful connection
                     this.setStatus('connected', 'Connected');
                     setTimeout(() => this.hideStatus(), 2000);
+                    
+                    // Send initial terminal size
                     this.sendResize();
                 };
 
-                this.eventSource.onmessage = (event) => {
+                this.ws.onmessage = (event) => {
                     try {
-                        const data = this.base64ToUint8Array(event.data);
-                        this.terminal.write(data);
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'output' && msg.data) {
+                            const data = this.base64ToUint8Array(msg.data);
+                            this.terminal.write(data);
+                        }
                     } catch (e) {
-                        console.error('Error decoding terminal data:', e);
+                        console.error('Error processing message:', e);
                     }
                 };
 
-                this.eventSource.onerror = (error) => {
-                    console.error('Terminal SSE error:', error);
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+
+                this.ws.onclose = () => {
+                    this.connected = false;
+                    this.retryCount++;
                     
-                    if (this.eventSource && this.eventSource.readyState === EventSource.CLOSED) {
-                        this.retryCount++;
-                        
-                        if (this.retryCount <= this.maxRetries) {
-                            this.setStatus('error', `Connection lost. Reconnecting... (${this.retryCount}/${this.maxRetries})`);
-                            setTimeout(() => this.connect(), 2000);
-                        } else {
-                            this.setStatus('disconnected', 'Disconnected. Click to reconnect.');
-                            this.makeStatusClickable();
-                        }
+                    if (this.retryCount <= this.maxRetries) {
+                        this.setStatus('error', `Connection lost. Reconnecting... (${this.retryCount}/${this.maxRetries})`);
+                        setTimeout(() => this.connect(), 2000);
+                    } else {
+                        this.setStatus('disconnected', 'Disconnected. Click to reconnect.');
+                        this.makeStatusClickable();
                     }
                 };
             }
@@ -186,68 +200,15 @@
                 }
             }
 
-            async sendInput(data) {
-                this.inputQueue.push(data);
-                if (!this.processingInput) {
-                    await this.processInputQueue();
-                }
-            }
-
-            async processInputQueue() {
-                if (this.inputQueue.length === 0) {
-                    this.processingInput = false;
-                    return;
-                }
-
-                this.processingInput = true;
-                
-                // Combine all available inputs into one request
-                let combinedData = '';
-                while (this.inputQueue.length > 0) {
-                    combinedData += this.inputQueue.shift();
-                }
-
-                try {
-                    const response = await fetch(`/terminal/input/${this.terminalId}`, {
-                        method: 'POST',
-                        body: combinedData,
-                        headers: {
-                            'Content-Type': 'text/plain'
-                        }
-                    });
-
-                    if (!response.ok) {
-                        console.error(`Failed to send terminal input: ${response.status}`);
-                    }
-                } catch (error) {
-                    console.error('Error sending terminal input:', error);
-                }
-
-                // Continue processing queue
-                await this.processInputQueue();
-            }
-
-            async sendResize() {
+            sendResize() {
                 if (!this.terminal) return;
-
-                try {
-                    const response = await fetch(`/terminal/input/${this.terminalId}`, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            type: 'resize',
-                            cols: this.terminal.cols,
-                            rows: this.terminal.rows
-                        }),
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    if (!response.ok) {
-                        console.error(`Failed to send terminal resize: ${response.status}`);
-                    }
-                } catch (error) {
-                    console.error('Error sending terminal resize:', error);
+                
+                if (this.connected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'resize',
+                        cols: this.terminal.cols,
+                        rows: this.terminal.rows
+                    }));
                 }
             }
 
