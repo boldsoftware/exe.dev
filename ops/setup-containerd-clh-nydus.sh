@@ -557,7 +557,6 @@ fi
 add_rule() {
     if ! iptables -C "$@" 2>/dev/null; then
         iptables -A "$@"
-        echo "Added rule: iptables -A $*"
     fi
 }
 
@@ -727,28 +726,7 @@ set -x
 sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 alpine true
 set +x
 
-echo "Kata runtime verified!"
-
 echo ""
 echo "=== Setup complete ==="
+echo "Versions: containerd ${CONTAINERD_VERSION} (root ${CONTAINERD_ROOT}), Kata ${KATA_VERSION}, Nydus ${NYDUS_VERSION}"
 echo ""
-echo "System configured with:"
-echo "  • Containerd ${CONTAINERD_VERSION}"
-echo "  • Kata Containers ${KATA_VERSION} with Cloud Hypervisor"
-echo "  • Nydus snapshotter ${NYDUS_VERSION} with nydusd ${NYDUSD_VERSION}"
-echo "  • CNI networking"
-echo "  • Containerd root at ${CONTAINERD_ROOT}"
-echo "  • Nydus cache at /local"
-echo "  • Namespace 'exe' created"
-echo ""
-echo "Commands available:"
-echo "  sudo ctr -n exe <command>                                  # Use ctr with exe namespace"
-echo "  sudo nerdctl -n exe --snapshotter nydus <command>         # Use nerdctl with nydus"
-echo ""
-echo "Example usage:"
-echo "  sudo nerdctl -n exe --snapshotter nydus run --rm --runtime io.containerd.kata.v2 alpine:latest sh"
-echo "  sudo ctr -n exe run --runtime io.containerd.kata.v2 --snapshotter nydus ghcr.io/linuxcontainers/alpine:latest test-container sh"
-echo ""
-echo "Note: Network isolation is configured with iptables rules"
-echo ""
-echo "Note: You may need to log out and back in for group permissions to take effect."

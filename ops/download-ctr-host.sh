@@ -61,7 +61,6 @@ download_if_needed() {
 
         if [ "$status_code" = "304" ]; then
             rm -f "$header_file"
-            echo "✓ $filename (cached via etag)"
             return 0
         fi
 
@@ -69,7 +68,6 @@ download_if_needed() {
             remote_etag=$(grep -i '^etag:' "$header_file" | tail -n1 | cut -d' ' -f2- | tr -d '\r')
             rm -f "$header_file"
             if [ -n "$remote_etag" ] && [ "$remote_etag" = "$existing_etag" ]; then
-                echo "✓ $filename (cached via etag)"
                 return 0
             fi
         fi
@@ -96,7 +94,6 @@ download_if_needed() {
 
         if [ "$status_code" = "304" ]; then
             rm -f "${filepath}.tmp"
-            echo "✓ $filename (cached via etag)"
             return 0
         fi
 

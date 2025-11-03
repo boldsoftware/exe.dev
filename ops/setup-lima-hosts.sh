@@ -61,7 +61,7 @@ create_fresh_data_disk() {
     disk="$(data_disk_name "$instance")"
     echo "Creating Lima disk ${disk} (${DATA_DISK_SIZE})..."
     delete_data_disk "${instance}"
-    limactl --tty=false disk create "${disk}" --size "${DATA_DISK_SIZE}"
+    limactl --tty=false --log-level=warn disk create "${disk}" --size "${DATA_DISK_SIZE}"
 }
 
 clone_data_disk() {
@@ -79,7 +79,7 @@ clone_data_disk() {
     fi
     echo "Cloning Lima disk ${src_disk} -> ${dst_disk}..."
     delete_data_disk "${dst_instance}"
-    limactl --tty=false disk import "${dst_disk}" "${src_path}"
+    limactl --tty=false --log-level=warn disk import "${dst_disk}" "${src_path}"
 }
 
 # Provision a fresh Lima VM with containerd + Kata + Nydus
@@ -165,10 +165,10 @@ create_fresh_data_disk "${LIMA_BASE}"
 
 echo "Creating base Lima instance: ${LIMA_BASE}"
 base_disk_name="$(data_disk_name "${LIMA_BASE}")"
-limactl create --tty=false --name=${LIMA_BASE} \
+limactl create --tty=false --log-level=warn --name=${LIMA_BASE} \
     --set "$(set_disk_expr "${base_disk_name}")" \
     "${LIMA_CONFIG_PATH}"
-limactl start --tty=false ${LIMA_BASE}
+limactl start --tty=false --log-level=warn ${LIMA_BASE}
 
 echo "Checking for KVM support in VM..."
 if limactl shell ${LIMA_BASE} -- ls /dev/kvm 2>/dev/null; then
@@ -185,22 +185,22 @@ limactl shell ${LIMA_BASE} -- echo "SSH connection successful"
 provision_base_vm
 
 echo "Stopping base instance before cloning..."
-limactl stop ${LIMA_BASE}
+limactl stop --log-level=warn ${LIMA_BASE}
 
 echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_A}..."
-limactl clone --tty=false --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_A}")")" ${LIMA_BASE} ${LIMA_HOST_A}
+limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_A}")")" ${LIMA_BASE} ${LIMA_HOST_A}
 
 echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_B}..."
-limactl clone --tty=false --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_B}")")" ${LIMA_BASE} ${LIMA_HOST_B}
+limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_B}")")" ${LIMA_BASE} ${LIMA_HOST_B}
 
 clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_A}"
 clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_B}"
 
 echo "Starting ${LIMA_HOST_A}..."
-limactl start --tty=false ${LIMA_HOST_A}
+limactl start --log-level=warn --tty=false ${LIMA_HOST_A}
 
 echo "Starting ${LIMA_HOST_B}..."
-limactl start --tty=false ${LIMA_HOST_B}
+limactl start --log-level=warn --tty=false ${LIMA_HOST_B}
 
 echo "Configuring SSH access..."
 echo "Adding Lima SSH config includes..."
