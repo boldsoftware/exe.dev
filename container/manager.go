@@ -13,11 +13,6 @@ type Config struct {
 	// Empty string means local daemon
 	ContainerdAddresses []string `json:"containerd_addresses"`
 
-	// Default resource limits
-	DefaultCPURequest    string `json:"default_cpu_request"`
-	DefaultMemoryRequest string `json:"default_memory_request"`
-	DefaultStorageSize   string `json:"default_storage_size"`
-
 	// DataSubdir is the subdirectory under /data for container isolation
 	// By having a separate subdir, multiple exed instances can co-exist on
 	// the same ctr-host, which is very useful for testing in parallel.

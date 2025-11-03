@@ -2,6 +2,7 @@ package container
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -653,6 +654,10 @@ func (m *NerdctlManager) CreateContainer(ctx context.Context, req *CreateContain
 	if host == "" {
 		return nil, fmt.Errorf("host is required for container creation")
 	}
+
+	req.CPURequest = cmp.Or(req.CPURequest, DefaultCPURequest)
+	req.MemoryRequest = cmp.Or(req.MemoryRequest, DefaultMemoryRequest)
+	req.StorageSize = cmp.Or(req.StorageSize, DefaultStorageSize)
 
 	// Acquire exclusive lock for this host to prevent Kata + CNI netlink races
 	// Only one create/delete operation runs at a time per host

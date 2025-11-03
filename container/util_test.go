@@ -16,10 +16,7 @@ func CreateTestManager(t *testing.T) *NerdctlManager {
 		t.Skip("cannot reach a ctr-host (set CTR_HOST or run ./ops/setup-lima-hosts.sh)")
 	}
 	config := &Config{
-		ContainerdAddresses:  []string{ctrHost},
-		DefaultCPURequest:    "100m",
-		DefaultMemoryRequest: "256Mi",
-		DefaultStorageSize:   "1Gi",
+		ContainerdAddresses: []string{ctrHost},
 	}
 	manager, err := NewNerdctlManager(config)
 	if err != nil {

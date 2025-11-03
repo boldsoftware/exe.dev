@@ -309,7 +309,6 @@ func TestCommandFlagParsing(t *testing.T) {
 				// Check default values
 				name := cc.FlagSet.Lookup("name").Value.String()
 				image := cc.FlagSet.Lookup("image").Value.String()
-				size := cc.FlagSet.Lookup("size").Value.String()
 				command := cc.FlagSet.Lookup("command").Value.String()
 
 				if name != "" {
@@ -317,9 +316,6 @@ func TestCommandFlagParsing(t *testing.T) {
 				}
 				if image != "exeuntu" {
 					t.Errorf("Expected default image to be 'exeuntu', got %q", image)
-				}
-				if size != "medium" {
-					t.Errorf("Expected default size to be 'medium', got %q", size)
 				}
 				if command != "auto" {
 					t.Errorf("Expected default command to be 'auto', got %q", command)
@@ -342,7 +338,7 @@ func TestCommandFlagParsing(t *testing.T) {
 		},
 		{
 			name:         "new command with multiple flags",
-			commandPath:  []string{"new", "--name=my-machine", "--image=ubuntu:22.04", "--size=large"},
+			commandPath:  []string{"new", "--name=my-machine", "--image=ubuntu:22.04"},
 			expectedArgs: []string{},
 			checkFlags: func(t *testing.T, cc *exemenu.CommandContext) {
 				if cc.FlagSet == nil {
@@ -350,16 +346,12 @@ func TestCommandFlagParsing(t *testing.T) {
 				}
 				name := cc.FlagSet.Lookup("name").Value.String()
 				image := cc.FlagSet.Lookup("image").Value.String()
-				size := cc.FlagSet.Lookup("size").Value.String()
 
 				if name != "my-machine" {
 					t.Errorf("Expected name to be 'my-machine', got %q", name)
 				}
 				if image != "ubuntu:22.04" {
 					t.Errorf("Expected image to be 'ubuntu:22.04', got %q", image)
-				}
-				if size != "large" {
-					t.Errorf("Expected size to be 'large', got %q", size)
 				}
 			},
 		},

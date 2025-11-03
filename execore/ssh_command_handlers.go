@@ -42,7 +42,6 @@ func newCommandFlags() *flag.FlagSet {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.String("name", "", "box name (auto-generated if not specified)")
 	fs.String("image", "exeuntu", "container image")
-	fs.String("size", "medium", "box size (small, medium, or large)")
 	fs.String("command", "auto", "container command: auto, none, or a custom command")
 	fs.String("prompt", "", "initial prompt to send to Shelley after box creation (requires exeuntu image)")
 	fs.Bool("json", false, "output in JSON format")
@@ -258,7 +257,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	user := cc.User
 	boxName := cc.FlagSet.Lookup("name").Value.String()
 	image := cc.FlagSet.Lookup("image").Value.String()
-	size := cc.FlagSet.Lookup("size").Value.String()
 	command := cc.FlagSet.Lookup("command").Value.String()
 	prompt := cc.FlagSet.Lookup("prompt").Value.String()
 	model := cc.FlagSet.Lookup("prompt-model").Value.String()
@@ -304,14 +302,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	// Show creation message with proper formatting
-	cc.Write("Creating \033[1m%s\033[0m (%s) using image \033[1m%s\033[0m...\r\n",
-		boxName, size, displayImage)
-
-	// Get size preset
-	sizePreset, exists := container.ContainerSizes[size]
-	if !exists {
-		return cc.Errorf("Invalid container size %q. Valid sizes: micro, small, medium, large, xlarge", size)
-	}
+	cc.Write("Creating \033[1m%s\033[0m using image \033[1m%s\033[0m...\r\n",
+		boxName, displayImage)
 
 	// Create channels for progress updates and completion
 	type progressUpdate struct {
@@ -348,10 +340,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		BoxID:           boxID,
 		Image:           image,
 		Host:            runtimeHost,
-		Size:            size,
-		CPURequest:      sizePreset.CPURequest,
-		MemoryRequest:   sizePreset.MemoryRequest,
-		StorageSize:     sizePreset.StorageSize,
 		CommandOverride: command,
 	}
 

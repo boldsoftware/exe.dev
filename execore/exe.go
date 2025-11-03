@@ -53,13 +53,6 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-// AllocType defines the resource allocation tier
-type AllocType string
-
-const (
-	AllocTypeMedium AllocType = "medium" // Default allocation type
-)
-
 // Region represents a geographical region where resources are allocated
 type Region string
 
@@ -372,12 +365,9 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 
 	if hasValidAddresses {
 		config := &container.Config{
-			ContainerdAddresses:  containerdAddresses,
-			DefaultCPURequest:    "500m",
-			DefaultMemoryRequest: "1Gi",
-			DefaultStorageSize:   "10Gi",
-			DataSubdir:           dataSubdir,
-			IsProduction:         devMode == "", // Production when devMode is empty
+			ContainerdAddresses: containerdAddresses,
+			DataSubdir:          dataSubdir,
+			IsProduction:        devMode == "", // Production when devMode is empty
 		}
 		if httpLn != nil && httpLn.tcp != nil {
 			config.ExedListeningPort = httpLn.tcp.Port
@@ -1500,13 +1490,11 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 
 					// Create a new container using the existing disk
 					req := &container.CreateContainerRequest{
-						AllocID: box.CreatedByUserID,
-						Name:    box.Name,
-						BoxID:   box.ID,
-						Image:   box.Image,
-						Host:    host,
-						// We don't have size info stored, use default
-						Size:            "small",
+						AllocID:         box.CreatedByUserID,
+						Name:            box.Name,
+						BoxID:           box.ID,
+						Image:           box.Image,
+						Host:            host,
 						ExistingSSHKeys: existingSSHKeys,
 					}
 

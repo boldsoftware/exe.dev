@@ -783,7 +783,7 @@ func TestRejectStringUsagePattern(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		c.Send("Creating e1e-1756860627-testboxcreation (medium) using image boldsoftware/exeuntu...")
+		c.Send("Creating e1e-1756860627-testboxcreation using image boldsoftware/exeuntu...")
 		time.Sleep(10 * time.Millisecond)
 		c.Send("Ready in 2.8s!")
 		time.Sleep(10 * time.Millisecond)

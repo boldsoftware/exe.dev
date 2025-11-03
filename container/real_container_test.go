@@ -42,7 +42,6 @@ func TestRealContainerSSHSetup(t *testing.T) {
 		AllocID:       allocID,
 		Name:          "ssh-test-container",
 		Image:         "ubuntu:22.04",
-		Size:          "small",
 		CPURequest:    "100m",
 		MemoryRequest: "512Mi",
 		StorageSize:   "1Gi",

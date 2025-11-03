@@ -34,7 +34,6 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 		AllocID: allocID,
 		Name:    "first-container",
 		Image:   "alpine:latest",
-		Size:    "small",
 		BoxID:   boxID,
 		Host:    host,
 	}
@@ -66,7 +65,6 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 		AllocID: allocID,
 		Name:    "second-container",
 		Image:   "alpine:latest",
-		Size:    "small",
 		BoxID:   boxID,
 		Host:    host,
 	}
@@ -142,7 +140,6 @@ func TestMultipleDeletionsWithSameBoxID(t *testing.T) {
 		AllocID: allocID,
 		Name:    "third-container",
 		Image:   "alpine:latest",
-		Size:    "small",
 		BoxID:   boxID,
 		Host:    host,
 	}

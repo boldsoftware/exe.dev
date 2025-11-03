@@ -77,59 +77,12 @@ type Container struct {
 	ExposedPorts map[string]struct{} `json:"exposed_ports,omitempty"`
 }
 
-// ContainerSize represents a t-shirt size preset for containers
-type ContainerSize struct {
-	Name          string
-	DisplayName   string
-	CPURequest    string
-	MemoryRequest string
-	StorageSize   string
-	Description   string
-}
-
-// Available container sizes
-var ContainerSizes = map[string]ContainerSize{
-	"micro": {
-		Name:          "micro",
-		DisplayName:   "Micro",
-		CPURequest:    "250m",
-		MemoryRequest: "512Mi",
-		StorageSize:   "5Gi",
-		Description:   "0.25 CPU, 512MB RAM, 5GB disk",
-	},
-	"small": {
-		Name:          "small",
-		DisplayName:   "Small",
-		CPURequest:    "500m",
-		MemoryRequest: "2Gi",
-		StorageSize:   "10Gi",
-		Description:   "0.5 CPU, 2GB RAM, 10GB disk",
-	},
-	"medium": {
-		Name:          "medium",
-		DisplayName:   "Medium",
-		CPURequest:    "1000m",
-		MemoryRequest: "4Gi",
-		StorageSize:   "20Gi",
-		Description:   "1 CPU, 4GB RAM, 20GB disk",
-	},
-	"large": {
-		Name:          "large",
-		DisplayName:   "Large",
-		CPURequest:    "2000m",
-		MemoryRequest: "8Gi",
-		StorageSize:   "50Gi",
-		Description:   "2 CPU, 8GB RAM, 50GB disk",
-	},
-	"xlarge": {
-		Name:          "xlarge",
-		DisplayName:   "XLarge",
-		CPURequest:    "4000m",
-		MemoryRequest: "16Gi",
-		StorageSize:   "100Gi",
-		Description:   "4 CPU, 16GB RAM, 100GB disk",
-	},
-}
+// Default resource requests for new containers. Equivalent to the old "medium" size.
+const (
+	DefaultCPURequest    = "1000m"
+	DefaultMemoryRequest = "4Gi"
+	DefaultStorageSize   = "20Gi"
+)
 
 // CreateContainerRequest represents the parameters for creating a new container
 type CreateContainerRequest struct {
@@ -140,9 +93,8 @@ type CreateContainerRequest struct {
 	Host    string `json:"host,omitempty"`  // Target container host (required)
 
 	// Resource configuration
-	Size          string `json:"size,omitempty"`           // T-shirt size: micro, small, medium, large, xlarge
-	CPURequest    string `json:"cpu_request,omitempty"`    // Set by size
-	MemoryRequest string `json:"memory_request,omitempty"` // Set by size
+	CPURequest    string `json:"cpu_request,omitempty"`    // Defaulted to medium profile if empty
+	MemoryRequest string `json:"memory_request,omitempty"` // Defaulted to medium profile if empty
 	StorageSize   string `json:"storage_size,omitempty"`   // Can be overridden with --disk
 
 	// Command override: "auto" (default), "none", or custom command string

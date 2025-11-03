@@ -16,7 +16,7 @@ It'll look like so:
 
 ```
 $ ssh exe.dev new --image=ghcr.io/marimo-team/marimo:latest-sql
-Creating nan-tango (medium) using image marimo-team/marimo:latest-sql...
+Creating nan-tango using image marimo-team/marimo:latest-sql...
 
 App (HTTPS proxy → :8080)
 https://nan-tango.exe.dev
