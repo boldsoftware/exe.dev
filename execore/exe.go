@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -37,6 +38,7 @@ import (
 	docspkg "exe.dev/docs"
 	"exe.dev/exedb"
 	"exe.dev/ghuser"
+	"exe.dev/publicips"
 	"exe.dev/route53"
 	"exe.dev/sqlite"
 	"exe.dev/sshpool2"
@@ -137,6 +139,7 @@ type Server struct {
 	pluginLn   *listener
 	piperdPort int // what port sshpiperd is listening on, typically 2222
 	BaseURL    string
+	PublicIPs  map[netip.Addr]publicips.PublicIP
 
 	// ready indicates that the server is fully ready and serving.
 	// ready must not be waited on prior to calling Start.
@@ -153,7 +156,8 @@ type Server struct {
 	certManager         *autocert.Manager
 	wildcardCertManager *route53.WildcardCertManager
 	dnsProvider         *route53.DNSProvider
-	lookupCNAMEFunc     func(context.Context, string) (string, error) // for tests
+	lookupCNAMEFunc     func(context.Context, string) (string, error)       // for tests
+	lookupAFunc         func(context.Context, string) ([]netip.Addr, error) // for tests
 	stopCobble          func()
 
 	// Tailscale HTTPS (preloaded at startup)
@@ -443,6 +447,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,
 		devMode:            devMode,
+		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry: metricsRegistry,
 		sshMetrics:      sshMetrics,
@@ -484,6 +489,49 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}()
 
 	return s, nil
+}
+
+func (s *Server) initializePublicIPs() {
+	if len(s.PublicIPs) != 0 {
+		s.logPublicIPs()
+		return
+	}
+
+	if s.devMode != "" {
+		s.logPublicIPs()
+		return
+	}
+
+	ips, err := publicips.IPs(context.Background())
+	if err != nil {
+		s.slog().Warn("public IP discovery failed", "error", err)
+		return
+	}
+
+	if ips == nil {
+		ips = map[netip.Addr]publicips.PublicIP{}
+	}
+
+	s.PublicIPs = ips
+	s.logPublicIPs()
+}
+
+func (s *Server) logPublicIPs() {
+	if len(s.PublicIPs) == 0 {
+		if s.devMode != "" {
+			s.slog().Info("dev mode: skipping public IP metadata lookup")
+			return
+		}
+		s.slog().Warn("no public IP assignments discovered via metadata")
+		return
+	}
+
+	assignments := make([]string, 0, len(s.PublicIPs))
+	for privateAddr, info := range s.PublicIPs {
+		assignments = append(assignments, fmt.Sprintf("%s->%s (%s)", privateAddr, info.IP, info.Domain))
+	}
+	slices.Sort(assignments)
+	s.slog().Info("public IP assignments loaded", "assignments", assignments)
 }
 
 // withRx executes a function with a read-only database transaction and exedb queries
@@ -1588,6 +1636,8 @@ func (s *Server) Start() error {
 	if s.stopping.Load() {
 		return fmt.Errorf("illegal start after stop")
 	}
+
+	s.initializePublicIPs()
 
 	// Create a cancellable context for startup
 	ctx, cancel := context.WithCancel(context.Background())
