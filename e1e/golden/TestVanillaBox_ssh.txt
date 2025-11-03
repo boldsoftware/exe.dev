@@ -4,9 +4,6 @@
 ● ssh BOX_NAME@localhost
 ●
 
-To run a command as administrator (user "root"), use "sudo <command>".
-See "man sudo_root" for details.
-
 
 You are on BOX_NAME.exe.dev. The disk is persistent. You have 'sudo'.
 

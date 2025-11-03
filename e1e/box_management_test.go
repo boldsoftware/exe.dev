@@ -46,6 +46,13 @@ func TestVanillaBox(t *testing.T) {
 		t.Fatalf("box ssh did not come up, last error: %v", err)
 	}
 
+	// Ensure sudo hints are suppressed so golden output stays consistent
+	// regardless of whether previous sudo commands were run on this box during image creation.
+	// TODO: remove this when box creation is more hermetic and consistent between lima and CI.
+	if err := boxSSHCommand(t, boxName, keyFile, "sudo", "true").Run(); err != nil {
+		t.Fatalf("failed to run sudo true: %v", err)
+	}
+
 	t.Run("ssh", func(t *testing.T) {
 		pty := sshToBox(t, boxName, keyFile)
 		pty.reject("Permission denied") // fail fast on common known failure mode
