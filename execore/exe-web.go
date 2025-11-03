@@ -475,6 +475,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/create-vm":
 		s.handleMobileCreateVM(w, r)
 		return
+	case "/shelley/download":
+		s.handleShelleyDownload(w, r)
+		return
 	default:
 		// Handle mobile UI routes
 		if strings.HasPrefix(path, "/m") {
