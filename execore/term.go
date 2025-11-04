@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -198,13 +199,25 @@ func (s *Server) handleTerminalPage(w http.ResponseWriter, r *http.Request) {
 
 // handleTerminalWebSocket handles WebSocket connections for terminal sessions
 func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request) {
-	// Extract terminal ID from URL path
+	// URL path validation (ensure we have /terminal/ws/<anything>)
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
-		http.Error(w, "Invalid terminal ID", http.StatusBadRequest)
+		http.Error(w, "Invalid terminal path", http.StatusBadRequest)
 		return
 	}
-	terminalID := parts[3]
+
+	// Get session name from query parameter
+	sessionName := r.URL.Query().Get("name")
+	if sessionName == "" {
+		http.Error(w, "Missing session name", http.StatusBadRequest)
+		return
+	}
+
+	// Validate session name (only alphanumeric and dashes)
+	if !regexp.MustCompile(`^[a-zA-Z0-9-]+$`).MatchString(sessionName) {
+		http.Error(w, "Invalid session name", http.StatusBadRequest)
+		return
+	}
 
 	// Get auth info from context
 	authInfo := getTerminalAuthInfo(r)
@@ -225,17 +238,18 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 	}
 	defer conn.Close(websocket.StatusInternalError, "internal error")
 
-	// Create session key combining user, box, and terminal ID
-	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, terminalID)
+	// Create session key combining user, box, and session name
+	sessionKey := fmt.Sprintf("%s:%s:%s", userID, boxName, sessionName)
 
 	// Get or create terminal session
 	terminalSessionsMutex.RLock()
 	session, exists := terminalSessions[sessionKey]
 	terminalSessionsMutex.RUnlock()
 
+	needsExtraResize := false
 	if !exists {
 		// Create new terminal session without holding the lock
-		newSession, err := s.createTerminalSession(r.Context(), userID, boxName)
+		newSession, err := s.createTerminalSession(r.Context(), userID, boxName, sessionName)
 		if err != nil {
 			conn.Close(websocket.StatusInternalError, fmt.Sprintf("Failed to create terminal: %v", err))
 			return
@@ -253,6 +267,8 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 			session = newSession
 		}
 		terminalSessionsMutex.Unlock()
+	} else {
+		needsExtraResize = true
 	}
 
 	session.UpdateLastActivity()
@@ -263,6 +279,9 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 
 	// Create channel for this client's output
 	events := make(chan []byte, 4096)
+	// These are related to "needsExtraResize"; it's hacky.
+	seenFirstEvent := make(chan struct{})
+	seenFirstEventClosed := false
 
 	// Register client
 	session.EventsMutex.Lock()
@@ -286,6 +305,10 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 			case <-ctx.Done():
 				return
 			case data := <-events:
+				if !seenFirstEventClosed {
+					seenFirstEventClosed = true
+					close(seenFirstEvent)
+				}
 				msg := map[string]interface{}{
 					"type": "output",
 					"data": base64.StdEncoding.EncodeToString(data),
@@ -324,10 +347,36 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 
 		switch msg.Type {
 		case "resize":
+			s.slog().Info("Terminal resize", "cols", msg.Cols, "rows", msg.Rows)
+			if needsExtraResize {
+				// This is subtle AND hacky. Empirically, if we're re-connecting
+				// (like, the user did a reload), the resize that the UI sends
+				// doesn't work, because I think it's the same size as the
+				// original.  So let's send an extra resize, with a different size,
+				// and that should tickle the underlying thing. Unfortunately, if we don't
+				// wait around to see this take effect, something combines the resizes and
+				// it doesn't work. So we wait, either for 100ms, or until the first traffic
+				// comes over the network.
+				err = session.sshSession.WindowChange(int(msg.Rows)+1, int(msg.Cols)+1)
+				if err != nil {
+					s.slog().WarnContext(ctx, "Failed extra resize", "error", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(100 * time.Millisecond):
+				case <-seenFirstEvent:
+				}
+				needsExtraResize = false
+			}
+
 			if msg.Cols > 0 && msg.Rows > 0 {
 				// Handle SSH window change
 				if session.sshSession != nil {
-					_ = session.sshSession.WindowChange(int(msg.Rows), int(msg.Cols))
+					err = session.sshSession.WindowChange(int(msg.Rows), int(msg.Cols))
+					if err != nil {
+						s.slog().WarnContext(ctx, "Failed resize", "error", err)
+					}
 				}
 			}
 		case "input":
@@ -340,10 +389,11 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
+
 }
 
 // createTerminalSession creates a new terminal session for a user's box
-func (s *Server) createTerminalSession(ctx context.Context, userID, boxName string) (*TerminalSession, error) {
+func (s *Server) createTerminalSession(ctx context.Context, userID, boxName, sessionName string) (*TerminalSession, error) {
 	session := &TerminalSession{
 		EventsClients: make(map[chan []byte]bool),
 		BoxName:       boxName,
@@ -362,8 +412,8 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName stri
 		return nil, fmt.Errorf("box is not running (status: %s)", box.Status)
 	}
 
-	// Establish SSH shell session
-	err = s.createContainerExecSession(session, box)
+	// Establish SSH shell session with dtach
+	err = s.createContainerExecSession(session, box, sessionName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container session: %w", err)
 	}
@@ -371,8 +421,7 @@ func (s *Server) createTerminalSession(ctx context.Context, userID, boxName stri
 	return session, nil
 }
 
-func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box) error {
-	// Replaced nerdctl exec with SSH session creation
+func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb.Box, sessionName string) error {
 	if len(box.SSHClientPrivateKey) == 0 || box.SSHPort == nil || box.SSHUser == nil {
 		return fmt.Errorf("box missing SSH credentials")
 	}
@@ -444,10 +493,15 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 		client.Close()
 		return fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
-	if err := sess.Shell(); err != nil {
+	// Run dtach for persistent session
+	dtachPath := "/exe.dev/bin/dtach"
+	socketPath := fmt.Sprintf("/tmp/xterm-exe.dev-%s.sock", sessionName)
+	dtachCmd := fmt.Sprintf("%s -A %s -z -E /bin/bash -i", dtachPath, socketPath)
+
+	if err := sess.Start(dtachCmd); err != nil {
 		sess.Close()
 		client.Close()
-		return fmt.Errorf("failed to start remote shell: %w", err)
+		return fmt.Errorf("failed to start dtach session: %w", err)
 	}
 	session.sshClient = client
 	session.sshSession = sess
