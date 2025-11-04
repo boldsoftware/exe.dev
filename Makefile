@@ -43,6 +43,7 @@ deploy-exed: ## Deploy exed to production
 	@echo "${YELLOW}Deploying exed to production...${NC}"
 	@chmod +x ops/deploy-exed.sh
 	@./ops/deploy-exed.sh
+	@./scripts/discord-notify.sh "deployed $(shell git rev-parse --short HEAD)"
 
 deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
