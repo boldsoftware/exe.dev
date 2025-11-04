@@ -1,13 +1,18 @@
 package execore
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"html"
 	"net/http"
 	"net/http/pprof"
 	"runtime/debug"
+
+	"exe.dev/exedb"
 )
 
 // debugHandler constructs and returns a handler with Go-standard debug endpoints
@@ -78,10 +83,11 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	type containerInfo struct {
-		Host   string `json:"host"`
-		ID     string `json:"id"`
-		Name   string `json:"name"`
-		Status string `json:"status"`
+		Host       string `json:"host"`
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		Status     string `json:"status"`
+		OwnerEmail string `json:"owner_email,omitempty"`
 	}
 
 	type hostInfo struct {
@@ -92,6 +98,30 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 
 	var hosts []hostInfo
 	var flatContainers []containerInfo
+
+	emailCache := make(map[string]string)
+	getOwnerEmail := func(ctx context.Context, userID string) (string, error) {
+		if userID == "" {
+			return "", fmt.Errorf("empty userID")
+		}
+		if email, ok := emailCache[userID]; ok {
+			return email, nil
+		}
+		email, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
+			return queries.GetEmailByUserID(ctx, userID)
+		})
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				err = fmt.Errorf("user %q not found in database", userID)
+			} else {
+				err = fmt.Errorf("failed to look up user %q: %w", userID, err)
+			}
+			emailCache[userID] = "" // cache negative result
+			return "", err
+		}
+		emailCache[userID] = email
+		return email, nil
+	}
 
 	if s.containerManager != nil {
 		for _, host := range s.containerManager.GetHosts() {
@@ -106,6 +136,11 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 						ID:     c.ID,
 						Name:   c.Name,
 						Status: string(c.Status),
+					}
+					if ownerEmail, err := getOwnerEmail(ctx, c.AllocID); err == nil {
+						cInfo.OwnerEmail = ownerEmail
+					} else {
+						s.slog().Warn("failed to resolve box owner email", "allocID", c.AllocID, "containerID", c.ID, "error", err)
 					}
 					info.Containers = append(info.Containers, cInfo)
 					flatContainers = append(flatContainers, cInfo)
@@ -145,12 +180,14 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 				fmt.Fprintf(w, "<p>No containers running.</p>\n")
 			} else {
 				fmt.Fprintf(w, "<table border='1' cellpadding='5' cellspacing='0'>\n")
-				fmt.Fprintf(w, "<tr><th>Name</th><th>ID</th><th>Status</th></tr>\n")
+				fmt.Fprintf(w, "<tr><th>Name</th><th>ID</th><th>Status</th><th>Owner</th></tr>\n")
 				for _, c := range host.Containers {
-					fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n",
+					fmt.Fprintf(w, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",
 						html.EscapeString(c.Name),
 						html.EscapeString(c.ID),
-						html.EscapeString(c.Status))
+						html.EscapeString(c.Status),
+						html.EscapeString(c.OwnerEmail),
+					)
 				}
 				fmt.Fprintf(w, "</table>\n")
 			}
