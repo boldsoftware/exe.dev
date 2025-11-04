@@ -1368,6 +1368,12 @@ func (m *NerdctlManager) DeleteContainer(ctx context.Context, allocID, container
 
 // ListContainers lists all containers for an allocation
 func (m *NerdctlManager) ListContainers(ctx context.Context, allocID string) ([]*Container, error) {
+	// When we eliminated alloc_id (11/3/2025), we didn't update the labels of all existing containers.
+	// As a result, this code is correct for all container created after 11/3/2025,
+	// but doesn't find containers created before that date.
+	// To work around this, we've adjusted the front end to be driven off the DB.
+	// Once we delete all this code (to be replaced by exelet),
+	// we'll have to figure out what to do about all the containers at that point anyway.
 	return m.listContainersWithFilter(ctx, fmt.Sprintf("label=alloc_id=%s", allocID), allocID)
 }
 
