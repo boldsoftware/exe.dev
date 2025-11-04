@@ -17,6 +17,12 @@ INSERT INTO boxes (
     ctrhost, name, status, image, container_id, created_by_user_id, routes
 ) VALUES (?, ?, ?, ?, NULL, ?, ?);
 
+-- name: BoxesForUser :many
+SELECT *
+FROM boxes
+WHERE created_by_user_id = ?
+ORDER BY updated_at DESC, id DESC;
+
 -- name: UpdateBoxContainerAndStatus :exec
 UPDATE boxes SET 
     container_id = ?,

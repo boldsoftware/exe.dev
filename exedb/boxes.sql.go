@@ -86,6 +86,54 @@ func (q *Queries) BoxWithOwnerNamed(ctx context.Context, arg BoxWithOwnerNamedPa
 	return i, err
 }
 
+const boxesForUser = `-- name: BoxesForUser :many
+SELECT id, name, status, image, ctrhost, container_id, created_by_user_id, created_at, updated_at, last_started_at, routes, ssh_server_identity_key, ssh_authorized_keys, ssh_client_private_key, ssh_port, ssh_user, creation_log
+FROM boxes
+WHERE created_by_user_id = ?
+ORDER BY updated_at DESC, id DESC
+`
+
+func (q *Queries) BoxesForUser(ctx context.Context, createdByUserID string) ([]Box, error) {
+	rows, err := q.query(ctx, q.boxesForUserStmt, boxesForUser, createdByUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Box{}
+	for rows.Next() {
+		var i Box
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Status,
+			&i.Image,
+			&i.Ctrhost,
+			&i.ContainerID,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastStartedAt,
+			&i.Routes,
+			&i.SSHServerIdentityKey,
+			&i.SSHAuthorizedKeys,
+			&i.SSHClientPrivateKey,
+			&i.SSHPort,
+			&i.SSHUser,
+			&i.CreationLog,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteBox = `-- name: DeleteBox :exec
 DELETE FROM boxes WHERE id = ?
 `

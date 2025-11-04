@@ -33,6 +33,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.boxWithOwnerNamedStmt, err = db.PrepareContext(ctx, boxWithOwnerNamed); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxWithOwnerNamed: %w", err)
 	}
+	if q.boxesForUserStmt, err = db.PrepareContext(ctx, boxesForUser); err != nil {
+		return nil, fmt.Errorf("error preparing query BoxesForUser: %w", err)
+	}
 	if q.checkTagResolutionExistsStmt, err = db.PrepareContext(ctx, checkTagResolutionExists); err != nil {
 		return nil, fmt.Errorf("error preparing query CheckTagResolutionExists: %w", err)
 	}
@@ -297,6 +300,11 @@ func (q *Queries) Close() error {
 	if q.boxWithOwnerNamedStmt != nil {
 		if cerr := q.boxWithOwnerNamedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing boxWithOwnerNamedStmt: %w", cerr)
+		}
+	}
+	if q.boxesForUserStmt != nil {
+		if cerr := q.boxesForUserStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing boxesForUserStmt: %w", cerr)
 		}
 	}
 	if q.checkTagResolutionExistsStmt != nil {
@@ -751,6 +759,7 @@ type Queries struct {
 	boxNamedStmt                           *sql.Stmt
 	boxWithNameExistsStmt                  *sql.Stmt
 	boxWithOwnerNamedStmt                  *sql.Stmt
+	boxesForUserStmt                       *sql.Stmt
 	checkTagResolutionExistsStmt           *sql.Stmt
 	countBoxShareLinksStmt                 *sql.Stmt
 	countBoxSharesStmt                     *sql.Stmt
@@ -842,6 +851,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxNamedStmt:                           q.boxNamedStmt,
 		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
+		boxesForUserStmt:                       q.boxesForUserStmt,
 		checkTagResolutionExistsStmt:           q.checkTagResolutionExistsStmt,
 		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                     q.countBoxSharesStmt,

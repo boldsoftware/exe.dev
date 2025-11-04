@@ -199,19 +199,25 @@ func (ss *SSHServer) handleHelpCommand(ctx context.Context, cc *exemenu.CommandC
 }
 
 func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	containers, err := ss.server.containerManager.ListContainers(ctx, cc.User.ID)
+	var boxes []exedb.Box
+	err := ss.server.withRx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		boxes, err = queries.BoxesForUser(ctx, cc.User.ID)
+		return err
+	})
 	if err != nil {
 		return err
 	}
 
 	if cc.WantJSON() {
 		var boxList []map[string]any
-		for _, c := range containers {
+		for _, b := range boxes {
+			status := container.ContainerStatus(b.Status).String()
 			box := map[string]any{
-				"box_name": c.Name,
-				"status":   c.Status.String(),
+				"box_name": b.Name,
+				"status":   status,
 			}
-			imageName := container.GetDisplayImageName(c.Image)
+			imageName := container.GetDisplayImageName(b.Image)
 			switch imageName {
 			case "exeuntu", "":
 			default:
@@ -225,15 +231,16 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		return nil
 	}
 
-	if len(containers) == 0 {
+	if len(boxes) == 0 {
 		cc.Write("No boxes found. Create one with 'new'.\r\n")
 		return nil
 	}
 
 	cc.Write("\033[1;36mYour boxes:\033[0m\r\n")
-	for _, c := range containers {
+	for _, b := range boxes {
 		var statusColor string
-		switch c.Status {
+		status := container.ContainerStatus(b.Status)
+		switch status {
 		case container.StatusRunning:
 			statusColor = "\033[1;32m" // green
 		case container.StatusStopped:
@@ -241,8 +248,8 @@ func (ss *SSHServer) handleListCommand(ctx context.Context, cc *exemenu.CommandC
 		case container.StatusPending:
 			statusColor = "\033[1;33m" // yellow
 		}
-		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", c.Name, statusColor, c.Status.String())
-		imageName := container.GetDisplayImageName(c.Image)
+		cc.Write("  • \033[1m%s\033[0m - %s%s\033[0m", b.Name, statusColor, status.String())
+		imageName := container.GetDisplayImageName(b.Image)
 		switch imageName {
 		case "exeuntu", "":
 		default:

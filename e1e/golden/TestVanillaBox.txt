@@ -51,7 +51,7 @@ ssh -p SSH_PORT BOX_NAME@localhost
 
 exe.dev ▶ ls
 Your boxes:
-  • BOX_NAME - running (boldsoftware/exeuntu@sha256:IMAGE_HASH)
+  • BOX_NAME - running (boldsoftware/exeuntu)
 exe.dev ▶ exit
 Goodbye!
 
