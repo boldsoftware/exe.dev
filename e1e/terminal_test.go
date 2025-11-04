@@ -1,16 +1,19 @@
 package e1e
 
 import (
-	"bufio"
-	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 
 	"exe.dev/vouch"
 )
@@ -103,12 +106,12 @@ func TestTerminalPermissions(t *testing.T) {
 	// Test 4: Terminal functionality - send command and receive output
 	t.Run("terminal_send_and_receive", func(t *testing.T) {
 		// Retry connecting to the terminal until successful or timeout
-		var outputChan chan string
-		var errChan chan error
-		var readyChan chan bool
+		var conn *websocket.Conn
+		var ctx context.Context
+		var cancel context.CancelFunc
 
 		retryTimeout := time.After(time.Minute)
-		retryTicker := time.NewTicker(100 * time.Millisecond)
+		retryTicker := time.NewTicker(500 * time.Millisecond)
 		defer retryTicker.Stop()
 
 		connected := false
@@ -118,33 +121,116 @@ func TestTerminalPermissions(t *testing.T) {
 			case <-retryTimeout:
 				t.Fatalf("timeout waiting for box SSH to be ready, last error: %v", lastErr)
 			case <-retryTicker.C:
-				// Start listening to terminal events in a goroutine
-				outputChan = make(chan string, 100)
-				errChan = make(chan error, 1)
-				readyChan = make(chan bool, 1)
-				go streamTerminalEventsWithClient(t, box, client, outputChan, errChan, readyChan)
-
-				// Wait for the terminal connection to be established
-				select {
-				case <-readyChan:
-					// Terminal is ready
-					connected = true
-				case err := <-errChan:
+				// Try to connect and test if it works by sending a command
+				testCtx, testCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				testConn, err := connectTerminalWebSocket(t, box, client)
+				if err != nil {
 					lastErr = err
-					// t.Logf("failed to connect to terminal, retrying: %v", err)
-					time.Sleep(100 * time.Millisecond)
-				case <-time.After(100 * time.Millisecond):
-					lastErr = fmt.Errorf("terminal connection attempt timed out")
-					// t.Logf("terminal connection attempt timed out, retrying")
+					testCancel()
+					continue
+				}
+
+				// Try to actually use the connection
+				testOutputChan := make(chan string, 10)
+				testErrChan := make(chan error, 1)
+				go func() {
+					for {
+						var msg map[string]interface{}
+						err := wsjson.Read(testCtx, testConn, &msg)
+						if err != nil {
+							if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+								testErrChan <- err
+							}
+							return
+						}
+						if msgType, ok := msg["type"].(string); ok && msgType == "output" {
+							if dataStr, ok := msg["data"].(string); ok {
+								decoded, _ := base64.StdEncoding.DecodeString(dataStr)
+								testOutputChan <- string(decoded)
+							}
+						}
+					}
+				}()
+
+				// Send a test command
+				wsjson.Write(testCtx, testConn, map[string]interface{}{"type": "resize", "cols": 80, "rows": 24})
+				wsjson.Write(testCtx, testConn, map[string]interface{}{"type": "input", "data": "echo test\n"})
+
+				// Wait for output or error
+				select {
+				case <-testOutputChan:
+					// Success! We got output
+					testConn.Close(websocket.StatusNormalClosure, "")
+					testCancel()
+					connected = true
+				case err := <-testErrChan:
+					// Connection failed
+					lastErr = fmt.Errorf("terminal connection test failed: %w", err)
+					testConn.Close(websocket.StatusNormalClosure, "")
+					testCancel()
+				case <-testCtx.Done():
+					// Timeout
+					lastErr = fmt.Errorf("terminal connection test timed out")
+					testConn.Close(websocket.StatusNormalClosure, "")
+					testCancel()
 				}
 			}
 		}
 
-		// Send a command
-		sendTerminalInputWithClient(t, box, client, "echo hello\n")
+		// Now create the actual connection for the test
+		ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
+		var err error
+		conn, err = connectTerminalWebSocket(t, box, client)
+		if err != nil {
+			t.Fatalf("failed to connect after successful test: %v", err)
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
 
-		// Wait for output
-		timeout := time.After(5 * time.Second)
+		// Start reading output in background
+		outputChan := make(chan string, 100)
+		errChan := make(chan error, 1)
+		go func() {
+			for {
+				var msg map[string]interface{}
+				err := wsjson.Read(ctx, conn, &msg)
+				if err != nil {
+					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+						errChan <- err
+					}
+					return
+				}
+
+				if msgType, ok := msg["type"].(string); ok && msgType == "output" {
+					if dataStr, ok := msg["data"].(string); ok {
+						decoded, err := base64.StdEncoding.DecodeString(dataStr)
+						if err == nil {
+							outputChan <- string(decoded)
+						}
+					}
+				}
+			}
+		}()
+
+		// Send initial resize message
+		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+			"type": "resize",
+			"cols": 80,
+			"rows": 24,
+		}); err != nil {
+			t.Fatalf("failed to send resize: %v", err)
+		}
+
+		// Send a command and wait for its output
+		if err := wsjson.Write(ctx, conn, map[string]interface{}{
+			"type": "input",
+			"data": "echo hello\n",
+		}); err != nil {
+			t.Fatalf("failed to send input: %v", err)
+		}
+
+		// Wait for the "hello" output
+		timeout := time.After(10 * time.Second)
 		var foundHello bool
 		for !foundHello {
 			select {
@@ -153,7 +239,7 @@ func TestTerminalPermissions(t *testing.T) {
 					foundHello = true
 				}
 			case err := <-errChan:
-				t.Fatalf("error reading terminal events: %v", err)
+				t.Fatalf("error reading terminal output: %v", err)
 			case <-timeout:
 				t.Fatal("timeout waiting for 'hello' in terminal output")
 			}
@@ -389,79 +475,44 @@ func createAuthenticatedTerminalClient(t *testing.T, boxName string, baseCookies
 	return client
 }
 
-// streamTerminalEventsWithClient connects to the SSE endpoint and streams terminal output
-func streamTerminalEventsWithClient(t *testing.T, boxName string, client *http.Client, outputChan chan string, errChan chan error, readyChan chan bool) {
+// connectTerminalWebSocket connects to the terminal WebSocket endpoint
+func connectTerminalWebSocket(t *testing.T, boxName string, client *http.Client) (*websocket.Conn, error) {
 	t.Helper()
 
-	// Use a random terminal ID
+	if client == nil {
+		return nil, fmt.Errorf("client is nil")
+	}
+
+	// Use a session name
+	sessionName := "test-session"
 	terminalID := "test-terminal-1"
-	eventsURL := fmt.Sprintf("http://%s.xterm.localhost:%d/terminal/events/%s", boxName, Env.exed.HTTPPort, terminalID)
+	// Use localhost in the URL but set the Host header to the subdomain
+	wsURL := fmt.Sprintf("ws://localhost:%d/terminal/ws/%s?name=%s", Env.exed.HTTPPort, terminalID, sessionName)
+	originalHost := fmt.Sprintf("%s.xterm.localhost:%d", boxName, Env.exed.HTTPPort)
 
-	req, err := localhostRequestWithHostHeader("GET", eventsURL, nil)
-	if err != nil {
-		errChan <- err
-		return
-	}
-	req.Host = fmt.Sprintf("%s.xterm.localhost:%d", boxName, Env.exed.HTTPPort)
+	// Create context for the WebSocket connection
+	ctx := context.Background()
 
-	resp, err := client.Do(req)
-	if err != nil {
-		errChan <- err
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		errChan <- fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
-		return
+	// Create a custom dialer that uses our authenticated client's cookies
+	dialer := websocket.DialOptions{
+		HTTPClient: client,
+		Host:       originalHost,
+		HTTPHeader: http.Header{},
 	}
 
-	// Signal that we're connected
-	readyChan <- true
-
-	// Read SSE events
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
-			// Decode base64
-			decoded, err := base64.StdEncoding.DecodeString(data)
-			if err != nil {
-				continue
-			}
-			outputChan <- string(decoded)
+	// Copy cookies from the jar to the request
+	if jar := client.Jar; jar != nil {
+		cookieURL := fmt.Sprintf("http://%s", originalHost)
+		parsedURL, _ := url.Parse(cookieURL)
+		for _, cookie := range jar.Cookies(parsedURL) {
+			dialer.HTTPHeader.Add("Cookie", fmt.Sprintf("%s=%s", cookie.Name, cookie.Value))
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		errChan <- err
-	}
-}
-
-// sendTerminalInputWithClient sends input to the terminal
-func sendTerminalInputWithClient(t *testing.T, boxName string, client *http.Client, input string) {
-	t.Helper()
-
-	// Use the same terminal ID
-	terminalID := "test-terminal-1"
-	inputURL := fmt.Sprintf("http://%s.xterm.localhost:%d/terminal/input/%s", boxName, Env.exed.HTTPPort, terminalID)
-
-	req, err := localhostRequestWithHostHeader("POST", inputURL, bytes.NewBufferString(input))
+	conn, _, err := websocket.Dial(ctx, wsURL, &dialer)
 	if err != nil {
-		t.Fatalf("failed to make http request: %v", err)
+		return nil, fmt.Errorf("failed to dial websocket: %w", err)
 	}
-	req.Host = fmt.Sprintf("%s.xterm.localhost:%d", boxName, Env.exed.HTTPPort)
 
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("failed to send terminal input: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("unexpected status %d when sending input: %s", resp.StatusCode, string(body))
-	}
+	return conn, nil
 }
