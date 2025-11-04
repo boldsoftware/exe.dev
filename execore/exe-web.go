@@ -191,6 +191,8 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 		return "", nil
 	}
 
+	hostname = strings.TrimSuffix(strings.ToLower(hostname), ".")
+
 	parse := func(hostname string) string {
 		// Try main domain first (exe.dev or exe.local)
 		hostname, _ = strings.CutSuffix(hostname, s.getMainDomain())
@@ -222,16 +224,11 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 		return boxName, nil
 	}
 
-	cname, err := s.lookupCNAME(ctx, hostname)
-	if err != nil {
-		return "", err
+	if !strings.Contains(hostname, ".") {
+		return "", nil
 	}
 
-	// CNAME records often have a trailing dot for FQDN.
-	// For example, "example.exe.dev." is the canonical form of "example.exe.dev",
-	// and some DNS providers always return the FQDN (such as Cloudflare, and Route53).
-	cname = strings.TrimSuffix(cname, ".")
-	return parse(cname), nil
+	return s.resolveCustomDomainBoxName(ctx, hostname)
 }
 
 func (s *Server) lookupCNAME(ctx context.Context, host string) (string, error) {
@@ -254,49 +251,19 @@ func (s *Server) hostPolicy(ctx context.Context, host string) error {
 		return nil
 	}
 
-	// Here we do a DNS lookup of a user's custom domain that was
-	// pointed at us, to make sure it was. This is either a CNAME
-	// record (for a subdomain) or some sort of ALIAS record that
-	// a DNS provider converts to an A record.
-	if cname, err := s.lookupCNAME(ctx, host); err == nil {
-		// For CNAMEs we make sure the box exists.
-		cname = strings.TrimSuffix(strings.ToLower(cname), ".")
-		if cname != host {
-			name, ok := strings.CutSuffix(cname, "."+s.getMainDomain())
-			if !ok {
-				s.slog().Warn("hostPolicy: CNAME does not point to main domain", "host", host, "cname", cname, "mainDomain", s.getMainDomain())
-				return fmt.Errorf("CNAME does not point to %s: %s -> %s", s.getMainDomain(), host, cname)
-			}
-			if !s.boxByNameExists(ctx, name) {
-				s.slog().Warn("hostPolicy: no box found for subdomain", "subdomain", host)
-				return fmt.Errorf("%w: %s", errBoxNotFound, name)
-			}
-			return nil
-		}
-		// If the canonical name matches the queried host, this may be an apex
-		// domain using an ALIAS/ANAME record. Fall through to check the A record.
-	}
-	ips, err := s.lookupA(ctx, host)
+	boxName, err := s.resolveCustomDomainBoxName(ctx, host)
 	if err != nil {
-		s.slog().Warn("hostPolicy: A lookup failed", "host", host, "error", err)
-		return fmt.Errorf("A record lookup failed for %s: %w", host, err)
+		return err
 	}
-
-	if len(s.PublicIPs) == 0 {
-		s.slog().Warn("hostPolicy: no public IP metadata available", "host", host)
-		return fmt.Errorf("public IP metadata not available for %s", host)
+	if boxName == "" {
+		s.slog().Warn("hostPolicy: unable to resolve box name", "host", host)
+		return fmt.Errorf("unable to resolve box for %s", host)
 	}
-
-	for _, addr := range ips {
-		for _, info := range s.PublicIPs {
-			if addr == info.IP {
-				return nil
-			}
-		}
+	if !s.boxExists(ctx, boxName) {
+		s.slog().Warn("hostPolicy: no box found for subdomain", "subdomain", host)
+		return fmt.Errorf("%w: %s", errBoxNotFound, boxName)
 	}
-
-	s.slog().Warn("hostPolicy: A record does not point to exe public IP", "host", host, "ips", ips)
-	return fmt.Errorf("A record for %s does not point to exe public IPs: %v", host, ips)
+	return nil
 }
 
 // getCertificate is the single TLS certificate dispatcher for HTTPS.

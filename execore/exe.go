@@ -158,6 +158,7 @@ type Server struct {
 	dnsProvider         *route53.DNSProvider
 	lookupCNAMEFunc     func(context.Context, string) (string, error)       // for tests
 	lookupAFunc         func(context.Context, string) ([]netip.Addr, error) // for tests
+	boxExistsFunc       func(context.Context, string) bool                  // for tests
 	stopCobble          func()
 
 	// Tailscale HTTPS (preloaded at startup)
@@ -1282,6 +1283,13 @@ func (s *Server) boxByNameExists(ctx context.Context, name string) bool {
 		return false
 	}
 	return box > 0
+}
+
+func (s *Server) boxExists(ctx context.Context, name string) bool {
+	if s.boxExistsFunc != nil {
+		return s.boxExistsFunc(ctx, name)
+	}
+	return s.boxByNameExists(ctx, name)
 }
 
 // getBoxesByHost gets all boxes (machines) that should be on a specific ctrhost
