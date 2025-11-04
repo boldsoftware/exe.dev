@@ -968,17 +968,21 @@ func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *ex
 		return nil
 	}
 
-	ctx := context.Background()
-	containers, err := ss.server.containerManager.ListContainers(ctx, cc.User.ID)
+	var boxes []exedb.Box
+	err := ss.server.withRx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		var err error
+		boxes, err = queries.BoxesForUser(ctx, cc.User.ID)
+		return err
+	})
 	if err != nil {
 		return nil
 	}
 
 	var completions []string
 	prefix := compCtx.CurrentWord
-	for _, container := range containers {
-		if strings.HasPrefix(container.Name, prefix) {
-			completions = append(completions, container.Name)
+	for _, box := range boxes {
+		if strings.HasPrefix(box.Name, prefix) {
+			completions = append(completions, box.Name)
 		}
 	}
 	return completions
