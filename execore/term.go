@@ -389,7 +389,6 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-
 }
 
 // createTerminalSession creates a new terminal session for a user's box
