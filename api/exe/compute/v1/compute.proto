@@ -26,8 +26,14 @@ message CreateInstanceRequest {
   repeated string ssh_keys = 8;
   Placement placement = 9;
   string kernel_image = 10;
-  string init_image = 11;
-  repeated string boot_args = 12;
+  repeated string boot_args = 11;
+  repeated VolumeRequest volumes = 12;
+}
+
+message VolumeRequest {
+  string type = 1;
+  string source = 2;
+  string mountpoint = 3;
 }
 
 message Placement {

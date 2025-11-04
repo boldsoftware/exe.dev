@@ -45,6 +45,12 @@ func (v *CreateInstanceRequest) Validate() error {
 		return fmt.Errorf("minimum disk size is %d", minDiskSize)
 	}
 
+	for _, v := range v.Volumes {
+		if err := v.Validate(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

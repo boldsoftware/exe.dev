@@ -1,0 +1,44 @@
+package dhcpd
+
+import (
+	"errors"
+	"fmt"
+	"net"
+
+	iplib "github.com/c-robinson/iplib/v2"
+)
+
+func (s *DHCPServer) getServerIP() (net.IP, error) {
+	_, network, err := iplib.ParseCIDR(s.config.Network)
+	if err != nil {
+		return nil, err
+	}
+
+	return network.FirstAddress(), nil
+}
+
+func (s *DHCPServer) getNextIP() (net.IP, error) {
+	subnetIP, network, err := iplib.ParseCIDR(s.config.Network)
+	if err != nil {
+		return nil, err
+	}
+
+	ip := subnetIP
+	for {
+		next := iplib.NextIP(ip)
+		if _, err := s.ds.Get(&Query{IP: next.String()}); err != nil {
+			if !errors.Is(err, ErrNotFound) {
+				return nil, err
+			}
+
+			return next, nil
+		}
+		if next.Equal(network.LastAddress()) {
+			break
+		}
+
+		ip = next
+	}
+
+	return nil, fmt.Errorf("no IPs available in %s", s.config.Network)
+}

@@ -1,0 +1,10 @@
+version: v2
+directories:
+  - api
+lint:
+  use:
+    - MINIMAL
+  except:
+    - PACKAGE_DIRECTORY_MATCH 
+  enum_zero_value_suffix: _UNSPECIFIED
+  service_suffix: Service

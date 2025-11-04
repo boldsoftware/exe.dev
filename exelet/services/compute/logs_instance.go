@@ -1,0 +1,71 @@
+package compute
+
+import (
+	"bufio"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"exe.dev/exelet/vmm"
+	api "exe.dev/pkg/api/exe/compute/v1"
+)
+
+func (s *Service) GetInstanceLogs(req *api.GetInstanceLogsRequest, stream api.ComputeService_GetInstanceLogsServer) error {
+	ctx := stream.Context()
+	// ensure instance exists
+	resp, err := s.GetInstance(ctx, &api.GetInstanceRequest{ID: req.ID})
+	if err != nil {
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	instance := resp.Instance
+
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	if err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+
+	r, err := vmm.Logs(ctx, instance.ID)
+	if err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	defer r.Close()
+
+	doneCh := make(chan struct{})
+	errCh := make(chan error)
+
+	// send to server
+	go func() {
+		defer close(doneCh)
+
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			msg := scanner.Text() + "\n" // append newline since scanner doesn't include
+			if err := stream.Send(&api.GetInstanceLogsResponse{
+				Log: &api.Log{
+					Type:    api.Log_STDOUT,
+					Message: msg,
+				},
+			}); err != nil {
+				errCh <- err
+				return
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errCh <- err
+			return
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	case err := <-errCh:
+		return err
+	case <-doneCh:
+	}
+
+	return nil
+}

@@ -20,3 +20,10 @@ sshpiper/metrics
 tmpkey*
 # so i can 'go test -c ./...', and 'go test -race -c && stress foo.test'
 *.test
+
+# exelet embedded fs
+exelet/fs/kernel
+exelet/fs/exe-ssh
+exelet/fs/exe-init
+exeletd
+exelet-ctl

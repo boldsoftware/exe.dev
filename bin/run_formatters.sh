@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 # Script to run formatters for Go, frontend, and shell scripts.
 
-# Usage: bin/run_formatters.sh
+# Usage: scripts/run_formatters.sh
 #   This edits your tree in place.
 
 if ! command -v gofumpt &>/dev/null; then
@@ -31,7 +31,8 @@ echo "Formatting Go code with gofumpt..."
 # of 20 files seemed faster than the other approaches.
 # time find . -name "*.go" -not -path "./sshpiper/*" -exec gofumpt -extra -w {} +
 # time gofumpt -extra -w $(git ls-files -- "*.go" | grep -v -E '^sshpiper')
-git ls-files -- "*.go" | grep -v -E '^sshpiper' | xargs -P $(nproc) -n 20 gofumpt -extra -w
+# Exclude generated files (*.gen.go) since they may have different formatting from code generators
+git ls-files -- "*.go" | grep -v -E '^sshpiper' | grep -v '\.gen\.go$' | xargs -P $(nproc) -n 20 gofumpt -extra -w
 echo "✓ Go code formatted"
 
 echo "Checking shelley/ui formatting..."

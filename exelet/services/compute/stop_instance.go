@@ -1,0 +1,74 @@
+package compute
+
+import (
+	"context"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"exe.dev/exelet/vmm"
+	api "exe.dev/pkg/api/exe/compute/v1"
+)
+
+func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest) (*api.StopInstanceResponse, error) {
+	i, err := s.getInstance(ctx, req.ID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	switch i.State {
+	case api.VMState_STOPPED:
+		// nothing; already running
+	case api.VMState_RUNNING:
+		// stop
+		if err := s.stopInstance(ctx, req.ID); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	default:
+		return nil, status.Error(codes.FailedPrecondition, "instance in an invalid state to stop")
+	}
+	return &api.StopInstanceResponse{}, nil
+}
+
+func (s *Service) stopInstance(ctx context.Context, id string) error {
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	if err != nil {
+		return err
+	}
+
+	vmCfg, err := vmm.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if err := vmm.Stop(ctx, id); err != nil {
+		return err
+	}
+
+	// update vm config
+	vmCfg.NetworkInterface = nil
+	if err := vmm.Update(ctx, vmCfg); err != nil {
+		return err
+	}
+
+	// delete network interface
+	if err := s.networkManager.DeleteInterface(ctx, id); err != nil {
+		return err
+	}
+
+	// update instance config
+	iCfg, err := s.loadInstanceConfig(id)
+	if err != nil {
+		return err
+	}
+	// update state
+	iCfg.State = api.VMState_STOPPED
+	// remove network config
+	iCfg.VMConfig.NetworkInterface = nil
+	s.log.Debug("updating instance config", "config", iCfg.VMConfig)
+	if err := s.saveInstanceConfig(iCfg); err != nil {
+		return err
+	}
+
+	return nil
+}

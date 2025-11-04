@@ -1,8 +1,13 @@
 # Makefile for exe.dev
 
 # Variables
+ROOT_DIR := $(abspath $(lastword $(MAKEFILE_LIST))/..)
 INSTANCE_NAME := exed-prod-01
 TIMESTAMP := $(shell date +%Y%m%d-%H%M%S)
+GOOS := $(shell go env GOOS)
+GOARCH := $(shell go env GOARCH)
+COMMIT := `git rev-parse --short HEAD`
+VERSION := 0.0.0
 
 # Colors
 RED := \033[0;31m
@@ -184,5 +189,37 @@ whoami-clean: ## Remove ghuser/whoami.sqlite3 so it can be re-downloaded
 		echo "Run 'make ghuser/whoami' to download it."; \
 		exit 1; \
 	fi
+
+.PHONY: protos
+protos:
+	@pushd api ; find . -name "*.proto" -exec protoc {} --go_out=$(ROOT_DIR)/pkg/api --go_opt=paths=source_relative --go-grpc_out=$(ROOT_DIR)/pkg/api --go-grpc_opt=paths=source_relative \; ; popd
+	@# fix api
+	@find pkg/api -type f -name '*.pb.go' -exec go-fix-acronym -w -a 'S(sh)|M(ac)Address|N(tp)Server|I(p)V4|V(m)Config|C(pu)s|(Id|Ip|Tcp|Http|Udp|Io|Ssh|Uri)$$' {} \;
+
+.PHONY: exelet
+exelet: exelet-kernel exe-ssh exe-init
+	@>&2 echo " -> building exelet ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
+	@cd cmd/exelet && go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
+
+.PHONY: exelet-ctl
+exelet-ctl:
+	@>&2 echo " -> building exelet-ctl ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
+	@cd cmd/exelet-ctl && go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet-ctl .
+
+.PHONY: exe-init
+exe-init:
+	@>&2 echo " -> building exe-init ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
+	@cd cmd/exe-init && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/exe-init .
+
+.PHONY: exe-ssh
+exe-ssh:
+	@>&2 echo " -> building exe-ssh ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
+	@cd cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/exe-ssh .
+
+# kernel
+exelet-kernel: exelet/fs/kernel
+exelet/fs/kernel:
+	@>&2 echo " -> building exelet kernel"
+	@docker buildx build --build-arg EXE_VERSION=$(VERSION) --output type=local,dest=./exelet/fs/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
 
 .DEFAULT_GOAL := help

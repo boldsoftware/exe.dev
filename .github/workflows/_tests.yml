@@ -20,6 +20,11 @@ jobs:
       - name: Set PATH
         run: echo "$HOME/go/bin" >> $GITHUB_PATH
 
+      - name: Tools Version
+        run: |
+          go version
+          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -version
+
       - name: Verify go generate output unchanged
         run: |
           set -euo pipefail
