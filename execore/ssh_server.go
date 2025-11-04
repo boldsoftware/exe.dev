@@ -703,7 +703,7 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 // handleContainerLogs shows logs for a failed container
 func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, boxName string) {
 	// Show error message about container failure
-	fmt.Fprintf(s, "\033[1;31mContainer '%s' failed to start\033[0m\r\n\r\n", boxName)
+	fmt.Fprintf(s, "\033[1;31mContainer '%s' is not running\033[0m\r\n\r\n", boxName)
 
 	// Get logs if container manager is available
 	ctx, cancel := context.WithTimeout(s.Context(), 5*time.Second)
@@ -727,8 +727,8 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 		fmt.Fprintf(s, "\033[1;33mNo logs available\033[0m\r\n")
 	}
 
-	fmt.Fprintf(s, "To delete this failed container, run:\r\n")
-	fmt.Fprintf(s, "  \033[1m%s delete %s\033[0m\r\n", ss.server.formatExeDevConnectionInfo(), boxName)
+	fmt.Fprintf(s, "To delete this container, run:\r\n")
+	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.formatExeDevConnectionInfo(), boxName)
 }
 
 func (ss *SSHServer) startEmailVerification(s ssh.Session, publicKey, email string) (*EmailVerification, error) {
