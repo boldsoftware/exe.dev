@@ -441,7 +441,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			IsLoggedIn:         isLoggedIn,
 			ActivePage:         "",
 		}
-		if err := s.renderTemplate(w, "welcome-or-new.html", data); err != nil {
+		if err := s.renderTemplate(w, "welcome.html", data); err != nil {
+			s.log.Error("failed to render welcome page", "error", err)
 			return
 		}
 		return

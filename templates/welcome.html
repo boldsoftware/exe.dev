@@ -1,78 +1,88 @@
-{{define "welcome_content"}}
-<div class="welcome-view">
-    <main>
-        <h1>just use ssh</h1>
-
-        <aside>persistent, private servers</aside>
-
-        <div class="content-section command-row">
-            <div class="command-block">ssh exe.dev</div>
-        </div>
-
-        <div class="content-section">
-            <p class="description">
-                As many VMs as you need for a <strong>flat rate</strong><br><br>
-                Keep it private,<br>
-                share it with an invite link<br><br>
-                <strong>Start a VM</strong> in a second with ssh
-            </p>
-
-            <img src="/static/exy.png" alt="exe.dev blowfish logo" class="blowfish-logo">
-        </div>
-
-        <div class="content-section https-section browser-section">
-            <img src="/static/browser-woodcut.png" alt="HTTPS browser security" class="woodcut-icon-side">
-            <p class="description">
-                <strong>HTTPS</strong> done for you<br>
-                auth proxy <strong>by default</strong><br>
-            </p>
-        </div>
-
-        <hr>
-
-        <div class="content-section command-row">
-            <p class="description">
-                All the comforts of <code>$HOME</code>
-            </p>
-            <p class="description">
-                <strong>sign up</strong> now, in your terminal
-            </p>
-            <div class="command-block">ssh exe.dev</div>
-        </div>
-
-        <nav>
-            <a href="/about">about</a>
-            <a href="/blog">blog</a>
-            <a href="/jobs">jobs</a>
-        </nav>
-    </main>
-</div>
-{{end}}
-
-
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EXE.DEV - just use ssh</title>
-    <link rel="stylesheet" href="/static/exe.css">
-    {{template "topbar_style" .}}
-    <link rel="stylesheet" href="/static/welcome.css">
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@latest/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@latest/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            text-align: center;
-            overflow-x: hidden;
-            align-items: stretch;
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
         }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes cursor {
+        0%, 49% {
+          opacity: 1;
+        }
+        50%, 100% {
+          opacity: 0;
+        }
+      }
+
+      @keyframes jitter {
+        0%, 100% { transform: translate(0, 0); }
+        10% { transform: translate(-2px, 1px); }
+        20% { transform: translate(2px, -1px); }
+        30% { transform: translate(-1px, 2px); }
+        40% { transform: translate(1px, -2px); }
+        50% { transform: translate(-2px, -1px); }
+        60% { transform: translate(2px, 1px); }
+        70% { transform: translate(-1px, -2px); }
+        80% { transform: translate(1px, 2px); }
+        90% { transform: translate(-2px, 2px); }
+      }
+
+      @keyframes fadeOut {
+        from {
+          opacity: 1;
+        }
+        to {
+          opacity: 0;
+        }
+      }
+
+      body.htmx-swapping {
+        animation: fadeOut 0.3s ease-out forwards;
+      }
+
+      body.htmx-settling {
+        animation: fadeIn 0.3s ease-in forwards;
+      }
     </style>
-</head>
-<body>
-    {{template "topbar" .}}
-    {{template "welcome_content" .}}
-</body>
+  </head>
+  <body class="min-h-screen grid grid-rows-[auto_1fr_auto] bg-white text-gray-900">
+    <nav class="flex justify-end px-6 py-4">
+      <a href="/auth" class="text-gray-400 hover:text-gray-600">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+        </svg>
+      </a>
+    </nav>
+    <main class="flex flex-col justify-center items-center px-4 py-8 space-y-8 font-mono">
+      <div class="relative w-full max-w-xl mx-auto text-center animate-[fadeIn_0.8s_ease-out_forwards]">
+        <div class="hover:[animation:jitter_0.2s_ease-in-out_3] text-6xl">
+          <span>ssh exe.dev <span class="animate-[cursor_1s_infinite] select-none">_</span></span>
+        </div>
+        <div class="mt-8 text-lg text-gray-500">
+            The disk persists. You have sudo.
+        </div>
+      </div>
+    </main>
+    <!-- Footer with stub links to privacy and terms, about, and discord -->
+    <footer class="text-sm text-gray-400 min-w-full py-4 px-6 flex justify-center gap-4">
+        <a href="/privacy" class="hover:underline">Privacy Policy</a>
+        <span>&bull;</span>
+        <a href="/terms" class="hover:underline">Terms of Service</a>
+        <span>&bull;</span>
+        <a href="/about" class="hover:underline">About</a>
+        <span>&bull;</span>
+        <a href="https://discord.gg/jc9WQUfaxf" class="hover:underline">Discord</a>
+    </footer>
+  </body>
 </html>
