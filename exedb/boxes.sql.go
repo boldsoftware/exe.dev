@@ -201,6 +201,20 @@ func (q *Queries) GetBoxDetailsForSetup(ctx context.Context, id int) (GetBoxDeta
 	return i, err
 }
 
+const getBoxOwnerEmailByContainerID = `-- name: GetBoxOwnerEmailByContainerID :one
+SELECT u.email
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.container_id = ?
+`
+
+func (q *Queries) GetBoxOwnerEmailByContainerID(ctx context.Context, containerID *string) (string, error) {
+	row := q.queryRow(ctx, q.getBoxOwnerEmailByContainerIDStmt, getBoxOwnerEmailByContainerID, containerID)
+	var email string
+	err := row.Scan(&email)
+	return email, err
+}
+
 const getBoxSSHDetails = `-- name: GetBoxSSHDetails :one
 SELECT m.ssh_port, m.ssh_client_private_key, m.ssh_server_identity_key, m.ctrhost, m.ssh_user
 FROM boxes m

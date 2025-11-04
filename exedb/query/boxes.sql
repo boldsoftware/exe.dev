@@ -74,6 +74,12 @@ WHERE id = ?;
 -- name: GetBoxByNameAndAlloc :one
 SELECT * FROM boxes WHERE name = ? AND created_by_user_id = ?;
 
+-- name: GetBoxOwnerEmailByContainerID :one
+SELECT u.email
+FROM boxes b
+JOIN users u ON u.user_id = b.created_by_user_id
+WHERE b.container_id = ?;
+
 -- name: DeleteBox :exec
 DELETE FROM boxes WHERE id = ?;
 

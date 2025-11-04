@@ -100,26 +100,23 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 	var flatContainers []containerInfo
 
 	emailCache := make(map[string]string)
-	getOwnerEmail := func(ctx context.Context, userID string) (string, error) {
-		if userID == "" {
-			return "", fmt.Errorf("empty userID")
+	getOwnerEmail := func(ctx context.Context, containerID string) (string, error) {
+		if containerID == "" {
+			return "", fmt.Errorf("empty container ID")
 		}
-		if email, ok := emailCache[userID]; ok {
+		if email, ok := emailCache[containerID]; ok {
 			return email, nil
 		}
 		email, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (string, error) {
-			return queries.GetEmailByUserID(ctx, userID)
+			return queries.GetBoxOwnerEmailByContainerID(ctx, &containerID)
 		})
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				err = fmt.Errorf("user %q not found in database", userID)
-			} else {
-				err = fmt.Errorf("failed to look up user %q: %w", userID, err)
+				return "", fmt.Errorf("container %q not present in database", containerID)
 			}
-			emailCache[userID] = "" // cache negative result
-			return "", err
+			return "", fmt.Errorf("failed to look up owner for container %q: %w", containerID, err)
 		}
-		emailCache[userID] = email
+		emailCache[containerID] = email
 		return email, nil
 	}
 
@@ -137,10 +134,10 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 						Name:   c.Name,
 						Status: string(c.Status),
 					}
-					if ownerEmail, err := getOwnerEmail(ctx, c.AllocID); err == nil {
+					if ownerEmail, err := getOwnerEmail(ctx, c.ID); err == nil {
 						cInfo.OwnerEmail = ownerEmail
 					} else {
-						s.slog().Warn("failed to resolve box owner email", "allocID", c.AllocID, "containerID", c.ID, "error", err)
+						s.slog().Warn("failed to resolve box owner email", "boxName", c.Name, "containerID", c.ID, "allocID", c.AllocID, "error", err)
 					}
 					info.Containers = append(info.Containers, cInfo)
 					flatContainers = append(flatContainers, cInfo)
