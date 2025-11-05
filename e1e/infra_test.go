@@ -302,6 +302,8 @@ func (t *testEnv) canonicalizeString(s string) string {
 	s = regexp.MustCompile(`\(created [^,]+,`).ReplaceAllString(s, `(created SHARE_AGE,`)
 	// Canonicalize random MOTD hints shown when SSHing to a box
 	s = regexp.MustCompile(`(?s)(For support and documentation, "ssh exe\.dev" or visit https://exe\.dev/\n)\n(.+?)\n(exedev@)`).ReplaceAllString(s, "$1\nMOTD HINT\n\n$3")
+	// Canonicalize shelley.backup timestamps (format: YYYYMMDD-HHMMSS)
+	s = regexp.MustCompile(`shelley\.backup\.\d{8}-\d{6}`).ReplaceAllString(s, `shelley.backup.TIMESTAMP`)
 	return s
 }
 

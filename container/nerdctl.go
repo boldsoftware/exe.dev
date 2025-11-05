@@ -132,6 +132,11 @@ func (m *NerdctlManager) DataPath(path string) string {
 	return fmt.Sprintf("/data/%s/%s", m.config.DataSubdir, strings.TrimPrefix(path, "/"))
 }
 
+// GetHostArch returns the cached host architecture (e.g., "amd64", "arm64")
+func (m *NerdctlManager) GetHostArch() string {
+	return m.hostArch
+}
+
 // execNerdctl executes a nerdctl command via SSH on a remote host
 func (m *NerdctlManager) execNerdctl(ctx context.Context, host string, args ...string) *exec.Cmd {
 	host = strings.TrimPrefix(host, "ssh://")

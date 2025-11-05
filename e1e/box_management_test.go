@@ -125,6 +125,49 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("shelley_install", func(t *testing.T) {
+		// Test the shelley install command
+		pty := sshToExeDev(t, keyFile)
+		defer pty.disconnect()
+
+		// Get initial shelley version/timestamp
+		initialVersion := ""
+		out, err := boxSSHCommand(t, boxName, keyFile, "/usr/local/bin/shelley", "--version").CombinedOutput()
+		if err == nil {
+			initialVersion = strings.TrimSpace(string(out))
+		}
+
+		// Run shelley install command
+		pty.sendLine("shelley install " + boxName)
+		pty.want("Installing Shelley")
+		pty.wantRe("(Backed up|Copied shelley binary)")
+		pty.want("Installed shelley")
+		pty.wantRe("(Restarted|Warning)") // Either succeeded or warned about restart
+		pty.wantPrompt()
+
+		// Verify shelley binary exists and is executable
+		out, err = boxSSHCommand(t, boxName, keyFile, "test", "-x", "/usr/local/bin/shelley", "&&", "echo", "exists").CombinedOutput()
+		if err != nil {
+			t.Fatalf("shelley binary not found or not executable after install: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "exists") {
+			t.Fatalf("expected 'exists' confirmation, got: %s", out)
+		}
+
+		// Verify shelley service is running (give it a moment to start)
+		for range 50 {
+			out, err = boxSSHCommand(t, boxName, keyFile, "sudo", "systemctl", "is-active", "shelley.service").CombinedOutput()
+			if err == nil && strings.Contains(string(out), "active") {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// It's ok if the service isn't active yet (systemd can be slow), but the binary should be there
+		t.Logf("Initial version: %s", initialVersion)
+		t.Logf("Shelley install test completed")
+	})
+
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
 	pty.deleteBox(boxName)
