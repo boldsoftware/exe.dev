@@ -390,8 +390,6 @@ stream, err := client.CreateInstance(ctx, &api.CreateInstanceRequest{
     CPUs:        1,
     Memory:      1 * 1000 * 1000 * 1000,  // 1GB
     Disk:        1 * 1000 * 1000 * 1000,  // 1GB
-    KernelImage: "ghcr.io/boldsoftware/kernel:latest",
-    InitImage:   "ghcr.io/boldsoftware/init:latest",
 })
 
 // Process status updates
