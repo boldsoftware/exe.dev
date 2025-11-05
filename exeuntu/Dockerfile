@@ -188,7 +188,7 @@ RUN mkdir -p /home/exedev/src && chown exedev:exedev /home/exedev/src
 USER exedev
 
 # Install Node.js v22.20.0 to /home/exedev/.local
-RUN ARCH=$(uname -m) && \
+RUN ARCH=$(uname -m) && PATH=/home/exedev/.local/bin:$PATH && \
 	case $ARCH in \
 		x86_64) NODE_ARCH=x64 ;; \
 		aarch64) NODE_ARCH=arm64 ;; \
@@ -199,11 +199,7 @@ RUN ARCH=$(uname -m) && \
 	mkdir -p /home/exedev/.local && \
 	tar -C /home/exedev/.local --strip-components=1 -xJf node.tar.xz && \
 	rm node.tar.xz && \
-	/home/exedev/.local/bin/node --version && \
-	/home/exedev/.local/bin/npm --version
-
-# Configure npm to install global packages to ~/.local and install codex and claude
-RUN /home/exedev/.local/bin/npm config set prefix /home/exedev/.local && \
+	/home/exedev/.local/bin/npm config set prefix /home/exedev/.local && \
 	/home/exedev/.local/bin/npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Update PATH in .bashrc to include node and npm global modules
@@ -223,6 +219,7 @@ RUN git config --global user.email "system@exe.dev" && \
 
 # Copy welcome source code and build it
 COPY --chown=exedev:exedev exeuntu/welcome/ ./
+RUN git add . && git commit -m "Initial commit"
 RUN make build
 
 # Switch back to root to install systemd service
