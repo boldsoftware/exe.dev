@@ -2,6 +2,7 @@ package dhcpd
 
 import (
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -61,4 +62,21 @@ func TestDatastoreLoad(t *testing.T) {
 
 	assert.Equal(t, l2.MACAddress, mac)
 	assert.Equal(t, l2.IP, ip)
+}
+
+func TestDatastoreListConcurrentAccess(t *testing.T) {
+	// This test ensures that calling List() concurrently with Reserve() is race-free.
+	ds, err := NewDatastore(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create datastore: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		ds.Reserve("00:11:22:33:44:55", "192.0.2.0", leaseTTL)
+	})
+	wg.Go(func() {
+		ds.List()
+	})
+	wg.Wait()
 }

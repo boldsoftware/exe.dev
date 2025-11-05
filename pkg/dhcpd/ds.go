@@ -149,7 +149,10 @@ func (d *Datastore) getLeaseByMAC(addr string) (*Lease, error) {
 }
 
 func (d *Datastore) List() ([]*Lease, error) {
-	leases := []*Lease{}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	leases := make([]*Lease, 0, len(d.db.Hosts))
 	for _, v := range d.db.Hosts {
 		leases = append(leases, v)
 	}
