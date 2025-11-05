@@ -660,7 +660,7 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 	defer s.Exit(0) // Always send exit status
 
 	if !registered {
-		sshTo := ss.server.formatExeDevConnectionInfo()
+		sshTo := ss.server.replSSHConnectionCommand()
 		fmt.Fprintf(s, "Please complete registration by running: %s\r\n", sshTo)
 		s.Exit(1)
 		return
@@ -728,7 +728,7 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	}
 
 	fmt.Fprintf(s, "To delete this container, run:\r\n")
-	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.formatExeDevConnectionInfo(), boxName)
+	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
 }
 
 func (ss *SSHServer) startEmailVerification(s ssh.Session, publicKey, email string) (*EmailVerification, error) {

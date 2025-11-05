@@ -1763,7 +1763,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 
 		boxInfo := BoxDisplayInfo{
 			Box:             box,
-			SSHCommand:      s.formatSSHConnectionInfo(result.Name),
+			SSHCommand:      s.boxSSHConnectionCommand(result.Name),
 			ProxyURL:        s.httpsProxyAddress(result.Name),
 			TerminalURL:     s.terminalURL(result.Name),
 			VSCodeURL:       template.URL(s.vscodeURL(result.Name)),

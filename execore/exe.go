@@ -1055,39 +1055,50 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 	return &box
 }
 
-// formatSSHConnectionInfo returns SSH connection info for box boxName based on dev mode.
-// sshConnectionString returns the SSH connection string (without the "ssh" command prefix)
-func (s *Server) sshConnectionString(boxName string) string {
+func (s *Server) boxSSHHost() string {
 	if s.devMode != "" {
-		if s.piperdPort != 22 {
-			return fmt.Sprintf("%s@localhost:%d", boxName, s.piperdPort)
-		}
-		return fmt.Sprintf("%s@localhost", boxName)
+		return "localhost"
 	}
-	return fmt.Sprintf("%s@exe.dev", boxName)
+	return "exe.dev"
 }
 
-func (s *Server) formatSSHConnectionInfo(boxName string) string {
-	connStr := s.sshConnectionString(boxName)
-	if s.devMode != "" && s.piperdPort != 22 {
-		return fmt.Sprintf("ssh -p %d %s@localhost", s.piperdPort, boxName)
-	}
+func (s *Server) boxSSHPort() int {
 	if s.devMode != "" {
-		return fmt.Sprintf("ssh %s@localhost", boxName)
+		return s.piperdPort
 	}
-	return fmt.Sprintf("ssh %s", connStr)
+	return 22
 }
 
-// formatExeDevConnectionInfo returns SSH connection info for the exe.dev server based on dev mode.
-func (s *Server) formatExeDevConnectionInfo() string {
-	if s.devMode != "" {
-		var dashP string
-		if s.piperdPort != 22 {
-			dashP = fmt.Sprintf("-p %v ", s.piperdPort)
-		}
-		return fmt.Sprintf("ssh %slocalhost", dashP)
+// boxSSHConnectionCommand returns the SSH command to connect to box boxName.
+func (s *Server) boxSSHConnectionCommand(boxName string) string {
+	dashP := ""
+	if port := s.boxSSHPort(); port != 22 {
+		dashP = fmt.Sprintf("-p %d ", port)
 	}
-	return "ssh exe.dev"
+	return "ssh " + dashP + boxName + "@" + s.boxSSHHost()
+}
+
+func (s *Server) replSSHHost() string {
+	if s.devMode != "" {
+		return "localhost"
+	}
+	return "exe.dev"
+}
+
+func (s *Server) replSSHPort() int {
+	if s.devMode != "" {
+		return s.piperdPort
+	}
+	return 22
+}
+
+// replSSHConnectionCommand returns the SSH command to connect to the REPL server.
+func (s *Server) replSSHConnectionCommand() string {
+	var dashP string
+	if port := s.replSSHPort(); port != 22 {
+		dashP = fmt.Sprintf("-p %v ", port)
+	}
+	return "ssh " + dashP + s.replSSHHost()
 }
 
 // httpsProxyAddress returns the HTTPS proxy address for a box.
@@ -1116,7 +1127,11 @@ func (s *Server) shelleyURL(boxName string) string {
 
 // vscodeURL returns the VSCode remote SSH URL for a box.
 func (s *Server) vscodeURL(boxName string) string {
-	connStr := s.sshConnectionString(boxName)
+	var colonP string
+	if s.boxSSHPort() != 22 {
+		colonP = fmt.Sprintf(":%d", s.boxSSHPort())
+	}
+	connStr := boxName + "@" + s.boxSSHHost() + colonP
 	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/home/exedev/src?windowId=_blank", connStr)
 }
 

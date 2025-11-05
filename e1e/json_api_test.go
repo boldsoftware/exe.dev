@@ -57,17 +57,37 @@ func TestExeDevAPI(t *testing.T) {
 	if nbo.BoxName == "" {
 		t.Errorf("expected box_name in JSON output, got empty string")
 	}
-	if nbo.SSH == "" {
-		t.Errorf("expected ssh_command in JSON output, got empty string")
-	}
 	if nbo.HTTPS == "" {
 		t.Errorf("expected https_url in JSON output, got empty string")
 	}
-	if !strings.HasPrefix(nbo.SSH, "ssh ") {
-		t.Errorf("expected ssh_command to start with 'ssh ', got %q", nbo.SSH)
-	}
 	if !strings.HasPrefix(nbo.HTTPS, "http") {
 		t.Errorf("expected https_url to start with 'http', got %q", nbo.HTTPS)
+	}
+	if nbo.SSHServer == "" {
+		t.Errorf("expected ssh_server in JSON output, got empty string")
+	}
+	if nbo.SSHPort == 0 {
+		t.Errorf("expected ssh_port in JSON output, got 0")
+	}
+	if nbo.SSH == "" {
+		t.Errorf("expected ssh_command in JSON output, got empty string")
+	}
+	if nbo.SSHUser == "" {
+		t.Errorf("expected ssh_user in JSON output, got empty string")
+	}
+	if nbo.SSHUser != nbo.BoxName {
+		t.Errorf("expected ssh_user %q, got %q", nbo.BoxName, nbo.SSHUser)
+	}
+	expectedSSH := "ssh "
+	if nbo.SSHPort != 22 {
+		expectedSSH += fmt.Sprintf("-p %d ", nbo.SSHPort)
+	}
+	expectedSSH += fmt.Sprintf("%s@%s", nbo.SSHUser, nbo.SSHServer)
+	if nbo.SSH != expectedSSH {
+		t.Errorf("expected ssh_command %q, got %q", expectedSSH, nbo.SSH)
+	}
+	if nbo.SSHPort != Env.sshPort() {
+		t.Errorf("expected ssh_port %d, got %d", Env.sshPort(), nbo.SSHPort)
 	}
 
 	// Try to create a duplicate box using the repl.
@@ -179,9 +199,12 @@ func TestExeDevAPI(t *testing.T) {
 }
 
 type newBoxOutput struct {
-	BoxName string `json:"box_name"`
-	SSH     string `json:"ssh_command"`
-	HTTPS   string `json:"https_url"`
+	BoxName   string `json:"box_name"`
+	SSH       string `json:"ssh_command"`
+	SSHServer string `json:"ssh_server"`
+	SSHPort   int    `json:"ssh_port"`
+	SSHUser   string `json:"ssh_user"`
+	HTTPS     string `json:"https_url"`
 }
 
 type boxListEntry struct {

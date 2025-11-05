@@ -542,7 +542,7 @@ done:
 	if ss.server != nil && ss.server.sshMetrics != nil {
 		ss.server.sshMetrics.boxCreationDur.Observe(totalTime.Seconds())
 	}
-	sshCommand := ss.server.formatSSHConnectionInfo(boxName)
+	sshCommand := ss.server.boxSSHConnectionCommand(boxName)
 	httpsProxyAddr := ss.server.httpsProxyAddress(boxName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
@@ -561,6 +561,9 @@ done:
 		out := map[string]any{
 			"box_name":    boxName,
 			"ssh_command": sshCommand,
+			"ssh_server":  ss.server.boxSSHHost(),
+			"ssh_port":    ss.server.boxSSHPort(),
+			"ssh_user":    boxName,
 			"https_url":   httpsProxyAddr,
 			"proxy_port":  proxyPort,
 		}
