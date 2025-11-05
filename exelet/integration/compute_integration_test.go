@@ -35,7 +35,9 @@ func TestComputeCreateAlpine(t *testing.T) {
 		Memory: 1 * 1000 * 1000 * 1000,
 		Disk:   1 * 1000 * 1000 * 1000,
 	})
-	assert.NoError(t, err, "error creating instance")
+	if err != nil {
+		t.Fatalf("error creating instance: %v", err)
+	}
 	assert.NotNil(t, stream)
 	instanceID := ""
 	for {
@@ -80,6 +82,9 @@ func TestComputeCreateValidateOutput(t *testing.T) {
 		Memory: 1 * 1000 * 1000 * 1000,
 		Disk:   1 * 1000 * 1000 * 1000,
 	})
+	if err != nil {
+		t.Fatalf("error creating instance: %v", err)
+	}
 	assert.NoError(t, err, "error creating instance")
 	assert.NotNil(t, stream)
 	instanceID := ""
@@ -132,7 +137,9 @@ func TestComputeCreateValidateRedis(t *testing.T) {
 		Memory: 1 * 1000 * 1000 * 1000,
 		Disk:   1 * 1000 * 1000 * 1000,
 	})
-	assert.NoError(t, err, "error creating instance")
+	if err != nil {
+		t.Fatalf("error creating instance: %v", err)
+	}
 	assert.NotNil(t, stream)
 	instanceID := ""
 	for {
