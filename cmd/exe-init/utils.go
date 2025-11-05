@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strconv"
 	"strings"
 )
 
@@ -53,17 +52,4 @@ func parseNetConf(conf string) (*netConfig, error) {
 	}
 
 	return cfg, nil
-}
-
-// this is to detect an optimized exe.dev environment and use its init
-func isExeDevConfigured() bool {
-	v, err := getBootArg("use-exetini")
-	if err != nil {
-		return false
-	}
-	enabled, err := strconv.ParseBool(v)
-	if err != nil {
-		return false
-	}
-	return enabled
 }

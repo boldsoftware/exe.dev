@@ -39,12 +39,10 @@ var (
 	EnvConfigPath = "/exe.dev/etc/env"
 	// InstanceAgentConfigPath is the path in the instance for the exe agent configuration
 	InstanceAgentConfigPath = "/exe.dev/etc/agent.conf"
-	// InstanceExetiniPath is the path in the instance for exetini
-	InstanceExetiniPath = "/exe.dev/bin/exetini"
 	// InstanceExeInitPath is the path in the instance for exe-init
 	InstanceExeInitPath = "/exe.dev/bin/exe-init"
 	// InstanceExeSshPath is the path in the instance for exe-ssh
-	InstanceExeSshPath = "/exe.dev/bin/exe-ssh"
+	InstanceExeSshPath = "/exe.dev/bin/sshd"
 
 	// InstanceVsockAgentPort is the vsock port on which the agent listens in the guest
 	InstanceAgentPort = 1090

@@ -198,7 +198,7 @@ protos:
 	@find pkg/api -type f -name '*.pb.go' -exec go-fix-acronym -w -a 'S(sh)|M(ac)Address|N(tp)Server|I(p)V4|V(m)Config|C(pu)s|(Id|Ip|Tcp|Http|Udp|Io|Ssh|Uri)$$' {} \;
 
 .PHONY: exelet
-exelet: exelet-kernel exe-ssh exe-init
+exelet: exelet-kernel exelet-rovol
 	@>&2 echo " -> building exelet ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
 	@cd cmd/exelet && go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
 
@@ -210,17 +210,23 @@ exelet-ctl:
 .PHONY: exe-init
 exe-init:
 	@>&2 echo " -> building exe-init ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
-	@cd cmd/exe-init && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/exe-init .
+	@cd cmd/exe-init && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-init .
 
 .PHONY: exe-ssh
 exe-ssh:
 	@>&2 echo " -> building exe-ssh ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
-	@cd cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/exe-ssh .
+	@cd cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-ssh .
 
 # kernel
 exelet-kernel: exelet/fs/kernel
 exelet/fs/kernel:
 	@>&2 echo " -> building exelet kernel"
 	@docker buildx build --build-arg EXE_VERSION=$(VERSION) --output type=local,dest=./exelet/fs/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+
+# exelet rovol
+exelet-rovol: exelet/fs/rovol
+exelet/fs/rovol:
+	@>&2 echo " -> building exelet rovol"
+	@docker buildx build --output type=local,dest=./exelet/fs/rovol -f ./exelet/rovol/Dockerfile .
 
 .DEFAULT_GOAL := help

@@ -177,41 +177,46 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-	initFiles := map[string]string{
-		"exe-init": filepath.Join(mountpoint, config.InstanceExeInitPath),
-		"exe-ssh":  filepath.Join(mountpoint, config.InstanceExeSshPath),
-	}
-	for name, dest := range initFiles {
-		s.log.Debug("configuring init file", "name", name, "dest", dest)
-		// exe-init
-		initFile, err := exeletfs.Get(name)
-		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+	/*
+		initFiles := map[string]string{
+			"exe-init": filepath.Join(mountpoint, config.InstanceExeInitPath),
+			"exe-ssh":  filepath.Join(mountpoint, config.InstanceExeSshPath),
 		}
-		// ensure not present
-		_ = os.Remove(dest)
+		for name, dest := range initFiles {
+			s.log.Debug("configuring init file", "name", name, "dest", dest)
+			// exe-init
+			initFile, err := exeletfs.Get(name)
+			if err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
+			// ensure not present
+			_ = os.Remove(dest)
 
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return status.Error(codes.Internal, err.Error())
-		}
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
 
-		exeInitFile, err := os.Create(dest)
-		if err != nil {
-			return status.Error(codes.Internal, err.Error())
-		}
+			exeInitFile, err := os.Create(dest)
+			if err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
 
-		if _, err := io.Copy(exeInitFile, initFile); err != nil {
-			return status.Error(codes.Internal, err.Error())
-		}
+			if _, err := io.Copy(exeInitFile, initFile); err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
 
-		if err := exeInitFile.Close(); err != nil {
-			return status.Error(codes.Internal, err.Error())
-		}
+			if err := exeInitFile.Close(); err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
 
-		// executable
-		if err := os.Chmod(dest, 0o755); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			// executable
+			if err := os.Chmod(dest, 0o755); err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
 		}
+	*/
+	if err := exeletfs.CopyRovol(filepath.Join(mountpoint, "/exe.dev")); err != nil {
+		return status.Error(codes.Internal, err.Error())
 	}
 
 	// volumes
@@ -350,6 +355,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, err.Error())
 	}
 
+	// TODO: remove
 	// set image config for init
 	s.log.Debug("configuring instance image config", "id", instanceID)
 	if imageConfig != nil {
@@ -380,7 +386,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, err.Error())
 	}
 	// boot args
-	bootArgs := s.getBootArgs(netConf)
+	bootArgs := getBootArgs(netConf)
 	// TODO: handle duplicates (e.g. if the user specifies init= etc.)
 	bootArgs = append(bootArgs, req.BootArgs...)
 

@@ -29,9 +29,6 @@ func main() {
 	}
 	app.Usage = version.Name + " (init)"
 	app.Action = runAction
-	app.Commands = []*cli.Command{
-		entrypointCommand,
-	}
 	app.Flags = []cli.Flag{
 		&cli.BoolFlag{
 			Name:    "debug",

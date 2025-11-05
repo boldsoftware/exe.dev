@@ -16,17 +16,6 @@ func (s *Service) getInstanceConfigPath(id string) string {
 	return filepath.Join(s.getInstanceDir(id), "config.json")
 }
 
-func (s *Service) getBootArgs(netConf string) []string {
-	return []string{
-		"console=hvc0",
-		"root=/dev/vda",
-		"init=/exe.dev/bin/exe-init",
-		//"init=/bin/sh", // debug
-		netConf,
-		"rw",
-	}
-}
-
 // saveInstanceConfig persists the instance configuration in the local configuration store
 func (s *Service) saveInstanceConfig(i *api.Instance) error {
 	data, err := i.Marshal()
@@ -67,4 +56,15 @@ func (s *Service) loadInstanceConfig(id string) (*api.Instance, error) {
 	}
 
 	return &i, nil
+}
+
+func getBootArgs(netConf string) []string {
+	return []string{
+		"console=hvc0",
+		"root=/dev/vda",
+		"init=/exe.dev/bin/exe-init",
+		//"init=/bin/sh", // debug
+		netConf,
+		"rw",
+	}
 }

@@ -79,7 +79,7 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	}
 
 	// update boot args to configure new ip
-	bootArgs := s.getBootArgs(netConf)
+	bootArgs := getBootArgs(netConf)
 	vmCfg.Args = bootArgs
 
 	// update config

@@ -9,11 +9,12 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
-	"time"
+
+	"github.com/opencontainers/image-spec/specs-go/v1"
 
 	"exe.dev/exelet/config"
-	"github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 func runEntrypoint() (int, error) {
@@ -62,16 +63,14 @@ func runEntrypoint() (int, error) {
 		cwd = v
 	}
 
-	// check for exetini to override
-	if isExeDevConfigured() {
-		slog.Info("configuring exetini for execution")
-		entrypoint = config.InstanceExetiniPath
-		epArgs := append([]string{
-			"-g",
-			"-s",
-			"--",
-		}, args...)
-		args = epArgs
+	// check if wrapping another init
+	if isInitSystem(entrypoint) {
+		slog.Info("handing off init", "init", entrypoint)
+		// exec and hand off PID 1
+		if err := syscall.Exec(entrypoint, args, os.Environ()); err != nil {
+			return -1, err
+		}
+		return 0, nil
 	}
 
 	slog.Info("running entrypoint",
@@ -106,8 +105,12 @@ func runEntrypoint() (int, error) {
 		return -1, err
 	}
 
-	// HACK: REMOVE ME
-	time.Sleep(time.Second * 30)
-
 	return pid, nil
+}
+
+func isInitSystem(v string) bool {
+	return strings.Contains(v, "/init") ||
+		strings.Contains(v, "systemd") ||
+		strings.Contains(v, "runit") ||
+		strings.Contains(v, "s6-overlay")
 }

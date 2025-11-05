@@ -103,16 +103,17 @@ func runAction(clix *cli.Context) error {
 
 	// start ssh in background
 	go func() {
-		// check if running in exe.dev env
-		if isExeDevConfigured() {
-			return
-		}
-		slog.Info("starting ssh")
-		cmd := exec.Command(config.InstanceExeSshPath)
+		slog.Info("starting ssh", "path", config.InstanceExeSshPath)
+		cmd := exec.Command(config.InstanceExeSshPath,
+			"-D",
+			"-e",
+			"-f",
+			"/exe.dev/etc/ssh/sshd_config",
+		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Env = []string{
-			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"PATH=/exe.dev/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 			"HOME=/",
 			"PWD=/",
 			"TERM=xterm",
@@ -132,17 +133,14 @@ func runAction(clix *cli.Context) error {
 	}()
 
 	// entrypoint
-	go func() {
-		slog.Info("starting entrypoint")
-		pid, err := runEntrypoint()
-		if err != nil {
-			slog.Error("error running entrypoint", "err", err)
-			return
-		}
-		if pid > -1 {
-			slog.Info("started entrypoint", "pid", pid)
-		}
-	}()
+	slog.Info("starting entrypoint")
+	pid, err := runEntrypoint()
+	if err != nil {
+		return err
+	}
+	if pid > -1 {
+		slog.Info("started entrypoint", "pid", pid)
+	}
 
 	// reap children
 	for {

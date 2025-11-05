@@ -23,7 +23,6 @@ tmpkey*
 
 # exelet embedded fs
 exelet/fs/kernel
-exelet/fs/exe-ssh
-exelet/fs/exe-init
+exelet/fs/rovol
 exeletd
 exelet-ctl

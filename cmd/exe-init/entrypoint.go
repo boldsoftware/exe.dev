@@ -1,29 +1,12 @@
 package main
 
 import (
-	"log/slog"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/urfave/cli/v2"
 )
-
-var entrypointCommand = &cli.Command{
-	Name:   "entrypoint",
-	Hidden: true,
-	Action: func(clix *cli.Context) error {
-		pid, err := runEntrypoint()
-		if err != nil {
-			return err
-		}
-
-		slog.Info("started entrypoint", "pid", pid)
-
-		return nil
-	},
-}
 
 func getEntrypointArgs(cfg v1.ImageConfig) (string, []string, error) {
 	entrypoint := ""
