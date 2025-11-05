@@ -171,18 +171,6 @@ ENV EXEUNTU=1
 # might be useful?
 # STOPSIGNAL SIGRTMIN+3
 
-# Install Node.js v22.20.0 to /usr/local
-RUN ARCH=$(uname -m) && \
-	case $ARCH in \
-		x86_64) NODE_ARCH=x64 ;; \
-		aarch64) NODE_ARCH=arm64 ;; \
-		*) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
-	esac && \
-	cd /tmp && \
-	wget -q -O node.tar.xz "https://nodejs.org/dist/v22.20.0/node-v22.20.0-linux-${NODE_ARCH}.tar.xz" && \
-	tar -C /usr/local --strip-components=1 -xJf node.tar.xz && \
-	rm node.tar.xz && \
-	node --version && npm --version && npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Copy the pre-built static binaries from the builder stage
 COPY --from=go-builder /src/generate-gateway-token/generate-gateway-token /usr/local/bin/generate-gateway-token
@@ -198,6 +186,28 @@ ENV PATH="/usr/local/bin:/headless-shell:${PATH}"
 RUN mkdir -p /home/exedev/src && chown exedev:exedev /home/exedev/src
 
 USER exedev
+
+# Install Node.js v22.20.0 to /home/exedev/.local
+RUN ARCH=$(uname -m) && \
+	case $ARCH in \
+		x86_64) NODE_ARCH=x64 ;; \
+		aarch64) NODE_ARCH=arm64 ;; \
+		*) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+	esac && \
+	cd /tmp && \
+	wget -q -O node.tar.xz "https://nodejs.org/dist/v22.20.0/node-v22.20.0-linux-${NODE_ARCH}.tar.xz" && \
+	mkdir -p /home/exedev/.local && \
+	tar -C /home/exedev/.local --strip-components=1 -xJf node.tar.xz && \
+	rm node.tar.xz && \
+	/home/exedev/.local/bin/node --version && \
+	/home/exedev/.local/bin/npm --version
+
+# Configure npm to install global packages to ~/.local and install codex and claude
+RUN /home/exedev/.local/bin/npm config set prefix /home/exedev/.local && \
+	/home/exedev/.local/bin/npm install -g @anthropic-ai/claude-code @openai/codex
+
+# Update PATH in .bashrc to include node and npm global modules
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
 
 # Add claude settings file
 # TODO(philip,etc.): I've not yet had Claude work with our LLM
