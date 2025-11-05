@@ -1,6 +1,6 @@
 module exe.dev
 
-go 1.25.3
+go 1.25.4
 
 replace github.com/tg123/sshpiper => ./deps/sshpiper
 
