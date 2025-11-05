@@ -6,8 +6,8 @@ exe.db-shm
 ghuser/whoami.sqlite3*
 .vscode/
 node_modules/
-sshpiper/sshpiperd
-sshpiper/metrics
+deps/sshpiper/sshpiperd
+deps/sshpiper/metrics
 /cmd/exed/exed
 *.cover
 # codex seems to need a local go cache because of its sandbox.

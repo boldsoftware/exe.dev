@@ -17,10 +17,10 @@ cd /app
 make build
 
 echo "Building sshpiper..."
-cd sshpiper
+cd deps/sshpiper
 go build -o sshpiperd ./cmd/sshpiperd
 go build -o metrics ./plugin/metrics
-cd ..
+cd /app
 
 echo "Generating SSH key..."
 ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N "" -q

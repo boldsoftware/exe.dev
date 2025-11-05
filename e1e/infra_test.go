@@ -553,7 +553,7 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 		"--endpoint=localhost:"+fmt.Sprint(ei.PiperPluginPort),
 		"--insecure",
 	)
-	piperdCmd.Dir = filepath.Join("..", "sshpiper") // run from sshpiper dir so it finds its go.mod
+	piperdCmd.Dir = filepath.Join("..", "deps", "sshpiper") // run from sshpiper dir so it finds its go.mod
 
 	// Start piperd process and capture its output
 	cmdOut, err := piperdCmd.StdoutPipe()

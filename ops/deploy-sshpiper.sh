@@ -40,9 +40,10 @@ echo -e "${YELLOW}Building sshpiper binary...${NC}"
 echo "Binary name: $BINARY_NAME"
 
 # Build sshpiper binary for linux/amd64 (same as exed deployment)
-cd sshpiper
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/sshpiperd
-cd ..
+(
+    cd deps/sshpiper
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/sshpiperd
+)
 
 if [ ! -f "/tmp/$BINARY_NAME" ]; then
     echo -e "${RED}ERROR: Failed to build sshpiper binary${NC}"
@@ -53,9 +54,10 @@ echo -e "${YELLOW}Building metrics binary...${NC}"
 echo "Binary name: $METRICS_NAME"
 
 # Build metrics binary for linux/amd64 (same as exed deployment)
-cd sshpiper
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$METRICS_NAME" ./plugin/metrics
-cd ..
+(
+    cd deps/sshpiper
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$METRICS_NAME" ./plugin/metrics
+)
 
 if [ ! -f "/tmp/$METRICS_NAME" ]; then
     echo -e "${RED}ERROR: Failed to build metrics binary${NC}"

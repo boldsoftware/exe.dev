@@ -22,17 +22,17 @@ fi
 
 # Shell formatting
 echo "Checking Shell formatting..."
-shfmt -i 4 -w $(git ls-files -- "*.sh" | grep -v -E '^(tini|sshpiper)')
+shfmt -i 4 -w $(git ls-files -- "*.sh" | grep -v -E '^(tini|deps/sshpiper)')
 
 # Go formatting with gofumpt
 echo "Checking Go formatting..."
 echo "Formatting Go code with gofumpt..."
 # I tried all three approaches here, and xargs with parallelism and batches
 # of 20 files seemed faster than the other approaches.
-# time find . -name "*.go" -not -path "./sshpiper/*" -exec gofumpt -extra -w {} +
-# time gofumpt -extra -w $(git ls-files -- "*.go" | grep -v -E '^sshpiper')
+# time find . -name "*.go" -not -path "./deps/sshpiper/*" -exec gofumpt -extra -w {} +
+# time gofumpt -extra -w $(git ls-files -- "*.go" | grep -v -E '^deps/sshpiper')
 # Exclude generated files (*.gen.go) since they may have different formatting from code generators
-git ls-files -- "*.go" | grep -v -E '^sshpiper' | grep -v '\.gen\.go$' | xargs -P $(nproc) -n 20 gofumpt -extra -w
+git ls-files -- "*.go" | grep -v -E '^deps/sshpiper' | grep -v '\.gen\.go$' | xargs -P $(nproc) -n 20 gofumpt -extra -w
 echo "✓ Go code formatted"
 
 echo "Checking shelley/ui formatting..."

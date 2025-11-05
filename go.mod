@@ -2,7 +2,7 @@ module exe.dev
 
 go 1.25.3
 
-replace github.com/tg123/sshpiper => ./sshpiper
+replace github.com/tg123/sshpiper => ./deps/sshpiper
 
 replace github.com/Netflix/go-expect => ./deps/go-expect
 

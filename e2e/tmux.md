@@ -90,7 +90,7 @@ tmux new-window -t testing -n client
 
 # Start services in their windows
 tmux send-keys -t testing:exed 'cd /app && make dev' C-m
-tmux send-keys -t testing:sshpiper './sshpiper/cmd/sshpiperd/sshpiperd' C-m
+tmux send-keys -t testing:sshpiper './deps/sshpiper/cmd/sshpiperd/sshpiperd' C-m
 
 # Use client window for interactive testing
 tmux send-keys -t testing:client 'ssh -p 2222 localhost' C-m

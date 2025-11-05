@@ -40,7 +40,7 @@ The e-mail thing will require doing a web call; use the browser to handle that.
 - Use tmux windows: `tmux new-session -d -s testing && tmux new-window -t testing -n exed && tmux new-window -t testing -n sshpiper && tmux new-window -t testing -n client`
 - We cannot directly run an exe-ctr host because it requires /dev/kvm, that is why we work through exe-ctr-colima.
 - Build: `cd /app && make build`. Start: `cd /app && make run-dev` (in exed window). Server starts on :8080 (HTTP) and :2223 (SSH). Look for "SSH server starting" in output.
-- Build: `cd sshpiper && go build -o sshpiperd ./cmd/sshpiperd && go build -o metrics ./plugin/metrics && cd ..`. Start: `./sshpiper.sh` (in sshpiper window). Listens on :2222.
+- Build: `(cd deps/sshpiper && go build -o sshpiperd ./cmd/sshpiperd && go build -o metrics ./plugin/metrics)`. Start: `./sshpiper.sh` (in sshpiper window). Listens on :2222.
 - Command: `ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N ""`. Creates RSA key needed for authentication.
 
 ### Registration Hints

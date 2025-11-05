@@ -3,6 +3,7 @@ set -e
 
 # Get the piper plugin port from command-line argument, default to 2224
 PIPER_PLUGIN_PORT="${1:-2224}"
+SSHPIPER_DIR="deps/sshpiper"
 
 # Check if timeout command exists
 if ! command -v timeout &> /dev/null; then
@@ -11,13 +12,13 @@ if ! command -v timeout &> /dev/null; then
 fi
 
 # Build sshpiperd if needed
-if [ ! -f sshpiper/sshpiperd ]; then
-    cd sshpiper && go build -o sshpiperd ./cmd/sshpiperd && cd ..
+if [ ! -f "$SSHPIPER_DIR/sshpiperd" ]; then
+    (cd "$SSHPIPER_DIR" && go build -o sshpiperd ./cmd/sshpiperd)
 fi
 
 # Build sshpiperd if needed
-if [ ! -f sshpiper/metrics ]; then
-    cd sshpiper && go build -o metrics ./plugin/metrics && cd ..
+if [ ! -f "$SSHPIPER_DIR/metrics" ]; then
+    (cd "$SSHPIPER_DIR" && go build -o metrics ./plugin/metrics)
 fi
 
 # Get private key (and optional cert) from database
@@ -44,21 +45,21 @@ if command -v tailscale &> /dev/null; then
     else
         TS_IP=$TS_IP_OUTPUT
         echo "Using Tailscale IP: $TS_IP"
-        METRICS_ARGS=(-- ./sshpiper/metrics --collect-pipe-create-errors --collect-upstream-auth-failures --address "$TS_IP" --port 30303)
+        METRICS_ARGS=(-- "$SSHPIPER_DIR/metrics" --collect-pipe-create-errors --collect-upstream-auth-failures --address "$TS_IP" --port 30303)
     fi
 else
     echo "'tailscale' command not found, skipping metrics plugin"
 fi
 
 # Start sshpiper
-cd ./sshpiper && go build -o sshpiperd ./cmd/sshpiperd; cd ..
+(cd "$SSHPIPER_DIR" && go build -o sshpiperd ./cmd/sshpiperd)
 
 HOST_CERT_ARGS=()
 if [ -n "$HOST_CERT_SIG" ]; then
     HOST_CERT_ARGS+=(--server-cert-data="$(printf '%s' "$HOST_CERT_SIG" | base64 -w 0)")
 fi
 
-exec ./sshpiper/sshpiperd \
+exec "$SSHPIPER_DIR/sshpiperd" \
     --log-level=DEBUG \
     --drop-hostkeys-message \
     --port=2222 \
