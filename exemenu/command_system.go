@@ -410,12 +410,12 @@ func (ct *CommandTree) executeCommand(ctx context.Context, cc *CommandContext, c
 		}
 	}
 	if cmd == nil || cmd.Handler == nil {
-		return cc.Errorf("command not found: %q", strings.Join(commandPath, " "))
+		return cc.Errorf("exe.dev repl: command not found: %q", strings.Join(commandPath, " "))
 	}
 
 	// Check if command is available
 	if cmd.Available != nil && !cmd.Available(cc) {
-		return cc.Errorf("command not available: %q", strings.Join(commandPath, " "))
+		return cc.Errorf("exe.dev repl: command not available: %q", strings.Join(commandPath, " "))
 	}
 
 	// Parse flags if the command has a FlagSetFunc
