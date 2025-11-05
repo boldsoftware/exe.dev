@@ -81,12 +81,20 @@ jobs:
                   echo "❌ ERROR: Commit $commit has a message composed only of dots"
                   has_errors=1
               fi
+
+              # Check if this is a merge commit (has more than one parent)
+              parent_count=$(git rev-list --parents -n 1 "$commit" | awk '{print NF-1}')
+              if [ "$parent_count" -gt 1 ]; then
+                  echo "❌ ERROR: Commit $commit is a merge commit: $subject"
+                  echo "We use a rebase workflow."
+                  has_errors=1
+              fi
           done
 
           if [ $has_errors -eq 1 ]; then
               echo ""
               echo "❌ Validation failed! Please fix the above issues and try again."
-              echo "Commits with 'WIP' in the subject line or 'DO NOT SUBMIT' anywhere in the message are not allowed."
+              echo "Commits with 'WIP' in the subject line, 'DO NOT SUBMIT' anywhere in the message, or merge commits are not allowed."
               exit 1
           fi
 
