@@ -97,7 +97,7 @@ RUN cp -v sftp-server /out/exe.dev/bin/
 
 # var/empty for priv separation
 RUN mkdir -p /out/exe.dev/var/empty
-RUN touch /out/exe.dev/var/empty/.placeholder
+RUN touch /out/exe.dev/var/empty/placeholder
 
 # Build BusyBox from source for a capable shell and install as /exe.dev/bin/sh
 WORKDIR /src
