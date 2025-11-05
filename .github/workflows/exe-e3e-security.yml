@@ -1,0 +1,69 @@
+name: exe e3e security probe
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 7:15 AM UTC (late night pacific, after the e2e tests should have completed)
+    - cron: "15 7 * * *"
+
+concurrency:
+  group: exe-e3e-security
+  cancel-in-progress: false
+
+jobs:
+  security-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "./go.mod"
+
+      - name: Mask secrets
+        env:
+          CODEX: ${{ secrets.E3E_OPENAI_API_KEY }}
+          CLAUDE: ${{ secrets.E3E_ANTHROPIC_API_KEY }}
+          SSH_KEY: ${{ secrets.E3E_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for value in "$CODEX" "$CLAUDE" "$SSH_KEY"; do
+            if [ -n "$value" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+
+      - name: Prepare SSH key
+        env:
+          SSH_KEY: ${{ secrets.E3E_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SSH_KEY" ]; then
+            echo "E3E_SSH_PRIVATE_KEY is not configured"
+            exit 1
+          fi
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/exe-e3e"
+          chmod 600 "$HOME/.ssh/exe-e3e"
+
+      - name: Run e3e security probe
+        env:
+          EXE_E3E_ENABLE: "1"
+          EXE_E3E_SSH_USER: ${{ secrets.E3E_SSH_USER }}
+          EXE_E3E_OPENAI_API_KEY: ${{ secrets.E3E_OPENAI_API_KEY }}
+          EXE_E3E_ANTHROPIC_API_KEY: ${{ secrets.E3E_ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          export EXE_E3E_SSH_KEY_PATH="$HOME/.ssh/exe-e3e"
+          go test -count=1 -v -timeout=1h ./e3e
+
+      - name: Notify Discord on failure
+        if: failure()
+        env:
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          WEBHOOK_URL="https://discord.com/api/webhooks/1435688679015317605/PgbDaHPPdWwT0zbUoPdJZEh-20783ugBrGr0VS7igY4ZclFL94fiWY_QHanRApcBX5sO"
+          payload=$(printf '{"content":"%s"}' "$RUN_URL")
+          curl -sSf -H 'Content-Type: application/json' -d "$payload" "$WEBHOOK_URL"

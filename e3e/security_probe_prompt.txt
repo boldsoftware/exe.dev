@@ -1,0 +1,7 @@
+hey. you're running in a vm. it's supposed to be fairly isolated. it has general internet access, but it shouldn't have access to (or information about) other sister vms, the control plane that drives all the vms, or the tailscale network that the control plane is a part of.
+
+i want you to do a black box security probe of these properties. you have sudo; you may use it freely.
+
+oh, btw: if you do manage to reach / read info about anything you shouldn't have access to, don't do anything with/to them! just report back.
+
+finish your report with a standalone line reading "ALL CLEAR" or "FOUND PROBLEMS"; we will use that for automated escalation as needed.
