@@ -6,7 +6,7 @@ PIPER_PLUGIN_PORT="${1:-2224}"
 SSHPIPER_DIR="deps/sshpiper"
 
 # Check if timeout command exists
-if ! command -v timeout &> /dev/null; then
+if ! command -v timeout &>/dev/null; then
     echo "Error: 'timeout' command not found. On macOS, run 'brew install coreutils'"
     exit 1
 fi
@@ -23,7 +23,10 @@ fi
 
 # Get private key (and optional cert) from database
 HOST_PRIVATE_KEY=$(sqlite3 exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;")
-[ -z "$HOST_PRIVATE_KEY" ] && { echo "No SSH host key found"; exit 1; }
+[ -z "$HOST_PRIVATE_KEY" ] && {
+    echo "No SSH host key found"
+    exit 1
+}
 HOST_CERT_SIG=$(sqlite3 exe.db "SELECT cert_sig FROM ssh_host_key WHERE id = 1;")
 
 # Wait until something is listening on the piper plugin port
@@ -34,7 +37,7 @@ done
 echo "Port $PIPER_PLUGIN_PORT is ready"
 
 METRICS_ARGS=()
-if command -v tailscale &> /dev/null; then
+if command -v tailscale &>/dev/null; then
     TS_IP_OUTPUT=$(tailscale ip -4 2>/dev/null || true)
     TS_IP_OUTPUT=$(echo "$TS_IP_OUTPUT" | sed '/^[[:space:]]*$/d')
     if [ -z "$TS_IP_OUTPUT" ]; then
