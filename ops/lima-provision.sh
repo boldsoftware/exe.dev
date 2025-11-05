@@ -42,32 +42,19 @@ unmount_device() {
     systemctl disable "${unit_name}" || true
 }
 
-ensure_xfs() {
+ensure_zfs() {
     local device="$1"
     local fs_type
     fs_type="$(blkid -o value -s TYPE "${device}" || true)"
-    if [ "${fs_type}" != "xfs" ]; then
-        mkfs.xfs -f "${device}"
-    fi
-}
-
-mount_data() {
-    local device="$1"
-    mkdir -p /data
-    chmod 755 /data
-
-    if ! grep -q "^${device} /data " /etc/fstab; then
-        echo "${device} /data xfs defaults,pquota 0 0" >>/etc/fstab
-    fi
-
-    if ! mountpoint -q /data; then
-        mount /data
+    if [ "${fs_type}" != "zfs_member" ]; then
+        zpool create -f -m none tank "${device}"
+        zfs create -o mountpoint=/data tank/data
     fi
 }
 
 setup_data_disk() {
     apt-get update
-    apt-get install -y xfsprogs
+    apt-get install -y zfsutils-linux
 
     wait_for_device
     local data_device
@@ -79,8 +66,7 @@ setup_data_disk() {
         unmount_device "${current_mount}"
     fi
 
-    ensure_xfs "${data_device}"
-    mount_data "${data_device}"
+    ensure_zfs "${data_device}"
 }
 
 ensure_root() {
@@ -95,7 +81,7 @@ ensure_packages() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
         avahi-daemon \
         docker-registry \
-        xfsprogs
+        zfsutils-linux
 }
 
 ensure_ubuntu_user() {
