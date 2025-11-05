@@ -8,8 +8,8 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"exe.dev/pkg/image/store"
-	"exe.dev/pkg/image/types"
+	"exe.dev/deps/image/store"
+	"exe.dev/deps/image/types"
 )
 
 func skippable(mediaType string) bool {

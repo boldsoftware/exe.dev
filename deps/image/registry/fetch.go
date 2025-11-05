@@ -7,8 +7,8 @@ import (
 	"github.com/distribution/reference"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"exe.dev/pkg/image/store"
-	"exe.dev/pkg/image/types"
+	"exe.dev/deps/image/store"
+	"exe.dev/deps/image/types"
 )
 
 func FetchDescriptor(resolver remotes.Resolver, memoryStore *store.ContentStore, imageRef reference.Named) (ocispec.Descriptor, error) {

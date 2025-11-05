@@ -12,10 +12,10 @@ import (
 	"github.com/distribution/reference"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"exe.dev/pkg/image/registry"
-	"exe.dev/pkg/image/store"
-	"exe.dev/pkg/image/types"
-	"exe.dev/pkg/image/util"
+	"exe.dev/deps/image/registry"
+	"exe.dev/deps/image/store"
+	"exe.dev/deps/image/types"
+	"exe.dev/deps/image/util"
 )
 
 func (i *ImageManager) Fetch(ctx context.Context, ref, platform, destDir string) (*ocispec.Image, error) {

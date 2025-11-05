@@ -10,8 +10,8 @@ import (
 	"github.com/containerd/containerd/remotes/docker"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"exe.dev/pkg/image/store"
-	"exe.dev/pkg/image/types"
+	"exe.dev/deps/image/store"
+	"exe.dev/deps/image/types"
 )
 
 // Fetch uses a registry (distribution spec) API to retrieve a specific image manifest from a registry

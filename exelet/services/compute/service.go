@@ -11,11 +11,11 @@ import (
 
 	"google.golang.org/grpc"
 
+	"exe.dev/deps/image"
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/pkg/image"
 )
 
 const (
