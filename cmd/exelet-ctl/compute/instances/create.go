@@ -243,7 +243,7 @@ func parseConfigs(specs []string) ([]*api.Config, error) {
 			}
 		}
 		if cfgType == "" || data == nil || destination == "" {
-			return nil, fmt.Errorf("type, content and desitnation must be specified for config")
+			return nil, fmt.Errorf("type, content and destination must be specified for config")
 		}
 
 		switch strings.ToLower(cfgType) {

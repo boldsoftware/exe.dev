@@ -98,12 +98,6 @@ func fixupPermissions(dest string) error {
 			uid:  0,
 			gid:  0,
 		},
-		// must be owned by the 1000:1000 (exedev) user for login
-		"authorized_keys": {
-			mode: 0o600,
-			uid:  1000,
-			gid:  1000,
-		},
 	}
 
 	fname := filepath.Base(dest)
