@@ -7,10 +7,14 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -87,31 +91,100 @@ func (db *DB) Close() error {
 
 // Migrate runs the database migrations
 func (db *DB) Migrate(ctx context.Context) error {
-	// Read all schema files from the embedded filesystem
-	schemaFiles, err := schemaFS.ReadDir("schema")
+	// Read all migration files
+	entries, err := schemaFS.ReadDir("schema")
 	if err != nil {
 		return fmt.Errorf("failed to read schema directory: %w", err)
 	}
 
-	// Sort files by name to ensure lexicographic order
-	sort.Slice(schemaFiles, func(i, j int) bool {
-		return schemaFiles[i].Name() < schemaFiles[j].Name()
-	})
-
-	// Execute each schema file in order
-	for _, file := range schemaFiles {
-		if file.IsDir() {
+	// Filter and validate migration files
+	var migrations []string
+	migrationPattern := regexp.MustCompile(`^(\d{3})-.*\.sql$`)
+	for _, entry := range entries {
+		if entry.IsDir() {
 			continue
 		}
+		if !migrationPattern.MatchString(entry.Name()) {
+			continue
+		}
+		migrations = append(migrations, entry.Name())
+	}
 
-		schemaBytes, err := schemaFS.ReadFile(fmt.Sprintf("schema/%s", file.Name()))
+	// Sort migrations by number
+	sort.Strings(migrations)
+
+	// Get executed migrations
+	executedMigrations := make(map[int]bool)
+	var tableName string
+	err = db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+		row := rx.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='migrations'")
+		return row.Scan(&tableName)
+	})
+
+	if err == nil {
+		// Migrations table exists, load executed migrations
+		err = db.pool.Rx(ctx, func(ctx context.Context, rx *Rx) error {
+			rows, err := rx.Query("SELECT migration_number FROM migrations")
+			if err != nil {
+				return fmt.Errorf("failed to query executed migrations: %w", err)
+			}
+			defer rows.Close()
+
+			for rows.Next() {
+				var migrationNumber int
+				if err := rows.Scan(&migrationNumber); err != nil {
+					return fmt.Errorf("failed to scan migration number: %w", err)
+				}
+				executedMigrations[migrationNumber] = true
+			}
+			return rows.Err()
+		})
 		if err != nil {
-			return fmt.Errorf("failed to read schema file %s: %w", file.Name(), err)
+			return fmt.Errorf("failed to load executed migrations: %w", err)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		// Migrations table doesn't exist - executedMigrations remains empty
+		slog.Info("migrations table not found, running all migrations")
+	}
+
+	// Run any migrations that haven't been executed
+	for _, migration := range migrations {
+		// Extract migration number from filename (e.g., "001-base.sql" -> 001)
+		matches := migrationPattern.FindStringSubmatch(migration)
+		if len(matches) != 2 {
+			return fmt.Errorf("invalid migration filename format: %s", migration)
 		}
 
-		if err := db.pool.Exec(ctx, string(schemaBytes)); err != nil {
-			return fmt.Errorf("failed to execute schema %s: %w", file.Name(), err)
+		migrationNumber, err := strconv.Atoi(matches[1])
+		if err != nil {
+			return fmt.Errorf("failed to parse migration number from %s: %w", migration, err)
 		}
+
+		if !executedMigrations[migrationNumber] {
+			slog.Info("running migration", "file", migration, "number", migrationNumber)
+			if err := db.executeMigration(ctx, migration); err != nil {
+				return fmt.Errorf("failed to execute migration %s: %w", migration, err)
+			}
+
+			err = db.pool.Exec(ctx, "INSERT INTO migrations (migration_number, migration_name) VALUES (?, ?)", migrationNumber, migration)
+			if err != nil {
+				return fmt.Errorf("failed to record migration %s in migrations table: %w", migration, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// executeMigration executes a single migration file
+func (db *DB) executeMigration(ctx context.Context, filename string) error {
+	content, err := schemaFS.ReadFile("schema/" + filename)
+	if err != nil {
+		return fmt.Errorf("failed to read migration file %s: %w", filename, err)
+	}
+
+	if err := db.pool.Exec(ctx, string(content)); err != nil {
+		return fmt.Errorf("failed to execute migration %s: %w", filename, err)
 	}
 
 	return nil

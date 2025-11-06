@@ -73,6 +73,7 @@ func TestDB_Migrate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Run migrations first time
 	if err := db.Migrate(ctx); err != nil {
 		t.Errorf("Migrate() error = %v", err)
 	}
@@ -89,6 +90,21 @@ func TestDB_Migrate(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("Expected 0 conversations, got %d", count)
+	}
+
+	// Run migrations a second time to verify idempotency
+	if err := db.Migrate(ctx); err != nil {
+		t.Errorf("Second Migrate() error = %v", err)
+	}
+
+	// Verify we can still query after running migrations twice
+	err = db.Queries(ctx, func(q *generated.Queries) error {
+		var err error
+		count, err = q.CountConversations(ctx)
+		return err
+	})
+	if err != nil {
+		t.Errorf("Failed to query conversations after second migration: %v", err)
 	}
 }
 

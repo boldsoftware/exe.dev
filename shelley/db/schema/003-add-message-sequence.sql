@@ -2,7 +2,7 @@
 -- This eliminates timestamp collision issues when multiple messages are created simultaneously
 
 -- Create new table with sequence_id column
-CREATE TABLE IF NOT EXISTS messages_new (
+CREATE TABLE messages_new (
     message_id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
     sequence_id INTEGER NOT NULL,
@@ -37,6 +37,6 @@ ALTER TABLE messages_new RENAME TO messages;
 DROP TABLE messages_old;
 
 -- Recreate indexes with sequence_id instead of created_at for ordering
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_sequence ON messages(conversation_id, sequence_id);
-CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(type);
+CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
+CREATE INDEX idx_messages_conversation_sequence ON messages(conversation_id, sequence_id);
+CREATE INDEX idx_messages_type ON messages(type);

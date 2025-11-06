@@ -3,7 +3,7 @@
 -- SQLite doesn't support ALTER TABLE to modify CHECK constraints
 
 -- Step 1: Create a new messages table with the updated constraint
-CREATE TABLE IF NOT EXISTS messages_new (
+CREATE TABLE messages_new (
     message_id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
     sequence_id INTEGER NOT NULL,
@@ -25,6 +25,6 @@ DROP TABLE messages;
 ALTER TABLE messages_new RENAME TO messages;
 
 -- Step 5: Recreate indexes
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_sequence ON messages(conversation_id, sequence_id);
-CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(type);
+CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
+CREATE INDEX idx_messages_conversation_sequence ON messages(conversation_id, sequence_id);
+CREATE INDEX idx_messages_type ON messages(type);
