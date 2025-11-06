@@ -124,6 +124,8 @@ type DB struct {
 	db      *sql.DB
 	writer  chan *sql.Conn
 	readers chan *sql.Conn
+
+	shutdown func() error
 }
 
 func New(dataSourceName string, readerCount int) (*DB, error) {
@@ -142,25 +144,33 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 		return nil, fmt.Errorf("sqlite.New: %w", err)
 	}
 
+	ctx, _useShutdownInstead := context.WithCancel(context.Background())
+
+	shutdown := func() error {
+		_useShutdownInstead()
+		return db.Close()
+	}
+
 	var conns []*sql.Conn
-	for i := 0; i < numConns; i++ {
-		conn, err := db.Conn(context.Background())
+	for range numConns {
+		conn, err := db.Conn(ctx)
 		if err != nil {
-			db.Close()
+			shutdown()
 			return nil, fmt.Errorf("sqlite.New: %w", err)
 		}
 		conns = append(conns, conn)
 	}
 
 	p := &DB{
-		db:      db,
-		writer:  make(chan *sql.Conn, 1),
-		readers: make(chan *sql.Conn, readerCount),
+		db:       db,
+		writer:   make(chan *sql.Conn, 1),
+		readers:  make(chan *sql.Conn, readerCount),
+		shutdown: shutdown,
 	}
 	p.writer <- conns[0]
 	for _, conn := range conns[1:] {
 		if _, err := conn.ExecContext(context.Background(), "PRAGMA query_only=1;"); err != nil {
-			db.Close()
+			shutdown()
 			return nil, fmt.Errorf("sqlite.New query_only: %w", err)
 		}
 		p.readers <- conn
@@ -173,7 +183,12 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
-		for range ticker.C {
+		for {
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				return
+			}
 			p.UpdateMetrics()
 		}
 	}()
@@ -218,7 +233,7 @@ func InitDB(db *sql.DB, numConns int) error {
 }
 
 func (p *DB) Close() error {
-	return p.db.Close()
+	return p.shutdown()
 }
 
 // UpdateMetrics updates Prometheus metrics with current connection pool status
