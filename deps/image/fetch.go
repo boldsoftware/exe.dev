@@ -99,10 +99,7 @@ func (i *ImageManager) fetchIndex(ctx context.Context, cs *store.ContentStore, i
 						ra.Close()
 						return nil, err
 					}
-					opts := []archive.ApplyOpt{
-						archive.WithNoSameOwner(),
-					}
-					if _, err := archive.Apply(ctx, destDir, r, opts...); err != nil {
+					if _, err := archive.Apply(ctx, destDir, r); err != nil {
 						r.Close()
 						ra.Close()
 						return nil, err
