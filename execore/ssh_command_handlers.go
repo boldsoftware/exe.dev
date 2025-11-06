@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -416,7 +417,14 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	spinnerIndex := 0
 
 	// Main UI update loop
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// In CI, ticker only ever 1s, because GitHub actions has a rough time
+	// displaying a lot of text lines on error.
+	var ticker *time.Ticker
+	if os.Getenv("CI") != "" {
+		ticker = time.NewTicker(1 * time.Second)
+	} else {
+		ticker = time.NewTicker(100 * time.Millisecond)
+	}
 	defer ticker.Stop()
 
 	var createdContainer *container.Container
