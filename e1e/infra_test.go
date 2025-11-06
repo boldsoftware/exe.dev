@@ -1548,8 +1548,8 @@ func e1eTestsOnlyRunOnce(t *testing.T) {
 }
 
 // noGolden marks the test as not wanting golden file updates.
-// We use this for tests that satisfy both of these conditions:
-//   - are hard to get stable output out of
+// We use this for tests that satisfy one or both of these conditions:
+//   - are hard to get stable output out of (but prefer to use canonicalization if at all possible)
 //   - whose golden output isn't interesting/useful
 func noGolden(t *testing.T) {
 	skipGolden.Store(t.Name(), true)

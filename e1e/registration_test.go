@@ -251,6 +251,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
 
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)

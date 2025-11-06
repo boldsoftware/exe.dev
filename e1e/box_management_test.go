@@ -26,6 +26,7 @@ func TestVanillaBox(t *testing.T) {
 	pty.disconnect()
 
 	t.Run("no_second_hint", func(t *testing.T) {
+		noGolden(t)
 		pty := sshToExeDev(t, keyFile)
 		// They've created a box, so we should have stopped hinting at them about it.
 		pty.reject("create your first box")

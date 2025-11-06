@@ -20,6 +20,7 @@ import (
 func TestBoxSharing(t *testing.T) {
 	vouch.For("philip")
 	t.Parallel()
+	noGolden(t)
 
 	ownerPTY, ownerCookies, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-box-sharing.example")
 	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
@@ -69,6 +70,7 @@ func TestBoxSharing(t *testing.T) {
 	})
 
 	t.Run("email_sharing", func(t *testing.T) {
+		noGolden(t)
 		// Register a guest user.
 		guestPTY, guestCookies, _, guestEmail := registerForExeDevWithEmail(t, "guest@test-box-sharing.example")
 
@@ -188,6 +190,7 @@ func TestBoxSharing(t *testing.T) {
 	})
 
 	t.Run("share_link", func(t *testing.T) {
+		noGolden(t)
 		linkOut, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "add-share-link", box, "--json")
 		if err != nil {
 			t.Fatalf("failed to run share add-share-link command: %v\n%s", err, linkOut)

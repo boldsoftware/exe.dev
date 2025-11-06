@@ -22,6 +22,7 @@ func TestHTTPProxy(t *testing.T) {
 	vouch.For("philip")
 	t.Parallel()
 	e1eTestsOnlyRunOnce(t)
+	noGolden(t)
 
 	pty, cookies, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
