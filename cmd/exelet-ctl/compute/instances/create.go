@@ -213,7 +213,7 @@ func parseConfigs(specs []string) ([]*api.Config, error) {
 		cfgType := ""
 		data := []byte{}
 		destination := ""
-		mode := uint64(0644)
+		mode := uint64(0o644)
 		for _, s := range sp {
 			parts := strings.SplitN(s, "=", 2)
 			if len(parts) != 2 {

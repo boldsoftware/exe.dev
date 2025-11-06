@@ -37,7 +37,7 @@ func CopyRovol(target string) error {
 		destPath := filepath.Join(target, strings.TrimPrefix(path, "rovol"))
 		if d.IsDir() {
 			slog.Info("making rovol path", "dest", destPath)
-			return os.MkdirAll(destPath, 0755)
+			return os.MkdirAll(destPath, 0o755)
 		}
 
 		return copyFile(path, destPath)
@@ -69,7 +69,7 @@ func copyFile(src, dest string) error {
 
 	// check if in bin and make executable
 	if strings.Contains(dest, "/bin/") || strings.Contains(dest, "/lib/") {
-		if err := os.Chmod(dest, 0755); err != nil {
+		if err := os.Chmod(dest, 0o755); err != nil {
 			return err
 		}
 	}
@@ -94,13 +94,13 @@ func fixupPermissions(dest string) error {
 	perms := map[string]perm{
 		// must be owned by root
 		"sshd_config": {
-			mode: 0600,
+			mode: 0o600,
 			uid:  0,
 			gid:  0,
 		},
 		// must be owned by the 1000:1000 (exedev) user for login
 		"authorized_keys": {
-			mode: 0600,
+			mode: 0o600,
 			uid:  1000,
 			gid:  1000,
 		},

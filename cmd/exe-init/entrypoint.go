@@ -66,7 +66,6 @@ func getEntrypointArgs(cfg *v1.ImageConfig) (string, []string, error) {
 	}
 
 	return binPath, cmdArgs, nil
-
 }
 
 func loadImageConfig() (*v1.ImageConfig, error) {
