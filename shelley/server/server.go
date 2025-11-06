@@ -53,7 +53,7 @@ type LLMProvider interface {
 }
 
 // NewLLMServiceManager creates a new LLM service manager from config
-func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
+func NewLLMServiceManager(cfg *LLMConfig, history *models.LLMRequestHistory) LLMProvider {
 	// Convert LLMConfig to models.Config
 	modelConfig := &models.Config{
 		AnthropicAPIKey: cfg.AnthropicAPIKey,
@@ -64,7 +64,7 @@ func NewLLMServiceManager(cfg *LLMConfig) LLMProvider {
 		Logger:          cfg.Logger,
 	}
 
-	manager, err := models.NewManager(modelConfig)
+	manager, err := models.NewManager(modelConfig, history)
 	if err != nil {
 		// This shouldn't happen in practice, but handle it gracefully
 		cfg.Logger.Error("Failed to create models manager", "error", err)
@@ -182,6 +182,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Generic read route restricted to safe paths
 	mux.HandleFunc("/api/read", s.handleRead)
 
+	// Debug routes
+	mux.HandleFunc("/debug/llm", s.handleDebugLLM)
+
 	// Serve embedded UI assets with conservative caching
 	mux.Handle("/", s.staticHandler(ui.Assets()))
 }
@@ -245,6 +248,13 @@ func ExtractDisplayData(message llm.Message) interface{} {
 
 // recordMessage records a new message to the database and also notifies subscribers
 func (s *Server) recordMessage(ctx context.Context, conversationID string, message llm.Message, usage llm.Usage) error {
+	// Log message based on role
+	if message.Role == llm.MessageRoleUser {
+		s.logger.Info("User message", "conversation_id", conversationID, "content_items", len(message.Content))
+	} else if message.Role == llm.MessageRoleAssistant {
+		s.logger.Info("Agent message", "conversation_id", conversationID, "content_items", len(message.Content), "end_of_turn", message.EndOfTurn)
+	}
+
 	// Convert LLM message to database format
 	messageType, err := s.getMessageType(message)
 	if err != nil {

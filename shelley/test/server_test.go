@@ -46,7 +46,7 @@ func TestServerEndToEnd(t *testing.T) {
 	}))
 
 	// Create LLM service manager with predictable service
-	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
 	predictableService := loop.NewPredictableService()
 	// For testing, we'll override the manager's service selection
 	_ = predictableService // will need to mock this properly
@@ -385,7 +385,7 @@ func TestConversationCleanup(t *testing.T) {
 
 	// Create server with predictable service
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
 	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, false, "", "", nil)
 
 	// Create a conversation
@@ -421,7 +421,7 @@ func TestSlugGeneration(t *testing.T) {
 
 	// Create server
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
 	_ = server.NewServer(database, llmManager, []*llm.Tool{}, logger, false, "", "", nil)
 
 	// Test slug generation directly to avoid timing issues
@@ -502,7 +502,7 @@ func TestSanitizeSlug(t *testing.T) {
 func TestSlugGenerationWithPredictableService(t *testing.T) {
 	// Create server with predictable service only
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
 
 	// Create a temporary database
 	tempDB := t.TempDir() + "/test.db"
@@ -609,7 +609,7 @@ func TestSSEIncrementalUpdates(t *testing.T) {
 
 	// Create logger and LLM manager
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
 
 	// Create server
 	serviceInstance := server.NewServer(database, llmManager, nil, logger, false, "", "", nil)
@@ -921,7 +921,7 @@ func TestScreenshotRouteServesImage(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger})
+	llmManager := server.NewLLMServiceManager(&server.LLMConfig{Logger: logger}, nil)
 	svr := server.NewServer(database, llmManager, []*llm.Tool{}, logger, true, "", "", nil)
 
 	mux := http.NewServeMux()

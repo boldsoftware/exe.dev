@@ -17,6 +17,7 @@ import (
 	"shelley.exe.dev/claudetool/browse"
 	"shelley.exe.dev/db/generated"
 	"shelley.exe.dev/llm"
+	"shelley.exe.dev/models"
 	"shelley.exe.dev/slug"
 )
 
@@ -586,4 +587,119 @@ func (s *Server) handleStreamConversation(w http.ResponseWriter, r *http.Request
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		w.(http.Flusher).Flush()
 	}
+}
+
+// handleDebugLLM serves recent LLM requests and responses for debugging
+func (s *Server) handleDebugLLM(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get history from the LLM manager if it's a models.Manager
+	type historyProvider interface {
+		GetHistory() *models.LLMRequestHistory
+	}
+
+	var records []models.LLMRequestRecord
+	if hp, ok := s.llmManager.(historyProvider); ok && hp.GetHistory() != nil {
+		records = hp.GetHistory().GetRecords()
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	// Write HTML with pretty-printed JSON
+	fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>LLM Debug - Recent Requests</title>
+<style>
+body {
+	font-family: monospace;
+	margin: 20px;
+	background: #1e1e1e;
+	color: #d4d4d4;
+}
+h1 {
+	color: #4ec9b0;
+}
+.record {
+	margin-bottom: 30px;
+	border: 1px solid #3e3e42;
+	padding: 15px;
+	background: #252526;
+}
+.record-header {
+	margin-bottom: 10px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid #3e3e42;
+	color: #569cd6;
+}
+.error {
+	color: #f48771;
+}
+pre {
+	background: #1e1e1e;
+	padding: 10px;
+	border: 1px solid #3e3e42;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+</style>
+</head>
+<body>
+<h1>LLM Debug - Recent Requests</h1>
+`)
+
+	if len(records) == 0 {
+		fmt.Fprint(w, "<p>No requests recorded yet.</p>")
+	} else {
+		for i := len(records) - 1; i >= 0; i-- {
+			record := records[i]
+			fmt.Fprintf(w, `<div class="record">`)
+			fmt.Fprintf(w, `<div class="record-header">`)
+			fmt.Fprintf(w, "<strong>Request #%d</strong> - ", len(records)-i)
+			fmt.Fprintf(w, "Model: %s | ", record.ModelID)
+			fmt.Fprintf(w, "Time: %s | ", record.Timestamp.Format("2006-01-02 15:04:05"))
+			fmt.Fprintf(w, "Duration: %.2fs", record.Duration)
+			if record.Error != "" {
+				fmt.Fprintf(w, ` | <span class="error">Error: %s</span>`, record.Error)
+			}
+			fmt.Fprintf(w, "</div>")
+
+			// Pretty-print request
+			fmt.Fprintf(w, "<h3>Request:</h3>")
+			if record.Request != nil {
+				if requestJSON, err := json.MarshalIndent(record.Request, "", "  "); err == nil {
+					fmt.Fprintf(w, "<pre>%s</pre>", requestJSON)
+				} else {
+					fmt.Fprintf(w, "<pre>Error marshaling request: %v</pre>", err)
+				}
+			} else {
+				fmt.Fprintf(w, "<pre>No request data</pre>")
+			}
+
+			// Pretty-print response
+			fmt.Fprintf(w, "<h3>Response:</h3>")
+			if record.Response != nil {
+				if responseJSON, err := json.MarshalIndent(record.Response, "", "  "); err == nil {
+					fmt.Fprintf(w, "<pre>%s</pre>", responseJSON)
+				} else {
+					fmt.Fprintf(w, "<pre>Error marshaling response: %v</pre>", err)
+				}
+			} else {
+				fmt.Fprintf(w, "<pre>No response data</pre>")
+			}
+
+			fmt.Fprintf(w, "</div>")
+		}
+	}
+
+	fmt.Fprint(w, `
+</body>
+</html>
+`)
 }

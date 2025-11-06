@@ -103,7 +103,7 @@ func TestManagerGetAvailableModelsOrder(t *testing.T) {
 	cfg := &Config{}
 
 	// Create manager - should only have predictable model since no API keys
-	manager, err := NewManager(cfg)
+	manager, err := NewManager(cfg, nil)
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestManagerGetAvailableModelsMatchesAllOrder(t *testing.T) {
 		FireworksAPIKey: "test-key",
 	}
 
-	manager, err := NewManager(cfg)
+	manager, err := NewManager(cfg, nil)
 	if err != nil {
 		t.Fatalf("NewManager failed: %v", err)
 	}

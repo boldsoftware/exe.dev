@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"shelley.exe.dev/llm"
@@ -244,13 +245,158 @@ func Default() Model {
 type Manager struct {
 	services map[string]llm.Service
 	logger   *slog.Logger
+	history  *LLMRequestHistory
+}
+
+// LLMRequestRecord stores a request/response pair for debugging
+type LLMRequestRecord struct {
+	Timestamp time.Time     `json:"timestamp"`
+	ModelID   string        `json:"model_id"`
+	Request   *llm.Request  `json:"request"`
+	Response  *llm.Response `json:"response,omitempty"`
+	Error     string        `json:"error,omitempty"`
+	Duration  float64       `json:"duration_seconds"`
+}
+
+// LLMRequestHistory maintains a circular buffer of recent LLM requests
+type LLMRequestHistory struct {
+	mu      sync.RWMutex
+	records []LLMRequestRecord
+	maxSize int
+}
+
+// NewLLMRequestHistory creates a new request history with the given max size
+func NewLLMRequestHistory(maxSize int) *LLMRequestHistory {
+	return &LLMRequestHistory{
+		records: make([]LLMRequestRecord, 0, maxSize),
+		maxSize: maxSize,
+	}
+}
+
+// Add adds a new record to the history
+func (h *LLMRequestHistory) Add(record LLMRequestRecord) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if len(h.records) >= h.maxSize {
+		// Remove oldest record
+		h.records = h.records[1:]
+	}
+	h.records = append(h.records, record)
+}
+
+// GetRecords returns a copy of all records
+func (h *LLMRequestHistory) GetRecords() []LLMRequestRecord {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	result := make([]LLMRequestRecord, len(h.records))
+	copy(result, h.records)
+	return result
+}
+
+// ConfigInfo is an optional interface that services can implement to provide configuration details for logging
+type ConfigInfo interface {
+	// ConfigDetails returns human-readable configuration info (e.g., URL, model name)
+	ConfigDetails() map[string]string
+}
+
+// loggingService wraps an llm.Service to log request completion with usage information
+type loggingService struct {
+	service llm.Service
+	logger  *slog.Logger
+	modelID string
+	history *LLMRequestHistory
+}
+
+// Do wraps the underlying service's Do method with logging
+func (l *loggingService) Do(ctx context.Context, request *llm.Request) (*llm.Response, error) {
+	start := time.Now()
+
+	// Call the underlying service
+	response, err := l.service.Do(ctx, request)
+
+	duration := time.Since(start)
+	durationSeconds := duration.Seconds()
+
+	// Record request/response pair in history
+	if l.history != nil {
+		record := LLMRequestRecord{
+			Timestamp: start,
+			ModelID:   l.modelID,
+			Request:   request,
+			Response:  response,
+			Duration:  durationSeconds,
+		}
+		if err != nil {
+			record.Error = err.Error()
+		}
+		l.history.Add(record)
+	}
+
+	// Log the completion with usage information
+	if err != nil {
+		logAttrs := []any{
+			"model", l.modelID,
+			"duration_seconds", durationSeconds,
+		}
+
+		// Add configuration details if available
+		if configProvider, ok := l.service.(ConfigInfo); ok {
+			for k, v := range configProvider.ConfigDetails() {
+				logAttrs = append(logAttrs, k, v)
+			}
+		}
+
+		logAttrs = append(logAttrs, "error", err)
+		l.logger.Error("LLM request failed", logAttrs...)
+	} else {
+		// Log successful completion with usage info
+		logAttrs := []any{
+			"model", l.modelID,
+			"duration_seconds", durationSeconds,
+		}
+
+		// Add usage information if available
+		if !response.Usage.IsZero() {
+			logAttrs = append(logAttrs,
+				"input_tokens", response.Usage.InputTokens,
+				"output_tokens", response.Usage.OutputTokens,
+				"cost_usd", response.Usage.CostUSD,
+			)
+			if response.Usage.CacheCreationInputTokens > 0 {
+				logAttrs = append(logAttrs, "cache_creation_input_tokens", response.Usage.CacheCreationInputTokens)
+			}
+			if response.Usage.CacheReadInputTokens > 0 {
+				logAttrs = append(logAttrs, "cache_read_input_tokens", response.Usage.CacheReadInputTokens)
+			}
+		}
+
+		l.logger.Info("LLM request completed", logAttrs...)
+	}
+
+	return response, err
+}
+
+// TokenContextWindow delegates to the underlying service
+func (l *loggingService) TokenContextWindow() int {
+	return l.service.TokenContextWindow()
+}
+
+// UseSimplifiedPatch delegates to the underlying service if it supports it
+func (l *loggingService) UseSimplifiedPatch() bool {
+	if sp, ok := l.service.(llm.SimplifiedPatcher); ok {
+		return sp.UseSimplifiedPatch()
+	}
+	return false
 }
 
 // NewManager creates a new Manager with all models configured
-func NewManager(cfg *Config) (*Manager, error) {
+func NewManager(cfg *Config, history *LLMRequestHistory) (*Manager, error) {
 	manager := &Manager{
 		services: make(map[string]llm.Service),
 		logger:   cfg.Logger,
+		history:  history,
 	}
 
 	for _, model := range All() {
@@ -274,11 +420,17 @@ func (m *Manager) GetService(modelID string) (llm.Service, error) {
 				service: svc,
 				logger:  m.logger,
 				modelID: modelID,
+				history: m.history,
 			}, nil
 		}
 		return svc, nil
 	}
 	return nil, fmt.Errorf("unsupported model: %s", modelID)
+}
+
+// GetHistory returns the LLM request history
+func (m *Manager) GetHistory() *LLMRequestHistory {
+	return m.history
 }
 
 // GetAvailableModels returns a list of available model IDs in the same order as All()
@@ -298,71 +450,4 @@ func (m *Manager) GetAvailableModels() []string {
 func (m *Manager) HasModel(modelID string) bool {
 	_, ok := m.services[modelID]
 	return ok
-}
-
-// loggingService wraps an llm.Service to log request completion
-type loggingService struct {
-	service llm.Service
-	logger  *slog.Logger
-	modelID string
-}
-
-// ConfigInfo is an optional interface that services can implement to provide configuration details
-type ConfigInfo interface {
-	ConfigDetails() map[string]string
-}
-
-// Do wraps the underlying service's Do method with logging
-func (l *loggingService) Do(ctx context.Context, request *llm.Request) (*llm.Response, error) {
-	start := time.Now()
-	response, err := l.service.Do(ctx, request)
-	duration := time.Since(start)
-
-	if err != nil {
-		logAttrs := []any{
-			"model", l.modelID,
-			"duration_seconds", duration.Seconds(),
-		}
-		if configProvider, ok := l.service.(ConfigInfo); ok {
-			for k, v := range configProvider.ConfigDetails() {
-				logAttrs = append(logAttrs, k, v)
-			}
-		}
-		logAttrs = append(logAttrs, "error", err)
-		l.logger.Error("LLM request failed", logAttrs...)
-	} else {
-		logAttrs := []any{
-			"model", l.modelID,
-			"duration_seconds", duration.Seconds(),
-		}
-		if !response.Usage.IsZero() {
-			logAttrs = append(logAttrs,
-				"input_tokens", response.Usage.InputTokens,
-				"output_tokens", response.Usage.OutputTokens,
-				"cost_usd", response.Usage.CostUSD,
-			)
-			if response.Usage.CacheCreationInputTokens > 0 {
-				logAttrs = append(logAttrs, "cache_creation_input_tokens", response.Usage.CacheCreationInputTokens)
-			}
-			if response.Usage.CacheReadInputTokens > 0 {
-				logAttrs = append(logAttrs, "cache_read_input_tokens", response.Usage.CacheReadInputTokens)
-			}
-		}
-		l.logger.Info("LLM request completed", logAttrs...)
-	}
-
-	return response, err
-}
-
-// TokenContextWindow delegates to the underlying service
-func (l *loggingService) TokenContextWindow() int {
-	return l.service.TokenContextWindow()
-}
-
-// UseSimplifiedPatch delegates to the underlying service if it supports it
-func (l *loggingService) UseSimplifiedPatch() bool {
-	if sp, ok := l.service.(llm.SimplifiedPatcher); ok {
-		return sp.UseSimplifiedPatch()
-	}
-	return false
 }

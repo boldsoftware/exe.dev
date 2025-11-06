@@ -108,8 +108,11 @@ func runServe(global GlobalConfig, args []string) {
 	// Build LLM configuration
 	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
 
+	// Create request history for debugging
+	llmHistory := models.NewLLMRequestHistory(10)
+
 	// Initialize LLM service manager
-	llmManager := server.NewLLMServiceManager(llmConfig)
+	llmManager := server.NewLLMServiceManager(llmConfig, llmHistory)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -151,7 +154,8 @@ func runPrompt(global GlobalConfig, args []string) {
 	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
 
 	// Initialize LLM service manager for tools (same as HTTP server)
-	llmManager := server.NewLLMServiceManager(llmConfig)
+	// For CLI usage, we don't need request history tracking
+	llmManager := server.NewLLMServiceManager(llmConfig, nil)
 	ctx := context.Background()
 	tools, toolsCleanup := setupTools(ctx, llmManager)
 	defer toolsCleanup()
@@ -469,7 +473,8 @@ func setupLLMService(global GlobalConfig, logger *slog.Logger) llm.Service {
 	llmConfig := buildLLMConfig(logger, global.ConfigPath, global.TerminalURL, global.DefaultModel)
 
 	// Always use the service manager to ensure consistent logging
-	llmManager := server.NewLLMServiceManager(llmConfig)
+	// For CLI usage, we don't need request history tracking
+	llmManager := server.NewLLMServiceManager(llmConfig, nil)
 	svc, err := llmManager.GetService(modelID)
 	if err != nil {
 		// Provide a helpful message with env hints
