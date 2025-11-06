@@ -32,13 +32,14 @@ const (
 
 // CreateInstance creates a new exelet instance
 func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.ComputeService_CreateInstanceServer) error {
+	var err error
+
 	// validate
 	if err := req.Validate(); err != nil {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
 	s.log.Debug("creating instance", "request", req)
-	var err error
 
 	ctx := stream.Context()
 	if req.ID == "" {
@@ -177,46 +178,23 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-	/*
-		initFiles := map[string]string{
-			"exe-init": filepath.Join(mountpoint, config.InstanceExeInitPath),
-			"exe-ssh":  filepath.Join(mountpoint, config.InstanceExeSshPath),
-		}
-		for name, dest := range initFiles {
-			s.log.Debug("configuring init file", "name", name, "dest", dest)
-			// exe-init
-			initFile, err := exeletfs.Get(name)
-			if err != nil {
-				return status.Error(codes.Internal, err.Error())
-			}
-			// ensure not present
-			_ = os.Remove(dest)
-
-			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-				return status.Error(codes.Internal, err.Error())
-			}
-
-			exeInitFile, err := os.Create(dest)
-			if err != nil {
-				return status.Error(codes.Internal, err.Error())
-			}
-
-			if _, err := io.Copy(exeInitFile, initFile); err != nil {
-				return status.Error(codes.Internal, err.Error())
-			}
-
-			if err := exeInitFile.Close(); err != nil {
-				return status.Error(codes.Internal, err.Error())
-			}
-
-			// executable
-			if err := os.Chmod(dest, 0o755); err != nil {
-				return status.Error(codes.Internal, err.Error())
-			}
-		}
-	*/
+	// inject rovol
 	if err := exeletfs.CopyRovol(filepath.Join(mountpoint, "/exe.dev")); err != nil {
 		return status.Error(codes.Internal, err.Error())
+	}
+
+	for _, cfg := range req.Configs {
+		targetPath := filepath.Join(mountpoint, filepath.Clean(cfg.Destination))
+
+		switch v := cfg.Source.(type) {
+		case *api.Config_File:
+			mode := os.FileMode(int(cfg.Mode))
+			if err := os.WriteFile(targetPath, v.File.Data, mode); err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
+		default:
+			return status.Errorf(codes.InvalidArgument, "config type %T not supported", v)
+		}
 	}
 
 	// volumes
@@ -251,30 +229,6 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		default:
 			return status.Error(codes.InvalidArgument, "only image volumes are currently supported")
 		}
-	}
-
-	// inject host key
-	s.log.Debug("configuring ssh host identity")
-	hostSSHKeyPath := filepath.Join(mountpoint, filepath.Dir(config.InstanceSSHHostKeyPath))
-	if err := generateSSHHostKeyPair(hostSSHKeyPath); err != nil {
-		return status.Errorf(codes.Internal, "error configuring ssh host identity: %s", err)
-	}
-	// inject ssh key
-	s.log.Debug("configuring ssh keys", "keys", req.SSHKeys)
-	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
-		ID:      instanceID,
-		State:   api.CreateInstanceStatus_CONFIG,
-		Message: "configuring instance",
-	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-	instanceSSHKeyPath := filepath.Join(mountpoint, config.InstanceSSHPublicKeysPath)
-	if err := os.MkdirAll(filepath.Dir(instanceSSHKeyPath), 0o750); err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-	sshKeys := strings.Join(req.SSHKeys, "\n")
-	if err := os.WriteFile(instanceSSHKeyPath, []byte(sshKeys), 0o600); err != nil {
-		return status.Error(codes.Internal, err.Error())
 	}
 
 	// set hostname
@@ -370,6 +324,30 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		if err := os.WriteFile(imageConfPath, imageConfData, 0o644); err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
+	}
+
+	// inject host key
+	s.log.Debug("configuring ssh host identity")
+	hostSSHKeyPath := filepath.Join(mountpoint, filepath.Dir(config.InstanceSSHHostKeyPath))
+	if err := generateSSHHostKeyPair(hostSSHKeyPath); err != nil {
+		return status.Errorf(codes.Internal, "error configuring ssh host identity: %s", err)
+	}
+	// inject ssh key
+	s.log.Debug("configuring ssh keys", "keys", req.SSHKeys)
+	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
+		ID:      instanceID,
+		State:   api.CreateInstanceStatus_CONFIG,
+		Message: "configuring instance",
+	}); err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	instanceSSHKeyPath := filepath.Join(mountpoint, config.InstanceSSHPublicKeysPath)
+	if err := os.MkdirAll(filepath.Dir(instanceSSHKeyPath), 0o750); err != nil {
+		return status.Error(codes.Internal, err.Error())
+	}
+	sshKeys := strings.Join(req.SSHKeys, "\n")
+	if err := os.WriteFile(instanceSSHKeyPath, []byte(sshKeys), 0o600); err != nil {
+		return status.Error(codes.Internal, err.Error())
 	}
 
 	// unmount

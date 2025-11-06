@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,6 +69,10 @@ var createInstanceCommand = &cli.Command{
 			Aliases: []string{"v"},
 			Usage:   "add instance volume (type=<type>,source=<source>,mountpoint=<guest-path>)",
 		},
+		&cli.StringSliceFlag{
+			Name:  "config",
+			Usage: "add instance config (type=<type>,source=<local-path>,destination=<guest-path>)",
+		},
 	},
 	Action: func(clix *cli.Context) error {
 		name := clix.String("name")
@@ -103,6 +108,10 @@ var createInstanceCommand = &cli.Command{
 		if err != nil {
 			return err
 		}
+		configs, err := parseConfigs(clix.StringSlice("config"))
+		if err != nil {
+			return err
+		}
 
 		c, err := helpers.GetClient(clix)
 		if err != nil {
@@ -120,6 +129,7 @@ var createInstanceCommand = &cli.Command{
 			Env:      env,
 			BootArgs: bootArgs,
 			Volumes:  volumes,
+			Configs:  configs,
 		}
 
 		// progress
@@ -155,9 +165,9 @@ var createInstanceCommand = &cli.Command{
 	},
 }
 
-func parseVolumes(specs []string) ([]*api.VolumeRequest, error) {
-	vols := []*api.VolumeRequest{}
-	// parse source=foo,mountpoint=/bar
+func parseVolumes(specs []string) ([]*api.Volume, error) {
+	vols := []*api.Volume{}
+	// parse type=t,source=foo,mountpoint=/bar
 	for _, spec := range specs {
 		sp := strings.Split(spec, ",")
 		volType := ""
@@ -166,7 +176,7 @@ func parseVolumes(specs []string) ([]*api.VolumeRequest, error) {
 		for _, s := range sp {
 			parts := strings.SplitN(s, "=", 2)
 			if len(parts) != 2 {
-				return nil, fmt.Errorf("invalid volume format (expected source=<source,mountpoint=<guest-mountpoint>)")
+				return nil, fmt.Errorf("invalid volume format (expected type=<type>,source=<source,mountpoint=<guest-mountpoint>)")
 			}
 			key := strings.ToLower(parts[0])
 			val := strings.ToLower(parts[1])
@@ -175,7 +185,7 @@ func parseVolumes(specs []string) ([]*api.VolumeRequest, error) {
 				volType = val
 			case "source", "src":
 				source = val
-			case "target", "mountpoint":
+			case "mountpoint", "target":
 				mountpoint = val
 			default:
 				return nil, fmt.Errorf("unsupported key in volume spec: %s", key)
@@ -185,7 +195,7 @@ func parseVolumes(specs []string) ([]*api.VolumeRequest, error) {
 			return nil, fmt.Errorf("type, source and mountpoint must be specified for volume")
 		}
 
-		vols = append(vols, &api.VolumeRequest{
+		vols = append(vols, &api.Volume{
 			Type:       volType,
 			Source:     source,
 			Mountpoint: mountpoint,
@@ -193,4 +203,65 @@ func parseVolumes(specs []string) ([]*api.VolumeRequest, error) {
 	}
 
 	return vols, nil
+}
+
+func parseConfigs(specs []string) ([]*api.Config, error) {
+	configs := []*api.Config{}
+	// parse type=file,source=/local/path,destination=/path/in/guest/foo
+	for _, spec := range specs {
+		sp := strings.Split(spec, ",")
+		cfgType := ""
+		data := []byte{}
+		destination := ""
+		mode := uint64(0644)
+		for _, s := range sp {
+			parts := strings.SplitN(s, "=", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid config format (expected type=<type>,source=</local/path>,destination=<guest-path>,mode=<mode>)")
+			}
+			key := strings.ToLower(parts[0])
+			val := strings.ToLower(parts[1])
+			switch key {
+			case "type":
+				cfgType = val
+			case "source", "data":
+				d, err := os.ReadFile(val)
+				if err != nil {
+					return nil, err
+				}
+				data = d
+			case "destination", "target":
+				destination = val
+			case "mode":
+				m, err := strconv.ParseUint(val, 8, 32)
+				if err != nil {
+					return nil, err
+				}
+				mode = m
+			default:
+				return nil, fmt.Errorf("unsupported key in config spec: %s", key)
+			}
+		}
+		if cfgType == "" || data == nil || destination == "" {
+			return nil, fmt.Errorf("type, content and desitnation must be specified for config")
+		}
+
+		switch strings.ToLower(cfgType) {
+		case "file":
+			configs = append(configs, &api.Config{
+				Destination: destination,
+				Mode:        mode,
+				Source: &api.Config_File{
+					File: &api.FileConfig{
+						Data: data,
+					},
+				},
+			})
+		default:
+			return nil, fmt.Errorf("unsupported config type: %s", cfgType)
+		}
+
+	}
+
+	return configs, nil
 }

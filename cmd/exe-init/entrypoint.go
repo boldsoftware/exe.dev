@@ -1,14 +1,18 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"exe.dev/exelet/config"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 )
 
-func getEntrypointArgs(cfg v1.ImageConfig) (string, []string, error) {
+func getEntrypointArgs(cfg *v1.ImageConfig) (string, []string, error) {
 	entrypoint := ""
 	args := []string{}
 
@@ -62,4 +66,19 @@ func getEntrypointArgs(cfg v1.ImageConfig) (string, []string, error) {
 	}
 
 	return binPath, cmdArgs, nil
+
+}
+
+func loadImageConfig() (*v1.ImageConfig, error) {
+	// load image config
+	var imageConfig v1.ImageConfig
+	data, err := os.ReadFile(config.ImageConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading image config: %w", err)
+	}
+	if err := json.Unmarshal(data, &imageConfig); err != nil {
+		return nil, fmt.Errorf("error unmarshaling config: %w", err)
+	}
+
+	return &imageConfig, nil
 }

@@ -11,7 +11,7 @@ import (
 func TestGetEntrypointAndArgsEntrypointOnly(t *testing.T) {
 	ep, err := filepath.EvalSymlinks("/bin/sh")
 	assert.NoError(t, err)
-	cfg := v1.ImageConfig{
+	cfg := &v1.ImageConfig{
 		Entrypoint: []string{
 			ep,
 		},
@@ -26,7 +26,7 @@ func TestGetEntrypointAndArgsEntrypointOnly(t *testing.T) {
 func TestGetEntrypointAndArgsEntrypointOnlyRelative(t *testing.T) {
 	ep := "./app"
 	expected := "./app"
-	cfg := v1.ImageConfig{
+	cfg := &v1.ImageConfig{
 		Entrypoint: []string{
 			ep,
 		},
@@ -42,7 +42,7 @@ func TestGetEntrypointAndArgsEntrypointSlice(t *testing.T) {
 	ep, err := filepath.EvalSymlinks("/bin/sh")
 	assert.NoError(t, err)
 	epAdditional := "bar"
-	cfg := v1.ImageConfig{
+	cfg := &v1.ImageConfig{
 		Entrypoint: []string{
 			ep,
 			epAdditional,
@@ -58,7 +58,7 @@ func TestGetEntrypointAndArgsEntrypointSlice(t *testing.T) {
 func TestGetEntrypointAndArgsCmdOnly(t *testing.T) {
 	cmd, err := filepath.EvalSymlinks("/bin/sh")
 	assert.NoError(t, err)
-	cfg := v1.ImageConfig{
+	cfg := &v1.ImageConfig{
 		Cmd: []string{
 			cmd,
 		},
@@ -74,7 +74,7 @@ func TestGetEntrypointAndArgsCmdSlice(t *testing.T) {
 	cmd, err := filepath.EvalSymlinks("/bin/sh")
 	assert.NoError(t, err)
 	cmdAdditional := "bar"
-	cfg := v1.ImageConfig{
+	cfg := &v1.ImageConfig{
 		Cmd: []string{
 			cmd,
 			cmdAdditional,
@@ -91,7 +91,7 @@ func TestGetEntrypointAndArgsEntrypointAndCmd(t *testing.T) {
 	ep, err := filepath.EvalSymlinks("/bin/sh")
 	assert.NoError(t, err)
 	cmd := "bar"
-	cfg := v1.ImageConfig{
+	cfg := &v1.ImageConfig{
 		Entrypoint: []string{
 			ep,
 			cmd,

@@ -152,10 +152,10 @@ RUN echo "=== Binary sizes ===" && \
   ldd /out/exe.dev/bin/sshd 2>/dev/null || echo "No dynamic dependencies"
 
 # exe-init
-FROM golang:1.25.3 AS exe-init
+FROM golang:latest AS exe-init
 COPY . /src
 WORKDIR /src/cmd/exe-init
-RUN CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o /exe-init .
+RUN CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w" -o /exe-init .
 
 FROM scratch AS out
 COPY --from=build /out/exe.dev /

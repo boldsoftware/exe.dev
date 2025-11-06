@@ -85,14 +85,35 @@ func copyFile(src, dest string) error {
 // fixupPermissions sets permissions for specific contents
 // because embed.FS stores without mode for security
 func fixupPermissions(dest string) error {
-	perms := map[string]os.FileMode{
-		"sshd_config":     0600,
-		"authorized_keys": 0600,
+	type perm struct {
+		mode int
+		uid  int
+		gid  int
+	}
+
+	perms := map[string]perm{
+		// must be owned by root
+		"sshd_config": {
+			mode: 0600,
+			uid:  0,
+			gid:  0,
+		},
+		// must be owned by the 1000:1000 (exedev) user for login
+		"authorized_keys": {
+			mode: 0600,
+			uid:  1000,
+			gid:  1000,
+		},
 	}
 
 	fname := filepath.Base(dest)
-	if mode, ok := perms[fname]; ok {
-		if err := os.Chmod(dest, mode); err != nil {
+	if perm, ok := perms[fname]; ok {
+		slog.Info("setting mode", "name", fname, "path", dest, "mode", perm.mode)
+		if err := os.Chmod(dest, os.FileMode(perm.mode)); err != nil {
+			return err
+		}
+		slog.Info("setting ownership", "name", fname, "path", dest, "uid", perm.uid, "gid", perm.gid)
+		if err := os.Chown(dest, perm.uid, perm.gid); err != nil {
 			return err
 		}
 	}

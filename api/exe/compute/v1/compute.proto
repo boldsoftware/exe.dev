@@ -27,10 +27,23 @@ message CreateInstanceRequest {
   Placement placement = 9;
   string kernel_image = 10;
   repeated string boot_args = 11;
-  repeated VolumeRequest volumes = 12;
+  repeated Volume volumes = 12;
+  repeated Config configs = 13;
 }
 
-message VolumeRequest {
+message Config {
+  string destination = 1;
+  uint64 mode = 2;
+  oneof source {
+    FileConfig file = 3;
+  }
+}
+
+message FileConfig {
+  bytes data = 1;
+}
+
+message Volume {
   string type = 1;
   string source = 2;
   string mountpoint = 3;

@@ -4,30 +4,18 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 
-	"github.com/opencontainers/image-spec/specs-go/v1"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"exe.dev/exelet/config"
 )
 
-func runEntrypoint() (int, error) {
-	// load image config
-	var imageConfig v1.ImageConfig
-	data, err := os.ReadFile(config.ImageConfigPath)
-	if err != nil {
-		return -1, fmt.Errorf("error reading image config: %w", err)
-	}
-	if err := json.Unmarshal(data, &imageConfig); err != nil {
-		return -1, fmt.Errorf("error unmarshaling config: %w", err)
-	}
-
+func runEntrypoint(imageConfig *v1.ImageConfig) (int, error) {
 	// entrypoint and args
 	entrypoint, args, err := getEntrypointArgs(imageConfig)
 	if err != nil {

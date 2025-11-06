@@ -43,6 +43,8 @@ var (
 	InstanceExeInitPath = "/exe.dev/bin/exe-init"
 	// InstanceExeSshPath is the path in the instance for exe-ssh
 	InstanceExeSshPath = "/exe.dev/bin/sshd"
+	// InstanceExeLabelUID is the label for the instance to specify the exe login user
+	InstanceExeLabelLoginUser = "exe.dev/login-user"
 
 	// InstanceVsockAgentPort is the vsock port on which the agent listens in the guest
 	InstanceAgentPort = 1090

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func (v *VolumeRequest) Validate() error {
+func (v *Volume) Validate() error {
 	if v.Type == "" {
 		return fmt.Errorf("volume type cannot be blank")
 	}
