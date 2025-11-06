@@ -38,7 +38,7 @@ func lerp(a, b, t float64) float64 {
 func QueryBackgroundColor(w io.Writer, cr *ctxio.Reader) RGB {
 	fmt.Fprint(w, "\x1b]11;?\x07")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 
 	buf := new(strings.Builder)

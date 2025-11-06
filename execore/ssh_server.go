@@ -487,11 +487,78 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s sshsession.Session, defaultVal
 				// Move cursor back, write space, move back again
 				fmt.Fprint(s, "\b \b")
 			}
+		case 27: // ESC
+			if ss.swallowOSCBackgroundColorResponse(s) {
+				continue
+			}
+			// Ignore bare escape sequences we do not recognize.
 		default:
 			if b >= 32 && b < 127 { // Printable characters
 				line = append(line, b)
 				// Echo the character
 				fmt.Fprintf(s, "%c", b)
+			}
+		}
+	}
+}
+
+func (ss *SSHServer) swallowOSCBackgroundColorResponse(s sshsession.Session) bool {
+	ctx, cancel := context.WithTimeout(s.Context(), time.Second)
+	defer cancel()
+
+	buf := []byte{27} // ESC
+
+	readNext := func() (byte, error) {
+		b, err := s.ReadByteContext(ctx)
+		if err != nil {
+			return 0, err
+		}
+		buf = append(buf, b)
+		return b, nil
+	}
+
+	// Expect the start of an OSC 11 response: ESC ] 11 ;
+	expected := []byte{']', '1', '1', ';'}
+	for _, want := range expected {
+		b, err := readNext()
+		if err != nil || b != want {
+			if len(buf) > 1 {
+				s.Push(append([]byte(nil), buf[1:]...))
+			}
+			return false
+		}
+	}
+
+	// Consume the payload until BEL or ST (ESC \).
+	const maxPayload = 2048
+	payloadLen := 0
+	for {
+		b, err := s.ReadByteContext(ctx)
+		if err != nil {
+			// We requested this sequence, so drop partial data on read errors.
+			return true
+		}
+
+		switch b {
+		case 7: // BEL terminator
+			return true
+		case 27: // Possible ST (ESC \)
+			next, err := s.ReadByteContext(ctx)
+			if err != nil {
+				return true
+			}
+			if next == '\\' {
+				return true
+			}
+			payloadLen += 2
+			if payloadLen > maxPayload {
+				return true
+			}
+			continue
+		default:
+			payloadLen++
+			if payloadLen > maxPayload {
+				return true
 			}
 		}
 	}
