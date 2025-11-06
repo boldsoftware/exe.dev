@@ -1030,7 +1030,7 @@ func (m *NerdctlManager) applyPortIsolation(ctx context.Context, host, container
 	vethIndex := strings.TrimSpace(string(vethIndexOutput))
 	if vethIndex == "" {
 		// With Kata there is no veth peer in a container netns; apply to all ports
-		slog.Error("Port isolation: no veth index, applying to all ports", "container", containerID)
+		slog.Warn("Port isolation: no veth index, applying to all ports", "container", containerID)
 		return fallbackApplyAll()
 	}
 
@@ -1039,12 +1039,12 @@ func (m *NerdctlManager) applyPortIsolation(ctx context.Context, host, container
 		fmt.Sprintf("ip link show | grep '^%s:' | cut -d: -f2 | cut -d@ -f1 | tr -d ' '", vethIndex))
 	hostVethOutput, err := findHostVethCmd.Output()
 	if err != nil {
-		slog.Error("Port isolation: host veth lookup failed, applying to all ports", "container", containerID, "error", err)
+		slog.Warn("Port isolation: host veth lookup failed, applying to all ports", "container", containerID, "error", err)
 		return fallbackApplyAll()
 	}
 	hostVeth := strings.TrimSpace(string(hostVethOutput))
 	if hostVeth == "" {
-		slog.Error("Port isolation: empty host veth, applying to all ports", "container", containerID)
+		slog.Warn("Port isolation: empty host veth, applying to all ports", "container", containerID)
 		return fallbackApplyAll()
 	}
 
