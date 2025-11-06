@@ -299,8 +299,8 @@ function ChatInterface({
       userScrolledRef.current = !isNearBottom;
     };
 
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
   // Auto-scroll to bottom when new messages arrive (only if user is already at bottom)
