@@ -417,11 +417,11 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	spinnerIndex := 0
 
 	// Main UI update loop
-	// In CI, ticker only ever 1s, because GitHub actions has a rough time
-	// displaying a lot of text lines on error.
+	// In CI, ticker only every 5s, because GitHub actions has a rough time
+	// displaying a lot of text lines on error, and anyway, who wants to read all that?
 	var ticker *time.Ticker
 	if os.Getenv("CI") != "" {
-		ticker = time.NewTicker(1 * time.Second)
+		ticker = time.NewTicker(5 * time.Second)
 	} else {
 		ticker = time.NewTicker(100 * time.Millisecond)
 	}
