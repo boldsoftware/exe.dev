@@ -456,9 +456,8 @@ func (ss *SSHServer) showAnimatedWelcome(s sshsession.Session) {
 
 // readLineWithEchoAndDefault reads a line with echo and optionally pre-fills a default value.
 // It returns the entered line and a boolean indicating whether the user pressed enter.
-func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue string) (string, bool) {
+func (ss *SSHServer) readLineWithEchoAndDefault(s sshsession.Session, defaultValue string) (string, bool) {
 	var line []byte
-	buf := make([]byte, 1)
 
 	// Pre-fill with default value if provided
 	if defaultValue != "" {
@@ -466,13 +465,14 @@ func (ss *SSHServer) readLineWithEchoAndDefault(s ssh.Session, defaultValue stri
 		fmt.Fprint(s, defaultValue)
 	}
 
+	ctx := s.Context()
+
 	for {
-		n, err := s.Read(buf)
-		if err != nil || n == 0 {
+		b, err := s.ReadByteContext(ctx)
+		if err != nil {
 			return "", false
 		}
 
-		b := buf[0]
 		switch b {
 		case '\n', '\r':
 			// Enter pressed
