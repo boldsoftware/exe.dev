@@ -168,8 +168,8 @@ func TestProxyLogoutFlow(t *testing.T) {
 
 		server.ServeHTTP(w1, req1)
 
-		if w1.Code != 307 {
-			t.Fatalf("Auth should succeed with 307, got %d", w1.Code)
+		if w1.Code != http.StatusSeeOther {
+			t.Fatalf("Auth should succeed with 303 See Other, got %d", w1.Code)
 		}
 
 		// Get the auth cookie that was set
@@ -254,8 +254,8 @@ func TestProxyLogoutFlow(t *testing.T) {
 		w2 := httptest.NewRecorder()
 		server.ServeHTTP(w2, req2)
 
-		if w1.Code != 307 || w2.Code != 307 {
-			t.Fatal("Both authentications should succeed")
+		if w1.Code != http.StatusSeeOther || w2.Code != http.StatusSeeOther {
+			t.Fatalf("Both authentications should succeed with 303, got %d and %d", w1.Code, w2.Code)
 		}
 
 		// Get both auth cookies
@@ -817,6 +817,37 @@ func TestAuthConfirmSkipForOwner(t *testing.T) {
 		}
 		if !strings.Contains(body, boxName) {
 			t.Errorf("expected box name on confirmation page, got %q", body)
+		}
+	})
+
+	t.Run("magic_auth_redirects_with_303", func(t *testing.T) {
+		t.Parallel()
+
+		server := newTestServer(t)
+		userID := createUser(t, server, "user@example.com")
+
+		const boxName = "testbox"
+		server.createTestBox(t, userID, "fake_ctrhost", boxName, "container-test", "busybox:latest")
+
+		secret := createSecret(t, server, userID, boxName, "/test-path")
+		returnHost := boxReturnHost(server, boxName)
+
+		// Make request to magic auth URL
+		req := createTestRequestForServer("GET", "http://"+returnHost+"/__exe.dev/auth?secret="+secret+"&redirect=/test-path", returnHost, server)
+		w := httptest.NewRecorder()
+
+		server.ServeHTTP(w, req)
+
+		if w.Code != http.StatusSeeOther {
+			t.Errorf("expected StatusSeeOther (303) for magic auth redirect, got %d", w.Code)
+		}
+
+		loc, err := w.Result().Location()
+		if err != nil {
+			t.Fatalf("failed to get Location header: %v", err)
+		}
+		if loc.Path != "/test-path" {
+			t.Errorf("expected redirect to /test-path, got %q", loc.Path)
 		}
 	})
 }

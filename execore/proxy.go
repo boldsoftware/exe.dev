@@ -504,7 +504,7 @@ func (s *Server) handleMagicAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.slog().Debug("[REDIRECT] handleMagicAuth redirecting", "to", finalRedirect)
-	http.Redirect(w, r, finalRedirect, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, finalRedirect, http.StatusSeeOther)
 }
 
 // handleProxyLogin handles the login URL /__exe.dev/login

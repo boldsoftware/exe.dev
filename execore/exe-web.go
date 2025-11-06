@@ -1260,7 +1260,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		}
 		magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
 			scheme, r.URL.Query().Get("return_host"), secret, url.QueryEscape(magicSecret.RedirectURL))
-		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, magicURL, http.StatusSeeOther)
 		return
 	}
 	if action == "cancel" {

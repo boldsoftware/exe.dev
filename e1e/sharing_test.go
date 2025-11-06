@@ -363,9 +363,9 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 		}
 		t.Logf("Last request was to: %s", req.URL.String())
 
-		// Now we should get a redirect to /__exe.dev/auth
-		if resp.StatusCode != http.StatusTemporaryRedirect {
-			t.Errorf("expected redirect during auth dance, got status %d", resp.StatusCode)
+		// Now we should get a redirect to /__exe.dev/auth (303 See Other after confirm)
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Errorf("expected StatusSeeOther (303) redirect after confirm, got status %d", resp.StatusCode)
 		}
 		u, err = resp.Location()
 		if err != nil {
@@ -387,8 +387,8 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 			t.Errorf("failed to do http request: %v", err)
 			return
 		}
-		if resp.StatusCode != http.StatusTemporaryRedirect {
-			t.Errorf("expected redirect during auth dance, got status %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Errorf("expected StatusSeeOther (303) redirect from magic auth, got status %d", resp.StatusCode)
 		}
 		u, err = resp.Location()
 		if err != nil {

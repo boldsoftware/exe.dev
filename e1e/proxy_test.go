@@ -152,7 +152,7 @@ func TestHTTPProxy(t *testing.T) {
 		}
 
 		redirectCount := 0
-		for resp.StatusCode == http.StatusTemporaryRedirect {
+		for resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusSeeOther {
 			if redirectCount > 10 {
 				resp.Body.Close()
 				t.Fatalf("too many redirects")
@@ -493,8 +493,8 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 				return
 			}
 			t.Logf("Last request was to: %s", req.URL.String())
-			if resp.StatusCode != http.StatusTemporaryRedirect {
-				t.Errorf("expected redirect after confirmation, got status %d", resp.StatusCode)
+			if resp.StatusCode != http.StatusSeeOther {
+				t.Errorf("expected StatusSeeOther (303) redirect after confirmation, got status %d", resp.StatusCode)
 			}
 			u, err = resp.Location()
 			if err != nil {
