@@ -1795,3 +1795,44 @@ svg {
     transform: rotate(360deg);
   }
 }
+
+/* Scroll to bottom button */
+.scroll-to-bottom-button {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 2rem;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  z-index: 10;
+}
+
+.scroll-to-bottom-button:hover {
+  background: var(--bg-hover);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.scroll-to-bottom-button:active {
+  transform: translateX(-50%) scale(0.95);
+}
+
+/* Wrapper for messages area to position scroll-to-bottom button */
+.messages-area-wrapper {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.messages-container {
+  height: 100%;
+}

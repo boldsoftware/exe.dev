@@ -257,10 +257,13 @@ function ChatInterface({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [isDisconnected, setIsDisconnected] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const userScrolledRef = useRef(false);
 
   // Load messages and set up streaming
   useEffect(() => {
@@ -284,9 +287,27 @@ function ChatInterface({
     };
   }, [conversationId]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Check scroll position and handle scroll-to-bottom button
   useEffect(() => {
-    scrollToBottom();
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowScrollToBottom(!isNearBottom);
+      userScrolledRef.current = !isNearBottom;
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Auto-scroll to bottom when new messages arrive (only if user is already at bottom)
+  useEffect(() => {
+    if (!userScrolledRef.current) {
+      scrollToBottom();
+    }
   }, [messages]);
 
   // Close overflow menu when clicking outside
@@ -441,6 +462,8 @@ function ChatInterface({
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    userScrolledRef.current = false;
+    setShowScrollToBottom(false);
   };
 
   const handleManualReconnect = () => {
@@ -873,32 +896,58 @@ function ChatInterface({
       </div>
 
       {/* Messages area */}
-      <div className="messages-container scrollable">
-        {loading ? (
-          <div className="flex items-center justify-center full-height">
-            <div className="spinner"></div>
-          </div>
-        ) : (
-          <div className="messages-list">
-            {renderMessages()}
-            {agentWorking && (
-              <div
-                key="agent-thinking"
-                className="thinking-indicator"
-                role="status"
-                aria-live="polite"
-                aria-label="Agent is thinking"
-                data-testid="agent-thinking"
-              >
-                <span className="thinking-dots" aria-hidden="true">
-                  <span>.</span>
-                  <span>.</span>
-                  <span>.</span>
-                </span>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+      {/* Messages area with scroll-to-bottom button wrapper */}
+      <div className="messages-area-wrapper">
+        <div className="messages-container scrollable" ref={messagesContainerRef}>
+          {loading ? (
+            <div className="flex items-center justify-center full-height">
+              <div className="spinner"></div>
+            </div>
+          ) : (
+            <div className="messages-list">
+              {renderMessages()}
+              {agentWorking && (
+                <div
+                  key="agent-thinking"
+                  className="thinking-indicator"
+                  role="status"
+                  aria-live="polite"
+                  aria-label="Agent is thinking"
+                  data-testid="agent-thinking"
+                >
+                  <span className="thinking-dots" aria-hidden="true">
+                    <span>.</span>
+                    <span>.</span>
+                    <span>.</span>
+                  </span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+        </div>
+
+        {/* Scroll to bottom button - outside scrollable area */}
+        {showScrollToBottom && (
+          <button
+            className="scroll-to-bottom-button"
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+          >
+            <svg
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              style={{ width: "1.25rem", height: "1.25rem" }}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+              />
+            </svg>
+          </button>
         )}
       </div>
 
