@@ -16,7 +16,7 @@ By default, `exe.dev` proxies port 80. This default can be influenced by
 setting `Config.ExposedPorts` (via the `EXPOSE` directive in a `Dockerfile`)
 to a different port, which, if it's above 1024 and tcp will be chosen.
 
-You can change the port chosen with `ssh exe.dev route <boxname> --port=<port>
+You can change the port chosen with `ssh exe.dev proxy <boxname> --port=<port>
 --private` command.
 
 ## Private vs Public Proxies
@@ -25,7 +25,7 @@ By default, only users with access to the box can access the HTTP proxy. Users
 accessing https://boxname.exe.dev/ for the first time will be redirected to log
 into `exe.dev`.
 
-To share your site publically, run `ssh exe.dev route <boxname> --port=<port> --public`.
+To share your site publically, run `ssh exe.dev proxy <boxname> --port=<port> --public`.
 
 ## Using exe.dev authentication
 
@@ -42,9 +42,9 @@ the user is authenticated via exe.dev.
 The following special URLs are available for authentication flows:
 
 - **Login**: `https://{your-box}.exe.dev/__exe.dev/login?redirect={path}`
-  
+
 - **Logout**: POST `https://{your-box}.exe.dev/__exe.dev/logout`
-  
+
 ### Example: nginx configuration
 
 The following `nginx` configuration allows only specified email addresses to access a protected location:
