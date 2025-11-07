@@ -1,6 +1,7 @@
 package route53
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -65,6 +67,11 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 }
 
 // WildcardCertManager manages wildcard certificates using DNS-01 challenge
+const (
+	wildcardCachePrefix     = "wildcard_cert+"
+	certificateCacheTimeout = 5 * time.Second
+)
+
 type WildcardCertManager struct {
 	mu           sync.RWMutex
 	certificates map[string]*tls.Certificate
@@ -118,6 +125,17 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 
 	if exists && w.isCertValid(cert) {
 		return cert, nil
+	}
+
+	if cachedCert, err := w.loadCertificateFromCache(certKey); err == nil {
+		if w.isCertValid(cachedCert) {
+			w.mu.Lock()
+			w.certificates[certKey] = cachedCert
+			w.mu.Unlock()
+			return cachedCert, nil
+		}
+	} else if !errors.Is(err, autocert.ErrCacheMiss) {
+		slog.Warn("failed to load cached certificate", "certKey", certKey, "error", err)
 	}
 
 	// Need to obtain a new certificate
@@ -369,5 +387,121 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		}
 	}
 
+	if err := w.cacheCertificate(domain, cert); err != nil && !errors.Is(err, autocert.ErrCacheMiss) {
+		slog.Warn("failed to cache certificate", "domain", domain, "error", err)
+	}
+
 	return cert, nil
+}
+
+func (w *WildcardCertManager) cacheCertificate(domain string, cert *tls.Certificate) error {
+	if w.cache == nil || cert == nil {
+		return autocert.ErrCacheMiss
+	}
+
+	data, err := encodeCertificateForCache(cert)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), certificateCacheTimeout)
+	defer cancel()
+	return w.cache.Put(ctx, w.cacheKey(domain), data)
+}
+
+func (w *WildcardCertManager) loadCertificateFromCache(domain string) (*tls.Certificate, error) {
+	if w.cache == nil {
+		return nil, autocert.ErrCacheMiss
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), certificateCacheTimeout)
+	defer cancel()
+
+	data, err := w.cache.Get(ctx, w.cacheKey(domain))
+	if err != nil {
+		return nil, err
+	}
+
+	return decodeCertificateFromCache(data)
+}
+
+func (w *WildcardCertManager) cacheKey(domain string) string {
+	return wildcardCachePrefix + strings.ToLower(domain)
+}
+
+func encodeCertificateForCache(cert *tls.Certificate) ([]byte, error) {
+	if cert == nil {
+		return nil, fmt.Errorf("certificate is nil")
+	}
+
+	key, ok := cert.PrivateKey.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("unsupported private key type %T", cert.PrivateKey)
+	}
+
+	keyBytes := x509.MarshalPKCS1PrivateKey(key)
+
+	var buf bytes.Buffer
+	if err := pem.Encode(&buf, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes}); err != nil {
+		return nil, err
+	}
+
+	for _, der := range cert.Certificate {
+		if err := pem.Encode(&buf, &pem.Block{Type: "CERTIFICATE", Bytes: der}); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
+func decodeCertificateFromCache(data []byte) (*tls.Certificate, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("certificate cache data is empty")
+	}
+
+	var (
+		certs [][]byte
+		key   *rsa.PrivateKey
+		rest  = data
+	)
+
+	for len(rest) > 0 {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+
+		switch block.Type {
+		case "CERTIFICATE":
+			certs = append(certs, block.Bytes)
+		case "RSA PRIVATE KEY":
+			parsedKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse cached private key: %w", err)
+			}
+			key = parsedKey
+		default:
+			// Ignore unknown blocks
+		}
+	}
+
+	if key == nil {
+		return nil, fmt.Errorf("cached certificate missing private key")
+	}
+	if len(certs) == 0 {
+		return nil, fmt.Errorf("cached certificate missing certificate chain")
+	}
+
+	result := &tls.Certificate{
+		Certificate: certs,
+		PrivateKey:  key,
+	}
+
+	if leaf, err := x509.ParseCertificate(certs[0]); err == nil {
+		result.Leaf = leaf
+	}
+
+	return result, nil
 }
