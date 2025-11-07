@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -335,23 +336,13 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		return nil, fmt.Errorf("failed to generate certificate key: %w", err)
 	}
 
-	// Build the CSR with the same domains we requested in the order
-	var dnsNames []string
-	var commonName string
-
-	if domain == w.domain {
-		// Main domain cert should include both exe.dev and *.exe.dev
-		commonName = domain
-		dnsNames = []string{domain, "*." + domain}
-	} else if strings.HasPrefix(domain, "*.") {
-		// Already a wildcard domain
-		commonName = domain
-		dnsNames = []string{domain}
-	} else {
-		// Single subdomain
-		commonName = domain
-		dnsNames = []string{domain}
+	// Build the CSR with the exact domains requested in the ACME order
+	if len(domains) == 0 {
+		return nil, fmt.Errorf("no domains configured for CSR")
 	}
+
+	commonName := domains[0]
+	dnsNames := slices.Clone(domains)
 
 	req := &x509.CertificateRequest{
 		Subject: pkix.Name{
