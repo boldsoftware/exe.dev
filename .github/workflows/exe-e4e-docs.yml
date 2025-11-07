@@ -1,0 +1,71 @@
+name: exe e4e documentation sweep
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at 7:45 AM UTC.
+    - cron: "45 7 * * *"
+
+concurrency:
+  group: exe-e4e-docs
+  cancel-in-progress: false
+
+jobs:
+  docs-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      E4E_OUTPUT_PATH: ${{ env.RUNNER_TEMP }}/e4e-docs-output.txt
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "./go.mod"
+
+      - name: Mask secrets
+        env:
+          CODEX: ${{ secrets.E4E_OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CODEX" ]; then
+            echo "::add-mask::$CODEX"
+          fi
+
+      - name: Run e4e documentation sweep
+        env:
+          EXE_E4E_ENABLE: "1"
+          EXE_E4E_OPENAI_API_KEY: ${{ secrets.E4E_OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          go test -count=1 -timeout=1h ./e4e 2>&1 | tee "$E4E_OUTPUT_PATH"
+
+      - name: Install uv
+        if: always()
+        uses: astral-sh/setup-uv@v3
+
+      - name: Post failure to Slack #oops
+        if: failure()
+        env:
+          OUTPUT_PATH: ${{ env.E4E_OUTPUT_PATH }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MESSAGE_PATH: ${{ env.RUNNER_TEMP }}/e4e-oops.txt
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          cp "$OUTPUT_PATH" "$MESSAGE_PATH"
+          printf "\nRun: %s\n" "$RUN_URL" >> "$MESSAGE_PATH"
+          uv run scripts/slack/post_message.py --channel oops --message-file "$MESSAGE_PATH"
+
+      - name: Update Slack bot ledger
+        if: always()
+        env:
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          uv run scripts/slack/update_bot_status.py \
+            e4e-docs \
+            --status "$JOB_STATUS" \
+            --run-url "$RUN_URL"
