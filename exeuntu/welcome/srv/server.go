@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,13 @@ type welcomePageData struct {
 	VisitCount int64
 	LoginURL   string
 	LogoutURL  string
+	Headers    []headerEntry
+}
+
+type headerEntry struct {
+	Name       string
+	Values     []string
+	AddedByExe bool
 }
 
 func New(dbPath, hostname string) (*Server, error) {
@@ -81,6 +89,7 @@ func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
 		VisitCount: count,
 		LoginURL:   loginURLForRequest(r),
 		LogoutURL:  "/__exe.dev/logout",
+		Headers:    buildHeaderEntries(r),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -148,4 +157,31 @@ func (s *Server) Serve(addr string) error {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(s.StaticDir))))
 	slog.Info("starting welcome server", "addr", addr)
 	return http.ListenAndServe(addr, mux)
+}
+
+func buildHeaderEntries(r *http.Request) []headerEntry {
+	if r == nil {
+		return nil
+	}
+
+	headers := make([]headerEntry, 0, len(r.Header)+1)
+	for name, values := range r.Header {
+		lower := strings.ToLower(name)
+		headers = append(headers, headerEntry{
+			Name:       name,
+			Values:     values,
+			AddedByExe: strings.HasPrefix(lower, "x-exedev-") || strings.HasPrefix(lower, "x-forwarded-"),
+		})
+	}
+	if r.Host != "" {
+		headers = append(headers, headerEntry{
+			Name:   "Host",
+			Values: []string{r.Host},
+		})
+	}
+
+	sort.Slice(headers, func(i, j int) bool {
+		return strings.ToLower(headers[i].Name) < strings.ToLower(headers[j].Name)
+	})
+	return headers
 }

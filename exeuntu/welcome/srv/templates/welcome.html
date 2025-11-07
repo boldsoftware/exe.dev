@@ -68,6 +68,44 @@
         </div>
       </div>
 
+      {{if .Headers}}
+      <section class="headers">
+        <div class="headers-title">
+          <h2>HTTP headers from exe.dev</h2>
+          <div class="headers-notes">
+            <p>exe.dev adds extra headers to HTTP requests so that:</p>
+            <ul>
+              <li>you don't have to build auth</li>
+              <li>you know where the request came from</li>
+            </ul>
+            <p>These are all the HTTP headers we received from exe.dev for this request.</p>
+            <p>The <code>X-ExeDev-*</code> and <code>X-Forwarded-*</code> headers are added by exe.dev.</p>
+          </div>
+        </div>
+        <div class="headers-table">
+          <div class="headers-row headers-head">
+            <div>Header</div>
+            <div>Value</div>
+          </div>
+          {{range .Headers}}
+          <div class="headers-row{{if .AddedByExe}} exe-header{{end}}">
+            <div class="header-name"><code>{{.Name}}</code></div>
+            <div class="header-value">
+              {{if .Values}}
+                {{range $i, $value := .Values}}
+                  {{if $i}}<br />{{end}}
+                  <code>{{$value}}</code>
+                {{end}}
+              {{else}}
+                <span class="header-empty">—</span>
+              {{end}}
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </section>
+      {{end}}
+
       {{if .VisitCount}}
       <p class="counter">You've viewed this page <strong>{{.VisitCount}}</strong> times.</p>
       {{end}}
