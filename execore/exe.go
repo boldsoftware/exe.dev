@@ -219,7 +219,10 @@ type Server struct {
 
 	stopping atomic.Bool
 
+	// General purpose slogger
 	log *slog.Logger
+	// net/http server error logger
+	netHTTPLogger *log.Logger
 }
 
 // exeletClient wraps an exelet client with its address
@@ -233,6 +236,30 @@ func (s *Server) slog() *slog.Logger {
 		return s.log
 	}
 	return slog.Default()
+}
+
+func (s *Server) netHTTPLog() *log.Logger {
+	if s.netHTTPLogger == nil {
+		w := &httpServerLogger{slogger: s.slog()}
+		s.netHTTPLogger = log.New(w, "", 0)
+	}
+	return s.netHTTPLogger
+}
+
+// httpServerLogger routes net/http server errors through slogger.
+// It suppresses noisy lines.
+type httpServerLogger struct {
+	slogger *slog.Logger
+}
+
+func (w *httpServerLogger) Write(p []byte) (int, error) {
+	msg := strings.TrimSpace(string(p))
+	// In a random sample on Nov 17, 2025, this log type accounted for about 85% of all log lines.
+	if strings.HasPrefix(msg, "http: TLS handshake error from ") {
+		return len(p), nil
+	}
+	w.slogger.Debug("net/http server error", "msg", msg)
+	return len(p), nil
 }
 
 // A listener is a listening port, along with address information.

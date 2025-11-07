@@ -61,8 +61,9 @@ func (s *Server) setupHTTPServer() {
 	h := s.prepareHandler()
 
 	s.httpServer = &http.Server{
-		Addr:    s.httpLn.addr,
-		Handler: h,
+		Addr:     s.httpLn.addr,
+		Handler:  h,
+		ErrorLog: s.netHTTPLog(),
 	}
 }
 
@@ -134,8 +135,9 @@ func (s *Server) setupHTTPSServer() {
 
 	// Single TLS dispatcher for all domains (exe.dev and Tailscale)
 	s.httpsServer = &http.Server{
-		Addr:    s.httpsLn.addr,
-		Handler: s.prepareHandler(),
+		Addr:     s.httpsLn.addr,
+		Handler:  s.prepareHandler(),
+		ErrorLog: s.netHTTPLog(),
 		TLSConfig: &tls.Config{
 			GetCertificate: s.getCertificate,
 			NextProtos:     []string{"h2", "http/1.1", acme.ALPNProto},
