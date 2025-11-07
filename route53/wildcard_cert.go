@@ -143,6 +143,7 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	// Create a context with timeout for certificate acquisition
 	certCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+	slog.Warn("Obtaining new certificate (cache fail)", "certKey", certKey, "serverName", hello.ServerName)
 	newCert, err := w.obtainCertificate(certCtx, certKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", certKey, err)
@@ -408,7 +409,8 @@ func (w *WildcardCertManager) loadCertificateFromCache(domain string) (*tls.Cert
 	ctx, cancel := context.WithTimeout(context.Background(), certificateCacheTimeout)
 	defer cancel()
 
-	data, err := w.cache.Get(ctx, w.cacheKey(domain))
+	cacheKey := w.cacheKey(domain)
+	data, err := w.cache.Get(ctx, cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -416,6 +418,7 @@ func (w *WildcardCertManager) loadCertificateFromCache(domain string) (*tls.Cert
 	return decodeCertificateFromCache(data)
 }
 
+// TOOD(philip): We can probably just cache by domain or domain.lower() and things would be fine.
 func (w *WildcardCertManager) cacheKey(domain string) string {
 	return wildcardCachePrefix + strings.ToLower(domain)
 }
