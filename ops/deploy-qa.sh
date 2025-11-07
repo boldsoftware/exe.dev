@@ -6,31 +6,31 @@ API_ENDPOINT="https://exed-01.crocodile-vector.ts.net/debug/gitsha"
 echo "🕸️  checking what is deployed..."
 
 if ! DEPLOYED_SHA=$(curl -s "${API_ENDPOINT}"); then
-	echo "😞 could not get deployed SHA (curl failed)"
-	exit 1
+    echo "😞 could not get deployed SHA (curl failed)"
+    exit 1
 fi
 
 if [ -z "${DEPLOYED_SHA}" ]; then
-	echo "😞 could not get deployed SHA (empty response)"
-	exit 1
+    echo "😞 could not get deployed SHA (empty response)"
+    exit 1
 fi
 
 if ! git rev-parse --quiet --verify "${DEPLOYED_SHA}" >/dev/null; then
-	echo "😞 could not get deployed SHA (invalid SHA)"
-	echo "  ${DEPLOYED_SHA}"
-	exit 1
+    echo "😞 could not get deployed SHA (invalid SHA)"
+    echo "  ${DEPLOYED_SHA}"
+    exit 1
 fi
 
 CURRENT_SHA=$(git rev-parse HEAD)
 
 if [ "${DEPLOYED_SHA}" = "${CURRENT_SHA}" ]; then
-	echo "✅ already deployed: ${DEPLOYED_SHA}"
-	exit 0
+    echo "✅ already deployed: ${DEPLOYED_SHA}"
+    exit 0
 fi
 
 if ! command -v codex >/dev/null 2>&1; then
-	echo "😞 codex CLI not found (install codex before running deploy-qa)"
-	exit 1
+    echo "😞 codex CLI not found (install codex before running deploy-qa)"
+    exit 1
 fi
 
 echo
