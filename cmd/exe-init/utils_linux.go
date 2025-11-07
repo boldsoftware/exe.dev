@@ -13,10 +13,10 @@ import (
 )
 
 func mountProc() error {
-	if err := os.MkdirAll("/proc", 0o755); err != nil {
+	if err := os.MkdirAll("/proc", 0755); err != nil {
 		return fmt.Errorf("error creating /proc mountpoint: %w", err)
 	}
-	if err := unix.Mount("none", "/proc", "proc", uintptr(0), ""); err != nil {
+	if err := unix.Mount("proc", "/proc", "proc", uintptr(0), ""); err != nil {
 		// already mounted
 		if err == unix.EBUSY {
 			return nil
@@ -28,7 +28,7 @@ func mountProc() error {
 }
 
 func mountDev() error {
-	if err := os.MkdirAll("/dev/pts", 0o755); err != nil {
+	if err := os.MkdirAll("/dev/pts", 0755); err != nil {
 		return err
 	}
 	if err := unix.Mount("devpts", "/dev/pts", "devpts", uintptr(0), ""); err != nil {
@@ -67,7 +67,7 @@ func mountDev() error {
 }
 
 func mountSysfs() error {
-	if err := os.MkdirAll("/sys", 0o755); err != nil {
+	if err := os.MkdirAll("/sys", 0755); err != nil {
 		return fmt.Errorf("error creating /sys mountpoint: %w", err)
 	}
 	if err := unix.Mount("none", "/sys", "sysfs", uintptr(0), ""); err != nil {
@@ -143,7 +143,7 @@ func getBootArg(name string) (string, error) {
 
 func applySysctl(key, val string) error {
 	p := path.Join("/proc/sys", strings.ReplaceAll(key, ".", "/"))
-	f, err := os.OpenFile(p, os.O_WRONLY|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("error opening sysctl %s: %w", p, err)
 	}

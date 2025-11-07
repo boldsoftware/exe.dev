@@ -1,3 +1,5 @@
+//go:build linux
+
 package zfs
 
 import (
@@ -5,11 +7,17 @@ import (
 	"fmt"
 	"os"
 
-	api "exe.dev/pkg/api/exe/compute/v1"
+	api "exe.dev/pkg/api/exe/storage/v1"
 )
 
 // Create creates a new instance filesystem
-func (s *ZFS) Create(ctx context.Context, id string, cfg *api.InstanceFilesystemConfig) (*api.InstanceFilesystem, error) {
+func (s *ZFS) Create(ctx context.Context, id string, cfg *api.FilesystemConfig) (*api.Filesystem, error) {
+	var err error
+	// check if exists
+	if _, err := s.Get(ctx, id); err == nil {
+		return nil, fmt.Errorf("%w: filesystem %s", api.ErrResourceExists, id)
+	}
+
 	// generate encryption key if specified
 	if v := cfg.EncryptionKey; v != "" {
 		s.log.Debug("creating encrypted storage", "ds", id)
@@ -39,7 +47,7 @@ func (s *ZFS) Create(ctx context.Context, id string, cfg *api.InstanceFilesystem
 		return nil, err
 	}
 
-	return &api.InstanceFilesystem{
+	return &api.Filesystem{
 		ID:   id,
 		Path: diskPath,
 	}, nil

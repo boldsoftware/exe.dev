@@ -52,7 +52,7 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 	}
 
 	// delete network interface
-	if err := s.networkManager.DeleteInterface(ctx, id); err != nil {
+	if err := s.context.NetworkManager.DeleteInterface(ctx, id); err != nil {
 		return err
 	}
 

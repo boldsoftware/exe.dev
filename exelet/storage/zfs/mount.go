@@ -1,12 +1,14 @@
+//go:build linux
+
 package zfs
 
 import (
 	"context"
 
-	api "exe.dev/pkg/api/exe/compute/v1"
+	api "exe.dev/pkg/api/exe/storage/v1"
 )
 
-func (s *ZFS) Mount(ctx context.Context, id string) (*api.InstanceMountConfig, error) {
+func (s *ZFS) Mount(ctx context.Context, id string) (*api.FilesystemMountConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -15,7 +17,7 @@ func (s *ZFS) Mount(ctx context.Context, id string) (*api.InstanceMountConfig, e
 		return nil, err
 	}
 
-	return &api.InstanceMountConfig{
+	return &api.FilesystemMountConfig{
 		ID:   id,
 		Path: mountpoint,
 	}, nil

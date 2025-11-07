@@ -28,7 +28,7 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: instance %s", ErrNotFound, id)
+			return nil, fmt.Errorf("%w: instance %s", api.ErrNotFound, id)
 		}
 		return nil, nil
 	}

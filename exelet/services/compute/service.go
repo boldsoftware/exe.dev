@@ -2,18 +2,13 @@ package compute
 
 import (
 	"context"
-	"errors"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"google.golang.org/grpc"
 
-	"exe.dev/deps/image"
 	"exe.dev/exelet/config"
-	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -23,45 +18,25 @@ const (
 )
 
 var (
-	// ErrNotFound is returned when a resource is not found
-	ErrNotFound = errors.New("not found")
-
 	updateInterval = time.Second * 10
 )
 
 type Service struct {
 	api.UnimplementedComputeServiceServer
-	config         *config.ExeletConfig
-	context        *services.ServiceContext
-	mu             *sync.Mutex
-	imageManager   *image.ImageManager
-	networkManager network.NetworkManager
-	updateTicker   *time.Ticker
-	log            *slog.Logger
+	config       *config.ExeletConfig
+	context      *services.ServiceContext
+	mu           *sync.Mutex
+	updateTicker *time.Ticker
+	log          *slog.Logger
 }
 
 // New returns a new service.
 func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
-	nm, err := network.NewNetworkManager(cfg.NetworkManagerAddress, log)
-	if err != nil {
-		return nil, err
-	}
-	contentStoreDir := filepath.Join(cfg.DataDir, "content")
-	if err := os.MkdirAll(contentStoreDir, 0o770); err != nil {
-		return nil, err
-	}
-	im, err := image.NewImageManager(&image.Config{DataDir: contentStoreDir}, log)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Service{
-		config:         cfg,
-		mu:             &sync.Mutex{},
-		imageManager:   im,
-		networkManager: nm,
-		updateTicker:   time.NewTicker(updateInterval),
-		log:            log,
+		config:       cfg,
+		mu:           &sync.Mutex{},
+		updateTicker: time.NewTicker(updateInterval),
+		log:          log,
 	}, nil
 }
 
@@ -86,10 +61,6 @@ func (s *Service) Requires() []services.Type {
 func (s *Service) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if err := s.networkManager.Start(ctx); err != nil {
-		return err
-	}
 
 	// start instances
 	if s.config.EnableInstanceBootOnStartup {

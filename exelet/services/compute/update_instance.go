@@ -58,7 +58,7 @@ func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage
 		s.log.Debug("updating instance kernel", "id", id, "image", kernelImage)
 		// fetch / unpack image content to snapshot
 		s.log.Debug("fetching and unpacking kernel", "image", kernelImage, "path", mountpoint)
-		if _, err := s.imageManager.Fetch(ctx, kernelImage, platform, instanceDir); err != nil {
+		if _, err := s.context.ImageManager.Fetch(ctx, kernelImage, platform, instanceDir); err != nil {
 			return fmt.Errorf("error updating kernel: %w", err)
 		}
 	}
@@ -67,7 +67,7 @@ func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage
 		s.log.Debug("updating instance init", "id", id, "image", initImage)
 		// fetch / unpack image content to snapshot
 		s.log.Debug("fetching and unpacking init", "image", initImage, "path", mountpoint)
-		if _, err := s.imageManager.Fetch(ctx, initImage, platform, mountpoint); err != nil {
+		if _, err := s.context.ImageManager.Fetch(ctx, initImage, platform, mountpoint); err != nil {
 			return fmt.Errorf("error updating init: %w", err)
 		}
 	}

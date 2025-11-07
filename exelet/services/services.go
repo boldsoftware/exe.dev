@@ -5,6 +5,8 @@ import (
 
 	"google.golang.org/grpc"
 
+	"exe.dev/deps/image"
+	"exe.dev/exelet/network"
 	"exe.dev/exelet/storage"
 )
 
@@ -13,10 +15,14 @@ type Type string
 const (
 	// ComputeService is the service that implements compute
 	ComputeService Type = "exe.services.compute.v1"
+	// StorageService is the service that implements storage
+	StorageService Type = "exe.services.storage.v1"
 )
 
 type ServiceContext struct {
 	StorageManager storage.StorageManager
+	NetworkManager network.NetworkManager
+	ImageManager   *image.ImageManager
 }
 
 // Service is the interface that all services must implement

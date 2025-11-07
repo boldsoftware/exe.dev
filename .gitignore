@@ -25,7 +25,6 @@ tmpkey*
 exelet/fs/kernel
 exelet/fs/rovol
 exeletd
-exelet-ctl
-
+/exelet-ctl
 # welcomed
 exeuntu/welcome/welcomed

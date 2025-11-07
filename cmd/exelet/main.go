@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -14,10 +15,13 @@ import (
 	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
 
+	"exe.dev/deps/image"
 	"exe.dev/exelet"
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
+	storageservice "exe.dev/exelet/services/storage"
 	"exe.dev/exelet/storage"
 	"exe.dev/version"
 )
@@ -153,11 +157,34 @@ func serveAction(clix *cli.Context) error {
 		return err
 	}
 
+	ctx := context.Background()
+
 	svcs := []func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error){
 		computeservice.New,
+		storageservice.New,
 	}
 
-	// storage
+	// network
+	nm, err := network.NewNetworkManager(cfg.NetworkManagerAddress, log)
+	if err != nil {
+		return err
+	}
+	// start network manager
+	if err := nm.Start(ctx); err != nil {
+		return err
+	}
+
+	// image manager
+	contentStoreDir := filepath.Join(cfg.DataDir, "content")
+	if err := os.MkdirAll(contentStoreDir, 0770); err != nil {
+		return err
+	}
+	im, err := image.NewImageManager(&image.Config{DataDir: contentStoreDir}, log)
+	if err != nil {
+		return err
+	}
+
+	// storage manager
 	storageManager, err := storage.NewStorageManager(cfg.StorageManagerAddress, log)
 	if err != nil {
 		return err
@@ -165,13 +192,14 @@ func serveAction(clix *cli.Context) error {
 
 	serviceContext := &services.ServiceContext{
 		StorageManager: storageManager,
+		NetworkManager: nm,
+		ImageManager:   im,
 	}
 
 	if err := srv.Register(serviceContext, svcs); err != nil {
 		return err
 	}
 
-	ctx := context.Background()
 	if err := srv.Run(ctx); err != nil {
 		return err
 	}

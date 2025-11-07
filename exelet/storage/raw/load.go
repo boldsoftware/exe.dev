@@ -4,11 +4,11 @@ import (
 	"context"
 	"os"
 
-	api "exe.dev/pkg/api/exe/compute/v1"
+	api "exe.dev/pkg/api/exe/storage/v1"
 )
 
 // Load ensures the instance fs is loaded and ready
-func (s *Raw) Load(ctx context.Context, id string) (*api.InstanceFilesystem, error) {
+func (s *Raw) Load(ctx context.Context, id string) (*api.Filesystem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -40,7 +40,7 @@ func (s *Raw) Load(ctx context.Context, id string) (*api.InstanceFilesystem, err
 		return nil, err
 	}
 
-	return &api.InstanceFilesystem{
+	return &api.Filesystem{
 		ID:   id,
 		Path: string(stateData),
 	}, nil

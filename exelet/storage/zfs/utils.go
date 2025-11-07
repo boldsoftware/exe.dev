@@ -3,6 +3,7 @@
 package zfs
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -42,9 +43,11 @@ func (s *ZFS) createInstanceFS(id string, size uint64, fsType string, encrypted 
 			props["encryption"] = "aes-256-gcm"
 			props["keyformat"] = "hex"
 			props["keylocation"] = fmt.Sprintf("file://%s", ekPath)
+			props["volblocksize"] = "512"
 		}
 		s.log.Debug("creating zfs volume", "name", dsName)
-		if _, err := zfs.CreateVolume(dsName, size, props); err != nil {
+		volSize := align16K(size)
+		if _, err := zfs.CreateVolume(dsName, volSize, props); err != nil {
 			return err
 		}
 		// there is a race between when the volume is created and when the
@@ -76,6 +79,7 @@ func (s *ZFS) createInstanceFS(id string, size uint64, fsType string, encrypted 
 	return nil
 }
 
+// ensureFSExists checks if the dataset exists and is loaded and ready for use
 func (s *ZFS) ensureFSExists(id string) error {
 	s.log.Debug("ensuring instance fs", "id", id)
 	dsName := s.getDSName(id)
@@ -196,7 +200,33 @@ func (s *ZFS) removeInstanceFS(id string) error {
 		return err
 	}
 
-	return fs.Destroy(zfs.DestroyRecursive)
+	origin, err := fs.GetProperty("origin")
+	if err != nil {
+		return err
+	}
+
+	// remove the instance data
+	// NOTE: this has to be done before removing the image snapshot because
+	// otherwise it will report an error as there is still a dependent clone
+	if err := fs.Destroy(zfs.DestroyRecursive); err != nil {
+		return fmt.Errorf("error removing instance filesystem %s: %w", id, err)
+	}
+
+	// remove origin snapshot
+	if origin != "" {
+		s.log.Debug("removing image fs snapshot", "origin", origin, "id", id)
+		imageSnap, err := zfs.GetDataset(origin)
+		if err != nil {
+			s.log.Warn("unable to get origin dataset for snapshot removal", "origin", origin, "id", id)
+		}
+		if imageSnap != nil {
+			if err := imageSnap.Destroy(zfs.DestroyRecursive); err != nil {
+				return fmt.Errorf("error removing image snapshot for id %s@%s: %w", origin, id, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (s *ZFS) waitForZvol(id string) error {
@@ -239,6 +269,40 @@ func loadKey(ds, keyPath string) error {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("load-key failed: %v (%s)", err, out)
+	}
+	return nil
+}
+
+func fsck(ctx context.Context, diskPath string) error {
+	cmd := exec.CommandContext(ctx, "e2fsck", "-f", "-p", diskPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error checking instance fs resize: %w (%s)", err, string(out))
+	}
+
+	return nil
+}
+
+func resize(ctx context.Context, diskPath string, size uint64) error {
+	bin := "resize2fs"
+	args := []string{diskPath}
+	if size > 0 {
+		// resize2fs doesn't accept bytes - convert to MB
+		args = append(args, fmt.Sprintf("%dM", size/1024/1024))
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error resizing fs: %w (%s)", err, string(out))
+	}
+	return nil
+}
+
+func resizeToMin(ctx context.Context, diskPath string) error {
+	cmd := exec.CommandContext(ctx, "resize2fs", "-M", diskPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error resizing fs to min: %w (%s)", err, string(out))
 	}
 	return nil
 }

@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	api "exe.dev/pkg/api/exe/compute/v1"
+	api "exe.dev/pkg/api/exe/storage/v1"
 )
 
 // CreateInstanceFS creates a new instance fs
-func (s *Raw) Create(ctx context.Context, id string, cfg *api.InstanceFilesystemConfig) (*api.InstanceFilesystem, error) {
+func (s *Raw) Create(ctx context.Context, id string, cfg *api.FilesystemConfig) (*api.Filesystem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -41,7 +41,7 @@ func (s *Raw) Create(ctx context.Context, id string, cfg *api.InstanceFilesystem
 		return nil, err
 	}
 
-	return &api.InstanceFilesystem{
+	return &api.Filesystem{
 		ID:   id,
 		Path: devicePath,
 	}, nil

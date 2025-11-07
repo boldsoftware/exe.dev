@@ -66,7 +66,7 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	networkInterface, err := s.networkManager.CreateInterface(ctx, vmCfg.ID)
+	networkInterface, err := s.context.NetworkManager.CreateInterface(ctx, vmCfg.ID)
 	if err != nil {
 		return err
 	}

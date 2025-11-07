@@ -21,3 +21,11 @@ type Image struct {
 	OSVersion  string   `json:"os.version,omitempty"`
 	OSFeatures []string `json:"os.features,omitempty"`
 }
+
+// FetchResult contains the result of fetching and unpacking an image
+type FetchResult struct {
+	// Config is the image configuration
+	Config *ocispec.Image
+	// UnpackedSize is the total number of bytes written when unpacking the image layers
+	UnpackedSize int64
+}

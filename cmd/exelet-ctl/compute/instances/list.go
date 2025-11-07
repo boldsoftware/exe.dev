@@ -75,7 +75,10 @@ var listInstancesCommand = &cli.Command{
 				i.State.String(),
 			)
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			return err
+		}
+
 		return nil
 	},
 }

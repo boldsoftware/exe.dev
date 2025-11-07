@@ -7,7 +7,7 @@ TIMESTAMP := $(shell date +%Y%m%d-%H%M%S)
 GOOS := $(shell go env GOOS)
 GOARCH := $(shell go env GOARCH)
 COMMIT := `git rev-parse --short HEAD`
-VERSION := 0.0.0
+VERSION := $(shell date +%Y%m%d)
 
 # Colors
 RED := \033[0;31m

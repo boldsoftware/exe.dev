@@ -7,12 +7,11 @@
 package v1
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -309,7 +308,7 @@ func (x Server_ServerState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Server_ServerState.Descriptor instead.
 func (Server_ServerState) EnumDescriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{30, 0}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{27, 0}
 }
 
 type CreateInstanceRequest struct {
@@ -1936,170 +1935,6 @@ func (x *NetworkInterface) GetRouter() string {
 	return ""
 }
 
-type InstanceFilesystem struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ID            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *InstanceFilesystem) Reset() {
-	*x = InstanceFilesystem{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[27]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *InstanceFilesystem) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*InstanceFilesystem) ProtoMessage() {}
-
-func (x *InstanceFilesystem) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[27]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use InstanceFilesystem.ProtoReflect.Descriptor instead.
-func (*InstanceFilesystem) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{27}
-}
-
-func (x *InstanceFilesystem) GetID() string {
-	if x != nil {
-		return x.ID
-	}
-	return ""
-}
-
-func (x *InstanceFilesystem) GetPath() string {
-	if x != nil {
-		return x.Path
-	}
-	return ""
-}
-
-type InstanceFilesystemConfig struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	FsType        string                 `protobuf:"bytes,1,opt,name=fs_type,json=fsType,proto3" json:"fs_type,omitempty"`
-	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
-	EncryptionKey string                 `protobuf:"bytes,3,opt,name=encryption_key,json=encryptionKey,proto3" json:"encryption_key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *InstanceFilesystemConfig) Reset() {
-	*x = InstanceFilesystemConfig{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[28]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *InstanceFilesystemConfig) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*InstanceFilesystemConfig) ProtoMessage() {}
-
-func (x *InstanceFilesystemConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[28]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use InstanceFilesystemConfig.ProtoReflect.Descriptor instead.
-func (*InstanceFilesystemConfig) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{28}
-}
-
-func (x *InstanceFilesystemConfig) GetFsType() string {
-	if x != nil {
-		return x.FsType
-	}
-	return ""
-}
-
-func (x *InstanceFilesystemConfig) GetSize() uint64 {
-	if x != nil {
-		return x.Size
-	}
-	return 0
-}
-
-func (x *InstanceFilesystemConfig) GetEncryptionKey() string {
-	if x != nil {
-		return x.EncryptionKey
-	}
-	return ""
-}
-
-type InstanceMountConfig struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ID            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *InstanceMountConfig) Reset() {
-	*x = InstanceMountConfig{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[29]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *InstanceMountConfig) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*InstanceMountConfig) ProtoMessage() {}
-
-func (x *InstanceMountConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[29]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use InstanceMountConfig.ProtoReflect.Descriptor instead.
-func (*InstanceMountConfig) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{29}
-}
-
-func (x *InstanceMountConfig) GetID() string {
-	if x != nil {
-		return x.ID
-	}
-	return ""
-}
-
-func (x *InstanceMountConfig) GetPath() string {
-	if x != nil {
-		return x.Path
-	}
-	return ""
-}
-
 type Server struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	Name                  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -2116,7 +1951,7 @@ type Server struct {
 
 func (x *Server) Reset() {
 	*x = Server{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[30]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2128,7 +1963,7 @@ func (x *Server) String() string {
 func (*Server) ProtoMessage() {}
 
 func (x *Server) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[30]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2141,7 +1976,7 @@ func (x *Server) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server.ProtoReflect.Descriptor instead.
 func (*Server) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{30}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *Server) GetName() string {
@@ -2210,7 +2045,7 @@ type ServerLocality struct {
 
 func (x *ServerLocality) Reset() {
 	*x = ServerLocality{}
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[31]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2222,7 +2057,7 @@ func (x *ServerLocality) String() string {
 func (*ServerLocality) ProtoMessage() {}
 
 func (x *ServerLocality) ProtoReflect() protoreflect.Message {
-	mi := &file_exe_compute_v1_compute_proto_msgTypes[31]
+	mi := &file_exe_compute_v1_compute_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2235,7 +2070,7 @@ func (x *ServerLocality) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerLocality.ProtoReflect.Descriptor instead.
 func (*ServerLocality) Descriptor() ([]byte, []int) {
-	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{31}
+	return file_exe_compute_v1_compute_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ServerLocality) GetRegion() string {
@@ -2390,17 +2225,7 @@ const file_exe_compute_v1_compute_proto_rawDesc = "" +
 	"\x06router\x18\t \x01(\tR\x06router\"*\n" +
 	"\x04Type\x12\x14\n" +
 	"\x10TYPE_UNSPECIFIED\x10\x00\x12\f\n" +
-	"\bTYPE_TAP\x10\x01\"8\n" +
-	"\x12InstanceFilesystem\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\tR\x04path\"n\n" +
-	"\x18InstanceFilesystemConfig\x12\x17\n" +
-	"\afs_type\x18\x01 \x01(\tR\x06fsType\x12\x12\n" +
-	"\x04size\x18\x02 \x01(\x04R\x04size\x12%\n" +
-	"\x0eencryption_key\x18\x03 \x01(\tR\rencryptionKey\"9\n" +
-	"\x13InstanceMountConfig\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04path\x18\x02 \x01(\tR\x04path\"\xc9\x03\n" +
+	"\bTYPE_TAP\x10\x01\"\xc9\x03\n" +
 	"\x06Server\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x1d\n" +
@@ -2459,50 +2284,44 @@ func file_exe_compute_v1_compute_proto_rawDescGZIP() []byte {
 	return file_exe_compute_v1_compute_proto_rawDescData
 }
 
-var (
-	file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-	file_exe_compute_v1_compute_proto_msgTypes  = make([]protoimpl.MessageInfo, 32)
-	file_exe_compute_v1_compute_proto_goTypes   = []any{
-		(VMState)(0),                     // 0: exe.compute.v1.VMState
-		(Log_Type)(0),                    // 1: exe.compute.v1.Log.Type
-		(CreateInstanceStatus_State)(0),  // 2: exe.compute.v1.CreateInstanceStatus.State
-		(NetworkInterface_Type)(0),       // 3: exe.compute.v1.NetworkInterface.Type
-		(Server_ServerState)(0),          // 4: exe.compute.v1.Server.ServerState
-		(*CreateInstanceRequest)(nil),    // 5: exe.compute.v1.CreateInstanceRequest
-		(*Config)(nil),                   // 6: exe.compute.v1.Config
-		(*FileConfig)(nil),               // 7: exe.compute.v1.FileConfig
-		(*Volume)(nil),                   // 8: exe.compute.v1.Volume
-		(*Placement)(nil),                // 9: exe.compute.v1.Placement
-		(*Log)(nil),                      // 10: exe.compute.v1.Log
-		(*CreateInstanceStatus)(nil),     // 11: exe.compute.v1.CreateInstanceStatus
-		(*CreateInstanceResponse)(nil),   // 12: exe.compute.v1.CreateInstanceResponse
-		(*ListInstancesRequest)(nil),     // 13: exe.compute.v1.ListInstancesRequest
-		(*ListInstancesResponse)(nil),    // 14: exe.compute.v1.ListInstancesResponse
-		(*GetInstanceRequest)(nil),       // 15: exe.compute.v1.GetInstanceRequest
-		(*GetInstanceResponse)(nil),      // 16: exe.compute.v1.GetInstanceResponse
-		(*GetInstanceLogsRequest)(nil),   // 17: exe.compute.v1.GetInstanceLogsRequest
-		(*GetInstanceLogsResponse)(nil),  // 18: exe.compute.v1.GetInstanceLogsResponse
-		(*StartInstanceRequest)(nil),     // 19: exe.compute.v1.StartInstanceRequest
-		(*StartInstanceResponse)(nil),    // 20: exe.compute.v1.StartInstanceResponse
-		(*StopInstanceRequest)(nil),      // 21: exe.compute.v1.StopInstanceRequest
-		(*StopInstanceResponse)(nil),     // 22: exe.compute.v1.StopInstanceResponse
-		(*DeleteInstanceRequest)(nil),    // 23: exe.compute.v1.DeleteInstanceRequest
-		(*DeleteInstanceResponse)(nil),   // 24: exe.compute.v1.DeleteInstanceResponse
-		(*UpdateInstanceRequest)(nil),    // 25: exe.compute.v1.UpdateInstanceRequest
-		(*UpdateInstanceResponse)(nil),   // 26: exe.compute.v1.UpdateInstanceResponse
-		(*Instance)(nil),                 // 27: exe.compute.v1.Instance
-		(*VMConfig)(nil),                 // 28: exe.compute.v1.VMConfig
-		(*DirectoryShare)(nil),           // 29: exe.compute.v1.DirectoryShare
-		(*IPAddress)(nil),                // 30: exe.compute.v1.IPAddress
-		(*NetworkInterface)(nil),         // 31: exe.compute.v1.NetworkInterface
-		(*InstanceFilesystem)(nil),       // 32: exe.compute.v1.InstanceFilesystem
-		(*InstanceFilesystemConfig)(nil), // 33: exe.compute.v1.InstanceFilesystemConfig
-		(*InstanceMountConfig)(nil),      // 34: exe.compute.v1.InstanceMountConfig
-		(*Server)(nil),                   // 35: exe.compute.v1.Server
-		(*ServerLocality)(nil),           // 36: exe.compute.v1.ServerLocality
-	}
-)
-
+var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_exe_compute_v1_compute_proto_goTypes = []any{
+	(VMState)(0),                    // 0: exe.compute.v1.VMState
+	(Log_Type)(0),                   // 1: exe.compute.v1.Log.Type
+	(CreateInstanceStatus_State)(0), // 2: exe.compute.v1.CreateInstanceStatus.State
+	(NetworkInterface_Type)(0),      // 3: exe.compute.v1.NetworkInterface.Type
+	(Server_ServerState)(0),         // 4: exe.compute.v1.Server.ServerState
+	(*CreateInstanceRequest)(nil),   // 5: exe.compute.v1.CreateInstanceRequest
+	(*Config)(nil),                  // 6: exe.compute.v1.Config
+	(*FileConfig)(nil),              // 7: exe.compute.v1.FileConfig
+	(*Volume)(nil),                  // 8: exe.compute.v1.Volume
+	(*Placement)(nil),               // 9: exe.compute.v1.Placement
+	(*Log)(nil),                     // 10: exe.compute.v1.Log
+	(*CreateInstanceStatus)(nil),    // 11: exe.compute.v1.CreateInstanceStatus
+	(*CreateInstanceResponse)(nil),  // 12: exe.compute.v1.CreateInstanceResponse
+	(*ListInstancesRequest)(nil),    // 13: exe.compute.v1.ListInstancesRequest
+	(*ListInstancesResponse)(nil),   // 14: exe.compute.v1.ListInstancesResponse
+	(*GetInstanceRequest)(nil),      // 15: exe.compute.v1.GetInstanceRequest
+	(*GetInstanceResponse)(nil),     // 16: exe.compute.v1.GetInstanceResponse
+	(*GetInstanceLogsRequest)(nil),  // 17: exe.compute.v1.GetInstanceLogsRequest
+	(*GetInstanceLogsResponse)(nil), // 18: exe.compute.v1.GetInstanceLogsResponse
+	(*StartInstanceRequest)(nil),    // 19: exe.compute.v1.StartInstanceRequest
+	(*StartInstanceResponse)(nil),   // 20: exe.compute.v1.StartInstanceResponse
+	(*StopInstanceRequest)(nil),     // 21: exe.compute.v1.StopInstanceRequest
+	(*StopInstanceResponse)(nil),    // 22: exe.compute.v1.StopInstanceResponse
+	(*DeleteInstanceRequest)(nil),   // 23: exe.compute.v1.DeleteInstanceRequest
+	(*DeleteInstanceResponse)(nil),  // 24: exe.compute.v1.DeleteInstanceResponse
+	(*UpdateInstanceRequest)(nil),   // 25: exe.compute.v1.UpdateInstanceRequest
+	(*UpdateInstanceResponse)(nil),  // 26: exe.compute.v1.UpdateInstanceResponse
+	(*Instance)(nil),                // 27: exe.compute.v1.Instance
+	(*VMConfig)(nil),                // 28: exe.compute.v1.VMConfig
+	(*DirectoryShare)(nil),          // 29: exe.compute.v1.DirectoryShare
+	(*IPAddress)(nil),               // 30: exe.compute.v1.IPAddress
+	(*NetworkInterface)(nil),        // 31: exe.compute.v1.NetworkInterface
+	(*Server)(nil),                  // 32: exe.compute.v1.Server
+	(*ServerLocality)(nil),          // 33: exe.compute.v1.ServerLocality
+}
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	9,  // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
 	8,  // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
@@ -2522,7 +2341,7 @@ var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	31, // 15: exe.compute.v1.VMConfig.network_interface:type_name -> exe.compute.v1.NetworkInterface
 	3,  // 16: exe.compute.v1.NetworkInterface.type:type_name -> exe.compute.v1.NetworkInterface.Type
 	30, // 17: exe.compute.v1.NetworkInterface.ip:type_name -> exe.compute.v1.IPAddress
-	36, // 18: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
+	33, // 18: exe.compute.v1.Server.locality:type_name -> exe.compute.v1.ServerLocality
 	4,  // 19: exe.compute.v1.Server.state:type_name -> exe.compute.v1.Server.ServerState
 	5,  // 20: exe.compute.v1.ComputeService.CreateInstance:input_type -> exe.compute.v1.CreateInstanceRequest
 	13, // 21: exe.compute.v1.ComputeService.ListInstances:input_type -> exe.compute.v1.ListInstancesRequest
@@ -2565,7 +2384,7 @@ func file_exe_compute_v1_compute_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_exe_compute_v1_compute_proto_rawDesc), len(file_exe_compute_v1_compute_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   32,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

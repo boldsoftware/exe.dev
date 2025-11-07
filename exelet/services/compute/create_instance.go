@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,8 +23,10 @@ import (
 
 	"exe.dev/exelet/config"
 	exeletfs "exe.dev/exelet/fs"
+	"exe.dev/exelet/utils"
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	storageapi "exe.dev/pkg/api/exe/storage/v1"
 )
 
 const (
@@ -31,9 +34,7 @@ const (
 )
 
 // CreateInstance creates a new exelet instance
-func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.ComputeService_CreateInstanceServer) error {
-	var err error
-
+func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.ComputeService_CreateInstanceServer) (err error) {
 	// validate
 	if err := req.Validate(); err != nil {
 		return status.Error(codes.FailedPrecondition, err.Error())
@@ -51,6 +52,20 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	instanceID := req.ID
 
+	// Setup rollback to cleanup resources on error
+	rb := &createInstanceRollback{
+		ctx:            ctx,
+		log:            s.log,
+		serviceContext: s.context,
+		instanceID:     instanceID,
+	}
+	defer func() {
+		if err != nil {
+			s.log.Warn("instance creation failed, rolling back", "id", instanceID, "error", err)
+			rb.Rollback()
+		}
+	}()
+
 	// init state
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
 		ID:    req.ID,
@@ -63,43 +78,8 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	if err := os.MkdirAll(instanceDir, 0o770); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-
-	// create instance fs
-	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
-		ID:      instanceID,
-		State:   api.CreateInstanceStatus_INIT,
-		Message: "configuring storage",
-	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-	s.log.Debug("creating instance fs", "id", instanceID)
-	instanceFS, err := s.context.StorageManager.Create(ctx, instanceID, &api.InstanceFilesystemConfig{
-		FsType: "ext4",
-		Size:   req.Disk,
-	})
-	if err != nil {
-		return status.Errorf(codes.Internal, "error creating instance storage: %s", err)
-	}
-
-	// mount
-	mountConfig, err := s.context.StorageManager.Mount(ctx, instanceID)
-	if err != nil {
-		return status.Errorf(codes.Internal, "error mounting instance storage: %s", err)
-	}
-
-	mountpoint := mountConfig.Path
-
-	// handle create errors to cleanup if needed
-	defer func() {
-		if err != nil {
-			s.log.Warn("cleaning up failed creation for instance", "id", instanceID)
-			_ = s.context.StorageManager.Unmount(ctx, instanceID)
-			// remove dataset
-			_ = s.context.StorageManager.Delete(ctx, instanceID)
-			// cleanup
-			_ = os.RemoveAll(instanceDir)
-		}
-	}()
+	rb.instanceDir = instanceDir
+	rb.instanceDirCreated = true
 
 	// networking
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
@@ -110,33 +90,91 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, err.Error())
 	}
 	s.log.Debug("creating network interface", "id", instanceID)
-	networkInterface, err := s.networkManager.CreateInterface(ctx, instanceID)
+	networkInterface, err := s.context.NetworkManager.CreateInterface(ctx, instanceID)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
+	rb.networkCreated = true
 
 	netConf, err := s.getNetConf(req.Name, networkInterface)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-	// linux only supported for now
-	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
 
-	// fetch / unpack image content to snapshot
-	s.log.Debug("fetching and unpacking image", "image", req.Image, "mountpoint", mountpoint)
-
+	// create instance fs
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
 		ID:      instanceID,
-		State:   api.CreateInstanceStatus_PULLING,
-		Message: fmt.Sprintf("pulling %s", req.Image),
+		State:   api.CreateInstanceStatus_INIT,
+		Message: "configuring storage",
 	}); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-	imageConfig, err := s.imageManager.Fetch(ctx, req.Image, platform, mountpoint)
+	// linux only supported for now
+	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
+	s.log.Debug("creating instance fs", "id", instanceID)
+
+	imageMetadata, err := s.context.ImageManager.FetchManifestForPlatform(ctx, req.Image, platform)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
 	}
-	s.log.Debug("image config", "config", imageConfig)
+	s.log.Debug("fetched image manifest", "image", req.Image, "digest", imageMetadata.Digest)
+
+	// config
+	imageConfig := imageMetadata.Config
+	imageFSID := imageMetadata.Digest
+
+	// attempt to get the base disk and create if not found
+	//rb.imageFSID = imageFSID
+
+	// if not found provision image
+	if _, err := s.context.StorageManager.Get(ctx, imageFSID); err != nil {
+		if !errors.Is(err, storageapi.ErrNotFound) {
+			return status.Errorf(codes.Internal, "error getting storage filesystem for %s: %s", req.Image, err)
+		}
+
+		if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
+			ID:      instanceID,
+			State:   api.CreateInstanceStatus_PULLING,
+			Message: fmt.Sprintf("fetching %s", req.Image),
+		}); err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+
+		imageID, err := utils.LoadImage(ctx, req.Image, platform, s.context.ImageManager, s.context.StorageManager, s.log)
+		if err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+		// update to ensure latest ID
+		imageFSID = imageID
+		// update rollback configs
+		rb.imageFSID = imageID
+		rb.imageFSMounted = false
+	}
+
+	// clone
+	if err = s.context.StorageManager.Clone(ctx, imageFSID, instanceID); err != nil {
+		return status.Errorf(codes.Internal, "error cloning instance storage for image %s: %s", req.Image, err)
+	}
+	rb.instanceCloned = true
+
+	// resize
+	if err = s.context.StorageManager.Expand(ctx, instanceID, req.Disk); err != nil {
+		return status.Errorf(codes.Internal, "error resizing instance filesystem storage: %s", err)
+	}
+
+	// get instance fs
+	instanceFS, err := s.context.StorageManager.Get(ctx, instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "error getting cloned instance fs: %s", err)
+	}
+
+	// mount
+	mountConfig, err := s.context.StorageManager.Mount(ctx, instanceID)
+	if err != nil {
+		return status.Errorf(codes.Internal, "error mounting instance filesystem: %s", err)
+	}
+	rb.instanceMounted = true
+	mountpoint := mountConfig.Path
 
 	// kernel
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
@@ -149,7 +187,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	// fetch kernel image
 	if req.KernelImage != "" {
 		s.log.Debug("fetching kernel image", "image", req.KernelImage, "path", instanceDir)
-		if _, err := s.imageManager.Fetch(ctx, req.KernelImage, platform, instanceDir); err != nil {
+		if _, err := s.context.ImageManager.Fetch(ctx, req.KernelImage, platform, instanceDir); err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
 	} else { // use embedded
@@ -183,6 +221,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, err.Error())
 	}
 
+	// configs
 	for _, cfg := range req.Configs {
 		targetPath := filepath.Join(mountpoint, filepath.Clean(cfg.Destination))
 
@@ -223,7 +262,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			}); err != nil {
 				return status.Error(codes.Internal, err.Error())
 			}
-			if _, err := s.imageManager.Fetch(ctx, vol.Source, platform, volumeTarget); err != nil {
+			if _, err := s.context.ImageManager.Fetch(ctx, vol.Source, platform, volumeTarget); err != nil {
 				return status.Error(codes.Internal, err.Error())
 			}
 		default:
@@ -309,7 +348,6 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, err.Error())
 	}
 
-	// TODO: remove
 	// set image config for init
 	s.log.Debug("configuring instance image config", "id", instanceID)
 	if imageConfig != nil {
@@ -355,6 +393,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	if err := s.context.StorageManager.Unmount(ctx, instanceID); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
+	rb.instanceMounted = false
 
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
 		ID:      instanceID,
@@ -365,7 +404,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	// boot args
 	bootArgs := getBootArgs(netConf)
-	// TODO: handle duplicates (e.g. if the user specifies init= etc.)
+	// TODO: handle duplicates (e.g. init= etc.)
 	bootArgs = append(bootArgs, req.BootArgs...)
 
 	// create vm configuration
@@ -400,8 +439,6 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	if err := vmm.Start(ctx, vmCfg.ID); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-
-	// TODO: add agent vsock
 
 	// return instance info
 	created := time.Now().UnixNano()

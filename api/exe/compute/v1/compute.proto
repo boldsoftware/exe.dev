@@ -200,22 +200,6 @@ message NetworkInterface {
   string router = 9;
 }
 
-message InstanceFilesystem {
-  string id = 1;
-  string path = 2;
-}
-
-message InstanceFilesystemConfig {
-  string fs_type = 1;
-  uint64 size = 2;
-  string encryption_key = 3;
-}
-
-message InstanceMountConfig {
-  string id = 1;
-  string path = 2;
-}
-
 message Server {
   string name = 1;
   string address = 2;

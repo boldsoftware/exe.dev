@@ -7,11 +7,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
+	storageapi "exe.dev/pkg/api/exe/storage/v1"
 )
 
 // Client is the GRPC client
 type Client struct {
 	computeapi.ComputeServiceClient
+	storageapi.StorageServiceClient
 	conn *grpc.ClientConn
 	addr string
 	cfg  *ClientConfig
@@ -39,6 +41,7 @@ func NewClient(addr string, clientOpts ...ClientOpt) (*Client, error) {
 
 	client := &Client{
 		computeapi.NewComputeServiceClient(c),
+		storageapi.NewStorageServiceClient(c),
 		c,
 		addr,
 		cfg,

@@ -1,3 +1,5 @@
+//go:build linux
+
 package zfs
 
 import (
@@ -63,4 +65,9 @@ func NewZFS(addr string, log *slog.Logger) (*ZFS, error) {
 
 func (s *ZFS) Type() string {
 	return storageType
+}
+
+func align16K(v uint64) uint64 {
+	blockSize := uint64(16 * 1024)
+	return uint64(((v + blockSize - 1) / blockSize) * blockSize)
 }

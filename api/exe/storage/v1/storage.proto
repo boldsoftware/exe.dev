@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package exe.storage.v1;
+
+option go_package = "exe.dev/api/storage/v1";
+
+service StorageService {
+  rpc GetFilesystem(GetFilesystemRequest) returns (GetFilesystemResponse);
+  rpc LoadFilesystem(LoadFilesystemRequest) returns (LoadFilesystemResponse);
+}
+
+message GetFilesystemRequest {
+  string id = 1;
+}
+
+message GetFilesystemResponse {
+  Filesystem filesystem = 1;
+}
+
+message Filesystem {
+  string id = 1;
+  string path = 2;
+  uint64 size = 3;
+}
+
+message FilesystemConfig {
+  string fs_type = 1;
+  uint64 size = 2;
+  string encryption_key = 3;
+  string source = 4;
+}
+
+message FilesystemMountConfig {
+  string id = 1;
+  string path = 2;
+}
+
+message LoadFilesystemRequest {
+  string image = 1;
+}
+
+message LoadFilesystemResponse {
+  string id = 1;
+}

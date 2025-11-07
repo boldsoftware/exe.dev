@@ -7,6 +7,7 @@ import (
 	cli "github.com/urfave/cli/v2"
 
 	"exe.dev/cmd/exelet-ctl/compute"
+	"exe.dev/cmd/exelet-ctl/storage"
 	"exe.dev/exelet/config"
 	"exe.dev/version"
 )
@@ -51,10 +52,13 @@ func main() {
 	}
 	app.Commands = []*cli.Command{
 		compute.Command,
+		storage.Command,
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		slog.Error(err.Error())
-		panic(err)
+		if _, err := os.Stderr.Write([]byte(err.Error() + "\n")); err != nil {
+			panic(err)
+		}
+		os.Exit(1)
 	}
 }
