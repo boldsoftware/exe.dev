@@ -27,6 +27,8 @@ var (
 	InstanceSSHHostKeyPath = "/exe.dev/etc/ssh/ssh_host_ed25519_key"
 	// InstanceSSHKeyDir is the directory in the instance for ssh keys
 	InstanceSSHPublicKeysPath = "/exe.dev/etc/ssh/authorized_keys"
+	// PasswdPath is the path in the instance for the users db
+	PasswdPath = "/etc/passwd"
 	// HostnamePath is the path in the instance for the hostname
 	HostnamePath = "/etc/hostname"
 	// HostsPath is the path in the instance for local hosts resolution
@@ -43,6 +45,8 @@ var (
 	InstanceExeInitPath = "/exe.dev/bin/exe-init"
 	// InstanceExeSshPath is the path in the instance for exe-ssh
 	InstanceExeSshPath = "/exe.dev/bin/sshd"
+	// InstanceExeSshPrivilegeSeparationUser is the user in the instance that the ssh daemon uses for privilege separation
+	InstanceExeSshPrivilegeSeparationUser = "sshd"
 	// InstanceExeLabelUID is the label for the instance to specify the exe login user
 	InstanceExeLabelLoginUser = "exe.dev/login-user"
 

@@ -434,6 +434,7 @@ var (
 		(*LoadFilesystemResponse)(nil), // 6: exe.storage.v1.LoadFilesystemResponse
 	}
 )
+
 var file_exe_storage_v1_storage_proto_depIdxs = []int32{
 	2, // 0: exe.storage.v1.GetFilesystemResponse.filesystem:type_name -> exe.storage.v1.Filesystem
 	0, // 1: exe.storage.v1.StorageService.GetFilesystem:input_type -> exe.storage.v1.GetFilesystemRequest

@@ -5,7 +5,6 @@ package zfs
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -68,10 +67,6 @@ func (s *ZFS) Shrink(ctx context.Context, id string) error {
 	if err := fsck(ctx, diskPath); err != nil {
 		return err
 	}
-
-	c := exec.CommandContext(ctx, "resize2fs", "-P", diskPath)
-	out, _ := c.Output()
-	s.log.Debug("resize2fs min", "size", string(out))
 
 	if err := resizeToMin(ctx, diskPath); err != nil {
 		return err

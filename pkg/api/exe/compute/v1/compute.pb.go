@@ -2325,6 +2325,7 @@ var (
 		(*ServerLocality)(nil),          // 33: exe.compute.v1.ServerLocality
 	}
 )
+
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	9,  // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
 	8,  // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume
