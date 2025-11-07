@@ -245,8 +245,8 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 	// Determine domains to include in the certificate request
 	var domains []string
 	if domain == w.domain {
-		// Main domain certificate should include wildcard for subdomains
-		domains = []string{w.domain, "*." + w.domain}
+		// Main domain certificate should include wildcard for subdomains and www alias
+		domains = []string{w.domain, "*." + w.domain, "www." + w.domain}
 	} else if strings.HasPrefix(domain, "*.") {
 		// Wildcard domain like *.team.exe.dev
 		domains = []string{domain}
