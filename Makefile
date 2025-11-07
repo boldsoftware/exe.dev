@@ -15,7 +15,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-whoami deploy-what deploy-piperd clean run-dev generate whoami-clean
+.PHONY: help build test deploy-exed deploy-whoami deploy-what deploy-qa deploy-piperd clean run-dev generate whoami-clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -69,6 +69,9 @@ deploy-piperd: ## Deploy sshpiperd to production
 
 deploy-what: ## Show commits that would deploy to production
 	@./ops/deploy-what.sh
+
+deploy-qa: ## Ask codex for a QA/testing plan for pending changes
+	@./ops/deploy-qa.sh
 
 run-dev: ## Run exed locally for development
 	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
