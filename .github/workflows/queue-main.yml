@@ -155,6 +155,7 @@ jobs:
     needs: [commit-validation-and-formatting, test, shelley-test]
     permissions:
       contents: write
+      issues: write
       actions: write
     steps:
       - name: Abort stale rebase (pre-checkout)
