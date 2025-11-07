@@ -766,6 +766,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	defaultDirector := rp.Director
 	rp.Director = func(req *http.Request) {
 		defaultDirector(req)
+		setForwardedHeaders(req, r)
 
 		// Add user info headers if authenticated
 		if userID, ok := s.getAuthenticatedUserID(r, *box); ok {
@@ -808,6 +809,49 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	// Proxy the request
 	rp.ServeHTTP(w, r)
 	return proxyErr
+}
+
+// setForwardedHeaders ensures downstream services are aware of the original request context.
+// It sets X-Forwarded-Proto, X-Forwarded-Host, and X-Forwarded-For so apps can reconstruct the public URL.
+func setForwardedHeaders(outgoing, incoming *http.Request) {
+	if outgoing == nil || incoming == nil {
+		return
+	}
+
+	proto := "http"
+	if incoming.TLS != nil {
+		proto = "https"
+	}
+	outgoing.Header.Set("X-Forwarded-Proto", proto)
+
+	if host := incoming.Host; host != "" {
+		outgoing.Header.Set("X-Forwarded-Host", host)
+	}
+
+	existingXFF := strings.TrimSpace(incoming.Header.Get("X-Forwarded-For"))
+	clientIP := clientIPFromRemoteAddr(incoming.RemoteAddr)
+	switch {
+	case existingXFF != "" && clientIP != "":
+		outgoing.Header.Set("X-Forwarded-For", existingXFF+", "+clientIP)
+	case existingXFF != "":
+		outgoing.Header.Set("X-Forwarded-For", existingXFF)
+	case clientIP != "":
+		outgoing.Header.Set("X-Forwarded-For", clientIP)
+	}
+}
+
+func clientIPFromRemoteAddr(addr string) string {
+	if addr == "" {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err == nil {
+		return host
+	}
+	if ip := net.ParseIP(addr); ip != nil {
+		return ip.String()
+	}
+	return addr
 }
 
 // checkShareLinkAccess checks if the request has a valid share link token

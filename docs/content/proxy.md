@@ -37,6 +37,15 @@ the user is authenticated via exe.dev.
 - `X-ExeDev-UserID`: A stable, unique user identifier
 - `X-ExeDev-Email`: The user's email address
 
+## Reverse proxy headers
+
+Requests proxied by exe.dev include standard `X-Forwarded-*` headers so your
+application can reconstruct the original public request information:
+
+- `X-Forwarded-Proto`: `https` when the client connected over TLS, otherwise `http`
+- `X-Forwarded-Host`: The full host header (including port) that the client requested
+- `X-Forwarded-For`: A comma-separated list containing any prior `X-Forwarded-For` value plus the client's IP as seen by exe.dev
+
 ### Special Authentication URLs
 
 The following special URLs are available for authentication flows:

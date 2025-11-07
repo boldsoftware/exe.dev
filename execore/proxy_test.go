@@ -2,6 +2,7 @@ package execore
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -682,6 +683,52 @@ func TestProxyStreaming(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Errorf("Expected Content-Type 'text/event-stream', got %q", ct)
 	}
+}
+
+func TestSetForwardedHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("https request populates headers", func(t *testing.T) {
+		incoming := httptest.NewRequest(http.MethodGet, "https://box.exe.dev/", nil)
+		incoming.Host = "box.exe.dev"
+		incoming.RemoteAddr = "203.0.113.5:45678"
+		incoming.TLS = &tls.ConnectionState{}
+
+		outgoing := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/", nil)
+
+		setForwardedHeaders(outgoing, incoming)
+
+		if got := outgoing.Header.Get("X-Forwarded-Proto"); got != "https" {
+			t.Fatalf("expected proto https, got %q", got)
+		}
+		if got := outgoing.Header.Get("X-Forwarded-Host"); got != "box.exe.dev" {
+			t.Fatalf("expected forwarded host box.exe.dev, got %q", got)
+		}
+		if got := outgoing.Header.Get("X-Forwarded-For"); got != "203.0.113.5" {
+			t.Fatalf("expected forwarded for 203.0.113.5, got %q", got)
+		}
+	})
+
+	t.Run("appends existing xff and preserves host port", func(t *testing.T) {
+		incoming := httptest.NewRequest(http.MethodGet, "http://app.exe.dev/resource", nil)
+		incoming.Host = "app.exe.dev:8443"
+		incoming.RemoteAddr = "198.51.100.7:4444"
+		incoming.Header.Set("X-Forwarded-For", "10.0.0.1")
+
+		outgoing := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:5000/", nil)
+
+		setForwardedHeaders(outgoing, incoming)
+
+		if got := outgoing.Header.Get("X-Forwarded-Proto"); got != "http" {
+			t.Fatalf("expected proto http, got %q", got)
+		}
+		if got := outgoing.Header.Get("X-Forwarded-Host"); got != "app.exe.dev:8443" {
+			t.Fatalf("expected forwarded host app.exe.dev:8443, got %q", got)
+		}
+		if got := outgoing.Header.Get("X-Forwarded-For"); got != "10.0.0.1, 198.51.100.7" {
+			t.Fatalf("expected forwarded for '10.0.0.1, 198.51.100.7', got %q", got)
+		}
+	})
 }
 
 func TestAuthConfirmSkipForOwner(t *testing.T) {

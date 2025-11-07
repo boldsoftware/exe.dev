@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -34,19 +35,46 @@ func TestHTTPProxy(t *testing.T) {
 		t.Fatalf("failed to create index.html: %v\n", err)
 	}
 
+	writeCGI := boxSSHCommand(t, box, keyFile, "sh", "-c", `set -e
+mkdir -p /home/exedev/cgi-bin
+cat <<'EOF' >/home/exedev/cgi-bin/headers
+#!/bin/sh
+echo "Content-Type: text/plain"
+echo
+env
+EOF
+chmod +x /home/exedev/cgi-bin/headers
+`)
+	writeCGI.Stdout = t.Output()
+	writeCGI.Stderr = t.Output()
+	if err := writeCGI.Run(); err != nil {
+		t.Fatalf("failed to configure header CGI: %v\n", err)
+	}
+
+	// startedServers tracks running httpd servers by port.
+	startedServers := make(map[int]*exec.Cmd)
+	t.Cleanup(func() {
+		for _, cmd := range startedServers {
+			if cmd.Process == nil {
+				continue
+			}
+			cmd.Process.Kill()
+			cmd.Process.Wait()
+		}
+	})
+
 	serveHTTP := func(t *testing.T, port int) {
 		t.Helper()
-
+		if _, ok := startedServers[port]; ok {
+			return
+		}
 		httpdCmd := boxSSHCommand(t, box, keyFile, "busybox", "httpd", "-f", "-p", strconv.Itoa(port), "-h", "/home/exedev")
 		httpdCmd.Stdout = t.Output()
 		httpdCmd.Stderr = t.Output()
 		if err := httpdCmd.Start(); err != nil {
 			t.Fatalf("failed to start busybox HTTP server: %v\n", err)
 		}
-		t.Cleanup(func() {
-			httpdCmd.Process.Kill()
-			httpdCmd.Wait()
-		})
+		startedServers[port] = httpdCmd
 
 		// TODO: arguably we shouldn't do this waiting.
 		// Instead, exed should be responsible for handling it for us.
@@ -315,6 +343,93 @@ func TestHTTPProxy(t *testing.T) {
 		}
 		if !strings.Contains(string(body), "alive") {
 			t.Fatalf("expected body to contain 'alive' via header auth, got %s", body)
+		}
+	})
+
+	t.Run("forwarded_headers", func(t *testing.T) {
+		const internalPort = 8080
+		httpPort := Env.exed.HTTPPort
+
+		serveHTTP(t, internalPort)
+
+		exeShell := sshToExeDev(t, keyFile)
+		exeShell.sendLine(fmt.Sprintf("proxy %s --port=%d --public", box, internalPort))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+		exeShell.disconnect()
+
+		client := noRedirectClient(nil)
+
+		req := makeProxyRequestWithPath(t, box, httpPort, "/cgi-bin/headers")
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request for forwarded headers: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("expected HTTP 200 from forwarded header request, got %d (body: %s)", resp.StatusCode, string(body))
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to read forwarded header response: %v", err)
+		}
+		resp.Body.Close()
+		envMap := parseCGIEnv(body)
+
+		gotProto := envMap["HTTP_X_FORWARDED_PROTO"]
+		if gotProto != "http" {
+			t.Fatalf("expected X-Forwarded-Proto=http, got %q", gotProto)
+		}
+
+		expectedHost := fmt.Sprintf("%s.localhost:%d", box, httpPort)
+		if gotHost := envMap["HTTP_X_FORWARDED_HOST"]; gotHost != expectedHost {
+			t.Fatalf("expected X-Forwarded-Host=%q, got %q", expectedHost, gotHost)
+		}
+
+		initialXFF := strings.TrimSpace(envMap["HTTP_X_FORWARDED_FOR"])
+		if initialXFF == "" {
+			t.Fatalf("expected X-Forwarded-For to be populated in initial request")
+		}
+		initialChain := parseForwardedFor(initialXFF)
+		clientIP := initialChain[len(initialChain)-1]
+		if net.ParseIP(clientIP) == nil {
+			t.Fatalf("expected final X-Forwarded-For hop to be an IP, got %q", clientIP)
+		}
+
+		req = makeProxyRequestWithPath(t, box, httpPort, "/cgi-bin/headers")
+		priorXFF := "10.0.0.10"
+		req.Header.Set("X-Forwarded-For", priorXFF)
+		resp, err = client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request with existing X-Forwarded-For: %v", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			t.Fatalf("expected HTTP 200 from appended header request, got %d (body: %s)", resp.StatusCode, string(body))
+		}
+
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			resp.Body.Close()
+			t.Fatalf("failed to read appended forwarded header response: %v", err)
+		}
+		resp.Body.Close()
+
+		mergedEnv := parseCGIEnv(body)
+
+		gotXFF := strings.TrimSpace(mergedEnv["HTTP_X_FORWARDED_FOR"])
+		if !strings.HasPrefix(gotXFF, priorXFF+",") {
+			t.Fatalf("expected merged X-Forwarded-For to start with %q, got %q", priorXFF+",", gotXFF)
+		}
+		mergedChain := parseForwardedFor(gotXFF)
+		if mergedChain[len(mergedChain)-1] != clientIP {
+			t.Fatalf("expected merged X-Forwarded-For to end with %q, got %q", clientIP, mergedChain[len(mergedChain)-1])
 		}
 	})
 
@@ -594,14 +709,44 @@ func doProxyRequest(t *testing.T, boxName string, httpPort int) (*http.Response,
 }
 
 func makeProxyRequest(t *testing.T, boxName string, httpPort int) *http.Request {
+	return makeProxyRequestWithPath(t, boxName, httpPort, "/")
+}
+
+func makeProxyRequestWithPath(t *testing.T, boxName string, httpPort int, path string) *http.Request {
 	t.Helper()
-	proxyURL := fmt.Sprintf("http://127.0.0.1:%d", httpPort)
+	proxyURL := fmt.Sprintf("http://127.0.0.1:%d%s", httpPort, path)
 	req, err := http.NewRequest("GET", proxyURL, nil)
 	if err != nil {
 		t.Fatalf("failed to create proxy request: %v", err)
 	}
 	req.Host = fmt.Sprintf("%s.localhost:%d", boxName, httpPort)
 	return req
+}
+
+func parseCGIEnv(body []byte) map[string]string {
+	envMap := make(map[string]string)
+	for line := range strings.Lines(string(body)) {
+		line := strings.TrimSpace(line)
+		if idx := strings.IndexRune(line, '='); idx != -1 {
+			envMap[line[:idx]] = line[idx+1:]
+		}
+	}
+	return envMap
+}
+
+func parseForwardedFor(header string) []string {
+	parts := strings.Split(header, ",")
+	var trimmed []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			trimmed = append(trimmed, part)
+		}
+	}
+	if len(trimmed) == 0 {
+		return []string{header}
+	}
+	return trimmed
 }
 
 func setBasicAuthHeader(req *http.Request, token string) {
