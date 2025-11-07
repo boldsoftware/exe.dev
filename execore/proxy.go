@@ -231,13 +231,15 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 				scheme = "https"
 			}
 			data := struct {
-				BoxName     string
-				Port        int
-				TerminalURL string
+				BoxName         string
+				Port            int
+				TerminalURL     string
+				ShowWelcomeStep bool
 			}{
-				BoxName:     boxName,
-				Port:        route.Port,
-				TerminalURL: fmt.Sprintf("%s://%s/", scheme, terminalHost),
+				BoxName:         boxName,
+				Port:            route.Port,
+				TerminalURL:     fmt.Sprintf("%s://%s/", scheme, terminalHost),
+				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
 			}
 
 			w.WriteHeader(http.StatusBadGateway)

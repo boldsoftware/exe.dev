@@ -5,12 +5,88 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Service unavailable</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 40px auto; max-width: 700px; color: #222; }
-    h1 { font-size: 1.6rem; margin-bottom: 0.5rem; }
-    p { line-height: 1.5; margin: 0.6rem 0; }
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 40px auto;
+      max-width: 760px;
+      color: #1f2326;
+      line-height: 1.55;
+    }
+    main {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    h1 {
+      font-size: 1.7rem;
+      margin: 0 0 0.25rem;
+    }
+    h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #5f6368;
+      margin: 0 0 0.5rem;
+    }
+    p { margin: 0; }
     a { color: inherit; text-decoration: underline; }
-    code { background: #f4f4f4; padding: 0 4px; border-radius: 3px; }
-    .muted { color: #666; }
+    .eyebrow {
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #5f6368;
+      margin-bottom: 0.4rem;
+    }
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .step {
+      border: 1px solid #d8dadd;
+      border-radius: 12px;
+      padding: 1.1rem 1.2rem;
+      background: #f8fafc;
+      width: 100%;
+    }
+    .step h3 {
+      margin: 0 0 0.4rem;
+      font-size: 1.05rem;
+    }
+    .step p + p {
+      margin-top: 0.45rem;
+    }
+    code {
+      display: inline-block;
+      background: #e6ebf2;
+      padding: 0.25rem 0.4rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    .code-line {
+      display: block;
+      margin-top: 0.4rem;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .muted {
+      color: #6c727f;
+      font-size: 0.9rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b0c0f; color: #dfe3ea; }
+      .eyebrow, h2, .muted { color: #9ca3af; }
+      .step {
+        border-color: #2b323c;
+        background: #14161c;
+      }
+      code { background: #1d2028; }
+    }
   </style>
   <meta name="robots" content="noindex">
   <meta name="referrer" content="no-referrer">
@@ -19,20 +95,34 @@
   <meta http-equiv="Expires" content="0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="format-detection" content="telephone=no">
-  <meta name="color-scheme" content="light dark">
-  <style>
-    @media (prefers-color-scheme: dark) {
-      body { background: #111; color: #ddd; }
-      code { background: #1d1d1d; }
-      .muted { color: #aaa; }
-    }
-  </style>
-  
 </head>
 <body>
-  <h1>Can’t reach your box on port {{.Port}}</h1>
-  <p>exe.dev’s proxy couldn’t connect to <strong>{{.BoxName}}</strong> on port <code>{{.Port}}</code>.</p>
-  <p>Log into your box (via SSH or the <a href="{{.TerminalURL}}">web terminal</a>) and start your server.</p>
+  <main>
+    <header>
+      <p class="eyebrow">Port {{.Port}}</p>
+      <h1>Nothing is listening on {{.BoxName}}:{{.Port}}</h1>
+      <p>exe.dev’s proxy can’t reach <strong>{{.BoxName}}</strong> on port <code>{{.Port}}</code>.</p>
+    </header>
+
+    <section aria-label="Next steps">
+      <h2>What next?</h2>
+      <div class="steps">
+        {{if .ShowWelcomeStep}}
+        <div class="step">
+          <h3>Spin up our demo server</h3>
+          <code class="code-line">ssh {{.BoxName}}@exe.dev sudo systemctl start welcome</code>
+        </div>
+        {{end}}
+        <div class="step">
+          <h3>SSH in and start your own server</h3>
+          <code class="code-line">ssh {{.BoxName}}@exe.dev</code>
+        </div>
+        <div class="step">
+          <h3>Use the web terminal to start your server</h3>
+          <p><a href="{{.TerminalURL}}">{{.TerminalURL}}</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
 </body>
 </html>
-
