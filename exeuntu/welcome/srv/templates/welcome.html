@@ -8,11 +8,40 @@
   </head>
   <body>
     <main>
-      <h1>I'm alive, now what?</h1>
-      
-      <p class="intro">
-        This page is being served by the <code>welcome</code> service on your new exe.dev box. It's got a persistent disk for storage, and, as you can see, it's accessible over HTTPS at this address. Login with SSH or over the web to customize it or open up Shelley, our coding agent, to customize it. When you make something you want to share, ssh back into exe.dev to publish it!
-      </p>
+      <h1>Hello from your new exe.dev VM</h1>
+
+      <section class="intro">
+        <p>
+          This page is served by the <code>welcome</code> service that ships with every new default exe.dev box.
+        </p>
+        <p>
+          This VM has a persistent disk, sudo, HTTPS, and SSH all wired up.
+        </p>
+      </section>
+
+      <section class="next-steps">
+        <h2>What next?</h2>
+        <div class="step-grid">
+          <article class="step-card">
+            <h3>Run your own app</h3>
+            <p>Stop this server and start your own.</p>
+            <ul>
+              <li><code>ssh {{.Hostname}}@exe.dev sudo systemctl stop welcome</code></li>
+              <li>Have your server listen on port 8000</li>
+            </ul>
+          </article>
+          <article class="step-card">
+            <h3>Edit this server</h3>
+            <p>Use this as a starting point.</p>
+            <ul>
+              <li>Source code is in <code>~/src</code></li>
+              <li>Edit via SSH or <a href="vscode://vscode-remote/ssh-remote+{{.Hostname}}@exe.dev/home/exedev/src?windowId=_blank">open in VS Code</a></li>
+              <li>Chat with our coding agent, <a href="https://{{.Hostname}}.exe.dev:9999" target="_blank">Shelley</a></li>
+              <li><code>sudo systemctl restart welcome</code> to pick up changes</li>
+            </ul>
+          </article>
+        </div>
+      </section>
 
       <div class="hostname">{{.Hostname}}</div>
 

@@ -49,12 +49,20 @@ h1 {
 
 /* Introduction paragraph */
 .intro {
-  max-width: 700px;
+  max-width: 780px;
   margin: 0 auto 30px;
   line-height: 1.7;
   color: #333;
   text-align: left;
   font-size: 16px;
+}
+
+.intro p {
+  margin-bottom: 16px;
+}
+
+.intro p:last-child {
+  margin-bottom: 0;
 }
 
 .intro code {
@@ -63,6 +71,76 @@ h1 {
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 15px;
+}
+
+.next-steps {
+  max-width: 960px;
+  margin: 20px auto 40px;
+  text-align: left;
+}
+
+.next-steps h2 {
+  font-size: 20px;
+  margin-bottom: 16px;
+  font-weight: normal;
+}
+
+.step-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.step-card {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+.step-card h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.step-card p {
+  margin-bottom: 10px;
+  color: #555;
+  line-height: 1.4;
+}
+
+.step-card ul {
+  list-style: disc;
+  padding-left: 18px;
+  margin: 0;
+  color: #444;
+  font-size: 14px;
+}
+
+.step-card li {
+  margin-bottom: 6px;
+}
+
+.step-card li:last-child {
+  margin-bottom: 0;
+}
+
+.step-card code {
+  font-family: 'Courier New', Courier, monospace;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.step-card a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.step-card a:hover {
+  text-decoration: underline;
 }
 
 .hostname {
