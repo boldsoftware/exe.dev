@@ -186,7 +186,6 @@ ENV PATH="/usr/local/bin:/headless-shell:${PATH}"
 RUN mkdir -p /home/exedev/src && chown exedev:exedev /home/exedev/src
 
 USER exedev
-ENV PATH="/home/exedev/.local/bin:${PATH}"
 
 # Install Node.js v22.20.0 to /home/exedev/.local
 RUN ARCH=$(uname -m) && PATH=/home/exedev/.local/bin:$PATH && \
