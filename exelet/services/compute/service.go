@@ -17,9 +17,7 @@ const (
 	instanceDataDir = "instances"
 )
 
-var (
-	updateInterval = time.Second * 10
-)
+var updateInterval = time.Second * 10
 
 type Service struct {
 	api.UnimplementedComputeServiceServer

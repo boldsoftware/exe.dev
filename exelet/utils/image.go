@@ -12,7 +12,7 @@ import (
 )
 
 // LoadImage is a helper that will load the specific imageRef into the storageManager.
-func LoadImage(ctx context.Context, imageRef string, platform string, imageManager *image.ImageManager, storageManager storage.StorageManager, log *slog.Logger) (string, error) {
+func LoadImage(ctx context.Context, imageRef, platform string, imageManager *image.ImageManager, storageManager storage.StorageManager, log *slog.Logger) (string, error) {
 	imageMetadata, err := imageManager.FetchManifestForPlatform(ctx, imageRef, platform)
 	if err != nil {
 		return "", fmt.Errorf("error fetching image manifest: %w", err)

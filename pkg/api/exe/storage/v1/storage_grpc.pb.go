@@ -8,6 +8,7 @@ package v1
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -78,6 +79,7 @@ type UnimplementedStorageServiceServer struct{}
 func (UnimplementedStorageServiceServer) GetFilesystem(context.Context, *GetFilesystemRequest) (*GetFilesystemResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetFilesystem not implemented")
 }
+
 func (UnimplementedStorageServiceServer) LoadFilesystem(context.Context, *LoadFilesystemRequest) (*LoadFilesystemResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LoadFilesystem not implemented")
 }

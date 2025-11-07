@@ -9,7 +9,7 @@ import (
 )
 
 // Clone clones the source filesystem to the destination
-func (s *ZFS) Clone(ctx context.Context, srcID string, destID string) error {
+func (s *ZFS) Clone(ctx context.Context, srcID, destID string) error {
 	if _, err := s.Get(ctx, srcID); err != nil {
 		return err
 	}

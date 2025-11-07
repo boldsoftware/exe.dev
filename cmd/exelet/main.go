@@ -176,7 +176,7 @@ func serveAction(clix *cli.Context) error {
 
 	// image manager
 	contentStoreDir := filepath.Join(cfg.DataDir, "content")
-	if err := os.MkdirAll(contentStoreDir, 0770); err != nil {
+	if err := os.MkdirAll(contentStoreDir, 0o770); err != nil {
 		return err
 	}
 	im, err := image.NewImageManager(&image.Config{DataDir: contentStoreDir}, log)

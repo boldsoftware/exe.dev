@@ -5,6 +5,6 @@ import (
 )
 
 // Clone clones the source to the target
-func (s *Raw) Clone(ctx context.Context, srcID string, destID string) error {
+func (s *Raw) Clone(ctx context.Context, srcID, destID string) error {
 	return ErrNotImplemented
 }

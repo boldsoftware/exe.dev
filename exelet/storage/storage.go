@@ -15,7 +15,7 @@ type StorageManager interface {
 	// Create creates a new instance fs
 	Create(ctx context.Context, id string, cfg *api.FilesystemConfig) (*api.Filesystem, error)
 	// Clone clones a source instance FS to the target
-	Clone(ctx context.Context, srcID string, destID string) error
+	Clone(ctx context.Context, srcID, destID string) error
 	// Expand resizes the specified instance FS to the desired size (must be larger than current)
 	Expand(ctx context.Context, id string, size uint64) error
 	// Shrink resizes the specified instance fs to the minimum

@@ -124,7 +124,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	imageFSID := imageMetadata.Digest
 
 	// attempt to get the base disk and create if not found
-	//rb.imageFSID = imageFSID
+	// rb.imageFSID = imageFSID
 
 	// if not found provision image
 	if _, err := s.context.StorageManager.Get(ctx, imageFSID); err != nil {
