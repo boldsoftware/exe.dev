@@ -9,7 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -29,13 +29,13 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 			block, _ := pem.Decode(keyData)
 			if block != nil && block.Type == "RSA PRIVATE KEY" {
 				if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
-					log.Printf("Loaded existing ACME account key from cache")
+					slog.Info("loaded ACME account key from cache")
 					return key, nil
 				}
 			}
-			log.Printf("Failed to parse cached ACME account key, generating new one")
+			slog.Warn("failed to parse cached ACME account key, generating new one")
 		} else {
-			log.Printf("No cached ACME account key found, generating new one")
+			slog.Info("no cached ACME account key found, generating new one")
 		}
 	}
 
@@ -55,9 +55,9 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 		})
 
 		if err := cache.Put(context.Background(), acmeAccountKeyName, keyPEM); err != nil {
-			log.Printf("Failed to cache ACME account key: %v", err)
+			slog.Warn("failed to cache ACME account key", "error", err)
 		} else {
-			log.Printf("Generated and cached new ACME account key")
+			slog.Info("generated and cached new ACME account key")
 		}
 	}
 
@@ -80,7 +80,7 @@ func NewWildcardCertManager(domain, email string, cache autocert.Cache) *Wildcar
 	// Try to load existing ACME account key from cache, or generate new one
 	key, err := loadOrGenerateACMEKey(cache)
 	if err != nil {
-		log.Fatalf("Failed to load or generate ACME key: %v", err)
+		panic(fmt.Sprintf("failed to load or generate ACME key: %v", err))
 	}
 
 	client := &acme.Client{
@@ -202,7 +202,7 @@ func (w *WildcardCertManager) isCertValid(cert *tls.Certificate) bool {
 		// Parse the leaf certificate
 		leaf, err := x509.ParseCertificate(cert.Certificate[0])
 		if err != nil {
-			log.Printf("Failed to parse certificate: %v", err)
+			slog.Warn("failed to parse certificate", "error", err)
 			return false
 		}
 		cert.Leaf = leaf
@@ -211,7 +211,9 @@ func (w *WildcardCertManager) isCertValid(cert *tls.Certificate) bool {
 	// Check expiration - renew 10 days before expiry
 	renewBefore := 10 * 24 * time.Hour
 	if time.Until(cert.Leaf.NotAfter) < renewBefore {
-		log.Printf("Certificate for %s is expiring soon (expires at %v), needs renewal", cert.Leaf.Subject.CommonName, cert.Leaf.NotAfter)
+		slog.Warn("certificate expiring soon",
+			"commonName", cert.Leaf.Subject.CommonName,
+			"expiresAt", cert.Leaf.NotAfter)
 		return false
 	}
 
@@ -220,7 +222,7 @@ func (w *WildcardCertManager) isCertValid(cert *tls.Certificate) bool {
 
 // obtainCertificate obtains a new wildcard certificate from Let's Encrypt
 func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain string) (*tls.Certificate, error) {
-	log.Printf("Obtaining certificate for domain: %s", domain)
+	slog.Info("obtaining certificate", "domain", domain)
 
 	// Determine domains to include in the certificate request
 	var domains []string
@@ -243,7 +245,7 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 
 	// Handle each authorization
 	for _, authzURL := range order.AuthzURLs {
-		log.Printf("Fetching authorization: %s", authzURL)
+		slog.Debug("fetching authorization", "url", authzURL)
 
 		authorization, err := w.acmeClient.GetAuthorization(ctx, authzURL)
 		if err != nil {
@@ -251,10 +253,10 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		}
 
 		// Find DNS-01 challenge
-		log.Printf("Looking for DNS-01 challenge among %d challenges", len(authorization.Challenges))
+		slog.Debug("looking for DNS-01 challenge", "challengeCount", len(authorization.Challenges))
 		var challenge *acme.Challenge
 		for _, c := range authorization.Challenges {
-			log.Printf("Found challenge type: %s", c.Type)
+			slog.Debug("found challenge type", "type", c.Type)
 			if c.Type == "dns-01" {
 				challenge = c
 				break
@@ -264,7 +266,7 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		if challenge == nil {
 			return nil, fmt.Errorf("no DNS-01 challenge found")
 		}
-		log.Printf("Found DNS-01 challenge: %s", challenge.URI)
+		slog.Debug("selected DNS-01 challenge", "challengeURI", challenge.URI)
 
 		// Calculate key authorization
 		keyAuth, err := w.acmeClient.DNS01ChallengeRecord(challenge.Token)
@@ -273,12 +275,13 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		}
 
 		// Present the challenge
-		log.Printf("Creating DNS TXT record for challenge: domain=%s, keyAuth=%s", authorization.Identifier.Value, keyAuth)
+		slog.Info("creating DNS TXT record for ACME challenge",
+			"domain", authorization.Identifier.Value)
 		recordID, err := w.dnsProvider.CreateACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create ACME challenge: %w", err)
 		}
-		log.Printf("Successfully created DNS TXT record with ID: %s", recordID)
+		slog.Info("DNS TXT record created for ACME challenge", "recordID", recordID)
 
 		// Wait a bit for DNS propagation
 		time.Sleep(10 * time.Second)
@@ -303,7 +306,9 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		w.dnsProvider.CleanupACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
 
 		// Log successful challenge
-		log.Printf("Successfully completed DNS-01 challenge for %s (record ID: %s)", authorization.Identifier.Value, recordID)
+		slog.Info("completed DNS-01 challenge",
+			"domain", authorization.Identifier.Value,
+			"recordID", recordID)
 	}
 
 	// Generate certificate signing request
@@ -358,7 +363,7 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 	if len(der) > 0 {
 		leaf, err := x509.ParseCertificate(der[0])
 		if err != nil {
-			log.Printf("Failed to parse leaf certificate: %v", err)
+			slog.Warn("failed to parse leaf certificate", "error", err)
 		} else {
 			cert.Leaf = leaf
 		}
