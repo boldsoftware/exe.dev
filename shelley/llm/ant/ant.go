@@ -75,23 +75,6 @@ func (s *Service) TokenContextWindow() int {
 	}
 }
 
-// SupportsTextEditor reports whether this service supports Anthropic's text editor tool.
-// The text editor tool is supported by Claude 4.x models (text_editor_20250728).
-func (s *Service) SupportsTextEditor() bool {
-	model := s.Model
-	if model == "" {
-		model = DefaultModel
-	}
-
-	// Claude 4.x models support the text editor tool
-	switch model {
-	case Claude4Sonnet, Claude45Sonnet, Claude45Haiku, Claude4Opus, Claude41Opus:
-		return true
-	default:
-		return false
-	}
-}
-
 // HTTPRecorder is a callback for recording HTTP request/response data for debugging
 type HTTPRecorder func(url string, requestBody []byte, responseBody []byte, statusCode int, err error, duration time.Duration)
 
@@ -107,10 +90,7 @@ type Service struct {
 	HTTPRecorder HTTPRecorder // optional callback for recording HTTP requests/responses
 }
 
-var (
-	_ llm.Service             = (*Service)(nil)
-	_ llm.TextEditorSupporter = (*Service)(nil)
-)
+var _ llm.Service = (*Service)(nil)
 
 type content struct {
 	// https://docs.anthropic.com/en/api/messages
@@ -332,24 +312,37 @@ func fromLLMContent(c llm.Content) content {
 	}
 
 	d := content{
-		ID:           c.ID,
 		Type:         fromLLMContentType[c.Type],
-		MediaType:    c.MediaType,
-		Thinking:     c.Thinking,
-		Data:         c.Data,
-		Signature:    c.Signature,
-		ToolName:     c.ToolName,
-		ToolInput:    c.ToolInput,
-		ToolUseID:    c.ToolUseID,
-		ToolError:    c.ToolError,
-		ToolResult:   toolResult,
 		CacheControl: fromLLMCache(c.Cache),
 	}
-	// Anthropic API complains if Text is specified when it shouldn't be
-	// or not specified when it's the empty string.
-	if c.Type != llm.ContentTypeToolResult && c.Type != llm.ContentTypeToolUse {
-		d.Text = &c.Text
+
+	// Set fields based on content type to avoid sending invalid fields
+	switch c.Type {
+	case llm.ContentTypeText:
+		// Images are represented as text with MediaType and Data
+		if c.MediaType != "" {
+			d.Type = "image"
+			d.Source = json.RawMessage(fmt.Sprintf(`{"type":"base64","media_type":"%s","data":"%s"}`,
+				c.MediaType, c.Data))
+		} else {
+			d.Text = &c.Text
+		}
+	case llm.ContentTypeThinking:
+		d.Thinking = c.Thinking
+		d.Signature = c.Signature
+	case llm.ContentTypeRedactedThinking:
+		d.Data = c.Data
+		d.Signature = c.Signature
+	case llm.ContentTypeToolUse:
+		d.ID = c.ID
+		d.ToolName = c.ToolName
+		d.ToolInput = c.ToolInput
+	case llm.ContentTypeToolResult:
+		d.ToolUseID = c.ToolUseID
+		d.ToolError = c.ToolError
+		d.ToolResult = toolResult
 	}
+
 	return d
 }
 
