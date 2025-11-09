@@ -81,10 +81,16 @@ type WildcardCertManager struct {
 	acmeClient   *acme.Client
 	domain       string
 	email        string
+	certRequests certRequestCounter
+}
+
+// certRequestCounter is an interface for incrementing the cert request metric
+type certRequestCounter interface {
+	Inc()
 }
 
 // NewWildcardCertManager creates a new wildcard certificate manager
-func NewWildcardCertManager(domain, email string, cache autocert.Cache) *WildcardCertManager {
+func NewWildcardCertManager(domain, email string, cache autocert.Cache, certRequests certRequestCounter) *WildcardCertManager {
 	// Try to load existing ACME account key from cache, or generate new one
 	key, err := loadOrGenerateACMEKey(cache)
 	if err != nil {
@@ -103,6 +109,7 @@ func NewWildcardCertManager(domain, email string, cache autocert.Cache) *Wildcar
 		acmeClient:   client,
 		domain:       domain,
 		email:        email,
+		certRequests: certRequests,
 	}
 }
 
@@ -261,6 +268,11 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 	order, err := w.acmeClient.AuthorizeOrder(ctx, acme.DomainIDs(domains...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to authorize order: %w", err)
+	}
+
+	// Increment metric for Let's Encrypt certificate request
+	if w.certRequests != nil {
+		w.certRequests.Inc()
 	}
 
 	// Handle each authorization

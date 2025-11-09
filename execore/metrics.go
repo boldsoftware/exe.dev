@@ -4,11 +4,12 @@ import "github.com/prometheus/client_golang/prometheus"
 
 // SSHMetrics holds SSH server metrics
 type SSHMetrics struct {
-	connectionsTotal   *prometheus.CounterVec
-	connectionsCurrent prometheus.Gauge
-	authAttempts       *prometheus.CounterVec
-	sessionDuration    *prometheus.HistogramVec
-	boxCreationDur     prometheus.Histogram
+	connectionsTotal     *prometheus.CounterVec
+	connectionsCurrent   prometheus.Gauge
+	authAttempts         *prometheus.CounterVec
+	sessionDuration      *prometheus.HistogramVec
+	boxCreationDur       prometheus.Histogram
+	letsencryptRequests  prometheus.Counter
 }
 
 // NewSSHMetrics creates and registers SSH metrics
@@ -49,6 +50,12 @@ func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
 				Buckets: []float64{0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.5, 4, 5, 8},
 			},
 		),
+		letsencryptRequests: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "letsencrypt_cert_requests_total",
+				Help: "Total number of certificate requests made to Let's Encrypt.",
+			},
+		),
 	}
 
 	registry.MustRegister(
@@ -57,6 +64,7 @@ func NewSSHMetrics(registry *prometheus.Registry) *SSHMetrics {
 		metrics.authAttempts,
 		metrics.sessionDuration,
 		metrics.boxCreationDur,
+		metrics.letsencryptRequests,
 	)
 
 	return metrics

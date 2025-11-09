@@ -104,6 +104,7 @@ func (s *Server) setupHTTPSServer() {
 			s.getMainDomain(),
 			"support@"+s.getMainDomain(),
 			autocert.DirCache("certs"),
+			s.sshMetrics.letsencryptRequests,
 		)
 	} else {
 		s.slog().Info("Using standard autocert (no wildcard support)", "note", "Wildcard certificates disabled in dev modes")
