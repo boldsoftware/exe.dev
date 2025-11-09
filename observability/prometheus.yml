@@ -24,12 +24,14 @@ scrape_configs:
         - 'docker-01:9100'
         - 'docker-02:9100'
         - 'exed-01:9100'
+        - 'exe-ctr-01:9100'
 
   - job_name: 'cadvisor'
     static_configs:
       - targets:
         - 'docker-01:8080'
         - 'docker-02:8080'
+        - 'exe-ctr-01:8080'
     metrics_path: '/metrics'
 
   - job_name: 'authd'

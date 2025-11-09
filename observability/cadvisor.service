@@ -1,0 +1,59 @@
+# THIS FILE IS UNDER SOURCE CONTROL AT bold.git/ops/...
+#
+# Downloads and starts cadvisor, which is a prometheus-compatible
+# container monitoring system.
+#
+# To deploy:
+# save to /etc/systemd/system/cadvisor.service
+# sudo systemctl daemon-reload
+# sudo systemctl enable cadvisor
+# sudo systemctl start cadvisor
+#
+# Should be exposed on :8080
+
+[Unit]
+Description=cAdvisor (Container Advisor)
+Documentation=https://github.com/google/cadvisor
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+Restart=always
+RestartSec=10
+
+# Download and install cAdvisor if not present
+ExecStartPre=/bin/bash -c '\
+  if [ ! -f /usr/local/bin/cadvisor ]; then \
+    echo "Downloading cAdvisor v0.53.0..."; \
+    curl -L -o /usr/local/bin/cadvisor "https://github.com/google/cadvisor/releases/download/v0.53.0/cadvisor-v0.53.0-linux-amd64"; \
+    chmod +x /usr/local/bin/cadvisor; \
+    echo "cAdvisor installed successfully"; \
+  else \
+    echo "cAdvisor already installed"; \
+  fi'
+
+# Main cAdvisor command
+ExecStart=/usr/local/bin/cadvisor \
+  --port=8080 \
+  --housekeeping_interval=30s \
+  --max_housekeeping_interval=35s \
+  --allow_dynamic_housekeeping=true \
+  --global_housekeeping_interval=1m \
+  --storage_duration=2m
+
+# Cleanup on stop
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=30
+KillMode=mixed
+
+# Security and resource settings
+PrivateTmp=true
+NoNewPrivileges=false
+LimitNOFILE=1048576
+LimitNPROC=1048576
+
+[Install]
+WantedBy=multi-user.target
