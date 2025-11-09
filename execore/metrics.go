@@ -4,12 +4,12 @@ import "github.com/prometheus/client_golang/prometheus"
 
 // SSHMetrics holds SSH server metrics
 type SSHMetrics struct {
-	connectionsTotal     *prometheus.CounterVec
-	connectionsCurrent   prometheus.Gauge
-	authAttempts         *prometheus.CounterVec
-	sessionDuration      *prometheus.HistogramVec
-	boxCreationDur       prometheus.Histogram
-	letsencryptRequests  prometheus.Counter
+	connectionsTotal    *prometheus.CounterVec
+	connectionsCurrent  prometheus.Gauge
+	authAttempts        *prometheus.CounterVec
+	sessionDuration     *prometheus.HistogramVec
+	boxCreationDur      prometheus.Histogram
+	letsencryptRequests prometheus.Counter
 }
 
 // NewSSHMetrics creates and registers SSH metrics
