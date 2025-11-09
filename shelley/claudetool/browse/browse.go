@@ -80,8 +80,6 @@ func (b *BrowseTools) Initialize() error {
 		opts = append(opts, chromedp.Flag("--disable-dbus", true))
 		// This can be pretty slow in tests
 		opts = append(opts, chromedp.WSURLReadTimeout(60*time.Second))
-		// Add environment variable to mark this as a sketch internal process
-		opts = append(opts, chromedp.Env("SKETCH_IGNORE_PORTS=1"))
 		allocCtx, _ := chromedp.NewExecAllocator(b.ctx, opts...)
 		browserCtx, browserCancel := chromedp.NewContext(
 			allocCtx,
