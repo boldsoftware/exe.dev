@@ -75,18 +75,42 @@ func (s *Service) TokenContextWindow() int {
 	}
 }
 
+// SupportsTextEditor reports whether this service supports Anthropic's text editor tool.
+// The text editor tool is supported by Claude 4.x models (text_editor_20250728).
+func (s *Service) SupportsTextEditor() bool {
+	model := s.Model
+	if model == "" {
+		model = DefaultModel
+	}
+
+	// Claude 4.x models support the text editor tool
+	switch model {
+	case Claude4Sonnet, Claude45Sonnet, Claude45Haiku, Claude4Opus, Claude41Opus:
+		return true
+	default:
+		return false
+	}
+}
+
+// HTTPRecorder is a callback for recording HTTP request/response data for debugging
+type HTTPRecorder func(url string, requestBody []byte, responseBody []byte, statusCode int, err error, duration time.Duration)
+
 // Service provides Claude completions.
 // Fields should not be altered concurrently with calling any method on Service.
 type Service struct {
-	HTTPC     *http.Client // defaults to http.DefaultClient if nil
-	URL       string       // defaults to DefaultURL if empty
-	APIKey    string       // must be non-empty
-	Model     string       // defaults to DefaultModel if empty
-	MaxTokens int          // defaults to DefaultMaxTokens if zero
-	DumpLLM   bool         // whether to dump request/response text to files for debugging; defaults to false
+	HTTPC        *http.Client // defaults to http.DefaultClient if nil
+	URL          string       // defaults to DefaultURL if empty
+	APIKey       string       // must be non-empty
+	Model        string       // defaults to DefaultModel if empty
+	MaxTokens    int          // defaults to DefaultMaxTokens if zero
+	DumpLLM      bool         // whether to dump request/response text to files for debugging; defaults to false
+	HTTPRecorder HTTPRecorder // optional callback for recording HTTP requests/responses
 }
 
-var _ llm.Service = (*Service)(nil)
+var (
+	_ llm.Service             = (*Service)(nil)
+	_ llm.TextEditorSupporter = (*Service)(nil)
+)
 
 type content struct {
 	// https://docs.anthropic.com/en/api/messages
@@ -465,6 +489,16 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 	url := cmp.Or(s.URL, DefaultURL)
 	httpc := cmp.Or(s.HTTPC, http.DefaultClient)
 
+	// For recording the last attempt's response
+	var lastResponseBody []byte
+	var lastStatusCode int
+	var finalErr error
+	defer func() {
+		if s.HTTPRecorder != nil {
+			s.HTTPRecorder(url, payload, lastResponseBody, lastStatusCode, finalErr, time.Since(startTime))
+		}
+	}()
+
 	// retry loop
 	var errs error // accumulated errors across all attempts
 	for attempts := 0; ; attempts++ {
@@ -554,11 +588,13 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			// server error, retry
 			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
 			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
+			finalErr = errs
 			continue
 		case resp.StatusCode == 429:
 			// rate limited, retry
 			slog.WarnContext(ctx, "anthropic_request_rate_limited", "response", string(buf), "url", url, "model", s.Model)
 			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
+			finalErr = errs
 			continue
 		case resp.StatusCode >= 400 && resp.StatusCode < 500:
 			// some other 400, probably unrecoverable
@@ -568,6 +604,7 @@ func (s *Service) Do(ctx context.Context, ir *llm.Request) (*llm.Response, error
 			// ...retry, I guess?
 			slog.WarnContext(ctx, "anthropic_request_failed", "response", string(buf), "status_code", resp.StatusCode, "url", url, "model", s.Model)
 			errs = errors.Join(errs, fmt.Errorf("status %v (url=%s, model=%s): %s", resp.Status, url, cmp.Or(s.Model, DefaultModel), buf))
+			finalErr = errs
 			continue
 		}
 	}

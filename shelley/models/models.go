@@ -250,12 +250,14 @@ type Manager struct {
 
 // LLMRequestRecord stores a request/response pair for debugging
 type LLMRequestRecord struct {
-	Timestamp time.Time     `json:"timestamp"`
-	ModelID   string        `json:"model_id"`
-	Request   *llm.Request  `json:"request"`
-	Response  *llm.Response `json:"response,omitempty"`
-	Error     string        `json:"error,omitempty"`
-	Duration  float64       `json:"duration_seconds"`
+	Timestamp      time.Time `json:"timestamp"`
+	ModelID        string    `json:"model_id"`
+	URL            string    `json:"url"`
+	HTTPRequest    []byte    `json:"http_request,omitempty"`
+	HTTPResponse   []byte    `json:"http_response,omitempty"`
+	HTTPStatusCode int       `json:"http_status_code,omitempty"`
+	Error          string    `json:"error,omitempty"`
+	Duration       float64   `json:"duration_seconds"`
 }
 
 // LLMRequestHistory maintains a circular buffer of recent LLM requests
@@ -319,20 +321,8 @@ func (l *loggingService) Do(ctx context.Context, request *llm.Request) (*llm.Res
 	duration := time.Since(start)
 	durationSeconds := duration.Seconds()
 
-	// Record request/response pair in history
-	if l.history != nil {
-		record := LLMRequestRecord{
-			Timestamp: start,
-			ModelID:   l.modelID,
-			Request:   request,
-			Response:  response,
-			Duration:  durationSeconds,
-		}
-		if err != nil {
-			record.Error = err.Error()
-		}
-		l.history.Add(record)
-	}
+	// History recording now happens in the provider (e.g., ant.Service)
+	// to capture raw HTTP requests/responses
 
 	// Log the completion with usage information
 	if err != nil {
@@ -414,6 +404,24 @@ func NewManager(cfg *Config, history *LLMRequestHistory) (*Manager, error) {
 // GetService returns the LLM service for the given model ID, wrapped with logging
 func (m *Manager) GetService(modelID string) (llm.Service, error) {
 	if svc, ok := m.services[modelID]; ok {
+		// Set HTTP recorder on ant.Service if we have history
+		if antSvc, ok := svc.(*ant.Service); ok && m.history != nil {
+			antSvc.HTTPRecorder = func(url string, requestBody []byte, responseBody []byte, statusCode int, err error, duration time.Duration) {
+				record := LLMRequestRecord{
+					Timestamp:      time.Now().Add(-duration),
+					ModelID:        modelID,
+					URL:            url,
+					HTTPRequest:    requestBody,
+					HTTPResponse:   responseBody,
+					HTTPStatusCode: statusCode,
+					Duration:       duration.Seconds(),
+				}
+				if err != nil {
+					record.Error = err.Error()
+				}
+				m.history.Add(record)
+			}
+		}
 		// Wrap with logging if we have a logger
 		if m.logger != nil {
 			return &loggingService{

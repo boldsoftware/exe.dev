@@ -596,6 +596,46 @@ func (s *Server) handleDebugLLM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if requesting a specific record JSON
+	if idx := r.URL.Query().Get("index"); idx != "" {
+		var i int
+		if _, err := fmt.Sscanf(idx, "%d", &i); err != nil {
+			http.Error(w, "Invalid index", http.StatusBadRequest)
+			return
+		}
+
+		type historyProvider interface {
+			GetHistory() *models.LLMRequestHistory
+		}
+
+		var records []models.LLMRequestRecord
+		if hp, ok := s.llmManager.(historyProvider); ok && hp.GetHistory() != nil {
+			records = hp.GetHistory().GetRecords()
+		}
+
+		if i < 0 || i >= len(records) {
+			http.Error(w, "Index out of range", http.StatusNotFound)
+			return
+		}
+
+		record := records[i]
+		recordType := r.URL.Query().Get("type")
+
+		switch recordType {
+		case "request":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(record.HTTPRequest)
+		case "response":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(record.HTTPResponse)
+		default:
+			// Return the full record
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(record)
+		}
+		return
+	}
+
 	// Get history from the LLM manager if it's a models.Manager
 	type historyProvider interface {
 		GetHistory() *models.LLMRequestHistory
@@ -609,7 +649,7 @@ func (s *Server) handleDebugLLM(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
-	// Write HTML with pretty-printed JSON
+	// Write simple HTML with links to JSON
 	fmt.Fprint(w, `<!DOCTYPE html>
 <html>
 <head>
@@ -617,36 +657,42 @@ func (s *Server) handleDebugLLM(w http.ResponseWriter, r *http.Request) {
 <title>LLM Debug - Recent Requests</title>
 <style>
 body {
-	font-family: monospace;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 	margin: 20px;
-	background: #1e1e1e;
-	color: #d4d4d4;
+	background: #ffffff;
+	color: #000000;
 }
 h1 {
-	color: #4ec9b0;
+	margin-bottom: 20px;
 }
-.record {
-	margin-bottom: 30px;
-	border: 1px solid #3e3e42;
-	padding: 15px;
-	background: #252526;
+table {
+	border-collapse: collapse;
+	width: 100%;
 }
-.record-header {
-	margin-bottom: 10px;
-	padding-bottom: 10px;
-	border-bottom: 1px solid #3e3e42;
-	color: #569cd6;
+th, td {
+	padding: 8px 12px;
+	text-align: left;
+	border-bottom: 1px solid #ddd;
+}
+th {
+	background: #f5f5f5;
+	font-weight: 600;
+}
+tr:hover {
+	background: #f9f9f9;
 }
 .error {
-	color: #f48771;
+	color: #d32f2f;
 }
-pre {
-	background: #1e1e1e;
-	padding: 10px;
-	border: 1px solid #3e3e42;
-	overflow-x: auto;
-	white-space: pre-wrap;
-	word-wrap: break-word;
+.success {
+	color: #388e3c;
+}
+a {
+	color: #1976d2;
+	text-decoration: none;
+}
+a:hover {
+	text-decoration: underline;
 }
 </style>
 </head>
@@ -657,45 +703,31 @@ pre {
 	if len(records) == 0 {
 		fmt.Fprint(w, "<p>No requests recorded yet.</p>")
 	} else {
+		fmt.Fprint(w, "<table>")
+		fmt.Fprint(w, "<tr><th>#</th><th>Time</th><th>Model</th><th>URL</th><th>Status</th><th>Duration</th><th>Request</th><th>Response</th></tr>")
 		for i := len(records) - 1; i >= 0; i-- {
 			record := records[i]
-			fmt.Fprintf(w, `<div class="record">`)
-			fmt.Fprintf(w, `<div class="record-header">`)
-			fmt.Fprintf(w, "<strong>Request #%d</strong> - ", len(records)-i)
-			fmt.Fprintf(w, "Model: %s | ", record.ModelID)
-			fmt.Fprintf(w, "Time: %s | ", record.Timestamp.Format("2006-01-02 15:04:05"))
-			fmt.Fprintf(w, "Duration: %.2fs", record.Duration)
+			num := len(records) - i
+			statusClass := "success"
+			statusText := fmt.Sprintf("%d", record.HTTPStatusCode)
 			if record.Error != "" {
-				fmt.Fprintf(w, ` | <span class="error">Error: %s</span>`, record.Error)
+				statusClass = "error"
+				statusText = record.Error
+			} else if record.HTTPStatusCode >= 400 {
+				statusClass = "error"
 			}
-			fmt.Fprintf(w, "</div>")
-
-			// Pretty-print request
-			fmt.Fprintf(w, "<h3>Request:</h3>")
-			if record.Request != nil {
-				if requestJSON, err := json.MarshalIndent(record.Request, "", "  "); err == nil {
-					fmt.Fprintf(w, "<pre>%s</pre>", requestJSON)
-				} else {
-					fmt.Fprintf(w, "<pre>Error marshaling request: %v</pre>", err)
-				}
-			} else {
-				fmt.Fprintf(w, "<pre>No request data</pre>")
-			}
-
-			// Pretty-print response
-			fmt.Fprintf(w, "<h3>Response:</h3>")
-			if record.Response != nil {
-				if responseJSON, err := json.MarshalIndent(record.Response, "", "  "); err == nil {
-					fmt.Fprintf(w, "<pre>%s</pre>", responseJSON)
-				} else {
-					fmt.Fprintf(w, "<pre>Error marshaling response: %v</pre>", err)
-				}
-			} else {
-				fmt.Fprintf(w, "<pre>No response data</pre>")
-			}
-
-			fmt.Fprintf(w, "</div>")
+			fmt.Fprintf(w, "<tr>")
+			fmt.Fprintf(w, "<td>%d</td>", num)
+			fmt.Fprintf(w, "<td>%s</td>", record.Timestamp.Format("15:04:05"))
+			fmt.Fprintf(w, "<td>%s</td>", record.ModelID)
+			fmt.Fprintf(w, "<td>%s</td>", record.URL)
+			fmt.Fprintf(w, "<td class=\"%s\">%s</td>", statusClass, statusText)
+			fmt.Fprintf(w, "<td>%.2fs</td>", record.Duration)
+			fmt.Fprintf(w, "<td><a href=\"/debug/llm?index=%d&type=request\" target=\"_blank\">json</a></td>", i)
+			fmt.Fprintf(w, "<td><a href=\"/debug/llm?index=%d&type=response\" target=\"_blank\">json</a></td>", i)
+			fmt.Fprintf(w, "</tr>")
 		}
+		fmt.Fprint(w, "</table>")
 	}
 
 	fmt.Fprint(w, `
