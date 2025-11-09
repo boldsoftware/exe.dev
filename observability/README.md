@@ -1,8 +1,36 @@
 # Checked in Grafana Dashboards
 
-Running "./node_modules/.bin/tsx dashboards.mts" will populate a dashboard in Grafana.
+## Quick Start
+
+Deploy dashboards and Prometheus configuration using the Makefile:
+
+```bash
+# Set required environment variables
+export GRAFANA_BEARER_TOKEN=your_token_here
+export GRAFANA_URL=https://grafana.crocodile-vector.ts.net/
+export PROMETHEUS_HOST=mon
+
+# Deploy Grafana dashboards (installs Node.js and npm dependencies if needed)
+make deploy-grafana
+
+# Deploy Prometheus configuration
+make deploy-prometheus
+```
+
+Alternatively, run the dashboard script directly:
+```bash
+./node_modules/.bin/tsx dashboards.mts
+```
 
 Doing this in typescript gives you working (mostly) types for Grafana stuff.
+
+## Available Dashboards
+
+The following dashboards are automatically generated:
+
+1. **exe.dev Dashboard** - Main application metrics (HTTP, SSH, SQLite)
+2. **exe.dev Container Metrics Dashboard** - Container resource usage and lifecycle
+3. **Grafana Self-Monitoring Dashboard** - Grafana's own performance metrics
 
 ## Alert Support
 
@@ -49,9 +77,12 @@ Raw prometheus is at http://mon.crocodile-vector.ts.net:9090/graph
 
 Grafana is at https://grafana.crocodile-vector.ts.net
 
-Edit /home/ubuntu/prometheus/prometheus.yml (on mon) to add metrics for
-prometheus to collect. Ran "sudo systemctl restart prometheus" on mon for good
-measure.
+Edit prometheus.yml in this directory to add metrics for Prometheus to collect, then deploy using:
+```bash
+make deploy-prometheus
+```
+
+This will copy the config to the monitoring server and restart Prometheus.
 
 docker metrics exist, but are a bit annoying to get to. You can configure metrics-addr
 to expose them over TCP instead.

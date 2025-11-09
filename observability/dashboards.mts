@@ -550,6 +550,219 @@ function makeContainerMetricsDashboard() {
   return dash;
 }
 
+function makeGrafanaDashboard() {
+  const dash = new DashboardBuilder("Grafana Self-Monitoring Dashboard");
+  dash
+    .uid("grafana-monitoring-dashboard")
+    .tags(["generated", "grafana", "monitoring"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  const addTimeseriesChart = makeAddTimeseriesChart(
+    dash,
+    "grafana-monitoring-dashboard"
+  );
+
+  // README panel for auto-generated dashboard
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("README - Auto Generated Dashboard")
+      .content(
+        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
+          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
+          `To modify this dashboard:\n` +
+          `1. Edit the code in \`observability/dashboards.mts\`\n` +
+          `2. Run \`make deploy-grafana\` to update\n\n` +
+          `Last updated: ${new Date().toISOString()}`
+      )
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 4 })
+  );
+
+  // Row 1: Request Metrics
+  dash.withRow(
+    new RowBuilder("Request Metrics").gridPos({ x: 0, y: 4, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "HTTP Request Rate",
+    `rate(grafana_http_request_duration_seconds_count[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 5, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "HTTP Request Latency (p95)",
+    `histogram_quantile(0.95, sum(rate(grafana_http_request_duration_seconds_bucket[5m])) by (le))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("s").gridPos({ x: 8, y: 5, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "HTTP Request Latency (p99)",
+    `histogram_quantile(0.99, sum(rate(grafana_http_request_duration_seconds_bucket[5m])) by (le))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("s").gridPos({ x: 16, y: 5, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 2: Resource Usage
+  dash.withRow(
+    new RowBuilder("Resource Usage").gridPos({ x: 0, y: 11, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Process CPU Usage",
+    `rate(process_cpu_seconds_total{job="grafana"}[5m]) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").gridPos({ x: 0, y: 12, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Process Memory Usage",
+    `process_resident_memory_bytes{job="grafana"}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").gridPos({ x: 8, y: 12, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Go Heap Allocated",
+    `go_memstats_heap_alloc_bytes{job="grafana"}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").gridPos({ x: 16, y: 12, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 3: Goroutines and GC
+  dash.withRow(
+    new RowBuilder("Go Runtime Metrics").gridPos({ x: 0, y: 18, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Number of Goroutines",
+    `go_goroutines{job="grafana"}`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 19, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "GC Rate",
+    `rate(go_gc_duration_seconds_count{job="grafana"}[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 19, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "GC Duration (p95)",
+    `histogram_quantile(0.95, rate(go_gc_duration_seconds_bucket{job="grafana"}[5m]))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("s").gridPos({ x: 16, y: 19, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 4: Database Performance
+  dash.withRow(
+    new RowBuilder("Database Performance").gridPos({
+      x: 0,
+      y: 25,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  addTimeseriesChart(
+    "Database Query Rate",
+    `rate(grafana_database_queries_total[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 26, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Database Query Duration (p95)",
+    `histogram_quantile(0.95, sum(rate(grafana_database_query_duration_seconds_bucket[5m])) by (le))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("s").gridPos({ x: 8, y: 26, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Database Connection Pool",
+    `grafana_database_connections_open{job="grafana"}`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 16, y: 26, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 5: Alert Manager
+  dash.withRow(
+    new RowBuilder("Alert Manager").gridPos({ x: 0, y: 32, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Active Alerts",
+    `grafana_alerting_active_configurations{job="grafana"}`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 33, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Alert Rule Evaluations Rate",
+    `rate(grafana_alerting_rule_evaluations_total[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 33, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Alert Notification Rate",
+    `rate(grafana_alerting_notifications_sent_total[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 33, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 6: API and Dashboard Metrics
+  dash.withRow(
+    new RowBuilder("Dashboard Metrics").gridPos({ x: 0, y: 39, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Dashboard API Requests",
+    `rate(grafana_api_dashboard_get_duration_seconds_count[5m])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 40, w: 12, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Dashboard Load Latency (p95)",
+    `histogram_quantile(0.95, rate(grafana_api_dashboard_get_duration_seconds_bucket[5m]))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("s").gridPos({ x: 12, y: 40, w: 12, h: 6 }),
+    }
+  );
+
+  return dash;
+}
+
 // Helper method to create "addTimeseriesChart" methods for your dashboard.
 function makeAddTimeseriesChart(dash: DashboardBuilder, dashboardUID: string) {
   const builders = {
@@ -948,6 +1161,7 @@ async function main() {
   }
   await createDashboard(makeDevExeDashboard());
   await createDashboard(makeContainerMetricsDashboard());
+  await createDashboard(makeGrafanaDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();
