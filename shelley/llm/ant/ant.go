@@ -76,7 +76,7 @@ func (s *Service) TokenContextWindow() int {
 }
 
 // HTTPRecorder is a callback for recording HTTP request/response data for debugging
-type HTTPRecorder func(url string, requestBody []byte, responseBody []byte, statusCode int, err error, duration time.Duration)
+type HTTPRecorder func(url string, requestBody, responseBody []byte, statusCode int, err error, duration time.Duration)
 
 // Service provides Claude completions.
 // Fields should not be altered concurrently with calling any method on Service.

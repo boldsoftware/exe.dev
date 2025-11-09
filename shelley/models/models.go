@@ -406,7 +406,7 @@ func (m *Manager) GetService(modelID string) (llm.Service, error) {
 	if svc, ok := m.services[modelID]; ok {
 		// Set HTTP recorder on ant.Service if we have history
 		if antSvc, ok := svc.(*ant.Service); ok && m.history != nil {
-			antSvc.HTTPRecorder = func(url string, requestBody []byte, responseBody []byte, statusCode int, err error, duration time.Duration) {
+			antSvc.HTTPRecorder = func(url string, requestBody, responseBody []byte, statusCode int, err error, duration time.Duration) {
 				record := LLMRequestRecord{
 					Timestamp:      time.Now().Add(-duration),
 					ModelID:        modelID,
