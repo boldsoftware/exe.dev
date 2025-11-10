@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,8 +36,9 @@ import (
 	"testing"
 	"time"
 
-	"exe.dev/container"
 	"exe.dev/ctrhosttest"
+	"exe.dev/exelet/client"
+	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/vouch"
 	"github.com/Netflix/go-expect"
 	"github.com/charmbracelet/x/ansi"
@@ -48,6 +50,7 @@ import (
 var (
 	flagVerbosePiperd = flag.Bool("vpiperd", false, "enable verbose logging from sshpiperd")
 	flagVerboseExed   = flag.Bool("vexed", false, "enable verbose logging from exed")
+	flagVerboseExelet = flag.Bool("vexelet", false, "enable verbose logging from exelet")
 	flagVerbosePorts  = flag.Bool("vports", false, "enable verbose logging about ports")
 	flagVerboseEmail  = flag.Bool("vemail", false, "enable verbose logging from email server")
 	flagVerbosePty    = flag.Bool("vpty", false, "enable verbose logging from pty connections")
@@ -79,7 +82,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	if testing.Verbose() && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
+	if testing.Verbose() && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
 		fmt.Print(`
 ════════
 -v requested, but the e1e tests generate lots of output, and they run in parallel.
@@ -89,6 +92,7 @@ For debug info, use -run to scope to a single test, and add some/all of these fl
 
 -vpiperd  print sshpiperd logs
 -vexed    print exed logs
+-vexelet  print exelet logs
 -vports   print port mappings
 -vemail   print email server logs
 -vpty     print pty (ssh) logs
@@ -116,13 +120,13 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 		os.Exit(1)
 	}
 
-	// prepare container manager early, for faster cleanup
-	containerManagerC := make(chan *container.NerdctlManager, 1)
+	// prepare exelet client early, for faster cleanup
+	exeletClientC := make(chan *client.Client, 1)
 	go func() {
-		manager, err := env.initContainerManager(ctrHost)
-		containerManagerC <- manager // unblock regardless
+		c, err := env.initExeletClient()
+		exeletClientC <- c // unblock regardless
 		if err != nil {
-			slog.Error("failed to init container manager", "error", err)
+			slog.Error("failed to init exelet client", "error", err)
 			return
 		}
 	}()
@@ -130,7 +134,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 	Env = env
 	slog.Info("running tests")
 	code := m.Run()
-	if err := env.Close(<-containerManagerC); err != nil {
+	if err := env.Close(<-exeletClientC); err != nil {
 		slog.Error("test cleanup failed", "error", err)
 		fmt.Fprintf(os.Stderr, "\n\nERROR: %v\n\n", err)
 		if code == 0 {
@@ -164,6 +168,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 var logFiles = map[string]*os.File{
 	"sshpiperd": nil,
 	"exed":      nil,
+	"exelet":    nil,
 	"e1e":       nil,
 }
 
@@ -221,6 +226,7 @@ type testEnv struct {
 	proxy        *tcpProxy
 	exed         exedInstance
 	piperd       piperdInstance
+	exelet       exeletInstance
 	email        *emailServer
 	exedSlogErrC chan string // receives exed ERROR log lines
 	exedGuidLogC chan string // receives exed log lines with guid attribute
@@ -248,18 +254,112 @@ type piperdInstance struct {
 	SSHPort int
 }
 
+type exeletInstance struct {
+	Address    string          // e.g., "tcp://192.168.5.15:9080"
+	Ctx        context.Context // cancelled when Cmd exits
+	DataDir    string          // temp directory for exelet data (local or remote path)
+	RemoteHost string          // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
+}
+
 func (e *testEnv) sshPort() int {
 	return e.proxy.tcp.Port
 }
 
-func (e *testEnv) initContainerManager(host string) (*container.NerdctlManager, error) {
-	config := &container.Config{ContainerdAddresses: []string{host}}
-	manager, err := container.NewNerdctlManager(config)
+// parseSSHHost extracts hostname from ssh:// URL
+func parseSSHHost(ctrHost string) string {
+	return strings.TrimPrefix(ctrHost, "ssh://")
+}
+
+// buildExeletBinary builds exelet locally for Linux and returns path to binary
+func buildExeletBinary() (string, error) {
+	binPath := filepath.Join(os.TempDir(), "exelet-test")
+	// run make to make sure to build dependencies (e.g. rovol and kernel that are embedded)
+	cmd := exec.Command("make", "exelet")
+
+	// Set working directory to project root (parent of e1e directory)
+	wd, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create container manager: %w", err)
+		return "", fmt.Errorf("failed to get working directory: %w", err)
+	}
+	buildDir := filepath.Dir(wd)
+	cmd.Dir = buildDir
+
+	// Cross-compile for Linux with current machine architecture
+	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH)
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to build exelet: %w", err)
+	}
+	// rename to test binary
+	if err := os.MkdirAll(filepath.Dir(binPath), 0770); err != nil {
+		return "", fmt.Errorf("failed to create binpath parent: %w", err)
+	}
+	if err := os.Rename(filepath.Join(buildDir, "exeletd"), binPath); err != nil {
+		return "", fmt.Errorf("failed to rename exelet to %s: %w", binPath, err)
+	}
+	return binPath, nil
+}
+
+// sshExec executes a command on remote host and returns combined output
+func sshExec(ctx context.Context, host string, command string) (string, error) {
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		host, command)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// scpUpload uploads a file to remote host
+func scpUpload(localPath, host, remotePath string) error {
+	cmd := exec.Command("scp",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		localPath, host+":"+remotePath)
+	return cmd.Run()
+}
+
+func (e *testEnv) initExeletClient() (*client.Client, error) {
+	c, err := client.NewClient(e.exelet.Address, client.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create exelet client: %w", err)
+	}
+	return c, nil
+}
+
+// CleanupTestInstances removes instances.
+// Designed for cleaning up test instances; best effort only.
+func CleanupTestInstances(ctx context.Context, exeletClient *client.Client) error {
+	if exeletClient == nil {
+		return nil
 	}
 
-	return manager, nil
+	stream, err := exeletClient.ListInstances(ctx, &api.ListInstancesRequest{})
+	if err != nil {
+		return fmt.Errorf("failed to list instances: %w", err)
+	}
+
+	var instancesToDelete []string
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			slog.Error("error receiving instance list", "error", err)
+			break
+		}
+		instancesToDelete = append(instancesToDelete, resp.Instance.ID)
+	}
+
+	for _, id := range instancesToDelete {
+		slog.Info("deleting test instance", "id", id)
+		if _, err := exeletClient.DeleteInstance(ctx, &api.DeleteInstanceRequest{ID: id}); err != nil {
+			slog.Error("failed to delete instance", "id", id, "error", err)
+		}
+	}
+
+	return nil
 }
 
 func (t *testEnv) addCanonicalization(in any, canon string) {
@@ -329,7 +429,7 @@ func (e *testEnv) context(t *testing.T) context.Context {
 	return c
 }
 
-func (e *testEnv) Close(containerManager *container.NerdctlManager) error {
+func (e *testEnv) Close(exeletClient *client.Client) error {
 	if e == nil {
 		return nil
 	}
@@ -355,15 +455,33 @@ func (e *testEnv) Close(containerManager *container.NerdctlManager) error {
 		e.piperd.Cmd.Process.Kill()
 		e.piperd.Cmd.Wait()
 	}
-	if containerManager != nil {
-		defer containerManager.Close()
-		slog.Info("cleaning up containers")
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// Cleanup exelet (remote or local)
+	if e.exelet.RemoteHost != "" {
+		// Remote cleanup
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := container.CleanupTestContainers(ctx, containerManager, "e1e-"); err != nil {
-			slog.Error("container cleanup failed", "error", err)
+
+		// remove instances
+		if exeletClient != nil {
+			defer exeletClient.Close()
+			slog.Info("cleaning up instances")
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := CleanupTestInstances(ctx, exeletClient); err != nil {
+				slog.Error("instance cleanup failed", "error", err)
+			}
 		}
+
+		// Remove remote binary
+		if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("rm -f /tmp/exelet-test /tmp/exelet-test-%s.log", testRunID)); err != nil {
+			slog.Error("failed to cleanup remote exelet binary", "error", err)
+		}
+
+		// Remove local binary
+		os.Remove(filepath.Join(os.TempDir(), "exelet-test"))
 	}
+
+	// stop proxy
 	e.proxy.close()
 
 	// CoverDir should always be non-empty, but maybe if exed failed to start?
@@ -513,9 +631,24 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("email server listening", "port", es.port)
 	}
 
+	// Start exelet before exed so we can pass its address to exed
+	exelet, err := startExelet(ctrHost)
+	if err != nil {
+		return env, err
+	}
+	env.exelet = *exelet
+	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
+
+	// resolve the gateway to pass to exed
+	gateway := ctrhosttest.ResolveDefaultGateway()
+	if gateway == "" {
+		return env, fmt.Errorf("unable to resolve default gateway for %q", ctrHost)
+	}
+	slog.Info("resolved default gateway", "addr", gateway)
+
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port, []int{0, 0}, env.exedSlogErrC, env.exedGuidLogC)
+	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port, []int{0, 0}, exelet.Address, gateway, env.exedSlogErrC, env.exedGuidLogC)
 	if err != nil {
 		return env, err
 	}
@@ -640,7 +773,136 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	return instance, nil
 }
 
-func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
+func startExelet(ctrHost string) (*exeletInstance, error) {
+	start := time.Now()
+	slog.Info("starting exelet", "remote", ctrHost != "")
+
+	// Parse remote host
+	host := parseSSHHost(ctrHost)
+	if host == "" {
+		return nil, fmt.Errorf("exelet requires remote host (ctrHost)")
+	}
+
+	// Build exelet binary locally
+	slog.Info("building exelet binary")
+	binPath, err := buildExeletBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	// Ensure no existing binaries exist (e.g. on failed re-run)
+	if _, err := sshExec(ctx, host, "rm -rf /tmp/exelet-test"); err != nil {
+		return nil, fmt.Errorf("failed to remove existing exelet: %w", err)
+	}
+
+	// Upload binary to remote host
+	slog.Info("uploading exelet to remote host", "host", host)
+	if err := scpUpload(binPath, host, "/tmp/exelet-test"); err != nil {
+		return nil, fmt.Errorf("failed to upload exelet: %w", err)
+	}
+
+	// Make binary executable
+	if _, err := sshExec(ctx, host, "chmod +x /tmp/exelet-test"); err != nil {
+		return nil, fmt.Errorf("failed to chmod exelet: %w", err)
+	}
+
+	// Create remote data directory
+	dataDir, err := sshExec(ctx, host, "mktemp -d /tmp/exelet_test_data_XXXXX")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create remote data dir: %w", err)
+	}
+	dataDir = strings.TrimSpace(dataDir)
+
+	// Start exelet on remote host in background with sudo (needs privileges for bridge setup)
+	// Use a wrapper to ensure we can capture the PID even if the process fails immediately
+	startCmd := fmt.Sprintf(`sudo nohup /tmp/exelet-test --debug --log-json --listen-address tcp://0.0.0.0:0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network > /tmp/exelet-test-%s.log 2>&1 &`,
+		testRunID)
+	out, err := sshExec(ctx, host, startCmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start remote exelet: %s (%w)\n", string(out), err)
+	}
+
+	// Wait for exelet to start and extract address from logs
+	slog.Info("waiting for exelet to start on remote host")
+	timeout := time.Minute
+	if os.Getenv("CI") != "" {
+		timeout = 2 * time.Minute
+	}
+
+	startTime := time.Now()
+	var addr string
+	for addr == "" && time.Since(startTime) < timeout {
+		time.Sleep(500 * time.Millisecond)
+
+		// Tail the log file
+		logOut, err := sshExec(ctx, host, fmt.Sprintf("cat /tmp/exelet-test-%s.log 2>/dev/null || true", testRunID))
+		if err != nil {
+			continue
+		}
+
+		if *flagVerboseExelet {
+			fmt.Fprintln(logFileFor("exelet"), logOut)
+		}
+
+		// Parse each line looking for "listening" message
+		scanner := bufio.NewScanner(strings.NewReader(logOut))
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if !json.Valid(line) {
+				continue
+			}
+			var entry map[string]any
+			if err := json.Unmarshal(line, &entry); err != nil {
+				continue
+			}
+			if entry["msg"] == "listening" {
+				if addrVal, ok := entry["addr"].(string); ok {
+					addr = addrVal
+					break
+				}
+			}
+		}
+	}
+
+	if addr == "" {
+		// Cleanup on failure
+		sshExec(ctx, host, "sudo pkill -9 -f exelet-test")
+		logOut, _ := sshExec(ctx, host, fmt.Sprintf("cat /tmp/exelet-test-%s.log 2>/dev/null || true", testRunID))
+		return nil, fmt.Errorf("timeout waiting for exelet to start. Last log output:\n%s", logOut)
+	}
+
+	// Parse address to replace 0.0.0.0 with actual remote IP
+	// addr is like "tcp://0.0.0.0:45678"
+	u, err := url.Parse(addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse exelet address: %w", err)
+	}
+
+	// Get remote IP address
+	remoteIP := ctrhosttest.ResolveHostFromSSHConfig(host)
+	if remoteIP == "" {
+		return nil, fmt.Errorf("failed to resolve remote IP for %s", host)
+	}
+
+	// Construct the actual address
+	_, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse port from %s: %w", u.Host, err)
+	}
+	finalAddr := fmt.Sprintf("tcp://%s:%s", remoteIP, port)
+
+	instance := &exeletInstance{
+		Address:    finalAddr,
+		DataDir:    dataDir,
+		RemoteHost: host,
+	}
+
+	slog.Info("started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr)
+	return instance, nil
+}
+
+func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr string, gateway string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
 	// Choose binary: use PREBUILT_EXED if provided, otherwise build a temp binary.
@@ -696,6 +958,8 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		"-piperd-port="+fmt.Sprint(piperPort),
 		"-fake-email-server="+emailServerURL,
 		"-gh-whoami="+whoamiPath,
+		"-exelet-addresses="+exeletAddr,
+		"-gateway="+gateway,
 	)
 	// Convert extra proxy ports to comma-delimited string
 	extraPortsStr := ""

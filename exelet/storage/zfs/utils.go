@@ -208,8 +208,8 @@ func (s *ZFS) removeInstanceFS(id string) error {
 	// remove the instance data
 	// NOTE: this has to be done before removing the image snapshot because
 	// otherwise it will report an error as there is still a dependent clone
-	if err := fs.Destroy(zfs.DestroyRecursive); err != nil {
-		return fmt.Errorf("error removing instance filesystem %s: %w", id, err)
+	if err := s.retryDestroy(id, fs, fmt.Sprintf("instance filesystem %s", id)); err != nil {
+		return err
 	}
 
 	// remove origin snapshot
@@ -220,13 +220,59 @@ func (s *ZFS) removeInstanceFS(id string) error {
 			s.log.Warn("unable to get origin dataset for snapshot removal", "origin", origin, "id", id)
 		}
 		if imageSnap != nil {
-			if err := imageSnap.Destroy(zfs.DestroyRecursive); err != nil {
-				return fmt.Errorf("error removing image snapshot for id %s@%s: %w", origin, id, err)
+			if err := s.retryDestroy(id, imageSnap, fmt.Sprintf("image snapshot %s", origin)); err != nil {
+				return err
 			}
 		}
 	}
 
 	return nil
+}
+
+// retryDestroy attempts to destroy a ZFS dataset with exponential backoff
+func (s *ZFS) retryDestroy(id string, ds *zfs.Dataset, description string) error {
+	const maxAttempts = 10
+	const maxTimeout = 30 * time.Second
+	initialDelay := 100 * time.Millisecond
+	startTime := time.Now()
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := ds.Destroy(zfs.DestroyRecursive); err != nil {
+			lastErr = err
+
+			// Check if we've exceeded the max timeout
+			elapsed := time.Since(startTime)
+			if elapsed >= maxTimeout {
+				return fmt.Errorf("error removing %s %s after %d attempts (timeout %v): %w", description, id, attempt, elapsed, lastErr)
+			}
+
+			// Check if this is the last attempt
+			if attempt == maxAttempts {
+				return fmt.Errorf("error removing %s %s after %d attempts: %w", description, id, attempt, lastErr)
+			}
+
+			// Calculate backoff delay (exponential: 100ms, 200ms, 400ms, ...)
+			delay := initialDelay * time.Duration(1<<(attempt-1))
+			s.log.Debug("retrying destroy", "id", id, "description", description, "attempt", attempt, "delay", delay, "error", err)
+
+			// Sleep with timeout awareness
+			remainingTime := maxTimeout - time.Since(startTime)
+			if delay > remainingTime {
+				delay = remainingTime
+			}
+			time.Sleep(delay)
+			continue
+		}
+
+		// Success
+		if attempt > 1 {
+			s.log.Debug("destroy succeeded", "id", id, "description", description, "attempt", attempt)
+		}
+		return nil
+	}
+
+	return lastErr
 }
 
 func (s *ZFS) waitForZvol(id string) error {

@@ -1,11 +1,7 @@
 package compute
 
 import (
-	"crypto"
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -13,11 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -27,6 +23,7 @@ import (
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
+	"exe.dev/pkg/tcpproxy"
 )
 
 const (
@@ -58,6 +55,8 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		log:            s.log,
 		serviceContext: s.context,
 		instanceID:     instanceID,
+		proxyManager:   s.proxyManager,
+		portAllocator:  s.portAllocator,
 	}
 	defer func() {
 		if err != nil {
@@ -96,6 +95,15 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	rb.networkCreated = true
 
+	// ensure gateway IP (for shelley config)
+	gatewayIP := ""
+	if ip := networkInterface.IP; ip != nil {
+		gatewayIP = ip.GatewayV4
+	}
+	if gatewayIP == "" {
+		return status.Error(codes.Internal, "unable to get gateway IP for network interface")
+	}
+
 	netConf, err := s.getNetConf(req.Name, networkInterface)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -124,7 +132,6 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	imageFSID := imageMetadata.Digest
 
 	// attempt to get the base disk and create if not found
-	// rb.imageFSID = imageFSID
 
 	// if not found provision image
 	if _, err := s.context.StorageManager.Get(ctx, imageFSID); err != nil {
@@ -140,7 +147,10 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			return status.Error(codes.Internal, err.Error())
 		}
 
-		imageID, err := utils.LoadImage(ctx, req.Image, platform, s.context.ImageManager, s.context.StorageManager, s.log)
+		// use singleflight to ensure only one image loads at a time
+		imageID, err, _ := s.imageLoadGroup.Do(imageFSID, func() (string, error) {
+			return utils.LoadImage(ctx, req.Image, platform, s.context.ImageManager, s.context.StorageManager, s.log)
+		})
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -364,30 +374,6 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		}
 	}
 
-	// inject host key
-	s.log.Debug("configuring ssh host identity")
-	hostSSHKeyPath := filepath.Join(mountpoint, filepath.Dir(config.InstanceSSHHostKeyPath))
-	if err := generateSSHHostKeyPair(hostSSHKeyPath); err != nil {
-		return status.Errorf(codes.Internal, "error configuring ssh host identity: %s", err)
-	}
-	// inject ssh key
-	s.log.Debug("configuring ssh keys", "keys", req.SSHKeys)
-	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
-		ID:      instanceID,
-		State:   api.CreateInstanceStatus_CONFIG,
-		Message: "configuring instance",
-	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-	instanceSSHKeyPath := filepath.Join(mountpoint, config.InstanceSSHPublicKeysPath)
-	if err := os.MkdirAll(filepath.Dir(instanceSSHKeyPath), 0o750); err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-	sshKeys := strings.Join(req.SSHKeys, "\n")
-	if err := os.WriteFile(instanceSSHKeyPath, []byte(sshKeys), 0o600); err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-
 	// unmount
 	s.log.Debug("unmounting instance storage", "id", instanceID)
 	if err := s.context.StorageManager.Unmount(ctx, instanceID); err != nil {
@@ -440,18 +426,68 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, err.Error())
 	}
 
+	// allocate a port for SSH proxy
+	sshPort, err := s.portAllocator.Allocate()
+	if err != nil {
+		return status.Errorf(codes.ResourceExhausted, "failed to allocate SSH port: %s", err)
+	}
+	rb.allocatedPort = sshPort
+
+	// parse VM IP from network interface
+	vmIP := ""
+	if networkInterface.IP != nil && networkInterface.IP.IPV4 != "" {
+		ipAddr, _, err := net.ParseCIDR(networkInterface.IP.IPV4)
+		if err != nil {
+			s.portAllocator.Release(sshPort)
+			return status.Errorf(codes.Internal, "failed to parse VM IP: %s", err)
+		}
+		vmIP = ipAddr.String()
+	} else {
+		s.portAllocator.Release(sshPort)
+		return status.Error(codes.Internal, "no IP address assigned to VM")
+	}
+
+	// create and start TCP proxy for ssh
+	s.log.Debug("starting SSH proxy", "instance", instanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
+	p := tcpproxy.NewTCPProxy(sshPort, vmIP, 22, s.log)
+	if err := p.Start(); err != nil {
+		s.portAllocator.Release(sshPort)
+		return status.Errorf(codes.Internal, "failed to start SSH proxy: %s", err)
+	}
+	s.proxyManager.AddProxy(instanceID, p, sshPort)
+	rb.proxyCreated = true
+
+	// Parse exposed ports from image config
+	var exposedPorts []*api.ExposedPort
+	if imageMetadata.Config != nil && imageMetadata.Config.Config.ExposedPorts != nil {
+		for portSpec := range imageMetadata.Config.Config.ExposedPorts {
+			// Parse "80/tcp" format
+			parts := strings.Split(portSpec, "/")
+			if len(parts) == 2 {
+				if portNum, err := strconv.ParseUint(parts[0], 10, 32); err == nil {
+					exposedPorts = append(exposedPorts, &api.ExposedPort{
+						Port:     uint32(portNum),
+						Protocol: parts[1],
+					})
+				}
+			}
+		}
+	}
+
 	// return instance info
 	created := time.Now().UnixNano()
 
 	i := &api.Instance{
-		ID:        instanceID,
-		Name:      req.Name,
-		Image:     req.Image,
-		VMConfig:  vmCfg,
-		Node:      s.config.Name,
-		CreatedAt: created,
-		UpdatedAt: created,
-		State:     api.VMState_STARTING,
+		ID:           instanceID,
+		Name:         req.Name,
+		Image:        req.Image,
+		VMConfig:     vmCfg,
+		Node:         s.config.Name,
+		CreatedAt:    created,
+		UpdatedAt:    created,
+		State:        api.VMState_STARTING,
+		SSHPort:      int32(sshPort), // SSH proxy port
+		ExposedPorts: exposedPorts,
 	}
 
 	if err := s.saveInstanceConfig(i); err != nil {
@@ -534,41 +570,4 @@ func (s *Service) getNetConf(hostname string, i *api.NetworkInterface) (string, 
 		backupNS,
 		ntpServer,
 	), nil
-}
-
-func generateSSHHostKeyPair(path string) error {
-	pub, priv, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		return err
-	}
-	p, err := ssh.MarshalPrivateKey(crypto.PrivateKey(priv), "")
-	if err != nil {
-		return err
-	}
-	privateKeyPem := pem.EncodeToMemory(p)
-	publicKey, err := ssh.NewPublicKey(pub)
-	if err != nil {
-		return err
-	}
-	// write keys
-	privateKeyName := filepath.Base(config.InstanceSSHHostKeyPath)
-	publicKeyName := privateKeyName + ".pub"
-	privateKeyPath := filepath.Join(path, privateKeyName)
-	publicKeyPath := filepath.Join(path, publicKeyName)
-	_ = os.Remove(privateKeyPath)
-	_ = os.Remove(publicKeyPath)
-
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(privateKeyPath, []byte(string(privateKeyPem)), 0o600); err != nil {
-		return err
-	}
-	publicKeyStr := "ssh-ed25519" + " " + base64.StdEncoding.EncodeToString(publicKey.Marshal())
-	if err := os.WriteFile(publicKeyPath, []byte(string(publicKeyStr)), 0o600); err != nil {
-		return err
-	}
-
-	return nil
 }

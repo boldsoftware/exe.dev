@@ -3,12 +3,14 @@ package compute
 import (
 	"context"
 	"fmt"
+	"net"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/pkg/tcpproxy"
 )
 
 func (s *Service) StartInstance(ctx context.Context, req *api.StartInstanceRequest) (*api.StartInstanceResponse, error) {
@@ -91,6 +93,39 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	if err := vmm.Start(ctx, id); err != nil {
 		return err
 	}
+
+	// get SSH port from instance config (persisted from creation)
+	sshPort := int(iCfg.SSHPort)
+	if sshPort == 0 {
+		// shouldn't happen for instances created with new code, but allocate if needed
+		var err error
+		sshPort, err = s.portAllocator.Allocate()
+		if err != nil {
+			return fmt.Errorf("failed to allocate SSH port: %w", err)
+		}
+		// update config with newly allocated port
+		iCfg.SSHPort = int32(sshPort)
+	}
+
+	// parse VM IP from network interface
+	vmIP := ""
+	if networkInterface.IP != nil && networkInterface.IP.IPV4 != "" {
+		ipAddr, _, err := net.ParseCIDR(networkInterface.IP.IPV4)
+		if err != nil {
+			return fmt.Errorf("failed to parse VM IP: %w", err)
+		}
+		vmIP = ipAddr.String()
+	} else {
+		return fmt.Errorf("no IP address assigned to VM")
+	}
+
+	// create and start TCP proxy
+	s.log.Debug("starting SSH proxy", "instance", id, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
+	proxy := tcpproxy.NewTCPProxy(sshPort, vmIP, 22, s.log)
+	if err := proxy.Start(); err != nil {
+		return fmt.Errorf("failed to start SSH proxy: %w", err)
+	}
+	s.proxyManager.AddProxy(id, proxy, sshPort)
 
 	// update network config
 	iCfg.VMConfig.NetworkInterface = networkInterface

@@ -9,13 +9,22 @@ import (
 	"context"
 )
 
+const deleteBoxIPShard = `-- name: DeleteBoxIPShard :exec
+DELETE FROM box_ip_shard WHERE box_id = ?
+`
+
+func (q *Queries) DeleteBoxIPShard(ctx context.Context, boxID int) error {
+	_, err := q.exec(ctx, q.deleteBoxIPShardStmt, deleteBoxIPShard, boxID)
+	return err
+}
+
 const insertBoxIPShard = `-- name: InsertBoxIPShard :exec
 INSERT INTO box_ip_shard (box_id, user_id, ip_shard)
 VALUES (?, ?, ?)
 `
 
 type InsertBoxIPShardParams struct {
-	BoxID   int64  `db:"box_id" json:"box_id"`
+	BoxID   int    `db:"box_id" json:"box_id"`
 	UserID  string `db:"user_id" json:"user_id"`
 	IPShard int64  `db:"ip_shard" json:"ip_shard"`
 }

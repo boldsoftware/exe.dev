@@ -37,6 +37,7 @@ import (
 	"exe.dev/ctrhosttest"
 	docspkg "exe.dev/docs"
 	"exe.dev/exedb"
+	exeletclient "exe.dev/exelet/client"
 	"exe.dev/ghuser"
 	"exe.dev/publicips"
 	"exe.dev/route53"
@@ -171,10 +172,17 @@ type Server struct {
 	// Database
 	db *sqlite.DB
 
+	// Gateway endpoint for Shelley
+	gateway string
+
 	// Container management
 	containerManager *container.NerdctlManager
 	tagResolver      *tagresolver.TagResolver
 	hostUpdater      *tagresolver.HostUpdater
+
+	// Exelet management (for VM-based instances)
+	exeletClients map[string]*exeletClient // addr -> client
+	exeletAddrs   []string                 // list of exelet addresses
 
 	// SSH connection pooling for HTTP proxying
 	sshPool *sshpool2.Pool
@@ -212,6 +220,12 @@ type Server struct {
 	stopping atomic.Bool
 
 	log *slog.Logger
+}
+
+// exeletClient wraps an exelet client with its address
+type exeletClient struct {
+	addr   string
+	client *exeletclient.Client
 }
 
 func (s *Server) slog() *slog.Logger {
@@ -284,7 +298,7 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses []string) (*Server, error) {
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses []string, exeletAddresses []string, gateway string) (*Server, error) {
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, dbPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
@@ -414,6 +428,26 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		slog.Info("Tag resolver configured for image freshness management")
 	}
 
+	// Initialize exelet clients
+	exeletClients := make(map[string]*exeletClient)
+	var validExeletAddrs []string
+	for _, addr := range exeletAddresses {
+		if addr == "" {
+			continue
+		}
+		client, err := exeletclient.NewClient(addr, exeletclient.WithInsecure())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create exelet client to %s: %w", addr, err)
+		}
+		exeletClients[addr] = &exeletClient{
+			addr:   addr,
+			client: client,
+		}
+		validExeletAddrs = append(validExeletAddrs, addr)
+		slog.Info("initialized exelet client", "addr", addr)
+	}
+	slog.Info("exelet clients initialized", "count", len(validExeletAddrs))
+
 	includeUnpublishedDocs := devMode != ""
 	docsStore, err := docspkg.Load(includeUnpublishedDocs)
 	if err != nil {
@@ -429,6 +463,11 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		return nil, err
 	}
 
+	// gateway for shelley - default to exe.dev if left blank
+	if gateway == "" {
+		gateway = "exe.dev"
+	}
+
 	s := &Server{
 		httpLn:             httpLn,
 		httpsLn:            httpsLn,
@@ -440,6 +479,8 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		containerManager:   containerManager,
 		tagResolver:        tagResolverInstance,
 		hostUpdater:        hostUpdaterInstance,
+		exeletClients:      exeletClients,
+		exeletAddrs:        validExeletAddrs,
 		sshPool:            &sshpool2.Pool{TTL: 10 * time.Minute},
 		emailVerifications: make(map[string]*EmailVerification),
 		magicSecrets:       make(map[string]*MagicSecret),
@@ -448,6 +489,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,
 		devMode:            devMode,
+		gateway:            gateway,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
 		metricsRegistry: metricsRegistry,
@@ -1213,7 +1255,7 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 	}
 
 	if err := queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{
-		BoxID:   int64(boxID),
+		BoxID:   boxID,
 		UserID:  userID,
 		IPShard: int64(assigned),
 	}); err != nil {
@@ -1243,10 +1285,10 @@ func (s *Server) createBoxCNAME(ctx context.Context, boxName string, shard int) 
 
 func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
 	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		if _, err := tx.Exec(`DELETE FROM box_ip_shard WHERE box_id = ?`, boxID); err != nil {
+		queries := exedb.New(tx.Conn())
+		if err := queries.DeleteBoxIPShard(ctx, boxID); err != nil {
 			return err
 		}
-		queries := exedb.New(tx.Conn())
 		if err := queries.DeleteBox(ctx, boxID); err != nil {
 			return err
 		}
@@ -2151,6 +2193,12 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 	}
 
 	if result.SSHPort == nil || *result.SSHPort == 0 || len(result.SSHClientPrivateKey) == 0 {
+		// For exelet-based boxes (indicated by ctrhost being set), SSH details should
+		// always be set during creation. If they're missing, it's an error.
+		if result.Ctrhost != "" {
+			return nil, fmt.Errorf("SSH details missing for exelet-based box - box may still be creating or creation failed")
+		}
+
 		// SSH not set up for this box - this is for containers created before SSH support
 		// TODO: Remove this code once all legacy containers are migrated
 		log.Printf("Box %d missing SSH setup, initializing SSH on container", boxID)
@@ -2222,6 +2270,31 @@ func (s *Server) SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.Pub
 	}
 	// Return the public key in authorized_keys format
 	return privateKey.PublicKey(), nil
+}
+
+// selectExeletClient selects an exelet client using a simple round-robin based on user ID
+func (s *Server) selectExeletClient(userID string) (*exeletClient, string, error) {
+	if len(s.exeletAddrs) == 0 {
+		return nil, "", fmt.Errorf("no exelet clients available")
+	}
+
+	// TODO: consistent hash generation across multiple backends
+	hash := 0
+	for _, c := range userID {
+		hash = hash*31 + int(c)
+	}
+	if hash < 0 {
+		hash = -hash
+	}
+	idx := hash % len(s.exeletAddrs)
+	addr := s.exeletAddrs[idx]
+
+	client, ok := s.exeletClients[addr]
+	if !ok {
+		return nil, "", fmt.Errorf("exelet client not found for address %s", addr)
+	}
+
+	return client, addr, nil
 }
 
 // setupContainerSSH sets up SSH on a legacy container that was created before SSH support

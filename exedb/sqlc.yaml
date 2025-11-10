@@ -17,6 +17,8 @@ sql:
         overrides:
           - column: "boxes.id"
             go_type: "int"
+          - column: "box_ip_shard.box_id"
+            go_type: "int"
         rename:
           box_ip_shard: "BoxIPShard"
           ip_shard: "IPShard"

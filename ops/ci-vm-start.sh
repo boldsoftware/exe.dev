@@ -5,6 +5,7 @@ NAME="${NAME:-ci-ubuntu-$(date +%Y%m%d%H%M%S)}"
 VCPUS="${VCPUS:-4}"
 RAM_MB="${RAM_MB:-4096}" # 4GiB
 DISK_GB="${DISK_GB:-40}" # thin-provisioned
+DATA_DISK_GB="${DATA_DISK_GB:-50}" # ZFS data disk
 BASE_IMG="${BASE_IMG:-/var/lib/libvirt/images/ubuntu-24.04-base.qcow2}"
 BASE_IMG_URL="${BASE_IMG_URL:-https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img}"
 
@@ -63,9 +64,11 @@ SETUP_HASH="$(git rev-parse HEAD:ops/)"
 # using snapshots, change SNAPSHOT_DIR to be something unique, and, voila.
 SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH}-$(date +%Y%m%d)"
 SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
+SNAPSHOT_DATA="${SNAPSHOT_DIR}/data.qcow2"
 LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH}.qcow2"
+LOCAL_DATA_COPY="${WORKDIR}/ci-data-${SETUP_HASH}.qcow2"
 SNAPSHOT_AVAILABLE=0
-if [[ -f "${SNAPSHOT_BASE}" ]]; then
+if [[ -f "${SNAPSHOT_BASE}" && -f "${SNAPSHOT_DATA}" ]]; then
     SNAPSHOT_AVAILABLE=1
 fi
 
@@ -80,10 +83,12 @@ fi
 # Ensure workdir exists (may require root)
 sudo mkdir -p "${WORKDIR}"
 DISK="${WORKDIR}/${NAME}.qcow2"
+DATA_DISK="${WORKDIR}/${NAME}-data.qcow2"
 SEED="${WORKDIR}/${NAME}-seed.iso"
 
 # 1) Ephemeral COW disk (from snapshot if available)
 BACKING_IMG="${BASE_IMG}"
+DATA_BACKING_IMG=""
 if [[ ${SNAPSHOT_AVAILABLE} -eq 1 ]]; then
     echo "Found snapshot for setup hash: ${SNAPSHOT_DIR}"
     # Keep a local copy in WORKDIR for qemu access and to avoid permission issues
@@ -91,14 +96,29 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 1 ]]; then
         echo "Cloning snapshot base into WORKDIR (reflink if possible)..."
         cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
     fi
+    if [[ ! -f "${LOCAL_DATA_COPY}" ]]; then
+        echo "Cloning snapshot data disk into WORKDIR (reflink if possible)..."
+        cp_clone_file "${SNAPSHOT_DATA}" "${LOCAL_DATA_COPY}"
+    fi
     BACKING_IMG="${LOCAL_BASE_COPY}"
+    DATA_BACKING_IMG="${LOCAL_DATA_COPY}"
 fi
 
+# Create root disk
 if [[ "${BACKING_IMG}" == "${BASE_IMG}" ]]; then
     sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}" "${DISK_GB}G"
 else
     # Size is inherited from backing when provided
     sudo qemu-img create -f qcow2 -F qcow2 -b "${BACKING_IMG}" "${DISK}"
+fi
+
+# Create data disk
+if [[ -n "${DATA_BACKING_IMG}" ]]; then
+    # Use snapshot as backing image (size inherited)
+    sudo qemu-img create -f qcow2 -F qcow2 -b "${DATA_BACKING_IMG}" "${DATA_DISK}"
+else
+    # Create fresh data disk
+    sudo qemu-img create -f qcow2 "${DATA_DISK}" "${DATA_DISK_GB}G"
 fi
 
 # 2) Cloud-init seed (NoCloud)
@@ -117,11 +137,21 @@ users:
 package_update: true
 packages:
   - qemu-guest-agent
+  - zfsutils-linux
 runcmd:
   - echo runcmd
   - systemctl enable --now qemu-guest-agent
-  - mkdir -p /data && chmod 755 /data
   - mkdir -p /local && chmod 755 /local
+  # Set up ZFS pool on /dev/vdb if not already present
+  - |
+    if ! zpool list tank >/dev/null 2>&1; then
+      echo "Creating ZFS pool 'tank' on /dev/vdb"
+      zpool create -f -m none tank /dev/vdb
+      zfs create -o mountpoint=/data tank/data
+      echo "ZFS pool created and mounted at /data"
+    else
+      echo "ZFS pool 'tank' already exists"
+    fi
   # Clean up stale container state from the snapshot before restarting services.
   # Containerd/nydus runtime state (task directories, metadata) persists in the snapshot
   # and becomes stale when the machine-id changes on clone, causing kata verification to fail.
@@ -139,6 +169,16 @@ bootcmd:
   - [bash, -c, 'rm -f /etc/machine-id /var/lib/dbus/machine-id; systemd-machine-id-setup']
   # Remove systemd-networkd DUID to force fresh DHCP client ID on each clone
   - [bash, -c, 'rm -rf /var/lib/systemd/networkd/*']
+  # Import ZFS pool from cloned disk (force to generate new pool GUID)
+  - |
+    if [ -b /dev/vdb ]; then
+      # Check if pool exists on disk but is not imported
+      if zpool import 2>/dev/null | grep -q 'pool: tank'; then
+        echo "Importing ZFS pool 'tank' from cloned disk with new GUID"
+        zpool import -f -N tank
+        zpool reguid tank
+      fi
+    fi
   # Configure MAC-based DHCP BEFORE network starts (must match actual interface name)
   - |
     cat >/etc/netplan/60-dhcp-mac.yaml <<'NETPLAN'
@@ -212,6 +252,7 @@ sudo virt-install \
     --vcpus "${VCPUS}" \
     --import \
     --disk "path=${DISK},format=qcow2,cache=none,discard=unmap" \
+    --disk "path=${DATA_DISK},format=qcow2,cache=none,discard=unmap" \
     --disk "path=${SEED},device=cdrom" \
     --os-variant ubuntu24.04 \
     --network network=default,model=virtio \
@@ -270,65 +311,62 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
 
     "${SCRIPT_DIR}/download-ctr-host.sh" "$VM_ARCH"
 
+    # Build exeletd and exelet-ctl binaries on the host for the VM architecture
+    echo "Building exeletd and exelet-ctl for $VM_ARCH..."
+    EXELETD_BIN="$HOME/.cache/exedops/exeletd-${VM_ARCH}"
+    EXELETCTL_BIN="$HOME/.cache/exedops/exelet-ctl-${VM_ARCH}"
+
+    # Build from repository root
+    (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETD_BIN}" ./cmd/exelet)
+    (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETCTL_BIN}" ./cmd/exelet-ctl)
+    echo "Built exeletd and exelet-ctl binaries"
+
     echo "Copying setup script and config files to VM ${IP}..."
     scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
+    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/setup-cloud-hypervisor.sh" "${USER_NAME}@${IP}:~/setup-cloud-hypervisor.sh"
+    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/setup-exelet.sh" "${USER_NAME}@${IP}:~/setup-exelet.sh"
     ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
     scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/.cache/exedops/kata-config-clh.toml"
 
-    # Build custom kernel if not cached
-    KERNEL_BUILDER_DIR="${SCRIPT_DIR}/kernel-builder/output"
-    KERNEL_CACHE_DIR="${CACHE_DIR}/kernel"
-    mkdir -p "${KERNEL_CACHE_DIR}"
-
-    if [ ! -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
-        echo "Custom kernel not found in cache, building it now..."
-        (cd "${SCRIPT_DIR}/kernel-builder" && make)
-        if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
-            echo "Caching kernel build..."
-            cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables"
-            cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${KERNEL_CACHE_DIR}/config-6.12.42-nftables"
-        else
-            echo "ERROR: Failed to build custom kernel"
-            exit 1
-        fi
-    fi
-
-    # Copy custom kernel from cache to VM
-    if [ -f "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" ]; then
-        echo "Copying custom kernel with nftables support..."
-        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/vmlinux-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/vmlinux-6.12.42-nftables"
-        scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${KERNEL_CACHE_DIR}/config-6.12.42-nftables" "${USER_NAME}@${IP}:~/.cache/exedops/config-6.12.42-nftables"
-    else
-        echo "ERROR: Custom kernel not found in cache"
-        exit 1
-    fi
-
-    # Copy pre-downloaded tarballs to VM
-    echo "Copying pre-downloaded dependencies to VM ${IP}..."
+    # Copy pre-downloaded tarballs and exelet binaries to VM
+    echo "Copying pre-downloaded dependencies and exelet binaries to VM ${IP}..."
     CACHE_DIR="$HOME/.cache/exedops"
     mapfile -t files < <(find "$CACHE_DIR" -maxdepth 1 -type f \
-        \( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name 'ch-remote-static-*' -o -name '*.tar' \))
+        \( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name 'ch-remote-static-*' -o -name '*.tar' -o -name 'exeletd-*' -o -name 'exelet-ctl-*' \))
     rsync -avq \
         -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
         "${files[@]}" "${USER_NAME}@${IP}:~/.cache/exedops/"
 
-    # Keep assets in canonical ASSETS_DIR (~/.cache/exedops); just place the setup script
+    # Keep assets in canonical ASSETS_DIR (~/.cache/exedops); just place the setup scripts
+    ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-cloud-hypervisor.sh /root/setup-cloud-hypervisor.sh && sudo chmod +x /root/setup-cloud-hypervisor.sh'
     ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
+    ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-exelet.sh /root/setup-exelet.sh && sudo chmod +x /root/setup-exelet.sh'
+
+    echo "Executing cloud-hypervisor setup script on VM ${IP} (raw streaming output)..."
+    # Stream exact commands and output directly to CI logs
+    # Set CI environment variable to trigger CI mode in the script
+    ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo CI=1 /bin/bash -x /root/setup-cloud-hypervisor.sh"
 
     echo "Executing setup script on VM ${IP} (raw streaming output)..."
     # Stream exact commands and output directly to CI logs
     # Set CI environment variable to trigger CI mode in the script
     ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo CI=1 /bin/bash -x /root/setup-containerd-clh-nydus.sh"
 
-    # 6b) Create snapshot cache of the prepared disk (clone, leveraging XFS reflink when available)
+    echo "Executing exelet setup script on VM ${IP} (raw streaming output)..."
+    # Run exelet setup to preload ZFS volumes with base images
+    ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo /bin/bash -x /root/setup-exelet.sh"
+
+    # 6b) Create snapshot cache of the prepared disks (clone, leveraging XFS reflink when available)
     echo "Creating snapshot cache at ${SNAPSHOT_DIR}..."
     mkdir -p "${SNAPSHOT_DIR}"
-    # Copy/clone the prepared disk into the snapshot location
+    # Copy/clone the prepared disks into the snapshot location
     # Note: This clones the qcow2 backing with current state; safe for reuse with overlays.
     cp_clone_file "${DISK}" "${SNAPSHOT_BASE}"
+    cp_clone_file "${DATA_DISK}" "${SNAPSHOT_DATA}"
 
-    # Also maintain a local copy in WORKDIR for fast reuse within libvirt
+    # Also maintain local copies in WORKDIR for fast reuse within libvirt
     cp_clone_file "${SNAPSHOT_BASE}" "${LOCAL_BASE_COPY}"
+    cp_clone_file "${SNAPSHOT_DATA}" "${LOCAL_DATA_COPY}"
 fi
 
 # 7) Emit a small envfile for subsequent steps (write to a readable location)
@@ -340,6 +378,7 @@ VM_NAME=${NAME}
 VM_IP=${IP}
 VM_USER=${USER_NAME}
 VM_DISK=${DISK}
+VM_DATA_DISK=${DATA_DISK}
 VM_SEED=${SEED}
 EOF
 echo "${ENVFILE}"

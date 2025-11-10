@@ -103,6 +103,8 @@ func (ss *SSHServer) createShelleyConversation(ctx context.Context, httpClient *
 	} // Wait for Shelley to start up and send the chat request with retries
 	// The sshDialer handles SSH connection retries, so these retries are
 	// specifically for waiting for Shelley (a systemd service) to be ready
+	// Under heavy load (e.g., when running full e1e test suite), Shelley can
+	// take longer to start, so we use generous retry delays totaling ~71 seconds
 	shelleyURL := "http://localhost:9999/api/conversations/new"
 	retryDelays := []time.Duration{
 		1 * time.Second,
@@ -111,6 +113,11 @@ func (ss *SSHServer) createShelleyConversation(ctx context.Context, httpClient *
 		5 * time.Second,
 		5 * time.Second,
 		10 * time.Second,
+		10 * time.Second,
+		15 * time.Second,
+		20 * time.Second,
+		30 * time.Second,
+		40 * time.Second,
 	}
 
 	var resp *http.Response

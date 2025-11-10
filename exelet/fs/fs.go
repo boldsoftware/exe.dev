@@ -20,7 +20,7 @@ func Get(name string) (fs.File, error) {
 
 // Kernel returns the exelet default kernel
 func Kernel() (fs.File, error) {
-	return Content.Open("kernel")
+	return Content.Open("kernel/kernel")
 }
 
 // CopyRovol copies the exe.dev rovol to the destination

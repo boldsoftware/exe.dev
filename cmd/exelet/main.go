@@ -42,6 +42,10 @@ func main() {
 			Aliases: []string{"D"},
 			Usage:   "enable debug logging",
 		},
+		&cli.BoolFlag{
+			Name:  "log-json",
+			Usage: "output logs in JSON format instead of text",
+		},
 		&cli.StringFlag{
 			Name:  "name",
 			Usage: "exelet node name",
@@ -105,6 +109,7 @@ func main() {
 
 func serveAction(clix *cli.Context) error {
 	debug := clix.Bool("debug")
+	logJSON := clix.Bool("log-json")
 
 	name := clix.String("name")
 	listenAddress := clix.String("listen-address")
@@ -123,7 +128,12 @@ func serveAction(clix *cli.Context) error {
 		hOpts.Level = slog.LevelDebug
 	}
 
-	log := slog.New(slog.NewTextHandler(os.Stdout, hOpts))
+	var log *slog.Logger
+	if logJSON {
+		log = slog.New(slog.NewJSONHandler(os.Stdout, hOpts))
+	} else {
+		log = slog.New(slog.NewTextHandler(os.Stdout, hOpts))
+	}
 
 	maintenanceMode := clix.Bool("maintenance")
 	pprofAddr := clix.String("pprof-addr")

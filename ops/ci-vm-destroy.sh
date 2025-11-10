@@ -9,5 +9,5 @@ sudo virsh destroy "${VM_NAME}" >/dev/null 2>&1 || true
 sudo virsh undefine "${VM_NAME}" --nvram >/dev/null 2>&1 || true
 
 # Remove disks
-sudo rm -f "${VM_DISK}" "${VM_SEED}" || true
+sudo rm -f "${VM_DISK}" "${VM_DATA_DISK}" "${VM_SEED}" || true
 rm -f "${ENVFILE}" || true

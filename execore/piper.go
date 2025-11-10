@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"exe.dev/container"
 	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
+	api "exe.dev/pkg/api/exe/compute/v1"
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
@@ -315,45 +315,44 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 		return nil, fmt.Errorf("box %s is not running", box.Name)
 	}
 
-	// Check if container is actually running
-	if p.server.containerManager != nil {
-		containerInfo, err := p.server.containerManager.GetContainer(ctx, box.CreatedByUserID, *box.ContainerID)
+	// Check if instance is actually running via exelet
+	exeletClient, _, err := p.server.selectExeletClient(box.CreatedByUserID)
+	if err == nil {
+		instanceResp, err := exeletClient.client.GetInstance(ctx, &api.GetInstanceRequest{
+			ID: *box.ContainerID,
+		})
 		if err != nil {
-			slog.InfoContext(ctx, "piper-plugin container status check failed",
+			slog.InfoContext(ctx, "piper-plugin instance status check failed",
 				"box_name", box.Name,
 				"container_id", *box.ContainerID,
 				"error", err,
 			)
-		} else {
-			slog.InfoContext(ctx, "piper-plugin container status check",
+		} else if instanceResp.Instance != nil {
+			slog.InfoContext(ctx, "piper-plugin instance status check",
 				"box_name", box.Name,
 				"container_id", *box.ContainerID,
-				"status", string(containerInfo.Status),
+				"state", instanceResp.Instance.State.String(),
 			)
-		}
-		if err == nil && containerInfo.Status != container.StatusRunning {
-			// Container exists but isn't running - route to exed to show logs
-			// Use a special username format that exed will recognize
-			slog.InfoContext(ctx, "Container not running, routing to exed for error display",
-				"component", "piper-plugin", "box_name", box.Name, "status", containerInfo.Status)
+			// If instance is not running, route to exed for error display
+			if instanceResp.Instance.State != api.VMState_RUNNING && instanceResp.Instance.State != api.VMState_STARTING {
+				slog.InfoContext(ctx, "Instance not running, routing to exed for error display",
+					"component", "piper-plugin", "box_name", box.Name, "state", instanceResp.Instance.State.String())
 
-			// Generate ephemeral proxy key for auth to exed
-			// Pass nil for original key since this is a special case
-			proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(nil, "127.0.0.1")
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate proxy key: %v", err)
+				proxyPrivateKeyPEM, _, err := p.generateEphemeralProxyKey(nil, "127.0.0.1")
+				if err != nil {
+					return nil, fmt.Errorf("failed to generate proxy key: %v", err)
+				}
+
+				specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.CreatedByUserID, *box.ContainerID, box.Name)
+
+				return &libplugin.Upstream{
+					Host:          "127.0.0.1",
+					Port:          int32(p.exedSSHPort),
+					UserName:      specialUsername,
+					IgnoreHostKey: false,
+					Auth:          libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
+				}, nil
 			}
-
-			// Use special username format: "container-logs:<userID>:<containerID>:<boxName>"
-			specialUsername := fmt.Sprintf("container-logs:%s:%s:%s", box.CreatedByUserID, *box.ContainerID, box.Name)
-
-			return &libplugin.Upstream{
-				Host:          "127.0.0.1",
-				Port:          int32(p.exedSSHPort),
-				UserName:      specialUsername,
-				IgnoreHostKey: false,
-				Auth:          libplugin.CreatePrivateKeyAuth([]byte(proxyPrivateKeyPEM)),
-			}, nil
 		}
 	}
 

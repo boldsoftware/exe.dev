@@ -7,12 +7,11 @@
 package v1
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -422,19 +421,16 @@ func file_exe_storage_v1_storage_proto_rawDescGZIP() []byte {
 	return file_exe_storage_v1_storage_proto_rawDescData
 }
 
-var (
-	file_exe_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-	file_exe_storage_v1_storage_proto_goTypes  = []any{
-		(*GetFilesystemRequest)(nil),   // 0: exe.storage.v1.GetFilesystemRequest
-		(*GetFilesystemResponse)(nil),  // 1: exe.storage.v1.GetFilesystemResponse
-		(*Filesystem)(nil),             // 2: exe.storage.v1.Filesystem
-		(*FilesystemConfig)(nil),       // 3: exe.storage.v1.FilesystemConfig
-		(*FilesystemMountConfig)(nil),  // 4: exe.storage.v1.FilesystemMountConfig
-		(*LoadFilesystemRequest)(nil),  // 5: exe.storage.v1.LoadFilesystemRequest
-		(*LoadFilesystemResponse)(nil), // 6: exe.storage.v1.LoadFilesystemResponse
-	}
-)
-
+var file_exe_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_exe_storage_v1_storage_proto_goTypes = []any{
+	(*GetFilesystemRequest)(nil),   // 0: exe.storage.v1.GetFilesystemRequest
+	(*GetFilesystemResponse)(nil),  // 1: exe.storage.v1.GetFilesystemResponse
+	(*Filesystem)(nil),             // 2: exe.storage.v1.Filesystem
+	(*FilesystemConfig)(nil),       // 3: exe.storage.v1.FilesystemConfig
+	(*FilesystemMountConfig)(nil),  // 4: exe.storage.v1.FilesystemMountConfig
+	(*LoadFilesystemRequest)(nil),  // 5: exe.storage.v1.LoadFilesystemRequest
+	(*LoadFilesystemResponse)(nil), // 6: exe.storage.v1.LoadFilesystemResponse
+}
 var file_exe_storage_v1_storage_proto_depIdxs = []int32{
 	2, // 0: exe.storage.v1.GetFilesystemResponse.filesystem:type_name -> exe.storage.v1.Filesystem
 	0, // 1: exe.storage.v1.StorageService.GetFilesystem:input_type -> exe.storage.v1.GetFilesystemRequest

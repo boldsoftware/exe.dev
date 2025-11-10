@@ -4,12 +4,14 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,6 +23,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	api "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/sqlite"
 )
 
@@ -339,17 +342,19 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	type progressUpdate struct {
 		info container.CreateProgressInfo
 	}
-	progressChan := make(chan progressUpdate, 10)
-	completionChan := make(chan struct {
+
+	type instanceCompletion struct {
 		container *container.Container
 		err       error
-	}, 1)
+	}
+	progressChan := make(chan progressUpdate, 10)
+	completionChan := make(chan instanceCompletion, 1)
 
-	// Select container host first
-	runtimeHost, err := ss.server.containerManager.SelectHost(cc.User.ID)
+	// Select exelet client
+	exeletClient, exeletAddr, err := ss.server.selectExeletClient(cc.User.ID)
 	if err != nil {
-		cc.Write("\033[1;31mError: Failed to select container host: %v\033[0m\r\n", err)
-		return fmt.Errorf("failed to select container host: %w", err)
+		cc.Write("\033[1;31mError: Failed to select host: %v\033[0m\r\n", err)
+		return fmt.Errorf("failed to select exelet: %w", err)
 	}
 
 	// Pre-create box in database to get its ID
@@ -357,26 +362,16 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	if image == "exeuntu" {
 		imageToStore = "boldsoftware/exeuntu"
 	}
-	boxID, err := ss.server.preCreateBox(ctx, user.ID, runtimeHost, boxName, imageToStore)
+	boxID, err := ss.server.preCreateBox(ctx, user.ID, exeletAddr, boxName, imageToStore)
 	if err != nil {
 		cc.Write("\033[1;31mError: Failed to create box entry: %v\033[0m\r\n", err)
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
 
-	// Create container request with progress callback
-	req := &container.CreateContainerRequest{
-		AllocID:         cc.User.ID,
-		Name:            boxName,
-		BoxID:           boxID,
-		Image:           image,
-		Host:            runtimeHost,
-		CommandOverride: command,
-	}
-
-	// Start timing BEFORE creating container
+	// Start timing BEFORE creating instance
 	startTime := time.Now()
 
-	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating container
+	// Determine if we should show fancy output (spinners, colors, etc) BEFORE creating instance
 	// Allow forced spinner (e.g., HTTP/SSE flows) via cc.ForceSpinner
 	showSpinner := (ss.shouldShowSpinner(cc.SSHSession) || cc.ForceSpinner) && !cc.WantJSON()
 
@@ -386,27 +381,216 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		cc.Write("\r\n\033[1A")
 	}
 
-	// Add progress callback that sends to channel
-	if showSpinner {
-		req.ProgressCallback = func(info container.CreateProgressInfo) {
-			select {
-			case progressChan <- progressUpdate{info}:
-			default:
-				// Channel full, skip this update
-			}
+	// generate shelley.json config
+	// Add shelley.json if we can determine the gateway
+
+	/*
+		exedConfig := map[string]any{
+			"production_mode":     !cc.DevMode,
+			"exed_listening_port": cc.ExedListeningPort,
+		}
+	*/
+	var gatewayURL string
+	var terminalURL string
+	var exedevURL string
+	if !cc.DevMode {
+		gatewayURL = "https://exe.dev"
+		exedevURL = "https://exe.dev"
+		terminalURL = fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
+	} else {
+		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, cc.ExedListeningPort)
+		gatewayURL = fmt.Sprintf("http://%s:%d", cc.Gateway, cc.ExedListeningPort)
+		exedevURL = fmt.Sprintf("http://localhost:%d", cc.ExedListeningPort)
+	}
+	shelleyJSON := map[string]interface{}{
+		"terminal_url":  terminalURL,
+		"default_model": "claude-sonnet-4.5",
+	}
+	if gatewayURL != "" {
+		shelleyJSON["llm_gateway"] = gatewayURL
+		shelleyJSON["key_generator"] = "sudo /usr/local/bin/generate-gateway-token"
+	}
+	// Add "Back to exe.dev" link if we have an exe.dev URL
+	if exedevURL != "" {
+		shelleyJSON["links"] = []map[string]string{
+			{
+				"title":    "Back to exe.dev",
+				"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+				"url":      exedevURL,
+			},
 		}
 	}
+	shelleyConf, err := json.Marshal(shelleyJSON)
+	if err != nil {
+		return fmt.Errorf("error generating shelley config: %w", err)
+	}
 
-	// Run CreateContainer in a goroutine
+	// Generate SSH keys for the instance
+	sshKeys, err := container.GenerateContainerSSHKeys()
+	if err != nil {
+		return fmt.Errorf("failed to generate SSH keys: %w", err)
+	}
+
+	// Extract host public key from the private key
+	hostPrivKey, err := container.ParsePrivateKey(sshKeys.ServerIdentityKey)
+	if err != nil {
+		return fmt.Errorf("failed to parse host private key: %w", err)
+	}
+	hostSigner, err := ssh.NewSignerFromKey(hostPrivKey)
+	if err != nil {
+		return fmt.Errorf("failed to create signer from host key: %w", err)
+	}
+	hostPublicKey := ssh.MarshalAuthorizedKey(hostSigner.PublicKey())
+
+	// Run CreateInstance in background
 	go func() {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
 
-		createdContainer, err := ss.server.containerManager.CreateContainer(ctx, req)
-		completionChan <- struct {
-			container *container.Container
-			err       error
-		}{createdContainer, err}
+		// Expand image name to fully qualified reference (e.g., alpine -> docker.io/library/alpine:latest)
+		fullImage := container.ExpandImageNameForContainerd(image)
+
+		// Resolve tag to digest if tagResolver is available (for caching and consistency)
+		imageRef := fullImage
+		if ss.server.tagResolver != nil {
+			platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
+			resolvedRef, err := ss.server.tagResolver.ResolveTag(ctx, fullImage, platform)
+			if err != nil {
+				slog.Warn("Failed to resolve image tag, using tag directly", "image", fullImage, "error", err)
+			} else {
+				imageRef = resolvedRef
+				slog.Debug("Resolved image tag to digest", "tag", fullImage, "digest", imageRef)
+			}
+		}
+
+		// Create instance request
+		createReq := &api.CreateInstanceRequest{
+			Name:    boxName,
+			Image:   imageRef,
+			CPUs:    1,
+			Memory:  1 * 1000 * 1000 * 1000, // 1GB
+			Disk:    6 * 1000 * 1000 * 1000, // 6GB
+			SSHKeys: []string{cc.PublicKey}, // Pass user's SSH key
+			Configs: []*api.Config{
+				{
+					Destination: "/exe.dev/shelley.json",
+					Mode:        uint64(0o644),
+					Source: &api.Config_File{
+						File: &api.FileConfig{
+							Data: shelleyConf,
+						},
+					},
+				},
+				{
+					Destination: "/exe.dev/etc/ssh/ssh_host_ed25519_key",
+					Mode:        uint64(0o600),
+					Source: &api.Config_File{
+						File: &api.FileConfig{
+							Data: []byte(sshKeys.ServerIdentityKey),
+						},
+					},
+				},
+				{
+					Destination: "/exe.dev/etc/ssh/ssh_host_ed25519_key.pub",
+					Mode:        uint64(0o644),
+					Source: &api.Config_File{
+						File: &api.FileConfig{
+							Data: hostPublicKey,
+						},
+					},
+				},
+				{
+					Destination: "/exe.dev/etc/ssh/authorized_keys",
+					Mode:        uint64(0o600),
+					Source: &api.Config_File{
+						File: &api.FileConfig{
+							Data: []byte(sshKeys.AuthorizedKeys + cc.PublicKey),
+						},
+					},
+				},
+			},
+		}
+
+		// Call CreateInstance
+		stream, err := exeletClient.client.CreateInstance(ctx, createReq)
+		if err != nil {
+			completionChan <- instanceCompletion{
+				container: nil,
+				err:       fmt.Errorf("failed to create instance: %w", err),
+			}
+			return
+		}
+
+		// Process stream responses
+		var instance *api.Instance
+		for {
+			resp, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				completionChan <- instanceCompletion{
+					container: nil,
+					err:       fmt.Errorf("stream error: %w", err),
+				}
+				return
+			}
+
+			switch v := resp.Type.(type) {
+			case *api.CreateInstanceResponse_Status:
+				// Send progress update
+				if showSpinner {
+					info := mapExeletStatusToContainerProgress(v.Status)
+					select {
+					case progressChan <- progressUpdate{info}:
+					default:
+						// Channel full, skip this update
+					}
+				}
+			case *api.CreateInstanceResponse_Instance:
+				// Got the final instance
+				instance = v.Instance
+			}
+		}
+
+		if instance == nil {
+			completionChan <- instanceCompletion{
+				container: nil,
+				err:       fmt.Errorf("no instance returned from the exelet"),
+			}
+			return
+		}
+
+		// Determine SSH user based on image
+		// Check if this is an exeuntu image (handle various forms)
+		sshUser := "root"
+		if strings.Contains(image, "exeuntu") {
+			sshUser = "exedev"
+		}
+
+		// Reconstruct ExposedPorts map from proto format
+		exposedPorts := make(map[string]struct{})
+		for _, ep := range instance.ExposedPorts {
+			portSpec := fmt.Sprintf("%d/%s", ep.Port, ep.Protocol)
+			exposedPorts[portSpec] = struct{}{}
+		}
+
+		// Map Instance to Container for compatibility
+		createdContainer := &container.Container{
+			ID:                   instance.ID,
+			Name:                 instance.Name,
+			SSHServerIdentityKey: sshKeys.ServerIdentityKey,
+			SSHClientPrivateKey:  sshKeys.ClientPrivateKey,
+			SSHPort:              int(instance.SSHPort),
+			SSHUser:              sshUser,
+			SSHAuthorizedKeys:    cc.PublicKey,
+			ExposedPorts:         exposedPorts,
+		}
+
+		completionChan <- instanceCompletion{
+			container: createdContainer,
+			err:       nil,
+		}
 	}()
 
 	// Track current progress state
@@ -501,13 +685,6 @@ done:
 		return fmt.Errorf("container created without SSH keys - this should not happen")
 	}
 
-	// Container has SSH keys, update the box entry
-	sshKeys := &container.ContainerSSHKeys{
-		ServerIdentityKey: createdContainer.SSHServerIdentityKey,
-		AuthorizedKeys:    createdContainer.SSHAuthorizedKeys,
-		ClientPrivateKey:  createdContainer.SSHClientPrivateKey,
-		SSHPort:           createdContainer.SSHPort,
-	}
 	if err := ss.server.updateBoxWithContainer(ctx, boxID, createdContainer.ID, createdContainer.SSHUser, sshKeys, createdContainer.SSHPort); err != nil {
 		return err
 	}
@@ -671,12 +848,21 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 
 	cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
 
-	// Delete the container if it exists
+	// Delete the instance if it exists
 	if box.ContainerID != nil {
-		ctx := context.Background()
-		err = ss.server.containerManager.DeleteContainer(ctx, box.CreatedByUserID, *box.ContainerID)
+		// Get exelet client
+		exeletClient, _, err := ss.server.selectExeletClient(cc.User.ID)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to select exelet: %w", err)
+		}
+
+		// Delete instance via exelet
+		ctx := context.Background()
+		_, err = exeletClient.client.DeleteInstance(ctx, &api.DeleteInstanceRequest{
+			ID: *box.ContainerID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete instance: %w", err)
 		}
 	}
 
@@ -684,6 +870,12 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		userID := box.CreatedByUserID
+
+		// Delete IP shard allocation first
+		if err := queries.DeleteBoxIPShard(ctx, box.ID); err != nil {
+			return fmt.Errorf("deleting IP shard: %w", err)
+		}
+
 		err := queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
 			ID:     int64(box.ID),
 			UserID: userID,
@@ -1075,4 +1267,29 @@ func (ss *SSHServer) completeDocSlugs(compCtx *exemenu.CompletionContext, cc *ex
 		}
 	}
 	return completions
+}
+
+// mapExeletStatusToContainerProgress maps exelet CreateInstanceStatus to container progress
+func mapExeletStatusToContainerProgress(status *api.CreateInstanceStatus) container.CreateProgressInfo {
+	var phase container.CreateProgress
+	switch status.State {
+	case api.CreateInstanceStatus_INIT:
+		phase = container.CreateInit
+	case api.CreateInstanceStatus_NETWORK:
+		phase = container.CreateInit
+	case api.CreateInstanceStatus_PULLING:
+		phase = container.CreatePull
+	case api.CreateInstanceStatus_CONFIG:
+		phase = container.CreateStart
+	case api.CreateInstanceStatus_BOOT:
+		phase = container.CreateStart
+	case api.CreateInstanceStatus_COMPLETE:
+		phase = container.CreateDone
+	default:
+		phase = container.CreateInit
+	}
+
+	return container.CreateProgressInfo{
+		Phase: phase,
+	}
 }

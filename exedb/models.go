@@ -47,7 +47,7 @@ type Box struct {
 }
 
 type BoxIPShard struct {
-	BoxID   int64  `db:"box_id" json:"box_id"`
+	BoxID   int    `db:"box_id" json:"box_id"`
 	UserID  string `db:"user_id" json:"user_id"`
 	IPShard int64  `db:"ip_shard" json:"ip_shard"`
 }

@@ -22,11 +22,12 @@ METADATA_DIR="$CACHE_DIR/.metadata"
 CONTAINERD_VERSION="2.1.4"
 RUNC_VERSION="1.1.14"
 KATA_VERSION="3.20.0"
-CLOUD_HYPERVISOR_VERSION="47.0"
 NYDUS_SNAPSHOTTER_VERSION="0.15.2"
 NYDUSD_VERSION="2.2.5"
 NERDCTL_VERSION="2.1.3"
 CNI_VERSION="1.5.1"
+CLOUD_HYPERVISOR_VERSION="48.0"
+VIRTIOFSD_VERSION="1.13.2"
 
 echo "=== Downloading containerd host dependencies for $ARCH ==="
 echo "Cache directory: $CACHE_DIR"
@@ -164,6 +165,15 @@ download_if_needed \
 download_if_needed \
     "https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz" \
     "cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz"
+
+# Download exelet cloud-hypervisor
+download_if_needed \
+    "https://github.com/cloud-hypervisor/cloud-hypervisor/archive/refs/tags/v${CLOUD_HYPERVISOR_VERSION}.tar.gz" \
+    "cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}.tar.gz"
+# Download exelet virtiofsd
+download_if_needed \
+    "https://gitlab.com/virtio-fs/virtiofsd/-/archive/v${VIRTIOFSD_VERSION}/virtiofsd-${VIRTIOFSD_VERSION}.tar.gz" \
+    "virtiofsd-${VIRTIOFSD_VERSION}.tar.gz"
 
 echo ""
 echo "=== Downloading container images to cache ==="

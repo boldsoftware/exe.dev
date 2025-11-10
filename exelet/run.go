@@ -27,6 +27,10 @@ func (s *Exelet) Run(ctx context.Context) error {
 		return err
 	}
 
+	// Log actual listen address (important for tests using port :0)
+	actualAddr := u.Scheme + "://" + l.Addr().String()
+	s.log.Info("listening", "addr", actualAddr)
+
 	doneCh := make(chan bool)
 	serviceErrCh := make(chan error)
 	wg := &sync.WaitGroup{}

@@ -69,6 +69,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteBoxStmt, err = db.PrepareContext(ctx, deleteBox); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBox: %w", err)
 	}
+	if q.deleteBoxIPShardStmt, err = db.PrepareContext(ctx, deleteBoxIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteBoxIPShard: %w", err)
+	}
 	if q.deleteBoxShareByBoxAndUserStmt, err = db.PrepareContext(ctx, deleteBoxShareByBoxAndUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteBoxShareByBoxAndUser: %w", err)
 	}
@@ -372,6 +375,11 @@ func (q *Queries) Close() error {
 	if q.deleteBoxStmt != nil {
 		if cerr := q.deleteBoxStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteBoxStmt: %w", cerr)
+		}
+	}
+	if q.deleteBoxIPShardStmt != nil {
+		if cerr := q.deleteBoxIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteBoxIPShardStmt: %w", cerr)
 		}
 	}
 	if q.deleteBoxShareByBoxAndUserStmt != nil {
@@ -803,6 +811,7 @@ type Queries struct {
 	deleteAuthCookieByValueStmt            *sql.Stmt
 	deleteAuthCookiesByUserIDStmt          *sql.Stmt
 	deleteBoxStmt                          *sql.Stmt
+	deleteBoxIPShardStmt                   *sql.Stmt
 	deleteBoxShareByBoxAndUserStmt         *sql.Stmt
 	deleteBoxShareLinkByBoxAndTokenStmt    *sql.Stmt
 	deleteEmailVerificationByTokenStmt     *sql.Stmt
@@ -899,6 +908,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteAuthCookieByValueStmt:            q.deleteAuthCookieByValueStmt,
 		deleteAuthCookiesByUserIDStmt:          q.deleteAuthCookiesByUserIDStmt,
 		deleteBoxStmt:                          q.deleteBoxStmt,
+		deleteBoxIPShardStmt:                   q.deleteBoxIPShardStmt,
 		deleteBoxShareByBoxAndUserStmt:         q.deleteBoxShareByBoxAndUserStmt,
 		deleteBoxShareLinkByBoxAndTokenStmt:    q.deleteBoxShareLinkByBoxAndTokenStmt,
 		deleteEmailVerificationByTokenStmt:     q.deleteEmailVerificationByTokenStmt,

@@ -12,42 +12,53 @@ import (
 )
 
 func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceRequest) (*api.DeleteInstanceResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// use singleflight to ensure only one delete per instance
+	resp, err, _ := s.instanceDeleteGroup.Do(req.ID, func() (*api.DeleteInstanceResponse, error) {
+		resp, err := s.GetInstance(ctx, &api.GetInstanceRequest{ID: req.ID})
+		if err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
 
-	resp, err := s.GetInstance(ctx, &api.GetInstanceRequest{ID: req.ID})
-	if err != nil {
-		return nil, status.Error(codes.FailedPrecondition, err.Error())
-	}
+		instance := resp.Instance
 
-	instance := resp.Instance
+		vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
+		// stop vm
+		if err := vmm.Stop(ctx, instance.ID); err != nil {
+			return nil, status.Errorf(codes.Internal, "error stopping vm: %s", err)
+		}
 
-	// stop vm
-	if err := vmm.Stop(ctx, instance.ID); err != nil {
-		return nil, status.Errorf(codes.Internal, "error stopping vm: %s", err)
-	}
+		// delete vm
+		if err := vmm.Delete(ctx, instance.ID); err != nil {
+			return nil, status.Errorf(codes.Internal, "error deleting vm: %s", err)
+		}
 
-	// delete vm
-	if err := vmm.Delete(ctx, instance.ID); err != nil {
-		return nil, status.Errorf(codes.Internal, "error deleting vm: %s", err)
-	}
+		// stop and remove SSH proxy (needs mutex for service-level resources)
+		s.mu.Lock()
+		if port, err := s.proxyManager.RemoveProxy(instance.ID); err != nil {
+			s.log.Warn("failed to remove SSH proxy", "instance", instance.ID, "error", err)
+		} else {
+			s.portAllocator.Release(port)
+			s.log.Debug("removed SSH proxy", "instance", instance.ID, "port", port)
+		}
+		s.mu.Unlock()
 
-	// remove instance filesystem
-	if err := s.context.StorageManager.Delete(ctx, instance.ID); err != nil {
-		return nil, status.Errorf(codes.Internal, "error removing instance fs: %s", err)
-	}
+		// remove instance filesystem
+		if err := s.context.StorageManager.Delete(ctx, instance.ID); err != nil {
+			return nil, status.Errorf(codes.Internal, "error removing instance fs: %s", err)
+		}
 
-	// remove instance data
-	if err := os.RemoveAll(s.getInstanceDir(instance.ID)); err != nil {
-		return nil, status.Errorf(codes.Internal, "error removing instance state dir: %s", err)
-	}
+		// remove instance data
+		if err := os.RemoveAll(s.getInstanceDir(instance.ID)); err != nil {
+			return nil, status.Errorf(codes.Internal, "error removing instance state dir: %s", err)
+		}
 
-	// TODO: publish event
+		// TODO: publish event
 
-	return &api.DeleteInstanceResponse{}, nil
+		return &api.DeleteInstanceResponse{}, nil
+	})
+	return resp, err
 }

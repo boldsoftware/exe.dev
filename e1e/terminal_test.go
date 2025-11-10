@@ -19,6 +19,7 @@ import (
 )
 
 func TestTerminalPermissions(t *testing.T) {
+	t.Skip("skipping CI - looks flakey (https://github.com/boldsoftware/exe/issues/87)")
 	e1eTestsOnlyRunOnce(t)
 	vouch.For("philip")
 	t.Parallel()

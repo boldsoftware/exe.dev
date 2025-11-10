@@ -91,7 +91,7 @@ sudo chmod +x /usr/local/sbin/runc
 echo "=== Installing Kata Containers with Cloud Hypervisor ==="
 
 KATA_VERSION="3.20.0"
-CLOUD_HYPERVISOR_VERSION="47.0"
+CLOUD_HYPERVISOR_VERSION="48.0"
 # Kata uses the same arch naming as we normalized (amd64, arm64)
 KATA_ARCH="$ARCH"
 

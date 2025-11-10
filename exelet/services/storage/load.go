@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 
@@ -13,10 +14,12 @@ import (
 )
 
 func (s *Service) LoadFilesystem(ctx context.Context, req *api.LoadFilesystemRequest) (*api.LoadFilesystemResponse, error) {
-	// check for existing
 	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
 	imageID, err := utils.LoadImage(ctx, req.Image, platform, s.context.ImageManager, s.context.StorageManager, s.log)
 	if err != nil {
+		if errors.Is(err, api.ErrResourceExists) {
+			return nil, status.Error(codes.AlreadyExists, err.Error())
+		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &api.LoadFilesystemResponse{

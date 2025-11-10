@@ -387,13 +387,15 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 				ID:    user.UserID,
 				Email: user.Email,
 			},
-			PublicKey:  publicKey,
-			Args:       []string{}, // ExecuteCommand will determine the real args
-			Output:     s,
-			SSHSession: s,
-			Terminal:   terminal, // Interactive terminal available
-			DevMode:    ss.server.devMode == "local",
-			Logger:     ss.server.slog(),
+			PublicKey:         publicKey,
+			Args:              []string{}, // ExecuteCommand will determine the real args
+			Output:            s,
+			SSHSession:        s,
+			Terminal:          terminal, // Interactive terminal available
+			DevMode:           ss.server.devMode == "local",
+			Logger:            ss.server.slog(),
+			Gateway:           ss.server.gateway,
+			ExedListeningPort: ss.server.httpLn.tcp.Port,
 		}
 
 		// Execute command using new system
@@ -754,13 +756,15 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 			ID:    user.UserID,
 			Email: user.Email,
 		},
-		PublicKey:  publicKey,
-		Args:       cmd[1:],                        // Skip the command name itself
-		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
-		SSHSession: sshsession.NewShell(s),
-		Terminal:   nil, // No interactive terminal for exec mode
-		DevMode:    ss.server.devMode == "local",
-		Logger:     ss.server.slog(),
+		PublicKey:         publicKey,
+		Args:              cmd[1:],                        // Skip the command name itself
+		Output:            exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
+		SSHSession:        sshsession.NewShell(s),
+		Terminal:          nil, // No interactive terminal for exec mode
+		DevMode:           ss.server.devMode == "local",
+		Logger:            ss.server.slog(),
+		Gateway:           ss.server.gateway,
+		ExedListeningPort: ss.server.httpLn.tcp.Port,
 	}
 
 	rc := ss.commands.ExecuteCommand(s.Context(), cc, cmd) // Just the command name
@@ -945,12 +949,14 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb
 				ID:    user.UserID,
 				Email: user.Email,
 			},
-			PublicKey:  publicKey,
-			Output:     s,
-			SSHSession: s,
-			Terminal:   terminal,
-			DevMode:    ss.server.devMode == "local",
-			Logger:     ss.server.slog(),
+			PublicKey:         publicKey,
+			Output:            s,
+			SSHSession:        s,
+			Terminal:          terminal,
+			DevMode:           ss.server.devMode == "local",
+			Logger:            ss.server.slog(),
+			Gateway:           ss.server.gateway,
+			ExedListeningPort: ss.server.httpLn.tcp.Port,
 		}
 
 		// Get completions

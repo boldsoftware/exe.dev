@@ -22,7 +22,7 @@ func (s *Server) startAndAwaitReady() {
 func newUnstartedServer(t testing.TB) *Server {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
-	s, err := NewServer(tslog.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "", nil)
+	s, err := NewServer(tslog.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "", nil, nil, "")
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

@@ -111,12 +111,14 @@ func (c *Command) Help(cc *CommandContext) error {
 // CommandContext provides all the context a command needs to execute
 type CommandContext struct {
 	// Core context
-	User       *UserInfo
-	PublicKey  string
-	Args       []string
-	FlagSet    *flag.FlagSet // parsed flags for this command
-	SSHSession ShellSession
-	DevMode    bool // if true, show hidden commands in help and completions
+	User              *UserInfo
+	PublicKey         string
+	Args              []string
+	FlagSet           *flag.FlagSet // parsed flags for this command
+	SSHSession        ShellSession
+	DevMode           bool   // if true, show hidden commands in help and completions
+	Gateway           string // gateway for shelley
+	ExedListeningPort int    // exed listening port for shelley
 
 	// I/O interfaces
 	Output   io.Writer      // where to write output

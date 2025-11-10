@@ -5,7 +5,7 @@
 ●
 
 
-You are on BOX_NAME.exe.dev. The disk is persistent. You have 'sudo'.
+You are on BOX_NAME. The disk is persistent. You have 'sudo'.
 
 For support and documentation, "ssh exe.dev" or visit https://exe.dev/
 

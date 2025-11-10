@@ -106,23 +106,6 @@ provision_base_vm() {
     echo "Copying pre-downloaded dependencies to VM..."
     CACHE_DIR="$HOME/.cache/exedops"
 
-    # Build custom kernel if not cached
-    KERNEL_BUILDER_DIR="${script_dir}/kernel-builder/output"
-    if [ ! -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
-        echo "  Custom kernel not found, building it now..."
-        (cd "${script_dir}/kernel-builder" && make)
-    fi
-
-    # Copy custom kernel
-    if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
-        echo "  Copying custom kernel with nftables support..."
-        limactl cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/vmlinux-6.12.42-nftables"
-        limactl cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/config-6.12.42-nftables"
-    else
-        echo "  ERROR: Failed to build custom kernel"
-        exit 1
-    fi
-
     for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
         if [ -f "$file" ]; then
             basename=$(basename "$file")
@@ -131,6 +114,16 @@ provision_base_vm() {
         fi
     done
 
+    # cloud hypervisor
+    limactl cp "${script_dir}/setup-cloud-hypervisor.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-cloud-hypervisor.sh"
+
+    # build and cache a local exelet to be able to provision the base instance volumes
+    echo "Building bootstrap exelet..."
+    make GOOS=linux GOARCH=${VM_ARCH} exelet exelet-ctl
+    limactl cp "exeletd" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/exeletd-${VM_ARCH}"
+    limactl cp "exelet-ctl" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/exelet-ctl-${VM_ARCH}"
+    limactl cp "${script_dir}/setup-exelet.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-exelet.sh"
+
     echo "Running bootstrap script in VM (this will take a few minutes)..."
     limactl shell ${LIMA_BASE} -- sudo bash /usr/local/bin/lima-provision.sh bootstrap
 
@@ -138,7 +131,7 @@ provision_base_vm() {
     (cat ~/.ssh/id_*.pub | limactl shell ${LIMA_BASE} sudo tee /root/.authorized_keys) || true
 }
 
-echo "=== Setting up Lima hosts for exe.dev containerd testing ==="
+echo "=== Setting up Lima hosts for exe.dev testing ==="
 
 if ! command -v limactl &>/dev/null; then
     echo "Error: lima is not installed"

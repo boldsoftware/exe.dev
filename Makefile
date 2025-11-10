@@ -202,8 +202,9 @@ protos:
 
 .PHONY: exelet
 exelet: exelet-kernel exelet-rovol
-	@>&2 echo " -> building exelet ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
-	@cd cmd/exelet && go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
+	@>&2 echo " -> building exelet ${COMMIT}${BUILD}"
+	@# exelet only runs in linux
+	@cd cmd/exelet && GOOS=linux go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
 
 .PHONY: exelet-ctl
 exelet-ctl:
@@ -212,8 +213,9 @@ exelet-ctl:
 
 .PHONY: exe-init
 exe-init:
-	@>&2 echo " -> building exe-init ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
-	@cd cmd/exe-init && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-init .
+	@>&2 echo " -> building exe-init ${COMMIT}${BUILD}"
+	@# exelet only runs in linux
+	@cd cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-init .
 
 .PHONY: exe-ssh
 exe-ssh:
@@ -221,10 +223,10 @@ exe-ssh:
 	@cd cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-ssh .
 
 # kernel
-exelet-kernel: exelet/fs/kernel
-exelet/fs/kernel:
+exelet-kernel: exelet/fs/kernel/kernel
+exelet/fs/kernel/kernel:
 	@>&2 echo " -> building exelet kernel"
-	@docker buildx build --build-arg EXE_VERSION=$(VERSION) --output type=local,dest=./exelet/fs/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+	@docker buildx build --output type=local,dest=./exelet/fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
 
 # exelet rovol
 exelet-rovol: exelet/fs/rovol

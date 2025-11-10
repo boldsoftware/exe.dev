@@ -103,6 +103,10 @@ func (n *NAT) createTapInterface(id string) (netlink.Link, error) {
 		return nil, err
 	}
 
+	if err := netlink.LinkSetIsolated(tap, true); err != nil {
+		return nil, err
+	}
+
 	if err := netlink.LinkSetUp(tap); err != nil {
 		return nil, err
 	}

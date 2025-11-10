@@ -20,7 +20,7 @@ const (
 // The CTR_HOST env var wins, but otherwise it will try lima-exe-ctr{,-tests}
 // (depening if its being called from a unit test or not).
 func Detect() string {
-	if v := os.Getenv("CTR_HOST"); v != "" {
+	if v := strings.TrimSpace(os.Getenv("CTR_HOST")); v != "" {
 		return v
 	}
 	host := defaultHost
@@ -39,6 +39,30 @@ func Detect() string {
 		return "ssh://" + host
 	}
 	return ""
+}
+
+func ResolveDefaultGateway() string {
+	if v := strings.TrimSpace(os.Getenv("CTR_HOST")); v != "" {
+		return v
+	}
+	host := defaultHost
+	if flag.Lookup("test.v") != nil {
+		host = defaultHostForTests
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "ConnectTimeout=3",
+		"-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=no",
+		host, "sh", "-c", "getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}'",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // ResolveHostFromSSHConfig returns the HostName from SSH config for a given alias.

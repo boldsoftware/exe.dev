@@ -5,6 +5,8 @@ set -euo pipefail
 STAGING_DIR="/tmp/exe-bootstrap"
 ASSETS_DIR="/home/ubuntu/.cache/exedops"
 SETUP_SCRIPT_NAME="setup-containerd-clh-nydus.sh"
+CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME="setup-cloud-hypervisor.sh"
+EXELET_SETUP_SCRIPT_NAME="setup-exelet.sh"
 KATA_CONFIG_NAME="kata-config-clh.toml"
 
 wait_for_device() {
@@ -107,11 +109,19 @@ stage_exists() {
 }
 
 install_assets() {
+    stage_exists "${STAGING_DIR}/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}"
     stage_exists "${STAGING_DIR}/${SETUP_SCRIPT_NAME}"
+    stage_exists "${STAGING_DIR}/${EXELET_SETUP_SCRIPT_NAME}"
     stage_exists "${STAGING_DIR}/${KATA_CONFIG_NAME}"
 
     mv "${STAGING_DIR}/${SETUP_SCRIPT_NAME}" /root/${SETUP_SCRIPT_NAME}
     chmod +x /root/${SETUP_SCRIPT_NAME}
+
+    mv "${STAGING_DIR}/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}" /root/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}
+    chmod +x /root/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}
+
+    mv "${STAGING_DIR}/${EXELET_SETUP_SCRIPT_NAME}" /root/${EXELET_SETUP_SCRIPT_NAME}
+    chmod +x /root/${EXELET_SETUP_SCRIPT_NAME}
 
     mv "${STAGING_DIR}/${KATA_CONFIG_NAME}" "${ASSETS_DIR}/${KATA_CONFIG_NAME}"
     chown ubuntu:ubuntu "${ASSETS_DIR}/${KATA_CONFIG_NAME}"
@@ -122,7 +132,7 @@ install_assets() {
         for f in "${STAGING_DIR}"/*; do
             base="$(basename "${f}")"
             case "${base}" in
-            "${SETUP_SCRIPT_NAME}" | "${KATA_CONFIG_NAME}" | "lima-provision.sh")
+            "${SETUP_SCRIPT_NAME}" | "${EXELET_SETUP_SCRIPT_NAME}" | "${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}" | "${KATA_CONFIG_NAME}" | "lima-provision.sh")
                 continue
                 ;;
             esac
@@ -135,6 +145,14 @@ install_assets() {
 
 run_containerd_setup() {
     CI=1 ALLOW_DEV_HOST_ACCESS=1 /root/${SETUP_SCRIPT_NAME}
+}
+
+run_cloud_hypervisor_setup() {
+    /root/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}
+}
+
+run_exelet_setup() {
+    /root/${EXELET_SETUP_SCRIPT_NAME}
 }
 
 finalize_bootstrap() {
@@ -155,6 +173,14 @@ bootstrap_vm() {
     echo "Starting containerd setup in VM"
     echo "=========================================="
     run_containerd_setup
+    echo "=========================================="
+    echo "Starting cloud-hypervisor setup in VM"
+    echo "=========================================="
+    run_cloud_hypervisor_setup
+    echo "=========================================="
+    echo "Starting exelet initial setup in VM"
+    echo "=========================================="
+    run_exelet_setup
     echo "=========================================="
     echo "Finalizing configuration"
     echo "=========================================="

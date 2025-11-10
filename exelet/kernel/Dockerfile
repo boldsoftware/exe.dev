@@ -1,19 +1,51 @@
-FROM ubuntu:22.04 AS kernel
-ARG EXE_VERSION=0.0.0
-ARG DISK_SIZE
-ARG KERNEL_VERSION=6.12.57
-ARG PACKAGES
-ARG MIRROR=https://cdn.kernel.org/pub
-RUN apt-get update && apt-get install -y build-essential libssl-dev flex autoconf automake bison libelf-dev bc rsync git kmod curl
-RUN curl -sSL ${MIRROR}/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz -o linux.tar.xz
-RUN tar xvf linux.tar.xz && ln -sf linux-${KERNEL_VERSION} /linux
-COPY . /src
-WORKDIR /linux
-RUN cp /src/config.$(uname -m) /linux/.config
-RUN make olddefconfig
-RUN sed -i -r "s/CONFIG_LOCALVERSION.*/CONFIG_LOCALVERSION=\"-exe-${EXE_VERSION}\"/g" .config
-RUN if [ "$(uname -m)" = "x86_64" ]; then KCFLAGS="-Wa,-mx86-used-note=no" make bzImage -j `nproc`; cp /linux/arch/x86/boot/compressed/vmlinux.bin /kernel; fi
-RUN if [ "$(uname -m)" = "aarch64" ]; then make -j `nproc`; cp /linux/arch/arm64/boot/Image /kernel; fi
+# Dockerfile to build a custom Linux kernel for Cloud Hypervisor with nftables support
+# Uses Kata Containers' official build-kernel.sh script
+# Based on: https://github.com/kata-containers/kata-containers/tree/main/tools/packaging/kernel
 
-FROM scratch
-COPY --from=kernel /kernel /kernel
+FROM ubuntu:24.04 AS build
+
+ARG KERNEL_VERSION=6.12.42
+ARG KATA_BRANCH=main
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+# Based on Kata's kernel build requirements
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    bc \
+    bison \
+    flex \
+    libssl-dev \
+    libelf-dev \
+    libncurses-dev \
+    wget \
+    xz-utils \
+    curl \
+    cpio \
+    kmod \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Clone Kata Containers repository
+RUN git clone --depth=1 --branch=${KATA_BRANCH} \
+    https://github.com/kata-containers/kata-containers.git
+
+WORKDIR /workspace/kata-containers/tools/packaging/kernel
+
+# Copy nftables config fragment and build script
+COPY nftables.conf configs/fragments/nftables.conf
+COPY build-kernel.sh /usr/local/bin/
+
+RUN chmod +x /usr/local/bin/build-kernel.sh && \
+    build-kernel.sh
+
+RUN mkdir -p /dist
+RUN cp -f /output/vmlinux-* /dist/kernel
+RUN cp -f /output/config-* /dist/config
+
+# Export the output directory
+FROM scratch AS export
+COPY --from=build /dist/kernel /kernel
+COPY --from=build /dist/config /config

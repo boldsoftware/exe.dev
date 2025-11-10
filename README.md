@@ -47,10 +47,31 @@ Host *.localexe
 
 ## Local Development
 
-After you have setup a local ctr host (see above) and downloaded the whoami database (make whoami), run:
+First, build the local exelet:
 
 ```
-go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3
+make exelet
+```
+
+NOTE: on first run this will build the kernel and rovol so will take a few minutes.
+
+Next, start the exelet.
+
+```
+limactl shell exe-ctr -- sudo ./exeletd \
+  -D \
+  --data-dir /data/exelet \
+  --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" \
+  --network-manager-address nat:///data/exelet/network \
+  --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://127.0.0.1:9080
+```
+
+After you have setup a local exelet running and downloaded the whoami database (make whoami), run:
+
+```
+go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 \
+  -exelet-addresses tcp://127.0.0.1:9080 \
+  -gateway $(limactl shell exe-ctr -- getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }')
 ```
 
 With this you can:

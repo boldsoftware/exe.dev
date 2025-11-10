@@ -49,6 +49,11 @@ message Volume {
   string mountpoint = 3;
 }
 
+message ExposedPort {
+  string protocol = 1;
+  uint32 port = 2;
+}
+
 message Placement {
   string region = 1;
   string zone = 2;
@@ -144,6 +149,8 @@ message Instance {
   VMState state = 7;
   string node = 8;
   Placement placement = 9;
+  int32 ssh_port = 10;
+  repeated ExposedPort exposed_ports = 11;
 }
 
 message VMConfig {

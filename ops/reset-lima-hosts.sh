@@ -84,13 +84,6 @@ provision_cloned_vm() {
     limactl cp "${script_dir}/setup-containerd-clh-nydus.sh" "${instance}:${BOOTSTRAP_STAGING}/setup-containerd-clh-nydus.sh"
     limactl cp "${script_dir}/kata-config-clh.toml" "${instance}:${BOOTSTRAP_STAGING}/kata-config-clh.toml"
 
-    # Copy custom kernel if available
-    KERNEL_BUILDER_DIR="${script_dir}/kernel-builder/output"
-    if [ -f "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" ]; then
-        limactl cp "${KERNEL_BUILDER_DIR}/vmlinux-6.12.42-nftables" "${instance}:${BOOTSTRAP_STAGING}/vmlinux-6.12.42-nftables"
-        limactl cp "${KERNEL_BUILDER_DIR}/config-6.12.42-nftables" "${instance}:${BOOTSTRAP_STAGING}/config-6.12.42-nftables"
-    fi
-
     # Copy pre-downloaded dependencies
     CACHE_DIR="$HOME/.cache/exedops"
     for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
@@ -99,6 +92,17 @@ provision_cloned_vm() {
             limactl cp "$file" "${instance}:${BOOTSTRAP_STAGING}/$basename"
         fi
     done
+
+    # cloud hypervisor
+    limactl cp "${script_dir}/setup-cloud-hypervisor.sh" "${instance}:${BOOTSTRAP_STAGING}/setup-cloud-hypervisor.sh"
+
+    # exelet - determine architecture and build/copy exelet binaries
+    VM_ARCH="arm64"
+    echo "Building exelet for ${VM_ARCH}..."
+    cd "${OPS_DIR}/.." && make GOOS=linux GOARCH=${VM_ARCH} exelet exelet-ctl
+    limactl cp "${OPS_DIR}/../exeletd" "${instance}:${BOOTSTRAP_STAGING}/exeletd-${VM_ARCH}"
+    limactl cp "${OPS_DIR}/../exelet-ctl" "${instance}:${BOOTSTRAP_STAGING}/exelet-ctl-${VM_ARCH}"
+    limactl cp "${script_dir}/setup-exelet.sh" "${instance}:${BOOTSTRAP_STAGING}/setup-exelet.sh"
 
     # Run bootstrap script
     limactl shell ${instance} -- sudo bash /usr/local/bin/lima-provision.sh bootstrap

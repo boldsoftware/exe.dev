@@ -1,7 +1,10 @@
 package cloudhypervisor
 
 import (
+	"bufio"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
@@ -14,14 +17,17 @@ type virtiofsInstance struct {
 }
 
 // toVmConfig convirts a exe VMConfig into a native CloudHypervisor client VmConfig
-func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstance) (client.VmConfig, error) {
+func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstance) (*client.VmConfig, error) {
 	kernelPath := cfg.KernelPath
 	args := strings.Join(cfg.Args, " ")
 	memory := cfg.Memory
 	// align memory
-	if memDiff := memory % uint64(os.Getpagesize()); memDiff > 0 {
-		memory = (cfg.Memory - memDiff)
+	hugePagesSize, err := defaultHugepageSize()
+	if err != nil {
+		// TODO: should we default to just disabling instead of returning an error?
+		return nil, fmt.Errorf("error getting default hugepage size (ensure hugepages are enabled): %w", err)
 	}
+	vmMemory := alignMemory(memory, uint64(hugePagesSize))
 	rootDiskID := "root"
 	disks := []client.DiskConfig{
 		{
@@ -50,14 +56,16 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		})
 	}
 	sharedMemory := true
-	vCfg := client.VmConfig{
+	hugePages := true
+	vCfg := &client.VmConfig{
 		Cpus: &client.CpusConfig{
 			BootVcpus: int(cfg.CPUs),
 			MaxVcpus:  int(cfg.CPUs),
 		},
 		Memory: &client.MemoryConfig{
-			Size:   int64(memory),
-			Shared: &sharedMemory,
+			Size:      int64(vmMemory),
+			Shared:    &sharedMemory,
+			Hugepages: &hugePages,
 		},
 		Disks: &disks,
 		// TODO: use console config to attach to stdin/stdout?
@@ -75,4 +83,33 @@ func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstanc
 		vCfg.Payload.Initramfs = &v
 	}
 	return vCfg, nil
+}
+
+func defaultHugepageSize() (int, error) {
+	f, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return -1, err
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		l := sc.Text()
+		if strings.HasPrefix(l, "Hugepagesize:") {
+			fields := strings.Fields(l)
+			if len(fields) >= 2 {
+				size, err := strconv.Atoi(fields[1])
+				if err != nil {
+					return -1, err
+				}
+				return size, nil
+			}
+		}
+	}
+	return -1, fmt.Errorf("unable to get default huge page size")
+}
+
+func alignMemory(sizeBytes, hugepageSizeBytes uint64) uint64 {
+	pageSize := hugepageSizeBytes * 1024
+	return (sizeBytes / pageSize) * pageSize
 }

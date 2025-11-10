@@ -4,7 +4,7 @@ import "time"
 
 const (
 	// DefaultServerAddress is the default exelet server address
-	DefaultExeletAddress = "tcp://127.0.0.1:8080"
+	DefaultExeletAddress = "tcp://127.0.0.1:9080"
 
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
@@ -82,6 +82,8 @@ type ExeletConfig struct {
 	TLSClientKey string
 	// TLSInsecureSkipVerify disables certificate verification
 	TLSInsecureSkipVerify bool
+	// IsProduction indicates that the exelet is running in a production environment
+	IsProduction bool
 
 	// enableInstanceBootOnStartup enables booting compute instances on server start
 	EnableInstanceBootOnStartup bool

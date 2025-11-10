@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"exe.dev/exelet/services"
+	"exe.dev/pkg/tcpproxy"
 )
 
 // createInstanceRollback tracks resources created during instance creation for cleanup on error
@@ -22,10 +23,23 @@ type createInstanceRollback struct {
 	imageFSMounted     bool
 	instanceCloned     bool
 	instanceMounted    bool
+	proxyManager       *tcpproxy.ProxyManager
+	portAllocator      *PortAllocator
+	proxyCreated       bool
+	allocatedPort      int
 }
 
 // Rollback cleans up resources in reverse order of creation
 func (r *createInstanceRollback) Rollback() {
+	// Stop and remove proxy if created
+	if r.proxyCreated && r.proxyManager != nil {
+		if port, err := r.proxyManager.RemoveProxy(r.instanceID); err != nil {
+			r.log.Error("rollback: failed to remove proxy", "id", r.instanceID, "error", err)
+		} else if r.portAllocator != nil {
+			r.portAllocator.Release(port)
+		}
+	}
+
 	// Unmount instance filesystem if mounted
 	if r.instanceMounted {
 		if err := r.serviceContext.StorageManager.Unmount(r.ctx, r.instanceID); err != nil {

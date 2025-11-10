@@ -34,8 +34,10 @@ func run() error {
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
 	containerdAddresses := flag.String("containerd-addresses", "", "Comma-separated list of containerd addresses (e.g., 'ssh://host1,ssh://host2')")
+	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
+	gateway := flag.String("gateway", "exe.dev", "Gateway endpoint for Shelley")
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
 	flag.Parse()
@@ -117,6 +119,19 @@ func run() error {
 			"suggestion", "Use -containerd-addresses flag, or set CTR_HOST env var")
 	}
 
+	// Parse exelet addresses
+	var exeletAddrs []string
+	if *exeletAddresses != "" {
+		exeletAddrs = strings.Split(*exeletAddresses, ",")
+		for i, addr := range exeletAddrs {
+			exeletAddrs[i] = strings.TrimSpace(addr)
+		}
+	}
+	if len(exeletAddrs) == 0 {
+		slog.Debug("No exelet addresses specified, VM functionality will be disabled",
+			"suggestion", "Use -exelet-addresses flag to enable VM-based instances")
+	}
+
 	switch strings.ToLower(*dbPath) {
 	case "tmp":
 		f, err := os.CreateTemp("", "exe.db")
@@ -127,7 +142,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses)
+	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses, exeletAddrs, *gateway)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
