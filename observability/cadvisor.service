@@ -38,6 +38,10 @@ ExecStartPre=/bin/bash -c '\
 # Main cAdvisor command
 ExecStart=/usr/local/bin/cadvisor \
   --port=8080 \
+  --containerd=/run/containerd/containerd.sock \
+  --containerd-namespace=exe \
+  --store_container_labels=false \
+  --whitelisted_container_labels=nerdctl/name,box_id,alloc_id,exe.dev/login-user,managed_by \
   --housekeeping_interval=30s \
   --max_housekeeping_interval=35s \
   --allow_dynamic_housekeeping=true \

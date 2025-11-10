@@ -39,19 +39,30 @@ deploy-prometheus:
 	echo "Prometheus configuration deployed and service restarted"
 
 # Deploy node-exporter to all hosts
+# Note: exed-01 uses port 19100 because exed listens on most ports for its proxy functionality
 deploy-node-exporter:
 	@for host in $(HOSTS); do \
 		echo "Deploying node-exporter to $$host..."; \
-		ssh ubuntu@$$host 'bash -c "if ! dpkg -l | grep -q prometheus-node-exporter; then \
-			echo \"Installing prometheus-node-exporter...\"; \
+		if [ "$$host" = "exed-01" ]; then \
+			port=19100; \
+		else \
+			port=9100; \
+		fi; \
+		ssh ubuntu@$$host "bash -c \"if ! dpkg -l | grep -q prometheus-node-exporter; then \
+			echo 'Installing prometheus-node-exporter...'; \
 			sudo apt-get update && sudo apt-get install -y prometheus-node-exporter; \
 		else \
-			echo \"prometheus-node-exporter already installed\"; \
+			echo 'prometheus-node-exporter already installed'; \
 		fi && \
+		sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d && \
+		echo '[Service]' | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
+		echo 'ExecStart=' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
+		echo 'ExecStart=/usr/bin/prometheus-node-exporter --web.listen-address=:$$port --collector.cgroups --collector.systemd' | sudo tee -a /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null && \
+		sudo systemctl daemon-reload && \
 		sudo systemctl enable prometheus-node-exporter && \
-		sudo systemctl start prometheus-node-exporter && \
-		echo \"Verifying node-exporter is running...\" && \
-		curl -s http://localhost:9100/metrics | head -n 5"'; \
+		sudo systemctl restart prometheus-node-exporter && \
+		echo 'Verifying node-exporter is running...' && \
+		curl -s http://localhost:$$port/metrics | head -n 5\""; \
 		echo ""; \
 	done
 

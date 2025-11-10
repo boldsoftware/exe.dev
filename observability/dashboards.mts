@@ -24,6 +24,7 @@ import {
 import { DataqueryBuilder } from "@grafana/grafana-foundation-sdk/prometheus";
 import { PanelBuilder as TimeseriesBuilder } from "@grafana/grafana-foundation-sdk/timeseries";
 import { PanelBuilder as StatBuilder } from "@grafana/grafana-foundation-sdk/stat";
+import { PanelBuilder as TableBuilder } from "@grafana/grafana-foundation-sdk/table";
 import {
   BigValueColorMode,
   BigValueGraphMode,
@@ -546,6 +547,185 @@ function makeContainerMetricsDashboard() {
         x.unit("bytes").min(0).gridPos({ x: 16, y: 31, w: 8, h: 6 }),
     }
   );
+
+  return dash;
+}
+
+function makeExeBoxesDashboard() {
+  const dash = new DashboardBuilder("exe.dev Boxes Dashboard");
+  dash
+    .uid("exe-dev-boxes-dashboard")
+    .tags(["generated", "exe", "boxes", "containers"])
+    .refresh("30s")
+    .time({ from: "now-1h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  const addTimeseriesChart = makeAddTimeseriesChart(
+    dash,
+    "exe-dev-boxes-dashboard"
+  );
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("README - Auto Generated Dashboard")
+      .content(
+        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
+          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
+          `To modify this dashboard:\n` +
+          `1. Edit the code in \`observability/dashboards.mts\`\n` +
+          `2. Run \`make deploy-grafana\` to update\n\n` +
+          `Last updated: ${new Date().toISOString()}`
+      )
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
+  );
+
+  // Filter for exe boxes
+  const BOX_FILTER = 'container_label_managed_by="exe",id=~"/exe/.*"';
+
+  // Row 1: Overview Stats
+  dash.withRow(
+    new RowBuilder("Overview").gridPos({ x: 0, y: 3, w: 24, h: 1 })
+  );
+
+  const totalBoxesPanel = new StatBuilder()
+    .title("Total Running Boxes")
+    .gridPos({ x: 0, y: 4, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count(container_last_seen{${BOX_FILTER}})`)
+        .legendFormat("Boxes")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalBoxesPanel);
+
+  const totalCpuPanel = new StatBuilder()
+    .title("Total CPU Usage")
+    .gridPos({ x: 6, y: 4, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(
+          `sum(rate(container_cpu_usage_seconds_total{${BOX_FILTER}}[5m])) * 100`
+        )
+        .legendFormat("CPU %")
+    )
+    .unit("percent")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalCpuPanel);
+
+  const totalMemoryPanel = new StatBuilder()
+    .title("Total Memory Usage")
+    .gridPos({ x: 12, y: 4, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(container_memory_working_set_bytes{${BOX_FILTER}})`)
+        .legendFormat("Memory")
+    )
+    .unit("bytes")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalMemoryPanel);
+
+  const uniqueUsersPanel = new StatBuilder()
+    .title("Active Users")
+    .gridPos({ x: 18, y: 4, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(
+          `count(count by (container_label_exe_dev_login_user) (container_last_seen{${BOX_FILTER}}))`
+        )
+        .legendFormat("Users")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(uniqueUsersPanel);
+
+  // Row 2: CPU Time Series
+  dash.withRow(
+    new RowBuilder("CPU Metrics by Box").gridPos({ x: 0, y: 8, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "CPU Usage % per Box",
+    `rate(container_cpu_usage_seconds_total{${BOX_FILTER}}[5m]) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).gridPos({ x: 0, y: 9, w: 24, h: 8 }),
+      queryCustomization: (q) =>
+        q.legendFormat("{{container_label_nerdctl_name}}"),
+    }
+  );
+
+  // Row 3: Memory Time Series
+  dash.withRow(
+    new RowBuilder("Memory Metrics by Box").gridPos({
+      x: 0,
+      y: 17,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  addTimeseriesChart(
+    "Memory Usage per Box",
+    `container_memory_working_set_bytes{${BOX_FILTER}}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 0, y: 18, w: 24, h: 8 }),
+      queryCustomization: (q) =>
+        q.legendFormat("{{container_label_nerdctl_name}}"),
+    }
+  );
+
+  // Row 4: Top Usage Tables
+  dash.withRow(
+    new RowBuilder("Top Resource Consumers").gridPos({
+      x: 0,
+      y: 26,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  // Top CPU Users Table
+  const topCpuTable = new TableBuilder()
+    .title("Top 20 CPU Users")
+    .gridPos({ x: 0, y: 27, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(
+          `topk(20, sum by (container_label_nerdctl_name) (rate(container_cpu_usage_seconds_total{${BOX_FILTER}}[5m])) * 100)`
+        )
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topCpuTable);
+
+  // Top Memory Users Table
+  const topMemoryTable = new TableBuilder()
+    .title("Top 20 Memory Users")
+    .gridPos({ x: 12, y: 27, w: 12, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(
+          `topk(20, sum by (container_label_nerdctl_name) (container_memory_working_set_bytes{${BOX_FILTER}}))`
+        )
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topMemoryTable);
 
   return dash;
 }
@@ -1161,6 +1341,7 @@ async function main() {
   }
   await createDashboard(makeDevExeDashboard());
   await createDashboard(makeContainerMetricsDashboard());
+  await createDashboard(makeExeBoxesDashboard());
   await createDashboard(makeGrafanaDashboard());
 
   // Create alerts after dashboards are created
