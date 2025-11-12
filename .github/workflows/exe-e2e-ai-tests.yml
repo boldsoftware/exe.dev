@@ -8,7 +8,7 @@ on:
 
 jobs:
   ai-test:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, libvirt]
     environment: ai-testing
     steps:
       - uses: actions/checkout@v4
