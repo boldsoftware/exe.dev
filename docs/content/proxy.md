@@ -88,9 +88,9 @@ server {
 
 ## Additional Ports
 
-If you serve ports 2000 through 9999 with HTTP on your box, you can access them
-at https://boxname.exe.dev:9999/ (and similar).
+The proxy transparently forwards ports between 2000 and 9999.
 
-to access the given port directly. exe.dev terminates TLS and proxies to your HTTP service.
-These non-default port shares are always private, and only users with access to the box can
-access them.
+For example, if you are serving on port 3456 on your box,
+you can access that at https://boxname.exe.dev:3456/.
+
+Non-default ports cannot be made fully public.
