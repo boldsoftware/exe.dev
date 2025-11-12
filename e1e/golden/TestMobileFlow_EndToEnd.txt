@@ -6,24 +6,25 @@
 
 ~~~ EXE.DEV ~~~
 
-EXE.DEV: get a box over ssh
-To sign up, please verify your email.
+This is exe.dev.
 
-Please enter your email address: TestMobileFlow_EndToEnd@example.com
+To get started, register your SSH key using a valid email address.
 
-[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-device?token=EMAIL_VERIFICATION_TOKEN
+Email: TestMobileFlow_EndToEnd@example.com
 
+[DEV-ONLY] Emailed code: EMAIL_VERIFICATION_CODE
 
-Verification email sent to: TestMobileFlow_EndToEnd@example.com
-Pairing code: EMAIL_VERIFICATION_CODE
-Waiting for email verification...
-✓ Email verified successfully!
+Verification code sent to TestMobileFlow_EndToEnd@example.com.
+It is only valid for this session.
+
+Please enter the verification code below to complete registration.
+
+Verification code: EMAIL_VERIFICATION_CODE
 
 
 Registration complete!
 
-Your new ssh key has been added to your existing account.
-
+SSH key added for TestMobileFlow_EndToEnd@example.com.
 
 
 

@@ -167,18 +167,13 @@ func TestMobileFlow_EndToEnd(t *testing.T) {
 	keyFile, _ := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	pty.want("Please enter your email")
+	expectSSHRegistrationPrompt(t, pty)
 	pty.sendLine(email)
-	pty.wantRe("Verification email sent to")
-	pty.wantRe("Pairing code:")
+	expectVerificationCodePrompt(t, pty, email)
+	code := waitForVerificationCodeEmail(t, email)
+	pty.sendLine(code)
 
-	// Click verification link from email
-	emailMsg2 := Env.email.waitForEmail(t, email)
-	clickVerifyLinkInEmail(t, emailMsg2)
-
-	pty.want("Email verified successfully")
-	pty.want("Registration complete")
-	pty.wantRe("key.*added")
+	expectRegistrationComplete(t, pty, false, email)
 	pty.wantPrompt()
 
 	// Cleanup
