@@ -187,24 +187,6 @@ RUN mkdir -p /home/exedev/src && chown exedev:exedev /home/exedev/src
 
 USER exedev
 
-# Install Node.js v22.20.0 to /home/exedev/.local
-RUN ARCH=$(uname -m) && PATH=/home/exedev/.local/bin:$PATH && \
-	case $ARCH in \
-		x86_64) NODE_ARCH=x64 ;; \
-		aarch64) NODE_ARCH=arm64 ;; \
-		*) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
-	esac && \
-	cd /tmp && \
-	wget -q -O node.tar.xz "https://nodejs.org/dist/v22.20.0/node-v22.20.0-linux-${NODE_ARCH}.tar.xz" && \
-	mkdir -p /home/exedev/.local && \
-	tar -C /home/exedev/.local --strip-components=1 -xJf node.tar.xz && \
-	rm node.tar.xz && \
-	/home/exedev/.local/bin/npm config set prefix /home/exedev/.local && \
-	/home/exedev/.local/bin/npm install -g @anthropic-ai/claude-code @openai/codex
-
-# Update PATH in .bashrc to include node and npm global modules
-RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
-
 # Add claude settings file
 # TODO(philip,etc.): I've not yet had Claude work with our LLM
 # gateway, so let's just have it installed without for now.
@@ -221,6 +203,9 @@ RUN git config --global user.email "system@exe.dev" && \
 COPY --chown=exedev:exedev exeuntu/welcome/ ./
 RUN git add . && git commit -m "Initial commit"
 RUN make build
+
+# Update PATH in .bashrc to include said claude
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
 
 # Switch back to root to install systemd service
 USER root
@@ -244,6 +229,30 @@ RUN chmod 644 /etc/systemd/system/shelley.service && systemctl enable shelley.se
 # this wrapper script is an init, and exec's it rather than forking it.
 # It would be better if you could indicate that via an env variable or something.
 COPY exeuntu/init-wrapper.sh /usr/local/bin/init
+
+# Install native codex; installs to /usr/local/bin
+RUN ARCH=$(uname -m) && \
+    case ${ARCH} in \
+        x86_64) CODEX_ARCH="x86_64-unknown-linux-musl" ;; \
+        aarch64|arm64) CODEX_ARCH="aarch64-unknown-linux-musl" ;; \
+        *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
+    esac && \
+    CODEX_VERSION=$(curl -sL https://api.github.com/repos/openai/codex/releases/latest | grep '"tag_name":' | cut -d'"' -f4) && \
+    curl -fsSL "https://github.com/openai/codex/releases/download/${CODEX_VERSION}/codex-${CODEX_ARCH}.tar.gz" | \
+    tar -xzC /usr/local/bin && \
+    mv "/usr/local/bin/codex-${CODEX_ARCH}" /usr/local/bin/codex && \
+    chmod +x /usr/local/bin/codex
+
+# Installs native claude. I had claude "decompile" "curl -fsSL https://claude.ai/install.sh | bash"
+# and changed it up to install in /usr/local/bin and not ~/.local.
+RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
+      PLATFORM="linux-${ARCH}" && \
+      STABLE_VERSION=$(curl -fsSL https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/stable) && \
+      EXPECTED_HASH=$(curl -fsSL "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${STABLE_VERSION}/manifest.json" | jq -r ".platforms[\"${PLATFORM}\"].checksum") && \
+      curl -fsSL "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${STABLE_VERSION}/${PLATFORM}/claude" -o /usr/local/bin/claude && \
+      echo "${EXPECTED_HASH}  /usr/local/bin/claude" | sha256sum -c - && \
+      chmod +x /usr/local/bin/claude
+
 
 # Expose the web server ports
 EXPOSE 8000 9999
