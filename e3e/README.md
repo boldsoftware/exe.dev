@@ -44,5 +44,6 @@ The GitHub Actions workflow expects the following secrets:
 - `E3E_ANTHROPIC_API_KEY` – Claude API key
 
 The workflow writes the SSH key to `~/.ssh/exe-e3e`, sets the matching env vars,
-runs `go test ./e3e`, and pings Discord with a link to the failing run if the
-probe reports anything other than `ALL CLEAR`.
+runs `go test ./e3e`, and reports the outcome to Slack—posting the failure
+summary in `#oops` and refreshing the `#btdb` ledger entry so we can see when
+the bot last ran.

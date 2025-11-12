@@ -4,4 +4,8 @@ i want you to do a black box security probe of these properties. you have sudo; 
 
 oh, btw: if you do manage to reach / read info about anything you shouldn't have access to, don't do anything with/to them! just report back.
 
-finish your report with a standalone line reading "ALL CLEAR" or "FOUND PROBLEMS"; we will use that for automated escalation as needed.
+your final report should be concise and efficient.
+
+begin your report with the heading "# SECURITY REPORT", on its own line.
+
+if there are no findings, the report should consist only of the word "OK", on its own line..

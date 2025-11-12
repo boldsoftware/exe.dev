@@ -28,8 +28,6 @@ const (
 	envSSHKnownHosts   = "EXE_E3E_SSH_KNOWN_HOSTS"
 	envCodexAPIKey     = "EXE_E3E_OPENAI_API_KEY"
 	envAnthropicAPIKey = "EXE_E3E_ANTHROPIC_API_KEY"
-	fullClearMarker    = "ALL CLEAR"
-	problemMarker      = "FOUND PROBLEMS"
 )
 
 type config struct {
@@ -70,6 +68,8 @@ type agentResult struct {
 	Err     error
 }
 
+const reportHeading = "# SECURITY REPORT"
+
 func TestSecurityProbeAgents(t *testing.T) {
 	// Only run when explicitly requested, to avoid running on a plain `go test ./...` locally, or in regular CI runs.
 	enabled := os.Getenv(envEnable) != ""
@@ -94,7 +94,7 @@ func TestSecurityProbeAgents(t *testing.T) {
 		codexAPIKey:     os.Getenv(envCodexAPIKey),
 		anthropicAPIKey: os.Getenv(envAnthropicAPIKey),
 	}
-	t.Logf("ssh config: ssh %s %s@%s", strings.Join(cfg.replSSH.buildBaseArgs(), " "), cfg.replSSH.user, cfg.replSSH.host)
+	// t.Logf("ssh config: ssh %s %s@%s", strings.Join(cfg.replSSH.buildBaseArgs(), " "), cfg.replSSH.user, cfg.replSSH.host)
 
 	if cfg.codexAPIKey == "" || cfg.anthropicAPIKey == "" {
 		t.Fatalf("both %s and %s must be set", envCodexAPIKey, envAnthropicAPIKey)
@@ -104,12 +104,12 @@ func TestSecurityProbeAgents(t *testing.T) {
 	defer cancel()
 
 	box := createBox(t, ctx, cfg)
-	t.Logf("created box: %v", box)
+	// t.Logf("created box: %v", box)
 	t.Cleanup(func() {
 		if err := deleteBox(t, context.Background(), cfg, box.Name); err != nil {
-			t.Logf("cleanup: deleting box %s failed: %v", box.Name, err)
+			// t.Logf("cleanup: deleting box %s failed: %v", box.Name, err)
 		} else {
-			t.Logf("cleanup: deleted box %s", box.Name)
+			// t.Logf("cleanup: deleted box %s", box.Name)
 		}
 	})
 
@@ -121,23 +121,14 @@ func TestSecurityProbeAgents(t *testing.T) {
 	wg.Wait()
 	close(results)
 
-	var failures []string
 	for res := range results {
 		if res.Err != nil {
-			if strings.TrimSpace(res.Output) != "" {
-				t.Logf("[%s output]\n%s\n", strings.ToUpper(string(res.Agent)), res.Output)
-			}
-			failures = append(failures, fmt.Sprintf("%s error: %v", res.Agent, res.Err))
+			t.Errorf("[%s]\ncommand: %s\nerror: %v\nout:\n%s\n", res.Agent, res.Command, res.Err, res.Output)
 			continue
 		}
-		if res.Status != fullClearMarker {
-			failures = append(failures, fmt.Sprintf("%s status %q", res.Agent, res.Status))
-			t.Logf("[%s output]\n%s\n", res.Agent, res.Output)
+		if res.Output != "" {
+			t.Errorf("[%s]\nout:\n%s\n", res.Agent, res.Output)
 		}
-	}
-
-	if len(failures) > 0 {
-		t.Fatalf("security probe failed: %s", strings.Join(failures, "; "))
 	}
 }
 
@@ -180,17 +171,24 @@ func runAgent(t *testing.T, ctx context.Context, cfg *config, box *boxInfo, ag a
 	script := agentScript(t, ag, cfg.prompt, cfg)
 	boxSSHArgs = append(boxSSHArgs, "bash", "-s")
 	cmd := exec.CommandContext(ctx, "ssh", boxSSHArgs...)
-	t.Logf("running %v", cmd.String())
+	// t.Logf("running %v", cmd.String())
 	cmd.Stdin = strings.NewReader(script)
-	outBytes, runErr := cmd.CombinedOutput()
-	out := string(outBytes)
-	status := extractStatus(out)
+	raw, err := cmd.CombinedOutput()
+	out := string(raw)
+	out = strings.TrimSpace(out)
+	idx := strings.LastIndex(out, reportHeading)
+	if idx >= 0 {
+		out = strings.TrimSpace(out[idx+len(reportHeading):])
+	}
+	out = strings.TrimSpace(out)
+	if strings.HasSuffix(out, "\nOK") {
+		out = ""
+	}
 	return agentResult{
 		Agent:   ag,
 		Output:  out,
-		Status:  status,
 		Command: cmd.String(),
-		Err:     runErr,
+		Err:     err,
 	}
 }
 
@@ -232,16 +230,6 @@ EOF
 	}
 	t.Fatalf("unsupported agent %q", ag)
 	panic("unreachable")
-}
-
-func extractStatus(out string) string {
-	switch {
-	case strings.Contains(out, fullClearMarker):
-		return fullClearMarker
-	case strings.Contains(out, problemMarker):
-		return problemMarker
-	}
-	return ""
 }
 
 func (cfg sshConfig) target() string {

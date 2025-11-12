@@ -3,8 +3,8 @@ name: exe e3e security probe
 on:
   workflow_dispatch:
   schedule:
-    # Run weekly on Mondays at 7:15 AM UTC (late night pacific, after the e2e tests should have completed)
-    - cron: "15 7 * * 1"
+    # Run daily at 7:15 AM UTC (late night pacific, after the e2e tests should have completed)
+    - cron: "15 7 * * *"
 
 concurrency:
   group: exe-e3e-security
@@ -15,6 +15,8 @@ jobs:
     environment: ai-testing
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      E3E_OUTPUT_PATH: ${{ env.RUNNER_TEMP }}/e3e-security-output.txt
     steps:
       - uses: actions/checkout@v4
 
@@ -54,24 +56,38 @@ jobs:
           EXE_E3E_SSH_USER: ${{ secrets.E3E_SSH_USER }}
           EXE_E3E_OPENAI_API_KEY: ${{ secrets.E3E_OPENAI_API_KEY }}
           EXE_E3E_ANTHROPIC_API_KEY: ${{ secrets.E3E_ANTHROPIC_API_KEY }}
+          E3E_OUTPUT_PATH: ${{ env.E3E_OUTPUT_PATH }}
         run: |
           set -euo pipefail
           export EXE_E3E_SSH_KEY_PATH="$HOME/.ssh/exe-e3e"
-          go test -count=1 -v -timeout=1h ./e3e
+          go test -count=1 -v -timeout=1h ./e3e 2>&1 | tee "$E3E_OUTPUT_PATH"
 
-      - name: Notify Discord
+      - name: Install uv
+        if: always()
+        uses: astral-sh/setup-uv@v3
+
+      - name: Post failure to Slack #oops
+        if: failure()
+        env:
+          OUTPUT_PATH: ${{ env.E3E_OUTPUT_PATH }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MESSAGE_PATH: ${{ env.RUNNER_TEMP }}/e3e-oops.txt
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          cp "$OUTPUT_PATH" "$MESSAGE_PATH"
+          printf "\nRun: %s\n" "$RUN_URL" >> "$MESSAGE_PATH"
+          uv run scripts/slack/post_message.py --channel oops --message-file "$MESSAGE_PATH"
+
+      - name: Update Slack bot ledger
         if: always()
         env:
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           JOB_STATUS: ${{ job.status }}
         run: |
           set -euo pipefail
-          WEBHOOK_URL="https://discord.com/api/webhooks/1435688679015317605/PgbDaHPPdWwT0zbUoPdJZEh-20783ugBrGr0VS7igY4ZclFL94fiWY_QHanRApcBX5sO"
-          case "$JOB_STATUS" in
-            success) STATUS_EMOJI="✅" ;;
-            failure) STATUS_EMOJI="❌" ;;
-            cancelled) STATUS_EMOJI="⚪" ;;
-            *) STATUS_EMOJI="❓" ;;
-          esac
-          payload=$(printf '{"content":"%s %s"}' "$STATUS_EMOJI" "$RUN_URL")
-          curl -sSf -H 'Content-Type: application/json' -d "$payload" "$WEBHOOK_URL"
+          uv run scripts/slack/update_bot_status.py \
+            e3e-security \
+            --status "$JOB_STATUS" \
+            --run-url "$RUN_URL"
