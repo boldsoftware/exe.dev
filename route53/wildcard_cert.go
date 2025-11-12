@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -81,16 +82,11 @@ type WildcardCertManager struct {
 	acmeClient   *acme.Client
 	domain       string
 	email        string
-	certRequests certRequestCounter
-}
-
-// certRequestCounter is an interface for incrementing the cert request metric
-type certRequestCounter interface {
-	Inc()
+	certRequests prometheus.Counter
 }
 
 // NewWildcardCertManager creates a new wildcard certificate manager
-func NewWildcardCertManager(domain, email string, cache autocert.Cache, certRequests certRequestCounter) *WildcardCertManager {
+func NewWildcardCertManager(domain, email string, cache autocert.Cache, certRequests prometheus.Counter) *WildcardCertManager {
 	// Try to load existing ACME account key from cache, or generate new one
 	key, err := loadOrGenerateACMEKey(cache)
 	if err != nil {
