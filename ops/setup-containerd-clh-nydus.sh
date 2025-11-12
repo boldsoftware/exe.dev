@@ -1,20 +1,13 @@
 #!/bin/bash
 set -euo pipefail
+set -E # inherit traps
+trap 'echo Error in $0 at line $LINENO: $(cd "'"${PWD}"'" && awk "NR == $LINENO" $0)' ERR
 
 echo "=== Running setup-containerd-clh-nydus.sh ==="
 
 if [ "${EXE_DEBUG_SETUP:-0}" = "1" ]; then
     set -x
 fi
-
-# On any error, emit useful diagnostics before exiting
-trap 'rc=$?; echo "ERROR: setup failed at line $LINENO: $BASH_COMMAND (exit $rc)" >&2; \
-  echo "--- Service statuses ---"; \
-  systemctl -q is-active containerd  && systemctl --no-pager -l status containerd  || true; \
-  systemctl -q is-active nydus-snapshotter && systemctl --no-pager -l status nydus-snapshotter || true; \
-  echo "--- Recent logs ---"; \
-  journalctl -n 120 --no-pager -u containerd -u nydus-snapshotter || true; \
-  exit $rc' ERR
 
 echo "=== Starting clean setup for $(hostname) with Cloud Hypervisor + Nydus ==="
 
