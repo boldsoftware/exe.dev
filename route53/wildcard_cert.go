@@ -150,7 +150,7 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	defer cancel()
 	slog.Warn("Obtaining new certificate (not in memory or disk)", "rootDomain", rootDomain, "serverName", hello.ServerName)
 	newCert, err := w.obtainCertificate(certCtx, rootDomain)
-	if err != nil {
+	if err != nil || !isCertValid(newCert) {
 		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", hello.ServerName, err)
 	}
 
