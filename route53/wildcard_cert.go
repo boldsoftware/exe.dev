@@ -82,19 +82,19 @@ const (
 
 type WildcardCertManager struct {
 	dnsProvider  *DNSProvider
-	cache        autocert.Cache // persistent cache for certificates
+	diskCache    autocert.Cache // persistent cache for certificates
 	acmeClient   *acme.Client
 	domains      []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
 	certRequests prometheus.Counter
 
-	mu           sync.Mutex                  // protects certificates
-	certificates map[string]*tls.Certificate // in-memory cache of certificates to avoid repeated decoding and disk reads
+	mu       sync.Mutex                  // protects certificates
+	memCerts map[string]*tls.Certificate // in-memory cache of certificates to avoid repeated decoding and disk reads
 }
 
 // NewWildcardCertManager creates a new wildcard certificate manager
-func NewWildcardCertManager(domains []string, cache autocert.Cache, certRequests prometheus.Counter) *WildcardCertManager {
+func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequests prometheus.Counter) *WildcardCertManager {
 	// Try to load existing ACME account key from cache, or generate new one
-	key, err := loadOrGenerateACMEKey(cache)
+	key, err := loadOrGenerateACMEKey(diskCache)
 	if err != nil {
 		panic(fmt.Sprintf("failed to load or generate ACME key: %v", err))
 	}
@@ -105,9 +105,9 @@ func NewWildcardCertManager(domains []string, cache autocert.Cache, certRequests
 	}
 
 	return &WildcardCertManager{
-		certificates: make(map[string]*tls.Certificate),
+		memCerts:     make(map[string]*tls.Certificate),
 		dnsProvider:  NewDNSProvider(),
-		cache:        cache,
+		diskCache:    diskCache,
 		acmeClient:   client,
 		domains:      domains,
 		certRequests: certRequests,
@@ -124,50 +124,50 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	serverName := strings.ToLower(hello.ServerName)
 
 	// Determine which certificate to use
-	certKey := w.domainForServerName(serverName)
-	if certKey == "" {
+	rootDomain := w.domainForServerName(serverName)
+	if rootDomain == "" {
 		// Not a domain we manage.
 		return nil, fmt.Errorf("unrecognized domain: %q", hello.ServerName)
 	}
 
-	cert := w.cachedCert(certKey)
+	cert := w.memCert(rootDomain)
 	if isCertValid(cert) {
 		return cert, nil
 	}
 
-	if cachedCert, err := w.loadCertificateFromCache(certKey); err == nil {
-		if isCertValid(cachedCert) {
-			w.setCachedCert(certKey, cachedCert)
-			return cachedCert, nil
+	if diskCert, err := w.loadCertificateFromDisk(rootDomain); err == nil {
+		if isCertValid(diskCert) {
+			w.setMemCert(rootDomain, diskCert)
+			return diskCert, nil
 		}
 	} else if !errors.Is(err, autocert.ErrCacheMiss) {
-		slog.Warn("failed to load cached certificate", "certKey", certKey, "error", err)
+		slog.Warn("failed to load certificate from disk", "rootDomain", rootDomain, "error", err)
 	}
 
 	// Need to obtain a new certificate
 	// Create a context with timeout for certificate acquisition
 	certCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	slog.Warn("Obtaining new certificate (cache fail)", "certKey", certKey, "serverName", hello.ServerName)
-	newCert, err := w.obtainCertificate(certCtx, certKey)
+	slog.Warn("Obtaining new certificate (not in memory or disk)", "rootDomain", rootDomain, "serverName", hello.ServerName)
+	newCert, err := w.obtainCertificate(certCtx, rootDomain)
 	if err != nil {
-		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", certKey, err)
+		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", rootDomain, err)
 	}
 
-	w.setCachedCert(certKey, newCert)
+	w.setMemCert(rootDomain, newCert)
 	return newCert, nil
 }
 
-func (w *WildcardCertManager) cachedCert(domain string) *tls.Certificate {
+func (w *WildcardCertManager) memCert(domain string) *tls.Certificate {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.certificates[domain]
+	return w.memCerts[domain]
 }
 
-func (w *WildcardCertManager) setCachedCert(domain string, cert *tls.Certificate) {
+func (w *WildcardCertManager) setMemCert(domain string, cert *tls.Certificate) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.certificates[domain] = cert
+	w.memCerts[domain] = cert
 }
 
 // isSingleLevelSubdomain reports whether serverName is a single-level subdomain of domain.
@@ -380,45 +380,45 @@ func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain stri
 		}
 	}
 
-	if err := w.cacheCertificate(domain, cert); err != nil && !errors.Is(err, autocert.ErrCacheMiss) {
+	if err := w.writeCertificateToDisk(domain, cert); err != nil && !errors.Is(err, autocert.ErrCacheMiss) {
 		slog.Warn("failed to cache certificate", "domain", domain, "error", err)
 	}
 
 	return cert, nil
 }
 
-func (w *WildcardCertManager) cacheCertificate(domain string, cert *tls.Certificate) error {
-	if w.cache == nil || cert == nil {
+func (w *WildcardCertManager) writeCertificateToDisk(domain string, cert *tls.Certificate) error {
+	if w.diskCache == nil || cert == nil {
 		return autocert.ErrCacheMiss
 	}
 
-	data, err := encodeCertificateForCache(cert)
+	data, err := encodeCertificate(cert)
 	if err != nil {
 		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), certificateCacheTimeout)
 	defer cancel()
-	return w.cache.Put(ctx, domain, data)
+	return w.diskCache.Put(ctx, domain, data)
 }
 
-func (w *WildcardCertManager) loadCertificateFromCache(domain string) (*tls.Certificate, error) {
-	if w.cache == nil {
+func (w *WildcardCertManager) loadCertificateFromDisk(domain string) (*tls.Certificate, error) {
+	if w.diskCache == nil {
 		return nil, autocert.ErrCacheMiss
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), certificateCacheTimeout)
 	defer cancel()
 
-	data, err := w.cache.Get(ctx, domain)
+	data, err := w.diskCache.Get(ctx, domain)
 	if err != nil {
 		return nil, err
 	}
 
-	return decodeCertificateFromCache(data)
+	return decodeCertificate(data)
 }
 
-func encodeCertificateForCache(cert *tls.Certificate) ([]byte, error) {
+func encodeCertificate(cert *tls.Certificate) ([]byte, error) {
 	if cert == nil {
 		return nil, fmt.Errorf("certificate is nil")
 	}
@@ -444,7 +444,7 @@ func encodeCertificateForCache(cert *tls.Certificate) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func decodeCertificateFromCache(data []byte) (*tls.Certificate, error) {
+func decodeCertificate(data []byte) (*tls.Certificate, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("certificate cache data is empty")
 	}
