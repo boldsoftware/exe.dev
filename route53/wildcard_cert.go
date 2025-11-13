@@ -22,47 +22,54 @@ import (
 	"golang.org/x/crypto/acme/autocert"
 )
 
+func pkFromData(keyData []byte) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode(keyData)
+	if block == nil || block.Type != "RSA PRIVATE KEY" {
+		return nil, fmt.Errorf("failed to decode PEM block containing RSA private key")
+	}
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse RSA private key: %w", err)
+	}
+	return key, nil
+}
+
 // loadOrGenerateACMEKey loads an existing ACME account key from cache or generates a new one
 func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 	const acmeAccountKeyName = "acme_account+key"
-
-	if cache != nil {
-		// Try to load existing key from cache
-		if keyData, err := cache.Get(context.Background(), acmeAccountKeyName); err == nil {
-			// Parse PEM-encoded private key
-			block, _ := pem.Decode(keyData)
-			if block != nil && block.Type == "RSA PRIVATE KEY" {
-				if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
-					slog.Info("loaded ACME account key from cache")
-					return key, nil
-				}
-			}
-			slog.Warn("failed to parse cached ACME account key, generating new one")
-		} else {
-			slog.Info("no cached ACME account key found, generating new one")
+	if cache == nil {
+		return nil, errors.New("loadOrGenerateACMEKey: nil cache")
+	}
+	ctx := context.Background()
+	keyData, err := cache.Get(ctx, acmeAccountKeyName)
+	if err == nil {
+		key, err := pkFromData(keyData)
+		if err == nil {
+			slog.Info("loaded cached ACME account key")
+			return key, nil
 		}
+		slog.Warn("failed to parse cached ACME account key, generating new one")
+	} else {
+		slog.Info("no cached ACME account key found, generating new one")
 	}
 
-	// Generate new key
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := rsa.GenerateKey(rand.Reader, 2048) // standard for ACME account keys
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate RSA key: %w", err)
 	}
 
-	// Save to cache
-	if cache != nil {
-		// Encode key as PEM
-		keyBytes := x509.MarshalPKCS1PrivateKey(key)
-		keyPEM := pem.EncodeToMemory(&pem.Block{
-			Type:  "RSA PRIVATE KEY",
-			Bytes: keyBytes,
-		})
+	keyBytes := x509.MarshalPKCS1PrivateKey(key)
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: keyBytes,
+	})
 
-		if err := cache.Put(context.Background(), acmeAccountKeyName, keyPEM); err != nil {
-			slog.Warn("failed to cache ACME account key", "error", err)
-		} else {
-			slog.Info("generated and cached new ACME account key")
-		}
+	// Best effort to cache the new key
+	err = cache.Put(ctx, acmeAccountKeyName, keyPEM)
+	if err != nil {
+		slog.Warn("failed to cache ACME account key", "error", err)
+	} else {
+		slog.Info("generated and cached new ACME account key")
 	}
 
 	return key, nil
