@@ -81,13 +81,14 @@ const (
 )
 
 type WildcardCertManager struct {
-	mu           sync.Mutex
-	certificates map[string]*tls.Certificate
 	dnsProvider  *DNSProvider
-	cache        autocert.Cache
+	cache        autocert.Cache // persistent cache for certificates
 	acmeClient   *acme.Client
-	domains      []string
+	domains      []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
 	certRequests prometheus.Counter
+
+	mu           sync.Mutex                  // protects certificates
+	certificates map[string]*tls.Certificate // in-memory cache of certificates to avoid repeated decoding and disk reads
 }
 
 // NewWildcardCertManager creates a new wildcard certificate manager
