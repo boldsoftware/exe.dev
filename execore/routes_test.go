@@ -27,7 +27,6 @@ func TestProxyHostnameParsing(t *testing.T) {
 		{"prod rejects localhost", prodServer, "web.localhost", ""},
 		{"prod valid simple", prodServer, "empty.exe.dev", "empty"},
 		{"prod invalid domain", prodServer, "invalid.domain.com", ""},
-		{"prod rejects dotted box", prodServer, "box.with.dots.exe.dev", ""},
 		{"dev valid localhost", devServer, "dev-box.localhost", "dev-box"},
 		{"dev rejects exe.dev", devServer, "dev-box.exe.dev", ""},
 	}

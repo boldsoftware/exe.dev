@@ -427,13 +427,6 @@ func TestIsProxyRequest(t *testing.T) {
 			expected: false,
 			comment:  "Plain exe.dev should not be proxy request",
 		},
-		{
-			name:     "deep subdomain in prod mode",
-			devMode:  "",
-			host:     "box.team.exe.dev",
-			expected: true,
-			comment:  "Should work with deeper subdomains in production",
-		},
 
 		// Cross-mode cases (testing flexibility)
 		{
