@@ -38,11 +38,10 @@ jobs:
         id: run-e4e
         continue-on-error: true
         env:
-          EXE_E4E_ENABLE: "1"
           EXE_E4E_OPENAI_API_KEY: ${{ secrets.E4E_OPENAI_API_KEY }}
         run: |
           set -euo pipefail
-          go test -count=1 -timeout=1h ./e4e 2>&1 | tee "$E4E_OUTPUT_PATH"
+          go run ./cmd/e4e 2>&1 | tee "$E4E_OUTPUT_PATH"
 
       - name: Install uv
         if: always()
@@ -58,8 +57,11 @@ jobs:
         run: |
           set -euo pipefail
           cp "$OUTPUT_PATH" "$MESSAGE_PATH"
-          printf "\nRun: %s\n" "$RUN_URL" >> "$MESSAGE_PATH"
-          uv run scripts/slack/post_message.py --channel oops --message-file "$MESSAGE_PATH"
+          printf "\n[CI logs](%s)\n" "$RUN_URL" >> "$MESSAGE_PATH"
+          uv run scripts/slack/post_message.py \
+            --channel oops \
+            --markdown \
+            --message-file "$MESSAGE_PATH"
 
       - name: Update Slack bot ledger
         if: always()

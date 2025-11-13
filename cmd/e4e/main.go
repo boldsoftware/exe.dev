@@ -1,31 +1,29 @@
-package e4e
+package main
 
 import (
 	"context"
 	_ "embed"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
-	"testing"
 	"time"
 )
 
 const (
-	envEnable   = "EXE_E4E_ENABLE"
 	envCodexKey = "EXE_E4E_OPENAI_API_KEY"
 )
+
+const reportHeading = "# DOCUMENTATION REPORT"
 
 //go:embed prompt.md
 var prompt string
 
-func TestDocumentationReviewAgents(t *testing.T) {
-	if os.Getenv(envEnable) == "" {
-		t.Skip("e4e documentation sweep skipped (set EXE_E4E_ENABLE=1 to run)")
-	}
-
+func main() {
+	log.SetFlags(0)
 	apiKey := strings.TrimSpace(os.Getenv(envCodexKey))
 	if apiKey == "" {
-		t.Fatalf("%s must be set", envCodexKey)
+		log.Fatalf("%s must be set", envCodexKey)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -33,25 +31,23 @@ func TestDocumentationReviewAgents(t *testing.T) {
 
 	raw, err := runCodex(ctx, apiKey)
 	if err != nil {
-		t.Fatalf("agent: %v\n%s\n", err, raw)
+		log.Fatalf("agent: %v\n%s\n", err, raw)
 	}
 	// Cut at final "# DOCUMENTATION REPORT".
 	// (There are usually two, so can't use strings.Cut.)
 	// We don't need to see all the exploration and reasoning traces.
-	const reportHeading = "# DOCUMENTATION REPORT"
 	out := strings.TrimSpace(string(raw))
 	i := strings.LastIndex(out, reportHeading)
 	if i < 0 {
-		t.Fatalf("missing report heading\n%s\n", out)
+		log.Fatalf("missing report heading\n%s\n", out)
 	}
 	out = out[i+len(reportHeading):]
 	out = strings.TrimSpace(out)
 	if strings.HasSuffix(out, "\nOK") {
-		t.Logf("OK")
 		return
 	}
 
-	t.Error(out)
+	log.Fatalf("%s", out)
 }
 
 func runCodex(ctx context.Context, apiKey string) ([]byte, error) {
@@ -63,6 +59,5 @@ func runCodex(ctx context.Context, apiKey string) ([]byte, error) {
 	)
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Env = append(os.Environ(), "OPENAI_API_KEY="+apiKey)
-	cmd.Dir = ".."
 	return cmd.CombinedOutput()
 }
