@@ -130,7 +130,7 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	}
 
 	// Canonicalize server name to lowercase.
-	serverName := strings.ToLower(hello.ServerName)
+	serverName := strings.TrimSuffix(strings.ToLower(hello.ServerName), ".")
 
 	// Determine which certificate to use
 	rootDomain := w.domainForServerName(serverName)
