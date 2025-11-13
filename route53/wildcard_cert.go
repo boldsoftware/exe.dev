@@ -98,6 +98,16 @@ type WildcardCertManager struct {
 
 // NewWildcardCertManager creates a new wildcard certificate manager
 func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequests prometheus.Counter) *WildcardCertManager {
+	if len(domains) == 0 {
+		panic("NewWildcardCertManager: no domains provided")
+	}
+	if diskCache == nil {
+		panic("NewWildcardCertManager: nil diskCache")
+	}
+	if certRequests == nil {
+		panic("NewWildcardCertManager: nil certRequests counter")
+	}
+
 	// Try to load existing ACME account key from cache, or generate new one
 	key, err := loadOrGenerateACMEKey(diskCache)
 	if err != nil {
