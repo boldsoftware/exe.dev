@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      E3E_OUTPUT_PATH: ${{ env.RUNNER_TEMP }}/e3e-security-output.txt
+      E3E_OUTPUT_PATH: /tmp/e3e-security-output.txt
     steps:
       - uses: actions/checkout@v4
 
@@ -74,7 +74,7 @@ jobs:
         env:
           OUTPUT_PATH: ${{ env.E3E_OUTPUT_PATH }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          MESSAGE_PATH: ${{ env.RUNNER_TEMP }}/e3e-oops.txt
+          MESSAGE_PATH: /tmp/e3e-oops.txt
           EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
         run: |
           set -euo pipefail
