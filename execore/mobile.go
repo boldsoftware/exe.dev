@@ -193,6 +193,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 			User:         &exemenu.UserInfo{ID: userID},
 			FlagSet:      fs,
 			Output:       cs,
+			Logger:       s.slog(),
 			ForceSpinner: true,
 		}
 
