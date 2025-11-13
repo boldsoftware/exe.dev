@@ -19,6 +19,12 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Channel name without '#'.",
     )
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        default=None,
+        help="Render the message body as Slack mrkdwn.",
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--message",
@@ -46,7 +52,7 @@ def main() -> None:
     slack = SlackClient(token)
     channel_id = slack.find_channel_id(args.channel)
     message = read_message(args)
-    slack.post_message(channel_id, message)
+    slack.post_message(channel_id, message, mrkdwn=args.markdown)
     print(f"posted message to #{args.channel}")
 
 

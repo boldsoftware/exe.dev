@@ -82,14 +82,20 @@ class SlackClient:
             if not cursor:
                 break
 
-    def post_message(self, channel_id: str, text: str) -> None:
-        self.api(
-            "chat.postMessage",
-            {
-                "channel": channel_id,
-                "text": text,
-            },
-        )
+    def post_message(
+        self,
+        channel_id: str,
+        text: str,
+        *,
+        mrkdwn: t.Optional[bool] = None,
+    ) -> None:
+        payload: t.Dict[str, t.Any] = {
+            "channel": channel_id,
+            "text": text,
+        }
+        if mrkdwn is not None:
+            payload["mrkdwn"] = mrkdwn
+        self.api("chat.postMessage", payload)
 
     def update_message(self, channel_id: str, ts: str, text: str) -> None:
         self.api(
