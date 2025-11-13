@@ -289,6 +289,67 @@ function makeDevExeDashboard() {
     }
   );
 
+  // Row 8: Box creation time (user-perceived)
+  dash.withRow(
+    new RowBuilder("Box Creation Time").gridPos({
+      x: 0,
+      y: 48,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  addTimeseriesChart(
+    "Box Creation p50",
+    `histogram_quantile(0.5, rate(box_creation_time_seconds_bucket[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 49, w: 6, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Box Creation p90",
+    `histogram_quantile(0.9, rate(box_creation_time_seconds_bucket[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 6, y: 49, w: 6, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Box Creation p99",
+    `histogram_quantile(0.99, rate(box_creation_time_seconds_bucket[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 12, y: 49, w: 6, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Box Creation Rate",
+    `rate(box_creation_time_seconds_count[$__rate_interval])`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 18, y: 49, w: 6, h: 6 }),
+    }
+  );
+
+  // Row 9: Certificate issuance
+  dash.withRow(
+    new RowBuilder("Certificate Issuance").gridPos({
+      x: 0,
+      y: 55,
+      w: 24,
+      h: 1,
+    })
+  );
+
+  addTimeseriesChart(
+    "Let's Encrypt Requests Rate",
+    `rate(letsencrypt_cert_requests_total[$__rate_interval])`,
+    {
+      panelCustomization: (x) =>
+        x.min(0).gridPos({ x: 0, y: 56, w: 8, h: 6 }),
+    }
+  );
+
   return dash;
 }
 
