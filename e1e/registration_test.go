@@ -24,15 +24,16 @@ func TestNewKeyRegistration(t *testing.T) {
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	expectSSHRegistrationPrompt(t, pty)
+	pty.want("Please enter your email")
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
-	expectVerificationCodePrompt(t, pty, email)
-	code := waitForVerificationCodeEmail(t, email)
-	pty.sendLine(code)
-	expectRegistrationComplete(t, pty, true, email)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	emailMsg := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, emailMsg)
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
 	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
-	pty.want("create your first box")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
 	pty.want(email)
@@ -49,14 +50,15 @@ func TestRegistrationHappensOnce(t *testing.T) {
 
 	// initial registration
 	pty := sshToExeDev(t, keyFile)
-	pty.want(banner)
-	expectSSHRegistrationPrompt(t, pty)
+	pty.want("Please enter your email")
 	email := t.Name() + "@example.com"
 	pty.sendLine(email)
-	expectVerificationCodePrompt(t, pty, email)
-	code := waitForVerificationCodeEmail(t, email)
-	pty.sendLine(code)
-	expectRegistrationComplete(t, pty, true, email)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+	emailMsg := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, emailMsg)
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
 	// Check that we show welcome message for first login.
 	pty.want("Welcome to EXE.DEV!")
 	pty.want("create your first box")
@@ -70,8 +72,7 @@ func TestRegistrationHappensOnce(t *testing.T) {
 	// second login: no re-registration, but should still show welcome since user hasn't created boxes
 	pty = sshToExeDev(t, keyFile)
 	pty.reject(banner)
-	pty.reject("Verification code sent")
-	pty.reject("Email:")
+	pty.reject("Please enter your email")
 	// No registration flow, no welcome message
 	// but should still hint about how to create boxes,
 	// because they haven't yet.
@@ -94,16 +95,22 @@ func TestRegisterMultipleKeys(t *testing.T) {
 		keyFile, publicKey := genSSHKey(t)
 		pty := sshToExeDev(t, keyFile)
 		pty.want(banner)
-		expectSSHRegistrationPrompt(t, pty)
+		pty.want("Please enter your email")
 		email := t.Name() + "@example.com"
 		pty.sendLine(email)
-		expectVerificationCodePrompt(t, pty, email)
-		code := waitForVerificationCodeEmail(t, email)
-		pty.sendLine(code)
-		expectRegistrationComplete(t, pty, i == 0, email)
+		pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+		pty.wantRe("Pairing code: .*[0-9]{6}.*")
+		emailMsg := Env.email.waitForEmail(t, email)
+		clickVerifyLinkInEmail(t, emailMsg)
+		pty.want("Email verified successfully")
+		pty.want("Registration complete")
+		if i == 0 {
+			pty.wantRe("account.*created")
+		} else {
+			pty.wantRe("key.*added")
+		}
 		if i == 0 {
 			pty.want("Welcome to EXE.DEV!") // welcome message only on first time
-			pty.want("create your first box")
 		}
 		pty.wantPrompt()
 		pty.sendLine("whoami")
@@ -152,13 +159,18 @@ func TestRegisterWebThenKey(t *testing.T) {
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	expectSSHRegistrationPrompt(t, pty)
+	pty.want("Please enter your email")
 	pty.sendLine(email)
-	expectVerificationCodePrompt(t, pty, email)
-	code := waitForVerificationCodeEmail(t, email)
-	pty.sendLine(code)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
-	expectRegistrationComplete(t, pty, false, email)
+	deviceEmail := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, deviceEmail)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
+	pty.want("Your new ssh key has been added to your existing account.")
+	pty.want("Welcome to EXE.DEV!")
 	pty.want("create your first box")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
@@ -181,18 +193,14 @@ func TestRegisterGitHubKey(t *testing.T) {
 
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	expectSSHRegistrationPrompt(t, pty)
-	email := ghuser.FakeEmail0
-	pty.sendLine(email)
-	expectVerificationCodePrompt(t, pty, email)
-	code := waitForVerificationCodeEmail(t, email)
-	pty.sendLine(code)
-	expectRegistrationComplete(t, pty, true, email)
+	pty.want("Email:")
+	pty.want("fake-for-tests@example.com")
+	pty.sendLine("")
+
 	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first box")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
-	pty.want(email)
+	pty.want("fake-for-tests@example.com")
 	pty.want(ghuser.FakePublicKey0)
 	pty.wantPrompt()
 	pty.disconnect()
@@ -211,20 +219,26 @@ func TestRegisterGitHubKeyUnderDifferentEmail(t *testing.T) {
 
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	expectSSHRegistrationPrompt(t, pty)
+	pty.want("Email:")
+	pty.want(ghuser.FakeEmail1)
 	// change email from "fake-for-tests@example.com" to "fake-for-tests@example.combinatorics"
 	suffix := "binatorics"
+	// This triggers a verification email, despite the known SSH key.
+	pty.sendLine(suffix)
 	newEmail := ghuser.FakeEmail1 + suffix
-	pty.sendLine(newEmail)
-	expectVerificationCodePrompt(t, pty, newEmail)
-	code := waitForVerificationCodeEmail(t, newEmail)
-	pty.sendLine(code)
-	expectRegistrationComplete(t, pty, true, newEmail)
+
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(newEmail))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+
+	deviceEmail := Env.email.waitForEmail(t, newEmail)
+	clickVerifyLinkInEmail(t, deviceEmail)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
 	pty.want("Welcome to EXE.DEV!")
-	pty.want("create your first box")
 	pty.wantPrompt()
 	pty.sendLine("whoami")
-	pty.want(newEmail)
+	pty.want("fake-for-tests@example.com")
 	pty.want(ghuser.FakePublicKey1)
 	pty.wantPrompt()
 	pty.disconnect()
@@ -242,7 +256,7 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	keyFile, publicKey := genSSHKey(t)
 	pty := sshToExeDev(t, keyFile)
 	pty.want(banner)
-	expectSSHRegistrationPrompt(t, pty)
+	pty.want("Please enter your email")
 
 	email := t.Name() + "@example.com"
 
@@ -252,10 +266,14 @@ func TestSSHTerminalInputDuringRegistration(t *testing.T) {
 	}
 	pty.send("\n")
 
-	expectVerificationCodePrompt(t, pty, email)
-	code := waitForVerificationCodeEmail(t, email)
-	pty.sendLine(code)
-	expectRegistrationComplete(t, pty, true, email)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
+
+	emailMsg := Env.email.waitForEmail(t, email)
+	clickVerifyLinkInEmail(t, emailMsg)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
 
 	// After first-time registration, we show a welcome message and a prompt.
 	pty.want("Welcome to EXE.DEV!")

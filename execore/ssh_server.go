@@ -2,7 +2,6 @@ package execore
 
 import (
 	"context"
-	crand "crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -569,43 +568,69 @@ func (ss *SSHServer) swallowOSCBackgroundColorResponse(s sshsession.Session) boo
 func (ss *SSHServer) handleRegistration(s sshsession.Session, publicKey string) {
 	ss.showAnimatedWelcome(s)
 
-	line := func(msg string, args ...any) {
-		fmt.Fprintf(s, msg+"\r\n", args...)
-	}
-
-	line("")
-	line("This is exe.dev.")
-	line("")
-	line("To get started, register your SSH key using a valid email address.")
-	line("")
-	fmt.Fprintf(s, "Email: ")
-
-	email, pressedEnter := ss.readLineWithEchoAndDefault(s, "")
-	if email == "" || !pressedEnter {
-		fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
-		return
-	}
-
-	if !isValidEmail(email) {
-		line("Invalid email format. Please try again.")
-		return
-	}
-
-	_, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey)
+	// Attempt to identify this as a GitHub user based on their validated public key.
+	ghInfo, err := ss.server.githubUser.InfoString(s.Context(), publicKey)
 	if err != nil {
-		ss.server.slog().Error("failed to create user with SSH key during github auto-verification", "error", err)
-		line("Internal Error. Please try again.")
-		return
+		ss.server.slog().InfoContext(s.Context(), "failed to retrieve GitHub user info", "publicKey", publicKey, "error", err)
 	}
 
-	user, err := ss.waitForEmailVerification(s, publicKey, email)
-	if err != nil {
-		ss.server.slog().Info("email verification failed", "email", email, "error", err)
-		return
+	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a box over ssh\033[0m\r\n")
+	if ghInfo.Email != "" {
+		fmt.Fprintf(s, "\r\n✨ Recognized \033[1m@%s\033[0m's public GitHub SSH key. ✨\r\n", ghInfo.Login)
+		fmt.Fprintf(s, "(This key and email are public on GitHub; see %s/docs/ssh-github)\r\n", ss.server.getBaseURL())
+		fmt.Fprintf(s, "Confirm this email to log in instantly,\r\n")
+		fmt.Fprintf(s, "or enter a different one to get a magic login link.\r\n\r\n")
+	} else {
+		fmt.Fprint(s, "To sign up, please verify your email.\r\n\r\n")
 	}
 
-	line("")
-	line("")
+	// Validate email
+	var email string
+	suggested := ghInfo.Email
+	for !isValidEmail(email) {
+		if email != "" {
+			fmt.Fprintf(s, "%sInvalid email format. Please enter a valid email address.%s\r\n", "\033[1;31m", "\033[0m")
+		}
+		prompt := "Please enter your email address:"
+		if suggested != "" {
+			prompt = "Email:"
+		}
+		fmt.Fprintf(s, "\033[1m%s\033[0m ", prompt)
+		var pressedEnter bool
+		email, pressedEnter = ss.readLineWithEchoAndDefault(s, suggested)
+		if email == "" || !pressedEnter {
+			fmt.Fprint(s, "\r\nRegistration cancelled.\r\n")
+			return
+		}
+		// Only suggest an email the first time around, to avoid being annoying
+		suggested = ""
+	}
+
+	needsEmailVerification := ghInfo.Email == "" || email != ghInfo.Email
+	var user *exedb.User
+	if needsEmailVerification {
+		user, err = ss.waitForEmailVerification(s, publicKey, email)
+		if err != nil || user == nil {
+			ss.server.slog().Error("email verification failed", "email", email, "error", err)
+			fmt.Fprintf(s, "\r\n\033[1;31m%v\033[0m\r\n", err)
+			return
+		}
+	} else {
+		// Email matches GitHub's. Rely on their verification; create user directly now.
+		ss.server.slog().Info("email matches GitHub, skipping verification", "email", email)
+		newUser, err := ss.server.createUserWithSSHKey(s.Context(), email, publicKey)
+		if err != nil {
+			ss.server.slog().Error("failed to create user with SSH key during github auto-verification", "error", err)
+			fmt.Fprintf(s, "\r\n\033[1;31minternal error: failed to create user account\033[0m\r\n")
+			return
+		}
+		user = newUser
+		// TODO: handle new device but existing user case!
+	}
+
+	// Get user's alloc for the menu
+	// Visual feedback that we're entering the menu
+	fmt.Fprintf(s, "\r\n\r\n")
 
 	// Transition directly to the main shell menu
 	// We pass the session directly and let runMainShellWithReadline create its own reader
@@ -615,52 +640,62 @@ func (ss *SSHServer) handleRegistration(s sshsession.Session, publicKey string) 
 }
 
 func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, email string) (*exedb.User, error) {
-	line := func(msg string, args ...any) {
-		fmt.Fprintf(s, msg+"\r\n", args...)
-	}
-
 	ss.server.slog().Debug("starting email verification", "email", email)
-	wantCode, isNewAccount, err := ss.startEmailVerification(s, publicKey, email)
+	verification, err := ss.startEmailVerification(s, publicKey, email)
 	if err != nil {
 		switch {
 		case err.Error() == "email service not configured":
-			line("Internal error. Please try again later.")
 			return nil, fmt.Errorf("internal error: email service is not configured")
 		case strings.Contains(err.Error(), "marked as inactive"):
-			line("This email address has been marked as inactive due to previous abuse.")
-			line("Please try a different email address.")
-			line("")
-			return nil, errors.New("email address marked as inactive")
+			return nil, fmt.Errorf("This email address has been blocked by the email provider.\r\nPlease try a different email address.")
 		}
 		return nil, err
 	}
 
-	line("Verification code sent to %s.", email)
-	line("It is only valid for this session.")
-	line("")
-	line("Please enter the verification code below to complete registration.")
-	line("")
-	fmt.Fprintf(s, "Verification code: ")
+	fmt.Fprintf(s, "\r\nVerification email sent to: \033[1;32m%s\033[0m\r\n", email)
+	fmt.Fprintf(s, "Pairing code: \033[1;32m%s\033[0m\r\n", verification.PairingCode)
+	fmt.Fprintf(s, "\033[2mWaiting for email verification...\033[0m\r\n")
 
-	gotCode, pressedEnter := ss.readLineWithEchoAndDefault(s, "")
-	if !pressedEnter {
-		line("")
-		line("Registration cancelled.")
-		return nil, fmt.Errorf("registration cancelled by user")
-	}
+	ctrlCChan := make(chan struct{}, 1)
+	inputCtx, cancelInput := context.WithCancel(s.Context())
+	defer cancelInput()
 
-	line("")
+	go func() {
+		for {
+			b, err := s.ReadByteContext(inputCtx)
+			if err != nil {
+				return
+			}
+			if b == 3 {
+				select {
+				case ctrlCChan <- struct{}{}:
+				default:
+				}
+				return
+			}
+		}
+	}()
 
-	if gotCode != wantCode {
-		line("Invalid verification code. Please try again.")
-		return nil, fmt.Errorf("invalid verification code")
+	// Wait for email verification with Ctrl+C support
+	select {
+	case <-verification.CompleteChan:
+		cancelInput() // stop the reader immediately now that input is no longer needed
+		fmt.Fprintf(s, "%s✓ Email verified successfully!%s\r\n\r\n", "\033[1;32m", "\033[0m")
+	case <-ctrlCChan:
+		cancelInput() // ensure the goroutine exits before we bubble up the cancellation
+		return nil, fmt.Errorf("Registration cancelled")
+	case <-time.After(10 * time.Minute):
+		cancelInput() // ensure the goroutine exits before reporting the timeout
+		return nil, fmt.Errorf("Email verification timed out. Please try again.")
+	case <-s.Context().Done():
+		cancelInput() // ensure the goroutine exits before propagating session closure
+		return nil, fmt.Errorf("session disconnected")
 	}
 
 	// After successful verification, the user should have been created by the HTTP handler
 	// Get the user to verify it was created
 	user, userErr := ss.server.getUserByPublicKey(s.Context(), publicKey)
 	if userErr != nil || user == nil {
-		line("Internal error. Please try again.")
 		return nil, fmt.Errorf("internal error: user not found after verification")
 	}
 
@@ -679,10 +714,10 @@ func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, e
 
 	// Registration complete - wait for user to press Enter
 	fmt.Fprintf(s, "\r\n%sRegistration complete!%s\r\n\r\n", "\033[1;32m", "\033[0m")
-	if isNewAccount {
-		line("Verified.")
+	if verification.IsNewAccount {
+		fmt.Fprintf(s, "Your account has been successfully created.\r\n\r\n")
 	} else {
-		line("SSH key added for %s.", email)
+		fmt.Fprintf(s, "Your new ssh key has been added to your existing account.\r\n\r\n")
 	}
 	return user, nil
 }
@@ -763,65 +798,113 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
 }
 
-func (ss *SSHServer) startEmailVerification(s ssh.Session, publicKey, email string) (code string, isNewAccount bool, _ error) {
+func (ss *SSHServer) startEmailVerification(s ssh.Session, publicKey, email string) (*EmailVerification, error) {
 	// Check whether this email already exists
 	_, err := withRxRes(ss.server, s.Context(), func(ctx context.Context, q *exedb.Queries) (any, error) {
 		return q.GetUserIDByEmail(ctx, email)
 	})
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", false, fmt.Errorf("failed to check existing email: %v", err)
+	var isNewAccount bool
+	switch {
+	case err == nil:
+		isNewAccount = false
+	case errors.Is(err, sql.ErrNoRows):
+		isNewAccount = true
+	default:
+		return nil, fmt.Errorf("failed to check existing email: %v", err)
 	}
 
-	isNewAccount = errors.Is(err, sql.ErrNoRows)
-
-	code = crand.Text()[:6]
-
 	if !isNewAccount {
+		// Email already exists - this is a new ssh key for an existing user.
+		verif := ss.server.addEmailVerification(publicKey, email, isNewAccount)
+
+		err := ss.server.withTx(s.Context(), func(ctx context.Context, q *exedb.Queries) error {
+			return q.InsertPendingSSHKey(ctx, exedb.InsertPendingSSHKeyParams{
+				Token:     verif.Token,
+				PublicKey: publicKey,
+				UserEmail: email,
+				ExpiresAt: time.Now().Add(15 * time.Minute),
+			})
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create verification token: %v", err)
+		}
+
 		// Send new device verification email
 		subject := "New ssh key login - EXE.DEV"
+		verifyURL := fmt.Sprintf("%s/verify-device?token=%s", ss.server.getBaseURL(), verif.Token)
 		body := fmt.Sprintf(`Hello,
 
 A new ssh key is trying to register with your EXE.DEV account email, with public key:
 
 %s
 
-To approve this new ssh key, please enter the following verification code in your ssh session:
+If this was you, please click the link below to authorize this device:
 
 %s
 
-If you did not attempt to register a new ssh key, please ignore this email.
+If you did not attempt to register from a new device, please ignore this email.
+
+This link will expire in 15 minutes.
 
 Best regards,
-The EXE.DEV team`, publicKey, code)
-		if err := ss.server.sendEmail(email, subject, body); err != nil {
-			return "", false, fmt.Errorf("failed to send verification email: %v", err)
-		}
-		if ss.server.devMode != "" {
-			fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed code: \033[1;36m%s\033[0m\r\n\r\n", code)
-		}
-	} else {
-		// Send verification email
-		subject := "Welcome to EXE.DEV - Verify Your Email"
-		body := fmt.Sprintf(`Welcome to EXE.DEV!
-
-Please enter the following verification code in your ssh session to complete your registration:
-
-%s
-
-If you did not attempt to register, please ignore this email.
-
-Best regards,
-The EXE.DEV team`, code)
+The EXE.DEV team`, publicKey, verifyURL)
 
 		if err := ss.server.sendEmail(email, subject, body); err != nil {
-			return "", false, fmt.Errorf("failed to send verification email: %v", err)
+			ss.server.deleteEmailVerification(verif)
+			return nil, fmt.Errorf("failed to send verification email: %v", err)
 		}
 		if ss.server.devMode != "" {
-			fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed code: \033[1;36m%s\033[0m\r\n\r\n", code)
+			fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 		}
+
+		return verif, nil
 	}
 
-	return code, isNewAccount, nil
+	// New user registration
+	verif := ss.server.addEmailVerification(publicKey, email, isNewAccount)
+
+	// Send verification email
+	subject := "Welcome to EXE.DEV - Verify Your Email"
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s&s=exemenu", ss.server.getBaseURL(), verif.Token)
+	body := fmt.Sprintf(`Welcome to EXE.DEV!
+
+Please click the link below to verify your email address:
+
+%s
+
+This link will expire in 15 minutes.
+
+Best regards,
+The EXE.DEV team`, verifyURL)
+
+	if err := ss.server.sendEmail(email, subject, body); err != nil {
+		ss.server.deleteEmailVerification(verif)
+		return nil, fmt.Errorf("failed to send verification email: %v", err)
+	}
+	if ss.server.devMode != "" {
+		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
+	}
+
+	return verif, nil
+}
+
+func (s *Server) addEmailVerification(publicKey, email string, isNewAccount bool) *EmailVerification {
+	token := generateRegistrationToken()
+	pairingCode := generatePairingCode()
+
+	verification := &EmailVerification{
+		PublicKey:    publicKey,
+		Email:        email,
+		Token:        token,
+		PairingCode:  pairingCode,
+		CompleteChan: make(chan struct{}),
+		CreatedAt:    time.Now(),
+		IsNewAccount: isNewAccount,
+	}
+	s.emailVerificationsMu.Lock()
+	defer s.emailVerificationsMu.Unlock()
+	s.emailVerifications[token] = verification
+	return verification
 }
 
 func (s *Server) deleteEmailVerification(verif *EmailVerification) {

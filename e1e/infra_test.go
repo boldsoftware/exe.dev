@@ -1359,70 +1359,6 @@ func clickVerifyLinkInEmail(t *testing.T, emailMsg emailMessage) []*http.Cookie 
 	return cookies
 }
 
-// waitForVerificationCodeEmail waits for an email containing a 6-digit verification
-// code and returns the extracted code.
-func waitForVerificationCodeEmail(t *testing.T, email string) string {
-	t.Helper()
-	emailMsg := Env.email.waitForEmail(t, email)
-	code, err := extractVerificationCode(emailMsg.Body)
-	if err != nil {
-		t.Fatalf("failed to extract verification code for %s: %v\nemail body:\n%s", email, err, emailMsg.Body)
-	}
-	Env.addCanonicalization(code, "EMAIL_VERIFICATION_CODE")
-	return code
-}
-
-func extractVerificationCode(body string) (string, error) {
-	re := regexp.MustCompile(`(?m)^[ \t]*([A-Za-z0-9]{6})[ \t]*$`)
-	matches := re.FindStringSubmatch(body)
-	if len(matches) < 2 {
-		return "", fmt.Errorf("verification code not found in email body")
-	}
-	return matches[1], nil
-}
-
-// completeWebLogin runs the /auth flow to obtain HTTP cookies for the given user.
-func completeWebLogin(t *testing.T, email string) []*http.Cookie {
-	t.Helper()
-	baseURL := fmt.Sprintf("http://localhost:%d", Env.exed.HTTPPort)
-	resp, err := http.PostForm(baseURL+"/auth", url.Values{"email": {email}})
-	if err != nil {
-		t.Fatalf("POST /auth: %v", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("POST /auth returned status %d body %q", resp.StatusCode, string(body))
-	}
-	return clickVerifyLinkInEmail(t, Env.email.waitForEmail(t, email))
-}
-
-func expectSSHRegistrationPrompt(t *testing.T, pty *expectPty) {
-	t.Helper()
-	pty.want("This is exe.dev.")
-	pty.want("To get started, register your SSH key using a valid email address.")
-	pty.want("Email: ")
-}
-
-func expectVerificationCodePrompt(t *testing.T, pty *expectPty, email string) {
-	t.Helper()
-	pty.wantf("Verification code sent to %s.", email)
-	pty.want("It is only valid for this session.")
-	pty.want("Please enter the verification code below to complete registration.")
-	pty.want("Verification code: ")
-}
-
-func expectRegistrationComplete(t *testing.T, pty *expectPty, isNewAccount bool, email string) {
-	t.Helper()
-	pty.want("Registration complete")
-	if isNewAccount {
-		escaped := regexp.QuoteMeta(email)
-		pty.wantRe(fmt.Sprintf("(Verified\\.|SSH key added for %s\\.)", escaped))
-		return
-	}
-	pty.wantf("SSH key added for %s.", email)
-}
-
 var boxCounter atomic.Int32
 
 // boxName creates a unique test-specific box name with e1e prefix for easy cleanup
@@ -1449,24 +1385,24 @@ func registerForExeDevWithEmail(t *testing.T, email string) (pty *expectPty, coo
 	pty = sshToExeDev(t, keyFile)
 	pty.want(banner)
 
-	expectSSHRegistrationPrompt(t, pty)
+	pty.want("Please enter your email")
 	pty.sendLine(email)
 	returnedEmail = email
-	expectVerificationCodePrompt(t, pty, email)
-	code := waitForVerificationCodeEmail(t, email)
-	pty.sendLine(code)
+	pty.wantRe("Verification email sent to.*" + regexp.QuoteMeta(email))
+	pty.wantRe("Pairing code: .*[0-9]{6}.*")
 
-	expectRegistrationComplete(t, pty, true, email)
+	emailMsg := Env.email.waitForEmail(t, email)
+	cookies = clickVerifyLinkInEmail(t, emailMsg)
+
+	pty.want("Email verified successfully")
+	pty.want("Registration complete")
 	pty.want("Welcome to EXE.DEV!") // check that we show welcome message for users who haven't created boxes
-	pty.want("create your first box")
 	pty.wantPrompt()
 
 	pty.sendLine("whoami")
 	pty.want(email)
 	pty.want(publicKey)
 	pty.wantPrompt()
-
-	cookies = completeWebLogin(t, email)
 
 	return pty, cookies, keyFile, returnedEmail
 }
