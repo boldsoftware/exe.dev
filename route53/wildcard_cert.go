@@ -148,8 +148,11 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 
 	// Need to obtain a new certificate
 	newCert, err := w.obtainCertificate(rootDomain)
-	if err != nil || !isCertValid(newCert) {
-		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", hello.ServerName, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", rootDomain, err)
+	}
+	if !isCertValid(newCert) {
+		return nil, fmt.Errorf("obtained invalid certificate for %s", rootDomain)
 	}
 
 	w.setMemCert(rootDomain, newCert)
