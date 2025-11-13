@@ -102,7 +102,6 @@ func (s *Server) setupHTTPSServer() {
 		s.slog().Info("Using Route 53 DNS provider for wildcard TLS certificates")
 		s.wildcardCertManager = route53.NewWildcardCertManager(
 			s.getMainDomain(),
-			"support@"+s.getMainDomain(),
 			autocert.DirCache("certs"),
 			s.sshMetrics.letsencryptRequests,
 		)
