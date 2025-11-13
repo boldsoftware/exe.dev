@@ -100,6 +100,10 @@ func decodeRecordID(id string) (*recordIdentifier, error) {
 
 func (d *DNSProvider) getHostedZoneID(ctx context.Context, domain string) (string, error) {
 	baseDomain := extractDomain(domain)
+	// NOTE: We currently keep every delegated name under a single hosted zone per
+	// apex (e.g. exe.dev). If we ever break sub-zones like xterm.exe.dev into
+	// their own Route53 zones, this lookup must be revisited to walk the labels
+	// until it finds the correct hosted zone.
 
 	d.mu.Lock()
 	if zoneID, ok := d.zoneCache[baseDomain]; ok {
@@ -211,6 +215,9 @@ func (d *DNSProvider) DeleteRecord(ctx context.Context, domain, recordID string)
 			Value: aws.String(fmt.Sprintf("\"%s\"", value)),
 		})
 	}
+	// TODO: Route53 expects bare domain names for non-TXT records (e.g. CNAME targets), so
+	// quoting everything here prevents DeleteRecord from working for those types. Preserve
+	// whatever format encodeRecordID stored instead of always adding quotes.
 
 	ttl := ident.TTL
 	if ttl == 0 {
@@ -270,6 +277,8 @@ func (d *DNSProvider) ListCNAMERecords(ctx context.Context, domain string) ([]CN
 				continue
 			}
 			if len(rrset.ResourceRecords) == 0 {
+				// TODO: This fails the entire listing if one CNAME is malformed.
+				// Consider skipping invalid records instead of aborting.
 				return nil, fmt.Errorf("CNAME record %s has no target", aws.ToString(rrset.Name))
 			}
 
@@ -457,6 +466,9 @@ func (d *DNSProvider) CreateACMEChallenge(ctx context.Context, domain, keyAuth s
 	log.Printf("[DNS] Using ACME challenge name %s for domain %s (base %s)", challengeName, domain, baseDomain)
 
 	// Clean up any existing ACME challenge records for this domain
+	// TODO: This call and the later cleanup path both walk the entire hosted
+	// zone via ListResourceRecordSets. When Route53 gives us a cheaper way to
+	// delete by identifier, refactor this to avoid two full scans per challenge.
 	log.Printf("[DNS] Cleaning up existing ACME challenge records for %s", challengeName)
 	records, err := d.GetRecords(ctx, baseDomain)
 	if err != nil {

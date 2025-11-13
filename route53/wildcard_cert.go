@@ -377,7 +377,11 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		}
 		slog.Info("DNS TXT record created for ACME challenge", "recordID", recordID)
 
-		// Wait a bit for DNS propagation
+		// Wait a bit for DNS propagation.
+		// TODO: in theory we should do DNS lookups in a retry loop to verify propagation.
+		// This gets messy to Do Right, though: we have to avoid caching,
+		// check every single authoritative nameserver, etc.
+		// In practice, a fixed sleep seems to work fine so far.
 		time.Sleep(10 * time.Second)
 
 		// Accept the challenge
