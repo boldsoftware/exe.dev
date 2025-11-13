@@ -1,6 +1,15 @@
 package route53
 
-import "testing"
+import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"math/big"
+	"testing"
+	"time"
+)
 
 func TestIsSingleLevelSubdomain(t *testing.T) {
 	t.Parallel()
@@ -115,4 +124,95 @@ func TestWildcardCertManager_domainForServerName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWildcardCertManager_isCertValid(t *testing.T) {
+	t.Parallel()
+
+	const testDomain = "example.com"
+
+	w := &WildcardCertManager{}
+	// Prevent background renewals from running because this test does not
+	// configure the dependencies required by obtainCertificate.
+	w.renewalsInFlight.Store(testDomain, struct{}{})
+	now := time.Now()
+	goodExpiry := now.Add(certificateRenewBefore + time.Hour)
+	soonExpiry := now.Add(certificateRenewBefore / 2)
+	expired := now.Add(-time.Hour)
+
+	tcs := []struct {
+		name       string
+		cert       *tls.Certificate
+		wantUsable bool
+	}{
+		{
+			name:       "nil certificate",
+			wantUsable: false,
+		},
+		{
+			name:       "expired certificate",
+			cert:       &tls.Certificate{Leaf: &x509.Certificate{NotAfter: expired}},
+			wantUsable: false,
+		},
+		{
+			name:       "valid certificate",
+			cert:       &tls.Certificate{Leaf: &x509.Certificate{NotAfter: goodExpiry}},
+			wantUsable: true,
+		},
+		{
+			name:       "expiring soon still valid",
+			cert:       &tls.Certificate{Leaf: &x509.Certificate{NotAfter: soonExpiry}},
+			wantUsable: true,
+		},
+	}
+
+	for _, tc := range tcs {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := w.isCertValid(testDomain, tc.cert)
+			if got != tc.wantUsable {
+				t.Fatalf("isCertValid = %v, want %v", got, tc.wantUsable)
+			}
+		})
+	}
+
+	t.Run("parses leaf when missing", func(t *testing.T) {
+		t.Parallel()
+		der := mustCreateTestCertDER(t, goodExpiry)
+		cert := &tls.Certificate{Certificate: [][]byte{der}}
+		if !w.isCertValid(testDomain, cert) {
+			t.Fatalf("isCertValid returned false for valid certificate")
+		}
+		if cert.Leaf == nil {
+			t.Fatalf("isCertValid failed to populate leaf")
+		}
+	})
+}
+
+func mustCreateTestCertDER(t *testing.T, notAfter time.Time) []byte {
+	t.Helper()
+
+	priv, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              notAfter,
+		Subject:               pkix.Name{CommonName: "example.com"},
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"example.com"},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("failed to create certificate: %v", err)
+	}
+
+	return der
 }

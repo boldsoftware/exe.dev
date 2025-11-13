@@ -79,6 +79,7 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 // WildcardCertManager manages wildcard certificates using DNS-01 challenge
 const (
 	certificateCacheTimeout = 5 * time.Second
+	certificateRenewBefore  = 10 * 24 * time.Hour
 )
 
 type WildcardCertManager struct {
@@ -88,6 +89,8 @@ type WildcardCertManager struct {
 	domains      []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
 	certRequests prometheus.Counter
 	sf           singleflight.Group[string, *tls.Certificate] // singleflight group for certificate requests
+
+	renewalsInFlight sync.Map // background renewals currently running per domain
 
 	mu       sync.Mutex                  // protects certificates
 	memCerts map[string]*tls.Certificate // in-memory cache of certificates to avoid repeated decoding and disk reads
@@ -146,12 +149,12 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 
 func (w *WildcardCertManager) ensureCertificateForDomain(rootDomain string) (*tls.Certificate, error) {
 	cert := w.memCert(rootDomain)
-	if isCertValid(cert) {
+	if w.isCertValid(rootDomain, cert) {
 		return cert, nil
 	}
 
 	if diskCert, err := w.loadCertificateFromDisk(rootDomain); err == nil {
-		if isCertValid(diskCert) {
+		if w.isCertValid(rootDomain, diskCert) {
 			w.setMemCert(rootDomain, diskCert)
 			return diskCert, nil
 		}
@@ -164,7 +167,7 @@ func (w *WildcardCertManager) ensureCertificateForDomain(rootDomain string) (*tl
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", rootDomain, err)
 	}
-	if !isCertValid(newCert) {
+	if !w.isCertValid(rootDomain, newCert) {
 		return nil, fmt.Errorf("obtained invalid certificate for %s", rootDomain)
 	}
 
@@ -236,8 +239,7 @@ func (w *WildcardCertManager) domainForServerName(serverName string) string {
 	return ""
 }
 
-// isCertValid reports whether cert is valid and not expiring soon.
-func isCertValid(cert *tls.Certificate) bool {
+func (w *WildcardCertManager) isCertValid(domain string, cert *tls.Certificate) bool {
 	if cert == nil {
 		return false
 	}
@@ -257,16 +259,41 @@ func isCertValid(cert *tls.Certificate) bool {
 		cert.Leaf = leaf
 	}
 
-	// Check expiration - renew 10 days before expiry
-	renewBefore := 10 * 24 * time.Hour
-	if time.Until(cert.Leaf.NotAfter) < renewBefore {
-		slog.Warn("certificate expiring soon",
-			"commonName", cert.Leaf.Subject.CommonName,
-			"expiresAt", cert.Leaf.NotAfter)
+	if time.Now().After(cert.Leaf.NotAfter) {
 		return false
 	}
 
+	if time.Until(cert.Leaf.NotAfter) < certificateRenewBefore {
+		w.triggerRenewal(domain)
+	}
+
 	return true
+}
+
+func (w *WildcardCertManager) triggerRenewal(domain string) {
+	if _, loaded := w.renewalsInFlight.LoadOrStore(domain, struct{}{}); loaded {
+		return
+	}
+
+	go func() {
+		slog.Info("starting background certificate renewal", "domain", domain)
+		defer func() { w.renewalsInFlight.Delete(domain) }()
+
+		newCert, err := w.obtainCertificate(domain)
+		if err != nil {
+			slog.Warn("background renewal failed", "domain", domain, "error", err)
+			return
+		}
+
+		if !w.isCertValid(domain, newCert) {
+			slog.Warn("background renewal produced unusable certificate", "domain", domain)
+			return
+		}
+
+		w.setMemCert(domain, newCert)
+		// requestCertificateFromLE already writes to disk cache
+		slog.Info("completed background certificate renewal", "domain", domain)
+	}()
 }
 
 // obtainCertificate obtains a new wildcard certificate from Let's Encrypt.
