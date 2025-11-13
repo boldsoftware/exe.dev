@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   docs-review:
+    environment: ai-testing
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
