@@ -77,7 +77,6 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 
 // WildcardCertManager manages wildcard certificates using DNS-01 challenge
 const (
-	wildcardCachePrefix     = "wildcard_cert+"
 	certificateCacheTimeout = 5 * time.Second
 )
 
@@ -87,12 +86,12 @@ type WildcardCertManager struct {
 	dnsProvider  *DNSProvider
 	cache        autocert.Cache
 	acmeClient   *acme.Client
-	domain       string
+	domains      []string
 	certRequests prometheus.Counter
 }
 
 // NewWildcardCertManager creates a new wildcard certificate manager
-func NewWildcardCertManager(domain string, cache autocert.Cache, certRequests prometheus.Counter) *WildcardCertManager {
+func NewWildcardCertManager(domains []string, cache autocert.Cache, certRequests prometheus.Counter) *WildcardCertManager {
 	// Try to load existing ACME account key from cache, or generate new one
 	key, err := loadOrGenerateACMEKey(cache)
 	if err != nil {
@@ -109,7 +108,7 @@ func NewWildcardCertManager(domain string, cache autocert.Cache, certRequests pr
 		dnsProvider:  NewDNSProvider(),
 		cache:        cache,
 		acmeClient:   client,
-		domain:       domain,
+		domains:      domains,
 		certRequests: certRequests,
 	}
 }
@@ -120,13 +119,12 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 		return nil, fmt.Errorf("no server name provided")
 	}
 
-	// Check if this is a domain we should handle
-	if !w.shouldHandleDomain(hello.ServerName) {
-		return nil, fmt.Errorf("domain %s not handled by wildcard cert manager", hello.ServerName)
-	}
-
 	// Determine which certificate to use
-	certKey := w.getCertificateKey(hello.ServerName)
+	certKey := w.domainForServerName(hello.ServerName)
+	if certKey == "" {
+		// Not a domain we manage.
+		return nil, fmt.Errorf("unrecognized domain: %q", hello.ServerName)
+	}
 
 	w.mu.RLock()
 	cert, exists := w.certificates[certKey]
@@ -164,55 +162,46 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	return newCert, nil
 }
 
-// shouldHandleDomain checks if we should handle this domain
-func (w *WildcardCertManager) shouldHandleDomain(serverName string) bool {
-	// Handle main domain
-	if serverName == w.domain {
-		return true
-	}
-
-	// Handle www.domain
-	if serverName == "www."+w.domain {
-		return true
-	}
-
-	// Handle any subdomain of the main domain (for wildcard cert)
-	if strings.HasSuffix(serverName, "."+w.domain) {
-		return true
-	}
-
-	return false
+// isSingleLevelSubdomain reports whether serverName is a single-level subdomain of domain.
+// For example:
+//
+//	isSingleLevelSubdomain("www.domain.com", "domain.com") == true
+//	isSingleLevelSubdomain("api.domain.com", "domain.com") == true
+//	isSingleLevelSubdomain("api.www.domain.com", "domain.com") == false
+//	isSingleLevelSubdomain("domain.com", "domain.com") == false
+func isSingleLevelSubdomain(domain, serverName string) bool {
+	prefix, ok := strings.CutSuffix(serverName, "."+domain)
+	return ok && !strings.Contains(prefix, ".")
 }
 
-// getCertificateKey returns the certificate key to use for a given server name
-func (w *WildcardCertManager) getCertificateKey(serverName string) string {
-	// For main domain and www, use the main domain cert
-	if serverName == w.domain || serverName == "www."+w.domain {
-		return w.domain
-	}
+// domainForServerName returns the (possibly wildcard) domain corresponding to serverName.
+// If domainForServerName returns an empty string, we do not manager serverName.
+func (w *WildcardCertManager) domainForServerName(serverName string) string {
+	// We accept apex domains and single-level subdomains.
+	// Note that when the set of domains includes subdomains,
+	// such as {"exe.dev", "xterm.exe.dev"},
+	// we can match "xterm.exe.dev" in multiple ways:
+	//   - exact match to "xterm.exe.dev"
+	//   - single-level subdomain match to "exe.dev"
+	// In such cases, we use the exact match.
 
-	// For subdomains, extract the team name and return *.team.exe.dev
-	if strings.HasSuffix(serverName, "."+w.domain) {
-		// Remove the main domain suffix to get the subdomain part
-		subdomain := strings.TrimSuffix(serverName, "."+w.domain)
-
-		// Split subdomain parts (e.g., "machine.team" -> ["machine", "team"])
-		parts := strings.Split(subdomain, ".")
-
-		if len(parts) == 1 {
-			// Single level subdomain (e.g., "api.exe.dev") - use regular wildcard
-			return "*." + w.domain
-		} else if len(parts) == 2 {
-			// Two level subdomain (e.g., "machine.team.exe.dev") - use team-specific wildcard
-			teamName := parts[1]
-			return "*." + teamName + "." + w.domain
-		} else {
-			// More than 2 levels - not supported
-			return serverName
+	// Prefer exact matches.
+	for _, domain := range w.domains {
+		if serverName == domain {
+			return domain
 		}
 	}
 
-	return serverName
+	// Now check for single-level subdomains.
+	// Convert single-level subdomains to their corresponding apex domain,
+	// because that's the certificate we will use.
+	for _, domain := range w.domains {
+		if isSingleLevelSubdomain(domain, serverName) {
+			return domain
+		}
+	}
+
+	return ""
 }
 
 // isCertValid checks if a certificate is valid and not expiring soon
@@ -248,22 +237,11 @@ func (w *WildcardCertManager) isCertValid(cert *tls.Certificate) bool {
 	return true
 }
 
-// obtainCertificate obtains a new wildcard certificate from Let's Encrypt
+// obtainCertificate obtains a new wildcard certificate from Let's Encrypt.
+// domain must be the root domain for the certificate, as obtained from domainForServerName.
 func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain string) (*tls.Certificate, error) {
-	slog.Info("obtaining certificate", "domain", domain)
-
-	// Determine domains to include in the certificate request
-	var domains []string
-	if domain == w.domain {
-		// Main domain certificate should include wildcard for subdomains
-		domains = []string{w.domain, "*." + w.domain}
-	} else if strings.HasPrefix(domain, "*.") {
-		// Wildcard domain like *.team.exe.dev
-		domains = []string{domain}
-	} else {
-		// Specific subdomain
-		domains = []string{domain}
-	}
+	domains := []string{domain, "*." + domain} // always request both root and wildcard
+	slog.Info("obtaining certificate", "domains", domains)
 
 	// Create an ACME order for the desired domains
 	order, err := w.acmeClient.AuthorizeOrder(ctx, acme.DomainIDs(domains...))

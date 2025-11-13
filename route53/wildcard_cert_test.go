@@ -1,60 +1,117 @@
 package route53
 
-import (
-	"testing"
-)
+import "testing"
 
-func TestWildcardCertManager_getCertificateKey(t *testing.T) {
-	w := &WildcardCertManager{
-		domain: "exe.dev",
+func TestIsSingleLevelSubdomain(t *testing.T) {
+	t.Parallel()
+
+	tcs := []struct {
+		name       string
+		domain     string
+		serverName string
+		want       bool
+	}{
+		{
+			name:       "apex is not subdomain",
+			domain:     "exe.dev",
+			serverName: "exe.dev",
+			want:       false,
+		},
+		{
+			name:       "single level subdomain",
+			domain:     "exe.dev",
+			serverName: "api.exe.dev",
+			want:       true,
+		},
+		{
+			name:       "multi level subdomain rejected",
+			domain:     "exe.dev",
+			serverName: "box.team.exe.dev",
+			want:       false,
+		},
+		{
+			name:       "www single level subdomain",
+			domain:     "exe.dev",
+			serverName: "www.exe.dev",
+			want:       true,
+		},
+		{
+			name:       "subdomain of nested root",
+			domain:     "xterm.exe.dev",
+			serverName: "console.xterm.exe.dev",
+			want:       true,
+		},
 	}
 
-	tests := []struct {
+	for _, tc := range tcs {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := isSingleLevelSubdomain(tc.domain, tc.serverName)
+			if got != tc.want {
+				t.Fatalf("isSingleLevelSubdomain(%q, %q) = %v, want %v", tc.domain, tc.serverName, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWildcardCertManager_domainForServerName(t *testing.T) {
+	t.Parallel()
+
+	tcs := []struct {
 		name       string
+		domains    []string
 		serverName string
 		want       string
 	}{
 		{
-			name:       "main domain",
+			name:       "apex domain match",
+			domains:    []string{"exe.dev"},
 			serverName: "exe.dev",
 			want:       "exe.dev",
 		},
 		{
-			name:       "www subdomain",
-			serverName: "www.exe.dev",
+			name:       "single level subdomain collapses to root",
+			domains:    []string{"exe.dev"},
+			serverName: "api.exe.dev",
 			want:       "exe.dev",
 		},
 		{
-			name:       "single level subdomain",
-			serverName: "api.exe.dev",
-			want:       "*.exe.dev",
+			name:       "multi level subdomain rejected",
+			domains:    []string{"exe.dev"},
+			serverName: "machine.team.exe.dev",
+			want:       "",
 		},
 		{
-			name:       "machine.team two level subdomain",
-			serverName: "myapp.myteam.exe.dev",
-			want:       "*.myteam.exe.dev",
+			name:       "prefer exact match over parent root",
+			domains:    []string{"exe.dev", "xterm.exe.dev"},
+			serverName: "xterm.exe.dev",
+			want:       "xterm.exe.dev",
 		},
 		{
-			name:       "another machine.team subdomain",
-			serverName: "webapp.devteam.exe.dev",
-			want:       "*.devteam.exe.dev",
+			name:       "single level subdomain of nested root",
+			domains:    []string{"exe.dev", "xterm.exe.dev"},
+			serverName: "console.xterm.exe.dev",
+			want:       "xterm.exe.dev",
 		},
 		{
-			name:       "three level subdomain - not supported",
-			serverName: "baz.foo.bar.exe.dev",
-			want:       "baz.foo.bar.exe.dev",
-		},
-		{
-			name:       "unrelated domain",
+			name:       "unknown domain",
+			domains:    []string{"exe.dev"},
 			serverName: "example.com",
-			want:       "example.com",
+			want:       "",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := w.getCertificateKey(tt.serverName); got != tt.want {
-				t.Errorf("getCertificateKey(%q) = %q, want %q", tt.serverName, got, tt.want)
+	for _, tc := range tcs {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := &WildcardCertManager{
+				domains: tc.domains,
+			}
+			got := w.domainForServerName(tc.serverName)
+			if got != tc.want {
+				t.Fatalf("domainForServerName(%q) = %q, want %q", tc.serverName, got, tc.want)
 			}
 		})
 	}
