@@ -2,7 +2,6 @@ package route53
 
 import (
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -89,6 +88,12 @@ func TestCreateACMEChallengeLogic(t *testing.T) {
 			expectedName:   "_acme-challenge.www",
 			description:    "www subdomain",
 		},
+		{
+			domain:         "*.xterm.example.invalid",
+			expectedDomain: "example.invalid",
+			expectedName:   "_acme-challenge.xterm",
+			description:    "wildcard nested subdomain",
+		},
 	}
 
 	for _, test := range tests {
@@ -98,16 +103,7 @@ func TestCreateACMEChallengeLogic(t *testing.T) {
 				t.Errorf("extractDomain(%s) = %s, expected %s", test.domain, baseDomain, test.expectedDomain)
 			}
 
-			var challengeName string
-			switch {
-			case test.domain == test.expectedDomain:
-				challengeName = "_acme-challenge"
-			case strings.HasPrefix(test.domain, "*."):
-				challengeName = "_acme-challenge"
-			case strings.HasSuffix(test.domain, "."+test.expectedDomain):
-				sub := strings.TrimSuffix(test.domain, "."+test.expectedDomain)
-				challengeName = "_acme-challenge." + sub
-			}
+			challengeName := acmeChallengeName(test.domain)
 
 			if challengeName != test.expectedName {
 				t.Errorf("Challenge name for %s = %s, expected %s", test.domain, challengeName, test.expectedName)

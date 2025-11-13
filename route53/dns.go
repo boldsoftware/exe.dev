@@ -453,26 +453,8 @@ func (d *DNSProvider) CreateACMEChallenge(ctx context.Context, domain, keyAuth s
 	baseDomain := extractDomain(domain)
 	log.Printf("[DNS] CreateACMEChallenge: domain=%s, baseDomain=%s", domain, baseDomain)
 
-	// Create the challenge record name
-	var challengeName string
-	if strings.HasPrefix(domain, "*.") {
-		// For wildcard domain like "*.exe.dev", the challenge should be "_acme-challenge"
-		// The DNS-01 challenge for *.domain.com goes to _acme-challenge.domain.com
-		challengeName = "_acme-challenge"
-		log.Printf("[DNS] Wildcard domain processing: challengeName=%s", challengeName)
-	} else {
-		// For regular domain or subdomain, create appropriate challenge name
-		if domain == baseDomain {
-			// For base domain like "exe.dev", create "_acme-challenge"
-			challengeName = "_acme-challenge"
-			log.Printf("[DNS] Base domain processing: challengeName=%s", challengeName)
-		} else {
-			// For subdomain like "user.exe.dev", create "_acme-challenge.user"
-			subdomain := strings.TrimSuffix(domain, "."+baseDomain)
-			challengeName = "_acme-challenge." + subdomain
-			log.Printf("[DNS] Subdomain processing: subdomain=%s, challengeName=%s", subdomain, challengeName)
-		}
-	}
+	challengeName := acmeChallengeName(domain)
+	log.Printf("[DNS] Using ACME challenge name %s for domain %s (base %s)", challengeName, domain, baseDomain)
 
 	// Clean up any existing ACME challenge records for this domain
 	log.Printf("[DNS] Cleaning up existing ACME challenge records for %s", challengeName)
@@ -500,22 +482,7 @@ func (d *DNSProvider) CleanupACMEChallenge(ctx context.Context, domain, keyAuth 
 	// Extract the base domain
 	baseDomain := extractDomain(domain)
 
-	// Create the challenge record name (same logic as CreateACMEChallenge)
-	var challengeName string
-	if strings.HasPrefix(domain, "*.") {
-		// For wildcard domain like "*.exe.dev", the challenge should be "_acme-challenge"
-		challengeName = "_acme-challenge"
-	} else {
-		// For regular domain or subdomain, create appropriate challenge name
-		if domain == baseDomain {
-			// For base domain like "exe.dev", create "_acme-challenge"
-			challengeName = "_acme-challenge"
-		} else {
-			// For subdomain like "user.exe.dev", create "_acme-challenge.user"
-			subdomain := strings.TrimSuffix(domain, "."+baseDomain)
-			challengeName = "_acme-challenge." + subdomain
-		}
-	}
+	challengeName := acmeChallengeName(domain)
 
 	// Find the record
 	record, err := d.FindTXTRecord(ctx, baseDomain, challengeName, keyAuth)
@@ -535,4 +502,23 @@ func extractDomain(fqdn string) string {
 		return strings.Join(parts[len(parts)-2:], ".")
 	}
 	return fqdn
+}
+
+// acmeChallengeName returns the TXT record prefix for a domain (wildcard or otherwise).
+func acmeChallengeName(domain string) string {
+	baseDomain := extractDomain(domain)
+	target := strings.TrimPrefix(domain, "*.")
+	if target == baseDomain {
+		// "*.exe.dev" -> "_acme-challenge"
+		return "_acme-challenge"
+	}
+
+	sub, ok := strings.CutSuffix(target, "."+baseDomain)
+	if ok {
+		// "*.sub.exe.dev" -> "_acme-challenge.sub"
+		return "_acme-challenge." + sub
+	}
+
+	// "exe.dev" -> "_acme-challenge"
+	return "_acme-challenge"
 }
