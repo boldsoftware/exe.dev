@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -35,7 +35,7 @@ func NewDNSProvider() *DNSProvider {
 		config.WithRegion("us-east-1"),
 	)
 	if err != nil {
-		log.Fatalf("Failed to load AWS configuration for Route53: %v", err)
+		panic(fmt.Sprintf("failed to load AWS configuration for Route53: %v", err))
 	}
 
 	return &DNSProvider{
@@ -152,7 +152,7 @@ func buildRecordName(domain, name string) string {
 
 // CreateTXTRecord creates a TXT record for ACME challenge
 func (d *DNSProvider) CreateTXTRecord(ctx context.Context, domain, name, content string) (string, error) {
-	log.Printf("[DNS] CreateTXTRecord called: domain=%s, name=%s, content=%s", domain, name, content)
+	slog.Info("[DNS] CreateTXTRecord called", "domain", domain, "name", name, "content", content)
 
 	zoneID, err := d.getHostedZoneID(ctx, domain)
 	if err != nil {
@@ -163,7 +163,7 @@ func (d *DNSProvider) CreateTXTRecord(ctx context.Context, domain, name, content
 	fqdn := ensureTrailingDot(recordName)
 	ttl := int64(600)
 
-	log.Printf("[DNS] Upserting TXT record in Route53: zoneID=%s, name=%s", zoneID, recordName)
+	slog.Info("[DNS] Upserting TXT record in Route53", "zoneID", zoneID, "name", recordName)
 	_, err = d.client.ChangeResourceRecordSets(ctx, &awsroute53.ChangeResourceRecordSetsInput{
 		HostedZoneId: aws.String(zoneID),
 		ChangeBatch: &types.ChangeBatch{
@@ -190,7 +190,7 @@ func (d *DNSProvider) CreateTXTRecord(ctx context.Context, domain, name, content
 	if err != nil {
 		return "", fmt.Errorf("failed to encode record id: %w", err)
 	}
-	log.Printf("[DNS] Successfully upserted TXT record with synthetic ID: %s", recordID)
+	slog.Info("[DNS] Successfully upserted TXT record with synthetic ID", "recordID", recordID)
 
 	return recordID, nil
 }
@@ -460,32 +460,32 @@ func (d *DNSProvider) FindTXTRecord(ctx context.Context, domain, name, content s
 func (d *DNSProvider) CreateACMEChallenge(ctx context.Context, domain, keyAuth string) (string, error) {
 	// Extract the base domain (e.g., "exe.dev" from "*.exe.dev")
 	baseDomain := extractDomain(domain)
-	log.Printf("[DNS] CreateACMEChallenge: domain=%s, baseDomain=%s", domain, baseDomain)
+	slog.Info("[DNS] CreateACMEChallenge", "domain", domain, "baseDomain", baseDomain)
 
 	challengeName := acmeChallengeName(domain)
-	log.Printf("[DNS] Using ACME challenge name %s for domain %s (base %s)", challengeName, domain, baseDomain)
+	slog.Info("[DNS] Using ACME challenge name", "challengeName", challengeName, "domain", domain, "baseDomain", baseDomain)
 
 	// Clean up any existing ACME challenge records for this domain
 	// TODO: This call and the later cleanup path both walk the entire hosted
 	// zone via ListResourceRecordSets. When Route53 gives us a cheaper way to
 	// delete by identifier, refactor this to avoid two full scans per challenge.
-	log.Printf("[DNS] Cleaning up existing ACME challenge records for %s", challengeName)
+	slog.Info("[DNS] Cleaning up existing ACME challenge records", "challengeName", challengeName)
 	records, err := d.GetRecords(ctx, baseDomain)
 	if err != nil {
-		log.Printf("[DNS] Warning: failed to get existing records for cleanup: %v", err)
+		slog.Warn("[DNS] failed to get existing records for cleanup", "error", err)
 	} else {
 		expectedName := buildRecordName(baseDomain, challengeName)
 		for _, record := range records {
 			if record.Name == expectedName && record.Type == "TXT" {
-				log.Printf("[DNS] Deleting stale ACME challenge record: ID=%s, Content=%s", record.ID, record.Content)
+				slog.Info("[DNS] Deleting stale ACME challenge record", "recordID", record.ID, "content", record.Content)
 				if err := d.DeleteRecord(ctx, baseDomain, record.ID); err != nil {
-					log.Printf("[DNS] Warning: failed to delete stale record %s: %v", record.ID, err)
+					slog.Warn("[DNS] failed to delete stale record", "recordID", record.ID, "error", err)
 				}
 			}
 		}
 	}
 
-	log.Printf("[DNS] Calling CreateTXTRecord: baseDomain=%s, challengeName=%s, keyAuth=%s", baseDomain, challengeName, keyAuth)
+	slog.Info("[DNS] Calling CreateTXTRecord", "baseDomain", baseDomain, "challengeName", challengeName, "keyAuth", keyAuth)
 	return d.CreateTXTRecord(ctx, baseDomain, challengeName, keyAuth)
 }
 
