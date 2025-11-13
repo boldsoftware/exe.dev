@@ -262,6 +262,8 @@ func (w *WildcardCertManager) obtainCertificate(domain string) (*tls.Certificate
 // requestCertificateFromLE implements obtainCertificate.
 // Do not call it directly; use obtainCertificate instead.
 func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Certificate, error) {
+	w.certRequests.Inc()
+
 	domains := []string{domain, "*." + domain} // always request both root and wildcard
 	slog.Info("obtaining certificate", "domains", domains)
 
@@ -273,11 +275,6 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 	order, err := w.acmeClient.AuthorizeOrder(ctx, acme.DomainIDs(domains...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to authorize order: %w", err)
-	}
-
-	// Increment metric for Let's Encrypt certificate request
-	if w.certRequests != nil {
-		w.certRequests.Inc()
 	}
 
 	// Handle each authorization
