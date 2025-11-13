@@ -131,12 +131,12 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	}
 
 	cert := w.cachedCert(certKey)
-	if w.isCertValid(cert) {
+	if isCertValid(cert) {
 		return cert, nil
 	}
 
 	if cachedCert, err := w.loadCertificateFromCache(certKey); err == nil {
-		if w.isCertValid(cachedCert) {
+		if isCertValid(cachedCert) {
 			w.setCachedCert(certKey, cachedCert)
 			return cachedCert, nil
 		}
@@ -214,8 +214,8 @@ func (w *WildcardCertManager) domainForServerName(serverName string) string {
 	return ""
 }
 
-// isCertValid checks if a certificate is valid and not expiring soon
-func (w *WildcardCertManager) isCertValid(cert *tls.Certificate) bool {
+// isCertValid reports whether cert is valid and not expiring soon.
+func isCertValid(cert *tls.Certificate) bool {
 	if cert == nil {
 		return false
 	}
