@@ -81,7 +81,7 @@ const (
 )
 
 type WildcardCertManager struct {
-	mu           sync.RWMutex
+	mu           sync.Mutex
 	certificates map[string]*tls.Certificate
 	dnsProvider  *DNSProvider
 	cache        autocert.Cache
@@ -129,19 +129,14 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 		return nil, fmt.Errorf("unrecognized domain: %q", hello.ServerName)
 	}
 
-	w.mu.RLock()
-	cert, exists := w.certificates[certKey]
-	w.mu.RUnlock()
-
-	if exists && w.isCertValid(cert) {
+	cert := w.cachedCert(certKey)
+	if w.isCertValid(cert) {
 		return cert, nil
 	}
 
 	if cachedCert, err := w.loadCertificateFromCache(certKey); err == nil {
 		if w.isCertValid(cachedCert) {
-			w.mu.Lock()
-			w.certificates[certKey] = cachedCert
-			w.mu.Unlock()
+			w.setCachedCert(certKey, cachedCert)
 			return cachedCert, nil
 		}
 	} else if !errors.Is(err, autocert.ErrCacheMiss) {
@@ -158,11 +153,20 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", certKey, err)
 	}
 
-	w.mu.Lock()
-	w.certificates[certKey] = newCert
-	w.mu.Unlock()
-
+	w.setCachedCert(certKey, newCert)
 	return newCert, nil
+}
+
+func (w *WildcardCertManager) cachedCert(domain string) *tls.Certificate {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.certificates[domain]
+}
+
+func (w *WildcardCertManager) setCachedCert(domain string, cert *tls.Certificate) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.certificates[domain] = cert
 }
 
 // isSingleLevelSubdomain reports whether serverName is a single-level subdomain of domain.
