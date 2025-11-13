@@ -1,8 +1,8 @@
-# Container Creation and SSH Access Test
+# Box Creation and SSH Access Test
 
 ## Instructions
 
-Test container creation, SSH access, and basic container operations.
+Test box creation, SSH access, and basic box operations.
 
 ### Prerequisites
 
@@ -12,20 +12,20 @@ Test container creation, SSH access, and basic container operations.
 
 ### Test Steps
 
-#### Container Creation and SSH Access
+#### Box Creation and SSH Access
 
-4. Create a new container using "ssh -p 2222 localhost"
+4. Create a new box using "ssh -p 2222 localhost"
 
-5. SSH into that container (by using ssh -p 2222 name@localhost) and run "id"
+5. SSH into that box (by using ssh -p 2222 name@localhost) and run "id"
 
-6. Open up a shell to the new container and check the hostname.
+6. Open up a shell to the new box and check the hostname.
 
-7. Use scp with the new container to test that SSH subsystems work.
+7. Use scp with the new box to test that SSH subsystems work.
 
 ## Edge Cases
 
-11. Creating new machines should have restrictions on the names of new machines.
-For example, "--foo" is not a valid machine name. Make sure that returns an error message.
+11. Creating new boxes should have restrictions on the names of new boxes.
+For example, "--foo" is not a valid box name. Make sure that returns an error message.
 
 12. If the user doesn't have an SSH key (which can be simulated with
  "ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -p 2222 localhost"
@@ -34,10 +34,10 @@ they should get an error message indicating how to create a key.
 
 ## Hints
 
-### Container Creation Hints
-- Type `new` at exe.dev prompt. Creates machine with random name like "able-yankee". Shows command like "ssh -p 2222 able-yankee@localhost"
+### Box Creation Hints
+- Type `new` at exe.dev prompt. Creates box with random name like "able-yankee". Shows command like "ssh -p 2222 able-yankee@localhost"
 
 ### SSH Access Hints
-- Use `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 machinename@localhost`. Wait ~10-15 seconds after container creation for SSH daemon to be fully ready. If connection fails, check sshpiper logs with `tmux capture-pane -p -t testing:sshpiper` for connectivity issues.
-- In container shell, run `hostname`. Should show "machine-name.team-name.exe.dev"
-- Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P 2222 localfile machinename@localhost:/remote/path`. Ensure SSH connection works first before testing SCP.
+- Use `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 boxname@localhost`. Wait ~10-15 seconds after box creation for SSH daemon to be fully ready. If connection fails, check sshpiper logs with `tmux capture-pane -p -t testing:sshpiper` for connectivity issues.
+- In box shell, run `hostname`. Should show "boxname.exe.dev"
+- Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P 2222 localfile boxname@localhost:/remote/path`. Ensure SSH connection works first before testing SCP.
