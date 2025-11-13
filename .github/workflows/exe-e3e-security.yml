@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # Run daily at 7:15 AM UTC (late night pacific, after the e2e tests should have completed)
+    # Keep this cron in sync with BOT_EXPECTATIONS inside scripts/slack/check_ci_bot_liveness.py.
     - cron: "15 7 * * *"
 
 concurrency:

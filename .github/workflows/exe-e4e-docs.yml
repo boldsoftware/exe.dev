@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # Run daily at 7:45 AM UTC.
+    # Keep this cron in sync with BOT_EXPECTATIONS inside scripts/slack/check_ci_bot_liveness.py.
     - cron: "45 7 * * *"
 
 concurrency:

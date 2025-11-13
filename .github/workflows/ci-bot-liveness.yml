@@ -1,0 +1,36 @@
+name: ci bot liveness watchdog
+
+# Monitors the workflows listed in BOT_EXPECTATIONS
+# (e.g. exe-e3e-security.yml and exe-e4e-docs.yml) to ensure their cron jobs stay alive.
+on:
+  workflow_dispatch:
+  schedule:
+    # Run every 6 hours to ensure the bots in BOT_EXPECTATIONS stay fresh in #btdb.
+    - cron: "0 */6 * * *"
+
+jobs:
+  check-bot-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Verify CI bot liveness via #btdb
+        env:
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run scripts/slack/check_ci_bot_liveness.py
+
+      - name: Post watchdog failure to Slack #oops
+        if: failure()
+        env:
+          EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          uv run scripts/slack/post_message.py \
+            --channel oops \
+            --message ":rotating_light: ci-bot-liveness workflow hit an internal error. Check the run logs: $RUN_URL"
