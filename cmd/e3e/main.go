@@ -1,4 +1,4 @@
-package e3e
+package main
 
 import (
 	"cmp"
@@ -6,21 +6,19 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
-	"testing"
 	"time"
 
 	"mvdan.cc/sh/v3/syntax"
 )
 
 //go:embed security_probe_prompt.txt
-var rawSecurityProbePrompt string
+var prompt string
 
 const (
-	envEnable          = "EXE_E3E_ENABLE"
 	envSSHHost         = "EXE_E3E_SSH_HOST"
 	envSSHPort         = "EXE_E3E_SSH_PORT"
 	envSSHUser         = "EXE_E3E_SSH_USER"
@@ -32,7 +30,6 @@ const (
 
 type config struct {
 	replSSH         sshConfig
-	prompt          string
 	codexAPIKey     string
 	anthropicAPIKey string
 }
@@ -70,17 +67,8 @@ type agentResult struct {
 
 const reportHeading = "# SECURITY REPORT"
 
-func TestSecurityProbeAgents(t *testing.T) {
-	// Only run when explicitly requested, to avoid running on a plain `go test ./...` locally, or in regular CI runs.
-	enabled := os.Getenv(envEnable) != ""
-	if !enabled {
-		t.Skip("e3e security probe skipped (set EXE_E3E_ENABLE=1 to run)")
-	}
-
-	prompt := strings.TrimSpace(rawSecurityProbePrompt)
-	if prompt == "" {
-		t.Fatal("empty prompt")
-	}
+func main() {
+	log.SetFlags(0)
 
 	cfg := &config{
 		replSSH: sshConfig{
@@ -90,92 +78,101 @@ func TestSecurityProbeAgents(t *testing.T) {
 			privateKeyPath: os.Getenv(envSSHKeyPath),
 			knownHostsPath: os.Getenv(envSSHKnownHosts),
 		},
-		prompt:          prompt,
 		codexAPIKey:     os.Getenv(envCodexAPIKey),
 		anthropicAPIKey: os.Getenv(envAnthropicAPIKey),
 	}
-	// t.Logf("ssh config: ssh %s %s@%s", strings.Join(cfg.replSSH.buildBaseArgs(), " "), cfg.replSSH.user, cfg.replSSH.host)
-
 	if cfg.codexAPIKey == "" || cfg.anthropicAPIKey == "" {
-		t.Fatalf("both %s and %s must be set", envCodexAPIKey, envAnthropicAPIKey)
+		log.Fatalf("both %s and %s must be set", envCodexAPIKey, envAnthropicAPIKey)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 
-	box := createBox(t, ctx, cfg)
-	// t.Logf("created box: %v", box)
-	t.Cleanup(func() {
-		if err := deleteBox(t, context.Background(), cfg, box.Name); err != nil {
-			// t.Logf("cleanup: deleting box %s failed: %v", box.Name, err)
-		} else {
-			// t.Logf("cleanup: deleted box %s", box.Name)
-		}
-	})
-
-	results := make(chan agentResult, 2)
-	var wg sync.WaitGroup
-	for _, agent := range []agent{agentCodex, agentClaude} {
-		wg.Go(func() { results <- runAgent(t, ctx, cfg, box, agent) })
+	box, err := createBox(ctx, cfg)
+	if err != nil {
+		log.Fatalf("create box: %v", err)
 	}
-	wg.Wait()
-	close(results)
 
-	for res := range results {
+	boxName := box.Name
+	cleaned := false
+	cleanup := func() {
+		if cleaned {
+			return
+		}
+		cleaned = true
+		deleteBox(context.Background(), cfg, boxName)
+	}
+	defer cleanup()
+
+	// Run agents in serial.
+	// Stop on first failure.
+	for _, agent := range []agent{agentCodex, agentClaude} {
+		res := runAgent(ctx, cfg, box, agent)
 		if res.Err != nil {
-			t.Errorf("[%s]\ncommand: %s\nerror: %v\nout:\n%s\n", res.Agent, res.Command, res.Err, res.Output)
-			continue
+			cleanup()
+			log.Fatalf("[%s]\ncommand: %s\nerror: %v\nout:\n%s\n", res.Agent, res.Command, res.Err, res.Output)
 		}
 		if res.Output != "" {
-			t.Errorf("[%s]\nout:\n%s\n", res.Agent, res.Output)
+			cleanup()
+			log.Fatalf("[%s]\nout:\n%s\n", res.Agent, res.Output)
 		}
 	}
+
+	// All clear. Silence is golden.
+	cleanup()
 }
 
-func createBox(t *testing.T, ctx context.Context, cfg *config) *boxInfo {
+func createBox(ctx context.Context, cfg *config) (*boxInfo, error) {
 	args := cfg.replSSH.buildBaseArgs()
 	args = append(args, cfg.replSSH.target(), "new", "--json")
-	t.Logf("creating box: ssh %s", strings.Join(args, " "))
+	log.Printf("creating box: ssh %s", strings.Join(args, " "))
 	out, err := exec.CommandContext(ctx, "ssh", args...).CombinedOutput()
 	if err != nil {
-		t.Fatalf("ssh new: %v\n%s", err, out)
+		return nil, fmt.Errorf("ssh new: %w\n%s", err, out)
 	}
 
 	var resp boxInfo
 	if err := json.Unmarshal(out, &resp); err != nil {
-		t.Fatalf("unmarshal: %v\n%q", err, out)
+		return nil, fmt.Errorf("unmarshal: %w\n%s", err, out)
 	}
 	if resp.Name == "" {
-		t.Fatalf("missing box_name in %s", out)
+		return nil, fmt.Errorf("missing box_name in %s", out)
 	}
 	if resp.SSHCommand == "" {
-		t.Fatalf("missing ssh_command in %s", out)
+		return nil, fmt.Errorf("missing ssh_command in %s", out)
 	}
-	return &resp
+	return &resp, nil
 }
 
-func deleteBox(t *testing.T, ctx context.Context, cfg *config, boxName string) error {
-	t.Logf("deleting box %s", boxName)
+func deleteBox(ctx context.Context, cfg *config, boxName string) {
 	args := cfg.replSSH.buildBaseArgs()
 	args = append(args, cfg.replSSH.target(), "rm", boxName)
 	out, err := exec.CommandContext(ctx, "ssh", args...).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("ssh rm: %w\n%s", err, out)
+		log.Printf("deleteBox: ssh rm: %v\n%s", err, out)
 	}
-	return nil
 }
 
-func runAgent(t *testing.T, ctx context.Context, cfg *config, box *boxInfo, ag agent) agentResult {
+func runAgent(ctx context.Context, cfg *config, box *boxInfo, ag agent) agentResult {
+	result := agentResult{Agent: ag}
+
 	boxSSHArgs := cfg.replSSH.buildBaseArgs()
 	boxSSHArgs = append(boxSSHArgs, "-p", fmt.Sprint(box.SSHPort), box.SSHUser+"@"+box.SSHServer)
-	script := agentScript(t, ag, cfg.prompt, cfg)
+
+	script, err := agentScript(ag, cfg)
+	if err != nil {
+		result.Err = err
+		return result
+	}
+
 	boxSSHArgs = append(boxSSHArgs, "bash", "-s")
 	cmd := exec.CommandContext(ctx, "ssh", boxSSHArgs...)
-	// t.Logf("running %v", cmd.String())
 	cmd.Stdin = strings.NewReader(script)
+
+	result.Command = cmd.String()
+
 	raw, err := cmd.CombinedOutput()
-	out := string(raw)
-	out = strings.TrimSpace(out)
+	out := strings.TrimSpace(string(raw))
 	idx := strings.LastIndex(out, reportHeading)
 	if idx >= 0 {
 		out = strings.TrimSpace(out[idx+len(reportHeading):])
@@ -184,24 +181,22 @@ func runAgent(t *testing.T, ctx context.Context, cfg *config, box *boxInfo, ag a
 	if strings.HasSuffix(out, "\nOK") {
 		out = ""
 	}
-	return agentResult{
-		Agent:   ag,
-		Output:  out,
-		Command: cmd.String(),
-		Err:     err,
-	}
+
+	result.Output = out
+	result.Err = err
+	return result
 }
 
-func agentScript(t *testing.T, ag agent, prompt string, cfg *config) string {
+func agentScript(ag agent, cfg *config) (string, error) {
 	switch ag {
 	case agentCodex:
 		openAIKey, err := syntax.Quote(cfg.codexAPIKey, syntax.LangBash)
 		if err != nil {
-			t.Fatalf("quote codex OPENAI_API_KEY: %v", err)
+			return "", fmt.Errorf("quote codex OPENAI_API_KEY: %w", err)
 		}
 		codexKey, err := syntax.Quote(cfg.codexAPIKey, syntax.LangBash)
 		if err != nil {
-			t.Fatalf("quote codex CODEX_API_KEY: %v", err)
+			return "", fmt.Errorf("quote codex CODEX_API_KEY: %w", err)
 		}
 		return fmt.Sprintf(`set -euo pipefail
 export OPENAI_API_KEY=%s
@@ -214,11 +209,11 @@ codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --ou
 %s
 EOF
 cat \"$TMP\"
-`, openAIKey, codexKey, prompt)
+`, openAIKey, codexKey, prompt), nil
 	case agentClaude:
 		anthropicKey, err := syntax.Quote(cfg.anthropicAPIKey, syntax.LangBash)
 		if err != nil {
-			t.Fatalf("quote claude ANTHROPIC_API_KEY: %v", err)
+			return "", fmt.Errorf("quote claude ANTHROPIC_API_KEY: %w", err)
 		}
 		return fmt.Sprintf(`set -euo pipefail
 export ANTHROPIC_API_KEY=%s
@@ -226,10 +221,10 @@ export PATH="/home/exedev/.local/bin:$PATH"
 claude --print --dangerously-skip-permissions <<'EOF'
 %s
 EOF
-`, anthropicKey, prompt)
+`, anthropicKey, prompt), nil
+	default:
+		return "", fmt.Errorf("unsupported agent %q", ag)
 	}
-	t.Fatalf("unsupported agent %q", ag)
-	panic("unreachable")
 }
 
 func (cfg sshConfig) target() string {

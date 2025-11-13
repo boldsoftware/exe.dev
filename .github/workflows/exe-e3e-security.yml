@@ -55,7 +55,6 @@ jobs:
         id: run-e3e
         continue-on-error: true
         env:
-          EXE_E3E_ENABLE: "1"
           EXE_E3E_SSH_USER: ${{ secrets.E3E_SSH_USER }}
           EXE_E3E_OPENAI_API_KEY: ${{ secrets.E3E_OPENAI_API_KEY }}
           EXE_E3E_ANTHROPIC_API_KEY: ${{ secrets.E3E_ANTHROPIC_API_KEY }}
@@ -63,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           export EXE_E3E_SSH_KEY_PATH="$HOME/.ssh/exe-e3e"
-          go test -count=1 -v -timeout=1h ./e3e 2>&1 | tee "$E3E_OUTPUT_PATH"
+          go run ./cmd/e3e 2>&1 | tee "$E3E_OUTPUT_PATH"
 
       - name: Install uv
         if: always()

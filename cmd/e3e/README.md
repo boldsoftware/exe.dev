@@ -1,7 +1,7 @@
 # e3e security probe
 
-This package contains the cron-friendly security probe that exercises exe.dev
-boxes with Codex and Claude. The test flow is:
+This command contains the cron-friendly security probe that exercises exe.dev
+boxes with Codex and Claude. The probe flow is:
 
 1. `ssh exe.dev new --json` to create a fresh box.
 2. Connect to the new box over SSH.
@@ -9,18 +9,16 @@ boxes with Codex and Claude. The test flow is:
 4. Verify that both agents finish with `ALL CLEAR`.
 5. Delete the box, even on failure.
 
-If either agent reports anything other than `ALL CLEAR`, the test fails (and CI
+If either agent reports anything other than `ALL CLEAR`, the probe fails (and CI
 triggers a Discord alert). When a failure occurs, the full Codex/Claude report
 is printed in the test output so responders can see the details without
 downloading artifacts.
 
 ## Running locally
 
-The test is skipped unless `EXE_E3E_ENABLE` is set. Set the required
-environment and run `go test`:
+Set the required environment and run the command:
 
 ```bash
-export EXE_E3E_ENABLE=1
 export EXE_E3E_OPENAI_API_KEY=...   # OpenAI / Codex key
 export EXE_E3E_ANTHROPIC_API_KEY=...# Claude key
 export EXE_E3E_SSH_KEY_PATH=...     # SSH key that can create exe.dev boxes
@@ -29,10 +27,11 @@ export EXE_E3E_SSH_KEY_PATH=...     # SSH key that can create exe.dev boxes
 # export EXE_E3E_SSH_HOST=exe.dev
 # export EXE_E3E_SSH_KNOWN_HOSTS=...
 
-go test -count=1 ./e3e
+go run ./cmd/e3e
 ```
 
 The prompt text lives in `security_probe_prompt.txt`; tweak it there if needed.
+The probe enforces a 1h timeout, matching the CI configuration.
 
 ## CI secrets
 
@@ -44,6 +43,6 @@ The GitHub Actions workflow expects the following secrets:
 - `E3E_ANTHROPIC_API_KEY` – Claude API key
 
 The workflow writes the SSH key to `~/.ssh/exe-e3e`, sets the matching env vars,
-runs `go test ./e3e`, and reports the outcome to Slack—posting the failure
+runs `go run ./cmd/e3e`, and reports the outcome to Slack—posting the failure
 summary in `#oops` and refreshing the `#btdb` ledger entry so we can see when
 the bot last ran.
