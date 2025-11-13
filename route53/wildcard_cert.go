@@ -106,7 +106,7 @@ func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequ
 		DirectoryURL: "https://acme-v02.api.letsencrypt.org/directory",
 	}
 
-	return &WildcardCertManager{
+	manager := &WildcardCertManager{
 		memCerts:     make(map[string]*tls.Certificate),
 		dnsProvider:  NewDNSProvider(),
 		diskCache:    diskCache,
@@ -114,6 +114,10 @@ func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequ
 		domains:      domains,
 		certRequests: certRequests,
 	}
+
+	go manager.warmManagedDomains()
+
+	return manager
 }
 
 // GetCertificate implements the tls.Config.GetCertificate interface
@@ -132,6 +136,15 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 		return nil, fmt.Errorf("unrecognized domain: %q", hello.ServerName)
 	}
 
+	cert, err := w.ensureCertificateForDomain(rootDomain)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get certificate for %s: %w", hello.ServerName, err)
+	}
+
+	return cert, nil
+}
+
+func (w *WildcardCertManager) ensureCertificateForDomain(rootDomain string) (*tls.Certificate, error) {
 	cert := w.memCert(rootDomain)
 	if isCertValid(cert) {
 		return cert, nil
@@ -157,6 +170,14 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 
 	w.setMemCert(rootDomain, newCert)
 	return newCert, nil
+}
+
+func (w *WildcardCertManager) warmManagedDomains() {
+	for _, domain := range w.domains {
+		if _, err := w.ensureCertificateForDomain(domain); err != nil {
+			slog.Warn("failed to warm wildcard certificate cache", "domain", domain, "error", err)
+		}
+	}
 }
 
 func (w *WildcardCertManager) memCert(domain string) *tls.Certificate {
