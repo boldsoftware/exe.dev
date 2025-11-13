@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
+	"tailscale.com/util/singleflight"
 )
 
 func pkFromData(keyData []byte) (*rsa.PrivateKey, error) {
@@ -86,6 +87,7 @@ type WildcardCertManager struct {
 	acmeClient   *acme.Client
 	domains      []string // list of domains managed by this cert manager; each entry covers itself and a wildcard cert
 	certRequests prometheus.Counter
+	sf           singleflight.Group[string, *tls.Certificate] // singleflight group for certificate requests
 
 	mu       sync.Mutex                  // protects certificates
 	memCerts map[string]*tls.Certificate // in-memory cache of certificates to avoid repeated decoding and disk reads
@@ -145,11 +147,8 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 	}
 
 	// Need to obtain a new certificate
-	// Create a context with timeout for certificate acquisition
-	certCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
 	slog.Warn("Obtaining new certificate (not in memory or disk)", "rootDomain", rootDomain, "serverName", hello.ServerName)
-	newCert, err := w.obtainCertificate(certCtx, rootDomain)
+	newCert, err := w.obtainCertificate(rootDomain)
 	if err != nil || !isCertValid(newCert) {
 		return nil, fmt.Errorf("failed to obtain certificate for %s: %w", hello.ServerName, err)
 	}
@@ -249,9 +248,26 @@ func isCertValid(cert *tls.Certificate) bool {
 
 // obtainCertificate obtains a new wildcard certificate from Let's Encrypt.
 // domain must be the root domain for the certificate, as obtained from domainForServerName.
-func (w *WildcardCertManager) obtainCertificate(ctx context.Context, domain string) (*tls.Certificate, error) {
+// obtainCertificate is single-flighted.
+func (w *WildcardCertManager) obtainCertificate(domain string) (*tls.Certificate, error) {
+	cert, err, _ := w.sf.Do(domain, func() (*tls.Certificate, error) {
+		return w.requestCertificateFromLE(domain)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cert, nil
+}
+
+// requestCertificateFromLE implements obtainCertificate.
+// Do not call it directly; use obtainCertificate instead.
+func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Certificate, error) {
 	domains := []string{domain, "*." + domain} // always request both root and wildcard
 	slog.Info("obtaining certificate", "domains", domains)
+
+	// Create a context with timeout for certificate acquisition
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
 	// Create an ACME order for the desired domains
 	order, err := w.acmeClient.AuthorizeOrder(ctx, acme.DomainIDs(domains...))
