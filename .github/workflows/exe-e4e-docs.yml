@@ -33,6 +33,8 @@ jobs:
           fi
 
       - name: Run e4e documentation sweep
+        id: run-e4e
+        continue-on-error: true
         env:
           EXE_E4E_ENABLE: "1"
           EXE_E4E_OPENAI_API_KEY: ${{ secrets.E4E_OPENAI_API_KEY }}
@@ -45,7 +47,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Post failure to Slack #oops
-        if: failure()
+        if: steps.run-e4e.outcome == 'failure'
         env:
           OUTPUT_PATH: ${{ env.E4E_OUTPUT_PATH }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -62,7 +64,7 @@ jobs:
         env:
           EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          JOB_STATUS: ${{ job.status }}
+          JOB_STATUS: ${{ steps.run-e4e.outcome }}
         run: |
           set -euo pipefail
           uv run scripts/slack/update_bot_status.py \

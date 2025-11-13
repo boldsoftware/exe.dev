@@ -51,6 +51,8 @@ jobs:
           chmod 600 "$HOME/.ssh/exe-e3e"
 
       - name: Run e3e security probe
+        id: run-e3e
+        continue-on-error: true
         env:
           EXE_E3E_ENABLE: "1"
           EXE_E3E_SSH_USER: ${{ secrets.E3E_SSH_USER }}
@@ -67,7 +69,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Post failure to Slack #oops
-        if: failure()
+        if: steps.run-e3e.outcome == 'failure'
         env:
           OUTPUT_PATH: ${{ env.E3E_OUTPUT_PATH }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -84,7 +86,7 @@ jobs:
         env:
           EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          JOB_STATUS: ${{ job.status }}
+          JOB_STATUS: ${{ steps.run-e3e.outcome }}
         run: |
           set -euo pipefail
           uv run scripts/slack/update_bot_status.py \
