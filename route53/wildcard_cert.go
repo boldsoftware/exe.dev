@@ -119,8 +119,11 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 		return nil, fmt.Errorf("no server name provided")
 	}
 
+	// Canonicalize server name to lowercase.
+	serverName := strings.ToLower(hello.ServerName)
+
 	// Determine which certificate to use
-	certKey := w.domainForServerName(hello.ServerName)
+	certKey := w.domainForServerName(serverName)
 	if certKey == "" {
 		// Not a domain we manage.
 		return nil, fmt.Errorf("unrecognized domain: %q", hello.ServerName)
@@ -163,6 +166,7 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 }
 
 // isSingleLevelSubdomain reports whether serverName is a single-level subdomain of domain.
+// It assumes that both domain and serverName are lowercase.
 // For example:
 //
 //	isSingleLevelSubdomain("www.domain.com", "domain.com") == true
@@ -176,6 +180,7 @@ func isSingleLevelSubdomain(domain, serverName string) bool {
 
 // domainForServerName returns the (possibly wildcard) domain corresponding to serverName.
 // If domainForServerName returns an empty string, we do not manager serverName.
+// It assumes that serverName is lowercase.
 func (w *WildcardCertManager) domainForServerName(serverName string) string {
 	// We accept apex domains and single-level subdomains.
 	// Note that when the set of domains includes subdomains,
@@ -389,7 +394,7 @@ func (w *WildcardCertManager) cacheCertificate(domain string, cert *tls.Certific
 
 	ctx, cancel := context.WithTimeout(context.Background(), certificateCacheTimeout)
 	defer cancel()
-	return w.cache.Put(ctx, w.cacheKey(domain), data)
+	return w.cache.Put(ctx, domain, data)
 }
 
 func (w *WildcardCertManager) loadCertificateFromCache(domain string) (*tls.Certificate, error) {
@@ -400,18 +405,12 @@ func (w *WildcardCertManager) loadCertificateFromCache(domain string) (*tls.Cert
 	ctx, cancel := context.WithTimeout(context.Background(), certificateCacheTimeout)
 	defer cancel()
 
-	cacheKey := w.cacheKey(domain)
-	data, err := w.cache.Get(ctx, cacheKey)
+	data, err := w.cache.Get(ctx, domain)
 	if err != nil {
 		return nil, err
 	}
 
 	return decodeCertificateFromCache(data)
-}
-
-// TOOD(philip): We can probably just cache by domain or domain.lower() and things would be fine.
-func (w *WildcardCertManager) cacheKey(domain string) string {
-	return wildcardCachePrefix + strings.ToLower(domain)
 }
 
 func encodeCertificateForCache(cert *tls.Certificate) ([]byte, error) {
