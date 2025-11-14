@@ -173,14 +173,6 @@ function makeDevExeDashboard() {
   );
 
   addTimeseriesChart(
-    "sshpiper Pipe Create Errors",
-    `rate(sshpiper_pipe_create_errors[5m])`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 10, w: 8, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
     "sshpiper Upstream Auth Failures",
     `rate(sshpiper_upstream_auth_failures[5m])`,
     {

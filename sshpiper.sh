@@ -48,7 +48,7 @@ if command -v tailscale &>/dev/null; then
     else
         TS_IP=$TS_IP_OUTPUT
         echo "Using Tailscale IP: $TS_IP"
-        METRICS_ARGS=(-- "$SSHPIPER_DIR/metrics" --collect-pipe-create-errors --collect-upstream-auth-failures --address "$TS_IP" --port 30303)
+        METRICS_ARGS=(-- "$SSHPIPER_DIR/metrics" --collect-upstream-auth-failures --address "$TS_IP" --port 30303)
     fi
 else
     echo "'tailscale' command not found, skipping metrics plugin"
