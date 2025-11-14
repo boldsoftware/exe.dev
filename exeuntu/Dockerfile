@@ -148,7 +148,8 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		   systemd-update-utmp.service \
 		   atopacct.service \
 		   sysstat.service \
-                   systemd-hwdb-update.service && \
+                   systemd-hwdb-update.service \
+		   multipathd.service && \
 	mkdir -p /etc/systemd/system.conf.d && \
     		echo '[Manager]' > /etc/systemd/system.conf.d/container-overrides.conf && \
     		echo 'LogLevel=info' >> /etc/systemd/system.conf.d/container-overrides.conf && \
