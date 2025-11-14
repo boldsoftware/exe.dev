@@ -128,7 +128,7 @@ func NewWildcardCertManager(domains []string, diskCache autocert.Cache, certRequ
 		certRequests: certRequests,
 	}
 
-	go manager.warmManagedDomains()
+	manager.warmManagedDomains()
 
 	return manager
 }
@@ -187,9 +187,11 @@ func (w *WildcardCertManager) ensureCertificateForDomain(rootDomain string) (*tl
 
 func (w *WildcardCertManager) warmManagedDomains() {
 	for _, domain := range w.domains {
-		if _, err := w.ensureCertificateForDomain(domain); err != nil {
-			slog.Warn("failed to warm wildcard certificate cache", "domain", domain, "error", err)
-		}
+		go func() {
+			if _, err := w.ensureCertificateForDomain(domain); err != nil {
+				slog.Warn("failed to warm wildcard certificate cache", "domain", domain, "error", err)
+			}
+		}()
 	}
 }
 
