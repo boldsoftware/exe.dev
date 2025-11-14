@@ -13,6 +13,101 @@ WORKDIR="${WORKDIR:-/var/lib/libvirt/images}"
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}" # or inject via env
 USER_NAME="${USER_NAME:-ubuntu}"
 
+# TODO(philip): rewrite these cleanup functions in python
+# Cleanup old VMs and unused images
+cleanup_old_vms() {
+    echo "Cleaning up VMs older than 1 day..."
+    local one_day_ago=$(($(date +%s) - 86400))
+
+    # Get all VMs that start with "ci-ubuntu-"
+    for vm in $(sudo virsh list --all --name | grep -E '^ci-ubuntu-' || true); do
+        if [[ -z "$vm" ]]; then
+            continue
+        fi
+
+        # Get VM creation time from the XML definition
+        local vm_xml=$(sudo virsh dumpxml "$vm" 2>/dev/null || true)
+        if [[ -z "$vm_xml" ]]; then
+            continue
+        fi
+
+        # Try to get disk path from VM XML to check disk modification time
+        local disk_path=$(echo "$vm_xml" | grep -oP "source file='\K[^']+\.qcow2" | head -n1 || true)
+        if [[ -n "$disk_path" && -f "$disk_path" ]]; then
+            local disk_mtime=$(stat -c %Y "$disk_path" 2>/dev/null || echo "0")
+            if [[ $disk_mtime -lt $one_day_ago ]]; then
+                echo "  Destroying and removing old VM: $vm (disk age: $(( ($(date +%s) - disk_mtime) / 3600 ))h)"
+                sudo virsh destroy "$vm" 2>/dev/null || true
+                sudo virsh undefine "$vm" 2>/dev/null || true
+            fi
+        fi
+    done
+}
+
+cleanup_unused_images() {
+    echo "Cleaning up unused images in ${WORKDIR}..."
+
+    # Get all disk images currently in use by any VM
+    local used_images=$(mktemp)
+    local backing_files=$(mktemp)
+    local all_images=$(mktemp)
+    trap 'rm -f "$used_images" "$backing_files" "$all_images"' RETURN
+
+    for vm in $(sudo virsh list --all --name || true); do
+        if [[ -z "$vm" ]]; then
+            continue
+        fi
+        sudo virsh dumpxml "$vm" 2>/dev/null | grep -oP "source file='\K[^']+" || true
+    done | sort -u > "$used_images"
+
+    # Get all backing files referenced by qcow2 images to avoid deleting them
+    sudo find "${WORKDIR}" -maxdepth 1 -type f -name '*.qcow2' 2>/dev/null | while read img; do
+        sudo qemu-img info "$img" 2>/dev/null | grep -oP "backing file: \K.*" || true
+    done | sort -u > "$backing_files"
+
+    # Find and delete ci-ubuntu VM images not in use and not backing files
+    sudo find "${WORKDIR}" -maxdepth 1 -type f \( -name 'ci-ubuntu-*.qcow2' -o -name 'ci-ubuntu-*-seed.iso' \) > "$all_images"
+    while IFS= read -r img; do
+        # Skip if image is in use
+        if grep -qF "$img" "$used_images"; then
+            continue
+        fi
+
+        # Skip if image is a backing file
+        if grep -qF "$img" "$backing_files"; then
+            continue
+        fi
+
+        # Skip ubuntu-24.04-base.qcow2
+        if [[ "$img" == *"ubuntu-24.04-base.qcow2" ]]; then
+            continue
+        fi
+
+        echo "  Removing unused image: $(basename "$img")"
+        sudo rm -f "$img"
+    done < "$all_images"
+
+    # Clean up old ci-base-* and ci-data-* images, keeping the 5 most recent of each
+    # This allows multiple branches to have their caches while cleaning up old ones
+    for pattern in 'ci-base-*.qcow2' 'ci-data-*.qcow2'; do
+        # Get images sorted by modification time (oldest first), skip the newest 5
+        sudo find "${WORKDIR}" -maxdepth 1 -type f -name "$pattern" -printf '%T@ %p\n' 2>/dev/null | \
+            sort -n | head -n -5 | cut -d' ' -f2- | while read img; do
+            # Check if image is a backing file
+            if grep -qF "$img" "$backing_files"; then
+                continue
+            fi
+
+            echo "  Removing old snapshot image: $(basename "$img") (keeping 5 newest)"
+            sudo rm -f "$img"
+        done
+    done
+}
+
+cleanup_old_vms
+cleanup_unused_images
+# END TODO(philip)
+
 # Cache/snapshot settings (hash of ops/ as determined by git tree (must be checked in))
 CACHE_DIR="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
 mkdir -p "${CACHE_DIR}"
