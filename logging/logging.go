@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"exe.dev/tracing"
 	"github.com/lmittmann/tint"
 )
 
@@ -56,6 +57,9 @@ func SetupLogger(devMode string) {
 	default: // "text" and any unknown format
 		handler = slog.NewTextHandler(os.Stdout, opts)
 	}
+
+	// Wrap handler with tracing handler to add trace_id from context
+	handler = tracing.NewHandler(handler)
 
 	// Set as default logger
 	slog.SetDefault(slog.New(handler))

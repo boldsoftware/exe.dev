@@ -17,6 +17,7 @@ import (
 	"exe.dev/sqlite"
 	"exe.dev/sshsession"
 	"exe.dev/termfun"
+	"exe.dev/tracing"
 	"github.com/anmitsu/go-shlex"
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
@@ -175,6 +176,9 @@ func (ss *SSHServer) shouldShowSpinner(s exemenu.ShellSession) bool {
 
 // authenticatePublicKey handles public key authentication
 func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) bool {
+	// Create and set a random trace id
+	ctx.SetValue("trace_id", tracing.GenerateTraceID())
+
 	// Increment auth attempts metric
 	ss.server.sshMetrics.authAttempts.WithLabelValues("attempt", "public_key").Inc()
 	// Convert gliderlabs public key to golang.org/x/crypto/ssh public key for compatibility
@@ -367,7 +371,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		if line == "" {
 			continue
 		}
-		ss.server.slog().Debug("command received", "line", line)
+		ss.server.slog().DebugContext(ctx, "command received", "line", line)
 
 		parts, err := shlex.Split(strings.TrimSpace(line), true)
 		if err != nil {
