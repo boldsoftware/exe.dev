@@ -1004,6 +1004,329 @@ function makeGrafanaDashboard() {
   return dash;
 }
 
+function makeMonMonDashboard() {
+  const dash = new DashboardBuilder("Mon Mon - Monitoring Infrastructure");
+  dash
+    .uid("mon-mon-dashboard")
+    .tags(["generated", "monitoring", "infrastructure"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  const addTimeseriesChart = makeAddTimeseriesChart(
+    dash,
+    "mon-mon-dashboard"
+  );
+
+  // README panel for auto-generated dashboard
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("README - Auto Generated Dashboard")
+      .content(
+        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
+          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
+          `To modify this dashboard:\n` +
+          `1. Edit the code in \`observability/dashboards.mts\`\n` +
+          `2. Run \`make deploy-grafana\` to update\n\n` +
+          `This dashboard monitors the monitoring infrastructure itself.\n\n` +
+          `Last updated: ${new Date().toISOString()}`
+      )
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 4 })
+  );
+
+  // Row 1: Overview Stats
+  dash.withRow(
+    new RowBuilder("Monitoring Server Overview").gridPos({ x: 0, y: 4, w: 24, h: 1 })
+  );
+
+  // Mon host memory stat
+  const monMemoryPanel = new StatBuilder()
+    .title("Mon Host Memory Usage")
+    .gridPos({ x: 0, y: 5, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`(1 - (node_memory_MemAvailable_bytes{instance="mon:9100"} / node_memory_MemTotal_bytes{instance="mon:9100"})) * 100`)
+        .legendFormat("Memory %")
+    )
+    .unit("percent")
+    .colorMode(BigValueColorMode.None)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 80, color: "yellow" } as Threshold,
+          { value: 90, color: "red" } as Threshold,
+        ])
+    )
+    .min(0)
+    .max(100);
+  dash.withPanel(monMemoryPanel);
+
+  // Grafana memory stat
+  const grafanaMemoryPanel = new StatBuilder()
+    .title("Grafana Memory Usage")
+    .gridPos({ x: 6, y: 5, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`process_resident_memory_bytes{job="grafana"}`)
+        .legendFormat("Memory")
+    )
+    .unit("bytes")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1.5 * 1024 * 1024 * 1024, color: "yellow" } as Threshold,
+          { value: 2.0 * 1024 * 1024 * 1024, color: "red" } as Threshold,
+        ])
+    )
+    .min(0);
+  dash.withPanel(grafanaMemoryPanel);
+
+  // Prometheus memory stat
+  const prometheusMemoryPanel = new StatBuilder()
+    .title("Prometheus Memory Usage")
+    .gridPos({ x: 12, y: 5, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`process_resident_memory_bytes{job="prometheus"}`)
+        .legendFormat("Memory")
+    )
+    .unit("bytes")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 1.5 * 1024 * 1024 * 1024, color: "yellow" } as Threshold,
+          { value: 2.0 * 1024 * 1024 * 1024, color: "red" } as Threshold,
+        ])
+    )
+    .min(0);
+  dash.withPanel(prometheusMemoryPanel);
+
+  // Mon host CPU stat
+  const monCpuPanel = new StatBuilder()
+    .title("Mon Host CPU Usage")
+    .gridPos({ x: 18, y: 5, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`100 - (avg(rate(node_cpu_seconds_total{instance="mon:9100",mode="idle"}[5m])) * 100)`)
+        .legendFormat("CPU %")
+    )
+    .unit("percent")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.None)
+    .textMode(BigValueTextMode.Value)
+    .thresholds(
+      new ThresholdsConfigBuilder()
+        .mode(ThresholdsMode.Absolute)
+        .steps([
+          { value: null, color: "green" } as Threshold,
+          { value: 70, color: "yellow" } as Threshold,
+          { value: 85, color: "red" } as Threshold,
+        ])
+    )
+    .min(0)
+    .max(100);
+  dash.withPanel(monCpuPanel);
+
+  // Row 2: Host Memory Details
+  dash.withRow(
+    new RowBuilder("Mon Host Memory Details").gridPos({ x: 0, y: 9, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Mon Host Memory Usage %",
+    `(1 - (node_memory_MemAvailable_bytes{instance="mon:9100"} / node_memory_MemTotal_bytes{instance="mon:9100"})) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 10, w: 12, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Mon Host Memory (Bytes)",
+    `node_memory_MemTotal_bytes{instance="mon:9100"} - node_memory_MemAvailable_bytes{instance="mon:9100"}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 12, y: 10, w: 12, h: 6 }),
+    }
+  );
+
+  // Row 3: Process Memory
+  dash.withRow(
+    new RowBuilder("Process Memory Usage").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Grafana Memory Usage",
+    `process_resident_memory_bytes{job="grafana"}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 0, y: 17, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Prometheus Memory Usage",
+    `process_resident_memory_bytes{job="prometheus"}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 8, y: 17, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Combined Monitoring Memory",
+    `sum(process_resident_memory_bytes{job=~"grafana|prometheus"})`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 16, y: 17, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 4: CPU Usage
+  dash.withRow(
+    new RowBuilder("CPU Usage").gridPos({ x: 0, y: 23, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Mon Host CPU Usage",
+    `100 - (avg(rate(node_cpu_seconds_total{instance="mon:9100",mode="idle"}[5m])) * 100)`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 24, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Grafana CPU Usage",
+    `rate(process_cpu_seconds_total{job="grafana"}[5m]) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).gridPos({ x: 8, y: 24, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Prometheus CPU Usage",
+    `rate(process_cpu_seconds_total{job="prometheus"}[5m]) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).gridPos({ x: 16, y: 24, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 5: Grafana Key Metrics
+  dash.withRow(
+    new RowBuilder("Grafana Performance").gridPos({ x: 0, y: 30, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Grafana HTTP Request Rate",
+    `rate(grafana_http_request_duration_seconds_count{job="grafana"}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 31, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Grafana Request Latency p95",
+    `histogram_quantile(0.95, sum(rate(grafana_http_request_duration_seconds_bucket{job="grafana"}[5m])) by (le))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("s").min(0).gridPos({ x: 8, y: 31, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Grafana Goroutines",
+    `go_goroutines{job="grafana"}`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 16, y: 31, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 6: Prometheus Key Metrics
+  dash.withRow(
+    new RowBuilder("Prometheus Performance").gridPos({ x: 0, y: 37, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Prometheus Samples Ingested Rate",
+    `rate(prometheus_tsdb_head_samples_appended_total{job="prometheus"}[5m])`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 0, y: 38, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Prometheus Active Series",
+    `prometheus_tsdb_head_series{job="prometheus"}`,
+    {
+      panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 38, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Prometheus Query Duration p95",
+    `histogram_quantile(0.95, rate(prometheus_engine_query_duration_seconds_bucket{job="prometheus"}[5m]))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("s").min(0).gridPos({ x: 16, y: 38, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 7: Storage and Resources
+  dash.withRow(
+    new RowBuilder("Storage & Resources").gridPos({ x: 0, y: 44, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Mon Host Disk Usage %",
+    `(1 - (node_filesystem_avail_bytes{instance="mon:9100",fstype!="tmpfs",fstype!="devtmpfs"} / node_filesystem_size_bytes{instance="mon:9100",fstype!="tmpfs",fstype!="devtmpfs"})) * 100`,
+    {
+      panelCustomization: (x) =>
+        x.unit("percent").min(0).max(100).gridPos({ x: 0, y: 45, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{mountpoint}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Prometheus TSDB Size",
+    `prometheus_tsdb_storage_blocks_bytes{job="prometheus"}`,
+    {
+      panelCustomization: (x) =>
+        x.unit("bytes").min(0).gridPos({ x: 8, y: 45, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Mon Host Network I/O",
+    `rate(node_network_receive_bytes_total{instance="mon:9100",device!="lo"}[5m])`,
+    {
+      panelCustomization: (x) =>
+        x.unit("Bps").min(0).gridPos({ x: 16, y: 45, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("RX {{device}}"),
+    }
+  );
+
+  return dash;
+}
+
 // Helper method to create "addTimeseriesChart" methods for your dashboard.
 function makeAddTimeseriesChart(dash: DashboardBuilder, dashboardUID: string) {
   const builders = {
@@ -1404,6 +1727,7 @@ async function main() {
   await createDashboard(makeContainerMetricsDashboard());
   await createDashboard(makeExeBoxesDashboard());
   await createDashboard(makeGrafanaDashboard());
+  await createDashboard(makeMonMonDashboard());
 
   // Create alerts after dashboards are created
   await createAlerts();

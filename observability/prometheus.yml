@@ -5,13 +5,13 @@ global:
   evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
 
 scrape_configs:
-  - job_name: "prometheus"
+  - job_name: "grafana"
     scheme: 'https'
     static_configs:
       - targets: ["grafana.crocodile-vector.ts.net"]
     metrics_path: '/metrics'
 
-  - job_name: "grafana"
+  - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
 
