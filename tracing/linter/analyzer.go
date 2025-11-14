@@ -219,7 +219,7 @@ func findCtxDeclaredBefore(pass *analysis.Pass, node ast.Node) *types.Var {
 }
 
 // isDeclaredBefore checks if a variable is declared before a given node
-func isDeclaredBefore(pass *analysis.Pass, v *types.Var, node ast.Node, containingFunc ast.Node) bool {
+func isDeclaredBefore(pass *analysis.Pass, v *types.Var, node, containingFunc ast.Node) bool {
 	var declPos token.Pos
 
 	// Check if it's a function parameter
