@@ -78,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           cp "$OUTPUT_PATH" "$MESSAGE_PATH"
-          printf "\n[CI logs](%s)\n" "$RUN_URL" >> "$MESSAGE_PATH"
+          printf "\n<%s|CI logs>\n" "$RUN_URL" >> "$MESSAGE_PATH"
           uv run scripts/slack/post_message.py \
             --channel oops \
             --markdown \
