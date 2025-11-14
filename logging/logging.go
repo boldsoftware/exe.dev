@@ -8,6 +8,8 @@ import (
 
 	"exe.dev/tracing"
 	"github.com/lmittmann/tint"
+	slogmulti "github.com/samber/slog-multi"
+	slogslack "github.com/samber/slog-slack/v2"
 )
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
@@ -65,6 +67,16 @@ func SetupLogger(devMode string) {
 		})
 	default: // "text" and any unknown format
 		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	slackBotToken := strings.TrimSpace(os.Getenv("SLACK_BOT_TOKEN"))
+	if devMode == "" && slackBotToken != "" {
+		opt := slogslack.Option{
+			Level:    slog.LevelError,
+			BotToken: slackBotToken,
+			Channel:  "#page",
+		}
+		handler = slogmulti.Fanout(handler, opt.NewSlackHandler())
 	}
 
 	// Wrap handler with tracing handler to add trace_id from context
