@@ -337,12 +337,29 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		return nil, fmt.Errorf("failed to authorize order: %w", err)
 	}
 
-	// Handle each authorization
+	type stagedChallenge struct {
+		domain    string
+		authzURL  string
+		challenge *acme.Challenge
+		keyAuth   string
+		recordID  string
+	}
+
+	var staged []stagedChallenge
+	cleanUpChallenges := func() {
+		for _, c := range staged {
+			w.dnsProvider.CleanupACMEChallenge(ctx, c.domain, c.keyAuth)
+		}
+	}
+
+	// Stage every DNS-01 token before accepting any challenge so shared records
+	// (e.g. example.com and *.example.com) remain valid for the entire order.
 	for _, authzURL := range order.AuthzURLs {
 		slog.Debug("fetching authorization", "url", authzURL)
 
 		authorization, err := w.acmeClient.GetAuthorization(ctx, authzURL)
 		if err != nil {
+			cleanUpChallenges()
 			return nil, fmt.Errorf("failed to get authorization: %w", err)
 		}
 
@@ -358,6 +375,7 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		}
 
 		if challenge == nil {
+			cleanUpChallenges()
 			return nil, fmt.Errorf("no DNS-01 challenge found")
 		}
 		slog.Debug("selected DNS-01 challenge", "challengeURI", challenge.URI)
@@ -365,56 +383,70 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		// Calculate key authorization
 		keyAuth, err := w.acmeClient.DNS01ChallengeRecord(challenge.Token)
 		if err != nil {
+			cleanUpChallenges()
 			return nil, fmt.Errorf("failed to calculate key authorization: %w", err)
 		}
 
-		// Present the challenge
-		slog.Info("creating DNS TXT record for ACME challenge",
-			"domain", authorization.Identifier.Value)
+		slog.Info("creating DNS TXT record for ACME challenge", "domain", authorization.Identifier.Value)
 		recordID, err := w.dnsProvider.CreateACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
 		if err != nil {
+			cleanUpChallenges()
 			return nil, fmt.Errorf("failed to create ACME challenge: %w", err)
 		}
 		slog.Info("DNS TXT record created for ACME challenge", "recordID", recordID)
 
-		// Wait a bit for DNS propagation.
-		//
-		// The AWS console Route53 banner says:
-		// "Route 53 propagates your changes to all of the Route 53 authoritative DNS servers within 60 seconds."
-		//
-		// TODO: in theory we could do DNS lookups earlier, and in a retry loop to verify propagation.
-		// This gets messy to Do Right, though: we have to avoid caching,
-		// check every single authoritative nameserver, etc.
-		//
-		// In practice, a fixed sleep seems to work fine so far.
-		// And except for the very first time, we'll be refreshing certs
-		// in the background, so it's invisible anyway.
-		time.Sleep(time.Minute)
+		staged = append(staged, stagedChallenge{
+			domain:    authorization.Identifier.Value,
+			authzURL:  authzURL,
+			challenge: challenge,
+			keyAuth:   keyAuth,
+			recordID:  recordID,
+		})
+	}
 
+	if len(staged) == 0 {
+		return nil, fmt.Errorf("no challenges staged for order")
+	}
+
+	// Allow the staged TXT records to propagate before any challenge is validated.
+	//
+	// The AWS console Route53 banner says:
+	// "Route 53 propagates your changes to all of the Route 53 authoritative DNS servers within 60 seconds."
+	//
+	// TODO: in theory we could do DNS lookups earlier, and in a retry loop to verify propagation.
+	// This gets messy to Do Right, though: we have to avoid caching,
+	// check every single authoritative nameserver, etc.
+	//
+	// In practice, a fixed sleep seems to work fine so far.
+	// And except for the very first time, we'll be refreshing certs
+	// in the background, so it's invisible anyway.
+	time.Sleep(time.Minute)
+
+	for _, c := range staged {
 		// Accept the challenge
-		_, err = w.acmeClient.Accept(ctx, challenge)
+		_, err = w.acmeClient.Accept(ctx, c.challenge)
 		if err != nil {
 			// Clean up on error
-			w.dnsProvider.CleanupACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
+			cleanUpChallenges()
 			return nil, fmt.Errorf("failed to accept challenge: %w", err)
 		}
 
 		// Wait for authorization to complete
-		_, err = w.acmeClient.WaitAuthorization(ctx, authzURL)
+		_, err = w.acmeClient.WaitAuthorization(ctx, c.authzURL)
 		if err != nil {
 			// Clean up on error
-			w.dnsProvider.CleanupACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
+			cleanUpChallenges()
 			return nil, fmt.Errorf("authorization failed: %w", err)
 		}
 
-		// Clean up the challenge record
-		w.dnsProvider.CleanupACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
-
 		// Log successful challenge
 		slog.Info("completed DNS-01 challenge",
-			"domain", authorization.Identifier.Value,
-			"recordID", recordID)
+			"domain", c.domain,
+			"recordID", c.recordID)
 	}
+
+	// Clean up challenges now that all authorizations have finished.
+	cleanUpChallenges()
 
 	// Generate certificate signing request
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
