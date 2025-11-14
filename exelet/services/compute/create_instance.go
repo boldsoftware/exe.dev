@@ -37,9 +37,8 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
-	s.log.Debug("creating instance", "request", req)
-
 	ctx := stream.Context()
+	s.log.DebugContext(ctx, "creating instance", "request", req)
 	if req.ID == "" {
 		id, err := uuid.NewV7()
 		if err != nil {
@@ -119,13 +118,13 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	// linux only supported for now
 	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
-	s.log.Debug("creating instance fs", "id", instanceID)
+	s.log.DebugContext(ctx, "creating instance fs", "id", instanceID)
 
 	imageMetadata, err := s.context.ImageManager.FetchManifestForPlatform(ctx, req.Image, platform)
 	if err != nil {
 		return status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
 	}
-	s.log.Debug("fetched image manifest", "image", req.Image, "digest", imageMetadata.Digest)
+	s.log.DebugContext(ctx, "fetched image manifest", "image", req.Image, "digest", imageMetadata.Digest)
 
 	// config
 	imageConfig := imageMetadata.Config
@@ -255,12 +254,12 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		}); err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
-		s.log.Debug("configuring volume", "source", vol.Source)
+		s.log.DebugContext(ctx, "configuring volume", "source", vol.Source)
 		// TODO: handle other types (e.g. zfs snapshots)
 		switch strings.ToLower(vol.Type) {
 		case "image":
 			volumeTarget := filepath.Join(mountpoint, filepath.Clean(vol.Mountpoint))
-			s.log.Debug("fetching image for volume", "image", vol.Source, "path", volumeTarget)
+			s.log.DebugContext(ctx, "fetching image for volume", "image", vol.Source, "path", volumeTarget)
 			if err := os.MkdirAll(volumeTarget, 0o755); err != nil {
 				return status.Errorf(codes.Internal, "error creating volume mountpoint: %s", err)
 			}
@@ -281,7 +280,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	// set hostname
-	s.log.Debug("configuring hostname", "id", instanceID)
+	s.log.DebugContext(ctx, "configuring hostname", "id", instanceID)
 	hostnamePath := filepath.Join(mountpoint, config.HostnamePath)
 	if err := os.MkdirAll(filepath.Dir(hostnamePath), 0o755); err != nil {
 		return status.Error(codes.Internal, err.Error())

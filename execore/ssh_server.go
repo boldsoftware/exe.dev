@@ -177,7 +177,8 @@ func (ss *SSHServer) shouldShowSpinner(s exemenu.ShellSession) bool {
 // authenticatePublicKey handles public key authentication
 func (ss *SSHServer) authenticatePublicKey(ctx ssh.Context, key ssh.PublicKey) bool {
 	// Create and set a random trace id
-	ctx.SetValue("trace_id", tracing.GenerateTraceID())
+	traceID := tracing.GenerateTraceID()
+	ctx.SetValue("trace_id", traceID)
 
 	// Increment auth attempts metric
 	ss.server.sshMetrics.authAttempts.WithLabelValues("attempt", "public_key").Inc()
@@ -342,7 +343,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 
 	// Create a terminal using golang.org/x/term
 	terminal := term.NewTerminal(s, "\033[1;36mexe.dev\033[0m \033[37m▶\033[0m ")
-	ctx := s.Context()
+	var ctx context.Context = s.Context()
 
 	// Set the terminal size to the pty size, and keep it updated whenever the pty changes.
 	_, winSizeCh, _ := s.Pty()
@@ -767,7 +768,8 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 		ExedListeningPort: ss.server.httpLn.tcp.Port,
 	}
 
-	rc := ss.commands.ExecuteCommand(s.Context(), cc, cmd) // Just the command name
+	var ctx context.Context = s.Context()
+	rc := ss.commands.ExecuteCommand(ctx, cc, cmd) // Just the command name
 	ss.server.slog().Debug("ssh exec command completed", "command", strings.Join(cmd, " "), "rc", rc)
 	if rc > 0 {
 		s.Close()
@@ -780,8 +782,11 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 	// Show error message about container failure
 	fmt.Fprintf(s, "\033[1;31mContainer '%s' is not running\033[0m\r\n\r\n", boxName)
 
+	// Extract trace_id from SSH context and add to Go context for gRPC propagation
+	var baseCtx context.Context = s.Context()
+
 	// Get logs if container manager is available
-	ctx, cancel := context.WithTimeout(s.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
 	defer cancel()
 
 	// Get container logs

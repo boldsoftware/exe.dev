@@ -8,6 +8,7 @@ import (
 
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
+	"exe.dev/tracing"
 )
 
 // Client is the GRPC client
@@ -90,6 +91,12 @@ func getGRPCOptions(cfg *ClientConfig) []grpc.DialOption {
 	opts = append(opts, grpc.WithDefaultCallOptions(
 		grpc.WaitForReady(true),
 	))
+
+	// Add trace_id propagation interceptors
+	opts = append(opts,
+		grpc.WithUnaryInterceptor(tracing.UnaryClientInterceptor()),
+		grpc.WithStreamInterceptor(tracing.StreamClientInterceptor()),
+	)
 
 	return opts
 }

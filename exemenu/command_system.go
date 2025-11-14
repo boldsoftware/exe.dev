@@ -205,21 +205,21 @@ func (ctx *CommandContext) WriteJSON(x any) {
 	fmt.Fprintf(ctx.Output, "%s%s", data, nl)
 }
 
-func (ctx *CommandContext) WriteInternalError(cmd string, err error, slogDetails ...any) {
-	if ctx.DevMode {
-		ctx.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", err)
+func (cc *CommandContext) WriteInternalError(ctx context.Context, cmd string, err error, slogDetails ...any) {
+	if cc.DevMode {
+		cc.Write("\033[1;31mRaw error (dev only):\r\n%v\033[0m\r\n\r\n", err)
 	}
 	guid := uuid.New().String() // for x-ref on support tickets
 	attrs := []any{
 		"error", err,
-		"user_id", ctx.User.ID,
-		"public_key", ctx.PublicKey,
-		"args", ctx.Args,
+		"user_id", cc.User.ID,
+		"public_key", cc.PublicKey,
+		"args", cc.Args,
 		"guid", guid,
 	}
 	attrs = append(attrs, slogDetails...)
-	ctx.slog().Error("ssh command failed unexpectedly", attrs...)
-	ctx.WriteError("%q: internal error, error ID: %s", cmd, guid)
+	cc.slog().ErrorContext(ctx, "ssh command failed unexpectedly", attrs...)
+	cc.WriteError("%q: internal error, error ID: %s", cmd, guid)
 }
 
 // WantJSON reports whether the --json flag is set.
@@ -384,7 +384,7 @@ func (ct *CommandTree) ExecuteCommand(ctx context.Context, cc *CommandContext, c
 	if ok := errors.As(err, &cce); ok {
 		cc.WriteError("%v", err)
 	} else {
-		cc.WriteInternalError(strings.Join(commandPath, " "), err)
+		cc.WriteInternalError(ctx, strings.Join(commandPath, " "), err)
 	}
 	return 1
 }

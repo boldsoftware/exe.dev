@@ -859,7 +859,6 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 		}
 
 		// Delete instance via exelet
-		ctx := context.Background()
 		_, err = exeletClient.client.DeleteInstance(ctx, &api.DeleteInstanceRequest{
 			ID: *box.ContainerID,
 		})
@@ -1195,7 +1194,7 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 	token := generateRegistrationToken()
 
 	// Store verification in database using the existing email verification table
-	err := ss.server.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+	err := ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.InsertEmailVerification(ctx, exedb.InsertEmailVerificationParams{
 			Token:     token,
 			Email:     cc.User.Email,

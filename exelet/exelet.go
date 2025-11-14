@@ -18,6 +18,7 @@ import (
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/services"
 	api "exe.dev/pkg/api/exe/compute/v1"
+	"exe.dev/tracing"
 )
 
 var (
@@ -72,8 +73,12 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 	}
 
 	// middleware
-	unaryServerInterceptors := []grpc.UnaryServerInterceptor{}
-	streamServerInterceptors := []grpc.StreamServerInterceptor{}
+	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
+		tracing.UnaryServerInterceptor(),
+	}
+	streamServerInterceptors := []grpc.StreamServerInterceptor{
+		tracing.StreamServerInterceptor(),
+	}
 
 	// TODO: auth middleware
 
