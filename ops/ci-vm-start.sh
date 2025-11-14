@@ -104,8 +104,25 @@ cleanup_unused_images() {
     done
 }
 
+cleanup_cache_snapshots() {
+    local cache_dir="${EXEDEV_CACHE:-$HOME/.cache/exedev}"
+    if [[ ! -d "$cache_dir" ]]; then
+        return
+    fi
+
+    echo "Cleaning up old cache snapshots in ${cache_dir}, keeping 5 most recent..."
+
+    # Find all ci-vm-* directories, sort by modification time (oldest first), keep only 5 newest
+    find "$cache_dir" -maxdepth 1 -type d -name 'ci-vm-*' -printf '%T@ %p\n' 2>/dev/null | \
+        sort -n | head -n -5 | cut -d' ' -f2- | while read dir; do
+        echo "  Removing old cache snapshot: $(basename "$dir")"
+        rm -rf "$dir"
+    done
+}
+
 cleanup_old_vms
 cleanup_unused_images
+cleanup_cache_snapshots
 # END TODO(philip)
 
 # Cache/snapshot settings (hash of ops/ as determined by git tree (must be checked in))
