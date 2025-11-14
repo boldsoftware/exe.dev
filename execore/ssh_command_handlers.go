@@ -32,6 +32,8 @@ const shelleyPreamble = `
 The user has just created this box, and wants to do the following with it.
 `
 
+const shelleyDefaultModel = "claude-sonnet-4.5"
+
 // jsonOnlyFlags returns a FlagSet creation function for a FlagSet named name with only the --json flag.
 func jsonOnlyFlags(name string) func() *flag.FlagSet {
 	return func() *flag.FlagSet {
@@ -50,7 +52,7 @@ func newCommandFlags() *flag.FlagSet {
 	fs.String("prompt", "", "initial prompt to send to Shelley after box creation (requires exeuntu image)")
 	fs.Bool("json", false, "output in JSON format")
 	// Hidden flag for testing
-	fs.String("prompt-model", "", "")
+	fs.String("prompt-model", shelleyDefaultModel, "")
 	return fs
 }
 
@@ -404,7 +406,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 	shelleyJSON := map[string]interface{}{
 		"terminal_url":  terminalURL,
-		"default_model": "claude-sonnet-4.5",
+		"default_model": shelleyDefaultModel,
 	}
 	if gatewayURL != "" {
 		shelleyJSON["llm_gateway"] = gatewayURL
