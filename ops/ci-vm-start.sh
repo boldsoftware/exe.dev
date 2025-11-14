@@ -113,7 +113,7 @@ cleanup_cache_snapshots() {
     echo "Cleaning up old cache snapshots in ${cache_dir}, keeping 5 most recent..."
 
     # Find all ci-vm-* directories, sort by modification time (oldest first), keep only 5 newest
-    find "$cache_dir" -maxdepth 1 -type d -name 'ci-vm-*' -printf '%T@ %p\n' 2>/dev/null | \
+    find "$cache_dir" -maxdepth 1 -type d -name 'ci-vm-*' -printf '%T@ %p\n' 2>/dev/null |
         sort -n | head -n -5 | cut -d' ' -f2- | while read dir; do
         echo "  Removing old cache snapshot: $(basename "$dir")"
         rm -rf "$dir"
