@@ -235,6 +235,7 @@ func Start(ctx context.Context, cfg *Config) (_ *Stone, err error) {
 			Key:          accountKey,
 			DirectoryURL: fmt.Sprintf("https://%s/dir", cfg.ListenAddress),
 			HTTPClient:   httpClient,
+			RetryBackoff: func(_ int, _ *http.Request, _ *http.Response) time.Duration { return 100 * time.Millisecond },
 		},
 		stop: later.run,
 	}
