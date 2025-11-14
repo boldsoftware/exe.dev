@@ -222,32 +222,32 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	// Check if key is empty or nil - this happens when client has no keys configured
 	if len(key) == 0 {
-		slog.Debug("No public key provided", "component", "piper-plugin", "user", conn.User())
+		slog.DebugContext(ctx, "No public key provided", "component", "piper-plugin", "user", conn.User())
 		return nil, fmt.Errorf("no public key provided")
 	}
 
 	// Parse the provided key
 	pubKey, err := ssh.ParsePublicKey(key)
 	if err != nil {
-		slog.Debug("Failed to parse public key", "component", "piper-plugin", "error", err)
+		slog.DebugContext(ctx, "Failed to parse public key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to parse public key: %v", err)
 	}
 
 	// Get user info by public key directly
 	userID, err := p.server.getUserIDByPublicKey(ctx, pubKey)
 	if err != nil {
-		slog.Debug("Database error checking SSH key", "component", "piper-plugin", "public_key", pubKey, "error", err)
+		slog.DebugContext(ctx, "Database error checking SSH key", "component", "piper-plugin", "public_key", pubKey, "error", err)
 	}
-	slog.Debug("looked up user for ssh key", "component", "piper-plugin", "public_key", pubKey, "user_id", userID)
+	slog.DebugContext(ctx, "looked up user for ssh key", "component", "piper-plugin", "public_key", pubKey, "user_id", userID)
 
 	localAddress := conn.GetMeta("local_address")
 	if localAddress != "" {
 		localAddress, _, err = net.SplitHostPort(localAddress)
 		if err != nil {
-			slog.Error("spliting host and port", "component", "piper-plugin", "local_address", conn.GetMeta("local_address"), "error", err)
+			slog.ErrorContext(ctx, "spliting host and port", "component", "piper-plugin", "local_address", conn.GetMeta("local_address"), "error", err)
 			return nil, err
 		}
-		slog.Info("Extracted local address", "component", "piper-plugin", "local_address", localAddress)
+		slog.InfoContext(ctx, "Extracted local address", "component", "piper-plugin", "local_address", localAddress)
 	}
 	if localAddress == "" {
 		localAddress = "127.0.0.1" // Default fallback
@@ -255,23 +255,23 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	registered := userID != ""
 	username := conn.User()
-	slog.Debug("User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
+	slog.DebugContext(ctx, "User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
 
 	// Check if this is a direct box access attempt
 	if username != "" && registered {
-		slog.Info("Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered)
+		slog.InfoContext(ctx, "Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered)
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
-			slog.Info("Found box, routing to container", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID)
+			slog.InfoContext(ctx, "Found box, routing to container", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID)
 			return p.handleBoxAccess(box, userID, connID)
 		} else {
-			slog.Info("No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
+			slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 		}
 	}
 
 	// For all other cases (interactive shell, registration, etc.),
 	// route to exed directly using ephemeral proxy authentication
-	slog.Debug("Routing to exed shell", "port", p.exedSSHPort, "component", "piper-plugin")
-	slog.Debug("User's public key length", "component", "piper-plugin", "key_length_bytes", len(key))
+	slog.DebugContext(ctx, "Routing to exed shell", "port", p.exedSSHPort, "component", "piper-plugin")
+	slog.DebugContext(ctx, "User's public key length", "component", "piper-plugin", "key_length_bytes", len(key))
 
 	// EPHEMERAL PROXY KEY APPROACH:
 	// 1. Generate a unique, temporary private key for this connection
@@ -282,11 +282,11 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key, localAddress)
 	if err != nil {
-		slog.Debug("Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
+		slog.DebugContext(ctx, "Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
 		return nil, fmt.Errorf("failed to generate ephemeral proxy key: %v", err)
 	}
 
-	slog.Debug("Generated ephemeral proxy key with fingerprint", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint)
+	slog.DebugContext(ctx, "Generated ephemeral proxy key with fingerprint", "component", "piper-plugin", "proxy_fingerprint", proxyFingerprint)
 
 	upstream := &libplugin.Upstream{
 		Host:     "127.0.0.1", // Use explicit IPv4 instead of localhost
@@ -308,10 +308,10 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
 
-	slog.Debug("handleBoxAccess for box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "user_id", userID, "conn_id", connID)
+	slog.DebugContext(ctx, "handleBoxAccess for box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "user_id", userID, "conn_id", connID)
 
 	if box.ContainerID == nil {
-		slog.Debug("Box has no container ID", "component", "piper-plugin", "box_name", box.Name)
+		slog.DebugContext(ctx, "Box has no container ID", "component", "piper-plugin", "box_name", box.Name)
 		return nil, fmt.Errorf("box %s is not running", box.Name)
 	}
 
@@ -319,13 +319,13 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	if p.server.containerManager != nil {
 		containerInfo, err := p.server.containerManager.GetContainer(ctx, box.CreatedByUserID, *box.ContainerID)
 		if err != nil {
-			slog.Info("piper-plugin container status check failed",
+			slog.InfoContext(ctx, "piper-plugin container status check failed",
 				"box_name", box.Name,
 				"container_id", *box.ContainerID,
 				"error", err,
 			)
 		} else {
-			slog.Info("piper-plugin container status check",
+			slog.InfoContext(ctx, "piper-plugin container status check",
 				"box_name", box.Name,
 				"container_id", *box.ContainerID,
 				"status", string(containerInfo.Status),
@@ -334,7 +334,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 		if err == nil && containerInfo.Status != container.StatusRunning {
 			// Container exists but isn't running - route to exed to show logs
 			// Use a special username format that exed will recognize
-			slog.Info("Container not running, routing to exed for error display",
+			slog.InfoContext(ctx, "Container not running, routing to exed for error display",
 				"component", "piper-plugin", "box_name", box.Name, "status", containerInfo.Status)
 
 			// Generate ephemeral proxy key for auth to exed
@@ -360,10 +360,10 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	// Get SSH connection details from the database
 	sshDetails, err := p.server.GetBoxSSHDetails(ctx, box.ID)
 	if err != nil {
-		slog.Debug("Failed to get SSH details for box", "component", "piper-plugin", "box_name", box.Name, "error", err)
+		slog.DebugContext(ctx, "Failed to get SSH details for box", "component", "piper-plugin", "box_name", box.Name, "error", err)
 		return nil, fmt.Errorf("failed to get SSH details for box %s: %v", box.Name, err)
 	}
-	slog.Debug("SSH details for machine",
+	slog.DebugContext(ctx, "SSH details for machine",
 		"user_id", userID,
 		"conn_id", connID,
 		"component", "piper-plugin",
@@ -385,7 +385,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 			parts := strings.Split(strings.TrimPrefix(ctrhost, "tcp://"), ":")
 			if len(parts) > 0 && parts[0] != "" {
 				host = parts[0]
-				slog.Debug("Using container host from tcp format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
+				slog.DebugContext(ctx, "Using container host from tcp format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
 			}
 		} else if strings.HasPrefix(ctrhost, "ssh://") {
 			// Extract hostname from ssh://[user@]hostname
@@ -396,11 +396,11 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 			} else {
 				host = sshHost
 			}
-			slog.Debug("Using container host from ssh format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
+			slog.DebugContext(ctx, "Using container host from ssh format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
 		} else if ctrhost != "" && !strings.HasPrefix(ctrhost, "unix://") {
 			// Direct hostname
 			host = ctrhost
-			slog.Debug("Using direct docker host", "component", "piper-plugin", "host", host)
+			slog.DebugContext(ctx, "Using direct docker host", "component", "piper-plugin", "host", host)
 		}
 	}
 	port := sshDetails.Port
@@ -409,13 +409,13 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	if p.server.devMode != "" {
 		if _, err := net.LookupHost(host); err != nil {
 			if ip := ctrhosttest.ResolveHostFromSSHConfig(host); ip != "" {
-				slog.Debug("Resolved host via SSH config for dev", "component", "piper-plugin", "alias", host, "ip", ip)
+				slog.DebugContext(ctx, "Resolved host via SSH config for dev", "component", "piper-plugin", "alias", host, "ip", ip)
 				host = ip
 			}
 		}
 	}
 
-	slog.Debug("Using database SSH details for box", "component", "piper-plugin", "box_name", box.Name, "host", host, "port", port)
+	slog.DebugContext(ctx, "Using database SSH details for box", "component", "piper-plugin", "box_name", box.Name, "host", host, "port", port)
 
 	// Create upstream configuration for direct SSH to container
 	// slog.Debug("Creating upstream to container as root", "component", "piper-plugin", "host", host, "port", port)
@@ -425,10 +425,10 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	// Store the expected host key for this connection if available
 	if sshDetails.HostKey != "" {
 		p.storeExpectedHostKeyForConnection(connID, sshDetails.HostKey)
-		slog.Debug("Stored expected host key for connection", "component", "piper-plugin", "box_name", box.Name, "conn_id", connID, "host_key", sshDetails.HostKey)
+		slog.DebugContext(ctx, "Stored expected host key for connection", "component", "piper-plugin", "box_name", box.Name, "conn_id", connID, "host_key", sshDetails.HostKey)
 	}
 
-	slog.Debug("directing piperd to connect", "host", host, "port", port, "user", sshDetails.User)
+	slog.DebugContext(ctx, "directing piperd to connect", "host", host, "port", port, "user", sshDetails.User)
 	return &libplugin.Upstream{
 		Host:     host, // Container host from ctrhost (direct via vzNAT in dev)
 		Port:     int32(port),

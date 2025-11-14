@@ -38,7 +38,7 @@ func (s *Server) recordUserEventTx(tx *sqlite.Tx, userID, event string) error {
 func (s *Server) recordUserEventBestEffort(ctx context.Context, userID, event string) {
 	err := s.recordUserEvent(ctx, userID, event)
 	if err != nil {
-		s.slog().Warn("recordUserEventBestEffort database error", "userID", userID, "event", event, "error", err)
+		s.slog().WarnContext(ctx, "recordUserEventBestEffort database error", "userID", userID, "event", event, "error", err)
 	}
 }
 
@@ -48,7 +48,7 @@ func (s *Server) allUserEventsBestEffort(ctx context.Context, userID string) map
 		return queries.GetAllUserEvents(ctx, userID)
 	})
 	if err != nil {
-		s.slog().Warn("allUserEventsBestEffort database error", "userID", userID, "error", err)
+		s.slog().WarnContext(ctx, "allUserEventsBestEffort database error", "userID", userID, "error", err)
 		return events
 	}
 

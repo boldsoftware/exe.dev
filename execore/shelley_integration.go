@@ -214,7 +214,7 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 			data := strings.TrimPrefix(line, "data: ")
 			var streamData ShelleyStreamResponse
 			if err := json.Unmarshal([]byte(data), &streamData); err != nil {
-				slog.Warn("Failed to parse SSE JSON", "error", err)
+				slog.WarnContext(ctx, "Failed to parse SSE JSON", "error", err)
 				continue
 			}
 
@@ -243,7 +243,7 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 				if msg.DisplayData != nil {
 					var agentMsg ShelleyAgentMessage
 					if err := json.Unmarshal([]byte(*msg.DisplayData), &agentMsg); err != nil {
-						slog.Warn("Failed to parse agent message display data", "error", err)
+						slog.WarnContext(ctx, "Failed to parse agent message display data", "error", err)
 						continue
 					}
 					if agentMsg.Text != "" {
@@ -262,7 +262,7 @@ func (ss *SSHServer) streamShelleyConversation(ctx context.Context, httpClient *
 				if msg.LlmData != nil {
 					var llmData ShelleyLLMData
 					if err := json.Unmarshal([]byte(*msg.LlmData), &llmData); err != nil {
-						slog.Warn("Failed to parse llm_data", "error", err)
+						slog.WarnContext(ctx, "Failed to parse llm_data", "error", err)
 						continue
 					}
 

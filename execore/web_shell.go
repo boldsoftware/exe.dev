@@ -105,7 +105,7 @@ func (s *Server) handleWebShellWS(w http.ResponseWriter, r *http.Request) {
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
-		slog.Error("Failed to upgrade websocket", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to upgrade websocket", "error", err)
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "internal error")

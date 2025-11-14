@@ -192,7 +192,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 
 	restartCmd := "sudo systemctl restart shelley.service"
 	if err := session2.Run(restartCmd); err != nil {
-		slog.Warn("Failed to restart shelley.service", "error", err)
+		slog.WarnContext(ctx, "Failed to restart shelley.service", "error", err)
 		cc.Writeln("\033[1;33mWarning: Failed to restart shelley.service: %v\033[0m", err)
 		cc.Writeln("You may need to restart it manually.")
 	} else {

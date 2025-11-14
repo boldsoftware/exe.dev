@@ -258,11 +258,11 @@ func (s *Server) hostPolicy(ctx context.Context, host string) error {
 		return err
 	}
 	if boxName == "" {
-		s.slog().Warn("hostPolicy: unable to resolve box name", "host", host)
+		s.slog().WarnContext(ctx, "hostPolicy: unable to resolve box name", "host", host)
 		return fmt.Errorf("unable to resolve box for %s", host)
 	}
 	if !s.boxExists(ctx, boxName) {
-		s.slog().Warn("hostPolicy: no box found for subdomain", "subdomain", host)
+		s.slog().WarnContext(ctx, "hostPolicy: no box found for subdomain", "subdomain", host)
 		return fmt.Errorf("%w: %s", errBoxNotFound, boxName)
 	}
 	return nil
@@ -411,7 +411,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ActivePage:         "",
 		}
 		if err := s.renderTemplate(w, "welcome.html", data); err != nil {
-			s.log.Error("failed to render welcome page", "error", err)
+			s.log.ErrorContext(r.Context(), "failed to render welcome page", "error", err)
 			return
 		}
 		return
@@ -635,7 +635,7 @@ func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
 		return err
 	})
 	if err != nil {
-		s.slog().Error("failed to insert waitlist entry", "err", err)
+		s.slog().ErrorContext(r.Context(), "failed to insert waitlist entry", "err", err)
 		if strings.Contains(r.Header.Get("Accept"), "application/json") {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -651,7 +651,7 @@ func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
 		subject := "You're on the exe.dev waitlist"
 		body := "Hello,\n\nThanks for your interest in exe.dev. You're on the waitlist. We'll reach out as soon as we have space for you.\n\nIn the meantime, we're heads down building a great SSH-first experience.\n\n— exe.dev"
 		if sendErr := s.sendEmail(email, subject, body); sendErr != nil {
-			s.slog().Warn("failed to send waitlist email", "email", email, "err", sendErr)
+			s.slog().WarnContext(r.Context(), "failed to send waitlist email", "email", email, "err", sendErr)
 		}
 	}
 
@@ -675,7 +675,7 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "verification session not found; please try logging in via SSH again", http.StatusBadRequest)
 		return
 	case err != nil:
-		s.slog().Error("unexpected error during device verification check", "error", err, "token", token)
+		s.slog().ErrorContext(r.Context(), "unexpected error during device verification check", "error", err, "token", token)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -727,7 +727,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		http.Error(w, "verification session not found; please try logging in via SSH again", http.StatusBadRequest)
 		return
 	case err != nil:
-		s.slog().Error("unexpected error during device verification check", "error", err, "token", token)
+		s.slog().ErrorContext(r.Context(), "unexpected error during device verification check", "error", err, "token", token)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -747,7 +747,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 		return queries.DeletePendingSSHKeyByToken(ctx, token)
 	})
 	if err != nil {
-		s.slog().Error("Failed to add SSH key", "error", err)
+		s.slog().ErrorContext(r.Context(), "Failed to add SSH key", "error", err)
 		http.Error(w, "Failed to verify device", http.StatusInternalServerError)
 		return
 	}
@@ -886,7 +886,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// This is an SSH session email verification
 		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey)
 		if err != nil {
-			s.slog().Error("failed to create user with SSH key during email verification", "error", err, "token", token)
+			s.slog().ErrorContext(r.Context(), "failed to create user with SSH key during email verification", "error", err, "token", token)
 			http.Error(w, "failed to create user account", http.StatusInternalServerError)
 			return
 		}
@@ -894,7 +894,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(context.Background(), user.UserID, r.Host)
 		if err != nil {
-			s.slog().Error("Failed to create auth cookie during SSH email verification", "error", err)
+			s.slog().ErrorContext(r.Context(), "Failed to create auth cookie during SSH email verification", "error", err)
 			// Continue anyway - SSH auth will still work
 		} else {
 			setExeAuthCookie(w, r, cookieValue)
@@ -910,7 +910,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Try to validate as database token
 		userID, err := s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
-			s.slog().Info("invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
+			s.slog().InfoContext(r.Context(), "invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
 			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 			return
 		}
@@ -918,7 +918,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		// Create HTTP auth cookie for this user
 		cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
 		if err != nil {
-			s.slog().Error("Failed to create auth cookie during HTTP email verification", "error", err)
+			s.slog().ErrorContext(r.Context(), "Failed to create auth cookie during HTTP email verification", "error", err)
 			http.Error(w, "Failed to create authentication session", http.StatusInternalServerError)
 			return
 		}
@@ -930,7 +930,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			return queries.DeleteEmailVerificationByToken(ctx, token)
 		})
 		if err != nil {
-			s.slog().Error("Failed to cleanup email verification token", "error", err)
+			s.slog().ErrorContext(r.Context(), "Failed to cleanup email verification token", "error", err)
 			// Continue anyway
 		}
 
@@ -960,15 +960,15 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 	// not by SSH key (which is what we are about to connect to this email).
 	user, err := s.GetUserByEmail(ctx, email)
 	if err != nil || user == nil {
-		s.slog().Info("User doesn't exist, creating", "email", email)
+		s.slog().InfoContext(ctx, "User doesn't exist, creating", "email", email)
 		// User doesn't exist - create them with their alloc
 		user, err = s.createUser(context.Background(), publicKey, email)
 		if err != nil {
 			return nil, fmt.Errorf("create user: %w", err)
 		}
-		s.slog().Info("Created new user", "email", email)
+		s.slog().InfoContext(ctx, "Created new user", "email", email)
 	} else {
-		s.slog().Debug("User already exists", "email", email)
+		s.slog().DebugContext(ctx, "User already exists", "email", email)
 	}
 
 	// Store the SSH key as verified
@@ -980,7 +980,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 			})
 		})
 		if err != nil {
-			s.slog().Error("Error storing SSH key during verification", "error", err)
+			s.slog().ErrorContext(ctx, "Error storing SSH key during verification", "error", err)
 		}
 	}
 
@@ -1043,7 +1043,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		return nil
 	})
 	if err != nil {
-		s.slog().Error("Database error during user lookup/creation", "error", err)
+		s.slog().ErrorContext(r.Context(), "Database error during user lookup/creation", "error", err)
 		s.showAuthError(w, r, "Database error occurred. Please try again.", "")
 		return
 	}
@@ -1061,7 +1061,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 		})
 	})
 	if err != nil {
-		s.slog().Error("Failed to store email verification", "error", err)
+		s.slog().ErrorContext(r.Context(), "Failed to store email verification", "error", err)
 		s.showAuthError(w, r, "Failed to create verification. Please try again.", "")
 		return
 	}
@@ -1112,7 +1112,7 @@ The exe.dev team`, verifyEmailURL)
 
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
-		s.slog().Error("Failed to send auth email", "error", err)
+		s.slog().ErrorContext(r.Context(), "Failed to send auth email", "error", err)
 		s.showAuthError(w, r, "Failed to send email. Please try again or contact support.", "")
 		return
 	}
@@ -1172,7 +1172,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		var err error
 		userID, err = s.validateEmailVerificationToken(r.Context(), token)
 		if err != nil {
-			s.slog().Info("invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
+			s.slog().InfoContext(r.Context(), "invalid email verification token during auth callback", "error", err, "token", token, "remote_addr", r.RemoteAddr)
 			http.Error(w, "Invalid or expired verification token", http.StatusUnauthorized)
 			return
 		}
@@ -1188,7 +1188,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		var err error
 		userID, err = s.validateAuthToken(r.Context(), token, "")
 		if err != nil {
-			s.slog().Error("Invalid auth token in callback", "error", err)
+			s.slog().ErrorContext(r.Context(), "Invalid auth token in callback", "error", err)
 			http.Error(w, "Invalid or expired authentication token", http.StatusUnauthorized)
 			return
 		}
@@ -1197,7 +1197,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Create main domain auth cookie
 	cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
 	if err != nil {
-		s.slog().Error("Failed to create main auth cookie", "error", err)
+		s.slog().ErrorContext(r.Context(), "Failed to create main auth cookie", "error", err)
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
 		return
 	}
@@ -1487,7 +1487,7 @@ func (s *Server) validateProxyBearerToken(ctx context.Context, token string, box
 	if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.UpdateProxyBearerTokenLastUsed(ctx, token)
 	}); err != nil {
-		s.slog().Warn("failed to update proxy bearer token last used", "error", err)
+		s.slog().WarnContext(ctx, "failed to update proxy bearer token last used", "error", err)
 	}
 
 	return record.UserID, nil
@@ -1508,7 +1508,7 @@ func (s *Server) userHasActiveAuthCookie(ctx context.Context, userID string) (bo
 func (s *Server) userHasActiveAuthCookieBestEffort(ctx context.Context, userID string) bool {
 	hasCookie, err := s.userHasActiveAuthCookie(ctx, userID)
 	if err != nil {
-		s.slog().Warn("userHasActiveAuthCookie database error", "userID", userID, "error", err)
+		s.slog().WarnContext(ctx, "userHasActiveAuthCookie database error", "userID", userID, "error", err)
 		return false
 	}
 	return hasCookie
@@ -1586,7 +1586,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 		returnHost = r.FormValue("return_host")
 	}
 
-	s.slog().Debug("[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
+	s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
 
 	// Check if returnHost is actually a subdomain that needs proxy/terminal auth
 	// Skip the proxy/terminal flow if returnHost is the main domain itself
@@ -1594,13 +1594,13 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 
 	if shouldDoProxyFlow {
 		if s.isTerminalRequest(returnHost) {
-			s.slog().Debug("[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
+			s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
 			// Parse hostname to extract box name
 			hostname := stripPort(returnHost)
 
 			boxName, err := s.parseTerminalHostname(hostname)
 			if err != nil {
-				s.slog().Error("Failed to parse terminal hostname", "hostname", hostname, "error", err)
+				s.slog().ErrorContext(r.Context(), "Failed to parse terminal hostname", "hostname", hostname, "error", err)
 				http.Error(w, "Invalid hostname format", http.StatusBadRequest)
 				return
 			}
@@ -1608,7 +1608,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			// Create magic secret for the terminal subdomain
 			secret, err := s.createMagicSecret(userID, boxName, redirectURL)
 			if err != nil {
-				s.slog().Error("Failed to create magic secret", "error", err)
+				s.slog().ErrorContext(r.Context(), "Failed to create magic secret", "error", err)
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
 				return
 			}
@@ -1619,13 +1619,13 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
 			return
 		} else if s.isProxyRequest(returnHost) {
-			s.slog().Debug("[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
+			s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
 			// Parse hostname to extract box name (including custom domains via CNAME)
 			hostname := stripPort(returnHost)
 
 			boxName, err := s.resolveBoxName(r.Context(), hostname)
 			if err != nil || boxName == "" {
-				s.slog().Info("redirectAfterAuth failed to resolve box name", "hostname", hostname, "error", err)
+				s.slog().InfoContext(r.Context(), "redirectAfterAuth failed to resolve box name", "hostname", hostname, "error", err)
 				http.Error(w, "invalid hostname format", http.StatusBadRequest)
 				return
 			}
@@ -1635,14 +1635,14 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 				return queries.BoxNamed(ctx, boxName)
 			})
 			if err != nil {
-				s.slog().Info("redirectAfterAuth box not found", "box_name", boxName, "error", err)
+				s.slog().InfoContext(r.Context(), "redirectAfterAuth box not found", "box_name", boxName, "error", err)
 				http.Error(w, "box not found", http.StatusNotFound)
 				return
 			}
 
 			accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
 			if err != nil {
-				s.slog().Error("redirectAfterAuth failed to check access", "error", err)
+				s.slog().ErrorContext(r.Context(), "redirectAfterAuth failed to check access", "error", err)
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
 			}
@@ -1653,12 +1653,12 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 					if shareToken := parsedRedirect.Query().Get("share"); shareToken != "" {
 						if valid, err := s.validateShareLinkForBox(r.Context(), shareToken, box.ID); err == nil && valid {
 							hasShareLinkAccess = true
-							s.slog().Debug("redirectAfterAuth: valid share link found", "box_name", boxName, "user_id", userID)
+							s.slog().DebugContext(r.Context(), "redirectAfterAuth: valid share link found", "box_name", boxName, "user_id", userID)
 						}
 					}
 				}
 				if !hasShareLinkAccess {
-					s.slog().Info("redirectAfterAuth access denied", "box_name", boxName, "user_id", userID)
+					s.slog().InfoContext(r.Context(), "redirectAfterAuth access denied", "box_name", boxName, "user_id", userID)
 					// Return 404 to not leak box existence
 					http.Error(w, "box not found", http.StatusNotFound)
 					return
@@ -1668,14 +1668,14 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 			// Create magic secret for the proxy subdomain
 			secret, err := s.createMagicSecret(userID, boxName, redirectURL)
 			if err != nil {
-				s.slog().Error("Failed to create magic secret", "error", err)
+				s.slog().ErrorContext(r.Context(), "Failed to create magic secret", "error", err)
 				http.Error(w, "Failed to create authentication secret", http.StatusInternalServerError)
 				return
 			}
 
 			// Redirect to confirmation page with magic secret
 			confirmURL := fmt.Sprintf("/auth/confirm?secret=%s&return_host=%s", secret, url.QueryEscape(returnHost))
-			s.slog().Debug("[REDIRECT] redirectAfterAuth creating confirmation URL", "confirmURL", confirmURL)
+			s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth creating confirmation URL", "confirmURL", confirmURL)
 			http.Redirect(w, r, confirmURL, http.StatusTemporaryRedirect)
 			return
 		}
@@ -1699,7 +1699,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "User not found", http.StatusNotFound)
 		} else {
-			s.slog().Error("Failed to get user info for dashboard", "error", err, "user_id", userID)
+			s.slog().ErrorContext(r.Context(), "Failed to get user info for dashboard", "error", err, "user_id", userID)
 			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
 		}
 		return
@@ -1719,7 +1719,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		return nil
 	})
 	if err != nil {
-		s.slog().Error("Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
+		s.slog().ErrorContext(r.Context(), "Failed to get SSH keys for dashboard", "error", err, "email", user.Email)
 	}
 
 	// Get user's boxes
@@ -1727,7 +1727,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		return queries.GetBoxesForUserDashboard(ctx, user.UserID)
 	})
 	if err != nil {
-		s.slog().Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
+		s.slog().ErrorContext(r.Context(), "Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
 
 	// Convert to BoxDisplayInfo format with additional display information
@@ -1754,7 +1754,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		// Get sharing information
 		sharedUserCount, shareLinkCount, err := s.countTotalShares(r.Context(), box.ID)
 		if err != nil {
-			s.slog().Error("Failed to count shares for dashboard", "error", err, "box_id", box.ID, "box_name", result.Name)
+			s.slog().ErrorContext(r.Context(), "Failed to count shares for dashboard", "error", err, "box_id", box.ID, "box_name", result.Name)
 			http.Error(w, "Failed to load sharing information", http.StatusInternalServerError)
 			return
 		}
@@ -1782,7 +1782,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		boxes[i] = boxInfo
 	}
 	if err != nil {
-		s.slog().Error("Failed to get boxes for dashboard", "error", err, "user_id", userID)
+		s.slog().ErrorContext(r.Context(), "Failed to get boxes for dashboard", "error", err, "user_id", userID)
 	}
 
 	// Get boxes shared with this user
@@ -1790,7 +1790,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		return queries.GetBoxesSharedWithUser(ctx, user.UserID)
 	})
 	if err != nil {
-		s.slog().Error("Failed to get shared boxes for dashboard", "error", err, "user_id", userID)
+		s.slog().ErrorContext(r.Context(), "Failed to get shared boxes for dashboard", "error", err, "user_id", userID)
 	}
 
 	// Convert shared boxes to SharedBoxDisplayInfo
@@ -1825,7 +1825,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "User not found", http.StatusNotFound)
 		} else {
-			s.slog().Error("Failed to get user info for profile", "error", err, "user_id", userID)
+			s.slog().ErrorContext(r.Context(), "Failed to get user info for profile", "error", err, "user_id", userID)
 			http.Error(w, "Failed to load user information", http.StatusInternalServerError)
 		}
 		return
@@ -1845,7 +1845,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 		return nil
 	})
 	if err != nil {
-		s.slog().Error("Failed to get SSH keys for profile", "error", err, "email", user.Email)
+		s.slog().ErrorContext(r.Context(), "Failed to get SSH keys for profile", "error", err, "email", user.Email)
 	}
 
 	// Prepare template data
@@ -1875,7 +1875,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 			return queries.DeleteAuthCookiesByUserID(ctx, userID)
 		})
 		if err != nil {
-			s.slog().Error("Failed to delete user's auth cookies from database", "error", err)
+			s.slog().ErrorContext(r.Context(), "Failed to delete user's auth cookies from database", "error", err)
 		}
 	}
 

@@ -490,7 +490,7 @@ done:
 			queries := exedb.New(tx.Conn())
 			return queries.DeleteBox(ctx, boxID)
 		}); err != nil {
-			slog.Error("Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
+			slog.ErrorContext(ctx, "Failed to clean up box entry after container creation failure", "boxID", boxID, "error", err)
 		}
 		return createErr
 	}
@@ -514,7 +514,7 @@ done:
 
 	// Set up automatic routing based on exposed ports
 	proxyPort := 80
-	slog.Debug("setting up automatic routing", "box", boxName, "exposed_ports", createdContainer.ExposedPorts)
+	slog.DebugContext(ctx, "setting up automatic routing", "box", boxName, "exposed_ports", createdContainer.ExposedPorts)
 	if bestPort := container.ChooseBestPortToRoute(createdContainer.ExposedPorts); bestPort > 0 {
 		var box *exedb.Box
 		var err error
@@ -540,7 +540,7 @@ done:
 				Routes:          box.Routes,
 			})
 		}); err != nil {
-			slog.Warn("failed to save auto-routing setup", "box", boxName, "port", bestPort, "error", err)
+			slog.WarnContext(ctx, "failed to save auto-routing setup", "box", boxName, "port", bestPort, "error", err)
 		}
 		proxyPort = bestPort
 	}

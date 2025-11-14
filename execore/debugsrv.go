@@ -137,7 +137,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 					if ownerEmail, err := getOwnerEmail(ctx, c.ID); err == nil {
 						cInfo.OwnerEmail = ownerEmail
 					} else {
-						s.slog().Warn("failed to resolve box owner email", "boxName", c.Name, "containerID", c.ID, "allocID", c.AllocID, "error", err)
+						s.slog().WarnContext(ctx, "failed to resolve box owner email", "boxName", c.Name, "containerID", c.ID, "allocID", c.AllocID, "error", err)
 					}
 					info.Containers = append(info.Containers, cInfo)
 					flatContainers = append(flatContainers, cInfo)
@@ -153,7 +153,7 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(flatContainers); err != nil {
-			s.slog().Error("Failed to encode containers", "error", err)
+			s.slog().ErrorContext(ctx, "Failed to encode containers", "error", err)
 		}
 		return
 	}

@@ -357,7 +357,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 		}
 	}()
 
-	ss.server.slog().Info("starting repl", "public_key", publicKey, "email", user.Email)
+	ss.server.slog().InfoContext(ctx, "starting repl", "public_key", publicKey, "email", user.Email)
 	for {
 		// Read line with tab completion
 		line, err := ss.readLineWithCompletion(terminal, user, publicKey, s)

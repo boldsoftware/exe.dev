@@ -34,7 +34,7 @@ func (s *Server) handleShelleyDownload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	shelleyPath, err := getShelleyBinary(ctx, goarch)
 	if err != nil {
-		s.slog().Error("Failed to get shelley binary", "error", err, "goarch", goarch)
+		s.slog().ErrorContext(ctx, "Failed to get shelley binary", "error", err, "goarch", goarch)
 		http.Error(w, "Failed to retrieve shelley binary", http.StatusInternalServerError)
 		return
 	}

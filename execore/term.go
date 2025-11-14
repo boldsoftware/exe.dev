@@ -233,7 +233,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
-		slog.Error("Failed to upgrade websocket", "error", err)
+		slog.ErrorContext(r.Context(), "Failed to upgrade websocket", "error", err)
 		return
 	}
 	defer conn.Close(websocket.StatusInternalError, "internal error")
@@ -316,7 +316,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 				err := wsjson.Write(ctx, conn, msg)
 				if err != nil {
 					if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
-						slog.Debug("Websocket write error", "error", err)
+						slog.DebugContext(ctx, "Websocket write error", "error", err)
 					}
 					cancel()
 					return
@@ -338,7 +338,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 		err := wsjson.Read(ctx, conn, &msg)
 		if err != nil {
 			if websocket.CloseStatus(err) != websocket.StatusNormalClosure {
-				slog.Debug("Websocket read error", "error", err)
+				slog.DebugContext(ctx, "Websocket read error", "error", err)
 			}
 			return
 		}
@@ -347,7 +347,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 
 		switch msg.Type {
 		case "resize":
-			s.slog().Info("Terminal resize", "cols", msg.Cols, "rows", msg.Rows)
+			s.slog().InfoContext(ctx, "Terminal resize", "cols", msg.Cols, "rows", msg.Rows)
 			if needsExtraResize {
 				// This is subtle AND hacky. Empirically, if we're re-connecting
 				// (like, the user did a reload), the resize that the UI sends
@@ -384,7 +384,7 @@ func (s *Server) handleTerminalWebSocket(w http.ResponseWriter, r *http.Request)
 			if session.sshStdin != nil && msg.Data != "" {
 				_, err := session.sshStdin.Write([]byte(msg.Data))
 				if err != nil {
-					slog.Error("Failed to write to terminal", "error", err)
+					slog.ErrorContext(ctx, "Failed to write to terminal", "error", err)
 				}
 			}
 		}

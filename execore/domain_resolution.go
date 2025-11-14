@@ -34,7 +34,7 @@ func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (s
 		return s.resolveApexDomainBoxName(ctx, host)
 	}
 
-	s.slog().Warn("resolveCustomDomain: CNAME lookup failed", "host", host, "error", err)
+	s.slog().WarnContext(ctx, "resolveCustomDomain: CNAME lookup failed", "host", host, "error", err)
 	return "", fmt.Errorf("CNAME lookup failed for %s: %w", host, err)
 }
 
@@ -44,24 +44,24 @@ func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (s
 func (s *Server) resolveApexDomainBoxName(ctx context.Context, host string) (string, error) {
 	ips, err := s.lookupA(ctx, host)
 	if err != nil {
-		s.slog().Warn("resolveCustomDomain: A lookup failed", "host", host, "error", err)
+		s.slog().WarnContext(ctx, "resolveCustomDomain: A lookup failed", "host", host, "error", err)
 		return "", fmt.Errorf("A record lookup failed for %s: %w", host, err)
 	}
 
 	if len(s.PublicIPs) == 0 {
-		s.slog().Warn("resolveCustomDomain: no public IP metadata available", "host", host)
+		s.slog().WarnContext(ctx, "resolveCustomDomain: no public IP metadata available", "host", host)
 		return "", fmt.Errorf("public IP metadata not available for %s", host)
 	}
 
 	if !s.apexPointsToPublicIP(ips) {
-		s.slog().Warn("resolveCustomDomain: A record does not point to exe public IP", "host", host, "ips", ips)
+		s.slog().WarnContext(ctx, "resolveCustomDomain: A record does not point to exe public IP", "host", host, "ips", ips)
 		return "", fmt.Errorf("A record for %s does not point to exe public IPs: %v", host, ips)
 	}
 
 	wwwHost := "www." + host
 	cname, err := s.lookupCNAME(ctx, wwwHost)
 	if err != nil {
-		s.slog().Warn("resolveCustomDomain: www CNAME lookup failed", "host", wwwHost, "error", err)
+		s.slog().WarnContext(ctx, "resolveCustomDomain: www CNAME lookup failed", "host", wwwHost, "error", err)
 		return "", fmt.Errorf("CNAME lookup failed for %s: %w", wwwHost, err)
 	}
 	cname = strings.TrimSuffix(strings.ToLower(cname), ".")
