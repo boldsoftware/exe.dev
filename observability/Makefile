@@ -1,7 +1,7 @@
 .PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-cadvisor check-node
 
 # Hosts to deploy node-exporter to
-HOSTS := mon exed-01 exe-ctr-01
+HOSTS := mon exed-01 exe-ctr-01 ci.crocodile-vector.ts.net
 
 # Hosts to deploy cadvisor to
 CADVISOR_HOSTS := exe-ctr-01
@@ -48,7 +48,12 @@ deploy-node-exporter:
 		else \
 			port=9100; \
 		fi; \
-		ssh ubuntu@$$host "bash -c \"if ! dpkg -l | grep -q prometheus-node-exporter; then \
+		if [ "$$host" = "ci.crocodile-vector.ts.net" ]; then \
+			user=root; \
+		else \
+			user=ubuntu; \
+		fi; \
+		ssh $$user@$$host "bash -c \"if ! dpkg -l | grep -q prometheus-node-exporter; then \
 			echo 'Installing prometheus-node-exporter...'; \
 			sudo apt-get update && sudo apt-get install -y prometheus-node-exporter; \
 		else \

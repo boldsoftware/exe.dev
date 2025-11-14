@@ -25,6 +25,7 @@ scrape_configs:
         - 'docker-02:9100'
         - 'exed-01:19100'  # exed listens on most ports for proxy, so use 10000+9100
         - 'exe-ctr-01:9100'
+        - 'ci.crocodile-vector.ts.net:9100'
 
   - job_name: 'cadvisor'
     static_configs:
