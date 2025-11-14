@@ -7,11 +7,12 @@
 package v1
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -2358,45 +2359,47 @@ func file_exe_compute_v1_compute_proto_rawDescGZIP() []byte {
 	return file_exe_compute_v1_compute_proto_rawDescData
 }
 
-var file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_exe_compute_v1_compute_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
-var file_exe_compute_v1_compute_proto_goTypes = []any{
-	(VMState)(0),                    // 0: exe.compute.v1.VMState
-	(Log_Type)(0),                   // 1: exe.compute.v1.Log.Type
-	(CreateInstanceStatus_State)(0), // 2: exe.compute.v1.CreateInstanceStatus.State
-	(NetworkInterface_Type)(0),      // 3: exe.compute.v1.NetworkInterface.Type
-	(Server_ServerState)(0),         // 4: exe.compute.v1.Server.ServerState
-	(*CreateInstanceRequest)(nil),   // 5: exe.compute.v1.CreateInstanceRequest
-	(*Config)(nil),                  // 6: exe.compute.v1.Config
-	(*FileConfig)(nil),              // 7: exe.compute.v1.FileConfig
-	(*Volume)(nil),                  // 8: exe.compute.v1.Volume
-	(*ExposedPort)(nil),             // 9: exe.compute.v1.ExposedPort
-	(*Placement)(nil),               // 10: exe.compute.v1.Placement
-	(*Log)(nil),                     // 11: exe.compute.v1.Log
-	(*CreateInstanceStatus)(nil),    // 12: exe.compute.v1.CreateInstanceStatus
-	(*CreateInstanceResponse)(nil),  // 13: exe.compute.v1.CreateInstanceResponse
-	(*ListInstancesRequest)(nil),    // 14: exe.compute.v1.ListInstancesRequest
-	(*ListInstancesResponse)(nil),   // 15: exe.compute.v1.ListInstancesResponse
-	(*GetInstanceRequest)(nil),      // 16: exe.compute.v1.GetInstanceRequest
-	(*GetInstanceResponse)(nil),     // 17: exe.compute.v1.GetInstanceResponse
-	(*GetInstanceLogsRequest)(nil),  // 18: exe.compute.v1.GetInstanceLogsRequest
-	(*GetInstanceLogsResponse)(nil), // 19: exe.compute.v1.GetInstanceLogsResponse
-	(*StartInstanceRequest)(nil),    // 20: exe.compute.v1.StartInstanceRequest
-	(*StartInstanceResponse)(nil),   // 21: exe.compute.v1.StartInstanceResponse
-	(*StopInstanceRequest)(nil),     // 22: exe.compute.v1.StopInstanceRequest
-	(*StopInstanceResponse)(nil),    // 23: exe.compute.v1.StopInstanceResponse
-	(*DeleteInstanceRequest)(nil),   // 24: exe.compute.v1.DeleteInstanceRequest
-	(*DeleteInstanceResponse)(nil),  // 25: exe.compute.v1.DeleteInstanceResponse
-	(*UpdateInstanceRequest)(nil),   // 26: exe.compute.v1.UpdateInstanceRequest
-	(*UpdateInstanceResponse)(nil),  // 27: exe.compute.v1.UpdateInstanceResponse
-	(*Instance)(nil),                // 28: exe.compute.v1.Instance
-	(*VMConfig)(nil),                // 29: exe.compute.v1.VMConfig
-	(*DirectoryShare)(nil),          // 30: exe.compute.v1.DirectoryShare
-	(*IPAddress)(nil),               // 31: exe.compute.v1.IPAddress
-	(*NetworkInterface)(nil),        // 32: exe.compute.v1.NetworkInterface
-	(*Server)(nil),                  // 33: exe.compute.v1.Server
-	(*ServerLocality)(nil),          // 34: exe.compute.v1.ServerLocality
-}
+var (
+	file_exe_compute_v1_compute_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+	file_exe_compute_v1_compute_proto_msgTypes  = make([]protoimpl.MessageInfo, 30)
+	file_exe_compute_v1_compute_proto_goTypes   = []any{
+		(VMState)(0),                    // 0: exe.compute.v1.VMState
+		(Log_Type)(0),                   // 1: exe.compute.v1.Log.Type
+		(CreateInstanceStatus_State)(0), // 2: exe.compute.v1.CreateInstanceStatus.State
+		(NetworkInterface_Type)(0),      // 3: exe.compute.v1.NetworkInterface.Type
+		(Server_ServerState)(0),         // 4: exe.compute.v1.Server.ServerState
+		(*CreateInstanceRequest)(nil),   // 5: exe.compute.v1.CreateInstanceRequest
+		(*Config)(nil),                  // 6: exe.compute.v1.Config
+		(*FileConfig)(nil),              // 7: exe.compute.v1.FileConfig
+		(*Volume)(nil),                  // 8: exe.compute.v1.Volume
+		(*ExposedPort)(nil),             // 9: exe.compute.v1.ExposedPort
+		(*Placement)(nil),               // 10: exe.compute.v1.Placement
+		(*Log)(nil),                     // 11: exe.compute.v1.Log
+		(*CreateInstanceStatus)(nil),    // 12: exe.compute.v1.CreateInstanceStatus
+		(*CreateInstanceResponse)(nil),  // 13: exe.compute.v1.CreateInstanceResponse
+		(*ListInstancesRequest)(nil),    // 14: exe.compute.v1.ListInstancesRequest
+		(*ListInstancesResponse)(nil),   // 15: exe.compute.v1.ListInstancesResponse
+		(*GetInstanceRequest)(nil),      // 16: exe.compute.v1.GetInstanceRequest
+		(*GetInstanceResponse)(nil),     // 17: exe.compute.v1.GetInstanceResponse
+		(*GetInstanceLogsRequest)(nil),  // 18: exe.compute.v1.GetInstanceLogsRequest
+		(*GetInstanceLogsResponse)(nil), // 19: exe.compute.v1.GetInstanceLogsResponse
+		(*StartInstanceRequest)(nil),    // 20: exe.compute.v1.StartInstanceRequest
+		(*StartInstanceResponse)(nil),   // 21: exe.compute.v1.StartInstanceResponse
+		(*StopInstanceRequest)(nil),     // 22: exe.compute.v1.StopInstanceRequest
+		(*StopInstanceResponse)(nil),    // 23: exe.compute.v1.StopInstanceResponse
+		(*DeleteInstanceRequest)(nil),   // 24: exe.compute.v1.DeleteInstanceRequest
+		(*DeleteInstanceResponse)(nil),  // 25: exe.compute.v1.DeleteInstanceResponse
+		(*UpdateInstanceRequest)(nil),   // 26: exe.compute.v1.UpdateInstanceRequest
+		(*UpdateInstanceResponse)(nil),  // 27: exe.compute.v1.UpdateInstanceResponse
+		(*Instance)(nil),                // 28: exe.compute.v1.Instance
+		(*VMConfig)(nil),                // 29: exe.compute.v1.VMConfig
+		(*DirectoryShare)(nil),          // 30: exe.compute.v1.DirectoryShare
+		(*IPAddress)(nil),               // 31: exe.compute.v1.IPAddress
+		(*NetworkInterface)(nil),        // 32: exe.compute.v1.NetworkInterface
+		(*Server)(nil),                  // 33: exe.compute.v1.Server
+		(*ServerLocality)(nil),          // 34: exe.compute.v1.ServerLocality
+	}
+)
 var file_exe_compute_v1_compute_proto_depIdxs = []int32{
 	10, // 0: exe.compute.v1.CreateInstanceRequest.placement:type_name -> exe.compute.v1.Placement
 	8,  // 1: exe.compute.v1.CreateInstanceRequest.volumes:type_name -> exe.compute.v1.Volume

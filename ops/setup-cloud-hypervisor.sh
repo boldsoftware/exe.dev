@@ -28,4 +28,3 @@ tar zxvf "${ASSETS_DIR}/virtiofsd-${VIRTIOFSD_VERSION}.tar.gz"
 cd virtiofsd-v${VIRTIOFSD_VERSION}-*
 cargo build --release
 cp -f ./target/release/virtiofsd /usr/local/bin/virtiofsd
-

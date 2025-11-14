@@ -291,7 +291,7 @@ func buildExeletBinary() (string, error) {
 		return "", fmt.Errorf("failed to build exelet: %w", err)
 	}
 	// rename to test binary
-	if err := os.MkdirAll(filepath.Dir(binPath), 0770); err != nil {
+	if err := os.MkdirAll(filepath.Dir(binPath), 0o770); err != nil {
 		return "", fmt.Errorf("failed to create binpath parent: %w", err)
 	}
 	if err := os.Rename(filepath.Join(buildDir, "exeletd"), binPath); err != nil {
@@ -301,7 +301,7 @@ func buildExeletBinary() (string, error) {
 }
 
 // sshExec executes a command on remote host and returns combined output
-func sshExec(ctx context.Context, host string, command string) (string, error) {
+func sshExec(ctx context.Context, host, command string) (string, error) {
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -902,7 +902,7 @@ func startExelet(ctrHost string) (*exeletInstance, error) {
 	return instance, nil
 }
 
-func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr string, gateway string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
+func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts []int, exeletAddr, gateway string, exedSlogErrC, exedGuidLogC chan string) (*exedInstance, error) {
 	start := time.Now()
 	slog.Info("starting exed")
 	// Choose binary: use PREBUILT_EXED if provided, otherwise build a temp binary.

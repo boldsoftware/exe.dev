@@ -298,7 +298,7 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses []string, exeletAddresses []string, gateway string) (*Server, error) {
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses, exeletAddresses []string, gateway string) (*Server, error) {
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, dbPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
