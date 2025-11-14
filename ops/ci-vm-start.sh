@@ -36,7 +36,7 @@ cleanup_old_vms() {
         if [[ -n "$disk_path" && -f "$disk_path" ]]; then
             local disk_mtime=$(stat -c %Y "$disk_path" 2>/dev/null || echo "0")
             if [[ $disk_mtime -lt $one_day_ago ]]; then
-                echo "  Destroying and removing old VM: $vm (disk age: $(( ($(date +%s) - disk_mtime) / 3600 ))h)"
+                echo "  Destroying and removing old VM: $vm (disk age: $((($(date +%s) - disk_mtime) / 3600))h)"
                 sudo virsh destroy "$vm" 2>/dev/null || true
                 sudo virsh undefine "$vm" 2>/dev/null || true
             fi
@@ -58,15 +58,15 @@ cleanup_unused_images() {
             continue
         fi
         sudo virsh dumpxml "$vm" 2>/dev/null | grep -oP "source file='\K[^']+" || true
-    done | sort -u > "$used_images"
+    done | sort -u >"$used_images"
 
     # Get all backing files referenced by qcow2 images to avoid deleting them
     sudo find "${WORKDIR}" -maxdepth 1 -type f -name '*.qcow2' 2>/dev/null | while read img; do
         sudo qemu-img info "$img" 2>/dev/null | grep -oP "backing file: \K.*" || true
-    done | sort -u > "$backing_files"
+    done | sort -u >"$backing_files"
 
     # Find and delete ci-ubuntu VM images not in use and not backing files
-    sudo find "${WORKDIR}" -maxdepth 1 -type f \( -name 'ci-ubuntu-*.qcow2' -o -name 'ci-ubuntu-*-seed.iso' \) > "$all_images"
+    sudo find "${WORKDIR}" -maxdepth 1 -type f \( -name 'ci-ubuntu-*.qcow2' -o -name 'ci-ubuntu-*-seed.iso' \) >"$all_images"
     while IFS= read -r img; do
         # Skip if image is in use
         if grep -qF "$img" "$used_images"; then
@@ -85,13 +85,13 @@ cleanup_unused_images() {
 
         echo "  Removing unused image: $(basename "$img")"
         sudo rm -f "$img"
-    done < "$all_images"
+    done <"$all_images"
 
     # Clean up old ci-base-* and ci-data-* images, keeping the 5 most recent of each
     # This allows multiple branches to have their caches while cleaning up old ones
     for pattern in 'ci-base-*.qcow2' 'ci-data-*.qcow2'; do
         # Get images sorted by modification time (oldest first), skip the newest 5
-        sudo find "${WORKDIR}" -maxdepth 1 -type f -name "$pattern" -printf '%T@ %p\n' 2>/dev/null | \
+        sudo find "${WORKDIR}" -maxdepth 1 -type f -name "$pattern" -printf '%T@ %p\n' 2>/dev/null |
             sort -n | head -n -5 | cut -d' ' -f2- | while read img; do
             # Check if image is a backing file
             if grep -qF "$img" "$backing_files"; then
