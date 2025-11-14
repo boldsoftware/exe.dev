@@ -54,7 +54,7 @@ func runCodex(ctx context.Context, apiKey string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx,
 		"codex", "exec",
 		"--sandbox=read-only",
-		"--model", "gpt-5-codex-mini",
+		"--model", "gpt-5.1-codex-mini",
 		"--config", "model_reasoning_effort=low",
 	)
 	cmd.Stdin = strings.NewReader(prompt)
