@@ -155,6 +155,59 @@ chmod +x /home/exedev/cgi-bin/headers
 				t.Fatalf("expected body to contain 'alive', got %s", body)
 			}
 		})
+
+		t.Run("error_responses", func(t *testing.T) {
+			httpPort := Env.exed.HTTPPort
+			const (
+				unreachablePort = 9091
+				defaultPort     = 8080
+			)
+
+			setProxyPort := func(port int) {
+				t.Helper()
+				exeShell := sshToExeDev(t, keyFile)
+				exeShell.sendLine(fmt.Sprintf("proxy %s --port=%d --public", box, port))
+				exeShell.want("Route updated successfully")
+				exeShell.wantPrompt()
+				exeShell.disconnect()
+			}
+
+			defer setProxyPort(defaultPort)
+			setProxyPort(unreachablePort)
+
+			resp, err := doProxyRequest(t, box, httpPort)
+			if err != nil {
+				t.Fatalf("failed to make proxy request: %v", err)
+			}
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				t.Fatalf("failed to read proxy response body: %v", err)
+			}
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Fatalf("expected HTTP 502 for unreachable route, got %d (body: %s)", resp.StatusCode, body)
+			}
+			if !strings.Contains(string(body), "Bad Gateway") {
+				t.Fatalf("expected response body to contain 'Bad Gateway', got %s", body)
+			}
+
+			missingBox := fmt.Sprintf("%s-missing", box)
+			resp, err = doProxyRequest(t, missingBox, httpPort)
+			if err != nil {
+				t.Fatalf("failed to make proxy request for missing box: %v", err)
+			}
+			body, err = io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				t.Fatalf("failed to read missing box response body: %v", err)
+			}
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("expected HTTP 404 for missing box, got %d (body: %s)", resp.StatusCode, body)
+			}
+			if !strings.Contains(string(body), "Box not found") {
+				t.Fatalf("expected response body to contain 'Box not found', got %s", body)
+			}
+		})
 	})
 
 	t.Run("auth_confirm_owner_skip", func(t *testing.T) {

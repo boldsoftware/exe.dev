@@ -1,0 +1,34 @@
+
+
+●
+● ssh localhost
+●
+
+proxy BOX_NAME --port=9091 --public
+
+- help to see a list of commands
+
+exe.dev ▶ proxy BOX_NAME --port=9091 --public
+✓ Route updated successfully
+  Port: 9091
+  Share: public
+
+exe.dev ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+proxy BOX_NAME --port=8080 --public
+
+- help to see a list of commands
+
+exe.dev ▶ proxy BOX_NAME --port=8080 --public
+✓ Route updated successfully
+  Port: 8080
+  Share: public
+
+exe.dev ▶ exit
+Goodbye!
