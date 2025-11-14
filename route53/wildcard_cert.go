@@ -378,11 +378,18 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		slog.Info("DNS TXT record created for ACME challenge", "recordID", recordID)
 
 		// Wait a bit for DNS propagation.
-		// TODO: in theory we should do DNS lookups in a retry loop to verify propagation.
+		//
+		// The AWS console Route53 banner says:
+		// "Route 53 propagates your changes to all of the Route 53 authoritative DNS servers within 60 seconds."
+		//
+		// TODO: in theory we could do DNS lookups earlier, and in a retry loop to verify propagation.
 		// This gets messy to Do Right, though: we have to avoid caching,
 		// check every single authoritative nameserver, etc.
+		//
 		// In practice, a fixed sleep seems to work fine so far.
-		time.Sleep(10 * time.Second)
+		// And except for the very first time, we'll be refreshing certs
+		// in the background, so it's invisible anyway.
+		time.Sleep(time.Minute)
 
 		// Accept the challenge
 		_, err = w.acmeClient.Accept(ctx, challenge)
