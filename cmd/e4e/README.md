@@ -13,11 +13,11 @@ otherwise the command exits non-zero with the reported findings.
 Running locally requires the Codex CLI plus a Codex/OpenAI API key.
 
 ```bash
-export EXE_E4E_OPENAI_API_KEY=...   # Codex/OpenAI key
+export E4E_OPENAI_API_KEY=...   # Codex/OpenAI key
 go run ./cmd/e4e
 ```
 
-`EXE_E4E_OPENAI_API_KEY` is the only required input. The agent always scans the
+`E4E_OPENAI_API_KEY` is the only required input. The agent always scans the
 checked-in `docs/` directory and writes its reasoning and final report to stdout;
 there is no JSON artifact to inspect.
 

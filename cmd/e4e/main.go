@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	envCodexKey = "EXE_E4E_OPENAI_API_KEY"
+	envCodexKey = "E4E_OPENAI_API_KEY"
 )
 
 const reportHeading = "# DOCUMENTATION REPORT"

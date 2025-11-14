@@ -38,7 +38,7 @@ jobs:
         id: run-e4e
         continue-on-error: true
         env:
-          EXE_E4E_OPENAI_API_KEY: ${{ secrets.E4E_OPENAI_API_KEY }}
+          E4E_OPENAI_API_KEY: ${{ secrets.E4E_OPENAI_API_KEY }}
         run: |
           set -euo pipefail
           go run ./cmd/e4e 2>&1 | tee "$E4E_OUTPUT_PATH"
