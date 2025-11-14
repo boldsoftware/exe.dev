@@ -131,7 +131,7 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	v.log.Debug("vm configuration", "config", chVMCfg)
+	v.log.DebugContext(ctx, "vm configuration", "config", chVMCfg)
 
 	cResp, err := c.CreateVMWithResponse(ctx, *chVMCfg)
 	if err != nil {

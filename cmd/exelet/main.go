@@ -23,6 +23,7 @@ import (
 	computeservice "exe.dev/exelet/services/compute"
 	storageservice "exe.dev/exelet/services/storage"
 	"exe.dev/exelet/storage"
+	"exe.dev/logging"
 	"exe.dev/version"
 )
 
@@ -108,10 +109,8 @@ func main() {
 }
 
 func serveAction(clix *cli.Context) error {
-	debug := clix.Bool("debug")
-	logJSON := clix.Bool("log-json")
-
 	name := clix.String("name")
+	debug := clix.Bool("debug")
 	listenAddress := clix.String("listen-address")
 	dataDir := clix.String("data-dir")
 	region := clix.String("region")
@@ -121,19 +120,11 @@ func serveAction(clix *cli.Context) error {
 	storageManagerAddress := clix.String("storage-manager-address")
 	enableInstanceBootOnStartup := clix.Bool("enable-instance-boot-on-startup")
 
-	hOpts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}
 	if debug {
-		hOpts.Level = slog.LevelDebug
+		os.Setenv("LOG_LEVEL", "debug")
 	}
-
-	var log *slog.Logger
-	if logJSON {
-		log = slog.New(slog.NewJSONHandler(os.Stdout, hOpts))
-	} else {
-		log = slog.New(slog.NewTextHandler(os.Stdout, hOpts))
-	}
+	logging.SetupLogger("")
+	log := slog.Default()
 
 	maintenanceMode := clix.Bool("maintenance")
 	pprofAddr := clix.String("pprof-addr")
