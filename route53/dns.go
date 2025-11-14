@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -150,9 +151,9 @@ func buildRecordName(domain, name string) string {
 	return name + "." + domain
 }
 
-// CreateTXTRecord creates a TXT record for ACME challenge
-func (d *DNSProvider) CreateTXTRecord(ctx context.Context, domain, name, content string) (string, error) {
-	slog.Info("[DNS] CreateTXTRecord called", "domain", domain, "name", name, "content", content)
+// CreateTXTRecords creates TXT records for ACME challenges
+func (d *DNSProvider) CreateTXTRecords(ctx context.Context, domain, name string, contents []string) (string, error) {
+	slog.Info("[DNS] CreateTXTRecords called", "domain", domain, "name", name, "contents", contents)
 
 	zoneID, err := d.getHostedZoneID(ctx, domain)
 	if err != nil {
@@ -163,6 +164,13 @@ func (d *DNSProvider) CreateTXTRecord(ctx context.Context, domain, name, content
 	fqdn := ensureTrailingDot(recordName)
 	ttl := int64(600)
 
+	resourceRecords := make([]types.ResourceRecord, 0, len(contents))
+	for _, content := range contents {
+		resourceRecords = append(resourceRecords, types.ResourceRecord{
+			Value: aws.String(fmt.Sprintf("%q", content)),
+		})
+	}
+
 	slog.Info("[DNS] Upserting TXT record in Route53", "zoneID", zoneID, "name", recordName)
 	_, err = d.client.ChangeResourceRecordSets(ctx, &awsroute53.ChangeResourceRecordSetsInput{
 		HostedZoneId: aws.String(zoneID),
@@ -171,12 +179,10 @@ func (d *DNSProvider) CreateTXTRecord(ctx context.Context, domain, name, content
 				{
 					Action: types.ChangeActionUpsert,
 					ResourceRecordSet: &types.ResourceRecordSet{
-						Name: aws.String(fqdn),
-						Type: types.RRTypeTxt,
-						TTL:  aws.Int64(ttl),
-						ResourceRecords: []types.ResourceRecord{
-							{Value: aws.String(fmt.Sprintf("\"%s\"", content))},
-						},
+						Name:            aws.String(fqdn),
+						Type:            types.RRTypeTxt,
+						TTL:             aws.Int64(ttl),
+						ResourceRecords: resourceRecords,
 					},
 				},
 			},
@@ -186,7 +192,7 @@ func (d *DNSProvider) CreateTXTRecord(ctx context.Context, domain, name, content
 		return "", fmt.Errorf("failed to upsert TXT record: %w", err)
 	}
 
-	recordID, err := encodeRecordID(recordName, "TXT", ttl, []string{content})
+	recordID, err := encodeRecordID(recordName, "TXT", ttl, contents)
 	if err != nil {
 		return "", fmt.Errorf("failed to encode record id: %w", err)
 	}
@@ -465,11 +471,8 @@ func (d *DNSProvider) CreateACMEChallenge(ctx context.Context, domain, keyAuth s
 	challengeName := acmeChallengeName(domain)
 	slog.Info("[DNS] Using ACME challenge name", "challengeName", challengeName, "domain", domain, "baseDomain", baseDomain)
 
-	// Clean up any existing ACME challenge records for this domain
-	// TODO: This call and the later cleanup path both walk the entire hosted
-	// zone via ListResourceRecordSets. When Route53 gives us a cheaper way to
-	// delete by identifier, refactor this to avoid two full scans per challenge.
-	slog.Info("[DNS] Cleaning up existing ACME challenge records", "challengeName", challengeName)
+	values := []string{keyAuth}
+	// Keep any existing tokens for this challenge so multiple authorizations in the same order can coexist.
 	records, err := d.GetRecords(ctx, baseDomain)
 	if err != nil {
 		slog.Warn("[DNS] failed to get existing records for cleanup", "error", err)
@@ -477,16 +480,17 @@ func (d *DNSProvider) CreateACMEChallenge(ctx context.Context, domain, keyAuth s
 		expectedName := buildRecordName(baseDomain, challengeName)
 		for _, record := range records {
 			if record.Name == expectedName && record.Type == "TXT" {
-				slog.Info("[DNS] Deleting stale ACME challenge record", "recordID", record.ID, "content", record.Content)
-				if err := d.DeleteRecord(ctx, baseDomain, record.ID); err != nil {
-					slog.Warn("[DNS] failed to delete stale record", "recordID", record.ID, "error", err)
-				}
+				values = append(values, record.Content)
 			}
 		}
 	}
 
+	// Deduplicate
+	slices.Sort(values)
+	values = slices.Compact(values)
+
 	slog.Info("[DNS] Calling CreateTXTRecord", "baseDomain", baseDomain, "challengeName", challengeName, "keyAuth", keyAuth)
-	return d.CreateTXTRecord(ctx, baseDomain, challengeName, keyAuth)
+	return d.CreateTXTRecords(ctx, baseDomain, challengeName, values)
 }
 
 // CleanupACMEChallenge removes the DNS TXT record after ACME challenge

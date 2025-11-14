@@ -27,7 +27,7 @@ func TestDNSProviderIntegration(t *testing.T) {
 	recordContent := "test-value-" + time.Now().Format("20060102-150405")
 
 	t.Logf("Creating TXT record: %s.%s = %s", recordName, testDomain, recordContent)
-	recordID, err := provider.CreateTXTRecord(ctx, testDomain, recordName, recordContent)
+	recordID, err := provider.CreateTXTRecords(ctx, testDomain, recordName, []string{recordContent})
 	if err != nil {
 		t.Fatalf("Failed to create TXT record: %v", err)
 	}
