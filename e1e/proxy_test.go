@@ -213,6 +213,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	t.Run("auth_confirm_owner_skip", func(t *testing.T) {
 		altPort := Env.exed.ExtraPorts[0]
 		serveHTTP(t, altPort)
+		expectedReturnHost := fmt.Sprintf("%s.localhost:%d", box, altPort)
 
 		jar, err := cookiejar.New(nil)
 		if err != nil {
@@ -234,6 +235,7 @@ chmod +x /home/exedev/cgi-bin/headers
 		}
 
 		redirectCount := 0
+		sawConfirmRedirect := false
 		for resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusSeeOther {
 			if redirectCount > 10 {
 				resp.Body.Close()
@@ -258,13 +260,41 @@ chmod +x /home/exedev/cgi-bin/headers
 			if err != nil {
 				t.Fatalf("failed to follow redirect: %v", err)
 			}
-			if isConfirm && resp.StatusCode == http.StatusOK {
-				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				t.Fatalf("owner flow should skip confirmation page, but confirmation page rendered: %s", body)
+			if isConfirm {
+				if resp.StatusCode != http.StatusTemporaryRedirect {
+					body, _ := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					t.Fatalf("owner flow should skip confirmation page, but status %d returned: %s", resp.StatusCode, body)
+				}
+				confirmLocation, err := resp.Location()
+				if err != nil {
+					body, _ := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					t.Fatalf("owner flow confirm redirect missing Location header: %v (body: %s)", err, body)
+				}
+				if confirmLocation.Scheme != "http" {
+					t.Fatalf("expected owner confirm redirect scheme http, got %s", confirmLocation.Scheme)
+				}
+				if confirmLocation.Host != expectedReturnHost {
+					t.Fatalf("expected owner confirm redirect host %s, got %s", expectedReturnHost, confirmLocation.Host)
+				}
+				if confirmLocation.Path != "/__exe.dev/auth" {
+					t.Fatalf("expected owner confirm redirect path /__exe.dev/auth, got %s", confirmLocation.Path)
+				}
+				query := confirmLocation.Query()
+				if query.Get("secret") == "" {
+					t.Fatalf("owner confirm redirect missing secret query parameter")
+				}
+				if query.Get("redirect") == "" {
+					t.Fatalf("owner confirm redirect missing redirect query parameter")
+				}
+				sawConfirmRedirect = true
 			}
 
 			redirectCount++
+		}
+		if !sawConfirmRedirect {
+			t.Fatalf("owner flow never hit /auth/confirm redirect")
 		}
 
 		defer resp.Body.Close()
