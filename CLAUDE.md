@@ -1,7 +1,7 @@
 - this git repository implements the exe.dev service
 - exe.dev is a service users can use to start containers with persistent disks, read README.md and ARCHITECTURE.md for more.
-- when changing code, run `go test ./...` and fix any errors
 - the exed server is both the web frontend and ssh frontend
+- when editing code, run the tests for the relevant code
 - be very careful with all text printed in the SSH UI. do *not* change the UI behavior without confirming the change with a human. in general, the service is very sparing with text shown to the user over ssh, adding more ruins the vibe.
 - test everything. the container package contains a docker implementation. write tests assuming local docker for tests. make the tests *end-to-end*, that is, actually start docker containers as machines and do things with them. actually GET and POST against the server.
 - never inject a long sleep into production or into tests. spin on completion instead, testing the condition at the longest, every 100 milliseconds.
