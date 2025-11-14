@@ -93,39 +93,23 @@ func main() {
 		log.Fatalf("create box: %v", err)
 	}
 
-	boxName := box.Name
-	cleaned := false
-	cleanup := func() {
-		if cleaned {
-			return
-		}
-		cleaned = true
-		deleteBox(context.Background(), cfg, boxName)
-	}
-	defer cleanup()
-
 	// Run agents in serial.
 	// Stop on first failure.
 	for _, agent := range []agent{agentCodex, agentClaude} {
 		res := runAgent(ctx, cfg, box, agent)
-		if res.Err != nil {
-			cleanup()
-			log.Fatalf("[%s]\ncommand: %s\nerror: %v\nout:\n%s\n", res.Agent, res.Command, res.Err, res.Output)
-		}
 		if res.Output != "" {
-			cleanup()
-			log.Fatalf("[%s]\nout:\n%s\n", res.Agent, res.Output)
+			log.Printf("## %s\n%s\n", res.Agent, res.Output)
+			break
 		}
 	}
 
-	// All clear. Silence is golden.
-	cleanup()
+	deleteBox(context.Background(), cfg, box.Name)
 }
 
 func createBox(ctx context.Context, cfg *config) (*boxInfo, error) {
 	args := cfg.replSSH.buildBaseArgs()
 	args = append(args, cfg.replSSH.target(), "new", "--json")
-	log.Printf("creating box: ssh %s", strings.Join(args, " "))
+	// log.Printf("creating box: ssh %s", strings.Join(args, " "))
 	out, err := exec.CommandContext(ctx, "ssh", args...).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("ssh new: %w\n%s", err, out)
