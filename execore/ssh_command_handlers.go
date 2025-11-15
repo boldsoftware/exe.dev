@@ -355,7 +355,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Select exelet client
 	exeletClient, exeletAddr, err := ss.server.selectExeletClient(cc.User.ID)
 	if err != nil {
-		cc.Write("\033[1;31mError: Failed to select host: %v\033[0m\r\n", err)
 		return fmt.Errorf("failed to select exelet: %w", err)
 	}
 
@@ -366,7 +365,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 	boxID, err := ss.server.preCreateBox(ctx, user.ID, exeletAddr, boxName, imageToStore)
 	if err != nil {
-		cc.Write("\033[1;31mError: Failed to create box entry: %v\033[0m\r\n", err)
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
 
@@ -683,7 +681,6 @@ done:
 
 	// Update box with container info and SSH keys
 	if createdContainer.SSHServerIdentityKey == "" {
-		cc.Write("\033[1;31mError: Container created without SSH keys - this should not happen\033[0m\r\n")
 		return fmt.Errorf("container created without SSH keys - this should not happen")
 	}
 
@@ -821,7 +818,7 @@ done:
 
 		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, ctrhost, prompt, shelleyUrl, model); err != nil {
 			// We write out the error but don't fail.
-			cc.Write("\033[1;31mError running Shelley prompt: %v\033[0m\r\n", err)
+			cc.WriteError("Error running Shelley prompt: %v", err)
 			url := ss.server.shelleyURL(box.Name)
 			cc.Write("Connect to Shelly at %s\r\n", url)
 		}
