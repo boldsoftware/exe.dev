@@ -47,6 +47,15 @@ Host *.localexe
 
 ## Local Development
 
+You can run exed and exelet together as follows. This will build both exelet and exed, and start both,
+and the logs will be intermixed. First build will be slow, but then the kernel build is cached.
+
+```
+LOG_LEVEL=debug go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 -start-exelet
+```
+
+### Running exelet separately
+
 First, build the local exelet:
 
 ```
@@ -66,6 +75,10 @@ limactl shell exe-ctr -- sudo ./exeletd \
   --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://127.0.0.1:9080
 ```
 
+You don't need to copy exeletd over necessarily because Lima mounts your filesystem over.
+
+### Running exed separately
+
 After you have setup a local exelet running and downloaded the whoami database (make whoami), run:
 
 ```
@@ -73,6 +86,8 @@ go run ./cmd/exed -dev=local -gh-whoami $(pwd)/ghuser/whoami.sqlite3 \
   -exelet-addresses tcp://127.0.0.1:9080 \
   -gateway $(limactl shell exe-ctr -- getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }')
 ```
+
+## Continuing local development...
 
 With this you can:
 - ssh localexe

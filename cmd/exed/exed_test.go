@@ -58,6 +58,16 @@ func TestFlagValidation(t *testing.T) {
 			args:    []string{"-dev", "invalid"},
 			wantErr: `valid dev modes are "", "local", and "test", got: "invalid"`,
 		},
+		{
+			name:    "start-exelet without dev mode",
+			args:    []string{"-start-exelet"},
+			wantErr: "-start-exelet flag is only available in dev mode",
+		},
+		{
+			name:    "start-exelet with dev mode",
+			args:    []string{"-dev", "local", "-start-exelet"},
+			wantErr: "", // should not error during validation
+		},
 	}
 
 	for _, tt := range tests {
@@ -88,6 +98,7 @@ func TestFlagValidation(t *testing.T) {
 			openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
 			profilePath := flag.String("profile", "", "Enable CPU profiling")
 			_ = profilePath
+			startExelet := flag.Bool("start-exelet", false, "Build and start exelet on lima-exe-ctr (dev mode only)")
 
 			// Parse the test args
 			if err := flag.CommandLine.Parse(tt.args); err != nil {
@@ -107,6 +118,11 @@ func TestFlagValidation(t *testing.T) {
 
 			// Validate -open flag (dev mode only)
 			if *openBrowser && *devMode == "" {
+				validationErr = flag.ErrHelp
+			}
+
+			// Validate -start-exelet flag (dev mode only)
+			if *startExelet && *devMode == "" {
 				validationErr = flag.ErrHelp
 			}
 
