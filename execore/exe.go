@@ -1228,6 +1228,8 @@ func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image 
 	return boxID, nil
 }
 
+var errNoIPShardsAvailable = errors.New("no IP shards available")
+
 func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, userID string, boxID int) (int, error) {
 	shards, err := queries.ListIPShardsForUser(ctx, userID)
 	if err != nil {
@@ -1251,7 +1253,7 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 	}
 
 	if assigned == 0 {
-		return 0, fmt.Errorf("no IP shards available for user %s", userID)
+		return 0, errNoIPShardsAvailable
 	}
 
 	if err := queries.InsertBoxIPShard(ctx, exedb.InsertBoxIPShardParams{

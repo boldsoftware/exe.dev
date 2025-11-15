@@ -364,7 +364,12 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		imageToStore = "boldsoftware/exeuntu"
 	}
 	boxID, err := ss.server.preCreateBox(ctx, user.ID, exeletAddr, boxName, imageToStore)
-	if err != nil {
+	switch {
+	case errors.Is(err, errNoIPShardsAvailable):
+		// TODO: add CTA to upgrade plan
+		// Since we don't have plans now...
+		return cc.Errorf("You have reached the maximum number of boxes allowed on your plan.")
+	case err != nil:
 		return fmt.Errorf("failed to create box entry: %w", err)
 	}
 
