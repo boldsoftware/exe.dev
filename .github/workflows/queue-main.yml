@@ -226,3 +226,14 @@ jobs:
           gh workflow run build-exeuntu.yml --ref main -f commit_subject="$COMMIT_SUBJECT"
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Delete queue branch if merged
+        run: |
+          set -euo pipefail
+          QUEUE_BRANCH="${{ github.ref_name }}"
+          QUEUE_SHA=$(git ls-remote origin "$QUEUE_BRANCH" | awk '{print $1}')
+          git fetch origin main
+          if git merge-base --is-ancestor "$QUEUE_SHA" origin/main; then
+            git push --force-with-lease="$QUEUE_BRANCH:$QUEUE_SHA" origin ":refs/heads/$QUEUE_BRANCH"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
