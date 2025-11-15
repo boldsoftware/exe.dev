@@ -113,10 +113,12 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 
 	env, err := setup(ctrHost)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to setup test environment: %v\n", err)
 		slog.Error("test setup failed", "error", err)
 		if closeErr := env.Close(nil); closeErr != nil {
 			slog.Error("cleanup failed", "error", closeErr)
 		}
+		os.Stderr.Sync()
 		os.Exit(1)
 	}
 
@@ -162,6 +164,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 			fmt.Fprintf(os.Stderr, "failed to close log file %v: %v\n", f.Name(), err)
 		}
 	}
+	os.Stderr.Sync()
 	os.Exit(code)
 }
 
