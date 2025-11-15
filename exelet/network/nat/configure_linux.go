@@ -129,6 +129,7 @@ func (n *NAT) deleteTapInterface(id string) error {
 
 func (n *NAT) applyIPTablesForwarding(ctx context.Context, device string) error {
 	args := []string{
+		"-n",
 		"-L",
 		"FORWARD",
 		"-v",
@@ -204,6 +205,7 @@ func (n *NAT) applyIPTablesForwarding(ctx context.Context, device string) error 
 
 func (n *NAT) applyIPTablesMasquerade(ctx context.Context, device, network string) error {
 	args := []string{
+		"-n",
 		"-L",
 		"-t",
 		"nat",
