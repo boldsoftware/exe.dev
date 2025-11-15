@@ -25,7 +25,7 @@ func LoadImage(ctx context.Context, imageRef, platform string, imageManager *ima
 		return "", fmt.Errorf("error getting image size: %w", err)
 	}
 
-	log.Debug("image content", "compressedSize", imageContentSize)
+	log.DebugContext(ctx, "image content", "compressedSize", imageContentSize)
 
 	// Check for negative size
 	if imageContentSize < 0 {
@@ -50,7 +50,7 @@ func LoadImage(ctx context.Context, imageRef, platform string, imageManager *ima
 	}
 
 	// fetch / unpack image content to snapshot
-	log.Debug("fetching and unpacking image", "image", imageRef)
+	log.DebugContext(ctx, "fetching and unpacking image", "image", imageRef)
 
 	// fetch image contents
 	mountConfig, err := storageManager.Mount(ctx, imageFSID)
@@ -58,7 +58,7 @@ func LoadImage(ctx context.Context, imageRef, platform string, imageManager *ima
 		return "", fmt.Errorf("error mounting image fs storage: %w", err)
 	}
 
-	log.Debug("fetching image contents", "image", imageRef)
+	log.DebugContext(ctx, "fetching image contents", "image", imageRef)
 	if _, err := imageManager.Fetch(ctx, imageRef, platform, mountConfig.Path); err != nil {
 		return "", err
 	}
@@ -69,7 +69,7 @@ func LoadImage(ctx context.Context, imageRef, platform string, imageManager *ima
 	}
 
 	// resize the final image volume if the result was
-	log.Debug("shrinking image fs", "image", imageRef)
+	log.DebugContext(ctx, "shrinking image fs", "image", imageRef)
 	if err := storageManager.Shrink(ctx, imageFSID); err != nil {
 		return "", fmt.Errorf("error resizing image fs for %s: %w", imageFSID, err)
 	}

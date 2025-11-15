@@ -182,7 +182,7 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 	// Start the master connection in the background
 	if err := masterCmd.Start(); err != nil {
 		cancel()
-		slog.Error("[SSH-POOL] Failed to start SSH master connection", "host", host, "error", err)
+		slog.ErrorContext(ctx, "[SSH-POOL] Failed to start SSH master connection", "host", host, "error", err)
 		return nil, fmt.Errorf("failed to start SSH master connection to %s: %w", host, err)
 	}
 
@@ -247,7 +247,7 @@ WaitForSocket:
 	conn.updateLastUsed()
 
 	p.connections[host] = conn
-	slog.Info("[SSH-POOL] Established new SSH connection", "host", host)
+	slog.InfoContext(ctx, "[SSH-POOL] Established new SSH connection", "host", host)
 
 	return conn, nil
 }
@@ -322,7 +322,7 @@ func (p *Pool) ExecCommand(ctx context.Context, host string, args ...string) *ex
 	// Get or create connection
 	conn, err := p.getConnection(ctx, host)
 	if err != nil {
-		slog.Info("[SSH-POOL] Failed to get connection", "host", host, "error", err)
+		slog.InfoContext(ctx, "[SSH-POOL] Failed to get connection", "host", host, "error", err)
 		// Fall back to direct SSH and remember to bypass for a while
 		p.bypassHost(normHost)
 		return p.execDirectSSH(ctx, host, args...)

@@ -770,7 +770,7 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 
 	var ctx context.Context = s.Context()
 	rc := ss.commands.ExecuteCommand(ctx, cc, cmd) // Just the command name
-	ss.server.slog().Debug("ssh exec command completed", "command", strings.Join(cmd, " "), "rc", rc)
+	ss.server.slog().DebugContext(ctx, "ssh exec command completed", "command", strings.Join(cmd, " "), "rc", rc)
 	if rc > 0 {
 		s.Close()
 		s.Exit(rc)

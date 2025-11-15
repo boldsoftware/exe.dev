@@ -59,7 +59,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	defer func() {
 		if err != nil {
-			s.log.Warn("instance creation failed, rolling back", "id", instanceID, "error", err)
+			s.log.WarnContext(ctx, "instance creation failed, rolling back", "id", instanceID, "error", err)
 			rb.Rollback()
 		}
 	}()
@@ -87,7 +87,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-	s.log.Debug("creating network interface", "id", instanceID)
+	s.log.DebugContext(ctx, "creating network interface", "id", instanceID)
 	networkInterface, err := s.context.NetworkManager.CreateInterface(ctx, instanceID)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -195,7 +195,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	// fetch kernel image
 	if req.KernelImage != "" {
-		s.log.Debug("fetching kernel image", "image", req.KernelImage, "path", instanceDir)
+		s.log.DebugContext(ctx, "fetching kernel image", "image", req.KernelImage, "path", instanceDir)
 		if _, err := s.context.ImageManager.Fetch(ctx, req.KernelImage, platform, instanceDir); err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -290,7 +290,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	// set /etc/hosts
-	s.log.Debug("configuring hosts", "id", instanceID)
+	s.log.DebugContext(ctx, "configuring hosts", "id", instanceID)
 	hostsPath := filepath.Join(mountpoint, config.HostsPath)
 	if err := os.MkdirAll(filepath.Dir(hostsPath), 0o755); err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -312,7 +312,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	// set /etc/resolv.conf
-	s.log.Debug("configuring resolv.conf", "id", instanceID)
+	s.log.DebugContext(ctx, "configuring resolv.conf", "id", instanceID)
 	resolvConfPath := filepath.Join(mountpoint, config.ResolvConfPath)
 	if err := os.MkdirAll(filepath.Dir(resolvConfPath), 0o755); err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -337,7 +337,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	// set instance env
-	s.log.Debug("configuring instance environment", "id", instanceID)
+	s.log.DebugContext(ctx, "configuring instance environment", "id", instanceID)
 	envConfPath := filepath.Join(mountpoint, config.EnvConfigPath)
 	if err := os.MkdirAll(filepath.Dir(envConfPath), 0o755); err != nil {
 		return status.Error(codes.Internal, err.Error())
@@ -358,7 +358,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	// set image config for init
-	s.log.Debug("configuring instance image config", "id", instanceID)
+	s.log.DebugContext(ctx, "configuring instance image config", "id", instanceID)
 	if imageConfig != nil {
 		imageConfPath := filepath.Join(mountpoint, config.ImageConfigPath)
 		if err := os.MkdirAll(filepath.Dir(imageConfPath), 0o755); err != nil {
@@ -374,7 +374,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	// unmount
-	s.log.Debug("unmounting instance storage", "id", instanceID)
+	s.log.DebugContext(ctx, "unmounting instance storage", "id", instanceID)
 	if err := s.context.StorageManager.Unmount(ctx, instanceID); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
@@ -409,7 +409,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
-	s.log.Debug("vm config", "config", vmCfg)
+	s.log.DebugContext(ctx, "vm config", "config", vmCfg)
 
 	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
 	if err != nil {
@@ -447,7 +447,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	// create and start TCP proxy for ssh
-	s.log.Debug("starting SSH proxy", "instance", instanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
+	s.log.DebugContext(ctx, "starting SSH proxy", "instance", instanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
 	p := tcpproxy.NewTCPProxy(sshPort, vmIP, 22, s.log)
 	if err := p.Start(); err != nil {
 		s.portAllocator.Release(sshPort)

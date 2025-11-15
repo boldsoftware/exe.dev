@@ -73,13 +73,13 @@ func (s *Service) Start(ctx context.Context) error {
 		// Mark the SSH port as allocated in the port allocator
 		if i.SSHPort > 0 {
 			s.portAllocator.MarkAllocated(int(i.SSHPort))
-			s.log.Debug("marked port as allocated", "instance", i.ID, "port", i.SSHPort)
+			s.log.DebugContext(ctx, "marked port as allocated", "instance", i.ID, "port", i.SSHPort)
 		}
 	}
 
 	// start instances if enabled
 	if s.config.EnableInstanceBootOnStartup {
-		s.log.Info("booting local instances")
+		s.log.InfoContext(ctx, "booting local instances")
 		for _, i := range instances {
 			if err := s.startInstance(ctx, i.ID); err != nil {
 				return err

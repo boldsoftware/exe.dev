@@ -130,10 +130,10 @@ func (v *VMM) waitForReady(ctx context.Context, id string) error {
 
 			resp, err := c.GetVmmPingWithResponse(ctx)
 			if err != nil {
-				v.log.Warn("unable to connect to api", "id", id)
+				v.log.WarnContext(ctx, "unable to connect to api", "id", id)
 				continue
 			}
-			v.log.Debug("connected to api", "version", resp.JSON200.Version)
+			v.log.DebugContext(ctx, "connected to api", "version", resp.JSON200.Version)
 			readyCh <- struct{}{}
 			return
 		}
@@ -164,7 +164,7 @@ func (v *VMM) waitForStopped(ctx context.Context, id string) error {
 			}
 			switch state {
 			case api.VMState_STOPPED:
-				v.log.Debug("vm waitForStopped", "id", id)
+				v.log.DebugContext(ctx, "vm waitForStopped", "id", id)
 				readyCh <- struct{}{}
 				return
 			}
@@ -242,7 +242,7 @@ func (v *VMM) shutdownVMM(ctx context.Context, id string) error {
 	}
 
 	// wait for shutdown
-	v.log.Debug("waiting for clean vmm shutdown", "id", id)
+	v.log.DebugContext(ctx, "waiting for clean vmm shutdown", "id", id)
 	if err := v.waitForShutdown(ctx, id); err != nil {
 		return err
 	}

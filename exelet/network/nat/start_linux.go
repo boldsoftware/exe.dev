@@ -9,17 +9,17 @@ import (
 )
 
 func (n *NAT) Start(ctx context.Context) error {
-	n.log.Debug("configuring bridge", "device", n.bridgeName)
+	n.log.DebugContext(ctx, "configuring bridge", "device", n.bridgeName)
 	if err := n.configureBridge(ctx); err != nil {
 		return fmt.Errorf("error configuring bridge %s: %w", n.bridgeName, err)
 	}
 
 	// start dhcp server
 	go func() {
-		n.log.Debug("starting dhcp server", "device", n.bridgeName)
+		n.log.DebugContext(ctx, "starting dhcp server", "device", n.bridgeName)
 
 		if err := n.dhcpServer.Serve(context.Background()); err != nil {
-			n.log.Error("error starting dhcp server", "err", err)
+			n.log.ErrorContext(ctx, "error starting dhcp server", "err", err)
 		}
 	}()
 
@@ -27,13 +27,13 @@ func (n *NAT) Start(ctx context.Context) error {
 	defer cancel()
 
 	// configure forwarding
-	n.log.Debug("configuring forwarding", "device", n.bridgeName)
+	n.log.DebugContext(ctx, "configuring forwarding", "device", n.bridgeName)
 	if err := n.applyIPTablesForwarding(ctx, n.bridgeName); err != nil {
 		return err
 	}
 
 	// configure NAT masquerade
-	n.log.Debug("configuring masquerade", "device", n.bridgeName)
+	n.log.DebugContext(ctx, "configuring masquerade", "device", n.bridgeName)
 	if err := n.applyIPTablesMasquerade(ctx, n.bridgeName, n.network); err != nil {
 		return err
 	}

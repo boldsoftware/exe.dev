@@ -62,7 +62,7 @@ func (v *VMM) virtiofsd(ctx context.Context, vArgs ...string) error {
 	args = append(args, binPath)
 	args = append(args, vArgs...)
 
-	v.log.Debug("running virtiofsd", "path", binPath, "args", args)
+	v.log.DebugContext(ctx, "running virtiofsd", "path", binPath, "args", args)
 
 	cmd := exec.CommandContext(ctx, initPath, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{

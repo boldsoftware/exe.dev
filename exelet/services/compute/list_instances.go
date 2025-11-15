@@ -35,13 +35,13 @@ func (s *Service) listInstances(ctx context.Context) ([]*api.Instance, error) {
 	}
 	instances := []*api.Instance{}
 	for _, config := range configs {
-		s.log.Debug("getting instance from config", "config", config)
+		s.log.DebugContext(ctx, "getting instance from config", "config", config)
 		id := filepath.Base(filepath.Dir(config))
 		r, err := s.GetInstance(ctx, &api.GetInstanceRequest{
 			ID: id,
 		})
 		if err != nil {
-			s.log.Warn("unable to get instance config", "id", id)
+			s.log.WarnContext(ctx, "unable to get instance config", "id", id)
 			continue
 		}
 		// update instance placement

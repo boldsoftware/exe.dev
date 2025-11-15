@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Exelet) Stop(ctx context.Context) error {
-	s.log.Debug("stopping server")
+	s.log.DebugContext(ctx, "stopping server")
 
 	// stop services
 	wg := &sync.WaitGroup{}
@@ -16,14 +16,14 @@ func (s *Exelet) Stop(ctx context.Context) error {
 		wg.Add(1)
 		go func(svc services.Service) {
 			defer wg.Done()
-			s.log.Debug("stopping service", "type", svc.Type())
+			s.log.DebugContext(ctx, "stopping service", "type", svc.Type())
 			if err := svc.Stop(ctx); err != nil {
-				s.log.Error("error stopping service", "type", svc.Type(), "err", err)
+				s.log.ErrorContext(ctx, "error stopping service", "type", svc.Type(), "err", err)
 			}
 		}(svc)
 	}
 
-	s.log.Debug("waiting for services to shutdown")
+	s.log.DebugContext(ctx, "waiting for services to shutdown")
 
 	wg.Wait()
 

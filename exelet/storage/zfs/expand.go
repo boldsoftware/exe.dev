@@ -45,7 +45,7 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64) error {
 	if err != nil {
 		return err
 	}
-	s.log.Debug("expanding volume", "id", id, "size", newSize)
+	s.log.DebugContext(ctx, "expanding volume", "id", id, "size", newSize)
 	// for expand:
 	// - update zvol size
 	// - fsck disk

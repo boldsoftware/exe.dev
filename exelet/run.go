@@ -29,7 +29,7 @@ func (s *Exelet) Run(ctx context.Context) error {
 
 	// Log actual listen address (important for tests using port :0)
 	actualAddr := u.Scheme + "://" + l.Addr().String()
-	s.log.Info("listening", "addr", actualAddr)
+	s.log.InfoContext(ctx, "listening", "addr", actualAddr)
 
 	doneCh := make(chan bool)
 	serviceErrCh := make(chan error)
@@ -38,17 +38,17 @@ func (s *Exelet) Run(ctx context.Context) error {
 		wg.Add(1)
 		go func(svc services.Service) {
 			defer wg.Done()
-			s.log.Debug("starting service", "type", svc.Type())
+			s.log.DebugContext(ctx, "starting service", "type", svc.Type())
 			if err := svc.Start(ctx); err != nil {
 				serviceErrCh <- err
 				return
 			}
-			s.log.Info("service started", "type", svc.Type())
+			s.log.InfoContext(ctx, "service started", "type", svc.Type())
 		}(svc)
 	}
 
 	go func() {
-		s.log.Debug("waiting for services start")
+		s.log.DebugContext(ctx, "waiting for services start")
 		wg.Wait()
 		doneCh <- true
 	}()
@@ -59,10 +59,10 @@ func (s *Exelet) Run(ctx context.Context) error {
 		return err
 	}
 
-	s.log.Debug("starting grpc server", "addr", s.config.ListenAddress)
+	s.log.DebugContext(ctx, "starting grpc server", "addr", s.config.ListenAddress)
 	go s.grpcServer.Serve(l)
 
-	s.log.Info("exelet server ready", "version", version.FullVersion())
+	s.log.InfoContext(ctx, "exelet server ready", "version", version.FullVersion())
 
 	return nil
 }

@@ -20,7 +20,7 @@ func (s *ZFS) Create(ctx context.Context, id string, cfg *api.FilesystemConfig) 
 
 	// generate encryption key if specified
 	if v := cfg.EncryptionKey; v != "" {
-		s.log.Debug("creating encrypted storage", "ds", id)
+		s.log.DebugContext(ctx, "creating encrypted storage", "ds", id)
 		// get and store encryption key
 		ekPath, err := s.getInstanceEncryptionKeyPath(id)
 		if err != nil {

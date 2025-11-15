@@ -120,7 +120,7 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	}
 
 	// create and start TCP proxy
-	s.log.Debug("starting SSH proxy", "instance", id, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
+	s.log.DebugContext(ctx, "starting SSH proxy", "instance", id, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
 	proxy := tcpproxy.NewTCPProxy(sshPort, vmIP, 22, s.log)
 	if err := proxy.Start(); err != nil {
 		return fmt.Errorf("failed to start SSH proxy: %w", err)

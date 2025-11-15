@@ -15,7 +15,7 @@ func (v *VMM) Delete(ctx context.Context, id string) error {
 	}
 	defer c.Close()
 
-	v.log.Debug("shutting down vmm", "id", id)
+	v.log.DebugContext(ctx, "shutting down vmm", "id", id)
 
 	// shutdown VMM
 	if err := v.shutdownVMM(ctx, id); err != nil {

@@ -22,7 +22,7 @@ func (v *VMM) Start(ctx context.Context, id string) error {
 		return err
 	}
 
-	v.log.Debug("VM state", "id", id, "state", state)
+	v.log.DebugContext(ctx, "VM state", "id", id, "state", state)
 
 	if state == api.VMState_RUNNING {
 		return nil

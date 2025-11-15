@@ -15,7 +15,7 @@ func (v *VMM) Stop(ctx context.Context, id string) error {
 	}
 	defer c.Close()
 
-	v.log.Debug("vm stop", "id", id)
+	v.log.DebugContext(ctx, "vm stop", "id", id)
 	dResp, err := c.DeleteVMWithResponse(ctx)
 	if err != nil {
 		// instance already stopped

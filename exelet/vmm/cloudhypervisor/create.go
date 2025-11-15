@@ -49,7 +49,7 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		if err == nil {
 			defer c.Close()
 			if _, err := c.GetVmmPingWithResponse(ctx); err == nil {
-				v.log.Debug("cloudhypervisor api socket connected; skipping start")
+				v.log.DebugContext(ctx, "cloudhypervisor api socket connected; skipping start")
 				return nil
 			}
 		}
@@ -99,7 +99,7 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		Setsid:     true,
 		Setctty:    false,
 	}
-	v.log.Debug("running cloudhypervisor api instance")
+	v.log.DebugContext(ctx, "running cloudhypervisor api instance")
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 	}
 	defer c.Close()
 
-	v.log.Debug("creating VM in hypervisor", "id", id)
+	v.log.DebugContext(ctx, "creating VM in hypervisor", "id", id)
 	virtiofsInstances, err := v.configureVirtiofs(ctx, id, int(vmCfg.CPUs), vmCfg.Shares)
 	if err != nil {
 		return err

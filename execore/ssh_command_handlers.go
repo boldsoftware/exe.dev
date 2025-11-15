@@ -458,10 +458,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
 			resolvedRef, err := ss.server.tagResolver.ResolveTag(ctx, fullImage, platform)
 			if err != nil {
-				slog.Warn("Failed to resolve image tag, using tag directly", "image", fullImage, "error", err)
+				slog.WarnContext(ctx, "Failed to resolve image tag, using tag directly", "image", fullImage, "error", err)
 			} else {
 				imageRef = resolvedRef
-				slog.Debug("Resolved image tag to digest", "tag", fullImage, "digest", imageRef)
+				slog.DebugContext(ctx, "Resolved image tag to digest", "tag", fullImage, "digest", imageRef)
 			}
 		}
 

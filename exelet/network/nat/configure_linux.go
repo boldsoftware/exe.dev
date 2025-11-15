@@ -25,7 +25,7 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 			return err
 		}
 
-		n.log.Debug("creating bridge", "name", n.bridgeName)
+		n.log.DebugContext(ctx, "creating bridge", "name", n.bridgeName)
 
 		attrs := netlink.NewLinkAttrs()
 		attrs.Name = n.bridgeName
@@ -155,7 +155,7 @@ func (n *NAT) applyIPTablesForwarding(ctx context.Context, device string) error 
 		return nil
 	}
 
-	n.log.Debug("adding iptables forward rule", "device", device)
+	n.log.DebugContext(ctx, "adding iptables forward rule", "device", device)
 	// create
 	cArgs := []string{
 		"-A",
@@ -232,7 +232,7 @@ func (n *NAT) applyIPTablesMasquerade(ctx context.Context, device, network strin
 		return nil
 	}
 
-	n.log.Debug("adding iptables masquerade rule", "device", device)
+	n.log.DebugContext(ctx, "adding iptables masquerade rule", "device", device)
 	// create
 	cArgs := []string{
 		"-t",

@@ -39,10 +39,10 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 		// stop and remove SSH proxy (needs mutex for service-level resources)
 		s.mu.Lock()
 		if port, err := s.proxyManager.RemoveProxy(instance.ID); err != nil {
-			s.log.Warn("failed to remove SSH proxy", "instance", instance.ID, "error", err)
+			s.log.WarnContext(ctx, "failed to remove SSH proxy", "instance", instance.ID, "error", err)
 		} else {
 			s.portAllocator.Release(port)
-			s.log.Debug("removed SSH proxy", "instance", instance.ID, "port", port)
+			s.log.DebugContext(ctx, "removed SSH proxy", "instance", instance.ID, "port", port)
 		}
 		s.mu.Unlock()
 

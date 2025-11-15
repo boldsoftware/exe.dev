@@ -58,9 +58,9 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 
 	// stop SSH proxy (but keep port allocated for next start)
 	if _, err := s.proxyManager.RemoveProxy(id); err != nil {
-		s.log.Warn("failed to remove SSH proxy", "instance", id, "error", err)
+		s.log.WarnContext(ctx, "failed to remove SSH proxy", "instance", id, "error", err)
 	} else {
-		s.log.Debug("stopped SSH proxy", "instance", id)
+		s.log.DebugContext(ctx, "stopped SSH proxy", "instance", id)
 	}
 
 	// update instance config
@@ -72,7 +72,7 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 	iCfg.State = api.VMState_STOPPED
 	// remove network config
 	iCfg.VMConfig.NetworkInterface = nil
-	s.log.Debug("updating instance config", "config", iCfg.VMConfig)
+	s.log.DebugContext(ctx, "updating instance config", "config", iCfg.VMConfig)
 	if err := s.saveInstanceConfig(iCfg); err != nil {
 		return err
 	}

@@ -29,7 +29,7 @@ func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage
 	}
 
 	// stop instance
-	s.log.Debug("stopping instance for update", "id", id)
+	s.log.DebugContext(ctx, "stopping instance for update", "id", id)
 	if err := vmm.Stop(ctx, id); err != nil {
 		return fmt.Errorf("error stopping instance: %w", err)
 	}
@@ -37,7 +37,7 @@ func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage
 	// handle update errors to cleanup if needed
 	defer func() {
 		if err != nil {
-			s.log.Warn("cleaning up failed update for instance", "id", id)
+			s.log.WarnContext(ctx, "cleaning up failed update for instance", "id", id)
 			_ = s.context.StorageManager.Unmount(ctx, id)
 		}
 	}()
@@ -46,7 +46,7 @@ func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage
 	instanceDir := s.getInstanceDir(id)
 
 	// mount
-	s.log.Debug("mounting instance storage for update", "id", id)
+	s.log.DebugContext(ctx, "mounting instance storage for update", "id", id)
 	mountConfig, err := s.context.StorageManager.Mount(ctx, id)
 	if err != nil {
 		return fmt.Errorf("error mounting instance storage: %w", err)
@@ -55,18 +55,18 @@ func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage
 
 	// kernel
 	if kernelImage != "" {
-		s.log.Debug("updating instance kernel", "id", id, "image", kernelImage)
+		s.log.DebugContext(ctx, "updating instance kernel", "id", id, "image", kernelImage)
 		// fetch / unpack image content to snapshot
-		s.log.Debug("fetching and unpacking kernel", "image", kernelImage, "path", mountpoint)
+		s.log.DebugContext(ctx, "fetching and unpacking kernel", "image", kernelImage, "path", mountpoint)
 		if _, err := s.context.ImageManager.Fetch(ctx, kernelImage, platform, instanceDir); err != nil {
 			return fmt.Errorf("error updating kernel: %w", err)
 		}
 	}
 	// init
 	if initImage != "" {
-		s.log.Debug("updating instance init", "id", id, "image", initImage)
+		s.log.DebugContext(ctx, "updating instance init", "id", id, "image", initImage)
 		// fetch / unpack image content to snapshot
-		s.log.Debug("fetching and unpacking init", "image", initImage, "path", mountpoint)
+		s.log.DebugContext(ctx, "fetching and unpacking init", "image", initImage, "path", mountpoint)
 		if _, err := s.context.ImageManager.Fetch(ctx, initImage, platform, mountpoint); err != nil {
 			return fmt.Errorf("error updating init: %w", err)
 		}
@@ -78,7 +78,7 @@ func (s *Service) updateInstance(ctx context.Context, id, kernelImage, initImage
 	}
 
 	// start instance
-	s.log.Debug("starting instance after update", "id", id)
+	s.log.DebugContext(ctx, "starting instance after update", "id", id)
 	if err := vmm.Start(ctx, id); err != nil {
 		return fmt.Errorf("error starting instance: %w", err)
 	}

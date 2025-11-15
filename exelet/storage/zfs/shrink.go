@@ -48,7 +48,7 @@ func (s *ZFS) Shrink(ctx context.Context, id string) error {
 		// add compressed + 10% overhead and check if still under
 		// minimum and bump to min to account for the edge case tiny images (e.g. busybox)
 		volSize = max(uint64(float64(usedSize)*(compressRatio+0.10)), minVolumeSize)
-		s.log.Debug("compressed minimum size", "size", usedSize, "compression", cz, "volSize", volSize)
+		s.log.DebugContext(ctx, "compressed minimum size", "size", usedSize, "compression", cz, "volSize", volSize)
 	}
 
 	// zfs needs to be 16K aligned
@@ -58,7 +58,7 @@ func (s *ZFS) Shrink(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	s.log.Debug("shrinking volume", "id", id, "used", usedSize, "size", newSize)
+	s.log.DebugContext(ctx, "shrinking volume", "id", id, "used", usedSize, "size", newSize)
 	// for shrink:
 	// - fsck disk
 	// - resize filesystem to minimum size

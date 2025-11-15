@@ -2,19 +2,12 @@
 
 A Go static analysis tool that detects usage of `slog` logging functions without context when a `ctx` variable is in scope.
 
-## Problem
+To implement poor man's tracing, we shove a trace_id in the context, and we want
+it logged wherever there's logging. This means we have to use `slog.WarnContext()` instead
+of `slog.Warn()`. So this was born.
 
-When using Go's `log/slog` package, it's important to use the Context-aware variants (like `slog.InfoContext`) when a `context.Context` is available. This ensures proper trace propagation and structured logging context.
+VIBE CODE WARNING: this is a checked in sed-script. Caveat emptor.
 
-## What it detects
-
-The linter finds calls to these `slog` functions when a `ctx` variable is in scope:
-
-- `slog.Debug` → should be `slog.DebugContext`
-- `slog.Info` → should be `slog.InfoContext`
-- `slog.Warn` → should be `slog.WarnContext`
-- `slog.Error` → should be `slog.ErrorContext`
-- `slog.Log` → should be `slog.LogContext`
 
 ## Installation
 
@@ -25,45 +18,44 @@ cd tracing/linter/cmd/slogcontext
 go build
 ```
 
-Or install it:
-
-```bash
-go install exe.dev/tracing/linter/cmd/slogcontext@latest
-```
-
 ## Usage
 
-### Quick start
+### Use with go vet
 
-Run with `go run` to check and fix issues in a package:
+```bash
+# Build the linter
+go build -o /tmp/slogcontext ./tracing/linter/cmd/slogcontext
+
+# Run with go vet
+go vet -vettool=/tmp/slogcontext ./exelet/... ./execore/... ./sshpool/... ./sshpool2/...
+```
+
+### Direct invocation
+
+To automatically fix issues, run the linter directly:
+
+```bash
+# Build the linter
+go build -o /tmp/slogcontext ./tracing/linter/cmd/slogcontext
+
+# Fix issues in packages
+GOOS=linux /tmp/slogcontext -fix ./exelet/... ./execore/... ./sshpool/... ./sshpool2/...
+```
+
+**Important:** When running on macOS/darwin and analyzing Linux-specific code (files with `//go:build linux`), you must set `GOOS=linux` to ensure the linter analyzes all files. The `go vet` approach handles this automatically when run on Linux (e.g., in CI).
+
+### Quick start (single platform)
+
+For checking code on your current platform:
+
+```bash
+go run exe.dev/tracing/linter/cmd/slogcontext ./packagename/...
+```
+
+For fixing code on your current platform:
 
 ```bash
 go run exe.dev/tracing/linter/cmd/slogcontext -fix ./packagename/...
-```
-
-### Check files for issues
-
-```bash
-# Check a single file
-./slogcontext path/to/file.go
-
-# Check a package
-./slogcontext ./...
-
-# Check specific packages
-./slogcontext ./pkg/...
-```
-
-### Automatically fix issues
-
-The linter can automatically fix detected issues:
-
-```bash
-# Fix a single file
-./slogcontext -fix path/to/file.go
-
-# Fix all files in a package
-./slogcontext -fix ./...
 ```
 
 ### Example
@@ -82,28 +74,6 @@ func handleRequest(ctx context.Context, req *Request) error {
     slog.InfoContext(ctx, "handling request", "id", req.ID)
     // ...
 }
-```
-
-## Integration with golangci-lint
-
-To use this linter with golangci-lint, you can configure it as a custom linter in `.golangci.yml`:
-
-```yaml
-linters-settings:
-  custom:
-    slogcontext:
-      path: ./tracing/linter/cmd/slogcontext/slogcontext
-      description: Checks that slog calls use Context variants when ctx is in scope
-      original-url: exe.dev/tracing/linter
-```
-
-## Testing
-
-Run the linter tests:
-
-```bash
-cd tracing/linter
-go test -v
 ```
 
 ## How it works
