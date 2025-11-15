@@ -11,6 +11,7 @@ import (
 
 	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -30,15 +31,17 @@ var (
 
 // Exelet is the exelet server.
 type Exelet struct {
-	started       time.Time
-	config        *config.ExeletConfig
-	mu            *sync.Mutex
-	log           *slog.Logger
-	grpcServer    *grpc.Server
-	serverCloseCh chan struct{}
-	updateTicker  *time.Ticker
-	services      []services.Service
-	state         api.Server_ServerState
+	started         time.Time
+	config          *config.ExeletConfig
+	mu              *sync.Mutex
+	log             *slog.Logger
+	grpcServer      *grpc.Server
+	serverCloseCh   chan struct{}
+	updateTicker    *time.Ticker
+	services        []services.Service
+	state           api.Server_ServerState
+	metricsRegistry *prometheus.Registry
+	metrics         *ExeletMetrics
 }
 
 // NewExelet returns a new exelet server.
@@ -57,14 +60,20 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 
 	log.Info("starting exelet server", "addr", cfg.ListenAddress)
 
+	// create prometheus registry and metrics
+	metricsRegistry := prometheus.NewRegistry()
+	metrics := NewExeletMetrics(metricsRegistry)
+
 	srv := &Exelet{
-		started:       time.Now(),
-		config:        cfg,
-		mu:            &sync.Mutex{},
-		log:           log,
-		serverCloseCh: make(chan struct{}),
-		updateTicker:  time.NewTicker(updateInterval),
-		state:         state,
+		started:         time.Now(),
+		config:          cfg,
+		mu:              &sync.Mutex{},
+		log:             log,
+		serverCloseCh:   make(chan struct{}),
+		updateTicker:    time.NewTicker(updateInterval),
+		state:           state,
+		metricsRegistry: metricsRegistry,
+		metrics:         metrics,
 	}
 
 	grpcOpts, err := getGRPCOptions(cfg)
@@ -133,6 +142,11 @@ func (s *Exelet) GenerateProfile() (string, error) {
 	}
 	tmpfile.Close()
 	return tmpfile.Name(), nil
+}
+
+// MetricsRegistry returns the prometheus metrics registry.
+func (s *Exelet) MetricsRegistry() *prometheus.Registry {
+	return s.metricsRegistry
 }
 
 func (s *Exelet) updateState(v api.Server_ServerState) {

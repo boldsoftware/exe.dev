@@ -6,6 +6,9 @@ const (
 	// DefaultServerAddress is the default exelet server address
 	DefaultExeletAddress = "tcp://127.0.0.1:9080"
 
+	// DefaultHTTPAddress is the default HTTP server address for debug and metrics
+	DefaultHTTPAddress = ":9081"
+
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
 

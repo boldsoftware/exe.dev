@@ -5,6 +5,17 @@ EXE.DEV creates machines for you in the cloud, entirely over ssh.
 Machines are containers running in VMs.
 The exed binary acts as the control interface and the ssh/https proxy to the containers.
 
+## Ports Quick Reference for Dev
+
+In dev, typically the exed host is localhost, and ctr-host is lima-ctr-host.
+
+| Process | Host | Ports |
+|---------|------|-------|
+| **sshpiper** | exed host | 2222 (ssh proxy) |
+| **exed** | exed host | 2223 (direct ssh), 8080 (http), 8001-8008, 9999 (dev mode box proxy) |
+| **exed piper plugin** | exed host | 2224 (grpc) |
+| **exelet** | ctr-host | 9080 (grpc), 9081 (http debug/metrics) |
+
 ## Local machine setup
 
 Start with the basics:
@@ -72,8 +83,12 @@ limactl shell exe-ctr -- sudo ./exeletd \
   --data-dir /data/exelet \
   --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" \
   --network-manager-address nat:///data/exelet/network \
-  --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://127.0.0.1:9080
+  --runtime-address cloudhypervisor:///data/exelet/runtime \
+  --listen-address tcp://127.0.0.1:9080
 ```
+
+The exelet serves debug endpoints (pprof, version, metrics) on port 9081 by default.
+Access them at `http://localhost:9081/debug` or use `--http-addr` to change the port.
 
 You don't need to copy exeletd over necessarily because Lima mounts your filesystem over.
 

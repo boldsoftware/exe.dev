@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -96,9 +95,9 @@ func main() {
 			Usage: "set exelet state in maintenance mode (no new workloads)",
 		},
 		&cli.StringFlag{
-			Name:  "pprof-addr",
-			Usage: "performance profiling address",
-			Value: "",
+			Name:  "http-addr",
+			Usage: "HTTP server address for debug, metrics, and version endpoints",
+			Value: config.DefaultHTTPAddress,
 		},
 	}
 	app.Action = serveAction
@@ -127,15 +126,7 @@ func serveAction(clix *cli.Context) error {
 	log := slog.Default()
 
 	maintenanceMode := clix.Bool("maintenance")
-	pprofAddr := clix.String("pprof-addr")
-	if pprofAddr != "" {
-		go func() {
-			log.Info("starting pprof server", "addr", pprofAddr)
-			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
-				log.Error("error starting pprof server", "err", err)
-			}
-		}()
-	}
+	httpAddr := clix.String("http-addr")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -155,6 +146,11 @@ func serveAction(clix *cli.Context) error {
 	}
 	srv, err := exelet.NewExelet(cfg, log, opts...)
 	if err != nil {
+		return err
+	}
+
+	// start HTTP server
+	if err := srv.StartHTTPServer(httpAddr, srv.MetricsRegistry()); err != nil {
 		return err
 	}
 
