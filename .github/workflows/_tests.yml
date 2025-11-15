@@ -74,14 +74,27 @@ jobs:
 
       - name: Run tests
         run: |
+          PKGS=$(go list ./... | grep -v exe.dev/container | grep -v ./e1e)
+          gotestsum --format testname -- -race $PKGS
+          gotestsum --format testname -- -race exe.dev/container
+
+      - name: Run e1e tests
+        run: |
+          # This is a separate step from other tests because...
+          # well, because there's useful logging in TestMain, particularly on failure.
+          # But in its infinite wisdom, gotestsum silently swallows TestMain output, only in CI.
+          # https://github.com/gotestyourself/gotestsum/issues/542
+          # We can suppress that behavior by setting GITHUB_ACTIONS=false.
+          # But then the output is less readable.
+          # So we put it in its own step here,
+          # so that at least this step can be show/hidden easily.
+          # If/when gotestsum gets fixed, we can merge this back into the main test step.
+
           # Create temp directory for e1e logs
           E1E_LOG_DIR=$(mktemp -d)
           export E1E_LOG_DIR
           echo "E1E_LOG_DIR=$E1E_LOG_DIR" >> "$GITHUB_ENV"
-
-          PKGS=$(go list ./... | grep -v exe.dev/container)
-          gotestsum --format testname -- -race $PKGS
-          gotestsum --format testname -- -race exe.dev/container
+          GITHUB_ACTIONS=false gotestsum --format testname -- -race ./e1e
 
       - name: Check golden files unchanged
         run: |
