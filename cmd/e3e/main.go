@@ -95,15 +95,18 @@ func main() {
 
 	// Run agents in serial.
 	// Stop on first failure.
+	rc := 0
 	for _, agent := range []agent{agentCodex, agentClaude} {
 		res := runAgent(ctx, cfg, box, agent)
 		if res.Output != "" {
 			log.Printf("## %s\n%s\n", res.Agent, res.Output)
+			rc = 1
 			break
 		}
 	}
 
 	deleteBox(context.Background(), cfg, box.Name)
+	os.Exit(rc)
 }
 
 func createBox(ctx context.Context, cfg *config) (*boxInfo, error) {
