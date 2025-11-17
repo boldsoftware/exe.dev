@@ -58,6 +58,9 @@ func runCodex(ctx context.Context, apiKey string) ([]byte, error) {
 		"--config", "model_reasoning_effort=low",
 	)
 	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Env = append(os.Environ(), "OPENAI_API_KEY="+apiKey)
+	cmd.Env = append(os.Environ(),
+		"OPENAI_API_KEY="+apiKey,
+		"CODEX_API_KEY="+apiKey,
+	)
 	return cmd.CombinedOutput()
 }
