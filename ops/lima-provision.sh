@@ -1,13 +1,11 @@
 #!/bin/bash
-# Runs inside a Lima VM to prepare persistent data and bootstrap containerd hosts.
+# Runs inside a Lima VM to prepare persistent data and bootstrap exelet hosts.
 set -euo pipefail
 
 STAGING_DIR="/tmp/exe-bootstrap"
 ASSETS_DIR="/home/ubuntu/.cache/exedops"
-SETUP_SCRIPT_NAME="setup-containerd-clh-nydus.sh"
 CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME="setup-cloud-hypervisor.sh"
 EXELET_SETUP_SCRIPT_NAME="setup-exelet.sh"
-KATA_CONFIG_NAME="kata-config-clh.toml"
 
 wait_for_device() {
     local attempt=0
@@ -100,6 +98,21 @@ prepare_directories() {
     chown ubuntu:ubuntu "${ASSETS_DIR}"
 }
 
+configure_hugepages() {
+    # Configure Huge Pages. cloud-hypervisor refuses to boot if huge pages are enabled but not
+    # actually reserved on the host. /proc/meminfo is reported in KB; default hugepages are 2MB, so
+    # divide by 4096 to reserve ~50% of RAM.
+    HUGEPAGE_TARGET=$(awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo)
+    echo "Setting vm.nr_hugepages=${HUGEPAGE_TARGET}"
+    echo "${HUGEPAGE_TARGET}" > /proc/sys/vm/nr_hugepages
+    mkdir -p /etc/sysctl.d
+    cat <<EOF > /etc/sysctl.d/90-exe-hugepages.conf
+# Ensure huge pages survive reboots; required for Cloud Hypervisor.
+vm.nr_hugepages=${HUGEPAGE_TARGET}
+EOF
+    sysctl --system >/dev/null
+}
+
 stage_exists() {
     local path="$1"
     if [ ! -f "${path}" ]; then
@@ -110,12 +123,7 @@ stage_exists() {
 
 install_assets() {
     stage_exists "${STAGING_DIR}/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}"
-    stage_exists "${STAGING_DIR}/${SETUP_SCRIPT_NAME}"
     stage_exists "${STAGING_DIR}/${EXELET_SETUP_SCRIPT_NAME}"
-    stage_exists "${STAGING_DIR}/${KATA_CONFIG_NAME}"
-
-    mv "${STAGING_DIR}/${SETUP_SCRIPT_NAME}" /root/${SETUP_SCRIPT_NAME}
-    chmod +x /root/${SETUP_SCRIPT_NAME}
 
     mv "${STAGING_DIR}/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}" /root/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}
     chmod +x /root/${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}
@@ -123,16 +131,13 @@ install_assets() {
     mv "${STAGING_DIR}/${EXELET_SETUP_SCRIPT_NAME}" /root/${EXELET_SETUP_SCRIPT_NAME}
     chmod +x /root/${EXELET_SETUP_SCRIPT_NAME}
 
-    mv "${STAGING_DIR}/${KATA_CONFIG_NAME}" "${ASSETS_DIR}/${KATA_CONFIG_NAME}"
-    chown ubuntu:ubuntu "${ASSETS_DIR}/${KATA_CONFIG_NAME}"
-
-    # Move any cached tarballs and services into the asset cache.
+    # Move any cached tarballs and sources into the asset cache.
     if compgen -G "${STAGING_DIR}/*" >/dev/null; then
         shopt -s nullglob
         for f in "${STAGING_DIR}"/*; do
             base="$(basename "${f}")"
             case "${base}" in
-            "${SETUP_SCRIPT_NAME}" | "${EXELET_SETUP_SCRIPT_NAME}" | "${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}" | "${KATA_CONFIG_NAME}" | "lima-provision.sh")
+            "${EXELET_SETUP_SCRIPT_NAME}" | "${CLOUD_HYPERVISOR_SETUP_SCRIPT_NAME}" | "lima-provision.sh")
                 continue
                 ;;
             esac
@@ -141,10 +146,6 @@ install_assets() {
         done
         shopt -u nullglob
     fi
-}
-
-run_containerd_setup() {
-    CI=1 ALLOW_DEV_HOST_ACCESS=1 /root/${SETUP_SCRIPT_NAME}
 }
 
 run_cloud_hypervisor_setup() {
@@ -156,7 +157,6 @@ run_exelet_setup() {
 }
 
 finalize_bootstrap() {
-    cp /etc/containerd/config.toml /home/ubuntu/containerd-config.toml.backup 2>/dev/null || true
     rm -rf "${STAGING_DIR}"
 }
 
@@ -168,11 +168,11 @@ bootstrap_vm() {
     ensure_packages
     ensure_ubuntu_user
     prepare_directories
+    echo "=========================================="
+    echo "Configuring hugepages for Cloud Hypervisor"
+    echo "=========================================="
+    configure_hugepages
     install_assets
-    echo "=========================================="
-    echo "Starting containerd setup in VM"
-    echo "=========================================="
-    run_containerd_setup
     echo "=========================================="
     echo "Starting cloud-hypervisor setup in VM"
     echo "=========================================="

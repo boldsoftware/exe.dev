@@ -47,13 +47,6 @@ func (r *createInstanceRollback) Rollback() {
 		}
 	}
 
-	// Delete cloned instance filesystem
-	if r.instanceCloned {
-		if err := r.serviceContext.StorageManager.Delete(r.ctx, r.instanceID); err != nil {
-			r.log.Error("rollback: failed to delete instance filesystem", "id", r.instanceID, "error", err)
-		}
-	}
-
 	// Unmount image filesystem if mounted
 	if r.imageFSMounted {
 		if err := r.serviceContext.StorageManager.Unmount(r.ctx, r.imageFSID); err != nil {
@@ -61,12 +54,12 @@ func (r *createInstanceRollback) Rollback() {
 		}
 	}
 
-	// Delete image filesystem if we created it
-	//if r.imageFSCreated {
-	//	if err := r.serviceContext.StorageManager.Delete(r.ctx, r.imageFSID); err != nil {
-	//		r.log.Error("rollback: failed to delete image filesystem", "id", r.imageFSID, "error", err)
-	//	}
-	//}
+	// Delete cloned instance filesystem
+	if r.instanceCloned {
+		if err := r.serviceContext.StorageManager.Delete(r.ctx, r.instanceID); err != nil {
+			r.log.Error("rollback: failed to delete instance filesystem", "id", r.instanceID, "error", err)
+		}
+	}
 
 	// Delete network interface
 	if r.networkCreated {

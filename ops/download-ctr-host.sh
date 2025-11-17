@@ -19,17 +19,10 @@ fi
 # Configuration
 CACHE_DIR="$HOME/.cache/exedops"
 METADATA_DIR="$CACHE_DIR/.metadata"
-CONTAINERD_VERSION="2.1.4"
-RUNC_VERSION="1.1.14"
-KATA_VERSION="3.20.0"
-NYDUS_SNAPSHOTTER_VERSION="0.15.2"
-NYDUSD_VERSION="2.2.5"
-NERDCTL_VERSION="2.1.3"
-CNI_VERSION="1.5.1"
 CLOUD_HYPERVISOR_VERSION="48.0"
 VIRTIOFSD_VERSION="1.13.2"
 
-echo "=== Downloading containerd host dependencies for $ARCH ==="
+echo "=== Downloading exelet host dependencies for $ARCH ==="
 echo "Cache directory: $CACHE_DIR"
 
 # Create cache directory
@@ -112,26 +105,6 @@ download_if_needed() {
     fi
 }
 
-# Download containerd
-download_if_needed \
-    "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz" \
-    "containerd-${CONTAINERD_VERSION}-linux-${ARCH}.tar.gz"
-
-# Download containerd systemd service
-download_if_needed \
-    "https://raw.githubusercontent.com/containerd/containerd/main/containerd.service" \
-    "containerd.service"
-
-# Download runc
-download_if_needed \
-    "https://github.com/opencontainers/runc/releases/download/v${RUNC_VERSION}/runc.${ARCH}" \
-    "runc-${RUNC_VERSION}.${ARCH}"
-
-# Download Kata Containers
-download_if_needed \
-    "https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-${ARCH}.tar.xz" \
-    "kata-static-${KATA_VERSION}-${ARCH}.tar.xz"
-
 # Download cloud-hypervisor remote binary
 # Map arch to cloud-hypervisor naming (aarch64 for arm64, x86_64 for amd64)
 if [ "$ARCH" = "arm64" ]; then
@@ -146,31 +119,12 @@ else
         "ch-remote-static-${CLOUD_HYPERVISOR_VERSION}-${ARCH}"
 fi
 
-# Download Nydus snapshotter
-download_if_needed \
-    "https://github.com/containerd/nydus-snapshotter/releases/download/v${NYDUS_SNAPSHOTTER_VERSION}/nydus-snapshotter-v${NYDUS_SNAPSHOTTER_VERSION}-linux-${ARCH}.tar.gz" \
-    "nydus-snapshotter-v${NYDUS_SNAPSHOTTER_VERSION}-linux-${ARCH}.tar.gz"
-
-# Download nydusd daemon
-download_if_needed \
-    "https://github.com/dragonflyoss/nydus/releases/download/v${NYDUSD_VERSION}/nydus-static-v${NYDUSD_VERSION}-linux-${ARCH}.tgz" \
-    "nydus-static-v${NYDUSD_VERSION}-linux-${ARCH}.tgz"
-
-# Download nerdctl
-download_if_needed \
-    "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-${ARCH}.tar.gz" \
-    "nerdctl-${NERDCTL_VERSION}-linux-${ARCH}.tar.gz"
-
-# Download CNI plugins
-download_if_needed \
-    "https://github.com/containernetworking/plugins/releases/download/v${CNI_VERSION}/cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz" \
-    "cni-plugins-linux-${ARCH}-v${CNI_VERSION}.tgz"
-
-# Download exelet cloud-hypervisor
+# Download cloud-hypervisor source (for building)
 download_if_needed \
     "https://github.com/cloud-hypervisor/cloud-hypervisor/archive/refs/tags/v${CLOUD_HYPERVISOR_VERSION}.tar.gz" \
     "cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}.tar.gz"
-# Download exelet virtiofsd
+
+# Download virtiofsd source (for building)
 download_if_needed \
     "https://gitlab.com/virtio-fs/virtiofsd/-/archive/v${VIRTIOFSD_VERSION}/virtiofsd-${VIRTIOFSD_VERSION}.tar.gz" \
     "virtiofsd-${VIRTIOFSD_VERSION}.tar.gz"
@@ -271,8 +225,8 @@ echo ""
 echo "=== Download complete ==="
 echo "All files cached in: $CACHE_DIR"
 echo ""
-echo "Files downloaded:"
-ls -lh "$CACHE_DIR" | grep -E "(containerd|runc|kata|nydus|nerdctl|cni)" | awk '{print "  - " $9 " (" $5 ")"}'
+echo "Cloud Hypervisor and virtiofsd sources:"
+ls -lh "$CACHE_DIR" | grep -E "(cloud-hypervisor|virtiofsd|ch-remote)" | awk '{print "  - " $9 " (" $5 ")"}'
 echo ""
 echo "Container images:"
 ls -lh "$CACHE_DIR" | grep -E "\.tar$" | awk '{print "  - " $9 " (" $5 ")"}' || echo "  None cached yet"

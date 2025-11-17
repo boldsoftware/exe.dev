@@ -73,6 +73,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	instanceDir := s.getInstanceDir(instanceID)
+	s.log.DebugContext(ctx, "instance dir", "id", instanceID, "path", instanceDir)
 	if err := os.MkdirAll(instanceDir, 0o770); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
@@ -200,12 +201,14 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			return status.Error(codes.Internal, err.Error())
 		}
 	} else { // use embedded
+		s.log.DebugContext(ctx, "using default kernel image from exelet")
 		kernel, err := exeletfs.Kernel()
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
 		kernelFilePath := filepath.Join(instanceDir, kernelName)
-		if err := os.MkdirAll(filepath.Dir(kernelFilePath), 0o755); err != nil {
+		s.log.DebugContext(ctx, "instance kernel path", "path", kernelFilePath)
+		if err := os.MkdirAll(filepath.Dir(kernelFilePath), 0o775); err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
 		kernelFile, err := os.Create(kernelFilePath)
@@ -213,6 +216,10 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			return status.Error(codes.Internal, err.Error())
 		}
 		if _, err := io.Copy(kernelFile, kernel); err != nil {
+			kernelFile.Close()
+			return status.Error(codes.Internal, err.Error())
+		}
+		if err := kernelFile.Close(); err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
 	}

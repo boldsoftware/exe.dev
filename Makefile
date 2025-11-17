@@ -114,7 +114,7 @@ restart: ## Restart production service
 
 clean: ## Clean build artifacts
 	@echo "Cleaning build artifacts..."
-	@rm -f exed exed.* *.log
+	@rm -f exed exed.* *.log exeletd exelet-ctl
 	@go clean
 	@echo "✓ Clean complete"
 

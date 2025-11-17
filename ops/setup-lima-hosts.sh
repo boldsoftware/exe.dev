@@ -11,11 +11,6 @@ DATA_DISK_SIZE="100GiB"
 
 # Determine repo ops dir
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SETUP_SCRIPT_PATH="${OPS_DIR}/setup-containerd-clh-nydus.sh"
-if [[ ! -f "$SETUP_SCRIPT_PATH" ]]; then
-    echo "Required setup script not found: $SETUP_SCRIPT_PATH" >&2
-    exit 1
-fi
 LIMA_CONFIG_PATH="${OPS_DIR}/lima-with-data.yaml"
 if [[ ! -f "$LIMA_CONFIG_PATH" ]]; then
     echo "Required Lima config not found: $LIMA_CONFIG_PATH" >&2
@@ -82,13 +77,9 @@ clone_data_disk() {
     limactl --tty=false --log-level=warn disk import "${dst_disk}" "${src_path}"
 }
 
-# Provision a fresh Lima VM with containerd + Kata + Nydus
+# Provision a fresh Lima VM with exelet + Cloud Hypervisor
 provision_base_vm() {
     local script_dir="${OPS_DIR}"
-    if [ ! -f "${script_dir}/setup-containerd-clh-nydus.sh" ]; then
-        echo "Error: setup-containerd-clh-nydus.sh not found in ${script_dir}"
-        return 1
-    fi
 
     # Download dependencies locally if not cached
     VM_ARCH="arm64"
@@ -100,13 +91,10 @@ provision_base_vm() {
     limactl shell ${LIMA_BASE} -- sudo mkdir -p "${BOOTSTRAP_STAGING}"
     limactl shell ${LIMA_BASE} -- sudo chmod 1777 "${BOOTSTRAP_STAGING}"
 
-    limactl cp "${script_dir}/setup-containerd-clh-nydus.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-containerd-clh-nydus.sh"
-    limactl cp "${script_dir}/kata-config-clh.toml" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/kata-config-clh.toml"
-
-    echo "Copying pre-downloaded dependencies to VM..."
+    echo "Copying cloud-hypervisor and virtiofsd sources to VM..."
     CACHE_DIR="$HOME/.cache/exedops"
 
-    for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
+    for file in "$CACHE_DIR"/cloud-hypervisor-*.tar.gz "$CACHE_DIR"/virtiofsd-*.tar.gz "$CACHE_DIR"/*.tar; do
         if [ -f "$file" ]; then
             basename=$(basename "$file")
             echo "  Copying $basename..."
@@ -114,7 +102,7 @@ provision_base_vm() {
         fi
     done
 
-    # cloud hypervisor
+    # cloud hypervisor setup script
     limactl cp "${script_dir}/setup-cloud-hypervisor.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-cloud-hypervisor.sh"
 
     # build and cache a local exelet to be able to provision the base instance volumes

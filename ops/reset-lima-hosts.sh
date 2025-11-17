@@ -81,19 +81,16 @@ provision_cloned_vm() {
     limactl shell ${instance} -- sudo mkdir -p "${BOOTSTRAP_STAGING}"
     limactl shell ${instance} -- sudo chmod 1777 "${BOOTSTRAP_STAGING}"
 
-    limactl cp "${script_dir}/setup-containerd-clh-nydus.sh" "${instance}:${BOOTSTRAP_STAGING}/setup-containerd-clh-nydus.sh"
-    limactl cp "${script_dir}/kata-config-clh.toml" "${instance}:${BOOTSTRAP_STAGING}/kata-config-clh.toml"
-
-    # Copy pre-downloaded dependencies
+    # Copy cloud-hypervisor and virtiofsd sources
     CACHE_DIR="$HOME/.cache/exedops"
-    for file in "$CACHE_DIR"/*.tar.gz "$CACHE_DIR"/*.tar.xz "$CACHE_DIR"/*.tgz "$CACHE_DIR"/*.service "$CACHE_DIR"/runc-* "$CACHE_DIR"/ch-remote-static-* "$CACHE_DIR"/*.tar; do
+    for file in "$CACHE_DIR"/cloud-hypervisor-*.tar.gz "$CACHE_DIR"/virtiofsd-*.tar.gz "$CACHE_DIR"/*.tar; do
         if [ -f "$file" ]; then
             basename=$(basename "$file")
             limactl cp "$file" "${instance}:${BOOTSTRAP_STAGING}/$basename"
         fi
     done
 
-    # cloud hypervisor
+    # cloud hypervisor setup script
     limactl cp "${script_dir}/setup-cloud-hypervisor.sh" "${instance}:${BOOTSTRAP_STAGING}/setup-cloud-hypervisor.sh"
 
     # exelet - determine architecture and build/copy exelet binaries
