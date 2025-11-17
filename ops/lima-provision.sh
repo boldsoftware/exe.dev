@@ -104,9 +104,9 @@ configure_hugepages() {
     # divide by 4096 to reserve ~50% of RAM.
     HUGEPAGE_TARGET=$(awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo)
     echo "Setting vm.nr_hugepages=${HUGEPAGE_TARGET}"
-    echo "${HUGEPAGE_TARGET}" > /proc/sys/vm/nr_hugepages
+    echo "${HUGEPAGE_TARGET}" >/proc/sys/vm/nr_hugepages
     mkdir -p /etc/sysctl.d
-    cat <<EOF > /etc/sysctl.d/90-exe-hugepages.conf
+    cat <<EOF >/etc/sysctl.d/90-exe-hugepages.conf
 # Ensure huge pages survive reboots; required for Cloud Hypervisor.
 vm.nr_hugepages=${HUGEPAGE_TARGET}
 EOF
