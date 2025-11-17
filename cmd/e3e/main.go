@@ -189,13 +189,12 @@ func agentScript(ag agent, cfg *config) (string, error) {
 export OPENAI_API_KEY=%s
 export CODEX_API_KEY=%s
 export PATH="/home/exedev/.local/bin:$PATH"
-export PATH="/home/exedev/.local/bin:$PATH"
 TMP=$(mktemp)
-trap 'rm -f \"$TMP\"' EXIT
-codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --output-last-message \"$TMP\" <<'EOF'
+trap 'rm -f "$TMP"' EXIT
+codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --output-last-message "$TMP" <<'EOF'
 %s
 EOF
-cat \"$TMP\"
+cat "$TMP"
 `, openAIKey, codexKey, prompt), nil
 	case agentClaude:
 		anthropicKey, err := syntax.Quote(cfg.anthropicAPIKey, syntax.LangBash)

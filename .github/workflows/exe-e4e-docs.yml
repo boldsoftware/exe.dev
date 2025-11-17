@@ -55,6 +55,11 @@ jobs:
             echo "::add-mask::$CODEX"
           fi
 
+      - name: Build e4e documentation sweep
+        run: |
+          set -euo pipefail
+          go build -o /tmp/e4e-docs ./cmd/e4e
+
       - name: Run e4e documentation sweep
         id: run-e4e
         continue-on-error: true
@@ -62,7 +67,7 @@ jobs:
           E4E_OPENAI_API_KEY: ${{ secrets.E4E_OPENAI_API_KEY }}
         run: |
           set -euo pipefail
-          go run ./cmd/e4e 2>&1 | tee "$E4E_OUTPUT_PATH"
+          /tmp/e4e-docs 2>&1 | tee "$E4E_OUTPUT_PATH"
 
       - name: Install uv
         if: always()

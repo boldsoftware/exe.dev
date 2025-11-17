@@ -14,6 +14,8 @@ Flag:
 
 Your final report should be concise and efficient.
 
+Use Slack's mrkdwn syntax.
+
 Begin your report with the heading "# DOCUMENTATION REPORT", on its own line.
 
 If there are no findings, the report should consist only of the word "OK", on its own line.

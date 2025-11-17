@@ -51,6 +51,11 @@ jobs:
           printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/exe-e3e"
           chmod 600 "$HOME/.ssh/exe-e3e"
 
+      - name: Build e3e security probe
+        run: |
+          set -euo pipefail
+          go build -o /tmp/e3e-security ./cmd/e3e
+
       - name: Run e3e security probe
         id: run-e3e
         continue-on-error: true
@@ -62,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           export EXE_E3E_SSH_KEY_PATH="$HOME/.ssh/exe-e3e"
-          go run ./cmd/e3e 2>&1 | tee "$E3E_OUTPUT_PATH"
+          /tmp/e3e-security 2>&1 | tee "$E3E_OUTPUT_PATH"
 
       - name: Install uv
         if: always()

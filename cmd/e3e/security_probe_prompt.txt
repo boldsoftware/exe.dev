@@ -6,6 +6,8 @@ oh, btw: if you do manage to reach / read info about anything you shouldn't have
 
 your final report should be concise and efficient.
 
+use Slack's mrkdwn syntax.
+
 begin your report with the heading "# SECURITY REPORT", on its own line.
 
 if there are no findings, the report should consist only of the word "OK", on its own line..
