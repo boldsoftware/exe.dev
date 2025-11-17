@@ -8,11 +8,13 @@ import (
 	"expvar"
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/http/pprof"
 	"runtime/debug"
 
 	"exe.dev/exedb"
+	computeapi "exe.dev/pkg/api/exe/compute/v1"
 )
 
 // debugHandler constructs and returns a handler with Go-standard debug endpoints
@@ -120,31 +122,40 @@ func (s *Server) handleDebugBoxes(w http.ResponseWriter, r *http.Request) {
 		return email, nil
 	}
 
-	if s.containerManager != nil {
-		for _, host := range s.containerManager.GetHosts() {
-			info := hostInfo{Host: host}
-			containers, err := s.containerManager.ListContainersOnHost(ctx, host)
-			if err != nil {
-				info.Error = err.Error()
-			} else {
-				for _, c := range containers {
-					cInfo := containerInfo{
-						Host:   host,
-						ID:     c.ID,
-						Name:   c.Name,
-						Status: string(c.Status),
-					}
-					if ownerEmail, err := getOwnerEmail(ctx, c.ID); err == nil {
-						cInfo.OwnerEmail = ownerEmail
-					} else {
-						s.slog().WarnContext(ctx, "failed to resolve box owner email", "boxName", c.Name, "containerID", c.ID, "allocID", c.AllocID, "error", err)
-					}
-					info.Containers = append(info.Containers, cInfo)
-					flatContainers = append(flatContainers, cInfo)
+	// List instances from exelet hosts
+	for addr, ec := range s.exeletClients {
+		info := hostInfo{Host: addr}
+		stream, err := ec.client.ListInstances(ctx, &computeapi.ListInstancesRequest{})
+		if err != nil {
+			info.Error = err.Error()
+		} else {
+			// Collect all instances from the stream
+			for {
+				resp, err := stream.Recv()
+				if err == io.EOF {
+					break
 				}
+				if err != nil {
+					info.Error = err.Error()
+					break
+				}
+				inst := resp.Instance
+				cInfo := containerInfo{
+					Host:   addr,
+					ID:     inst.ID,
+					Name:   inst.Name,
+					Status: inst.State.String(),
+				}
+				if ownerEmail, err := getOwnerEmail(ctx, inst.ID); err == nil {
+					cInfo.OwnerEmail = ownerEmail
+				} else {
+					s.slog().WarnContext(ctx, "failed to resolve box owner email", "boxName", inst.Name, "instanceID", inst.ID, "error", err)
+				}
+				info.Containers = append(info.Containers, cInfo)
+				flatContainers = append(flatContainers, cInfo)
 			}
-			hosts = append(hosts, info)
 		}
+		hosts = append(hosts, info)
 	}
 
 	// Check if JSON format is requested

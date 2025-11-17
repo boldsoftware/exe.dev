@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"log/slog"
 	"math/big"
@@ -39,6 +40,7 @@ import (
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/ghuser"
+	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/publicips"
 	"exe.dev/route53"
 	"exe.dev/sqlite"
@@ -175,10 +177,8 @@ type Server struct {
 	// Gateway endpoint for Shelley
 	gateway string
 
-	// Container management
-	containerManager *container.NerdctlManager
-	tagResolver      *tagresolver.TagResolver
-	hostUpdater      *tagresolver.HostUpdater
+	// Image tag resolution
+	tagResolver *tagresolver.TagResolver
 
 	// Exelet management (for VM-based instances)
 	exeletClients map[string]*exeletClient // addr -> client
@@ -370,63 +370,13 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		return nil, fmt.Errorf("failed to listen on piper plugin address %q: %w", pluginAddr, err)
 	}
 
-	// Initialize container manager with containerd
-	var containerManager *container.NerdctlManager
-
-	// Check if we have valid containerd addresses (not just empty strings)
-	hasValidAddresses := false
-	for _, addr := range containerdAddresses {
-		if addr != "" {
-			hasValidAddresses = true
-			break
-		}
-	}
-
-	if hasValidAddresses {
-		config := &container.Config{
-			ContainerdAddresses: containerdAddresses,
-			DataSubdir:          dataSubdir,
-			IsProduction:        devMode == "", // Production when devMode is empty
-		}
-		if httpLn != nil && httpLn.tcp != nil {
-			config.ExedListeningPort = httpLn.tcp.Port
-		}
-
-		var managerErr error
-		containerManager, managerErr = container.NewNerdctlManager(config)
-		if managerErr != nil {
-			// Container manager initialization failure is now fatal - security critical
-			slog.Error("Failed to initialize container manager", "error", managerErr)
-			// If it's a Kata-related error, provide specific guidance
-			if strings.Contains(managerErr.Error(), "Kata runtime") {
-				slog.Error("Kata runtime is required for container security",
-					"details", "All containers must run in Kata VMs for proper isolation",
-					"fix", "Ensure Kata is installed and configured in containerd")
-			}
-			return nil, managerErr
-		}
-		slog.Info("Container manager initialized successfully")
-	} else {
-		slog.Debug("No containerd addresses configured, container functionality disabled")
-	}
-
 	// Initialize metrics
 	metricsRegistry := prometheus.NewRegistry()
 	sshMetrics := NewSSHMetrics(metricsRegistry)
 	sqlite.RegisterSQLiteMetrics(metricsRegistry)
 
-	// Initialize tag resolver and host updater for container image management
-	var tagResolverInstance *tagresolver.TagResolver
-	var hostUpdaterInstance *tagresolver.HostUpdater
-	if containerManager != nil && len(containerdAddresses) > 0 {
-		tagResolverInstance = tagresolver.New(db)
-		hostUpdaterInstance = tagresolver.NewHostUpdater(db, tagResolverInstance, containerdAddresses)
-
-		// Set tag resolver on the container manager
-		containerManager.SetTagResolver(tagResolverInstance)
-		containerManager.SetHostUpdater(hostUpdaterInstance)
-		slog.Info("Tag resolver configured for image freshness management")
-	}
+	// Initialize tag resolver for image tag resolution
+	tagResolverInstance := tagresolver.New(db)
 
 	// Initialize exelet clients
 	exeletClients := make(map[string]*exeletClient)
@@ -437,14 +387,25 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		}
 		client, err := exeletclient.NewClient(addr, exeletclient.WithInsecure())
 		if err != nil {
-			return nil, fmt.Errorf("failed to create exelet client to %s: %w", addr, err)
+			slog.Warn("failed to create exelet client, skipping host", "addr", addr, "error", err)
+			continue
 		}
+
+		// Try to fetch system info to cache architecture and version.
+		// Log but don't fail startup if this fails - the host may be temporarily unavailable.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, err = client.GetSystemInfo(ctx, &computeapi.GetSystemInfoRequest{})
+		cancel()
+		if err != nil {
+			slog.Warn("failed to get system info from exelet, will retry later", "addr", addr, "error", err)
+		}
+
 		exeletClients[addr] = &exeletClient{
 			addr:   addr,
 			client: client,
 		}
 		validExeletAddrs = append(validExeletAddrs, addr)
-		slog.Info("initialized exelet client", "addr", addr)
+		slog.Info("initialized exelet client", "addr", addr, "arch", client.Arch(), "version", client.Version())
 	}
 	slog.Info("exelet clients initialized", "count", len(validExeletAddrs))
 
@@ -476,9 +437,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		piperdPort:         piperdPort,
 		BaseURL:            baseURL,
 		db:                 db,
-		containerManager:   containerManager,
 		tagResolver:        tagResolverInstance,
-		hostUpdater:        hostUpdaterInstance,
 		exeletClients:      exeletClients,
 		exeletAddrs:        validExeletAddrs,
 		sshPool:            &sshpool2.Pool{TTL: 10 * time.Minute},
@@ -509,20 +468,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	s.setupHTTPSServer()
 	s.setupProxyServers()
 	s.setupSSHServer()
-
-	// Prepare RovolFS on all hosts during server setup
-	for _, host := range containerdAddresses {
-		if host != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-			if err := containerManager.PrepareRovol(ctx, host); err != nil {
-				cancel()
-				slog.Error("Failed to prepare RovolFS on host", "host", host, "error", err)
-				return nil, fmt.Errorf("failed to prepare RovolFS on host %s: %w", host, err)
-			}
-			cancel()
-			slog.Info("Successfully prepared RovolFS on host", "host", host)
-		}
-	}
 
 	s.ready.Add(1) // matched with final done at bottom of Start
 	go func() {
@@ -1401,6 +1346,17 @@ func (s *Server) hostLookupKeys(host string) []string {
 	return dedupeStrings(keys)
 }
 
+// getExeletClient looks up an exelet client by host address, trying all normalized variants.
+// This handles cases where the configured address changed (e.g., ssh://host to tcp://ip).
+func (s *Server) getExeletClient(host string) *exeletClient {
+	for _, key := range s.hostLookupKeys(host) {
+		if client := s.exeletClients[key]; client != nil {
+			return client
+		}
+	}
+	return nil
+}
+
 func dedupeStrings(values []string) []string {
 	seen := make(map[string]bool, len(values))
 	j := 0
@@ -1437,7 +1393,7 @@ const (
 	containerListRetryTimeout      = 3 * time.Minute
 )
 
-func (s *Server) listContainersWithRetry(ctx context.Context, host string) ([]*container.Container, error) {
+func (s *Server) listInstancesWithRetry(ctx context.Context, addr string, client *exeletclient.Client) ([]*computeapi.Instance, error) {
 	delay := containerListRetryInitialDelay
 	deadline := time.Now().Add(containerListRetryTimeout)
 	attempt := 0
@@ -1445,25 +1401,41 @@ func (s *Server) listContainersWithRetry(ctx context.Context, host string) ([]*c
 
 	for {
 		attempt++
-		containers, err := s.containerManager.ListContainersOnHost(ctx, host)
+		var instances []*computeapi.Instance
+		stream, err := client.ListInstances(ctx, &computeapi.ListInstancesRequest{})
 		if err == nil {
-			if attempt > 1 {
-				s.slog().InfoContext(ctx, "Successfully listed containers on host after retry", "host", host, "attempts", attempt)
+			// Collect all instances from the stream
+			for {
+				resp, err := stream.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					lastErr = err
+					break
+				}
+				instances = append(instances, resp.Instance)
 			}
-			return containers, nil
+			if lastErr == nil {
+				if attempt > 1 {
+					s.slog().InfoContext(ctx, "Successfully listed instances on exelet after retry", "addr", addr, "attempts", attempt)
+				}
+				return instances, nil
+			}
+		} else {
+			lastErr = err
 		}
 
-		lastErr = err
-		s.slog().WarnContext(ctx, "Failed to list containers on host", "host", host, "attempt", attempt, "error", err)
+		s.slog().WarnContext(ctx, "Failed to list instances on exelet", "addr", addr, "attempt", attempt, "error", lastErr)
 
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timed out listing containers on host %s after %d attempts: %w", host, attempt, lastErr)
+			return nil, fmt.Errorf("timed out listing instances on exelet %s after %d attempts: %w", addr, attempt, lastErr)
 		}
 
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
-			return nil, fmt.Errorf("context cancelled while waiting for host %s containers: %w", host, ctx.Err())
+			return nil, fmt.Errorf("context cancelled while waiting for exelet %s instances: %w", addr, ctx.Err())
 		}
 
 		if delay < containerListRetryMaxDelay {
@@ -1475,77 +1447,49 @@ func (s *Server) listContainersWithRetry(ctx context.Context, host string) ([]*c
 	}
 }
 
-// syncUsersWithHosts synchronizes user namespaces between the database and container hosts
-// This ensures that:
-// 1. All users with boxes on a host have their namespaces created on the host
-// 2. Any user namespaces not in the database are removed from hosts
-func (s *Server) syncUsersWithHosts(_ context.Context) error {
-	// Get the list of container hosts
-	hosts := s.containerManager.GetHosts()
-	if len(hosts) == 0 {
-		s.slog().Warn("No container hosts available for user sync")
-		return nil
-	}
-	return nil
-}
-
-// syncContainersWithHosts synchronizes containers between the database and container hosts
-// This ensures that:
-// 1. All boxes in the database have their containers running on hosts
-// 2. Containers are restarted if they exist but aren't running
-// 3. Broken containers are marked as failed if their disk is missing
-// 4. Any containers not in the database are removed from hosts
-func (s *Server) syncContainersWithHosts(ctx context.Context) error {
-	// Get the list of container hosts
-	hosts := s.containerManager.GetHosts()
-	if len(hosts) == 0 {
-		s.slog().WarnContext(ctx, "No container hosts available for container sync")
+// syncInstancesWithHosts synchronizes instances between the database and exelet hosts
+// This ensures that database state matches actual instance state on exelet hosts
+func (s *Server) syncInstancesWithHosts(ctx context.Context) error {
+	if len(s.exeletClients) == 0 {
+		s.slog().WarnContext(ctx, "No exelet hosts available for instance sync")
 		return nil
 	}
 
-	s.slog().InfoContext(ctx, "Starting container sync with container hosts", "hostCount", len(hosts))
+	s.slog().InfoContext(ctx, "Starting instance sync with exelet hosts", "hostCount", len(s.exeletClients))
 
-	// Process each host
-	for _, host := range hosts {
-		if err := s.syncContainersForHost(ctx, host); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to sync containers for host", "host", host, "error", err)
+	// Process each exelet host
+	for addr, ec := range s.exeletClients {
+		if err := s.syncInstancesForExelet(ctx, addr, ec.client); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to sync instances for exelet", "addr", addr, "error", err)
 			// Continue with other hosts even if one fails
 		}
 	}
 
-	s.slog().InfoContext(ctx, "Container sync completed")
+	s.slog().InfoContext(ctx, "Instance sync completed")
 	return nil
 }
 
-// syncContainersForHost synchronizes containers for a specific container host
-func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
-	// Get boxes from the database that should be on this host
-	dbBoxes, err := s.getBoxesByHostVariants(ctx, host)
+// syncInstancesForExelet synchronizes instances for a specific exelet host
+func (s *Server) syncInstancesForExelet(ctx context.Context, addr string, client *exeletclient.Client) error {
+	// Get boxes from the database that should be on this exelet
+	dbBoxes, err := s.getBoxesByHostVariants(ctx, addr)
 	if err != nil {
 		return fmt.Errorf("failed to get boxes from database: %w", err)
 	}
 
-	// Get containers currently on the host, retrying while the host is restarting
-	hostContainers, err := s.listContainersWithRetry(ctx, host)
+	// Get instances currently on the exelet, retrying while the host is restarting
+	instances, err := s.listInstancesWithRetry(ctx, addr, client)
 	if err != nil {
 		return err
 	}
 
-	// Create maps for easier lookup
-	dbBoxMap := make(map[string]*exedb.Box)
-	for _, box := range dbBoxes {
-		if box.ContainerID != nil && *box.ContainerID != "" {
-			dbBoxMap[*box.ContainerID] = box
-		}
+	// Create map of instances by ID for easier lookup
+	instanceMap := make(map[string]*computeapi.Instance)
+	for _, inst := range instances {
+		instanceMap[inst.ID] = inst
 	}
 
-	// Map of container names to containers for orphan detection
-	hostContainerMap := make(map[string]*container.Container)
-	for _, c := range hostContainers {
-		hostContainerMap[c.ID] = c
-	}
-
-	// Check each box that should have a container
+	// Check each box and update database state to match exelet reality
 	for _, box := range dbBoxes {
 		// Skip boxes without container IDs (not yet created)
 		if box.ContainerID == nil || *box.ContainerID == "" {
@@ -1553,136 +1497,62 @@ func (s *Server) syncContainersForHost(ctx context.Context, host string) error {
 		}
 
 		containerID := *box.ContainerID
-		hostContainer, exists := hostContainerMap[containerID]
+		instance, exists := instanceMap[containerID]
 
-		containerStatus := "missing"
-		if hostContainer != nil {
-			containerStatus = hostContainer.Status.String()
-		}
-		s.slog().DebugContext(ctx, "syncContainersForHost status",
-			"host", host,
-			"box", box.Name,
-			"boxStatus", box.Status,
-			"containerID", containerID,
-			"containerFound", exists,
-			"containerStatus", containerStatus,
-		)
-
-		if !exists {
-			// Container doesn't exist on host but should - check for persistent disk
-			diskPath := s.DataPath(fmt.Sprintf("exed/containers/box-%d", box.ID))
-
-			// Use the VerifyDisk method for proper disk validation
-			nerdctlMgr := s.containerManager
-			{
-				diskExists, err := nerdctlMgr.VerifyDisk(ctx, host, box.ID)
-				if err != nil {
-					s.slog().ErrorContext(ctx, "Failed to verify disk", "box", box.Name, "error", err)
-					continue
-				}
-
-				if !diskExists {
-					// Disk missing - mark box as broken
-					s.slog().ErrorContext(ctx, "Container disk missing, marking as failed", "box", box.Name, "diskPath", diskPath)
-					if err := s.updateBoxStatus(ctx, box.ID, "failed"); err != nil {
-						s.slog().ErrorContext(ctx, "Failed to mark box as failed", "box", box.Name, "error", err)
-					}
-				} else {
-					// Disk exists - recreate container
-					s.slog().InfoContext(ctx, "Recreating container from persistent disk", "box", box.Name, "boxID", box.ID)
-
-					// Reconstruct SSH keys from the box record
-					var existingSSHKeys *container.ContainerSSHKeys
-					if len(box.SSHServerIdentityKey) > 0 {
-						existingSSHKeys = &container.ContainerSSHKeys{
-							ServerIdentityKey: string(box.SSHServerIdentityKey),
-							AuthorizedKeys:    *box.SSHAuthorizedKeys,
-							ClientPrivateKey:  string(box.SSHClientPrivateKey),
-							SSHPort:           int(*box.SSHPort),
-						}
-						s.slog().InfoContext(ctx, "Using existing SSH keys from database for container recreation", "boxID", box.ID)
-					}
-
-					// Create a new container using the existing disk
-					req := &container.CreateContainerRequest{
-						AllocID:         box.CreatedByUserID,
-						Name:            box.Name,
-						BoxID:           box.ID,
-						Image:           box.Image,
-						Host:            host,
-						ExistingSSHKeys: existingSSHKeys,
-					}
-
-					// Recreate the container (CreateContainer will reuse the existing disk)
-					s.slog().InfoContext(ctx, "Calling CreateContainer to recreate from disk", "boxID", box.ID, "oldContainerID", containerID)
-					newContainer, err := nerdctlMgr.CreateContainer(ctx, req)
-					if err != nil {
-						s.slog().ErrorContext(ctx, "Failed to recreate container from disk", "box", box.Name, "error", err)
-						if err := s.updateBoxStatus(ctx, box.ID, "failed"); err != nil {
-							s.slog().ErrorContext(ctx, "Failed to mark box as failed", "box", box.Name, "error", err)
-						}
-					} else {
-						// Update box with new container ID
-						if err := s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-							return queries.UpdateBoxContainerIDAndStatus(ctx, exedb.UpdateBoxContainerIDAndStatusParams{
-								ContainerID: &newContainer.ID,
-								ID:          box.ID,
-							})
-						}); err != nil {
-							s.slog().ErrorContext(ctx, "Failed to update box with new container ID", "box", box.Name, "error", err)
-						} else {
-							s.slog().InfoContext(ctx, "Successfully recreated container from disk",
-								"box", box.Name,
-								"oldContainerID", containerID,
-								"newContainerID", newContainer.ID)
-						}
-					}
-				}
+		if exists {
+			// Instance exists - update database status to match actual state
+			var newStatus string
+			switch instance.State {
+			case computeapi.VMState_RUNNING:
+				newStatus = "running"
+			case computeapi.VMState_STOPPED:
+				newStatus = "stopped"
+			case computeapi.VMState_ERROR:
+				newStatus = "failed"
+			default:
+				newStatus = strings.ToLower(instance.State.String())
 			}
-		} else if hostContainer.Status != "running" && box.Status == "running" {
-			// Container exists but isn't running when it should be
-			s.slog().InfoContext(ctx, "Restarting stopped container", "box", box.Name, "containerID", containerID)
-			if err := s.containerManager.StartContainer(ctx, box.CreatedByUserID, containerID); err != nil {
-				s.slog().ErrorContext(ctx, "Failed to restart container", "box", box.Name, "error", err)
-				if err := s.updateBoxStatus(ctx, box.ID, "stopped"); err != nil {
+
+			if box.Status != newStatus {
+				s.slog().InfoContext(ctx, "Updating box status to match instance",
+					"box", box.Name,
+					"oldStatus", box.Status,
+					"newStatus", newStatus,
+					"addr", addr)
+				if err := s.updateBoxStatus(ctx, box.ID, newStatus); err != nil {
 					s.slog().ErrorContext(ctx, "Failed to update box status", "box", box.Name, "error", err)
 				}
 			}
-		} else if hostContainer.Status == "running" && box.Status != "running" {
-			// Update database to reflect actual container state
-			s.slog().InfoContext(ctx, "Updating box status to match container", "box", box.Name, "status", hostContainer.Status)
-			if err := s.updateBoxStatus(ctx, box.ID, string(hostContainer.Status)); err != nil {
-				s.slog().ErrorContext(ctx, "Failed to update box status", "box", box.Name, "error", err)
+
+			// Remove from map to track orphans
+			delete(instanceMap, containerID)
+		} else {
+			// Instance doesn't exist on exelet but is in database
+			s.slog().WarnContext(ctx, "Instance not found on exelet, marking as failed",
+				"box", box.Name,
+				"containerID", containerID,
+				"addr", addr)
+			if err := s.updateBoxStatus(ctx, box.ID, "failed"); err != nil {
+				s.slog().ErrorContext(ctx, "Failed to mark box as failed", "box", box.Name, "error", err)
 			}
 		}
-
-		// Remove from map to track orphans
-		delete(hostContainerMap, containerID)
 	}
 
-	// Handle containers that are on host but not in DB (potential orphans)
-	for containerID, c := range hostContainerMap {
-		// Only process containers managed by exe (check label)
-		if c.AllocID != "" {
-			// Extract box ID from container name if possible for additional verification
-			// Container names are in format: exe-<allocID>-<boxName>
-			// We could potentially recover these if we can find the box ID
+	// Handle instances that are on exelet but not in DB (potential orphans)
+	for instanceID, inst := range instanceMap {
+		// Log orphaned instances but don't delete immediately
+		// This provides a grace period and allows for manual investigation
+		s.slog().WarnContext(ctx, "Found potentially orphaned instance on exelet - NOT deleting automatically",
+			"instanceID", instanceID,
+			"name", inst.Name,
+			"addr", addr,
+			"state", inst.State.String())
 
-			// For now, just log orphaned containers but don't delete immediately
-			// This provides a grace period and allows for manual investigation
-			s.slog().WarnContext(ctx, "Found potentially orphaned container on host - NOT deleting automatically",
-				"containerID", containerID,
-				"name", c.Name,
-				"allocID", c.AllocID,
-				"host", host,
-				"status", c.Status)
-
-			// TODO: In the future, we could:
-			// 1. Track when orphans were first detected
-			// 2. Only delete after a grace period (e.g., 24 hours)
-			// 3. Try to match with recently deleted boxes in deleted_boxes table
-			// 4. Send alerts about orphaned containers
-		}
+		// TODO: In the future, we could:
+		// 1. Track when orphans were first detected
+		// 2. Only delete after a grace period (e.g., 24 hours)
+		// 3. Try to match with recently deleted boxes in deleted_boxes table
+		// 4. Send alerts about orphaned instances
 	}
 
 	return nil
@@ -1782,26 +1652,18 @@ func (s *Server) Start() error {
 		s.slog().InfoContext(ctx, fmt.Sprintf("  ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p %v localhost", s.sshLn.tcp.Port))
 	}
 
-	// Sync user namespaces and containers with container hosts before accepting connections
-	if s.containerManager != nil {
-		// First sync user namespaces
-		if err := s.syncUsersWithHosts(ctx); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to sync user namespaces with container hosts", "error", err)
-			// Continue anyway - we can sync later
-		}
-
-		// Then sync containers
-		if err := s.syncContainersWithHosts(ctx); err != nil {
-			s.slog().ErrorContext(ctx, "Failed to sync containers with container hosts", "error", err)
+	// Sync instances with exelet hosts before accepting connections
+	if len(s.exeletClients) > 0 {
+		if err := s.syncInstancesWithHosts(ctx); err != nil {
+			s.slog().ErrorContext(ctx, "Failed to sync instances with exelet hosts", "error", err)
 			// Continue anyway - we can sync later
 		}
 	}
 
-	// Start tag resolver and host updater for keeping container images fresh
-	if s.tagResolver != nil && s.hostUpdater != nil {
-		s.slog().InfoContext(ctx, "Starting tag resolver for image freshness management")
+	// Start tag resolver for keeping image tag resolutions fresh
+	if s.tagResolver != nil {
+		s.slog().InfoContext(ctx, "Starting tag resolver for image tag management")
 		s.tagResolver.Start(ctx)
-		s.hostUpdater.Start(ctx)
 	}
 
 	// Wait for interrupt signal or startup failure
@@ -2009,9 +1871,6 @@ func (s *Server) Stop() error {
 
 	if s.tagResolver != nil {
 		s.tagResolver.Stop()
-	}
-	if s.hostUpdater != nil {
-		s.hostUpdater.Stop()
 	}
 	if err := s.sshPool.Close(); err != nil {
 		s.slog().ErrorContext(ctx, "SSH pool close error", "error", err)

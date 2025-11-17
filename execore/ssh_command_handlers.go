@@ -854,10 +854,10 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 
 	// Delete the instance if it exists
 	if box.ContainerID != nil {
-		// Get exelet client
-		exeletClient, _, err := ss.server.selectExeletClient(cc.User.ID)
-		if err != nil {
-			return fmt.Errorf("failed to select exelet: %w", err)
+		// Get exelet client for the host where this box was created
+		exeletClient := ss.server.getExeletClient(box.Ctrhost)
+		if exeletClient == nil {
+			return fmt.Errorf("exelet host not available for box")
 		}
 
 		// Delete instance via exelet
@@ -1227,7 +1227,7 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 }
 
 func (ss *SSHServer) completeBoxNames(compCtx *exemenu.CompletionContext, cc *exemenu.CommandContext) []string {
-	if ss == nil || ss.server == nil || ss.server.containerManager == nil {
+	if ss == nil || ss.server == nil || len(ss.server.exeletClients) == 0 {
 		return nil
 	}
 	if cc == nil || cc.User == nil {

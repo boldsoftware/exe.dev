@@ -13,6 +13,7 @@ service ComputeService {
   rpc StopInstance(StopInstanceRequest) returns (StopInstanceResponse);
   rpc UpdateInstance(UpdateInstanceRequest) returns (UpdateInstanceResponse);
   rpc DeleteInstance(DeleteInstanceRequest) returns (DeleteInstanceResponse);
+  rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
 }
 
 message CreateInstanceRequest {
@@ -138,6 +139,13 @@ message UpdateInstanceRequest {
 }
 
 message UpdateInstanceResponse {}
+
+message GetSystemInfoRequest {}
+
+message GetSystemInfoResponse {
+  string version = 1;
+  string arch = 2;
+}
 
 message Instance {
   string id = 1;

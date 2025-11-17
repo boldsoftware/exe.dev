@@ -8,7 +8,6 @@ package v1
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -28,6 +27,7 @@ const (
 	ComputeService_StopInstance_FullMethodName    = "/exe.compute.v1.ComputeService/StopInstance"
 	ComputeService_UpdateInstance_FullMethodName  = "/exe.compute.v1.ComputeService/UpdateInstance"
 	ComputeService_DeleteInstance_FullMethodName  = "/exe.compute.v1.ComputeService/DeleteInstance"
+	ComputeService_GetSystemInfo_FullMethodName   = "/exe.compute.v1.ComputeService/GetSystemInfo"
 )
 
 // ComputeServiceClient is the client API for ComputeService service.
@@ -42,6 +42,7 @@ type ComputeServiceClient interface {
 	StopInstance(ctx context.Context, in *StopInstanceRequest, opts ...grpc.CallOption) (*StopInstanceResponse, error)
 	UpdateInstance(ctx context.Context, in *UpdateInstanceRequest, opts ...grpc.CallOption) (*UpdateInstanceResponse, error)
 	DeleteInstance(ctx context.Context, in *DeleteInstanceRequest, opts ...grpc.CallOption) (*DeleteInstanceResponse, error)
+	GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error)
 }
 
 type computeServiceClient struct {
@@ -159,6 +160,16 @@ func (c *computeServiceClient) DeleteInstance(ctx context.Context, in *DeleteIns
 	return out, nil
 }
 
+func (c *computeServiceClient) GetSystemInfo(ctx context.Context, in *GetSystemInfoRequest, opts ...grpc.CallOption) (*GetSystemInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSystemInfoResponse)
+	err := c.cc.Invoke(ctx, ComputeService_GetSystemInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ComputeServiceServer is the server API for ComputeService service.
 // All implementations must embed UnimplementedComputeServiceServer
 // for forward compatibility.
@@ -171,6 +182,7 @@ type ComputeServiceServer interface {
 	StopInstance(context.Context, *StopInstanceRequest) (*StopInstanceResponse, error)
 	UpdateInstance(context.Context, *UpdateInstanceRequest) (*UpdateInstanceResponse, error)
 	DeleteInstance(context.Context, *DeleteInstanceRequest) (*DeleteInstanceResponse, error)
+	GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error)
 	mustEmbedUnimplementedComputeServiceServer()
 }
 
@@ -184,33 +196,29 @@ type UnimplementedComputeServiceServer struct{}
 func (UnimplementedComputeServiceServer) CreateInstance(*CreateInstanceRequest, grpc.ServerStreamingServer[CreateInstanceResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method CreateInstance not implemented")
 }
-
 func (UnimplementedComputeServiceServer) ListInstances(*ListInstancesRequest, grpc.ServerStreamingServer[ListInstancesResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ListInstances not implemented")
 }
-
 func (UnimplementedComputeServiceServer) GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetInstance not implemented")
 }
-
 func (UnimplementedComputeServiceServer) GetInstanceLogs(*GetInstanceLogsRequest, grpc.ServerStreamingServer[GetInstanceLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method GetInstanceLogs not implemented")
 }
-
 func (UnimplementedComputeServiceServer) StartInstance(context.Context, *StartInstanceRequest) (*StartInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StartInstance not implemented")
 }
-
 func (UnimplementedComputeServiceServer) StopInstance(context.Context, *StopInstanceRequest) (*StopInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopInstance not implemented")
 }
-
 func (UnimplementedComputeServiceServer) UpdateInstance(context.Context, *UpdateInstanceRequest) (*UpdateInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateInstance not implemented")
 }
-
 func (UnimplementedComputeServiceServer) DeleteInstance(context.Context, *DeleteInstanceRequest) (*DeleteInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteInstance not implemented")
+}
+func (UnimplementedComputeServiceServer) GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSystemInfo not implemented")
 }
 func (UnimplementedComputeServiceServer) mustEmbedUnimplementedComputeServiceServer() {}
 func (UnimplementedComputeServiceServer) testEmbeddedByValue()                        {}
@@ -356,6 +364,24 @@ func _ComputeService_DeleteInstance_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ComputeService_GetSystemInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSystemInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ComputeServiceServer).GetSystemInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ComputeService_GetSystemInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ComputeServiceServer).GetSystemInfo(ctx, req.(*GetSystemInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ComputeService_ServiceDesc is the grpc.ServiceDesc for ComputeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -382,6 +408,10 @@ var ComputeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteInstance",
 			Handler:    _ComputeService_DeleteInstance_Handler,
+		},
+		{
+			MethodName: "GetSystemInfo",
+			Handler:    _ComputeService_GetSystemInfo_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -316,8 +316,8 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	}
 
 	// Check if instance is actually running via exelet
-	exeletClient, _, err := p.server.selectExeletClient(box.CreatedByUserID)
-	if err == nil {
+	exeletClient := p.server.getExeletClient(box.Ctrhost)
+	if exeletClient != nil {
 		instanceResp, err := exeletClient.client.GetInstance(ctx, &api.GetInstanceRequest{
 			ID: *box.ContainerID,
 		})

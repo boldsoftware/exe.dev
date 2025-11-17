@@ -14,6 +14,7 @@ import (
 	"exe.dev/boxname"
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
+	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/sqlite"
 	"exe.dev/sshsession"
 	"exe.dev/termfun"
@@ -777,27 +778,69 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 	}
 }
 
-// handleContainerLogs shows logs for a failed container
+// handleContainerLogs shows logs for a failed instance
 func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, boxName string) {
-	// Show error message about container failure
-	fmt.Fprintf(s, "\033[1;31mContainer '%s' is not running\033[0m\r\n\r\n", boxName)
+	// Show error message about instance failure
+	fmt.Fprintf(s, "\033[1;31mInstance '%s' is not running\033[0m\r\n\r\n", boxName)
 
 	// Extract trace_id from SSH context and add to Go context for gRPC propagation
 	var baseCtx context.Context = s.Context()
 
-	// Get logs if container manager is available
 	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
 	defer cancel()
 
-	// Get container logs
-	logs, err := ss.server.containerManager.GetContainerLogs(ctx, allocID, containerID, 100)
+	// Get the box to find which exelet it's on
+	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, q *exedb.Queries) (exedb.Box, error) {
+		return q.GetBoxByNameAndAlloc(ctx, exedb.GetBoxByNameAndAllocParams{
+			Name:            boxName,
+			CreatedByUserID: allocID,
+		})
+	})
 	if err != nil {
-		fmt.Fprintf(s, "\033[1;33mFailed to retrieve container logs: %v\033[0m\r\n", err)
+		fmt.Fprintf(s, "\033[1;33mFailed to look up instance: %v\033[0m\r\n", err)
+		fmt.Fprintf(s, "To delete this instance, run:\r\n")
+		fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
 		return
 	}
 
+	// Find the exelet client for this box
+	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+	if exeletClient == nil {
+		fmt.Fprintf(s, "\033[1;33mExelet host not available\033[0m\r\n")
+		fmt.Fprintf(s, "To delete this instance, run:\r\n")
+		fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
+		return
+	}
+
+	// Get instance logs from exelet
+	stream, err := exeletClient.client.GetInstanceLogs(ctx, &computeapi.GetInstanceLogsRequest{ID: containerID})
+	if err != nil {
+		fmt.Fprintf(s, "\033[1;33mFailed to retrieve instance logs: %v\033[0m\r\n", err)
+		fmt.Fprintf(s, "To delete this instance, run:\r\n")
+		fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
+		return
+	}
+
+	// Collect logs from stream (limit to ~100 lines)
+	var logs []string
+	logCount := 0
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Fprintf(s, "\033[1;33mError reading logs: %v\033[0m\r\n", err)
+			break
+		}
+		if resp.Log != nil && logCount < 100 {
+			logs = append(logs, resp.Log.Message)
+			logCount++
+		}
+	}
+
 	if len(logs) > 0 {
-		fmt.Fprintf(s, "\033[1;36mContainer logs:\033[0m\r\n")
+		fmt.Fprintf(s, "\033[1;36mInstance logs:\033[0m\r\n")
 		fmt.Fprintf(s, "────────────────────────────────────────\r\n")
 		for _, line := range logs {
 			fmt.Fprintf(s, "%s\r\n", line)
@@ -807,7 +850,7 @@ func (ss *SSHServer) handleContainerLogs(s ssh.Session, allocID, containerID, bo
 		fmt.Fprintf(s, "\033[1;33mNo logs available\033[0m\r\n")
 	}
 
-	fmt.Fprintf(s, "To delete this container, run:\r\n")
+	fmt.Fprintf(s, "To delete this instance, run:\r\n")
 	fmt.Fprintf(s, "  \033[1m%s rm %s\033[0m\r\n", ss.server.replSSHConnectionCommand(), boxName)
 }
 

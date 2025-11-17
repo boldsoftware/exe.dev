@@ -77,10 +77,14 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	// Check if this is an exeuntu-based box
 	isExeuntu := strings.Contains(box.Image, "exeuntu") || box.Image == "boldsoftware/exeuntu"
 
-	// Get the actual architecture of the container host
-	arch := ss.server.containerManager.GetHostArch()
+	// Get the actual architecture from the exelet client
+	exeletClient := ss.server.getExeletClient(box.Ctrhost)
+	if exeletClient == nil {
+		return fmt.Errorf("exelet host not available for box")
+	}
+	arch := exeletClient.client.Arch()
 	if arch == "" {
-		return fmt.Errorf("container host architecture not available")
+		return fmt.Errorf("architecture not available for box host")
 	}
 
 	if !isExeuntu {

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"net/url"
 
 	"google.golang.org/grpc"
@@ -15,9 +16,11 @@ import (
 type Client struct {
 	computeapi.ComputeServiceClient
 	storageapi.StorageServiceClient
-	conn *grpc.ClientConn
-	addr string
-	cfg  *ClientConfig
+	conn    *grpc.ClientConn
+	addr    string
+	cfg     *ClientConfig
+	arch    string
+	version string
 }
 
 type ClientConfig struct {
@@ -41,11 +44,11 @@ func NewClient(addr string, clientOpts ...ClientOpt) (*Client, error) {
 	}
 
 	client := &Client{
-		computeapi.NewComputeServiceClient(c),
-		storageapi.NewStorageServiceClient(c),
-		c,
-		addr,
-		cfg,
+		ComputeServiceClient: computeapi.NewComputeServiceClient(c),
+		StorageServiceClient: storageapi.NewStorageServiceClient(c),
+		conn:                 c,
+		addr:                 addr,
+		cfg:                  cfg,
 	}
 
 	return client, nil
@@ -59,6 +62,29 @@ func (c *Client) Conn() *grpc.ClientConn {
 // Close closes the underlying GRPC client
 func (c *Client) Close() error {
 	return c.conn.Close()
+}
+
+// Arch returns the cached architecture of the exelet server.
+// Returns empty string if GetSystemInfo has not been called yet.
+func (c *Client) Arch() string {
+	return c.arch
+}
+
+// Version returns the cached version of the exelet server.
+// Returns empty string if GetSystemInfo has not been called yet.
+func (c *Client) Version() string {
+	return c.version
+}
+
+// GetSystemInfo fetches system information from the exelet server and caches it.
+func (c *Client) GetSystemInfo(ctx context.Context, req *computeapi.GetSystemInfoRequest) (*computeapi.GetSystemInfoResponse, error) {
+	resp, err := c.ComputeServiceClient.GetSystemInfo(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	c.arch = resp.Arch
+	c.version = resp.Version
+	return resp, nil
 }
 
 func getConn(addr string, opts []grpc.DialOption) (*grpc.ClientConn, error) {
