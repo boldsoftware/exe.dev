@@ -8,6 +8,7 @@ package v1
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -196,27 +197,35 @@ type UnimplementedComputeServiceServer struct{}
 func (UnimplementedComputeServiceServer) CreateInstance(*CreateInstanceRequest, grpc.ServerStreamingServer[CreateInstanceResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method CreateInstance not implemented")
 }
+
 func (UnimplementedComputeServiceServer) ListInstances(*ListInstancesRequest, grpc.ServerStreamingServer[ListInstancesResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ListInstances not implemented")
 }
+
 func (UnimplementedComputeServiceServer) GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetInstance not implemented")
 }
+
 func (UnimplementedComputeServiceServer) GetInstanceLogs(*GetInstanceLogsRequest, grpc.ServerStreamingServer[GetInstanceLogsResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method GetInstanceLogs not implemented")
 }
+
 func (UnimplementedComputeServiceServer) StartInstance(context.Context, *StartInstanceRequest) (*StartInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StartInstance not implemented")
 }
+
 func (UnimplementedComputeServiceServer) StopInstance(context.Context, *StopInstanceRequest) (*StopInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopInstance not implemented")
 }
+
 func (UnimplementedComputeServiceServer) UpdateInstance(context.Context, *UpdateInstanceRequest) (*UpdateInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateInstance not implemented")
 }
+
 func (UnimplementedComputeServiceServer) DeleteInstance(context.Context, *DeleteInstanceRequest) (*DeleteInstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteInstance not implemented")
 }
+
 func (UnimplementedComputeServiceServer) GetSystemInfo(context.Context, *GetSystemInfoRequest) (*GetSystemInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSystemInfo not implemented")
 }
