@@ -31,8 +31,8 @@ echo "Formatting Go code with gofumpt..."
 # of 20 files seemed faster than the other approaches.
 # time find . -name "*.go" -not -path "./deps/sshpiper/*" -exec gofumpt -extra -w {} +
 # time gofumpt -extra -w $(git ls-files -- "*.go" | grep -v -E '^deps/sshpiper')
-# Exclude generated files (*.gen.go) since they may have different formatting from code generators
-git ls-files -- "*.go" | grep -v -E '^deps/sshpiper' | grep -v '\.gen\.go$' | xargs -P $(nproc) -n 20 gofumpt -extra -w
+# Exclude generated files (*.gen.go, *.pb.go) since they may have different formatting from code generators
+git ls-files -- "*.go" | grep -v -E '^deps/sshpiper' | grep -v '\.gen\.go$' | grep -v '\.pb\.go$' | xargs -P $(nproc) -n 20 gofumpt -extra -w
 echo "✓ Go code formatted"
 
 echo "Checking shelley/ui formatting..."
