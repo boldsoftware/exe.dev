@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"exe.dev/sqlite"
+	"exe.dev/stage"
 )
 
 // createTestRequest creates an http.Request with proper context for proxy tests
@@ -484,7 +485,9 @@ func TestIsProxyRequest(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create server with specified dev mode
-			s := &Server{devMode: tc.devMode}
+			env := stage.Local()
+			env.DevMode = tc.devMode
+			s := &Server{env: env}
 
 			result := s.isProxyRequest(tc.host)
 			if result != tc.expected {

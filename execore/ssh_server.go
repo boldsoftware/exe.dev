@@ -394,7 +394,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 			Output:            s,
 			SSHSession:        s,
 			Terminal:          terminal, // Interactive terminal available
-			DevMode:           ss.server.devMode == "local",
+			DevMode:           ss.server.env.DevMode == "local",
 			Logger:            ss.server.slog(),
 			Gateway:           ss.server.gateway,
 			ExedListeningPort: ss.server.httpLn.tcp.Port,
@@ -412,7 +412,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
 func (ss *SSHServer) showAnimatedWelcome(s sshsession.Session) {
 	// Skip animation in test mode for faster tests
-	if ss.server.devMode == "test" {
+	if ss.server.env.DevMode == "test" {
 		fmt.Fprint(s, "~~~ EXE.DEV ~~~\r\n")
 		return
 	}
@@ -763,7 +763,7 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 		Output:            exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
 		SSHSession:        sshsession.NewShell(s),
 		Terminal:          nil, // No interactive terminal for exec mode
-		DevMode:           ss.server.devMode == "local",
+		DevMode:           ss.server.env.DevMode == "local",
 		Logger:            ss.server.slog(),
 		Gateway:           ss.server.gateway,
 		ExedListeningPort: ss.server.httpLn.tcp.Port,
@@ -909,7 +909,7 @@ The EXE.DEV team`, publicKey, verifyURL)
 			ss.server.deleteEmailVerification(verif)
 			return nil, fmt.Errorf("failed to send verification email: %v", err)
 		}
-		if ss.server.devMode != "" {
+		if ss.server.env.DevMode != "" {
 			fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 		}
 
@@ -937,7 +937,7 @@ The EXE.DEV team`, verifyURL)
 		ss.server.deleteEmailVerification(verif)
 		return nil, fmt.Errorf("failed to send verification email: %v", err)
 	}
-	if ss.server.devMode != "" {
+	if ss.server.env.DevMode != "" {
 		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 	}
 
@@ -1001,7 +1001,7 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb
 			Output:            s,
 			SSHSession:        s,
 			Terminal:          terminal,
-			DevMode:           ss.server.devMode == "local",
+			DevMode:           ss.server.env.DevMode == "local",
 			Logger:            ss.server.slog(),
 			Gateway:           ss.server.gateway,
 			ExedListeningPort: ss.server.httpLn.tcp.Port,

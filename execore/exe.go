@@ -45,6 +45,7 @@ import (
 	"exe.dev/route53"
 	"exe.dev/sqlite"
 	"exe.dev/sshpool2"
+	"exe.dev/stage"
 	"exe.dev/tagresolver"
 	templatespkg "exe.dev/templates"
 	"github.com/keighl/postmark"
@@ -135,6 +136,7 @@ type MagicSecret struct {
 
 // Server implements both HTTP and SSH server functionality for exe.dev
 type Server struct {
+	env        stage.Env // prod, staging, local, test, etc.
 	httpLn     *listener
 	proxyLns   []*listener // Additional listeners for proxy ports
 	httpsLn    *listener
@@ -202,8 +204,6 @@ type Server struct {
 	// Email service
 	postmarkClient *postmark.Client
 	fakeHTTPEmail  string // fake HTTP email server URL for sending emails (for e2e tests)
-
-	devMode string // Development mode: "" (production) or "local" (Docker) or "test" for test mode
 
 	// Metrics
 	metricsRegistry *prometheus.Registry
@@ -325,7 +325,11 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses, exeletAddresses []string, gateway string) (*Server, error) {
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses, exeletAddresses []string, gateway string, env stage.Env) (*Server, error) {
+	if env.DevMode != devMode {
+		return nil, fmt.Errorf("env dev mode %q does not match devMode %q", env.DevMode, devMode)
+	}
+
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, dbPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
@@ -436,7 +440,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 	slog.Info("exelet clients initialized", "count", len(validExeletAddrs))
 
-	includeUnpublishedDocs := devMode != ""
+	includeUnpublishedDocs := env.DevMode != ""
 	docsStore, err := docspkg.Load(includeUnpublishedDocs)
 	if err != nil {
 		db.Close()
@@ -457,6 +461,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 
 	s := &Server{
+		env:                env,
 		httpLn:             httpLn,
 		httpsLn:            httpsLn,
 		sshLn:              sshLn,
@@ -474,7 +479,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		githubUser:         ghu,
 		postmarkClient:     postmarkClient,
 		fakeHTTPEmail:      fakeEmailServer,
-		devMode:            devMode,
 		gateway:            gateway,
 		PublicIPs:          map[netip.Addr]publicips.PublicIP{},
 
@@ -487,7 +491,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		log:       slog,
 	}
 
-	if devMode == "" {
+	if env.DevMode == "" {
 		s.dnsProvider = route53.NewDNSProvider()
 	}
 
@@ -512,7 +516,7 @@ func (s *Server) initializePublicIPs() {
 		return
 	}
 
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		s.logPublicIPs()
 		return
 	}
@@ -533,7 +537,7 @@ func (s *Server) initializePublicIPs() {
 
 func (s *Server) logPublicIPs() {
 	if len(s.PublicIPs) == 0 {
-		if s.devMode != "" {
+		if s.env.DevMode != "" {
 			s.slog().Info("dev mode: skipping public IP metadata lookup")
 			return
 		}
@@ -730,7 +734,7 @@ func generatePairingCode() string {
 
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return fmt.Sprintf("http://localhost:%v", s.httpLn.tcp.Port)
 	}
 	return "https://exe.dev"
@@ -747,7 +751,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 	}
 
 	// In dev mode, always just log the email
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		s.slog().Info("DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
 		return nil
 	}
@@ -1070,14 +1074,14 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 }
 
 func (s *Server) boxSSHHost() string {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return "localhost"
 	}
 	return "exe.dev"
 }
 
 func (s *Server) boxSSHPort() int {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return s.piperdPort
 	}
 	return 22
@@ -1093,14 +1097,14 @@ func (s *Server) boxSSHConnectionCommand(boxName string) string {
 }
 
 func (s *Server) replSSHHost() string {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return "localhost"
 	}
 	return "exe.dev"
 }
 
 func (s *Server) replSSHPort() int {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return s.piperdPort
 	}
 	return 22
@@ -1117,7 +1121,7 @@ func (s *Server) replSSHConnectionCommand() string {
 
 // httpsProxyAddress returns the HTTPS proxy address for a box.
 func (s *Server) httpsProxyAddress(boxName string) string {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpLn.tcp.Port)
 	}
 	return fmt.Sprintf("https://%s.exe.dev", boxName)
@@ -1125,7 +1129,7 @@ func (s *Server) httpsProxyAddress(boxName string) string {
 
 // terminalURL returns the terminal URL for a box.
 func (s *Server) terminalURL(boxName string) string {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, s.httpLn.tcp.Port)
 	}
 	return fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
@@ -1133,7 +1137,7 @@ func (s *Server) terminalURL(boxName string) string {
 
 // shelleyURL returns the Shelley agent URL for a box (port 9999).
 func (s *Server) shelleyURL(boxName string) string {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return fmt.Sprintf("http://%s.localhost:%d", boxName, 9999)
 	}
 	return fmt.Sprintf("https://%s.exe.dev:9999", boxName)
@@ -1186,7 +1190,7 @@ func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image 
 		return 0, err
 	}
 
-	if s.devMode == "" {
+	if s.env.DevMode == "" {
 		if err := s.createBoxCNAME(ctx, name, assignedShard); err != nil {
 			cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
 			if cleanupErr != nil {
@@ -1671,7 +1675,7 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	if s.devMode == "local" {
+	if s.env.DevMode == "local" {
 		// In dev mode, automatically start sshpiper if not already running
 		go s.autoStartSSHPiper(ctx)
 

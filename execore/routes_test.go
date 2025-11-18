@@ -1,12 +1,16 @@
 package execore
 
-import "testing"
+import (
+	"testing"
+
+	"exe.dev/stage"
+)
 
 func TestProxyHostnameParsing(t *testing.T) {
 	t.Parallel()
 
 	prodServer := &Server{}
-	devServer := &Server{devMode: "dev"}
+	devServer := &Server{env: stage.Local()}
 
 	tests := []struct {
 		name        string

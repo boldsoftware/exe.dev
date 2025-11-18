@@ -11,12 +11,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"slices"
 	"strings"
 	"time"
 
 	"exe.dev/ctrhosttest"
 	"exe.dev/execore"
 	"exe.dev/logging"
+	"exe.dev/stage"
 )
 
 func main() {
@@ -35,6 +37,7 @@ func run() error {
 	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt)")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
+	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test", overridden by -dev flag`)
 	containerdAddresses := flag.String("containerd-addresses", "", "Comma-separated list of containerd addresses (e.g., 'ssh://host1,ssh://host2')")
 	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
@@ -48,6 +51,37 @@ func run() error {
 	// Validate dev mode
 	if *devMode != "" && *devMode != "local" && *devMode != "test" {
 		return fmt.Errorf(`valid dev modes are "", "local", and "test", got: %q`, *devMode)
+	}
+
+	// Validate stage
+	validStages := []string{"prod", "staging", "local", "test"}
+	if !slices.Contains(validStages, *stageName) {
+		return fmt.Errorf(`valid stages are %q, got: %q`, validStages, *stageName)
+	}
+
+	// Override stage if dev mode is set
+	switch *devMode {
+	case "local":
+		*stageName = "local"
+	case "test":
+		*stageName = "test"
+	}
+
+	// Look up env and synchronize stage back to dev mode
+	var env stage.Env
+	switch *stageName {
+	case "prod":
+		env = stage.Prod()
+	case "staging":
+		env = stage.Staging()
+	case "local":
+		env = stage.Local()
+		env.DevMode = "local"
+	case "test":
+		env = stage.Local()
+		env.DevMode = "test"
+	default:
+		return fmt.Errorf("unsupported stage: %q", *stageName)
 	}
 
 	// Validate -open flag (dev mode only)
@@ -173,7 +207,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses, exeletAddrs, *gateway)
+	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses, exeletAddrs, *gateway, env)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

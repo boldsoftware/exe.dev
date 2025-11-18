@@ -102,7 +102,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Reject HTTPS requests to localhost domains in dev mode
-	if r.TLS != nil && s.devMode != "" && strings.HasSuffix(hostHeaderHost, ".localhost") {
+	if r.TLS != nil && s.env.DevMode != "" && strings.HasSuffix(hostHeaderHost, ".localhost") {
 		s.slog().WarnContext(r.Context(), "HTTPS not supported for localhost domains", "host", r.Host)
 		http.Error(w, "HTTPS not supported for localhost domains. Use exe.local instead.", http.StatusBadRequest)
 		return
@@ -185,7 +185,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle debug path in dev mode
-	if r.URL.Path == "/__exe.dev/debug" && s.devMode != "" {
+	if r.URL.Path == "/__exe.dev/debug" && s.env.DevMode != "" {
 		// Show debug info for /__exe.dev/debug in dev mode
 		w.Header().Set("Content-Type", "text/plain")
 		fmt.Fprintf(w, "Proxy handler - Route matched!\n")
@@ -264,7 +264,7 @@ func (s *Server) isProxyRequest(host string) bool {
 		return false
 	}
 
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		// There are special rules for dev mode:
 		//    - If port is specified, it must be numeric
 		//    - If host contains only ":", it is not a proxy request
@@ -299,7 +299,7 @@ func (s *Server) parseProxyHostname(hostname string) (box string) {
 	}
 
 	// In dev mode, also try localhost suffix for HTTP
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		hostname, hadSuffix = strings.CutSuffix(hostname, ".localhost")
 		if hadSuffix && hostname != "" && !strings.Contains(hostname, ".") {
 			return hostname
@@ -347,7 +347,7 @@ func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string,
 // If sub is empty, it returns just the domain (e.g., "exe.local" or "exe.dev").
 func (s *Server) getMainDomain(sub ...string) string {
 	domain := "exe.dev"
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		if s.httpsLn != nil && s.httpsLn.ln != nil {
 			domain = "exe.local"
 		} else {
@@ -365,7 +365,7 @@ func (s *Server) getMainDomainWithPort() string {
 	domain := s.getMainDomain()
 
 	// In dev mode, add the HTTP port
-	if s.devMode != "" && s.httpLn != nil && s.httpLn.tcp != nil {
+	if s.env.DevMode != "" && s.httpLn != nil && s.httpLn.tcp != nil {
 		port := s.httpLn.tcp.Port
 		// Only add port if it's not the default HTTP port (80)
 		if port != 80 {
@@ -378,7 +378,7 @@ func (s *Server) getMainDomainWithPort() string {
 
 // getProxyPorts returns the list of ports that should be used for proxying
 func (s *Server) getProxyPorts() []int {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		// Check if test infrastructure provided specific ports
 		if testPorts := os.Getenv("TEST_PROXY_PORTS"); testPorts != "" {
 			var ports []int
@@ -530,7 +530,7 @@ func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
 	// - HTTPS uses exe.local
 	// In production, always use exe.dev
 	var mainDomain string
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		if r.TLS != nil {
 			mainDomain = "exe.local"
 		} else {
@@ -621,7 +621,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 
 	// In dev mode, choose domain based on scheme
 	var mainDomain string
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		if r.TLS != nil {
 			mainDomain = "exe.local"
 		} else {
@@ -713,7 +713,7 @@ func (s *Server) resolveSSHHost(ctrhost string) string {
 		}
 	}
 	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		if _, err := net.LookupHost(sshHost); err != nil {
 			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
 				s.slog().Debug("Resolved host via SSH config for dev", "alias", sshHost, "ip", ip)

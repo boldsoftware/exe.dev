@@ -475,7 +475,7 @@ The exe.dev team`, verifyURL, token)
 		QueryString: r.URL.RawQuery,
 	}
 
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		data.DevURL = verifyURL
 	}
 
@@ -509,7 +509,7 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 		Value:    cookieValue,
 		Path:     "/",
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
-		Secure:   s.devMode == "", // Only secure in production
+		Secure:   s.env.DevMode == "", // Only secure in production
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -566,7 +566,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		Value:    cookieValue,
 		Path:     "/",
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
-		Secure:   s.devMode == "", // Only secure in production
+		Secure:   s.env.DevMode == "", // Only secure in production
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -621,7 +621,7 @@ func sseEvent(w http.ResponseWriter, event, data string) {
 
 // terminalAddress returns the terminal URL for a box
 func (s *Server) terminalAddress(boxName string) string {
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		return fmt.Sprintf("http://%s.xterm.localhost:%d/", boxName, s.httpLn.tcp.Port)
 	}
 	return fmt.Sprintf("https://%s.xterm.exe.dev/", boxName)

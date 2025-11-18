@@ -405,7 +405,7 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 	port := sshDetails.Port
 
 	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
-	if p.server.devMode != "" {
+	if p.server.env.DevMode != "" {
 		if _, err := net.LookupHost(host); err != nil {
 			if ip := ctrhosttest.ResolveHostFromSSHConfig(host); ip != "" {
 				slog.DebugContext(ctx, "Resolved host via SSH config for dev", "component", "piper-plugin", "alias", host, "ip", ip)

@@ -76,7 +76,7 @@ func (s *Server) prepareLlmGateway() http.Handler {
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,
-	}, s.devMode != "")
+	}, s.env.DevMode != "")
 	return lg
 }
 
@@ -99,7 +99,7 @@ func (s *Server) setupHTTPSServer() {
 		return
 	}
 
-	if s.devMode == "" {
+	if s.env.DevMode == "" {
 		s.slog().Info("Using Route 53 DNS provider for wildcard TLS certificates")
 		s.wildcardCertManager = route53.NewWildcardCertManager(
 			[]string{s.getMainDomain(), s.getMainDomain("xterm")},
@@ -118,7 +118,7 @@ func (s *Server) setupHTTPSServer() {
 
 	// Don't start cobble in test mode. This speeds up tests.
 	// If a particular test needs cobble, it should start it directly.
-	if s.devMode == "local" {
+	if s.env.DevMode == "local" {
 		// In dev mode, use cobble to get locally-trusted certs
 		s.slog().Info("Using Pebble ACME test server for TLS certificates in dev mode")
 		stone, err := cobble.Start(context.Background(), &cobble.Config{
@@ -212,7 +212,7 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 		}
 
 		// In dev mode, also try localhost suffix
-		if s.devMode != "" {
+		if s.env.DevMode != "" {
 			hostname, _ = strings.CutSuffix(hostname, "localhost")
 			if hostname == "" {
 				return hostname
@@ -1123,7 +1123,7 @@ The exe.dev team`, verifyEmailURL)
 
 	// Show success page
 	var devURL string
-	if s.devMode != "" && (strings.Contains(r.Host, "localhost") || strings.Contains(r.Host, "127.0.0.1")) {
+	if s.env.DevMode != "" && (strings.Contains(r.Host, "localhost") || strings.Contains(r.Host, "127.0.0.1")) {
 		devURL = verifyEmailURL
 	}
 	s.showAuthEmailSent(w, r, email, devURL)
@@ -1929,7 +1929,7 @@ func (s *Server) isMainDomain(host string) bool {
 
 	// Check if it's exactly the main domain or www subdomain
 	return hostname == mainDomain || hostname == "www."+mainDomain ||
-		(s.devMode != "" && (hostname == "localhost" || hostname == "exe.local"))
+		(s.env.DevMode != "" && (hostname == "localhost" || hostname == "exe.local"))
 }
 
 func stripPort(host string) string {

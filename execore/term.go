@@ -443,7 +443,7 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 			sshHost = ctrhost
 		}
 	}
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		if _, herr := net.LookupHost(sshHost); herr != nil {
 			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
 				slog.Debug("[TERMINAL] Resolved host via SSH config", "alias", sshHost, "ip", ip)
@@ -611,7 +611,7 @@ func (s *Server) terminalBaseHostname() string {
 	// Development: box.xterm.localhost
 	// Production: box.xterm.exe.dev
 	base := ".xterm.exe.dev"
-	if s.devMode != "" {
+	if s.env.DevMode != "" {
 		base = ".xterm.localhost"
 	}
 	return base

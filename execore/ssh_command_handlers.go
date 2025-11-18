@@ -193,7 +193,7 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 	}
 
 	ct := &exemenu.CommandTree{Commands: commands}
-	if ss.server != nil && ss.server.devMode == "local" {
+	if ss.server != nil && ss.server.env.DevMode == "local" {
 		ct.DevMode = true
 	}
 	return ct
