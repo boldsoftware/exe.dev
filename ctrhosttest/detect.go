@@ -42,12 +42,28 @@ func Detect() string {
 }
 
 func ResolveDefaultGateway() string {
-	if v := strings.TrimSpace(os.Getenv("CTR_HOST")); v != "" {
-		return v
-	}
 	host := defaultHost
 	if flag.Lookup("test.v") != nil {
 		host = defaultHostForTests
+	}
+
+	// If CTR_HOST is set, extract the SSH host from it
+	if v := strings.TrimSpace(os.Getenv("CTR_HOST")); v != "" {
+		// Parse ssh://[user@]host[:port] format
+		if strings.HasPrefix(v, "ssh://") {
+			v = strings.TrimPrefix(v, "ssh://")
+			// Remove :port suffix if present (but keep user@ prefix for SSH)
+			if idx := strings.LastIndex(v, ":"); idx >= 0 {
+				// Only strip port if it comes after @ (to avoid stripping from user:pass@host)
+				// and if what follows looks like a port number
+				if atIdx := strings.Index(v, "@"); atIdx < 0 || idx > atIdx {
+					v = v[:idx]
+				}
+			}
+			host = v
+		} else {
+			host = v
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -56,7 +72,9 @@ func ResolveDefaultGateway() string {
 		"-o", "ConnectTimeout=3",
 		"-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=no",
-		host, "sh", "-c", "getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}'",
+		"-o", "LogLevel=ERROR",
+		"-o", "UserKnownHostsFile=/dev/null",
+		host, "getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}'",
 	)
 	out, err := cmd.Output()
 	if err != nil {
