@@ -111,7 +111,7 @@ func (s *Server) setupHTTPSServer() {
 	s.certManager = &autocert.Manager{
 		Cache:      autocert.DirCache("certs"),
 		Prompt:     autocert.AcceptTOS,
-		HostPolicy: s.hostPolicy,
+		HostPolicy: s.validateHostForTLSCert,
 	}
 
 	// Don't start cobble in test mode. This speeds up tests.
@@ -249,7 +249,8 @@ func (s *Server) lookupA(ctx context.Context, host string) ([]netip.Addr, error)
 	return net.DefaultResolver.LookupNetIP(ctx, "ip4", host)
 }
 
-func (s *Server) hostPolicy(ctx context.Context, host string) error {
+// validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
+func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error {
 	host = strings.TrimSuffix(strings.ToLower(host), ".")
 	if host == s.getMainDomain() || host == s.getMainDomain("www") || strings.HasSuffix(host, "."+s.getMainDomain()) {
 		return nil

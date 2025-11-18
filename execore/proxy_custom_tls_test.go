@@ -25,7 +25,7 @@ func TestServerGetCertificate(t *testing.T) {
 	s.certManager = &autocert.Manager{
 		Cache:      autocert.DirCache(t.TempDir()),
 		Prompt:     autocert.AcceptTOS,
-		HostPolicy: s.hostPolicy,
+		HostPolicy: s.validateHostForTLSCert,
 		Client: func() *acme.Client {
 			stone, err := cobble.Start(context.Background(), &cobble.Config{
 				AlwaysValid: true,

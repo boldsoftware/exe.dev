@@ -53,10 +53,10 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 		},
 	}
 
-	if err := s.hostPolicy(ctx, "knownhosts.net"); err != nil {
+	if err := s.validateHostForTLSCert(ctx, "knownhosts.net"); err != nil {
 		t.Fatalf("hostPolicy(%q) error = %v, want nil", "knownhosts.net", err)
 	}
-	if err := s.hostPolicy(ctx, "google.com"); err == nil {
+	if err := s.validateHostForTLSCert(ctx, "google.com"); err == nil {
 		t.Fatalf("hostPolicy(%q) error = nil, want non-nil", "google.com")
 	}
 }
