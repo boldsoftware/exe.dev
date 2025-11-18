@@ -308,6 +308,7 @@ func sshExec(ctx context.Context, host, command string) (string, error) {
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
 		host, command)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -318,6 +319,7 @@ func scpUpload(localPath, host, remotePath string) error {
 	cmd := exec.Command("scp",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
 		localPath, host+":"+remotePath)
 	return cmd.Run()
 }
