@@ -95,4 +95,6 @@ The proxy transparently forwards ports between 2000 and 9999.
 For example, if you are serving on port 3456 on your box,
 you can access that at https://boxname.exe.dev:3456/.
 
-Non-default ports cannot be made fully public.
+You may only mark a single port public (with the `share set-public` and `share
+port` commands); these alternate ports can only be accessed by users with access
+to the box.
