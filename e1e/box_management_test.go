@@ -170,30 +170,25 @@ func TestVanillaBox(t *testing.T) {
 	})
 
 	t.Run("metadata_service", func(t *testing.T) {
+		// Get the VM's IP address so we can canonicalize it BEFORE starting the pty session
+		// that will be recorded in the golden file
+		out, err := boxSSHCommand(t, boxName, keyFile, "curl --max-time 10 -s http://169.254.169.254/ | jq -r .source_ip").CombinedOutput()
+		if err != nil {
+			t.Fatalf("failed to get IP: %v", err)
+		}
+		vmIP := strings.TrimSpace(string(out))
+		if vmIP != "" && strings.HasPrefix(vmIP, "192.168.") {
+			Env.addCanonicalization(vmIP, "VM_IP")
+		}
+
 		pty := sshToBox(t, boxName, keyFile)
 		defer pty.disconnect()
 
 		pty.wantPrompt()
 
-		// Get the VM's IP address so we can canonicalize it
+		// Test metadata service returns source_ip
 		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .source_ip")
-		out, err := pty.console.ExpectString("$")
-		if err != nil {
-			t.Fatalf("failed to get IP: %v", err)
-		}
-		// Extract IP from output (it's between the command and the prompt)
-		lines := strings.Split(out, "\n")
-		var vmIP string
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "192.168.") {
-				vmIP = line
-				break
-			}
-		}
-		if vmIP != "" {
-			Env.addCanonicalization(vmIP, "VM_IP")
-		}
+		pty.wantPrompt()
 
 		// Test metadata service returns JSON with instance information
 		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -M .")
