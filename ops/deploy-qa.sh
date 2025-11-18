@@ -37,7 +37,7 @@ echo
 echo "running codex. this will take a while..."
 echo
 
-codex exec --model gpt-5-codex --sandbox read-only --full-auto --cd $(git rev-parse --show-toplevel) - <<EOF
+codex exec --model gpt-5.1-codex --sandbox read-only --full-auto --cd $(git rev-parse --show-toplevel) - <<EOF
 I'm about to deploy HEAD to production. ${DEPLOYED_SHA} is currently deployed.
 
 Please inspect all the intervening commits. (You may ignore any devlog commits.)
