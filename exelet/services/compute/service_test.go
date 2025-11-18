@@ -152,11 +152,11 @@ func TestRecreateProxyNotCalledForStoppedInstance(t *testing.T) {
 	instanceID := "test-instance-stopped"
 	sshPort := int32(20023) // Use port in test range (20000-30000)
 	instance := &api.Instance{
-		ID:       instanceID,
-		Name:     "test-instance-stopped",
-		Image:    "test-image",
-		State:    api.VMState_STOPPED,
-		SSHPort:  sshPort,
+		ID:      instanceID,
+		Name:    "test-instance-stopped",
+		Image:   "test-image",
+		State:   api.VMState_STOPPED,
+		SSHPort: sshPort,
 		VMConfig: &api.VMConfig{
 			ID:     instanceID,
 			Name:   "test-instance-stopped",

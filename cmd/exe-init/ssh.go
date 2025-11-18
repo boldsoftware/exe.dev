@@ -90,7 +90,7 @@ func addSSHUser(username string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(config.PasswdPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(config.PasswdPath), 0o755); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(config.PasswdPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, st.Mode())
