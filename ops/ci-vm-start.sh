@@ -25,21 +25,34 @@ cleanup_old_vms() {
             continue
         fi
 
-        # Get VM creation time from the XML definition
-        local vm_xml=$(sudo virsh dumpxml "$vm" 2>/dev/null || true)
-        if [[ -z "$vm_xml" ]]; then
+        # Extract timestamp from VM name (format: ci-ubuntu-YYYYMMDDHHmmss)
+        local timestamp_str=$(echo "$vm" | perl -ne 'print $1 if /^ci-ubuntu-(\d{14})$/')
+        if [[ -z "$timestamp_str" ]]; then
+            # VM doesn't match expected naming pattern, skip it
             continue
         fi
 
-        # Try to get disk path from VM XML to check disk modification time
-        local disk_path=$(echo "$vm_xml" | grep -oP "source file='\K[^']+\.qcow2" | head -n1 || true)
-        if [[ -n "$disk_path" && -f "$disk_path" ]]; then
-            local disk_mtime=$(stat -c %Y "$disk_path" 2>/dev/null || echo "0")
-            if [[ $disk_mtime -lt $one_day_ago ]]; then
-                echo "  Destroying and removing old VM: $vm (disk age: $((($(date +%s) - disk_mtime) / 3600))h)"
-                sudo virsh destroy "$vm" 2>/dev/null || true
-                sudo virsh undefine "$vm" 2>/dev/null || true
-            fi
+        # Parse timestamp: YYYYMMDDHHmmss -> epoch seconds
+        local vm_year="${timestamp_str:0:4}"
+        local vm_month="${timestamp_str:4:2}"
+        local vm_day="${timestamp_str:6:2}"
+        local vm_hour="${timestamp_str:8:2}"
+        local vm_min="${timestamp_str:10:2}"
+        local vm_sec="${timestamp_str:12:2}"
+
+        # Convert to epoch seconds
+        local vm_epoch=$(date -d "${vm_year}-${vm_month}-${vm_day} ${vm_hour}:${vm_min}:${vm_sec}" +%s 2>/dev/null || echo "0")
+
+        if [[ $vm_epoch -eq 0 ]]; then
+            # Failed to parse timestamp, skip this VM
+            continue
+        fi
+
+        if [[ $vm_epoch -lt $one_day_ago ]]; then
+            local age_hours=$((($(date +%s) - vm_epoch) / 3600))
+            echo "  Destroying and removing old VM: $vm (age: ${age_hours}h)"
+            sudo virsh destroy "$vm" 2>/dev/null || true
+            sudo virsh undefine "$vm" 2>/dev/null || true
         fi
     done
 }
