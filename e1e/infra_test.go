@@ -226,13 +226,14 @@ func initLogging() error {
 var Env *testEnv
 
 type testEnv struct {
-	proxy        *tcpProxy
-	exed         exedInstance
-	piperd       piperdInstance
-	exelet       exeletInstance
-	email        *emailServer
-	exedSlogErrC chan string // receives exed ERROR log lines
-	exedGuidLogC chan string // receives exed log lines with guid attribute
+	sshProxy      *tcpProxy
+	exedHTTPProxy *tcpProxy
+	exed          exedInstance
+	piperd        piperdInstance
+	exelet        exeletInstance
+	email         *emailServer
+	exedSlogErrC  chan string // receives exed ERROR log lines
+	exedGuidLogC  chan string // receives exed log lines with guid attribute
 
 	asciinemaMu      sync.Mutex // protects asciinemaWriters
 	asciinemaWriters map[string]*expect.AsciinemaWriter
@@ -265,7 +266,7 @@ type exeletInstance struct {
 }
 
 func (e *testEnv) sshPort() int {
-	return e.proxy.tcp.Port
+	return e.sshProxy.tcp.Port
 }
 
 // parseSSHHost extracts hostname from ssh:// URL
@@ -486,8 +487,11 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 		os.Remove(filepath.Join(os.TempDir(), "exelet-test"))
 	}
 
-	// stop proxy
-	e.proxy.close()
+	// stop proxies
+	e.sshProxy.close()
+	if e.exedHTTPProxy != nil {
+		e.exedHTTPProxy.close()
+	}
 
 	// CoverDir should always be non-empty, but maybe if exed failed to start?
 	// Avoid duplicate/confusing errors by just skipping in this case.
@@ -614,15 +618,15 @@ func setup(ctrHost string) (*testEnv, error) {
 	//
 	// To work around this, we start a simple TCP proxy first, which will act as the sshpiper port.
 	// We then forward traffic from the proxy to the actual sshpiper instance.
-	proxy, err := newTCPProxy()
+	sshProxy, err := newTCPProxy()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tcp proxy: %w", err)
+		return nil, fmt.Errorf("failed to create ssh proxy: %w", err)
 	}
-	go proxy.serve()
-	env.proxy = proxy
-	env.addCanonicalization(proxy.tcp.Port, "SSH_PORT")
+	go sshProxy.serve()
+	env.sshProxy = sshProxy
+	env.addCanonicalization(sshProxy.tcp.Port, "SSH_PORT")
 	if *flagVerbosePorts {
-		slog.Info("proxy listening", "port", proxy.tcp.Port)
+		slog.Info("ssh proxy listening", "port", sshProxy.tcp.Port)
 	}
 
 	// Start email server first so we can pass its URL to exed
@@ -636,14 +640,6 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("email server listening", "port", es.port)
 	}
 
-	// Start exelet before exed so we can pass its address to exed
-	exelet, err := startExelet(ctrHost)
-	if err != nil {
-		return env, err
-	}
-	env.exelet = *exelet
-	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
-
 	// resolve the gateway to pass to exed
 	gateway := ctrhosttest.ResolveDefaultGateway()
 	if gateway == "" {
@@ -651,9 +647,31 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 	slog.Info("resolved default gateway", "addr", gateway)
 
+	// We have a circular dependency: exelet needs to know exed's HTTP port,
+	// but exed needs to know exelet's address. Use the same proxy trick as for sshpiper.
+	// Start a TCP proxy for exed HTTP that we can give to exelet immediately.
+	exedHTTPProxy, err := newTCPProxy()
+	if err != nil {
+		return env, fmt.Errorf("failed to create exed HTTP proxy: %w", err)
+	}
+	go exedHTTPProxy.serve()
+	env.exedHTTPProxy = exedHTTPProxy
+	if *flagVerbosePorts {
+		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.tcp.Port)
+	}
+
+	// Start exelet with the proxy port
+	exedProxyURL := fmt.Sprintf("http://%s:%d", gateway, exedHTTPProxy.tcp.Port)
+	exelet, err := startExelet(ctrHost, gateway, exedProxyURL)
+	if err != nil {
+		return env, err
+	}
+	env.exelet = *exelet
+	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
+
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
-	ei, err := startExed(ctrHost, es.port, proxy.tcp.Port, []int{0, 0}, exelet.Address, gateway, env.exedSlogErrC, env.exedGuidLogC)
+	ei, err := startExed(ctrHost, es.port, sshProxy.tcp.Port, []int{0, 0}, exelet.Address, gateway, env.exedSlogErrC, env.exedGuidLogC)
 	if err != nil {
 		return env, err
 	}
@@ -672,8 +690,12 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("piperd listening", "port", pi.SSHPort)
 	}
 
-	// proxy tcp requests to piperd
-	env.proxy.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: pi.SSHPort})
+	// proxy SSH requests to piperd
+	env.sshProxy.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: pi.SSHPort})
+
+	// Now that exed is running, point the HTTP proxy to the real exed HTTP port
+	env.exedHTTPProxy.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: ei.HTTPPort})
+	slog.Info("exed HTTP proxy now forwarding", "from", exedHTTPProxy.tcp.Port, "to", ei.HTTPPort)
 
 	return env, nil
 }
@@ -778,9 +800,9 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 	return instance, nil
 }
 
-func startExelet(ctrHost string) (*exeletInstance, error) {
+func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
 	start := time.Now()
-	slog.Info("starting exelet", "remote", ctrHost != "")
+	slog.Info("starting exelet", "remote", ctrHost != "", "exedURL", exedURL)
 
 	// Parse remote host
 	host := parseSSHHost(ctrHost)
@@ -822,8 +844,8 @@ func startExelet(ctrHost string) (*exeletInstance, error) {
 	// Start exelet on remote host in background with sudo (needs privileges for bridge setup)
 	// Use a wrapper to ensure we can capture the PID even if the process fails immediately
 	// Use proxy port range 30000-40000 for e1e tests to avoid conflicts with dev (10000-20000) and unit tests (20000-30000)
-	startCmd := fmt.Sprintf(`sudo LOG_FORMAT=json nohup /tmp/exelet-test --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --proxy-port-min 30000 --proxy-port-max 40000 > /tmp/exelet-test-%s.log 2>&1 &`,
-		testRunID)
+	startCmd := fmt.Sprintf(`sudo LOG_FORMAT=json nohup /tmp/exelet-test --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --proxy-port-min 30000 --proxy-port-max 40000 --exed-url %s > /tmp/exelet-test-%s.log 2>&1 &`,
+		exedURL, testRunID)
 	out, err := sshExec(ctx, host, startCmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start remote exelet: %s (%w)\n", string(out), err)

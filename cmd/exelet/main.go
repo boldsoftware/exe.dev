@@ -110,6 +110,11 @@ func main() {
 			Usage: "maximum port for proxy allocation (defaults to 20000)",
 			Value: 20000,
 		},
+		&cli.StringFlag{
+			Name:  "exed-url",
+			Usage: "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",
+			Value: "",
+		},
 	}
 	app.Action = serveAction
 
@@ -140,6 +145,7 @@ func serveAction(clix *cli.Context) error {
 	httpAddr := clix.String("http-addr")
 	proxyPortMin := clix.Int("proxy-port-min")
 	proxyPortMax := clix.Int("proxy-port-max")
+	exedURL := clix.String("exed-url")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -153,6 +159,7 @@ func serveAction(clix *cli.Context) error {
 		EnableInstanceBootOnStartup: enableInstanceBootOnStartup,
 		ProxyPortMin:                proxyPortMin,
 		ProxyPortMax:                proxyPortMax,
+		ExedURL:                     exedURL,
 	}
 
 	opts := []exelet.ServerOpt{}
@@ -222,7 +229,10 @@ func serveAction(clix *cli.Context) error {
 	}
 
 	// Start metadata service after services are registered
-	metadataSvc := metadata.NewService(log, serviceContext.ComputeService)
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL)
+	if err != nil {
+		return err
+	}
 	if err := metadataSvc.Start(ctx); err != nil {
 		return err
 	}

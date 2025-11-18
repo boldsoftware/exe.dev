@@ -32,9 +32,12 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 
 	sloghttp "github.com/samber/slog-http"
@@ -57,20 +60,38 @@ type Service struct {
 	log            *slog.Logger
 	server         *http.Server
 	instanceLookup InstanceLookup
+	exedURL        string
+	exedTargetURL  *url.URL
 }
 
 // NewService creates a new metadata service
-func NewService(log *slog.Logger, computeSvc InstanceLookup) *Service {
-	return &Service{
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL string) (*Service, error) {
+	if exedURL == "" {
+		return nil, fmt.Errorf("exedURL is required")
+	}
+
+	targetURL, err := url.Parse(exedURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse exed URL: %w", err)
+	}
+
+	s := &Service{
 		log:            log,
 		instanceLookup: computeSvc,
+		exedURL:        exedURL,
+		exedTargetURL:  targetURL,
 	}
+
+	return s, nil
 }
 
 // Start starts the metadata HTTP server
 func (s *Service) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRoot)
+
+	// Add gateway proxy handler
+	mux.HandleFunc("/gateway/llm/", s.handleGatewayProxy)
 
 	// Configure slog-http middleware
 	config := sloghttp.Config{
@@ -157,4 +178,50 @@ func (s *Service) handleRoot(w http.ResponseWriter, r *http.Request) {
 		s.log.ErrorContext(r.Context(), "failed to encode JSON response", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
+}
+
+// handleGatewayProxy proxies requests to the LLM gateway on exed
+func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
+	// Look up the box name for this connection
+	sourceIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		sourceIP = r.RemoteAddr
+	}
+	// Clean up IPv6-mapped IPv4 addresses
+	if strings.HasPrefix(sourceIP, "::ffff:") {
+		sourceIP = strings.TrimPrefix(sourceIP, "::ffff:")
+	}
+
+	_, boxName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
+	if err != nil {
+		s.log.ErrorContext(r.Context(), "failed to lookup box by IP", "ip", sourceIP, "error", err)
+		http.Error(w, "Failed to identify box", http.StatusInternalServerError)
+		return
+	}
+	if boxName == "" {
+		s.log.ErrorContext(r.Context(), "no box found for IP", "ip", sourceIP)
+		http.Error(w, "No box found for this IP", http.StatusForbidden)
+		return
+	}
+
+	// Rewrite the path to match the exed gateway endpoint
+	// /gateway/llm/anthropic/... -> /_/gateway/anthropic/...
+	originalPath := r.URL.Path
+	newPath := strings.Replace(originalPath, "/gateway/llm/", "/_/gateway/", 1)
+	r.URL.Path = newPath
+
+	s.log.DebugContext(r.Context(), "proxying gateway request", "original_path", originalPath, "new_path", newPath, "box", boxName)
+
+	// Create a reverse proxy for this request
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(s.exedTargetURL)
+			pr.Out.URL.Path = pr.In.URL.Path
+			pr.Out.Host = s.exedTargetURL.Host
+			// Add header to identify the box making the request
+			pr.Out.Header.Set("X-Exedev-Box", boxName)
+		},
+	}
+
+	proxy.ServeHTTP(w, r)
 }

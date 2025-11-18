@@ -108,7 +108,7 @@ func run() error {
 
 	// Start exelet if requested
 	if *startExelet {
-		addr, gw, err := startExeletRemote(*devMode)
+		addr, gw, err := startExeletRemote(*devMode, *httpAddr)
 		if err != nil {
 			return fmt.Errorf("failed to start exelet: %w", err)
 		}
@@ -248,7 +248,7 @@ func openBrowserURL(url string) error {
 
 // startExeletRemote builds exelet, uploads to lima-exe-ctr, kills old instances, and starts it.
 // Returns the exelet address (tcp://IP:PORT) and gateway address.
-func startExeletRemote(devMode string) (string, string, error) {
+func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	host := "lima-exe-ctr"
 	slog.Info("starting remote exelet", "host", host)
 
@@ -291,14 +291,39 @@ func startExeletRemote(devMode string) (string, string, error) {
 		logLevel = "debug"
 	}
 
+	// Get the VM IP address early so we can construct exed URL
+	// NOTE(phil): Beware! This ends up being localhost, but because lima magically
+	// maps VM hosts to localhost, it works out. You could get the lima VM by doing
+	// something like "ssh -i ~/.lima/_config/user -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=false lima-exe-ctr.local ip route get 1"
+	// but this seems to work.
+	remoteIP := ctrhosttest.ResolveHostFromSSHConfig(host)
+	if remoteIP == "" {
+		return "", "", fmt.Errorf("failed to resolve IP for %s", host)
+	}
+
+	// Get the gateway address early so we can construct exed URL
+	gateway, err := sshExec(ctx, host, "getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }'")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to resolve gateway: %w", err)
+	}
+	gateway = strings.TrimSpace(gateway)
+	if gateway == "" {
+		return "", "", fmt.Errorf("gateway address is empty")
+	}
+
 	// Start exelet via SSH - the SSH command will keep running
 	slog.Info("starting exeletd on remote host")
+
+	// Construct exed URL from httpAddr for the metadata service to proxy to
+	// The gateway is the host IP that the exelet can reach to connect back to exed
+	exedURL := fmt.Sprintf("http://%s%s", gateway, httpAddr)
+
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		host,
-		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://127.0.0.1:9080 --http-addr :9081`,
-			logFormat, logLevel))
+		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://127.0.0.1:9080 --http-addr :9081 --exed-url %s`,
+			logFormat, logLevel, exedURL))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -314,16 +339,6 @@ func startExeletRemote(devMode string) (string, string, error) {
 			slog.Info("exeletd ssh process exited normally")
 		}
 	}()
-
-	// Get the VM IP address
-	// NOTE(phil): Beware! This ends up being localhost, but because lima magically
-	// maps VM hosts to localhost, it works out. You could get the lima VM by doing
-	// something like "ssh -i ~/.lima/_config/user -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=false lima-exe-ctr.local ip route get 1"
-	// but this seems to work.
-	remoteIP := ctrhosttest.ResolveHostFromSSHConfig(host)
-	if remoteIP == "" {
-		return "", "", fmt.Errorf("failed to resolve IP for %s", host)
-	}
 
 	// Wait for exelet to start by aggressively trying to connect to the port
 	slog.Info("waiting for exelet to start listening")
@@ -346,16 +361,6 @@ func startExeletRemote(devMode string) (string, string, error) {
 
 	// Construct the exelet address
 	exeletAddr := fmt.Sprintf("tcp://%s:%s", remoteIP, exeletPort)
-
-	// Get the gateway address
-	gateway, err := sshExec(ctx, host, "getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }'")
-	if err != nil {
-		return "", "", fmt.Errorf("failed to resolve gateway: %w", err)
-	}
-	gateway = strings.TrimSpace(gateway)
-	if gateway == "" {
-		return "", "", fmt.Errorf("gateway address is empty")
-	}
 
 	slog.Info("exelet startup complete", "address", exeletAddr, "gateway", gateway)
 	return exeletAddr, gateway, nil

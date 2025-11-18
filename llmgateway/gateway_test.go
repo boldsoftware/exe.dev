@@ -329,3 +329,97 @@ func TestGateway_ServeHTTP_UpstreamCallAttempt(t *testing.T) {
 		t.Logf("Got status %d, expected 401 or 500. This may indicate the request processing worked correctly.", rr.Code)
 	}
 }
+
+func TestGateway_ServeHTTP_XExedevBoxAuthenticationInDevMode(t *testing.T) {
+	gateway, _, _, _ := setupTestGateway(t)
+	gateway.devMode = true // Enable dev mode
+
+	// Test with X-Exedev-Box header in dev mode (should be accepted)
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345" // Local address
+
+	rr := httptest.NewRecorder()
+	gateway.ServeHTTP(rr, req)
+
+	// Gateway authentication should pass - we should NOT get our gateway's auth error
+	// The request will be proxied to Anthropic which will return 401 for invalid API key
+	if rr.Code == http.StatusUnauthorized && strings.Contains(rr.Body.String(), "box key auth failed") {
+		t.Errorf("Expected gateway authentication to pass with X-Exedev-Box in dev mode, but got gateway auth error: %s", rr.Body.String())
+	}
+	if rr.Code == http.StatusUnauthorized && strings.Contains(rr.Body.String(), "X-Exedev-Box header not allowed") {
+		t.Errorf("Expected X-Exedev-Box to be allowed in dev mode, but got rejection: %s", rr.Body.String())
+	}
+}
+
+func TestGateway_ServeHTTP_XExedevBoxAuthenticationInProduction(t *testing.T) {
+	gateway, _, _, _ := setupTestGateway(t)
+	gateway.devMode = false // Production mode
+
+	// Test with X-Exedev-Box header in production from non-tailscale IP (should be rejected)
+	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "1.2.3.4:12345" // Non-tailscale address
+
+	rr := httptest.NewRecorder()
+	gateway.ServeHTTP(rr, req)
+
+	// Should return 401 with rejection message
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for X-Exedev-Box from non-tailscale IP in production mode, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "X-Exedev-Box header not allowed") {
+		t.Errorf("Expected rejection message for X-Exedev-Box, got: %s", rr.Body.String())
+	}
+}
+
+func TestGateway_ServeHTTP_ReadyEndpoint(t *testing.T) {
+	gateway, _, _, keyPair := setupTestGateway(t)
+	gateway.devMode = true // Enable dev mode for easier testing
+
+	// Test /ready endpoint with X-Exedev-Box authentication (requires auth)
+	req := httptest.NewRequest("GET", "/_/gateway/ready", nil)
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+	gateway.ServeHTTP(rr, req)
+
+	// Should return 200 with valid authentication
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status 200 for /ready endpoint with auth, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if rr.Body.String() != "OK\n" {
+		t.Errorf("Expected body 'OK\\n', got: %s", rr.Body.String())
+	}
+
+	// Test /ready endpoint without authentication should fail
+	req2 := httptest.NewRequest("GET", "/_/gateway/ready", nil)
+	rr2 := httptest.NewRecorder()
+	gateway.ServeHTTP(rr2, req2)
+
+	// Should return 401 without authentication
+	if rr2.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401 for /ready endpoint without auth, got %d", rr2.Code)
+	}
+
+	// Test /ready endpoint with bearer token authentication
+	token := NewBearerToken("test-box", time.Now().Add(-5*time.Minute), 3600)
+	tokenEncoded, err := token.Encode(keyPair.sshPrivateKey)
+	if err != nil {
+		t.Fatalf("Failed to encode token: %v", err)
+	}
+
+	req3 := httptest.NewRequest("GET", "/_/gateway/ready", nil)
+	req3.Header.Set("Authorization", "Bearer "+tokenEncoded)
+	rr3 := httptest.NewRecorder()
+	gateway.ServeHTTP(rr3, req3)
+
+	// Should return 200 with valid bearer token
+	if rr3.Code != http.StatusOK {
+		t.Errorf("Expected status 200 for /ready endpoint with bearer token, got %d", rr3.Code)
+	}
+}

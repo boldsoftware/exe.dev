@@ -200,6 +200,19 @@ func TestVanillaBox(t *testing.T) {
 		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .name")
 		pty.want(boxName)
 		pty.wantPrompt()
+
+		// Test LLM gateway ready endpoint through metadata service
+		pty.sendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}' http://169.254.169.254/gateway/llm/ready")
+		pty.want("200")
+		pty.wantPrompt()
+
+		// Test Anthropic API through metadata service (only if ANTHROPIC_API_KEY is set)
+		// We don't include this because it messes with golden files locally.
+		// if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		// 	pty.sendLine(`curl --max-time 30 -s -o /dev/null -w '%{http_code}' http://169.254.169.254/gateway/llm/anthropic/v1/messages -H "content-type: application/json" -H "anthropic-version: 2023-06-01" -d '{"model":"claude-3-5-haiku-20241022","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}'`)
+		// 	pty.want("200")
+		// 	pty.wantPrompt()
+		// }
 	})
 
 	// Cleanup

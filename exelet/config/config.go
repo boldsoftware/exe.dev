@@ -96,4 +96,6 @@ type ExeletConfig struct {
 	ProxyPortMin int
 	// ProxyPortMax is the maximum port for proxy allocation (defaults to 20000)
 	ProxyPortMax int
+	// ExedURL is the URL of the exed HTTP(S) server
+	ExedURL string
 }

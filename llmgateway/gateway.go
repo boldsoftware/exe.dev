@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"strings"
 	"time"
 
 	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ssh"
+	"tailscale.com/net/tsaddr"
 )
 
 // Prometheus metrics
@@ -123,17 +126,51 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr st
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.log.Info("llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
 
-	// TODO(philip): gateway:
-	//  - If the request has "X-Exedev-Box: <boxname>" header,
-	//    AND if we're in dev mode OR the request is coming via our tailscale IP,
-	//    then we can consider it authenticated. Otherwise, for backwards
-	//    compatibility, we can accept bearer auth.
-	//  - We should be sure to strip X-Exedev-Box header before forwarding
+	// Authenticate request
+	// If the request has "X-Exedev-Box: <boxname>" header,
+	// AND if we're in dev mode OR the request is coming via our tailscale IP,
+	// then we can consider it authenticated. Otherwise, use bearer auth.
+	boxName := r.Header.Get("X-Exedev-Box")
+	if boxName != "" {
+		// Check if request is from dev mode or tailscale
+		remoteAddr := r.RemoteAddr
+		host, _, err := net.SplitHostPort(remoteAddr)
+		if err != nil {
+			host = remoteAddr
+		}
+		remoteIP, err := netip.ParseAddr(host)
 
-	// authenticate request
-	_, err := m.boxKeyAuth(r.Context(), r)
-	if err != nil {
-		m.httpError(w, r, "box key auth failed: "+err.Error(), http.StatusUnauthorized)
+		allowXExedevBox := false
+		if err == nil {
+			// Allow if in dev mode or coming from tailscale IP
+			if m.devMode || tsaddr.IsTailscaleIP(remoteIP) {
+				allowXExedevBox = true
+			}
+		}
+
+		if allowXExedevBox {
+			m.log.Info("authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host)
+			// Strip the header before forwarding
+			r.Header.Del("X-Exedev-Box")
+		} else {
+			// X-Exedev-Box header present but not authorized
+			m.httpError(w, r, "X-Exedev-Box header not allowed from this IP", http.StatusUnauthorized)
+			return
+		}
+	} else {
+		// Fall back to bearer token authentication
+		_, err := m.boxKeyAuth(r.Context(), r)
+		if err != nil {
+			m.httpError(w, r, "box key auth failed: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+	}
+
+	// Handle /ready endpoint after authentication
+	// This ensures /ready validates that auth is working correctly
+	if r.URL.Path == "/_/gateway/ready" {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK\n"))
 		return
 	}
 
@@ -158,6 +195,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.URL.Path = remainder
 	var proxy *httputil.ReverseProxy
+	var err error
 	switch alias {
 	case "anthropic":
 		proxy, err = m.createAnthropicProxy()
