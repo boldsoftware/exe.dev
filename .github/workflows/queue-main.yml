@@ -219,6 +219,17 @@ jobs:
           fi
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      - name: Ensure GitHub CLI installed
+        if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
+        run: |
+          set -euo pipefail
+          if ! command -v gh >/dev/null 2>&1; then
+            GH_VERSION="2.79.0"
+            TMPDIR="$(mktemp -d)"
+            curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o "${TMPDIR}/gh.tar.gz"
+            tar -xzf "${TMPDIR}/gh.tar.gz" -C "${TMPDIR}"
+            sudo install "${TMPDIR}/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
+          fi
       - name: Trigger exeuntu build
         if: steps.push.outputs.exeuntu_or_shelley_changed == 'true'
         run: |
