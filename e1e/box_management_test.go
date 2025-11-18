@@ -169,6 +169,44 @@ func TestVanillaBox(t *testing.T) {
 		t.Logf("Shelley install test completed")
 	})
 
+	t.Run("metadata_service", func(t *testing.T) {
+		pty := sshToBox(t, boxName, keyFile)
+		defer pty.disconnect()
+
+		pty.wantPrompt()
+
+		// Get the VM's IP address so we can canonicalize it
+		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .source_ip")
+		out, err := pty.console.ExpectString("$")
+		if err != nil {
+			t.Fatalf("failed to get IP: %v", err)
+		}
+		// Extract IP from output (it's between the command and the prompt)
+		lines := strings.Split(out, "\n")
+		var vmIP string
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "192.168.") {
+				vmIP = line
+				break
+			}
+		}
+		if vmIP != "" {
+			Env.addCanonicalization(vmIP, "VM_IP")
+		}
+
+		// Test metadata service returns JSON with instance information
+		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -M .")
+		pty.want(`"name":`)
+		pty.want(`"source_ip":`)
+		pty.wantPrompt()
+
+		// Verify the name matches our box
+		pty.sendLine("curl --max-time 10 -s http://169.254.169.254/ | jq -r .name")
+		pty.want(boxName)
+		pty.wantPrompt()
+	})
+
 	// Cleanup
 	pty = sshToExeDev(t, keyFile)
 	pty.deleteBox(boxName)

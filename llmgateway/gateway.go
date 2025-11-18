@@ -123,6 +123,13 @@ func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr st
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.log.Info("llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
 
+	// TODO(philip): gateway:
+	//  - If the request has "X-Exedev-Box: <boxname>" header,
+	//    AND if we're in dev mode OR the request is coming via our tailscale IP,
+	//    then we can consider it authenticated. Otherwise, for backwards
+	//    compatibility, we can accept bearer auth.
+	//  - We should be sure to strip X-Exedev-Box header before forwarding
+
 	// authenticate request
 	_, err := m.boxKeyAuth(r.Context(), r)
 	if err != nil {

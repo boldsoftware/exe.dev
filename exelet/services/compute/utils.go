@@ -1,9 +1,11 @@
 package compute
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -67,4 +69,31 @@ func getBootArgs(netConf string) []string {
 		netConf,
 		"rw",
 	}
+}
+
+// GetInstanceByIP looks up an instance by its assigned IP address
+// TODO(philip): Beware that this is linear in number of instances,
+// and those are read from JSON files at the moment!
+func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, string, error) {
+	instances, err := s.listInstances(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	for _, instance := range instances {
+		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil {
+			if instance.VMConfig.NetworkInterface.IP != nil {
+				// Extract IP from CIDR notation (e.g., "192.168.70.2/24" -> "192.168.70.2")
+				instanceIP := instance.VMConfig.NetworkInterface.IP.IPV4
+				if idx := strings.Index(instanceIP, "/"); idx > 0 {
+					instanceIP = instanceIP[:idx]
+				}
+				if instanceIP == ip {
+					return instance.ID, instance.Name, nil
+				}
+			}
+		}
+	}
+
+	return "", "", fmt.Errorf("no instance found with IP %s", ip)
 }

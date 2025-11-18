@@ -17,6 +17,7 @@ const (
 	DefaultNetwork    = "192.168.70.0/24"
 	DefaultNameserver = "1.1.1.1"
 	DefaultNTPServer  = "ntp.ubuntu.com"
+	MetadataIP        = "169.254.169.254"
 
 	DeviceName = "eth0"
 )

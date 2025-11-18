@@ -56,6 +56,18 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 		return err
 	}
 
+	// Add metadata service IP
+	metadataAddr, err := netlink.ParseAddr(MetadataIP + "/32")
+	if err != nil {
+		return err
+	}
+	if err := netlink.AddrAdd(bridge, metadataAddr); err != nil {
+		// Ignore if address already exists
+		if !os.IsExist(err) {
+			return err
+		}
+	}
+
 	if err := netlink.LinkSetUp(bridge); err != nil {
 		return err
 	}

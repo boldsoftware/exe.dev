@@ -19,10 +19,16 @@ const (
 	StorageService Type = "exe.services.storage.v1"
 )
 
+// InstanceLookup provides a method to look up instances by IP address
+type InstanceLookup interface {
+	GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error)
+}
+
 type ServiceContext struct {
 	StorageManager storage.StorageManager
 	NetworkManager network.NetworkManager
 	ImageManager   *image.ImageManager
+	ComputeService InstanceLookup
 }
 
 // Service is the interface that all services must implement

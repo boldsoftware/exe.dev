@@ -91,6 +91,19 @@ func configureNetworking() error {
 		return err
 	}
 
+	// Add route to metadata service (169.254.169.254)
+	metadataIP := net.ParseIP("169.254.169.254")
+	metadataRoute := &netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       &net.IPNet{IP: metadataIP, Mask: net.CIDRMask(32, 32)},
+		Gw:        gwIP,
+		Scope:     netlink.SCOPE_UNIVERSE,
+	}
+	slog.Debug("configuring metadata service route", "metadata_ip", "169.254.169.254", "gateway", netConfig.Gateway)
+	if err := netlink.RouteAdd(metadataRoute); err != nil {
+		return err
+	}
+
 	// configure /etc/resolv.conf
 	if v := netConfig.Nameserver; v != "" {
 		slog.Debug("configuring nameserver", "ns", v)

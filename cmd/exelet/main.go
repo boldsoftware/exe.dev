@@ -17,6 +17,7 @@ import (
 	"exe.dev/deps/image"
 	"exe.dev/exelet"
 	"exe.dev/exelet/config"
+	"exe.dev/exelet/metadata"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
@@ -156,11 +157,6 @@ func serveAction(clix *cli.Context) error {
 
 	ctx := context.Background()
 
-	svcs := []func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error){
-		computeservice.New,
-		storageservice.New,
-	}
-
 	// network
 	nm, err := network.NewNetworkManager(cfg.NetworkManagerAddress, log)
 	if err != nil {
@@ -187,13 +183,33 @@ func serveAction(clix *cli.Context) error {
 		return err
 	}
 
+	// Create compute service
+	computeSvc, err := computeservice.New(cfg, log)
+	if err != nil {
+		return err
+	}
+
 	serviceContext := &services.ServiceContext{
 		StorageManager: storageManager,
 		NetworkManager: nm,
 		ImageManager:   im,
+		ComputeService: computeSvc.(*computeservice.Service),
+	}
+
+	svcs := []func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error){
+		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
+			return computeSvc, nil
+		},
+		storageservice.New,
 	}
 
 	if err := srv.Register(serviceContext, svcs); err != nil {
+		return err
+	}
+
+	// Start metadata service after services are registered
+	metadataSvc := metadata.NewService(log, serviceContext.ComputeService)
+	if err := metadataSvc.Start(ctx); err != nil {
 		return err
 	}
 
