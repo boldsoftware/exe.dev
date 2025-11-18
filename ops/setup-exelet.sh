@@ -64,7 +64,7 @@ echo "Started exeletd with PID $EXELET_PID"
 echo "Waiting for exeletd to be ready..."
 MAX_ATTEMPTS=60
 attempt=0
-until "$EXELET_CTL" compute instances ls >/dev/null 2>&1; do
+until timeout 2 "$EXELET_CTL" compute instances ls >/dev/null 2>&1; do
     attempt=$((attempt + 1))
     if [ $attempt -ge $MAX_ATTEMPTS ]; then
         echo "ERROR: exeletd failed to start after $MAX_ATTEMPTS seconds"
