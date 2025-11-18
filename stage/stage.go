@@ -10,6 +10,7 @@ type Env struct {
 	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz")
 
 	UseRoute53 bool // whether to use Route53 for DNS management and LetsEncrypt DNS challenges
+	UseCobble  bool // whether to start cobble/pebble for local ACME testing
 
 	DevMode string // dev mode: "local", "test", or ""; TODO: delete in favor of more precise flags
 }

@@ -76,10 +76,8 @@ func run() error {
 		env = stage.Staging()
 	case "local":
 		env = stage.Local()
-		env.DevMode = "local"
 	case "test":
-		env = stage.Local()
-		env.DevMode = "test"
+		env = stage.Test()
 	default:
 		return fmt.Errorf("unsupported stage: %q", *stageName)
 	}

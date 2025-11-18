@@ -114,11 +114,8 @@ func (s *Server) setupHTTPSServer() {
 		HostPolicy: s.validateHostForTLSCert,
 	}
 
-	// Don't start cobble in test mode. This speeds up tests.
-	// If a particular test needs cobble, it should start it directly.
-	if s.env.DevMode == "local" {
-		// In dev mode, use cobble to get locally-trusted certs
-		s.slog().Info("Using Pebble ACME test server for TLS certificates in dev mode")
+	if s.env.UseCobble {
+		s.slog().Info("starting Pebble ACME test server for TLS certificates")
 		stone, err := cobble.Start(context.Background(), &cobble.Config{
 			AlwaysValid: true,
 			Log:         &slogWriter{log: s.slog()},

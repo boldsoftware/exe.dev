@@ -8,9 +8,27 @@ func Local() Env {
 		ReplHost: "localhost",
 		BoxHost:  "localhost",
 
-		UseRoute53: false, // uses pebble/cobble without wildcard certs
+		// auto-start cobble/pebble for ACME testing
+		UseRoute53: false,
+		UseCobble:  true,
 
-		DevMode: "TODO", // should be manually overridden by caller
+		DevMode: "local",
+	}
+}
+
+func Test() Env {
+	return Env{
+		Name: "test",
+
+		WebHost:  "localhost",
+		ReplHost: "localhost",
+		BoxHost:  "localhost",
+
+		// tests start their own cobble/pebble instances as needed
+		UseRoute53: false,
+		UseCobble:  false,
+
+		DevMode: "test",
 	}
 }
 
@@ -23,6 +41,7 @@ func Staging() Env {
 		BoxHost:  "exe-staging.dev",
 
 		UseRoute53: true,
+		UseCobble:  false,
 
 		DevMode: "",
 	}
@@ -37,6 +56,7 @@ func Prod() Env {
 		BoxHost:  "exe.dev",
 
 		UseRoute53: true,
+		UseCobble:  false,
 
 		DevMode: "",
 	}
