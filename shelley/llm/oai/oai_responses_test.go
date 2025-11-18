@@ -202,7 +202,7 @@ func TestToLLMResponseFromResponses(t *testing.T) {
 			name: "simple text response",
 			resp: &responsesResponse{
 				ID:    "resp_123",
-				Model: "gpt-5-codex",
+				Model: "gpt-5.1-codex",
 				Output: []responsesOutputItem{
 					{
 						Type: "message",
@@ -220,7 +220,7 @@ func TestToLLMResponseFromResponses(t *testing.T) {
 			name: "response with function call",
 			resp: &responsesResponse{
 				ID:    "resp_123",
-				Model: "gpt-5-codex",
+				Model: "gpt-5.1-codex",
 				Output: []responsesOutputItem{
 					{
 						Type:      "function_call",
@@ -237,7 +237,7 @@ func TestToLLMResponseFromResponses(t *testing.T) {
 			name: "response with reasoning and message",
 			resp: &responsesResponse{
 				ID:    "resp_123",
-				Model: "gpt-5-codex",
+				Model: "gpt-5.1-codex",
 				Output: []responsesOutputItem{
 					{
 						Type:    "reasoning",
@@ -306,8 +306,8 @@ func TestResponsesServiceConfigDetails(t *testing.T) {
 
 	details := svc.ConfigDetails()
 
-	if details["model_name"] != "gpt-5-codex" {
-		t.Errorf("expected model_name 'gpt-5-codex', got %s", details["model_name"])
+	if details["model_name"] != "gpt-5.1-codex" {
+		t.Errorf("expected model_name 'gpt-5.1-codex', got %s", details["model_name"])
 	}
 	if details["full_url"] != "https://api.openai.com/v1/responses" {
 		t.Errorf("unexpected full_url: %s", details["full_url"])
@@ -356,8 +356,8 @@ func TestResponsesServiceIntegration(t *testing.T) {
 		if resp.ID == "" {
 			t.Error("expected response ID to be set")
 		}
-		if resp.Model != "gpt-5-codex" {
-			t.Errorf("expected model gpt-5-codex, got %s", resp.Model)
+		if resp.Model != "gpt-5.1-codex" {
+			t.Errorf("expected model gpt-5.1-codex, got %s", resp.Model)
 		}
 		if len(resp.Content) == 0 {
 			t.Error("expected response to have content")

@@ -266,28 +266,28 @@ var (
 
 	GPT5 = Model{
 		UserName:  "gpt-5-thinking",
-		ModelName: "gpt-5",
+		ModelName: "gpt-5.1",
 		URL:       OpenAIURL,
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
 
 	GPT5Mini = Model{
 		UserName:  "gpt-5-thinking-mini",
-		ModelName: "gpt-5-mini",
+		ModelName: "gpt-5.1-mini",
 		URL:       OpenAIURL,
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
 
 	GPT5Nano = Model{
 		UserName:  "gpt-5-thinking-nano",
-		ModelName: "gpt-5-nano",
+		ModelName: "gpt-5.1-nano",
 		URL:       OpenAIURL,
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
 
 	GPT5Codex = Model{
-		UserName:  "gpt-5-codex",
-		ModelName: "gpt-5-codex",
+		UserName:  "gpt-5.1-codex",
+		ModelName: "gpt-5.1-codex",
 		URL:       OpenAIURL,
 		APIKeyEnv: OpenAIAPIKeyEnv,
 	}
@@ -535,7 +535,7 @@ func (m Model) requiresMaxCompletionTokens() bool {
 
 	// GPT-5 series models also require max_completion_tokens
 	switch m.ModelName {
-	case "gpt-5", "gpt-5-mini", "gpt-5-nano":
+	case "gpt-5.1", "gpt-5.1-mini", "gpt-5.1-nano":
 		return true
 	default:
 		return false
@@ -759,7 +759,7 @@ func (s *Service) TokenContextWindow() int {
 		return 256000 // 256k native context for Qwen3-Coder
 	case "gpt-oss-20b", "gpt-oss-120b":
 		return 128000
-	case "gpt-5", "gpt-5-mini", "gpt-5-nano":
+	case "gpt-5.1", "gpt-5.1-mini", "gpt-5.1-nano":
 		return 256000
 	default:
 		// Default for unknown models

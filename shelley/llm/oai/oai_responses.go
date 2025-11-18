@@ -18,7 +18,7 @@ import (
 )
 
 // ResponsesService provides chat completions using the OpenAI Responses API.
-// This API is required for models like gpt-5-codex.
+// This API is required for models like gpt-5.1-codex.
 // Fields should not be altered concurrently with calling any method on ResponsesService.
 type ResponsesService struct {
 	HTTPC     *http.Client // defaults to http.DefaultClient if nil
@@ -340,8 +340,8 @@ func (s *ResponsesService) TokenContextWindow() int {
 
 	// Use the same context window logic as the regular service
 	switch model.ModelName {
-	case "gpt-5-codex":
-		return 256000 // 256k for gpt-5-codex
+	case "gpt-5.1-codex":
+		return 256000 // 256k for gpt-5.1-codex
 	case "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14":
 		return 200000
 	case "gpt-4o-2024-08-06", "gpt-4o-mini-2024-07-18":

@@ -2,7 +2,7 @@
 
 The `e4e` command runs the automated documentation review. When the probe
 executes, it launches a single Codex agent via `codex exec` (using
-`gpt-5-codex-mini` with the `prompt.md` instructions) and gives the agent
+`gpt-5.1-codex-mini` with the `prompt.md` instructions) and gives the agent
 read-only access to the repo. The agent is expected to read everything in
 `docs/`, cross-check behavior against the rest of the tree, and finish with a
 `# DOCUMENTATION REPORT` section. If the report ends in `OK` the run succeeds;
