@@ -70,7 +70,7 @@ func TestIsProxyRequest(t *testing.T) {
 
 	testCases := []struct {
 		name     string
-		devMode  string
+		env      stage.Env
 		host     string
 		expected bool
 		comment  string
@@ -78,35 +78,35 @@ func TestIsProxyRequest(t *testing.T) {
 		// Box:port format cases
 		{
 			name:     "valid box:port format",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "mybox:8080",
 			expected: true,
 			comment:  "Should recognize box:port format for multi-port proxying",
 		},
 		{
 			name:     "valid box:port with high port",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "testbox:9999",
 			expected: true,
 			comment:  "Should work with any valid port number",
 		},
 		{
 			name:     "invalid box:port (bad port)",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "mybox:abc",
 			expected: false,
 			comment:  "Should reject non-numeric ports",
 		},
 		{
 			name:     "localhost:port should not be proxy",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "localhost:8080",
 			expected: false,
 			comment:  "localhost with port is the main domain, not a proxy request",
 		},
 		{
 			name:     "exe.dev:port should not be proxy",
-			devMode:  "",
+			env:      stage.Prod(),
 			host:     "exe.dev:443",
 			expected: false,
 			comment:  "exe.dev with port is the main domain, not a proxy request",
@@ -115,28 +115,28 @@ func TestIsProxyRequest(t *testing.T) {
 		// Subdomain format cases (dev mode)
 		{
 			name:     "dev subdomain format",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "mybox.localhost",
 			expected: true,
 			comment:  "Should recognize *.localhost pattern in dev mode",
 		},
 		{
 			name:     "dev subdomain with server port",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "mybox.localhost:8080",
 			expected: true,
 			comment:  "Should recognize *.localhost even with server port",
 		},
 		{
 			name:     "localhost alone in dev mode",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "localhost",
 			expected: false,
 			comment:  "Plain localhost should not be proxy request",
 		},
 		{
 			name:     "deep subdomain in dev mode",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "box.team.localhost",
 			expected: true,
 			comment:  "Should work with deeper subdomains",
@@ -145,21 +145,21 @@ func TestIsProxyRequest(t *testing.T) {
 		// Subdomain format cases (production mode)
 		{
 			name:     "prod subdomain format",
-			devMode:  "",
+			env:      stage.Prod(),
 			host:     "mybox.exe.dev",
 			expected: true,
 			comment:  "Should recognize *.exe.dev pattern in production",
 		},
 		{
 			name:     "prod subdomain with server port",
-			devMode:  "",
+			env:      stage.Prod(),
 			host:     "mybox.exe.dev:443",
 			expected: true,
 			comment:  "Should recognize *.exe.dev even with server port",
 		},
 		{
 			name:     "exe.dev alone in prod mode",
-			devMode:  "",
+			env:      stage.Prod(),
 			host:     "exe.dev",
 			expected: false,
 			comment:  "Plain exe.dev should not be proxy request",
@@ -168,14 +168,14 @@ func TestIsProxyRequest(t *testing.T) {
 		// Cross-mode cases (testing flexibility)
 		{
 			name:     "prod domain in dev mode",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "mybox.exe.dev",
 			expected: true,
 			comment:  "Should still work with production domain in dev mode for flexibility",
 		},
 		{
 			name:     "dev domain in prod mode",
-			devMode:  "",
+			env:      stage.Prod(),
 			host:     "mybox.localhost",
 			expected: true,
 			comment:  "Should still work with dev domain in production for flexibility",
@@ -184,35 +184,35 @@ func TestIsProxyRequest(t *testing.T) {
 		// Edge cases
 		{
 			name:     "empty host",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "",
 			expected: false,
 			comment:  "Empty host should not be proxy request",
 		},
 		{
 			name:     "just colon",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     ":",
 			expected: false,
 			comment:  "Invalid format should be rejected",
 		},
 		{
 			name:     "box with multiple colons",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "my:box:8080",
 			expected: false,
 			comment:  "Multiple colons should be rejected for box:port format",
 		},
 		{
 			name:     "other domain",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "example.com",
 			expected: true,
 			comment:  "Other domains should be proxy requests",
 		},
 		{
 			name:     "subdomain of other domain",
-			devMode:  "test",
+			env:      stage.Test(),
 			host:     "mybox.example.com",
 			expected: true,
 			comment:  "Subdomains of other domains should be proxy requests",
@@ -221,24 +221,13 @@ func TestIsProxyRequest(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create server with specified dev mode
-			var env stage.Env
-			if tc.devMode == "" {
-				// Production mode
-				env = stage.Prod()
-			} else {
-				// Dev/test mode
-				env = stage.Local()
-				env.DevMode = tc.devMode
-			}
-			s := &Server{env: env}
-
+			s := &Server{env: tc.env}
 			result := s.isProxyRequest(tc.host)
 			if result != tc.expected {
-				t.Errorf("Expected %v for host %q (devMode=%q), got %v\nComment: %s",
-					tc.expected, tc.host, tc.devMode, result, tc.comment)
+				t.Errorf("Expected %v for host %q (stage=%v), got %v\nComment: %s",
+					tc.expected, tc.host, tc.env.String(), result, tc.comment)
 			} else {
-				t.Logf("✓ %s: host=%q devMode=%q -> %v", tc.comment, tc.host, tc.devMode, result)
+				t.Logf("✓ %s: host=%q stage=%s -> %v", tc.comment, tc.host, tc.env.String(), result)
 			}
 		})
 	}
