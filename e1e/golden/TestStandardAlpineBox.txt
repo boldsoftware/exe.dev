@@ -1,0 +1,53 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestStandardAlpineBox@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestStandardAlpineBox@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- help to see a list of commands
+
+exe.dev ▶ whoami
+Email Address: TestStandardAlpineBox@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ new --name=BOX_NAME --image=ghcr.io/linuxcontainers/alpine:latest
+Creating BOX_NAME using image linuxcontainers/alpine...
+Ready in ELAPSED_TIME!
+
+App (HTTPS proxy → :80)
+http://BOX_NAME.localhost:EXED_HTTP_PORT
+
+SSH
+ssh -p SSH_PORT BOX_NAME@localhost
+
+exe.dev ▶ rm BOX_NAME
+Deleting BOX_NAME...
+Box "BOX_NAME" deleted successfully
+exe.dev ▶ exit
+Goodbye!

@@ -213,6 +213,31 @@ func TestVanillaBox(t *testing.T) {
 	pty.disconnect()
 }
 
+func TestStandardAlpineBox(t *testing.T) {
+	vouch.For("evan")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Attempt to create a box with a standard alpine image.
+	image := "ghcr.io/linuxcontainers/alpine:latest"
+	boxName := boxName(t)
+	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
+	pty.wantPrompt()
+
+	out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/etc/os-release").CombinedOutput()
+	if err != nil {
+		t.Fatalf("error running box command: %s", err)
+	}
+	if !strings.Contains(string(out), "Alpine Linux") {
+		t.Fatalf("expected 'Alpine Linux', got: %s", string(out))
+	}
+	// cleanup
+	pty.deleteBox(boxName)
+	pty.disconnect()
+}
+
 func TestBadBoxName(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
