@@ -1374,7 +1374,7 @@ func (s *Server) hostLookupKeys(host string) []string {
 			}
 		}
 	}
-	return dedupeStrings(keys)
+	return dedupInPlace(keys)
 }
 
 // getExeletClient looks up an exelet client by host address, trying all normalized variants.
@@ -1388,18 +1388,9 @@ func (s *Server) getExeletClient(host string) *exeletClient {
 	return nil
 }
 
-func dedupeStrings(values []string) []string {
-	seen := make(map[string]bool, len(values))
-	j := 0
-	for _, v := range values {
-		if v == "" || seen[v] {
-			continue
-		}
-		seen[v] = true
-		values[j] = v
-		j++
-	}
-	return values[:j]
+func dedupInPlace(values []string) []string {
+	slices.Sort(values)
+	return slices.Compact(values)
 }
 
 // isValidEmail performs basic email validation
