@@ -8,8 +8,9 @@ suborder: 3
 You can share your box's HTTP port (see [the http proxy documentation](./proxy))
 with your friends. There are three mechanisms:
 
-1. Mark the HTTP port public using the `proxy` command. Marking it public will
-let anyone access the server, without logging in.
+1. Make the HTTP proxy public with `share set-public <box>`. To point the proxy
+   at a different port inside the box, run `share port <box> <port>` first.
+   Marking it public lets anyone access the server without logging in.
 
 2. Add specific e-mail addresses using `share add <box> <email>`. This will
 send the recipient an e-mail. They can then log into exe.dev with that e-mail,

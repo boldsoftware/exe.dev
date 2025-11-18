@@ -55,10 +55,14 @@ func TestBoxSharing(t *testing.T) {
 	// httpPort is the exed HTTP proxy port, not the port inside the box
 	httpPort := Env.exed.HTTPPort
 
-	// Configure the proxy to use port 8080 and make it private
-	out, err := runExeDevSSHCommand(t, ownerKeyFile, "proxy", box, fmt.Sprintf("--port=%d", boxInternalPort), "--private")
+	// Configure the proxy to use port 8080 and ensure it is private
+	out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "port", box, fmt.Sprintf("%d", boxInternalPort))
 	if err != nil {
-		t.Fatalf("failed to configure proxy: %v\n%s", err, out)
+		t.Fatalf("failed to set proxy port: %v\n%s", err, out)
+	}
+	out, err = runExeDevSSHCommand(t, ownerKeyFile, "share", "set-private", box)
+	if err != nil {
+		t.Fatalf("failed to set proxy visibility: %v\n%s", err, out)
 	}
 
 	// Verify owner can access the box via HTTPS proxy

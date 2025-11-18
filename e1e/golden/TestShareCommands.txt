@@ -53,6 +53,7 @@ exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
 URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+Port: 8000
 Mode: Private
 
 No shares configured.
@@ -73,6 +74,7 @@ exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
 URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+Port: 8000
 Mode: Private
 
 Shared with users:
@@ -95,6 +97,7 @@ exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
 URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+Port: 8000
 Mode: Private
 
 Shared with users:
@@ -111,6 +114,7 @@ exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
 URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+Port: 8000
 Mode: Private
 
 No users shared yet.
@@ -131,6 +135,9 @@ Options:
 
 Subcommands:
   show          - Show current shares for a box
+  port          - Set the HTTP proxy port for a box
+  set-public    - Make the HTTP proxy publicly accessible
+  set-private   - Restrict the HTTP proxy to authenticated users
   add           - Share box with a user via email
   remove        - Revoke a user's access to a box
   add-link      - Create a shareable link for a box

@@ -109,11 +109,15 @@ chmod +x /home/exedev/cgi-bin/headers
 
 		t.Run("mark_public", func(t *testing.T) {
 			exeShell := sshToExeDev(t, keyFile)
-			exeShell.sendLine(fmt.Sprintf("proxy %s --port=8080 --public", box))
+			exeShell.sendLine(fmt.Sprintf("share port %s 8080", box))
 			exeShell.want("Route updated successfully")
 			exeShell.wantPrompt()
 
-			exeShell.sendLine(fmt.Sprintf("proxy %s", box))
+			exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
+			exeShell.want("Route updated successfully")
+			exeShell.wantPrompt()
+
+			exeShell.sendLine(fmt.Sprintf("share port %s", box))
 			exeShell.want("Port: 8080")
 			exeShell.want("Share: public")
 			exeShell.wantPrompt()
@@ -166,7 +170,11 @@ chmod +x /home/exedev/cgi-bin/headers
 			setProxyPort := func(port int) {
 				t.Helper()
 				exeShell := sshToExeDev(t, keyFile)
-				exeShell.sendLine(fmt.Sprintf("proxy %s --port=%d --public", box, port))
+				exeShell.sendLine(fmt.Sprintf("share port %s %d", box, port))
+				exeShell.want("Route updated successfully")
+				exeShell.wantPrompt()
+
+				exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
 				exeShell.want("Route updated successfully")
 				exeShell.wantPrompt()
 				exeShell.disconnect()
@@ -316,7 +324,11 @@ chmod +x /home/exedev/cgi-bin/headers
 		serveHTTP(t, 8080)
 
 		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("proxy %s --port=8080 --private", box))
+		exeShell.sendLine(fmt.Sprintf("share port %s 8080", box))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+
+		exeShell.sendLine(fmt.Sprintf("share set-private %s", box))
 		exeShell.want("Route updated successfully")
 		exeShell.wantPrompt()
 		exeShell.disconnect()
@@ -436,7 +448,11 @@ chmod +x /home/exedev/cgi-bin/headers
 		serveHTTP(t, internalPort)
 
 		exeShell := sshToExeDev(t, keyFile)
-		exeShell.sendLine(fmt.Sprintf("proxy %s --port=%d --public", box, internalPort))
+		exeShell.sendLine(fmt.Sprintf("share port %s %d", box, internalPort))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+
+		exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
 		exeShell.want("Route updated successfully")
 		exeShell.wantPrompt()
 		exeShell.disconnect()

@@ -13,7 +13,6 @@ import (
 	"os"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -53,16 +52,6 @@ func newCommandFlags() *flag.FlagSet {
 	fs.Bool("json", false, "output in JSON format")
 	// Hidden flag for testing
 	fs.String("prompt-model", shelleyDefaultModel, "")
-	return fs
-}
-
-// proxyCommandFlags creates a FlagSet for the proxy command
-func proxyCommandFlags() *flag.FlagSet {
-	fs := flag.NewFlagSet("route", flag.ContinueOnError)
-	fs.Int("port", 80, "port to expose")
-	fs.Bool("private", false, "make the route private")
-	fs.Bool("public", false, "make the route public")
-	fs.Bool("json", false, "output in JSON format")
 	return fs
 }
 
@@ -115,21 +104,6 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Hidden:      true,
 			Description: "Apply for a job at exe.dev",
 			Handler:     ss.handleJobCommand,
-		},
-		{
-			Name:              "proxy",
-			Description:       "Configure box routing",
-			Usage:             "proxy <box-name> [--port=80 --private|--public]",
-			Handler:           ss.handleProxyCommand,
-			FlagSetFunc:       proxyCommandFlags,
-			HasPositionalArgs: true,
-			CompleterFunc:     ss.completeBoxNames,
-			Examples: []string{
-				"proxy mybox                     # show current routing config",
-				"proxy mybox --port=8080 --private  # expose port 8080 privately",
-				"proxy mybox --port=80 --public     # expose port 80 publicly",
-				"proxy mybox --port=3000 --public   # expose port 3000 publicly",
-			},
 		},
 		{
 			Name:              "proxy-token",
@@ -1062,131 +1036,6 @@ func (ss *SSHServer) handleProxyTokenCommand(ctx context.Context, cc *exemenu.Co
 	cc.Writeln("This token may be used as a Bearer token or as a basic auth username to authenticate with the exe.dev proxy for box \033[1m%s\033[0m.", boxName)
 	cc.Writeln("")
 	cc.Writeln("%s", token)
-	return nil
-}
-
-func (ss *SSHServer) handleProxyCommand(ctx context.Context, cc *exemenu.CommandContext) error {
-	if len(cc.Args) != 1 {
-		if !cc.WantJSON() {
-			cmd := ss.commands.FindCommand([]string{"proxy"})
-			cmd.Help(cc)
-			cc.Write("\r\n")
-		}
-		return cc.Errorf("please specify exactly one box name to route")
-	}
-	boxName := cc.Args[0]
-
-	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return cc.Errorf("box %q not found", boxName)
-	}
-	if err != nil {
-		return err
-	}
-
-	// If no flags provided (or only --json), show current configuration
-	explicitFlags := map[string]bool{}
-	cc.FlagSet.Visit(func(f *flag.Flag) {
-		if f.Name == "json" {
-			return // don't count --json as a configuration flag
-		}
-		explicitFlags[f.Name] = true
-	})
-
-	if len(explicitFlags) == 0 {
-		route := box.GetRoute()
-		if cc.WantJSON() {
-			routeInfo := map[string]any{
-				"box_name": boxName,
-				"port":     route.Port,
-				"share":    route.Share,
-			}
-			cc.WriteJSON(routeInfo)
-			return nil
-		}
-		cc.Writeln("")
-		cc.Writeln("\033[1;36mRoute configuration for box '%s':\033[0m", boxName)
-		cc.Writeln("  Port: %d", route.Port)
-		cc.Writeln("  Share: %s", route.Share)
-		cc.Writeln("")
-		return nil
-	}
-
-	// Parse flags
-	portFlag := cc.FlagSet.Lookup("port")
-	privateFlag := cc.FlagSet.Lookup("private")
-	publicFlag := cc.FlagSet.Lookup("public")
-
-	portSet := explicitFlags["port"]
-	privateSet := explicitFlags["private"] && privateFlag != nil && privateFlag.Value.String() == "true"
-	publicSet := explicitFlags["public"] && publicFlag != nil && publicFlag.Value.String() == "true"
-
-	// Validate: if any flag is set, both --port and one of --private/--public must be set
-	var flagMistake string
-	if portSet || privateSet || publicSet {
-		switch {
-		case !portSet:
-			flagMistake = "--port is required when setting proxy configuration"
-		case !privateSet && !publicSet:
-			flagMistake = "either --private or --public is required when setting proxy configuration"
-		case privateSet && publicSet:
-			flagMistake = "cannot specify both --private and --public"
-		}
-	}
-	if flagMistake != "" {
-		return cc.Errorf("%v", flagMistake)
-	}
-
-	// Parse port
-	portInt, err := strconv.Atoi(portFlag.Value.String())
-	if err != nil || portInt <= 0 || portInt > 65535 {
-		return cc.Errorf("--port must be a valid port number (1-65535), got %q", portFlag.Value.String())
-	}
-
-	// Determine share mode
-	share := "private"
-	if publicSet {
-		share = "public"
-	}
-
-	// Update route configuration
-	newRoute := exedb.Route{
-		Port:  portInt,
-		Share: share,
-	}
-
-	box.SetRoute(newRoute)
-	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
-			Routes:          box.Routes,
-			Name:            boxName,
-			CreatedByUserID: cc.User.ID,
-		})
-	})
-	if err != nil {
-		return err
-	}
-
-	if cc.WantJSON() {
-		result := map[string]any{
-			"box_name": boxName,
-			"port":     newRoute.Port,
-			"share":    newRoute.Share,
-			"status":   "updated",
-		}
-		cc.WriteJSON(result)
-		return nil
-	}
-	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
-	cc.Writeln("  Port: %d", newRoute.Port)
-	cc.Writeln("  Share: %s", newRoute.Share)
-	cc.Writeln("")
 	return nil
 }
 

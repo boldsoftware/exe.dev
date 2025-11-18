@@ -4,11 +4,16 @@
 ● ssh localhost
 ●
 
-proxy BOX_NAME --port=9091 --public
+share port BOX_NAME 9091
 
 - help to see a list of commands
 
-exe.dev ▶ proxy BOX_NAME --port=9091 --public
+exe.dev ▶ share port BOX_NAME 9091
+✓ Route updated successfully
+  Port: 9091
+  Share: public
+
+exe.dev ▶ share set-public BOX_NAME
 ✓ Route updated successfully
   Port: 9091
   Share: public
@@ -21,11 +26,16 @@ Goodbye!
 ● ssh localhost
 ●
 
-proxy BOX_NAME --port=8080 --public
+share port BOX_NAME 8080
 
 - help to see a list of commands
 
-exe.dev ▶ proxy BOX_NAME --port=8080 --public
+exe.dev ▶ share port BOX_NAME 8080
+✓ Route updated successfully
+  Port: 8080
+  Share: public
+
+exe.dev ▶ share set-public BOX_NAME
 ✓ Route updated successfully
   Port: 8080
   Share: public

@@ -50,7 +50,7 @@ func TestCompletionIntegration(t *testing.T) {
 			name:     "complete with space - list commands",
 			line:     "",
 			cursor:   0,
-			expected: []string{"help", "doc", "ls", "new", "rm", "proxy", "share", "whoami", "delete-ssh-key", "browser", "exit"},
+			expected: []string{"help", "doc", "ls", "new", "rm", "share", "whoami", "delete-ssh-key", "shelley", "browser", "exit"},
 		},
 		{
 			name:     "complete rm with space - should use box completer (but no containers in test)",

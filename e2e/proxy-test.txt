@@ -42,23 +42,23 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 4. Test that the container proxy is set to private by default:
    ```
-   ssh -p 2222 localhost proxy machinename
+   ssh -p 2222 localhost share port machinename
    ```
    
    Expected: Should show port 80 and share "private".
 
 #### 3. Test Making Route Public
 
-5. Make the proxy public using the proxy command:
+5. Make the proxy public using the share command:
    ```
-   ssh -p 2222 localhost proxy machinename --port=80 --public
+   ssh -p 2222 localhost share set-public machinename
    ```
    
    Expected: Should confirm the proxy is now public.
 
 6. Verify the proxy is now public:
    ```
-   ssh -p 2222 localhost proxy machinename
+   ssh -p 2222 localhost share port machinename
    ```
    
    Expected: Should show port 80 and share "public".
@@ -81,7 +81,8 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 9. Update the proxy to use port 8000:
    ```
-   ssh -p 2222 localhost proxy machinename --port=8000 --public
+   ssh -p 2222 localhost share port machinename 8000
+   ssh -p 2222 localhost share set-public machinename
    ```
 
 10. Test access with the new port configuration:
@@ -95,7 +96,7 @@ This test verifies that containers can expose HTTP services and that the proxy a
 
 11. Make the proxy private again:
     ```
-    ssh -p 2222 localhost proxy machinename --port=8000 --private
+    ssh -p 2222 localhost share set-private machinename
     ```
 
 12. Test that authentication is required again:

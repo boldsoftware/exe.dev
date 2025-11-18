@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +45,36 @@ func (ss *SSHServer) shareCommand() *exemenu.Command {
 				Usage:             "share show <box>",
 				Handler:           ss.handleShareShowCmd,
 				FlagSetFunc:       jsonOnlyFlags("share-show"),
+				HasPositionalArgs: true,
+				CompleterFunc:     ss.completeBoxNames,
+			},
+			{
+				Name:              "port",
+				Description:       "Set the HTTP proxy port for a box",
+				Usage:             "share port <box> [port]",
+				Handler:           ss.handleSharePortCmd,
+				FlagSetFunc:       jsonOnlyFlags("share-port"),
+				HasPositionalArgs: true,
+				CompleterFunc:     ss.completeBoxNames,
+				Examples: []string{
+					"share port mybox 8080",
+				},
+			},
+			{
+				Name:              "set-public",
+				Description:       "Make the HTTP proxy publicly accessible",
+				Usage:             "share set-public <box>",
+				Handler:           ss.handleShareSetPublicCmd,
+				FlagSetFunc:       jsonOnlyFlags("share-set-public"),
+				HasPositionalArgs: true,
+				CompleterFunc:     ss.completeBoxNames,
+			},
+			{
+				Name:              "set-private",
+				Description:       "Restrict the HTTP proxy to authenticated users",
+				Usage:             "share set-private <box>",
+				Handler:           ss.handleShareSetPrivateCmd,
+				FlagSetFunc:       jsonOnlyFlags("share-set-private"),
 				HasPositionalArgs: true,
 				CompleterFunc:     ss.completeBoxNames,
 			},
@@ -155,6 +186,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 	}
 
 	if cc.WantJSON() {
+		route := box.GetRoute()
 		// JSON output
 		type userShare struct {
 			Email     string `json:"email"`
@@ -202,7 +234,8 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 
 		cc.WriteJSON(map[string]any{
 			"box_name": box.Name,
-			"status":   box.GetRoute().Share,
+			"status":   route.Share,
+			"port":     route.Port,
 			"url":      ss.server.httpsProxyAddress(box.Name),
 			"users":    users,
 			"links":    links,
@@ -217,6 +250,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 	cc.Writeln("")
 	cc.Writeln("\033[1;36mSharing for box '%s'\033[0m", box.Name)
 	cc.Writeln("URL: %s", ss.server.httpsProxyAddress(box.Name))
+	cc.Writeln("Port: %d", route.Port)
 	if isPublic {
 		cc.Writeln("\033[1;33mMode: PUBLIC\033[0m - Anyone can access this box without authentication")
 	} else {
@@ -226,7 +260,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 
 	if isPublic {
 		cc.Writeln("\033[1;33mNote:\033[0m This box is publicly accessible. Individual shares are not needed.")
-		cc.Writeln("To make it private, use: proxy %s --private", box.Name)
+		cc.Writeln("To make it private, use: share set-private %s", box.Name)
 		cc.Writeln("")
 		if len(pendingShares)+len(activeShares)+len(shareLinks) == 0 {
 			return nil
@@ -274,6 +308,138 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 		cc.Writeln("")
 	}
 
+	return nil
+}
+
+func (ss *SSHServer) handleSharePortCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	if len(cc.Args) == 0 {
+		return cc.Errorf("usage: share port <box> [port]")
+	}
+
+	boxName := cc.Args[0]
+	if len(cc.Args) == 1 {
+		return ss.showRouteConfiguration(ctx, cc, boxName)
+	}
+
+	portStr := cc.Args[1]
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 || port > 65535 {
+		return cc.Errorf("port must be a valid port number (1-65535), got %q", portStr)
+	}
+
+	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		route.Port = port
+		return nil
+	})
+}
+
+func (ss *SSHServer) handleShareSetPublicCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	return ss.handleShareVisibilityCmd(ctx, cc, "public")
+}
+
+func (ss *SSHServer) handleShareSetPrivateCmd(ctx context.Context, cc *exemenu.CommandContext) error {
+	return ss.handleShareVisibilityCmd(ctx, cc, "private")
+}
+
+func (ss *SSHServer) handleShareVisibilityCmd(ctx context.Context, cc *exemenu.CommandContext, shareMode string) error {
+	if len(cc.Args) != 1 {
+		switch shareMode {
+		case "public":
+			return cc.Errorf("usage: share set-public <box>")
+		case "private":
+			return cc.Errorf("usage: share set-private <box>")
+		default:
+			return cc.Errorf("box argument missing")
+		}
+	}
+
+	boxName := cc.Args[0]
+
+	return ss.updateBoxRoute(ctx, cc, boxName, func(route *exedb.Route) error {
+		route.Share = shareMode
+		return nil
+	})
+}
+
+func (ss *SSHServer) getOwnedBox(ctx context.Context, cc *exemenu.CommandContext, boxName string) (exedb.Box, error) {
+	box, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.BoxWithOwnerNamed(ctx, exedb.BoxWithOwnerNamedParams{
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return exedb.Box{}, cc.Errorf("box %q not found or access denied", boxName)
+	}
+	if err != nil {
+		return exedb.Box{}, err
+	}
+	return box, nil
+}
+
+func (ss *SSHServer) showRouteConfiguration(ctx context.Context, cc *exemenu.CommandContext, boxName string) error {
+	box, err := ss.getOwnedBox(ctx, cc, boxName)
+	if err != nil {
+		return err
+	}
+	route := box.GetRoute()
+
+	if cc.WantJSON() {
+		cc.WriteJSON(map[string]any{
+			"box_name": boxName,
+			"port":     route.Port,
+			"share":    route.Share,
+		})
+		return nil
+	}
+
+	cc.Writeln("")
+	cc.Writeln("\033[1;36mRoute configuration for box '%s':\033[0m", boxName)
+	cc.Writeln("  Port: %d", route.Port)
+	cc.Writeln("  Share: %s", route.Share)
+	cc.Writeln("")
+	return nil
+}
+
+func (ss *SSHServer) updateBoxRoute(ctx context.Context, cc *exemenu.CommandContext, boxName string, mutate func(*exedb.Route) error) error {
+	box, err := ss.getOwnedBox(ctx, cc, boxName)
+	if err != nil {
+		return err
+	}
+
+	route := box.GetRoute()
+	if err := mutate(&route); err != nil {
+		return err
+	}
+
+	box.SetRoute(route)
+
+	err = ss.server.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
+		return queries.UpdateBoxRoutes(ctx, exedb.UpdateBoxRoutesParams{
+			Routes:          box.Routes,
+			Name:            boxName,
+			CreatedByUserID: cc.User.ID,
+		})
+	})
+	if err != nil {
+		return err
+	}
+
+	if cc.WantJSON() {
+		result := map[string]any{
+			"box_name": boxName,
+			"port":     route.Port,
+			"share":    route.Share,
+			"status":   "updated",
+		}
+		cc.WriteJSON(result)
+		return nil
+	}
+
+	cc.Writeln("\033[1;32m✓ Route updated successfully\033[0m")
+	cc.Writeln("  Port: %d", route.Port)
+	cc.Writeln("  Share: %s", route.Share)
+	cc.Writeln("")
 	return nil
 }
 
@@ -456,7 +622,7 @@ exe.dev - Instant Linux machines
 	if route.Share == "public" {
 		cc.Writeln("")
 		cc.Writeln("\033[1;33mNote:\033[0m This box is currently PUBLIC. The share will only take effect if you make it private.")
-		cc.Writeln("To make it private: proxy %s --private", box.Name)
+		cc.Writeln("To make it private: share set-private %s", box.Name)
 	}
 	cc.Writeln("")
 	return nil

@@ -4,16 +4,21 @@
 ● ssh localhost
 ●
 
-proxy BOX_NAME --port=8080 --public
+share port BOX_NAME 8080
 
 - help to see a list of commands
 
-exe.dev ▶ proxy BOX_NAME --port=8080 --public
+exe.dev ▶ share port BOX_NAME 8080
+✓ Route updated successfully
+  Port: 8080
+  Share: private
+
+exe.dev ▶ share set-public BOX_NAME
 ✓ Route updated successfully
   Port: 8080
   Share: public
 
-exe.dev ▶ proxy BOX_NAME
+exe.dev ▶ share port BOX_NAME
 
 Route configuration for box 'BOX_NAME':
   Port: 8080
