@@ -100,6 +100,16 @@ func main() {
 			Usage: "HTTP server address for debug, metrics, and version endpoints",
 			Value: config.DefaultHTTPAddress,
 		},
+		&cli.IntFlag{
+			Name:  "proxy-port-min",
+			Usage: "minimum port for proxy allocation (defaults to 10000)",
+			Value: 10000,
+		},
+		&cli.IntFlag{
+			Name:  "proxy-port-max",
+			Usage: "maximum port for proxy allocation (defaults to 20000)",
+			Value: 20000,
+		},
 	}
 	app.Action = serveAction
 
@@ -128,6 +138,8 @@ func serveAction(clix *cli.Context) error {
 
 	maintenanceMode := clix.Bool("maintenance")
 	httpAddr := clix.String("http-addr")
+	proxyPortMin := clix.Int("proxy-port-min")
+	proxyPortMax := clix.Int("proxy-port-max")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -139,6 +151,8 @@ func serveAction(clix *cli.Context) error {
 		NetworkManagerAddress:       networkManagerAddress,
 		StorageManagerAddress:       storageManagerAddress,
 		EnableInstanceBootOnStartup: enableInstanceBootOnStartup,
+		ProxyPortMin:                proxyPortMin,
+		ProxyPortMax:                proxyPortMax,
 	}
 
 	opts := []exelet.ServerOpt{}

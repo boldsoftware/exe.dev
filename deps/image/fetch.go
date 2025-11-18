@@ -60,13 +60,41 @@ func (i *ImageManager) Fetch(ctx context.Context, ref, platform, destDir string)
 		if err := json.Unmarshal(db, &man); err != nil {
 			return nil, err
 		}
+		// Unpack layers to destDir
+		var totalUnpackedSize int64
+		for _, layer := range man.Layers {
+			i.log.Debug("fetching layer", "type", layer.MediaType, "size", layer.Size)
+			ra, err := contentStore.ReaderAt(ctx, layer)
+			if err != nil {
+				return nil, err
+			}
+			cr := content.NewReader(ra)
+			r, err := compression.DecompressStream(cr)
+			if err != nil {
+				ra.Close()
+				return nil, err
+			}
+			bytesWritten, err := archive.Apply(ctx, destDir, r)
+			if err != nil {
+				r.Close()
+				ra.Close()
+				return nil, err
+			}
+			totalUnpackedSize += bytesWritten
+			i.log.Debug("layer unpacked", "compressed", layer.Size, "uncompressed", bytesWritten)
+			r.Close()
+			ra.Close()
+		}
+		// Get image config
 		_, cb, _ := contentStore.Get(man.Config)
 		var conf ocispec.Image
 		if err := json.Unmarshal(cb, &conf); err != nil {
 			return nil, err
 		}
+		i.log.Debug("image configuration", "config", conf, "totalUnpackedSize", totalUnpackedSize)
 		return &types.FetchResult{
-			Config: &conf,
+			Config:       &conf,
+			UnpackedSize: totalUnpackedSize,
 		}, nil
 	default:
 		i.log.Error("unknown descriptor", "type", descriptor.MediaType)

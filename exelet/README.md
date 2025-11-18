@@ -3,6 +3,19 @@
 Exelet is the compute agent/worker node in the exe.dev service that manages VM-based container instances. 
 It handles the creation and lifecycle management of lightweight VMs running OCI container images.
 
+## Protobuf
+The exelet uses gRPC for transport. To generate the definitions, you will need the following installed:
+
+- protobuf
+- protoc-gen-go
+- protoc-gen-go-grpc
+
+You can install these with `brew install protobuf protoc-gen-go protoc-gen-go-grpc`.
+
+In addition, we also use `go-fix-acronym` as a helper. You can install that with the following:
+
+`go install github.com/containerd/protobuild/cmd/go-fix-acronym@latest`.
+
 ## Architecture Overview
 
 Exelet is a gRPC server with a modular plugin-based architecture built on three main subsystems:

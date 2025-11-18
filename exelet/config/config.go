@@ -92,4 +92,8 @@ type ExeletConfig struct {
 	EnableInstanceBootOnStartup bool
 	// AgentUseVsock configures the agent communication to use vsock
 	AgentUseVsock bool
+	// ProxyPortMin is the minimum port for proxy allocation (defaults to 10000)
+	ProxyPortMin int
+	// ProxyPortMax is the maximum port for proxy allocation (defaults to 20000)
+	ProxyPortMax int
 }

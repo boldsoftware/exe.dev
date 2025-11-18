@@ -22,6 +22,11 @@ var createInstanceCommand = &cli.Command{
 	Usage: "Create a new compute instance",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
+			Name:        "id",
+			Usage:       "id of the instance",
+			DefaultText: "generated",
+		},
+		&cli.StringFlag{
 			Name:    "name",
 			Aliases: []string{"n"},
 			Usage:   "name of the instance",
@@ -75,6 +80,7 @@ var createInstanceCommand = &cli.Command{
 		},
 	},
 	Action: func(clix *cli.Context) error {
+		id := clix.String("id")
 		name := clix.String("name")
 		if name == "" {
 			h := sha256.New()
@@ -120,6 +126,7 @@ var createInstanceCommand = &cli.Command{
 		defer c.Close()
 
 		req := &api.CreateInstanceRequest{
+			ID:       id,
 			Name:     name,
 			Image:    image,
 			CPUs:     cpus,

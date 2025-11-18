@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"syscall"
 
@@ -87,6 +88,9 @@ func startSSH(imageConfig *v1.ImageConfig) error {
 func addSSHUser(username string) error {
 	st, err := os.Stat(config.PasswdPath)
 	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(config.PasswdPath), 0755); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(config.PasswdPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, st.Mode())

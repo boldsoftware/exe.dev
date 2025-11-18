@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	minPort = 10000
-	maxPort = 20000
+	defaultMinPort = 10000
+	defaultMaxPort = 20000
 )
 
 // PortAllocator manages allocation of ports in a range
@@ -15,27 +15,40 @@ type PortAllocator struct {
 	mu        sync.Mutex
 	allocated map[int]bool
 	nextPort  int
+	minPort   int
+	maxPort   int
 }
 
-// NewPortAllocator creates a new port allocator
+// NewPortAllocator creates a new port allocator with default port range
 func NewPortAllocator() *PortAllocator {
+	return NewPortAllocatorWithRange(defaultMinPort, defaultMaxPort)
+}
+
+// NewPortAllocatorWithRange creates a new port allocator with custom port range
+func NewPortAllocatorWithRange(minPort, maxPort int) *PortAllocator {
+	if minPort <= 0 || maxPort <= 0 || minPort >= maxPort {
+		minPort = defaultMinPort
+		maxPort = defaultMaxPort
+	}
 	return &PortAllocator{
 		allocated: make(map[int]bool),
 		nextPort:  minPort,
+		minPort:   minPort,
+		maxPort:   maxPort,
 	}
 }
 
-// Allocate allocates a port in the range minPort-maxPort
+// Allocate allocates a port in the configured range
 func (p *PortAllocator) Allocate() (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// Try to find a free port starting from nextPort
-	for i := 0; i < (maxPort - minPort); i++ {
+	for i := 0; i < (p.maxPort - p.minPort); i++ {
 		port := p.nextPort
 		p.nextPort++
-		if p.nextPort >= maxPort {
-			p.nextPort = minPort
+		if p.nextPort >= p.maxPort {
+			p.nextPort = p.minPort
 		}
 
 		if !p.allocated[port] {
@@ -44,7 +57,7 @@ func (p *PortAllocator) Allocate() (int, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("no available ports in range %d-%d", minPort, maxPort)
+	return 0, fmt.Errorf("no available ports in range %d-%d", p.minPort, p.maxPort)
 }
 
 // MarkAllocated marks a port as allocated (used when loading existing instances on startup)

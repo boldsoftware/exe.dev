@@ -117,7 +117,7 @@ func TestVanillaBox(t *testing.T) {
 		}
 
 		// Run a simple docker container to verify Docker works in exeuntu.
-		out, err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "run", "--rm", "alpine:latest", "echo", "hello").CombinedOutput()
+		out, err := boxSSHCommand(t, boxName, keyFile, "sudo", "docker", "run", "--rm", "ghcr.io/linuxcontainers/alpine:latest", "echo", "hello").CombinedOutput()
 		if err != nil {
 			t.Fatalf("failed to run docker command: %v\n%s", err, out)
 		}

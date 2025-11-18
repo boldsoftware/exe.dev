@@ -819,7 +819,8 @@ func startExelet(ctrHost string) (*exeletInstance, error) {
 
 	// Start exelet on remote host in background with sudo (needs privileges for bridge setup)
 	// Use a wrapper to ensure we can capture the PID even if the process fails immediately
-	startCmd := fmt.Sprintf(`sudo LOG_FORMAT=json nohup /tmp/exelet-test --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network > /tmp/exelet-test-%s.log 2>&1 &`,
+	// Use proxy port range 30000-40000 for e1e tests to avoid conflicts with dev (10000-20000) and unit tests (20000-30000)
+	startCmd := fmt.Sprintf(`sudo LOG_FORMAT=json nohup /tmp/exelet-test --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --proxy-port-min 30000 --proxy-port-max 40000 > /tmp/exelet-test-%s.log 2>&1 &`,
 		testRunID)
 	out, err := sshExec(ctx, host, startCmd)
 	if err != nil {
