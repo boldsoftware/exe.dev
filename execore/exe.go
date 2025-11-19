@@ -143,7 +143,6 @@ type Server struct {
 	sshLn      *listener
 	pluginLn   *listener
 	piperdPort int // what port sshpiperd is listening on, typically 2222
-	BaseURL    string
 	PublicIPs  map[netip.Addr]publicips.PublicIP
 
 	// ready indicates that the server is fully ready and serving.
@@ -388,14 +387,18 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		httpsLn = unusedListener(httpsAddr)
 	}
 
-	httpLn, err = startListener(slog, "http", httpAddr)
-	if err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
+	if httpAddr != "" {
+		// HTTP is configured, use http://localhost with the HTTP port
+		httpLn, err = startListener(slog, "http", httpAddr)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
+		}
+		baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
+		slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
+	} else {
+		httpLn = unusedListener(httpAddr)
 	}
-	// No HTTPS, use http://localhost with the HTTP port
-	baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
-	slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
 
 	sshLn, err := startListener(slog, "ssh", sshAddr)
 	if err != nil {
@@ -475,7 +478,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		sshLn:              sshLn,
 		pluginLn:           pluginLn,
 		piperdPort:         piperdPort,
-		BaseURL:            baseURL,
 		db:                 db,
 		tagResolver:        tagResolverInstance,
 		exeletClients:      exeletClients,
@@ -512,7 +514,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	go func() {
 		s.ready.Wait()
 		// The following log line signals to e2e tests that they may proceed with using the server (better than sleeps!)
-		s.slog().Info("server started", "url", s.BaseURL)
+		s.slog().Info("server started", "url", baseURL)
 	}()
 
 	return s, nil
@@ -1888,8 +1890,10 @@ func (s *Server) Stop() error {
 	defer cancel()
 
 	// Shutdown HTTP server
-	if err := s.httpServer.Shutdown(ctx); err != nil {
-		s.slog().ErrorContext(ctx, "HTTP server shutdown error", "error", err)
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			s.slog().ErrorContext(ctx, "HTTP server shutdown error", "error", err)
+		}
 	}
 
 	// Shutdown HTTPS server if running

@@ -58,6 +58,10 @@ func (s *Server) prepareHandler() http.Handler {
 
 // setupHTTPServer configures the HTTP server
 func (s *Server) setupHTTPServer() {
+	if s.httpLn.ln == nil {
+		return
+	}
+
 	h := s.prepareHandler()
 
 	s.httpServer = &http.Server{
