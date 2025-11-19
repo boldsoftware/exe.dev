@@ -360,14 +360,10 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		cc.Write("\r\n\033[1A")
 	}
 
-	var gatewayURL string
-	var terminalURL string
-	var exedevURL string
-	if !cc.DevMode {
-		gatewayURL = "https://exe.dev"
-		exedevURL = "https://exe.dev"
-		terminalURL = fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
-	} else {
+	gatewayURL := "https://exe.dev"
+	exedevURL := "https://exe.dev"
+	terminalURL := fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
+	if ss.server.env.DevMode != "" {
 		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, ss.server.httpPort())
 		gatewayURL = fmt.Sprintf("http://%s:%d", ss.server.gateway, ss.server.httpPort())
 		exedevURL = fmt.Sprintf("http://localhost:%d", ss.server.httpPort())
