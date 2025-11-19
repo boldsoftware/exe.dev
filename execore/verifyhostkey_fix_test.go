@@ -21,7 +21,7 @@ func (m mockConnMetadata) UniqueID() string          { return "test-unique-id" }
 func (m mockConnMetadata) GetMeta(key string) string { return "" }
 
 // generateTestHostKey creates a properly formatted SSH public key for testing
-func generateTestHostKey(t *testing.T, keyName string) []byte {
+func generateTestHostKey(t *testing.T) []byte {
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("Failed to generate test key: %v", err)
@@ -56,19 +56,19 @@ func TestVerifyHostKeyRejectsUnknownKeys(t *testing.T) {
 			name:     "exed_local_connection",
 			hostname: "127.0.0.1",
 			netaddr:  "127.0.0.1:2223",
-			hostKey:  generateTestHostKey(t, "exed-key"),
+			hostKey:  generateTestHostKey(t),
 		},
 		{
 			name:     "container_connection",
 			hostname: "127.0.0.1",
 			netaddr:  "127.0.0.1:32768",
-			hostKey:  generateTestHostKey(t, "container-key"),
+			hostKey:  generateTestHostKey(t),
 		},
 		{
 			name:     "localhost_connection",
 			hostname: "localhost",
 			netaddr:  "localhost:2223",
-			hostKey:  generateTestHostKey(t, "localhost-key"),
+			hostKey:  generateTestHostKey(t),
 		},
 		{
 			name:     "empty_host_key",
@@ -103,7 +103,7 @@ func TestVerifyHostKeyAcceptsKnownKeys(t *testing.T) {
 	}
 
 	// Generate a test host key
-	hostKeyBytes := generateTestHostKey(t, "known-key")
+	hostKeyBytes := generateTestHostKey(t)
 	pubKey, err := ssh.ParsePublicKey(hostKeyBytes)
 	if err != nil {
 		t.Fatalf("Failed to parse generated host key: %v", err)
@@ -136,7 +136,7 @@ func TestVerifyHostKeyExpiration(t *testing.T) {
 	}
 
 	// Generate a test host key
-	hostKeyBytes := generateTestHostKey(t, "expire-key")
+	hostKeyBytes := generateTestHostKey(t)
 	pubKey, err := ssh.ParsePublicKey(hostKeyBytes)
 	if err != nil {
 		t.Fatalf("Failed to parse generated host key: %v", err)

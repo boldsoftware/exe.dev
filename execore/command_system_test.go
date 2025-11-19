@@ -25,7 +25,7 @@ func (m *MockOutput) String() string {
 }
 
 // Helper to create test context
-func createTestContext(sshServer *SSHServer, user *exedb.User, output *MockOutput, args []string) *exemenu.CommandContext {
+func createTestContext(user *exedb.User, output *MockOutput, args []string) *exemenu.CommandContext {
 	var userInfo *exemenu.UserInfo
 	if user != nil {
 		userInfo = &exemenu.UserInfo{ID: user.UserID, Email: user.Email}
@@ -140,7 +140,7 @@ func TestHelpCommand(t *testing.T) {
 
 	t.Run("general help", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, output, []string{})
+		cc := createTestContext(user, output, []string{})
 		ctx := context.Background()
 
 		err := sshServer.handleHelpCommand(ctx, cc)
@@ -165,7 +165,7 @@ func TestHelpCommand(t *testing.T) {
 
 	t.Run("specific command help", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, output, []string{"whoami"})
+		cc := createTestContext(user, output, []string{"whoami"})
 		ctx := context.Background()
 
 		err := sshServer.handleHelpCommand(ctx, cc)
@@ -184,7 +184,7 @@ func TestHelpCommand(t *testing.T) {
 
 	t.Run("help for nonexistent command", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, output, []string{"nonexistent"})
+		cc := createTestContext(user, output, []string{"nonexistent"})
 		ctx := context.Background()
 
 		err := sshServer.handleHelpCommand(ctx, cc)
@@ -209,7 +209,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	t.Run("execute help command", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, output, []string{})
+		cc := createTestContext(user, output, []string{})
 		ctx := context.Background()
 
 		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
@@ -225,7 +225,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	t.Run("execute nonexistent command", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, output, []string{})
+		cc := createTestContext(user, output, []string{})
 		ctx := context.Background()
 
 		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"nonexistent"})
@@ -240,7 +240,7 @@ func TestExecuteCommand(t *testing.T) {
 
 	t.Run("execute command with args", func(t *testing.T) {
 		output := &MockOutput{}
-		cc := createTestContext(sshServer, user, output, []string{"whoami"})
+		cc := createTestContext(user, output, []string{"whoami"})
 		ctx := context.Background()
 		rc := sshServer.commands.ExecuteCommand(ctx, cc, []string{"help"})
 		if rc != 0 {
@@ -263,7 +263,7 @@ func TestGetAvailableCommands(t *testing.T) {
 
 	user := &exedb.User{UserID: "test-user", Email: "test@example.com"}
 
-	ctx := createTestContext(sshServer, user, &MockOutput{}, []string{})
+	ctx := createTestContext(user, &MockOutput{}, []string{})
 
 	t.Run("get root commands", func(t *testing.T) {
 		available := sshServer.commands.GetAvailableCommands(ctx)
@@ -417,7 +417,7 @@ func TestCommandFlagParsing(t *testing.T) {
 
 			// Execute the command
 			output := &MockOutput{}
-			cc := createTestContext(sshServer, user, output, []string{})
+			cc := createTestContext(user, output, []string{})
 			ctx := context.Background()
 
 			rc := sshServer.commands.ExecuteCommand(ctx, cc, tt.commandPath)
@@ -463,8 +463,6 @@ func TestCommandFlagParsing(t *testing.T) {
 
 func TestSubcommandFlagParsing(t *testing.T) {
 	// Create test server and dependencies
-	server := &Server{}
-	sshServer := &SSHServer{server: server}
 
 	// Create a custom command tree with subcommands that have flags for testing
 	testFlagSetFunc := func() *flag.FlagSet {
@@ -583,7 +581,7 @@ func TestSubcommandFlagParsing(t *testing.T) {
 			capturedContext = nil // Reset
 
 			output := &MockOutput{}
-			cc := createTestContext(sshServer, user, output, []string{})
+			cc := createTestContext(user, output, []string{})
 			ctx := context.Background()
 
 			rc := customTree.ExecuteCommand(ctx, cc, tt.commandPath)
@@ -660,7 +658,7 @@ func TestFlagParsingErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			output := &MockOutput{}
-			cc := createTestContext(sshServer, user, output, []string{})
+			cc := createTestContext(user, output, []string{})
 			ctx := context.Background()
 
 			// For valid flags test, replace handler with a mock to avoid business logic
