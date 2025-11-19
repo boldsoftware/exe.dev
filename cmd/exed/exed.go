@@ -30,11 +30,11 @@ func main() {
 }
 
 func run() error {
-	httpAddr := flag.String("http", ":8080", "HTTP server address")
+	httpAddr := flag.String("http", ":8080", "HTTP server address, empty to disable")
 	sshAddr := flag.String("ssh", ":2223", "SSH server address")
 	pluginAddr := flag.String("piper-plugin", ":2224", "Piper plugin gRPC server address")
 	piperdPort := flag.Int("piperd-port", 2222, "sshpiper listening port")
-	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt)")
+	httpsAddr := flag.String("https", "", "HTTPS server address (enables TLS with Let's Encrypt), empty to disable")
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test", overridden by -dev flag`)

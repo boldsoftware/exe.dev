@@ -291,6 +291,9 @@ func unusedListener(addr string) *listener {
 }
 
 func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
+	if addr == "" {
+		return nil, errors.New("address is empty")
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
