@@ -344,10 +344,7 @@ func (m *NerdctlManager) ExecSSHCommand(ctx context.Context, host string, args .
 
 func isHexString(s string) bool {
 	_, err := hex.DecodeString(s)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 // discoverContainers discovers existing containers on a host
@@ -1493,37 +1490,6 @@ func (m *NerdctlManager) listContainersWithFilterOnHost(ctx context.Context, hos
 	}
 
 	return containers, nil
-}
-
-// executeInContainer executes a command inside a container
-// Note: we've had issues with redirecting stdin with nerdctl exec
-// Note: this only seems to be used in tests
-func (m *NerdctlManager) executeInContainer(ctx context.Context, allocID, containerID string, command []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	container, err := m.GetContainer(ctx, allocID, containerID)
-	if err != nil {
-		return err
-	}
-
-	args := []string{"exec"}
-	if stdin != nil {
-		args = append(args, "-i")
-	}
-	args = append(args, container.ID)
-	args = append(args, command...)
-
-	cmd := m.execNerdctl(ctx, container.DockerHost, args...)
-
-	if stdin != nil {
-		cmd.Stdin = stdin
-	}
-	if stdout != nil {
-		cmd.Stdout = stdout
-	}
-	if stderr != nil {
-		cmd.Stderr = stderr
-	}
-
-	return cmd.Run()
 }
 
 // GetContainerLogs retrieves container logs
