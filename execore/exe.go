@@ -307,6 +307,14 @@ func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
 	}, nil
 }
 
+// httpPort returns the HTTP listening port, or -1 if not listening.
+func (s *Server) httpPort() int {
+	if s.httpLn != nil && s.httpLn.tcp != nil {
+		return s.httpLn.tcp.Port
+	}
+	return -1
+}
+
 func runMigrations(slog *slog.Logger, dbPath string) error {
 	rawDB, err := sql.Open("sqlite", dbPath)
 	if err != nil {

@@ -377,9 +377,9 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		exedevURL = "https://exe.dev"
 		terminalURL = fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 	} else {
-		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, cc.ExedListeningPort)
-		gatewayURL = fmt.Sprintf("http://%s:%d", cc.Gateway, cc.ExedListeningPort)
-		exedevURL = fmt.Sprintf("http://localhost:%d", cc.ExedListeningPort)
+		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, ss.server.httpPort())
+		gatewayURL = fmt.Sprintf("http://%s:%d", ss.server.gateway, ss.server.httpPort())
+		exedevURL = fmt.Sprintf("http://localhost:%d", ss.server.httpPort())
 	}
 	shelleyJSON := map[string]interface{}{
 		"terminal_url":  terminalURL,

@@ -190,13 +190,11 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 		}
 
 		cc := &exemenu.CommandContext{
-			User:              &exemenu.UserInfo{ID: userID},
-			FlagSet:           fs,
-			Output:            cs,
-			Logger:            s.slog(),
-			ForceSpinner:      true,
-			Gateway:           s.gateway,
-			ExedListeningPort: s.httpLn.tcp.Port,
+			User:         &exemenu.UserInfo{ID: userID},
+			FlagSet:      fs,
+			Output:       cs,
+			Logger:       s.slog(),
+			ForceSpinner: true,
 		}
 
 		// Run the creation
