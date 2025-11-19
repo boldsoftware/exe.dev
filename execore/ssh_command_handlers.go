@@ -360,15 +360,6 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		cc.Write("\r\n\033[1A")
 	}
 
-	// generate shelley.json config
-	// Add shelley.json if we can determine the gateway
-
-	/*
-		exedConfig := map[string]any{
-			"production_mode":     !cc.DevMode,
-			"exed_listening_port": cc.ExedListeningPort,
-		}
-	*/
 	var gatewayURL string
 	var terminalURL string
 	var exedevURL string
