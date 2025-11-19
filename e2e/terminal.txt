@@ -59,7 +59,7 @@ Test the web terminal interface functionality, including complete authentication
 7. **Basic terminal interaction**
    - Type commands in the terminal: `echo "Hello from web terminal"`
    - Expected: Command executes and output appears
-   - Type: `pwd` 
+   - Type: `pwd`
    - Expected: Shows current directory in container
 
 8. **Terminal session persistence**
