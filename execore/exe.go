@@ -373,20 +373,8 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 
 	var baseURL string
-	var httpLn *listener
-	var httpsLn *listener
-	if httpsAddr != "" {
-		// HTTPS is configured, use https://exe.dev
-		baseURL = "https://exe.dev"
-		httpsLn, err = startListener(slog, "https", httpsAddr)
-		if err != nil {
-			db.Close()
-			return nil, fmt.Errorf("failed to listen on HTTPS address %q: %w", httpsAddr, err)
-		}
-	} else {
-		httpsLn = unusedListener(httpsAddr)
-	}
 
+	httpLn := unusedListener(httpAddr)
 	if httpAddr != "" {
 		// HTTP is configured, use http://localhost with the HTTP port
 		httpLn, err = startListener(slog, "http", httpAddr)
@@ -396,8 +384,17 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		}
 		baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
 		slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
-	} else {
-		httpLn = unusedListener(httpAddr)
+	}
+
+	httpsLn := unusedListener(httpsAddr)
+	if httpsAddr != "" {
+		// HTTPS is configured, use https://exe.dev
+		baseURL = "https://exe.dev"
+		httpsLn, err = startListener(slog, "https", httpsAddr)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to listen on HTTPS address %q: %w", httpsAddr, err)
+		}
 	}
 
 	sshLn, err := startListener(slog, "ssh", sshAddr)
