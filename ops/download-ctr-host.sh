@@ -105,20 +105,6 @@ download_if_needed() {
     fi
 }
 
-# Download cloud-hypervisor remote binary
-# Map arch to cloud-hypervisor naming (aarch64 for arm64, x86_64 for amd64)
-if [ "$ARCH" = "arm64" ]; then
-    CH_ARCH="aarch64"
-    download_if_needed \
-        "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v${CLOUD_HYPERVISOR_VERSION}/ch-remote-static-aarch64" \
-        "ch-remote-static-${CLOUD_HYPERVISOR_VERSION}-${ARCH}"
-else
-    CH_ARCH="x86_64"
-    download_if_needed \
-        "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v${CLOUD_HYPERVISOR_VERSION}/ch-remote-static" \
-        "ch-remote-static-${CLOUD_HYPERVISOR_VERSION}-${ARCH}"
-fi
-
 # Download cloud-hypervisor source (for building)
 download_if_needed \
     "https://github.com/cloud-hypervisor/cloud-hypervisor/archive/refs/tags/v${CLOUD_HYPERVISOR_VERSION}.tar.gz" \

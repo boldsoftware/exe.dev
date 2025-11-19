@@ -14,6 +14,7 @@ import (
 )
 
 func (s *Service) LoadFilesystem(ctx context.Context, req *api.LoadFilesystemRequest) (*api.LoadFilesystemResponse, error) {
+	s.log.DebugContext(ctx, "loading image into storage", "image", req.Image)
 	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
 	imageID, err := utils.LoadImage(ctx, req.Image, platform, s.context.ImageManager, s.context.StorageManager, s.log)
 	if err != nil {

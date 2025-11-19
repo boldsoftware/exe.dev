@@ -230,12 +230,12 @@ exe-ssh:
 exelet-kernel: exelet/fs/kernel/kernel
 exelet/fs/kernel/kernel:
 	@>&2 echo " -> building exelet kernel"
-	@docker buildx build --output type=local,dest=./exelet/fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
 
 # exelet rovol
 exelet-rovol: exelet/fs/rovol
 exelet/fs/rovol:
 	@>&2 echo " -> building exelet rovol"
-	@docker buildx build --output type=local,dest=./exelet/fs/rovol -f ./exelet/rovol/Dockerfile .
+	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/rovol -f ./exelet/rovol/Dockerfile .
 
 .DEFAULT_GOAL := help
