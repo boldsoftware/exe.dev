@@ -394,7 +394,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal, // Interactive terminal available
-			DevMode:    ss.server.env.DevMode == "local",
+			DevMode:    ss.server.env.ReplDev,
 			Logger:     ss.server.slog(),
 		}
 
@@ -761,7 +761,7 @@ func (ss *SSHServer) handleExec(s sshsession.Session, cmd []string, publicKey st
 		Output:     exemenu.NewANSIFilterWriter(s), // Filter out ANSI control codes from non-interactive sessions.
 		SSHSession: sshsession.NewShell(s),
 		Terminal:   nil, // No interactive terminal for exec mode
-		DevMode:    ss.server.env.DevMode == "local",
+		DevMode:    ss.server.env.ReplDev,
 		Logger:     ss.server.slog(),
 	}
 
@@ -997,7 +997,7 @@ func (ss *SSHServer) readLineWithCompletion(terminal *term.Terminal, user *exedb
 			Output:     s,
 			SSHSession: s,
 			Terminal:   terminal,
-			DevMode:    ss.server.env.DevMode == "local",
+			DevMode:    ss.server.env.ReplDev,
 			Logger:     ss.server.slog(),
 		}
 
