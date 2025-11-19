@@ -26,7 +26,7 @@ func (s *DHCPServer) Serve(ctx context.Context) error {
 	}
 
 	laddr := net.UDPAddr{
-		IP:   net.IP{0, 0, 0, 0},
+		IP:   serverIP,
 		Port: s.config.Port,
 	}
 	server, err := server4.NewServer(s.config.Interface, &laddr, s.handler)
