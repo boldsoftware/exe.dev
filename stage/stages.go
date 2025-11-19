@@ -12,6 +12,8 @@ func Local() Env {
 		UseRoute53: false,
 		UseCobble:  true,
 
+		ReplDev: true,
+
 		DevMode: "local",
 	}
 }
@@ -28,6 +30,8 @@ func Test() Env {
 		UseRoute53: false,
 		UseCobble:  false,
 
+		ReplDev: false,
+
 		DevMode: "test",
 	}
 }
@@ -43,6 +47,8 @@ func Staging() Env {
 		UseRoute53: true,
 		UseCobble:  false,
 
+		ReplDev: false,
+
 		DevMode: "",
 	}
 }
@@ -57,6 +63,8 @@ func Prod() Env {
 
 		UseRoute53: true,
 		UseCobble:  false,
+
+		ReplDev: false,
 
 		DevMode: "",
 	}
