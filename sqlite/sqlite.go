@@ -1,9 +1,23 @@
 // Package sqlite implements a connection pool for SQLite.
+//
+// # Functions
+//
+// This package registers a 'now()' SQL function that returns the current
+// time as a UTC DATETIME string. It provides several advantages over the
+// builtin CURRENT_TIMESTAMP: nanosecond-level precision instead of
+// second-level, and compatibility with synctest time bubbles for testing
+// time-dependent logic like TTLs.
+//
+// The function formats timestamps using a consistent layout to keep
+// lexicographical comparisons valid in SQL queries.
+//
+//	Example: SELECT * FROM table WHERE created_at < now();
 package sqlite
 
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"math"
 	"runtime"
@@ -11,7 +25,23 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	sqlite "modernc.org/sqlite"
 )
+
+const (
+	// Time10 is the sqlite-compatible time format with nanosecond
+	// precision and time zone offset.
+	Time10 = "2006-01-02 15:04:05.999999999-07:00"
+)
+
+func init() {
+	// now() -> UTC timestamp compatible with SQLite datetime helpers
+	sqlite.MustRegisterScalarFunction("now", 0, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		// SQLite emits "YYYY-MM-DD HH:MM:SS" strings for datetime arithmetic,
+		// so stick to the same layout to keep lexicographical comparisons valid.
+		return time.Now().UTC().Format(Time10), nil
+	})
+}
 
 // TODO: add instrumentation, so we can measure how long we are waiting
 // for DB connections and see the slow points. E.g. add an HTTP handler.
@@ -21,7 +51,7 @@ func generateLogarithmicBuckets(min, max float64, count int) []float64 {
 	buckets := make([]float64, count)
 	logMin := math.Log(min)
 	logMax := math.Log(max)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		factor := float64(i) / float64(count-1)
 		buckets[i] = math.Exp(logMin + factor*(logMax-logMin))
 	}
@@ -169,7 +199,7 @@ func New(dataSourceName string, readerCount int) (*DB, error) {
 	}
 	p.writer <- conns[0]
 	for _, conn := range conns[1:] {
-		if _, err := conn.ExecContext(context.Background(), "PRAGMA query_only=1;"); err != nil {
+		if _, err := conn.ExecContext(ctx, "PRAGMA query_only=1;"); err != nil {
 			shutdown()
 			return nil, fmt.Errorf("sqlite.New query_only: %w", err)
 		}
