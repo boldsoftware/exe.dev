@@ -239,6 +239,10 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 
 	ctx := context.Background()
 
+	// Stop any existing exelet instances
+	// no error handling because pkill fails if there's nothing to kill
+	sshExec(ctx, host, "sudo pkill -9 -f exeletd")
+
 	// Upload binary
 	remotePath := "/tmp/exeletd"
 	slog.Info("uploading exelet to remote host", "host", host, "path", remotePath)
@@ -382,6 +386,7 @@ func scpUpload(localPath, host, remotePath string) error {
 	cmd := exec.Command("scp",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
 		localPath, host+":"+remotePath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
