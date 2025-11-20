@@ -15,24 +15,6 @@ func newTestServer(t *testing.T) *Server {
 	return s
 }
 
-// newHTTPOnlyTestServer creates a test server with only HTTP (no HTTPS/TLS/Cobble/Tailscale).
-// This is much faster for tests that don't need TLS functionality.
-func newHTTPOnlyTestServer(t *testing.T) *Server {
-	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
-	env := stage.Local()
-	env.DevMode = "test"
-	env.UseCobble = false // Disable Cobble/Pebble ACME server
-	// Pass empty string for httpsAddr to skip HTTPS setup entirely
-	s, err := NewServer(tslog.Slogger(t), ":0", "", ":0", ":0", dbPath, "test", "", 2222, "", nil, "", env)
-	if err != nil {
-		t.Fatalf("failed to create HTTP-only server: %v", err)
-	}
-	t.Cleanup(func() { s.Stop() })
-	s.startAndAwaitReady()
-	return s
-}
-
 func (s *Server) startAndAwaitReady() {
 	go s.Start()
 	s.ready.Wait()

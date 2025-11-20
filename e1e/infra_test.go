@@ -1745,7 +1745,7 @@ func registerForExeDev(t *testing.T) (pty *expectPty, cookies []*http.Cookie, ke
 	return registerForExeDevWithEmail(t, email)
 }
 
-func setCookiesForJar(t *testing.T, jar *cookiejar.Jar, rawURL string, cookies []*http.Cookie) {
+func setCookiesForJar(t testing.TB, jar *cookiejar.Jar, rawURL string, cookies []*http.Cookie) {
 	t.Helper()
 	if len(cookies) == 0 || jar == nil {
 		return

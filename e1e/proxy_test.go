@@ -221,102 +221,29 @@ chmod +x /home/exedev/cgi-bin/headers
 	t.Run("auth_confirm_owner_skip", func(t *testing.T) {
 		altPort := Env.exed.ExtraPorts[0]
 		serveHTTP(t, altPort)
-		expectedReturnHost := fmt.Sprintf("%s.localhost:%d", box, altPort)
+		fixture := newProxyAuthFixture(t, box, altPort, cookies)
+		jar := fixture.newJar()
+		fixture.loginThroughProxy(jar)
+		fixture.authCookie(jar) // will fail if no auth cookie issued
+	})
 
-		jar, err := cookiejar.New(nil)
-		if err != nil {
-			t.Fatalf("failed to create cookie jar: %v", err)
-		}
-		setCookiesForJar(t, jar, fmt.Sprintf("http://localhost:%d", altPort), cookies)
+	t.Run("logout_flow", func(t *testing.T) {
+		altPort := Env.exed.ExtraPorts[0]
+		serveHTTP(t, altPort)
+		fixture := newProxyAuthFixture(t, box, altPort, cookies)
+		requireLogoutUI(t, fixture.logoutURL, fixture.expectedLogout)
 
-		client := noRedirectClient(jar)
-		proxyURL := fmt.Sprintf("http://%s.localhost:%d/", box, altPort)
+		ownerJar := fixture.newJar()
+		ownerClient := fixture.loginThroughProxy(ownerJar)
+		staleCookie := fixture.authCookie(ownerJar)
 
-		req, err := localhostRequestWithHostHeader(http.MethodGet, proxyURL, nil)
-		if err != nil {
-			t.Fatalf("failed to create request: %v", err)
-		}
+		otherJar := fixture.newJar()
+		otherClient := fixture.loginThroughProxy(otherJar)
 
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("failed to do request: %v", err)
-		}
-
-		redirectCount := 0
-		sawConfirmRedirect := false
-		for resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusSeeOther {
-			if redirectCount > 10 {
-				resp.Body.Close()
-				t.Fatalf("too many redirects")
-			}
-
-			location, err := resp.Location()
-			if err != nil {
-				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				t.Fatalf("failed to get redirect location: %v (status %d, body %s)", err, resp.StatusCode, body)
-			}
-			resp.Body.Close()
-
-			req, err = localhostRequestWithHostHeader(http.MethodGet, location.String(), nil)
-			if err != nil {
-				t.Fatalf("failed to create redirect request: %v", err)
-			}
-
-			isConfirm := strings.Contains(location.Path, "/auth/confirm")
-			resp, err = client.Do(req)
-			if err != nil {
-				t.Fatalf("failed to follow redirect: %v", err)
-			}
-			if isConfirm {
-				if resp.StatusCode != http.StatusTemporaryRedirect {
-					body, _ := io.ReadAll(resp.Body)
-					resp.Body.Close()
-					t.Fatalf("owner flow should skip confirmation page, but status %d returned: %s", resp.StatusCode, body)
-				}
-				confirmLocation, err := resp.Location()
-				if err != nil {
-					body, _ := io.ReadAll(resp.Body)
-					resp.Body.Close()
-					t.Fatalf("owner flow confirm redirect missing Location header: %v (body: %s)", err, body)
-				}
-				if confirmLocation.Scheme != "http" {
-					t.Fatalf("expected owner confirm redirect scheme http, got %s", confirmLocation.Scheme)
-				}
-				if confirmLocation.Host != expectedReturnHost {
-					t.Fatalf("expected owner confirm redirect host %s, got %s", expectedReturnHost, confirmLocation.Host)
-				}
-				if confirmLocation.Path != "/__exe.dev/auth" {
-					t.Fatalf("expected owner confirm redirect path /__exe.dev/auth, got %s", confirmLocation.Path)
-				}
-				query := confirmLocation.Query()
-				if query.Get("secret") == "" {
-					t.Fatalf("owner confirm redirect missing secret query parameter")
-				}
-				if query.Get("redirect") == "" {
-					t.Fatalf("owner confirm redirect missing redirect query parameter")
-				}
-				sawConfirmRedirect = true
-			}
-
-			redirectCount++
-		}
-		if !sawConfirmRedirect {
-			t.Fatalf("owner flow never hit /auth/confirm redirect")
-		}
-
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("failed to read final response body: %v", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("expected final status 200, got %d. Body: %s", resp.StatusCode, body)
-		}
-		if !strings.Contains(string(body), "alive") {
-			t.Fatalf("expected final body to contain 'alive', got %s", body)
-		}
+		fixture.logoutSession(ownerClient, ownerJar)
+		fixture.requireLoginRedirect(ownerClient)
+		fixture.requireLoginRedirectWithCookie(staleCookie)
+		fixture.requireOtherSessionStillAuthed(otherClient, otherJar)
 	})
 
 	t.Run("basic_auth", func(t *testing.T) {
@@ -572,6 +499,349 @@ type proxyExpectation struct {
 	redirectLocation string // Expected Location header for redirects (optional)
 }
 
+func mustParseURL(raw string) *url.URL {
+	u, err := url.Parse(raw)
+	if err != nil {
+		panic(fmt.Sprintf("parse %q: %v", raw, err))
+	}
+	return u
+}
+
+type proxyAuthFixture struct {
+	t                  testing.TB
+	proxyURL           string
+	logoutURL          string
+	expectedLogout     string
+	expectedReturnHost string
+	cookieURL          *url.URL
+	localCookieAddr    string
+	localCookieURL     *url.URL
+	cookies            []*http.Cookie
+}
+
+func newProxyAuthFixture(t *testing.T, box string, port int, cookies []*http.Cookie) proxyAuthFixture {
+	proxyURL := fmt.Sprintf("http://%s.localhost:%d/", box, port)
+	cookieURL := mustParseURL(proxyURL)
+	localCookieAddr := fmt.Sprintf("http://localhost:%d", port)
+	localCookieURL := mustParseURL(localCookieAddr)
+	return proxyAuthFixture{
+		t:                  t,
+		proxyURL:           proxyURL,
+		logoutURL:          fmt.Sprintf("http://%s.localhost:%d/__exe.dev/logout", box, port),
+		expectedLogout:     fmt.Sprintf("http://localhost:%d/logged-out", port),
+		expectedReturnHost: fmt.Sprintf("%s.localhost:%d", box, port),
+		cookieURL:          cookieURL,
+		localCookieAddr:    localCookieAddr,
+		localCookieURL:     localCookieURL,
+		cookies:            cookies,
+	}
+}
+
+func (f proxyAuthFixture) authCookies(jar *cookiejar.Jar) []*http.Cookie {
+	f.t.Helper()
+	var found []*http.Cookie
+	for _, u := range []*url.URL{f.cookieURL, f.localCookieURL} {
+		for _, c := range jar.Cookies(u) {
+			if c.Name == "exe-proxy-auth" && c.Value != "" {
+				copy := *c
+				found = append(found, &copy)
+			}
+		}
+	}
+	return found
+}
+
+func (f proxyAuthFixture) newJar() *cookiejar.Jar {
+	jar, _ := cookiejar.New(nil) // no error possible
+	setCookiesForJar(f.t, jar, f.localCookieAddr, f.cookies)
+	return jar
+}
+
+func (f proxyAuthFixture) loginThroughProxy(jar *cookiejar.Jar) *http.Client {
+	f.t.Helper()
+	client := noRedirectClient(jar)
+	req, err := localhostRequestWithHostHeader("GET", f.proxyURL, nil)
+	if err != nil {
+		f.t.Fatalf("failed to create request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to do request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	redirectCount := 0
+	sawConfirmRedirect := false
+	for resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusSeeOther {
+		if redirectCount > 10 {
+			f.t.Fatalf("too many redirects")
+		}
+
+		location, err := resp.Location()
+		if err != nil {
+			body, _ := io.ReadAll(resp.Body)
+			f.t.Fatalf("failed to get redirect location: %v (status %d, body %s)", err, resp.StatusCode, body)
+		}
+
+		req, err = localhostRequestWithHostHeader("GET", location.String(), nil)
+		if err != nil {
+			f.t.Fatalf("failed to create redirect request: %v", err)
+		}
+
+		isConfirm := strings.Contains(location.Path, "/auth/confirm")
+
+		resp.Body.Close()
+		resp, err = client.Do(req)
+		if err != nil {
+			f.t.Fatalf("failed to follow redirect: %v", err)
+		}
+
+		if isConfirm {
+			f.assertOwnerConfirmRedirect(resp)
+			sawConfirmRedirect = true
+		}
+
+		redirectCount++
+	}
+
+	if !sawConfirmRedirect {
+		resp.Body.Close()
+		f.t.Fatalf("owner flow never hit /auth/confirm redirect")
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		resp.Body.Close()
+		f.t.Fatalf("failed to read final response body: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		f.t.Fatalf("expected final status 200, got %d. Body: %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "alive") {
+		f.t.Fatalf("expected final body to contain 'alive', got %s", body)
+	}
+
+	return client
+}
+
+func (f proxyAuthFixture) assertOwnerConfirmRedirect(resp *http.Response) {
+	f.t.Helper()
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		f.t.Fatalf("owner flow should skip confirmation page, but status %d returned: %s", resp.StatusCode, body)
+	}
+	confirmLocation, err := resp.Location()
+	if err != nil {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		f.t.Fatalf("owner flow confirm redirect missing Location header: %v (body: %s)", err, body)
+	}
+	if confirmLocation.Scheme != "http" {
+		f.t.Fatalf("expected owner confirm redirect scheme http, got %s", confirmLocation.Scheme)
+	}
+	if confirmLocation.Host != f.expectedReturnHost {
+		f.t.Fatalf("expected owner confirm redirect host %s, got %s", f.expectedReturnHost, confirmLocation.Host)
+	}
+	if confirmLocation.Path != "/__exe.dev/auth" {
+		f.t.Fatalf("expected owner confirm redirect path /__exe.dev/auth, got %s", confirmLocation.Path)
+	}
+	query := confirmLocation.Query()
+	if query.Get("secret") == "" {
+		f.t.Fatalf("owner confirm redirect missing secret query parameter")
+	}
+	if query.Get("redirect") == "" {
+		f.t.Fatalf("owner confirm redirect missing redirect query parameter")
+	}
+}
+
+func (f proxyAuthFixture) authCookie(jar *cookiejar.Jar) *http.Cookie {
+	f.t.Helper()
+	cookies := f.authCookies(jar)
+	if len(cookies) != 1 {
+		f.t.Fatalf("expected one proxy auth cookie to be set after login, got %d", len(cookies))
+	}
+	return cookies[0]
+}
+
+func (f proxyAuthFixture) logoutSession(client *http.Client, jar *cookiejar.Jar) {
+	f.t.Helper()
+	logoutReq, err := localhostRequestWithHostHeader("POST", f.logoutURL, nil)
+	if err != nil {
+		f.t.Fatalf("failed to build logout request: %v", err)
+	}
+	resp, err := client.Do(logoutReq)
+	if err != nil {
+		f.t.Fatalf("failed to send logout request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("expected logout redirect, got status %d: %s", resp.StatusCode, body)
+	}
+	location, err := resp.Location()
+	if err != nil {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("expected logout redirect location, got error: %v (body: %s)", err, body)
+	}
+	if location.String() != f.expectedLogout {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("expected logout redirect to %s, got %s (body: %s)", f.expectedLogout, location.String(), body)
+	}
+	if len(f.authCookies(jar)) > 0 {
+		f.t.Fatalf("expected proxy auth cookie to be cleared, still present")
+	}
+}
+
+func (f proxyAuthFixture) requireLoginRedirect(client *http.Client) {
+	f.t.Helper()
+
+	req, err := localhostRequestWithHostHeader("GET", f.proxyURL, nil)
+	if err != nil {
+		f.t.Fatalf("failed to rebuild proxy request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to make post-logout proxy request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("expected redirect after logout, got %d (body: %s)", resp.StatusCode, body)
+	}
+	location, err := resp.Location()
+	if err != nil {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("missing redirect location after logout: %v (body: %s)", err, body)
+	}
+	if location == nil || !strings.Contains(location.Path, "/__exe.dev/login") {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("expected redirect to login after logout, got %v (body: %s)", location, body)
+	}
+}
+
+func (f proxyAuthFixture) requireLoginRedirectWithCookie(staleCookie *http.Cookie) {
+	f.t.Helper()
+
+	client := noRedirectClient(nil)
+	req, err := localhostRequestWithHostHeader("GET", f.proxyURL, nil)
+	if err != nil {
+		f.t.Fatalf("failed to create stale cookie request: %v", err)
+	}
+	req.AddCookie(staleCookie)
+	resp, err := client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to make request with stale cookie: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("expected redirect for stale cookie request, got %d (body: %s)", resp.StatusCode, body)
+	}
+	location, err := resp.Location()
+	if err != nil {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("missing redirect location for stale cookie request: %v (body: %s)", err, body)
+	}
+	if location == nil || !strings.Contains(location.Path, "/__exe.dev/login") {
+		body, _ := io.ReadAll(resp.Body)
+		f.t.Fatalf("expected login redirect for stale cookie, got %v (body: %s)", location, body)
+	}
+}
+
+func (f proxyAuthFixture) requireOtherSessionStillAuthed(client *http.Client, jar *cookiejar.Jar) {
+	f.t.Helper()
+
+	req, err := localhostRequestWithHostHeader("GET", f.proxyURL, nil)
+	if err != nil {
+		f.t.Fatalf("failed to create proxy request for second session: %v", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		f.t.Fatalf("failed to make proxy request from second session: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		f.t.Fatalf("failed to read proxy response for second session: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		f.t.Fatalf("expected second session to retain auth, got %d (body: %s)", resp.StatusCode, body)
+	}
+	if len(f.authCookies(jar)) == 0 {
+		f.t.Fatalf("expected second session cookie to remain after other session logout")
+	}
+}
+
+func requireLogoutUI(t *testing.T, logoutURL, expectedLogout string) {
+	t.Helper()
+
+	client := noRedirectClient(nil)
+	logoutGetReq, err := localhostRequestWithHostHeader("GET", logoutURL, nil)
+	if err != nil {
+		t.Fatalf("failed to build logout GET request: %v", err)
+	}
+	logoutGetResp, err := client.Do(logoutGetReq)
+	if err != nil {
+		t.Fatalf("failed to send logout GET request: %v", err)
+	}
+	logoutGetBody, err := io.ReadAll(logoutGetResp.Body)
+	logoutGetResp.Body.Close()
+	if err != nil {
+		t.Fatalf("failed to read logout GET body: %v", err)
+	}
+	if logoutGetResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected logout GET 200, got %d", logoutGetResp.StatusCode)
+	}
+	if !strings.Contains(string(logoutGetBody), "Are you sure you want to log out?") {
+		t.Fatalf("expected logout confirmation form, got %s", logoutGetBody)
+	}
+	if !strings.Contains(string(logoutGetBody), `<form method="POST"`) {
+		t.Fatalf("expected logout confirmation to include POST form")
+	}
+
+	logoutPostReq, err := localhostRequestWithHostHeader(http.MethodPost, logoutURL, nil)
+	if err != nil {
+		t.Fatalf("failed to build logout POST request: %v", err)
+	}
+	logoutPostResp, err := client.Do(logoutPostReq)
+	if err != nil {
+		t.Fatalf("failed to send logout POST request: %v", err)
+	}
+	defer logoutPostResp.Body.Close()
+
+	if logoutPostResp.StatusCode != http.StatusTemporaryRedirect {
+		body, _ := io.ReadAll(logoutPostResp.Body)
+		t.Fatalf("expected logout POST redirect, got status %d: %s", logoutPostResp.StatusCode, body)
+	}
+	logoutPostLocation, err := logoutPostResp.Location()
+	if err != nil {
+		body, _ := io.ReadAll(logoutPostResp.Body)
+		t.Fatalf("expected logout POST redirect location, got error: %v (body: %s)", err, body)
+	}
+	if logoutPostLocation.String() != expectedLogout {
+		body, _ := io.ReadAll(logoutPostResp.Body)
+		t.Fatalf("expected logout POST redirect to %s, got %s (body: %s)", expectedLogout, logoutPostLocation.String(), body)
+	}
+
+	logoutCookieCleared := false
+	for _, c := range logoutPostResp.Cookies() {
+		if c.Name == "exe-proxy-auth" && c.Value == "" && c.MaxAge == -1 {
+			logoutCookieCleared = true
+			break
+		}
+	}
+	if !logoutCookieCleared {
+		t.Fatalf("expected logout POST to clear exe-proxy-auth cookie")
+	}
+}
+
 func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.Request, error) {
 	url, err := url.Parse(urlS)
 	if err != nil {
@@ -598,10 +868,7 @@ func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.
 func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 	t.Helper()
 	// t.Logf("Testing proxy expectation: %s port %d expected http status %d", exp.name, exp.httpPort, exp.httpCode)
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		panic(err)
-	}
+	jar, _ := cookiejar.New(nil) // no error possible
 	if exp.cookies != nil {
 		u := fmt.Sprintf("http://localhost:%d", exp.httpPort)
 		setCookiesForJar(t, jar, u, exp.cookies)
@@ -740,12 +1007,8 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			t.Fatalf("failed to get redirect location: %v", err)
 			return
 		}
-		origUrl, err := url.Parse(proxyURL)
-		if err != nil {
-			t.Fatalf("failed to parse original URL: %v", err)
-			return
-		}
-		u, err = origUrl.Parse(location)
+		origURL := mustParseURL(proxyURL)
+		u, err = origURL.Parse(location)
 		if err != nil {
 			t.Fatalf("failed to parse final redirect URL: %v", err)
 			return
