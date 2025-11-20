@@ -3,9 +3,9 @@ name: exe e3e security probe
 on:
   workflow_dispatch:
   schedule:
-    # Run daily at 7:15 AM UTC (late night pacific, after the e2e tests should have completed)
+    # Run weekly at 7:15 AM UTC on Mondays (late night pacific, after the e2e tests should have completed)
     # Keep this cron in sync with BOT_EXPECTATIONS inside scripts/slack/check_ci_bot_liveness.py.
-    - cron: "15 7 * * *"
+    - cron: "15 7 * * 1"
 
 concurrency:
   group: exe-e3e-security
