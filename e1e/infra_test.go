@@ -302,8 +302,8 @@ func buildExeletBinary() (string, error) {
 	// Cross-compile for Linux with current machine architecture
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH)
 
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to build exelet: %w", err)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to build exelet: %w\n%s\n", err, out)
 	}
 	// rename to test binary
 	if err := os.MkdirAll(filepath.Dir(binPath), 0o770); err != nil {
