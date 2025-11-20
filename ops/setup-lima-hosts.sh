@@ -201,13 +201,14 @@ fi
 
 # Add IdentityFile configuration for .local hosts
 if ! grep -q "Host lima-exe-ctr.local" "$HOME/.ssh/config"; then
+    USER=$(whoami)
     cat >>"$HOME/.ssh/config" <<EOF
 
 Host lima-exe-ctr.local
-    IdentityFile /Users/philip/.lima/_config/user
+    IdentityFile /Users/${USER}/.lima/_config/user
 
 Host lima-exe-ctr-tests.local
-    IdentityFile /Users/philip/.lima/_config/user
+    IdentityFile /Users/${USER}/.lima/_config/user
 EOF
     echo "✓ Added IdentityFile configuration for lima-exe-ctr.local and lima-exe-ctr-tests.local"
 else
