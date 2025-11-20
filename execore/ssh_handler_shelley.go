@@ -128,7 +128,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 	}
 
 	// Resolve SSH host
-	sshHost := ss.server.resolveSSHHost(box.Ctrhost)
+	sshHost := box.SSHHost()
 	sshAddr := fmt.Sprintf("%s:%d", sshHost, *box.SSHPort)
 
 	// Connect to the box via SSH

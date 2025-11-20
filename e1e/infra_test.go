@@ -652,7 +652,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	// resolve the gateway to pass to exed
-	gateway := ctrhosttest.ResolveDefaultGateway()
+	gateway := resolveGateway(ctrHost)
 	if gateway == "" {
 		return env, fmt.Errorf("unable to resolve default gateway for %q", ctrHost)
 	}
@@ -813,10 +813,13 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 
 func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
 	start := time.Now()
-	slog.Info("starting exelet", "remote", ctrHost != "", "exedURL", exedURL)
+	slog.Info("starting exelet", "exedURL", exedURL)
 
-	// Parse remote host
+	// ctrHost is like "ssh://lima-exe-ctr-tests"
 	host := parseSSHHost(ctrHost)
+	if strings.HasPrefix(host, "ssh://") {
+		slog.Error("invalid ctrHost: %s", "x", ctrHost)
+	}
 	if host == "" {
 		return nil, fmt.Errorf("exelet requires remote host (ctrHost)")
 	}
@@ -833,6 +836,9 @@ func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
 	if _, err := sshExec(ctx, host, "rm -rf /tmp/exelet-test"); err != nil {
 		return nil, fmt.Errorf("failed to remove existing exelet: %w", err)
 	}
+
+	// Ensure no existing processes exist
+	sshExec(ctx, host, "pkill -f exelet-test")
 
 	// Upload binary to remote host
 	slog.Info("uploading exelet to remote host", "host", host)
@@ -920,18 +926,12 @@ func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
 		return nil, fmt.Errorf("failed to parse exelet address: %w", err)
 	}
 
-	// Get remote IP address
-	remoteIP := ctrhosttest.ResolveHostFromSSHConfig(host)
-	if remoteIP == "" {
-		return nil, fmt.Errorf("failed to resolve remote IP for %s", host)
-	}
-
 	// Construct the actual address
 	_, port, err := net.SplitHostPort(u.Host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse port from %s: %w", u.Host, err)
 	}
-	finalAddr := fmt.Sprintf("tcp://%s:%s", remoteIP, port)
+	finalAddr := fmt.Sprintf("tcp://%s:%s", host, port)
 
 	instance := &exeletInstance{
 		Address:    finalAddr,
@@ -1880,4 +1880,27 @@ func e1eTestsOnlyRunOnce(t *testing.T) {
 //   - whose golden output isn't interesting/useful
 func noGolden(t *testing.T) {
 	skipGolden.Store(t.Name(), true)
+}
+
+// resolveGateway uses SSH to the given ctrhost to resolve its _gateway hostname.
+// If we're SSH'ing laptop->lima-exe-ctr, this gives us the address that lima-exe-ctr
+// can talk to laptop on.
+func resolveGateway(ctrhost string) string {
+	host := parseSSHHost(ctrhost)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "ConnectTimeout=3",
+		"-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "LogLevel=ERROR",
+		"-o", "UserKnownHostsFile=/dev/null",
+		host, "getent ahostsv4 _gateway 2>/dev/null | awk '{print $1; exit}'",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

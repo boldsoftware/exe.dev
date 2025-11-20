@@ -25,8 +25,7 @@ brew install tailscale coreutils lima
 tailscale up
 ```
 
-The underlying technology: containerd + kata + cloud hypervisor + nydus,
-requires linux and requires KVM. There is no software emulation.
+The underlying technology: cloud hypervisor, requires linux and requires KVM. There is no software emulation.
 So you need at least an M3 CPU.
 
 Once you have that, run:
@@ -36,11 +35,11 @@ Once you have that, run:
 ```
 
 This sets up two VMs as ctr-hosts, one for running exed manually
-and another as a ctr-host when running Go tests.
+and another as a ctr-host (where exelet and cloud-hypervisor runs) when running Go tests.
 
 You can fast-wipe the ctr-hosts by running `./ops/reset-lima-hosts.sh`.
 
-Then in your ~/.ssh/config add:
+Optionally, add this to your ~/.ssh/config:
 
 ```
 Host localexe
@@ -75,7 +74,14 @@ make exelet
 
 NOTE: on first run this will build the kernel and rovol so will take a few minutes.
 
-Next, start the exelet.
+Next, copy the exeletd over:
+
+```
+scp exeletd lima-exe-ctr.local:
+```
+
+And then run it:
+
 
 ```
 limactl shell exe-ctr -- sudo ./exeletd \
@@ -84,13 +90,12 @@ limactl shell exe-ctr -- sudo ./exeletd \
   --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" \
   --network-manager-address nat:///data/exelet/network \
   --runtime-address cloudhypervisor:///data/exelet/runtime \
-  --listen-address tcp://127.0.0.1:9080
+  --listen-address tcp://:9080
+  --exed-url http://$(ssh lima-exe-ctr.local getent ahostsv4 _gateway | grep _gateway | awk '{ print $1; }'")
 ```
 
 The exelet serves debug endpoints (pprof, version, metrics) on port 9081 by default.
 Access them at `http://localhost:9081/debug` or use `--http-addr` to change the port.
-
-You don't need to copy exeletd over necessarily because Lima mounts your filesystem over.
 
 ### Running exed separately
 
@@ -119,6 +124,22 @@ To get details on the VM under your box, use commands like:
 ssh lima-exe-ctr sudo nerdctl --namespace=exe ps -a
 ssh lima-exe-ctr sudo nerdctl --namespace=exe logs <container ID>
 ```
+
+## CTR_HOST Background
+
+In CI, CTR_HOST is set to a brand-new VM. Locally, it defaults to
+lima-exe-ctr-tests, but, of course, you can re-arrange that. "-start-exelet"
+doesn't use CTR_HOST and just defaults to lima-exe-ctr. That it
+doesn't read an env variable is an accident, though I think
+reading a different one would make sense.
+
+Remmeber that SSH is used in two ways: (1) it's used to bootstrap exelet on th
+machine that can run cloud-hypervisor and (2) it's used to connect to those
+cloud-hypervisor VMs. In the second case, we're using the same hostname, but
+the port is different, since exelet has mapped the SSH port on the guest to a
+port on the exelet host. We control the SSH settings in the second case and the
+keys are in the database. We use this path for SSH proper, for the HTTP proxy,
+and for the terminal UI.
 
 ## whoami DB and GITHUB_TOKEN
 

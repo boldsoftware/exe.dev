@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"exe.dev/ctrhosttest"
 	"exe.dev/execore"
 	"exe.dev/logging"
 	"exe.dev/stage"
@@ -38,10 +37,10 @@ func run() error {
 	dbPath := flag.String("db", "exe.db", "SQLite database path")
 	devMode := flag.String("dev", "", `development mode: "" (production), "local" (local containerd), or "test" (test mode)`)
 	stageName := flag.String("stage", "prod", `staging env: "prod", "staging", "local", or "test", overridden by -dev flag`)
-	containerdAddresses := flag.String("containerd-addresses", "", "Comma-separated list of containerd addresses (e.g., 'ssh://host1,ssh://host2')")
 	exeletAddresses := flag.String("exelet-addresses", "", "Comma-separated list of exelet addresses (e.g., 'tcp://host1:8080,tcp://host2:8080')")
 	ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 	fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL for sending emails (e.g., http://localhost:8025)")
+	// TODO(philip): Once newer shelleys are deployed, we don't need this any more.
 	gateway := flag.String("gateway", "exe.dev", "Gateway endpoint for Shelley")
 	openBrowser := flag.Bool("open", false, "Open web browser to HTTP server (dev mode only)")
 	profilePath := flag.String("profile", "", "Enable CPU profiling for 30 seconds, saving to /tmp/exed-profile-<timestamp>.prof or specified path")
@@ -160,28 +159,6 @@ func run() error {
 		slog.Info("CPU profiling started for 30 seconds", "path", profPath)
 	}
 
-	// Parse containerd addresses
-	var addresses []string
-
-	if *containerdAddresses != "" {
-		// Explicit containerd addresses specified via flag
-		addresses = strings.Split(*containerdAddresses, ",")
-		for i, h := range addresses {
-			addresses[i] = strings.TrimSpace(h)
-		}
-	} else if *devMode == "local" || *devMode == "test" {
-		ctrHost := ctrhosttest.Detect()
-		if ctrHost == "" {
-			return fmt.Errorf("dev mode: could not detect ctr-host")
-		}
-		addresses = []string{ctrHost}
-	}
-
-	if len(addresses) == 0 {
-		slog.Warn("No containerd addresses specified, container functionality will be disabled",
-			"suggestion", "Use -containerd-addresses flag, or set CTR_HOST env var")
-	}
-
 	// Parse exelet addresses
 	var exeletAddrs []string
 	if *exeletAddresses != "" {
@@ -205,7 +182,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, addresses, exeletAddrs, *gateway, env)
+	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *devMode, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, exeletAddrs, *gateway, env)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}
@@ -247,9 +224,10 @@ func openBrowserURL(url string) error {
 }
 
 // startExeletRemote builds exelet, uploads to lima-exe-ctr, kills old instances, and starts it.
-// Returns the exelet address (tcp://IP:PORT) and gateway address.
+// Returns the exelet address (tcp://lima-exe-ctr.local:PORT) and gateway address (which
+// is the address by which the exelet can dial the exed process).
 func startExeletRemote(devMode, httpAddr string) (string, string, error) {
-	host := "lima-exe-ctr"
+	host := "lima-exe-ctr.local"
 	slog.Info("starting remote exelet", "host", host)
 
 	// Build exelet binary
@@ -260,10 +238,6 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	}
 
 	ctx := context.Background()
-
-	// Kill any existing exeletd processes (ignore errors if none exist)
-	slog.Info("killing existing exeletd processes")
-	_, _ = sshExec(ctx, host, "sudo pkill -e -f exeletd") // Ignore errors - it's fine if no process exists
 
 	// Upload binary
 	remotePath := "/tmp/exeletd"
@@ -292,13 +266,19 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	}
 
 	// Get the VM IP address early so we can construct exed URL
-	// NOTE(phil): Beware! This ends up being localhost, but because lima magically
-	// maps VM hosts to localhost, it works out. You could get the lima VM by doing
-	// something like "ssh -i ~/.lima/_config/user -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=false lima-exe-ctr.local ip route get 1"
-	// but this seems to work.
-	remoteIP := ctrhosttest.ResolveHostFromSSHConfig(host)
-	if remoteIP == "" {
-		return "", "", fmt.Errorf("failed to resolve IP for %s", host)
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to lookup ip for %s: %w", host, err)
+	}
+	var remoteIp string
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			remoteIp = ip.String()
+			break
+		}
+	}
+	if remoteIp == "" {
+		return "", "", fmt.Errorf("no ipv4 address found for %s", host)
 	}
 
 	// Get the gateway address early so we can construct exed URL
@@ -322,7 +302,7 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		host,
-		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://127.0.0.1:9080 --http-addr :9081 --exed-url %s`,
+		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s`,
 			logFormat, logLevel, exedURL))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -347,7 +327,7 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	deadline := time.Now().Add(timeout)
 	connected := false
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", remoteIP+":"+exeletPort, 100*time.Millisecond)
+		conn, err := net.DialTimeout("tcp", host+":"+exeletPort, 100*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			connected = true
@@ -356,11 +336,11 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	if !connected {
-		return "", "", fmt.Errorf("timeout waiting for exelet to listen on %s:%s", remoteIP, exeletPort)
+		return "", "", fmt.Errorf("timeout waiting for exelet to listen on %s:%s", host, exeletPort)
 	}
 
 	// Construct the exelet address
-	exeletAddr := fmt.Sprintf("tcp://%s:%s", remoteIP, exeletPort)
+	exeletAddr := fmt.Sprintf("tcp://%s:%s", host, exeletPort)
 
 	slog.Info("exelet startup complete", "address", exeletAddr, "gateway", gateway)
 	return exeletAddr, gateway, nil
@@ -391,6 +371,7 @@ func sshExec(ctx context.Context, host, command string) (string, error) {
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
 		host, command)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -402,5 +383,9 @@ func scpUpload(localPath, host, remotePath string) error {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		localPath, host+":"+remotePath)
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("scp failed: %w\n%s", err, out)
+	}
+	return nil
 }

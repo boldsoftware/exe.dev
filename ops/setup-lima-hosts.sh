@@ -199,6 +199,21 @@ else
     echo "✓ Lima SSH config includes already present"
 fi
 
+# Add IdentityFile configuration for .local hosts
+if ! grep -q "Host lima-exe-ctr.local" "$HOME/.ssh/config"; then
+    cat >> "$HOME/.ssh/config" <<EOF
+
+Host lima-exe-ctr.local
+    IdentityFile /Users/philip/.lima/_config/user
+
+Host lima-exe-ctr-tests.local
+    IdentityFile /Users/philip/.lima/_config/user
+EOF
+    echo "✓ Added IdentityFile configuration for lima-exe-ctr.local and lima-exe-ctr-tests.local"
+else
+    echo "✓ IdentityFile configuration for .local hosts already present"
+fi
+
 echo ""
 echo "=========================================="
 echo "Lima hosts ready"

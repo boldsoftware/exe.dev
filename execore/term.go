@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"os/exec"
@@ -23,7 +22,6 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/container"
-	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
 )
 
@@ -428,29 +426,7 @@ func (s *Server) createContainerExecSession(session *TerminalSession, box *exedb
 	if err != nil {
 		return fmt.Errorf("failed to parse SSH private key: %w", err)
 	}
-	sshHost := "localhost"
-	ctrhost := box.Ctrhost
-	if ctrhost != "" {
-		if strings.Contains(ctrhost, "://") {
-			if u, perr := url.Parse(ctrhost); perr == nil && u.Host != "" {
-				if host, _, herr := net.SplitHostPort(u.Host); herr == nil {
-					sshHost = host
-				} else {
-					sshHost = u.Host
-				}
-			}
-		} else {
-			sshHost = ctrhost
-		}
-	}
-	if s.env.DevMode != "" {
-		if _, herr := net.LookupHost(sshHost); herr != nil {
-			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
-				slog.Debug("[TERMINAL] Resolved host via SSH config", "alias", sshHost, "ip", ip)
-				sshHost = ip
-			}
-		}
-	}
+	sshHost := box.SSHHost()
 	sshConfig := &ssh.ClientConfig{
 		User: *box.SSHUser, Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(sshKey),

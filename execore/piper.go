@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"github.com/tg123/sshpiper/libplugin"
@@ -372,54 +371,10 @@ func (p *PiperPlugin) handleBoxAccess(box *exedb.Box, userID, connID string) (*l
 		"user", sshDetails.User,
 	)
 
-	// Use SSH details from database instead of querying container runtime.
-	// We connect directly to the ctrhost:port just like in production.
-	host := "localhost"
-	if sshDetails.Ctrhost != nil && *sshDetails.Ctrhost != "" {
-		// Parse docker host to extract hostname
-		// Formats: tcp://hostname:port, ssh://hostname, or direct hostname
-		ctrhost := *sshDetails.Ctrhost
-		if strings.HasPrefix(ctrhost, "tcp://") {
-			// Extract hostname from tcp://hostname:port
-			parts := strings.Split(strings.TrimPrefix(ctrhost, "tcp://"), ":")
-			if len(parts) > 0 && parts[0] != "" {
-				host = parts[0]
-				slog.DebugContext(ctx, "Using container host from tcp format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
-			}
-		} else if strings.HasPrefix(ctrhost, "ssh://") {
-			// Extract hostname from ssh://[user@]hostname
-			sshHost := strings.TrimPrefix(ctrhost, "ssh://")
-			// Remove username if present
-			if atIndex := strings.Index(sshHost, "@"); atIndex != -1 {
-				host = sshHost[atIndex+1:]
-			} else {
-				host = sshHost
-			}
-			slog.DebugContext(ctx, "Using container host from ssh format", "component", "piper-plugin", "host", host, "ctrhost", ctrhost)
-		} else if ctrhost != "" && !strings.HasPrefix(ctrhost, "unix://") {
-			// Direct hostname
-			host = ctrhost
-			slog.DebugContext(ctx, "Using direct docker host", "component", "piper-plugin", "host", host)
-		}
-	}
+	host := box.SSHHost()
 	port := sshDetails.Port
 
-	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
-	if p.server.env.DevMode != "" {
-		if _, err := net.LookupHost(host); err != nil {
-			if ip := ctrhosttest.ResolveHostFromSSHConfig(host); ip != "" {
-				slog.DebugContext(ctx, "Resolved host via SSH config for dev", "component", "piper-plugin", "alias", host, "ip", ip)
-				host = ip
-			}
-		}
-	}
-
 	slog.DebugContext(ctx, "Using database SSH details for box", "component", "piper-plugin", "box_name", box.Name, "host", host, "port", port)
-
-	// Create upstream configuration for direct SSH to container
-	// slog.Debug("Creating upstream to container as root", "component", "piper-plugin", "host", host, "port", port)
-	// slog.Debug("Private key length", "component", "piper-plugin", "key_length_bytes", len(sshDetails.PrivateKey))
-	// slog.Debug("Private key preview", "component", "piper-plugin", "key_preview", sshDetails.PrivateKey[:50])
 
 	// Store the expected host key for this connection if available
 	if sshDetails.HostKey != "" {

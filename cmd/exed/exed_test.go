@@ -89,8 +89,6 @@ func TestFlagValidation(t *testing.T) {
 			dbPath := flag.String("db", "TMP", "SQLite database path")
 			_ = dbPath
 			devMode := flag.String("dev", "", "development mode")
-			containerdAddresses := flag.String("containerd-addresses", "", "Comma-separated list of containerd addresses")
-			_ = containerdAddresses
 			ghWhoAmIPath := flag.String("gh-whoami", "ghuser/whoami.sqlite3", "GitHub user key database path")
 			_ = ghWhoAmIPath
 			fakeHTTPEmail := flag.String("fake-email-server", "", "HTTP email server URL")

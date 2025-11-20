@@ -18,7 +18,6 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/container"
-	"exe.dev/ctrhosttest"
 	"exe.dev/exedb"
 )
 
@@ -683,7 +682,7 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	}
 
 	// Determine SSH host address from the box's ctrhost
-	sshHost := s.resolveSSHHost(box.Ctrhost)
+	sshHost := box.SSHHost()
 
 	// Try to proxy to the configured port
 	err = s.proxyViaSSHPortForward(w, r, sshHost, box, sshKey, route.Port)
@@ -692,36 +691,6 @@ func (s *Server) proxyToContainer(w http.ResponseWriter, r *http.Request, box *e
 	}
 
 	return nil
-}
-
-// resolveSSHHost resolves the SSH host address from a ctrhost, handling URL formats and dev mode aliases
-func (s *Server) resolveSSHHost(ctrhost string) string {
-	sshHost := "localhost"
-	if ctrhost != "" {
-		// Extract hostname from ctrhost URL if it's a URL format
-		if strings.Contains(ctrhost, "://") {
-			if u, err := url.Parse(ctrhost); err == nil && u.Host != "" {
-				if host, _, err := net.SplitHostPort(u.Host); err == nil {
-					sshHost = host
-				} else {
-					sshHost = u.Host
-				}
-			}
-		} else {
-			// Direct hostname
-			sshHost = ctrhost
-		}
-	}
-	// In dev, if the host doesn't resolve (e.g., lima alias), resolve via SSH config to an IP.
-	if s.env.DevMode != "" {
-		if _, err := net.LookupHost(sshHost); err != nil {
-			if ip := ctrhosttest.ResolveHostFromSSHConfig(sshHost); ip != "" {
-				s.slog().Debug("Resolved host via SSH config for dev", "alias", sshHost, "ip", ip)
-				sshHost = ip
-			}
-		}
-	}
-	return sshHost
 }
 
 // createSSHTunnelTransport creates an HTTP transport that tunnels through SSH to a container

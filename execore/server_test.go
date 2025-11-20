@@ -25,7 +25,7 @@ func newUnstartedServer(t testing.TB) *Server {
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
 	env := stage.Local()
 	env.DevMode = "test"
-	s, err := NewServer(tslog.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "", nil, nil, "", env)
+	s, err := NewServer(tslog.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "test", "", 2222, "", nil, "", env)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

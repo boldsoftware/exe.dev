@@ -35,7 +35,6 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/container"
-	"exe.dev/ctrhosttest"
 	docspkg "exe.dev/docs"
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
@@ -335,7 +334,7 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, containerdAddresses, exeletAddresses []string, gateway string, env stage.Env) (*Server, error) {
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, gateway string, env stage.Env) (*Server, error) {
 	if env.DevMode != devMode {
 		return nil, fmt.Errorf("env dev mode %q does not match devMode %q", env.DevMode, devMode)
 	}
@@ -1354,53 +1353,13 @@ func (s *Server) getBoxesByHost(ctx context.Context, ctrhost string) ([]*exedb.B
 	return boxes, nil
 }
 
-func (s *Server) getBoxesByHostVariants(ctx context.Context, host string) ([]*exedb.Box, error) {
-	var allBoxes []*exedb.Box
-	seen := make(map[int]bool)
-	for _, key := range s.hostLookupKeys(host) {
-		boxes, err := s.getBoxesByHost(ctx, key)
-		if err != nil {
-			s.slog().DebugContext(ctx, "getBoxesByHost lookup failed", "hostKey", key, "error", err)
-			continue
-		}
-		for _, box := range boxes {
-			if !seen[box.ID] {
-				allBoxes = append(allBoxes, box)
-				seen[box.ID] = true
-			}
-		}
-	}
-	return allBoxes, nil
-}
-
-func (s *Server) hostLookupKeys(host string) []string {
-	keys := []string{host}
-	if strings.HasPrefix(host, "ssh://") {
-		alias := strings.TrimPrefix(host, "ssh://")
-		if alias != "" {
-			keys = append(keys, alias)
-			if ip := ctrhosttest.ResolveHostFromSSHConfig(alias); ip != "" {
-				keys = append(keys, "tcp://"+ip)
-			}
-		}
-	}
-	return dedupInPlace(keys)
-}
-
 // getExeletClient looks up an exelet client by host address, trying all normalized variants.
 // This handles cases where the configured address changed (e.g., ssh://host to tcp://ip).
 func (s *Server) getExeletClient(host string) *exeletClient {
-	for _, key := range s.hostLookupKeys(host) {
-		if client := s.exeletClients[key]; client != nil {
-			return client
-		}
+	if client := s.exeletClients[host]; client != nil {
+		return client
 	}
 	return nil
-}
-
-func dedupInPlace(values []string) []string {
-	slices.Sort(values)
-	return slices.Compact(values)
 }
 
 // isValidEmail performs basic email validation
@@ -1504,7 +1463,7 @@ func (s *Server) syncInstancesWithHosts(ctx context.Context) error {
 // syncInstancesForExelet synchronizes instances for a specific exelet host
 func (s *Server) syncInstancesForExelet(ctx context.Context, addr string, client *exeletclient.Client) error {
 	// Get boxes from the database that should be on this exelet
-	dbBoxes, err := s.getBoxesByHostVariants(ctx, addr)
+	dbBoxes, err := s.getBoxesByHost(ctx, addr)
 	if err != nil {
 		return fmt.Errorf("failed to get boxes from database: %w", err)
 	}
