@@ -9,7 +9,7 @@ Type=exec
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu
-ExecStart=/bin/bash -lc 'set -euo pipefail; PRIVATE_KEY=$(sqlite3 /home/ubuntu/exe.db "SELECT private_key FROM ssh_host_key WHERE id = 1;"); HOST_CERT_SIG=$(sqlite3 /home/ubuntu/exe.db "SELECT cert_sig FROM ssh_host_key WHERE id = 1;"); set -- /home/ubuntu/sshpiperd.latest --log-level=INFO --port=22 --drop-hostkeys-message --server-key-data="$(printf '\''%s'\'' "$PRIVATE_KEY" | base64 -w 0)"; if [ -n "$HOST_CERT_SIG" ]; then set -- "$@" --server-cert-data="$(printf '\''%s'\'' "$HOST_CERT_SIG" | base64 -w 0)"; fi; set -- "$@" grpc --endpoint=localhost:2224 --insecure; if command -v tailscale >/dev/null 2>&1; then TS_IP=$(tailscale ip -4 2>/dev/null | sed "/^[[:space:]]*$/d" | head -n1); if [ -z "$TS_IP" ]; then echo "tailscale IPv4 address required"; exit 1; fi; set -- "$@" -- /home/ubuntu/metrics.latest --collect-upstream-auth-failures --address "$TS_IP" --port 30303; fi; exec "$@"'
+ExecStart=/home/ubuntu/start-sshpiper.sh
 Restart=always
 RestartSec=5
 TimeoutStartSec=30

@@ -433,7 +433,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			Image:   imageRef,
 			CPUs:    1,
 			Memory:  1 * 1000 * 1000 * 1000, // 1GB
-			Disk:    6 * 1000 * 1000 * 1000, // 6GB
+			Disk:    8 * 1000 * 1000 * 1000, // 8GB
 			SSHKeys: []string{cc.PublicKey}, // Pass user's SSH key
 			Configs: []*api.Config{
 				{

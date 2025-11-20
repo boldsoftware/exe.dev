@@ -9,7 +9,7 @@ import (
 func TestProxyHostnameParsing(t *testing.T) {
 	t.Parallel()
 
-	prodServer := &Server{}
+	prodServer := &Server{env: stage.Prod()}
 	devServer := &Server{env: stage.Local()}
 
 	tests := []struct {

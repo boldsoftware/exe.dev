@@ -222,8 +222,15 @@ func TestIsProxyRequest(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create server with specified dev mode
-			env := stage.Local()
-			env.DevMode = tc.devMode
+			var env stage.Env
+			if tc.devMode == "" {
+				// Production mode
+				env = stage.Prod()
+			} else {
+				// Dev/test mode
+				env = stage.Local()
+				env.DevMode = tc.devMode
+			}
 			s := &Server{env: env}
 
 			result := s.isProxyRequest(tc.host)

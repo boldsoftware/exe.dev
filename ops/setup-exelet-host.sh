@@ -572,7 +572,7 @@ WorkingDirectory=/data/exelet
 EnvironmentFile=-/etc/default/exelet
 
 # Use the latest timestamp version
-ExecStart=/bin/bash -c 'exec "$(ls -t /data/exelet/exeletd.* | head -n1)" "-D"'
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeletd.* | head -n1)" "-D"'
 
 Restart=always
 RestartSec=5

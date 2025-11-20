@@ -94,8 +94,9 @@ func main() {
 			EnvVars: []string{"EXELET_STORAGE_MANAGER_ADDRESS"},
 		},
 		&cli.BoolFlag{
-			Name:  "enable-instance-boot-on-startup",
-			Usage: "enable starting local instances on server start",
+			Name:    "enable-instance-boot-on-startup",
+			Usage:   "enable starting local instances on server start",
+			EnvVars: []string{"EXELET_INSTANCE_BOOT_ON_STARTUP"},
 		},
 		&cli.BoolFlag{
 			Name:    "maintenance",
@@ -121,9 +122,10 @@ func main() {
 			EnvVars: []string{"EXELET_PROXY_PORT_MAX"},
 		},
 		&cli.StringFlag{
-			Name:  "exed-url",
-			Usage: "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",
-			Value: "",
+			Name:    "exed-url",
+			Usage:   "URL of the exed HTTP(S) server (e.g., http://localhost:8080)",
+			Value:   "",
+			EnvVars: []string{"EXELET_EXED_URL"},
 		},
 	}
 	app.Action = serveAction

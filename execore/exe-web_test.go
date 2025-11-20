@@ -7,12 +7,14 @@ import (
 	"testing"
 
 	"exe.dev/publicips"
+	"exe.dev/stage"
 )
 
 func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 	t.Parallel()
 
 	s := &Server{
+		env:       stage.Prod(),
 		PublicIPs: map[netip.Addr]publicips.PublicIP{},
 	}
 	ctx := context.Background()
@@ -65,6 +67,7 @@ func TestResolveBoxNameApexDomain(t *testing.T) {
 	t.Parallel()
 
 	s := &Server{
+		env: stage.Prod(),
 		PublicIPs: map[netip.Addr]publicips.PublicIP{
 			netip.MustParseAddr("10.0.0.5"): {
 				IP:     netip.MustParseAddr("203.0.113.10"),

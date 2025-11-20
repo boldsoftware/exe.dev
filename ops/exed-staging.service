@@ -1,0 +1,42 @@
+[Unit]
+Description=exe.dev server (staging)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu
+EnvironmentFile=/etc/default/exed
+
+# The EnvironmentFile contains these variables, some redacted here:
+#
+# HOME=/home/ubuntu
+# PATH=/snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# PORKBUN_API_KEY=
+# PORKBUN_SECRET_API_KEY=
+# POSTMARK_API_KEY=
+# GITHUB_TOKEN=
+
+# Use the latest timestamp version
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exed.* | head -n1)" -gh-whoami /home/ubuntu/ghuser/whoami.sqlite3 -http= -https=:443 -ssh=:2223 -piper-plugin=:2224 -piperd-port=22 -db=/home/ubuntu/exe.db -exelet-addresses "tcp://exe-ctr-staging-01:9080" -gateway "https://exe-staging.dev" -stage staging'
+
+Restart=always
+RestartSec=5
+
+# Use journald for logging (remove file redirection)
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=false
+SecureBits=keep-caps
+ProtectHome=no
+
+# Allow binding to privileged ports
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

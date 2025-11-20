@@ -350,7 +350,7 @@ func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string,
 // If sub is provided, it returns sub.domain (e.g., "www.exe.local" or "box.exe.dev").
 // If sub is empty, it returns just the domain (e.g., "exe.local" or "exe.dev").
 func (s *Server) getMainDomain(sub ...string) string {
-	domain := "exe.dev"
+	domain := s.env.WebHost
 	if s.env.DevMode != "" {
 		if s.servingHTTPS() {
 			domain = "exe.local"
