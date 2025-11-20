@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -9,9 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -223,6 +226,57 @@ func openBrowserURL(url string) error {
 	return cmd.Start()
 }
 
+// startSSHTunnelForExed establishes an SSH reverse tunnel and returns the dynamically allocated remote port.
+// Uses -v flag to capture SSH debug output showing the allocated port.
+func startSSHTunnelForExed(host string, localPort int) (int, error) {
+	// Start SSH tunnel with -v to capture allocated port
+	tunnelCmd := exec.Command("ssh",
+		"-v",  // verbose to see allocated port
+		"-Nf", // no command, background
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ServerAliveInterval=30",
+		"-o", "ExitOnForwardFailure=yes",
+		"-R", fmt.Sprintf("0:localhost:%d", localPort),
+		host,
+	)
+
+	// Capture stderr to parse allocated port
+	stderrPipe, err := tunnelCmd.StderrPipe()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := tunnelCmd.Start(); err != nil {
+		return 0, fmt.Errorf("failed to start SSH tunnel: %w", err)
+	}
+
+	// Parse stderr for "Allocated port X for remote forward"
+	re := regexp.MustCompile(`Allocated port (\d+) for remote forward`)
+	scanner := bufio.NewScanner(stderrPipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+			if port, err := strconv.Atoi(matches[1]); err == nil {
+				// Wait for command to finish backgrounding
+				tunnelCmd.Wait()
+				return port, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("failed to parse allocated port from SSH output")
+}
+
+// testRemoteToLocalConnectivity checks if the remote host can reach the local port via gateway.
+// Returns true if connectivity works, false otherwise.
+func testRemoteToLocalConnectivity(ctx context.Context, host, gateway string, port int) bool {
+	// Try to connect from remote host to gateway:port
+	testCmd := fmt.Sprintf("timeout 2 nc -z %s %d 2>/dev/null", gateway, port)
+	_, err := sshExec(ctx, host, testCmd)
+	return err == nil
+}
+
 // startExeletRemote builds exelet, uploads to lima-exe-ctr, kills old instances, and starts it.
 // Returns the exelet address (tcp://lima-exe-ctr.local:PORT) and gateway address (which
 // is the address by which the exelet can dial the exed process).
@@ -295,13 +349,58 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		return "", "", fmt.Errorf("gateway address is empty")
 	}
 
+	// Parse the local port from httpAddr (e.g., ":8080" -> "8080")
+	localPort := strings.TrimPrefix(httpAddr, ":")
+	if localPort == "" || localPort == "0" {
+		// Can't auto-detect with dynamic port, use gateway approach
+		exedURL := fmt.Sprintf("http://%s%s", gateway, httpAddr)
+		slog.Info("starting exeletd on remote host", "exed_url", exedURL)
+		if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
+			return "", "", err
+		}
+		return waitForExeletAndReturnAddress(host, gateway)
+	}
+
+	localPortInt, err := strconv.Atoi(localPort)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid http port %q: %w", httpAddr, err)
+	}
+
+	// Test if remote host can reach local port
+	// Usually local->ssh_ctr and ssh_ctr->local connectivity works. However, in some
+	// environments, such as coding agents that operate in containers, this connectivity
+	// does NOT work, and we set up an SSH tunnel for the exelet->exed communication
+	// as a band-aid.
+	needsTunnel := !testRemoteToLocalConnectivity(ctx, host, gateway, localPortInt)
+
+	// Construct exed URL
+	var exedURL string
+	if needsTunnel {
+		slog.Info("remote->local connectivity not available, using SSH reverse tunnel", "local_port", localPortInt)
+
+		// Start SSH tunnel and discover remote port
+		remotePort, err := startSSHTunnelForExed(host, localPortInt)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to start SSH tunnel: %w", err)
+		}
+
+		slog.Info("SSH tunnel established", "remote_port", remotePort, "local_port", localPortInt)
+		exedURL = fmt.Sprintf("http://localhost:%d", remotePort)
+	} else {
+		// Use direct gateway access (traditional approach)
+		exedURL = fmt.Sprintf("http://%s%s", gateway, httpAddr)
+	}
+
 	// Start exelet via SSH - the SSH command will keep running
-	slog.Info("starting exeletd on remote host")
+	slog.Info("starting exeletd on remote host", "exed_url", exedURL)
+	if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
+		return "", "", err
+	}
+	return waitForExeletAndReturnAddress(host, gateway)
+}
 
-	// Construct exed URL from httpAddr for the metadata service to proxy to
-	// The gateway is the host IP that the exelet can reach to connect back to exed
-	exedURL := fmt.Sprintf("http://%s%s", gateway, httpAddr)
-
+// startExeletProcess starts the exelet process on the remote host via SSH.
+func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL string) error {
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -312,7 +411,7 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return "", "", fmt.Errorf("failed to start exeletd: %w", err)
+		return fmt.Errorf("failed to start exeletd: %w", err)
 	}
 
 	// Wait for the process in a separate goroutine
@@ -324,6 +423,11 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		}
 	}()
 
+	return nil
+}
+
+// waitForExeletAndReturnAddress waits for exelet to start and returns its address.
+func waitForExeletAndReturnAddress(host, gateway string) (string, string, error) {
 	// Wait for exelet to start by aggressively trying to connect to the port
 	slog.Info("waiting for exelet to start listening")
 	exeletPort := "9080"

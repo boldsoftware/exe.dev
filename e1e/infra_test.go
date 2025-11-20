@@ -270,10 +270,12 @@ type piperdInstance struct {
 }
 
 type exeletInstance struct {
-	Address    string          // e.g., "tcp://192.168.5.15:9080"
-	Ctx        context.Context // cancelled when Cmd exits
-	DataDir    string          // temp directory for exelet data (local or remote path)
-	RemoteHost string          // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
+	Address      string             // e.g., "tcp://192.168.5.15:9080"
+	Ctx          context.Context    // cancelled when Cmd exits
+	DataDir      string             // temp directory for exelet data (local or remote path)
+	RemoteHost   string             // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
+	TunnelCmd    *exec.Cmd          // SSH tunnel process if using reverse tunnel
+	TunnelCancel context.CancelFunc // cancel function for tunnel context
 }
 
 func (e *testEnv) sshPort() int {
@@ -474,6 +476,15 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 	}
 	// Cleanup exelet (remote or local)
 	if e.exelet.RemoteHost != "" {
+		// Stop SSH tunnel if running
+		if e.exelet.TunnelCancel != nil {
+			e.exelet.TunnelCancel()
+		}
+		if e.exelet.TunnelCmd != nil && e.exelet.TunnelCmd.Process != nil {
+			e.exelet.TunnelCmd.Process.Kill()
+			e.exelet.TunnelCmd.Wait()
+		}
+
 		// Remote cleanup
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -671,12 +682,49 @@ func setup(ctrHost string) (*testEnv, error) {
 		slog.Info("exed HTTP proxy listening", "port", exedHTTPProxy.tcp.Port)
 	}
 
+	// Test if remote host can reach local proxy
+	// Usually local->ssh_ctr and ssh_ctr->local connectivity works. However, in some
+	// environments, such as coding agents that operate in containers, this connectivity
+	// does NOT work, and we set up an SSH tunnel for the exelet->exed communication
+	// as a band-aid.
+	host := parseSSHHost(ctrHost)
+	hasConnectivity := testRemoteToLocalConnectivity(host, gateway, exedHTTPProxy.tcp.Port)
+	slog.Info("tested remote->local connectivity", "host", host, "gateway", gateway, "port", exedHTTPProxy.tcp.Port, "reachable", hasConnectivity)
+	needsTunnel := !hasConnectivity
+
+	// Determine the exedURL for exelet
+	var exedProxyURL string
+	var tunnelCmd *exec.Cmd
+	var tunnelCancel context.CancelFunc
+
+	if needsTunnel {
+		slog.Info("remote->local connectivity not available, using SSH reverse tunnel")
+		// Use SSH reverse tunnel: exelet -> SSH tunnel -> TCP proxy -> exed
+		remotePort, cmd, cancel, err := startSSHTunnel(host, exedHTTPProxy.tcp.Port)
+		if err != nil {
+			return env, fmt.Errorf("failed to start SSH tunnel: %w", err)
+		}
+		tunnelCmd = cmd
+		tunnelCancel = cancel
+		exedProxyURL = fmt.Sprintf("http://localhost:%d", remotePort)
+		if *flagVerbosePorts {
+			slog.Info("using SSH tunnel for exelet->exed", "remote_port", remotePort, "proxy_port", exedHTTPProxy.tcp.Port)
+		}
+	} else {
+		// Use direct gateway access via TCP proxy
+		exedProxyURL = fmt.Sprintf("http://%s:%d", gateway, exedHTTPProxy.tcp.Port)
+	}
+
 	// Start exelet with the proxy port
-	exedProxyURL := fmt.Sprintf("http://%s:%d", gateway, exedHTTPProxy.tcp.Port)
 	exelet, err := startExelet(ctrHost, gateway, exedProxyURL)
 	if err != nil {
+		if tunnelCancel != nil {
+			tunnelCancel()
+		}
 		return env, err
 	}
+	exelet.TunnelCmd = tunnelCmd
+	exelet.TunnelCancel = tunnelCancel
 	env.exelet = *exelet
 	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
 
@@ -809,6 +857,75 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 
 	slog.Info("started piperd", "elapsed", time.Since(start).Truncate(100*time.Millisecond))
 	return instance, nil
+}
+
+// testRemoteToLocalConnectivity checks if the remote host can reach the local port via gateway.
+// Returns true if connectivity works, false otherwise.
+func testRemoteToLocalConnectivity(host, gateway string, port int) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Try to connect from remote host to gateway:port
+	testCmd := fmt.Sprintf("timeout 2 nc -z %s %d 2>/dev/null", gateway, port)
+	_, err := sshExec(ctx, host, testCmd)
+	return err == nil
+}
+
+// startSSHTunnel establishes an SSH reverse tunnel and returns the dynamically allocated remote port.
+// Uses -v flag to capture SSH debug output showing the allocated port.
+func startSSHTunnel(host string, localPort int) (remotePort int, tunnelCmd *exec.Cmd, cancel context.CancelFunc, err error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Start SSH tunnel with -v to capture allocated port
+	tunnelCmd = exec.CommandContext(ctx, "ssh",
+		"-v", // verbose to see allocated port
+		"-N", // no command
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ServerAliveInterval=30",
+		"-o", "ExitOnForwardFailure=yes",
+		"-R", fmt.Sprintf("0:localhost:%d", localPort),
+		host,
+	)
+
+	// Capture stderr to parse allocated port
+	stderrPipe, err := tunnelCmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return 0, nil, nil, fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := tunnelCmd.Start(); err != nil {
+		cancel()
+		return 0, nil, nil, fmt.Errorf("failed to start SSH tunnel: %w", err)
+	}
+
+	// Parse stderr for "Allocated port X for remote forward"
+	scanner := bufio.NewScanner(stderrPipe)
+	portC := make(chan int, 1)
+	go func() {
+		re := regexp.MustCompile(`Allocated port (\d+) for remote forward`)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+				if port, err := strconv.Atoi(matches[1]); err == nil {
+					portC <- port
+					return
+				}
+			}
+		}
+	}()
+
+	// Wait for port allocation (with timeout)
+	select {
+	case remotePort = <-portC:
+		slog.Info("SSH tunnel established", "remote_port", remotePort, "local_port", localPort)
+		return remotePort, tunnelCmd, cancel, nil
+	case <-time.After(5 * time.Second):
+		tunnelCmd.Process.Kill()
+		cancel()
+		return 0, nil, nil, fmt.Errorf("timeout waiting for SSH tunnel to allocate port")
+	}
 }
 
 func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
