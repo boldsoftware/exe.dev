@@ -148,7 +148,7 @@ echo "Creating base Lima instance: ${LIMA_BASE}"
 base_disk_name="$(data_disk_name "${LIMA_BASE}")"
 # Ensure mount location referenced by template exists
 mkdir -p /tmp/lima
-limactl create --tty=false --log-level=warn --name=${LIMA_BASE} \
+limactl create --plain --tty=false --log-level=warn --name=${LIMA_BASE} \
     --set "$(set_disk_expr "${base_disk_name}")" \
     "${LIMA_CONFIG_PATH}"
 limactl start --tty=false --log-level=warn ${LIMA_BASE}
