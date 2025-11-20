@@ -37,6 +37,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -146,17 +147,7 @@ type MetadataResponse struct {
 
 // handleRoot handles requests to the root endpoint
 func (s *Service) handleRoot(w http.ResponseWriter, r *http.Request) {
-	// Extract source IP from request
-	sourceIP, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		sourceIP = r.RemoteAddr
-	}
-
-	// Clean up IPv6-mapped IPv4 addresses (e.g., "::ffff:192.168.70.2" -> "192.168.70.2")
-	if strings.HasPrefix(sourceIP, "::ffff:") {
-		sourceIP = strings.TrimPrefix(sourceIP, "::ffff:")
-	}
-
+	sourceIP := requestSourceIP(r)
 	response := MetadataResponse{
 		SourceIP: sourceIP,
 	}
@@ -183,15 +174,7 @@ func (s *Service) handleRoot(w http.ResponseWriter, r *http.Request) {
 // handleGatewayProxy proxies requests to the LLM gateway on exed
 func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 	// Look up the box name for this connection
-	sourceIP, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		sourceIP = r.RemoteAddr
-	}
-	// Clean up IPv6-mapped IPv4 addresses
-	if after, ok := strings.CutPrefix(sourceIP, "::ffff:"); ok {
-		sourceIP = after
-	}
-
+	sourceIP := requestSourceIP(r)
 	_, boxName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
 	if err != nil {
 		s.log.ErrorContext(r.Context(), "failed to lookup box by IP", "ip", sourceIP, "error", err)
@@ -227,4 +210,17 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proxy.ServeHTTP(w, r)
+}
+
+// requestSourceIP extracts the source IP address from the HTTP request.
+func requestSourceIP(r *http.Request) string {
+	sourceIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		sourceIP = r.RemoteAddr
+	}
+	// Unmap IPv6-mapped IPv4 addresses (e.g., "::ffff:192.168.70.2" -> "192.168.70.2")
+	if addr, err := netip.ParseAddr(sourceIP); err == nil {
+		sourceIP = addr.Unmap().String()
+	}
+	return sourceIP
 }
