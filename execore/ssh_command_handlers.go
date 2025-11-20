@@ -360,22 +360,20 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		cc.Write("\r\n\033[1A")
 	}
 
-	gatewayURL := "https://exe.dev"
 	exedevURL := "https://exe.dev"
 	terminalURL := fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 	if ss.server.env.DevMode != "" {
 		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, ss.server.httpPort())
-		gatewayURL = fmt.Sprintf("http://%s:%d", ss.server.gateway, ss.server.httpPort())
 		exedevURL = fmt.Sprintf("http://localhost:%d", ss.server.httpPort())
 	}
 	shelleyJSON := map[string]interface{}{
 		"terminal_url":  terminalURL,
 		"default_model": shelleyDefaultModel,
 	}
-	if gatewayURL != "" {
-		shelleyJSON["llm_gateway"] = gatewayURL
-		shelleyJSON["key_generator"] = "sudo /usr/local/bin/generate-gateway-token"
-	}
+	// Use the metadata service for the gateway
+	shelleyJSON["llm_gateway"] = "http://169.254.169.254/gateway/llm"
+	shelleyJSON["key_generator"] = "echo"
+
 	// Add "Back to exe.dev" link if we have an exe.dev URL
 	if exedevURL != "" {
 		shelleyJSON["links"] = []map[string]string{

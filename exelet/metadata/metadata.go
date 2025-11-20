@@ -188,8 +188,8 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 		sourceIP = r.RemoteAddr
 	}
 	// Clean up IPv6-mapped IPv4 addresses
-	if strings.HasPrefix(sourceIP, "::ffff:") {
-		sourceIP = strings.TrimPrefix(sourceIP, "::ffff:")
+	if after, ok := strings.CutPrefix(sourceIP, "::ffff:"); ok {
+		sourceIP = after
 	}
 
 	_, boxName, err := s.instanceLookup.GetInstanceByIP(r.Context(), sourceIP)
@@ -207,10 +207,13 @@ func (s *Service) handleGatewayProxy(w http.ResponseWriter, r *http.Request) {
 	// Rewrite the path to match the exed gateway endpoint
 	// /gateway/llm/anthropic/... -> /_/gateway/anthropic/...
 	originalPath := r.URL.Path
-	newPath := strings.Replace(originalPath, "/gateway/llm/", "/_/gateway/", 1)
-	r.URL.Path = newPath
+	// The path that comes in is /gateway/llm/FOO or /gateway/llm/_/gateway/FOO
+	// We want to rewrite it to /_/gateway/FOO
+	newPath1 := strings.Replace(originalPath, "/gateway/llm/_/gateway", "/gateway/llm", 1)
+	newPath2 := strings.Replace(newPath1, "/gateway/llm", "/_/gateway", 1)
+	r.URL.Path = newPath2
 
-	s.log.DebugContext(r.Context(), "proxying gateway request", "original_path", originalPath, "new_path", newPath, "box", boxName)
+	s.log.DebugContext(r.Context(), "proxying gateway request", "original_path", originalPath, "new_path", newPath2, "box", boxName)
 
 	// Create a reverse proxy for this request
 	proxy := &httputil.ReverseProxy{

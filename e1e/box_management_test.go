@@ -319,3 +319,49 @@ func TestNewWithPrompt(t *testing.T) {
 	pty.deleteBox(boxName)
 	pty.disconnect()
 }
+
+func TestNewWithPromptDefaultModel(t *testing.T) {
+	// Only run if ANTHROPIC_API_KEY is set
+	if os.Getenv("ANTHROPIC_API_KEY") == "" {
+		t.Skip("ANTHROPIC_API_KEY not set")
+	}
+
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+	noGolden(t) // LLM responses are unpredictable
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Create a box with a prompt (use default model - will use gateway)
+	boxName := boxName(t)
+	prompt := "run 'touch /tmp/foo'" // Simple command to test execution
+	// systemd is painfully slow on macOS.
+	// By providing --command, we bypass it...but we still need Shelley running,
+	// so we reach in and start it ourselves.
+	// This is gross, but the tests are unusable otherwise.
+	// TODO: revert this hack when systemd is faster on macOS in L2.
+	command := fmt.Sprintf(`new --name=%s --prompt=%q`+
+		` --command="/usr/local/bin/shelley -debug -db /home/exedev/.shelley/shelley.db -config /exe.dev/shelley.json serve -port 9999"`,
+		boxName, prompt,
+	)
+	pty.sendLine(command)
+	pty.reject("Sorry")
+	pty.wantRe("Creating .*" + boxName)
+
+	// Expect Shelley prompt execution to start
+	pty.want("Shelley...")
+
+	// Wait for completion - we don't know exactly what the LLM will say,
+	// but we should get back to a prompt eventually (with timeout via expectPty)
+	pty.wantPrompt()
+
+	// Verify the command was executed by checking if /tmp/foo exists
+	out, err := boxSSHCommand(t, boxName, keyFile, "test", "-f", "/tmp/foo", "&&", "echo", "exists").CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "exists") {
+		t.Errorf("Expected /tmp/foo to exist after LLM execution, but it doesn't. Output: %s, Error: %v", string(out), err)
+	}
+
+	// Cleanup
+	pty.deleteBox(boxName)
+	pty.disconnect()
+}

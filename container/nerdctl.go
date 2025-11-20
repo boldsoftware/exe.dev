@@ -1793,30 +1793,24 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		"etc/ssh/authorized_keys":          {sshKeys.AuthorizedKeys, "644"},
 	}
 
-	// Add shelley.json if we can determine the gateway
-	var gatewayURL string
+	// Add shelley.json
 	var terminalURL string
 	var exedevURL string
 	if m.config.IsProduction {
-		gatewayURL = "https://exe.dev"
 		exedevURL = "https://exe.dev"
 		terminalURL = fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 	} else {
-		gatewayIP, err := m.getGatewayIP(ctx, host)
 		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, m.config.ExedListeningPort)
-		if err == nil {
-			gatewayURL = fmt.Sprintf("http://%s:%d", gatewayIP, m.config.ExedListeningPort)
-			exedevURL = fmt.Sprintf("http://localhost:%d", m.config.ExedListeningPort)
-		}
+		exedevURL = fmt.Sprintf("http://localhost:%d", m.config.ExedListeningPort)
 	}
 	shelleyJSON := map[string]interface{}{
 		"terminal_url":  terminalURL,
 		"default_model": "claude-sonnet-4.5",
 	}
-	if gatewayURL != "" {
-		shelleyJSON["llm_gateway"] = gatewayURL
-		shelleyJSON["key_generator"] = "sudo /usr/local/bin/generate-gateway-token"
-	}
+	// Use the metadata service for the gateway
+	shelleyJSON["llm_gateway"] = "http://169.254.169.254/gateway/llm"
+	shelleyJSON["key_generator"] = "echo unused"
+
 	// Add "Back to exe.dev" link if we have an exe.dev URL
 	if exedevURL != "" {
 		shelleyJSON["links"] = []map[string]string{
@@ -1859,11 +1853,7 @@ func (m *NerdctlManager) prepareContainerExeDev(ctx context.Context, host string
 		return "", fmt.Errorf("failed to write SSH files: %w: %s", err, output)
 	}
 
-	if gatewayURL != "" {
-		slog.Info("Wrote all container-specific files", "gateway", gatewayURL)
-	} else {
-		slog.Info("Wrote all container-specific SSH files")
-	}
+	slog.Info("Wrote all container-specific files", "gateway", "http://169.254.169.254/gateway/llm")
 
 	slog.Info("Successfully prepared container-specific /exe.dev directory", "dir", containerDir)
 	return containerDir, nil
