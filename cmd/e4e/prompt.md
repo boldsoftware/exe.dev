@@ -12,6 +12,10 @@ Flag:
 - Conflicting instructions
 - Outdated or missing cross-links
 
+Do not flag:
+
+- Missing discussions of limits or caps
+
 Your final report should be concise and efficient.
 
 Use Slack's mrkdwn syntax.
