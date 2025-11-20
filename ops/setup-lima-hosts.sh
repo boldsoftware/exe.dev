@@ -201,7 +201,7 @@ fi
 
 # Add IdentityFile configuration for .local hosts
 if ! grep -q "Host lima-exe-ctr.local" "$HOME/.ssh/config"; then
-    cat >> "$HOME/.ssh/config" <<EOF
+    cat >>"$HOME/.ssh/config" <<EOF
 
 Host lima-exe-ctr.local
     IdentityFile /Users/philip/.lima/_config/user
