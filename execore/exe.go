@@ -537,12 +537,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 }
 
 func (s *Server) initializePublicIPs() {
-	if len(s.PublicIPs) != 0 {
-		s.logPublicIPs()
-		return
-	}
-
-	if s.env.DevMode != "" {
+	if len(s.PublicIPs) != 0 || !s.env.DiscoverPublicIPs {
 		s.logPublicIPs()
 		return
 	}
@@ -563,8 +558,8 @@ func (s *Server) initializePublicIPs() {
 
 func (s *Server) logPublicIPs() {
 	if len(s.PublicIPs) == 0 {
-		if s.env.DevMode != "" {
-			s.slog().Info("dev mode: skipping public IP metadata lookup")
+		if !s.env.DiscoverPublicIPs {
+			s.slog().Info("public IP metadata lookup disabled for this environment")
 			return
 		}
 		s.slog().Warn("no public IP assignments discovered via metadata")

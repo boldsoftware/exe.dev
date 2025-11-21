@@ -9,8 +9,9 @@ type Env struct {
 	ReplHost string // the base hostname of the repl; prod is "exe.dev"
 	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz")
 
-	UseRoute53 bool // whether to use Route53 for DNS management and LetsEncrypt DNS challenges
-	UseCobble  bool // whether to start cobble/pebble for local ACME testing
+	UseRoute53        bool // whether to use Route53 for DNS management and LetsEncrypt DNS challenges
+	UseCobble         bool // whether to start cobble/pebble for local ACME testing
+	DiscoverPublicIPs bool // whether to attempt to discover public IPs of the server using EC2 metadata service
 
 	ReplDev bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands)
 

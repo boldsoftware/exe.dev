@@ -9,8 +9,9 @@ func Local() Env {
 		BoxHost:  "localhost",
 
 		// auto-start cobble/pebble for ACME testing
-		UseRoute53: false,
-		UseCobble:  true,
+		UseRoute53:        false,
+		UseCobble:         true,
+		DiscoverPublicIPs: false,
 
 		ReplDev: true,
 
@@ -27,8 +28,9 @@ func Test() Env {
 		BoxHost:  "localhost",
 
 		// tests start their own cobble/pebble instances as needed
-		UseRoute53: false,
-		UseCobble:  false,
+		UseRoute53:        false,
+		UseCobble:         false,
+		DiscoverPublicIPs: false,
 
 		ReplDev: false,
 
@@ -44,8 +46,9 @@ func Staging() Env {
 		ReplHost: "exe-staging.dev",
 		BoxHost:  "exe-staging.dev",
 
-		UseRoute53: true,
-		UseCobble:  false,
+		UseRoute53:        true,
+		UseCobble:         false,
+		DiscoverPublicIPs: true,
 
 		ReplDev: false,
 
@@ -61,8 +64,9 @@ func Prod() Env {
 		ReplHost: "exe.dev",
 		BoxHost:  "exe.dev",
 
-		UseRoute53: true,
-		UseCobble:  false,
+		UseRoute53:        true,
+		UseCobble:         false,
+		DiscoverPublicIPs: true,
 
 		ReplDev: false,
 
