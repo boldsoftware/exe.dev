@@ -259,13 +259,19 @@ users:
     sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
       - $(cat "${SSH_PUBKEY}")
-package_update: true
+package_update: false
 packages:
   - qemu-guest-agent
   - zfsutils-linux
 runcmd:
   - echo runcmd
   - systemctl enable --now qemu-guest-agent
+  # Disable unnecessary services that slow boot
+  - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
+  - systemctl mask apt-daily.service apt-daily-upgrade.service || true
+  - systemctl disable --now motd-news.timer || true
+  - systemctl mask motd-news.service || true
+  - systemctl disable fwupd.service fwupd-refresh.timer || true
   - mkdir -p /local && chmod 755 /local
   # Set up ZFS pool on /dev/vdb if not already present
   - |
@@ -300,8 +306,10 @@ bootcmd:
       # Check if pool exists on disk but is not imported
       if zpool import 2>/dev/null | grep -q 'pool: tank'; then
         echo "Importing ZFS pool 'tank' from cloned disk with new GUID"
+        date
         zpool import -f -N tank
         zpool reguid tank
+        date
       fi
     fi
   # Configure MAC-based DHCP BEFORE network starts (must match actual interface name)
