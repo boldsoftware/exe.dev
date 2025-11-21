@@ -538,6 +538,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 
 func (s *Server) initializePublicIPs() {
 	if len(s.PublicIPs) != 0 || !s.env.DiscoverPublicIPs {
+		// IPs already initialized...or not supposed to be.
 		s.logPublicIPs()
 		return
 	}

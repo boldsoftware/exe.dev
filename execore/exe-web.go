@@ -206,6 +206,7 @@ var (
 // rules are applied to the result; otherwise an error is returned.
 func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, error) {
 	hostname = domz.Canonicalize(hostname)
+	// Reject empty hostnames (cheap check).
 	if hostname == "" {
 		return "", errInvalidBoxName
 	}
@@ -233,6 +234,7 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 		return boxName, nil
 	}
 
+	// Reject non-domain hostnames.
 	if !strings.Contains(hostname, ".") {
 		return "", errInvalidBoxName
 	}

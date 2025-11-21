@@ -309,7 +309,6 @@ func (s *Server) parseProxyHostname(hostname string) (box string) {
 			return box
 		}
 	}
-
 	return ""
 }
 
