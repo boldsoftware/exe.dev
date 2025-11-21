@@ -373,16 +373,13 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	// Use the metadata service for the gateway
 	shelleyJSON["llm_gateway"] = "http://169.254.169.254/gateway/llm"
 	shelleyJSON["key_generator"] = "echo"
-
-	// Add "Back to exe.dev" link if we have an exe.dev URL
-	if exedevURL != "" {
-		shelleyJSON["links"] = []map[string]string{
-			{
-				"title":    "Back to exe.dev",
-				"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
-				"url":      exedevURL,
-			},
-		}
+	// Add "Back to exe.dev" link
+	shelleyJSON["links"] = []map[string]string{
+		{
+			"title":    "Back to exe.dev",
+			"icon_svg": "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
+			"url":      exedevURL,
+		},
 	}
 	shelleyConf, err := json.Marshal(shelleyJSON)
 	if err != nil {
