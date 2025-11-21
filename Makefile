@@ -8,6 +8,7 @@ GOOS := $(shell go env GOOS)
 GOARCH := $(shell go env GOARCH)
 COMMIT := `git rev-parse --short HEAD`
 VERSION := $(shell date +%Y%m%d)
+REPO := exe.dev
 
 # Colors
 RED := \033[0;31m
@@ -208,23 +209,23 @@ protos:
 exelet: exelet-kernel exelet-rovol
 	@>&2 echo " -> building exelet ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@cd cmd/exelet && GOOS=linux go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
+	@cd ./cmd/exelet && GOOS=linux go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
 
 .PHONY: exelet-ctl
 exelet-ctl:
 	@>&2 echo " -> building exelet-ctl ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
-	@cd cmd/exelet-ctl && go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet-ctl .
+	@cd ./cmd/exelet-ctl && go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet-ctl .
 
 .PHONY: exe-init
 exe-init:
 	@>&2 echo " -> building exe-init ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@cd cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-init .
+	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-init .
 
 .PHONY: exe-ssh
 exe-ssh:
 	@>&2 echo " -> building exe-ssh ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"
-	@cd cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-ssh .
+	@cd ./cmd/exe-ssh && CGO_ENABLED=0 go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exelet/fs/rovol/bin/exe-ssh .
 
 # kernel
 exelet-kernel: exelet/fs/kernel/kernel

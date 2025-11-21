@@ -11,6 +11,7 @@ DATA_DISK_SIZE="100GiB"
 
 # Determine repo ops dir
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git -C "${OPS_DIR}" rev-parse --show-toplevel)"
 LIMA_CONFIG_PATH="${OPS_DIR}/lima-with-data.yaml"
 if [[ ! -f "$LIMA_CONFIG_PATH" ]]; then
     echo "Required Lima config not found: $LIMA_CONFIG_PATH" >&2
@@ -80,6 +81,7 @@ clone_data_disk() {
 # Provision a fresh Lima VM with exelet + Cloud Hypervisor
 provision_base_vm() {
     local script_dir="${OPS_DIR}"
+    local repo_root="${REPO_ROOT}"
 
     # Download dependencies locally if not cached
     VM_ARCH="arm64"
@@ -107,9 +109,9 @@ provision_base_vm() {
 
     # build and cache a local exelet to be able to provision the base instance volumes
     echo "Building bootstrap exelet..."
-    make GOOS=linux GOARCH=${VM_ARCH} exelet exelet-ctl
-    limactl cp "exeletd" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/exeletd-${VM_ARCH}"
-    limactl cp "exelet-ctl" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/exelet-ctl-${VM_ARCH}"
+    make -C "${repo_root}" GOOS=linux GOARCH=${VM_ARCH} exelet exelet-ctl
+    limactl cp "${repo_root}/exeletd" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/exeletd-${VM_ARCH}"
+    limactl cp "${repo_root}/exelet-ctl" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/exelet-ctl-${VM_ARCH}"
     limactl cp "${script_dir}/setup-exelet.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-exelet.sh"
 
     echo "Running bootstrap script in VM (this will take a few minutes)..."
