@@ -3,6 +3,7 @@
 package e1e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -356,4 +357,61 @@ func TestNewWithPromptDefaultModel(t *testing.T) {
 	// Cleanup
 	pty.deleteBox(boxName)
 	pty.disconnect()
+}
+
+func TestBoxRestartShutdown(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	boxName := newBox(t, pty)
+	pty.disconnect()
+	waitForSSH(t, boxName, keyFile)
+
+	t.Run("restart", func(t *testing.T) {
+		box := sshToBox(t, boxName, keyFile)
+		box.wantPrompt()
+		box.sendLine("echo restart-test > /home/exedev/restart.txt")
+		box.wantPrompt()
+		box.sendLine("sudo reboot")
+		box.wantEOF()
+
+		// Wait for box to come back up and verify marker file remains.
+		waitForSSH(t, boxName, keyFile)
+		box = sshToBox(t, boxName, keyFile)
+
+		box.wantPrompt()
+		box.sendLine("cat /home/exedev/restart.txt")
+		box.want("restart-test")
+		box.wantPrompt()
+		box.disconnect()
+	})
+
+	t.Run("shutdown", func(t *testing.T) {
+		box := sshToBox(t, boxName, keyFile)
+		box.wantPrompt()
+		box.sendLine("sudo shutdown now")
+		box.wantEOF()
+
+		// After shutdown, SSH should not connect.
+		// Set a short timeout here to avoid long waits.
+		// This could yield false negatives, but it's worth it.
+		//
+		// TODO: figure out why this command hangs indefinitely without a timeout.
+		// It really should fail on its own reasonably quickly,
+		// but I've never seen it actually time out, even after many minutes.
+		// That probably means we're leaking something somewhere.
+		ctx, cancel := context.WithTimeout(Env.context(t), time.Second)
+		defer cancel()
+		cmd := boxSSHCommandContext(ctx, boxName, keyFile, "echo", "ping")
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("ssh to box %q succeeded after shutdown; output: %s", boxName, output)
+		}
+	})
+
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.deleteBox(boxName)
+	cleanup.disconnect()
 }

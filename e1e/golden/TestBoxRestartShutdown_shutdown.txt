@@ -1,0 +1,17 @@
+
+
+●
+● ssh BOX_NAME@localhost
+●
+
+
+You are on BOX_NAME. The disk is persistent. You have 'sudo'.
+
+For support and documentation, "ssh exe.dev" or visit https://exe.dev/
+
+MOTD HINT
+
+exedev@BOX_NAME:~$ sudo shutdown now
+Failed to set wall message, ignoring: Unit dbus-org.freedesktop.login1.service failed to load properly, please adjust/correct and reload service manager: File exists
+Call to PowerOff failed: Unit dbus-org.freedesktop.login1.service failed to load properly, please adjust/correct and reload service manager: File exists
+exedev@BOX_NAME:~$ Connection to localhost closed by remote host.

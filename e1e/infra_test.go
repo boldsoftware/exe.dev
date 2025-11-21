@@ -1691,9 +1691,13 @@ func runParseExeDevJSON[T any](t *testing.T, keyFile string, args ...string) T {
 }
 
 func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.Cmd {
+	return boxSSHCommandContext(Env.context(t), boxname, keyFile, args...)
+}
+
+func boxSSHCommandContext(ctx context.Context, boxname, keyFile string, args ...string) *exec.Cmd {
 	sshArgs := baseSSHArgs(boxname, keyFile)
 	sshArgs = append(sshArgs, args...)
-	sshCmd := exec.CommandContext(Env.context(t), "ssh", sshArgs...)
+	sshCmd := exec.CommandContext(ctx, "ssh", sshArgs...)
 	sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
 	return sshCmd
 }
