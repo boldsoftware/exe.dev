@@ -13,7 +13,14 @@ type Env struct {
 	UseCobble         bool // whether to start cobble/pebble for local ACME testing
 	DiscoverPublicIPs bool // whether to attempt to discover public IPs of the server using EC2 metadata service
 
-	ReplDev bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands)
+	FakeEmail  bool // whether to log emails instead of sending them
+	ReplDev    bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands)
+	WebDev     bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
+	ProxyDev   bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
+	SkipBanner bool // whether to skip showing the EXE banner on repl login
+
+	ShowHiddenDocs    bool // whether to load and display unpublished docs
+	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
 
 	DevMode string // dev mode: "local", "test", or ""; TODO: delete in favor of more precise flags
 }
@@ -38,7 +45,14 @@ func Local() Env {
 		UseCobble:         true,
 		DiscoverPublicIPs: false,
 
-		ReplDev: true,
+		FakeEmail:  true,
+		ReplDev:    true,
+		WebDev:     true,
+		ProxyDev:   true,
+		SkipBanner: false,
+
+		ShowHiddenDocs:    true,
+		AutoStartSSHPiper: true,
 
 		DevMode: "local",
 	}
@@ -57,7 +71,14 @@ func Test() Env {
 		UseCobble:         false,
 		DiscoverPublicIPs: false,
 
-		ReplDev: false,
+		FakeEmail:  true,
+		ReplDev:    false,
+		WebDev:     true,
+		ProxyDev:   true,
+		SkipBanner: true,
+
+		ShowHiddenDocs:    true,
+		AutoStartSSHPiper: false,
 
 		DevMode: "test",
 	}
@@ -75,7 +96,14 @@ func Staging() Env {
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
 
-		ReplDev: false,
+		FakeEmail:  false,
+		ReplDev:    false,
+		WebDev:     false,
+		ProxyDev:   false,
+		SkipBanner: false,
+
+		ShowHiddenDocs:    false,
+		AutoStartSSHPiper: false,
 
 		DevMode: "",
 	}
@@ -93,7 +121,14 @@ func Prod() Env {
 		UseCobble:         false,
 		DiscoverPublicIPs: true,
 
-		ReplDev: false,
+		FakeEmail:  false,
+		ReplDev:    false,
+		WebDev:     false,
+		ProxyDev:   false,
+		SkipBanner: false,
+
+		ShowHiddenDocs:    false,
+		AutoStartSSHPiper: false,
 
 		DevMode: "",
 	}

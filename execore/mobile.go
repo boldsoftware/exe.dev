@@ -473,7 +473,7 @@ The exe.dev team`, verifyURL, token)
 		QueryString: r.URL.RawQuery,
 	}
 
-	if s.env.DevMode != "" {
+	if s.env.WebDev {
 		data.DevURL = verifyURL
 	}
 
@@ -507,7 +507,7 @@ func (s *Server) handleMobileVerifyTokenEmailLink(w http.ResponseWriter, r *http
 		Value:    cookieValue,
 		Path:     "/",
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
-		Secure:   s.env.DevMode == "", // Only secure in production
+		Secure:   s.servingHTTPS(),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -564,7 +564,7 @@ func (s *Server) handleMobileVerifyTokenManualEntry(w http.ResponseWriter, r *ht
 		Value:    cookieValue,
 		Path:     "/",
 		Expires:  time.Now().Add(30 * 24 * time.Hour),
-		Secure:   s.env.DevMode == "", // Only secure in production
+		Secure:   s.servingHTTPS(),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})

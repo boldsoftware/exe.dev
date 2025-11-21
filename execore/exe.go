@@ -467,7 +467,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 	slog.Info("exelet clients initialized", "count", len(validExeletAddrs))
 
-	includeUnpublishedDocs := env.DevMode != ""
+	includeUnpublishedDocs := env.ShowHiddenDocs
 	docsStore, err := docspkg.Load(includeUnpublishedDocs)
 	if err != nil {
 		db.Close()
@@ -517,7 +517,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		log:       slog,
 	}
 
-	if env.DevMode == "" {
+	if env.UseRoute53 {
 		s.dnsProvider = route53.NewDNSProvider()
 	}
 
@@ -756,7 +756,7 @@ func generatePairingCode() string {
 
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
-	if s.env.DevMode != "" {
+	if s.env.WebDev {
 		return fmt.Sprintf("http://localhost:%v", s.httpPort())
 	}
 	return "https://exe.dev"
@@ -775,7 +775,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 	}
 
 	// In dev mode, always just log the email
-	if s.env.DevMode != "" {
+	if s.env.FakeEmail {
 		s.slog().Info("DEV MODE: Would send email", "to", to, "subject", subject, "body", body)
 		return nil
 	}
@@ -1098,14 +1098,14 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 }
 
 func (s *Server) boxSSHHost() string {
-	if s.env.DevMode != "" {
+	if s.env.ProxyDev {
 		return "localhost"
 	}
 	return "exe.dev"
 }
 
 func (s *Server) boxSSHPort() int {
-	if s.env.DevMode != "" {
+	if s.piperdPort != 22 {
 		return s.piperdPort
 	}
 	return 22
@@ -1121,14 +1121,14 @@ func (s *Server) boxSSHConnectionCommand(boxName string) string {
 }
 
 func (s *Server) replSSHHost() string {
-	if s.env.DevMode != "" {
+	if s.env.ProxyDev {
 		return "localhost"
 	}
 	return "exe.dev"
 }
 
 func (s *Server) replSSHPort() int {
-	if s.env.DevMode != "" {
+	if s.piperdPort != 22 {
 		return s.piperdPort
 	}
 	return 22
@@ -1145,7 +1145,7 @@ func (s *Server) replSSHConnectionCommand() string {
 
 // httpsProxyAddress returns the HTTPS proxy address for a box.
 func (s *Server) httpsProxyAddress(boxName string) string {
-	if s.env.DevMode != "" {
+	if s.env.ProxyDev {
 		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpPort())
 	}
 	return fmt.Sprintf("https://%s.exe.dev", boxName)
@@ -1153,7 +1153,7 @@ func (s *Server) httpsProxyAddress(boxName string) string {
 
 // terminalURL returns the terminal URL for a box.
 func (s *Server) terminalURL(boxName string) string {
-	if s.env.DevMode != "" {
+	if s.env.ProxyDev {
 		return fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, s.httpPort())
 	}
 	return fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
@@ -1161,7 +1161,7 @@ func (s *Server) terminalURL(boxName string) string {
 
 // shelleyURL returns the Shelley agent URL for a box (port 9999).
 func (s *Server) shelleyURL(boxName string) string {
-	if s.env.DevMode != "" {
+	if s.env.ProxyDev {
 		return fmt.Sprintf("http://%s.localhost:%d", boxName, 9999)
 	}
 	return fmt.Sprintf("https://%s.exe.dev:9999", boxName)
@@ -1214,7 +1214,7 @@ func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image 
 		return 0, err
 	}
 
-	if s.env.DevMode == "" {
+	if s.env.UseRoute53 {
 		if err := s.createBoxCNAME(ctx, name, assignedShard); err != nil {
 			cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
 			if cleanupErr != nil {
@@ -1650,7 +1650,7 @@ func (s *Server) Start() error {
 		}
 	}()
 
-	if s.env.DevMode == "local" {
+	if s.env.AutoStartSSHPiper {
 		// In dev mode, automatically start sshpiper if not already running
 		go s.autoStartSSHPiper(ctx)
 

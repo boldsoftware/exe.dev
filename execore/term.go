@@ -588,7 +588,7 @@ func (s *Server) terminalBaseHostname() string {
 	// Development: box.xterm.localhost
 	// Production: box.xterm.exe.dev
 	base := ".xterm.exe.dev"
-	if s.env.DevMode != "" {
+	if s.env.ProxyDev {
 		base = ".xterm.localhost"
 	}
 	return base

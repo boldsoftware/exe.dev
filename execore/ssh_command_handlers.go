@@ -362,7 +362,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 	exedevURL := "https://exe.dev"
 	terminalURL := fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
-	if ss.server.env.DevMode != "" {
+	if ss.server.env.ProxyDev {
 		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, ss.server.httpPort())
 		exedevURL = fmt.Sprintf("http://localhost:%d", ss.server.httpPort())
 	}

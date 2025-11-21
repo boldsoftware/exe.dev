@@ -82,7 +82,7 @@ func (s *Server) prepareLlmGateway() http.Handler {
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,
-	}, s.env.DevMode != "")
+	}, s.env.WebDev)
 	return lg
 }
 
@@ -221,7 +221,7 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 		}
 
 		// In dev mode, also try localhost suffix
-		if s.env.DevMode != "" {
+		if s.env.ProxyDev {
 			if host, ok := domz.CutBase(hostname, "localhost"); ok {
 				return host
 			}
@@ -1129,7 +1129,7 @@ The exe.dev team`, verifyEmailURL)
 
 	// Show success page
 	var devURL string
-	if s.env.DevMode != "" && (strings.Contains(r.Host, "localhost") || strings.Contains(r.Host, "127.0.0.1")) {
+	if s.env.WebDev && (strings.Contains(r.Host, "localhost") || strings.Contains(r.Host, "127.0.0.1")) {
 		devURL = verifyEmailURL
 	}
 	s.showAuthEmailSent(w, r, email, devURL)
@@ -1943,5 +1943,5 @@ func (s *Server) isMainDomain(host string) bool {
 
 	// Check if it's exactly the main domain or www subdomain
 	return hostname == mainDomain || hostname == "www."+mainDomain ||
-		(s.env.DevMode != "" && (hostname == "localhost" || hostname == "exe.local"))
+		(s.env.WebDev && (hostname == "localhost" || hostname == "exe.local"))
 }

@@ -410,7 +410,7 @@ func (ss *SSHServer) runMainShellWithReadline(s exemenu.ShellSession, publicKey 
 // showAnimatedWelcome displays the ASCII art with a beautiful fade-out animation
 func (ss *SSHServer) showAnimatedWelcome(s sshsession.Session) {
 	// Skip animation in test mode for faster tests
-	if ss.server.env.DevMode == "test" {
+	if ss.server.env.SkipBanner {
 		fmt.Fprint(s, "~~~ EXE.DEV ~~~\r\n")
 		return
 	}
@@ -905,7 +905,7 @@ The EXE.DEV team`, publicKey, verifyURL)
 			ss.server.deleteEmailVerification(verif)
 			return nil, fmt.Errorf("failed to send verification email: %v", err)
 		}
-		if ss.server.env.DevMode != "" {
+		if ss.server.env.FakeEmail {
 			fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 		}
 
@@ -933,7 +933,7 @@ The EXE.DEV team`, verifyURL)
 		ss.server.deleteEmailVerification(verif)
 		return nil, fmt.Errorf("failed to send verification email: %v", err)
 	}
-	if ss.server.env.DevMode != "" {
+	if ss.server.env.FakeEmail {
 		fmt.Fprintf(s, "\r\n[DEV-ONLY] Emailed link: \033[1;36m%s\033[0m\r\n\r\n", verifyURL)
 	}
 

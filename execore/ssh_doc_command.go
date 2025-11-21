@@ -66,7 +66,7 @@ func (ss *SSHServer) handleDocCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 
 	title := entry.Title
-	if ss.server != nil && ss.server.env.DevMode != "" && !entry.Published {
+	if ss.server != nil && ss.server.env.ShowHiddenDocs && !entry.Published {
 		title += " [hidden]"
 	}
 	model := newDocViewerModel(title, slug, entry.Markdown, width, height)
@@ -93,7 +93,7 @@ func (ss *SSHServer) writeDocList(cc *exemenu.CommandContext, store *docspkg.Sto
 	cc.Writeln("Usage: doc <slug>")
 	cc.Writeln("")
 	cc.Writeln("Available docs:")
-	showHidden := ss.server != nil && ss.server.env.DevMode != ""
+	showHidden := ss.server != nil && ss.server.env.ShowHiddenDocs
 	for _, group := range store.Groups() {
 		heading := strings.TrimSpace(group.Heading)
 		if heading != "" {
