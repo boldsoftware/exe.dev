@@ -1687,6 +1687,20 @@ func boxSSHCommand(t *testing.T, boxname, keyFile string, args ...string) *exec.
 	return sshCmd
 }
 
+// waitForSSH blocks until SSH is responsive on the given box.
+func waitForSSH(t *testing.T, boxName, keyFile string) {
+	// Wait for SSH to be responsive (systemd may take time to initialize).
+	var err error
+	for range 150 {
+		err = boxSSHCommand(t, boxName, keyFile, "true").Run()
+		if err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("box ssh did not come up, last error: %v", err)
+}
+
 func sshToBox(t *testing.T, boxname, keyFile string) *expectPty {
 	pty := sshWithUsername(t, boxname, keyFile)
 	pty.promptRe = regexp.QuoteMeta(boxname) + ".*" + regexp.QuoteMeta("$")

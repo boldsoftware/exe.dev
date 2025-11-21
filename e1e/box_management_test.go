@@ -34,18 +34,7 @@ func TestVanillaBox(t *testing.T) {
 		pty.disconnect()
 	})
 
-	// Wait for SSH to be responsive (systemd may take time to initialize).
-	var err error
-	for range 150 {
-		err = boxSSHCommand(t, boxName, keyFile, "true").Run()
-		if err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if err != nil {
-		t.Fatalf("box ssh did not come up, last error: %v", err)
-	}
+	waitForSSH(t, boxName, keyFile)
 
 	// Ensure sudo hints are suppressed so golden output stays consistent
 	// regardless of whether previous sudo commands were run on this box during image creation.
