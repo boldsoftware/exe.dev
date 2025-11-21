@@ -20,6 +20,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +99,11 @@ func (sw *slogWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func dedupInPlace(values []string) []string {
+	slices.Sort(values)
+	return slices.Compact(values)
+}
+
 // setupHTTPSServer configures the HTTPS server with Let's Encrypt if enabled
 func (s *Server) setupHTTPSServer() {
 	if s.httpsLn.ln == nil {
@@ -106,8 +112,11 @@ func (s *Server) setupHTTPSServer() {
 
 	s.slog().Info("set up wildcard TLS certificates with Route 53", "decision", s.env.UseRoute53, "stage", s.env.String())
 	if s.env.UseRoute53 {
+		wildcardDomains := []string{s.getMainDomain(), s.getMainDomain("xterm")}
+		wildcardDomains = dedupInPlace(wildcardDomains)
+		wildcardDomains = domz.FilterEmpty(wildcardDomains)
 		s.wildcardCertManager = route53.NewWildcardCertManager(
-			[]string{s.getMainDomain(), s.getMainDomain("xterm")},
+			wildcardDomains,
 			autocert.DirCache("certs"),
 			s.sshMetrics.letsencryptRequests,
 		)
