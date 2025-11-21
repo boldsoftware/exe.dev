@@ -159,6 +159,11 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 		code = 1
 		fmt.Fprintf(os.Stderr, "\n\nexed emitted ERROR log during e1e run:\n%s\n\n", line)
 	}
+	close(env.exeletSlogErrC)
+	for line := range env.exeletSlogErrC {
+		code = 1
+		fmt.Fprintf(os.Stderr, "\n\nexelet emitted ERROR log during e1e run:\n%s\n\n", line)
+	}
 	if env.exedGuidLogC != nil {
 		close(env.exedGuidLogC)
 		for line := range env.exedGuidLogC {
@@ -237,14 +242,15 @@ func initLogging() error {
 var Env *testEnv
 
 type testEnv struct {
-	sshProxy      *tcpProxy
-	exedHTTPProxy *tcpProxy
-	exed          exedInstance
-	piperd        piperdInstance
-	exelet        exeletInstance
-	email         *emailServer
-	exedSlogErrC  chan string // receives exed ERROR log lines
-	exedGuidLogC  chan string // receives exed log lines with guid attribute
+	sshProxy       *tcpProxy
+	exedHTTPProxy  *tcpProxy
+	exed           exedInstance
+	piperd         piperdInstance
+	exelet         exeletInstance
+	email          *emailServer
+	exedSlogErrC   chan string // receives exed ERROR log lines
+	exeletSlogErrC chan string // receives exelet ERROR log lines
+	exedGuidLogC   chan string // receives exed log lines with guid attribute
 
 	asciinemaMu      sync.Mutex // protects asciinemaWriters
 	asciinemaWriters map[string]*expect.AsciinemaWriter
@@ -627,6 +633,7 @@ func setup(ctrHost string) (*testEnv, error) {
 		asciinemaWriters: make(map[string]*expect.AsciinemaWriter),
 		canonicalize:     make(map[string]string),
 		exedSlogErrC:     make(chan string, 16),
+		exeletSlogErrC:   make(chan string, 16),
 		exedGuidLogC:     make(chan string, 128),
 	}
 
@@ -716,7 +723,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	// Start exelet with the proxy port
-	exelet, err := startExelet(ctrHost, gateway, exedProxyURL)
+	exelet, err := startExelet(ctrHost, gateway, exedProxyURL, env.exeletSlogErrC)
 	if err != nil {
 		if tunnelCancel != nil {
 			tunnelCancel()
@@ -928,7 +935,7 @@ func startSSHTunnel(host string, localPort int) (remotePort int, tunnelCmd *exec
 	}
 }
 
-func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
+func startExelet(ctrHost, gateway, exedURL string, exeletSlogErrC chan string) (*exeletInstance, error) {
 	start := time.Now()
 	slog.Info("starting exelet", "exedURL", exedURL)
 
@@ -1007,7 +1014,7 @@ func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
 			fmt.Fprintln(logFileFor("exelet"), logOut)
 		}
 
-		// Parse each line looking for "listening" message
+		// Parse each line looking for "listening" message and ERROR logs
 		scanner := bufio.NewScanner(strings.NewReader(logOut))
 		for scanner.Scan() {
 			line := scanner.Bytes()
@@ -1019,6 +1026,14 @@ func startExelet(ctrHost, gateway, exedURL string) (*exeletInstance, error) {
 			if err := json.Unmarshal(line, &entry); err != nil {
 				slog.Warn("failed to parse exelet log line", "error", err, "line", string(line))
 				continue
+			}
+			// Capture ERROR level logs
+			if level, ok := entry["level"].(string); ok && level == "ERROR" {
+				lineStr := string(line)
+				select {
+				case exeletSlogErrC <- lineStr:
+				default:
+				}
 			}
 			if entry["msg"] == "listening" {
 				if addrVal, ok := entry["addr"].(string); ok {
