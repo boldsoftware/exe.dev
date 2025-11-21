@@ -34,7 +34,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate commits for WIP and DO NOT SUBMIT
+      - name: Validate commits for WIP, DO NOT SUBMIT, and VIBES
         run: |
           set -e
           set -o pipefail
@@ -67,6 +67,12 @@ jobs:
                   has_errors=1
               fi
 
+              # Check for VIBES in subject line (case insensitive)
+              if echo "$subject" | grep -i "VIBES" >/dev/null 2>&1; then
+                  echo "❌ ERROR: Commit $commit has 'VIBES' in subject line: $subject"
+                  has_errors=1
+              fi
+
               # Check for "DO NOT SUBMIT" anywhere in the commit message (case insensitive)
               if echo "$full_message" | grep -i "DO NOT SUBMIT" >/dev/null 2>&1; then
                   echo "❌ ERROR: Commit $commit contains 'DO NOT SUBMIT' in commit message"
@@ -94,7 +100,7 @@ jobs:
           if [ $has_errors -eq 1 ]; then
               echo ""
               echo "❌ Validation failed! Please fix the above issues and try again."
-              echo "Commits with 'WIP' in the subject line, 'DO NOT SUBMIT' anywhere in the message, or merge commits are not allowed."
+              echo "Commits with 'WIP' or 'VIBES' in the subject line, 'DO NOT SUBMIT' anywhere in the message, or merge commits are not allowed."
               exit 1
           fi
 
