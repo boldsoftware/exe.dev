@@ -1,0 +1,11 @@
+FROM golang:latest AS build
+RUN apt-get update && apt-get install -y protoc-gen-go-grpc protoc-gen-go protobuf-compiler
+RUN go install github.com/containerd/protobuild/cmd/go-fix-acronym@latest
+COPY api /src/api
+WORKDIR /src/api
+RUN mkdir -p pkg/api
+RUN find . -name "*.proto" -exec protoc {} --go_out=pkg/api --go_opt=paths=source_relative --go-grpc_out=pkg/api --go-grpc_opt=paths=source_relative \;
+RUN find pkg/api -type f -name '*.pb.go' -exec go-fix-acronym -w -a 'S(sh)|M(ac)Address|N(tp)Server|I(p)V4|V(m)Config|C(pu)s|(Id|Ip|Tcp|Http|Udp|Io|Ssh|Uri)$$' {} \;
+
+FROM scratch
+COPY --from=build /src/api/pkg /

@@ -201,9 +201,7 @@ whoami-clean: ## Remove ghuser/whoami.sqlite3 so it can be re-downloaded
 
 .PHONY: protos
 protos:
-	@pushd api ; find . -name "*.proto" -exec protoc {} --go_out=$(ROOT_DIR)/pkg/api --go_opt=paths=source_relative --go-grpc_out=$(ROOT_DIR)/pkg/api --go-grpc_opt=paths=source_relative \; ; popd
-	@# fix api
-	@find pkg/api -type f -name '*.pb.go' -exec go-fix-acronym -w -a 'S(sh)|M(ac)Address|N(tp)Server|I(p)V4|V(m)Config|C(pu)s|(Id|Ip|Tcp|Http|Udp|Io|Ssh|Uri)$$' {} \;
+	@docker buildx build -f ./Dockerfile.protobuf --output type=local,dest=pkg .
 
 .PHONY: exelet
 exelet: exelet-kernel exelet-rovol
