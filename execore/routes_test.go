@@ -10,7 +10,7 @@ func TestProxyHostnameParsing(t *testing.T) {
 	t.Parallel()
 
 	prodServer := &Server{env: stage.Prod()}
-	devServer := &Server{env: stage.Local()}
+	testServer := &Server{env: stage.Test()}
 
 	tests := []struct {
 		name        string
@@ -22,8 +22,8 @@ func TestProxyHostnameParsing(t *testing.T) {
 		{"prod rejects localhost", prodServer, "web.localhost", ""},
 		{"prod valid simple", prodServer, "empty.exe.dev", "empty"},
 		{"prod invalid domain", prodServer, "invalid.domain.com", ""},
-		{"dev valid localhost", devServer, "dev-box.localhost", "dev-box"},
-		{"dev rejects exe.dev", devServer, "dev-box.exe.dev", ""},
+		{"dev valid localhost", testServer, "dev-box.localhost", "dev-box"},
+		{"dev rejects exe.dev", testServer, "dev-box.exe.dev", ""},
 	}
 
 	for _, test := range tests {
