@@ -766,6 +766,8 @@ func (s *Server) getBaseURL() string {
 	return "https://exe.dev"
 }
 
+var errNoEmailService = errors.New("email service not configured")
+
 // sendEmail sends an email using the configured email service
 func (s *Server) sendEmail(to, subject, body string) error {
 	// Check if HTTP email server is configured first
@@ -784,7 +786,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	// Check if email service is configured
 	if s.postmarkClient == nil {
-		return fmt.Errorf("email service not configured")
+		return errNoEmailService
 	}
 
 	// Use the existing sendVerificationEmail logic
