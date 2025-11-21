@@ -1,11 +1,11 @@
 package compute
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -13,9 +13,13 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
-// TestRecreateProxyForInstance tests that recreateProxyForInstance correctly
-// creates a TCP proxy for a RUNNING instance.
-func TestRecreateProxyForInstance(t *testing.T) {
+// TestCreateSSHProxy tests that CreateProxy correctly creates a SSH proxy for an instance.
+func TestCreateSSHProxy(t *testing.T) {
+	// Skip test if socat is not installed
+	if _, err := exec.LookPath("socat"); err != nil {
+		t.Skip("socat not found in PATH, skipping test")
+	}
+
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
@@ -56,43 +60,26 @@ func TestRecreateProxyForInstance(t *testing.T) {
 		}
 	}()
 
-	// Create a mock RUNNING instance
+	// Create instance directory
 	instanceID := "test-instance-123"
-	sshPort := int32(20022) // Use port in test range (20000-30000)
-	instance := &api.Instance{
-		ID:      instanceID,
-		Name:    "test-instance",
-		Image:   "test-image",
-		State:   api.VMState_RUNNING,
-		SSHPort: sshPort,
-		VMConfig: &api.VMConfig{
-			ID:     instanceID,
-			Name:   "test-instance",
-			CPUs:   1,
-			Memory: 1024,
-			NetworkInterface: &api.NetworkInterface{
-				DeviceName: "eth0",
-				IP: &api.IPAddress{
-					IPV4:      fmt.Sprintf("%s/24", vmIP),
-					GatewayV4: "10.0.0.1",
-				},
-			},
-		},
+	sshPort := 20022 // Use port in test range (20000-30000)
+	instanceDir := computeSvc.getInstanceDir(instanceID)
+	if err := os.MkdirAll(instanceDir, 0755); err != nil {
+		t.Fatalf("failed to create instance directory: %v", err)
 	}
 
-	// Call recreateProxyForInstance directly
-	ctx := context.Background()
-	if err := computeSvc.recreateProxyForInstance(ctx, instance); err != nil {
-		t.Fatalf("failed to recreate proxy: %v", err)
+	// Create SSH proxy using CreateProxy
+	if err := computeSvc.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
+		t.Fatalf("failed to create proxy: %v", err)
 	}
 
-	// Verify that a TCP proxy was created
+	// Verify that a SSH proxy was created
 	proxyPort, exists := computeSvc.proxyManager.GetPort(instanceID)
 	if !exists {
-		t.Fatalf("TCP proxy should exist after recreateProxyForInstance")
+		t.Fatalf("SSH proxy should exist after CreateProxy")
 	}
 
-	if proxyPort != int(sshPort) {
+	if proxyPort != sshPort {
 		t.Errorf("proxy port mismatch: expected %d, got %d", sshPort, proxyPort)
 	}
 
@@ -110,24 +97,23 @@ func TestRecreateProxyForInstance(t *testing.T) {
 	}
 
 	if connErr != nil {
-		t.Errorf("failed to connect to TCP proxy at %s: %v", proxyAddr, connErr)
+		t.Errorf("failed to connect to SSH proxy at %s: %v", proxyAddr, connErr)
 	}
 
-	// Test that calling recreateProxyForInstance again is idempotent
-	if err := computeSvc.recreateProxyForInstance(ctx, instance); err != nil {
-		t.Errorf("recreateProxyForInstance should be idempotent: %v", err)
+	// Test that calling CreateProxy again fails (not idempotent - proxy already exists)
+	if err := computeSvc.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err == nil {
+		t.Errorf("CreateProxy should fail when proxy already exists")
 	}
 
 	// Cleanup
-	if _, err := computeSvc.proxyManager.RemoveProxy(instanceID); err != nil {
-		t.Errorf("failed to remove proxy: %v", err)
+	if _, err := computeSvc.proxyManager.StopProxy(instanceID); err != nil {
+		t.Errorf("failed to stop proxy: %v", err)
 	}
 }
 
-// TestRecreateProxyNotCalledForStoppedInstance verifies that the
-// recreateProxyForInstance method does not create proxies for instances
-// that are not in RUNNING state.
-func TestRecreateProxyNotCalledForStoppedInstance(t *testing.T) {
+// TestRecoverProxiesStopsProxyForStoppedInstance verifies that RecoverProxies
+// stops proxies for instances that are in STOPPED state.
+func TestRecoverProxiesStopsProxyForStoppedInstance(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
@@ -165,21 +151,21 @@ func TestRecreateProxyNotCalledForStoppedInstance(t *testing.T) {
 		},
 	}
 
-	// In the actual Start() method, recreateProxyForInstance is only called
-	// for instances with State == VMState_RUNNING. This test verifies that
-	// the logic in Start() would skip STOPPED instances.
-	// We don't need to test the full Start() flow here.
-
-	// Verify that NO TCP proxy exists initially
+	// Verify that NO SSH proxy exists initially
 	_, exists := computeSvc.proxyManager.GetPort(instanceID)
 	if exists {
-		t.Errorf("TCP proxy should NOT exist for STOPPED instance initially")
+		t.Errorf("SSH proxy should NOT exist for STOPPED instance initially")
 	}
 
-	// The Start() method will check: if i.State == api.VMState_RUNNING
-	// Since this instance is STOPPED, recreateProxyForInstance won't be called
-	// We verify this by checking the state
-	if instance.State == api.VMState_RUNNING {
-		t.Errorf("Expected STOPPED state, got %v", instance.State)
+	// Call RecoverProxies with a STOPPED instance - it should not create a proxy
+	instances := []*api.Instance{instance}
+	if err := computeSvc.proxyManager.RecoverProxies(instances); err != nil {
+		t.Errorf("RecoverProxies failed: %v", err)
+	}
+
+	// Verify that still NO SSH proxy exists
+	_, exists = computeSvc.proxyManager.GetPort(instanceID)
+	if exists {
+		t.Errorf("SSH proxy should NOT be created for STOPPED instance")
 	}
 }

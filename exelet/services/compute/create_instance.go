@@ -23,7 +23,6 @@ import (
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
-	"exe.dev/pkg/tcpproxy"
 )
 
 const (
@@ -453,14 +452,12 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, "no IP address assigned to VM")
 	}
 
-	// create and start TCP proxy for ssh
+	// create and start SSH proxy using socat
 	s.log.DebugContext(ctx, "starting SSH proxy", "instance", instanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
-	p := tcpproxy.NewTCPProxy(sshPort, vmIP, 22, s.log)
-	if err := p.Start(); err != nil {
+	if err := s.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
 		s.portAllocator.Release(sshPort)
 		return status.Errorf(codes.Internal, "failed to start SSH proxy: %s", err)
 	}
-	s.proxyManager.AddProxy(instanceID, p, sshPort)
 	rb.proxyCreated = true
 
 	// Parse exposed ports from image config

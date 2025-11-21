@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"exe.dev/exelet/services"
-	"exe.dev/pkg/tcpproxy"
+	"exe.dev/exelet/sshproxy"
 )
 
 // createInstanceRollback tracks resources created during instance creation for cleanup on error
@@ -23,7 +23,7 @@ type createInstanceRollback struct {
 	imageFSMounted     bool
 	instanceCloned     bool
 	instanceMounted    bool
-	proxyManager       *tcpproxy.ProxyManager
+	proxyManager       *sshproxy.Manager
 	portAllocator      *PortAllocator
 	proxyCreated       bool
 	allocatedPort      int
@@ -33,7 +33,7 @@ type createInstanceRollback struct {
 func (r *createInstanceRollback) Rollback() {
 	// Stop and remove proxy if created
 	if r.proxyCreated && r.proxyManager != nil {
-		if port, err := r.proxyManager.RemoveProxy(r.instanceID); err != nil {
+		if port, err := r.proxyManager.StopProxy(r.instanceID); err != nil {
 			r.log.Error("rollback: failed to remove proxy", "id", r.instanceID, "error", err)
 		} else if r.portAllocator != nil {
 			r.portAllocator.Release(port)

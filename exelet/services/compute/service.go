@@ -2,9 +2,7 @@ package compute
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"net"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -12,8 +10,8 @@ import (
 
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/services"
+	"exe.dev/exelet/sshproxy"
 	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/pkg/tcpproxy"
 )
 
 const (
@@ -27,7 +25,7 @@ type Service struct {
 	mu                  *sync.Mutex
 	log                 *slog.Logger
 	portAllocator       *PortAllocator
-	proxyManager        *tcpproxy.ProxyManager
+	proxyManager        *sshproxy.Manager
 	imageLoadGroup      singleflight.Group[string, string]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 }
@@ -49,7 +47,7 @@ func New(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 		mu:            &sync.Mutex{},
 		log:           log,
 		portAllocator: portAllocator,
-		proxyManager:  tcpproxy.NewProxyManager(log),
+		proxyManager:  sshproxy.NewManager(cfg.DataDir, log),
 	}, nil
 }
 
@@ -75,28 +73,25 @@ func (s *Service) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Load existing instances and mark their ports as allocated
+	// Load existing instances
 	instances, err := s.listInstances(ctx)
 	if err != nil {
 		return err
 	}
 
+	// Mark SSH ports as allocated in the port allocator
 	for _, i := range instances {
-		// Mark the SSH port as allocated in the port allocator
 		if i.SSHPort > 0 {
 			s.portAllocator.MarkAllocated(int(i.SSHPort))
 			s.log.DebugContext(ctx, "marked port as allocated", "instance", i.ID, "port", i.SSHPort)
 		}
+	}
 
-		// Recreate TCP proxies for instances that are already RUNNING
-		// (e.g., if the VM didn't stop when exelet restarted)
-		if i.State == api.VMState_RUNNING && i.SSHPort > 0 {
-			if err := s.recreateProxyForInstance(ctx, i); err != nil {
-				s.log.WarnContext(ctx, "failed to recreate proxy for running instance", "instance", i.ID, "error", err)
-				// Continue with other instances rather than failing startup
-				continue
-			}
-		}
+	// Recover existing SSH proxies from disk
+	// This will find existing socat processes and adopt them, or restart dead ones
+	if err := s.proxyManager.RecoverProxies(instances); err != nil {
+		s.log.WarnContext(ctx, "failed to recover SSH proxies", "error", err)
+		// Don't fail startup, continue
 	}
 
 	// start instances if enabled
@@ -108,44 +103,6 @@ func (s *Service) Start(ctx context.Context) error {
 			}
 		}
 	}
-
-	return nil
-}
-
-// recreateProxyForInstance recreates the TCP proxy for a running instance
-// This is called during service startup to restore proxies after an exelet restart
-func (s *Service) recreateProxyForInstance(ctx context.Context, i *api.Instance) error {
-	// Check if proxy already exists
-	if _, exists := s.proxyManager.GetPort(i.ID); exists {
-		s.log.DebugContext(ctx, "proxy already exists for instance", "instance", i.ID)
-		return nil
-	}
-
-	// Parse VM IP from network interface
-	if i.VMConfig == nil || i.VMConfig.NetworkInterface == nil || i.VMConfig.NetworkInterface.IP == nil {
-		return fmt.Errorf("instance %s has no network interface configured", i.ID)
-	}
-
-	vmIP := ""
-	if i.VMConfig.NetworkInterface.IP.IPV4 != "" {
-		ipAddr, _, err := net.ParseCIDR(i.VMConfig.NetworkInterface.IP.IPV4)
-		if err != nil {
-			return fmt.Errorf("failed to parse VM IP: %w", err)
-		}
-		vmIP = ipAddr.String()
-	} else {
-		return fmt.Errorf("no IP address assigned to VM %s", i.ID)
-	}
-
-	sshPort := int(i.SSHPort)
-	s.log.InfoContext(ctx, "recreating SSH proxy for running instance", "instance", i.ID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
-
-	// Create and start TCP proxy
-	proxy := tcpproxy.NewTCPProxy(sshPort, vmIP, 22, s.log)
-	if err := proxy.Start(); err != nil {
-		return fmt.Errorf("failed to start SSH proxy: %w", err)
-	}
-	s.proxyManager.AddProxy(i.ID, proxy, sshPort)
 
 	return nil
 }

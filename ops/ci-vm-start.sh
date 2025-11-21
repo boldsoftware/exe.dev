@@ -263,6 +263,7 @@ package_update: false
 packages:
   - qemu-guest-agent
   - zfsutils-linux
+  - socat
 runcmd:
   - echo runcmd
   - systemctl enable --now qemu-guest-agent

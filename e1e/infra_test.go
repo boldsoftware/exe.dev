@@ -606,7 +606,8 @@ func (p *tcpProxy) serve() error {
 			defer c.Close()
 			dstAddr := p.dst.Load()
 			if dstAddr == nil {
-				slog.Error("tcpProxy: no destination address set")
+				// Destination not yet configured - close connection silently
+				// This can happen during test startup before proxy is fully initialized
 				return
 			}
 			dst, err := net.Dial("tcp", dstAddr.String())

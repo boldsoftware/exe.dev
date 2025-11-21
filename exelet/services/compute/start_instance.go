@@ -10,7 +10,6 @@ import (
 
 	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
-	"exe.dev/pkg/tcpproxy"
 )
 
 func (s *Service) StartInstance(ctx context.Context, req *api.StartInstanceRequest) (*api.StartInstanceResponse, error) {
@@ -119,13 +118,12 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 		return fmt.Errorf("no IP address assigned to VM")
 	}
 
-	// create and start TCP proxy
+	// create and start SSH proxy using socat
+	instanceDir := s.getInstanceDir(id)
 	s.log.DebugContext(ctx, "starting SSH proxy", "instance", id, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
-	proxy := tcpproxy.NewTCPProxy(sshPort, vmIP, 22, s.log)
-	if err := proxy.Start(); err != nil {
+	if err := s.proxyManager.CreateProxy(id, vmIP, sshPort, instanceDir); err != nil {
 		return fmt.Errorf("failed to start SSH proxy: %w", err)
 	}
-	s.proxyManager.AddProxy(id, proxy, sshPort)
 
 	// update network config
 	iCfg.VMConfig.NetworkInterface = networkInterface

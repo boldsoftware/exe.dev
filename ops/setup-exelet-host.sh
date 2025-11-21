@@ -334,7 +334,7 @@ fi
 # Install required packages
 echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y parted zfsutils-linux >/dev/null 2>&1
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y parted socat zfsutils-linux >/dev/null 2>&1
 
 echo "=== Detecting instance-store NVMe devices (~900GB) ==="
 # Select the 4x ~900GB instance-store NVMe disks; exclude EBS root (50GB) and data (250GB)
