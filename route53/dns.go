@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/domz"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	awsroute53 "github.com/aws/aws-sdk-go-v2/service/route53"
@@ -288,7 +289,7 @@ func (d *DNSProvider) ListCNAMERecords(ctx context.Context, domain string) ([]CN
 				return nil, fmt.Errorf("CNAME record %s has no target", aws.ToString(rrset.Name))
 			}
 
-			name := strings.TrimSuffix(strings.ToLower(aws.ToString(rrset.Name)), ".")
+			name := domz.Canonicalize(aws.ToString(rrset.Name))
 			target := strings.TrimSuffix(strings.Trim(strings.ToLower(aws.ToString(rrset.ResourceRecords[0].Value)), "\""), ".")
 
 			var ttl int64

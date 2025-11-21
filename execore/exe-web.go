@@ -247,8 +247,8 @@ func (s *Server) lookupA(ctx context.Context, host string) ([]netip.Addr, error)
 
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
 func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error {
-	host = strings.TrimSuffix(strings.ToLower(host), ".")
-	if host == s.getMainDomain() || host == s.getMainDomain("www") || strings.HasSuffix(host, "."+s.getMainDomain()) {
+	host = domz.Canonicalize(host)
+	if domz.Matches(host, s.getMainDomain()) {
 		return nil
 	}
 
@@ -277,7 +277,7 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 		return nil, fmt.Errorf("no server name provided")
 	}
 
-	serverName := strings.TrimSuffix(strings.ToLower(hello.ServerName), ".")
+	serverName := domz.Canonicalize(hello.ServerName)
 
 	// 1) Serve Tailscale certificate for exact Tailscale DNS name
 	if s.tsDomain != "" && serverName == strings.ToLower(s.tsDomain) {
@@ -288,7 +288,7 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	}
 
 	// 2) Main domain handling
-	if serverName == s.getMainDomain() || serverName == s.getMainDomain("www") || strings.HasSuffix(serverName, "."+s.getMainDomain()) {
+	if domz.Matches(serverName, s.getMainDomain()) {
 		if s.wildcardCertManager != nil {
 			cert, err := s.wildcardCertManager.GetCertificate(hello)
 			if err != nil {
