@@ -20,6 +20,8 @@ type ConnMetadata interface {
 
 	RemoteAddr() string
 
+	LocalAddress() string
+
 	UniqueID() string
 
 	GetMeta(key string) string
@@ -31,6 +33,10 @@ func (c *ConnMeta) User() string {
 
 func (c *ConnMeta) RemoteAddr() string {
 	return c.FromAddr
+}
+
+func (c *ConnMeta) LocalAddress() string {
+	return c.GetLocalAddr()
 }
 
 func (c *ConnMeta) UniqueID() string {

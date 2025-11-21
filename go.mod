@@ -59,7 +59,7 @@ require (
 	golang.org/x/term v0.37.0
 	golang.org/x/tools v0.38.0
 	google.golang.org/grpc v1.75.0
-	google.golang.org/protobuf v1.36.8
+	google.golang.org/protobuf v1.36.10
 	modernc.org/sqlite v1.38.2
 	mvdan.cc/sh/v3 v3.12.0
 	tailscale.com v1.86.5

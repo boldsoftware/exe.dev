@@ -160,10 +160,11 @@ func (g *GrpcPlugin) CreateChallengeContext(conn ssh.ServerPreAuthConn) (ssh.Cha
 	}
 
 	meta := PluginConnMeta{
-		UserName: conn.User(),
-		FromAddr: conn.RemoteAddr().String(),
-		UniqId:   uiq.String(),
-		Metadata: make(map[string]string),
+		UserName:  conn.User(),
+		FromAddr:  conn.RemoteAddr().String(),
+		UniqId:    uiq.String(),
+		Metadata:  make(map[string]string),
+		LocalAddr: conn.LocalAddr().String(),
 	}
 
 	return &meta, g.NewConnection(&meta)
@@ -173,10 +174,11 @@ func (g *GrpcPlugin) NewConnection(meta *PluginConnMeta) error {
 	if g.hasNewConnectionCallback {
 		_, err := g.client.NewConnection(context.Background(), &libplugin.NewConnectionRequest{
 			Meta: &libplugin.ConnMeta{
-				UserName: meta.UserName,
-				FromAddr: meta.FromAddr,
-				UniqId:   meta.UniqId,
-				Metadata: meta.Metadata,
+				UserName:  meta.UserName,
+				FromAddr:  meta.FromAddr,
+				UniqId:    meta.UniqId,
+				Metadata:  meta.Metadata,
+				LocalAddr: meta.LocalAddr,
 			},
 		})
 

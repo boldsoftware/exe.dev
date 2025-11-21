@@ -9,6 +9,7 @@ message ConnMeta {
   string from_addr = 2;
   string uniq_id = 3;
   map<string, string> metadata = 4;
+  string local_addr = 5;
 }
 
 message Upstream {

@@ -47,6 +47,10 @@ func (m *mockConnection) UniqueID() string {
 	return "test-unique-id"
 }
 
+func (m *mockConnection) LocalAddress() string {
+	return "127.0.0.1:2222"
+}
+
 func TestKeyboardInteractiveAuthentication(t *testing.T) {
 	t.Parallel()
 	piper := NewPiperPlugin(nil, 0)

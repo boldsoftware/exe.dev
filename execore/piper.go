@@ -271,7 +271,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// 4. When exed sees the proxy key, it can look up the original user's key
 	// 5. Mappings expire after a few minutes to prevent memory leaks
 
-	localAddress := cmp.Or(domz.StripPort(conn.GetMeta("local_address")), "127.0.0.1")
+	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), domz.StripPort(conn.GetMeta("local_address")), "127.0.0.1")
 	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key, localAddress)
 	if err != nil {
 		slog.DebugContext(ctx, "Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)

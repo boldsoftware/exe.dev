@@ -19,6 +19,7 @@ func (m mockConnMetadata) User() string              { return m.user }
 func (m mockConnMetadata) RemoteAddr() string        { return m.addr }
 func (m mockConnMetadata) UniqueID() string          { return "test-unique-id" }
 func (m mockConnMetadata) GetMeta(key string) string { return "" }
+func (m mockConnMetadata) LocalAddress() string      { return "127.0.0.1:2222" }
 
 // generateTestHostKey creates a properly formatted SSH public key for testing
 func generateTestHostKey(t *testing.T) []byte {
