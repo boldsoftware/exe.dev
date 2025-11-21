@@ -184,7 +184,10 @@ func (s *Server) setupHTTPSServer() {
 	}()
 }
 
-var errBoxNotFound = errors.New("box not found")
+var (
+	errBoxNotFound    = errors.New("box not found")
+	errInvalidBoxName = errors.New("invalid box name")
+)
 
 // resolveBoxName converts a hostname to a box name.
 // If hostname is a subdomain of the main domain (e.g., box.exe.dev),
@@ -193,11 +196,14 @@ var errBoxNotFound = errors.New("box not found")
 // For all other hostname values, a CNAME lookup is performed, and the above
 // rules are applied to the result; otherwise an error is returned.
 func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, error) {
+	hostname = domz.Canonicalize(hostname)
 	if hostname == "" {
-		return "", nil
+		return "", errInvalidBoxName
 	}
 
-	hostname = strings.TrimSuffix(strings.ToLower(hostname), ".")
+	if hostname == s.getMainDomain() {
+		return "", errInvalidBoxName
+	}
 
 	parse := func(hostname string) string {
 		if host, ok := domz.CutBase(hostname, s.getMainDomain()); ok {
@@ -219,7 +225,7 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 	}
 
 	if !strings.Contains(hostname, ".") {
-		return "", nil
+		return "", errInvalidBoxName
 	}
 
 	return s.resolveCustomDomainBoxName(ctx, hostname)
@@ -1275,9 +1281,17 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	// Extract hostname without port for display
 	hostname := domz.StripPort(returnHost)
 	boxName, err := s.resolveBoxName(r.Context(), hostname)
+	if errors.Is(err, errInvalidBoxName) {
+		http.Error(w, "Invalid hostname", http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		// TODO(bmizerany): return a nicer error page
 		http.Error(w, "Failed to resolve box name", http.StatusInternalServerError)
+		return
+	}
+	if boxName == "" {
+		http.Error(w, "Invalid box name", http.StatusBadRequest)
 		return
 	}
 
