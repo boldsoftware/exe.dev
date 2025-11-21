@@ -1129,7 +1129,7 @@ The exe.dev team`, verifyEmailURL)
 
 	// Show success page
 	var devURL string
-	if s.env.WebDev && (strings.Contains(r.Host, "localhost") || strings.Contains(r.Host, "127.0.0.1")) {
+	if s.env.WebDev && domz.IsLocalhost(r.Host) {
 		devURL = verifyEmailURL
 	}
 	s.showAuthEmailSent(w, r, email, devURL)
