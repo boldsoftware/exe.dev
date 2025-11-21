@@ -8,6 +8,8 @@ LIMA_BASE="exe-ctr-base"
 LIMA_HOST_A="exe-ctr"
 LIMA_HOST_B="exe-ctr-tests"
 DATA_DISK_SIZE="100GiB"
+CLOUD_HYPERVISOR_VERSION="48.0"
+VIRTIOFSD_VERSION="1.13.2"
 
 # Determine repo ops dir
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,6 +27,82 @@ fi
 
 LIMA_DIR="$HOME/.lima"
 BOOTSTRAP_STAGING="/tmp/exe-bootstrap"
+DOCKER_CMD=()
+
+ensure_cloud_hypervisor_artifacts() {
+    local arch="$1"
+    local cache_dir="$HOME/.cache/exedops"
+    local artifact_name="cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}-${arch}.tar.gz"
+    local artifact_path="${cache_dir}/${artifact_name}"
+    local build_context="${OPS_DIR}/cloud-hypervisor"
+    local platform=""
+    if [[ -f "${artifact_path}" ]]; then
+        echo "Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} (${arch}) cache hit"
+        return 0
+    fi
+
+    if [[ ! -d "${build_context}" ]]; then
+        echo "Cloud Hypervisor Docker context missing at ${build_context}" >&2
+        exit 1
+    fi
+
+    if docker info >/dev/null 2>&1; then
+        DOCKER_CMD=(docker)
+    elif sudo docker info >/dev/null 2>&1; then
+        DOCKER_CMD=(sudo docker)
+    else
+        echo "Docker is required to pre-build Cloud Hypervisor artifacts" >&2
+        exit 1
+    fi
+
+    case "${arch}" in
+        arm64) platform="linux/arm64" ;;
+        amd64) platform="linux/amd64" ;;
+        *)
+            echo "Unsupported arch for Cloud Hypervisor build: ${arch}" >&2
+            exit 1
+            ;;
+    esac
+
+    mkdir -p "${cache_dir}"
+
+    local image_tag="exe-cloud-hypervisor:${CLOUD_HYPERVISOR_VERSION}-${arch}"
+    echo "Building Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} (${arch}) via Docker..."
+    "${DOCKER_CMD[@]}" build \
+        --platform "${platform}" \
+        --tag "${image_tag}" \
+        --build-arg "CLOUD_HYPERVISOR_VERSION=${CLOUD_HYPERVISOR_VERSION}" \
+        --build-arg "VIRTIOFSD_VERSION=${VIRTIOFSD_VERSION}" \
+        --build-arg "TARGETARCH=${arch}" \
+        "${build_context}"
+
+    local container_id
+    if ! container_id=$("${DOCKER_CMD[@]}" create "${image_tag}" /bin/true); then
+        echo "Failed to create container for Cloud Hypervisor artifacts" >&2
+        exit 1
+    fi
+
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+
+    set +e
+    "${DOCKER_CMD[@]}" cp "${container_id}:/out/." "${tmp_dir}"
+    local cp_status=$?
+    set -e
+
+    if [[ $cp_status -ne 0 ]]; then
+        echo "Failed to copy Cloud Hypervisor artifacts from Docker image" >&2
+        rm -rf "${tmp_dir}"
+        "${DOCKER_CMD[@]}" rm "${container_id}" >/dev/null 2>&1 || true
+        exit 1
+    fi
+
+    tar czf "${artifact_path}" -C "${tmp_dir}" .
+    chmod 0644 "${artifact_path}"
+    rm -rf "${tmp_dir}"
+    "${DOCKER_CMD[@]}" rm "${container_id}" >/dev/null 2>&1 || true
+    echo "Cached Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} (${arch}) at ${artifact_path}"
+}
 
 data_disk_name() {
     echo "data-$1"
@@ -87,6 +165,7 @@ provision_base_vm() {
     VM_ARCH="arm64"
     echo "Ensuring dependencies are downloaded for $VM_ARCH..."
     "${script_dir}/download-ctr-host.sh" "$VM_ARCH"
+    ensure_cloud_hypervisor_artifacts "$VM_ARCH"
 
     echo "Preparing bootstrap assets for VM..."
     limactl shell ${LIMA_BASE} -- sudo rm -rf "${BOOTSTRAP_STAGING}"

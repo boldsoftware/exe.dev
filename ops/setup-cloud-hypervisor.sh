@@ -1,30 +1,43 @@
 #!/bin/sh
+set -eu
+
 ASSETS_DIR="/home/ubuntu/.cache/exedops"
 CLOUD_HYPERVISOR_VERSION="48.0"
-VIRTIOFSD_VERSION="1.13.2"
 
-echo "=== Running setup-cloud-hypervisor.sh ==="
+echo "=== Installing cached Cloud Hypervisor binaries ==="
 
-# dependencies
-apt update && apt install -y libcap-ng-dev libseccomp-dev git rustup build-essential
+case "$(uname -m)" in
+    aarch64) ARTIFACT_ARCH="arm64" ;;
+    x86_64) ARTIFACT_ARCH="amd64" ;;
+    *)
+        echo "Unsupported architecture: $(uname -m)" >&2
+        exit 1
+        ;;
+esac
 
-# rust tooling
-rustup default stable
-rustup target add $(uname -m)-unknown-linux-musl
+ARCHIVE="${ASSETS_DIR}/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}-${ARTIFACT_ARCH}.tar.gz"
 
-# cloud-hypervisor
-cd /tmp
-rm -rf cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}
-tar zxvf "${ASSETS_DIR}/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}.tar.gz"
-cd cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}
-cargo build --release
-cp -f ./target/release/cloud-hypervisor /usr/local/bin/cloud-hypervisor
-cp -f ./target/release/ch-remote /usr/local/bin/ch-remote
+if [ ! -f "$ARCHIVE" ]; then
+    echo "Missing cached Cloud Hypervisor archive: ${ARCHIVE}" >&2
+    exit 1
+fi
 
-# virtiofsd
-cd /tmp
-rm -rf virtiofsd-v${VIRTIOFSD_VERSION}-*
-tar zxvf "${ASSETS_DIR}/virtiofsd-${VIRTIOFSD_VERSION}.tar.gz"
-cd virtiofsd-v${VIRTIOFSD_VERSION}-*
-cargo build --release
-cp -f ./target/release/virtiofsd /usr/local/bin/virtiofsd
+apt update && apt install -y libcap-ng0 libseccomp2
+
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+
+tar xzf "$ARCHIVE" -C "$tmp_dir"
+
+for bin in cloud-hypervisor ch-remote virtiofsd; do
+    if [ ! -f "${tmp_dir}/bin/${bin}" ]; then
+        echo "Cached archive missing ${bin}" >&2
+        exit 1
+    fi
+done
+
+install -m 0755 "${tmp_dir}/bin/cloud-hypervisor" /usr/local/bin/cloud-hypervisor
+install -m 0755 "${tmp_dir}/bin/ch-remote" /usr/local/bin/ch-remote
+install -m 0755 "${tmp_dir}/bin/virtiofsd" /usr/local/bin/virtiofsd
+
+echo "✓ Installed Cloud Hypervisor ${CLOUD_HYPERVISOR_VERSION} (${ARTIFACT_ARCH})"
