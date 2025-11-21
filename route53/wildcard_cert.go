@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/domz"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
@@ -139,8 +140,7 @@ func (w *WildcardCertManager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.C
 		return nil, fmt.Errorf("no server name provided")
 	}
 
-	// Canonicalize server name to lowercase.
-	serverName := strings.TrimSuffix(strings.ToLower(hello.ServerName), ".")
+	serverName := domz.Canonicalize(hello.ServerName)
 
 	// Determine which certificate to use
 	rootDomain := w.domainForServerName(serverName)
@@ -208,7 +208,7 @@ func (w *WildcardCertManager) setMemCert(domain string, cert *tls.Certificate) {
 }
 
 // isSingleLevelSubdomain reports whether serverName is a single-level subdomain of domain.
-// It assumes that both domain and serverName are lowercase.
+// It assumes that both domain and serverName are canonicalized.
 // For example:
 //
 //	isSingleLevelSubdomain("www.domain.com", "domain.com") == true
@@ -222,7 +222,7 @@ func isSingleLevelSubdomain(domain, serverName string) bool {
 
 // domainForServerName returns the (possibly wildcard) domain corresponding to serverName.
 // If domainForServerName returns an empty string, we do not manager serverName.
-// It assumes that serverName is lowercase.
+// It assumes that serverName is canonicalized.
 func (w *WildcardCertManager) domainForServerName(serverName string) string {
 	// We accept apex domains and single-level subdomains.
 	// Note that when the set of domains includes subdomains,

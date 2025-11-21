@@ -7,20 +7,22 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+
+	"exe.dev/domz"
 )
 
 // resolveCustomDomainBoxName determines the box name associated with a custom domain.
 // It handles both traditional CNAME-based custom domains and apex domains that rely on
 // ALIAS/ANAME records which resolve to A records pointing at exe.dev infrastructure.
 func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (string, error) {
-	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	host = domz.Canonicalize(host)
 	if host == "" {
 		return "", fmt.Errorf("host is empty")
 	}
 
 	cname, err := s.lookupCNAME(ctx, host)
 	if err == nil {
-		cname = strings.TrimSuffix(strings.ToLower(cname), ".")
+		cname = domz.Canonicalize(cname)
 		if cname != host {
 			return s.boxNameFromCNAME(host, cname)
 		}
@@ -64,7 +66,7 @@ func (s *Server) resolveApexDomainBoxName(ctx context.Context, host string) (str
 		s.slog().WarnContext(ctx, "resolveCustomDomain: www CNAME lookup failed", "host", wwwHost, "error", err)
 		return "", fmt.Errorf("CNAME lookup failed for %s: %w", wwwHost, err)
 	}
-	cname = strings.TrimSuffix(strings.ToLower(cname), ".")
+	cname = domz.Canonicalize(cname)
 	return s.boxNameFromCNAME(wwwHost, cname)
 }
 

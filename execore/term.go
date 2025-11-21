@@ -22,6 +22,7 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/container"
+	"exe.dev/domz"
 	"exe.dev/exedb"
 )
 
@@ -540,7 +541,7 @@ func (s *Server) isTerminalRequest(host string) bool {
 
 func isTerminalRequestWithBase(host, base string) bool {
 	// Extract hostname (strip port if present)
-	hostname := stripPort(host)
+	hostname := domz.StripPort(host)
 	return strings.HasSuffix(hostname, base)
 }
 
@@ -599,7 +600,7 @@ func (s *Server) parseTerminalHostname(hostname string) (string, error) {
 }
 
 func parseTerminalHostnameWithBase(hostname, base string) (string, error) {
-	hostname = stripPort(hostname)
+	hostname = domz.StripPort(hostname)
 	// Extract box name from hostname.
 	boxName, ok := strings.CutSuffix(hostname, base)
 	if !ok {

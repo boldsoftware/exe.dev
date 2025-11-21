@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"exe.dev/container"
+	"exe.dev/domz"
 	"exe.dev/exedb"
 )
 
@@ -258,8 +259,12 @@ func (s *Server) isProxyRequest(host string) bool {
 	if hostname == "" {
 		hostname = host
 	}
-	switch strings.ToLower(hostname) {
-	case "", "127.0.0.1", "localhost", s.getMainDomain(), s.getMainDomain("www"), s.tsDomain:
+	hostname = domz.Canonicalize(hostname)
+	if hostname == "" || domz.IsLocalhost(hostname) {
+		return false
+	}
+	switch hostname {
+	case s.getMainDomain(), s.getMainDomain("www"), s.tsDomain:
 		return false
 	}
 
@@ -289,19 +294,19 @@ func isNumericPort(port string) bool {
 // In dev mode also supports box.localhost for HTTP-only requests.
 // Returns an empty string if hostname is not a valid proxy hostname.
 func (s *Server) parseProxyHostname(hostname string) (box string) {
-	// Try primary domain first (exe.dev or exe.local)
-	expectedDomain := s.getMainDomain()
-	expectedSuffix := "." + expectedDomain
-	hostname, hadSuffix := strings.CutSuffix(hostname, expectedSuffix)
-	if hadSuffix && hostname != "" && !strings.Contains(hostname, ".") {
-		return hostname
+	hostname = domz.Canonicalize(domz.StripPort(hostname))
+	if hostname == "" {
+		return ""
 	}
 
-	// In dev mode, also try localhost suffix for HTTP
+	domains := []string{s.getMainDomain()}
 	if s.env.DevMode != "" {
-		hostname, hadSuffix = strings.CutSuffix(hostname, ".localhost")
-		if hadSuffix && hostname != "" && !strings.Contains(hostname, ".") {
-			return hostname
+		domains = append(domains, "localhost")
+	}
+
+	for _, dom := range domains {
+		if box := domz.Label(hostname, dom); box != "" {
+			return box
 		}
 	}
 

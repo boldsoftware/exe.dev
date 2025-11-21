@@ -36,6 +36,7 @@ import (
 	"exe.dev/boxname"
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
+	"exe.dev/domz"
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/ghuser"
@@ -925,7 +926,7 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 
 // getDomain extracts the base domain from a host
 func getDomain(host string) string {
-	host = stripPort(host)
+	host = domz.Canonicalize(domz.StripPort(host))
 
 	// Check for localhost-based domains (dev mode)
 	if strings.HasSuffix(host, ".localhost") || host == "localhost" {

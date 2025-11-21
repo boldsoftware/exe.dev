@@ -26,6 +26,7 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/cobble"
+	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
 	"exe.dev/route53"
@@ -1284,7 +1285,7 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract hostname without port for display
-	hostname := stripPort(returnHost)
+	hostname := domz.StripPort(returnHost)
 	boxName, err := s.resolveBoxName(r.Context(), hostname)
 	if err != nil {
 		// TODO(bmizerany): return a nicer error page
@@ -1600,7 +1601,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 		if s.isTerminalRequest(returnHost) {
 			s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth: detected terminal request", "returnHost", returnHost)
 			// Parse hostname to extract box name
-			hostname := stripPort(returnHost)
+			hostname := domz.StripPort(returnHost)
 
 			boxName, err := s.parseTerminalHostname(hostname)
 			if err != nil {
@@ -1625,7 +1626,7 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 		} else if s.isProxyRequest(returnHost) {
 			s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth: detected proxy request", "returnHost", returnHost)
 			// Parse hostname to extract box name (including custom domains via CNAME)
-			hostname := stripPort(returnHost)
+			hostname := domz.StripPort(returnHost)
 
 			boxName, err := s.resolveBoxName(r.Context(), hostname)
 			if err != nil || boxName == "" {
@@ -1924,19 +1925,10 @@ func getScheme(r *http.Request) string {
 
 // isMainDomain checks if the given host (with optional port) is the main domain
 func (s *Server) isMainDomain(host string) bool {
-	hostname := stripPort(host)
+	hostname := domz.StripPort(host)
 	mainDomain := s.getMainDomain()
 
 	// Check if it's exactly the main domain or www subdomain
 	return hostname == mainDomain || hostname == "www."+mainDomain ||
 		(s.env.DevMode != "" && (hostname == "localhost" || hostname == "exe.local"))
-}
-
-func stripPort(host string) string {
-	hostname, _, err := net.SplitHostPort(host)
-	if err == nil {
-		// Had a port: return just the hostname.
-		return hostname
-	}
-	return host
 }
