@@ -40,6 +40,7 @@ import (
 	"exe.dev/exedb"
 	exeletclient "exe.dev/exelet/client"
 	"exe.dev/ghuser"
+	"exe.dev/llmgateway"
 	computeapi "exe.dev/pkg/api/exe/compute/v1"
 	"exe.dev/publicips"
 	"exe.dev/route53"
@@ -432,6 +433,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	metricsRegistry := prometheus.NewRegistry()
 	sshMetrics := NewSSHMetrics(metricsRegistry)
 	sqlite.RegisterSQLiteMetrics(metricsRegistry)
+	llmgateway.RegisterMetrics(metricsRegistry)
 
 	// Initialize tag resolver for image tag resolution
 	tagResolverInstance := tagresolver.New(db)
