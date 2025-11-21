@@ -59,8 +59,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		// No port in Host header, that's fine if it's the default port which only
 		// happens in HTTPS land...
 		hostHeaderHost = r.Host
-		if s.httpsLn != nil && s.httpsLn.tcp != nil {
-			hostHeaderPort = s.httpsLn.tcp.Port
+		if s.servingHTTPS() {
+			hostHeaderPort = s.httpsPort()
 		} else {
 			s.slog().ErrorContext(r.Context(), "Host header didn't have port but we're not using default ports.")
 			http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -347,7 +347,7 @@ func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string,
 func (s *Server) getMainDomain(sub ...string) string {
 	domain := "exe.dev"
 	if s.env.DevMode != "" {
-		if s.httpsLn != nil && s.httpsLn.ln != nil {
+		if s.servingHTTPS() {
 			domain = "exe.local"
 		} else {
 			domain = "localhost"
@@ -364,8 +364,8 @@ func (s *Server) getMainDomainWithPort() string {
 	domain := s.getMainDomain()
 
 	// In dev mode, add the HTTP port
-	if s.env.DevMode != "" && s.httpLn != nil && s.httpLn.tcp != nil {
-		port := s.httpLn.tcp.Port
+	if s.env.DevMode != "" && s.servingHTTP() {
+		port := s.httpPort()
 		// Only add port if it's not the default HTTP port (80)
 		if port != 80 {
 			return fmt.Sprintf("%s:%d", domain, port)
@@ -414,7 +414,7 @@ func (s *Server) isDefaultServerPort(port int) bool {
 	}
 
 	// Check if it matches the server's main HTTP port
-	if s.httpLn != nil && s.httpLn.tcp != nil && s.httpLn.tcp.Port == port {
+	if s.servingHTTP() && s.httpPort() == port {
 		return true
 	}
 

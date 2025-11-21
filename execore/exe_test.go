@@ -440,7 +440,7 @@ func TestWebAuthFlowCreatesNewUser(t *testing.T) {
 	form := url.Values{}
 	form.Add("email", email)
 	resp, err := http.Post(
-		fmt.Sprintf("http://127.0.0.1:%d/auth", server.httpLn.tcp.Port),
+		fmt.Sprintf("http://127.0.0.1:%d/auth", server.httpPort()),
 		"application/x-www-form-urlencoded",
 		strings.NewReader(form.Encode()),
 	)

@@ -28,8 +28,8 @@ func createTestRequestForServer(method, url, host string, server *Server) *http.
 	finalHost := host
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		// No port in host, add server's HTTP port
-		if server.httpLn != nil && server.httpLn.tcp != nil {
-			finalHost = net.JoinHostPort(host, strconv.Itoa(server.httpLn.tcp.Port))
+		if server.servingHTTP() {
+			finalHost = net.JoinHostPort(host, strconv.Itoa(server.httpPort()))
 		} else {
 			// Fallback to port 80 for test
 			finalHost = net.JoinHostPort(host, "80")

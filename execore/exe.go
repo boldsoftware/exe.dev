@@ -308,10 +308,26 @@ func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
 	}, nil
 }
 
+func (s *Server) servingHTTP() bool {
+	return s.httpLn != nil && s.httpLn.tcp != nil
+}
+
+func (s *Server) servingHTTPS() bool {
+	return s.httpsLn != nil && s.httpsLn.tcp != nil
+}
+
 // httpPort returns the HTTP listening port, or -1 if not listening.
 func (s *Server) httpPort() int {
-	if s.httpLn != nil && s.httpLn.tcp != nil {
+	if s.servingHTTP() {
 		return s.httpLn.tcp.Port
+	}
+	return -1
+}
+
+// httpsPort returns the HTTPS listening port, or -1 if not listening.
+func (s *Server) httpsPort() int {
+	if s.servingHTTPS() {
+		return s.httpsLn.tcp.Port
 	}
 	return -1
 }
@@ -744,7 +760,7 @@ func generatePairingCode() string {
 // getBaseURL returns the base URL for the server
 func (s *Server) getBaseURL() string {
 	if s.env.DevMode != "" {
-		return fmt.Sprintf("http://localhost:%v", s.httpLn.tcp.Port)
+		return fmt.Sprintf("http://localhost:%v", s.httpPort())
 	}
 	return "https://exe.dev"
 }
@@ -1131,7 +1147,7 @@ func (s *Server) replSSHConnectionCommand() string {
 // httpsProxyAddress returns the HTTPS proxy address for a box.
 func (s *Server) httpsProxyAddress(boxName string) string {
 	if s.env.DevMode != "" {
-		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpLn.tcp.Port)
+		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpPort())
 	}
 	return fmt.Sprintf("https://%s.exe.dev", boxName)
 }
@@ -1139,7 +1155,7 @@ func (s *Server) httpsProxyAddress(boxName string) string {
 // terminalURL returns the terminal URL for a box.
 func (s *Server) terminalURL(boxName string) string {
 	if s.env.DevMode != "" {
-		return fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, s.httpLn.tcp.Port)
+		return fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, s.httpPort())
 	}
 	return fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
 }

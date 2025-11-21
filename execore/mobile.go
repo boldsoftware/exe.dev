@@ -620,7 +620,7 @@ func sseEvent(w http.ResponseWriter, event, data string) {
 // terminalAddress returns the terminal URL for a box
 func (s *Server) terminalAddress(boxName string) string {
 	if s.env.DevMode != "" {
-		return fmt.Sprintf("http://%s.xterm.localhost:%d/", boxName, s.httpLn.tcp.Port)
+		return fmt.Sprintf("http://%s.xterm.localhost:%d/", boxName, s.httpPort())
 	}
 	return fmt.Sprintf("https://%s.xterm.exe.dev/", boxName)
 }
