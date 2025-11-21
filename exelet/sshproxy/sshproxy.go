@@ -32,7 +32,7 @@ type proxyMetadata struct {
 }
 
 // NewSSHProxy creates a new SSH proxy instance
-func NewSSHProxy(instanceID string, port int, targetIP string, instanceDir string, log *slog.Logger) *SSHProxy {
+func NewSSHProxy(instanceID string, port int, targetIP, instanceDir string, log *slog.Logger) *SSHProxy {
 	return &SSHProxy{
 		InstanceID:  instanceID,
 		Port:        port,
@@ -188,7 +188,7 @@ func (p *SSHProxy) SaveToDisk() error {
 	}
 
 	metadataPath := filepath.Join(p.InstanceDir, "sshproxy.json")
-	if err := os.WriteFile(metadataPath, data, 0644); err != nil {
+	if err := os.WriteFile(metadataPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 

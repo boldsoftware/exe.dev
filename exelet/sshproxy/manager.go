@@ -31,7 +31,7 @@ func NewManager(dataDir string, log *slog.Logger) *Manager {
 }
 
 // CreateProxy creates and starts a new SSH proxy for an instance
-func (m *Manager) CreateProxy(instanceID string, targetIP string, port int, instanceDir string) error {
+func (m *Manager) CreateProxy(instanceID, targetIP string, port int, instanceDir string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

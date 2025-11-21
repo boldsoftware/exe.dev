@@ -64,7 +64,7 @@ func TestCreateSSHProxy(t *testing.T) {
 	instanceID := "test-instance-123"
 	sshPort := 20022 // Use port in test range (20000-30000)
 	instanceDir := computeSvc.getInstanceDir(instanceID)
-	if err := os.MkdirAll(instanceDir, 0755); err != nil {
+	if err := os.MkdirAll(instanceDir, 0o755); err != nil {
 		t.Fatalf("failed to create instance directory: %v", err)
 	}
 
