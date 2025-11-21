@@ -36,6 +36,26 @@ func FirstMatch(host string, domains ...string) string {
 	return ""
 }
 
+// CutBase reports whether hostname ends with the given base domain (suffix).
+// If so, it returns the label/subdomain part (without the base domain).
+func CutBase(hostname, domain string) (string, bool) {
+	hostname = Canonicalize(hostname)
+	domain = Canonicalize(domain)
+	if domain == "" {
+		return "", false
+	}
+	hostname, _ = strings.CutSuffix(hostname, domain)
+	if hostname == "" {
+		// Either root/apex, or different domain entirely, or empty string.
+		return "", false
+	}
+	host, isSub := strings.CutSuffix(hostname, ".")
+	if !isSub {
+		return "", false
+	}
+	return host, true
+}
+
 // Label returns the sole subdomain part of hostname relative to domain.
 // If hostname is not a subdomain of domain, or domain is empty, or hostname is a nested subdomain, Label returns "".
 func Label(hostname, domain string) string {

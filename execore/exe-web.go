@@ -200,25 +200,13 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 	hostname = strings.TrimSuffix(strings.ToLower(hostname), ".")
 
 	parse := func(hostname string) string {
-		// Try main domain first (exe.dev or exe.local)
-		hostname, _ = strings.CutSuffix(hostname, s.getMainDomain())
-		if hostname == "" {
-			// host is the main domain or empty
-			return hostname
-		}
-		host, isMainSubDomain := strings.CutSuffix(hostname, ".")
-		if isMainSubDomain {
+		if host, ok := domz.CutBase(hostname, s.getMainDomain()); ok {
 			return host
 		}
 
 		// In dev mode, also try localhost suffix
 		if s.env.DevMode != "" {
-			hostname, _ = strings.CutSuffix(hostname, "localhost")
-			if hostname == "" {
-				return hostname
-			}
-			host, isLocalhostSubDomain := strings.CutSuffix(hostname, ".")
-			if isLocalhostSubDomain {
+			if host, ok := domz.CutBase(hostname, "localhost"); ok {
 				return host
 			}
 		}
