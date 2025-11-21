@@ -349,42 +349,46 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		return "", "", fmt.Errorf("gateway address is empty")
 	}
 
-	// Parse the local port from httpAddr (e.g., ":8080" -> "8080")
-	localPort := strings.TrimPrefix(httpAddr, ":")
-	if localPort == "" || localPort == "0" {
-		// Can't auto-detect with dynamic port, use gateway approach
-		exedURL := fmt.Sprintf("http://%s%s", gateway, httpAddr)
-		slog.Info("starting exeletd on remote host", "exed_url", exedURL)
-		if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
-			return "", "", err
-		}
-		return waitForExeletAndReturnAddress(host, gateway)
-	}
-
-	localPortInt, err := strconv.Atoi(localPort)
+	// Set up a little single-use net.Listener to detect connectivity.
+	// We do this because the HTTP server (which is the natural thing to use) isn't started yet.
+	tmpLn, err := net.Listen("tcp", ":0")
 	if err != nil {
-		return "", "", fmt.Errorf("invalid http port %q: %w", httpAddr, err)
+		return "", "", fmt.Errorf("failed to set up local listener: %w", err)
 	}
+	defer tmpLn.Close()
+	tmpPort := tmpLn.Addr().(*net.TCPAddr).Port
 
 	// Test if remote host can reach local port
 	// Usually local->ssh_ctr and ssh_ctr->local connectivity works. However, in some
 	// environments, such as coding agents that operate in containers, this connectivity
 	// does NOT work, and we set up an SSH tunnel for the exelet->exed communication
 	// as a band-aid.
-	needsTunnel := !testRemoteToLocalConnectivity(ctx, host, gateway, localPortInt)
+	needsTunnel := !testRemoteToLocalConnectivity(ctx, host, gateway, tmpPort)
 
 	// Construct exed URL
 	var exedURL string
 	if needsTunnel {
-		slog.Info("remote->local connectivity not available, using SSH reverse tunnel", "local_port", localPortInt)
+		// Parse out what will be the HTTP port from httpAddr.
+		_, httpPortStr, _ := net.SplitHostPort(httpAddr)
+		httpPort, _ := strconv.Atoi(httpPortStr)
+		if httpPort == 0 {
+			// Parse failed, or dynamic port. Use gateway approach.
+			exedURL := fmt.Sprintf("http://%s%s", gateway, httpAddr)
+			slog.Info("starting exeletd on remote host", "exed_url", exedURL)
+			if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
+				return "", "", err
+			}
+			return waitForExeletAndReturnAddress(host, gateway)
+		}
+		slog.Info("remote->local connectivity not available, using SSH reverse tunnel", "http_port", httpPort)
 
 		// Start SSH tunnel and discover remote port
-		remotePort, err := startSSHTunnelForExed(host, localPortInt)
+		remotePort, err := startSSHTunnelForExed(host, httpPort)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to start SSH tunnel: %w", err)
 		}
 
-		slog.Info("SSH tunnel established", "remote_port", remotePort, "local_port", localPortInt)
+		slog.Info("SSH tunnel established", "remote_port", remotePort, "local_port", httpPort)
 		exedURL = fmt.Sprintf("http://localhost:%d", remotePort)
 	} else {
 		// Use direct gateway access (traditional approach)
