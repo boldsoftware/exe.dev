@@ -354,23 +354,17 @@ func (s *Server) getMainDomainWithPort() string {
 
 // getProxyPorts returns the list of ports that should be used for proxying
 func (s *Server) getProxyPorts() []int {
-	if s.env.ProxyDev {
-		// Check if test infrastructure provided specific ports
-		if testPorts := os.Getenv("TEST_PROXY_PORTS"); testPorts != "" {
-			var ports []int
-			for _, portStr := range strings.Split(testPorts, ",") {
-				portStr = strings.TrimSpace(portStr)
-				if portStr == "" {
-					continue
-				}
-				if port, err := strconv.Atoi(portStr); err == nil {
-					ports = append(ports, port)
-				}
-			}
-			if len(ports) > 0 {
-				return ports
+	// Check if we were provided specific ports (e1e does this)
+	if testPorts := os.Getenv("TEST_PROXY_PORTS"); testPorts != "" {
+		var ports []int
+		for _, portStr := range strings.Split(testPorts, ",") {
+			if port, err := strconv.Atoi(portStr); err == nil {
+				ports = append(ports, port)
 			}
 		}
+		return ports
+	}
+	if s.env.ProxyDev {
 		// Dev mode fallback: ports 8001-8008 and 9999
 		return []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999}
 	}
