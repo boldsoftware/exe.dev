@@ -202,7 +202,7 @@ func TestVanillaBox(t *testing.T) {
 		pty.wantPrompt()
 
 		// Test LLM gateway ready endpoint through metadata service
-		pty.sendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}' http://169.254.169.254/gateway/llm/ready")
+		pty.sendLine("curl --max-time 10 -s -o /dev/null -w '%{http_code}\\n' http://169.254.169.254/gateway/llm/ready")
 		pty.want("200")
 		pty.wantPrompt()
 

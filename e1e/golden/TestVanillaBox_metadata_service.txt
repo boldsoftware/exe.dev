@@ -20,6 +20,7 @@ exedev@BOX_NAME:~$ curl --max-time 10 -s http://169.254.169.254/ | jq -M .
 }
 exedev@BOX_NAME:~$ curl --max-time 10 -s http://169.254.169.254/ | jq -r .name
 BOX_NAME
-exedev@BOX_NAME:~$ curl --max-time 10 -s -o /dev/null -w '%{http_code}' http://169.254.169.254/gateway/llm/ready
-200exedev@BOX_NAME:~$ exit
+exedev@BOX_NAME:~$ curl --max-time 10 -s -o /dev/null -w '%{http_code}\n' http://169.254.169.254/gateway/llm/ready
+200
+exedev@BOX_NAME:~$ exit
 logout
