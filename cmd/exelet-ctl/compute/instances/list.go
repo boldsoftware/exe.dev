@@ -26,7 +26,7 @@ var listInstancesCommand = &cli.Command{
 		}
 		defer c.Close()
 
-		ctx := context.Background()
+		ctx := context.WithoutCancel(clix.Context)
 		stream, err := c.ListInstances(ctx, &api.ListInstancesRequest{})
 		if err != nil {
 			return err

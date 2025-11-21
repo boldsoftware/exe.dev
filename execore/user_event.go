@@ -28,7 +28,7 @@ func (s *Server) recordUserEvent(ctx context.Context, userID, event string) erro
 // recordUserEventTx increments the number of times userID has experienced event, within transaction tx.
 func (s *Server) recordUserEventTx(tx *sqlite.Tx, userID, event string) error {
 	queries := exedb.New(tx.Conn())
-	return queries.RecordUserEvent(context.Background(), exedb.RecordUserEventParams{
+	return queries.RecordUserEvent(context.WithoutCancel(tx.Context()), exedb.RecordUserEventParams{
 		UserID: userID,
 		Event:  event,
 	})

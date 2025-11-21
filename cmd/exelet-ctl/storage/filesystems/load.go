@@ -21,7 +21,7 @@ var loadFilesystemCommand = &cli.Command{
 		}
 		defer c.Close()
 
-		ctx := context.Background()
+		ctx := context.WithoutCancel(clix.Context)
 
 		ref := clix.Args().First()
 

@@ -144,7 +144,7 @@ var createInstanceCommand = &cli.Command{
 		s.Start()
 		defer s.Stop()
 
-		ctx := context.Background()
+		ctx := context.WithoutCancel(clix.Context)
 		stream, err := c.CreateInstance(ctx, req)
 		if err != nil {
 			s.Stop()

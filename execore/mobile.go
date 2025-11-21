@@ -178,7 +178,7 @@ func (s *Server) startBoxCreation(ctx context.Context, hostname, prompt, userID 
 	// Start creation in background
 	go func() {
 		// Create a context for the creation (separate from request context)
-		createCtx, cancel := context.WithTimeout(context.Background(), longOperationTimeout)
+		createCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), longOperationTimeout)
 		defer cancel()
 
 		// Set up the command context

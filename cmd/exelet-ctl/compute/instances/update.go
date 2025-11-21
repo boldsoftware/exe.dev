@@ -37,7 +37,7 @@ var updateInstanceCommand = &cli.Command{
 		kernelImage := clix.String("kernel-image")
 		initImage := clix.String("init-image")
 
-		ctx := context.Background()
+		ctx := context.WithoutCancel(clix.Context)
 		wg := &sync.WaitGroup{}
 		for _, id := range clix.Args().Slice() {
 			wg.Add(1)

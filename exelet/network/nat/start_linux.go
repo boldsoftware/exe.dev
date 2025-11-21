@@ -18,12 +18,12 @@ func (n *NAT) Start(ctx context.Context) error {
 	go func() {
 		n.log.DebugContext(ctx, "starting dhcp server", "device", n.bridgeName)
 
-		if err := n.dhcpServer.Serve(context.Background()); err != nil {
+		if err := n.dhcpServer.Serve(context.WithoutCancel(ctx)); err != nil {
 			n.log.ErrorContext(ctx, "error starting dhcp server", "err", err)
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second*20)
 	defer cancel()
 
 	// configure forwarding

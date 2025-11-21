@@ -375,14 +375,15 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 	}
 
 	if firstMessage {
+		ctxNoCancel := context.WithoutCancel(ctx)
 		go func() {
-			slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			slugCtx, cancel := context.WithTimeout(ctxNoCancel, 15*time.Second)
 			defer cancel()
 			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
 			if err != nil {
 				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
 			} else {
-				go s.notifySubscribers(context.Background(), conversationID)
+				go s.notifySubscribers(ctxNoCancel, conversationID)
 			}
 		}()
 	}
@@ -467,14 +468,15 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if firstMessage {
+		ctxNoCancel := context.WithoutCancel(ctx)
 		go func() {
-			slugCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			slugCtx, cancel := context.WithTimeout(ctxNoCancel, 15*time.Second)
 			defer cancel()
 			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
 			if err != nil {
 				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
 			} else {
-				go s.notifySubscribers(context.Background(), conversationID)
+				go s.notifySubscribers(ctxNoCancel, conversationID)
 			}
 		}()
 	}

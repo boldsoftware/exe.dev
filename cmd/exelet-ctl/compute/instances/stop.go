@@ -22,7 +22,7 @@ var stopInstanceCommand = &cli.Command{
 		}
 		defer c.Close()
 
-		ctx := context.Background()
+		ctx := context.WithoutCancel(clix.Context)
 		wg := &sync.WaitGroup{}
 		for _, id := range clix.Args().Slice() {
 			wg.Add(1)

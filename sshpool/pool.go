@@ -162,8 +162,8 @@ func (p *Pool) createConnection(ctx context.Context, host string) (*Connection, 
 	// Create control socket path
 	controlPath := fmt.Sprintf("%s/%s.sock", p.baseDir, strings.ReplaceAll(host, ":", "_"))
 
-	// Create a cancellable context for this connection
-	connCtx, cancel := context.WithCancel(context.Background())
+	// Create a cancellable context for this connection that survives caller cancellation.
+	connCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 
 	// Start SSH master connection with ControlMaster
 	masterCmd := exec.CommandContext(connCtx, "ssh",

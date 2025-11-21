@@ -25,7 +25,7 @@ var getFilesystemCommand = &cli.Command{
 		}
 		defer c.Close()
 
-		ctx := context.Background()
+		ctx := context.WithoutCancel(clix.Context)
 		filesystems := []*api.Filesystem{}
 		wg := &sync.WaitGroup{}
 		doneCh := make(chan struct{})

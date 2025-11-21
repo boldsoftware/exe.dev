@@ -15,7 +15,7 @@ import (
 
 func (v *VMM) Create(ctx context.Context, req *api.VMConfig) error {
 	// create cloudhypervisor instance and store config and state
-	ctx, cancel := context.WithTimeout(context.Background(), config.InstanceStartTimeout)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), config.InstanceStartTimeout)
 	defer cancel()
 
 	if err := os.MkdirAll(v.getDataPath(req.ID), 0o770); err != nil {

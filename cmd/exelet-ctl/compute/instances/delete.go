@@ -29,7 +29,7 @@ var deleteInstanceCommand = &cli.Command{
 		}
 		defer c.Close()
 
-		ctx := context.Background()
+		ctx := context.WithoutCancel(clix.Context)
 		wg := &sync.WaitGroup{}
 		force := clix.Bool("force")
 		for _, id := range clix.Args().Slice() {

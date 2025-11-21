@@ -309,7 +309,7 @@ func (b *BashTool) executeBackgroundBash(ctx context.Context, req bashInput, tim
 		return nil, fmt.Errorf("failed to create output file: %w", err)
 	}
 
-	execCtx, cancel := context.WithTimeout(context.Background(), timeout) // detach from tool use context
+	execCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout) // detach from tool use context
 	cmd := b.makeBashCommand(execCtx, req.Command, out)
 	cmd.Env = append(cmd.Env, `GIT_SEQUENCE_EDITOR=python3 -c "import os, sys, signal, threading; print(f\"Send USR1 to pid {os.getpid()} after editing {sys.argv[1]}\", flush=True); signal.signal(signal.SIGUSR1, lambda *_: sys.exit(0)); threading.Event().wait()"`)
 

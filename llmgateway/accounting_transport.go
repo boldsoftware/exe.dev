@@ -71,7 +71,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 
 	contentType := resp.Header.Get("Content-Type")
 
-	ctx := context.Background()
+	ctx := context.WithoutCancel(resp.Request.Context())
 
 	// Note that the response may be a unary HTTP response body, or it may be a stream of
 	// SSE events. So this goroutine may handle either a unary req/response transaction,

@@ -105,7 +105,7 @@ func main() {
 		}
 	}
 
-	deleteBox(context.Background(), cfg, box.Name)
+	deleteBox(context.WithoutCancel(ctx), cfg, box.Name)
 	os.Exit(rc)
 }
 

@@ -705,8 +705,8 @@ func (ss *SSHServer) waitForEmailVerification(s sshsession.Session, publicKey, e
 		return nil, fmt.Errorf("internal error: user not found after verification")
 	}
 
-	// Store/update the SSH key as verified - use context.Background() to ensure cleanup completes even if client disconnects
-	storeErr := ss.server.db.Tx(context.Background(), func(ctx context.Context, tx *sqlite.Tx) error {
+	// Store/update the SSH key as verified - use context.WithoutCancel to ensure cleanup completes even if client disconnects
+	storeErr := ss.server.db.Tx(context.WithoutCancel(s.Context()), func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
 		return queries.UpsertSSHKeyForUser(ctx, exedb.UpsertSSHKeyForUserParams{
 			UserID:    user.UserID,

@@ -961,7 +961,7 @@ func (s *Server) checkEmailVerificationToken(ctx context.Context, token string) 
 	// Check if token has expired
 	if time.Now().After(row.ExpiresAt) {
 		// Clean up expired token
-		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteEmailVerificationByToken(ctx, token)
 		})
 		return exedb.GetEmailVerificationByTokenRow{}, fmt.Errorf("verification token expired")
@@ -977,8 +977,8 @@ func (s *Server) validateEmailVerificationToken(ctx context.Context, token strin
 		return "", err
 	}
 
-	// Clean up used token - use context.Background() to ensure cleanup completes even if client disconnects
-	s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+	// Clean up used token - use context.WithoutCancel to ensure cleanup completes even if client disconnects
+	s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.DeleteEmailVerificationByToken(ctx, token)
 	})
 
@@ -1022,7 +1022,7 @@ func (s *Server) validateEmailVerificationByToken(ctx context.Context, token str
 	}
 
 	// Consume the token
-	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+	err = s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.DeleteEmailVerificationByToken(ctx, token)
 	})
 	if err != nil {

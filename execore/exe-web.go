@@ -738,7 +738,7 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	}
 
 	// Add the SSH key to the verified keys and clean up pending key
-	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
 		// Add SSH key
 		err := queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
 			Email:     pendingKey.UserEmail,
@@ -785,8 +785,8 @@ func (s *Server) lookUpDeviceVerification(ctx context.Context, token string) (*e
 
 	// Check if token has expired
 	if time.Now().After(pendingKey.ExpiresAt) {
-		// Clean up expired token - use context.Background() to ensure cleanup completes even if client disconnects
-		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		// Clean up expired token - use context.WithoutCancel to ensure cleanup completes even if client disconnects
+		s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeletePendingSSHKeyByToken(ctx, token)
 		})
 		return nil, nil, errExpiredToken
@@ -897,7 +897,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Create HTTP auth cookie for this user
-		cookieValue, err := s.createAuthCookie(context.Background(), user.UserID, r.Host)
+		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), user.UserID, r.Host)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to create auth cookie during SSH email verification", "error", err)
 			// Continue anyway - SSH auth will still work
@@ -921,7 +921,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		}
 
 		// Create HTTP auth cookie for this user
-		cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
+		cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), userID, r.Host)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "Failed to create auth cookie during HTTP email verification", "error", err)
 			http.Error(w, "Failed to create authentication session", http.StatusInternalServerError)
@@ -931,7 +931,7 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		setExeAuthCookie(w, r, cookieValue)
 
 		// Clean up the database token (single use)
-		err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteEmailVerificationByToken(ctx, token)
 		})
 		if err != nil {
@@ -967,7 +967,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 	if err != nil || user == nil {
 		s.slog().InfoContext(ctx, "User doesn't exist, creating", "email", email)
 		// User doesn't exist - create them with their alloc
-		user, err = s.createUser(context.Background(), publicKey, email)
+		user, err = s.createUser(context.WithoutCancel(ctx), publicKey, email)
 		if err != nil {
 			return nil, fmt.Errorf("create user: %w", err)
 		}
@@ -978,7 +978,7 @@ func (s *Server) createUserWithSSHKey(ctx context.Context, email, publicKey stri
 
 	// Store the SSH key as verified
 	if publicKey != "" {
-		err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		err = s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.InsertSSHKeyForEmailUser(ctx, exedb.InsertSSHKeyForEmailUserParams{
 				Email:     email,
 				PublicKey: publicKey,
@@ -1057,7 +1057,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	token := generateRegistrationToken()
 
 	// Store verification in database (reuse existing email_verifications table)
-	err = s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+	err = s.withTx(context.WithoutCancel(r.Context()), func(ctx context.Context, queries *exedb.Queries) error {
 		return queries.InsertEmailVerification(ctx, exedb.InsertEmailVerificationParams{
 			Token:     token,
 			Email:     email,
@@ -1200,7 +1200,7 @@ func (s *Server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create main domain auth cookie
-	cookieValue, err := s.createAuthCookie(context.Background(), userID, r.Host)
+	cookieValue, err := s.createAuthCookie(context.WithoutCancel(r.Context()), userID, r.Host)
 	if err != nil {
 		s.slog().ErrorContext(r.Context(), "Failed to create main auth cookie", "error", err)
 		http.Error(w, "Failed to create authentication cookie", http.StatusInternalServerError)
@@ -1450,8 +1450,8 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 
 	// Check if cookie has expired
 	if time.Now().After(expiresAt) {
-		// Clean up expired cookie - use context.Background() to ensure cleanup completes even if client disconnects
-		s.withTx(context.Background(), func(ctx context.Context, queries *exedb.Queries) error {
+		// Clean up expired cookie - use context.WithoutCancel to ensure cleanup completes even if client disconnects
+		s.withTx(context.WithoutCancel(ctx), func(ctx context.Context, queries *exedb.Queries) error {
 			return queries.DeleteAuthCookie(ctx, cookieValue)
 		})
 		return "", fmt.Errorf("cookie expired")

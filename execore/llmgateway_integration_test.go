@@ -25,13 +25,13 @@ func TestLLMGatewayFullIntegrationAuthFlow(t *testing.T) {
 
 	// Create a test user
 	publicKeyStr := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDummy-test-key test@example.com"
-	if _, err := server.createUser(context.Background(), publicKeyStr, "test@example.com"); err != nil {
+	if _, err := server.createUser(t.Context(), publicKeyStr, "test@example.com"); err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Get the user ID
 	var userID string
-	err := server.db.Rx(context.Background(), func(ctx context.Context, rx *sqlite.Rx) error {
+	err := server.db.Rx(t.Context(), func(ctx context.Context, rx *sqlite.Rx) error {
 		return rx.QueryRow(`SELECT user_id FROM users WHERE email = ?`, "test@example.com").Scan(&userID)
 	})
 	if err != nil {
