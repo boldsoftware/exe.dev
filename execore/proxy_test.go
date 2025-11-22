@@ -77,20 +77,6 @@ func TestIsProxyRequest(t *testing.T) {
 	}{
 		// Box:port format cases
 		{
-			name:     "valid box:port format",
-			env:      stage.Test(),
-			host:     "mybox:8080",
-			expected: true,
-			comment:  "Should recognize box:port format for multi-port proxying",
-		},
-		{
-			name:     "valid box:port with high port",
-			env:      stage.Test(),
-			host:     "testbox:9999",
-			expected: true,
-			comment:  "Should work with any valid port number",
-		},
-		{
 			name:     "invalid box:port (bad port)",
 			env:      stage.Test(),
 			host:     "mybox:abc",

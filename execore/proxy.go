@@ -243,7 +243,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 // isProxyRequest determines if a request should be handled by the proxy
 func (s *Server) isProxyRequest(host string) bool {
-	hostname, port, _ := net.SplitHostPort(host)
+	hostname, _, _ := net.SplitHostPort(host)
 	if hostname == "" {
 		hostname = host
 	}
@@ -257,25 +257,9 @@ func (s *Server) isProxyRequest(host string) bool {
 		return false
 	}
 
-	if s.env.ProxyDev {
-		// There are special rules for dev mode:
-		//    - If port is specified, it must be numeric
-		//    - If host contains only ":", it is not a proxy request
-		//    - If host contains more than one ":", it is not a proxy request
-		return isNumericPort(port) && hostname != ":" && strings.Count(hostname, ":") <= 1
-	}
-
 	// Any other hostname with at least one dot is a proxy request,
 	// otherwise it's invalid.
 	return strings.Contains(hostname, ".")
-}
-
-func isNumericPort(port string) bool {
-	if port == "" {
-		return true // No port is considered valid (default port)
-	}
-	_, err := strconv.Atoi(port)
-	return err == nil
 }
 
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
