@@ -582,18 +582,19 @@ func (e *testEnv) checkBoxesCleanedUp() error {
 }
 
 type tcpProxy struct {
-	ln  net.Listener
-	tcp *net.TCPAddr
-	dst atomic.Pointer[net.TCPAddr]
+	name string
+	ln   net.Listener
+	tcp  *net.TCPAddr
+	dst  atomic.Pointer[net.TCPAddr]
 }
 
-func newTCPProxy() (*tcpProxy, error) {
+func newTCPProxy(name string) (*tcpProxy, error) {
 	ln, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return nil, err
 	}
 	tcpAddr := ln.Addr().(*net.TCPAddr)
-	return &tcpProxy{ln: ln, tcp: tcpAddr}, nil
+	return &tcpProxy{name: name, ln: ln, tcp: tcpAddr}, nil
 }
 
 func (p *tcpProxy) serve() error {
@@ -604,15 +605,22 @@ func (p *tcpProxy) serve() error {
 		}
 		go func() {
 			defer c.Close()
-			dstAddr := p.dst.Load()
-			if dstAddr == nil {
-				// Destination not yet configured - close connection silently
-				// This can happen during test startup before proxy is fully initialized
-				return
+			// Block the dialer until destination address is set.
+			// We shouldn't have to do this, but live with it for now.
+			// TODO: figure out why we're seeing connections before setDestPort is called, and stop doing that.
+			var dstAddr *net.TCPAddr
+			// Poll. Why not. Cheap enough, and simpler than a condvar.
+			for {
+				dstAddr = p.dst.Load()
+				if dstAddr != nil {
+					break
+				}
+				slog.Info("tcpProxy: waiting for destination address", "name", p.name, "listener_addr", p.ln.Addr())
+				time.Sleep(50 * time.Millisecond)
 			}
 			dst, err := net.Dial("tcp", dstAddr.String())
 			if err != nil {
-				slog.Error("tcpProxy: failed to connect to dst", "address", dstAddr, "error", err)
+				slog.Error("tcpProxy: failed to connect to dst", "name", p.name, "address", dstAddr, "error", err)
 				return
 			}
 			var wg sync.WaitGroup
@@ -621,6 +629,10 @@ func (p *tcpProxy) serve() error {
 			wg.Wait()
 		}()
 	}
+}
+
+func (p *tcpProxy) setDestPort(port int) {
+	p.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
 }
 
 func (p *tcpProxy) close() {
@@ -648,7 +660,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	//
 	// To work around this, we start a simple TCP proxy first, which will act as the sshpiper port.
 	// We then forward traffic from the proxy to the actual sshpiper instance.
-	sshProxy, err := newTCPProxy()
+	sshProxy, err := newTCPProxy("sshProxy")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ssh proxy: %w", err)
 	}
@@ -680,7 +692,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	// We have a circular dependency: exelet needs to know exed's HTTP port,
 	// but exed needs to know exelet's address. Use the same proxy trick as for sshpiper.
 	// Start a TCP proxy for exed HTTP that we can give to exelet immediately.
-	exedHTTPProxy, err := newTCPProxy()
+	exedHTTPProxy, err := newTCPProxy("exedHTTPProxy")
 	if err != nil {
 		return env, fmt.Errorf("failed to create exed HTTP proxy: %w", err)
 	}
@@ -758,11 +770,10 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	// proxy SSH requests to piperd
-	env.sshProxy.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: pi.SSHPort})
+	env.sshProxy.setDestPort(pi.SSHPort)
 
 	// Now that exed is running, point the HTTP proxy to the real exed HTTP port
-	env.exedHTTPProxy.dst.Store(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: ei.HTTPPort})
-	slog.Info("exed HTTP proxy now forwarding", "from", exedHTTPProxy.tcp.Port, "to", ei.HTTPPort)
+	env.exedHTTPProxy.setDestPort(ei.HTTPPort)
 
 	return env, nil
 }
