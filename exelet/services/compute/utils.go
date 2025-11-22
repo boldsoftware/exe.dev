@@ -71,6 +71,11 @@ func getBootArgs(netConf string) []string {
 	}
 }
 
+// Instances returns the instances known to the service.
+func (s *Service) Instances(ctx context.Context) ([]*api.Instance, error) {
+	return s.listInstances(ctx)
+}
+
 // GetInstanceByIP looks up an instance by its assigned IP address
 // TODO(philip): Beware that this is linear in number of instances,
 // and those are read from JSON files at the moment!

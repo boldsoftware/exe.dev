@@ -8,6 +8,8 @@ const (
 
 	// DefaultHTTPAddress is the default HTTP server address for debug and metrics
 	DefaultHTTPAddress = ":9081"
+	// DefaultResourceMonitorInterval is the default polling interval for the resource monitor
+	DefaultResourceMonitorInterval = time.Minute
 
 	// DefaultNameserver is the default instance nameserver
 	DefaultNameserver = "1.1.1.1"
@@ -98,4 +100,6 @@ type ExeletConfig struct {
 	ProxyPortMax int
 	// ExedURL is the URL of the exed HTTP(S) server
 	ExedURL string
+	// ResourceMonitorInterval controls how frequently the resource monitor polls VMs
+	ResourceMonitorInterval time.Duration
 }

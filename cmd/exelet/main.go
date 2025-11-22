@@ -21,6 +21,7 @@ import (
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
+	resourcemonitorservice "exe.dev/exelet/services/resourcemonitor"
 	storageservice "exe.dev/exelet/services/storage"
 	"exe.dev/exelet/storage"
 	"exe.dev/logging"
@@ -127,6 +128,12 @@ func main() {
 			Value:   "",
 			EnvVars: []string{"EXELET_EXED_URL"},
 		},
+		&cli.DurationFlag{
+			Name:    "resource-monitor-interval",
+			Usage:   "polling interval for the resource monitor (e.g., 30s, 1m)",
+			Value:   config.DefaultResourceMonitorInterval,
+			EnvVars: []string{"EXELET_RESOURCE_MONITOR_INTERVAL"},
+		},
 	}
 	app.Action = serveAction
 
@@ -158,6 +165,7 @@ func serveAction(clix *cli.Context) error {
 	proxyPortMin := clix.Int("proxy-port-min")
 	proxyPortMax := clix.Int("proxy-port-max")
 	exedURL := clix.String("exed-url")
+	resourceMonitorInterval := clix.Duration("resource-monitor-interval")
 
 	cfg := &config.ExeletConfig{
 		Name:                        name,
@@ -172,6 +180,7 @@ func serveAction(clix *cli.Context) error {
 		ProxyPortMin:                proxyPortMin,
 		ProxyPortMax:                proxyPortMax,
 		ExedURL:                     exedURL,
+		ResourceMonitorInterval:     resourceMonitorInterval,
 	}
 
 	opts := []exelet.ServerOpt{}
@@ -223,16 +232,18 @@ func serveAction(clix *cli.Context) error {
 	}
 
 	serviceContext := &services.ServiceContext{
-		StorageManager: storageManager,
-		NetworkManager: nm,
-		ImageManager:   im,
-		ComputeService: computeSvc.(*computeservice.Service),
+		StorageManager:  storageManager,
+		NetworkManager:  nm,
+		ImageManager:    im,
+		ComputeService:  computeSvc.(*computeservice.Service),
+		MetricsRegistry: srv.MetricsRegistry(),
 	}
 
 	svcs := []func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error){
 		func(cfg *config.ExeletConfig, log *slog.Logger) (services.Service, error) {
 			return computeSvc, nil
 		},
+		resourcemonitorservice.New,
 		storageservice.New,
 	}
 

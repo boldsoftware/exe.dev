@@ -3,11 +3,13 @@ package services
 import (
 	"context"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"exe.dev/deps/image"
 	"exe.dev/exelet/network"
 	"exe.dev/exelet/storage"
+	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
 type Type string
@@ -17,18 +19,22 @@ const (
 	ComputeService Type = "exe.services.compute.v1"
 	// StorageService is the service that implements storage
 	StorageService Type = "exe.services.storage.v1"
+	// ResourceMonitorService is the service that monitors VM resources
+	ResourceMonitorService Type = "exe.services.resource_monitor.v1"
 )
 
 // InstanceLookup provides a method to look up instances by IP address
 type InstanceLookup interface {
 	GetInstanceByIP(ctx context.Context, ip string) (id, name string, err error)
+	Instances(ctx context.Context) ([]*api.Instance, error)
 }
 
 type ServiceContext struct {
-	StorageManager storage.StorageManager
-	NetworkManager network.NetworkManager
-	ImageManager   *image.ImageManager
-	ComputeService InstanceLookup
+	StorageManager  storage.StorageManager
+	NetworkManager  network.NetworkManager
+	ImageManager    *image.ImageManager
+	ComputeService  InstanceLookup
+	MetricsRegistry *prometheus.Registry
 }
 
 // Service is the interface that all services must implement

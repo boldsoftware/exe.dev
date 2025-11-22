@@ -1,7 +1,9 @@
 package exelet
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"runtime/debug"
@@ -45,8 +47,20 @@ func (s *Exelet) StartHTTPServer(addr string, registry *prometheus.Registry) err
 		mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	}
 
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	actualAddr := ln.Addr().String()
+	s.log.Info("http server listening", "addr", actualAddr)
+
+	server := &http.Server{
+		Handler: mux,
+	}
+
 	go func() {
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.log.Error("HTTP server error", "err", err)
 		}
 	}()

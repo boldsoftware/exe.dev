@@ -277,6 +277,7 @@ type piperdInstance struct {
 
 type exeletInstance struct {
 	Address      string             // e.g., "tcp://192.168.5.15:9080"
+	HTTPAddress  string             // e.g., "http://192.168.5.15:9081"
 	Ctx          context.Context    // cancelled when Cmd exits
 	DataDir      string             // temp directory for exelet data (local or remote path)
 	RemoteHost   string             // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
@@ -747,6 +748,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	exelet.TunnelCancel = tunnelCancel
 	env.exelet = *exelet
 	env.addCanonicalization(exelet.Address, "EXELET_ADDRESS")
+	env.addCanonicalization(exelet.HTTPAddress, "EXELET_HTTP_ADDRESS")
 
 	// TODO: build piperd concurrently with starting exed for faster startup
 	// Pass "0,0" to let the proxy listeners allocate their own port numbers
@@ -997,7 +999,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	// Start exelet on remote host in background with sudo (needs privileges for bridge setup)
 	// Use a wrapper to ensure we can capture the PID even if the process fails immediately
 	// Use proxy port range 30000-40000 for e1e tests to avoid conflicts with dev (10000-20000) and unit tests (20000-30000)
-	startCmd := fmt.Sprintf(`sudo LOG_FORMAT=json nohup /tmp/exelet-test --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --proxy-port-min 30000 --proxy-port-max 40000 --exed-url %s > /tmp/exelet-test-%s.log 2>&1 &`,
+	startCmd := fmt.Sprintf(`sudo LOG_FORMAT=json nohup /tmp/exelet-test --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --proxy-port-min 30000 --proxy-port-max 40000 --resource-monitor-interval 5s --exed-url %s > /tmp/exelet-test-%s.log 2>&1 &`,
 		exedURL, testRunID)
 	out, err := sshExec(ctx, host, startCmd)
 	if err != nil {
@@ -1012,8 +1014,9 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	}
 
 	startTime := time.Now()
-	var addr string
-	for addr == "" && time.Since(startTime) < timeout {
+	var grpcAddr string
+	var httpAddr string
+	for (grpcAddr == "" || httpAddr == "") && time.Since(startTime) < timeout {
 		time.Sleep(500 * time.Millisecond)
 
 		// Tail the log file
@@ -1047,16 +1050,20 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 				default:
 				}
 			}
-			if entry["msg"] == "listening" {
+			switch entry["msg"] {
+			case "listening":
 				if addrVal, ok := entry["addr"].(string); ok {
-					addr = addrVal
-					break
+					grpcAddr = addrVal
+				}
+			case "http server listening":
+				if addrVal, ok := entry["addr"].(string); ok {
+					httpAddr = addrVal
 				}
 			}
 		}
 	}
 
-	if addr == "" {
+	if grpcAddr == "" || httpAddr == "" {
 		// Cleanup on failure
 		sshExec(ctx, host, "sudo pkill -9 -f exelet-test")
 		logOut, _ := sshExec(ctx, host, fmt.Sprintf("cat /tmp/exelet-test-%s.log 2>/dev/null || true", testRunID))
@@ -1064,8 +1071,8 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	}
 
 	// Parse address to replace 0.0.0.0 with actual remote IP
-	// addr is like "tcp://0.0.0.0:45678"
-	u, err := url.Parse(addr)
+	// grpcAddr is like "tcp://0.0.0.0:45678"
+	u, err := url.Parse(grpcAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse exelet address: %w", err)
 	}
@@ -1077,13 +1084,20 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	}
 	finalAddr := fmt.Sprintf("tcp://%s:%s", host, port)
 
+	_, httpPort, err := net.SplitHostPort(httpAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse http port from %s: %w", httpAddr, err)
+	}
+	finalHTTPAddr := fmt.Sprintf("http://%s:%s", host, httpPort)
+
 	instance := &exeletInstance{
-		Address:    finalAddr,
-		DataDir:    dataDir,
-		RemoteHost: host,
+		Address:     finalAddr,
+		HTTPAddress: finalHTTPAddr,
+		DataDir:     dataDir,
+		RemoteHost:  host,
 	}
 
-	slog.Info("started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr)
+	slog.Info("started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr, "http_addr", finalHTTPAddr)
 	return instance, nil
 }
 
