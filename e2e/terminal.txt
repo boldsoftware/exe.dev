@@ -31,7 +31,6 @@ Test the web terminal interface functionality, including complete authentication
 3. **Verify terminal hostname parsing**
    - The auth flow should correctly parse "machinename" from "machinename.xterm.localhost"
    - Should NOT get "invalid machine name" error
-   - This tests the parseTerminalHostname vs parseProxyHostname fix
 
 #### Terminal Interface
 

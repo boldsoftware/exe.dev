@@ -285,29 +285,6 @@ func isNumericPort(port string) bool {
 	return err == nil
 }
 
-// parseProxyHostname extracts box name from hostname.
-// Supports box.exe.dev (production) and box.exe.local (dev).
-// In dev mode also supports box.localhost for HTTP-only requests.
-// Returns an empty string if hostname is not a valid proxy hostname.
-func (s *Server) parseProxyHostname(hostname string) (box string) {
-	hostname = domz.Canonicalize(domz.StripPort(hostname))
-	if hostname == "" {
-		return ""
-	}
-
-	domains := []string{s.getMainDomain()}
-	if s.env.ProxyDev {
-		domains = append(domains, "localhost")
-	}
-
-	for _, dom := range domains {
-		if box := domz.Label(hostname, dom); box != "" {
-			return box
-		}
-	}
-	return ""
-}
-
 // getAuthenticatedUserID checks if the user is authenticated and returns their userID
 // Returns (userID, true) if authenticated, ("", false) if not authenticated
 func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string, bool) {
