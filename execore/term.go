@@ -125,6 +125,12 @@ func cleanupTerminalSession(session *TerminalSession) {
 	// though maybe we should send them a little signal...
 }
 
+func (s *Server) xtermAuthURL(r *http.Request) string {
+	returnURL := fmt.Sprintf("%s://%s%s", getScheme(r), r.Host, r.URL.String())
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+	return authURL
+}
+
 // withTerminalAuth is middleware that checks authentication and authorization for terminal access
 // If successful, it adds auth info to the request context and calls the next handler
 // Otherwise, it handles redirects and error pages
@@ -141,9 +147,7 @@ func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
 		userID, err := s.validateAuthCookie(r)
 		if err != nil {
 			// Not authenticated - redirect to login
-			returnURL := fmt.Sprintf("%s://%s%s", getScheme(r), r.Host, r.URL.String())
-			authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
-			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+			http.Redirect(w, r, s.xtermAuthURL(r), http.StatusTemporaryRedirect)
 			return
 		}
 
@@ -547,9 +551,7 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	// Check authentication for other paths
 	if _, err := s.validateAuthCookie(r); err != nil {
 		// Invalid cookie, redirect to auth
-		returnURL := fmt.Sprintf("%s://%s%s", getScheme(r), r.Host, r.URL.String())
-		authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
-		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
+		http.Redirect(w, r, s.xtermAuthURL(r), http.StatusTemporaryRedirect)
 		return
 	}
 
