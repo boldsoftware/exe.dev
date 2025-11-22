@@ -51,7 +51,7 @@ func virtiofsdSocketName(tag string) string {
 	return fmt.Sprintf("%s-virtiofsd.sock", id)
 }
 
-func (v *VMM) virtiofsd(ctx context.Context, id string, tag string, vArgs ...string) (int, error) {
+func (v *VMM) virtiofsd(ctx context.Context, id, tag string, vArgs ...string) (int, error) {
 	binPath, err := exec.LookPath(virtiofsdExecutableName)
 	if err != nil {
 		return 0, err

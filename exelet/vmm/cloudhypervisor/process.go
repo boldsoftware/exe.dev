@@ -39,7 +39,7 @@ func (v *VMM) saveProcessMetadata(id string, pid int, name string) error {
 }
 
 // loadProcessMetadata loads process metadata from disk
-func (v *VMM) loadProcessMetadata(id string, name string) (*processMetadata, error) {
+func (v *VMM) loadProcessMetadata(id, name string) (*processMetadata, error) {
 	metadataPath := v.processMetadataPath(id, name)
 
 	data, err := os.ReadFile(metadataPath)
@@ -59,7 +59,7 @@ func (v *VMM) loadProcessMetadata(id string, name string) (*processMetadata, err
 }
 
 // removeProcessMetadata removes process metadata from disk
-func (v *VMM) removeProcessMetadata(id string, name string) error {
+func (v *VMM) removeProcessMetadata(id, name string) error {
 	metadataPath := v.processMetadataPath(id, name)
 	if err := os.Remove(metadataPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove process metadata: %w", err)
@@ -68,7 +68,7 @@ func (v *VMM) removeProcessMetadata(id string, name string) error {
 }
 
 // processMetadataPath returns the path to the process metadata file
-func (v *VMM) processMetadataPath(id string, name string) string {
+func (v *VMM) processMetadataPath(id, name string) string {
 	return filepath.Join(v.getDataPath(id), fmt.Sprintf("process-%s.json", name))
 }
 
