@@ -189,7 +189,7 @@ func (s *Server) getShareLinks(ctx context.Context, boxID int, boxName, userID s
 		for _, sl := range shareLinks {
 			links = append(links, BoxShareLinkInfo{
 				Token: sl.ShareToken,
-				URL:   fmt.Sprintf("%s?share=%s", s.httpsProxyAddress(boxName), sl.ShareToken),
+				URL:   fmt.Sprintf("%s?share=%s", s.boxProxyAddress(boxName), sl.ShareToken),
 			})
 		}
 	}

@@ -236,7 +236,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 			"box_name": box.Name,
 			"status":   route.Share,
 			"port":     route.Port,
-			"url":      ss.server.httpsProxyAddress(box.Name),
+			"url":      ss.server.boxProxyAddress(box.Name),
 			"users":    users,
 			"links":    links,
 		})
@@ -249,7 +249,7 @@ func (ss *SSHServer) handleShareShow(ctx context.Context, cc *exemenu.CommandCon
 
 	cc.Writeln("")
 	cc.Writeln("\033[1;36mSharing for box '%s'\033[0m", box.Name)
-	cc.Writeln("URL: %s", ss.server.httpsProxyAddress(box.Name))
+	cc.Writeln("URL: %s", ss.server.boxProxyAddress(box.Name))
 	cc.Writeln("Port: %d", route.Port)
 	if isPublic {
 		cc.Writeln("\033[1;33mMode: PUBLIC\033[0m - Anyone can access this box without authentication")
@@ -560,7 +560,7 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 		}
 	}
 
-	boxURL := ss.server.httpsProxyAddress(box.Name)
+	boxURL := ss.server.boxProxyAddress(box.Name)
 
 	// Send invitation email
 	subject := fmt.Sprintf("%s shared a box with you on exe.dev", cc.User.Email)
@@ -757,7 +757,7 @@ func (ss *SSHServer) handleShareAddLinkCmd(ctx context.Context, cc *exemenu.Comm
 		return err
 	}
 
-	shareURL := fmt.Sprintf("%s?share=%s", ss.server.httpsProxyAddress(box.Name), token)
+	shareURL := fmt.Sprintf("%s?share=%s", ss.server.boxProxyAddress(box.Name), token)
 
 	if cc.WantJSON() {
 		cc.WriteJSON(map[string]any{

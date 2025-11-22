@@ -1145,8 +1145,8 @@ func (s *Server) replSSHConnectionCommand() string {
 	return "ssh " + dashP + s.replSSHHost()
 }
 
-// httpsProxyAddress returns the HTTPS proxy address for a box.
-func (s *Server) httpsProxyAddress(boxName string) string {
+// boxProxyAddress returns the HTTPS proxy address for a box.
+func (s *Server) boxProxyAddress(boxName string) string {
 	if s.env.ProxyDev {
 		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpPort())
 	}

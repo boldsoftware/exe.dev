@@ -662,7 +662,7 @@ func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Reque
 		}
 		if err == io.EOF {
 			// Creation completed successfully
-			httpsURL := s.httpsProxyAddress(hostname)
+			httpsURL := s.boxProxyAddress(hostname)
 			sseEvent(w, "done", fmt.Sprintf("%s|%s/", httpsURL, s.terminalURL(hostname)))
 			return
 		}

@@ -688,7 +688,7 @@ done:
 		ss.server.sshMetrics.boxCreationDur.Observe(totalTime.Seconds())
 	}
 	sshCommand := ss.server.boxSSHConnectionCommand(boxName)
-	httpsProxyAddr := ss.server.httpsProxyAddress(boxName)
+	httpsProxyAddr := ss.server.boxProxyAddress(boxName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")

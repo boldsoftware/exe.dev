@@ -1766,7 +1766,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		boxInfo := BoxDisplayInfo{
 			Box:             box,
 			SSHCommand:      s.boxSSHConnectionCommand(result.Name),
-			ProxyURL:        s.httpsProxyAddress(result.Name),
+			ProxyURL:        s.boxProxyAddress(result.Name),
 			TerminalURL:     s.terminalURL(result.Name),
 			VSCodeURL:       template.URL(s.vscodeURL(result.Name)),
 			ProxyPort:       route.Port,
@@ -1801,7 +1801,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		sharedBoxInfo := SharedBoxDisplayInfo{
 			Name:       result.Name,
 			OwnerEmail: result.OwnerEmail,
-			ProxyURL:   s.httpsProxyAddress(result.Name),
+			ProxyURL:   s.boxProxyAddress(result.Name),
 		}
 		sharedBoxes[i] = sharedBoxInfo
 	} // Prepare template data
