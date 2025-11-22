@@ -179,13 +179,8 @@ cp_clone_file() {
     return 1
 }
 
-# Determine path to setup script to hash
+# Determine setup hash based on ops/ directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SETUP_SCRIPT_PATH="${SCRIPT_DIR}/setup-containerd-clh-nydus.sh"
-if [[ ! -f "${SETUP_SCRIPT_PATH}" ]]; then
-    echo "Required setup script not found for hashing: ${SETUP_SCRIPT_PATH}" >&2
-    exit 1
-fi
 SETUP_HASH="$(git rev-parse HEAD:ops/)"
 
 # We re-build the VM snapshot once a day. If you want to disable
@@ -277,6 +272,16 @@ runcmd:
   - systemctl mask motd-news.service || true
   - systemctl disable fwupd.service fwupd-refresh.timer || true
   - mkdir -p /local && chmod 755 /local
+  # Configure huge pages for cloud-hypervisor
+  - |
+    HUGEPAGE_TARGET=\$(awk '/MemTotal/ { print int(\$2/4096); exit(0); }' /proc/meminfo)
+    echo "\$HUGEPAGE_TARGET" > /proc/sys/vm/nr_hugepages
+    mkdir -p /etc/sysctl.d
+    echo "vm.nr_hugepages=\$HUGEPAGE_TARGET" > /etc/sysctl.d/90-exe-hugepages.conf
+  # Load kernel modules for cloud-hypervisor
+  - modprobe vhost_vsock || true
+  - modprobe vsock || true
+  - echo -e 'vhost_vsock\nvsock' > /etc/modules-load.d/cloud-hypervisor.conf
   # Set up ZFS pool on /dev/vdb if not already present
   - |
     if ! zpool list tank >/dev/null 2>&1; then
@@ -287,18 +292,6 @@ runcmd:
     else
       echo "ZFS pool 'tank' already exists"
     fi
-  # Clean up stale container state from the snapshot before restarting services.
-  # Containerd/nydus runtime state (task directories, metadata) persists in the snapshot
-  # and becomes stale when the machine-id changes on clone, causing kata verification to fail.
-  # Stop services, clean persistent task state, prune container metadata, then restart fresh.
-  - systemctl stop containerd || true
-  - rm -rf /var/lib/containerd/io.containerd.runtime.v2.task/exe/* || true
-  - rm -rf /run/containerd/io.containerd.runtime.v2.task/exe/* || true
-  - systemctl start nydus-snapshotter || true
-  - systemctl start containerd || true
-  # Clean up stale container metadata in the exe namespace from the snapshot.
-  # This removes container references but doesn't affect cached images.
-  - nerdctl --namespace exe container prune --force || true
 bootcmd:
   # Regenerate machine-id so DHCP/leases don't persist across clones
   - [bash, -c, 'rm -f /etc/machine-id /var/lib/dbus/machine-id; systemd-machine-id-setup']
@@ -509,7 +502,6 @@ ensure_cloud_hypervisor_artifacts() {
 
 if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
     echo "No snapshot found; provisioning VM and creating snapshot cache..."
-    # 6) Prepare containerd + nydus + kata on the VM
 
     # Detect VM architecture
     VM_ARCH=$(ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'uname -m')
@@ -519,11 +511,6 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
         VM_ARCH="arm64"
     fi
     echo "VM architecture: $VM_ARCH"
-
-    # Download dependencies locally if not cached
-    echo "Ensuring dependencies are downloaded for $VM_ARCH..."
-
-    "${SCRIPT_DIR}/download-ctr-host.sh" "$VM_ARCH"
 
     # Build Cloud Hypervisor artifacts if not cached
     echo "Ensuring Cloud Hypervisor artifacts are built..."
@@ -539,39 +526,27 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
     (cd "${SCRIPT_DIR}/.." && GOOS=linux GOARCH=${VM_ARCH} go build -o "${EXELETCTL_BIN}" ./cmd/exelet-ctl)
     echo "Built exeletd and exelet-ctl binaries"
 
-    echo "Copying setup script and config files to VM ${IP}..."
-    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SETUP_SCRIPT_PATH}" "${USER_NAME}@${IP}:~/setup-containerd-clh-nydus.sh"
+    echo "Copying setup scripts and binaries to VM ${IP}..."
     scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/setup-cloud-hypervisor.sh" "${USER_NAME}@${IP}:~/setup-cloud-hypervisor.sh"
     scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/setup-exelet.sh" "${USER_NAME}@${IP}:~/setup-exelet.sh"
     ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
-    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/kata-config-clh.toml" "${USER_NAME}@${IP}:~/.cache/exedops/kata-config-clh.toml"
 
-    # Copy pre-downloaded tarballs and exelet binaries to VM
-    echo "Copying pre-downloaded dependencies and exelet binaries to VM ${IP}..."
+    # Copy Cloud Hypervisor artifacts and exelet binaries to VM
     CACHE_DIR="$HOME/.cache/exedops"
-    mapfile -t files < <(find "$CACHE_DIR" -maxdepth 1 -type f \
-        \( -name '*.tar.gz' -o -name '*.tar.xz' -o -name '*.tgz' -o -name '*.service' -o -name 'runc-*' -o -name 'ch-remote-static-*' -o -name '*.tar' -o -name 'exeletd-*' -o -name 'exelet-ctl-*' \))
-    rsync -avq \
-        -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-        "${files[@]}" "${USER_NAME}@${IP}:~/.cache/exedops/"
+    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "${CACHE_DIR}/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}-${VM_ARCH}.tar.gz" \
+        "${EXELETD_BIN}" \
+        "${EXELETCTL_BIN}" \
+        "${USER_NAME}@${IP}:~/.cache/exedops/"
 
-    # Keep assets in canonical ASSETS_DIR (~/.cache/exedops); just place the setup scripts
+    # Move setup scripts to /root
     ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-cloud-hypervisor.sh /root/setup-cloud-hypervisor.sh && sudo chmod +x /root/setup-cloud-hypervisor.sh'
-    ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh && sudo chmod +x /root/setup-containerd-clh-nydus.sh'
     ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'sudo mv ~/setup-exelet.sh /root/setup-exelet.sh && sudo chmod +x /root/setup-exelet.sh'
 
-    echo "Executing cloud-hypervisor setup script on VM ${IP} (raw streaming output)..."
-    # Stream exact commands and output directly to CI logs
-    # Set CI environment variable to trigger CI mode in the script
-    ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo CI=1 /bin/bash -x /root/setup-cloud-hypervisor.sh"
+    echo "Installing Cloud Hypervisor on VM ${IP}..."
+    ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo /bin/bash -x /root/setup-cloud-hypervisor.sh"
 
-    echo "Executing setup script on VM ${IP} (raw streaming output)..."
-    # Stream exact commands and output directly to CI logs
-    # Set CI environment variable to trigger CI mode in the script
-    ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo CI=1 /bin/bash -x /root/setup-containerd-clh-nydus.sh"
-
-    echo "Executing exelet setup script on VM ${IP} (raw streaming output)..."
-    # Run exelet setup to preload ZFS volumes with base images
+    echo "Executing exelet setup script on VM ${IP}..."
     ssh ${SSH_OPTS} -o LogLevel=ERROR ${USER_NAME}@"${IP}" "sudo /bin/bash -x /root/setup-exelet.sh"
 
     # 6b) Create snapshot cache of the prepared disks (clone, leveraging XFS reflink when available)
