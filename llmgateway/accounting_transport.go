@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"cmp"
 	"compress/gzip"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +28,6 @@ import (
 type accountingTransport struct {
 	http.RoundTripper
 	db            *sqlite.DB
-	baseURL       string
 	apiType       string
 	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
 	log           *slog.Logger
@@ -71,8 +69,6 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 
 	contentType := resp.Header.Get("Content-Type")
 
-	ctx := context.WithoutCancel(resp.Request.Context())
-
 	// Note that the response may be a unary HTTP response body, or it may be a stream of
 	// SSE events. So this goroutine may handle either a unary req/response transaction,
 	// or a long-lived streaming response (SSE).
@@ -110,7 +106,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 			gzReader.Close()
 			data = decoded
 		}
-		if err := a.processResponseData(ctx, data); err != nil {
+		if err := a.processResponseData(data); err != nil {
 			a.log.Error("accountingTransport couldn't process unary JSON response", "processResponseData error", err)
 			return err
 		}
@@ -132,7 +128,7 @@ func (a *accountingTransport) modifyResponse(resp *http.Response) error {
 				if strings.HasPrefix(line, "data:") {
 					data := strings.TrimPrefix(line, "data:")
 					// Process the event data, which may include details for accounting.
-					if err := a.processResponseData(ctx, []byte(data)); err != nil {
+					if err := a.processResponseData([]byte(data)); err != nil {
 						a.log.Error("Proxy SSE scanner", "processResponseData error", err)
 					}
 				}
@@ -173,7 +169,7 @@ type UsageDebit struct {
 	Created   time.Time `json:"created"`
 }
 
-func (m *accountingTransport) processResponseData(ctx context.Context, data []byte) error {
+func (m *accountingTransport) processResponseData(data []byte) error {
 	usageDebit := UsageDebit{Created: time.Now()}
 
 	switch m.apiType {
@@ -258,18 +254,6 @@ type openaiResponseUsageInfo struct {
 		CompletionTokens int `json:"completion_tokens"`
 		TotalTokens      int `json:"total_tokens"`
 	} `json:"usage"`
-}
-
-// Type for Gemini response usage information
-type geminiResponseUsageInfo struct {
-	Candidates    []any `json:"candidates"`
-	UsageMetadata struct {
-		PromptTokenCount        int `json:"promptTokenCount"`
-		CachedContentTokenCount int `json:"cachedContentTokenCount"`
-		CandidatesTokenCount    int `json:"candidatesTokenCount"`
-		TotalTokenCount         int `json:"totalTokenCount"`
-	} `json:"usageMetadata"`
-	ModelVersion string `json:"modelVersion"`
 }
 
 // Helper function to extract rate limit values from headers and set gauge metrics

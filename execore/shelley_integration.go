@@ -62,7 +62,7 @@ type ShelleyAgentMessage struct {
 }
 
 // runShelleyPrompt sends a prompt to Shelley and streams the response back to the user
-func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandContext, box *exedb.Box, sshKey ssh.Signer, ctrhost, prompt, shelleyUrl, model string) error {
+func (ss *SSHServer) runShelleyPrompt(ctx context.Context, cc *exemenu.CommandContext, box *exedb.Box, sshKey ssh.Signer, prompt, shelleyUrl, model string) error {
 	if box.SSHPort == nil {
 		return fmt.Errorf("box does not have SSH port configured")
 	}

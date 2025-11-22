@@ -770,14 +770,11 @@ done:
 			return fmt.Errorf("failed to create SSH signer for Shelley: %w", err)
 		}
 
-		// Get ctrhost from the box
-		ctrhost := box.Ctrhost
-
 		if model != "predictable" {
 			prompt = shelleyPreamble + prompt
 		}
 
-		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, ctrhost, prompt, shelleyUrl, model); err != nil {
+		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, prompt, shelleyUrl, model); err != nil {
 			// We write out the error but don't fail.
 			cc.WriteError("Error running Shelley prompt: %v", err)
 			url := ss.server.shelleyURL(box.Name)

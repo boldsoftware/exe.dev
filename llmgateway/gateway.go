@@ -83,7 +83,6 @@ func RegisterMetrics(registry *prometheus.Registry) {
 // - Designed to work with client applications that have configurable API endpoints and auth headers.
 type llmGateway struct {
 	now             func() time.Time
-	mux             http.ServeMux
 	db              *sqlite.DB
 	boxKeyAuthority boxKeyAuthority
 	apiKeys         APIKeys

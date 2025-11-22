@@ -54,7 +54,7 @@ func setupTestBox(t *testing.T, db *sqlite.DB, boxName string) {
 }
 
 // newDB creates a simple test accountant with balance
-func newDB(t *testing.T, balance float64) *sqlite.DB {
+func newDB(t *testing.T) *sqlite.DB {
 	// Run migrations
 	dbPath := filepath.Join(t.TempDir(), "gateway_test.db")
 	rawDB, err := sql.Open("sqlite", dbPath)
@@ -89,7 +89,7 @@ func setupTestGateway(t *testing.T) (*llmGateway, *sqlite.DB, *mockBoxKeyAuthori
 		},
 	}
 
-	db := newDB(t, 10.0)
+	db := newDB(t)
 
 	// Create the box.
 	setupTestBox(t, db, "test-box")

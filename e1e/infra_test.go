@@ -736,7 +736,7 @@ func setup(ctrHost string) (*testEnv, error) {
 	}
 
 	// Start exelet with the proxy port
-	exelet, err := startExelet(ctrHost, gateway, exedProxyURL, env.exeletSlogErrC)
+	exelet, err := startExelet(ctrHost, exedProxyURL, env.exeletSlogErrC)
 	if err != nil {
 		if tunnelCancel != nil {
 			tunnelCancel()
@@ -947,7 +947,7 @@ func startSSHTunnel(host string, localPort int) (remotePort int, tunnelCmd *exec
 	}
 }
 
-func startExelet(ctrHost, gateway, exedURL string, exeletSlogErrC chan string) (*exeletInstance, error) {
+func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletInstance, error) {
 	start := time.Now()
 	slog.Info("starting exelet", "exedURL", exedURL)
 

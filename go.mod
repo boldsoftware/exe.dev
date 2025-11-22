@@ -42,7 +42,6 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/prometheus/client_golang v1.23.0
-	github.com/regclient/regclient v0.9.2
 	github.com/samber/slog-http v1.8.2
 	github.com/samber/slog-multi v1.2.4
 	github.com/samber/slog-slack/v2 v2.7.3
@@ -114,7 +113,6 @@ require (
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
-	github.com/docker/libtrust v0.0.0-20160708172513-aabc10ec26b7 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.18.0 // indirect
@@ -199,7 +197,6 @@ require (
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tg123/remotesigner v0.0.3 // indirect
 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
-	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
