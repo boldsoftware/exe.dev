@@ -21,7 +21,7 @@ func UnaryClientInterceptor() grpc.UnaryClientInterceptor {
 				ctx = metadata.AppendToOutgoingContext(ctx, traceIDMetadataKey, tid)
 			}
 		} else {
-			slog.Warn("gRPC client: NO trace_id in context", "method", method)
+			slog.Debug("gRPC client: NO trace_id in context", "method", method)
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
@@ -38,7 +38,7 @@ func StreamClientInterceptor() grpc.StreamClientInterceptor {
 				ctx = metadata.AppendToOutgoingContext(ctx, traceIDMetadataKey, tid)
 			}
 		} else {
-			slog.Warn("gRPC client stream: NO trace_id in context", "method", method)
+			slog.Debug("gRPC client stream: NO trace_id in context", "method", method)
 		}
 		return streamer(ctx, desc, cc, method, opts...)
 	}
@@ -55,7 +55,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 				ctx = context.WithValue(ctx, "trace_id", values[0])
 				// slog.WarnContext(ctx, "gRPC server: trace_id extracted", "trace_id", values[0], "method", info.FullMethod)
 			} else {
-				slog.Warn("gRPC server: NO trace_id in metadata", "method", info.FullMethod)
+				slog.Debug("gRPC server: NO trace_id in metadata", "method", info.FullMethod)
 			}
 		}
 		return handler(ctx, req)
@@ -74,7 +74,7 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 				ctx = context.WithValue(ctx, "trace_id", values[0])
 				ss = &wrappedServerStream{ServerStream: ss, ctx: ctx}
 			} else {
-				slog.Warn("gRPC server stream: NO trace_id in metadata", "method", info.FullMethod)
+				slog.Debug("gRPC server stream: NO trace_id in metadata", "method", info.FullMethod)
 			}
 		}
 		return handler(srv, ss)
