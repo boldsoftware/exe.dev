@@ -1077,11 +1077,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Create verification link
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	verificationURL := fmt.Sprintf("%s://%s/auth/verify?token=%s", scheme, r.Host, token)
+	verificationURL := fmt.Sprintf("%s://%s/auth/verify?token=%s", getScheme(r), r.Host, token)
 
 	// Add redirect parameters to the verification URL if present (from form values for POST)
 	if redirect := r.FormValue("redirect"); redirect != "" {
@@ -1092,11 +1088,7 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Send email with proper verification URL that includes redirect params
-	scheme2 := "http"
-	if r.TLS != nil {
-		scheme2 = "https"
-	}
-	verifyEmailURL := fmt.Sprintf("%s://%s/verify-email?token=%s", scheme2, r.Host, token)
+	verifyEmailURL := fmt.Sprintf("%s://%s/verify-email?token=%s", getScheme(r), r.Host, token)
 
 	// Add redirect parameters to the verify-email URL if present (from form values for POST)
 	// Both params needed: redirect=path, return_host=subdomain for cross-domain auth flow
@@ -1264,12 +1256,8 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	if action == "confirm" {
 		// User confirmed, redirect to magic auth handler
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
 		magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
-			scheme, r.URL.Query().Get("return_host"), secret, url.QueryEscape(magicSecret.RedirectURL))
+			getScheme(r), r.URL.Query().Get("return_host"), secret, url.QueryEscape(magicSecret.RedirectURL))
 		http.Redirect(w, r, magicURL, http.StatusSeeOther)
 		return
 	}
@@ -1325,12 +1313,8 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 
 	// If user owns the box, skip confirmation and redirect directly
 	if isOwner {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
 		magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
-			scheme, returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
+			getScheme(r), returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
 		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
 		return
 	}

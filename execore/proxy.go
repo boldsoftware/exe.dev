@@ -226,10 +226,6 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		if isOwner {
 			// Render owner-facing help page
 			terminalHost := fmt.Sprintf("%s.xterm.%s", boxName, s.getMainDomainWithPort())
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
 			data := struct {
 				BoxName         string
 				Port            int
@@ -238,7 +234,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			}{
 				BoxName:         boxName,
 				Port:            route.Port,
-				TerminalURL:     fmt.Sprintf("%s://%s/", scheme, terminalHost),
+				TerminalURL:     fmt.Sprintf("%s://%s/", getScheme(r), terminalHost),
 				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
 			}
 
@@ -427,12 +423,7 @@ func (s *Server) isDefaultServerPort(port int) bool {
 
 func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 	return fmt.Sprintf("%s://%s/__exe.dev/%s?%s",
-		func() string {
-			if r.TLS != nil {
-				return "https"
-			}
-			return "http"
-		}(),
+		getScheme(r),
 		r.Host,
 		typ,
 		q.Encode(),
@@ -449,10 +440,7 @@ func (s *Server) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 	// Do not modify r.URL in place so we don't mess with a caller's
 	// understanding of reality.
 	returnURL := *r.URL
-	returnURL.Scheme = "https"
-	if r.TLS == nil {
-		returnURL.Scheme = "http"
-	}
+	returnURL.Scheme = getScheme(r)
 	returnURL.Host = cmp.Or(returnURL.Host, r.Host)
 
 	authURL := makeAuthURL("login", r, url.Values{
@@ -523,10 +511,7 @@ func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine scheme and domain based on request
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
+	scheme := getScheme(r)
 
 	// In dev mode, choose domain based on scheme:
 	// - HTTP uses localhost
@@ -617,10 +602,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Redirect to logged out page on main domain
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
+	scheme := getScheme(r)
 
 	// In dev mode, choose domain based on scheme
 	var mainDomain string
@@ -793,11 +775,7 @@ func setForwardedHeaders(outgoing, incoming *http.Request) {
 		return
 	}
 
-	proto := "http"
-	if incoming.TLS != nil {
-		proto = "https"
-	}
-	outgoing.Header.Set("X-Forwarded-Proto", proto)
+	outgoing.Header.Set("X-Forwarded-Proto", getScheme(incoming))
 
 	if host := incoming.Host; host != "" {
 		outgoing.Header.Set("X-Forwarded-Host", host)
