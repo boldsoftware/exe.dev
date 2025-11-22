@@ -56,12 +56,6 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		// not connected; continue
 	}
 
-	// TODO: find a better way to handle cloudhypervisor api zombies
-	initPath, args, err := backgroundInit()
-	if err != nil {
-		return err
-	}
-
 	binPath, err := exec.LookPath(cloudHypervisorExecutableName)
 	if err != nil {
 		return err
@@ -71,12 +65,11 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	args = append(args, []string{
-		binPath,
+	args := []string{
 		"--api-socket",
 		fmt.Sprintf("path=%s", apiSocketPath),
 		"--seccomp=false",
-	}...)
+	}
 
 	// bootlog
 	bootLogPath := v.bootLogPath(id)
@@ -91,18 +84,21 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 	}
 	defer bootLog.Close()
 
-	cmd := exec.CommandContext(ctx, initPath, args...)
+	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Stdout = bootLog
 	cmd.Stderr = bootLog
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Foreground: false,
-		Setsid:     true,
-		Setctty:    false,
+		Setpgid: true, // Create new process group
 	}
 	v.log.DebugContext(ctx, "running cloudhypervisor api instance")
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	// capture PID immediately after start
+	pid := cmd.Process.Pid
+	v.log.DebugContext(ctx, "cloud-hypervisor started", "id", id, "pid", pid)
+
 	// wait for api to be ready
 	if err := v.waitForReady(ctx, id); err != nil {
 		return err
@@ -110,6 +106,16 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 
 	if err := cmd.Process.Release(); err != nil {
 		return err
+	}
+
+	// persist process metadata to disk
+	if err := v.saveProcessMetadata(id, pid, "cloud-hypervisor"); err != nil {
+		// try to kill the process we just started
+		v.log.WarnContext(ctx, "failed to save cloud-hypervisor process metadata, cleaning up", "id", id, "pid", pid, "error", err)
+		if killErr := killProcess(pid); killErr != nil {
+			v.log.WarnContext(ctx, "failed to kill cloud-hypervisor process during cleanup", "id", id, "pid", pid, "error", killErr)
+		}
+		return fmt.Errorf("failed to save process metadata: %w", err)
 	}
 
 	// create

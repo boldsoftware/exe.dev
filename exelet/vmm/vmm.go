@@ -31,6 +31,8 @@ type VMM interface {
 	Stop(ctx context.Context, id string) error
 	// Delete implements VM delete
 	Delete(ctx context.Context, id string) error
+	// RecoverProcesses adopts running processes and cleans up stale metadata on startup
+	RecoverProcesses(ctx context.Context) error
 }
 
 // NewVMM returns a new Virtual Machine Manager

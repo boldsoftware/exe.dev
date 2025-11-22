@@ -22,6 +22,11 @@ func (v *VMM) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
+	// cleanup any orphaned processes before deleting data dir
+	if err := v.cleanupOrphanedProcesses(ctx, id); err != nil {
+		v.log.WarnContext(ctx, "failed to cleanup orphaned processes", "id", id, "error", err)
+	}
+
 	// remove tap
 	if err := v.networkManager.DeleteInterface(ctx, id); err != nil {
 		return fmt.Errorf("error deleting network interface for %s: %w", id, err)

@@ -100,7 +100,7 @@ func (p *SSHProxy) Stop() error {
 	}
 
 	// Remove metadata file
-	metadataPath := filepath.Join(p.InstanceDir, "sshproxy.json")
+	metadataPath := filepath.Join(p.InstanceDir, "process-sshproxy.json")
 	if err := os.Remove(metadataPath); err != nil && !os.IsNotExist(err) {
 		p.log.Warn("failed to remove proxy metadata", "path", metadataPath, "error", err)
 	}
@@ -187,7 +187,7 @@ func (p *SSHProxy) SaveToDisk() error {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	metadataPath := filepath.Join(p.InstanceDir, "sshproxy.json")
+	metadataPath := filepath.Join(p.InstanceDir, "process-sshproxy.json")
 	if err := os.WriteFile(metadataPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
@@ -197,7 +197,7 @@ func (p *SSHProxy) SaveToDisk() error {
 
 // LoadFromDisk loads proxy metadata from instance directory
 func (p *SSHProxy) LoadFromDisk() error {
-	metadataPath := filepath.Join(p.InstanceDir, "sshproxy.json")
+	metadataPath := filepath.Join(p.InstanceDir, "process-sshproxy.json")
 
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {

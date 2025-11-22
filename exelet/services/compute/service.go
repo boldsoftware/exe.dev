@@ -11,6 +11,7 @@ import (
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/services"
 	"exe.dev/exelet/sshproxy"
+	"exe.dev/exelet/vmm"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
@@ -91,6 +92,17 @@ func (s *Service) Start(ctx context.Context) error {
 	// This will find existing socat processes and adopt them, or restart dead ones
 	if err := s.proxyManager.RecoverProxies(instances); err != nil {
 		s.log.WarnContext(ctx, "failed to recover SSH proxies", "error", err)
+		// Don't fail startup, continue
+	}
+
+	// Recover existing VMM processes (cloud-hypervisor and virtiofsd)
+	// This will adopt any still-running processes and clean up stale metadata
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	if err != nil {
+		return err
+	}
+	if err := vmm.RecoverProcesses(ctx); err != nil {
+		s.log.WarnContext(ctx, "failed to recover VMM processes", "error", err)
 		// Don't fail startup, continue
 	}
 

@@ -21,7 +21,7 @@ func (v *VMM) configureVirtiofs(ctx context.Context, id string, threadPoolSize i
 		}
 
 		// start virtiofsd
-		if err := v.virtiofsd(ctx,
+		pid, err := v.virtiofsd(ctx, id, share.Tag,
 			"--syslog",
 			"--shared-dir",
 			share.HostPath,
@@ -34,9 +34,12 @@ func (v *VMM) configureVirtiofs(ctx context.Context, id string, threadPoolSize i
 			"--cache=never",
 			"--allow-mmap",
 			"--allow-direct-io",
-		); err != nil {
+		)
+		if err != nil {
 			return nil, err
 		}
+
+		v.log.DebugContext(ctx, "virtiofsd started", "id", id, "tag", share.Tag, "pid", pid)
 		instances = append(instances, i)
 	}
 
@@ -48,33 +51,39 @@ func virtiofsdSocketName(tag string) string {
 	return fmt.Sprintf("%s-virtiofsd.sock", id)
 }
 
-func (v *VMM) virtiofsd(ctx context.Context, vArgs ...string) error {
-	initPath, args, err := backgroundInit()
-	if err != nil {
-		return err
-	}
-
+func (v *VMM) virtiofsd(ctx context.Context, id string, tag string, vArgs ...string) (int, error) {
 	binPath, err := exec.LookPath(virtiofsdExecutableName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	args = append(args, binPath)
-	args = append(args, vArgs...)
+	v.log.DebugContext(ctx, "running virtiofsd", "path", binPath, "args", vArgs)
 
-	v.log.DebugContext(ctx, "running virtiofsd", "path", binPath, "args", args)
-
-	cmd := exec.CommandContext(ctx, initPath, args...)
+	cmd := exec.CommandContext(ctx, binPath, vArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Foreground: false,
-		Setsid:     true,
+		Setpgid: true, // Create new process group
 	}
 	if err := cmd.Start(); err != nil {
-		return err
-	}
-	if err := cmd.Process.Release(); err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	// capture PID immediately after start
+	pid := cmd.Process.Pid
+
+	if err := cmd.Process.Release(); err != nil {
+		return 0, err
+	}
+
+	// persist process metadata to disk
+	processName := fmt.Sprintf("virtiofsd-%s", tag)
+	if err := v.saveProcessMetadata(id, pid, processName); err != nil {
+		// try to kill the process we just started
+		v.log.WarnContext(ctx, "failed to save virtiofsd process metadata, cleaning up", "id", id, "tag", tag, "pid", pid, "error", err)
+		if killErr := killProcess(pid); killErr != nil {
+			v.log.WarnContext(ctx, "failed to kill virtiofsd process during cleanup", "id", id, "tag", tag, "pid", pid, "error", killErr)
+		}
+		return 0, fmt.Errorf("failed to save process metadata: %w", err)
+	}
+
+	return pid, nil
 }

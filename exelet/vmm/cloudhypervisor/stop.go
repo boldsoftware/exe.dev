@@ -34,5 +34,10 @@ func (v *VMM) Stop(ctx context.Context, id string) error {
 		return err
 	}
 
+	// cleanup any orphaned processes and remove their metadata
+	if err := v.cleanupOrphanedProcesses(ctx, id); err != nil {
+		v.log.WarnContext(ctx, "failed to cleanup orphaned processes", "id", id, "error", err)
+	}
+
 	return nil
 }

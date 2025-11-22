@@ -109,7 +109,7 @@ func (m *Manager) RecoverProxies(instances []*api.Instance) error {
 		instanceDir := filepath.Join(m.dataDir, "instances", instance.ID)
 
 		// Check if proxy metadata exists
-		metadataPath := filepath.Join(instanceDir, "sshproxy.json")
+		metadataPath := filepath.Join(instanceDir, "process-sshproxy.json")
 		if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
 			// No proxy metadata, skip
 			continue
