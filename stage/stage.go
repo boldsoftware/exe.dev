@@ -17,6 +17,7 @@ type Env struct {
 	ReplDev    bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands)
 	WebDev     bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
 	ProxyDev   bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
+	GatewayDev bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
 	SkipBanner bool // whether to skip showing the EXE banner on repl login
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
@@ -49,6 +50,7 @@ func Local() Env {
 		ReplDev:    true,
 		WebDev:     true,
 		ProxyDev:   true,
+		GatewayDev: true,
 		SkipBanner: false,
 
 		ShowHiddenDocs:    true,
@@ -75,6 +77,7 @@ func Test() Env {
 		ReplDev:    false,
 		WebDev:     true,
 		ProxyDev:   true,
+		GatewayDev: true,
 		SkipBanner: true,
 
 		ShowHiddenDocs:    true,
@@ -100,6 +103,7 @@ func Staging() Env {
 		ReplDev:    false,
 		WebDev:     false,
 		ProxyDev:   false,
+		GatewayDev: false,
 		SkipBanner: false,
 
 		ShowHiddenDocs:    false,
@@ -125,6 +129,7 @@ func Prod() Env {
 		ReplDev:    false,
 		WebDev:     false,
 		ProxyDev:   false,
+		GatewayDev: false,
 		SkipBanner: false,
 
 		ShowHiddenDocs:    false,

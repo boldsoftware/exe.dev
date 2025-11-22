@@ -82,7 +82,7 @@ func (s *Server) prepareLlmGateway() http.Handler {
 		Anthropic: anthropicAPIKey,
 		Fireworks: fireworksAPIKey,
 		OpenAI:    openaiAPIKey,
-	}, s.env.WebDev)
+	}, s.env.GatewayDev)
 	return lg
 }
 
