@@ -170,7 +170,7 @@ func (s *Server) setupHTTPSServer() {
 			}
 			return
 		}
-		s.tsDomain = strings.TrimSuffix(st.Self.DNSName, ".")
+		s.tsDomain = domz.Canonicalize(st.Self.DNSName)
 
 		// Try to eagerly fetch and cache cert, but it's optional
 		certPEM, keyPEM, err := lc.CertPair(ctx, s.tsDomain)
@@ -277,7 +277,7 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	serverName := domz.Canonicalize(hello.ServerName)
 
 	// 1) Serve Tailscale certificate for exact Tailscale DNS name
-	if s.tsDomain != "" && serverName == strings.ToLower(s.tsDomain) {
+	if s.tsDomain != "" && serverName == s.tsDomain {
 		if s.tsCert != nil {
 			return s.tsCert, nil
 		}
