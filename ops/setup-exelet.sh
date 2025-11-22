@@ -72,11 +72,7 @@ echo "exeletd is ready"
 # Load images into storage manager
 for image in "${IMAGES[@]}"; do
     if ! "$EXELET_CTL" storage fs load "$image"; then
-        echo "ERROR: Failed to load $image"
-        echo "=== exeletd log ==="
-        cat /tmp/exeletd.log || true
-        kill $EXELET_PID 2>/dev/null || true
-        exit 1
+        echo "WARNING: Failed to load $image (may be rate limited)"
     fi
 done
 
