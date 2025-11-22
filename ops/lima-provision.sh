@@ -80,7 +80,6 @@ ensure_packages() {
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y -q \
         avahi-daemon \
-        docker-registry \
         socat \
         zfsutils-linux
 }
