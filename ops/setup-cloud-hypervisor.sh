@@ -22,7 +22,9 @@ if [ ! -f "$ARCHIVE" ]; then
     exit 1
 fi
 
-apt update && apt install -y libcap-ng0 libseccomp2
+if ! dpkg -s libcap-ng0 libseccomp2 >/dev/null 2>&1; then
+    apt update && apt install -y libcap-ng0 libseccomp2
+fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
