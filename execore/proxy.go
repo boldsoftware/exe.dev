@@ -220,11 +220,13 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			// Render owner-facing help page
 			data := struct {
 				BoxName         string
+				SSHCommand      string
 				Port            int
 				TerminalURL     string
 				ShowWelcomeStep bool
 			}{
 				BoxName:         boxName,
+				SSHCommand:      s.boxSSHConnectionCommand(boxName),
 				Port:            route.Port,
 				TerminalURL:     s.xtermURL(boxName, r.TLS != nil),
 				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,

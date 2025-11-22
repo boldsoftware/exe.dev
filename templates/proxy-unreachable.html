@@ -110,12 +110,12 @@
         {{if .ShowWelcomeStep}}
         <div class="step">
           <h3>Spin up our demo server</h3>
-          <code class="code-line">ssh {{.BoxName}}@exe.dev sudo systemctl start welcome</code>
+          <code class="code-line">{{.SSHCommand}} sudo systemctl start welcome</code>
         </div>
         {{end}}
         <div class="step">
           <h3>SSH in and start your own server</h3>
-          <code class="code-line">ssh {{.BoxName}}@exe.dev</code>
+          <code class="code-line">{{.SSHCommand}}</code>
         </div>
         <div class="step">
           <h3>Use the web terminal to start your server</h3>
