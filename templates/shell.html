@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>exe.dev - Shell</title>
+    <title>{{.ReplHost}} - Shell</title>
     <link rel="stylesheet" href="/static/topbar.css">
     <link rel="stylesheet" href="/static/xterm.css">
     <link rel="stylesheet" href="/static/terminal-common.css">
@@ -12,7 +12,7 @@
     {{template "topbar" .}}
     <div class="terminal-frame">
         <div class="terminal-header">
-            <div class="terminal-title">exe.dev Shell</div>
+            <div class="terminal-title">{{.ReplHost}} Shell</div>
             <div class="terminal-info">
                 <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
                     <span class="theme-icon">◐</span>

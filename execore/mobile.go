@@ -18,6 +18,7 @@ import (
 	"exe.dev/exedb"
 	"exe.dev/exemenu"
 	"exe.dev/sqlite"
+	"exe.dev/stage"
 )
 
 const (
@@ -276,9 +277,11 @@ func (s *Server) handleMobileHome(w http.ResponseWriter, r *http.Request) {
 	hostnameSuggestion := boxname.Random()
 
 	data := struct {
+		stage.Env
 		HostnameSuggestion string
 		IsLoggedIn         bool
 	}{
+		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
 		IsLoggedIn:         false, // Already checked auth above, if we're here user is not logged in
 	}
@@ -296,10 +299,12 @@ func (s *Server) handleMobileNew(w http.ResponseWriter, r *http.Request) {
 	isLoggedIn := err == nil
 
 	data := struct {
+		stage.Env
 		HostnameSuggestion string
 		IsLoggedIn         bool
 		ActivePage         string
 	}{
+		Env:                s.env,
 		HostnameSuggestion: hostnameSuggestion,
 		IsLoggedIn:         isLoggedIn,
 		ActivePage:         "",
@@ -378,12 +383,23 @@ func (s *Server) handleMobileCreateVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Otherwise, proceed to email auth, carrying the VM details as hidden fields
-	data := map[string]interface{}{
-		"Hostname": hostname,
-		"Prompt":   prompt,
+	data := authFormData{
+		Env:        s.env,
+		SSHCommand: s.replSSHConnectionCommand(),
+		BoxName:    hostname,
+		Prompt:     prompt,
 	}
 
 	s.renderTemplate(w, "auth-form.html", data)
+}
+
+type authFormData struct {
+	stage.Env
+	RedirectURL string
+	ReturnHost  string
+	SSHCommand  string
+	BoxName     string
+	Prompt      string
 }
 
 // handleMobileEmailAuth handles email authentication
@@ -441,7 +457,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 
 	// Send verification email
 	verifyURL := fmt.Sprintf("%s/m/verify-token?token=%s", s.webBaseURL(r), token)
-	subject := "Verify your email - exe.dev"
+	subject := fmt.Sprintf("Verify your email - %s", s.env.WebHost)
 	body := fmt.Sprintf(`Hello,
 
 Please click the link below to verify your email and complete your setup:
@@ -455,7 +471,7 @@ Or enter this token:
 This link will expire in 24 hours.
 
 Best regards,
-The exe.dev team`, verifyURL, token)
+The %s team`, verifyURL, token, s.env.WebHost)
 
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
@@ -465,10 +481,12 @@ The exe.dev team`, verifyURL, token)
 	}
 
 	data := struct {
+		stage.Env
 		Email       string
 		QueryString string
 		DevURL      string
 	}{
+		Env:         s.env,
 		Email:       email,
 		QueryString: r.URL.RawQuery,
 	}

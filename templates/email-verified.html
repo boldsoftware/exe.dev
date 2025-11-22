@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Email Verified - exe.dev</title>
+    <title>Email Verified - {{.WebHost}}</title>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
@@ -44,8 +44,8 @@
         <h1>Email Verified</h1>
         <p>You can now return to your SSH session.</p>
         <p>If you don't have one, connect with:</p>
-        <div class="code-box">ssh exe.dev</div>
-        <a class="cta-button" href="/">Return to exe.dev</a>
+        <div class="code-box">{{.SSHCommand}}</div>
+        <a class="cta-button" href="/">Return to {{.WebHost}}</a>
         {{end}}
       </div>
     </main>

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Check Your Email - exe.dev</title>
+    <title>Check Your Email - {{.WebHost}}</title>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
@@ -98,7 +98,7 @@
           The link expires in 24 hours. Didn't receive it?
           <a href="{{if .QueryString}}/auth?{{.QueryString}}{{else}}/m{{end}}">Try again</a>
         </p>
-        <a class="cta-button" href="/">Return to exe.dev</a>
+        <a class="cta-button" href="/">Return to {{.WebHost}}</a>
       </div>
     </main>
   </body>

@@ -89,7 +89,7 @@ func (ss *SSHServer) handleShelleyInstall(ctx context.Context, cc *exemenu.Comma
 
 	if !isExeuntu {
 		// Not exeuntu - provide download instructions
-		downloadURL := fmt.Sprintf("https://exe.dev/shelley/download?arch=%s", arch)
+		downloadURL := fmt.Sprintf("%s/shelley/download?arch=%s", ss.server.webBaseURLNoRequest(), arch)
 
 		if cc.WantJSON() {
 			cc.WriteJSON(map[string]any{

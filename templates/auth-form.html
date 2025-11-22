@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>exe.dev - Authentication Required</title>
+    <title>{{.WebHost}} - Authentication Required</title>
     <link rel="stylesheet" href="/static/exe.css" />
     <style>
       .auth-box h1 {
@@ -60,19 +60,19 @@
   </head>
   <body class="auth-page">
     <main>
-      <div class="auth-box{{if .Hostname}} with-vm{{end}}">
+      <div class="auth-box{{if .BoxName}} with-vm{{end}}">
         <img src="/static/exy.png" alt="exy the fish" class="exy" />
         <h1>Sign in</h1>
         <p class="subtitle">
-          New to exe.dev? We'll create your account automatically.
+          New to {{.WebHost}}? We'll create your account automatically.
         </p>
 
-        {{if .Hostname}}
+        {{if .BoxName}}
         <div class="vm-details">
           <div class="vm-details-label">
             After you sign up, we will create
           </div>
-          <div class="vm-hostname">{{.Hostname}}.exe.dev</div>
+          <div class="vm-hostname">{{.BoxName}}.{{.BoxHost}}</div>
           {{if .Prompt}}
           <div class="vm-description">{{.Prompt}}</div>
           {{end}}
@@ -81,14 +81,14 @@
 
         <form
           method="POST"
-          action="{{if .Hostname}}/m/email-auth{{else}}/auth{{end}}"
+          action="{{if .BoxName}}/m/email-auth{{else}}/auth{{end}}"
         >
           {{if .RedirectURL}}
           <input type="hidden" name="redirect" value="{{.RedirectURL}}" />
           {{end}} {{if .ReturnHost}}
           <input type="hidden" name="return_host" value="{{.ReturnHost}}" />
-          {{end}} {{if .Hostname}}
-          <input type="hidden" name="hostname" value="{{.Hostname}}" />
+          {{end}} {{if .BoxName}}
+          <input type="hidden" name="hostname" value="{{.BoxName}}" />
           {{end}} {{if .Prompt}}
           <input type="hidden" name="prompt" value="{{.Prompt}}" />
           {{end}}
@@ -110,14 +110,14 @@
           <button type="submit">Send sign-in link</button>
         </form>
 
-        {{if .Hostname}}
+        {{if .BoxName}}
         <div class="back-link">
           <a href="/m">← Back to VM creation</a>
         </div>
         {{else}}
         <div class="alt-method">
           <p>Or authenticate via SSH:</p>
-          <div class="ssh-command">ssh exe.dev</div>
+          <div class="ssh-command">{{.SSHCommand}}</div>
         </div>
         {{end}}
       </div>

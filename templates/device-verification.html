@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>Confirm Device - exe.dev</title>
+    <title>Confirm Device - {{.WebHost}}</title>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
@@ -13,7 +13,7 @@
         <h1>Authorize New SSH Key</h1>
         <p>
           A new ssh key has requested access to
-          <em>{{.Email}}</em>'s <strong>exe.dev</strong> account.
+          <em>{{.Email}}</em>'s <strong>{{.WebHost}}</strong> account.
         </p>
 
         <div class="info-box">

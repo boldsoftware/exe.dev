@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>Logged Out - exe.dev</title>
+    <title>Logged Out - {{.WebHost}}</title>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
@@ -35,7 +35,7 @@
         <img src="/static/exy.png" alt="exy the fish" class="exy" />
       <h1>Logged Out</h1>
       <p>You have been logged out successfully.</p>
-      <p><a href="/">Return to exe.dev</a></p>
+      <p><a href="/">Return to {{.WebHost}}</a></p>
       </div>
     </main>
   </body>

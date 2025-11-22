@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Device Verified - exe.dev</title>
+    <title>Device Verified - {{.WebHost}}</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="/static/exe.css" />
@@ -20,8 +20,8 @@
         <div class="success">✓</div>
         <h1>Device Verified!</h1>
         <p>Your new device has been successfully authorized.</p>
-        <p>You can now reconnect to exe.dev from your terminal:</p>
-        <div class="command">ssh exe.dev</div>
+        <p>You can now reconnect to {{.ReplHost}} from your terminal:</p>
+        <div class="command">{{.SSHCommand}}</div>
         <p style="font-size: 14px; color: #718096; margin-top: 30px;">
             Public Key: {{.PublicKey}}
         </p>

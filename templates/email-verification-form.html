@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>Confirm Email - exe.dev</title>
+    <title>Confirm Email - {{.WebHost}}</title>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/static/exe.css" />
@@ -13,7 +13,7 @@
         <h1 align="center">Confirm Your Email</h1>
         <p>
           Please verify your email address <em>{{.Email}}</em> for
-          <strong>exe.dev</strong> to continue.
+          <strong>{{.WebHost}}</strong> to continue.
         </p>
 
         <p>If you did not initiate this request, please close this page.</p>

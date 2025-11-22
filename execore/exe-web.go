@@ -32,6 +32,7 @@ import (
 	"exe.dev/llmgateway"
 	"exe.dev/route53"
 	"exe.dev/sqlite"
+	"exe.dev/stage"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/acme"
@@ -398,10 +399,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, err := s.validateAuthCookie(r)
 		isLoggedIn := err == nil
 		data := struct {
+			stage.Env
+			SSHCommand         string
 			HostnameSuggestion string
 			IsLoggedIn         bool
 			ActivePage         string
 		}{
+			Env:                s.env,
+			SSHCommand:         s.replSSHConnectionCommand(),
 			HostnameSuggestion: hostnameSuggestion,
 			IsLoggedIn:         isLoggedIn,
 			ActivePage:         "",
@@ -644,8 +649,8 @@ func (s *Server) handleWaitlist(w http.ResponseWriter, r *http.Request) {
 
 	// Send confirmation email only on first add
 	if wasNew {
-		subject := "You're on the exe.dev waitlist"
-		body := "Hello,\n\nThanks for your interest in exe.dev. You're on the waitlist. We'll reach out as soon as we have space for you.\n\nIn the meantime, we're heads down building a great SSH-first experience.\n\n— exe.dev"
+		subject := fmt.Sprintf("You're on the %s waitlist", s.env.WebHost)
+		body := fmt.Sprintf("Hello,\n\nThanks for your interest in %[1]s. You're on the waitlist. We'll reach out as soon as we have space for you.\n\nIn the meantime, we're heads down building a great SSH-first experience.\n\n— %[1]s", s.env.WebHost)
 		if sendErr := s.sendEmail(email, subject, body); sendErr != nil {
 			s.slog().WarnContext(r.Context(), "failed to send waitlist email", "email", email, "err", sendErr)
 		}
@@ -677,11 +682,15 @@ func (s *Server) showDeviceVerificationForm(w http.ResponseWriter, r *http.Reque
 	}
 
 	data := struct {
+		stage.Env
+		SSHCommand  string
 		Email       string
 		PublicKey   string
 		Token       string
 		PairingCode string
 	}{
+		Env:         s.env,
+		SSHCommand:  s.replSSHConnectionCommand(),
 		Email:       pendingKey.UserEmail,
 		PublicKey:   pendingKey.PublicKey,
 		Token:       token,
@@ -753,9 +762,13 @@ func (s *Server) handleDeviceVerificationHTTP(w http.ResponseWriter, r *http.Req
 	s.deleteEmailVerification(verification)
 
 	data := struct {
-		PublicKey string
+		stage.Env
+		SSHCommand string
+		PublicKey  string
 	}{
-		PublicKey: pendingKey.PublicKey,
+		Env:        s.env,
+		SSHCommand: s.replSSHConnectionCommand(),
+		PublicKey:  pendingKey.PublicKey,
 	}
 	s.renderTemplate(w, "device-verified.html", data)
 }
@@ -821,6 +834,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 
 	// Prepare template data
 	data := struct {
+		stage.Env
 		Token       string
 		RedirectURL string
 		ReturnHost  string
@@ -828,6 +842,7 @@ func (s *Server) showEmailVerificationForm(w http.ResponseWriter, r *http.Reques
 		PairingCode string
 		Source      string
 	}{
+		Env:         s.env,
 		Token:       token,
 		RedirectURL: r.URL.Query().Get("redirect"),
 		ReturnHost:  r.URL.Query().Get("return_host"),
@@ -942,9 +957,13 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 
 	// Send success response (for SSH registrations or standalone verifications)
 	data := struct {
-		Source string
+		stage.Env
+		SSHCommand string
+		Source     string
 	}{
-		Source: source,
+		Env:        s.env,
+		SSHCommand: s.replSSHConnectionCommand(),
+		Source:     source,
 	}
 	s.renderTemplate(w, "email-verified.html", data)
 }
@@ -999,9 +1018,11 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Show authentication form with query parameters
-	data := map[string]interface{}{
-		"RedirectURL": r.URL.Query().Get("redirect"),
-		"ReturnHost":  r.URL.Query().Get("return_host"),
+	data := authFormData{
+		Env:         s.env,
+		SSHCommand:  s.replSSHConnectionCommand(),
+		RedirectURL: r.URL.Query().Get("redirect"),
+		ReturnHost:  r.URL.Query().Get("return_host"),
 	}
 	s.renderTemplate(w, "auth-form.html", data)
 }
@@ -1086,7 +1107,8 @@ func (s *Server) handleAuthEmailSubmission(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Send custom email for web auth with the proper URL
-	subject := "Verify your email - exe.dev"
+	webHost := s.env.WebHost
+	subject := fmt.Sprintf("Verify your email - %s", webHost)
 	body := fmt.Sprintf(`Hello,
 
 Please click the link below to verify your email address:
@@ -1096,7 +1118,7 @@ Please click the link below to verify your email address:
 This link will expire in 24 hours.
 
 Best regards,
-The exe.dev team`, verifyEmailURL)
+The %s team`, verifyEmailURL, webHost)
 
 	err = s.sendEmail(email, subject, body)
 	if err != nil {
@@ -1116,10 +1138,12 @@ The exe.dev team`, verifyEmailURL)
 // showAuthError displays an authentication error page
 func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message, command string) {
 	data := struct {
+		stage.Env
 		Message     string
 		Command     string
 		QueryString string
 	}{
+		Env:         s.env,
 		Message:     message,
 		Command:     command,
 		QueryString: r.URL.RawQuery,
@@ -1132,10 +1156,12 @@ func (s *Server) showAuthError(w http.ResponseWriter, r *http.Request, message, 
 // showAuthEmailSent displays the email sent confirmation page
 func (s *Server) showAuthEmailSent(w http.ResponseWriter, r *http.Request, email, devURL string) {
 	data := struct {
+		stage.Env
 		Email       string
 		QueryString string
 		DevURL      string // Development-only URL for easy testing
 	}{
+		Env:         s.env,
 		Email:       email,
 		QueryString: r.URL.RawQuery,
 		DevURL:      devURL,
@@ -1320,11 +1346,13 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 	cancelURL := strings.ReplaceAll(currentURL, "action=", "unused=") + "&action=cancel"
 
 	data := struct {
+		stage.Env
 		SiteDomain string
 		ConfirmURL string
 		CancelURL  string
 		UserEmail  string
 	}{
+		Env:        s.env,
 		SiteDomain: hostname,
 		ConfirmURL: confirmURL,
 		CancelURL:  cancelURL,
@@ -1792,6 +1820,8 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 		sharedBoxes[i] = sharedBoxInfo
 	} // Prepare template data
 	data := UserPageData{
+		Env:         s.env,
+		SSHCommand:  s.replSSHConnectionCommand(),
 		User:        user,
 		SSHKeys:     sshKeys,
 		Boxes:       boxes,
@@ -1838,6 +1868,7 @@ func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request, userI
 
 	// Prepare template data
 	data := UserPageData{
+		Env:        s.env,
 		User:       user,
 		SSHKeys:    sshKeys,
 		ActivePage: "profile",
@@ -1891,8 +1922,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // handleLoggedOut displays a logged out confirmation page
 func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
 	data := struct {
+		stage.Env
 		MainDomain string
 	}{
+		Env:        s.env,
 		MainDomain: s.env.WebHost,
 	}
 	_ = s.renderTemplate(w, "proxy-logged-out.html", data)

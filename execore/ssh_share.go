@@ -561,14 +561,15 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 	}
 
 	boxURL := ss.server.boxProxyAddress(box.Name)
+	webURL := ss.server.webBaseURLNoRequest()
 
 	// Send invitation email
-	subject := fmt.Sprintf("%s shared a box with you on exe.dev", cc.User.Email)
+	subject := fmt.Sprintf("%s shared a box with you on %s", cc.User.Email, ss.server.env.WebHost)
 	body := fmt.Sprintf(`Hi,
 
-%s has shared a box with you on exe.dev.
+%s has shared a box with you on %s.
 
-`, cc.User.Email)
+`, cc.User.Email, ss.server.env.WebHost)
 
 	if message != "" {
 		body += fmt.Sprintf("Message from %s:\n\"%s\"\n\n", cc.User.Email, message)
@@ -578,22 +579,22 @@ func (ss *SSHServer) handleShareAddCmd(ctx context.Context, cc *exemenu.CommandC
 		body += fmt.Sprintf(`To access the box, visit:
 %s
 
-You can also find it in your dashboard at https://exe.dev/
+You can also find it in your dashboard at %s/
 
 ---
-exe.dev - Instant Linux machines
-`, boxURL)
+%s - Instant Linux machines
+`, boxURL, webURL, ss.server.env.WebHost)
 	} else {
 		body += fmt.Sprintf(`To access the box, sign up or log in at:
-https://exe.dev/
+%s/
 
 Once you're logged in with this email address (%s), you'll automatically have access to the shared box.
 
 Box URL: %s
 
 ---
-exe.dev - Instant Linux machines
-`, email, boxURL)
+%s - Instant Linux machines
+`, webURL, email, boxURL, ss.server.env.WebHost)
 	}
 
 	if err := ss.server.sendEmail(email, subject, body); err != nil {

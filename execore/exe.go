@@ -101,6 +101,8 @@ type BoxShareLinkInfo struct {
 
 // UserPageData represents the data for the user dashboard page
 type UserPageData struct {
+	stage.Env
+	SSHCommand  string
 	User        exedb.User
 	SSHKeys     []SSHKey
 	Boxes       []BoxDisplayInfo
@@ -424,7 +426,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 
 	var baseURL string
-
 	httpLn := unusedListener(httpAddr)
 	if httpAddr != "" {
 		// HTTP is configured, use http://localhost with the HTTP port
@@ -433,18 +434,20 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 			db.Close()
 			return nil, fmt.Errorf("failed to listen on HTTP address %q: %w", httpAddr, err)
 		}
-		baseURL = fmt.Sprintf("http://localhost:%d", httpLn.tcp.Port)
+		baseURL = fmt.Sprintf("http://%s:%d", env.WebHost, httpLn.tcp.Port)
 		slog.Info("http server listening", "addr", httpLn.tcp.String(), "port", httpLn.tcp.Port)
 	}
 
 	httpsLn := unusedListener(httpsAddr)
 	if httpsAddr != "" {
-		// HTTPS is configured, use https://exe.dev
-		baseURL = "https://exe.dev"
 		httpsLn, err = startListener(slog, "https", httpsAddr)
 		if err != nil {
 			db.Close()
 			return nil, fmt.Errorf("failed to listen on HTTPS address %q: %w", httpsAddr, err)
+		}
+		baseURL = fmt.Sprintf("https://%s", env.WebHost)
+		if httpsLn.tcp.Port != 443 {
+			baseURL += fmt.Sprintf(":%d", httpsLn.tcp.Port)
 		}
 	}
 
@@ -517,7 +520,7 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 
 	// gateway for shelley - default to exe.dev if left blank
 	if gateway == "" {
-		gateway = "exe.dev"
+		gateway = env.WebHost
 	}
 
 	s := &Server{
@@ -812,7 +815,7 @@ func (s *Server) sendEmail(to, subject, body string) error {
 
 	// Use the existing sendVerificationEmail logic
 	email := postmark.Email{
-		From:     "exe.dev <support@exe.dev>",
+		From:     fmt.Sprintf("%s <support@%s>", s.env.WebHost, s.env.WebHost),
 		To:       to,
 		Subject:  subject,
 		TextBody: body,

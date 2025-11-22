@@ -20,6 +20,7 @@ import (
 	"exe.dev/container"
 	"exe.dev/domz"
 	"exe.dev/exedb"
+	"exe.dev/stage"
 )
 
 // exe.dev provides a "magic" proxy for user's boxes. When a user requests https://boxname.exe.dev/,
@@ -219,12 +220,14 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		if isOwner {
 			// Render owner-facing help page
 			data := struct {
+				stage.Env
 				BoxName         string
 				SSHCommand      string
 				Port            int
 				TerminalURL     string
 				ShowWelcomeStep bool
 			}{
+				Env:             s.env,
 				BoxName:         boxName,
 				SSHCommand:      s.boxSSHConnectionCommand(boxName),
 				Port:            route.Port,

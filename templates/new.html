@@ -18,7 +18,7 @@
                             autocomplete="off"
                             autocapitalize="none"
                         />
-                        <span class="form-input-suffix form-input-suffix-large">.exe.dev</span>
+                        <span class="form-input-suffix form-input-suffix-large">.{{.BoxHost}}</span>
                     </div>
                     <div id="hostname-hint" class="form-hint"></div>
                 </div>
@@ -133,7 +133,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create a New Box - EXE.DEV</title>
+    <title>Create a New Box - {{.WebHost}}</title>
     <link rel="stylesheet" href="/static/exe.css">
     {{template "topbar_style" .}}
     <link rel="stylesheet" href="/static/form.css">
