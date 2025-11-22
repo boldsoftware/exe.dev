@@ -31,13 +31,13 @@ So you need at least an M3 CPU.
 Once you have that, run:
 
 ```
-./ops/setup-lima-hosts.sh
+./ops/setup-lima-hosts.sh all
 ```
 
 This sets up two VMs as ctr-hosts, one for running exed manually
 and another as a ctr-host (where exelet and cloud-hypervisor runs) when running Go tests.
 
-You can fast-wipe the ctr-hosts by running `./ops/reset-lima-hosts.sh`.
+You can fast-wipe the ctr-hosts by running `./ops/setup-lima-hosts.sh reset`.
 
 Optionally, add this to your ~/.ssh/config:
 

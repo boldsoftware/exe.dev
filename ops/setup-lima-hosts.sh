@@ -200,6 +200,107 @@ provision_base_vm() {
     (cat ~/.ssh/id_*.pub | limactl shell ${LIMA_BASE} sudo tee /root/.authorized_keys) || true
 }
 
+setup_base() {
+    echo "=== Setting up Lima base instance ==="
+
+    # Clean up existing base if it exists
+    limactl stop --tty=false exe-ctr-base -f 2>/dev/null || true
+    sleep 2
+    limactl delete exe-ctr-base --tty=false -f 2>/dev/null || true
+
+    delete_data_disk "${LIMA_BASE}"
+    create_fresh_data_disk "${LIMA_BASE}"
+
+    echo "Creating base Lima instance: ${LIMA_BASE}"
+    base_disk_name="$(data_disk_name "${LIMA_BASE}")"
+    # Ensure mount location referenced by template exists
+    mkdir -p /tmp/lima
+    limactl create --plain --tty=false --log-level=warn --name=${LIMA_BASE} \
+        --set "$(set_disk_expr "${base_disk_name}")" \
+        "${LIMA_CONFIG_PATH}"
+    limactl start --tty=false --log-level=warn ${LIMA_BASE}
+
+    echo "Checking for KVM support in VM..."
+    if limactl shell ${LIMA_BASE} -- ls /dev/kvm 2>/dev/null; then
+        echo "✓ KVM is available (/dev/kvm found) - Kata containers should work"
+    else
+        echo "⚠️  KVM is not available (/dev/kvm not found) - Kata containers won't work"
+        exit 1
+    fi
+
+    echo "Testing Lima SSH connection..."
+    limactl shell ${LIMA_BASE} -- echo "SSH connection successful"
+
+    # Provision the base VM
+    provision_base_vm
+
+    echo "Stopping base instance before cloning..."
+    limactl stop --log-level=warn ${LIMA_BASE}
+
+    echo ""
+    echo "=========================================="
+    echo "Lima base instance ready"
+    echo "=========================================="
+}
+
+reset_images() {
+    echo "=== Resetting Lima image instances ==="
+
+    # Check if base instance exists
+    if ! limactl list | grep "${LIMA_BASE}" >/dev/null 2>&1; then
+        echo "Error: Base instance ${LIMA_BASE} not found"
+        echo "Please run './ops/setup-lima-hosts.sh base' first to create the base instance"
+        exit 1
+    fi
+
+    echo "Stopping instances..."
+    limactl stop --tty=false ${LIMA_BASE} -f 2>/dev/null || true
+    limactl stop --tty=false ${LIMA_HOST_A} -f 2>/dev/null || true
+    limactl stop --tty=false ${LIMA_HOST_B} -f 2>/dev/null || true
+
+    sleep 2
+
+    echo "Removing cloned instances..."
+    limactl delete ${LIMA_HOST_A} --tty=false -f 2>/dev/null || true
+    limactl delete ${LIMA_HOST_B} --tty=false -f 2>/dev/null || true
+
+    # Clean up cloned data disks
+    delete_data_disk "${LIMA_HOST_A}"
+    delete_data_disk "${LIMA_HOST_B}"
+
+    echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_A}..."
+    limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_A}")")" ${LIMA_BASE} ${LIMA_HOST_A}
+
+    echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_B}..."
+    limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_B}")")" ${LIMA_BASE} ${LIMA_HOST_B}
+
+    clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_A}"
+    clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_B}"
+
+    echo "Starting ${LIMA_HOST_A}..."
+    limactl start --log-level=warn --tty=false ${LIMA_HOST_A}
+
+    echo "Starting ${LIMA_HOST_B}..."
+    limactl start --log-level=warn --tty=false ${LIMA_HOST_B}
+
+    echo ""
+    echo "=========================================="
+    echo "Lima image instances reset"
+    echo "=========================================="
+}
+
+# Check arguments
+if [[ $# -ne 1 ]]; then
+    echo "Usage: $0 {base|reset|all}"
+    echo ""
+    echo "  base   - Build only the base instance"
+    echo "  reset  - Delete and re-clone image instances from base"
+    echo "  all    - Build base and create image instances"
+    exit 1
+fi
+
+MODE="$1"
+
 echo "=== Setting up Lima hosts for exe.dev testing ==="
 
 if ! command -v limactl &>/dev/null; then
@@ -208,81 +309,42 @@ if ! command -v limactl &>/dev/null; then
     exit 1
 fi
 
-# Clean up existing instances if they exist
-limactl stop --tty=false exe-ctr-base -f 2>/dev/null || true
-limactl stop --tty=false exe-ctr -f 2>/dev/null || true
-limactl stop --tty=false exe-ctr-tests -f 2>/dev/null || true
+case "${MODE}" in
+    base)
+        setup_base
+        ;;
+    reset)
+        reset_images
+        ;;
+    all)
+        setup_base
+        reset_images
+        ;;
+    *)
+        echo "Error: Invalid mode '${MODE}'"
+        echo "Usage: $0 {base|reset|all}"
+        exit 1
+        ;;
+esac
 
-sleep 2
+if [[ "${MODE}" == "all" || "${MODE}" == "reset" ]]; then
+    echo "Configuring SSH access..."
+    echo "Adding Lima SSH config includes..."
+    mkdir -p "$HOME/.ssh"
+    touch "$HOME/.ssh/config"
 
-limactl delete exe-ctr-base --tty=false -f 2>/dev/null || true
-limactl delete exe-ctr --tty=false -f 2>/dev/null || true
-limactl delete exe-ctr-tests --tty=false -f 2>/dev/null || true
+    # Check if includes are already present
+    if ! grep -q "Include ~/.lima/\*/ssh.config" "$HOME/.ssh/config"; then
+        # Add at the beginning of the file
+        echo "Include ~/.lima/*/ssh.config" | cat - "$HOME/.ssh/config" >"$HOME/.ssh/config.tmp" && mv "$HOME/.ssh/config.tmp" "$HOME/.ssh/config"
+        echo "✓ Added Lima SSH config includes"
+    else
+        echo "✓ Lima SSH config includes already present"
+    fi
 
-delete_data_disk "${LIMA_BASE}"
-delete_data_disk "${LIMA_HOST_A}"
-delete_data_disk "${LIMA_HOST_B}"
-
-create_fresh_data_disk "${LIMA_BASE}"
-
-echo "Creating base Lima instance: ${LIMA_BASE}"
-base_disk_name="$(data_disk_name "${LIMA_BASE}")"
-# Ensure mount location referenced by template exists
-mkdir -p /tmp/lima
-limactl create --plain --tty=false --log-level=warn --name=${LIMA_BASE} \
-    --set "$(set_disk_expr "${base_disk_name}")" \
-    "${LIMA_CONFIG_PATH}"
-limactl start --tty=false --log-level=warn ${LIMA_BASE}
-
-echo "Checking for KVM support in VM..."
-if limactl shell ${LIMA_BASE} -- ls /dev/kvm 2>/dev/null; then
-    echo "✓ KVM is available (/dev/kvm found) - Kata containers should work"
-else
-    echo "⚠️  KVM is not available (/dev/kvm not found) - Kata containers won't work"
-    exit 1
-fi
-
-echo "Testing Lima SSH connection..."
-limactl shell ${LIMA_BASE} -- echo "SSH connection successful"
-
-# Provision the base VM
-provision_base_vm
-
-echo "Stopping base instance before cloning..."
-limactl stop --log-level=warn ${LIMA_BASE}
-
-echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_A}..."
-limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_A}")")" ${LIMA_BASE} ${LIMA_HOST_A}
-
-echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_B}..."
-limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_B}")")" ${LIMA_BASE} ${LIMA_HOST_B}
-
-clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_A}"
-clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_B}"
-
-echo "Starting ${LIMA_HOST_A}..."
-limactl start --log-level=warn --tty=false ${LIMA_HOST_A}
-
-echo "Starting ${LIMA_HOST_B}..."
-limactl start --log-level=warn --tty=false ${LIMA_HOST_B}
-
-echo "Configuring SSH access..."
-echo "Adding Lima SSH config includes..."
-mkdir -p "$HOME/.ssh"
-touch "$HOME/.ssh/config"
-
-# Check if includes are already present
-if ! grep -q "Include ~/.lima/\*/ssh.config" "$HOME/.ssh/config"; then
-    # Add at the beginning of the file
-    echo "Include ~/.lima/*/ssh.config" | cat - "$HOME/.ssh/config" >"$HOME/.ssh/config.tmp" && mv "$HOME/.ssh/config.tmp" "$HOME/.ssh/config"
-    echo "✓ Added Lima SSH config includes"
-else
-    echo "✓ Lima SSH config includes already present"
-fi
-
-# Add IdentityFile configuration for .local hosts
-if ! grep -q "Host lima-exe-ctr.local" "$HOME/.ssh/config"; then
-    cat >>"$HOME/.ssh/config" <<EOF
+    # Add IdentityFile configuration for .local hosts
+    if ! grep -q "Host lima-exe-ctr.local" "$HOME/.ssh/config"; then
+        cat >>"$HOME/.ssh/config" <<EOF
 
 Host lima-exe-ctr.local
     IdentityFile ${HOME}/.lima/_config/user
@@ -290,21 +352,22 @@ Host lima-exe-ctr.local
 Host lima-exe-ctr-tests.local
     IdentityFile ${HOME}/.lima/_config/user
 EOF
-    echo "✓ Added IdentityFile configuration for lima-exe-ctr.local and lima-exe-ctr-tests.local"
-else
-    echo "✓ IdentityFile configuration for .local hosts already present"
-fi
+        echo "✓ Added IdentityFile configuration for lima-exe-ctr.local and lima-exe-ctr-tests.local"
+    else
+        echo "✓ IdentityFile configuration for .local hosts already present"
+    fi
 
-echo ""
-echo "=========================================="
-echo "Lima hosts ready"
-echo "=========================================="
-echo ""
-echo "To access the VMs:"
-echo "  ssh lima-exe-ctr          # Main host"
-echo "  ssh lima-exe-ctr-tests    # Tests host"
-echo ""
-echo "To restore VMs to initial state:"
-echo "  ${OPS_DIR}/reset-lima-hosts.sh"
-echo ""
-echo "=========================================="
+    echo ""
+    echo "=========================================="
+    echo "Lima hosts ready"
+    echo "=========================================="
+    echo ""
+    echo "To access the VMs:"
+    echo "  ssh lima-exe-ctr          # Main host"
+    echo "  ssh lima-exe-ctr-tests    # Tests host"
+    echo ""
+    echo "To reset VMs to initial state:"
+    echo "  ${OPS_DIR}/setup-lima-hosts.sh reset"
+    echo ""
+    echo "=========================================="
+fi
