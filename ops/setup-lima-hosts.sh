@@ -312,21 +312,21 @@ if ! command -v limactl &>/dev/null; then
 fi
 
 case "${MODE}" in
-    base)
-        setup_base
-        ;;
-    reset)
-        reset_images
-        ;;
-    all)
-        setup_base
-        reset_images
-        ;;
-    *)
-        echo "Error: Invalid mode '${MODE}'"
-        echo "Usage: $0 {base|reset|all}"
-        exit 1
-        ;;
+base)
+    setup_base
+    ;;
+reset)
+    reset_images
+    ;;
+all)
+    setup_base
+    reset_images
+    ;;
+*)
+    echo "Error: Invalid mode '${MODE}'"
+    echo "Usage: $0 {base|reset|all}"
+    exit 1
+    ;;
 esac
 
 if [[ "${MODE}" == "all" || "${MODE}" == "reset" ]]; then
