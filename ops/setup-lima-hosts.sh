@@ -201,6 +201,7 @@ provision_base_vm() {
 }
 
 setup_base() {
+    local start_time=$SECONDS
     echo "=== Setting up Lima base instance ==="
 
     # Clean up existing base if it exists
@@ -237,9 +238,10 @@ setup_base() {
     echo "Stopping base instance before cloning..."
     limactl stop --log-level=warn ${LIMA_BASE}
 
+    local elapsed=$((SECONDS - start_time))
     echo ""
     echo "=========================================="
-    echo "Lima base instance ready"
+    echo "Lima base instance ready (${elapsed}s)"
     echo "=========================================="
 }
 

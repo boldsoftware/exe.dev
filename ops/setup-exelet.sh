@@ -36,17 +36,6 @@ IMAGES=(
     "docker.io/library/ubuntu:latest"
 )
 
-# Unpack and setup base volumes
-content_dir="${DATA_DIR}/content"
-mkdir -p "$content_dir"
-echo "Unpacking cached image blobs..."
-for img in "${ASSETS_DIR}"/*.tar; do
-    if [ -f "$img" ]; then
-        echo "Loading cached image blobs from $(basename "$img")"
-        tar xf "$img" --strip-components=2 -C "${content_dir}"
-    fi
-done
-
 # Start bootstrap exelet
 echo "Starting exeletd in background..."
 mkdir -p "${DATA_DIR}"/{storage,network,runtime}
