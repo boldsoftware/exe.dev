@@ -66,7 +66,7 @@ func TestEmbeddedFiles(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create request
 			req := httptest.NewRequest("GET", tt.path, nil)
-			req.Host = server.getMainDomain()
+			req.Host = server.env.WebHost
 			w := httptest.NewRecorder()
 
 			// Call the handler

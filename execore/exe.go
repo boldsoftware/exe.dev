@@ -334,6 +334,41 @@ func (s *Server) httpsPort() int {
 	return -1
 }
 
+// httpURLPort returns :PORT for use in http URLs.
+// It returns an empty string if not listening on HTTP, or if the port is 80.
+func (s *Server) httpURLPort() string {
+	if !s.servingHTTP() || s.httpLn.tcp.Port == 80 {
+		return ""
+	}
+	return fmt.Sprintf(":%d", s.httpLn.tcp.Port)
+}
+
+// httpsURLPort returns :PORT for use in https URLs.
+// It returns an empty string if not listening on HTTPS, or if the port is 443.
+func (s *Server) httpsURLPort() string {
+	if !s.servingHTTPS() || s.httpsLn.tcp.Port == 443 {
+		return ""
+	}
+	return fmt.Sprintf(":%d", s.httpsLn.tcp.Port)
+}
+
+// urlPort returns :PORT for use in URLs, according to useTLS.
+func (s *Server) urlPort(useTLS bool) string {
+	if useTLS {
+		return s.httpsURLPort()
+	}
+	return s.httpURLPort()
+}
+
+func (s *Server) bestScheme() string {
+	return schemeForTLS(s.servingHTTPS())
+}
+
+// bestURLPort returns :PORT for use in URLs, according to s.bestScheme().
+func (s *Server) bestURLPort() string {
+	return s.urlPort(s.servingHTTPS())
+}
+
 func runMigrations(slog *slog.Logger, dbPath string) error {
 	rawDB, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -352,11 +387,7 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 }
 
 // NewServer creates a new Server instance with database and container management
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, devMode, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, gateway string, env stage.Env) (*Server, error) {
-	if env.DevMode != devMode {
-		return nil, fmt.Errorf("env dev mode %q does not match devMode %q", env.DevMode, devMode)
-	}
-
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, gateway string, env stage.Env) (*Server, error) {
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, dbPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
@@ -756,14 +787,6 @@ func generatePairingCode() string {
 	return fmt.Sprintf("%06d", n.Int64())
 }
 
-// getBaseURL returns the base URL for the server
-func (s *Server) getBaseURL() string {
-	if s.env.WebDev {
-		return fmt.Sprintf("http://localhost:%v", s.httpPort())
-	}
-	return "https://exe.dev"
-}
-
 var errNoEmailService = errors.New("email service not configured")
 
 // sendEmail sends an email using the configured email service
@@ -924,19 +947,12 @@ func (s *Server) AuthenticatePublicKey(conn ssh.ConnMetadata, key ssh.PublicKey)
 	}, nil
 }
 
-// getDomain extracts the base domain from a host
-func getDomain(host string) string {
-	host = domz.Canonicalize(domz.StripPort(host))
-
-	// Check for localhost-based domains (dev mode)
-	if strings.HasSuffix(host, ".localhost") || host == "localhost" {
-		return "localhost"
+// baseDomain extracts the base domain from a host
+func (s *Server) baseDomain(host string) string {
+	host = domz.StripPort(host)
+	if match := domz.FirstMatch(host, s.env.WebHost, s.env.BoxHost); match != "" {
+		return match
 	}
-	// Check for exe.dev-based domains (production)
-	if strings.HasSuffix(host, ".exe.dev") || host == "exe.dev" {
-		return "exe.dev"
-	}
-
 	// Return as-is for custom domains
 	return host
 }
@@ -1099,13 +1115,6 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 	return &box
 }
 
-func (s *Server) boxSSHHost() string {
-	if s.env.ProxyDev {
-		return "localhost"
-	}
-	return "exe.dev"
-}
-
 func (s *Server) boxSSHPort() int {
 	if s.piperdPort != 22 {
 		return s.piperdPort
@@ -1119,54 +1128,31 @@ func (s *Server) boxSSHConnectionCommand(boxName string) string {
 	if port := s.boxSSHPort(); port != 22 {
 		dashP = fmt.Sprintf("-p %d ", port)
 	}
-	return "ssh " + dashP + boxName + "@" + s.boxSSHHost()
-}
-
-func (s *Server) replSSHHost() string {
-	if s.env.ProxyDev {
-		return "localhost"
-	}
-	return "exe.dev"
-}
-
-func (s *Server) replSSHPort() int {
-	if s.piperdPort != 22 {
-		return s.piperdPort
-	}
-	return 22
+	return "ssh " + dashP + boxName + "@" + s.env.BoxHost
 }
 
 // replSSHConnectionCommand returns the SSH command to connect to the REPL server.
 func (s *Server) replSSHConnectionCommand() string {
 	var dashP string
-	if port := s.replSSHPort(); port != 22 {
-		dashP = fmt.Sprintf("-p %v ", port)
+	if s.piperdPort != 22 {
+		dashP = fmt.Sprintf("-p %v ", s.piperdPort)
 	}
-	return "ssh " + dashP + s.replSSHHost()
+	return "ssh " + dashP + s.env.ReplHost
 }
 
 // boxProxyAddress returns the HTTPS proxy address for a box.
 func (s *Server) boxProxyAddress(boxName string) string {
-	if s.env.ProxyDev {
-		return fmt.Sprintf("http://%s.localhost:%d", boxName, s.httpPort())
-	}
-	return fmt.Sprintf("https://%s.exe.dev", boxName)
+	return fmt.Sprintf("%s://%s%s", s.bestScheme(), s.env.BoxSub(boxName), s.bestURLPort())
 }
 
-// terminalURL returns the terminal URL for a box.
-func (s *Server) terminalURL(boxName string) string {
-	if s.env.ProxyDev {
-		return fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, s.httpPort())
-	}
-	return fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
+// xtermURL returns the terminal URL for a box.
+func (s *Server) xtermURL(boxName string, useTLS bool) string {
+	return fmt.Sprintf("%s://%s%s", schemeForTLS(useTLS), s.env.BoxXtermSub(boxName), s.urlPort(useTLS))
 }
 
 // shelleyURL returns the Shelley agent URL for a box (port 9999).
 func (s *Server) shelleyURL(boxName string) string {
-	if s.env.ProxyDev {
-		return fmt.Sprintf("http://%s.localhost:%d", boxName, 9999)
-	}
-	return fmt.Sprintf("https://%s.exe.dev:9999", boxName)
+	return fmt.Sprintf("%s://%s:%d", s.bestScheme(), s.env.BoxSub(boxName), 9999)
 }
 
 // vscodeURL returns the VSCode remote SSH URL for a box.
@@ -1175,7 +1161,7 @@ func (s *Server) vscodeURL(boxName string) string {
 	if s.boxSSHPort() != 22 {
 		colonP = fmt.Sprintf(":%d", s.boxSSHPort())
 	}
-	connStr := boxName + "@" + s.boxSSHHost() + colonP
+	connStr := boxName + "@" + s.env.BoxHost + colonP
 	return fmt.Sprintf("vscode://vscode-remote/ssh-remote+%s/home/exedev/src?windowId=_blank", connStr)
 }
 
@@ -1280,7 +1266,7 @@ func (s *Server) createBoxCNAME(ctx context.Context, boxName string, shard int) 
 	defer cancel()
 
 	target := fmt.Sprintf("s%03d", shard)
-	_, err := s.dnsProvider.CreateCNAMERecord(dnsCtx, s.getMainDomain(), boxName, target, 5*time.Minute)
+	_, err := s.dnsProvider.CreateCNAMERecord(dnsCtx, s.env.BoxHost, boxName, target, 5*time.Minute)
 	if err != nil {
 		return fmt.Errorf("failed to create Route53 CNAME for box %s: %w", boxName, err)
 	}

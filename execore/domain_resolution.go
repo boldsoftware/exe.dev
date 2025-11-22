@@ -82,10 +82,10 @@ func (s *Server) apexPointsToPublicIP(ips []netip.Addr) bool {
 }
 
 func (s *Server) boxNameFromCNAME(queryHost, cname string) (string, error) {
-	name, ok := domz.CutBase(cname, s.getMainDomain())
+	name, ok := domz.CutBase(cname, s.env.BoxHost)
 	if !ok {
-		s.slog().Warn("resolveCustomDomain: CNAME does not point to main domain", "host", queryHost, "cname", cname, "mainDomain", s.getMainDomain())
-		return "", fmt.Errorf("CNAME does not point to %s: %s -> %s", s.getMainDomain(), queryHost, cname)
+		s.slog().Warn("resolveCustomDomain: CNAME does not point to main domain", "host", queryHost, "cname", cname, "mainDomain", s.env.BoxHost)
+		return "", fmt.Errorf("CNAME does not point to %s: %s -> %s", s.env.BoxHost, queryHost, cname)
 	}
 	if name == "" {
 		s.slog().Warn("resolveCustomDomain: empty box name from CNAME", "host", queryHost, "cname", cname)

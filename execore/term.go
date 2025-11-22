@@ -141,10 +141,8 @@ func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
 		userID, err := s.validateAuthCookie(r)
 		if err != nil {
 			// Not authenticated - redirect to login
-			scheme := getScheme(r)
-			returnURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
-			mainDomain := s.getMainDomainWithPort()
-			authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s", scheme, mainDomain, url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+			returnURL := fmt.Sprintf("%s://%s%s", getScheme(r), r.Host, r.URL.String())
+			authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
 			http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 			return
 		}
@@ -154,9 +152,7 @@ func (s *Server) withTerminalAuth(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			// User doesn't have access to this box (or it doesn't exist)
 			// Show access denied page
-			scheme := getScheme(r)
-			mainDomain := s.getMainDomainWithPort()
-			dashboardURL := fmt.Sprintf("%s://%s/~", scheme, mainDomain)
+			dashboardURL := fmt.Sprintf("%s/~", s.webBaseURL(r))
 			data := struct {
 				BoxName      string
 				DashboardURL string
@@ -536,13 +532,8 @@ type terminalAuthKey struct{}
 
 // isTerminalRequest determines if a request is for a terminal subdomain
 func (s *Server) isTerminalRequest(host string) bool {
-	return isTerminalRequestWithBase(host, s.terminalBaseHostname())
-}
-
-func isTerminalRequestWithBase(host, base string) bool {
-	// Extract hostname (strip port if present)
-	hostname := domz.StripPort(host)
-	return strings.HasSuffix(hostname, base)
+	_, err := s.parseTerminalHostname(host)
+	return err == nil
 }
 
 // handleTerminalRequest handles requests to terminal subdomains
@@ -556,10 +547,8 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	// Check authentication for other paths
 	if _, err := s.validateAuthCookie(r); err != nil {
 		// Invalid cookie, redirect to auth
-		scheme := getScheme(r)
-		returnURL := fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
-		mainDomain := s.getMainDomainWithPort()
-		authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s", scheme, mainDomain, url.QueryEscape(returnURL), url.QueryEscape(r.Host))
+		returnURL := fmt.Sprintf("%s://%s%s", getScheme(r), r.Host, r.URL.String())
+		authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(returnURL), url.QueryEscape(r.Host))
 		http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 		return
 	}
@@ -584,30 +573,25 @@ func (s *Server) handleTerminalRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) terminalBaseHostname() string {
-	// Development: box.xterm.localhost
-	// Production: box.xterm.exe.dev
-	base := ".xterm.exe.dev"
-	if s.env.ProxyDev {
-		base = ".xterm.localhost"
-	}
-	return base
-}
-
 // parseTerminalHostname extracts box name from terminal hostname
 func (s *Server) parseTerminalHostname(hostname string) (string, error) {
-	return parseTerminalHostnameWithBase(hostname, s.terminalBaseHostname())
+	hostname = domz.Canonicalize(domz.StripPort(hostname))
+	if box, ok := s.terminalBoxForBase(hostname); ok {
+		return box, nil
+	}
+	return "", fmt.Errorf("not a terminal hostname")
 }
 
-func parseTerminalHostnameWithBase(hostname, base string) (string, error) {
-	hostname = domz.StripPort(hostname)
-	// Extract box name from hostname.
-	boxName, ok := strings.CutSuffix(hostname, base)
+func (s *Server) terminalBoxForBase(hostname string) (string, bool) {
+	if hostname == "" {
+		return "", false
+	}
+	boxName, ok := domz.CutBase(hostname, s.env.BoxSub("xterm"))
 	if !ok {
-		return "", fmt.Errorf("not a terminal hostname")
+		return "", false
 	}
 	if !boxname.Valid(boxName) {
-		return "", fmt.Errorf("invalid box name")
+		return "", false
 	}
-	return boxName, nil
+	return boxName, true
 }

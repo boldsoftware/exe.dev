@@ -41,10 +41,10 @@ Creating BOX_NAME using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 App (HTTPS proxy → :8000)
-http://BOX_NAME.localhost:EXED_HTTP_PORT
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT BOX_NAME@localhost
+ssh -p SSH_PORT BOX_NAME@exe.cloud
 
 exe.dev ▶ ls
 Your boxes:
@@ -52,7 +52,7 @@ Your boxes:
 exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
-URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
 
@@ -67,13 +67,13 @@ exe.dev ▶ share add BOX_NAME friend@example.com --message='Welcome to my box'
 ✓ Invitation sent to friend@example.com
 
 friend@example.com will receive an email with access instructions.
-You can also share this URL directly: http://BOX_NAME.localhost:EXED_HTTP_PORT
+You can also share this URL directly: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 (They'll need to log in with friend@example.com to access it)
 
 exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
-URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
 
@@ -88,7 +88,7 @@ exe.dev ▶ share add-share-link BOX_NAME
 ✓ Share link created
 
 Anyone with this link can access your box after logging in:
-http://BOX_NAME.localhost:EXED_HTTP_PORT?share=SHARE_TOKEN
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT?share=SHARE_TOKEN
 
 To revoke this link, use:
   share remove-link BOX_NAME SHARE_TOKEN
@@ -96,7 +96,7 @@ To revoke this link, use:
 exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
-URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
 
@@ -113,7 +113,7 @@ exe.dev ▶ share remove BOX_NAME friend@example.com
 exe.dev ▶ share show BOX_NAME
 
 Sharing for box 'BOX_NAME'
-URL: http://BOX_NAME.localhost:EXED_HTTP_PORT
+URL: http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 Port: 8000
 Mode: Private
 

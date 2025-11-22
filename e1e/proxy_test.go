@@ -411,7 +411,7 @@ chmod +x /home/exedev/cgi-bin/headers
 			t.Fatalf("expected X-Forwarded-Proto=http, got %q", gotProto)
 		}
 
-		expectedHost := fmt.Sprintf("%s.localhost:%d", box, httpPort)
+		expectedHost := fmt.Sprintf("%s.exe.cloud:%d", box, httpPort)
 		if gotHost := envMap["HTTP_X_FORWARDED_HOST"]; gotHost != expectedHost {
 			t.Fatalf("expected X-Forwarded-Host=%q, got %q", expectedHost, gotHost)
 		}
@@ -462,7 +462,7 @@ chmod +x /home/exedev/cgi-bin/headers
 	t.Run("alternate_ports", func(t *testing.T) {
 		serveHTTP(t, Env.exed.ExtraPorts[0])
 
-		expectedRedirect := fmt.Sprintf("http://%s.localhost:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.localhost%%3A%d%%2F%%3Ffoo%%3D1", box, Env.exed.ExtraPorts[0], box, Env.exed.ExtraPorts[0])
+		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.exe.cloud%%3A%d%%2F%%3Ffoo%%3D1", box, Env.exed.ExtraPorts[0], box, Env.exed.ExtraPorts[0])
 		proxyAssert(t, box, proxyExpectation{
 			name:             "altport without auth redirects",
 			httpPort:         Env.exed.ExtraPorts[0],
@@ -520,16 +520,16 @@ type proxyAuthFixture struct {
 }
 
 func newProxyAuthFixture(t *testing.T, box string, port int, cookies []*http.Cookie) proxyAuthFixture {
-	proxyURL := fmt.Sprintf("http://%s.localhost:%d/", box, port)
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/", box, port)
 	cookieURL := mustParseURL(proxyURL)
 	localCookieAddr := fmt.Sprintf("http://localhost:%d", port)
 	localCookieURL := mustParseURL(localCookieAddr)
 	return proxyAuthFixture{
 		t:                  t,
 		proxyURL:           proxyURL,
-		logoutURL:          fmt.Sprintf("http://%s.localhost:%d/__exe.dev/logout", box, port),
+		logoutURL:          fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/logout", box, port),
 		expectedLogout:     fmt.Sprintf("http://localhost:%d/logged-out", port),
-		expectedReturnHost: fmt.Sprintf("%s.localhost:%d", box, port),
+		expectedReturnHost: fmt.Sprintf("%s.exe.cloud:%d", box, port),
 		cookieURL:          cookieURL,
 		localCookieAddr:    localCookieAddr,
 		localCookieURL:     localCookieURL,
@@ -852,7 +852,7 @@ func localhostRequestWithHostHeader(method, urlS string, body io.Reader) (*http.
 	if err != nil {
 		return nil, err
 	}
-	if !strings.HasSuffix(host, ".localhost") {
+	if !strings.HasSuffix(host, ".localhost") && !strings.HasSuffix(host, ".exe.cloud") {
 		return http.NewRequest(method, url.String(), body)
 	}
 	originalUrlHost := url.Host
@@ -876,13 +876,13 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 	client := noRedirectClient(jar)
 
 	// We put in a GET parameter here to ensure that all the redirects preserve the parameters.
-	proxyURL := fmt.Sprintf("http://%s.localhost:%d/?foo=1", boxName, exp.httpPort)
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/?foo=1", boxName, exp.httpPort)
 	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
 	if err != nil {
 		t.Errorf("failed to make http request: %v", err)
 		return
 	}
-	req.Host = fmt.Sprintf("%s.localhost:%d", boxName, exp.httpPort)
+	req.Host = fmt.Sprintf("%s.exe.cloud:%d", boxName, exp.httpPort)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Errorf("failed to do http request: %v", err)
@@ -1001,7 +1001,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 		}
 		// Now finally we should have a new cookie and should be back at the beginning!
 		// Here we have to do a little bit of sleight of hand since the final redirect is /...
-		// without an http://..., and Go doesn't do this with the foo.localhost stuff... So:
+		// without an http://..., and Go doesn't do this with the foo.exe.cloud stuff... So:
 		location := resp.Header.Get("Location")
 		if location == "" {
 			t.Fatalf("failed to get redirect location: %v", err)
@@ -1081,7 +1081,7 @@ func makeProxyRequestWithPath(t *testing.T, boxName string, httpPort int, path s
 	if err != nil {
 		t.Fatalf("failed to create proxy request: %v", err)
 	}
-	req.Host = fmt.Sprintf("%s.localhost:%d", boxName, httpPort)
+	req.Host = fmt.Sprintf("%s.exe.cloud:%d", boxName, httpPort)
 	return req
 }
 

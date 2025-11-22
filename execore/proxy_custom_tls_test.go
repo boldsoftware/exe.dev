@@ -17,7 +17,7 @@ func TestServerGetCertificate(t *testing.T) {
 	s.lookupCNAMEFunc = func(ctx context.Context, host string) (string, error) {
 		switch host {
 		case "example.com":
-			return "example.exe.local", nil
+			return "example.exe.cloud", nil
 		default:
 			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 		}

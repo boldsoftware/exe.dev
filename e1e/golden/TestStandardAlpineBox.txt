@@ -41,10 +41,10 @@ Creating BOX_NAME using image linuxcontainers/alpine...
 Ready in ELAPSED_TIME!
 
 App (HTTPS proxy → :80)
-http://BOX_NAME.localhost:EXED_HTTP_PORT
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT BOX_NAME@localhost
+ssh -p SSH_PORT BOX_NAME@exe.cloud
 
 exe.dev ▶ rm BOX_NAME
 Deleting BOX_NAME...

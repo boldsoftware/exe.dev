@@ -1980,7 +1980,7 @@ func newBox(t *testing.T, pty *expectPty, opts ...BoxOpts) string {
 	pty.want("App")
 	pty.want("http://")
 	pty.want("SSH")
-	pty.wantf("ssh -p %v %v@localhost", Env.sshPort(), boxName)
+	pty.wantf("ssh -p %v %v@exe.cloud", Env.sshPort(), boxName)
 
 	// Confirm it is there.
 	pty.sendLine("ls")

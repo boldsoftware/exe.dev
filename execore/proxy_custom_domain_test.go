@@ -68,9 +68,8 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 	customDomain := "example.com"
 	server.lookupCNAMEFunc = func(ctx context.Context, host string) (string, error) {
 		if host == customDomain {
-			// Simulate CNAME pointing to mybox.exe.dev (or mybox.localhost in dev)
-			mainDomain := server.getMainDomain()
-			return boxName + "." + mainDomain, nil
+			// Simulate CNAME pointing to mybox.exe.dev (or mybox.exe.cloud in dev)
+			return server.env.BoxSub(boxName), nil
 		}
 		return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 	}
@@ -130,10 +129,9 @@ func TestCustomDomainAuthFlow(t *testing.T) {
 		location2 := recorder2.Header().Get("Location")
 		t.Logf("Step 2 redirect location: %s", location2)
 
-		// Verify it's redirecting to the main domain (exe.local in tests)
-		mainDomain := server.getMainDomain()
-		if !strings.Contains(location2, mainDomain) {
-			t.Fatalf("Expected redirect to main domain (%s), got: %s", mainDomain, location2)
+		// Verify it's redirecting to the main web domain (localhost in tests)
+		if !strings.Contains(location2, server.env.WebHost) {
+			t.Fatalf("Expected redirect to main domain (%s), got: %s", server.env.WebHost, location2)
 		}
 
 		// Verify it's going to /auth endpoint

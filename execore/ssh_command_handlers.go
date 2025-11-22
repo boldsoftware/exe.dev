@@ -360,13 +360,9 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		cc.Write("\r\n\033[1A")
 	}
 
-	exedevURL := "https://exe.dev"
-	terminalURL := fmt.Sprintf("https://%s.xterm.exe.dev", boxName)
-	if ss.server.env.ProxyDev {
-		terminalURL = fmt.Sprintf("http://%s.xterm.localhost:%d", boxName, ss.server.httpPort())
-		exedevURL = fmt.Sprintf("http://localhost:%d", ss.server.httpPort())
-	}
-	shelleyJSON := map[string]interface{}{
+	exedevURL := ss.server.webBaseURLNoRequest()
+	terminalURL := ss.server.xtermURL(boxName, ss.server.servingHTTPS())
+	shelleyJSON := map[string]any{
 		"terminal_url":  terminalURL,
 		"default_model": shelleyDefaultModel,
 	}
@@ -688,7 +684,7 @@ done:
 		ss.server.sshMetrics.boxCreationDur.Observe(totalTime.Seconds())
 	}
 	sshCommand := ss.server.boxSSHConnectionCommand(boxName)
-	httpsProxyAddr := ss.server.boxProxyAddress(boxName)
+	boxProxyAddr := ss.server.boxProxyAddress(boxName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
@@ -706,10 +702,10 @@ done:
 		out := map[string]any{
 			"box_name":    boxName,
 			"ssh_command": sshCommand,
-			"ssh_server":  ss.server.boxSSHHost(),
+			"ssh_server":  ss.server.env.BoxHost,
 			"ssh_port":    ss.server.boxSSHPort(),
 			"ssh_user":    boxName,
-			"https_url":   httpsProxyAddr,
+			"https_url":   boxProxyAddr,
 			"proxy_port":  proxyPort,
 		}
 		if shelleyUrl != "" {
@@ -725,7 +721,7 @@ done:
 		)
 	}
 	services = append(services,
-		[3]string{"App", fmt.Sprintf("HTTPS proxy → :%d", proxyPort), httpsProxyAddr},
+		[3]string{"App", fmt.Sprintf("HTTPS proxy → :%d", proxyPort), boxProxyAddr},
 		[3]string{"SSH", "", sshCommand}, // show SSH last, to make it most prominent
 	)
 	if cc.IsInteractive() {
@@ -1036,7 +1032,7 @@ func (ss *SSHServer) handleBrowserCommand(ctx context.Context, cc *exemenu.Comma
 		return err
 	}
 
-	baseURL := ss.server.getBaseURL()
+	baseURL := ss.server.webBaseURLNoRequest()
 	magicURL := fmt.Sprintf("%s/auth/verify?token=%s", baseURL, token)
 	if cc.WantJSON() {
 		magicLink := map[string]string{

@@ -3,18 +3,22 @@ package stage
 
 // An Env represents a deployment stage/environment.
 type Env struct {
-	Name string // the name of the stage (for logging/debugging): "prod", "staging", "local", "test", etc.
+	// Note: there is intentionally no string Name or DevMode field here.
+	// The instant one gets added, LLMs will start doing things like `if env.Name == "prod" {...}`.
+	// That ends up being a fragile headache. We've been there once.
+	// Instead, use specifically-named flags for specific features.
+	// Avoid generic "is this prod or dev?" checks.
 
-	WebHost  string // the base hostname of the website; prod is "exe.dev"
+	WebHost  string // the base hostname of the website; prod is "exe.dev", dev is "localhost"
 	ReplHost string // the base hostname of the repl; prod is "exe.dev"
-	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz")
+	BoxHost  string // the base hostname of boxes; prod is "exe.dev" (but soon will be "exe.xyz"), dev is "exe.cloud"
 
 	UseRoute53        bool // whether to use Route53 for DNS management and LetsEncrypt DNS challenges
 	UseCobble         bool // whether to start cobble/pebble for local ACME testing
 	DiscoverPublicIPs bool // whether to attempt to discover public IPs of the server using EC2 metadata service
 
 	FakeEmail  bool // whether to log emails instead of sending them
-	ReplDev    bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands)
+	ReplDev    bool // whether to expose dev-only repl features (printing internal errors, showing hidden commands, skipping real email, etc.)
 	WebDev     bool // whether to expose dev-only web features (auto-show email links, skipping real email, etc.)
 	ProxyDev   bool // whether to expose dev-only proxy features (addressing a box directly via host:port, etc.)
 	GatewayDev bool // allow X-Exedev-Box auth even when request source IP isn't tailscale
@@ -22,24 +26,16 @@ type Env struct {
 
 	ShowHiddenDocs    bool // whether to load and display unpublished docs
 	AutoStartSSHPiper bool // whether to auto-start sshpiper for local workflows
-
-	DevMode string // dev mode: "local", "test", or ""; TODO: delete in favor of more precise flags
 }
 
-func (e Env) String() string {
-	if e.DevMode != "" {
-		return e.Name + "(" + e.DevMode + ")"
-	}
-	return e.Name
-}
-
+// Local returns an Env configured for convenient local human development.
+// It enables more expensive features (cobble, auto-starting sshpiper),
+// and provides convenience shortcuts like email links in the console/web.
 func Local() Env {
 	return Env{
-		Name: "local",
-
 		WebHost:  "localhost",
 		ReplHost: "localhost",
-		BoxHost:  "localhost",
+		BoxHost:  "exe.cloud",
 
 		// auto-start cobble/pebble for ACME testing
 		UseRoute53:        false,
@@ -55,18 +51,18 @@ func Local() Env {
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: true,
-
-		DevMode: "local",
 	}
 }
 
+// Test returns an Env configured for automated tests.
+// It disables external dependencies and speeds up operations where possible.
+// It should be otherwise similar to Staging/Prod.
+// In particular, dev features should be disabled unless strictly needed for automated tests.
 func Test() Env {
 	return Env{
-		Name: "test",
-
 		WebHost:  "localhost",
 		ReplHost: "localhost",
-		BoxHost:  "localhost",
+		BoxHost:  "exe.cloud",
 
 		// tests start their own cobble/pebble instances as needed
 		UseRoute53:        false,
@@ -75,29 +71,27 @@ func Test() Env {
 
 		FakeEmail:  true,
 		ReplDev:    false,
-		WebDev:     true,
+		WebDev:     false,
 		ProxyDev:   true,
 		GatewayDev: true,
 		SkipBanner: true,
 
 		ShowHiddenDocs:    true,
 		AutoStartSSHPiper: false,
-
-		DevMode: "test",
 	}
 }
 
+// Staging returns an Env configured for the staging deployment environment.
+// It should be as similar as possible to Prod, but with staging domains.
 func Staging() Env {
 	return Env{
-		Name: "staging",
-
 		WebHost:  "exe-staging.dev",
 		ReplHost: "exe-staging.dev",
-		BoxHost:  "exe-staging.dev",
+		BoxHost:  "exe-staging.dev", // TODO: exe-staging.xyz
 
 		UseRoute53:        true,
 		UseCobble:         false,
-		DiscoverPublicIPs: true,
+		DiscoverPublicIPs: true, // TODO: is this right?
 
 		FakeEmail:  false,
 		ReplDev:    false,
@@ -108,18 +102,15 @@ func Staging() Env {
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
-
-		DevMode: "",
 	}
 }
 
+// Prod returns an Env configured for prod.
 func Prod() Env {
 	return Env{
-		Name: "prod",
-
 		WebHost:  "exe.dev",
 		ReplHost: "exe.dev",
-		BoxHost:  "exe.dev",
+		BoxHost:  "exe.dev", // TODO: exe.xyz
 
 		UseRoute53:        true,
 		UseCobble:         false,
@@ -134,7 +125,12 @@ func Prod() Env {
 
 		ShowHiddenDocs:    false,
 		AutoStartSSHPiper: false,
-
-		DevMode: "",
 	}
 }
+
+func (e Env) String() string {
+	return e.ReplHost
+}
+
+func (e Env) BoxSub(sub string) string      { return sub + "." + e.BoxHost }
+func (e Env) BoxXtermSub(sub string) string { return sub + ".xterm." + e.BoxHost }

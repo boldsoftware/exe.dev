@@ -64,7 +64,7 @@ func TestHandleShelleyDownload(t *testing.T) {
 			}
 
 			req := httptest.NewRequest("GET", url, nil)
-			req.Host = s.getMainDomain()
+			req.Host = s.env.WebHost
 			w := httptest.NewRecorder()
 
 			s.ServeHTTP(w, req)
@@ -102,7 +102,7 @@ func TestRenderShelleyDownloadPage(t *testing.T) {
 	s := newTestServer(t)
 
 	req := httptest.NewRequest("GET", "/shelley/download", nil)
-	req.Host = s.getMainDomain()
+	req.Host = s.env.WebHost
 	w := httptest.NewRecorder()
 
 	s.ServeHTTP(w, req)

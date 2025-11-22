@@ -41,13 +41,13 @@ Creating BOX_NAME using image boldsoftware/exeuntu...
 Ready in ELAPSED_TIME!
 
 Coding agent
-http://BOX_NAME.localhost:9999
+http://BOX_NAME.exe.cloud:9999
 
 App (HTTPS proxy → :8000)
-http://BOX_NAME.localhost:EXED_HTTP_PORT
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
 
 SSH
-ssh -p SSH_PORT BOX_NAME@localhost
+ssh -p SSH_PORT BOX_NAME@exe.cloud
 
 exe.dev ▶ ls
 Your boxes:
@@ -57,7 +57,7 @@ Goodbye!
 
 
 ●
-● ssh BOX_NAME@localhost
+● ssh BOX_NAME@exe.cloud
 ●
 
 To run a command as administrator (user "root"), use "sudo <command>".
@@ -74,11 +74,11 @@ exedev@BOX_NAME:~$ echo restart-test > /home/exedev/restart.txt
 exedev@BOX_NAME:~$ sudo reboot
 Failed to set wall message, ignoring: Unit dbus-org.freedesktop.login1.service failed to load properly, please adjust/correct and reload service manager: File exists
 Call to Reboot failed: Unit dbus-org.freedesktop.login1.service failed to load properly, please adjust/correct and reload service manager: File exists
-exedev@BOX_NAME:~$ Connection to localhost closed by remote host.
+exedev@BOX_NAME:~$ Connection to exe.cloud closed by remote host.
 
 
 ●
-● ssh BOX_NAME@localhost
+● ssh BOX_NAME@exe.cloud
 ●
 
 

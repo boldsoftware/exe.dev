@@ -272,13 +272,13 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 	client := noRedirectClient(jar)
 
 	// Build URL with custom query string
-	proxyURL := fmt.Sprintf("http://%s.localhost:%d/?%s", box, exp.httpPort, query)
+	proxyURL := fmt.Sprintf("http://%s.exe.cloud:%d/?%s", box, exp.httpPort, query)
 	req, err := localhostRequestWithHostHeader("GET", proxyURL, nil)
 	if err != nil {
 		t.Errorf("failed to make http request: %v", err)
 		return
 	}
-	req.Host = fmt.Sprintf("%s.localhost:%d", box, exp.httpPort)
+	req.Host = fmt.Sprintf("%s.exe.cloud:%d", box, exp.httpPort)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Errorf("failed to do http request: %v", err)

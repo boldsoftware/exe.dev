@@ -440,7 +440,7 @@ func (s *Server) handleMobileEmailAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send verification email
-	verifyURL := fmt.Sprintf("%s/m/verify-token?token=%s", s.getBaseURL(), token)
+	verifyURL := fmt.Sprintf("%s/m/verify-token?token=%s", s.webBaseURL(r), token)
 	subject := "Verify your email - exe.dev"
 	body := fmt.Sprintf(`Hello,
 
@@ -663,7 +663,7 @@ func (s *Server) handleMobileCreatingStream(w http.ResponseWriter, r *http.Reque
 		if err == io.EOF {
 			// Creation completed successfully
 			httpsURL := s.boxProxyAddress(hostname)
-			sseEvent(w, "done", fmt.Sprintf("%s|%s/", httpsURL, s.terminalURL(hostname)))
+			sseEvent(w, "done", fmt.Sprintf("%s|%s/", httpsURL, s.xtermURL(hostname, r.TLS != nil)))
 			return
 		}
 		if err != nil {

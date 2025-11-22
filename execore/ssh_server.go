@@ -583,7 +583,7 @@ func (ss *SSHServer) handleRegistration(s sshsession.Session, publicKey string) 
 	fmt.Fprint(s, "\r\n\033[1;33mEXE.DEV: get a box over ssh\033[0m\r\n")
 	if ghInfo.Email != "" {
 		fmt.Fprintf(s, "\r\n✨ Recognized \033[1m@%s\033[0m's public GitHub SSH key. ✨\r\n", ghInfo.Login)
-		fmt.Fprintf(s, "(This key and email are public on GitHub; see %s/docs/ssh-github)\r\n", ss.server.getBaseURL())
+		fmt.Fprintf(s, "(This key and email are public on GitHub; see %s/docs/ssh-github)\r\n", ss.server.webBaseURLNoRequest())
 		fmt.Fprintf(s, "Confirm this email to log in instantly,\r\n")
 		fmt.Fprintf(s, "or enter a different one to get a magic login link.\r\n\r\n")
 	} else {
@@ -883,7 +883,7 @@ func (ss *SSHServer) startEmailVerification(s ssh.Session, publicKey, email stri
 
 		// Send new device verification email
 		subject := "New ssh key login - EXE.DEV"
-		verifyURL := fmt.Sprintf("%s/verify-device?token=%s", ss.server.getBaseURL(), verif.Token)
+		verifyURL := fmt.Sprintf("%s/verify-device?token=%s", ss.server.webBaseURLNoRequest(), verif.Token)
 		body := fmt.Sprintf(`Hello,
 
 A new ssh key is trying to register with your EXE.DEV account email, with public key:
@@ -917,7 +917,7 @@ The EXE.DEV team`, publicKey, verifyURL)
 
 	// Send verification email
 	subject := "Welcome to EXE.DEV - Verify Your Email"
-	verifyURL := fmt.Sprintf("%s/verify-email?token=%s&s=exemenu", ss.server.getBaseURL(), verif.Token)
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s&s=exemenu", ss.server.webBaseURLNoRequest(), verif.Token)
 	body := fmt.Sprintf(`Welcome to EXE.DEV!
 
 Please click the link below to verify your email address:

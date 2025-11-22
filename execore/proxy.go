@@ -101,13 +101,6 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reject HTTPS requests to localhost domains in dev mode
-	if r.TLS != nil && s.env.ProxyDev && strings.HasSuffix(hostHeaderHost, ".localhost") {
-		s.slog().WarnContext(r.Context(), "HTTPS not supported for localhost domains", "host", r.Host)
-		http.Error(w, "HTTPS not supported for localhost domains. Use exe.local instead.", http.StatusBadRequest)
-		return
-	}
-
 	// Parse hostname to extract box name and optional explicit target port
 	boxName, err := s.resolveBoxName(r.Context(), hostHeaderHost)
 	if err != nil {
@@ -225,7 +218,6 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		if isOwner {
 			// Render owner-facing help page
-			terminalHost := fmt.Sprintf("%s.xterm.%s", boxName, s.getMainDomainWithPort())
 			data := struct {
 				BoxName         string
 				Port            int
@@ -234,7 +226,7 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			}{
 				BoxName:         boxName,
 				Port:            route.Port,
-				TerminalURL:     fmt.Sprintf("%s://%s/", getScheme(r), terminalHost),
+				TerminalURL:     s.xtermURL(boxName, r.TLS != nil),
 				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
 			}
 
@@ -259,8 +251,9 @@ func (s *Server) isProxyRequest(host string) bool {
 	if hostname == "" || domz.IsLocalhost(hostname) {
 		return false
 	}
+	// TODO: once web host and box host are distinct in prod+staging, we can get rid of the WebHost entries here.
 	switch hostname {
-	case s.getMainDomain(), s.getMainDomain("www"), s.tsDomain:
+	case s.env.BoxHost, s.tsDomain, s.env.WebHost, "www." + s.env.WebHost:
 		return false
 	}
 
@@ -318,38 +311,20 @@ func (s *Server) getAuthenticatedUserID(r *http.Request, box exedb.Box) (string,
 	return "", false
 }
 
-// getMainDomain returns the main domain based on dev mode.
-// If sub is provided, it returns sub.domain (e.g., "www.exe.local" or "box.exe.dev").
-// If sub is empty, it returns just the domain (e.g., "exe.local" or "exe.dev").
-func (s *Server) getMainDomain(sub ...string) string {
-	domain := s.env.WebHost
-	if s.env.ProxyDev {
-		if s.servingHTTPS() {
-			domain = "exe.local"
-		} else {
-			domain = "localhost"
-		}
-	}
-	if len(sub) > 0 && sub[0] != "" {
-		return sub[0] + "." + domain
-	}
-	return domain
+func (s *Server) webBaseURLNoRequest() string {
+	return fmt.Sprintf("%s://%s%s", s.bestScheme(), s.env.WebHost, s.bestURLPort())
 }
 
-// getMainDomainWithPort returns the main domain with port for redirects
-func (s *Server) getMainDomainWithPort() string {
-	domain := s.getMainDomain()
-
-	// In dev mode, add the HTTP port
-	if s.env.ProxyDev && s.servingHTTP() {
-		port := s.httpPort()
-		// Only add port if it's not the default HTTP port (80)
-		if port != 80 {
-			return fmt.Sprintf("%s:%d", domain, port)
-		}
+func (s *Server) webBaseURL(r *http.Request) string {
+	_, port, _ := net.SplitHostPort(r.Host)
+	if port == "" {
+		// Use listener port if not default for the scheme
+		port = s.urlPort(r.TLS != nil)
+	} else {
+		// Respect port from Host header
+		port = ":" + port
 	}
-
-	return domain
+	return fmt.Sprintf("%s://%s%s", getScheme(r), s.env.WebHost, port)
 }
 
 // getProxyPorts returns the list of ports that should be used for proxying
@@ -481,37 +456,7 @@ func (s *Server) handleProxyLogin(w http.ResponseWriter, r *http.Request) {
 		redirect = "/"
 	}
 
-	// Determine scheme and domain based on request
-	scheme := getScheme(r)
-
-	// In dev mode, choose domain based on scheme:
-	// - HTTP uses localhost
-	// - HTTPS uses exe.local
-	// In production, always use exe.dev
-	var mainDomain string
-	if s.env.ProxyDev {
-		if r.TLS != nil {
-			mainDomain = "exe.local"
-		} else {
-			mainDomain = "localhost"
-		}
-	} else {
-		mainDomain = "exe.dev"
-	}
-
-	// Parse the port from the incoming request
-	_, portStr, err := net.SplitHostPort(r.Host)
-	var mainHost string
-	if err != nil {
-		// No port in Host header - use default port for scheme
-		mainHost = mainDomain
-	} else {
-		// Port is explicit - use it (e.g., localhost:8080)
-		mainHost = fmt.Sprintf("%s:%s", mainDomain, portStr)
-	}
-
-	authURL := fmt.Sprintf("%s://%s/auth?redirect=%s&return_host=%s",
-		scheme, mainHost, url.QueryEscape(redirect), url.QueryEscape(r.Host))
+	authURL := fmt.Sprintf("%s/auth?redirect=%s&return_host=%s", s.webBaseURL(r), url.QueryEscape(redirect), url.QueryEscape(r.Host))
 
 	s.slog().DebugContext(r.Context(), "[REDIRECT] handleProxyLogin redirecting to main domain", "to", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
@@ -573,30 +518,7 @@ func (s *Server) handleProxyLogout(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Redirect to logged out page on main domain
-	scheme := getScheme(r)
-
-	// In dev mode, choose domain based on scheme
-	var mainDomain string
-	if s.env.ProxyDev {
-		if r.TLS != nil {
-			mainDomain = "exe.local"
-		} else {
-			mainDomain = "localhost"
-		}
-	} else {
-		mainDomain = "exe.dev"
-	}
-
-	// Parse the port from the incoming request
-	_, portStr, err := net.SplitHostPort(r.Host)
-	var mainHost string
-	if err != nil {
-		mainHost = mainDomain
-	} else {
-		mainHost = fmt.Sprintf("%s:%s", mainDomain, portStr)
-	}
-
-	logoutURL := fmt.Sprintf("%s://%s/logged-out", scheme, mainHost)
+	logoutURL := fmt.Sprintf("%s/logged-out", s.webBaseURL(r))
 	http.Redirect(w, r, logoutURL, http.StatusTemporaryRedirect)
 }
 

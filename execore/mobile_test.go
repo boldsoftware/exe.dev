@@ -15,7 +15,7 @@ func TestMobileHostnameCheck(t *testing.T) {
 	// Test hostname availability check
 	reqBody := `{"hostname": "test-hostname"}`
 	req := httptest.NewRequest("POST", "/m/check-hostname", strings.NewReader(reqBody))
-	req.Host = server.getMainDomain()
+	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -51,7 +51,7 @@ func TestMobileVMListUnauthorized(t *testing.T) {
 
 	// Test VM list without authentication
 	req := httptest.NewRequest("GET", "/m/home", nil)
-	req.Host = server.getMainDomain()
+	req.Host = server.env.WebHost
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
 
@@ -72,7 +72,7 @@ func TestMobileInvalidHostname(t *testing.T) {
 	// Test invalid hostname check
 	reqBody := `{"hostname": "a"}`
 	req := httptest.NewRequest("POST", "/m/check-hostname", strings.NewReader(reqBody))
-	req.Host = server.getMainDomain()
+	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)
@@ -108,7 +108,7 @@ func TestMobileInvalidEmail(t *testing.T) {
 	form.Add("email", "invalid-email")
 
 	req := httptest.NewRequest("POST", "/m/email-auth", strings.NewReader(form.Encode()))
-	req.Host = server.getMainDomain()
+	req.Host = server.env.WebHost
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 	server.ServeHTTP(w, req)

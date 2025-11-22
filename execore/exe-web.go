@@ -112,7 +112,7 @@ func (s *Server) setupHTTPSServer() {
 
 	s.slog().Info("set up wildcard TLS certificates with Route 53", "decision", s.env.UseRoute53, "stage", s.env.String())
 	if s.env.UseRoute53 {
-		wildcardDomains := []string{s.getMainDomain(), s.getMainDomain("xterm")}
+		wildcardDomains := []string{s.env.WebHost, s.env.BoxHost, s.env.BoxSub("xterm")}
 		wildcardDomains = dedupInPlace(wildcardDomains)
 		wildcardDomains = domz.FilterEmpty(wildcardDomains)
 		s.wildcardCertManager = route53.NewWildcardCertManager(
@@ -210,28 +210,14 @@ func (s *Server) resolveBoxName(ctx context.Context, hostname string) (string, e
 	if hostname == "" {
 		return "", errInvalidBoxName
 	}
-
-	if hostname == s.getMainDomain() {
+	// Reject exact box domain (apex).
+	if hostname == s.env.BoxHost {
 		return "", errInvalidBoxName
 	}
-
-	parse := func(hostname string) string {
-		if host, ok := domz.CutBase(hostname, s.getMainDomain()); ok {
-			return host
-		}
-
-		// In dev mode, also try localhost suffix
-		if s.env.ProxyDev {
-			if host, ok := domz.CutBase(hostname, "localhost"); ok {
-				return host
-			}
-		}
-
-		return ""
-	}
-
-	if boxName := parse(hostname); boxName != "" {
-		return boxName, nil
+	// If a subdomain of our box domain, return the box name.
+	sub := domz.Label(hostname, s.env.BoxHost)
+	if sub != "" {
+		return sub, nil
 	}
 
 	// Reject non-domain hostnames.
@@ -259,7 +245,7 @@ func (s *Server) lookupA(ctx context.Context, host string) ([]netip.Addr, error)
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
 func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error {
 	host = domz.Canonicalize(host)
-	if domz.Matches(host, s.getMainDomain()) {
+	if domz.FirstMatch(host, s.env.BoxHost, s.env.WebHost) != "" {
 		return nil
 	}
 
@@ -299,7 +285,7 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	}
 
 	// 2) Main domain handling
-	if domz.Matches(serverName, s.getMainDomain()) {
+	if domz.FirstMatch(serverName, s.env.BoxHost, s.env.WebHost) != "" {
 		if s.wildcardCertManager != nil {
 			cert, err := s.wildcardCertManager.GetCertificate(hello)
 			if err != nil {
@@ -313,7 +299,7 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 
 	if s.certManager == nil {
 		s.slog().Error("no certificate manager configured; was https enabled at startup?", "serverName", serverName)
-		return nil, fmt.Errorf("no certificate manager configured for %s", s.getMainDomain())
+		return nil, fmt.Errorf("no certificate manager configured for %s", serverName)
 	}
 
 	s.slog().Debug("getCertificate", "serverName", serverName)
@@ -1121,7 +1107,7 @@ The exe.dev team`, verifyEmailURL)
 
 	// Show success page
 	var devURL string
-	if s.env.WebDev && domz.IsLocalhost(r.Host) {
+	if s.env.WebDev {
 		devURL = verifyEmailURL
 	}
 	s.showAuthEmailSent(w, r, email, devURL)
@@ -1367,7 +1353,7 @@ func (s *Server) createAuthCookie(ctx context.Context, userID, domain string) (s
 		return queries.InsertAuthCookie(ctx, exedb.InsertAuthCookieParams{
 			CookieValue: cookieValue,
 			UserID:      userID,
-			Domain:      getDomain(domain),
+			Domain:      s.baseDomain(domain),
 			ExpiresAt:   expiresAt,
 		})
 	})
@@ -1421,7 +1407,7 @@ func (s *Server) validateNamedAuthCookie(r *http.Request, cookieName string) (st
 
 	ctx := r.Context()
 	cookieValue := cookie.Value
-	domain := getDomain(r.Host)
+	domain := s.baseDomain(r.Host)
 
 	var userID string
 	var expiresAt time.Time
@@ -1590,9 +1576,9 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 
 	s.slog().DebugContext(r.Context(), "[REDIRECT] redirectAfterAuth called", "redirectURL", redirectURL, "returnHost", returnHost, "user_id", userID)
 
-	// Check if returnHost is actually a subdomain that needs proxy/terminal auth
+	// Check if returnHost is actually a proxy/terminal host that needs subdomain auth
 	// Skip the proxy/terminal flow if returnHost is the main domain itself
-	shouldDoProxyFlow := returnHost != "" && redirectURL != "" && !s.isMainDomain(returnHost)
+	shouldDoProxyFlow := returnHost != "" && redirectURL != "" && (s.isTerminalRequest(returnHost) || s.isProxyRequest(returnHost))
 
 	if shouldDoProxyFlow {
 		if s.isTerminalRequest(returnHost) {
@@ -1767,7 +1753,7 @@ func (s *Server) handleUserDashboard(w http.ResponseWriter, r *http.Request, use
 			Box:             box,
 			SSHCommand:      s.boxSSHConnectionCommand(result.Name),
 			ProxyURL:        s.boxProxyAddress(result.Name),
-			TerminalURL:     s.terminalURL(result.Name),
+			TerminalURL:     s.xtermURL(result.Name, r.TLS != nil),
 			VSCodeURL:       template.URL(s.vscodeURL(result.Name)),
 			ProxyPort:       route.Port,
 			ProxyShare:      route.Share,
@@ -1907,25 +1893,20 @@ func (s *Server) handleLoggedOut(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		MainDomain string
 	}{
-		MainDomain: s.getMainDomain(),
+		MainDomain: s.env.WebHost,
 	}
 	_ = s.renderTemplate(w, "proxy-logged-out.html", data)
 }
 
 // getScheme returns the request scheme
 func getScheme(r *http.Request) string {
-	if r.TLS != nil {
+	return schemeForTLS(r.TLS != nil)
+}
+
+// getScheme returns the http(s) request scheme for useTLS.
+func schemeForTLS(useTLS bool) string {
+	if useTLS {
 		return "https"
 	}
 	return "http"
-}
-
-// isMainDomain checks if the given host (with optional port) is the main domain
-func (s *Server) isMainDomain(host string) bool {
-	hostname := domz.StripPort(host)
-	mainDomain := s.getMainDomain()
-
-	// Check if it's exactly the main domain or www subdomain
-	return hostname == mainDomain || hostname == "www."+mainDomain ||
-		(s.env.WebDev && (hostname == "localhost" || hostname == "exe.local"))
 }

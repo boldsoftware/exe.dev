@@ -116,16 +116,16 @@ func TestIsProxyRequest(t *testing.T) {
 		{
 			name:     "dev subdomain format",
 			env:      stage.Test(),
-			host:     "mybox.localhost",
+			host:     "mybox.exe.cloud",
 			expected: true,
-			comment:  "Should recognize *.localhost pattern in dev mode",
+			comment:  "Should recognize *.exe.cloud pattern in dev mode",
 		},
 		{
 			name:     "dev subdomain with server port",
 			env:      stage.Test(),
-			host:     "mybox.localhost:8080",
+			host:     "mybox.exe.cloud:8080",
 			expected: true,
-			comment:  "Should recognize *.localhost even with server port",
+			comment:  "Should recognize *.exe.cloud even with server port",
 		},
 		{
 			name:     "localhost alone in dev mode",
@@ -137,7 +137,7 @@ func TestIsProxyRequest(t *testing.T) {
 		{
 			name:     "deep subdomain in dev mode",
 			env:      stage.Test(),
-			host:     "box.team.localhost",
+			host:     "box.team.exe.cloud",
 			expected: true,
 			comment:  "Should work with deeper subdomains",
 		},
@@ -176,7 +176,7 @@ func TestIsProxyRequest(t *testing.T) {
 		{
 			name:     "dev domain in prod mode",
 			env:      stage.Prod(),
-			host:     "mybox.localhost",
+			host:     "mybox.exe.cloud",
 			expected: true,
 			comment:  "Should still work with dev domain in production for flexibility",
 		},
