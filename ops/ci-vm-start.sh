@@ -459,12 +459,12 @@ ensure_cloud_hypervisor_artifacts() {
     fi
 
     case "${arch}" in
-        arm64) platform="linux/arm64" ;;
-        amd64) platform="linux/amd64" ;;
-        *)
-            echo "Unsupported arch for Cloud Hypervisor build: ${arch}" >&2
-            exit 1
-            ;;
+    arm64) platform="linux/arm64" ;;
+    amd64) platform="linux/amd64" ;;
+    *)
+        echo "Unsupported arch for Cloud Hypervisor build: ${arch}" >&2
+        exit 1
+        ;;
     esac
 
     mkdir -p "${cache_dir}"

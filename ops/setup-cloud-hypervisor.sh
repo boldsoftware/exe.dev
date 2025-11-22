@@ -7,12 +7,12 @@ CLOUD_HYPERVISOR_VERSION="48.0"
 echo "=== Installing cached Cloud Hypervisor binaries ==="
 
 case "$(uname -m)" in
-    aarch64) ARTIFACT_ARCH="arm64" ;;
-    x86_64) ARTIFACT_ARCH="amd64" ;;
-    *)
-        echo "Unsupported architecture: $(uname -m)" >&2
-        exit 1
-        ;;
+aarch64) ARTIFACT_ARCH="arm64" ;;
+x86_64) ARTIFACT_ARCH="amd64" ;;
+*)
+    echo "Unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
 esac
 
 ARCHIVE="${ASSETS_DIR}/cloud-hypervisor-${CLOUD_HYPERVISOR_VERSION}-${ARTIFACT_ARCH}.tar.gz"
