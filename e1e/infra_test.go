@@ -611,12 +611,16 @@ func (p *tcpProxy) serve() error {
 			// TODO: figure out why we're seeing connections before setDestPort is called, and stop doing that.
 			var dstAddr *net.TCPAddr
 			// Poll. Why not. Cheap enough, and simpler than a condvar.
+			pollCount := 0
 			for {
 				dstAddr = p.dst.Load()
 				if dstAddr != nil {
 					break
 				}
-				slog.Info("tcpProxy: waiting for destination address", "name", p.name, "listener_addr", p.ln.Addr())
+				pollCount += 1
+				if pollCount%20 == 1 {
+					slog.Info("tcpProxy: waiting for destination address", "name", p.name, "listener_addr", p.ln.Addr())
+				}
 				time.Sleep(50 * time.Millisecond)
 			}
 			dst, err := net.Dial("tcp", dstAddr.String())
