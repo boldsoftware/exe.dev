@@ -245,8 +245,9 @@ setup_base() {
     echo "=========================================="
 }
 
-reset_images() {
-    echo "=== Resetting Lima image instances ==="
+reset_instance() {
+    local instance="$1"
+    echo "=== Resetting Lima instance: ${instance} ==="
 
     # Check if base instance exists
     if ! limactl list | grep "${LIMA_BASE}" >/dev/null 2>&1; then
@@ -257,34 +258,34 @@ reset_images() {
 
     echo "Stopping instances..."
     limactl stop --tty=false ${LIMA_BASE} -f 2>/dev/null || true
-    limactl stop --tty=false ${LIMA_HOST_A} -f 2>/dev/null || true
-    limactl stop --tty=false ${LIMA_HOST_B} -f 2>/dev/null || true
+    limactl stop --tty=false ${instance} -f 2>/dev/null || true
 
     sleep 2
 
-    echo "Removing cloned instances..."
-    limactl delete ${LIMA_HOST_A} --tty=false -f 2>/dev/null || true
-    limactl delete ${LIMA_HOST_B} --tty=false -f 2>/dev/null || true
+    echo "Removing cloned instance ${instance}..."
+    limactl delete ${instance} --tty=false -f 2>/dev/null || true
 
-    # Clean up cloned data disks
-    delete_data_disk "${LIMA_HOST_A}"
-    delete_data_disk "${LIMA_HOST_B}"
+    # Clean up cloned data disk
+    delete_data_disk "${instance}"
 
-    echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_A}..."
-    limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_A}")")" ${LIMA_BASE} ${LIMA_HOST_A}
+    echo "Cloning ${LIMA_BASE} to ${instance}..."
+    limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${instance}")")" ${LIMA_BASE} ${instance}
 
-    echo "Cloning ${LIMA_BASE} to ${LIMA_HOST_B}..."
-    limactl clone --tty=false --log-level=warn --set "$(set_disk_expr "$(data_disk_name "${LIMA_HOST_B}")")" ${LIMA_BASE} ${LIMA_HOST_B}
+    clone_data_disk "${LIMA_BASE}" "${instance}"
 
-    clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_A}"
-    clone_data_disk "${LIMA_BASE}" "${LIMA_HOST_B}"
+    echo "Starting ${instance}..."
+    limactl start --log-level=warn --tty=false ${instance}
 
-    echo "Starting ${LIMA_HOST_A}..."
-    limactl start --log-level=warn --tty=false ${LIMA_HOST_A}
+    echo ""
+    echo "=========================================="
+    echo "Lima instance ${instance} reset"
+    echo "=========================================="
+}
 
-    echo "Starting ${LIMA_HOST_B}..."
-    limactl start --log-level=warn --tty=false ${LIMA_HOST_B}
-
+reset_images() {
+    echo "=== Resetting Lima image instances ==="
+    reset_instance "${LIMA_HOST_A}"
+    reset_instance "${LIMA_HOST_B}"
     echo ""
     echo "=========================================="
     echo "Lima image instances reset"
@@ -293,11 +294,13 @@ reset_images() {
 
 # Check arguments
 if [[ $# -ne 1 ]]; then
-    echo "Usage: $0 {base|reset|all}"
+    echo "Usage: $0 {base|reset|reset-exe-ctr|reset-exe-ctr-tests|all}"
     echo ""
-    echo "  base   - Build only the base instance"
-    echo "  reset  - Delete and re-clone image instances from base"
-    echo "  all    - Build base and create image instances"
+    echo "  base                 - Build only the base instance"
+    echo "  reset                - Delete and re-clone both image instances from base"
+    echo "  reset-exe-ctr        - Reset only the exe-ctr instance"
+    echo "  reset-exe-ctr-tests  - Reset only the exe-ctr-tests instance"
+    echo "  all                  - Build base and create image instances"
     exit 1
 fi
 
@@ -318,18 +321,24 @@ base)
 reset)
     reset_images
     ;;
+reset-exe-ctr)
+    reset_instance "${LIMA_HOST_A}"
+    ;;
+reset-exe-ctr-tests)
+    reset_instance "${LIMA_HOST_B}"
+    ;;
 all)
     setup_base
     reset_images
     ;;
 *)
     echo "Error: Invalid mode '${MODE}'"
-    echo "Usage: $0 {base|reset|all}"
+    echo "Usage: $0 {base|reset|reset-exe-ctr|reset-exe-ctr-tests|all}"
     exit 1
     ;;
 esac
 
-if [[ "${MODE}" == "all" || "${MODE}" == "reset" ]]; then
+if [[ "${MODE}" == "all" || "${MODE}" == "reset" || "${MODE}" == "reset-exe-ctr" || "${MODE}" == "reset-exe-ctr-tests" ]]; then
     echo "Configuring SSH access..."
     echo "Adding Lima SSH config includes..."
     mkdir -p "$HOME/.ssh"
@@ -369,7 +378,9 @@ EOF
     echo "  ssh lima-exe-ctr-tests    # Tests host"
     echo ""
     echo "To reset VMs to initial state:"
-    echo "  ${OPS_DIR}/setup-lima-hosts.sh reset"
+    echo "  ${OPS_DIR}/setup-lima-hosts.sh reset                 # Reset both"
+    echo "  ${OPS_DIR}/setup-lima-hosts.sh reset-exe-ctr        # Reset exe-ctr only"
+    echo "  ${OPS_DIR}/setup-lima-hosts.sh reset-exe-ctr-tests  # Reset exe-ctr-tests only"
     echo ""
     echo "=========================================="
 fi
