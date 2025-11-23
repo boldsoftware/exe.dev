@@ -56,19 +56,14 @@ func (n *NAT) configureBridge(ctx context.Context) error {
 		return err
 	}
 
-	// Add metadata service IP
-	metadataAddr, err := netlink.ParseAddr(MetadataIP + "/32")
-	if err != nil {
+	if err := netlink.LinkSetUp(bridge); err != nil {
 		return err
 	}
-	if err := netlink.AddrAdd(bridge, metadataAddr); err != nil {
-		// Ignore if address already exists
-		if !os.IsExist(err) {
-			return err
-		}
-	}
 
-	if err := netlink.LinkSetUp(bridge); err != nil {
+	// Add DNAT rule to redirect metadata service traffic (169.254.169.254:80)
+	// to the bridge IP. This allows multiple exelets to run in parallel, each
+	// with their own bridge IP, while VMs see the standard metadata IP.
+	if err := n.applyMetadataDNAT(ctx, serverIP.String()); err != nil {
 		return err
 	}
 
@@ -261,6 +256,58 @@ func (n *NAT) applyIPTablesMasquerade(ctx context.Context, device, network strin
 
 	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (n *NAT) applyMetadataDNAT(ctx context.Context, bridgeIP string) error {
+	// Check if DNAT rule already exists
+	args := []string{
+		"-t", "nat",
+		"-n",
+		"-L", "PREROUTING",
+		"-v",
+	}
+	fc := exec.CommandContext(ctx, "iptables", args...)
+	fOut, err := fc.CombinedOutput()
+	if err != nil {
+		return err
+	}
+
+	buf := bytes.NewBuffer(fOut)
+	sc := bufio.NewScanner(buf)
+	dnatRuleExists := false
+	// Look for a rule that DNATs metadata IP to our bridge IP
+	for sc.Scan() {
+		l := sc.Text()
+		if strings.Contains(l, MetadataIP) && strings.Contains(l, bridgeIP) && strings.Contains(l, "DNAT") {
+			dnatRuleExists = true
+			break
+		}
+	}
+
+	if dnatRuleExists {
+		return nil
+	}
+
+	n.log.DebugContext(ctx, "adding iptables DNAT rule for metadata service", "metadata_ip", MetadataIP, "bridge_ip", bridgeIP)
+
+	// Add DNAT rule: packets to 169.254.169.254:80 get redirected to bridge IP:80
+	// -i specifies incoming interface (our bridge), so only our VMs' traffic is affected
+	cArgs := []string{
+		"-t", "nat",
+		"-A", "PREROUTING",
+		"-i", n.bridgeName,
+		"-d", MetadataIP,
+		"-p", "tcp",
+		"--dport", "80",
+		"-j", "DNAT",
+		"--to-destination", bridgeIP + ":80",
+	}
+
+	if err := exec.CommandContext(ctx, "iptables", cArgs...).Run(); err != nil {
+		return fmt.Errorf("failed to add metadata DNAT rule: %w", err)
 	}
 
 	return nil

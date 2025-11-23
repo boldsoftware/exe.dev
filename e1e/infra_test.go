@@ -279,10 +279,14 @@ type exeletInstance struct {
 	Address      string             // e.g., "tcp://192.168.5.15:9080"
 	HTTPAddress  string             // e.g., "http://192.168.5.15:9081"
 	Ctx          context.Context    // cancelled when Cmd exits
+	Cmd          *exec.Cmd          // SSH command running exelet
+	CmdCancel    context.CancelFunc // cancel function for exelet context
 	DataDir      string             // temp directory for exelet data (local or remote path)
 	RemoteHost   string             // SSH host if running remotely (e.g., "lima-exe-ctr-tests")
 	TunnelCmd    *exec.Cmd          // SSH tunnel process if using reverse tunnel
 	TunnelCancel context.CancelFunc // cancel function for tunnel context
+	BridgeName   string             // bridge name for network isolation
+	ZFSDataset   string             // ZFS dataset for storage isolation
 }
 
 func (e *testEnv) sshPort() int {
@@ -483,6 +487,15 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 	}
 	// Cleanup exelet (remote or local)
 	if e.exelet.RemoteHost != "" {
+		// Stop exelet SSH process
+		if e.exelet.CmdCancel != nil {
+			e.exelet.CmdCancel()
+		}
+		if e.exelet.Cmd != nil && e.exelet.Cmd.Process != nil {
+			e.exelet.Cmd.Process.Kill()
+			e.exelet.Cmd.Wait()
+		}
+
 		// Stop SSH tunnel if running
 		if e.exelet.TunnelCancel != nil {
 			e.exelet.TunnelCancel()
@@ -507,8 +520,33 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 			}
 		}
 
-		// Remove remote binary
-		if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("rm -f /tmp/exelet-test /tmp/exelet-test-%s.log", testRunID)); err != nil {
+		// Clean up isolated resources
+		// Remove bridge
+		if e.exelet.BridgeName != "" {
+			slog.Info("removing bridge", "bridge", e.exelet.BridgeName)
+			if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo ip link delete %s 2>/dev/null || true", e.exelet.BridgeName)); err != nil {
+				slog.Error("failed to remove bridge", "bridge", e.exelet.BridgeName, "error", err)
+			}
+		}
+
+		// Remove ZFS dataset
+		if e.exelet.ZFSDataset != "" {
+			slog.Info("removing ZFS dataset", "dataset", e.exelet.ZFSDataset)
+			if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo zfs destroy -r %s 2>/dev/null || true", e.exelet.ZFSDataset)); err != nil {
+				slog.Error("failed to remove ZFS dataset", "dataset", e.exelet.ZFSDataset, "error", err)
+			}
+		}
+
+		// Remove data directory
+		dataDir := fmt.Sprintf("/data/exelet-%s", testRunID)
+		slog.Info("removing data directory", "dataDir", dataDir)
+		if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo rm -rf %s", dataDir)); err != nil {
+			slog.Error("failed to remove data directory", "dataDir", dataDir, "error", err)
+		}
+
+		// Remove remote binary (use test-run-specific name)
+		remoteBinaryPath := fmt.Sprintf("/tmp/exelet-test-%s", testRunID)
+		if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("rm -f %s", remoteBinaryPath)); err != nil {
 			slog.Error("failed to cleanup remote exelet binary", "error", err)
 		}
 
@@ -974,104 +1012,190 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	}
 
 	ctx := context.Background()
-	// Ensure no existing binaries exist (e.g. on failed re-run)
-	if _, err := sshExec(ctx, host, "rm -rf /tmp/exelet-test"); err != nil {
+
+	// Use test-run-specific binary name to avoid conflicts with parallel test runs
+	remoteBinaryPath := fmt.Sprintf("/tmp/exelet-test-%s", testRunID)
+
+	// Ensure no existing binaries exist for this test run (e.g. on failed re-run)
+	if _, err := sshExec(ctx, host, fmt.Sprintf("rm -rf %s", remoteBinaryPath)); err != nil {
 		return nil, fmt.Errorf("failed to remove existing exelet: %w", err)
 	}
 
-	// Ensure no existing processes exist
-	sshExec(ctx, host, "pkill -f exelet-test")
+	// Ensure no existing processes exist for this test run only
+	sshExec(ctx, host, fmt.Sprintf("pkill -f %s", remoteBinaryPath))
 
-	// Upload binary to remote host
-	slog.Info("uploading exelet to remote host", "host", host)
-	if err := scpUpload(binPath, host, "/tmp/exelet-test"); err != nil {
+	// Upload binary to remote host with unique name
+	slog.Info("uploading exelet to remote host", "host", host, "path", remoteBinaryPath)
+	if err := scpUpload(binPath, host, remoteBinaryPath); err != nil {
 		return nil, fmt.Errorf("failed to upload exelet: %w", err)
 	}
 
 	// Make binary executable
-	if _, err := sshExec(ctx, host, "chmod +x /tmp/exelet-test"); err != nil {
+	if _, err := sshExec(ctx, host, fmt.Sprintf("chmod +x %s", remoteBinaryPath)); err != nil {
 		return nil, fmt.Errorf("failed to chmod exelet: %w", err)
 	}
 
-	// Create remote data directory
-	dataDir, err := sshExec(ctx, host, "mktemp -d /tmp/exelet_test_data_XXXXX")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create remote data dir: %w", err)
-	}
-	dataDir = strings.TrimSpace(dataDir)
+	// Generate unique resource names for this test run to enable parallel test execution
+	// Each test run gets its own bridge, network, and ZFS dataset
+	bridgeName := fmt.Sprintf("br-exe-%s", testRunID)
+	// Use CGNAT range 100.64.0.0/10 for internal bridges (safe, no conflicts with Lima's 192.168.64.0/24)
+	// testRunID is a 4-character hex string (0000-FFFF), map to unique /24 networks
+	// CGNAT /10 gives us 100.64.0.0 through 100.127.255.255
+	// Map 16-bit testRunID to two octets for up to 16384 unique /24 networks
+	testRunIDNum := uint32(0)
+	fmt.Sscanf(testRunID, "%x", &testRunIDNum)
+	// Use both bytes: upper 6 bits for third octet (64-127), lower 8 bits for fourth octet (0-255)
+	thirdOctet := ((testRunIDNum >> 8) & 0x3F) + 64 // 64-127
+	fourthOctet := testRunIDNum & 0xFF                // 0-255
+	networkCIDR := fmt.Sprintf("100.%d.%d.0/24", thirdOctet, fourthOctet)
+	zfsDataset := fmt.Sprintf("tank/e1e-%s", testRunID)
 
-	// Start exelet on remote host in background with sudo (needs privileges for bridge setup)
-	// Use a wrapper to ensure we can capture the PID even if the process fails immediately
+	slog.Info("using isolated resources", "bridge", bridgeName, "network", networkCIDR, "dataset", zfsDataset)
+
+	// Create ZFS dataset if it doesn't exist
+	// Check if dataset exists first
+	checkCmd := fmt.Sprintf("sudo zfs list %s >/dev/null 2>&1", zfsDataset)
+	_, err = sshExec(ctx, host, checkCmd)
+	if err != nil {
+		// Dataset doesn't exist, create it
+		slog.Info("creating ZFS dataset", "dataset", zfsDataset)
+		createCmd := fmt.Sprintf("sudo zfs create %s", zfsDataset)
+		if out, err := sshExec(ctx, host, createCmd); err != nil {
+			return nil, fmt.Errorf("failed to create ZFS dataset %s: %w\n%s", zfsDataset, err, out)
+		}
+	}
+
+	// Start exelet on remote host via SSH
 	// Use proxy port range 30000-40000 for e1e tests to avoid conflicts with dev (10000-20000) and unit tests (20000-30000)
-	startCmd := fmt.Sprintf(`sudo LOG_FORMAT=json nohup /tmp/exelet-test --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir /data/exelet --runtime-address cloudhypervisor:///data/exelet/runtime --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --proxy-port-min 30000 --proxy-port-max 40000 --resource-monitor-interval 5s --exed-url %s > /tmp/exelet-test-%s.log 2>&1 &`,
-		exedURL, testRunID)
-	out, err := sshExec(ctx, host, startCmd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start remote exelet: %s (%w)\n", string(out), err)
+	// URL-encode the network CIDR since it contains slashes
+	// Metadata service will bind to the unique bridge IP with DNAT for parallel test support
+	encodedNetwork := url.QueryEscape(networkCIDR)
+
+	// Compute unique port range for this test run to avoid port conflicts in parallel test execution
+	// Base range is 30000-40000 (10000 ports). Divide into 1000-port chunks for each test run.
+	// testRunIDNum is 0-65535, map to 10 possible chunks (30000-31000, 31000-32000, ..., 39000-40000)
+	proxyPortMin := 30000 + (int(testRunIDNum%10) * 1000)
+	proxyPortMax := proxyPortMin + 1000
+
+	// Build the command to execute remotely
+	// Use unique data-dir per test run to avoid mount conflicts in /data/exelet/storage/mounts
+	dataDir := fmt.Sprintf("/data/exelet-%s", testRunID)
+
+	// Create the data directory
+	if _, err := sshExec(ctx, host, fmt.Sprintf("sudo mkdir -p %s", dataDir)); err != nil {
+		return nil, fmt.Errorf("failed to create data directory %s: %w", dataDir, err)
 	}
 
-	// Wait for exelet to start and extract address from logs
+	remoteCmd := fmt.Sprintf(`sudo LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-monitor-interval 5s --exed-url %s`,
+		remoteBinaryPath, dataDir, dataDir, dataDir, zfsDataset, dataDir, bridgeName, encodedNetwork, proxyPortMin, proxyPortMax, exedURL)
+
+	// Start exelet via SSH (similar to how exed is started locally)
+	exeletCmd := exec.Command("ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		host, remoteCmd)
+
+	cmdOut, err := exeletCmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	exeletCmd.Stderr = exeletCmd.Stdout
+
+	if err := exeletCmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start remote exelet: %w", err)
+	}
+
+	exeletCtx, exeletCancel := context.WithCancel(context.Background())
+
+	// Parse output to find addresses (similar to exed startup)
+	var teeMu sync.Mutex
+	tee := new(bytes.Buffer)
+	grpcAddrC := make(chan string, 1)
+	httpAddrC := make(chan string, 1)
+
+	go func() {
+		scan := bufio.NewScanner(cmdOut)
+		for scan.Scan() {
+			line := scan.Bytes()
+			teeMu.Lock()
+			tee.Write(line)
+			tee.WriteString("\n")
+			teeMu.Unlock()
+
+			lineStr := string(line)
+			if *flagVerboseExelet {
+				fmt.Fprintln(logFileFor("exelet"), lineStr)
+			}
+
+			// Parse JSON log line
+			if !json.Valid(line) {
+				continue
+			}
+			var entry map[string]any
+			if err := json.Unmarshal(line, &entry); err != nil {
+				continue
+			}
+
+			// Capture ERROR level logs
+			if level, ok := entry["level"].(string); ok && level == "ERROR" {
+				select {
+				case exeletSlogErrC <- lineStr:
+				default:
+				}
+			}
+
+			// Look for listening messages
+			switch entry["msg"] {
+			case "listening":
+				if addrVal, ok := entry["addr"].(string); ok {
+					select {
+					case grpcAddrC <- addrVal:
+					default:
+					}
+				}
+			case "http server listening":
+				if addrVal, ok := entry["addr"].(string); ok {
+					select {
+					case httpAddrC <- addrVal:
+					default:
+					}
+				}
+			}
+		}
+	}()
+
+	// Wait for exelet to start and extract addresses
 	slog.Info("waiting for exelet to start on remote host")
 	timeout := time.Minute
 	if os.Getenv("CI") != "" {
 		timeout = 2 * time.Minute
 	}
 
-	startTime := time.Now()
-	var grpcAddr string
-	var httpAddr string
-	for (grpcAddr == "" || httpAddr == "") && time.Since(startTime) < timeout {
-		time.Sleep(500 * time.Millisecond)
+	var grpcAddr, httpAddr string
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 
-		// Tail the log file
-		logOut, err := sshExec(ctx, host, fmt.Sprintf("cat /tmp/exelet-test-%s.log 2>/dev/null || true", testRunID))
-		if err != nil {
-			continue
+WaitLoop:
+	for {
+		select {
+		case grpcAddr = <-grpcAddrC:
+			if httpAddr != "" {
+				break WaitLoop
+			}
+		case httpAddr = <-httpAddrC:
+			if grpcAddr != "" {
+				break WaitLoop
+			}
+		case <-timer.C:
+			// Cleanup on timeout
+			exeletCmd.Process.Kill()
+			exeletCancel()
+			teeMu.Lock()
+			lastOutput := tee.String()
+			teeMu.Unlock()
+			return nil, fmt.Errorf("timeout waiting for exelet to start. Last log output:\n%s", lastOutput)
 		}
-
-		if *flagVerboseExelet {
-			fmt.Fprintln(logFileFor("exelet"), logOut)
-		}
-
-		// Parse each line looking for "listening" message and ERROR logs
-		scanner := bufio.NewScanner(strings.NewReader(logOut))
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if !json.Valid(line) {
-				slog.Warn("log line not valid json", "error", err, "line", string(line))
-				continue
-			}
-			var entry map[string]any
-			if err := json.Unmarshal(line, &entry); err != nil {
-				slog.Warn("failed to parse exelet log line", "error", err, "line", string(line))
-				continue
-			}
-			// Capture ERROR level logs
-			if level, ok := entry["level"].(string); ok && level == "ERROR" {
-				lineStr := string(line)
-				select {
-				case exeletSlogErrC <- lineStr:
-				default:
-				}
-			}
-			switch entry["msg"] {
-			case "listening":
-				if addrVal, ok := entry["addr"].(string); ok {
-					grpcAddr = addrVal
-				}
-			case "http server listening":
-				if addrVal, ok := entry["addr"].(string); ok {
-					httpAddr = addrVal
-				}
-			}
-		}
-	}
-
-	if grpcAddr == "" || httpAddr == "" {
-		// Cleanup on failure
-		sshExec(ctx, host, "sudo pkill -9 -f exelet-test")
-		logOut, _ := sshExec(ctx, host, fmt.Sprintf("cat /tmp/exelet-test-%s.log 2>/dev/null || true", testRunID))
-		return nil, fmt.Errorf("timeout waiting for exelet to start. Last log output:\n%s", logOut)
 	}
 
 	// Parse address to replace 0.0.0.0 with actual remote IP
@@ -1097,8 +1221,13 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	instance := &exeletInstance{
 		Address:     finalAddr,
 		HTTPAddress: finalHTTPAddr,
+		Ctx:         exeletCtx,
+		Cmd:         exeletCmd,
+		CmdCancel:   exeletCancel,
 		DataDir:     dataDir,
 		RemoteHost:  host,
+		BridgeName:  bridgeName,
+		ZFSDataset:  zfsDataset,
 	}
 
 	slog.Info("started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr, "http_addr", finalHTTPAddr)
@@ -1762,6 +1891,9 @@ func baseSSHArgs(username, keyFile string) []string {
 		"-o", "KbdInteractiveAuthentication=no",
 		"-o", "ChallengeResponseAuthentication=no",
 		"-o", "IdentitiesOnly=yes",
+		"-o", "ConnectTimeout=5",        // 5 second connection timeout
+		"-o", "ServerAliveInterval=5",   // send keepalive every 5 seconds
+		"-o", "ServerAliveCountMax=2",   // disconnect after 2 failed keepalives (10s total)
 
 		usernameAt(username) + "localhost",
 	}

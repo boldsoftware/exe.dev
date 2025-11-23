@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -19,6 +20,7 @@ import (
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/metadata"
 	"exe.dev/exelet/network"
+	"exe.dev/exelet/network/nat"
 	"exe.dev/exelet/services"
 	computeservice "exe.dev/exelet/services/compute"
 	resourcemonitorservice "exe.dev/exelet/services/resourcemonitor"
@@ -252,7 +254,19 @@ func serveAction(clix *cli.Context) error {
 	}
 
 	// Start metadata service after services are registered
-	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL)
+	// Get the bridge IP to bind the metadata service to
+	// This allows multiple exelets to run in parallel without port conflicts
+	networkConfig := nm.Config(ctx)
+	natConfig, ok := networkConfig.(*nat.Config)
+	if !ok || natConfig == nil || natConfig.Router == "" {
+		return fmt.Errorf("failed to get NAT configuration for metadata service")
+	}
+
+	// Bind to the bridge's router IP (usually .1 in the network)
+	metadataListenAddr := natConfig.Router + ":80"
+	log.Info("metadata service will bind to bridge IP", "addr", metadataListenAddr)
+
+	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL, metadataListenAddr)
 	if err != nil {
 		return err
 	}

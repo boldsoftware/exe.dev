@@ -92,6 +92,15 @@ func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
 		return nil, err
 	}
 
+	// If router not explicitly set, use the bridge IP (first address in network)
+	if router == "" {
+		serverIP, err := dhcpSrv.ServerIP()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get server IP: %w", err)
+		}
+		router = serverIP.String()
+	}
+
 	n := &NAT{
 		bridgeName:  bridgeName,
 		network:     network,

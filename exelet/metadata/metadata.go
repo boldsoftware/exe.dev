@@ -63,12 +63,17 @@ type Service struct {
 	instanceLookup InstanceLookup
 	exedURL        string
 	exedTargetURL  *url.URL
+	listenAddr     string // actual address to bind to (may differ from MetadataIP for isolation)
 }
 
 // NewService creates a new metadata service
-func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL string) (*Service, error) {
+// listenAddr is the IP:port to bind to (e.g., "192.168.1.1:80")
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL string, listenAddr string) (*Service, error) {
 	if exedURL == "" {
 		return nil, fmt.Errorf("exedURL is required")
+	}
+	if listenAddr == "" {
+		return nil, fmt.Errorf("listenAddr is required")
 	}
 
 	targetURL, err := url.Parse(exedURL)
@@ -81,6 +86,7 @@ func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL string) (*S
 		instanceLookup: computeSvc,
 		exedURL:        exedURL,
 		exedTargetURL:  targetURL,
+		listenAddr:     listenAddr,
 	}
 
 	return s, nil
@@ -114,13 +120,12 @@ func (s *Service) Start(ctx context.Context) error {
 	})
 	slogMiddleware := sloghttp.NewWithConfig(s.log, config)(handlerWithLogging)
 
-	addr := MetadataIP + ":80"
 	s.server = &http.Server{
-		Addr:    addr,
+		Addr:    s.listenAddr,
 		Handler: slogMiddleware,
 	}
 
-	s.log.InfoContext(ctx, "starting metadata service", "addr", addr)
+	s.log.InfoContext(ctx, "starting metadata service", "addr", s.listenAddr)
 
 	go func() {
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

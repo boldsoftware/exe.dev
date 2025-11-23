@@ -2,6 +2,7 @@ package compute
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"sync"
 )
 
@@ -14,7 +15,6 @@ const (
 type PortAllocator struct {
 	mu        sync.Mutex
 	allocated map[int]bool
-	nextPort  int
 	minPort   int
 	maxPort   int
 }
@@ -32,7 +32,6 @@ func NewPortAllocatorWithRange(minPort, maxPort int) *PortAllocator {
 	}
 	return &PortAllocator{
 		allocated: make(map[int]bool),
-		nextPort:  minPort,
 		minPort:   minPort,
 		maxPort:   maxPort,
 	}
@@ -43,13 +42,13 @@ func (p *PortAllocator) Allocate() (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Try to find a free port starting from nextPort
-	for i := 0; i < (p.maxPort - p.minPort); i++ {
-		port := p.nextPort
-		p.nextPort++
-		if p.nextPort >= p.maxPort {
-			p.nextPort = p.minPort
-		}
+	// Start from a random port in the range to avoid collisions between parallel allocators
+	rangeSize := p.maxPort - p.minPort
+	startOffset := rand.IntN(rangeSize)
+
+	// Try to find a free port starting from the random position
+	for i := 0; i < rangeSize; i++ {
+		port := p.minPort + ((startOffset + i) % rangeSize)
 
 		if !p.allocated[port] {
 			p.allocated[port] = true
