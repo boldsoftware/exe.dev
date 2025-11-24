@@ -35,38 +35,43 @@ echo ""
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BINARY_NAME="exeletd.$TIMESTAMP"
 
-echo -e "${YELLOW}Building binary...${NC}"
+echo -e "${YELLOW}Downloading binary from GitHub Actions...${NC}"
 echo "Binary name: $BINARY_NAME"
 
-# Test that the embedded fs are the proper arch
-if ! file exelet/fs/kernel/kernel | grep -q "x86 boot executable"; then
-    echo -e "${RED}ERROR: kernel is not an x86 kernel; please ensure to build for amd64"
-fi
-rovol_files=(
-    "exelet/fs/rovol/bin/sshd"
-    "exelet/fs/rovol/bin/sshd-session"
-    "exelet/fs/rovol/bin/sftp-server"
-    "exelet/fs/rovol/bin/sh"
-    "exelet/fs/rovol/bin/exe-init"
-)
-for f in "${rovol_files[@]}"; do
-    if ! file $f | grep -q "x86-64"; then
-        echo -e "${RED}ERROR: $f is not an x86_64 binary; please ensure to build for amd64"
-    fi
-done
-
-# Build the binary
-make GOOS=linux GOARCH=amd64 exelet
-mv exeletd /tmp/$BINARY_NAME
-
-if [ ! -f "/tmp/$BINARY_NAME" ]; then
-    echo -e "${RED}ERROR: Failed to build binary${NC}"
+# Check if gh CLI is installed
+if ! command -v gh >/dev/null 2>&1; then
+    echo -e "${RED}ERROR: GitHub CLI (gh) is not installed${NC}"
+    echo "Install with: brew install gh (macOS) or see https://cli.github.com/"
     exit 1
 fi
 
+# Download the latest artifact from the Build Exelet Binary workflow
+echo "Fetching latest exelet artifact from boldsoftware/exe..."
+TEMP_DIR=$(mktemp -d)
+
+if ! gh run download --repo boldsoftware/exe --name exeletd-amd64 --dir "$TEMP_DIR" 2>/dev/null; then
+    echo -e "${RED}ERROR: Failed to download artifact from GitHub Actions${NC}"
+    echo "Make sure:"
+    echo "  1. You're authenticated with gh (run: gh auth login)"
+    echo "  2. The 'Build Exelet Binary' workflow has run successfully"
+    echo "  3. You have access to the boldsoftware/exe repository"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Move the binary to /tmp with timestamp
+if [ ! -f "$TEMP_DIR/exeletd" ]; then
+    echo -e "${RED}ERROR: exeletd binary not found in artifact${NC}"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+mv "$TEMP_DIR/exeletd" "/tmp/$BINARY_NAME"
+rm -rf "$TEMP_DIR"
+
 # Get binary size
 BINARY_SIZE=$(ls -lh "/tmp/$BINARY_NAME" | awk '{print $5}')
-echo -e "${GREEN}✓ Binary built successfully (size: $BINARY_SIZE)${NC}"
+echo -e "${GREEN}✓ Binary downloaded successfully (size: $BINARY_SIZE)${NC}"
 echo ""
 
 # Deploy to VM
