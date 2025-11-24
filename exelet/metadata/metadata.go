@@ -68,7 +68,7 @@ type Service struct {
 
 // NewService creates a new metadata service
 // listenAddr is the IP:port to bind to (e.g., "192.168.1.1:80")
-func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL string, listenAddr string) (*Service, error) {
+func NewService(log *slog.Logger, computeSvc InstanceLookup, exedURL, listenAddr string) (*Service, error) {
 	if exedURL == "" {
 		return nil, fmt.Errorf("exedURL is required")
 	}

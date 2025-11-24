@@ -1046,7 +1046,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	fmt.Sscanf(testRunID, "%x", &testRunIDNum)
 	// Use both bytes: upper 6 bits for third octet (64-127), lower 8 bits for fourth octet (0-255)
 	thirdOctet := ((testRunIDNum >> 8) & 0x3F) + 64 // 64-127
-	fourthOctet := testRunIDNum & 0xFF                // 0-255
+	fourthOctet := testRunIDNum & 0xFF              // 0-255
 	networkCIDR := fmt.Sprintf("100.%d.%d.0/24", thirdOctet, fourthOctet)
 	zfsDataset := fmt.Sprintf("tank/e1e-%s", testRunID)
 
@@ -1891,9 +1891,9 @@ func baseSSHArgs(username, keyFile string) []string {
 		"-o", "KbdInteractiveAuthentication=no",
 		"-o", "ChallengeResponseAuthentication=no",
 		"-o", "IdentitiesOnly=yes",
-		"-o", "ConnectTimeout=5",        // 5 second connection timeout
-		"-o", "ServerAliveInterval=5",   // send keepalive every 5 seconds
-		"-o", "ServerAliveCountMax=2",   // disconnect after 2 failed keepalives (10s total)
+		"-o", "ConnectTimeout=5", // 5 second connection timeout
+		"-o", "ServerAliveInterval=5", // send keepalive every 5 seconds
+		"-o", "ServerAliveCountMax=2", // disconnect after 2 failed keepalives (10s total)
 
 		usernameAt(username) + "localhost",
 	}
