@@ -1,0 +1,49 @@
+name: Build Exelet Binary
+run-name: ${{ github.event.head_commit.message || format('Build exelet ({0})', github.sha) }}
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'exelet/**'
+      - 'cmd/exelet/**'
+      - 'cmd/exe-init/**'
+      - '.github/workflows/build-exelet.yml'
+  workflow_dispatch:
+
+jobs:
+  build-exelet:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Clean exelet embedded content
+        run: rm -rf exelet/fs/kernel && rm -rf exelet/fs/rovol
+
+      - name: Build exelet for ${{ matrix.arch }}
+        run: make exelet
+        env:
+          GOARCH: ${{ matrix.arch }}
+
+      - name: Upload exelet binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: exeletd-${{ matrix.arch }}
+          path: exeletd
+          retention-days: 30
