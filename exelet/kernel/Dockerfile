@@ -36,6 +36,7 @@ WORKDIR /workspace/kata-containers/tools/packaging/kernel
 
 # Copy nftables config fragment and build script
 COPY nftables.conf configs/fragments/nftables.conf
+COPY kvm.conf configs/fragments/kvm.conf
 COPY build-kernel.sh /usr/local/bin/
 
 RUN chmod +x /usr/local/bin/build-kernel.sh && \

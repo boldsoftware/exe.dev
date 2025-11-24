@@ -27,6 +27,10 @@ echo "Found kernel source at: $KERNEL_SRC"
 echo "Applying nftables config fragment..."
 cd "$KERNEL_SRC"
 scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/nftables.conf
+
+echo "Applying kvm config fragment..."
+scripts/kconfig/merge_config.sh .config /workspace/kata-containers/tools/packaging/kernel/configs/fragments/kvm.conf
+
 make olddefconfig
 
 # Build kernel
