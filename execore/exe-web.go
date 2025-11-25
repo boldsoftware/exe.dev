@@ -165,9 +165,9 @@ func (s *Server) setupHTTPSServer() {
 		st, err := lc.Status(ctx)
 		if err != nil || st == nil || st.Self == nil || st.Self.DNSName == "" {
 			if err != nil {
-				s.slog().Debug("tailscale status unavailable", "error", err)
+				s.slog().Error("tailscale status unavailable", "error", err)
 			} else {
-				s.slog().Debug("tailscale DNS name not found")
+				s.slog().Error("tailscale DNS name not found")
 			}
 			return
 		}
@@ -176,12 +176,12 @@ func (s *Server) setupHTTPSServer() {
 		// Try to eagerly fetch and cache cert, but it's optional
 		certPEM, keyPEM, err := lc.CertPair(ctx, s.tsDomain)
 		if err != nil {
-			s.slog().Debug("tailscale cert pair not preloaded", "error", err)
+			s.slog().Error("tailscale cert pair not preloaded", "error", err)
 			return
 		}
 		c, err := tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
-			s.slog().Debug("tailscale x509 keypair parse error", "error", err)
+			s.slog().Error("tailscale x509 keypair parse error", "error", err)
 			return
 		}
 		if len(c.Certificate) > 0 {
