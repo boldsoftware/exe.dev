@@ -30,7 +30,7 @@ type VMM interface {
 	// Stop implements VM stop
 	Stop(ctx context.Context, id string) error
 	// Delete implements VM delete
-	Delete(ctx context.Context, id string) error
+	Delete(ctx context.Context, id, ip string) error
 	// RecoverProcesses adopts running processes and cleans up stale metadata on startup
 	RecoverProcesses(ctx context.Context) error
 }

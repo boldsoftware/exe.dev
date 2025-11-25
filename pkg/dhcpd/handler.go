@@ -81,7 +81,7 @@ func (s *DHCPServer) handleDiscover(conn net.PacketConn, peer net.Addr, m *dhcpv
 		"hostname", m.HostName(),
 		"mac", m.ClientHWAddr.String(),
 	)
-	if err := s.ds.Reserve(m.ClientHWAddr.String(), clientIP.String(), leaseTTL); err != nil {
+	if err := s.ds.Reserve(m.ClientHWAddr.String(), clientIP.String()); err != nil {
 		// if already exists; ignore
 		if !errors.Is(err, ErrExists) {
 			return err

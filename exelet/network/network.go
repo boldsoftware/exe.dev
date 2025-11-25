@@ -15,6 +15,6 @@ type NetworkManager interface {
 	Config(ctx context.Context) any
 	// CreateInterface creates a new network interface
 	CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error)
-	// DeleteInterface deletes the specified network interface
-	DeleteInterface(ctx context.Context, id string) error
+	// DeleteInterface deletes the specified network interface and releases its IP
+	DeleteInterface(ctx context.Context, id, ip string) error
 }

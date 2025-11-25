@@ -6,6 +6,6 @@ import (
 	"context"
 )
 
-func (n *NAT) DeleteInterface(ctx context.Context, id string) error {
+func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 	return ErrNotImplemented
 }

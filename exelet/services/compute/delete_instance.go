@@ -31,8 +31,14 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 			return nil, status.Errorf(codes.Internal, "error stopping vm: %s", err)
 		}
 
+		// extract IP from instance for DHCP release
+		ip := ""
+		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil && instance.VMConfig.NetworkInterface.IP != nil {
+			ip = instance.VMConfig.NetworkInterface.IP.IPV4
+		}
+
 		// delete vm
-		if err := vmm.Delete(ctx, instance.ID); err != nil {
+		if err := vmm.Delete(ctx, instance.ID, ip); err != nil {
 			return nil, status.Errorf(codes.Internal, "error deleting vm: %s", err)
 		}
 

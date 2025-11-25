@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 const (
@@ -81,23 +80,22 @@ func NewDatastore(path string) (*Datastore, error) {
 	return ds, nil
 }
 
-func (d *Datastore) Reserve(macAddress, ip string, ttl time.Duration) error {
+func (d *Datastore) Reserve(macAddress, ip string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	if v, ok := d.db.Hosts[macAddress]; ok {
-		// already reserved
-		if v.IP == ip {
-			return nil
+		// collision: MAC exists with different IP
+		if v.IP != ip {
+			return fmt.Errorf("%w: IP %q is already reserved for %s", ErrExists, v.IP, v.MACAddress)
 		}
-		// collision
-		return fmt.Errorf("%w: IP %q is already reserved for %s", ErrExists, v.IP, v.MACAddress)
+		// already reserved with same IP - nothing to do
+		return nil
 	}
 
 	lease := &Lease{
 		IP:         ip,
 		MACAddress: macAddress,
-		Expires:    time.Now().Add(ttl).UnixNano(),
 	}
 
 	// index both host and ip for faster lookup

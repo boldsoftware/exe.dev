@@ -8,7 +8,7 @@ import (
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
 )
 
-func (v *VMM) Delete(ctx context.Context, id string) error {
+func (v *VMM) Delete(ctx context.Context, id, ip string) error {
 	c, err := client.NewCloudHypervisorClient(v.apiSocketPath(id), v.log)
 	if err != nil {
 		return err
@@ -27,8 +27,8 @@ func (v *VMM) Delete(ctx context.Context, id string) error {
 		v.log.WarnContext(ctx, "failed to cleanup orphaned processes", "id", id, "error", err)
 	}
 
-	// remove tap
-	if err := v.networkManager.DeleteInterface(ctx, id); err != nil {
+	// remove tap and release DHCP lease
+	if err := v.networkManager.DeleteInterface(ctx, id, ip); err != nil {
 		return fmt.Errorf("error deleting network interface for %s: %w", id, err)
 	}
 

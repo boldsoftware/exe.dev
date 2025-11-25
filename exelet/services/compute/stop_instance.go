@@ -45,14 +45,20 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 		return err
 	}
 
+	// extract IP before clearing network interface
+	ip := ""
+	if vmCfg.NetworkInterface != nil && vmCfg.NetworkInterface.IP != nil {
+		ip = vmCfg.NetworkInterface.IP.IPV4
+	}
+
 	// update vm config
 	vmCfg.NetworkInterface = nil
 	if err := vmm.Update(ctx, vmCfg); err != nil {
 		return err
 	}
 
-	// delete network interface
-	if err := s.context.NetworkManager.DeleteInterface(ctx, id); err != nil {
+	// delete network interface and release DHCP lease
+	if err := s.context.NetworkManager.DeleteInterface(ctx, id, ip); err != nil {
 		return err
 	}
 

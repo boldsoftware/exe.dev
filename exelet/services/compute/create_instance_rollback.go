@@ -63,7 +63,8 @@ func (r *createInstanceRollback) Rollback() {
 
 	// Delete network interface
 	if r.networkCreated {
-		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID); err != nil {
+		// Pass empty IP since we may not have allocated one yet during rollback
+		if err := r.serviceContext.NetworkManager.DeleteInterface(r.ctx, r.instanceID, ""); err != nil {
 			r.log.Error("rollback: failed to delete network interface", "id", r.instanceID, "error", err)
 		}
 	}

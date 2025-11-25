@@ -49,7 +49,7 @@ func TestUtilsGetNextIP(t *testing.T) {
 	}, log)
 	assert.NoError(t, err)
 
-	assert.NoError(t, srv.ds.Reserve("server", "192.168.64.1", leaseTTL))
+	assert.NoError(t, srv.ds.Reserve("server", "192.168.64.1"))
 
 	nextIP, err := srv.getNextIP()
 	assert.NoError(t, err)

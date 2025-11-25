@@ -20,17 +20,15 @@ var (
 
 	DefaultDNSServers = []string{"1.1.1.1"}
 
-	leaseTTL      = time.Second * 600
-	pruneInterval = time.Second * 15
+	leaseTTL = time.Second * 600
 )
 
 type DHCPServer struct {
-	config      *Config
-	srv         *server4.Server
-	ds          *Datastore
-	serverIP    net.IP
-	pruneTicker *time.Ticker
-	log         *slog.Logger
+	config   *Config
+	srv      *server4.Server
+	ds       *Datastore
+	serverIP net.IP
+	log      *slog.Logger
 }
 
 // NewDHCPServer returns a new DHCP server
@@ -56,11 +54,10 @@ func NewDHCPServer(cfg *Config, log *slog.Logger) (*DHCPServer, error) {
 	serverIP := iplib.NextIP(subnetIP)
 
 	return &DHCPServer{
-		config:      cfg,
-		ds:          ds,
-		serverIP:    serverIP,
-		pruneTicker: time.NewTicker(pruneInterval),
-		log:         log,
+		config:   cfg,
+		ds:       ds,
+		serverIP: serverIP,
+		log:      log,
 	}, nil
 }
 
@@ -86,7 +83,7 @@ func (s *DHCPServer) Reserve(macAddress string) (net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ds.Reserve(macAddress, ip.String(), leaseTTL); err != nil {
+	if err := s.ds.Reserve(macAddress, ip.String()); err != nil {
 		return nil, err
 	}
 	return ip, nil

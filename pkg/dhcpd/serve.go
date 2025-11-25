@@ -21,7 +21,7 @@ func (s *DHCPServer) Serve(ctx context.Context) error {
 		return err
 	}
 
-	if err := s.ds.Reserve(iface.Attrs().HardwareAddr.String(), serverIP.String(), 0); err != nil {
+	if err := s.ds.Reserve(iface.Attrs().HardwareAddr.String(), serverIP.String()); err != nil {
 		return err
 	}
 
@@ -46,9 +46,6 @@ func (s *DHCPServer) Serve(ctx context.Context) error {
 			return
 		}
 	}()
-
-	// start prune
-	go s.prune()
 
 	select {
 	case err := <-errCh:
