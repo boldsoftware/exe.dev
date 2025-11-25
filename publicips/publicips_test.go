@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+const testBoxDomain = "exe.dev"
+
 func stubDomainLookup(t *testing.T, responses map[string][]netip.Addr) {
 	t.Helper()
 
@@ -40,7 +42,7 @@ func TestIPsNotOnAWS(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background())
+	ips, err := IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -56,8 +58,8 @@ func TestIPsWithToken(t *testing.T) {
 	privateTwo := netip.MustParseAddr("10.0.0.2")
 
 	stubDomainLookup(t, map[string][]netip.Addr{
-		fmt.Sprintf(domainNameFormat, 1): {publicOne},
-		fmt.Sprintf(domainNameFormat, 2): {publicTwo},
+		fmt.Sprintf(domainShardFormat, 1, testBoxDomain): {publicOne},
+		fmt.Sprintf(domainShardFormat, 2, testBoxDomain): {publicTwo},
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +85,7 @@ func TestIPsWithToken(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background())
+	ips, err := IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -91,11 +93,11 @@ func TestIPsWithToken(t *testing.T) {
 	want := map[netip.Addr]PublicIP{
 		privateOne: {
 			IP:     publicOne,
-			Domain: fmt.Sprintf(domainNameFormat, 1),
+			Domain: fmt.Sprintf(domainShardFormat, 1, testBoxDomain),
 		},
 		privateTwo: {
 			IP:     publicTwo,
-			Domain: fmt.Sprintf(domainNameFormat, 2),
+			Domain: fmt.Sprintf(domainShardFormat, 2, testBoxDomain),
 		},
 	}
 	if len(ips) != len(want) {
@@ -117,7 +119,7 @@ func TestIPsIMDSv1Fallback(t *testing.T) {
 	privateAddr := netip.MustParseAddr("10.0.0.42")
 
 	stubDomainLookup(t, map[string][]netip.Addr{
-		fmt.Sprintf(domainNameFormat, 3): {publicAddr},
+		fmt.Sprintf(domainShardFormat, 3, testBoxDomain): {publicAddr},
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +138,7 @@ func TestIPsIMDSv1Fallback(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background())
+	ips, err := IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -144,7 +146,7 @@ func TestIPsIMDSv1Fallback(t *testing.T) {
 	want := map[netip.Addr]PublicIP{
 		privateAddr: {
 			IP:     publicAddr,
-			Domain: fmt.Sprintf(domainNameFormat, 3),
+			Domain: fmt.Sprintf(domainShardFormat, 3, testBoxDomain),
 		},
 	}
 	if len(ips) != len(want) {
@@ -184,7 +186,7 @@ func TestIPsFallbackDomain(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background())
+	ips, err := IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -221,7 +223,7 @@ func TestIPsMissingPrivateAddress(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	_, err := IPs(context.Background())
+	_, err := IPs(context.Background(), testBoxDomain)
 	if err == nil {
 		t.Fatalf("expected error when private IP missing")
 	}

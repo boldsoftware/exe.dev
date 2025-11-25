@@ -189,7 +189,9 @@ func (s *Server) setupHTTPSServer() {
 				c.Leaf = leaf
 			}
 		}
+		s.tsCertMu.Lock()
 		s.tsCert = &c
+		s.tsCertMu.Unlock()
 		s.slog().Info("tailscale cert loaded", "domain", s.tsDomain)
 	}()
 }
@@ -279,10 +281,11 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 
 	// 1) Serve Tailscale certificate for exact Tailscale DNS name
 	if s.tsDomain != "" && serverName == s.tsDomain {
-		if s.tsCert != nil {
-			return s.tsCert, nil
+		cert, err := s.tailscaleCertificate()
+		if err != nil {
+			return nil, fmt.Errorf("tailscale certificate not available for %s: %w", s.tsDomain, err)
 		}
-		return nil, fmt.Errorf("tailscale certificate not available for %s", s.tsDomain)
+		return cert, nil
 	}
 
 	// 2) Main domain handling
@@ -307,6 +310,42 @@ func (s *Server) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, e
 	defer s.slog().Debug("getCertificate done", "serverName", serverName)
 
 	return s.certManager.GetCertificate(hello)
+}
+
+func (s *Server) tailscaleCertificate() (*tls.Certificate, error) {
+	if s.tsDomain == "" {
+		return nil, fmt.Errorf("tailscale domain not configured")
+	}
+
+	s.tsCertMu.Lock()
+	defer s.tsCertMu.Unlock()
+	if s.tsCert != nil {
+		return s.tsCert, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	tailscaleAcknowledgeUnstableAPI()
+	lc := &tailscale.LocalClient{}
+	certPEM, keyPEM, err := lc.CertPair(ctx, s.tsDomain)
+	if err != nil {
+		return nil, fmt.Errorf("tailscale cert pair not available: %w", err)
+	}
+
+	c, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("tailscale x509 keypair parse error: %w", err)
+	}
+	if len(c.Certificate) > 0 {
+		if leaf, err := x509.ParseCertificate(c.Certificate[0]); err == nil {
+			c.Leaf = leaf
+		}
+	}
+	s.tsCert = &c
+	s.slog().InfoContext(ctx, "tailscale cert loaded", "domain", s.tsDomain)
+
+	return s.tsCert, nil
 }
 
 // setupProxyServers configures additional listeners for proxy ports

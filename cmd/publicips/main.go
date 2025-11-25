@@ -3,10 +3,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/netip"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"exe.dev/publicips"
@@ -20,10 +22,18 @@ func main() {
 }
 
 func run() error {
+	domain := flag.String("domain", "exe.dev", "Box domain hosting s### records (e.g. exe.dev)")
+	flag.Parse()
+
+	boxDomain := strings.TrimSpace(*domain)
+	if boxDomain == "" {
+		return fmt.Errorf("-domain must not be empty")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	mapping, err := publicips.IPs(ctx)
+	mapping, err := publicips.IPs(ctx, boxDomain)
 	if err != nil {
 		return err
 	}

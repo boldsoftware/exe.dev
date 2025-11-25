@@ -25,8 +25,8 @@ const (
 )
 
 const (
-	domainNameFormat = "s%03d.exe.dev"
-	maxDomainShards  = 25
+	domainShardFormat = "s%03d.%s"
+	maxDomainShards   = 25
 )
 
 var fallbackDomains = []string{"exe.dev"}
@@ -54,11 +54,16 @@ type ipMapping struct {
 }
 
 // IPs returns a mapping of private IPv4 addresses to their associated public IPv4
-// metadata on the current EC2 instance. If the process is not running on EC2,
-// it returns an empty map and a nil error.
-func IPs(ctx context.Context) (map[netip.Addr]PublicIP, error) {
+// metadata on the current EC2 instance. boxDomain specifies the base domain for
+// shard records (e.g. exe.dev or exe-staging.dev). If the process is not running
+// on EC2, it returns an empty map and a nil error.
+func IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, error) {
 	if ctx == nil {
 		return nil, errors.New("publicips: context must not be nil")
+	}
+	boxDomain = strings.TrimSpace(boxDomain)
+	if boxDomain == "" {
+		return nil, errors.New("publicips: box domain must not be empty")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -129,7 +134,7 @@ func IPs(ctx context.Context) (map[netip.Addr]PublicIP, error) {
 		return result, nil
 	}
 
-	domains, err := resolveDomains(ctx, mappings)
+	domains, err := resolveDomains(ctx, mappings, boxDomain)
 	if err != nil {
 		return nil, fmt.Errorf("publicips: resolve domains: %w", err)
 	}
@@ -267,9 +272,12 @@ func (c *metadataClient) get(ctx context.Context, path, token string, useToken b
 	return body, resp.StatusCode, nil
 }
 
-func resolveDomains(ctx context.Context, mappings []ipMapping) (map[netip.Addr]string, error) {
+func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string) (map[netip.Addr]string, error) {
 	if len(mappings) == 0 {
 		return map[netip.Addr]string{}, nil
+	}
+	if boxDomain == "" {
+		return nil, fmt.Errorf("box domain must not be empty")
 	}
 
 	needed := make(map[netip.Addr]struct{}, len(mappings))
@@ -283,7 +291,7 @@ func resolveDomains(ctx context.Context, mappings []ipMapping) (map[netip.Addr]s
 			break
 		}
 
-		domain := fmt.Sprintf(domainNameFormat, shard)
+		domain := fmt.Sprintf(domainShardFormat, shard, boxDomain)
 
 		addrs, err := lookupDomainIPs(ctx, "ip4", domain)
 		if err != nil {
@@ -305,7 +313,7 @@ func resolveDomains(ctx context.Context, mappings []ipMapping) (map[netip.Addr]s
 	}
 
 	if len(resolved) != len(needed) {
-		for _, domain := range fallbackDomains {
+		for _, domain := range fallbackDomainCandidates(boxDomain) {
 			if len(resolved) == len(needed) {
 				break
 			}
@@ -342,6 +350,27 @@ func resolveDomains(ctx context.Context, mappings []ipMapping) (map[netip.Addr]s
 	}
 
 	return resolved, nil
+}
+
+func fallbackDomainCandidates(boxDomain string) []string {
+	candidates := make([]string, 0, len(fallbackDomains)+1)
+	seen := make(map[string]struct{}, len(fallbackDomains)+1)
+	add := func(domain string) {
+		domain = strings.TrimSpace(domain)
+		if domain == "" {
+			return
+		}
+		if _, ok := seen[domain]; ok {
+			return
+		}
+		seen[domain] = struct{}{}
+		candidates = append(candidates, domain)
+	}
+	add(boxDomain)
+	for _, domain := range fallbackDomains {
+		add(domain)
+	}
+	return candidates
 }
 
 func splitLines(b []byte) []string {

@@ -169,6 +169,7 @@ type Server struct {
 	stopCobble          func()
 
 	// Tailscale HTTPS (preloaded at startup)
+	tsCertMu sync.Mutex
 	tsCert   *tls.Certificate
 	tsDomain string
 
@@ -579,7 +580,7 @@ func (s *Server) initializePublicIPs() {
 		return
 	}
 
-	ips, err := publicips.IPs(context.Background())
+	ips, err := publicips.IPs(context.Background(), s.env.BoxHost)
 	if err != nil {
 		s.slog().Warn("public IP discovery failed", "error", err)
 		return
@@ -1591,7 +1592,11 @@ func (s *Server) Start() error {
 	// Start HTTPS server in a goroutine if configured
 	if s.httpsLn.ln != nil {
 		go func() {
-			s.slog().InfoContext(ctx, "HTTPS server starting with Let's Encrypt for exe.dev", "addr", s.httpsLn)
+			host := s.env.WebHost
+			if host == "" {
+				host = "configured host"
+			}
+			s.slog().InfoContext(ctx, "HTTPS server starting with Let's Encrypt", "host", host, "addr", s.httpsLn)
 			if err := s.httpsServer.ServeTLS(s.httpsLn.ln, "", ""); err != nil && err != http.ErrServerClosed {
 				s.slog().ErrorContext(ctx, "HTTPS server startup failed", "error", err)
 				cancel()
