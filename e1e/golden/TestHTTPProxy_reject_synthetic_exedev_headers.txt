@@ -1,0 +1,22 @@
+
+
+●
+● ssh localhost
+●
+
+share port BOX_NAME 8080
+
+- help to see a list of commands
+
+exe.dev ▶ share port BOX_NAME 8080
+✓ Route updated successfully
+  Port: 8080
+  Share: public
+
+exe.dev ▶ share set-public BOX_NAME
+✓ Route updated successfully
+  Port: 8080
+  Share: public
+
+exe.dev ▶ exit
+Goodbye!

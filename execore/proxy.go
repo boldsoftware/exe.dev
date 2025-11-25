@@ -605,6 +605,7 @@ func (s *Server) proxyViaSSHPortForward(w http.ResponseWriter, r *http.Request, 
 	defaultDirector := rp.Director
 	rp.Director = func(req *http.Request) {
 		defaultDirector(req)
+		clearExeDevHeaders(req)
 		setForwardedHeaders(req, r)
 
 		// Add user info headers if authenticated
@@ -687,6 +688,16 @@ func clientIPFromRemoteAddr(addr string) string {
 		return ip.String()
 	}
 	return addr
+}
+
+// clearExeDevHeaders removes any exe.dev auth headers from the outbound proxy request.
+// This prevents clients from spoofing authentication state via custom headers.
+func clearExeDevHeaders(req *http.Request) {
+	if req == nil {
+		return
+	}
+	req.Header.Del("X-ExeDev-UserID")
+	req.Header.Del("X-ExeDev-Email")
 }
 
 // checkShareLinkAccess checks if the request has a valid share link token

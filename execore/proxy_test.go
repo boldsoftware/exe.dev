@@ -444,3 +444,25 @@ func TestSetForwardedHeaders(t *testing.T) {
 		}
 	})
 }
+
+func TestClearExeDevHeaders(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "https://box.exe.dev/", nil)
+	req.Header.Set("X-ExeDev-UserID", "spoofed-user")
+	req.Header.Set("X-ExeDev-Email", "spoofed@example.com")
+	req.Header.Add("X-ExeDev-Email", "second@example.com")
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	clearExeDevHeaders(req)
+
+	if got := req.Header.Get("X-ExeDev-UserID"); got != "" {
+		t.Fatalf("expected user header cleared, got %q", got)
+	}
+	if got := req.Header.Get("X-ExeDev-Email"); got != "" {
+		t.Fatalf("expected email header cleared, got %q", got)
+	}
+	if got := req.Header.Get("X-Forwarded-Proto"); got != "https" {
+		t.Fatalf("expected unrelated headers untouched, got %q", got)
+	}
+}

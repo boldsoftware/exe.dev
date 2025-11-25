@@ -459,6 +459,52 @@ chmod +x /home/exedev/cgi-bin/headers
 		}
 	})
 
+	t.Run("reject_synthetic_exedev_headers", func(t *testing.T) {
+		const internalPort = 8080
+		httpPort := Env.exed.HTTPPort
+
+		serveHTTP(t, internalPort)
+
+		exeShell := sshToExeDev(t, keyFile)
+		exeShell.sendLine(fmt.Sprintf("share port %s %d", box, internalPort))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+
+		exeShell.sendLine(fmt.Sprintf("share set-public %s", box))
+		exeShell.want("Route updated successfully")
+		exeShell.wantPrompt()
+		exeShell.disconnect()
+
+		client := noRedirectClient(nil)
+		req := makeProxyRequestWithPath(t, box, httpPort, "/cgi-bin/headers")
+		req.Header.Set("X-ExeDev-UserID", "spoofed-user")
+		req.Header.Set("X-ExeDev-Email", "spoofed@example.com")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("failed to make proxy request for spoofed header test: %v", err)
+		}
+		t.Cleanup(func() { resp.Body.Close() })
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected HTTP 200 from spoofed header request, got %d (body: %s)", resp.StatusCode, string(body))
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("failed to read spoofed header response: %v", err)
+		}
+
+		envMap := parseCGIEnv(body)
+		if val, ok := envMap["HTTP_X_EXEDEV_USERID"]; ok {
+			t.Fatalf("expected X-ExeDev-UserID to be stripped, got %q", val)
+		}
+		if val, ok := envMap["HTTP_X_EXEDEV_EMAIL"]; ok {
+			t.Fatalf("expected X-ExeDev-Email to be stripped, got %q", val)
+		}
+	})
+
 	t.Run("alternate_ports", func(t *testing.T) {
 		serveHTTP(t, Env.exed.ExtraPorts[0])
 
