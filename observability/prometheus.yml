@@ -26,6 +26,13 @@ scrape_configs:
         - 'exed-01:19100'  # exed listens on most ports for proxy, so use 10000+9100
         - 'exe-ctr-01:9100'
         - 'ci.crocodile-vector.ts.net:9100'
+        labels:
+          stage: 'production'
+      - targets:
+        - 'exed-staging-01:19100'  # exed listens on most ports for proxy, so use 10000+9100
+        - 'exe-ctr-staging-01:9100'
+        labels:
+          stage: 'staging'
 
   - job_name: 'cadvisor'
     static_configs:
@@ -33,6 +40,12 @@ scrape_configs:
         - 'docker-01:8080'
         - 'docker-02:8080'
         - 'exe-ctr-01:8080'
+        labels:
+          stage: 'production'
+      - targets:
+        - 'exe-ctr-staging-01:8080'
+        labels:
+          stage: 'staging'
     metrics_path: '/metrics'
 
   - job_name: 'authd'
@@ -58,10 +71,31 @@ scrape_configs:
     scheme: https
     static_configs:
       - targets: ["exed-01.crocodile-vector.ts.net"]
+        labels:
+          stage: 'production'
+      - targets: ["exed-staging-01.crocodile-vector.ts.net"]
+        labels:
+          stage: 'staging'
     metrics_path: '/metrics'
 
   - job_name: 'sshpiperd'
     scheme: http
     static_configs:
       - targets: ["exed-01:30303"]
+        labels:
+          stage: 'production'
+      - targets: ["exed-staging-01:30303"]
+        labels:
+          stage: 'staging'
+    metrics_path: '/metrics'
+
+  - job_name: 'exelet'
+    scheme: http
+    static_configs:
+      - targets: ["exe-ctr-01:9081"]
+        labels:
+          stage: 'production'
+      - targets: ["exe-ctr-staging-01:9081"]
+        labels:
+          stage: 'staging'
     metrics_path: '/metrics'

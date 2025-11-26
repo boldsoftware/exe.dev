@@ -1,10 +1,10 @@
 .PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-cadvisor check-node
 
 # Hosts to deploy node-exporter to
-HOSTS := mon exed-01 exe-ctr-01 ci.crocodile-vector.ts.net
+HOSTS := mon exed-01 exe-ctr-01 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
 
 # Hosts to deploy cadvisor to
-CADVISOR_HOSTS := exe-ctr-01
+CADVISOR_HOSTS := exe-ctr-01 exe-ctr-staging-01
 
 # Grafana configuration
 GRAFANA_URL := https://grafana.crocodile-vector.ts.net/
@@ -43,7 +43,7 @@ deploy-prometheus:
 deploy-node-exporter:
 	@for host in $(HOSTS); do \
 		echo "Deploying node-exporter to $$host..."; \
-		if [ "$$host" = "exed-01" ]; then \
+		if [ "$$host" = "exed-01" ] || [ "$$host" = "exed-staging-01" ]; then \
 			port=19100; \
 		else \
 			port=9100; \

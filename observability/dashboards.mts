@@ -66,6 +66,19 @@ const alertsToCreate: Array<{
 // Cache for the default Prometheus datasource UID
 let defaultPrometheusDatasourceUID: string | null = null;
 
+// Helper to add the stage variable to dashboards
+function addStageVariable(dash: DashboardBuilder) {
+  dash.withVariable(
+    new QueryVariableBuilder("stage")
+      .label("Stage")
+      .includeAll(true)
+      .query('label_values(up, stage)')
+      .current({ text: "All", value: "$__all" })
+      .multi(true)
+      .sort(1)
+  );
+}
+
 // TODO: sections for sshpiper, once that's up and running.
 function makeDevExeDashboard() {
   // Declare the name and define a unique id.
@@ -78,8 +91,14 @@ function makeDevExeDashboard() {
     .tooltip(DashboardCursorSync.Crosshair)
     .timezone("browser");
 
+  // Add stage variable for filtering production vs staging
+  addStageVariable(dash);
+
   // Helper function for adding charts.
   const addTimeseriesChart = makeAddTimeseriesChart(dash, "exe-dev-dashboard");
+
+  // Stage filter to be used in queries
+  const STAGE_FILTER = 'stage=~"$stage"';
 
   // README panel for auto-generated dashboard
   dash.withPanel(
@@ -100,7 +119,7 @@ function makeDevExeDashboard() {
   // Row 1: HTTP metrics overview (starting at y: 4 after README)
   addTimeseriesChart(
     "HTTP Requests Rate",
-    `rate(promhttp_metric_handler_requests_total{job="exed"}[$__rate_interval])`,
+    `rate(promhttp_metric_handler_requests_total{job="exed",${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 4, w: 8, h: 6 }),
     }
@@ -108,7 +127,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "HTTP Requests in Flight",
-    `promhttp_metric_handler_requests_in_flight{job="exed"}`,
+    `promhttp_metric_handler_requests_in_flight{job="exed",${STAGE_FILTER}}`,
     {
       panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 4, w: 8, h: 6 }),
     }
@@ -116,7 +135,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "HTTP Request Success Rate",
-    `rate(promhttp_metric_handler_requests_total{job="exed",code="200"}[$__rate_interval]) / rate(promhttp_metric_handler_requests_total{job="exed"}[$__rate_interval]) * 100`,
+    `rate(promhttp_metric_handler_requests_total{job="exed",code="200",${STAGE_FILTER}}[$__rate_interval]) / rate(promhttp_metric_handler_requests_total{job="exed",${STAGE_FILTER}}[$__rate_interval]) * 100`,
     {
       panelCustomization: (x) =>
         x.unit("percent").min(0).max(100).gridPos({ x: 16, y: 4, w: 8, h: 6 }),
@@ -126,19 +145,19 @@ function makeDevExeDashboard() {
   // Row 2: SSH connections and activity
   addTimeseriesChart(
     "SSH Connections Rate",
-    `rate(ssh_connections_total[5m])`,
+    `rate(ssh_connections_total{${STAGE_FILTER}}[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
     }
   );
 
-  addTimeseriesChart("Current SSH Connections", `ssh_connections_current`, {
+  addTimeseriesChart("Current SSH Connections", `ssh_connections_current{${STAGE_FILTER}}`, {
     panelCustomization: (x) => x.min(0).gridPos({ x: 8, y: 10, w: 8, h: 6 }),
   });
 
   addTimeseriesChart(
     "SSH Auth Attempts Rate",
-    `rate(ssh_auth_attempts_total[5m])`,
+    `rate(ssh_auth_attempts_total{${STAGE_FILTER}}[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
     }
@@ -147,7 +166,7 @@ function makeDevExeDashboard() {
   // Row 3: SSH session details
   addTimeseriesChart(
     "SSH Session Duration (95th percentile)",
-    `histogram_quantile(0.95, rate(ssh_session_duration_seconds_bucket[5m]))`,
+    `histogram_quantile(0.95, rate(ssh_session_duration_seconds_bucket{${STAGE_FILTER}}[5m]))`,
     {
       panelCustomization: (x) =>
         x.unit("s").gridPos({ x: 0, y: 16, w: 12, h: 6 }),
@@ -156,7 +175,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "HTTP Error Rate",
-    `rate(promhttp_metric_handler_requests_total{job="exed",code=~"[45].."}[5m]) / rate(promhttp_metric_handler_requests_total{job="exed"}[5m]) * 100`,
+    `rate(promhttp_metric_handler_requests_total{job="exed",code=~"[45]..",${STAGE_FILTER}}[5m]) / rate(promhttp_metric_handler_requests_total{job="exed",${STAGE_FILTER}}[5m]) * 100`,
     {
       panelCustomization: (x) =>
         x.unit("percent").gridPos({ x: 12, y: 16, w: 12, h: 6 }),
@@ -166,7 +185,7 @@ function makeDevExeDashboard() {
   // sshpiperd metrics
   addTimeseriesChart(
     "sshpiper Pipe Open Connections",
-    `rate(sshpiper_pipe_open_connections[5m])`,
+    `rate(sshpiper_pipe_open_connections{${STAGE_FILTER}}[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 10, w: 8, h: 6 }),
     }
@@ -174,7 +193,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "sshpiper Upstream Auth Failures",
-    `rate(sshpiper_upstream_auth_failures[5m])`,
+    `rate(sshpiper_upstream_auth_failures{${STAGE_FILTER}}[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
     }
@@ -197,17 +216,17 @@ function makeDevExeDashboard() {
     .gridPos({ x: 0, y: 35, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr('sqlite_pool_open_connections{job="exed"}')
+        .expr(`sqlite_pool_open_connections{job="exed",${STAGE_FILTER}}`)
         .legendFormat("Open Connections")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr('sqlite_pool_in_use_connections{job="exed"}')
+        .expr(`sqlite_pool_in_use_connections{job="exed",${STAGE_FILTER}}`)
         .legendFormat("In Use")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr('sqlite_pool_idle_connections{job="exed"}')
+        .expr(`sqlite_pool_idle_connections{job="exed",${STAGE_FILTER}}`)
         .legendFormat("Idle")
     );
   dash.withPanel(sqlPoolPanel);
@@ -219,12 +238,12 @@ function makeDevExeDashboard() {
     .gridPos({ x: 8, y: 35, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr('sqlite_pool_available_writers{job="exed"}')
+        .expr(`sqlite_pool_available_writers{job="exed",${STAGE_FILTER}}`)
         .legendFormat("Available")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr('sqlite_pool_total_writers{job="exed"}')
+        .expr(`sqlite_pool_total_writers{job="exed",${STAGE_FILTER}}`)
         .legendFormat("Total")
     );
   dash.withPanel(writerPoolPanel);
@@ -236,12 +255,12 @@ function makeDevExeDashboard() {
     .gridPos({ x: 16, y: 35, w: 8, h: 6 })
     .withTarget(
       new DataqueryBuilder()
-        .expr('sqlite_pool_available_readers{job="exed"}')
+        .expr(`sqlite_pool_available_readers{job="exed",${STAGE_FILTER}}`)
         .legendFormat("Available")
     )
     .withTarget(
       new DataqueryBuilder()
-        .expr('sqlite_pool_total_readers{job="exed"}')
+        .expr(`sqlite_pool_total_readers{job="exed",${STAGE_FILTER}}`)
         .legendFormat("Total")
     );
   dash.withPanel(readerPoolPanel);
@@ -258,7 +277,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "SQLite Transaction Leaks",
-    `rate(sqlite_tx_leaks_total{job="exed"}[5m])`,
+    `rate(sqlite_tx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 0, y: 42, w: 8, h: 6 }),
     }
@@ -266,7 +285,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "SQLite Read Transaction Leaks",
-    `rate(sqlite_rx_leaks_total{job="exed"}[5m])`,
+    `rate(sqlite_rx_leaks_total{job="exed",${STAGE_FILTER}}[5m])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 8, y: 42, w: 8, h: 6 }),
     }
@@ -274,7 +293,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "SQLite Transaction Latency (95th percentile)",
-    `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed"}[5m])) / 1000`,
+    `histogram_quantile(0.95, rate(sqlite_tx_latency_bucket{job="exed",${STAGE_FILTER}}[5m])) / 1000`,
     {
       panelCustomization: (x) =>
         x.unit("ms").gridPos({ x: 16, y: 42, w: 8, h: 6 }),
@@ -293,7 +312,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "Box Creation p50",
-    `histogram_quantile(0.5, rate(box_creation_time_seconds_bucket[$__rate_interval]))`,
+    `histogram_quantile(0.5, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`,
     {
       panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 49, w: 6, h: 6 }),
     }
@@ -301,7 +320,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "Box Creation p90",
-    `histogram_quantile(0.9, rate(box_creation_time_seconds_bucket[$__rate_interval]))`,
+    `histogram_quantile(0.9, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`,
     {
       panelCustomization: (x) => x.unit("s").gridPos({ x: 6, y: 49, w: 6, h: 6 }),
     }
@@ -309,7 +328,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "Box Creation p99",
-    `histogram_quantile(0.99, rate(box_creation_time_seconds_bucket[$__rate_interval]))`,
+    `histogram_quantile(0.99, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`,
     {
       panelCustomization: (x) => x.unit("s").gridPos({ x: 12, y: 49, w: 6, h: 6 }),
     }
@@ -317,7 +336,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "Box Creation Rate",
-    `rate(box_creation_time_seconds_count[$__rate_interval])`,
+    `rate(box_creation_time_seconds_count{${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) => x.gridPos({ x: 18, y: 49, w: 6, h: 6 }),
     }
@@ -335,7 +354,7 @@ function makeDevExeDashboard() {
 
   addTimeseriesChart(
     "Let's Encrypt Requests Rate",
-    `rate(letsencrypt_cert_requests_total[$__rate_interval])`,
+    `rate(letsencrypt_cert_requests_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) =>
         x.min(0).gridPos({ x: 0, y: 56, w: 8, h: 6 }),
@@ -360,6 +379,9 @@ function makeContainerMetricsDashboard() {
     dash,
     "exe-dev-container-metrics-dashboard"
   );
+
+  // Add stage variable for filtering production vs staging
+  addStageVariable(dash);
 
   // Variable definitions for filtering
   dash.withVariable(
@@ -408,7 +430,7 @@ function makeContainerMetricsDashboard() {
 
   // Filter for containers with sketch="true" label and selected variables
   const CONTAINER_FILTER =
-    'container_label_managed_by="exe",image=~"$image",instance=~"$instance",container_label_user_id=~"$user_id",container_label_team=~"$team"';
+    'container_label_managed_by="exe",image=~"$image",instance=~"$instance",container_label_user_id=~"$user_id",container_label_team=~"$team",stage=~"$stage"';
 
   // README panel for auto-generated dashboard
   dash.withPanel(
@@ -614,6 +636,9 @@ function makeExeBoxesDashboard() {
     .tooltip(DashboardCursorSync.Crosshair)
     .timezone("browser");
 
+  // Add stage variable for filtering production vs staging
+  addStageVariable(dash);
+
   const addTimeseriesChart = makeAddTimeseriesChart(
     dash,
     "exe-dev-boxes-dashboard"
@@ -636,7 +661,7 @@ function makeExeBoxesDashboard() {
   );
 
   // Filter for exe boxes
-  const BOX_FILTER = 'container_label_managed_by="exe",id=~"/exe/.*"';
+  const BOX_FILTER = 'container_label_managed_by="exe",id=~"/exe/.*",stage=~"$stage"';
 
   // Row 1: Overview Stats
   dash.withRow(
