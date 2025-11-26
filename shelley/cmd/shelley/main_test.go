@@ -35,16 +35,16 @@ func TestSanitizeSlug(t *testing.T) {
 }
 
 func TestCLICommands(t *testing.T) {
-	// Create a temporary directory for test database
+	// Build the binary once for this test and its subtests
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "test.db")
-
-	// Build the binary for testing
 	binary := filepath.Join(tempDir, "shelley")
 	cmd := exec.Command("go", "build", "-o", binary, ".")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build binary: %v", err)
 	}
+
+	// Create a temporary directory for test database
+	dbPath := filepath.Join(tempDir, "test.db")
 
 	t.Run("help message", func(t *testing.T) {
 		cmd := exec.Command(binary)
@@ -115,16 +115,16 @@ func TestCLICommands(t *testing.T) {
 }
 
 func TestCLIWithPredictableService(t *testing.T) {
-	// Create a temporary directory for test database
+	// Build the binary once for this test and its subtests
 	tempDir := t.TempDir()
-	dbPath := filepath.Join(tempDir, "test.db")
-
-	// Build the binary for testing
 	binary := filepath.Join(tempDir, "shelley")
 	cmd := exec.Command("go", "build", "-o", binary, ".")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to build binary: %v", err)
 	}
+
+	// Create a temporary directory for test database
+	dbPath := filepath.Join(tempDir, "test.db")
 
 	t.Run("prompt with predictable service", func(t *testing.T) {
 		// Run a prompt with predictable service
