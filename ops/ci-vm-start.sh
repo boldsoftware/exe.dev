@@ -183,9 +183,22 @@ cp_clone_file() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SETUP_HASH="$(git rev-parse HEAD:ops/)"
 
+# Detect current platform architecture
+HOST_ARCH=$(uname -m)
+if [ "$HOST_ARCH" = "x86_64" ]; then
+    HOST_ARCH="amd64"
+elif [ "$HOST_ARCH" = "aarch64" ] || [ "$HOST_ARCH" = "arm64" ]; then
+    HOST_ARCH="arm64"
+fi
+
+# Get container image digest for current platform
+EXEUNTU_IMAGE="ghcr.io/boldsoftware/exeuntu:latest"
+EXEUNTU_DIGEST=$("${SCRIPT_DIR}/get-image-digest.sh" "$EXEUNTU_IMAGE" "$HOST_ARCH" | cut -d: -f2 | cut -c1-20)
+
+# Combine ops tree hash with image digest for cache key
 # We re-build the VM snapshot once a day. If you want to disable
 # using snapshots, change SNAPSHOT_DIR to be something unique, and, voila.
-SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH}-$(date +%Y%m%d)"
+SNAPSHOT_DIR="${CACHE_DIR}/ci-vm-${SETUP_HASH:0:20}-${EXEUNTU_DIGEST}-$(date +%Y%m%d)"
 SNAPSHOT_BASE="${SNAPSHOT_DIR}/base.qcow2"
 SNAPSHOT_DATA="${SNAPSHOT_DIR}/data.qcow2"
 LOCAL_BASE_COPY="${WORKDIR}/ci-base-${SETUP_HASH}.qcow2"
