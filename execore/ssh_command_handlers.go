@@ -368,7 +368,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 	// Use the metadata service for the gateway
 	shelleyJSON["llm_gateway"] = "http://169.254.169.254/gateway/llm"
-	shelleyJSON["key_generator"] = "echo"
+	shelleyJSON["key_generator"] = "echo irrelevant"
 	shelleyJSON["links"] = []map[string]string{
 		{
 			"title":    fmt.Sprintf("Back to %s", ss.server.env.WebHost),
