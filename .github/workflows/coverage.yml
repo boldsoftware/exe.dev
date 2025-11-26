@@ -1,0 +1,54 @@
+name: Coverage
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to checkout
+        required: false
+        type: string
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    runs-on: [self-hosted, linux, x64, libvirt]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set PATH
+        run: echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Tools Version
+        run: go version
+
+      - name: Start ephemeral VM
+        id: vm
+        run: |
+          set -euo pipefail
+          ./ops/ci-vm-start.sh | tee ci-vm-start.log
+          ENVFILE=$(tail -n1 ci-vm-start.log)
+          echo "envfile=$ENVFILE" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC1090
+          source "$ENVFILE"
+          echo "CTR_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
+
+      - name: Run tests with coverage
+        run: ./scripts/run-coverage.sh coverage
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage/
+          retention-days: 30
+
+      - name: Destroy ephemeral VM
+        if: always()
+        run: |
+          if [ -n "${{ steps.vm.outputs.envfile }}" ]; then
+            ./ops/ci-vm-destroy.sh "${{ steps.vm.outputs.envfile }}" || true
+          fi
