@@ -209,6 +209,12 @@ exelet: exelet-kernel exelet-rovol
 	@# exelet only runs in linux
 	@cd ./cmd/exelet && GOOS=linux go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
 
+.PHONY: exelet-coverage
+exelet-coverage: exelet-kernel exelet-rovol
+	@>&2 echo " -> building exelet with coverage ${COMMIT}${BUILD}"
+	@# exelet only runs in linux
+	@cd ./cmd/exelet && GOOS=linux go build -cover -covermode=atomic -coverpkg=exe.dev/... -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
+
 .PHONY: exelet-ctl
 exelet-ctl:
 	@>&2 echo " -> building exelet-ctl ${COMMIT}${BUILD} (${GOOS}/${GOARCH})"

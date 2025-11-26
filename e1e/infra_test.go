@@ -56,6 +56,7 @@ var (
 	flagVerbosePty    = flag.Bool("vpty", false, "enable verbose logging from pty connections")
 	flagVerboseSlog   = flag.Bool("vslog", false, "enable verbose logging from slogs")
 	flagCinema        = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
+	flagCoverProfile  = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
 
 	// testRunID is a random identifier for this test invocation.
 	// A single container host is often shared across test and dev runs.
@@ -66,6 +67,15 @@ var (
 func TestMain(m *testing.M) {
 	vouch.For("josh")
 	flag.Parse()
+
+	// Resolve coverage output path relative to repo root (parent of e1e directory)
+	// go test runs from within the package directory, so relative paths would be relative to e1e/
+	if !filepath.IsAbs(*flagCoverProfile) {
+		wd, err := os.Getwd()
+		if err == nil {
+			*flagCoverProfile = filepath.Join(filepath.Dir(wd), *flagCoverProfile)
+		}
+	}
 
 	// Generate unique test run ID to avoid box name collisions
 	testRunID = fmt.Sprintf("%04x", rand.Uint32()&0xFFFF)
@@ -287,6 +297,7 @@ type exeletInstance struct {
 	TunnelCancel context.CancelFunc // cancel function for tunnel context
 	BridgeName   string             // bridge name for network isolation
 	ZFSDataset   string             // ZFS dataset for storage isolation
+	CoverDir     string             // remote directory for Go coverage artifacts (GOCOVERDIR)
 }
 
 func (e *testEnv) sshPort() int {
@@ -298,11 +309,10 @@ func parseSSHHost(ctrHost string) string {
 	return strings.TrimPrefix(ctrHost, "ssh://")
 }
 
-// buildExeletBinary builds exelet locally for Linux and returns path to binary
+// buildExeletBinary builds exelet locally for Linux and returns path to binary.
+// The binary is built with coverage instrumentation via "make exelet-coverage".
 func buildExeletBinary() (string, error) {
 	binPath := filepath.Join(os.TempDir(), "exelet-test")
-	// run make to make sure to build dependencies (e.g. rovol and kernel that are embedded)
-	cmd := exec.Command("make", "exelet")
 
 	// Set working directory to project root (parent of e1e directory)
 	wd, err := os.Getwd()
@@ -310,21 +320,20 @@ func buildExeletBinary() (string, error) {
 		return "", fmt.Errorf("failed to get working directory: %w", err)
 	}
 	buildDir := filepath.Dir(wd)
+
+	// Build exelet with coverage instrumentation
+	cmd := exec.Command("make", "exelet-coverage")
 	cmd.Dir = buildDir
-
-	// Cross-compile for Linux with current machine architecture
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH)
-
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to build exelet: %w\n%s\n", err, out)
 	}
-	// rename to test binary
-	if err := os.MkdirAll(filepath.Dir(binPath), 0o770); err != nil {
-		return "", fmt.Errorf("failed to create binpath parent: %w", err)
-	}
+
+	// Rename to test binary path
 	if err := os.Rename(filepath.Join(buildDir, "exeletd"), binPath); err != nil {
 		return "", fmt.Errorf("failed to rename exelet to %s: %w", binPath, err)
 	}
+
 	return binPath, nil
 }
 
@@ -346,6 +355,17 @@ func scpUpload(localPath, host, remotePath string) error {
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR", // hides "Permanently added" spam, but still shows real errors
 		localPath, host+":"+remotePath)
+	return cmd.Run()
+}
+
+// scpDownloadDir downloads a directory recursively from remote host
+func scpDownloadDir(host, remotePath, localPath string) error {
+	cmd := exec.Command("scp",
+		"-r",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		host+":"+remotePath, localPath)
 	return cmd.Run()
 }
 
@@ -540,7 +560,42 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 		e.piperd.Cmd.Wait()
 	}
 	// Cleanup exelet (remote or local)
+	// We need to gracefully stop exelet first so it writes coverage data
+	var localExeletCoverDir string
 	if e.exelet.RemoteHost != "" {
+		remoteBinaryPath := fmt.Sprintf("/tmp/exelet-test-%s", testRunID)
+
+		// Clean up instances BEFORE killing exelet (need the connection)
+		if exeletClient != nil {
+			defer exeletClient.Close()
+			slog.Info("cleaning up instances")
+			instanceCtx, instanceCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			if err := CleanupTestInstances(instanceCtx, exeletClient); err != nil {
+				slog.Error("instance cleanup failed", "error", err)
+			}
+			instanceCancel()
+		}
+
+		// Now gracefully terminate exelet via SIGTERM so it writes coverage data
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		// Send SIGTERM to allow graceful shutdown and coverage write
+		slog.Info("sending SIGTERM to exelet")
+		sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo pkill -TERM -f %s || true", remoteBinaryPath))
+
+		// Poll for process exit (check every 100ms, up to 5 seconds)
+		for i := 0; i < 50; i++ {
+			// pgrep returns exit code 1 if no processes matched
+			if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("pgrep -f %s", remoteBinaryPath)); err != nil {
+				break // Process is gone
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		// Forcefully kill if still running
+		sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo pkill -KILL -f %s || true", remoteBinaryPath))
+		cancel()
+
 		// Stop exelet SSH process
 		if e.exelet.CmdCancel != nil {
 			e.exelet.CmdCancel()
@@ -559,26 +614,32 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 			e.exelet.TunnelCmd.Wait()
 		}
 
-		// Remote cleanup
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		// remove instances
-		if exeletClient != nil {
-			defer exeletClient.Close()
-			slog.Info("cleaning up instances")
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			if err := CleanupTestInstances(ctx, exeletClient); err != nil {
-				slog.Error("instance cleanup failed", "error", err)
+		// Download exelet coverage data BEFORE cleaning up remote resources
+		if e.exelet.CoverDir != "" {
+			var err error
+			localExeletCoverDir, err = os.MkdirTemp("", "e1e-exelet-cov-local-*")
+			if err != nil {
+				slog.Error("failed to create local exelet coverage dir", "error", err)
+			} else {
+				// Download the remote coverage directory
+				if err := scpDownloadDir(e.exelet.RemoteHost, e.exelet.CoverDir+"/*", localExeletCoverDir); err != nil {
+					slog.Error("failed to download exelet coverage", "error", err)
+					localExeletCoverDir = "" // Don't use it if download failed
+				} else {
+					slog.Info("downloaded exelet coverage", "local_dir", localExeletCoverDir)
+				}
 			}
 		}
+
+		// Remote cleanup - use a fresh context with enough time
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
 
 		// Clean up isolated resources
 		// Remove bridge
 		if e.exelet.BridgeName != "" {
 			slog.Info("removing bridge", "bridge", e.exelet.BridgeName)
-			if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo ip link delete %s 2>/dev/null || true", e.exelet.BridgeName)); err != nil {
+			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo ip link delete %s 2>/dev/null || true", e.exelet.BridgeName)); err != nil {
 				slog.Error("failed to remove bridge", "bridge", e.exelet.BridgeName, "error", err)
 			}
 		}
@@ -586,12 +647,12 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 		// Remove ZFS dataset (includes cloned image volumes)
 		if e.exelet.ZFSDataset != "" {
 			slog.Info("removing ZFS dataset", "dataset", e.exelet.ZFSDataset)
-			if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo zfs destroy -r %s 2>/dev/null || true", e.exelet.ZFSDataset)); err != nil {
+			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo zfs destroy -r %s 2>/dev/null || true", e.exelet.ZFSDataset)); err != nil {
 				slog.Error("failed to remove ZFS dataset", "dataset", e.exelet.ZFSDataset, "error", err)
 			}
 			// Clean up snapshots we created on source image volumes for cloning
 			cleanupSnapshotsCmd := fmt.Sprintf("sudo zfs list -H -t snapshot -o name | grep '@e1e-%s$' | xargs -r -n1 sudo zfs destroy 2>/dev/null || true", testRunID)
-			if _, err := sshExec(ctx, e.exelet.RemoteHost, cleanupSnapshotsCmd); err != nil {
+			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, cleanupSnapshotsCmd); err != nil {
 				slog.Error("failed to cleanup image snapshots", "error", err)
 			}
 		}
@@ -599,13 +660,19 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 		// Remove data directory
 		dataDir := fmt.Sprintf("/data/exelet-%s", testRunID)
 		slog.Info("removing data directory", "dataDir", dataDir)
-		if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo rm -rf %s", dataDir)); err != nil {
+		if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo rm -rf %s", dataDir)); err != nil {
 			slog.Error("failed to remove data directory", "dataDir", dataDir, "error", err)
 		}
 
+		// Remove remote coverage directory
+		if e.exelet.CoverDir != "" {
+			if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo rm -rf %s", e.exelet.CoverDir)); err != nil {
+				slog.Error("failed to remove remote coverage directory", "error", err)
+			}
+		}
+
 		// Remove remote binary (use test-run-specific name)
-		remoteBinaryPath := fmt.Sprintf("/tmp/exelet-test-%s", testRunID)
-		if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("rm -f %s", remoteBinaryPath)); err != nil {
+		if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("rm -f %s", remoteBinaryPath)); err != nil {
 			slog.Error("failed to cleanup remote exelet binary", "error", err)
 		}
 
@@ -619,13 +686,26 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 		e.exedHTTPProxy.close()
 	}
 
-	// CoverDir should always be non-empty, but maybe if exed failed to start?
-	// Avoid duplicate/confusing errors by just skipping in this case.
+	// Collect and merge coverage data from exed and exelet
+	slog.Info("COVERAGE", "exed_dir", e.exed.CoverDir, "exelet_dir", localExeletCoverDir)
+
+	var coverDirs []string
 	if e.exed.CoverDir != "" {
-		// Extract "legacy" text format Go coverage profile to standard location
-		cmd := exec.Command("go", "tool", "covdata", "textfmt", "-i", e.exed.CoverDir, "-o", "e1e.cover")
+		coverDirs = append(coverDirs, e.exed.CoverDir)
+	}
+	if localExeletCoverDir != "" {
+		coverDirs = append(coverDirs, localExeletCoverDir)
+	}
+
+	if len(coverDirs) > 0 {
+		// Merge coverage from all sources using go tool covdata
+		// -i takes comma-separated directories
+		inputDirs := strings.Join(coverDirs, ",")
+		cmd := exec.Command("go", "tool", "covdata", "textfmt", "-i", inputDirs, "-o", *flagCoverProfile)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			slog.Error("failed to write exed coverage profile", "cmd", cmd.String(), "error", err, "output", string(out))
+			slog.Error("failed to write coverage profile", "cmd", cmd.String(), "error", err, "output", string(out))
+		} else {
+			slog.Info("wrote merged coverage profile", "path", *flagCoverProfile, "sources", coverDirs)
 		}
 	}
 	return checkErr
@@ -1145,14 +1225,15 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	// Build the command to execute remotely
 	// Use unique data-dir per test run to avoid mount conflicts in /data/exelet/storage/mounts
 	dataDir := fmt.Sprintf("/data/exelet-%s", testRunID)
+	coverDir := fmt.Sprintf("/tmp/e1e-exelet-cov-%s", testRunID)
 
-	// Create the data directory
-	if _, err := sshExec(ctx, host, fmt.Sprintf("sudo mkdir -p %s", dataDir)); err != nil {
-		return nil, fmt.Errorf("failed to create data directory %s: %w", dataDir, err)
+	// Create the data directory and coverage directory
+	if _, err := sshExec(ctx, host, fmt.Sprintf("sudo mkdir -p %s %s", dataDir, coverDir)); err != nil {
+		return nil, fmt.Errorf("failed to create data/coverage directory %s: %w", dataDir, err)
 	}
 
-	remoteCmd := fmt.Sprintf(`sudo LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-monitor-interval 5s --exed-url %s`,
-		remoteBinaryPath, dataDir, dataDir, dataDir, zfsDataset, dataDir, bridgeName, encodedNetwork, proxyPortMin, proxyPortMax, exedURL)
+	remoteCmd := fmt.Sprintf(`sudo GOCOVERDIR=%s LOG_FORMAT=json %s --debug --listen-address tcp://0.0.0.0:0 --http-addr :0 --data-dir %s --runtime-address cloudhypervisor:///%s/runtime --storage-manager-address "zfs:///%s/storage?dataset=%s" --network-manager-address "nat:///%s/network?bridge=%s&network=%s" --proxy-port-min %d --proxy-port-max %d --resource-monitor-interval 5s --exed-url %s`,
+		coverDir, remoteBinaryPath, dataDir, dataDir, dataDir, zfsDataset, dataDir, bridgeName, encodedNetwork, proxyPortMin, proxyPortMax, exedURL)
 
 	// Start exelet via SSH (similar to how exed is started locally)
 	exeletCmd := exec.Command("ssh",
@@ -1293,6 +1374,7 @@ WaitLoop:
 		RemoteHost:  host,
 		BridgeName:  bridgeName,
 		ZFSDataset:  zfsDataset,
+		CoverDir:    coverDir,
 	}
 
 	slog.Info("started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr, "http_addr", finalHTTPAddr)
