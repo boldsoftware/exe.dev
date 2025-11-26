@@ -349,6 +349,60 @@ func scpUpload(localPath, host, remotePath string) error {
 	return cmd.Run()
 }
 
+// cloneImageVolumes clones existing image volumes from tank/sha256:* into the test dataset.
+// This enables copy-on-write sharing of base images, making tests much faster since
+// images don't need to be re-downloaded and provisioned for each test run.
+func cloneImageVolumes(ctx context.Context, host, zfsDataset, runID string) error {
+	// List all ZFS datasets
+	out, err := sshExec(ctx, host, "sudo zfs list -H -o name")
+	if err != nil {
+		return nil
+	}
+
+	// Filter for tank/sha256:* volumes (the cached base images)
+	var volumes []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "tank/sha256:") {
+			volumes = append(volumes, line)
+		}
+	}
+
+	if len(volumes) == 0 {
+		return nil
+	}
+
+	slog.Info("cloning image volumes for test isolation", "count", len(volumes), "dataset", zfsDataset)
+
+	for _, srcVolume := range volumes {
+		// Extract the sha256:... part from tank/sha256:...
+		// and create tank/e1e-<runID>/sha256:...
+		imageID := strings.TrimPrefix(srcVolume, "tank/")
+		destVolume := zfsDataset + "/" + imageID
+		snapName := fmt.Sprintf("e1e-%s", runID)
+
+		// Create a snapshot of the source volume
+		snapCmd := fmt.Sprintf("sudo zfs snapshot %s@%s", srcVolume, snapName)
+		if _, err := sshExec(ctx, host, snapCmd); err != nil {
+			slog.Warn("failed to create snapshot for image clone", "src", srcVolume, "error", err)
+			continue
+		}
+
+		// Clone the snapshot to the test dataset
+		cloneCmd := fmt.Sprintf("sudo zfs clone %s@%s %s", srcVolume, snapName, destVolume)
+		if _, err := sshExec(ctx, host, cloneCmd); err != nil {
+			slog.Warn("failed to clone image volume", "src", srcVolume, "dest", destVolume, "error", err)
+			// Clean up the snapshot we just created
+			sshExec(ctx, host, fmt.Sprintf("sudo zfs destroy %s@%s 2>/dev/null || true", srcVolume, snapName))
+			continue
+		}
+
+		slog.Debug("cloned image volume", "src", srcVolume, "dest", destVolume)
+	}
+
+	return nil
+}
+
 func (e *testEnv) initExeletClient() (*client.Client, error) {
 	c, err := client.NewClient(e.exelet.Address, client.WithInsecure())
 	if err != nil {
@@ -529,11 +583,16 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 			}
 		}
 
-		// Remove ZFS dataset
+		// Remove ZFS dataset (includes cloned image volumes)
 		if e.exelet.ZFSDataset != "" {
 			slog.Info("removing ZFS dataset", "dataset", e.exelet.ZFSDataset)
 			if _, err := sshExec(ctx, e.exelet.RemoteHost, fmt.Sprintf("sudo zfs destroy -r %s 2>/dev/null || true", e.exelet.ZFSDataset)); err != nil {
 				slog.Error("failed to remove ZFS dataset", "dataset", e.exelet.ZFSDataset, "error", err)
+			}
+			// Clean up snapshots we created on source image volumes for cloning
+			cleanupSnapshotsCmd := fmt.Sprintf("sudo zfs list -H -t snapshot -o name | grep '@e1e-%s$' | xargs -r -n1 sudo zfs destroy 2>/dev/null || true", testRunID)
+			if _, err := sshExec(ctx, e.exelet.RemoteHost, cleanupSnapshotsCmd); err != nil {
+				slog.Error("failed to cleanup image snapshots", "error", err)
 			}
 		}
 
@@ -1063,6 +1122,12 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 		if out, err := sshExec(ctx, host, createCmd); err != nil {
 			return nil, fmt.Errorf("failed to create ZFS dataset %s: %w\n%s", zfsDataset, err, out)
 		}
+	}
+
+	// Clone existing image volumes from tank/sha256:* into tank/e1e-<testRunID>/sha256:*
+	// This enables copy-on-write sharing of base images, making tests much faster.
+	if err := cloneImageVolumes(ctx, host, zfsDataset, testRunID); err != nil {
+		slog.Warn("failed to clone image volumes (tests will still work but may be slower)", "error", err)
 	}
 
 	// Start exelet on remote host via SSH
