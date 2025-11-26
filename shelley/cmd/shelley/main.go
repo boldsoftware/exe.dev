@@ -280,7 +280,7 @@ func runPrompt(global GlobalConfig, args []string) {
 			slugCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			_, err := slug.GenerateSlug(slugCtx, llmManager, database, logger, conversationID, promptText)
+			_, err := slug.GenerateSlug(slugCtx, llmManager, database, logger, conversationID, promptText, global.Model)
 			if err != nil {
 				logger.Warn("Failed to generate slug", "error", err)
 			}

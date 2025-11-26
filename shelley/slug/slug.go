@@ -18,8 +18,9 @@ type LLMServiceProvider interface {
 }
 
 // GenerateSlug generates a slug for a conversation and updates the database
-func GenerateSlug(ctx context.Context, llmProvider LLMServiceProvider, database *db.DB, logger *slog.Logger, conversationID, userMessage string) (string, error) {
-	baseSlug, err := generateSlugText(ctx, llmProvider, logger, userMessage)
+// If conversationModelID is provided, it will try to use that model first before falling back to the default list
+func GenerateSlug(ctx context.Context, llmProvider LLMServiceProvider, database *db.DB, logger *slog.Logger, conversationID, userMessage, conversationModelID string) (string, error) {
+	baseSlug, err := generateSlugText(ctx, llmProvider, logger, userMessage, conversationModelID)
 	if err != nil {
 		return "", err
 	}
@@ -52,7 +53,8 @@ func GenerateSlug(ctx context.Context, llmProvider LLMServiceProvider, database 
 }
 
 // generateSlugText generates a human-readable slug for a conversation based on the user message
-func generateSlugText(ctx context.Context, llmProvider LLMServiceProvider, logger *slog.Logger, userMessage string) (string, error) {
+// If conversationModelID is "predictable", it will be used instead of the default preferred models
+func generateSlugText(ctx context.Context, llmProvider LLMServiceProvider, logger *slog.Logger, userMessage, conversationModelID string) (string, error) {
 	// Try different models in order of preference
 	var llmService llm.Service
 	var err error
@@ -60,12 +62,26 @@ func generateSlugText(ctx context.Context, llmProvider LLMServiceProvider, logge
 	// Preferred models in order of preference
 	preferredModels := []string{"qwen3-coder-fireworks", "gpt5-mini", "gpt-5-thinking-mini", "claude-sonnet-4.5", "predictable"}
 
-	for _, model := range preferredModels {
-		llmService, err = llmProvider.GetService(model)
+	// If conversation is using predictable model, use it for slug generation too
+	if conversationModelID == "predictable" {
+		llmService, err = llmProvider.GetService("predictable")
 		if err == nil {
-			break
+			logger.Debug("Using predictable model for slug generation")
+		} else {
+			logger.Debug("Predictable model not available for slug generation", "error", err)
 		}
-		logger.Debug("Model not available for slug generation", "model", model, "error", err)
+	}
+
+	// If we didn't get the predictable service, try the preferred models
+	if llmService == nil {
+		for _, model := range preferredModels {
+			llmService, err = llmProvider.GetService(model)
+			if err == nil {
+				logger.Debug("Using preferred model for slug generation", "model", model)
+				break
+			}
+			logger.Debug("Model not available for slug generation", "model", model, "error", err)
+		}
 	}
 
 	if llmService == nil {

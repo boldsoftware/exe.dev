@@ -379,7 +379,7 @@ func (s *Server) handleChatConversation(w http.ResponseWriter, r *http.Request, 
 		go func() {
 			slugCtx, cancel := context.WithTimeout(ctxNoCancel, 15*time.Second)
 			defer cancel()
-			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
+			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message, modelID)
 			if err != nil {
 				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
 			} else {
@@ -472,7 +472,7 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			slugCtx, cancel := context.WithTimeout(ctxNoCancel, 15*time.Second)
 			defer cancel()
-			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message)
+			_, err := slug.GenerateSlug(slugCtx, s.llmManager, s.db, s.logger, conversationID, req.Message, modelID)
 			if err != nil {
 				s.logger.Warn("Failed to generate slug for conversation", "conversationID", conversationID, "error", err)
 			} else {

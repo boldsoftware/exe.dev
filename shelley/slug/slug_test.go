@@ -131,7 +131,7 @@ func TestGenerateSlug_DatabaseIntegration(t *testing.T) {
 	}
 
 	// Generate first slug - should succeed with "test-slug"
-	slug1, err := GenerateSlug(ctx, mockLLM, database, logger, conv1.ConversationID, "Test message")
+	slug1, err := GenerateSlug(ctx, mockLLM, database, logger, conv1.ConversationID, "Test message", "")
 	if err != nil {
 		t.Fatalf("Failed to generate first slug: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestGenerateSlug_DatabaseIntegration(t *testing.T) {
 	}
 
 	// Generate second slug - should get "test-slug-1" due to conflict
-	slug2, err := GenerateSlug(ctx, mockLLM, database, logger, conv2.ConversationID, "Test message")
+	slug2, err := GenerateSlug(ctx, mockLLM, database, logger, conv2.ConversationID, "Test message", "")
 	if err != nil {
 		t.Fatalf("Failed to generate second slug: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestGenerateSlug_DatabaseIntegration(t *testing.T) {
 	}
 
 	// Generate third slug - should get "test-slug-2" due to conflict
-	slug3, err := GenerateSlug(ctx, mockLLM, database, logger, conv3.ConversationID, "Test message")
+	slug3, err := GenerateSlug(ctx, mockLLM, database, logger, conv3.ConversationID, "Test message", "")
 	if err != nil {
 		t.Fatalf("Failed to generate third slug: %v", err)
 	}
