@@ -334,6 +334,15 @@ func buildExeletBinary() (string, error) {
 		return "", fmt.Errorf("failed to build exelet: %w\n%s\n", err, out)
 	}
 
+	// Ensure temp exelet is not present
+	if _, err := os.Stat(binPath); err == nil {
+		if rErr := os.RemoveAll(binPath); rErr != nil {
+			if !os.IsNotExist(rErr) {
+				return "", fmt.Errorf("error removing existing exelet from %s: %w", binPath, rErr)
+			}
+		}
+	}
+
 	// Rename to test binary path
 	if err := os.Rename(filepath.Join(buildDir, "exeletd"), binPath); err != nil {
 		return "", fmt.Errorf("failed to rename exelet to %s: %w", binPath, err)
