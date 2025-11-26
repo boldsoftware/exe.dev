@@ -15,7 +15,7 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 
 	// release DHCP lease if IP is provided
 	if ip != "" {
-		// strip CIDR suffix if present (e.g., "192.168.70.2/24" -> "192.168.70.2")
+		// strip CIDR suffix if present (e.g., "10.42.0.2/16" -> "10.42.0.2")
 		if idx := strings.Index(ip, "/"); idx > 0 {
 			ip = ip[:idx]
 		}

@@ -88,7 +88,7 @@ func (s *Service) GetInstanceByIP(ctx context.Context, ip string) (string, strin
 	for _, instance := range instances {
 		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil {
 			if instance.VMConfig.NetworkInterface.IP != nil {
-				// Extract IP from CIDR notation (e.g., "192.168.70.2/24" -> "192.168.70.2")
+				// Extract IP from CIDR notation (e.g., "10.42.0.2/16" -> "10.42.0.2")
 				instanceIP := instance.VMConfig.NetworkInterface.IP.IPV4
 				if idx := strings.Index(instanceIP, "/"); idx > 0 {
 					instanceIP = instanceIP[:idx]

@@ -197,12 +197,12 @@ Location: `exelet/network/`
 - TAP device provisioning for VMs
 - Built-in DHCP server for IP assignment
 - IPTables-based NAT and forwarding
-- Default network: `192.168.70.0/24`
+- Default network: `10.42.0.0/16`
 - DNS: `1.1.1.1` (configurable)
 
 **Configuration**:
 ```
-nat:///path/to/data?bridge=br-exe&network=192.168.70.0/24&dns=1.1.1.1
+nat:///path/to/data?bridge=br-exe&network=10.42.0.0/16&dns=1.1.1.1
 ```
 
 **Network Data Path**:

@@ -14,7 +14,7 @@ import (
 
 const (
 	DefaultBridgeName = "br-exe"
-	DefaultNetwork    = "192.168.70.0/24"
+	DefaultNetwork    = "10.42.0.0/16"
 	DefaultNameserver = "1.1.1.1"
 	DefaultNTPServer  = "ntp.ubuntu.com"
 	MetadataIP        = "169.254.169.254"

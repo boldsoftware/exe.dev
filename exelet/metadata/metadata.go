@@ -223,7 +223,7 @@ func requestSourceIP(r *http.Request) string {
 	if err != nil {
 		sourceIP = r.RemoteAddr
 	}
-	// Unmap IPv6-mapped IPv4 addresses (e.g., "::ffff:192.168.70.2" -> "192.168.70.2")
+	// Unmap IPv6-mapped IPv4 addresses (e.g., "::ffff:10.42.0.2" -> "10.42.0.2")
 	if addr, err := netip.ParseAddr(sourceIP); err == nil {
 		sourceIP = addr.Unmap().String()
 	}
