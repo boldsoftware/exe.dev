@@ -86,6 +86,11 @@ func TestMain(m *testing.M) {
 		return
 	}
 
+	// Skip setup when just listing tests (go test -list)
+	if f := flag.Lookup("test.list"); f != nil && f.Value.String() != "" {
+		os.Exit(m.Run())
+	}
+
 	err := initLogging()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to init logging: %v\n", err)
