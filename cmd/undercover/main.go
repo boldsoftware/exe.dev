@@ -29,22 +29,22 @@ type ProfileBlock struct {
 }
 
 type InputCoverage struct {
-	Name       string
-	Profiles   map[string]*Profile
-	TotalLines int
+	Name         string
+	Profiles     map[string]*Profile
+	TotalLines   int
 	CoveredLines int
 }
 
 type FileCoverage struct {
-	FileName     string
-	Source       []string
-	LineInfo     map[int]*LineCoverage
-	Inputs       []string
+	FileName string
+	Source   []string
+	LineInfo map[int]*LineCoverage
+	Inputs   []string
 }
 
 type LineCoverage struct {
-	Covered      bool
-	CoveredBy    map[string]bool
+	Covered   bool
+	CoveredBy map[string]bool
 }
 
 func main() {
@@ -319,13 +319,13 @@ func generateHTML(outputPath string, inputs []*InputCoverage, files map[string]*
 	})
 
 	data := struct {
-		Inputs    []*InputCoverage
-		Files     []*FileCoverage
-		InputMap  map[string]int
+		Inputs   []*InputCoverage
+		Files    []*FileCoverage
+		InputMap map[string]int
 	}{
-		Inputs:    inputs,
-		Files:     sortedFiles,
-		InputMap:  inputMap,
+		Inputs:   inputs,
+		Files:    sortedFiles,
+		InputMap: inputMap,
 	}
 
 	return tmpl.Execute(f, data)

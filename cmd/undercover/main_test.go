@@ -27,7 +27,7 @@ func Sub(a, b int) int {
 func Mul(a, b int) int {
 	return a * b
 }
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	cov1 := filepath.Join(tmpDir, "test1.cov")
@@ -35,7 +35,7 @@ func Mul(a, b int) int {
 `+sourceFile+`:3.25,5.2 1 1
 `+sourceFile+`:7.25,9.2 1 0
 `+sourceFile+`:11.25,13.2 1 0
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	cov2 := filepath.Join(tmpDir, "test2.cov")
@@ -43,7 +43,7 @@ func Mul(a, b int) int {
 `+sourceFile+`:3.25,5.2 1 1
 `+sourceFile+`:7.25,9.2 1 1
 `+sourceFile+`:11.25,13.2 1 0
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	cov3 := filepath.Join(tmpDir, "test3.cov")
@@ -51,7 +51,7 @@ func Mul(a, b int) int {
 `+sourceFile+`:3.25,5.2 1 1
 `+sourceFile+`:7.25,9.2 1 1
 `+sourceFile+`:11.25,13.2 1 1
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	outputHTML := filepath.Join(tmpDir, "coverage.html")
@@ -110,13 +110,13 @@ func TestParseCoverageFiles(t *testing.T) {
 func Foo() {
 	println("foo")
 }
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	cov1 := filepath.Join(tmpDir, "input1.cov")
 	err = os.WriteFile(cov1, []byte(`mode: set
 `+sourceFile+`:3.12,5.2 1 1
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	inputs, err := parseInputs([]string{cov1})
@@ -163,7 +163,7 @@ func TestAggregateCoverage(t *testing.T) {
 
 func A() {}
 func B() {}
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	inputs := []*InputCoverage{
@@ -256,7 +256,7 @@ func TestMultipleFilesAndInputs(t *testing.T) {
 func File1Func() {
 	println("file1")
 }
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	file2 := filepath.Join(tmpDir, "file2.go")
@@ -265,19 +265,19 @@ func File1Func() {
 func File2Func() {
 	println("file2")
 }
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	cov1 := filepath.Join(tmpDir, "cov1.cov")
 	err = os.WriteFile(cov1, []byte(`mode: set
 `+file1+`:3.18,5.2 1 1
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	cov2 := filepath.Join(tmpDir, "cov2.cov")
 	err = os.WriteFile(cov2, []byte(`mode: set
 `+file2+`:3.18,5.2 1 1
-`), 0644)
+`), 0o644)
 	require.NoError(t, err)
 
 	outputHTML := filepath.Join(tmpDir, "multi.html")
