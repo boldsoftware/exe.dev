@@ -565,9 +565,25 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 	if e.exed.DBPath != "" {
 		os.Remove(e.exed.DBPath)
 	}
+	// Gracefully stop exed with SIGTERM so it writes coverage data
 	if e.exed.Cmd != nil && e.exed.Cmd.Process != nil {
-		e.exed.Cmd.Process.Kill()
-		<-e.exed.Ctx.Done()
+		slog.Info("sending SIGTERM to exed")
+		e.exed.Cmd.Process.Signal(syscall.SIGTERM)
+		// Wait for graceful exit (up to 5 seconds)
+		done := make(chan struct{})
+		go func() {
+			<-e.exed.Ctx.Done()
+			close(done)
+		}()
+		select {
+		case <-done:
+			// Graceful exit
+		case <-time.After(5 * time.Second):
+			// Forcefully kill if still running
+			slog.Warn("exed did not exit gracefully, killing")
+			e.exed.Cmd.Process.Kill()
+			<-e.exed.Ctx.Done()
+		}
 	}
 	if e.piperd.Cmd != nil && e.piperd.Cmd.Process != nil {
 		e.piperd.Cmd.Process.Kill()
