@@ -38,7 +38,7 @@ run_test_with_coverage() {
 
     echo "  Running: $test_name"
 
-    if ! go test -count=1 -race -cover -coverprofile="$output_file" -covermode=atomic -run "^${test_name}\$" "$pkg" > /dev/null 2>&1; then
+    if ! go test -count=1 -race -cover -coverprofile="$output_file" -covermode=atomic -run "^${test_name}\$" "$pkg" >/dev/null 2>&1; then
         echo "    FAILED (coverage may still be written)"
         return 1
     fi
@@ -66,7 +66,7 @@ run_pkg_tests() {
         if ! run_test_with_coverage "$pkg" "$test_name" "$output_file"; then
             failed=1
         fi
-    done <<< "$tests"
+    done <<<"$tests"
 
     return $failed
 }
@@ -97,7 +97,7 @@ if [ -n "$e1e_tests" ]; then
             echo "    FAILED"
             failed_any=1
         fi
-    done <<< "$e1e_tests"
+    done <<<"$e1e_tests"
 else
     echo "  (no tests found or e1e tests skipped)"
 fi
