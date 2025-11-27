@@ -295,7 +295,7 @@ SELECT m.id, m.name, m.status, COALESCE(m.image, '') as image,
        m.created_at, m.updated_at, m.last_started_at,
        COALESCE(m.creation_log, '') as creation_log
 FROM boxes m
-WHERE m.created_by_user_id = ?
+WHERE m.created_by_user_id = ? AND m.status != 'failed'
 ORDER BY m.updated_at DESC
 `
 
