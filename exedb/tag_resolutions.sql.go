@@ -9,74 +9,6 @@ import (
 	"context"
 )
 
-const checkTagResolutionExists = `-- name: CheckTagResolutionExists :one
-SELECT EXISTS(
-	SELECT 1 FROM tag_resolutions
-	WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-)
-`
-
-type CheckTagResolutionExistsParams struct {
-	Registry   string `db:"registry" json:"registry"`
-	Repository string `db:"repository" json:"repository"`
-	Tag        string `db:"tag" json:"tag"`
-	Platform   string `db:"platform" json:"platform"`
-}
-
-func (q *Queries) CheckTagResolutionExists(ctx context.Context, arg CheckTagResolutionExistsParams) (int64, error) {
-	row := q.queryRow(ctx, q.checkTagResolutionExistsStmt, checkTagResolutionExists,
-		arg.Registry,
-		arg.Repository,
-		arg.Tag,
-		arg.Platform,
-	)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const getImageMetadata = `-- name: GetImageMetadata :one
-SELECT image_user, image_login_user, image_entrypoint, image_cmd, image_labels, image_exposed_ports
-FROM tag_resolutions
-WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-LIMIT 1
-`
-
-type GetImageMetadataParams struct {
-	Registry   string `db:"registry" json:"registry"`
-	Repository string `db:"repository" json:"repository"`
-	Tag        string `db:"tag" json:"tag"`
-	Platform   string `db:"platform" json:"platform"`
-}
-
-type GetImageMetadataRow struct {
-	ImageUser         *string `db:"image_user" json:"image_user"`
-	ImageLoginUser    *string `db:"image_login_user" json:"image_login_user"`
-	ImageEntrypoint   *string `db:"image_entrypoint" json:"image_entrypoint"`
-	ImageCmd          *string `db:"image_cmd" json:"image_cmd"`
-	ImageLabels       *string `db:"image_labels" json:"image_labels"`
-	ImageExposedPorts *string `db:"image_exposed_ports" json:"image_exposed_ports"`
-}
-
-func (q *Queries) GetImageMetadata(ctx context.Context, arg GetImageMetadataParams) (GetImageMetadataRow, error) {
-	row := q.queryRow(ctx, q.getImageMetadataStmt, getImageMetadata,
-		arg.Registry,
-		arg.Repository,
-		arg.Tag,
-		arg.Platform,
-	)
-	var i GetImageMetadataRow
-	err := row.Scan(
-		&i.ImageUser,
-		&i.ImageLoginUser,
-		&i.ImageEntrypoint,
-		&i.ImageCmd,
-		&i.ImageLabels,
-		&i.ImageExposedPorts,
-	)
-	return i, err
-}
-
 const getTagResolution = `-- name: GetTagResolution :one
 SELECT registry, repository, tag, platform,
        COALESCE(index_digest, '') as index_digest, COALESCE(platform_digest, '') as platform_digest,
@@ -240,59 +172,6 @@ func (q *Queries) InsertTagResolutionHistory(ctx context.Context, arg InsertTagR
 	return err
 }
 
-const insertTagResolutionWithMetadata = `-- name: InsertTagResolutionWithMetadata :exec
-INSERT INTO tag_resolutions (
-    registry, repository, tag, platform,
-    index_digest, platform_digest,
-    image_user, image_login_user, image_entrypoint, image_cmd, image_labels, image_exposed_ports,
-    last_checked_at, last_changed_at, ttl_seconds,
-    created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-type InsertTagResolutionWithMetadataParams struct {
-	Registry          string  `db:"registry" json:"registry"`
-	Repository        string  `db:"repository" json:"repository"`
-	Tag               string  `db:"tag" json:"tag"`
-	Platform          string  `db:"platform" json:"platform"`
-	IndexDigest       *string `db:"index_digest" json:"index_digest"`
-	PlatformDigest    *string `db:"platform_digest" json:"platform_digest"`
-	ImageUser         *string `db:"image_user" json:"image_user"`
-	ImageLoginUser    *string `db:"image_login_user" json:"image_login_user"`
-	ImageEntrypoint   *string `db:"image_entrypoint" json:"image_entrypoint"`
-	ImageCmd          *string `db:"image_cmd" json:"image_cmd"`
-	ImageLabels       *string `db:"image_labels" json:"image_labels"`
-	ImageExposedPorts *string `db:"image_exposed_ports" json:"image_exposed_ports"`
-	LastCheckedAt     int64   `db:"last_checked_at" json:"last_checked_at"`
-	LastChangedAt     int64   `db:"last_changed_at" json:"last_changed_at"`
-	TtlSeconds        int64   `db:"ttl_seconds" json:"ttl_seconds"`
-	CreatedAt         int64   `db:"created_at" json:"created_at"`
-	UpdatedAt         int64   `db:"updated_at" json:"updated_at"`
-}
-
-func (q *Queries) InsertTagResolutionWithMetadata(ctx context.Context, arg InsertTagResolutionWithMetadataParams) error {
-	_, err := q.exec(ctx, q.insertTagResolutionWithMetadataStmt, insertTagResolutionWithMetadata,
-		arg.Registry,
-		arg.Repository,
-		arg.Tag,
-		arg.Platform,
-		arg.IndexDigest,
-		arg.PlatformDigest,
-		arg.ImageUser,
-		arg.ImageLoginUser,
-		arg.ImageEntrypoint,
-		arg.ImageCmd,
-		arg.ImageLabels,
-		arg.ImageExposedPorts,
-		arg.LastCheckedAt,
-		arg.LastChangedAt,
-		arg.TtlSeconds,
-		arg.CreatedAt,
-		arg.UpdatedAt,
-	)
-	return err
-}
-
 const updateTagResolutionChecked = `-- name: UpdateTagResolutionChecked :exec
 UPDATE tag_resolutions
 SET last_checked_at = ?, updated_at = ?
@@ -346,43 +225,6 @@ func (q *Queries) UpdateTagResolutionDigest(ctx context.Context, arg UpdateTagRe
 		arg.LastChangedAt,
 		arg.UpdatedAt,
 		arg.ImageSize,
-		arg.Registry,
-		arg.Repository,
-		arg.Tag,
-		arg.Platform,
-	)
-	return err
-}
-
-const updateTagResolutionMetadata = `-- name: UpdateTagResolutionMetadata :exec
-UPDATE tag_resolutions
-SET image_user = ?, image_login_user = ?, image_entrypoint = ?, image_cmd = ?, image_labels = ?, image_exposed_ports = ?, updated_at = ?
-WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-`
-
-type UpdateTagResolutionMetadataParams struct {
-	ImageUser         *string `db:"image_user" json:"image_user"`
-	ImageLoginUser    *string `db:"image_login_user" json:"image_login_user"`
-	ImageEntrypoint   *string `db:"image_entrypoint" json:"image_entrypoint"`
-	ImageCmd          *string `db:"image_cmd" json:"image_cmd"`
-	ImageLabels       *string `db:"image_labels" json:"image_labels"`
-	ImageExposedPorts *string `db:"image_exposed_ports" json:"image_exposed_ports"`
-	UpdatedAt         int64   `db:"updated_at" json:"updated_at"`
-	Registry          string  `db:"registry" json:"registry"`
-	Repository        string  `db:"repository" json:"repository"`
-	Tag               string  `db:"tag" json:"tag"`
-	Platform          string  `db:"platform" json:"platform"`
-}
-
-func (q *Queries) UpdateTagResolutionMetadata(ctx context.Context, arg UpdateTagResolutionMetadataParams) error {
-	_, err := q.exec(ctx, q.updateTagResolutionMetadataStmt, updateTagResolutionMetadata,
-		arg.ImageUser,
-		arg.ImageLoginUser,
-		arg.ImageEntrypoint,
-		arg.ImageCmd,
-		arg.ImageLabels,
-		arg.ImageExposedPorts,
-		arg.UpdatedAt,
 		arg.Registry,
 		arg.Repository,
 		arg.Tag,

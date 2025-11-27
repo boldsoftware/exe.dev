@@ -39,31 +39,6 @@ ON CONFLICT(registry, repository, tag, platform) DO UPDATE SET
     image_size = excluded.image_size,
     updated_at = excluded.updated_at;
 
--- name: GetImageMetadata :one
-SELECT image_user, image_login_user, image_entrypoint, image_cmd, image_labels, image_exposed_ports
-FROM tag_resolutions
-WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-LIMIT 1;
-
--- name: CheckTagResolutionExists :one
-SELECT EXISTS(
-	SELECT 1 FROM tag_resolutions
-	WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?
-);
-
--- name: UpdateTagResolutionMetadata :exec
-UPDATE tag_resolutions
-SET image_user = ?, image_login_user = ?, image_entrypoint = ?, image_cmd = ?, image_labels = ?, image_exposed_ports = ?, updated_at = ?
-WHERE registry = ? AND repository = ? AND tag = ? AND platform = ?;
-
--- name: InsertTagResolutionWithMetadata :exec
-INSERT INTO tag_resolutions (
-    registry, repository, tag, platform,
-    index_digest, platform_digest,
-    image_user, image_login_user, image_entrypoint, image_cmd, image_labels, image_exposed_ports,
-    last_checked_at, last_changed_at, ttl_seconds,
-    created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetTagResolution :one
 SELECT registry, repository, tag, platform,

@@ -36,9 +36,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.boxesForUserStmt, err = db.PrepareContext(ctx, boxesForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query BoxesForUser: %w", err)
 	}
-	if q.checkTagResolutionExistsStmt, err = db.PrepareContext(ctx, checkTagResolutionExists); err != nil {
-		return nil, fmt.Errorf("error preparing query CheckTagResolutionExists: %w", err)
-	}
 	if q.countBoxShareLinksStmt, err = db.PrepareContext(ctx, countBoxShareLinks); err != nil {
 		return nil, fmt.Errorf("error preparing query CountBoxShareLinks: %w", err)
 	}
@@ -141,9 +138,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
 	}
-	if q.getImageMetadataStmt, err = db.PrepareContext(ctx, getImageMetadata); err != nil {
-		return nil, fmt.Errorf("error preparing query GetImageMetadata: %w", err)
-	}
 	if q.getPendingBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getPendingBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingBoxSharesByBoxID: %w", err)
 	}
@@ -237,9 +231,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.insertTagResolutionHistoryStmt, err = db.PrepareContext(ctx, insertTagResolutionHistory); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertTagResolutionHistory: %w", err)
 	}
-	if q.insertTagResolutionWithMetadataStmt, err = db.PrepareContext(ctx, insertTagResolutionWithMetadata); err != nil {
-		return nil, fmt.Errorf("error preparing query InsertTagResolutionWithMetadata: %w", err)
-	}
 	if q.insertUserStmt, err = db.PrepareContext(ctx, insertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertUser: %w", err)
 	}
@@ -282,9 +273,6 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateTagResolutionDigestStmt, err = db.PrepareContext(ctx, updateTagResolutionDigest); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateTagResolutionDigest: %w", err)
 	}
-	if q.updateTagResolutionMetadataStmt, err = db.PrepareContext(ctx, updateTagResolutionMetadata); err != nil {
-		return nil, fmt.Errorf("error preparing query UpdateTagResolutionMetadata: %w", err)
-	}
 	if q.upsertSSHHostKeyStmt, err = db.PrepareContext(ctx, upsertSSHHostKey); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertSSHHostKey: %w", err)
 	}
@@ -320,11 +308,6 @@ func (q *Queries) Close() error {
 	if q.boxesForUserStmt != nil {
 		if cerr := q.boxesForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing boxesForUserStmt: %w", cerr)
-		}
-	}
-	if q.checkTagResolutionExistsStmt != nil {
-		if cerr := q.checkTagResolutionExistsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing checkTagResolutionExistsStmt: %w", cerr)
 		}
 	}
 	if q.countBoxShareLinksStmt != nil {
@@ -497,11 +480,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getEmailVerificationByTokenStmt: %w", cerr)
 		}
 	}
-	if q.getImageMetadataStmt != nil {
-		if cerr := q.getImageMetadataStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing getImageMetadataStmt: %w", cerr)
-		}
-	}
 	if q.getPendingBoxSharesByBoxIDStmt != nil {
 		if cerr := q.getPendingBoxSharesByBoxIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPendingBoxSharesByBoxIDStmt: %w", cerr)
@@ -657,11 +635,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing insertTagResolutionHistoryStmt: %w", cerr)
 		}
 	}
-	if q.insertTagResolutionWithMetadataStmt != nil {
-		if cerr := q.insertTagResolutionWithMetadataStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing insertTagResolutionWithMetadataStmt: %w", cerr)
-		}
-	}
 	if q.insertUserStmt != nil {
 		if cerr := q.insertUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertUserStmt: %w", cerr)
@@ -732,11 +705,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateTagResolutionDigestStmt: %w", cerr)
 		}
 	}
-	if q.updateTagResolutionMetadataStmt != nil {
-		if cerr := q.updateTagResolutionMetadataStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing updateTagResolutionMetadataStmt: %w", cerr)
-		}
-	}
 	if q.upsertSSHHostKeyStmt != nil {
 		if cerr := q.upsertSSHHostKeyStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertSSHHostKeyStmt: %w", cerr)
@@ -800,7 +768,6 @@ type Queries struct {
 	boxWithNameExistsStmt                  *sql.Stmt
 	boxWithOwnerNamedStmt                  *sql.Stmt
 	boxesForUserStmt                       *sql.Stmt
-	checkTagResolutionExistsStmt           *sql.Stmt
 	countBoxShareLinksStmt                 *sql.Stmt
 	countBoxSharesStmt                     *sql.Stmt
 	countPendingBoxSharesStmt              *sql.Stmt
@@ -835,7 +802,6 @@ type Queries struct {
 	getEmailByUserIDStmt                   *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
-	getImageMetadataStmt                   *sql.Stmt
 	getPendingBoxSharesByBoxIDStmt         *sql.Stmt
 	getPendingBoxSharesByEmailStmt         *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
@@ -867,7 +833,6 @@ type Queries struct {
 	insertSSHKeyStmt                       *sql.Stmt
 	insertSSHKeyForEmailUserStmt           *sql.Stmt
 	insertTagResolutionHistoryStmt         *sql.Stmt
-	insertTagResolutionWithMetadataStmt    *sql.Stmt
 	insertUserStmt                         *sql.Stmt
 	listIPShardsForUserStmt                *sql.Stmt
 	recordUserEventStmt                    *sql.Stmt
@@ -882,7 +847,6 @@ type Queries struct {
 	updateProxyBearerTokenLastUsedStmt     *sql.Stmt
 	updateTagResolutionCheckedStmt         *sql.Stmt
 	updateTagResolutionDigestStmt          *sql.Stmt
-	updateTagResolutionMetadataStmt        *sql.Stmt
 	upsertSSHHostKeyStmt                   *sql.Stmt
 	upsertSSHKeyForUserStmt                *sql.Stmt
 	upsertTagResolutionStmt                *sql.Stmt
@@ -897,7 +861,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		boxWithNameExistsStmt:                  q.boxWithNameExistsStmt,
 		boxWithOwnerNamedStmt:                  q.boxWithOwnerNamedStmt,
 		boxesForUserStmt:                       q.boxesForUserStmt,
-		checkTagResolutionExistsStmt:           q.checkTagResolutionExistsStmt,
 		countBoxShareLinksStmt:                 q.countBoxShareLinksStmt,
 		countBoxSharesStmt:                     q.countBoxSharesStmt,
 		countPendingBoxSharesStmt:              q.countPendingBoxSharesStmt,
@@ -932,7 +895,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
-		getImageMetadataStmt:                   q.getImageMetadataStmt,
 		getPendingBoxSharesByBoxIDStmt:         q.getPendingBoxSharesByBoxIDStmt,
 		getPendingBoxSharesByEmailStmt:         q.getPendingBoxSharesByEmailStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
@@ -964,7 +926,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertSSHKeyStmt:                       q.insertSSHKeyStmt,
 		insertSSHKeyForEmailUserStmt:           q.insertSSHKeyForEmailUserStmt,
 		insertTagResolutionHistoryStmt:         q.insertTagResolutionHistoryStmt,
-		insertTagResolutionWithMetadataStmt:    q.insertTagResolutionWithMetadataStmt,
 		insertUserStmt:                         q.insertUserStmt,
 		listIPShardsForUserStmt:                q.listIPShardsForUserStmt,
 		recordUserEventStmt:                    q.recordUserEventStmt,
@@ -979,7 +940,6 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateProxyBearerTokenLastUsedStmt:     q.updateProxyBearerTokenLastUsedStmt,
 		updateTagResolutionCheckedStmt:         q.updateTagResolutionCheckedStmt,
 		updateTagResolutionDigestStmt:          q.updateTagResolutionDigestStmt,
-		updateTagResolutionMetadataStmt:        q.updateTagResolutionMetadataStmt,
 		upsertSSHHostKeyStmt:                   q.upsertSSHHostKeyStmt,
 		upsertSSHKeyForUserStmt:                q.upsertSSHKeyForUserStmt,
 		upsertTagResolutionStmt:                q.upsertTagResolutionStmt,

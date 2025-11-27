@@ -1,3 +1,5 @@
+-- This is the base schema snapshot. All schema changes must be done via migrations in numbered files (e.g., 035-*.sql)
+
 CREATE TABLE ssh_host_key ( id INTEGER PRIMARY KEY CHECK (id = 1), private_key TEXT NOT NULL, public_key TEXT NOT NULL, fingerprint TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE users (
     user_id TEXT PRIMARY KEY,
