@@ -42,6 +42,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: shelley/go.mod
+          cache-dependency-path: |
+            shelley/go.sum
           cache: true
 
       - name: Set up Node.js
