@@ -530,3 +530,189 @@ func (t *testLLMProvider) GetService(modelID string) (llm.Service, error) {
 func (t *testLLMProvider) GetAvailableModels() []string {
 	return t.models
 }
+
+func TestInsertMissingToolResults(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []llm.Message
+		wantLen  int
+		wantText string
+	}{
+		{
+			name: "no missing tool results",
+			messages: []llm.Message{
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Let me help you"},
+					},
+				},
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Thanks"},
+					},
+				},
+			},
+			wantLen:  1,
+			wantText: "", // No synthetic result expected
+		},
+		{
+			name: "missing tool result - should insert synthetic result",
+			messages: []llm.Message{
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "I'll use a tool"},
+						{Type: llm.ContentTypeToolUse, ID: "tool_123", ToolName: "bash"},
+					},
+				},
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Error occurred"},
+					},
+				},
+			},
+			wantLen:  2, // Should have synthetic tool_result + error message
+			wantText: "not executed; retry possible",
+		},
+		{
+			name: "multiple missing tool results",
+			messages: []llm.Message{
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "I'll use multiple tools"},
+						{Type: llm.ContentTypeToolUse, ID: "tool_1", ToolName: "bash"},
+						{Type: llm.ContentTypeToolUse, ID: "tool_2", ToolName: "read"},
+					},
+				},
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "Error occurred"},
+					},
+				},
+			},
+			wantLen: 3, // Should have 2 synthetic tool_results + error message
+		},
+		{
+			name: "has tool results - should not insert",
+			messages: []llm.Message{
+				{
+					Role: llm.MessageRoleAssistant,
+					Content: []llm.Content{
+						{Type: llm.ContentTypeText, Text: "I'll use a tool"},
+						{Type: llm.ContentTypeToolUse, ID: "tool_123", ToolName: "bash"},
+					},
+				},
+				{
+					Role: llm.MessageRoleUser,
+					Content: []llm.Content{
+						{
+							Type:       llm.ContentTypeToolResult,
+							ToolUseID:  "tool_123",
+							ToolResult: []llm.Content{{Type: llm.ContentTypeText, Text: "result"}},
+						},
+					},
+				},
+			},
+			wantLen: 1, // Should not insert anything
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loop := NewLoop(Config{
+				LLM:     NewPredictableService(),
+				History: []llm.Message{},
+			})
+
+			req := &llm.Request{
+				Messages: tt.messages,
+			}
+
+			loop.insertMissingToolResults(req)
+
+			got := req.Messages[len(req.Messages)-1]
+			if len(got.Content) != tt.wantLen {
+				t.Errorf("expected %d content items, got %d", tt.wantLen, len(got.Content))
+			}
+
+			if tt.wantText != "" {
+				// Find the synthetic tool result
+				found := false
+				for _, c := range got.Content {
+					if c.Type == llm.ContentTypeToolResult && len(c.ToolResult) > 0 {
+						if c.ToolResult[0].Text == tt.wantText {
+							found = true
+							if !c.ToolError {
+								t.Error("synthetic tool result should have ToolError=true")
+							}
+							break
+						}
+					}
+				}
+				if !found {
+					t.Errorf("expected to find synthetic tool result with text %q", tt.wantText)
+				}
+			}
+		})
+	}
+}
+
+func TestInsertMissingToolResultsWithEdgeCases(t *testing.T) {
+	t.Run("empty message list", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		req := &llm.Request{
+			Messages: []llm.Message{},
+		}
+
+		loop.insertMissingToolResults(req)
+		// Should not panic
+	})
+
+	t.Run("single message", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		req := &llm.Request{
+			Messages: []llm.Message{
+				{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}}},
+			},
+		}
+
+		loop.insertMissingToolResults(req)
+		// Should not panic, should not modify
+		if len(req.Messages[0].Content) != 1 {
+			t.Error("should not modify single message")
+		}
+	})
+
+	t.Run("wrong role order - user then assistant", func(t *testing.T) {
+		loop := NewLoop(Config{
+			LLM:     NewPredictableService(),
+			History: []llm.Message{},
+		})
+
+		req := &llm.Request{
+			Messages: []llm.Message{
+				{Role: llm.MessageRoleUser, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hello"}}},
+				{Role: llm.MessageRoleAssistant, Content: []llm.Content{{Type: llm.ContentTypeText, Text: "hi"}}},
+			},
+		}
+
+		loop.insertMissingToolResults(req)
+		// Should not modify when roles are wrong order
+		if len(req.Messages[1].Content) != 1 {
+			t.Error("should not modify when roles are in wrong order")
+		}
+	})
+}
