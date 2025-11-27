@@ -293,10 +293,10 @@ func (c *Client) InfoString(ctx context.Context, pubKey string) (Info, error) {
 	trimmed := strings.TrimSpace(pubKey)
 	switch trimmed {
 	case FakePublicKey0:
-		slog.Debug("recognized fake public key 0, responding with fake user info")
+		slog.DebugContext(ctx, "recognized fake public key 0, responding with fake user info")
 		return Info{IsGitHubUser: true, Login: "fakeuser0", Email: FakeEmail0, CreditOK: true}, nil
 	case FakePublicKey1:
-		slog.Debug("recognized fake public key 1, responding with fake user info")
+		slog.DebugContext(ctx, "recognized fake public key 1, responding with fake user info")
 		return Info{IsGitHubUser: true, Login: "fakeuser1", Email: FakeEmail1, CreditOK: true}, nil
 	}
 	if c == nil {

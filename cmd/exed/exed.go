@@ -299,7 +299,7 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 
 	// Upload binary
 	remotePath := "/tmp/exeletd"
-	slog.Info("uploading exelet to remote host", "host", host, "path", remotePath)
+	slog.InfoContext(ctx, "uploading exelet to remote host", "host", host, "path", remotePath)
 	if err := scpUpload(binPath, host, remotePath); err != nil {
 		return "", "", fmt.Errorf("failed to upload exelet: %w", err)
 	}
@@ -374,13 +374,13 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 		if httpPort == 0 {
 			// Parse failed, or dynamic port. Use gateway approach.
 			exedURL := fmt.Sprintf("http://%s%s", gateway, httpAddr)
-			slog.Info("starting exeletd on remote host", "exed_url", exedURL)
+			slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL)
 			if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
 				return "", "", err
 			}
 			return waitForExeletAndReturnAddress(host, gateway)
 		}
-		slog.Info("remote->local connectivity not available, using SSH reverse tunnel", "http_port", httpPort)
+		slog.InfoContext(ctx, "remote->local connectivity not available, using SSH reverse tunnel", "http_port", httpPort)
 
 		// Start SSH tunnel and discover remote port
 		remotePort, err := startSSHTunnelForExed(host, httpPort)
@@ -388,7 +388,7 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 			return "", "", fmt.Errorf("failed to start SSH tunnel: %w", err)
 		}
 
-		slog.Info("SSH tunnel established", "remote_port", remotePort, "local_port", httpPort)
+		slog.InfoContext(ctx, "SSH tunnel established", "remote_port", remotePort, "local_port", httpPort)
 		exedURL = fmt.Sprintf("http://localhost:%d", remotePort)
 	} else {
 		// Use direct gateway access (traditional approach)
@@ -396,7 +396,7 @@ func startExeletRemote(devMode, httpAddr string) (string, string, error) {
 	}
 
 	// Start exelet via SSH - the SSH command will keep running
-	slog.Info("starting exeletd on remote host", "exed_url", exedURL)
+	slog.InfoContext(ctx, "starting exeletd on remote host", "exed_url", exedURL)
 	if err := startExeletProcess(ctx, host, logFormat, logLevel, exedURL); err != nil {
 		return "", "", err
 	}
@@ -421,9 +421,9 @@ func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL 
 	// Wait for the process in a separate goroutine
 	go func() {
 		if err := cmd.Wait(); err != nil {
-			slog.Error("exeletd ssh process exited with error", "error", err)
+			slog.ErrorContext(ctx, "exeletd ssh process exited with error", "error", err)
 		} else {
-			slog.Info("exeletd ssh process exited normally")
+			slog.InfoContext(ctx, "exeletd ssh process exited normally")
 		}
 	}()
 

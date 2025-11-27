@@ -118,11 +118,11 @@ func (m *llmGateway) boxKeyAuth(ctx context.Context, r *http.Request) (string, e
 	}
 
 	// In dev mode, accept "dev.key:<box>" as a valid API key
-	slog.Debug("boxKeyAuth", "authToken", authToken)
+	slog.DebugContext(ctx, "boxKeyAuth", "authToken", authToken)
 	if m.devMode && strings.HasPrefix(authToken, "dev.key:") {
 		parts := strings.SplitN(authToken, ":", 2)
 		if len(parts) == 2 && parts[1] != "" {
-			slog.Debug("boxKeyAuth: dev mode, accepting dev.key", "box", parts[1])
+			slog.DebugContext(ctx, "boxKeyAuth: dev mode, accepting dev.key", "box", parts[1])
 			return parts[1], nil
 		}
 	}

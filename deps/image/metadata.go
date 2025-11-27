@@ -69,7 +69,7 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 		return nil, fmt.Errorf("error resolving image reference: %w", err)
 	}
 
-	i.log.Debug("resolved image", "name", name, "digest", desc.Digest, "mediaType", desc.MediaType, "size", desc.Size)
+	i.log.DebugContext(ctx, "resolved image", "name", name, "digest", desc.Digest, "mediaType", desc.MediaType, "size", desc.Size)
 
 	metadata := &types.ImageMetadata{
 		Digest:    desc.Digest.String(),
@@ -103,7 +103,7 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 			return nil, fmt.Errorf("error unmarshaling index: %w", err)
 		}
 		metadata.Index = &idx
-		i.log.Debug("fetched index metadata", "manifests", len(idx.Manifests))
+		i.log.DebugContext(ctx, "fetched index metadata", "manifests", len(idx.Manifests))
 
 		// Calculate total compressed content size for all image manifests in the index
 		// Skip non-image manifests (attestations, signatures, etc.)
@@ -112,7 +112,7 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 		for _, manifestDesc := range idx.Manifests {
 			// Only process actual image manifests, not attestations/signatures
 			if !isImageManifest(manifestDesc) {
-				i.log.Debug("skipping non-image manifest",
+				i.log.DebugContext(ctx, "skipping non-image manifest",
 					"digest", manifestDesc.Digest,
 					"mediaType", manifestDesc.MediaType,
 					"annotations", manifestDesc.Annotations)
@@ -144,13 +144,13 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 			if manifestDesc.Platform != nil {
 				platformStr = fmt.Sprintf("%s/%s", manifestDesc.Platform.OS, manifestDesc.Platform.Architecture)
 			}
-			i.log.Debug("counted manifest",
+			i.log.DebugContext(ctx, "counted manifest",
 				"platform", platformStr,
 				"digest", manifestDesc.Digest,
 				"compressedSize", manifestSize)
 		}
 		metadata.ContentSize = totalContentSize
-		i.log.Debug("calculated index compressed content size", "totalSize", totalContentSize, "manifestCount", manifestCount)
+		i.log.DebugContext(ctx, "calculated index compressed content size", "totalSize", totalContentSize, "manifestCount", manifestCount)
 
 	case ocispec.MediaTypeImageManifest, types.MediaTypeDockerSchema2Manifest:
 		var manifest ocispec.Manifest
@@ -158,11 +158,11 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 			return nil, fmt.Errorf("error unmarshaling manifest: %w", err)
 		}
 		metadata.Manifest = &manifest
-		i.log.Debug("fetched manifest metadata", "layers", len(manifest.Layers))
+		i.log.DebugContext(ctx, "fetched manifest metadata", "layers", len(manifest.Layers))
 
 		// Calculate compressed content size
 		metadata.ContentSize = GetManifestSize(&manifest)
-		i.log.Debug("calculated compressed content size", "size", metadata.ContentSize)
+		i.log.DebugContext(ctx, "calculated compressed content size", "size", metadata.ContentSize)
 
 		// Fetch config for additional metadata
 		if manifest.Config.Size > 0 {
@@ -231,7 +231,7 @@ func (i *ImageManager) FetchManifestForPlatform(ctx context.Context, ref, platfo
 		if desc.Platform != nil {
 			platformStr := fmt.Sprintf("%s/%s", desc.Platform.OS, desc.Platform.Architecture)
 			if platformStr == platform {
-				i.log.Debug("found platform manifest", "platform", platform, "digest", desc.Digest)
+				i.log.DebugContext(ctx, "found platform manifest", "platform", platform, "digest", desc.Digest)
 
 				// Fetch this specific manifest
 				rc, err := fetcher.Fetch(ctx, desc)
@@ -252,7 +252,7 @@ func (i *ImageManager) FetchManifestForPlatform(ctx context.Context, ref, platfo
 
 				// Calculate compressed size
 				contentSize := GetManifestSize(&manifest)
-				i.log.Debug("calculated platform manifest compressed size", "platform", platform, "size", contentSize)
+				i.log.DebugContext(ctx, "calculated platform manifest compressed size", "platform", platform, "size", contentSize)
 
 				// Fetch config for additional metadata
 				var conf *ocispec.Image
@@ -347,7 +347,7 @@ func (i *ImageManager) FetchConfig(ctx context.Context, ref, platform string) (*
 		return nil, fmt.Errorf("error getting fetcher: %w", err)
 	}
 
-	i.log.Debug("fetching image config", "digest", manifest.Config.Digest, "size", manifest.Config.Size)
+	i.log.DebugContext(ctx, "fetching image config", "digest", manifest.Config.Digest, "size", manifest.Config.Size)
 
 	configRC, err := fetcher.Fetch(ctx, manifest.Config)
 	if err != nil {
@@ -365,7 +365,7 @@ func (i *ImageManager) FetchConfig(ctx context.Context, ref, platform string) (*
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 
-	i.log.Debug("fetched image config", "arch", conf.Architecture, "os", conf.OS)
+	i.log.DebugContext(ctx, "fetched image config", "arch", conf.Architecture, "os", conf.OS)
 
 	return &conf, nil
 }

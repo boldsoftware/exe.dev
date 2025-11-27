@@ -63,7 +63,7 @@ func (i *ImageManager) Fetch(ctx context.Context, ref, platform, destDir string)
 		// Unpack layers to destDir
 		var totalUnpackedSize int64
 		for _, layer := range man.Layers {
-			i.log.Debug("fetching layer", "type", layer.MediaType, "size", layer.Size)
+			i.log.DebugContext(ctx, "fetching layer", "type", layer.MediaType, "size", layer.Size)
 			ra, err := contentStore.ReaderAt(ctx, layer)
 			if err != nil {
 				return nil, err
@@ -81,7 +81,7 @@ func (i *ImageManager) Fetch(ctx context.Context, ref, platform, destDir string)
 				return nil, err
 			}
 			totalUnpackedSize += bytesWritten
-			i.log.Debug("layer unpacked", "compressed", layer.Size, "uncompressed", bytesWritten)
+			i.log.DebugContext(ctx, "layer unpacked", "compressed", layer.Size, "uncompressed", bytesWritten)
 			r.Close()
 			ra.Close()
 		}
@@ -91,26 +91,26 @@ func (i *ImageManager) Fetch(ctx context.Context, ref, platform, destDir string)
 		if err := json.Unmarshal(cb, &conf); err != nil {
 			return nil, err
 		}
-		i.log.Debug("image configuration", "config", conf, "totalUnpackedSize", totalUnpackedSize)
+		i.log.DebugContext(ctx, "image configuration", "config", conf, "totalUnpackedSize", totalUnpackedSize)
 		return &types.FetchResult{
 			Config:       &conf,
 			UnpackedSize: totalUnpackedSize,
 		}, nil
 	default:
-		i.log.Error("unknown descriptor", "type", descriptor.MediaType)
+		i.log.ErrorContext(ctx, "unknown descriptor", "type", descriptor.MediaType)
 	}
 
 	return nil, nil
 }
 
 func (i *ImageManager) fetchIndex(ctx context.Context, cs *store.ContentStore, idx ocispec.Index, platform, destDir string) (*types.FetchResult, error) {
-	i.log.Debug("fetching content for index", "subject", idx.Subject)
+	i.log.DebugContext(ctx, "fetching content for index", "subject", idx.Subject)
 	var conf ocispec.Image
 	var totalUnpackedSize int64
 	for _, img := range idx.Manifests {
 		// check platform
 		if strings.EqualFold(platform, fmt.Sprintf("%s/%s", img.Platform.OS, img.Platform.Architecture)) {
-			i.log.Debug("fetching manifest", "digest", img.Digest, "os", img.Platform.OS, "arch", img.Platform.Architecture)
+			i.log.DebugContext(ctx, "fetching manifest", "digest", img.Digest, "os", img.Platform.OS, "arch", img.Platform.Architecture)
 			_, db, _ := cs.Get(img)
 			switch img.MediaType {
 			case ocispec.MediaTypeImageManifest, types.MediaTypeDockerSchema2Manifest:
@@ -119,7 +119,7 @@ func (i *ImageManager) fetchIndex(ctx context.Context, cs *store.ContentStore, i
 					return nil, err
 				}
 				for _, layer := range man.Layers {
-					i.log.Debug("fetching layer", "type", layer.MediaType, "size", layer.Size)
+					i.log.DebugContext(ctx, "fetching layer", "type", layer.MediaType, "size", layer.Size)
 					ra, err := cs.ReaderAt(ctx, layer)
 					if err != nil {
 						return nil, err
@@ -137,7 +137,7 @@ func (i *ImageManager) fetchIndex(ctx context.Context, cs *store.ContentStore, i
 						return nil, err
 					}
 					totalUnpackedSize += bytesWritten
-					i.log.Debug("layer unpacked", "compressed", layer.Size, "uncompressed", bytesWritten)
+					i.log.DebugContext(ctx, "layer unpacked", "compressed", layer.Size, "uncompressed", bytesWritten)
 					r.Close()
 					ra.Close()
 				}
@@ -146,7 +146,7 @@ func (i *ImageManager) fetchIndex(ctx context.Context, cs *store.ContentStore, i
 				if err := json.Unmarshal(cb, &conf); err != nil {
 					return nil, err
 				}
-				i.log.Debug("image configuration", "config", conf, "totalUnpackedSize", totalUnpackedSize)
+				i.log.DebugContext(ctx, "image configuration", "config", conf, "totalUnpackedSize", totalUnpackedSize)
 			default:
 				return nil, fmt.Errorf("unknown media type: %+v", img.MediaType)
 			}

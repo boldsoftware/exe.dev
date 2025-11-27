@@ -47,12 +47,12 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 	if err == nil {
 		key, err := pkFromData(keyData)
 		if err == nil {
-			slog.Info("loaded cached ACME account key")
+			slog.InfoContext(ctx, "loaded cached ACME account key")
 			return key, nil
 		}
-		slog.Warn("failed to parse cached ACME account key, generating new one")
+		slog.WarnContext(ctx, "failed to parse cached ACME account key, generating new one")
 	} else {
-		slog.Info("no cached ACME account key found, generating new one")
+		slog.InfoContext(ctx, "no cached ACME account key found, generating new one")
 	}
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048) // standard for ACME account keys
@@ -69,9 +69,9 @@ func loadOrGenerateACMEKey(cache autocert.Cache) (*rsa.PrivateKey, error) {
 	// Best effort to cache the new key
 	err = cache.Put(ctx, acmeAccountKeyName, keyPEM)
 	if err != nil {
-		slog.Warn("failed to cache ACME account key", "error", err)
+		slog.WarnContext(ctx, "failed to cache ACME account key", "error", err)
 	} else {
-		slog.Info("generated and cached new ACME account key")
+		slog.InfoContext(ctx, "generated and cached new ACME account key")
 	}
 
 	return key, nil
@@ -357,7 +357,7 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 	// Stage every DNS-01 token before accepting any challenge so shared records
 	// (e.g. example.com and *.example.com) remain valid for the entire order.
 	for _, authzURL := range order.AuthzURLs {
-		slog.Debug("fetching authorization", "url", authzURL)
+		slog.DebugContext(ctx, "fetching authorization", "url", authzURL)
 
 		authorization, err := w.acmeClient.GetAuthorization(ctx, authzURL)
 		if err != nil {
@@ -366,10 +366,10 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		}
 
 		// Find DNS-01 challenge
-		slog.Debug("looking for DNS-01 challenge", "challengeCount", len(authorization.Challenges))
+		slog.DebugContext(ctx, "looking for DNS-01 challenge", "challengeCount", len(authorization.Challenges))
 		var challenge *acme.Challenge
 		for _, c := range authorization.Challenges {
-			slog.Debug("found challenge type", "type", c.Type)
+			slog.DebugContext(ctx, "found challenge type", "type", c.Type)
 			if c.Type == "dns-01" {
 				challenge = c
 				break
@@ -380,7 +380,7 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 			cleanUpChallenges()
 			return nil, fmt.Errorf("no DNS-01 challenge found")
 		}
-		slog.Debug("selected DNS-01 challenge", "challengeURI", challenge.URI)
+		slog.DebugContext(ctx, "selected DNS-01 challenge", "challengeURI", challenge.URI)
 
 		// Calculate key authorization
 		keyAuth, err := w.acmeClient.DNS01ChallengeRecord(challenge.Token)
@@ -389,13 +389,13 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 			return nil, fmt.Errorf("failed to calculate key authorization: %w", err)
 		}
 
-		slog.Info("creating DNS TXT record for ACME challenge", "domain", authorization.Identifier.Value)
+		slog.InfoContext(ctx, "creating DNS TXT record for ACME challenge", "domain", authorization.Identifier.Value)
 		recordID, err := w.dnsProvider.CreateACMEChallenge(ctx, authorization.Identifier.Value, keyAuth)
 		if err != nil {
 			cleanUpChallenges()
 			return nil, fmt.Errorf("failed to create ACME challenge: %w", err)
 		}
-		slog.Info("DNS TXT record created for ACME challenge", "recordID", recordID)
+		slog.InfoContext(ctx, "DNS TXT record created for ACME challenge", "recordID", recordID)
 
 		staged = append(staged, stagedChallenge{
 			domain:    authorization.Identifier.Value,
@@ -442,7 +442,7 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 		}
 
 		// Log successful challenge
-		slog.Info("completed DNS-01 challenge",
+		slog.InfoContext(ctx, "completed DNS-01 challenge",
 			"domain", c.domain,
 			"recordID", c.recordID)
 	}
@@ -492,14 +492,14 @@ func (w *WildcardCertManager) requestCertificateFromLE(domain string) (*tls.Cert
 	if len(der) > 0 {
 		leaf, err := x509.ParseCertificate(der[0])
 		if err != nil {
-			slog.Warn("failed to parse leaf certificate", "error", err)
+			slog.WarnContext(ctx, "failed to parse leaf certificate", "error", err)
 		} else {
 			cert.Leaf = leaf
 		}
 	}
 
 	if err := w.writeCertificateToDisk(domain, cert); err != nil && !errors.Is(err, autocert.ErrCacheMiss) {
-		slog.Warn("failed to cache certificate", "domain", domain, "error", err)
+		slog.WarnContext(ctx, "failed to cache certificate", "domain", domain, "error", err)
 	}
 
 	return cert, nil

@@ -26,7 +26,7 @@ func NewLocalStore(dataDir string) *LocalStore {
 // Fetch retrieves the specified content from the store
 func (l *LocalStore) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
 	cPath := l.contentPath(desc)
-	slog.Debug("fetching content", "digest", desc.Digest.Encoded(), "path", cPath)
+	slog.DebugContext(ctx, "fetching content", "digest", desc.Digest.Encoded(), "path", cPath)
 	if _, err := os.Stat(cPath); err != nil {
 		return nil, fmt.Errorf("content not found for %s", desc.Digest.Encoded())
 	}
@@ -35,7 +35,7 @@ func (l *LocalStore) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.Rea
 
 // Push persists the specified content in the store
 func (l *LocalStore) Push(ctx context.Context, desc ocispec.Descriptor, content io.Reader) error {
-	slog.Debug("storing content", "digest", desc.Digest.Encoded(), "path", l.dataDir)
+	slog.DebugContext(ctx, "storing content", "digest", desc.Digest.Encoded(), "path", l.dataDir)
 	cPath := l.contentPath(desc)
 	// remove existing
 	_ = os.Remove(cPath)

@@ -264,7 +264,7 @@ func serveAction(clix *cli.Context) error {
 
 	// Bind to the bridge's router IP (usually .1 in the network)
 	metadataListenAddr := natConfig.Router + ":80"
-	log.Info("metadata service will bind to bridge IP", "addr", metadataListenAddr)
+	log.InfoContext(ctx, "metadata service will bind to bridge IP", "addr", metadataListenAddr)
 
 	metadataSvc, err := metadata.NewService(log, serviceContext.ComputeService, cfg.ExedURL, metadataListenAddr)
 	if err != nil {
@@ -286,23 +286,23 @@ func serveAction(clix *cli.Context) error {
 		for sig := range signals {
 			switch sig {
 			case syscall.SIGUSR1:
-				log.Debug("generating debug profile")
+				log.DebugContext(ctx, "generating debug profile")
 				profilePath, err := srv.GenerateProfile()
 				if err != nil {
-					log.Error(err.Error())
+					log.ErrorContext(ctx, err.Error())
 					continue
 				}
-				log.Info("generated memory profile", "path", profilePath)
+				log.InfoContext(ctx, "generated memory profile", "path", profilePath)
 			case syscall.SIGTERM, syscall.SIGINT:
-				log.Info("shutting down")
+				log.InfoContext(ctx, "shutting down")
 				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 				defer cancel()
 				if err := srv.Stop(ctx); err != nil {
-					log.Error(err.Error())
+					log.ErrorContext(ctx, err.Error())
 				}
 				doneCh <- true
 			default:
-				log.Warn("unhandled signal", "signal", sig)
+				log.WarnContext(ctx, "unhandled signal", "signal", sig)
 			}
 		}
 	}()

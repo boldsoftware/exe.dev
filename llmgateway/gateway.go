@@ -119,11 +119,11 @@ func NewGateway(log *slog.Logger, db *sqlite.DB, boxKeyAuthority boxKeyAuthority
 
 func (m *llmGateway) httpError(w http.ResponseWriter, r *http.Request, errstr string, code int) {
 	http.Error(w, errstr, code)
-	m.log.Error("llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr)
+	m.log.ErrorContext(r.Context(), "llmgateway.httpError", "method", r.Method, "path", r.URL.Path, "code", code, "error", errstr)
 }
 
 func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	m.log.Info("llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
+	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
 
 	// Authenticate request
 	// If the request has "X-Exedev-Box: <boxname>" header,
@@ -148,7 +148,7 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if allowXExedevBox {
-			m.log.Info("authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host)
+			m.log.InfoContext(r.Context(), "authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host)
 			// Strip the header before forwarding
 			r.Header.Del("X-Exedev-Box")
 		} else {
@@ -173,12 +173,12 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m.log.Info("gateway proxying request -->", "method", r.Method, "url", r.URL)
+	m.log.InfoContext(r.Context(), "gateway proxying request -->", "method", r.Method, "url", r.URL)
 	endpointPath := strings.TrimPrefix(r.URL.Path, "/_/gateway/")
 	parts := strings.Split(endpointPath, "/")
 	alias := parts[0]
 	remainder := endpointPath[len(alias):]
-	m.log.Info("llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder)
+	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "alias", alias, "remaimder", remainder)
 
 	requestsCounter.WithLabelValues("attempted", alias).Inc()
 

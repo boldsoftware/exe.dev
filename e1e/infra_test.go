@@ -406,7 +406,7 @@ func cloneImageVolumes(ctx context.Context, host, zfsDataset, runID string) erro
 		return nil
 	}
 
-	slog.Info("cloning image volumes for test isolation", "count", len(volumes), "dataset", zfsDataset)
+	slog.InfoContext(ctx, "cloning image volumes for test isolation", "count", len(volumes), "dataset", zfsDataset)
 
 	for _, srcVolume := range volumes {
 		// Extract the sha256:... part from tank/sha256:...
@@ -418,20 +418,20 @@ func cloneImageVolumes(ctx context.Context, host, zfsDataset, runID string) erro
 		// Create a snapshot of the source volume
 		snapCmd := fmt.Sprintf("sudo zfs snapshot %s@%s", srcVolume, snapName)
 		if _, err := sshExec(ctx, host, snapCmd); err != nil {
-			slog.Warn("failed to create snapshot for image clone", "src", srcVolume, "error", err)
+			slog.WarnContext(ctx, "failed to create snapshot for image clone", "src", srcVolume, "error", err)
 			continue
 		}
 
 		// Clone the snapshot to the test dataset
 		cloneCmd := fmt.Sprintf("sudo zfs clone %s@%s %s", srcVolume, snapName, destVolume)
 		if _, err := sshExec(ctx, host, cloneCmd); err != nil {
-			slog.Warn("failed to clone image volume", "src", srcVolume, "dest", destVolume, "error", err)
+			slog.WarnContext(ctx, "failed to clone image volume", "src", srcVolume, "dest", destVolume, "error", err)
 			// Clean up the snapshot we just created
 			sshExec(ctx, host, fmt.Sprintf("sudo zfs destroy %s@%s 2>/dev/null || true", srcVolume, snapName))
 			continue
 		}
 
-		slog.Debug("cloned image volume", "src", srcVolume, "dest", destVolume)
+		slog.DebugContext(ctx, "cloned image volume", "src", srcVolume, "dest", destVolume)
 	}
 
 	return nil
@@ -464,16 +464,16 @@ func CleanupTestInstances(ctx context.Context, exeletClient *client.Client) erro
 			break
 		}
 		if err != nil {
-			slog.Error("error receiving instance list", "error", err)
+			slog.ErrorContext(ctx, "error receiving instance list", "error", err)
 			break
 		}
 		instancesToDelete = append(instancesToDelete, resp.Instance.ID)
 	}
 
 	for _, id := range instancesToDelete {
-		slog.Info("deleting test instance", "id", id)
+		slog.InfoContext(ctx, "deleting test instance", "id", id)
 		if _, err := exeletClient.DeleteInstance(ctx, &api.DeleteInstanceRequest{ID: id}); err != nil {
-			slog.Error("failed to delete instance", "id", id, "error", err)
+			slog.ErrorContext(ctx, "failed to delete instance", "id", id, "error", err)
 		}
 	}
 
@@ -1151,7 +1151,7 @@ func startSSHTunnel(host string, localPort int) (remotePort int, tunnelCmd *exec
 	// Wait for port allocation (with timeout)
 	select {
 	case remotePort = <-portC:
-		slog.Info("SSH tunnel established", "remote_port", remotePort, "local_port", localPort)
+		slog.InfoContext(ctx, "SSH tunnel established", "remote_port", remotePort, "local_port", localPort)
 		return remotePort, tunnelCmd, cancel, nil
 	case <-time.After(5 * time.Second):
 		tunnelCmd.Process.Kill()
@@ -1194,7 +1194,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	sshExec(ctx, host, fmt.Sprintf("pkill -f %s", remoteBinaryPath))
 
 	// Upload binary to remote host with unique name
-	slog.Info("uploading exelet to remote host", "host", host, "path", remoteBinaryPath)
+	slog.InfoContext(ctx, "uploading exelet to remote host", "host", host, "path", remoteBinaryPath)
 	if err := scpUpload(binPath, host, remoteBinaryPath); err != nil {
 		return nil, fmt.Errorf("failed to upload exelet: %w", err)
 	}
@@ -1219,7 +1219,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	networkCIDR := fmt.Sprintf("100.%d.%d.0/24", thirdOctet, fourthOctet)
 	zfsDataset := fmt.Sprintf("tank/e1e-%s", testRunID)
 
-	slog.Info("using isolated resources", "bridge", bridgeName, "network", networkCIDR, "dataset", zfsDataset)
+	slog.InfoContext(ctx, "using isolated resources", "bridge", bridgeName, "network", networkCIDR, "dataset", zfsDataset)
 
 	// Create ZFS dataset if it doesn't exist
 	// Check if dataset exists first
@@ -1227,7 +1227,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	_, err = sshExec(ctx, host, checkCmd)
 	if err != nil {
 		// Dataset doesn't exist, create it
-		slog.Info("creating ZFS dataset", "dataset", zfsDataset)
+		slog.InfoContext(ctx, "creating ZFS dataset", "dataset", zfsDataset)
 		createCmd := fmt.Sprintf("sudo zfs create %s", zfsDataset)
 		if out, err := sshExec(ctx, host, createCmd); err != nil {
 			return nil, fmt.Errorf("failed to create ZFS dataset %s: %w\n%s", zfsDataset, err, out)
@@ -1237,7 +1237,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	// Clone existing image volumes from tank/sha256:* into tank/e1e-<testRunID>/sha256:*
 	// This enables copy-on-write sharing of base images, making tests much faster.
 	if err := cloneImageVolumes(ctx, host, zfsDataset, testRunID); err != nil {
-		slog.Warn("failed to clone image volumes (tests will still work but may be slower)", "error", err)
+		slog.WarnContext(ctx, "failed to clone image volumes (tests will still work but may be slower)", "error", err)
 	}
 
 	// Start exelet on remote host via SSH
@@ -1342,7 +1342,7 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	}()
 
 	// Wait for exelet to start and extract addresses
-	slog.Info("waiting for exelet to start on remote host")
+	slog.InfoContext(ctx, "waiting for exelet to start on remote host")
 	timeout := time.Minute
 	if os.Getenv("CI") != "" {
 		timeout = 2 * time.Minute
@@ -1407,7 +1407,7 @@ WaitLoop:
 		CoverDir:    coverDir,
 	}
 
-	slog.Info("started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr, "http_addr", finalHTTPAddr)
+	slog.InfoContext(ctx, "started remote exelet", "elapsed", time.Since(start).Truncate(100*time.Millisecond), "addr", finalAddr, "http_addr", finalHTTPAddr)
 	return instance, nil
 }
 
@@ -1939,7 +1939,7 @@ func (es *emailServer) handleSendEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if *flagVerboseEmail {
-		slog.Info("email received", "to", email.To, "subject", email.Subject, "body", email.Body)
+		slog.InfoContext(r.Context(), "email received", "to", email.To, "subject", email.Subject, "body", email.Body)
 	}
 
 	es.inboxChannel(email.To) <- email
