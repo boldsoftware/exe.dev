@@ -223,20 +223,6 @@ func extractShelley(img v1.Image, outputPath string) error {
 	}
 
 	if targetLayerIdx == -1 {
-		// Fallback: search through all layers
-		for i, layer := range layers {
-			found, err := layerContainsShelley(layer)
-			if err != nil {
-				return fmt.Errorf("failed to check layer %d: %w", i, err)
-			}
-			if found {
-				targetLayerIdx = i
-				break
-			}
-		}
-	}
-
-	if targetLayerIdx == -1 {
 		return fmt.Errorf("could not find layer containing shelley binary")
 	}
 
