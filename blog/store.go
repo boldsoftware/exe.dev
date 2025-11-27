@@ -128,7 +128,7 @@ func LoadFromDir(dir string, includeUnpublished bool) (*Store, error) {
 	return loadStoreFromFS(dirFS, dirFS, includeUnpublished, time.Now())
 }
 
-func loadStoreFromFS(postsFS fs.FS, assetsFS fs.FS, includeUnpublished bool, assetModTime time.Time) (*Store, error) {
+func loadStoreFromFS(postsFS, assetsFS fs.FS, includeUnpublished bool, assetModTime time.Time) (*Store, error) {
 	store := &Store{
 		byPath: make(map[string]*Entry),
 		bySlug: make(map[string]*Entry),
@@ -270,7 +270,7 @@ func NewHandler(store *Store, showHidden bool) *Handler {
 }
 
 // NewHandlerWithTemplates creates a handler that uses the provided templates.
-func NewHandlerWithTemplates(store *Store, showHidden bool, templates *template.Template, atom *template.Template) *Handler {
+func NewHandlerWithTemplates(store *Store, showHidden bool, templates, atom *template.Template) *Handler {
 	if store == nil || templates == nil || atom == nil {
 		return nil
 	}
