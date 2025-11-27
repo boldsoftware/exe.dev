@@ -1,20 +1,30 @@
 import React, { useState, useRef, useEffect } from "react";
 
 interface MessageInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string) => Promise<void>;
   disabled?: boolean;
   autoFocus?: boolean;
 }
 
 function MessageInput({ onSend, disabled = false, autoFocus = false }: MessageInputProps) {
   const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() && !disabled) {
-      onSend(message);
-      setMessage("");
+    if (message.trim() && !disabled && !submitting) {
+      const messageToSend = message;
+      setSubmitting(true);
+      try {
+        await onSend(messageToSend);
+        // Only clear on success
+        setMessage("");
+      } catch {
+        // Keep the message on error so user can retry
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -65,12 +75,12 @@ function MessageInput({ onSend, disabled = false, autoFocus = false }: MessageIn
         />
         <button
           type="submit"
-          disabled={disabled || !message.trim()}
+          disabled={disabled || submitting || !message.trim()}
           className="message-send-btn"
           aria-label="Send message"
           data-testid="send-button"
         >
-          {disabled ? (
+          {disabled || submitting ? (
             <div className="flex items-center justify-center">
               <div className="spinner spinner-small" style={{ borderTopColor: "white" }}></div>
             </div>

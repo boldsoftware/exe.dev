@@ -455,6 +455,7 @@ function ChatInterface({
       console.error("Failed to send message:", err);
       setError("Failed to send message. Please try again.");
       setAgentWorking(false);
+      throw err; // Re-throw so MessageInput can preserve the text
     } finally {
       setSending(false);
     }
