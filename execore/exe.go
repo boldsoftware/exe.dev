@@ -2058,37 +2058,11 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 	}
 
 	if result.SSHPort == nil || *result.SSHPort == 0 || len(result.SSHClientPrivateKey) == 0 {
-		// For exelet-based boxes (indicated by ctrhost being set), SSH details should
-		// always be set during creation. If they're missing, it's an error.
-		if result.Ctrhost != "" {
-			return nil, fmt.Errorf("SSH details missing for exelet-based box - box may still be creating or creation failed")
-		}
-
-		// SSH not set up for this box - this is for containers created before SSH support
-		// TODO: Remove this code once all legacy containers are migrated
-		log.Printf("Box %d missing SSH setup, initializing SSH on container", boxID)
-		err := s.setupContainerSSH(ctx, boxID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to setup SSH on legacy container: %v", err)
-		}
-
-		// Re-query after setup
-		result, err = withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxSSHDetailsRow, error) {
-			return queries.GetBoxSSHDetails(ctx, boxID)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to re-query box SSH details after setup: %v", err)
-		}
+		// SSH details should always be set during creation. If they're missing, it's an error.
+		return nil, fmt.Errorf("SSH details missing for exelet-based box - box may still be creating or creation failed")
 	}
 
-	if result.SSHPort == nil || *result.SSHPort <= 0 {
-		return nil, fmt.Errorf("invalid SSH port for box: %v", result.SSHPort)
-	}
 	sshPort := int(*result.SSHPort)
-
-	if len(result.SSHClientPrivateKey) == 0 {
-		return nil, fmt.Errorf("no SSH private key available for box after setup")
-	}
 	privateKeyStr := string(result.SSHClientPrivateKey)
 
 	// Derive host public key from server identity key if available
@@ -2160,48 +2134,4 @@ func (s *Server) selectExeletClient(userID string) (*exeletClient, string, error
 	}
 
 	return client, addr, nil
-}
-
-// setupContainerSSH sets up SSH on a legacy container that was created before SSH support
-// TODO: Remove this method once all legacy containers are migrated to have SSH
-func (s *Server) setupContainerSSH(ctx context.Context, boxID int) error {
-	// Get box details
-	result, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetBoxDetailsForSetupRow, error) {
-		return queries.GetBoxDetailsForSetup(ctx, boxID)
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get box details: %v", err)
-	}
-
-	containerID := ""
-	if result.ContainerID != nil {
-		containerID = *result.ContainerID
-	}
-
-	if containerID == "" {
-		return fmt.Errorf("box has no container ID")
-	}
-
-	// Generate SSH keys for this container
-	sshKeys, err := container.GenerateContainerSSHKeys()
-	if err != nil {
-		return fmt.Errorf("failed to generate SSH keys: %v", err)
-	}
-
-	// Update database with SSH keys
-	err = s.withTx(ctx, func(ctx context.Context, queries *exedb.Queries) error {
-		return queries.UpdateBoxSSHDetails(ctx, exedb.UpdateBoxSSHDetailsParams{
-			SSHServerIdentityKey: []byte(sshKeys.ServerIdentityKey),
-			SSHAuthorizedKeys:    &sshKeys.AuthorizedKeys,
-			SSHClientPrivateKey:  []byte(sshKeys.ClientPrivateKey),
-			SSHPort:              func() *int64 { p := int64(sshKeys.SSHPort); return &p }(),
-			ID:                   boxID,
-		})
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update box SSH keys: %v", err)
-	}
-
-	log.Printf("SSH setup completed for box %d", boxID)
-	return nil
 }
