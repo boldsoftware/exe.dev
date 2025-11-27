@@ -226,6 +226,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 				Port            int
 				TerminalURL     string
 				ShowWelcomeStep bool
+				IsShelleyPort   bool
+				ShelleyURL      string
 			}{
 				Env:             s.env,
 				BoxName:         boxName,
@@ -233,6 +235,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 				Port:            route.Port,
 				TerminalURL:     s.xtermURL(boxName, r.TLS != nil),
 				ShowWelcomeStep: strings.Contains(box.Image, "exeuntu") && route.Port == 8000,
+				IsShelleyPort:   route.Port == 9999,
+				ShelleyURL:      s.shelleyURL(boxName),
 			}
 
 			w.WriteHeader(http.StatusBadGateway)

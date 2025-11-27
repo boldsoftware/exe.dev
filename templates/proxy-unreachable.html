@@ -99,9 +99,15 @@
 <body>
   <main>
     <header>
+      {{if .IsShelleyPort}}
+      <p class="eyebrow">Shelley Agent</p>
+      <h1>Shelley isn't running on {{.BoxName}}</h1>
+      <p>The Shelley coding agent isn't currently running on this box.</p>
+      {{else}}
       <p class="eyebrow">Port {{.Port}}</p>
       <h1>Nothing is listening on {{.BoxName}}:{{.Port}}</h1>
-      <p>{{.WebHost}}’s proxy can’t reach <strong>{{.BoxName}}</strong> on port <code>{{.Port}}</code>.</p>
+      <p>{{.WebHost}}'s proxy can't reach <strong>{{.BoxName}}</strong> on port <code>{{.Port}}</code>.</p>
+      {{end}}
     </header>
 
     <section aria-label="Next steps">
