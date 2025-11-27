@@ -28,7 +28,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: linux-x64-ubuntu-latest-8-core
     defaults:
       run:
         working-directory: shelley
