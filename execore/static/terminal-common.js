@@ -54,7 +54,14 @@ class ThemeManager {
 
     loadTheme() {
         const saved = localStorage.getItem('terminal-theme');
-        return saved === 'dark' ? 'dark' : 'light';
+        if (saved === 'dark' || saved === 'light') {
+            return saved;
+        }
+        // Default to system preference, or dark if no preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            return 'light';
+        }
+        return 'dark';
     }
 
     saveTheme(theme) {
