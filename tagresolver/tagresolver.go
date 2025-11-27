@@ -795,4 +795,3 @@ func (tr *TagResolver) IncrementSeenOnHosts(ctx context.Context, registry, repos
 		})
 	})
 }
-
