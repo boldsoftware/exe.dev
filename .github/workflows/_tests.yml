@@ -58,7 +58,7 @@ jobs:
       - name: Verify slogcontext linter passes
         run: |
           go build -o /tmp/slogcontext ./tracing/linter/cmd/slogcontext
-          go vet -vettool=/tmp/slogcontext ./exelet/... ./execore/... ./sshpool/... ./sshpool2/...
+          go vet -vettool=/tmp/slogcontext ./exelet/... ./execore/... ./sshpool2/...
 
       - name: start ephemeral vm
         id: vm
