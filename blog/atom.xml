@@ -1,0 +1,26 @@
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>exe.dev</title>
+  <subtitle>Blog</subtitle>
+  <link href="https://blog.exe.dev/atom.xml" rel="self" />
+  <link href="https://blog.exe.dev/" />
+  <id>urn:uuid:5d91d8a1-21f2-4e33-8e5a-4dc963e837c5</id>
+  <updated>{{.Updated}}T00:00:00Z</updated>
+  {{range .Entries}}
+  <entry>
+    <title>{{if .Title}}{{.Title}}{{else}}{{.DateString}}{{end}}</title>
+    <link href="https://blog.exe.dev{{.Path}}" />
+    <id>https://blog.exe.dev{{.Path}}</id>
+    <updated>{{.DateRFC3339}}</updated>
+    <summary>{{.Description}}</summary>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">
+        {{.Content}}
+      </div>
+    </content>
+    <author>
+      <name>{{.Author}}</name>
+      <email>support@exe.dev</email>
+    </author>
+  </entry>
+  {{end}}
+</feed>

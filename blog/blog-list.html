@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>exe blog</title>
+    <link rel="stylesheet" href="/static/exe.css" />
+    {{template "topbar_style" .}}
+    <style>
+      body {
+        font-family:
+          "Charter", "Charter Roman", "ITC Charter", "STIX Two Text", "Hoefler Text",
+          "Iowan Old Style", "Palatino", "Palatino Linotype", "URW Palladio L",
+          Georgia, "Times New Roman", serif;
+        font-size: 16px;
+        font-size-adjust: 0.48;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        background: #fff;
+        color: #1f1f1f;
+        margin: 0;
+      }
+
+      main {
+        max-width: 880px;
+        margin: 64px auto 120px;
+        padding: 0 24px;
+      }
+
+      h1 {
+        font-size: 42px;
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        margin-bottom: 32px;
+      }
+
+      .intro {
+        font-size: 18px;
+        line-height: 1.7;
+        margin-bottom: 48px;
+        color: rgba(0, 0, 0, 0.7);
+      }
+
+      .post-list {
+        display: flex;
+        flex-direction: column;
+        gap: 36px;
+      }
+
+      .post-card {
+        padding: 0;
+      }
+
+      .post-card h2 {
+        font-size: 28px;
+        font-weight: 500;
+        margin-bottom: 12px;
+        color: #101010;
+      }
+
+      .post-card a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .post-meta {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        align-items: center;
+      }
+
+      .unpublished-note {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(0, 0, 0, 0.55);
+        margin-left: 8px;
+      }
+
+      .post-description {
+        font-size: 16px;
+        color: rgba(0, 0, 0, 0.75);
+        line-height: 1.6;
+      }
+
+      @media (max-width: 768px) {
+        main {
+          margin: 32px auto 80px;
+          padding: 0 16px;
+        }
+
+        h1 {
+          font-size: 32px;
+          margin-bottom: 24px;
+        }
+
+        .post-card {
+          padding: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    {{template "topbar" .}}
+    <main>
+      <h1>blog.exe.dev</h1>
+      <p class="intro">
+        By programmers for programmers.
+      </p>
+      <section class="post-list">
+        {{range .Entries}}
+        <article class="post-card">
+          <a href="{{.Path}}">
+            <h2>{{.Title}}</h2>
+            <div class="post-meta">
+              <span>{{.DateString}}</span>
+              <span>
+                {{.Author}}
+                {{if and $.ShowHidden (not .Published)}}
+                <span class="unpublished-note">[unpublished]</span>
+                {{end}}
+              </span>
+            </div>
+            <p class="post-description">{{.Description}}</p>
+          </a>
+        </article>
+        {{end}}
+      </section>
+    </main>
+  </body>
+</html>
