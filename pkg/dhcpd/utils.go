@@ -26,6 +26,13 @@ func (s *DHCPServer) getNextIP() (net.IP, error) {
 	ip := subnetIP
 	for {
 		next := iplib.NextIP(ip)
+
+		// Skip the server IP (first address in network)
+		if next.Equal(s.serverIP) {
+			ip = next
+			continue
+		}
+
 		if _, err := s.ds.Get(&Query{IP: next.String()}); err != nil {
 			if !errors.Is(err, ErrNotFound) {
 				return nil, err
