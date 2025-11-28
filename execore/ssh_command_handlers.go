@@ -151,6 +151,16 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			FlagSetFunc: jsonOnlyFlags("browser"),
 		},
 		{
+			Name:        "clear",
+			Description: "Clear the screen",
+			Hidden:      true, // people who want this will find it; no need to clutter help
+			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
+				// ANSI escape sequence to clear screen and move cursor home
+				fmt.Fprint(cc.Output, "\033[2J\033[H")
+				return nil
+			},
+		},
+		{
 			Name:        "exit",
 			Description: "Exit",
 			Handler: func(ctx context.Context, cc *exemenu.CommandContext) error {
