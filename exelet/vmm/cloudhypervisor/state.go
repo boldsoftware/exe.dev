@@ -31,8 +31,8 @@ func (v *VMM) State(ctx context.Context, id string) (api.VMState, error) {
 		// These can be wrapped in various ways by the HTTP client
 		errStr := err.Error()
 		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-		   errStr == "EOF" || errStr == "unexpected EOF" ||
-		   errors.Is(err, io.ErrClosedPipe) {
+			errStr == "EOF" || errStr == "unexpected EOF" ||
+			errors.Is(err, io.ErrClosedPipe) {
 			return api.VMState_STOPPED, nil
 		}
 

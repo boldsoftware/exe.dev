@@ -42,19 +42,19 @@ type Config struct {
 }
 
 type NAT struct {
-	bridgeName     string
-	network        string
-	dhcpServer     *dhcpd.DHCPServer
-	nameservers    []string
-	ntpServer      string
-	router         string
-	mu             *sync.Mutex
-	availableIPs   map[string]net.IP
-	allocatedIPs   []net.IP
-	orphanedIPs    map[string]time.Time // IP -> first seen orphaned time (for grace period)
-	cleanupCancel  context.CancelFunc
-	dhcpCancel     context.CancelFunc   // cancel function for DHCP server context
-	log            *slog.Logger
+	bridgeName    string
+	network       string
+	dhcpServer    *dhcpd.DHCPServer
+	nameservers   []string
+	ntpServer     string
+	router        string
+	mu            *sync.Mutex
+	availableIPs  map[string]net.IP
+	allocatedIPs  []net.IP
+	orphanedIPs   map[string]time.Time // IP -> first seen orphaned time (for grace period)
+	cleanupCancel context.CancelFunc
+	dhcpCancel    context.CancelFunc // cancel function for DHCP server context
+	log           *slog.Logger
 }
 
 func NewNATManager(addr string, log *slog.Logger) (*NAT, error) {
@@ -244,4 +244,3 @@ func (n *NAT) processOrphanedIPs() {
 		}
 	}
 }
-
