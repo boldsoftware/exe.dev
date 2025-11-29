@@ -12,6 +12,9 @@ import (
 
 // Expand resizes the specified filesystem to the desired size
 func (s *ZFS) Expand(ctx context.Context, id string, size uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	dsName := s.getDSName(id)
 	ds, err := zfs.GetDataset(dsName)
 	if err != nil {

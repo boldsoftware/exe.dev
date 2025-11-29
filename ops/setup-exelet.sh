@@ -42,7 +42,7 @@ mkdir -p "${DATA_DIR}"/{storage,network,runtime}
 nohup "$EXELETD" \
     --data-dir "${DATA_DIR}" \
     --storage-manager-address "zfs://${DATA_DIR}/storage?dataset=tank" \
-    --network-manager-address "nat://${DATA_DIR}/network" \
+    --network-manager-address "nat://${DATA_DIR}/network?network=10.42.0.0/16" \
     --runtime-address "cloudhypervisor://${DATA_DIR}/runtime" \
     --exed-url "http://127.0.0.1:9081" \
     --listen-address "tcp://127.0.0.1:9080" >/tmp/exeletd.log 2>&1 &

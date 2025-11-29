@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -26,6 +27,15 @@ func (v *VMM) State(ctx context.Context, id string) (api.VMState, error) {
 
 	resp, err := c.GetVmInfoWithResponse(ctx)
 	if err != nil {
+		// Check for EOF errors first (most common case when VMM crashes)
+		// These can be wrapped in various ways by the HTTP client
+		errStr := err.Error()
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		   errStr == "EOF" || errStr == "unexpected EOF" ||
+		   errors.Is(err, io.ErrClosedPipe) {
+			return api.VMState_STOPPED, nil
+		}
+
 		// check for connect error and assume stopped if missing
 		if isNotConnected(err) {
 			return api.VMState_STOPPED, nil
@@ -75,6 +85,16 @@ func isNotConnected(err error) bool {
 				return true
 			}
 		}
+	}
+	// EOF errors indicate the connection was closed (VMM likely shut down)
+	// Treat as already stopped to avoid spurious errors under load
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	// Check for EOF in error string (some wrapped EOF errors)
+	errStr := err.Error()
+	if errStr == "EOF" || errStr == "unexpected EOF" {
+		return true
 	}
 	return false
 }

@@ -14,11 +14,15 @@ func (n *NAT) Start(ctx context.Context) error {
 		return fmt.Errorf("error configuring bridge %s: %w", n.bridgeName, err)
 	}
 
+	// Create cancellable context for DHCP server
+	dhcpCtx, dhcpCancel := context.WithCancel(context.Background())
+	n.dhcpCancel = dhcpCancel
+
 	// start dhcp server
 	go func() {
 		n.log.DebugContext(ctx, "starting dhcp server", "device", n.bridgeName)
 
-		if err := n.dhcpServer.Serve(context.WithoutCancel(ctx)); err != nil {
+		if err := n.dhcpServer.Serve(dhcpCtx); err != nil && err != context.Canceled {
 			n.log.ErrorContext(ctx, "error starting dhcp server", "err", err)
 		}
 	}()

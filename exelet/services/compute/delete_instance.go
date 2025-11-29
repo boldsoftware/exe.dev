@@ -26,9 +26,9 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
-		// stop vm
+		// stop vm (continue even if stop fails - instance might already be stopped)
 		if err := vmm.Stop(ctx, instance.ID); err != nil {
-			return nil, status.Errorf(codes.Internal, "error stopping vm: %s", err)
+			s.log.WarnContext(ctx, "error stopping vm during delete, continuing with cleanup", "instance", instance.ID, "error", err)
 		}
 
 		// extract IP from instance for DHCP release

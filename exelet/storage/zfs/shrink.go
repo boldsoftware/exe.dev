@@ -20,6 +20,9 @@ const (
 
 // Expand resizes the specified filesystem to the desired size
 func (s *ZFS) Shrink(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	dsName := s.getDSName(id)
 	ds, err := zfs.GetDataset(dsName)
 	if err != nil {

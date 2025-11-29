@@ -4,7 +4,6 @@ package nat
 
 import (
 	"context"
-	"strings"
 )
 
 func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
@@ -13,16 +12,9 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 		return err
 	}
 
-	// release DHCP lease if IP is provided
-	if ip != "" {
-		// strip CIDR suffix if present (e.g., "10.42.0.2/16" -> "10.42.0.2")
-		if idx := strings.Index(ip, "/"); idx > 0 {
-			ip = ip[:idx]
-		}
-		if err := n.dhcpServer.Release(ip); err != nil {
-			n.log.WarnContext(ctx, "failed to release DHCP lease", "ip", ip, "error", err)
-		}
-	}
+	// IP release is handled by periodic cleanup goroutine (after 10-minute grace period)
+	// This prevents rapid IP reuse which can cause ARP cache and connection state issues
+	n.log.DebugContext(ctx, "tap interface deleted, IP will be released after grace period", "tap", tapName, "ip", ip)
 
 	return nil
 }

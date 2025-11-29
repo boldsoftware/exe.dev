@@ -93,3 +93,13 @@ func (s *DHCPServer) Reserve(macAddress string) (net.IP, error) {
 func (s *DHCPServer) Release(ip string) error {
 	return s.ds.Release(ip)
 }
+
+// ReleaseBatch releases multiple IP addresses in a single transaction
+func (s *DHCPServer) ReleaseBatch(ips []string) error {
+	return s.ds.ReleaseBatch(ips)
+}
+
+// ListLeases returns all active DHCP leases
+func (s *DHCPServer) ListLeases() ([]*Lease, error) {
+	return s.ds.List()
+}

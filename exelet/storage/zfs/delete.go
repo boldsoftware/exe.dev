@@ -9,6 +9,9 @@ import (
 
 // Delete removes an instance filesystem
 func (s *ZFS) Delete(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// delete zfs volume
 	if err := s.removeInstanceFS(id); err != nil {
 		return err

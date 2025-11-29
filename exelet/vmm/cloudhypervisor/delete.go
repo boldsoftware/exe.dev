@@ -11,15 +11,21 @@ import (
 func (v *VMM) Delete(ctx context.Context, id, ip string) error {
 	c, err := client.NewCloudHypervisorClient(v.apiSocketPath(id), v.log)
 	if err != nil {
-		return err
-	}
-	defer c.Close()
+		// If we can't connect, VMM is likely already gone - continue with cleanup
+		if isNotConnected(err) {
+			v.log.DebugContext(ctx, "vmm already shutdown, proceeding with cleanup", "id", id)
+		} else {
+			return err
+		}
+	} else {
+		defer c.Close()
 
-	v.log.DebugContext(ctx, "shutting down vmm", "id", id)
+		v.log.DebugContext(ctx, "shutting down vmm", "id", id)
 
-	// shutdown VMM
-	if err := v.shutdownVMM(ctx, id); err != nil {
-		return err
+		// shutdown VMM
+		if err := v.shutdownVMM(ctx, id); err != nil {
+			return err
+		}
 	}
 
 	// cleanup any orphaned processes before deleting data dir

@@ -189,20 +189,23 @@ func (v *VMM) waitForStopped(ctx context.Context, id string) error {
 // hypervisor api process running
 func (v *VMM) waitForShutdown(ctx context.Context, id string) error {
 	readyCh := make(chan struct{})
-	errCh := make(chan error)
 	t := time.NewTicker(time.Millisecond * 250)
+	defer t.Stop()
 	go func() {
 		for range t.C {
-			// ping to check ready
+			// ping to check if VMM is still running
 			apiSocketPath := v.apiSocketPath(id)
 			c, err := client.NewCloudHypervisorClient(apiSocketPath, v.log)
 			if err != nil {
-				errCh <- err
+				// Socket is gone or can't connect - VMM has shut down
+				readyCh <- struct{}{}
 				return
 			}
-			defer c.Close()
+			c.Close()
 
+			// Try to ping the VMM
 			if _, err := c.GetVmmPingWithResponse(ctx); err != nil {
+				// VMM not responding - shutdown complete
 				readyCh <- struct{}{}
 				return
 			}
@@ -210,8 +213,6 @@ func (v *VMM) waitForShutdown(ctx context.Context, id string) error {
 	}()
 
 	select {
-	case err := <-errCh:
-		return err
 	case <-readyCh:
 		return nil
 	case <-time.After(config.InstanceStopTimeout):

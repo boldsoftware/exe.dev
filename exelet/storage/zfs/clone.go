@@ -10,6 +10,9 @@ import (
 
 // Clone clones the source filesystem to the destination
 func (s *ZFS) Clone(ctx context.Context, srcID, destID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if _, err := s.Get(ctx, srcID); err != nil {
 		return err
 	}
