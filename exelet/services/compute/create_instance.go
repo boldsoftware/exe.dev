@@ -55,6 +55,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		instanceID:     instanceID,
 		proxyManager:   s.proxyManager,
 		portAllocator:  s.portAllocator,
+		runtimeAddress: s.config.RuntimeAddress,
 	}
 	defer func() {
 		if err != nil {
@@ -425,11 +426,13 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	if err := vmm.Create(ctx, vmCfg); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
+	rb.vmCreated = true
 
 	// start vm
 	if err := vmm.Start(ctx, vmCfg.ID); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
+	rb.vmStarted = true
 
 	// allocate a port for SSH proxy
 	sshPort, err := s.portAllocator.Allocate()
@@ -447,6 +450,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			return status.Errorf(codes.Internal, "failed to parse VM IP: %s", err)
 		}
 		vmIP = ipAddr.String()
+		rb.networkIP = networkInterface.IP.IPV4
 	} else {
 		s.portAllocator.Release(sshPort)
 		return status.Error(codes.Internal, "no IP address assigned to VM")

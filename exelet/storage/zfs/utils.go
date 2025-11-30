@@ -146,8 +146,52 @@ func (s *ZFS) unmountInstanceFS(id string) error {
 		return err
 	}
 
-	if err := unix.Unmount(mountpoint, 0); err != nil {
-		return err
+	// Retry unmount with exponential backoff to handle "device or resource busy" errors
+	const maxAttempts = 10
+	const maxTimeout = 5 * time.Second
+	initialDelay := 50 * time.Millisecond
+	startTime := time.Now()
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := unix.Unmount(mountpoint, 0); err != nil {
+			// Check if it's a "not mounted" error - this is fine, just continue to cleanup
+			if err == unix.EINVAL || err == unix.ENOENT {
+				s.log.Debug("mountpoint not mounted or doesn't exist, continuing", "id", id, "mountpoint", mountpoint)
+				break
+			}
+
+			// Check if it's a "device busy" error - retry
+			if err == unix.EBUSY {
+				elapsed := time.Since(startTime)
+				if elapsed >= maxTimeout {
+					return fmt.Errorf("error unmounting %s after %d attempts (timeout %v): device or resource busy", id, attempt, elapsed)
+				}
+
+				if attempt == maxAttempts {
+					return fmt.Errorf("error unmounting %s after %d attempts: device or resource busy", id, attempt)
+				}
+
+				// Calculate backoff delay
+				delay := initialDelay * time.Duration(1<<(attempt-1))
+				s.log.Debug("retrying unmount", "id", id, "attempt", attempt, "delay", delay)
+
+				remainingTime := maxTimeout - time.Since(startTime)
+				if delay > remainingTime {
+					delay = remainingTime
+				}
+				time.Sleep(delay)
+				continue
+			}
+
+			// Other error - return immediately
+			return fmt.Errorf("error unmounting %s: %w", id, err)
+		}
+
+		// Success
+		if attempt > 1 {
+			s.log.Debug("unmount succeeded", "id", id, "attempt", attempt)
+		}
+		break
 	}
 
 	// remove mountpoint
