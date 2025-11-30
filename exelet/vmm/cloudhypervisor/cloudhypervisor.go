@@ -126,9 +126,11 @@ func (v *VMM) waitForReady(ctx context.Context, id string) error {
 				errCh <- err
 				return
 			}
-			defer c.Close()
 
 			resp, err := c.GetVmmPingWithResponse(ctx)
+			// Close immediately after use (not defer) to avoid FD leak in loop
+			c.Close()
+
 			if err != nil {
 				v.log.WarnContext(ctx, "unable to connect to api", "id", id)
 				continue

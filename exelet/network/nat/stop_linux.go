@@ -5,6 +5,11 @@ package nat
 import "context"
 
 func (n *NAT) Stop(ctx context.Context) error {
+	// Cancel cleanup goroutine to prevent goroutine leak
+	if n.cleanupCancel != nil {
+		n.cleanupCancel()
+	}
+
 	// Cancel DHCP server context to stop the Serve goroutine
 	if n.dhcpCancel != nil {
 		n.dhcpCancel()
