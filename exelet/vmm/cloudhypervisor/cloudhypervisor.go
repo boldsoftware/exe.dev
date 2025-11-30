@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"exe.dev/exelet/config"
-	"exe.dev/exelet/network"
 	"exe.dev/exelet/vmm/cloudhypervisor/client"
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
@@ -22,14 +21,22 @@ const (
 	bootLogName                   = "boot.log"
 )
 
+// NetworkManager is imported from parent vmm package to avoid import cycle
+type NetworkManager interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error)
+	DeleteInterface(ctx context.Context, id, ip string) error
+}
+
 type VMM struct {
 	dataDir        string
-	networkManager network.NetworkManager
+	networkManager NetworkManager
 	log            *slog.Logger
 }
 
 // NewVMM returns a new CloudHypervisor based VMM
-func NewVMM(addr, nmAddr string, log *slog.Logger) (*VMM, error) {
+func NewVMM(addr string, nm NetworkManager, log *slog.Logger) (*VMM, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -38,11 +45,6 @@ func NewVMM(addr, nmAddr string, log *slog.Logger) (*VMM, error) {
 	dataDir := u.Path
 	if dataDir == "" {
 		return nil, fmt.Errorf("cloudhypervisor runtime data path cannot be blank")
-	}
-
-	nm, err := network.NewNetworkManager(nmAddr, log)
-	if err != nil {
-		return nil, err
 	}
 
 	return &VMM{
@@ -157,6 +159,7 @@ func (v *VMM) waitForStopped(ctx context.Context, id string) error {
 	readyCh := make(chan struct{})
 	errCh := make(chan error)
 	t := time.NewTicker(time.Millisecond * 500)
+	defer t.Stop()
 	go func() {
 		for range t.C {
 			state, err := v.State(ctx, id)

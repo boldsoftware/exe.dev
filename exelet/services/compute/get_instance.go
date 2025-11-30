@@ -38,7 +38,7 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 	}
 
 	// check state
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
 	if err != nil {
 		return nil, err
 	}

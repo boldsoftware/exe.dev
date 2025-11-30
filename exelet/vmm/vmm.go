@@ -12,6 +12,14 @@ import (
 	api "exe.dev/pkg/api/exe/compute/v1"
 )
 
+// NetworkManager is a minimal interface to avoid import cycle with network package
+type NetworkManager interface {
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
+	CreateInterface(ctx context.Context, id string) (*api.NetworkInterface, error)
+	DeleteInterface(ctx context.Context, id, ip string) error
+}
+
 type VMM interface {
 	// Create implements VM creation
 	Create(ctx context.Context, req *api.VMConfig) error
@@ -36,7 +44,7 @@ type VMM interface {
 }
 
 // NewVMM returns a new Virtual Machine Manager
-func NewVMM(addr, networkManagerAddress string, log *slog.Logger) (VMM, error) {
+func NewVMM(addr string, nm NetworkManager, log *slog.Logger) (VMM, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -44,7 +52,7 @@ func NewVMM(addr, networkManagerAddress string, log *slog.Logger) (VMM, error) {
 
 	switch strings.ToLower(u.Scheme) {
 	case "cloudhypervisor":
-		return cloudhypervisor.NewVMM(addr, networkManagerAddress, log)
+		return cloudhypervisor.NewVMM(addr, nm, log)
 	}
 
 	return nil, fmt.Errorf("unsupported VMM %q", u.Scheme)

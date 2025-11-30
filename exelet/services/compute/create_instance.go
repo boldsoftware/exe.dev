@@ -417,7 +417,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 
 	s.log.DebugContext(ctx, "vm config", "config", vmCfg)
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}

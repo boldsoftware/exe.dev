@@ -97,7 +97,7 @@ func (s *Service) Start(ctx context.Context) error {
 
 	// Recover existing VMM processes (cloud-hypervisor and virtiofsd)
 	// This will adopt any still-running processes and clean up stale metadata
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
 	if err != nil {
 		return err
 	}

@@ -31,7 +31,7 @@ func (s *Service) StopInstance(ctx context.Context, req *api.StopInstanceRequest
 }
 
 func (s *Service) stopInstance(ctx context.Context, id string) error {
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
 	if err != nil {
 		return err
 	}

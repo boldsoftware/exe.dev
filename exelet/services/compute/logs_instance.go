@@ -28,7 +28,7 @@ func (s *Service) GetInstanceLogs(req *api.GetInstanceLogsRequest, stream api.Co
 	}
 	instance := resp.Instance
 
-	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.config.NetworkManagerAddress, s.log)
+	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
 	if err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
