@@ -189,7 +189,10 @@ func TestVanillaBox(t *testing.T) {
 			t.Fatalf("failed to get IP: %v", err)
 		}
 		vmIP := strings.TrimSpace(string(out))
-		if vmIP != "" && (strings.HasPrefix(vmIP, "192.168.") || strings.HasPrefix(vmIP, "100.")) {
+		if vmIP == "" || vmIP == "null" {
+			t.Fatalf("metadata service not responding: got %q for source_ip", vmIP)
+		}
+		if strings.HasPrefix(vmIP, "192.168.") || strings.HasPrefix(vmIP, "100.") {
 			Env.addCanonicalization(vmIP, "VM_IP")
 		}
 
