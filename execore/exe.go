@@ -698,7 +698,7 @@ func (s *Server) installSSHHostKey(signer ssh.Signer, certSig *string) error {
 
 // generateHostKey loads the persistent RSA host key from the database, or generates and stores a new one
 func (s *Server) generateHostKey(ctx context.Context) error {
-	// Try to load existing host key from database
+	// Try to load existing host key from database (prod)
 	hostKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
 		return queries.GetSSHHostKey(ctx)
 	})
@@ -706,7 +706,7 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 	publicKeyPEM := hostKey.PublicKey
 
 	if errors.Is(err, sql.ErrNoRows) {
-		// No existing key, generate a new one
+		// No existing key, generate a new one (staging, local, test)
 		privateKey, err := rsa.GenerateKey(crand.Reader, 2048)
 		if err != nil {
 			return fmt.Errorf("failed to generate RSA key: %w", err)
