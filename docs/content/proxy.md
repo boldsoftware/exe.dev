@@ -12,9 +12,9 @@ certificates, TLS termination, and optionally offering basic authentication.
 
 ## Configuring which port to proxy
 
-By default, `exe.dev` proxies port 80. This default can be influenced by
-setting `Config.ExposedPorts` (via the `EXPOSE` directive in a `Dockerfile`)
-to a different port, which, if it's above 1024 and tcp will be chosen.
+By default, `exe.dev` attempts to automatically pick a good port.
+It works from the set of ports exposed by the `EXPOSE` directive in a `Dockerfile`,
+preferring port 80 and falling back to the smallest exposed TCP port >= 1024.
 
 You can change the port chosen with `ssh exe.dev share port <boxname> <port>`.
 This updates the proxy target while keeping the current visibility setting
