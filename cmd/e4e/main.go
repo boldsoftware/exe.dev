@@ -43,7 +43,7 @@ func main() {
 	}
 	out = out[i+len(reportHeading):]
 	out = strings.TrimSpace(out)
-	if strings.HasSuffix(out, "\nOK") {
+	if out == "OK" || strings.HasSuffix(out, "\nOK") {
 		return
 	}
 
