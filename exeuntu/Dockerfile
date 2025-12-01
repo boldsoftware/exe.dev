@@ -206,6 +206,9 @@ COPY --chown=exedev:exedev exeuntu/welcome/ ./
 RUN git add . && git commit -m "Initial commit"
 RUN make build
 
+# Create .local/bin directory (Claude Code expects this to exist for native installs)
+RUN mkdir -p /home/exedev/.local/bin
+
 # Update PATH in .bashrc to include said claude
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
 
