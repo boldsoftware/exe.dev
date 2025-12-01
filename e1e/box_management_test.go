@@ -116,6 +116,28 @@ func TestVanillaBox(t *testing.T) {
 		}
 	})
 
+	t.Run("ping_without_sudo", func(t *testing.T) {
+		// Verify that non-root users can use ping without sudo (see #23, #128)
+		out, err := boxSSHCommand(t, boxName, keyFile, "ping", "-c", "1", "-W", "5", "127.0.0.1").CombinedOutput()
+		if err != nil {
+			t.Fatalf("ping without sudo failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "1 packets transmitted") {
+			t.Fatalf("expected ping success output, got: %s", out)
+		}
+	})
+
+	t.Run("listen_port_80_without_sudo", func(t *testing.T) {
+		// Verify that non-root users can bind to port 80 without sudo
+		out, err := boxSSHCommand(t, boxName, keyFile, "sh", "-c", "nc -l -p 80 & pid=$!; sleep 0.1; kill $pid 2>/dev/null; echo ok").CombinedOutput()
+		if err != nil {
+			t.Fatalf("listen on port 80 without sudo failed: %v\n%s", err, out)
+		}
+		if !strings.Contains(string(out), "ok") {
+			t.Fatalf("expected 'ok' output, got: %s", out)
+		}
+	})
+
 	t.Run("shelley_install", func(t *testing.T) {
 		// Test the shelley install command
 		pty := sshToExeDev(t, keyFile)
