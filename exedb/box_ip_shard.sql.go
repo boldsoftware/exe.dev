@@ -18,6 +18,19 @@ func (q *Queries) DeleteBoxIPShard(ctx context.Context, boxID int) error {
 	return err
 }
 
+const getBoxIPShard = `-- name: GetBoxIPShard :one
+SELECT ip_shard
+FROM box_ip_shard
+WHERE box_id = ?
+`
+
+func (q *Queries) GetBoxIPShard(ctx context.Context, boxID int) (int64, error) {
+	row := q.queryRow(ctx, q.getBoxIPShardStmt, getBoxIPShard, boxID)
+	var ip_shard int64
+	err := row.Scan(&ip_shard)
+	return ip_shard, err
+}
+
 const insertBoxIPShard = `-- name: InsertBoxIPShard :exec
 INSERT INTO box_ip_shard (box_id, user_id, ip_shard)
 VALUES (?, ?, ?)

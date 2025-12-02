@@ -1280,6 +1280,30 @@ func (s *Server) createBoxCNAME(ctx context.Context, boxName string, shard int) 
 	return nil
 }
 
+func (s *Server) deleteBoxCNAME(ctx context.Context, boxName string, shard int) error {
+	if shard < 1 || shard > maxIPShard {
+		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
+	}
+	if s.dnsProvider == nil {
+		return fmt.Errorf("route53 DNS provider not configured")
+	}
+
+	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	// Reconstruct the record ID from the known CNAME parameters
+	target := fmt.Sprintf("s%03d.%s", shard, s.env.BoxHost)
+	recordID, err := route53.EncodeRecordID(boxName+"."+s.env.BoxHost, "CNAME", int64((5 * time.Minute).Seconds()), []string{target})
+	if err != nil {
+		return fmt.Errorf("failed to encode record ID for box %s: %w", boxName, err)
+	}
+
+	if err := s.dnsProvider.DeleteRecord(dnsCtx, s.env.BoxHost, recordID); err != nil {
+		return fmt.Errorf("failed to delete Route53 CNAME for box %s: %w", boxName, err)
+	}
+	return nil
+}
+
 func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
 	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())

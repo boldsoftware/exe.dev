@@ -72,7 +72,8 @@ type CNAMERecord struct {
 	TTL    int64
 }
 
-func encodeRecordID(name, recordType string, ttl int64, values []string) (string, error) {
+// EncodeRecordID encodes DNS record information into a record ID string.
+func EncodeRecordID(name, recordType string, ttl int64, values []string) (string, error) {
 	raw, err := json.Marshal(recordIdentifier{
 		Name:   name,
 		Type:   recordType,
@@ -193,7 +194,7 @@ func (d *DNSProvider) CreateTXTRecords(ctx context.Context, domain, name string,
 		return "", fmt.Errorf("failed to upsert TXT record: %w", err)
 	}
 
-	recordID, err := encodeRecordID(recordName, "TXT", ttl, contents)
+	recordID, err := EncodeRecordID(recordName, "TXT", ttl, contents)
 	if err != nil {
 		return "", fmt.Errorf("failed to encode record id: %w", err)
 	}
@@ -218,13 +219,17 @@ func (d *DNSProvider) DeleteRecord(ctx context.Context, domain, recordID string)
 
 	var records []types.ResourceRecord
 	for _, value := range ident.Values {
+		// TXT records need quotes, but CNAME and other record types should not be quoted
+		var formattedValue string
+		if ident.Type == "TXT" {
+			formattedValue = fmt.Sprintf("\"%s\"", value)
+		} else {
+			formattedValue = value
+		}
 		records = append(records, types.ResourceRecord{
-			Value: aws.String(fmt.Sprintf("\"%s\"", value)),
+			Value: aws.String(formattedValue),
 		})
 	}
-	// TODO: Route53 expects bare domain names for non-TXT records (e.g. CNAME targets), so
-	// quoting everything here prevents DeleteRecord from working for those types. Preserve
-	// whatever format encodeRecordID stored instead of always adding quotes.
 
 	ttl := ident.TTL
 	if ttl == 0 {
@@ -362,7 +367,7 @@ func (d *DNSProvider) CreateCNAMERecord(ctx context.Context, domain, name, targe
 		return "", fmt.Errorf("failed to upsert CNAME record: %w", err)
 	}
 
-	recordID, err := encodeRecordID(recordName, "CNAME", ttlSeconds, []string{targetValue})
+	recordID, err := EncodeRecordID(recordName, "CNAME", ttlSeconds, []string{targetValue})
 	if err != nil {
 		return "", fmt.Errorf("failed to encode record id: %w", err)
 	}
@@ -416,7 +421,7 @@ func (d *DNSProvider) GetRecords(ctx context.Context, domain string) ([]DNSRecor
 				values = append(values, strings.Trim(aws.ToString(rr.Value), "\""))
 			}
 
-			recordID, err := encodeRecordID(name, recordType, ttl, values)
+			recordID, err := EncodeRecordID(name, recordType, ttl, values)
 			if err != nil {
 				return nil, fmt.Errorf("failed to encode record id: %w", err)
 			}

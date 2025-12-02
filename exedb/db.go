@@ -102,6 +102,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxDetailsForSetupStmt, err = db.PrepareContext(ctx, getBoxDetailsForSetup); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxDetailsForSetup: %w", err)
 	}
+	if q.getBoxIPShardStmt, err = db.PrepareContext(ctx, getBoxIPShard); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxIPShard: %w", err)
+	}
 	if q.getBoxOwnerEmailByContainerIDStmt, err = db.PrepareContext(ctx, getBoxOwnerEmailByContainerID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxOwnerEmailByContainerID: %w", err)
 	}
@@ -418,6 +421,11 @@ func (q *Queries) Close() error {
 	if q.getBoxDetailsForSetupStmt != nil {
 		if cerr := q.getBoxDetailsForSetupStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxDetailsForSetupStmt: %w", cerr)
+		}
+	}
+	if q.getBoxIPShardStmt != nil {
+		if cerr := q.getBoxIPShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxIPShardStmt: %w", cerr)
 		}
 	}
 	if q.getBoxOwnerEmailByContainerIDStmt != nil {
@@ -790,6 +798,7 @@ type Queries struct {
 	getAuthTokenInfoStmt                   *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
+	getBoxIPShardStmt                      *sql.Stmt
 	getBoxOwnerEmailByContainerIDStmt      *sql.Stmt
 	getBoxSSHDetailsStmt                   *sql.Stmt
 	getBoxShareLinkByTokenAndBoxIDStmt     *sql.Stmt
@@ -883,6 +892,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
+		getBoxIPShardStmt:                      q.getBoxIPShardStmt,
 		getBoxOwnerEmailByContainerIDStmt:      q.getBoxOwnerEmailByContainerIDStmt,
 		getBoxSSHDetailsStmt:                   q.getBoxSSHDetailsStmt,
 		getBoxShareLinkByTokenAndBoxIDStmt:     q.getBoxShareLinkByTokenAndBoxIDStmt,

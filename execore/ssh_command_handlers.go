@@ -810,6 +810,18 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 
 	cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
 
+	// Get IP shard before deletion for DNS cleanup
+	var ipShard int64
+	if ss.server.env.UseRoute53 {
+		shard, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+			return queries.GetBoxIPShard(ctx, box.ID)
+		})
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to get IP shard for DNS cleanup: %w", err)
+		}
+		ipShard = shard
+	}
+
 	// Delete the instance if it exists
 	if box.ContainerID != nil {
 		// Get exelet client for the host where this box was created
@@ -848,6 +860,13 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 	})
 	if err != nil {
 		return err
+	}
+
+	// Clean up DNS CNAME record if Route53 is enabled
+	if ss.server.env.UseRoute53 && ipShard > 0 {
+		if err := ss.server.deleteBoxCNAME(ctx, boxName, int(ipShard)); err != nil {
+			ss.server.slog().WarnContext(ctx, "failed to delete DNS CNAME record", "box", boxName, "shard", ipShard, "error", err)
+		}
 	}
 
 	if cc.WantJSON() {
