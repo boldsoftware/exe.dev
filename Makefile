@@ -16,7 +16,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help build test deploy-exed deploy-exed-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -45,6 +45,11 @@ deploy-exed: ## Deploy exed to production
 	@chmod +x ops/deploy-exed.sh
 	@./ops/deploy-exed.sh
 	@./scripts/discord-notify.sh "deployed $(shell git rev-parse --short HEAD)"
+
+deploy-exed-staging: ## Deploy exed to staging
+	@echo "${YELLOW}Deploying exed to staging...${NC}"
+	@chmod +x ops/deploy-exed-staging.sh
+	@./ops/deploy-exed-staging.sh
 
 deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
