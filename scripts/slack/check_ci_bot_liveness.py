@@ -34,12 +34,12 @@ BOT_EXPECTATIONS: Sequence[BotExpectation] = (
     BotExpectation(
         bot="e3e-security",
         frequency=timedelta(days=7),
-        context=".github/workflows/exe-e3e-security.yml runs weekly at 07:15 UTC on Mondays.",
+        context=".github/workflows/exe-e3e-security.yml runs weekly at 07:15 UTC on Tuesdays.",
     ),
     BotExpectation(
         bot="e4e-docs",
         frequency=timedelta(days=7),
-        context=".github/workflows/exe-e4e-docs.yml runs weekly at 07:45 UTC on Mondays.",
+        context=".github/workflows/exe-e4e-docs.yml runs weekly at 07:45 UTC on Wednesdays.",
     ),
 )
 

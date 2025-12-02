@@ -3,9 +3,9 @@ name: exe e4e documentation sweep
 on:
   workflow_dispatch:
   schedule:
-    # Run weekly at 7:45 AM UTC on Mondays.
+    # Run weekly at 7:45 AM UTC on Wednesdays.
     # Keep this cron in sync with BOT_EXPECTATIONS inside scripts/slack/check_ci_bot_liveness.py.
-    - cron: "45 7 * * 1"
+    - cron: "45 7 * * 3"
 
 concurrency:
   group: exe-e4e-docs
