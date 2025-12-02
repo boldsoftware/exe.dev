@@ -1,0 +1,57 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestNewWithInvalidEnvVarFormat@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestNewWithInvalidEnvVarFormat@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- help to see a list of commands
+
+exe.dev ▶ whoami
+Email Address: TestNewWithInvalidEnvVarFormat@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ new --name=BOX_NAME --env INVALID_VAR
+invalid environment variable format "INVALID_VAR": must be KEY=VALUE
+exe.dev ▶ exit
+Goodbye!
+
+
+●
+● ssh localhost
+●
+
+rm BOX_NAME
+
+- new to create your first box
+- help to see a list of commands
+
+exe.dev ▶ rm BOX_NAME
+Box "BOX_NAME" not found
+exe.dev ▶ exit
+Goodbye!

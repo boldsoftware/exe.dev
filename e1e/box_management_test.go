@@ -442,3 +442,112 @@ func TestBoxRestartShutdown(t *testing.T) {
 	cleanup.deleteBox(boxName)
 	cleanup.disconnect()
 }
+
+func TestNewWithEnvVars(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Create a box with environment variables
+	boxName := boxName(t)
+	pty.sendLine(fmt.Sprintf("new --name=%s --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env TEST_VAR3=value3", boxName))
+	pty.wantRe("Creating .*" + boxName)
+	pty.want("Ready")
+	pty.wantPrompt()
+	pty.disconnect()
+
+	// SSH into the box and verify the environment variables are set
+	waitForSSH(t, boxName, keyFile)
+	box := sshToBox(t, boxName, keyFile)
+	box.wantPrompt()
+
+	// Check TEST_VAR1
+	box.sendLine("echo $TEST_VAR1")
+	box.want("value1")
+	box.wantPrompt()
+
+	// Check TEST_VAR2
+	box.sendLine("echo $TEST_VAR2")
+	box.want("value2")
+	box.wantPrompt()
+
+	// Check TEST_VAR3
+	box.sendLine("echo $TEST_VAR3")
+	box.want("value3")
+	box.wantPrompt()
+
+	box.disconnect()
+
+	// Clean up
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.deleteBox(boxName)
+	cleanup.disconnect()
+}
+
+func TestNewWithInvalidEnvVarFormat(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Try to create a box with invalid environment variable format (missing =)
+	boxName := boxName(t)
+	pty.sendLine(fmt.Sprintf("new --name=%s --env INVALID_VAR", boxName))
+	pty.want("invalid environment variable format")
+	pty.want("must be KEY=VALUE")
+	pty.wantPrompt()
+	pty.disconnect()
+
+	// Verify the box was not created
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.sendLine(fmt.Sprintf("rm %s", boxName))
+	cleanup.want("not found")
+	cleanup.wantPrompt()
+	cleanup.disconnect()
+}
+
+func TestNewWithEnvVarsContainingSpacesAndSpecialChars(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Create a box with environment variables containing spaces and special characters
+	boxName := boxName(t)
+	pty.sendLine(fmt.Sprintf("new --name=%s --env 'GREETING=hello world' --env 'COMMAND=echo $HOME' --env 'QUOTE=it'\"'\"'s great'", boxName))
+	pty.wantRe("Creating .*" + boxName)
+	pty.want("Ready")
+	pty.wantPrompt()
+	pty.disconnect()
+
+	// SSH into the box and verify the environment variables are set correctly
+	waitForSSH(t, boxName, keyFile)
+	box := sshToBox(t, boxName, keyFile)
+	box.wantPrompt()
+
+	// Check GREETING (contains space)
+	box.sendLine("echo $GREETING")
+	box.want("hello world")
+	box.wantPrompt()
+
+	// Check COMMAND (contains special chars that should NOT be expanded)
+	box.sendLine("echo $COMMAND")
+	box.want("echo $HOME")
+	box.wantPrompt()
+
+	// Check QUOTE (contains single quote)
+	box.sendLine("echo $QUOTE")
+	box.want("it's great")
+	box.wantPrompt()
+
+	box.disconnect()
+
+	// Clean up
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.deleteBox(boxName)
+	cleanup.disconnect()
+}

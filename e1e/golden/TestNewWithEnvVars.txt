@@ -1,0 +1,89 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+EXE.DEV: get a box over ssh
+To sign up, please verify your email.
+
+Please enter your email address: TestNewWithEnvVars@example.com
+
+[DEV-ONLY] Emailed link: http://localhost:EXED_HTTP_PORT/verify-email?token=EMAIL_VERIFICATION_TOKEN&s=exemenu
+
+
+Verification email sent to: TestNewWithEnvVars@example.com
+Pairing code: EMAIL_VERIFICATION_CODE
+Waiting for email verification...
+✓ Email verified successfully!
+
+
+Registration complete!
+
+Your account has been successfully created.
+
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- help to see a list of commands
+
+exe.dev ▶ whoami
+Email Address: TestNewWithEnvVars@example.com
+SSH Keys:
+  Public Key: SSH_PUBKEY ← current
+exe.dev ▶ new --name=BOX_NAME --env TEST_VAR1=value1 --env TEST_VAR2=value2 --env TEST_VAR3=value3
+Creating BOX_NAME using image boldsoftware/exeuntu...
+Ready in ELAPSED_TIME!
+
+Coding agent
+http://BOX_NAME.exe.cloud:9999
+
+App (HTTPS proxy → :8000)
+http://BOX_NAME.exe.cloud:EXED_HTTP_PORT
+
+SSH
+ssh -p SSH_PORT BOX_NAME@exe.cloud
+
+exe.dev ▶ exit
+Goodbye!
+
+
+●
+● ssh BOX_NAME@localhost
+●
+
+
+You are on BOX_NAME. The disk is persistent. You have 'sudo'.
+
+For support and documentation, "ssh exe.dev" or visit https://exe.dev/
+
+MOTD HINT
+
+exedev@BOX_NAME:~$ echo $TEST_VAR1
+value1
+exedev@BOX_NAME:~$ echo $TEST_VAR2
+value2
+exedev@BOX_NAME:~$ echo $TEST_VAR3
+value3
+exedev@BOX_NAME:~$ exit
+logout
+
+
+●
+● ssh localhost
+●
+
+rm BOX_NAME
+
+- help to see a list of commands
+
+exe.dev ▶ rm BOX_NAME
+Deleting BOX_NAME...
+Box "BOX_NAME" deleted successfully
+exe.dev ▶ exit
+Goodbye!

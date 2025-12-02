@@ -29,6 +29,35 @@ const (
 	kernelName = "kernel"
 )
 
+// isValidShellIdentifier checks if a string is a valid shell variable name
+// Valid identifiers: start with letter or underscore, followed by letters, digits, or underscores
+func isValidShellIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	// First character must be letter or underscore
+	first := s[0]
+	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_') {
+		return false
+	}
+	// Remaining characters must be alphanumeric or underscore
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// shellEscapeValue escapes a value for safe use in a shell script
+// Uses single quotes and escapes any single quotes in the value
+func shellEscapeValue(s string) string {
+	// Replace each single quote with '\'' (end quote, escaped quote, start quote)
+	escaped := strings.ReplaceAll(s, "'", "'\\''")
+	return "'" + escaped + "'"
+}
+
 // CreateInstance creates a new exelet instance
 func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.ComputeService_CreateInstanceServer) (err error) {
 	// validate
@@ -362,6 +391,50 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	if err := envF.Close(); err != nil {
 		return status.Error(codes.Internal, err.Error())
+	}
+
+	// Also write environment variables to /etc/profile.d/ so they're available to user sessions
+	if len(req.Env) > 0 {
+		profileDPath := filepath.Join(mountpoint, "etc", "profile.d")
+		if err := os.MkdirAll(profileDPath, 0o755); err != nil {
+			s.log.WarnContext(ctx, "failed to create /etc/profile.d", "error", err)
+		} else {
+			exeEnvPath := filepath.Join(profileDPath, "exe-env.sh")
+			exeEnvF, err := os.Create(exeEnvPath)
+			if err != nil {
+				s.log.WarnContext(ctx, "failed to create /etc/profile.d/exe-env.sh", "error", err)
+			} else {
+				for _, envVar := range req.Env {
+					// Parse KEY=VALUE
+					parts := strings.SplitN(envVar, "=", 2)
+					if len(parts) != 2 {
+						s.log.WarnContext(ctx, "skipping invalid environment variable (no =)", "var", envVar)
+						continue
+					}
+					key := parts[0]
+					value := parts[1]
+
+					// Validate key is a valid shell identifier
+					if !isValidShellIdentifier(key) {
+						s.log.WarnContext(ctx, "skipping invalid shell identifier", "key", key)
+						continue
+					}
+
+					// Write with proper shell escaping using single quotes
+					if _, err := fmt.Fprintf(exeEnvF, "export %s=%s\n", key, shellEscapeValue(value)); err != nil {
+						s.log.WarnContext(ctx, "failed to write to /etc/profile.d/exe-env.sh", "error", err)
+					}
+				}
+				if err := exeEnvF.Close(); err != nil {
+					s.log.WarnContext(ctx, "failed to close /etc/profile.d/exe-env.sh", "error", err)
+				} else {
+					// Make the file executable
+					if err := os.Chmod(exeEnvPath, 0o644); err != nil {
+						s.log.WarnContext(ctx, "failed to chmod /etc/profile.d/exe-env.sh", "error", err)
+					}
+				}
+			}
+		}
 	}
 
 	// set image config for init

@@ -33,6 +33,21 @@ The user has just created this box, and wants to do the following with it.
 
 const shelleyDefaultModel = "claude-sonnet-4.5"
 
+// repeatedStringFlag is a flag.Value implementation that allows a flag to be specified multiple times
+type repeatedStringFlag []string
+
+func (f *repeatedStringFlag) String() string {
+	if f == nil {
+		return ""
+	}
+	return strings.Join(*f, ",")
+}
+
+func (f *repeatedStringFlag) Set(value string) error {
+	*f = append(*f, value)
+	return nil
+}
+
 // jsonOnlyFlags returns a FlagSet creation function for a FlagSet named name with only the --json flag.
 func jsonOnlyFlags(name string) func() *flag.FlagSet {
 	return func() *flag.FlagSet {
@@ -52,6 +67,9 @@ func newCommandFlags() *flag.FlagSet {
 	fs.Bool("json", false, "output in JSON format")
 	// Hidden flag for testing
 	fs.String("prompt-model", shelleyDefaultModel, "")
+	// Environment variables (can be specified multiple times)
+	var envVars repeatedStringFlag
+	fs.Var(&envVars, "env", "environment variable in KEY=VALUE format (can be specified multiple times)")
 	return fs
 }
 
@@ -85,8 +103,9 @@ func NewCommandTree(ss *SSHServer) *exemenu.CommandTree {
 			Handler:     ss.handleNewCommand,
 			FlagSetFunc: newCommandFlags,
 			Examples: []string{
-				"new                                # just give me a computer",
-				"new --name=b --image=ubuntu:22.04  # custom image and name",
+				"new                                     # just give me a computer",
+				"new --name=b --image=ubuntu:22.04       # custom image and name",
+				"new --env FOO=bar --env BAZ=qux         # with environment variables",
 			},
 		},
 		{
@@ -280,6 +299,24 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	prompt := cc.FlagSet.Lookup("prompt").Value.String()
 	model := cc.FlagSet.Lookup("prompt-model").Value.String()
 
+	// Parse environment variables
+	var envVars []string
+	if envFlag := cc.FlagSet.Lookup("env"); envFlag != nil {
+		if repeatedEnv, ok := envFlag.Value.(*repeatedStringFlag); ok && repeatedEnv != nil {
+			for _, env := range *repeatedEnv {
+				// Validate format: must contain '=' and have non-empty key
+				if !strings.Contains(env, "=") {
+					return cc.Errorf("invalid environment variable format %q: must be KEY=VALUE", env)
+				}
+				parts := strings.SplitN(env, "=", 2)
+				if parts[0] == "" {
+					return cc.Errorf("invalid environment variable format %q: key cannot be empty", env)
+				}
+				envVars = append(envVars, env)
+			}
+		}
+	}
+
 	// Validate that --prompt is only used with exeuntu image
 	if prompt != "" && image != "exeuntu" {
 		return cc.Errorf("--prompt can only be used with the exeuntu image")
@@ -436,6 +473,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			CPUs:    1,
 			Memory:  1 * 1000 * 1000 * 1000, // 1GB
 			Disk:    8 * 1000 * 1000 * 1000, // 8GB
+			Env:     envVars,                // Environment variables
 			SSHKeys: []string{cc.PublicKey}, // Pass user's SSH key
 			Configs: []*api.Config{
 				{

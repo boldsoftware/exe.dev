@@ -55,7 +55,7 @@ func runEntrypoint(imageConfig *v1.ImageConfig) (int, error) {
 	if isInitSystem(entrypoint) {
 		slog.Info("handing off init", "init", entrypoint)
 		// exec and hand off PID 1
-		if err := syscall.Exec(entrypoint, args, os.Environ()); err != nil {
+		if err := syscall.Exec(entrypoint, args, env); err != nil {
 			return -1, err
 		}
 		return 0, nil
@@ -65,7 +65,6 @@ func runEntrypoint(imageConfig *v1.ImageConfig) (int, error) {
 		"cwd", cwd,
 		"entrypoint", entrypoint,
 		"args", args,
-		"env", env,
 	)
 
 	// entrypoint exec
