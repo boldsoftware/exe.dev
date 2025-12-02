@@ -101,7 +101,7 @@ else
 fi
 
 # Create a symlink to the latest version
-rm -f $DEPLOY_DIR/exeletd.latest
+rm -f ~/exeletd.latest
 ln -sf ~/$BINARY_NAME ~/exeletd.latest
 
 # List all deployed versions
