@@ -100,9 +100,21 @@ fi
 
 echo -e "${GREEN}✓ Service file uploaded${NC}"
 
+# Copy start script
+echo "Copying start script..."
+if ! scp "ops/start-sshpiper.sh" "$TAILSCALE_HOST:~/start-sshpiper.sh"; then
+    echo -e "${RED}ERROR: Failed to copy start script to VM${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Start script uploaded${NC}"
+
 # Configure binary and service on VM
 echo "Configuring binary and service on VM..."
 ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" <<EOF
+# Make start script executable
+chmod +x ~/start-sshpiper.sh
+
 # Make binary executable
 chmod +x ~/$BINARY_NAME
 
