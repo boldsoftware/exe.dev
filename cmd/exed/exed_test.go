@@ -150,3 +150,136 @@ func TestProfilePathGeneration(t *testing.T) {
 		t.Errorf("timestamp path should start with /tmp/exed-profile-, got: %s", tsPath)
 	}
 }
+
+func TestSSHTimeoutOptions(t *testing.T) {
+	// This test verifies that SSH commands include timeout options
+	// to prevent hanging when SSH connections fail or timeout.
+
+	t.Run("sshExec includes timeout options", func(t *testing.T) {
+		// We can't easily test the actual sshExec function without a real SSH server,
+		// but we verify that the timeout options would be present by checking the
+		// command construction pattern.
+
+		// Expected SSH timeout options
+		expectedOptions := []string{
+			"ConnectTimeout=10",
+			"ServerAliveInterval=5",
+			"ServerAliveCountMax=3",
+		}
+
+		// Read the source file to verify options are present
+		src, err := os.ReadFile("exed.go")
+		if err != nil {
+			t.Fatalf("failed to read exed.go: %v", err)
+		}
+		content := string(src)
+
+		// Check that sshExec function includes all timeout options
+		sshExecStart := strings.Index(content, "func sshExec(")
+		if sshExecStart == -1 {
+			t.Fatal("sshExec function not found")
+		}
+		sshExecEnd := strings.Index(content[sshExecStart:], "\n}")
+		if sshExecEnd == -1 {
+			t.Fatal("sshExec function end not found")
+		}
+		sshExecBody := content[sshExecStart : sshExecStart+sshExecEnd]
+
+		for _, opt := range expectedOptions {
+			if !strings.Contains(sshExecBody, opt) {
+				t.Errorf("sshExec missing timeout option: %s", opt)
+			}
+		}
+	})
+
+	t.Run("scpUpload includes timeout options", func(t *testing.T) {
+		expectedOptions := []string{
+			"ConnectTimeout=10",
+			"ServerAliveInterval=5",
+			"ServerAliveCountMax=3",
+		}
+
+		src, err := os.ReadFile("exed.go")
+		if err != nil {
+			t.Fatalf("failed to read exed.go: %v", err)
+		}
+		content := string(src)
+
+		scpUploadStart := strings.Index(content, "func scpUpload(")
+		if scpUploadStart == -1 {
+			t.Fatal("scpUpload function not found")
+		}
+		scpUploadEnd := strings.Index(content[scpUploadStart:], "\n}")
+		if scpUploadEnd == -1 {
+			t.Fatal("scpUpload function end not found")
+		}
+		scpUploadBody := content[scpUploadStart : scpUploadStart+scpUploadEnd]
+
+		for _, opt := range expectedOptions {
+			if !strings.Contains(scpUploadBody, opt) {
+				t.Errorf("scpUpload missing timeout option: %s", opt)
+			}
+		}
+	})
+
+	t.Run("startSSHTunnelForExed includes timeout options", func(t *testing.T) {
+		expectedOptions := []string{
+			"ConnectTimeout=10",
+			"ServerAliveInterval=30",
+			"ServerAliveCountMax=3",
+		}
+
+		src, err := os.ReadFile("exed.go")
+		if err != nil {
+			t.Fatalf("failed to read exed.go: %v", err)
+		}
+		content := string(src)
+
+		tunnelStart := strings.Index(content, "func startSSHTunnelForExed(")
+		if tunnelStart == -1 {
+			t.Fatal("startSSHTunnelForExed function not found")
+		}
+		tunnelEnd := strings.Index(content[tunnelStart:], "\nfunc ")
+		if tunnelEnd == -1 {
+			t.Fatal("startSSHTunnelForExed function end not found")
+		}
+		tunnelBody := content[tunnelStart : tunnelStart+tunnelEnd]
+
+		for _, opt := range expectedOptions {
+			if !strings.Contains(tunnelBody, opt) {
+				t.Errorf("startSSHTunnelForExed missing timeout option: %s", opt)
+			}
+		}
+	})
+
+	t.Run("startExeletProcess includes timeout options", func(t *testing.T) {
+		expectedOptions := []string{
+			"ConnectTimeout=10",
+			"ServerAliveInterval=30",
+			"ServerAliveCountMax=3",
+		}
+
+		src, err := os.ReadFile("exed.go")
+		if err != nil {
+			t.Fatalf("failed to read exed.go: %v", err)
+		}
+		content := string(src)
+
+		processStart := strings.Index(content, "func startExeletProcess(")
+		if processStart == -1 {
+			t.Fatal("startExeletProcess function not found")
+		}
+		processEnd := strings.Index(content[processStart:], "\nfunc ")
+		if processEnd == -1 {
+			// Might be last function in file
+			processEnd = len(content[processStart:])
+		}
+		processBody := content[processStart : processStart+processEnd]
+
+		for _, opt := range expectedOptions {
+			if !strings.Contains(processBody, opt) {
+				t.Errorf("startExeletProcess missing timeout option: %s", opt)
+			}
+		}
+	})
+}

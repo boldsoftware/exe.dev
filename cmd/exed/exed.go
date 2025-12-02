@@ -235,7 +235,9 @@ func startSSHTunnelForExed(host string, localPort int) (int, error) {
 		"-Nf", // no command, background
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ConnectTimeout=10",
 		"-o", "ServerAliveInterval=30",
+		"-o", "ServerAliveCountMax=3",
 		"-o", "ExitOnForwardFailure=yes",
 		"-R", fmt.Sprintf("0:localhost:%d", localPort),
 		host,
@@ -408,6 +410,9 @@ func startExeletProcess(ctx context.Context, host, logFormat, logLevel, exedURL 
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=30",
+		"-o", "ServerAliveCountMax=3",
 		host,
 		fmt.Sprintf(`sudo LOG_FORMAT=%s LOG_LEVEL=%s /tmp/exeletd -D --data-dir /data/exelet --storage-manager-address "zfs:///data/exelet/storage?dataset=tank" --network-manager-address nat:///data/exelet/network --runtime-address cloudhypervisor:///data/exelet/runtime --listen-address tcp://:9080 --http-addr :9081 --exed-url %s`,
 			logFormat, logLevel, exedURL))
@@ -484,6 +489,9 @@ func sshExec(ctx context.Context, host, command string) (string, error) {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=5",
+		"-o", "ServerAliveCountMax=3",
 		host, command)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -495,6 +503,9 @@ func scpUpload(localPath, host, remotePath string) error {
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout=10",
+		"-o", "ServerAliveInterval=5",
+		"-o", "ServerAliveCountMax=3",
 		localPath, host+":"+remotePath)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
