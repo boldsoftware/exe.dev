@@ -37,7 +37,7 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 		case "knownhosts.net", "google.com":
 			return host + ".", nil
 		case "www.knownhosts.net":
-			return "knownhosts.exe.dev.", nil
+			return "knownhosts.exe.xyz.", nil
 		case "www.google.com":
 			return "www.google.com.", nil
 		default:
@@ -46,7 +46,7 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 	}
 	s.lookupAFunc = func(_ context.Context, host string) ([]netip.Addr, error) {
 		switch host {
-		case "knownhosts.net", "knownhosts.exe.dev":
+		case "knownhosts.net", "knownhosts.exe.xyz":
 			return []netip.Addr{knownHostIP}, nil
 		case "google.com":
 			return []netip.Addr{googleIP}, nil
@@ -61,7 +61,7 @@ func TestHostPolicyAcceptsApexARecord(t *testing.T) {
 	s.PublicIPs = map[netip.Addr]publicips.PublicIP{
 		netip.MustParseAddr("10.0.0.5"): {
 			IP:     knownHostIP,
-			Domain: "knownhosts.exe.dev",
+			Domain: "knownhosts.exe.xyz",
 		},
 	}
 
@@ -81,7 +81,7 @@ func TestResolveBoxNameApexDomain(t *testing.T) {
 		PublicIPs: map[netip.Addr]publicips.PublicIP{
 			netip.MustParseAddr("10.0.0.5"): {
 				IP:     netip.MustParseAddr("203.0.113.10"),
-				Domain: "knownhosts.exe.dev",
+				Domain: "knownhosts.exe.xyz",
 			},
 		},
 	}
@@ -91,7 +91,7 @@ func TestResolveBoxNameApexDomain(t *testing.T) {
 		case "knownhosts.net":
 			return "knownhosts.net.", nil
 		case "www.knownhosts.net":
-			return "knownhosts.exe.dev.", nil
+			return "knownhosts.exe.xyz.", nil
 		default:
 			return "", &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 		}

@@ -110,7 +110,7 @@ func Prod() Env {
 	return Env{
 		WebHost:  "exe.dev",
 		ReplHost: "exe.dev",
-		BoxHost:  "exe.dev", // TODO: exe.xyz
+		BoxHost:  "exe.xyz",
 
 		UseRoute53:        true,
 		UseCobble:         false,
