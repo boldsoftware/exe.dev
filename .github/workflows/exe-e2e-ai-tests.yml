@@ -11,7 +11,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, libvirt]
     environment: ai-testing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
         with:

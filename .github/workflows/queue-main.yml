@@ -30,7 +30,7 @@ jobs:
     outputs:
       commit_sha: ${{ steps.get_commit.outputs.commit_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -176,7 +176,7 @@ jobs:
             [ -n "$REBASE_APPLY" ] && rm -rf "$REBASE_APPLY" || true
           fi
         shell: bash
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.commit-validation-and-formatting.outputs.commit_sha }}
           fetch-depth: 0
