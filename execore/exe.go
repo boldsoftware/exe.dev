@@ -480,7 +480,10 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		if addr == "" {
 			continue
 		}
-		client, err := exeletclient.NewClient(addr, exeletclient.WithInsecure())
+		client, err := exeletclient.NewClient(addr,
+			exeletclient.WithInsecure(),
+			exeletclient.WithLogger(slog),
+			exeletclient.WithMetrics(metricsRegistry))
 		if err != nil {
 			slog.Warn("failed to create exelet client, skipping host", "addr", addr, "error", err)
 			continue

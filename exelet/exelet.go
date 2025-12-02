@@ -1,6 +1,7 @@
 package exelet
 
 import (
+	"context"
 	"crypto/tls"
 	"log/slog"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -42,6 +45,7 @@ type Exelet struct {
 	state           api.Server_ServerState
 	metricsRegistry *prometheus.Registry
 	metrics         *ExeletMetrics
+	grpcMetrics     *grpcprom.ServerMetrics
 }
 
 // NewExelet returns a new exelet server.
@@ -63,6 +67,14 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 	// create prometheus registry and metrics
 	metricsRegistry := prometheus.NewRegistry()
 	metrics := NewExeletMetrics(metricsRegistry)
+	
+	// Create gRPC server metrics
+	grpcMetrics := grpcprom.NewServerMetrics(
+		grpcprom.WithServerHandlingTimeHistogram(
+			grpcprom.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
+		),
+	)
+	metricsRegistry.MustRegister(grpcMetrics)
 
 	srv := &Exelet{
 		started:         time.Now(),
@@ -74,6 +86,7 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 		state:           state,
 		metricsRegistry: metricsRegistry,
 		metrics:         metrics,
+		grpcMetrics:     grpcMetrics,
 	}
 
 	grpcOpts, err := getGRPCOptions(cfg)
@@ -81,12 +94,21 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 		return nil, err
 	}
 
+	// Adapter to convert slog.Logger to logging.Logger
+	loggerFunc := func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+		log.Log(ctx, slog.Level(lvl), msg, fields...)
+	}
+
 	// middleware
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		tracing.UnaryServerInterceptor(),
+		grpcMetrics.UnaryServerInterceptor(),
+		logging.UnaryServerInterceptor(logging.LoggerFunc(loggerFunc)),
 	}
 	streamServerInterceptors := []grpc.StreamServerInterceptor{
 		tracing.StreamServerInterceptor(),
+		grpcMetrics.StreamServerInterceptor(),
+		logging.StreamServerInterceptor(logging.LoggerFunc(loggerFunc)),
 	}
 
 	// TODO: auth middleware
@@ -126,6 +148,9 @@ func (s *Exelet) Register(ctx *services.ServiceContext, svcs []func(*config.Exel
 		registered[i.Type()] = struct{}{}
 		s.services = append(s.services, i)
 	}
+
+	// Initialize metrics after all services are registered
+	s.grpcMetrics.InitializeMetrics(s.grpcServer)
 
 	return nil
 }

@@ -4,7 +4,7 @@ import "github.com/prometheus/client_golang/prometheus"
 
 // ExeletMetrics holds exelet server metrics
 type ExeletMetrics struct {
-	// TODO: add gRPC metrics using https://github.com/grpc-ecosystem/go-grpc-middleware
+	// gRPC metrics are registered separately via grpcMetrics in grpc_interceptors.go
 }
 
 // NewExeletMetrics creates and registers exelet metrics

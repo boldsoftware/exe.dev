@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -28,6 +31,8 @@ type ClientConfig struct {
 	Username  string
 	Token     string
 	Insecure  bool
+	Logger    *slog.Logger
+	Metrics   *grpcprom.ClientMetrics
 }
 
 // NewClient returns a new client configured with the specified address and options
@@ -119,9 +124,30 @@ func getGRPCOptions(cfg *ClientConfig) []grpc.DialOption {
 	))
 
 	// Add trace_id propagation interceptors
+	unaryInterceptors := []grpc.UnaryClientInterceptor{
+		tracing.UnaryClientInterceptor(),
+	}
+	streamInterceptors := []grpc.StreamClientInterceptor{
+		tracing.StreamClientInterceptor(),
+	}
+
+	// Add metrics and logging interceptors if provided
+	if cfg.Metrics != nil {
+		unaryInterceptors = append(unaryInterceptors, cfg.Metrics.UnaryClientInterceptor())
+		streamInterceptors = append(streamInterceptors, cfg.Metrics.StreamClientInterceptor())
+	}
+
+	if cfg.Logger != nil {
+		loggerFunc := func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+			cfg.Logger.Log(ctx, slog.Level(lvl), msg, fields...)
+		}
+		unaryInterceptors = append(unaryInterceptors, logging.UnaryClientInterceptor(logging.LoggerFunc(loggerFunc)))
+		streamInterceptors = append(streamInterceptors, logging.StreamClientInterceptor(logging.LoggerFunc(loggerFunc)))
+	}
+
 	opts = append(opts,
-		grpc.WithUnaryInterceptor(tracing.UnaryClientInterceptor()),
-		grpc.WithStreamInterceptor(tracing.StreamClientInterceptor()),
+		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
+		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	)
 
 	return opts
