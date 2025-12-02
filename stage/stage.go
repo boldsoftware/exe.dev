@@ -87,7 +87,7 @@ func Staging() Env {
 	return Env{
 		WebHost:  "exe-staging.dev",
 		ReplHost: "exe-staging.dev",
-		BoxHost:  "exe-staging.dev", // TODO: exe-staging.xyz
+		BoxHost:  "exe-staging.xyz",
 
 		UseRoute53:        true,
 		UseCobble:         false,
