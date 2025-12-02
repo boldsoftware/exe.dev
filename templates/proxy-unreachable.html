@@ -69,10 +69,54 @@
       font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
     .code-line {
-      display: block;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       margin-top: 0.4rem;
+    }
+    .code-line code {
+      flex: 1;
       overflow-x: auto;
       white-space: nowrap;
+    }
+    .copy-btn {
+      flex-shrink: 0;
+      padding: 6px 8px;
+      border: 1px solid #d8dadd;
+      background: #fff;
+      color: #666;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+    .copy-btn:hover {
+      background: #f0f2f5;
+      border-color: #c0c4cc;
+    }
+    .copy-btn.copied {
+      background: #22c55e;
+      border-color: #22c55e;
+      color: white;
+    }
+    .copy-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+    .toast {
+      position: fixed;
+      background: #333;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    .toast.show {
+      opacity: 1;
     }
     .muted {
       color: #6c727f;
@@ -86,6 +130,15 @@
         background: #14161c;
       }
       code { background: #1d2028; }
+      .copy-btn {
+        background: #1d2028;
+        border-color: #2b323c;
+        color: #9ca3af;
+      }
+      .copy-btn:hover {
+        background: #252830;
+        border-color: #3b424c;
+      }
     }
   </style>
   <meta name="robots" content="noindex">
@@ -116,12 +169,28 @@
         {{if .ShowWelcomeStep}}
         <div class="step">
           <h3>Spin up our demo server</h3>
-          <code class="code-line">{{.SSHCommand}} sudo systemctl start welcome</code>
+          <div class="code-line">
+            <code>{{.SSHCommand}} sudo systemctl start welcome</code>
+            <button class="copy-btn" onclick="copyCmd(this)" title="Copy command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
         </div>
         {{end}}
         <div class="step">
           <h3>SSH in and start your own server</h3>
-          <code class="code-line">{{.SSHCommand}}</code>
+          <div class="code-line">
+            <code>{{.SSHCommand}}</code>
+            <button class="copy-btn" onclick="copyCmd(this)" title="Copy command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="step">
           <h3>Use the web terminal to start your server</h3>
@@ -130,5 +199,40 @@
       </div>
     </section>
   </main>
+  <div id="toast" class="toast"></div>
+  <script>
+    async function copyCmd(btn) {
+      const code = btn.parentElement.querySelector('code');
+      const text = code.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.classList.add('copied');
+        showToast('Copied to clipboard', btn);
+        setTimeout(() => btn.classList.remove('copied'), 1000);
+      } catch (err) {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.classList.add('copied');
+        showToast('Copied to clipboard', btn);
+        setTimeout(() => btn.classList.remove('copied'), 1000);
+      }
+    }
+    function showToast(msg, btn) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      const r = btn.getBoundingClientRect();
+      toast.style.left = r.left + r.width/2 + 'px';
+      toast.style.top = r.bottom + 8 + 'px';
+      toast.style.transform = 'translateX(-50%)';
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1500);
+    }
+  </script>
 </body>
 </html>
