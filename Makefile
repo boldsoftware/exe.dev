@@ -16,7 +16,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-whoami deploy-what deploy-qa deploy-piperd clean run-dev generate whoami-clean
+.PHONY: help build test deploy-exed deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -60,6 +60,12 @@ ssh-ci: ## ssh to exed ci server
 ssh-ctr: ## ssh to ctr-host
 	@ssh ubuntu@exe-ctr-01
 
+ssh-exed-staging: ## ssh to exed staging server
+	@ssh ubuntu@exed-staging-01
+
+ssh-ctr-staging: ## ssh to ctr-host staging
+	@ssh ubuntu@exe-ctr-staging-01
+
 ssh-mon: ## ssh to monitoring (prometheus/grafana) server
 	@ssh ubuntu@mon
 
@@ -67,6 +73,11 @@ deploy-piperd: ## Deploy sshpiperd to production
 	@echo "${YELLOW}Deploying sshpiperd to production...${NC}"
 	@chmod +x ops/deploy-sshpiper.sh
 	@./ops/deploy-sshpiper.sh
+
+deploy-piperd-staging: ## Deploy sshpiperd to staging
+	@echo "${YELLOW}Deploying sshpiperd to staging...${NC}"
+	@chmod +x ops/deploy-sshpiper-staging.sh
+	@./ops/deploy-sshpiper-staging.sh
 
 deploy-what: ## Show commits that would deploy to production
 	@./ops/deploy-what.sh
