@@ -606,6 +606,8 @@ func newUpstream(uri string, config *ClientConfig) (*upstream, error) {
 		}
 		if err := conn.clientHandshakeNoAuth(addr, &fullConf); err != nil {
 			handshakeErrors = errors.Join(handshakeErrors, err)
+			c.Close()
+			conn = nil
 			sleep(err)
 			continue
 		}
