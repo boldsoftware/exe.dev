@@ -72,7 +72,7 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 	// Create gRPC server metrics
 	grpcMetrics := grpcprom.NewServerMetrics(
 		grpcprom.WithServerHandlingTimeHistogram(
-			grpcprom.WithHistogramBuckets([]float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120}),
+			grpcprom.WithHistogramBuckets([]float64{0.01, 0.1, 0.3, 0.6, 1, 1.4, 2, 3, 6, 9, 20, 30, 60, 90}),
 		),
 	)
 	metricsRegistry.MustRegister(grpcMetrics)
