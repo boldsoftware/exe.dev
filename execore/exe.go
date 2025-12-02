@@ -771,6 +771,65 @@ func (s *Server) generateHostKey(ctx context.Context) error {
 	return nil
 }
 
+// knownHostsLine returns the @cert-authority entry a user should add to known_hosts.
+func (s *Server) knownHostsLine(ctx context.Context) (string, error) {
+	host := strings.TrimSpace(s.env.ReplHost)
+	if host == "" {
+		return "", errors.New("repl host is not configured")
+	}
+	port := s.piperdPort
+	if port == 0 {
+		return "", errors.New("ssh piperd port is not configured")
+	}
+
+	target := host
+	if port != 22 {
+		target = fmt.Sprintf("[%s]:%d", host, port)
+	} else if host == "exe.dev" {
+		target = "exe.dev,*.exe.dev"
+	}
+
+	hostKey, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.GetSSHHostKeyRow, error) {
+		return queries.GetSSHHostKey(ctx)
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to load ssh host certificate: %w", err)
+	}
+	if hostKey.CertSig == nil {
+		return "", errors.New("ssh host certificate has not been configured")
+	}
+
+	certData := strings.TrimSpace(*hostKey.CertSig)
+	if certData == "" {
+		return "", errors.New("ssh host certificate is empty")
+	}
+
+	pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(certData))
+	if err != nil {
+		return "", fmt.Errorf("failed to parse ssh host certificate: %w", err)
+	}
+
+	cert, ok := pubKey.(*ssh.Certificate)
+	if !ok {
+		return "", fmt.Errorf("stored ssh host certificate is %T, want *ssh.Certificate", pubKey)
+	}
+	if cert.SignatureKey == nil {
+		return "", errors.New("ssh host certificate is missing a signature key")
+	}
+
+	caKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(cert.SignatureKey)))
+	if caKey == "" {
+		return "", errors.New("derived ssh ca key is empty")
+	}
+
+	comment := fmt.Sprintf("%s ssh ca", host)
+	if fields := strings.Fields(caKey); len(fields) <= 2 {
+		caKey = fmt.Sprintf("%s %s", caKey, comment)
+	}
+
+	return fmt.Sprintf("@cert-authority %s %s", target, caKey), nil
+}
+
 // getPublicKeyFingerprint generates a SHA256 fingerprint for a public key
 func (s *Server) GetPublicKeyFingerprint(key ssh.PublicKey) string {
 	hash := sha256.Sum256(key.Marshal())

@@ -485,6 +485,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleHealth(w, r)
 	case "/metrics":
 		requireLocalAccess(s.handleMetrics)(w, r)
+	case "/.well-known/knownhosts":
+		s.handleKnownHosts(w, r)
+		return
 	case "/about":
 		s.serveStaticFile(w, r, "about.html")
 	case "/jobs":
@@ -607,6 +610,20 @@ func requireLocalAccess(handler http.HandlerFunc) http.HandlerFunc {
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	handler := promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{})
 	handler.ServeHTTP(w, r)
+}
+
+// handleKnownHosts exposes the SSH CA line for clients to trust the host certificate.
+func (s *Server) handleKnownHosts(w http.ResponseWriter, r *http.Request) {
+	line, err := s.knownHostsLine(r.Context())
+	if err != nil {
+		s.log.ErrorContext(r.Context(), "failed to render known hosts entry", "error", err)
+		http.Error(w, "ssh host certificate unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	fmt.Fprintln(w, line)
 }
 
 // handleWaitlist handles POSTs from the coming soon waitlist form
