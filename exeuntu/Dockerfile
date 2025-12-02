@@ -206,10 +206,7 @@ COPY --chown=exedev:exedev exeuntu/welcome/ ./
 RUN git add . && git commit -m "Initial commit"
 RUN make build
 
-# Create .local/bin directory (Claude Code expects this to exist for native installs)
-RUN mkdir -p /home/exedev/.local/bin
-
-# Update PATH in .bashrc to include said claude
+# Update PATH in .bashrc to include .local/bin
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
 
 # Switch back to root to install systemd service
@@ -251,16 +248,18 @@ RUN ARCH=$(uname -m) && \
     mv "/usr/local/bin/codex-${CODEX_ARCH}" /usr/local/bin/codex && \
     chmod +x /usr/local/bin/codex
 
-# Installs native claude. I had claude "decompile" "curl -fsSL https://claude.ai/install.sh | bash"
-# and changed it up to install in /usr/local/bin and not ~/.local.
-RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
-      PLATFORM="linux-${ARCH}" && \
-      STABLE_VERSION=$(curl -fsSL https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/stable) && \
-      EXPECTED_HASH=$(curl -fsSL "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${STABLE_VERSION}/manifest.json" | jq -r ".platforms[\"${PLATFORM}\"].checksum") && \
-      curl -fsSL "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${STABLE_VERSION}/${PLATFORM}/claude" -o /usr/local/bin/claude && \
-      echo "${EXPECTED_HASH}  /usr/local/bin/claude" | sha256sum -c - && \
-      chmod +x /usr/local/bin/claude
-
+# Install Claude to the native location (~/.local/bin) so auto-upgrades work correctly.
+# Symlink to /usr/local/bin for system-wide PATH access.
+RUN mkdir -p /home/exedev/.local/bin && \
+    ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
+    PLATFORM="linux-${ARCH}" && \
+    STABLE_VERSION=$(curl -fsSL https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/stable) && \
+    EXPECTED_HASH=$(curl -fsSL "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${STABLE_VERSION}/manifest.json" | jq -r ".platforms[\"${PLATFORM}\"].checksum") && \
+    curl -fsSL "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${STABLE_VERSION}/${PLATFORM}/claude" -o /home/exedev/.local/bin/claude && \
+    echo "${EXPECTED_HASH}  /home/exedev/.local/bin/claude" | sha256sum -c - && \
+    chmod +x /home/exedev/.local/bin/claude && \
+    chown -R exedev:exedev /home/exedev/.local && \
+    ln -s /home/exedev/.local/bin/claude /usr/local/bin/claude
 
 # Expose the web server ports
 EXPOSE 8000 9999
