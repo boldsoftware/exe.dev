@@ -1,6 +1,6 @@
 
-# Print exe.dev welcome message (only in interactive shells without .hushlogin)
-if [[ $- == *i* ]] && [ ! -e "$HOME/.hushlogin" ]; then
+# Print exe.dev welcome message (only in interactive shells)
+if [[ $- == *i* ]]; then
     echo ""
     echo "You are on $(hostname -f). The disk is persistent. You have 'sudo'."
     

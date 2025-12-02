@@ -222,7 +222,10 @@ RUN cp /home/exedev/src/welcome.service /etc/systemd/system/welcome.service && s
 COPY exeuntu/welcome-manage.polkit /etc/polkit-1/rules.d/50-welcome-manage.rules
 RUN chmod 644 /etc/polkit-1/rules.d/50-welcome-manage.rules
 
-# Add custom MOTD to exedev's .bashrc
+# Disable Ubuntu's default MOTD (the sudo hint, etc.)
+RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && chown exedev:exedev /home/exedev/.hushlogin
+
+# Add custom MOTD to exedev's .bashrc (ignores .hushlogin - we handle that ourselves)
 COPY exeuntu/motd-snippet.bash /tmp/motd-snippet.bash
 RUN cat /tmp/motd-snippet.bash >> /home/exedev/.bashrc && rm /tmp/motd-snippet.bash
 
