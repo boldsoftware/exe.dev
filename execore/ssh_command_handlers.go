@@ -473,8 +473,8 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 			CPUs:    2,
 			Memory:  8 * 1000 * 1000 * 1000,  // 8GB
 			Disk:    20 * 1000 * 1000 * 1000, // 20GB
-			Env:     envVars,                // Environment variables
-			SSHKeys: []string{cc.PublicKey}, // Pass user's SSH key
+			Env:     envVars,                 // Environment variables
+			SSHKeys: []string{cc.PublicKey},  // Pass user's SSH key
 			Configs: []*api.Config{
 				{
 					Destination: "/exe.dev/shelley.json",
