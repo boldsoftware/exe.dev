@@ -19,6 +19,7 @@ import (
 	"github.com/tg123/sshpiper/libplugin"
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // ProxyKeyMapping stores the mapping between ephemeral proxy keys and original user keys
@@ -138,6 +139,11 @@ func (p *PiperPlugin) Serve(lis net.Listener) error {
 	}
 
 	s := grpc.NewServer()
+
+	// Enable gRPC reflection for service discovery.
+	// Use grpcurl to interact with this server: https://github.com/fullstorydev/grpcurl
+	// Example: grpcurl -plaintext localhost:2224 list
+	reflection.Register(s)
 
 	plugin, err := libplugin.NewFromGrpc(config, s, lis)
 	if err != nil {

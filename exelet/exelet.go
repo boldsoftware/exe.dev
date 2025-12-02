@@ -18,6 +18,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/reflection"
 
 	"exe.dev/exelet/config"
 	"exe.dev/exelet/services"
@@ -151,6 +152,11 @@ func (s *Exelet) Register(ctx *services.ServiceContext, svcs []func(*config.Exel
 
 	// Initialize metrics after all services are registered
 	s.grpcMetrics.InitializeMetrics(s.grpcServer)
+
+	// Enable gRPC reflection for service discovery.
+	// Use grpcurl to interact with this server: https://github.com/fullstorydev/grpcurl
+	// Example: grpcurl -plaintext localhost:9080 list
+	reflection.Register(s.grpcServer)
 
 	return nil
 }
