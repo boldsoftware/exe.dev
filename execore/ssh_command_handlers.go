@@ -470,9 +470,9 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 		createReq := &api.CreateInstanceRequest{
 			Name:    boxName,
 			Image:   imageRef,
-			CPUs:    1,
-			Memory:  1 * 1000 * 1000 * 1000, // 1GB
-			Disk:    8 * 1000 * 1000 * 1000, // 8GB
+			CPUs:    2,
+			Memory:  8 * 1000 * 1000 * 1000,  // 8GB
+			Disk:    20 * 1000 * 1000 * 1000, // 20GB
 			Env:     envVars,                // Environment variables
 			SSHKeys: []string{cc.PublicKey}, // Pass user's SSH key
 			Configs: []*api.Config{
