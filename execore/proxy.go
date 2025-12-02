@@ -579,8 +579,7 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 				Timeout:         30 * time.Second,
 			}
 			retries := []time.Duration{
-				100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
-				1 * time.Second, 1 * time.Second, 2 * time.Second, 3 * time.Second,
+				100 * time.Millisecond, 200 * time.Millisecond,
 			}
 			conn, errs := s.sshPool.DialWithRetries(ctx, network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg, retries)
 			if conn != nil {
