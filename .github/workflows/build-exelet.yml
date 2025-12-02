@@ -3,12 +3,12 @@ run-name: ${{ github.event.head_commit.message || format('Build exelet ({0})', g
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'exelet/**'
-      - 'cmd/exelet/**'
-      - 'cmd/exe-init/**'
-      - '.github/workflows/build-exelet.yml'
+      - "exelet/**"
+      - "cmd/exelet/**"
+      - "cmd/exe-init/**"
+      - ".github/workflows/build-exelet.yml"
   workflow_dispatch:
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: 'go.mod'
+          go-version-file: "go.mod"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

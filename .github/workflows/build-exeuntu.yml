@@ -3,15 +3,15 @@ run-name: ${{ inputs.commit_subject || github.event.head_commit.message || forma
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'exeuntu/**'
-      - 'shelley/**'
-      - '.github/workflows/build-exeuntu.yml'
+      - "exeuntu/**"
+      - "shelley/**"
+      - ".github/workflows/build-exeuntu.yml"
   workflow_dispatch:
     inputs:
       commit_subject:
-        description: 'Commit subject line'
+        description: "Commit subject line"
         required: false
         type: string
 
