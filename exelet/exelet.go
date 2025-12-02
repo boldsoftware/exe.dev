@@ -67,7 +67,7 @@ func NewExelet(cfg *config.ExeletConfig, log *slog.Logger, opts ...ServerOpt) (*
 	// create prometheus registry and metrics
 	metricsRegistry := prometheus.NewRegistry()
 	metrics := NewExeletMetrics(metricsRegistry)
-	
+
 	// Create gRPC server metrics
 	grpcMetrics := grpcprom.NewServerMetrics(
 		grpcprom.WithServerHandlingTimeHistogram(
