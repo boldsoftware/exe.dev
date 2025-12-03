@@ -96,7 +96,7 @@ run-dev: ## Run exed locally for development
 
 run-devlet: ## Run exed locally for development along with exelet
 	@echo "Starting dev server with ghcr.io/boldsoftware/exeuntu:latest"
-	@go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223 -start-exelet
+	@LOG_LEVEL=debug go run ./cmd/exed/exed.go -dev=local -http=:8080 -ssh=:2223 -start-exelet
 
 run-sshpiper: ## Run sshpiper proxy server
 	@echo "Starting sshpiper proxy..."
