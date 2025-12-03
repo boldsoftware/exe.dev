@@ -184,7 +184,7 @@ provision_base_vm() {
     done
 
     # cloud hypervisor setup script
-    limactl cp "${script_dir}/setup-cloud-hypervisor.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-cloud-hypervisor.sh"
+    limactl cp "${script_dir}/deploy/setup-cloud-hypervisor.sh" "${LIMA_BASE}:${BOOTSTRAP_STAGING}/setup-cloud-hypervisor.sh"
 
     # build and cache a local exelet to be able to provision the base instance volumes
     echo "Building bootstrap exelet..."

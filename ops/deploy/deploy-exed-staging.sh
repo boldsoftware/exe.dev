@@ -64,6 +64,15 @@ fi
 
 echo -e "${GREEN}✓ Binary uploaded${NC}"
 
+# Copy systemd service file
+echo "Copying systemd service file..."
+if ! scp "ops/deploy/exed-staging.service" "$TAILSCALE_HOST:~/exed.service"; then
+    echo -e "${RED}ERROR: Failed to copy service file to VM${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Service file uploaded${NC}"
+
 # Make binary executable and create symlink
 echo "Configuring binary on VM..."
 ssh -o StrictHostKeyChecking=no "$TAILSCALE_HOST" <<EOF
@@ -81,6 +90,10 @@ fi
 # Create a symlink to the latest version
 rm -f ~/exed.latest
 ln -sf ~/$BINARY_NAME ~/exed.latest
+
+# Install systemd service file
+sudo mv ~/exed.service /etc/systemd/system/exed.service
+sudo systemctl daemon-reload
 
 # List all deployed versions
 echo ""

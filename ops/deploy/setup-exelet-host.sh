@@ -1,5 +1,4 @@
 #!/bin/bash
-
 set -euo pipefail
 
 # Check for machine name parameter
@@ -24,11 +23,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "${SCRIPT_DIR}/test-tailscale-oauth.sh"
 
 # Configuration
+CLOUD_HYPERVISOR_VERSION="48.0"
+VIRTIOFSD_VERSION="1.13.2"
+
 REGION="us-west-2"
 AZ="us-west-2b"
 INSTANCE_TYPE="m5d.metal"
 ROOT_VOLUME_SIZE="50"
-DATA_VOLUME_SIZE="250"
+DATA_VOLUME_SIZE="450"
 SECURITY_GROUP_NAME="exe-ctr-sg"
 INSTANCE_ROLE_NAME="exe-ctr-instance-role"
 INSTANCE_PROFILE_NAME="exe-ctr-instance-profile"
@@ -63,7 +65,7 @@ if [ -z "$SG_ID" ] || [ "$SG_ID" = "None" ]; then
     echo "Creating security group ${SECURITY_GROUP_NAME}..."
     SG_ID=$(aws ec2 create-security-group \
         --group-name ${SECURITY_GROUP_NAME} \
-        --description "Security group for exe containerd hosts" \
+        --description "Security group for exe hosts" \
         --vpc-id $(aws ec2 describe-subnets --subnet-ids ${SUBNET_ID} --query 'Subnets[0].VpcId' --output text --region ${REGION}) \
         --query 'GroupId' \
         --output text \
@@ -169,6 +171,7 @@ package_upgrade: false
 packages:
   - curl
   - jq
+  - docker.io
 
 runcmd:
   - echo "Starting Tailscale setup..."
@@ -242,6 +245,9 @@ runcmd:
     sleep 5
     tailscale status 2>&1
     echo "Tailscale initialization complete"
+
+    # add ubuntu user to docker group
+    usermod -aG docker ubuntu
 EOF
 )
 
@@ -308,7 +314,7 @@ fi
 # Setup volumes on metal instances
 echo ""
 echo "=========================================="
-echo "Setting up volumes (swap, /local RAID, /data)"
+echo "Setting up volumes (swap, zpool)"
 echo "=========================================="
 
 # Create a script to setup the volumes on the remote machine
@@ -321,15 +327,15 @@ echo "=== Setting up volumes on metal instance ==="
 # First check if this is a metal instance (has NVMe drives)
 if [ ! -e /dev/nvme0n1 ]; then
 	echo "Non-metal instance detected, data volume already mounted via xvdf"
-	# Just create /local as a directory for non-metal instances
-	sudo mkdir -p /local
+	# Just create /data as a directory for non-metal instances
+	sudo mkdir -p /data
 	exit 0
 fi
 
 # Install required packages
 echo "Installing required packages..."
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y mdadm parted xfsprogs >/dev/null 2>&1
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y parted socat zfsutils-linux >/dev/null 2>&1
 
 echo "=== Detecting instance-store NVMe devices (~900GB) ==="
 # Select the 4x ~900GB instance-store NVMe disks; exclude EBS root (50GB) and data (250GB)
@@ -367,52 +373,28 @@ done
 
 echo "Swap setup complete (4x 225GB with equal priority, 900GB total)"
 
-# Setup RAID 0 XFS volume for /local (Nydus snapshotting)
-echo "=== Setting up RAID 0 XFS volume for /local (Nydus snapshotting) ==="
+# Setup ZFS raid pool
+echo "=== Setting up RAID 0 ZFS pool ==="
 
-# Create remaining space partitions on each NVMe drive for /local
+# Create remaining space partitions on each NVMe drive for zpool
 for dev in "${NVME_DEVICES[@]}"; do
-  echo "Creating RAID partition on ${dev}..."
+  echo "Creating partition on ${dev}..."
   sudo parted -s "$dev" mkpart primary 226GiB 100%
-  sudo parted -s "$dev" set 2 raid on
 done
 
-# Build device list for RAID creation
+# Build device list for zpool creation
 PARTS=()
 for dev in "${NVME_DEVICES[@]}"; do
   PARTS+=("${dev}p2")
 done
 
-echo "Creating RAID 0 array with: ${PARTS[*]}"
-sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 ${PARTS[*]} --force
+echo "Creating ZFS zpool: ${PARTS[*]}"
+sudo zpool create -m none dozer ${PARTS[*]}
 
-# Wait for RAID to be ready
-sleep 2
+# TODO: Setup backup zpool
 
-# Create XFS filesystem on the RAID array
-sudo mkfs.xfs -f /dev/md0
-
-# Create /local directory
-sudo mkdir -p /local
-
-# Mount the RAID array
-sudo mount /dev/md0 /local
-
-# Save RAID configuration
-sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf
-sudo update-initramfs -u
-
-# Add to fstab
-echo "/dev/md0 /local xfs defaults 0 0" | sudo tee -a /etc/fstab
-
-echo "RAID 0 XFS volume mounted at /local (~2.7TB total)"
-
-# Setup /data volume
-echo "=== Setting up /data volume ==="
-
-# Find the 250GB NVMe device for data volume
+# Find the 450GB device for data volume
 DATA_DEVICE=""
-echo "Looking for 250GB NVMe data volume..."
 for nvme in /dev/nvme*n1; do
 	if [ -b "$nvme" ]; then
 		SIZE_HR=$(lsblk -n -d -o SIZE "$nvme" 2>/dev/null | tr -d ' ')
@@ -420,32 +402,33 @@ for nvme in /dev/nvme*n1; do
 
 		SIZE_GB=$(lsblk -b -n -d -o SIZE "$nvme" 2>/dev/null | awk '{printf "%.0f", $1/1073741824}')
 
-		if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 245 ] && [ "$SIZE_GB" -le 255 ]; then
+		if [ -n "$SIZE_GB" ] && [ "$SIZE_GB" -ge 445 ] && [ "$SIZE_GB" -le 455 ]; then
 			DATA_DEVICE="$nvme"
 			echo "Found data volume at $DATA_DEVICE (${SIZE_GB}GB)"
 			break
 		fi
 	fi
 done
-
 if [ -z "$DATA_DEVICE" ]; then
-	echo "ERROR: Could not find data volume (250GB NVMe device)"
+	echo "ERROR: Could not find data volume (450GB data device)"
 	echo "Available block devices:"
 	lsblk
 	exit 1
 fi
 
 echo "Using data device: $DATA_DEVICE"
-sudo mkfs.xfs -f $DATA_DEVICE
-sudo mkdir -p /data
-sudo mount -o pquota $DATA_DEVICE /data
-echo "$DATA_DEVICE /data xfs defaults,pquota 0 0" | sudo tee -a /etc/fstab
-sudo xfs_quota -x -c 'state' /data
+sudo zpool create -m none tank $DATA_DEVICE
+# Create /data/exelet directory
+sudo zfs create tank/data
+sudo zfs set mountpoint=/data tank/data
+# create exelet directory
+sudo mkdir -p /data/exelet
+
 echo "Data volume setup complete"
 VOLUME_SETUP_SCRIPT
 
 # Copy and execute the volume setup script
-echo "Setting up volumes (swap, /local, /data) on ${MACHINE_NAME}..."
+echo "Setting up volumes (swap, zpool) on ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     /tmp/setup-volumes.sh \
     "ubuntu@${MACHINE_NAME}:~/"; then
@@ -465,90 +448,115 @@ fi
 rm -f /tmp/setup-volumes.sh
 
 ###############################################
-# Download deps on the metal host (not locally)
+# Build cloud-hypervisor artifacts on remote
 ###############################################
 
-# Copy setup script, config, and downloader to the remote host
-echo "Copying setup scripts to ${MACHINE_NAME}..."
+# Copy Dockerfile and setup script to the remote host
+echo "Copying build context and setup scripts to ${MACHINE_NAME}..."
 if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "${SCRIPT_DIR}/setup-containerd-clh-nydus.sh" \
-    "${SCRIPT_DIR}/kata-config-clh.toml" \
-    "${SCRIPT_DIR}/download-ctr-host.sh" \
+    "${SCRIPT_DIR}/setup-cloud-hypervisor.sh" \
+    "${SCRIPT_DIR}/cloud-hypervisor/Dockerfile" \
     "ubuntu@${MACHINE_NAME}:~/"; then
-    echo "ERROR: Failed to copy scripts and config to remote"
+    echo "ERROR: Failed to copy scripts to remote"
     exit 1
 fi
 
-echo "Running downloads on ${MACHINE_NAME} to cache dependencies..."
-REMOTE_DOWNLOAD_CMD='set -euo pipefail
-ARCH=amd64
-CACHE_DIR="$HOME/.cache/exedops"
+# Build artifacts on remote using Docker
+echo "Building Cloud Hypervisor artifacts on ${MACHINE_NAME}..."
+REMOTE_BUILD_CMD="set -euo pipefail
+CLOUD_HYPERVISOR_VERSION=${CLOUD_HYPERVISOR_VERSION}
+VIRTIOFSD_VERSION=${VIRTIOFSD_VERSION}
+CACHE_DIR=\"\$HOME/.cache/exedops\"
+ARTIFACT_NAME=\"cloud-hypervisor-\${CLOUD_HYPERVISOR_VERSION}-amd64.tar.gz\"
 
-# Ensure tools needed by downloader
-if ! command -v wget >/dev/null 2>&1; then
-  sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -qq -y wget >/dev/null 2>&1
+mkdir -p \"\$CACHE_DIR\"
+mkdir -p \"\$HOME/cloud-hypervisor-build\"
+mv \"\$HOME/Dockerfile\" \"\$HOME/cloud-hypervisor-build/\"
+
+# Check if artifact already exists
+if [ -f \"\$CACHE_DIR/\$ARTIFACT_NAME\" ]; then
+    echo \"Cloud Hypervisor \${CLOUD_HYPERVISOR_VERSION} (amd64) cache hit\"
+else
+    echo \"Building Cloud Hypervisor \${CLOUD_HYPERVISOR_VERSION} (amd64) via Docker...\"
+
+    IMAGE_TAG=\"exe-cloud-hypervisor:\${CLOUD_HYPERVISOR_VERSION}-amd64\"
+
+    docker build \\
+        --tag \"\$IMAGE_TAG\" \\
+        --build-arg \"CLOUD_HYPERVISOR_VERSION=\${CLOUD_HYPERVISOR_VERSION}\" \\
+        --build-arg \"VIRTIOFSD_VERSION=\${VIRTIOFSD_VERSION}\" \\
+        --build-arg \"TARGETARCH=amd64\" \\
+        \"\$HOME/cloud-hypervisor-build\"
+
+    CONTAINER_ID=\$(docker create \"\$IMAGE_TAG\" /bin/true)
+    TMP_DIR=\$(mktemp -d)
+
+    docker cp \"\$CONTAINER_ID:/out/.\" \"\$TMP_DIR\"
+    docker rm \"\$CONTAINER_ID\" >/dev/null 2>&1 || true
+
+    tar czf \"\$CACHE_DIR/\$ARTIFACT_NAME\" -C \"\$TMP_DIR\" .
+    rm -rf \"\$TMP_DIR\"
+
+    echo \"Cached Cloud Hypervisor \${CLOUD_HYPERVISOR_VERSION} (amd64) at \$CACHE_DIR/\$ARTIFACT_NAME\"
 fi
 
-chmod +x "$HOME/download-ctr-host.sh"
-set +e
-"$HOME/download-ctr-host.sh" "$ARCH"
-ret=$?
-set -e
-
-# The downloader also tries to prefetch images using docker/crane, which may not be installed on fresh metal.
-# Proceed if core dependency tarballs were downloaded; otherwise, fail clearly.
-missing=0
-deps=(
-  "$CACHE_DIR"/containerd-*-linux-"$ARCH".tar.gz
-  "$CACHE_DIR"/containerd.service
-  "$CACHE_DIR"/runc-*."$ARCH"
-  "$CACHE_DIR"/kata-static-*-"$ARCH".tar.xz
-  "$CACHE_DIR"/ch-remote-static-*-"$ARCH"
-  "$CACHE_DIR"/nydus-snapshotter-v*-linux-"$ARCH".tar.gz
-  "$CACHE_DIR"/nydus-static-v*-linux-"$ARCH".tgz
-  "$CACHE_DIR"/nerdctl-*-linux-"$ARCH".tar.gz
-  "$CACHE_DIR"/cni-plugins-linux-"$ARCH"-v*.tgz
-)
-for f in "${deps[@]}"; do
-  if ! ls $f >/dev/null 2>&1; then
-    echo "ERROR: Required dependency missing in cache: pattern $f"
-    missing=1
-  fi
-done
-
-if [ $missing -ne 0 ]; then
-  echo "Downloader exit code: $ret"
-  echo "Aborting because required files are missing."
-  exit 1
-fi
-
-echo "All required dependency artifacts are present in $CACHE_DIR"
-
-# Stage config into the cache directory used by the setup script
-mkdir -p "$CACHE_DIR"
-mv "$HOME"/kata-config-clh.toml "$CACHE_DIR"/kata-config-clh.toml
+rm -rf \"\$HOME/cloud-hypervisor-build\"
 
 # Place the setup script for execution
-sudo mv "$HOME"/setup-containerd-clh-nydus.sh /root/setup-containerd-clh-nydus.sh
-sudo chmod +x /root/setup-containerd-clh-nydus.sh
-'
+sudo mv \"\$HOME/setup-cloud-hypervisor.sh\" /root/setup-cloud-hypervisor.sh
+sudo chmod +x /root/setup-cloud-hypervisor.sh
 
-if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "ubuntu@${MACHINE_NAME}" "$REMOTE_DOWNLOAD_CMD"; then
-    echo "ERROR: Remote download/setup of dependencies failed"
+echo \"Artifacts ready in \$CACHE_DIR\"
+ls -la \"\$CACHE_DIR\"
+"
+
+if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "ubuntu@${MACHINE_NAME}" "$REMOTE_BUILD_CMD"; then
+    echo "ERROR: Remote build of artifacts failed"
     exit 1
 fi
 
 echo ""
 echo "=========================================="
-echo "Starting part 2 setup via SSH"
+echo "Starting cloud-hypervisor setup via SSH"
 echo "=========================================="
 
-# Execute the part 2 script from /root
-echo "Executing containerd setup script on ${MACHINE_NAME}..."
+# Execute the exelet setup script from /root
+echo "Executing exelet setup script on ${MACHINE_NAME}..."
 if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "ubuntu@${MACHINE_NAME}" \
-    'sudo /root/setup-containerd-clh-nydus.sh'; then
+    'sudo /root/setup-cloud-hypervisor.sh'; then
+    echo "ERROR: Setup script failed"
+    exit 1
+fi
+
+# hugepages
+cat <<'EXELET_HUGEPAGES' >/tmp/hugepages.sh
+#!/bin/bash
+set -euo pipefail
+HUGEPAGE_TARGET=$(awk '/MemTotal/ { print int($2/4096); exit(0); }' /proc/meminfo)
+echo "Setting vm.nr_hugepages=${HUGEPAGE_TARGET}"
+echo "${HUGEPAGE_TARGET}" >/proc/sys/vm/nr_hugepages
+mkdir -p /etc/sysctl.d
+cat <<EOF >/etc/sysctl.d/90-exe-hugepages.conf
+# Ensure huge pages survive reboots; required for Cloud Hypervisor.
+vm.nr_hugepages=${HUGEPAGE_TARGET}
+EOF
+sysctl --system >/dev/null
+EXELET_HUGEPAGES
+
+if ! scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    /tmp/hugepages.sh \
+    "ubuntu@${MACHINE_NAME}:~/"; then
+    echo "ERROR: Failed to copy hugepages setup script"
+    rm -f /tmp/hugepages.sh
+    exit 1
+fi
+
+# Execute the hugepages script
+echo "Executing hugepages script on ${MACHINE_NAME}..."
+if ! ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "ubuntu@${MACHINE_NAME}" \
+    'chmod +x ~/hugepages.sh && sudo ~/hugepages.sh'; then
     echo "ERROR: Setup script failed"
     exit 1
 fi
@@ -557,12 +565,13 @@ echo ""
 echo "=========================================="
 echo "Setup complete!"
 echo "=========================================="
+echo ""
+echo "The machine is ready to deploy the exelet."
+echo ""
 echo "${MACHINE_NAME} is now fully configured with:"
-echo "  - Containerd with Kata Containers (Cloud Hypervisor)"
-echo "  - Nydus snapshotter"
+echo "  - Cloud Hypervisor"
 echo "  - 900GB swap (4x 225GB with equal priority for I/O interleaving)"
-echo "  - ~2.7TB /local XFS volume (RAID 0 across 4 disks) for Nydus cache"
-echo "  - 250GB /data XFS volume with project quotas"
+echo "  - ~2.7TB ZFS zpool (RAID 0 across 4 disks) for exelet"
 echo ""
 echo "Instance details:"
 echo "  Name: ${MACHINE_NAME}"

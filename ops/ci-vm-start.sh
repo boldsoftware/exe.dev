@@ -540,7 +540,7 @@ if [[ ${SNAPSHOT_AVAILABLE} -eq 0 ]]; then
     echo "Built exeletd and exelet-ctl binaries"
 
     echo "Copying setup scripts and binaries to VM ${IP}..."
-    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/setup-cloud-hypervisor.sh" "${USER_NAME}@${IP}:~/setup-cloud-hypervisor.sh"
+    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/deploy/setup-cloud-hypervisor.sh" "${USER_NAME}@${IP}:~/setup-cloud-hypervisor.sh"
     scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${SCRIPT_DIR}/setup-exelet.sh" "${USER_NAME}@${IP}:~/setup-exelet.sh"
     ssh ${SSH_OPTS} ${USER_NAME}@"${IP}" 'mkdir -p ~/.cache/exedops'
 

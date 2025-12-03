@@ -1,0 +1,23 @@
+[Unit]
+Description=exe.dev exelet
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/data/exelet
+EnvironmentFile=-/etc/default/exelet
+KillMode=process
+
+# Use the latest timestamp version
+ExecStart=/bin/bash -c 'exec "$(ls -t /home/ubuntu/exeletd.* | head -n1)" "-D"'
+
+Restart=always
+RestartSec=5
+
+# Use journald for logging (remove file redirection)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
