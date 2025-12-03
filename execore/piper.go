@@ -3,6 +3,7 @@ package execore
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"exe.dev/domz"
 	"exe.dev/exedb"
 	api "exe.dev/pkg/api/exe/compute/v1"
 	"github.com/tg123/sshpiper/libplugin"
@@ -217,13 +219,10 @@ func (p *PiperPlugin) handleKeyboardInteractive(conn libplugin.ConnMetadata, cli
 
 // handlePublicKeyAuth handles public key authentication and routing decisions
 func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byte) (*libplugin.Upstream, error) {
-	slog.Debug("Auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Use the connection's unique ID
-	connID := conn.UniqueID()
+	slog.DebugContext(ctx, "piper plugin public key auth request", "component", "piper-plugin", "user", conn.User(), "remote_addr", conn.RemoteAddr())
 
 	// Check if key is empty or nil - this happens when client has no keys configured
 	if len(key) == 0 {
@@ -245,19 +244,6 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	}
 	slog.DebugContext(ctx, "looked up user for ssh key", "component", "piper-plugin", "public_key", pubKey, "user_id", userID)
 
-	localAddress := conn.GetMeta("local_address")
-	if localAddress != "" {
-		localAddress, _, err = net.SplitHostPort(localAddress)
-		if err != nil {
-			slog.ErrorContext(ctx, "spliting host and port", "component", "piper-plugin", "local_address", conn.GetMeta("local_address"), "error", err)
-			return nil, err
-		}
-		slog.InfoContext(ctx, "Extracted local address", "component", "piper-plugin", "local_address", localAddress)
-	}
-	if localAddress == "" {
-		localAddress = "127.0.0.1" // Default fallback
-	}
-
 	registered := userID != ""
 	username := conn.User()
 	slog.DebugContext(ctx, "User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
@@ -267,7 +253,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 		slog.InfoContext(ctx, "Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered)
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
 			slog.InfoContext(ctx, "Found box, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
-			return p.handleBoxAccess(box, userID, connID)
+			return p.handleBoxAccess(box, userID, conn.UniqueID())
 		} else {
 			slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 		}
@@ -285,6 +271,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// 4. When exed sees the proxy key, it can look up the original user's key
 	// 5. Mappings expire after a few minutes to prevent memory leaks
 
+	localAddress := cmp.Or(domz.StripPort(conn.GetMeta("local_address")), "127.0.0.1")
 	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key, localAddress)
 	if err != nil {
 		slog.DebugContext(ctx, "Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)
