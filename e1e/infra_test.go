@@ -249,6 +249,7 @@ func initLogging() error {
 	// - slog, which is already verbose by setting log level to debug above
 	*flagVerbosePiperd = true
 	*flagVerboseExed = true
+	*flagVerboseExelet = true
 	*flagVerbosePorts = true
 	*flagVerboseEmail = true
 	return nil
