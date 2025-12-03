@@ -391,6 +391,15 @@ done
 echo "Creating ZFS zpool: ${PARTS[*]}"
 sudo zpool create -m none dozer ${PARTS[*]}
 
+# Configure ZFS ARC (min 16GB, max 64GB)
+echo "Configuring ZFS ARC limits..."
+cat <<EOF | sudo tee /etc/modprobe.d/zfs.conf >/dev/null
+options zfs zfs_arc_min=17179869184
+options zfs zfs_arc_max=68719476736
+EOF
+sudo update-initramfs -u
+echo "NOTE: Reboot required for ZFS ARC max setting to take effect"
+
 # TODO: Setup backup zpool
 
 # Find the 450GB device for data volume
@@ -572,6 +581,7 @@ echo "${MACHINE_NAME} is now fully configured with:"
 echo "  - Cloud Hypervisor"
 echo "  - 900GB swap (4x 225GB with equal priority for I/O interleaving)"
 echo "  - ~2.7TB ZFS zpool (RAID 0 across 4 disks) for exelet"
+echo "  - ZFS ARC limits set to 16GB min / 64GB max (requires reboot)"
 echo ""
 echo "Instance details:"
 echo "  Name: ${MACHINE_NAME}"
