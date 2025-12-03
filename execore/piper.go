@@ -266,7 +266,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	if username != "" && registered {
 		slog.InfoContext(ctx, "Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered)
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
-			slog.InfoContext(ctx, "Found box, routing to container", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID)
+			slog.InfoContext(ctx, "Found box, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
 			return p.handleBoxAccess(box, userID, connID)
 		} else {
 			slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
