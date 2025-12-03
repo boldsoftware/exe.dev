@@ -9,12 +9,6 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// TapInterface represents a tap interface with its MAC address
-type TapInterface struct {
-	Name       string
-	MACAddress string
-}
-
 // listTapInterfaces returns all tap interfaces with their MAC addresses
 func (n *NAT) listTapInterfaces() ([]TapInterface, error) {
 	links, err := netlink.LinkList()

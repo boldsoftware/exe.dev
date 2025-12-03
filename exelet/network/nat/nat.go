@@ -34,6 +34,12 @@ const (
 // ErrNotImplemented is returned for functionality that is not implemented
 var ErrNotImplemented = errors.New("not implemented")
 
+// TapInterface represents a tap interface with its MAC address
+type TapInterface struct {
+	Name       string
+	MACAddress string
+}
+
 // Config is the NAT specific configuration
 type Config struct {
 	Bridge  string
