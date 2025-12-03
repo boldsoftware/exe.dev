@@ -59,14 +59,8 @@ func CutBase(hostname, domain string) (string, bool) {
 // Label returns the sole subdomain part of hostname relative to domain.
 // If hostname is not a subdomain of domain, or domain is empty, or hostname is a nested subdomain, Label returns "".
 func Label(hostname, domain string) string {
-	hostname = Canonicalize(hostname)
-	domain = Canonicalize(domain)
-	if domain == "" {
-		return ""
-	}
-	suffix := "." + domain
-	sub, ok := strings.CutSuffix(hostname, suffix)
-	if !ok || sub == "" || strings.Contains(sub, ".") {
+	sub, ok := CutBase(hostname, domain)
+	if !ok || strings.Contains(sub, ".") {
 		return ""
 	}
 	return sub
