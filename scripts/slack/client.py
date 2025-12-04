@@ -88,14 +88,19 @@ class SlackClient:
         text: str,
         *,
         mrkdwn: t.Optional[bool] = None,
-    ) -> None:
+        thread_ts: t.Optional[str] = None,
+    ) -> str:
+        """Post a message and return its timestamp (ts)."""
         payload: t.Dict[str, t.Any] = {
             "channel": channel_id,
             "text": text,
         }
         if mrkdwn is not None:
             payload["mrkdwn"] = mrkdwn
-        self.api("chat.postMessage", payload)
+        if thread_ts is not None:
+            payload["thread_ts"] = thread_ts
+        resp = self.api("chat.postMessage", payload)
+        return resp.get("ts", "")
 
     def update_message(self, channel_id: str, ts: str, text: str) -> None:
         self.api(
