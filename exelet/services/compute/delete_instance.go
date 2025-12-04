@@ -3,6 +3,7 @@ package compute
 import (
 	"context"
 	"os"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,10 +32,13 @@ func (s *Service) DeleteInstance(ctx context.Context, req *api.DeleteInstanceReq
 			s.log.WarnContext(ctx, "error stopping vm during delete, continuing with cleanup", "instance", instance.ID, "error", err)
 		}
 
-		// extract IP from instance for DHCP release
+		// extract IP from instance for DHCP release (strip CIDR suffix)
 		ip := ""
 		if instance.VMConfig != nil && instance.VMConfig.NetworkInterface != nil && instance.VMConfig.NetworkInterface.IP != nil {
 			ip = instance.VMConfig.NetworkInterface.IP.IPV4
+			if idx := strings.Index(ip, "/"); idx > 0 {
+				ip = ip[:idx]
+			}
 		}
 
 		// delete vm

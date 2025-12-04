@@ -185,37 +185,6 @@ func (d *Datastore) Release(ip string) error {
 	return nil
 }
 
-// ReleaseBatch releases multiple IP addresses in a single transaction
-func (d *Datastore) ReleaseBatch(ips []string) error {
-	if len(ips) == 0 {
-		return nil
-	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	// Delete all IPs in one transaction
-	for _, ip := range ips {
-		// delete from ips
-		lease, ok := d.db.IPs[ip]
-		if ok {
-			delete(d.db.IPs, ip)
-		}
-
-		// delete from hosts
-		if lease != nil {
-			delete(d.db.Hosts, lease.MACAddress)
-		}
-	}
-
-	// Single disk write for all releases
-	if err := d.saveDB(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (d *Datastore) saveDB() error {
 	data, err := json.Marshal(d.db)
 	if err != nil {

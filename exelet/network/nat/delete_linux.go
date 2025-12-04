@@ -12,9 +12,14 @@ func (n *NAT) DeleteInterface(ctx context.Context, id, ip string) error {
 		return err
 	}
 
-	// IP release is handled by periodic cleanup goroutine (after 10-minute grace period)
-	// This prevents rapid IP reuse which can cause ARP cache and connection state issues
-	n.log.DebugContext(ctx, "tap interface deleted, IP will be released after grace period", "tap", tapName, "ip", ip)
+	// Release the DHCP lease for this IP
+	if ip != "" {
+		if err := n.dhcpServer.Release(ip); err != nil {
+			n.log.WarnContext(ctx, "failed to release DHCP lease", "ip", ip, "error", err)
+		} else {
+			n.log.DebugContext(ctx, "released DHCP lease", "tap", tapName, "ip", ip)
+		}
+	}
 
 	return nil
 }

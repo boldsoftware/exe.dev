@@ -2,6 +2,7 @@ package compute
 
 import (
 	"context"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -45,10 +46,13 @@ func (s *Service) stopInstance(ctx context.Context, id string) error {
 		return err
 	}
 
-	// extract IP before clearing network interface
+	// extract IP before clearing network interface (strip CIDR suffix)
 	ip := ""
 	if vmCfg.NetworkInterface != nil && vmCfg.NetworkInterface.IP != nil {
 		ip = vmCfg.NetworkInterface.IP.IPV4
+		if idx := strings.Index(ip, "/"); idx > 0 {
+			ip = ip[:idx]
+		}
 	}
 
 	// update vm config

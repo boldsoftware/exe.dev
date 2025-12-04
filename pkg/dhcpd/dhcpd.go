@@ -76,6 +76,7 @@ func (s *DHCPServer) Reserve(macAddress string) (net.IP, error) {
 	}
 	// already reserved
 	if existing != nil {
+		s.log.Debug("DHCP lease already exists", "mac", macAddress, "ip", existing.IP)
 		return net.ParseIP(existing.IP), nil
 	}
 
@@ -88,23 +89,26 @@ func (s *DHCPServer) Reserve(macAddress string) (net.IP, error) {
 		}
 		err = s.ds.Reserve(macAddress, ip.String())
 		if err == nil {
+			s.log.Info("DHCP lease allocated", "mac", macAddress, "ip", ip.String())
 			return ip, nil
 		}
 		if !errors.Is(err, ErrExists) {
 			return nil, err
 		}
 		// IP was taken by another reservation, retry with next available
+		s.log.Debug("DHCP lease collision, retrying", "mac", macAddress, "ip", ip.String())
 	}
 }
 
 // Release releases the specified IP address
 func (s *DHCPServer) Release(ip string) error {
-	return s.ds.Release(ip)
-}
-
-// ReleaseBatch releases multiple IP addresses in a single transaction
-func (s *DHCPServer) ReleaseBatch(ips []string) error {
-	return s.ds.ReleaseBatch(ips)
+	err := s.ds.Release(ip)
+	if err != nil {
+		s.log.Warn("DHCP lease release failed", "ip", ip, "error", err)
+	} else {
+		s.log.Info("DHCP lease released", "ip", ip)
+	}
+	return err
 }
 
 // ListLeases returns all active DHCP leases
