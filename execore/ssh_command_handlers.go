@@ -854,63 +854,8 @@ func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.Comman
 
 	cc.Writeln("Deleting \033[1m%s\033[0m...", boxName)
 
-	// Get IP shard before deletion for DNS cleanup
-	var ipShard int64
-	if ss.server.env.UseRoute53 {
-		shard, err := withRxRes(ss.server, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
-			return queries.GetBoxIPShard(ctx, box.ID)
-		})
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("failed to get IP shard for DNS cleanup: %w", err)
-		}
-		ipShard = shard
-	}
-
-	// Delete the instance if it exists
-	if box.ContainerID != nil {
-		// Get exelet client for the host where this box was created
-		exeletClient := ss.server.getExeletClient(box.Ctrhost)
-		if exeletClient == nil {
-			return fmt.Errorf("exelet host not available for box")
-		}
-
-		// Delete instance via exelet
-		_, err = exeletClient.client.DeleteInstance(ctx, &api.DeleteInstanceRequest{
-			ID: *box.ContainerID,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to delete instance: %w", err)
-		}
-	}
-
-	// Delete from database and track in deleted_boxes
-	err = ss.server.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
-		queries := exedb.New(tx.Conn())
-		userID := box.CreatedByUserID
-
-		// Delete IP shard allocation first
-		if err := queries.DeleteBoxIPShard(ctx, box.ID); err != nil {
-			return fmt.Errorf("deleting IP shard: %w", err)
-		}
-
-		err := queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
-			ID:     int64(box.ID),
-			UserID: userID,
-		})
-		if err != nil {
-			return fmt.Errorf("tracking deletion: %w", err)
-		}
-		return queries.DeleteBox(ctx, box.ID)
-	})
-	if err != nil {
+	if err := ss.server.deleteBox(ctx, box); err != nil {
 		return err
-	}
-
-	// Clean up DNS CNAME record if Route53 is enabled
-	if ss.server.env.UseRoute53 && ipShard > 0 {
-		if err := ss.server.deleteBoxCNAME(ctx, boxName, int(ipShard)); err != nil {
-			ss.server.slog().WarnContext(ctx, "failed to delete DNS CNAME record", "box", boxName, "shard", ipShard, "error", err)
-		}
 	}
 
 	if cc.WantJSON() {

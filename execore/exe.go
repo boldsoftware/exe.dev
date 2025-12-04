@@ -1363,6 +1363,69 @@ func (s *Server) deleteBoxCNAME(ctx context.Context, boxName string, shard int) 
 	return nil
 }
 
+// deleteBox deletes a box and all associated resources (container, database records, DNS).
+// This is the canonical deletion implementation used by both the REPL `rm` command and the debug page.
+func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
+	// Get IP shard before deletion for DNS cleanup
+	var ipShard int64
+	if s.env.UseRoute53 {
+		shard, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (int64, error) {
+			return queries.GetBoxIPShard(ctx, box.ID)
+		})
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to get IP shard for DNS cleanup: %w", err)
+		}
+		ipShard = shard
+	}
+
+	// Delete the instance if it exists
+	if box.ContainerID != nil {
+		exeletClient := s.getExeletClient(box.Ctrhost)
+		if exeletClient == nil {
+			return fmt.Errorf("exelet host not available for box")
+		}
+
+		_, err := exeletClient.client.DeleteInstance(ctx, &computeapi.DeleteInstanceRequest{
+			ID: *box.ContainerID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to delete instance: %w", err)
+		}
+	}
+
+	// Delete from database and track in deleted_boxes
+	err := s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
+		queries := exedb.New(tx.Conn())
+		userID := box.CreatedByUserID
+
+		// Delete IP shard allocation first
+		if err := queries.DeleteBoxIPShard(ctx, box.ID); err != nil {
+			return fmt.Errorf("deleting IP shard: %w", err)
+		}
+
+		err := queries.InsertDeletedBox(ctx, exedb.InsertDeletedBoxParams{
+			ID:     int64(box.ID),
+			UserID: userID,
+		})
+		if err != nil {
+			return fmt.Errorf("tracking deletion: %w", err)
+		}
+		return queries.DeleteBox(ctx, box.ID)
+	})
+	if err != nil {
+		return err
+	}
+
+	// Clean up DNS CNAME record if Route53 is enabled
+	if s.env.UseRoute53 && ipShard > 0 {
+		if err := s.deleteBoxCNAME(ctx, box.Name, int(ipShard)); err != nil {
+			s.slog().WarnContext(ctx, "failed to delete DNS CNAME record", "box", box.Name, "shard", ipShard, "error", err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Server) rollbackBoxPreCreation(ctx context.Context, boxID int) error {
 	return s.db.Tx(ctx, func(ctx context.Context, tx *sqlite.Tx) error {
 		queries := exedb.New(tx.Conn())
