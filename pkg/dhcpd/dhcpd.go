@@ -79,14 +79,22 @@ func (s *DHCPServer) Reserve(macAddress string) (net.IP, error) {
 		return net.ParseIP(existing.IP), nil
 	}
 
-	ip, err := s.getNextIP()
-	if err != nil {
-		return nil, err
+	// Retry loop to handle race conditions where another goroutine
+	// reserves the same IP between getNextIP() and Reserve()
+	for {
+		ip, err := s.getNextIP()
+		if err != nil {
+			return nil, err
+		}
+		err = s.ds.Reserve(macAddress, ip.String())
+		if err == nil {
+			return ip, nil
+		}
+		if !errors.Is(err, ErrExists) {
+			return nil, err
+		}
+		// IP was taken by another reservation, retry with next available
 	}
-	if err := s.ds.Reserve(macAddress, ip.String()); err != nil {
-		return nil, err
-	}
-	return ip, nil
 }
 
 // Release releases the specified IP address

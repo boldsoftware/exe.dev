@@ -1,7 +1,6 @@
 package dhcpd
 
 import (
-	"errors"
 	"net"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -37,25 +36,17 @@ func (s *DHCPServer) handleDiscover(conn net.PacketConn, peer net.Addr, m *dhcpv
 		return err
 	}
 
-	// check for existing reservation
-	lease, err := s.ds.Get(&Query{MACAddress: m.ClientHWAddr.String()})
+	// Use Reserve() which handles race conditions with retry logic
+	clientIP, err := s.Reserve(m.ClientHWAddr.String())
 	if err != nil {
-		if !errors.Is(err, ErrNotFound) {
-			return err
-		}
-
-		// reserve
-		ip, err := s.getNextIP()
-		if err != nil {
-			return err
-		}
-		lease = &Lease{
-			MACAddress: m.ClientHWAddr.String(),
-			IP:         ip.String(),
-		}
+		return err
 	}
 
-	clientIP := net.ParseIP(lease.IP)
+	s.log.Debug("reserving IP",
+		"ip", clientIP,
+		"hostname", m.HostName(),
+		"mac", m.ClientHWAddr.String(),
+	)
 
 	reply, err := dhcpv4.New(
 		dhcpv4.WithYourIP(clientIP),
@@ -73,19 +64,6 @@ func (s *DHCPServer) handleDiscover(conn net.PacketConn, peer net.Addr, m *dhcpv
 
 	if _, err := conn.WriteTo(reply.ToBytes(), peer); err != nil {
 		return err
-	}
-
-	// reserve
-	s.log.Debug("reserving IP",
-		"ip", clientIP,
-		"hostname", m.HostName(),
-		"mac", m.ClientHWAddr.String(),
-	)
-	if err := s.ds.Reserve(m.ClientHWAddr.String(), clientIP.String()); err != nil {
-		// if already exists; ignore
-		if !errors.Is(err, ErrExists) {
-			return err
-		}
 	}
 
 	return nil
@@ -143,9 +121,13 @@ func (s *DHCPServer) handleRequest(conn net.PacketConn, peer net.Addr, m *dhcpv4
 }
 
 func (s *DHCPServer) handleRelease(_ net.PacketConn, _ net.Addr, m *dhcpv4.DHCPv4) error {
-	if err := s.ds.Release(m.ClientIPAddr.String()); err != nil {
-		return err
-	}
-
+	// Ignore DHCP RELEASE messages from VMs.
+	// IP release is handled by the orphan cleanup goroutine in the NAT manager
+	// which enforces a grace period before releasing IPs. This prevents rapid
+	// IP reuse which can cause ARP cache and connection state issues.
+	s.log.Debug("ignoring DHCP release (IP cleanup handled by grace period)",
+		"ip", m.ClientIPAddr.String(),
+		"mac", m.ClientHWAddr.String(),
+	)
 	return nil
 }

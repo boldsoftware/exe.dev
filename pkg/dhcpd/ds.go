@@ -93,6 +93,11 @@ func (d *Datastore) Reserve(macAddress, ip string) error {
 		return nil
 	}
 
+	// Check if IP is already reserved by another MAC
+	if v, ok := d.db.IPs[ip]; ok {
+		return fmt.Errorf("%w: IP %s is already reserved by %s", ErrExists, ip, v.MACAddress)
+	}
+
 	lease := &Lease{
 		IP:         ip,
 		MACAddress: macAddress,
