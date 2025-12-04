@@ -22,7 +22,7 @@ func main() {
 }
 
 func run() error {
-	domain := flag.String("domain", "exe.dev", "Box domain hosting s### records (e.g. exe.dev)")
+	domain := flag.String("domain", "exe.xyz", "Box domain hosting s### records (e.g. exe.xyz)")
 	flag.Parse()
 
 	boxDomain := strings.TrimSpace(*domain)

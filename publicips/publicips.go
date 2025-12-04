@@ -29,8 +29,6 @@ const (
 	maxDomainShards   = 25
 )
 
-var fallbackDomains = []string{"exe.dev"}
-
 var (
 	metadataEndpoint = metadataEndpointDefault
 	newHTTPClient    = defaultHTTPClient
@@ -286,12 +284,17 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 	}
 
 	resolved := make(map[netip.Addr]string, len(needed))
-	for shard := 1; shard <= maxDomainShards; shard++ {
+
+	// Try shards s001-s025, then fall back to the base domain itself (shard 0).
+	for shard := 1; shard <= maxDomainShards+1; shard++ {
 		if len(resolved) == len(needed) {
 			break
 		}
 
-		domain := fmt.Sprintf(domainShardFormat, shard, boxDomain)
+		domain := boxDomain // fallback to base domain when all shards failed, i.e. shard > maxDomainShards
+		if shard <= maxDomainShards {
+			domain = fmt.Sprintf(domainShardFormat, shard, boxDomain)
+		}
 
 		addrs, err := lookupDomainIPs(ctx, "ip4", domain)
 		if err != nil {
@@ -313,32 +316,6 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 	}
 
 	if len(resolved) != len(needed) {
-		for _, domain := range fallbackDomainCandidates(boxDomain) {
-			if len(resolved) == len(needed) {
-				break
-			}
-
-			addrs, err := lookupDomainIPs(ctx, "ip4", domain)
-			if err != nil {
-				var dnsErr *net.DNSError
-				if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-					continue
-				}
-				return nil, fmt.Errorf("lookup %q: %w", domain, err)
-			}
-
-			for _, addr := range addrs {
-				if !addr.IsValid() || !addr.Is4() {
-					continue
-				}
-				if _, ok := needed[addr]; ok {
-					resolved[addr] = domain
-				}
-			}
-		}
-	}
-
-	if len(resolved) != len(needed) {
 		missing := make([]string, 0, len(needed)-len(resolved))
 		for addr := range needed {
 			if _, ok := resolved[addr]; !ok {
@@ -350,27 +327,6 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 	}
 
 	return resolved, nil
-}
-
-func fallbackDomainCandidates(boxDomain string) []string {
-	candidates := make([]string, 0, len(fallbackDomains)+1)
-	seen := make(map[string]struct{}, len(fallbackDomains)+1)
-	add := func(domain string) {
-		domain = strings.TrimSpace(domain)
-		if domain == "" {
-			return
-		}
-		if _, ok := seen[domain]; ok {
-			return
-		}
-		seen[domain] = struct{}{}
-		candidates = append(candidates, domain)
-	}
-	add(boxDomain)
-	for _, domain := range fallbackDomains {
-		add(domain)
-	}
-	return candidates
 }
 
 func splitLines(b []byte) []string {

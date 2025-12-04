@@ -165,8 +165,9 @@ func TestIPsFallbackDomain(t *testing.T) {
 	publicAddr := netip.MustParseAddr("203.0.113.155")
 	privateAddr := netip.MustParseAddr("10.0.0.155")
 
+	// IP not found in any shard, but found in the base boxDomain itself
 	stubDomainLookup(t, map[string][]netip.Addr{
-		"exe.dev": {publicAddr},
+		testBoxDomain: {publicAddr},
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -198,8 +199,56 @@ func TestIPsFallbackDomain(t *testing.T) {
 	if info.IP != publicAddr {
 		t.Fatalf("unexpected public IP: got %s want %s", info.IP, publicAddr)
 	}
-	if info.Domain != "exe.dev" {
-		t.Fatalf("unexpected domain: got %q want %q", info.Domain, "exe.dev")
+	if info.Domain != testBoxDomain {
+		t.Fatalf("unexpected domain: got %q want %q", info.Domain, testBoxDomain)
+	}
+}
+
+func TestIPsStagingDomain(t *testing.T) {
+	const stagingDomain = "exe-staging.xyz"
+	publicAddr := netip.MustParseAddr("198.51.100.77")
+	privateAddr := netip.MustParseAddr("10.0.0.77")
+
+	// Staging shards should use staging domain, not hardcoded exe.dev
+	stubDomainLookup(t, map[string][]netip.Addr{
+		fmt.Sprintf(domainShardFormat, 5, stagingDomain): {publicAddr},
+	})
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case tokenPath:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("token"))
+		case macsPath:
+			expectHeader(t, r, headerIMDSToken, "token")
+			_, _ = w.Write([]byte("aa:bb:cc:dd:ee:ff/\n"))
+		case macsPath + "aa:bb:cc:dd:ee:ff/ipv4-associations/":
+			expectHeader(t, r, headerIMDSToken, "token")
+			_, _ = w.Write([]byte("198.51.100.77\n"))
+		case macsPath + "aa:bb:cc:dd:ee:ff/ipv4-associations/198.51.100.77":
+			expectHeader(t, r, headerIMDSToken, "token")
+			_, _ = w.Write([]byte("10.0.0.77"))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	})
+	withMetadataServer(t, handler)
+
+	ips, err := IPs(context.Background(), stagingDomain)
+	if err != nil {
+		t.Fatalf("IPs returned error: %v", err)
+	}
+
+	info, ok := ips[privateAddr]
+	if !ok {
+		t.Fatalf("missing mapping for %s", privateAddr)
+	}
+	if info.IP != publicAddr {
+		t.Fatalf("unexpected public IP: got %s want %s", info.IP, publicAddr)
+	}
+	wantDomain := fmt.Sprintf(domainShardFormat, 5, stagingDomain)
+	if info.Domain != wantDomain {
+		t.Fatalf("unexpected domain: got %q want %q", info.Domain, wantDomain)
 	}
 }
 
