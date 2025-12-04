@@ -66,13 +66,13 @@ func init() {
 	}
 }
 
-const InvalidBoxNameMessage = "Invalid box name. Must be 5–64 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-box-name)."
+const InvalidBoxNameMessage = "Invalid box name. Must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-box-name)."
 
 // Valid reports whether name is a valid box name.
 // TODO: return a slice of validation errors instead of just true/false.
 func Valid(name string) bool {
-	// Must be at least 5 characters and at most 64 characters
-	if len(name) < 5 || len(name) > 64 {
+	// Must be at least 5 characters and at most 63 characters
+	if len(name) < 5 || len(name) > 63 {
 		return false
 	}
 

@@ -37,6 +37,6 @@ Email Address: TestBadBoxName@example.com
 SSH Keys:
   Public Key: SSH_PUBKEY ← current
 exe.dev ▶ new --name=ThisIsNotAValidBoxName!
-Invalid box name. Must be 5–64 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-box-name).
+Invalid box name. Must be 5-63 characters: start with a lowercase letter, then lowercase letters or digits, with optional single hyphen separators (e.g., a-box-name).
 exe.dev ▶ exit
 Goodbye!

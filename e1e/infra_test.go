@@ -689,7 +689,7 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 		}
 
 		// Remove data directory
-		dataDir := fmt.Sprintf("/data/exelet-%s", testRunID)
+		dataDir := fmt.Sprintf("/d/e-%s", testRunID)
 		slog.Info("removing data directory", "dataDir", dataDir)
 		if _, err := sshExec(cleanupCtx, e.exelet.RemoteHost, fmt.Sprintf("sudo rm -rf %s", dataDir)); err != nil {
 			slog.Error("failed to remove data directory", "dataDir", dataDir, "error", err)
@@ -1255,7 +1255,9 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 
 	// Build the command to execute remotely
 	// Use unique data-dir per test run to avoid mount conflicts in /data/exelet/storage/mounts
-	dataDir := fmt.Sprintf("/data/exelet-%s", testRunID)
+	// Use short-ish paths because there's a Unix socket path limit in the ~107 range, and
+	// long test names can run into it, amazingly.
+	dataDir := fmt.Sprintf("/d/e-%s", testRunID)
 	coverDir := fmt.Sprintf("/tmp/e1e-exelet-cov-%s", testRunID)
 
 	// Create the data directory and coverage directory

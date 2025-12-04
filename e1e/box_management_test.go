@@ -551,3 +551,28 @@ func TestNewWithEnvVarsContainingSpacesAndSpecialChars(t *testing.T) {
 	cleanup.deleteBox(boxName)
 	cleanup.disconnect()
 }
+
+func TestNewWithLongName(t *testing.T) {
+	vouch.For("josh")
+	t.Parallel()
+	e1eTestsOnlyRunOnce(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+
+	// Create a box with environment variables
+	boxName := boxName(t)
+	if len(boxName) < 63 {
+		boxName += strings.Repeat("a", 63-len(boxName))
+		Env.addCanonicalization(boxName, "BOX_NAME")
+	}
+	pty.sendLine(fmt.Sprintf("new --name=%s", boxName))
+	pty.wantRe("Creating .*" + boxName)
+	pty.want("Ready")
+	pty.wantPrompt()
+	pty.disconnect()
+
+	// Clean up
+	cleanup := sshToExeDev(t, keyFile)
+	cleanup.deleteBox(boxName)
+	cleanup.disconnect()
+}

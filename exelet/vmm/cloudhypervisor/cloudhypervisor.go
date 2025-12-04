@@ -105,8 +105,10 @@ func (v *VMM) getDataPath(id string) string {
 	return filepath.Join(v.dataDir, id)
 }
 
+// apiSocketPath returns the path to the cloudhypervisor API socket for the specified VM id.
+// Beware that Cloud Hypervisor has a limit of 107 characters for the socket path (SUN_LEN).
 func (v *VMM) apiSocketPath(id string) string {
-	return filepath.Join(v.getDataPath(id), "cloud-hypervisor.sock")
+	return filepath.Join(v.getDataPath(id), "chh.sock")
 }
 
 func (v *VMM) bootLogPath(id string) string {

@@ -468,7 +468,13 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 
 		// Create instance request
 		createReq := &api.CreateInstanceRequest{
-			Name:    boxName,
+			Name: boxName,
+			// This ID leaks into exelet paths (e.g., the config paths).
+			// We choose something that's unique (because boxID is a unique key
+			// in the DB), but also legible to debugging, by including the boxName.
+			// boxNames can be reused, so we can't just use that.
+			ID: fmt.Sprintf("vm%06d-%s", boxID, boxName),
+
 			Image:   imageRef,
 			CPUs:    2,
 			Memory:  8 * 1000 * 1000 * 1000,  // 8GB

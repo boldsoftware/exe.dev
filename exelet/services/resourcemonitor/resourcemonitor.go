@@ -263,7 +263,9 @@ func (m *ResourceMonitor) vmPID(ctx context.Context, id string) (int, error) {
 		return 0, fmt.Errorf("unsupported runtime scheme %q", m.runtimeScheme)
 	}
 
-	socketPath := filepath.Join(m.runtimePath, id, "cloud-hypervisor.sock")
+	// TODO(philip): This is the same join as "func (v *VMM) apiSocketPath(id string) string" in cloudhypervisor.go;
+	// should be shared.
+	socketPath := filepath.Join(m.runtimePath, id, "chh.sock")
 	cl, err := client.NewCloudHypervisorClient(socketPath, m.log)
 	if err != nil {
 		return 0, err

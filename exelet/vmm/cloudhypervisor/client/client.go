@@ -35,11 +35,13 @@ func NewCloudHypervisorClient(apiSocketPath string, log *slog.Logger) (*CHClient
 	hc := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				i := 0
 				for range maxRetries {
 					c, err := net.Dial("unix", apiSocketPath)
 					if err != nil {
-						log.Debug("error connecting to api socket; retrying")
+						log.Debug("error connecting to api socket; retrying", "path", apiSocketPath, "error", err, "retry", i)
 						time.Sleep(time.Millisecond * 250)
+						i += 1
 						continue
 					}
 					return c, nil

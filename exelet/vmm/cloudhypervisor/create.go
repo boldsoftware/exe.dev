@@ -97,10 +97,33 @@ func (v *VMM) runAPIInstance(ctx context.Context, id string) error {
 
 	// capture PID immediately after start
 	pid := cmd.Process.Pid
-	v.log.DebugContext(ctx, "cloud-hypervisor started", "id", id, "pid", pid)
+	v.log.DebugContext(ctx, "cloud-hypervisor started", "id", id, "pid", pid, "args", args)
 
 	// wait for api to be ready
 	if err := v.waitForReady(ctx, id); err != nil {
+		v.log.ErrorContext(ctx, "cloud-hypervisor api not ready", "id", id, "pid", pid, "error", err)
+
+		// check if process is still alive
+		proc, procErr := os.FindProcess(pid)
+		if procErr != nil {
+			v.log.ErrorContext(ctx, "failed to find cloud-hypervisor process", "id", id, "pid", pid, "error", procErr)
+		} else {
+			// Signal 0 checks if process exists without sending a signal
+			if sigErr := proc.Signal(syscall.Signal(0)); sigErr != nil {
+				v.log.ErrorContext(ctx, "cloud-hypervisor process is not running", "id", id, "pid", pid, "error", sigErr)
+			} else {
+				v.log.ErrorContext(ctx, "cloud-hypervisor process is still running", "id", id, "pid", pid)
+			}
+		}
+
+		// log boot log contents
+		bootLogPath := v.bootLogPath(id)
+		if bootLogData, readErr := os.ReadFile(bootLogPath); readErr != nil {
+			v.log.ErrorContext(ctx, "failed to read boot log", "id", id, "path", bootLogPath, "error", readErr)
+		} else {
+			v.log.ErrorContext(ctx, "cloud-hypervisor boot log", "id", id, "contents", string(bootLogData))
+		}
+
 		return err
 	}
 
