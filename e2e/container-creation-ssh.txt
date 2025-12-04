@@ -7,37 +7,37 @@ Test box creation, SSH access, and basic box operations.
 ### Prerequisites
 
 - Registration must be completed (setup-and-basics.txt)
-- exed and sshpiper must be running
-- SSH key must be created
+- Read env-info.txt for service ports
 
 ### Test Steps
 
 #### Box Creation and SSH Access
 
-4. Create a new box using "ssh -p 2222 localhost"
+1. Create a new box using "new" command in the exe.dev shell.
 
-5. SSH into that box (by using ssh -p 2222 name@localhost) and run "id"
+2. SSH into that box and run "id".
 
-6. Open up a shell to the new box and check the hostname.
+3. Check the hostname in the box.
 
-7. Use scp with the new box to test that SSH subsystems work.
+4. Use scp with the new box to test that SSH subsystems work.
 
 ## Edge Cases
 
-11. Creating new boxes should have restrictions on the names of new boxes.
+1. Creating new boxes should have restrictions on the names of new boxes.
 For example, "--foo" is not a valid box name. Make sure that returns an error message.
 
-12. If the user doesn't have an SSH key (which can be simulated with
- "ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -p 2222 localhost"
+2. If the user doesn't have an SSH key (which can be simulated with
+"ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -p <SSH_PORT> localhost")
 they should get an error message indicating how to create a key.
 
 
 ## Hints
 
 ### Box Creation Hints
-- Type `new` at exe.dev prompt. Creates box with random name like "able-yankee". Shows command like "ssh -p 2222 able-yankee@localhost"
+- Type `new` at exe.dev prompt. Creates box with random name like "able-yankee".
 
 ### SSH Access Hints
-- Use `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 boxname@localhost`. Wait ~10-15 seconds after box creation for SSH daemon to be fully ready. If connection fails, check sshpiper logs with `tmux capture-pane -p -t testing:sshpiper` for connectivity issues.
+- Use `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> boxname@localhost`
+- Wait ~10-15 seconds after box creation for SSH daemon to be fully ready.
 - In box shell, run `hostname`. Should show "boxname.exe.dev"
-- Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P 2222 localfile boxname@localhost:/remote/path`. Ensure SSH connection works first before testing SCP.
+- Use `scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P <SSH_PORT> localfile boxname@localhost:/path`

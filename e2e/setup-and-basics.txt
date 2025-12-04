@@ -2,49 +2,31 @@
 
 ## Instructions
 
-Test basic exed setup, registration, and fundamental commands.
+Test basic exed registration and fundamental commands.
+
+The e1e framework has already started exed, exelet, and sshpiper.
+Read env-info.txt for the service ports.
 
 ### Test Setup
 
-1. Verify that `ssh colima-exe-ctr echo hello` works before you start. (The VM runs containerd + kata + cloud hyprvisor + nydus and should be running.)
-
-2. Build and start exed (in dev mode).
-
-3. Build and start sshpiper.
-
-4. Create yourself an ssh key with ssh-keygen.
+1. Create yourself an ssh key with ssh-keygen if you don't have one.
 
 ### Test Steps
 
 #### Registration
 
-1. Register with exed by running "ssh -p 2222 localhost" 
+1. Connect to exed via sshpiper using the SSH port from env-info.txt.
 
-The e-mail thing will require doing a web call; use the browser to handle that.
+2. Complete email verification using the browser.
 
-2. Test the "whoami" command.
+3. Test the "whoami" command.
 
-3. Test the "list" command (should have no machines yet!)
+4. Test the "ls" command (should have no boxes yet).
 
 ## Hints
 
-### Key Discovery
-- exed runs on port 8080 (HTTP) and 2223 (SSH direct)
-- sshpiper runs on port 2222 (SSH proxy) 
-- Email verification requires browser interaction at http://localhost:8080/verify-email?token=...
-- SSH to containers: `ssh -p 2222 machinename@localhost` (wait ~15s after creation)
-- Build times: exed ~30 seconds first time, sshpiper ~10 seconds
-- Check logs: `tmux capture-pane -p -t testing:exed` or `testing:sshpiper`
-
-### Setup Hints
-- Use tmux windows: `tmux new-session -d -s testing && tmux new-window -t testing -n exed && tmux new-window -t testing -n sshpiper && tmux new-window -t testing -n client`
-- We cannot directly run an exe-ctr host because it requires /dev/kvm, that is why we work through exe-ctr-colima.
-- Build: `cd /app && make build`. Start: `cd /app && make run-dev` (in exed window). Server starts on :8080 (HTTP) and :2223 (SSH). Look for "SSH server starting" in output.
-- Build: `(cd deps/sshpiper && go build -o sshpiperd ./cmd/sshpiperd && go build -o metrics ./plugin/metrics)`. Start: `./sshpiper.sh` (in sshpiper window). Listens on :2222.
-- Command: `ssh-keygen -t rsa -b 2048 -f ~/.ssh/id_rsa -N ""`. Creates RSA key needed for authentication.
-
 ### Registration Hints
-- Use: `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 localhost`. Prompts for email and team name.
-- After entering email/team, get verification URL like http://localhost:8080/verify-email?token=... Copy this URL to browser and click "Confirm Email Verification"
-- After email verification, press any key to continue, then type `whoami` at exe.dev prompt. Shows email and SSH key fingerprint.
-- Type `list` at exe.dev prompt. Should show "No machines found. Create one with 'new'."
+- Use: `ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p <SSH_PORT> localhost`
+- After entering email, get verification URL. Open in browser and click "Confirm Email Verification".
+- After email verification, type `whoami` at exe.dev prompt. Shows email and SSH key fingerprint.
+- Type `ls` at exe.dev prompt. Should show "No boxes found. Create one with 'new'."

@@ -8,44 +8,43 @@ Test HTTP proxying capabilities, authentication flows, and proxy management.
 
 - Registration must be completed (setup-and-basics.txt)
 - Container must be created and SSH access working (container-creation-ssh.txt)
-- exed and sshpiper must be running
+- Read env-info.txt for service ports
 
 ### Test Steps
 
 #### HTTP Proxying
 
-8. Start an HTTP server on machinename@localhost
+1. Start an HTTP server on your box (e.g., python3 -m http.server 8000)
 
-9. Connect to it via http://machinename.localhost:8080/ . There should be a login flow of some sort that might just be redirections.
+2. Connect to it via http://boxname.localhost:<HTTP_PORT>/. There should be a login flow.
 
 Note that there should be a confirmation interstitial screen for logging into
-machinename using your exe.dev credentials.
+the box using your exe.dev credentials.
 
 Note also that if you were logged out to begin with, you should end up at the exact
 URL you started at.
 
-10. Logout on http://localhost:8080/
+3. Logout on http://localhost:<HTTP_PORT>/
 
-11. Connect again; you should require login; don't log in.
+4. Connect again; you should require login; don't log in.
 
-12. Use the "route" command in the exe.dev shell to make / public. You should be able to access it without auth, then.
+5. Use the "share" command in the exe.dev shell to make the proxy public. You should be able to access it without auth.
 
-13. Use the http://(name).localhost:8080/__exe.dev/logout to test logging out of a specific subhost.
+6. Use http://boxname.localhost:<HTTP_PORT>/__exe.dev/logout to test logging out of a specific subhost.
 
 
 ## Hints
 
 ### HTTP Server Hints
-- In the container, start a simple HTTP server: `python3 -m http.server 8000` or similar
-- Access via browser at http://machinename.localhost:8080/
+- In the container, start a simple HTTP server: `python3 -m http.server 8000`
+- Access via browser at http://boxname.localhost:<HTTP_PORT>/
 - The system should redirect through authentication flows
 
 ### Authentication Hints
 - Login flow may involve redirections and session management
-- Logout typically available at http://localhost:8080/logout or similar endpoint
 - After logout, accessing container URLs should require re-authentication
 
 ### Route Management Hints
-- Use `proxy` command in exe.dev shell to manage public/private access
+- Use `share` command in exe.dev shell to manage public/private access
 - Making routes public bypasses authentication requirements
 - Test both authenticated and unauthenticated access patterns

@@ -27,17 +27,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Setup test environment
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-
-          # See if tmux is available
-          if command -v tmux >/dev/null 2>&1; then
-            exit 0
-          fi
-          sudo apt-get update && sudo apt-get install -y tmux
-
       - name: Start container host
         id: vm
         run: |
@@ -48,10 +37,6 @@ jobs:
           # shellcheck disable=SC1090
           source "$ENVFILE"
           echo "CTR_HOST=ssh://$VM_USER@$VM_IP" >> "$GITHUB_ENV"
-
-      - name: Build exe.dev
-        run: |
-          go build -o exed ./cmd/exed
 
       - name: Download latest sketch
         env:
@@ -70,6 +55,9 @@ jobs:
           mv "$SKETCH_BINARY" sketch
           chmod +x sketch
 
+          # Add to PATH
+          echo "$PWD" >> $GITHUB_PATH
+
           # Verify the binary works
           ./sketch --version || echo "sketch binary downloaded successfully"
 
@@ -78,81 +66,109 @@ jobs:
           docker run --rm --entrypoint "bash" chromedp/headless-shell -c "tar -cvf - /headless-shell/" | tar -xf-
           echo "$PWD/headless-shell" >> $GITHUB_PATH
 
-      - name: Run e2e AI tests
+      - name: Run e2e AI tests via e1e framework
         id: run-e2e
         continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RUN_AI_AGENT_TEST: "1"
+          E1E_LOG_DIR: ${{ github.workspace }}/e1e-logs
+        run: |
+          set -euo pipefail
+          mkdir -p "$E1E_LOG_DIR"
+
+          # Run the AI agent test via the e1e framework
+          go test -v -count=1 -timeout=60m -run=TestAIAgent ./e1e/... 2>&1 | tee /tmp/e2e-output.txt
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+
+          echo "test_exit_code=$TEST_EXIT_CODE" >> "$GITHUB_OUTPUT"
+          exit $TEST_EXIT_CODE
+
+      - name: Generate report
+        id: report
+        if: always()
+        env:
+          REPO_URL: https://github.com/${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           cd e2e
 
-          # Execute sketch with the test prompt
-          ../sketch -one-shot -skaband-addr= -unsafe -prompt 'read test-prompt.md and follow instructions' 2>&1 | tee /tmp/e2e-output.txt
+          RESULT="UNKNOWN"
+          REPORT_URL=""
+          REPORT_COMMIT=""
 
-          # Create a branch with the test report and push to timestamped ref
+          # Check for result file
+          if [ -f "result.txt" ]; then
+            RESULT=$(cat result.txt)
+          fi
+
+          # Create a commit with the report and push to a ref
           if [ -d "report" ] || [ -f "result.txt" ]; then
-            # Generate timestamp for unique ref
             TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
-            RUN_ID="${{ github.run_id }}"
-            REF_NAME="test-report-$TIMESTAMP-run-$RUN_ID"
-            export GIT_INDEX_FILE=".git/index-report"
+            REF_NAME="e2e-report-$TIMESTAMP-run-$RUN_ID"
 
-            if [ -d "report" ]; then
-              find report -type f -exec git update-index --add {} \;
-            fi
+            # Build tree entries for git mktree
+            TREE_ENTRIES=""
+
+            # Add result.txt if exists
             if [ -f "result.txt" ]; then
-              git update-index --add result.txt
+              BLOB_SHA=$(git hash-object -w result.txt)
+              TREE_ENTRIES="${TREE_ENTRIES}100644 blob ${BLOB_SHA}\tresult.txt\n"
             fi
 
-            # Create tree object from the index
-            TREE_SHA=$(git write-tree)
-            printf "E2E test report - %s\n\nWorkflow run: %s/%s/actions/runs/%s\nTriggered by: %s\nCommit: %s\nResult: %s\n" \
-              "$TIMESTAMP" \
-              "${{ github.server_url }}" "${{ github.repository }}" "${{ github.run_id }}" \
-              "${{ github.event_name }}" "${{ github.sha }}" "$RESULT" \
-              > commit-msg.txt
+            # Add report directory if exists
+            if [ -d "report" ]; then
+              # Build subtree for report directory
+              REPORT_ENTRIES=""
+              for f in report/*; do
+                if [ -f "$f" ]; then
+                  FNAME=$(basename "$f")
+                  BLOB_SHA=$(git hash-object -w "$f")
+                  REPORT_ENTRIES="${REPORT_ENTRIES}100644 blob ${BLOB_SHA}\t${FNAME}\n"
+                fi
+              done
+              if [ -n "$REPORT_ENTRIES" ]; then
+                REPORT_TREE=$(printf "$REPORT_ENTRIES" | git mktree)
+                TREE_ENTRIES="${TREE_ENTRIES}040000 tree ${REPORT_TREE}\treport\n"
+              fi
+            fi
 
-            COMMIT_SHA=$(git commit-tree $TREE_SHA < commit-msg.txt)
-            # Push directly to workflow ref namespace
-            git push origin "$COMMIT_SHA:refs/workflow/$REF_NAME"
+            # Create tree and commit
+            TREE_SHA=$(printf "$TREE_ENTRIES" | git mktree)
+            COMMIT_MSG=$(printf "E2E AI test report - %s\n\nWorkflow run: %s\nResult: %s" "$TIMESTAMP" "$RUN_URL" "$RESULT")
+            REPORT_COMMIT=$(git commit-tree "$TREE_SHA" -m "$COMMIT_MSG")
 
-            # Clean up
-            rm -f ".git/index-report" commit-msg.txt
-            unset GIT_INDEX_FILE
+            # Push to refs/e2e-reports/
+            git push origin "$REPORT_COMMIT:refs/e2e-reports/$REF_NAME"
 
-            # Output the link to the report
-            REPO_URL="https://github.com/${{ github.repository }}"
-            REPORT_URL="$REPO_URL/tree/$COMMIT_SHA/report/report.md"
-            echo "📋 Test report available at: $REPORT_URL"
+            REPORT_URL="$REPO_URL/tree/$REPORT_COMMIT/report/report.md"
+            echo "📋 Report pushed to refs/e2e-reports/$REF_NAME"
+            echo "📋 Report URL: $REPORT_URL"
+          fi
 
-            # Also output as workflow summary
-            echo "## E2E Test Report" >> $GITHUB_STEP_SUMMARY
-            echo "**Result:** $RESULT" >> $GITHUB_STEP_SUMMARY
+          # Export for other steps
+          echo "result=$RESULT" >> "$GITHUB_OUTPUT"
+          echo "report_url=$REPORT_URL" >> "$GITHUB_OUTPUT"
+          echo "report_commit=$REPORT_COMMIT" >> "$GITHUB_OUTPUT"
+
+          # Write to job summary
+          echo "## E2E AI Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Result:** $RESULT" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Run:** [#$RUN_ID]($RUN_URL)" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$REPORT_URL" ]; then
             echo "**Report:** [$REF_NAME]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
-            echo "**Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            if [ -f "report/report.md" ]; then
-              cat report/report.md >> $GITHUB_STEP_SUMMARY || true
-            fi
-          else
-            echo "No report directory or result.txt found - skipping report branch creation"
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "report/report.md" ]; then
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            cat report/report.md >> $GITHUB_STEP_SUMMARY || true
           fi
 
-          # Check if the test created a result file
-          if [ ! -f "result.txt" ]; then
-            echo "No result.txt file found - test may not have completed properly"
-            exit 1
-          fi
-
-          RESULT=$(cat result.txt)
-          if [ "$RESULT" != "SUCCESS" ]; then
-            echo "E2E test failed with result: $RESULT"
-            exit 1
-          fi
-
-          exit 0
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: exe-e2e-test-logs
@@ -160,8 +176,10 @@ jobs:
             e2e/*.log
             e2e/*.txt
             e2e/report/**/*
+            e1e-logs/**/*
             *.log
             *.txt
+            /tmp/e2e-output.txt
           retention-days: 7
 
       - name: Destroy container host
@@ -175,21 +193,39 @@ jobs:
         if: always()
         uses: astral-sh/setup-uv@v3
 
-      - name: Post failure to Slack #oops
-        if: steps.run-e2e.outcome == 'failure'
+      - name: Post to Slack
+        if: always()
         env:
-          OUTPUT_PATH: /tmp/e2e-output.txt
-          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          MESSAGE_PATH: /tmp/e2e-oops.txt
           EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEST_RESULT: ${{ steps.report.outputs.result }}
+          REPORT_URL: ${{ steps.report.outputs.report_url }}
+          JOB_STATUS: ${{ steps.run-e2e.outcome }}
         run: |
           set -euo pipefail
-          cp "$OUTPUT_PATH" "$MESSAGE_PATH"
-          printf "\n<%s|CI logs>\n" "$RUN_URL" >> "$MESSAGE_PATH"
+
+          # Determine emoji and status text based on TEST_RESULT (from result.txt)
+          if [ "$TEST_RESULT" = "SUCCESS" ]; then
+            EMOJI="✅"
+            STATUS="passed"
+          else
+            EMOJI="❌"
+            STATUS="failed"
+          fi
+
+          # Build a concise message
+          MSG="$EMOJI *E2E AI Test $STATUS*"
+          MSG="$MSG\n• <$RUN_URL|CI Logs>"
+          if [ -n "$REPORT_URL" ]; then
+            MSG="$MSG\n• <$REPORT_URL|Test Report>"
+          fi
+
+          # Post to Slack
+          echo -e "$MSG" > /tmp/slack-msg.txt
           uv run scripts/slack/post_message.py \
             --channel oops \
             --markdown \
-            --message-file "$MESSAGE_PATH"
+            --message-file /tmp/slack-msg.txt
 
       - name: Update Slack bot ledger
         if: always()

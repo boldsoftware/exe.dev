@@ -8,7 +8,7 @@ Test the web terminal interface functionality, including complete authentication
 
 - Registration must be completed (setup-and-basics.txt)
 - Container must be created and SSH access working (container-creation-ssh.txt)
-- exed and sshpiper must be running
+- Read env-info.txt for service ports
 - Container must be running (not just created)
 
 ### Test Steps

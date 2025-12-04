@@ -2,53 +2,32 @@
 
 ## Instructions
 
-Please test exed by running all test groups in sequence. Doing so requires operating interactively with SSH, 
-so read tmux.md for information on how to do so.
+Test exed by running all test groups in sequence. The e1e test framework has
+already started exed, exelet, and sshpiper. Read env-info.txt for the service
+ports.
+
+Use tmux for interactive SSH testing (see tmux.md).
 
 As you go, create and update "report/report.md" with your findings, including
-details about what you found, and including screenshots. If testing a web
-thing, that can be real screenshots. If testing interactive terminal things,
-just include the text from the tmux output!
+details about what you found and screenshots. For web testing, use real
+screenshots. For terminal testing, include the text from tmux output.
 
 Run the following test groups in order:
-1. setup-and-basics.txt - Setup, registration, and basic commands
+1. setup-and-basics.txt - Registration and basic commands
 2. container-creation-ssh.txt - Container creation and SSH access
 3. http-proxying.txt - HTTP proxying and authentication
 4. custom-containers.txt
 5. terminal.txt
 6. mobile.txt
 
-When you are done, create a file called "result.txt" with either SUCCESS or
-FAILURE in it.
+When done, create "result.txt" with either SUCCESS or FAILURE.
 
-**Important**: All fiels you create besides result.txt must be in the report/*
+**Important**: All files you create besides result.txt must be in the report/*
 subdirectory. Any screenshots included in the markdown reports must also be
-added.
-
-To speed things up in terms of discovering how things work, amend the
-individual test files with updated hints in their <hint>...</hint> sections.
-For example, if you've discovered how to build or start something, indicate
-that in hint blocks so future test runs don't need to rediscover the whole
-thing.
-
-## Coverage Reporting
-
-Run exed with Go coverage enabled to generate a coverage report:
-
-1. Start exed with coverage: `go run -coverprofile=report/coverage.out ./cmd/exed`
-2. After completing all tests, generate coverage report: `go tool cover -html=coverage.out -o report/coverage.html`
-3. Include coverage.out and coverage.html in your git commit
-4. Mention coverage statistics in your report.md
+added there.
 
 ## Hints
 
 ### General Testing Hints
 - Use tmux for non-blocking testing as described in tmux.md
-- Check service logs using tmux capture-pane commands
 - Wait appropriate times for services to fully start before testing
-
-### Coverage Hints
-- Coverage data is collected automatically when using `go run -coverprofile=coverage.out`
-- Generate HTML report after all testing is complete
-- Include both coverage.out (data) and coverage.html (report) files
-- Coverage statistics help identify untested code paths
