@@ -275,6 +275,7 @@ packages:
   - qemu-guest-agent
   - zfsutils-linux
   - socat
+  - net-tools
 runcmd:
   - echo runcmd
   - systemctl enable --now qemu-guest-agent

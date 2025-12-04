@@ -67,7 +67,7 @@ func (s *ZFS) Type() string {
 	return storageType
 }
 
-func align16K(v uint64) uint64 {
-	blockSize := uint64(16 * 1024)
+func align4K(v uint64) uint64 {
+	blockSize := uint64(4 * 1024)
 	return uint64(((v + blockSize - 1) / blockSize) * blockSize)
 }

@@ -33,7 +33,13 @@ func (s *ZFS) createInstanceFS(id string, size uint64, fsType string, encrypted 
 			return fmt.Errorf("error getting dataset %s: %w (%T)", dsName, err, err)
 		}
 		// create
-		props := map[string]string{}
+		props := map[string]string{
+			"compression":  "lz4",
+			"volblocksize": "4K",       // default to 4K size blocks for small random write optimization
+			"primarycache": "metadata", // prevent double-caching
+			"logbias":      "latency",  // default for random style workloads
+			"sync":         "standard", // zfs handle fsyncs
+		}
 		if encrypted {
 			ekPath, err := s.getInstanceEncryptionKeyPath(id)
 			if err != nil {
@@ -43,10 +49,9 @@ func (s *ZFS) createInstanceFS(id string, size uint64, fsType string, encrypted 
 			props["encryption"] = "aes-256-gcm"
 			props["keyformat"] = "hex"
 			props["keylocation"] = fmt.Sprintf("file://%s", ekPath)
-			props["volblocksize"] = "512"
 		}
 		s.log.Debug("creating zfs volume", "name", dsName)
-		volSize := align16K(size)
+		volSize := align4K(size)
 		if _, err := zfs.CreateVolume(dsName, volSize, props); err != nil {
 			return err
 		}

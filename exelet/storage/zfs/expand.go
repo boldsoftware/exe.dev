@@ -41,8 +41,8 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64) error {
 		return fmt.Errorf("instance fs size (%d) cannot be smaller than current (%d)", size, volSize)
 	}
 
-	// zfs needs to be 16K aligned
-	newSize := align16K(size)
+	// zfs needs to be 4K aligned
+	newSize := align4K(size)
 
 	diskPath, err := s.getDSDiskPath(id)
 	if err != nil {

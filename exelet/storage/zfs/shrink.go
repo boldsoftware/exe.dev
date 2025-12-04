@@ -54,8 +54,8 @@ func (s *ZFS) Shrink(ctx context.Context, id string) error {
 		s.log.DebugContext(ctx, "compressed minimum size", "size", usedSize, "compression", cz, "volSize", volSize)
 	}
 
-	// zfs needs to be 16K aligned
-	newSize := align16K(volSize)
+	// zfs needs to be 4K aligned
+	newSize := align4K(volSize)
 
 	diskPath, err := s.getDSDiskPath(id)
 	if err != nil {
