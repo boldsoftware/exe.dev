@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -363,6 +364,11 @@ func (w *diskWriter) Commit(ctx context.Context, size int64, expected digest.Dig
 
 	// Move temp file to final location
 	finalPath := w.store.contentPath(w.desc)
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(finalPath), 0o755); err != nil {
+		os.Remove(w.tempPath)
+		return err
+	}
 	if err := os.Rename(w.tempPath, finalPath); err != nil {
 		os.Remove(w.tempPath)
 		return err

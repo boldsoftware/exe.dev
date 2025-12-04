@@ -35,8 +35,14 @@ func (l *LocalStore) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.Rea
 
 // Push persists the specified content in the store
 func (l *LocalStore) Push(ctx context.Context, desc ocispec.Descriptor, content io.Reader) error {
-	slog.DebugContext(ctx, "storing content", "digest", desc.Digest.Encoded(), "path", l.dataDir)
 	cPath := l.contentPath(desc)
+	slog.DebugContext(ctx, "storing content", "digest", desc.Digest.Encoded(), "path", cPath)
+
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(cPath), 0o755); err != nil {
+		return err
+	}
+
 	// remove existing
 	_ = os.Remove(cPath)
 
@@ -54,7 +60,7 @@ func (l *LocalStore) Push(ctx context.Context, desc ocispec.Descriptor, content 
 }
 
 func (l *LocalStore) contentPath(desc ocispec.Descriptor) string {
-	return filepath.Join(l.dataDir, desc.Digest.Encoded())
+	return filepath.Join(l.dataDir, "blobs", desc.Digest.Algorithm().String(), desc.Digest.Encoded())
 }
 
 // openFile opens a file for reading with ReaderAt support
@@ -67,19 +73,18 @@ func (l *LocalStore) openFile(path string) (*os.File, error) {
 
 // createTempFile creates a temporary file for writing content
 func (l *LocalStore) createTempFile() (*os.File, error) {
-	// Ensure the data directory exists
-	if err := os.MkdirAll(l.dataDir, 0o755); err != nil {
+	// Use blobs/sha256 directory for temp files (same location as final content)
+	ingestDir := filepath.Join(l.dataDir, "blobs", "sha256")
+	if err := os.MkdirAll(ingestDir, 0o755); err != nil {
 		return nil, err
 	}
-	// Create a temp file in the data directory
-	return os.CreateTemp(l.dataDir, ".tmp-*")
+	return os.CreateTemp(ingestDir, ".tmp-*")
 }
 
 // checkContent checks if content exists on disk for a given digest and returns its size
 func (l *LocalStore) checkContent(d digest.Digest) (int64, bool) {
-	slog.Debug("checking for content", "digest", d.Encoded(), "path", l.dataDir)
-	// Build path using a descriptor with this digest
-	path := filepath.Join(l.dataDir, d.Encoded())
+	path := filepath.Join(l.dataDir, "blobs", d.Algorithm().String(), d.Encoded())
+	slog.Debug("checking for content", "digest", d.Encoded(), "path", path)
 
 	info, err := os.Stat(path)
 	if err != nil {
