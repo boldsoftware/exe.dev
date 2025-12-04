@@ -64,7 +64,7 @@ func (d DirCache) Get(ctx context.Context, name string) ([]byte, error) {
 // Put writes the certificate data to the specified file name.
 // The file will be created with 0600 permissions.
 func (d DirCache) Put(ctx context.Context, name string, data []byte) error {
-	if err := os.MkdirAll(string(d), 0o700); err != nil {
+	if err := os.MkdirAll(string(d), 0700); err != nil {
 		return err
 	}
 

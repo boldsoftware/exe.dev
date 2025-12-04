@@ -332,6 +332,7 @@ func TestMuxChannelRequest(t *testing.T) {
 
 	if !ok {
 		t.Errorf("SendRequest(yes): %v", ok)
+
 	}
 
 	ok, err = client.SendRequest("no", true, nil)

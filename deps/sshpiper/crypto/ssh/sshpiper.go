@@ -5,18 +5,16 @@
 package ssh
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
-	"log/slog"
-	"math/rand"
 	"net"
-	"net/url"
-	"time"
+	"slices"
 )
 
 type Upstream struct {
-	URI string
+	Conn net.Conn
+
+	Address string
 
 	ClientConfig
 }
@@ -24,6 +22,7 @@ type Upstream struct {
 // ChallengeContext represents the context for an authentication challenge.
 // It provides methods to retrieve metadata and the username being challenged.
 type ChallengeContext interface {
+
 	// Meta returns the metadata associated with the challenge.
 	// This can be used to store and retrieve additional information
 	// related to the authentication process.
@@ -106,10 +105,8 @@ func (s *PiperConfig) AddHostKey(key Signer) {
 	s.hostKeys = append(s.hostKeys, key)
 }
 
-type (
-	upstream   struct{ *connection }
-	downstream struct{ *connection }
-)
+type upstream struct{ *connection }
+type downstream struct{ *connection }
 
 // PiperConn is a piped SSH connection, linking upstream ssh server and
 // downstream ssh client together. After the piped connection was created,
@@ -281,6 +278,8 @@ func (p *PiperConn) authUpstream(downstream ConnMetadata, method string, upstrea
 	}
 
 	config := &upstream.ClientConfig
+	addr := upstream.Address
+
 	origBannerCallback := config.BannerCallback
 	config.BannerCallback = func(message string) error {
 		if origBannerCallback != nil {
@@ -300,7 +299,7 @@ func (p *PiperConn) authUpstream(downstream ConnMetadata, method string, upstrea
 		return p.downstream.SendAuthBanner(message)
 	}
 
-	u, err := newUpstream(upstream.URI, config)
+	u, err := newUpstream(upstream.Conn, addr, config)
 	if err != nil {
 		return err
 	}
@@ -317,6 +316,7 @@ func (p *PiperConn) authUpstream(downstream ConnMetadata, method string, upstrea
 
 	u.user = config.User
 	p.upstream = u
+
 	return nil
 }
 
@@ -365,6 +365,7 @@ func (p *PiperConn) downstreamBannerCallback(conn ConnMetadata) string {
 }
 
 func (p *PiperConn) updateAuthMethods(emptyerr error) error {
+
 	if p.authFailures > p.maxAuthTries && p.maxAuthTries >= 0 {
 		return emptyerr
 	}
@@ -530,7 +531,7 @@ func newDownstream(c net.Conn, config *ServerConfig) (*downstream, error) {
 		fullConf.PublicKeyAuthAlgorithms = defaultPubKeyAuthAlgos
 	} else {
 		for _, algo := range fullConf.PublicKeyAuthAlgorithms {
-			if !contains(SupportedAlgorithms().PublicKeyAuths, algo) && !contains(InsecureAlgorithms().PublicKeyAuths, algo) {
+			if !slices.Contains(SupportedAlgorithms().PublicKeyAuths, algo) && !slices.Contains(InsecureAlgorithms().PublicKeyAuths, algo) {
 				c.Close()
 				return nil, fmt.Errorf("ssh: unsupported public key authentication algorithm %s", algo)
 			}
@@ -550,72 +551,21 @@ func newDownstream(c net.Conn, config *ServerConfig) (*downstream, error) {
 	return &downstream{s}, nil
 }
 
-func newUpstream(uri string, config *ClientConfig) (*upstream, error) {
-	if len(uri) == 0 {
-		return nil, fmt.Errorf("empty upstream uri")
-	}
-	u, err := url.Parse(uri)
-	if err != nil {
-		return nil, fmt.Errorf("invalid upstream uri: %w", err)
-	}
-	network := u.Scheme
-	addr := cmp.Or(u.Host, u.Opaque)
-	if addr == "" {
-		return nil, fmt.Errorf("invalid upstream uri, missing address: %s", uri)
-	}
-
+func newUpstream(c net.Conn, addr string, config *ClientConfig) (*upstream, error) {
 	fullConf := *config
 	fullConf.SetDefaults()
 	if fullConf.HostKeyCallback == nil {
+		c.Close()
 		return nil, errors.New("ssh: must specify HostKeyCallback")
 	}
 
-	// This retry loop is exed-specific.
-	// TODO: pull it out into a thing that the plugin decides (retry delays slice?), and then upstream the patch.
-	retries := []time.Duration{
-		100 * time.Millisecond, 200 * time.Millisecond, 500 * time.Millisecond,
-		1 * time.Second, 1 * time.Second,
-		2 * time.Second, 3 * time.Second,
-		5 * time.Second, 8 * time.Second,
-		13 * time.Second, 21 * time.Second,
-		0, // trailing 0 delay makes loop logic simpler
-	}
-	var handshakeErrors error
-	var conn *connection
-	for i, d := range retries {
-		sleep := func(err error) {
-			if d == 0 {
-				return
-			}
-			// add jitter to d: multiply by random factor between 0.8 and 1.2
-			jitter := 0.8 + rand.Float64()*0.4
-			d = time.Duration(float64(d) * jitter)
-			slog.Info("failed to connect to upstream", "uri", uri, "error", err, "attempt", i, "retry_after", d.Round(10*time.Millisecond))
-			time.Sleep(d)
-		}
-
-		c, dialErr := net.Dial(network, addr)
-		if dialErr != nil {
-			handshakeErrors = errors.Join(handshakeErrors, dialErr)
-			sleep(dialErr)
-			continue
-		}
-
-		conn = &connection{
-			sshConn: sshConn{conn: c},
-		}
-		if err := conn.clientHandshakeNoAuth(addr, &fullConf); err != nil {
-			handshakeErrors = errors.Join(handshakeErrors, err)
-			c.Close()
-			conn = nil
-			sleep(err)
-			continue
-		}
-		break
+	conn := &connection{
+		sshConn: sshConn{conn: c},
 	}
 
-	if conn == nil {
-		return nil, handshakeErrors
+	if err := conn.clientHandshakeNoAuth(addr, &fullConf); err != nil {
+		c.Close()
+		return nil, fmt.Errorf("ssh: handshake failed: %v", err)
 	}
 
 	return &upstream{conn}, nil
@@ -666,6 +616,7 @@ func (c *connection) serverHandshakeNoAuth(config *ServerConfig) (*Permissions, 
 
 	if err := c.transport.waitSession(); err != nil {
 		return nil, err
+
 	}
 	c.sessionID = c.transport.getSessionID()
 
@@ -756,7 +707,7 @@ func (c *connection) clientAuthenticateReturnAllowed(config *ClientConfig) error
 			// success
 			return nil
 		} else if ok == authFailure {
-			if m := auth.method(); !contains(tried, m) {
+			if m := auth.method(); !slices.Contains(tried, m) {
 				tried = append(tried, m)
 			}
 		}
@@ -770,7 +721,7 @@ func (c *connection) clientAuthenticateReturnAllowed(config *ClientConfig) error
 	findNext:
 		for _, a := range config.Auth {
 			candidateMethod := a.method()
-			if contains(tried, candidateMethod) {
+			if slices.Contains(tried, candidateMethod) {
 				continue
 			}
 			for _, meth := range methods {

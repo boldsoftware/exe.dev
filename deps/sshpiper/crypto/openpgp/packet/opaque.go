@@ -26,7 +26,7 @@ type OpaquePacket struct {
 
 func (op *OpaquePacket) parse(r io.Reader) (err error) {
 	op.Contents, err = io.ReadAll(r)
-	return err
+	return
 }
 
 // Serialize marshals the packet to a writer in its original form, including
@@ -36,7 +36,7 @@ func (op *OpaquePacket) Serialize(w io.Writer) (err error) {
 	if err == nil {
 		_, err = w.Write(op.Contents)
 	}
-	return err
+	return
 }
 
 // Parse attempts to parse the opaque contents into a structure supported by
@@ -54,7 +54,7 @@ func (op *OpaquePacket) Parse() (p Packet, err error) {
 		op.Reason = err
 		p = op
 	}
-	return p, err
+	return
 }
 
 // OpaqueReader reads OpaquePackets from an io.Reader.
@@ -70,14 +70,14 @@ func NewOpaqueReader(r io.Reader) *OpaqueReader {
 func (or *OpaqueReader) Next() (op *OpaquePacket, err error) {
 	tag, _, contents, err := readHeader(or.r)
 	if err != nil {
-		return op, err
+		return
 	}
 	op = &OpaquePacket{Tag: uint8(tag), Reason: err}
 	err = op.parse(contents)
 	if err != nil {
 		consumeAll(contents)
 	}
-	return op, err
+	return
 }
 
 // OpaqueSubpacket represents an unparsed OpenPGP subpacket,
@@ -102,7 +102,7 @@ func OpaqueSubpackets(contents []byte) (result []*OpaqueSubpacket, err error) {
 		result = append(result, subPacket)
 		contents = contents[subHeaderLen+len(subPacket.Contents):]
 	}
-	return result, err
+	return
 }
 
 func nextSubpacket(contents []byte) (subHeaderLen int, subPacket *OpaqueSubpacket, err error) {
@@ -143,10 +143,10 @@ func nextSubpacket(contents []byte) (subHeaderLen int, subPacket *OpaqueSubpacke
 	}
 	subPacket.SubType = contents[0]
 	subPacket.Contents = contents[1:subLen]
-	return subHeaderLen, subPacket, err
+	return
 Truncated:
 	err = errors.StructuralError("subpacket truncated")
-	return subHeaderLen, subPacket, err
+	return
 }
 
 func (osp *OpaqueSubpacket) Serialize(w io.Writer) (err error) {
@@ -154,8 +154,8 @@ func (osp *OpaqueSubpacket) Serialize(w io.Writer) (err error) {
 	n := serializeSubpacketLength(buf, len(osp.Contents)+1)
 	buf[n] = osp.SubType
 	if _, err = w.Write(buf[:n+1]); err != nil {
-		return err
+		return
 	}
 	_, err = w.Write(osp.Contents)
-	return err
+	return
 }

@@ -12,6 +12,7 @@ import (
 func TestHMAC(t *testing.T) {
 	// MacTestVector
 	type MacTestVector struct {
+
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -36,6 +37,7 @@ func TestHMAC(t *testing.T) {
 
 	// MacTestGroup
 	type MacTestGroup struct {
+
 		// the keySize in bits
 		KeySize int `json:"keySize,omitempty"`
 
@@ -46,10 +48,12 @@ func TestHMAC(t *testing.T) {
 	}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct{}
+	type Notes struct {
+	}
 
 	// Root
 	type Root struct {
+
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

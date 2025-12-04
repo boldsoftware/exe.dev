@@ -21,6 +21,10 @@
 //
 // Note that XTS is usually not appropriate for any use besides disk encryption.
 // Most users should use an AEAD mode like GCM (from crypto/cipher.NewGCM) instead.
+//
+// The xts package is [frozen] and is not accepting new features.
+//
+// [frozen]: https://go.dev/wiki/Frozen
 package xts
 
 import (
@@ -54,7 +58,7 @@ var tweakPool = sync.Pool{
 func NewCipher(cipherFunc func([]byte) (cipher.Block, error), key []byte) (c *Cipher, err error) {
 	c = new(Cipher)
 	if c.k1, err = cipherFunc(key[:len(key)/2]); err != nil {
-		return c, err
+		return
 	}
 	c.k2, err = cipherFunc(key[len(key)/2:])
 
@@ -62,7 +66,7 @@ func NewCipher(cipherFunc func([]byte) (cipher.Block, error), key []byte) (c *Ci
 		err = errors.New("xts: cipher does not have a block size of 16")
 	}
 
-	return c, err
+	return
 }
 
 // Encrypt encrypts a sector of plaintext and puts the result into ciphertext.

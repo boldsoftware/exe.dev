@@ -269,14 +269,12 @@ func NewCertSigner(cert *Certificate, signer Signer) (Signer, error) {
 	case MultiAlgorithmSigner:
 		return &multiAlgorithmSigner{
 			AlgorithmSigner: &algorithmOpenSSHCertSigner{
-				&openSSHCertSigner{cert, signer}, s,
-			},
+				&openSSHCertSigner{cert, signer}, s},
 			supportedAlgorithms: s.Algorithms(),
 		}, nil
 	case AlgorithmSigner:
 		return &algorithmOpenSSHCertSigner{
-			&openSSHCertSigner{cert, signer}, s,
-		}, nil
+			&openSSHCertSigner{cert, signer}, s}, nil
 	default:
 		return &openSSHCertSigner{cert, signer}, nil
 	}
@@ -592,7 +590,7 @@ func (c *Certificate) Verify(data []byte, sig *Signature) error {
 func parseSignatureBody(in []byte) (out *Signature, rest []byte, ok bool) {
 	format, in, ok := parseString(in)
 	if !ok {
-		return out, rest, ok
+		return
 	}
 
 	out = &Signature{
@@ -600,7 +598,7 @@ func parseSignatureBody(in []byte) (out *Signature, rest []byte, ok bool) {
 	}
 
 	if out.Blob, in, ok = parseString(in); !ok {
-		return out, rest, ok
+		return
 	}
 
 	switch out.Format {
@@ -615,12 +613,12 @@ func parseSignatureBody(in []byte) (out *Signature, rest []byte, ok bool) {
 func parseSignature(in []byte) (out *Signature, rest []byte, ok bool) {
 	sigBytes, rest, ok := parseString(in)
 	if !ok {
-		return out, rest, ok
+		return
 	}
 
 	out, trailing, ok := parseSignatureBody(sigBytes)
 	if !ok || len(trailing) > 0 {
 		return nil, nil, false
 	}
-	return out, rest, ok
+	return
 }

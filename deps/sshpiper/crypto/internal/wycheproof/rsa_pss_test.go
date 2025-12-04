@@ -11,13 +11,16 @@ import (
 
 func TestRsaPss(t *testing.T) {
 	// KeyJwk Public key in JWK format
-	type KeyJwk struct{}
+	type KeyJwk struct {
+	}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct{}
+	type Notes struct {
+	}
 
 	// SignatureTestVector
 	type SignatureTestVector struct {
+
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -39,6 +42,7 @@ func TestRsaPss(t *testing.T) {
 
 	// RsassaPkcs1TestGroup
 	type RsassaPkcs1TestGroup struct {
+
 		// The private exponent
 		D string `json:"d,omitempty"`
 
@@ -74,6 +78,7 @@ func TestRsaPss(t *testing.T) {
 
 	// Root
 	type Root struct {
+
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 
@@ -107,12 +112,12 @@ func TestRsaPss(t *testing.T) {
 	// works deterministically to auto-detect the length when
 	// verifying, so these tests actually pass as they should.
 	filesOverrideToPassZeroSLen := map[string][]int{
-		"rsa_pss_2048_sha1_mgf1_20_test.json":   {46, 47},
-		"rsa_pss_2048_sha256_mgf1_0_test.json":  {67, 68},
-		"rsa_pss_2048_sha256_mgf1_32_test.json": {67, 68},
-		"rsa_pss_3072_sha256_mgf1_32_test.json": {67, 68},
-		"rsa_pss_4096_sha256_mgf1_32_test.json": {67, 68},
-		"rsa_pss_4096_sha512_mgf1_32_test.json": {136, 137},
+		"rsa_pss_2048_sha1_mgf1_20_test.json":   []int{46, 47},
+		"rsa_pss_2048_sha256_mgf1_0_test.json":  []int{67, 68},
+		"rsa_pss_2048_sha256_mgf1_32_test.json": []int{67, 68},
+		"rsa_pss_3072_sha256_mgf1_32_test.json": []int{67, 68},
+		"rsa_pss_4096_sha256_mgf1_32_test.json": []int{67, 68},
+		"rsa_pss_4096_sha512_mgf1_32_test.json": []int{136, 137},
 		// "rsa_pss_misc_test.json": nil,  // TODO: This ones seems to be broken right now, but can enable later on.
 	}
 
@@ -136,7 +141,7 @@ func TestRsaPss(t *testing.T) {
 			}
 			// Run all the tests twice: the first time with the salt length
 			// as PSSSaltLengthAuto, and the second time with the salt length
-			// explictily set to tg.SLen.
+			// explicitly set to tg.SLen.
 			for i := 0; i < 2; i++ {
 				for _, sig := range tg.Tests {
 					h.Reset()

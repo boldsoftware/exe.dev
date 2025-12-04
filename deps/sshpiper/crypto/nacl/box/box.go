@@ -65,11 +65,11 @@ func GenerateKey(rand io.Reader) (publicKey, privateKey *[32]byte, err error) {
 	if err != nil {
 		publicKey = nil
 		privateKey = nil
-		return publicKey, privateKey, err
+		return
 	}
 
 	curve25519.ScalarBaseMult(publicKey, privateKey)
-	return publicKey, privateKey, err
+	return
 }
 
 var zeros [16]byte

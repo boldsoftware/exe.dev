@@ -54,12 +54,13 @@ var piTable = [256]byte{
 }
 
 func expandKey(key []byte, t1 int) [64]uint16 {
+
 	l := make([]byte, 128)
 	copy(l, key)
 
-	t := len(key)
-	t8 := (t1 + 7) / 8
-	tm := byte(255 % uint(1<<(8+uint(t1)-8*uint(t8))))
+	var t = len(key)
+	var t8 = (t1 + 7) / 8
+	var tm = byte(255 % uint(1<<(8+uint(t1)-8*uint(t8))))
 
 	for i := len(key); i < 128; i++ {
 		l[i] = piTable[l[i-1]+l[uint8(i-t)]]
@@ -81,6 +82,7 @@ func expandKey(key []byte, t1 int) [64]uint16 {
 }
 
 func (c *rc2Cipher) Encrypt(dst, src []byte) {
+
 	r0 := binary.LittleEndian.Uint16(src[0:])
 	r1 := binary.LittleEndian.Uint16(src[2:])
 	r2 := binary.LittleEndian.Uint16(src[4:])
@@ -173,6 +175,7 @@ func (c *rc2Cipher) Encrypt(dst, src []byte) {
 }
 
 func (c *rc2Cipher) Decrypt(dst, src []byte) {
+
 	r0 := binary.LittleEndian.Uint16(src[0:])
 	r1 := binary.LittleEndian.Uint16(src[2:])
 	r2 := binary.LittleEndian.Uint16(src[4:])

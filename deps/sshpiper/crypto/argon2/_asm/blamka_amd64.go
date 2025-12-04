@@ -214,28 +214,28 @@ func HALF_ROUND(v0, v1, v2, v3, v4, v5, v6, v7, t0, c40, c48 VecPhysical) {
 }
 
 func LOAD_MSG_0(block GPPhysical, off int) {
-	registers := []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
+	var registers = []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
 	for i, r := range registers {
 		MOVOU(Mem{Base: block}.Offset(8*(off+(i*2))), r)
 	}
 }
 
 func STORE_MSG_0(block GPPhysical, off int) {
-	registers := []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
+	var registers = []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
 	for i, r := range registers {
 		MOVOU(r, Mem{Base: block}.Offset(8*(off+(i*2))))
 	}
 }
 
 func LOAD_MSG_1(block GPPhysical, off int) {
-	registers := []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
+	var registers = []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
 	for i, r := range registers {
 		MOVOU(Mem{Base: block}.Offset(8*off+i*16*8), r)
 	}
 }
 
 func STORE_MSG_1(block GPPhysical, off int) {
-	registers := []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
+	var registers = []VecPhysical{X0, X1, X2, X3, X4, X5, X6, X7}
 	for i, r := range registers {
 		MOVOU(r, Mem{Base: block}.Offset(8*off+i*16*8))
 	}
@@ -274,7 +274,6 @@ func c40_DATA() Mem {
 	DATA(0x08, U64(0x0a09080f0e0d0c0b))
 	return c40_DATA
 }
-
 func c48_DATA() Mem {
 	if c48_DATA_ptr != nil {
 		return *c48_DATA_ptr

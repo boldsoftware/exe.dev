@@ -121,7 +121,7 @@ func pbDecrypt(info decryptable, password []byte) (decrypted []byte, err error) 
 		return nil, ErrDecryption
 	}
 
-	return decrypted, err
+	return
 }
 
 // decryptable abstracts an object that contains ciphertext.

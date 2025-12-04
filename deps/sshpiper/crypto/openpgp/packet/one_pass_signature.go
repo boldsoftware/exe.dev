@@ -7,11 +7,10 @@ package packet
 import (
 	"crypto"
 	"encoding/binary"
-	"io"
-	"strconv"
-
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/s2k"
+	"io"
+	"strconv"
 )
 
 // OnePassSignature represents a one-pass signature packet. See RFC 4880,
@@ -31,7 +30,7 @@ func (ops *OnePassSignature) parse(r io.Reader) (err error) {
 
 	_, err = readFull(r, buf[:])
 	if err != nil {
-		return err
+		return
 	}
 	if buf[0] != onePassSignatureVersion {
 		err = errors.UnsupportedError("one-pass-signature packet version " + strconv.Itoa(int(buf[0])))
@@ -47,7 +46,7 @@ func (ops *OnePassSignature) parse(r io.Reader) (err error) {
 	ops.PubKeyAlgo = PublicKeyAlgorithm(buf[3])
 	ops.KeyId = binary.BigEndian.Uint64(buf[4:12])
 	ops.IsLast = buf[12] != 0
-	return err
+	return
 }
 
 // Serialize marshals the given OnePassSignature to w.

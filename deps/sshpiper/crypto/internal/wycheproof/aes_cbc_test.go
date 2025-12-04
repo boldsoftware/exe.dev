@@ -15,6 +15,7 @@ import (
 func TestAesCbc(t *testing.T) {
 	// IndCpaTestVector
 	type IndCpaTestVector struct {
+
 		// A brief description of the test case
 		Comment string `json:"comment,omitempty"`
 
@@ -41,10 +42,12 @@ func TestAesCbc(t *testing.T) {
 	}
 
 	// Notes a description of the labels used in the test vectors
-	type Notes struct{}
+	type Notes struct {
+	}
 
 	// IndCpaTestGroup
 	type IndCpaTestGroup struct {
+
 		// the IV size in bits
 		IvSize int `json:"ivSize,omitempty"`
 
@@ -59,6 +62,7 @@ func TestAesCbc(t *testing.T) {
 
 	// Root
 	type Root struct {
+
 		// the primitive tested in the test file
 		Algorithm string `json:"algorithm,omitempty"`
 

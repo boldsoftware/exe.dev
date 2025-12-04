@@ -30,7 +30,7 @@ var SignatureType = "PGP SIGNATURE"
 func readArmored(r io.Reader, expectedType string) (body io.Reader, err error) {
 	block, err := armor.Decode(r)
 	if err != nil {
-		return body, err
+		return
 	}
 
 	if block.Type != expectedType {
@@ -256,7 +256,7 @@ FindLiteralData:
 			h, wrappedHash, err = hashForSignature(p.Hash, p.SigType)
 			if err != nil {
 				md = nil
-				return md, err
+				return
 			}
 
 			md.IsSigned = true
@@ -318,7 +318,7 @@ func (cr checkReader) Read(buf []byte) (n int, err error) {
 			err = mdcErr
 		}
 	}
-	return n, err
+	return
 }
 
 // signatureCheckReader wraps an io.Reader from a LiteralData packet and hashes
@@ -337,7 +337,7 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 		var p packet.Packet
 		p, scr.md.SignatureError = scr.packets.Next()
 		if scr.md.SignatureError != nil {
-			return n, err
+			return
 		}
 
 		var ok bool
@@ -347,7 +347,7 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 			scr.md.SignatureError = scr.md.SignedBy.PublicKey.VerifySignatureV3(scr.h, scr.md.SignatureV3)
 		} else {
 			scr.md.SignatureError = errors.StructuralError("LiteralData not followed by Signature")
-			return n, err
+			return
 		}
 
 		// The SymmetricallyEncrypted packet, if any, might have an
@@ -360,7 +360,7 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 			}
 		}
 	}
-	return n, err
+	return
 }
 
 // CheckDetachedSignature takes a signed file and a detached signature and
@@ -441,7 +441,7 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 func CheckArmoredDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signer *Entity, err error) {
 	body, err := readArmored(signature, SignatureType)
 	if err != nil {
-		return signer, err
+		return
 	}
 
 	return CheckDetachedSignature(keyring, signed, body)

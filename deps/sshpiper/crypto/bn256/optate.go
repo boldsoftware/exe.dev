@@ -79,7 +79,7 @@ func lineFunctionAdd(r, p *twistPoint, q *curvePoint, r2 *gfP2, pool *bnPool) (a
 	t.Put(pool)
 	t2.Put(pool)
 
-	return a, b, c, rOut
+	return
 }
 
 func lineFunctionDouble(r *twistPoint, q *curvePoint, pool *bnPool) (a, b, c *gfP2, rOut *twistPoint) {
@@ -148,7 +148,7 @@ func lineFunctionDouble(r *twistPoint, q *curvePoint, pool *bnPool) (a, b, c *gf
 	G.Put(pool)
 	t.Put(pool)
 
-	return a, b, c, rOut
+	return
 }
 
 func mulLine(ret *gfP12, a, b, c *gfP2, pool *bnPool) {

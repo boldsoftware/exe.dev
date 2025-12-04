@@ -219,7 +219,7 @@ func (d *digest) Write(p []byte) (n int, err error) {
 		remaining := BlockSize - d.offset
 		if n <= remaining {
 			d.offset += copy(d.block[d.offset:], p)
-			return n, err
+			return
 		}
 		copy(d.block[d.offset:], p[:remaining])
 		hashBlocks(&d.h, &d.c, 0, d.block[:])
@@ -240,7 +240,7 @@ func (d *digest) Write(p []byte) (n int, err error) {
 		d.offset += copy(d.block[:], p)
 	}
 
-	return n, err
+	return
 }
 
 func (d *digest) Sum(sum []byte) []byte {

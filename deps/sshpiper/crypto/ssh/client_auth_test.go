@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -1135,7 +1136,7 @@ func TestPickSignatureAlgorithm(t *testing.T) {
 				t.Fatalf("error generating cert signer: %v", err)
 			}
 			// The signer supports the public key algorithm and the
-			// public key format is a certificate type so the cerificate
+			// public key format is a certificate type so the certificate
 			// algorithm matching the key format must be returned
 			_, algo, err = pickSignatureAlgorithm(certSigner, c.extensions)
 			if err != nil {
@@ -1214,7 +1215,7 @@ func (cb configurablePublicKeyCallback) auth(session []byte, user string, c pack
 	if err != nil {
 		return authFailure, nil, err
 	}
-	if success == authSuccess || !contains(methods, cb.method()) {
+	if success == authSuccess || !slices.Contains(methods, cb.method()) {
 		return success, methods, err
 	}
 
@@ -1311,15 +1312,13 @@ func TestKeyboardInteractiveAuthEarlyFail(t *testing.T) {
 	serverConfig := &ServerConfig{
 		MaxAuthTries: maxAuthTries,
 		KeyboardInteractiveCallback: func(c ConnMetadata,
-			client KeyboardInteractiveChallenge,
-		) (*Permissions, error) {
+			client KeyboardInteractiveChallenge) (*Permissions, error) {
 			// Fail keyboard-interactive authentication early before
 			// any prompt is sent to client.
 			return nil, errors.New("keyboard-interactive auth failed")
 		},
 		PasswordCallback: func(c ConnMetadata,
-			pass []byte,
-		) (*Permissions, error) {
+			pass []byte) (*Permissions, error) {
 			if string(pass) == clientPassword {
 				return nil, nil
 			}
@@ -1358,14 +1357,12 @@ func TestKeyboardInteractiveAuthEarlyFail(t *testing.T) {
 		Auth: []AuthMethod{
 			RetryableAuthMethod(KeyboardInteractive(func(name,
 				instruction string, questions []string,
-				echos []bool,
-			) ([]string, error) {
+				echos []bool) ([]string, error) {
 				t.Errorf("unexpected call to KeyboardInteractive()")
 				return []string{clientPassword}, nil
 			}), maxAuthTries),
 			RetryableAuthMethod(PasswordCallback(func() (secret string,
-				err error,
-			) {
+				err error) {
 				t.Logf("PasswordCallback()")
 				passwordCallbackCalled = true
 				return clientPassword, nil

@@ -164,10 +164,8 @@ func (db *hostKeyDB) IsRevoked(key *ssh.Certificate) bool {
 	return ok
 }
 
-const (
-	markerCert    = "@cert-authority"
-	markerRevoked = "@revoked"
-)
+const markerCert = "@cert-authority"
+const markerRevoked = "@revoked"
 
 func nextWord(line []byte) (string, []byte) {
 	i := bytes.IndexAny(line, "\t ")
@@ -423,20 +421,26 @@ func New(files ...string) (ssh.HostKeyCallback, error) {
 	return certChecker.CheckHostKey, nil
 }
 
-// Normalize normalizes an address into the form used in known_hosts
+// Normalize normalizes an address into the form used in known_hosts. Supports
+// IPv4, hostnames, bracketed IPv6. Any other non-standard formats are returned
+// with minimal transformation.
 func Normalize(address string) string {
+	const defaultSSHPort = "22"
+
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		host = address
-		port = "22"
+		port = defaultSSHPort
 	}
-	entry := host
-	if port != "22" {
-		entry = "[" + entry + "]:" + port
-	} else if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		entry = "[" + entry + "]"
+
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
 	}
-	return entry
+
+	if port == defaultSSHPort {
+		return host
+	}
+	return "[" + host + "]:" + port
 }
 
 // Line returns a line to add append to the known_hosts files.
@@ -467,27 +471,26 @@ func HashHostname(hostname string) string {
 func decodeHash(encoded string) (hashType string, salt, hash []byte, err error) {
 	if len(encoded) == 0 || encoded[0] != '|' {
 		err = errors.New("knownhosts: hashed host must start with '|'")
-		return hashType, salt, hash, err
+		return
 	}
 	components := strings.Split(encoded, "|")
 	if len(components) != 4 {
 		err = fmt.Errorf("knownhosts: got %d components, want 3", len(components))
-		return hashType, salt, hash, err
+		return
 	}
 
 	hashType = components[1]
 	if salt, err = base64.StdEncoding.DecodeString(components[2]); err != nil {
-		return hashType, salt, hash, err
+		return
 	}
 	if hash, err = base64.StdEncoding.DecodeString(components[3]); err != nil {
-		return hashType, salt, hash, err
+		return
 	}
-	return hashType, salt, hash, err
+	return
 }
 
 func encodeHash(typ string, salt []byte, hash []byte) string {
-	return strings.Join([]string{
-		"",
+	return strings.Join([]string{"",
 		typ,
 		base64.StdEncoding.EncodeToString(salt),
 		base64.StdEncoding.EncodeToString(hash),

@@ -53,7 +53,7 @@ func (c *Config) hash() crypto.Hash {
 
 func (c *Config) encodedCount() uint8 {
 	if c == nil || c.S2KCount == 0 {
-		return 96 // The common case. Correspoding to 65536
+		return 96 // The common case. Corresponding to 65536
 	}
 
 	i := c.S2KCount
@@ -164,7 +164,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 
 	_, err = io.ReadFull(r, buf[:2])
 	if err != nil {
-		return f, err
+		return
 	}
 
 	hash, ok := HashIdToHash(buf[1])
@@ -185,7 +185,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	case 1:
 		_, err = io.ReadFull(r, buf[:8])
 		if err != nil {
-			return f, err
+			return
 		}
 		f := func(out, in []byte) {
 			Salted(out, h, in, buf[:8])
@@ -194,7 +194,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	case 3:
 		_, err = io.ReadFull(r, buf[:9])
 		if err != nil {
-			return f, err
+			return
 		}
 		count := decodeCount(buf[8])
 		f := func(out, in []byte) {

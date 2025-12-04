@@ -218,10 +218,8 @@ type constrainExtensionAgentMsg struct {
 }
 
 // See [PROTOCOL.agent], section 4.7
-const (
-	agentExtension        = 27
-	agentExtensionFailure = 28
-)
+const agentExtension = 27
+const agentExtensionFailure = 28
 
 // ErrExtensionUnsupported indicates that an extension defined in
 // [PROTOCOL.agent] section 4.7 is unsupported by the agent. Specifically this
@@ -432,8 +430,9 @@ func (c *client) List() ([]*Key, error) {
 		return keys, nil
 	case *failureAgentMsg:
 		return nil, errors.New("agent: failed to list keys")
+	default:
+		return nil, fmt.Errorf("agent: failed to list keys, unexpected message type %T", msg)
 	}
-	panic("unreachable")
 }
 
 // Sign has the agent sign the data using a protocol 2 key as defined
@@ -464,8 +463,9 @@ func (c *client) SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureFl
 		return &sig, nil
 	case *failureAgentMsg:
 		return nil, errors.New("agent: failed to sign challenge")
+	default:
+		return nil, fmt.Errorf("agent: failed to sign challenge, unexpected message type %T", msg)
 	}
-	panic("unreachable")
 }
 
 // unmarshal parses an agent message in packet, returning the parsed

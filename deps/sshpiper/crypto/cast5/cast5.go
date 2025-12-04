@@ -18,10 +18,8 @@ import (
 	"math/bits"
 )
 
-const (
-	BlockSize = 8
-	KeySize   = 16
-)
+const BlockSize = 8
+const KeySize = 16
 
 type Cipher struct {
 	masking [16]uint32
@@ -35,7 +33,7 @@ func NewCipher(key []byte) (c *Cipher, err error) {
 
 	c = new(Cipher)
 	c.keySchedule(key)
-	return c, err
+	return
 }
 
 func (c *Cipher) BlockSize() int {
@@ -110,10 +108,8 @@ func (c *Cipher) Decrypt(dst, src []byte) {
 	dst[7] = uint8(l)
 }
 
-type (
-	keyScheduleA [4][7]uint8
-	keyScheduleB [4][5]uint8
-)
+type keyScheduleA [4][7]uint8
+type keyScheduleB [4][5]uint8
 
 // keyScheduleRound contains the magic values for a round of the key schedule.
 // The keyScheduleA deals with the lines like:
@@ -134,10 +130,8 @@ type (
 // elements are the S-box indexes. They use the same form as in keyScheduleA,
 // above.
 
-type (
-	keyScheduleRound struct{}
-	keySchedule      []keyScheduleRound
-)
+type keyScheduleRound struct{}
+type keySchedule []keyScheduleRound
 
 var schedule = []struct {
 	a keyScheduleA

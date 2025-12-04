@@ -50,11 +50,11 @@ func ArmoredDetachSignText(w io.Writer, signer *Entity, message io.Reader, confi
 func armoredDetachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.SignatureType, config *packet.Config) (err error) {
 	out, err := armor.Encode(w, SignatureType, nil)
 	if err != nil {
-		return err
+		return
 	}
 	err = detachSign(out, signer, message, sigType, config)
 	if err != nil {
-		return err
+		return
 	}
 	return out.Close()
 }
@@ -76,13 +76,13 @@ func detachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.S
 
 	h, wrappedHash, err := hashForSignature(sig.Hash, sig.SigType)
 	if err != nil {
-		return err
+		return
 	}
 	io.Copy(wrappedHash, message)
 
 	err = sig.Sign(h, signer.PrivateKey, config)
 	if err != nil {
-		return err
+		return
 	}
 
 	return sig.Serialize(w)
@@ -113,11 +113,11 @@ func SymmetricallyEncrypt(ciphertext io.Writer, passphrase []byte, hints *FileHi
 
 	key, err := packet.SerializeSymmetricKeyEncrypted(ciphertext, passphrase, config)
 	if err != nil {
-		return plaintext, err
+		return
 	}
 	w, err := packet.SerializeSymmetricallyEncrypted(ciphertext, config.Cipher(), key, config)
 	if err != nil {
-		return plaintext, err
+		return
 	}
 
 	literaldata := w
@@ -128,7 +128,7 @@ func SymmetricallyEncrypt(ciphertext io.Writer, passphrase []byte, hints *FileHi
 		}
 		literaldata, err = packet.SerializeCompressed(w, algo, compConfig)
 		if err != nil {
-			return plaintext, err
+			return
 		}
 	}
 
@@ -235,6 +235,7 @@ func writeAndSign(payload io.WriteCloser, candidateHashes []uint8, signed *Entit
 		// data then we need to stop literalData from closing
 		// encryptedData.
 		w = noOpCloser{w}
+
 	}
 	var epochSeconds uint32
 	if !hints.ModTime.IsZero() {
@@ -331,7 +332,7 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 
 	payload, err := packet.SerializeSymmetricallyEncrypted(ciphertext, cipher, symKey, config)
 	if err != nil {
-		return plaintext, err
+		return
 	}
 
 	return writeAndSign(payload, candidateHashes, signed, hints, config)

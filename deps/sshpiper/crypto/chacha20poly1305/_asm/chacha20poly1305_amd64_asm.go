@@ -350,7 +350,8 @@ func shiftD3Right() {
 
 // Hack: ROL must be a #define macro as it is referenced by other macros
 func defineROL() {
-	definition := `#define ROL(N, R, T) \
+	definition :=
+		`#define ROL(N, R, T) \
 		MOVO R, T; \
 		PSLLL $(N), T; \
 		PSRLL $(32-(N)), R; \
@@ -369,7 +370,8 @@ func ROL(N uint64, R, T VecPhysical) {
 //
 // ROL16(R, T) definition depends on a compiler flag that specifies amd64 architectural level.
 func defineROL16() {
-	definition := `#ifdef GOAMD64_v2
+	definition :=
+		`#ifdef GOAMD64_v2
 		#define ROL16(R, T) PSHUFB ·rol16<>(SB), R
 	#else
 		#define ROL16(R, T) ROL(16, R, T)
@@ -390,7 +392,8 @@ func ROL16(R, T VecPhysical) {
 //
 // ROL8(R, T) definition depends on a compiler flag that specifies amd64 architectural level.
 func defineROL8() {
-	definition := `#ifdef GOAMD64_v2
+	definition :=
+		`#ifdef GOAMD64_v2
 		#define ROL8(R, T) PSHUFB ·rol8<>(SB), R
 	#else
 		#define ROL8(R, T) ROL(8, R, T)
@@ -638,7 +641,7 @@ func hashADDone() {
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-// Implements the following function fignature:
+// Implements the following function signature:
 //
 //	func chacha20Poly1305Open(dst []byte, key []uint32, src []byte, ad []byte) bool
 func chacha20Poly1305Open() {
@@ -2964,7 +2967,7 @@ func openAVX2Tail512HashEnd() {
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-// Implements the following function fignature:
+// Implements the following function signature:
 //
 //	func chacha20Poly1305Seal(dst []byte, key []uint32, src, ad []byte)
 func chacha20Poly1305Seal() {
@@ -5277,8 +5280,9 @@ func sealAVX2Tail512LoopB() {
 
 // ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~DATA SECTION~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
 
-// Pointers for memoizing DATA section symbols
-var chacha20Constants_DATA_ptr,
+var (
+	// Pointers for memoizing DATA section symbols
+	chacha20Constants_DATA_ptr,
 	rol16_DATA_ptr,
 	rol8_DATA_ptr,
 	sseIncMask_DATA_ptr,
@@ -5286,6 +5290,7 @@ var chacha20Constants_DATA_ptr,
 	avx2InitMask_DATA_ptr,
 	polyClampMask_DATA_ptr,
 	andMask_DATA_ptr *Mem
+)
 
 var nothingUpMySleeve = [8]uint32{
 	0x61707865,
@@ -5504,7 +5509,7 @@ func removePeskyUnicodeDot(internalFunctions []string, target string) {
 		content = strings.ReplaceAll(content, from, to)
 	}
 
-	err = os.WriteFile(target, []byte(content), 0o644)
+	err = os.WriteFile(target, []byte(content), 0644)
 	if err != nil {
 		panic(err)
 	}

@@ -26,10 +26,8 @@ import (
 // BlockSize is the constant block size of Twofish.
 const BlockSize = 16
 
-const (
-	mdsPolynomial = 0x169 // x^8 + x^6 + x^5 + x^3 + 1, see [TWOFISH] 4.2
-	rsPolynomial  = 0x14d // x^8 + x^6 + x^3 + x^2 + 1, see [TWOFISH] 4.3
-)
+const mdsPolynomial = 0x169 // x^8 + x^6 + x^5 + x^3 + 1, see [TWOFISH] 4.2
+const rsPolynomial = 0x14d  // x^8 + x^6 + x^3 + x^2 + 1, see [TWOFISH] 4.3
 
 // A Cipher is an instance of Twofish encryption using a particular key.
 type Cipher struct {

@@ -84,7 +84,7 @@ func TestRandom(t *testing.T) {
 	// Some random tests to verify Open(Seal) == Plaintext
 	f := func(t *testing.T, nonceSize int) {
 		for i := 0; i < 256; i++ {
-			nonce := make([]byte, nonceSize)
+			var nonce = make([]byte, nonceSize)
 			var key [32]byte
 
 			al := mathrand.Intn(128)
@@ -153,12 +153,12 @@ func TestRandom(t *testing.T) {
 	t.Run("X", func(t *testing.T) { f(t, NonceSizeX) })
 }
 
-func benchamarkChaCha20Poly1305Seal(b *testing.B, buf []byte, nonceSize int) {
+func benchmarkChaCha20Poly1305Seal(b *testing.B, buf []byte, nonceSize int) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(buf)))
 
 	var key [32]byte
-	nonce := make([]byte, nonceSize)
+	var nonce = make([]byte, nonceSize)
 	var ad [13]byte
 	var out []byte
 
@@ -176,12 +176,12 @@ func benchamarkChaCha20Poly1305Seal(b *testing.B, buf []byte, nonceSize int) {
 	}
 }
 
-func benchamarkChaCha20Poly1305Open(b *testing.B, buf []byte, nonceSize int) {
+func benchmarkChaCha20Poly1305Open(b *testing.B, buf []byte, nonceSize int) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(buf)))
 
 	var key [32]byte
-	nonce := make([]byte, nonceSize)
+	var nonce = make([]byte, nonceSize)
 	var ad [13]byte
 	var ct []byte
 	var out []byte
@@ -204,17 +204,17 @@ func benchamarkChaCha20Poly1305Open(b *testing.B, buf []byte, nonceSize int) {
 func BenchmarkChacha20Poly1305(b *testing.B) {
 	for _, length := range []int{64, 1350, 8 * 1024} {
 		b.Run("Open-"+strconv.Itoa(length), func(b *testing.B) {
-			benchamarkChaCha20Poly1305Open(b, make([]byte, length), NonceSize)
+			benchmarkChaCha20Poly1305Open(b, make([]byte, length), NonceSize)
 		})
 		b.Run("Seal-"+strconv.Itoa(length), func(b *testing.B) {
-			benchamarkChaCha20Poly1305Seal(b, make([]byte, length), NonceSize)
+			benchmarkChaCha20Poly1305Seal(b, make([]byte, length), NonceSize)
 		})
 
 		b.Run("Open-"+strconv.Itoa(length)+"-X", func(b *testing.B) {
-			benchamarkChaCha20Poly1305Open(b, make([]byte, length), NonceSizeX)
+			benchmarkChaCha20Poly1305Open(b, make([]byte, length), NonceSizeX)
 		})
 		b.Run("Seal-"+strconv.Itoa(length)+"-X", func(b *testing.B) {
-			benchamarkChaCha20Poly1305Seal(b, make([]byte, length), NonceSizeX)
+			benchmarkChaCha20Poly1305Seal(b, make([]byte, length), NonceSizeX)
 		})
 	}
 }

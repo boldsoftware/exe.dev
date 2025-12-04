@@ -36,24 +36,24 @@ func (sig *SignatureV3) parse(r io.Reader) (err error) {
 	// RFC 4880, section 5.2.2
 	var buf [8]byte
 	if _, err = readFull(r, buf[:1]); err != nil {
-		return err
+		return
 	}
 	if buf[0] < 2 || buf[0] > 3 {
 		err = errors.UnsupportedError("signature packet version " + strconv.Itoa(int(buf[0])))
-		return err
+		return
 	}
 	if _, err = readFull(r, buf[:1]); err != nil {
-		return err
+		return
 	}
 	if buf[0] != 5 {
 		err = errors.UnsupportedError(
 			"invalid hashed material length " + strconv.Itoa(int(buf[0])))
-		return err
+		return
 	}
 
 	// Read hashed material: signature type + creation time
 	if _, err = readFull(r, buf[:5]); err != nil {
-		return err
+		return
 	}
 	sig.SigType = SignatureType(buf[0])
 	t := binary.BigEndian.Uint32(buf[1:5])
@@ -61,20 +61,20 @@ func (sig *SignatureV3) parse(r io.Reader) (err error) {
 
 	// Eight-octet Key ID of signer.
 	if _, err = readFull(r, buf[:8]); err != nil {
-		return err
+		return
 	}
 	sig.IssuerKeyId = binary.BigEndian.Uint64(buf[:])
 
 	// Public-key and hash algorithm
 	if _, err = readFull(r, buf[:2]); err != nil {
-		return err
+		return
 	}
 	sig.PubKeyAlgo = PublicKeyAlgorithm(buf[0])
 	switch sig.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly, PubKeyAlgoDSA:
 	default:
 		err = errors.UnsupportedError("public key algorithm " + strconv.Itoa(int(sig.PubKeyAlgo)))
-		return err
+		return
 	}
 	var ok bool
 	if sig.Hash, ok = s2k.HashIdToHash(buf[1]); !ok {
@@ -83,7 +83,7 @@ func (sig *SignatureV3) parse(r io.Reader) (err error) {
 
 	// Two-octet field holding left 16 bits of signed hash value.
 	if _, err = readFull(r, sig.HashTag[:2]); err != nil {
-		return err
+		return
 	}
 
 	switch sig.PubKeyAlgo {
@@ -91,13 +91,13 @@ func (sig *SignatureV3) parse(r io.Reader) (err error) {
 		sig.RSASignature.bytes, sig.RSASignature.bitLength, err = readMPI(r)
 	case PubKeyAlgoDSA:
 		if sig.DSASigR.bytes, sig.DSASigR.bitLength, err = readMPI(r); err != nil {
-			return err
+			return
 		}
 		sig.DSASigS.bytes, sig.DSASigS.bitLength, err = readMPI(r)
 	default:
 		panic("unreachable")
 	}
-	return err
+	return
 }
 
 // Serialize marshals sig to w. Sign, SignUserId or SignKey must have been
@@ -109,13 +109,13 @@ func (sig *SignatureV3) Serialize(w io.Writer) (err error) {
 	buf[0] = byte(sig.SigType)
 	binary.BigEndian.PutUint32(buf[1:5], uint32(sig.CreationTime.Unix()))
 	if _, err = w.Write(buf[:5]); err != nil {
-		return err
+		return
 	}
 
 	// Write the issuer long key ID
 	binary.BigEndian.PutUint64(buf[:8], sig.IssuerKeyId)
 	if _, err = w.Write(buf[:8]); err != nil {
-		return err
+		return
 	}
 
 	// Write public key algorithm, hash ID, and hash value
@@ -127,7 +127,7 @@ func (sig *SignatureV3) Serialize(w io.Writer) (err error) {
 	buf[1] = hashId
 	copy(buf[2:4], sig.HashTag[:])
 	if _, err = w.Write(buf[:4]); err != nil {
-		return err
+		return
 	}
 
 	if sig.RSASignature.bytes == nil && sig.DSASigR.bytes == nil {
@@ -142,5 +142,5 @@ func (sig *SignatureV3) Serialize(w io.Writer) (err error) {
 	default:
 		panic("impossible")
 	}
-	return err
+	return
 }

@@ -8,10 +8,9 @@ import (
 	"compress/bzip2"
 	"compress/flate"
 	"compress/zlib"
+	"golang.org/x/crypto/openpgp/errors"
 	"io"
 	"strconv"
-
-	"golang.org/x/crypto/openpgp/errors"
 )
 
 // Compressed represents a compressed OpenPGP packet. The decompressed contents
@@ -91,12 +90,12 @@ func (cwc compressedWriteCloser) Close() (err error) {
 func SerializeCompressed(w io.WriteCloser, algo CompressionAlgo, cc *CompressionConfig) (literaldata io.WriteCloser, err error) {
 	compressed, err := serializeStreamHeader(w, packetTypeCompressed)
 	if err != nil {
-		return literaldata, err
+		return
 	}
 
 	_, err = compressed.Write([]byte{uint8(algo)})
 	if err != nil {
-		return literaldata, err
+		return
 	}
 
 	level := DefaultCompression
@@ -115,10 +114,10 @@ func SerializeCompressed(w io.WriteCloser, algo CompressionAlgo, cc *Compression
 		err = errors.UnsupportedError("Unsupported compression algorithm: " + s)
 	}
 	if err != nil {
-		return literaldata, err
+		return
 	}
 
 	literaldata = compressedWriteCloser{compressed, compressor}
 
-	return literaldata, err
+	return
 }

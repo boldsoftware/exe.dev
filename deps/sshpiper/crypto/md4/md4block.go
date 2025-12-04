@@ -10,16 +10,12 @@ package md4
 
 import "math/bits"
 
-var (
-	shift1 = []int{3, 7, 11, 19}
-	shift2 = []int{3, 5, 9, 13}
-	shift3 = []int{3, 9, 11, 15}
-)
+var shift1 = []int{3, 7, 11, 19}
+var shift2 = []int{3, 5, 9, 13}
+var shift3 = []int{3, 9, 11, 15}
 
-var (
-	xIndex2 = []uint{0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15}
-	xIndex3 = []uint{0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15}
-)
+var xIndex2 = []uint{0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15}
+var xIndex3 = []uint{0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15}
 
 func _Block(dig *digest, p []byte) int {
 	a := dig.s[0]

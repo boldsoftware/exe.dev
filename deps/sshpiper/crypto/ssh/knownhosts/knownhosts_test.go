@@ -14,23 +14,18 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const (
-	edKeyStr          = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBAarftlLeoyf+v+nVchEZII/vna2PCV8FaX4vsF5BX"
-	alternateEdKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIXffBYeYL+WVzVru8npl5JHt2cjlr4ornFTWzoij9sx"
-	ecKeyStr          = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNLCu01+wpXe3xB5olXCN4SqU2rQu0qjSRKJO4Bg+JRCPU+ENcgdA5srTU8xYDz/GEa4dzK5ldPw4J/gZgSXCMs="
-)
+const edKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBAarftlLeoyf+v+nVchEZII/vna2PCV8FaX4vsF5BX"
+const alternateEdKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIXffBYeYL+WVzVru8npl5JHt2cjlr4ornFTWzoij9sx"
+const ecKeyStr = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNLCu01+wpXe3xB5olXCN4SqU2rQu0qjSRKJO4Bg+JRCPU+ENcgdA5srTU8xYDz/GEa4dzK5ldPw4J/gZgSXCMs="
 
-var (
-	ecKey, alternateEdKey, edKey ssh.PublicKey
-	testAddr                     = &net.TCPAddr{
-		IP:   net.IP{198, 41, 30, 196},
-		Port: 22,
-	}
-)
+var ecKey, alternateEdKey, edKey ssh.PublicKey
+var testAddr = &net.TCPAddr{
+	IP:   net.IP{198, 41, 30, 196},
+	Port: 22,
+}
 
 var testAddr6 = &net.TCPAddr{
-	IP: net.IP{
-		198, 41, 30, 196,
+	IP: net.IP{198, 41, 30, 196,
 		1, 2, 3, 4,
 		1, 2, 3, 4,
 		1, 2, 3, 4,
@@ -191,7 +186,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestHostNamePrecedence(t *testing.T) {
-	evilAddr := &net.TCPAddr{
+	var evilAddr = &net.TCPAddr{
 		IP:   net.IP{66, 66, 66, 66},
 		Port: 22,
 	}
@@ -241,7 +236,7 @@ func TestLine(t *testing.T) {
 		"server.org":                             "server.org " + edKeyStr,
 		"server.org:22":                          "server.org " + edKeyStr,
 		"server.org:23":                          "[server.org]:23 " + edKeyStr,
-		"[c629:1ec4:102:304:102:304:102:304]:22": "[c629:1ec4:102:304:102:304:102:304] " + edKeyStr,
+		"[c629:1ec4:102:304:102:304:102:304]:22": "c629:1ec4:102:304:102:304:102:304 " + edKeyStr,
 		"[c629:1ec4:102:304:102:304:102:304]:23": "[c629:1ec4:102:304:102:304:102:304]:23 " + edKeyStr,
 	} {
 		if got := Line([]string{in}, edKey); got != want {
@@ -315,14 +310,25 @@ func testHostHash(t *testing.T, hostname, encoded string) {
 
 func TestNormalize(t *testing.T) {
 	for in, want := range map[string]string{
-		"127.0.0.1:22":             "127.0.0.1",
-		"[127.0.0.1]:22":           "127.0.0.1",
-		"[127.0.0.1]:23":           "[127.0.0.1]:23",
-		"127.0.0.1:23":             "[127.0.0.1]:23",
-		"[a.b.c]:22":               "a.b.c",
-		"[abcd:abcd:abcd:abcd]":    "[abcd:abcd:abcd:abcd]",
-		"[abcd:abcd:abcd:abcd]:22": "[abcd:abcd:abcd:abcd]",
-		"[abcd:abcd:abcd:abcd]:23": "[abcd:abcd:abcd:abcd]:23",
+		"127.0.0.1":                 "127.0.0.1",
+		"127.0.0.1:22":              "127.0.0.1",
+		"[127.0.0.1]:22":            "127.0.0.1",
+		"[127.0.0.1]:23":            "[127.0.0.1]:23",
+		"127.0.0.1:23":              "[127.0.0.1]:23",
+		"[a.b.c]:22":                "a.b.c",
+		"[a.b.c]:23":                "[a.b.c]:23",
+		"abcd::abcd:abcd:abcd":      "abcd::abcd:abcd:abcd",
+		"[abcd::abcd:abcd:abcd]":    "abcd::abcd:abcd:abcd",
+		"[abcd::abcd:abcd:abcd]:22": "abcd::abcd:abcd:abcd",
+		"[abcd::abcd:abcd:abcd]:23": "[abcd::abcd:abcd:abcd]:23",
+		"2001:db8::1":               "2001:db8::1",
+		"2001:db8::1:22":            "2001:db8::1:22",
+		"[2001:db8::1]:22":          "2001:db8::1",
+		"2001:db8::1:2200":          "2001:db8::1:2200",
+		"a.b.c.d.com:2200":          "[a.b.c.d.com]:2200",
+		"2001::db8:1":               "2001::db8:1",
+		"2001::db8:1:22":            "2001::db8:1:22",
+		"2001::db8:1:2200":          "2001::db8:1:2200",
 	} {
 		got := Normalize(in)
 		if got != want {

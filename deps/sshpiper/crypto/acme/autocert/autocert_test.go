@@ -274,10 +274,8 @@ func TestGetCertificate(t *testing.T) {
 			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
 				// Make a valid certificate issued after the TLS-ALPN-01
 				// revocation window and cache it.
-				s.IssuerName(pkix.Name{
-					Country:      []string{"US"},
-					Organization: []string{"Let's Encrypt"}, CommonName: "R3",
-				})
+				s.IssuerName(pkix.Name{Country: []string{"US"},
+					Organization: []string{"Let's Encrypt"}, CommonName: "R3"})
 				c := s.Start().LeafCert(exampleDomain, "ECDSA",
 					time.Date(2022, time.January, 26, 12, 0, 0, 0, time.UTC),
 					time.Date(2122, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -296,10 +294,8 @@ func TestGetCertificate(t *testing.T) {
 			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
 				// Make a certificate issued during the TLS-ALPN-01
 				// revocation window and cache it.
-				s.IssuerName(pkix.Name{
-					Country:      []string{"US"},
-					Organization: []string{"Let's Encrypt"}, CommonName: "R3",
-				})
+				s.IssuerName(pkix.Name{Country: []string{"US"},
+					Organization: []string{"Let's Encrypt"}, CommonName: "R3"})
 				c := s.Start().LeafCert(exampleDomain, "ECDSA",
 					time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
 					time.Date(2122, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -565,9 +561,9 @@ func TestHTTPHandlerDefaultFallback(t *testing.T) {
 		{"GET", "http://example.org/foo?a=b", 302, "https://example.org/foo?a=b"},
 		{"GET", "http://example.org:80/foo?a=b", 302, "https://example.org:443/foo?a=b"},
 		{"GET", "http://example.org:80/foo%20bar", 302, "https://example.org:443/foo%20bar"},
-		{"GET", "http://[2602:d1:xxxx::c60a]:1234", 302, "https://[2602:d1:xxxx::c60a]:443/"},
-		{"GET", "http://[2602:d1:xxxx::c60a]", 302, "https://[2602:d1:xxxx::c60a]/"},
-		{"GET", "http://[2602:d1:xxxx::c60a]/foo?a=b", 302, "https://[2602:d1:xxxx::c60a]/foo?a=b"},
+		{"GET", "http://[2602:d1:abcd::c60a]:1234", 302, "https://[2602:d1:abcd::c60a]:443/"},
+		{"GET", "http://[2602:d1:abcd::c60a]", 302, "https://[2602:d1:abcd::c60a]/"},
+		{"GET", "http://[2602:d1:abcd::c60a]/foo?a=b", 302, "https://[2602:d1:abcd::c60a]/foo?a=b"},
 		{"HEAD", "http://example.org", 302, "https://example.org/"},
 		{"HEAD", "http://example.org/foo", 302, "https://example.org/foo"},
 		{"HEAD", "http://example.org/foo/bar/", 302, "https://example.org/foo/bar/"},

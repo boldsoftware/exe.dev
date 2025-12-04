@@ -54,7 +54,7 @@ func (pk *PublicKeyV3) parse(r io.Reader) (err error) {
 	// RFC 4880, section 5.5.2
 	var buf [8]byte
 	if _, err = readFull(r, buf[:]); err != nil {
-		return err
+		return
 	}
 	if buf[0] < 2 || buf[0] > 3 {
 		return errors.UnsupportedError("public key version")
@@ -69,11 +69,11 @@ func (pk *PublicKeyV3) parse(r io.Reader) (err error) {
 		err = errors.UnsupportedError("public key type: " + strconv.Itoa(int(pk.PubKeyAlgo)))
 	}
 	if err != nil {
-		return err
+		return
 	}
 
 	pk.setFingerPrintAndKeyId()
-	return err
+	return
 }
 
 func (pk *PublicKeyV3) setFingerPrintAndKeyId() {
@@ -89,10 +89,10 @@ func (pk *PublicKeyV3) setFingerPrintAndKeyId() {
 // section 5.5.2.
 func (pk *PublicKeyV3) parseRSA(r io.Reader) (err error) {
 	if pk.n.bytes, pk.n.bitLength, err = readMPI(r); err != nil {
-		return err
+		return
 	}
 	if pk.e.bytes, pk.e.bitLength, err = readMPI(r); err != nil {
-		return err
+		return
 	}
 
 	// RFC 4880 Section 12.2 requires the low 8 bytes of the
@@ -102,7 +102,7 @@ func (pk *PublicKeyV3) parseRSA(r io.Reader) (err error) {
 	}
 	if len(pk.e.bytes) > 3 {
 		err = errors.UnsupportedError("large public exponent")
-		return err
+		return
 	}
 	rsa := &rsa.PublicKey{N: new(big.Int).SetBytes(pk.n.bytes)}
 	for i := 0; i < len(pk.e.bytes); i++ {
@@ -110,7 +110,7 @@ func (pk *PublicKeyV3) parseRSA(r io.Reader) (err error) {
 		rsa.E |= int(pk.e.bytes[i])
 	}
 	pk.PublicKey = rsa
-	return err
+	return
 }
 
 // SerializeSignaturePrefix writes the prefix for this public key to the given Writer.
@@ -146,7 +146,7 @@ func (pk *PublicKeyV3) Serialize(w io.Writer) (err error) {
 		packetType = packetTypePublicSubkey
 	}
 	if err = serializeHeader(w, packetType, length); err != nil {
-		return err
+		return
 	}
 	return pk.serializeWithoutHeaders(w)
 }
@@ -170,7 +170,7 @@ func (pk *PublicKeyV3) serializeWithoutHeaders(w io.Writer) (err error) {
 	buf[7] = byte(pk.PubKeyAlgo)
 
 	if _, err = w.Write(buf[:]); err != nil {
-		return err
+		return
 	}
 
 	switch pk.PubKeyAlgo {
@@ -211,7 +211,7 @@ func (pk *PublicKeyV3) VerifySignatureV3(signed hash.Hash, sig *SignatureV3) (er
 		if err = rsa.VerifyPKCS1v15(pk.PublicKey, sig.Hash, hashBytes, sig.RSASignature.bytes); err != nil {
 			return errors.SignatureError("RSA verification failure")
 		}
-		return err
+		return
 	default:
 		// V3 public keys only support RSA.
 		panic("shouldn't happen")
@@ -252,7 +252,7 @@ func userIdSignatureV3Hash(id string, pk signingKey, hfn crypto.Hash) (h hash.Ha
 
 	h.Write([]byte(id))
 
-	return h, err
+	return
 }
 
 // KeyIdString returns the public key's fingerprint in capital hex
@@ -275,5 +275,5 @@ func (pk *PublicKeyV3) BitLength() (bitLength uint16, err error) {
 	default:
 		err = errors.InvalidArgumentError("bad public-key algorithm")
 	}
-	return bitLength, err
+	return
 }

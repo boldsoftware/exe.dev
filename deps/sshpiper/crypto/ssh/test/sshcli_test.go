@@ -39,7 +39,7 @@ func sshClient(t *testing.T) string {
 func setupSSHCLIKeys(t *testing.T, keyFiles map[string][]byte, privKeyName string) string {
 	tmpDir := t.TempDir()
 	for fn, content := range keyFiles {
-		if err := os.WriteFile(filepath.Join(tmpDir, fn), content, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(tmpDir, fn), content, 0600); err != nil {
 			t.Fatalf("WriteFile(%q): %v", fn, err)
 		}
 	}

@@ -8,6 +8,10 @@
 // The version of OTR implemented by this package has been deprecated
 // (https://bugs.otr.im/lib/libotr/issues/140). An implementation of OTRv3 is
 // available at https://github.com/coyim/otr3.
+//
+// The otr package is [frozen] and is not accepting new features.
+//
+// [frozen]: https://go.dev/wiki/Frozen
 package otr
 
 import (
@@ -92,7 +96,7 @@ func isQuery(msg []byte) (greatestCommonVersion int) {
 
 		if c == '?' {
 			// End of message
-			return greatestCommonVersion
+			return
 		}
 
 		if c == ' ' || c == '\t' {
@@ -273,7 +277,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 	if bytes.HasPrefix(in, fragmentPrefix) {
 		in, err = c.processFragment(in)
 		if in == nil || err != nil {
-			return out, encrypted, change, toSend, err
+			return
 		}
 	}
 
@@ -283,25 +287,25 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		c.authState = authStateAwaitingDHKey
 		c.reset()
 		toSend = c.encode(c.generateDHCommit())
-		return out, encrypted, change, toSend, err
+		return
 	} else {
 		// plaintext message
 		out = in
-		return out, encrypted, change, toSend, err
+		return
 	}
 
 	msg := make([]byte, base64.StdEncoding.DecodedLen(len(in)))
 	msgLen, err := base64.StdEncoding.Decode(msg, in)
 	if err != nil {
 		err = errors.New("otr: invalid base64 encoding in message")
-		return out, encrypted, change, toSend, err
+		return
 	}
 	msg = msg[:msgLen]
 
 	// The first two bytes are the protocol version (2)
 	if len(msg) < 3 || msg[0] != 0 || msg[1] != 2 {
 		err = errors.New("otr: invalid OTR message")
-		return out, encrypted, change, toSend, err
+		return
 	}
 
 	msgType := int(msg[2])
@@ -313,39 +317,39 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		case authStateNone:
 			c.authState = authStateAwaitingRevealSig
 			if err = c.processDHCommit(msg); err != nil {
-				return out, encrypted, change, toSend, err
+				return
 			}
 			c.reset()
 			toSend = c.encode(c.generateDHKey())
-			return out, encrypted, change, toSend, err
+			return
 		case authStateAwaitingDHKey:
 			// This is a 'SYN-crossing'. The greater digest wins.
 			var cmp int
 			if cmp, err = c.compareToDHCommit(msg); err != nil {
-				return out, encrypted, change, toSend, err
+				return
 			}
 			if cmp > 0 {
 				// We win. Retransmit DH commit.
 				toSend = c.encode(c.serializeDHCommit())
-				return out, encrypted, change, toSend, err
+				return
 			} else {
 				// They win. We forget about our DH commit.
 				c.authState = authStateAwaitingRevealSig
 				if err = c.processDHCommit(msg); err != nil {
-					return out, encrypted, change, toSend, err
+					return
 				}
 				c.reset()
 				toSend = c.encode(c.generateDHKey())
-				return out, encrypted, change, toSend, err
+				return
 			}
 		case authStateAwaitingRevealSig:
 			if err = c.processDHCommit(msg); err != nil {
-				return out, encrypted, change, toSend, err
+				return
 			}
 			toSend = c.encode(c.serializeDHKey())
 		case authStateAwaitingSig:
 			if err = c.processDHCommit(msg); err != nil {
-				return out, encrypted, change, toSend, err
+				return
 			}
 			c.reset()
 			toSend = c.encode(c.generateDHKey())
@@ -358,18 +362,18 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		case authStateAwaitingDHKey:
 			var isSame bool
 			if isSame, err = c.processDHKey(msg); err != nil {
-				return out, encrypted, change, toSend, err
+				return
 			}
 			if isSame {
 				err = errors.New("otr: unexpected duplicate DH key")
-				return out, encrypted, change, toSend, err
+				return
 			}
 			toSend = c.encode(c.generateRevealSig())
 			c.authState = authStateAwaitingSig
 		case authStateAwaitingSig:
 			var isSame bool
 			if isSame, err = c.processDHKey(msg); err != nil {
-				return out, encrypted, change, toSend, err
+				return
 			}
 			if isSame {
 				toSend = c.encode(c.serializeDHKey())
@@ -377,10 +381,10 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		}
 	case msgTypeRevealSig:
 		if c.authState != authStateAwaitingRevealSig {
-			return out, encrypted, change, toSend, err
+			return
 		}
 		if err = c.processRevealSig(msg); err != nil {
-			return out, encrypted, change, toSend, err
+			return
 		}
 		toSend = c.encode(c.generateSig())
 		c.authState = authStateNone
@@ -388,10 +392,10 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		change = NewKeys
 	case msgTypeSig:
 		if c.authState != authStateAwaitingSig {
-			return out, encrypted, change, toSend, err
+			return
 		}
 		if err = c.processSig(msg); err != nil {
-			return out, encrypted, change, toSend, err
+			return
 		}
 		c.authState = authStateNone
 		c.state = stateEncrypted
@@ -399,7 +403,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 	case msgTypeData:
 		if c.state != stateEncrypted {
 			err = errors.New("otr: encrypted message received without encrypted session established")
-			return out, encrypted, change, toSend, err
+			return
 		}
 		var tlvs []tlv
 		out, tlvs, err = c.processData(msg)
@@ -420,7 +424,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 					err = nil
 					change = SMPSecretNeeded
 					c.smp.saved = &inTLV
-					return out, encrypted, change, toSend, err
+					return
 				}
 				if err == smpFailureError {
 					err = nil
@@ -440,7 +444,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		err = errors.New("otr: unknown message type " + strconv.Itoa(msgType))
 	}
 
-	return out, encrypted, change, toSend, err
+	return
 }
 
 // Send takes a human readable message from the local user, possibly encrypts
@@ -472,7 +476,7 @@ func (c *Conversation) SMPQuestion() string {
 func (c *Conversation) Authenticate(question string, mutualSecret []byte) (toSend [][]byte, err error) {
 	if c.state != stateEncrypted {
 		err = errors.New("otr: can't authenticate a peer without a secure conversation established")
-		return toSend, err
+		return
 	}
 
 	if c.smp.saved != nil {
@@ -488,7 +492,7 @@ func (c *Conversation) Authenticate(question string, mutualSecret []byte) (toSen
 		if out.typ != 0 {
 			toSend = c.encode(c.generateData(nil, &out))
 		}
-		return toSend, err
+		return
 	}
 
 	c.calcSMPSecret(mutualSecret, true /* we started it */)
@@ -496,7 +500,7 @@ func (c *Conversation) Authenticate(question string, mutualSecret []byte) (toSen
 	for _, out := range outs {
 		toSend = append(toSend, c.encode(c.generateData(nil, &out))...)
 	}
-	return toSend, err
+	return
 }
 
 // End ends a secure conversation by generating a termination message for
@@ -644,18 +648,18 @@ func (c *Conversation) processDHKey(in []byte) (isSame bool, err error) {
 	gy, _, ok := getMPI(in)
 	if !ok {
 		err = errors.New("otr: corrupt DH key message")
-		return isSame, err
+		return
 	}
 	if gy.Cmp(g) < 0 || gy.Cmp(pMinus2) > 0 {
 		err = errors.New("otr: DH value out of range")
-		return isSame, err
+		return
 	}
 	if c.gy != nil {
 		isSame = c.gy.Cmp(gy) == 0
-		return isSame, err
+		return
 	}
 	c.gy = gy
-	return isSame, err
+	return
 }
 
 func (c *Conversation) generateEncryptedSignature(keys *akeKeys, xFirst bool) ([]byte, []byte) {
@@ -877,7 +881,7 @@ func (c *Conversation) processData(in []byte) (out []byte, tlvs []tlv, err error
 	_, in, ok8 := getData(in)
 	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || len(in) > 0 {
 		err = errors.New("otr: corrupt data message")
-		return out, tlvs, err
+		return
 	}
 
 	ignoreErrors := flags&1 != 0
@@ -887,7 +891,7 @@ func (c *Conversation) processData(in []byte) (out []byte, tlvs []tlv, err error
 		if ignoreErrors {
 			err = nil
 		}
-		return out, tlvs, err
+		return
 	}
 
 	mac := hmac.New(sha1.New, slot.recvMACKey)
@@ -898,12 +902,12 @@ func (c *Conversation) processData(in []byte) (out []byte, tlvs []tlv, err error
 		if !ignoreErrors {
 			err = errors.New("otr: bad MAC on data message")
 		}
-		return out, tlvs, err
+		return
 	}
 
 	if bytes.Compare(counter, slot.theirLastCtr[:]) <= 0 {
 		err = errors.New("otr: counter regressed")
-		return out, tlvs, err
+		return
 	}
 	copy(slot.theirLastCtr[:], counter)
 
@@ -947,7 +951,7 @@ func (c *Conversation) processData(in []byte) (out []byte, tlvs []tlv, err error
 			t.data, tlvData, ok3 = getNBytes(tlvData, int(t.length))
 			if !ok1 || !ok2 || !ok3 {
 				err = errors.New("otr: corrupt tlv data")
-				return out, tlvs, err
+				return
 			}
 			tlvs = append(tlvs, t)
 		}
@@ -955,7 +959,7 @@ func (c *Conversation) processData(in []byte) (out []byte, tlvs []tlv, err error
 		out = decrypted
 	}
 
-	return out, tlvs, err
+	return
 }
 
 func (c *Conversation) generateData(msg []byte, extra *tlv) []byte {
@@ -1028,7 +1032,7 @@ func (c *Conversation) calcDataKeys(myKeyId, theirKeyId uint32) (slot *keySlot, 
 	for i := range c.keySlots {
 		slot = &c.keySlots[i]
 		if slot.used && slot.theirKeyId == theirKeyId && slot.myKeyId == myKeyId {
-			return slot, err
+			return
 		}
 	}
 
@@ -1054,7 +1058,7 @@ func (c *Conversation) calcDataKeys(myKeyId, theirKeyId uint32) (slot *keySlot, 
 		myPub = c.myLastDHPub
 	} else {
 		err = errors.New("otr: peer requested keyid " + strconv.FormatUint(uint64(myKeyId), 10) + " when I'm on " + strconv.FormatUint(uint64(c.myKeyId), 10))
-		return slot, err
+		return
 	}
 
 	if theirKeyId == c.theirKeyId {
@@ -1063,7 +1067,7 @@ func (c *Conversation) calcDataKeys(myKeyId, theirKeyId uint32) (slot *keySlot, 
 		theirPub = c.theirLastDHPub
 	} else {
 		err = errors.New("otr: peer requested keyid " + strconv.FormatUint(uint64(myKeyId), 10) + " when they're on " + strconv.FormatUint(uint64(c.myKeyId), 10))
-		return slot, err
+		return
 	}
 
 	var sendPrefixByte, recvPrefixByte [1]byte
@@ -1102,7 +1106,7 @@ func (c *Conversation) calcDataKeys(myKeyId, theirKeyId uint32) (slot *keySlot, 
 	slot.used = true
 
 	zero(slot.theirLastCtr[:])
-	return slot, err
+	return
 }
 
 func (c *Conversation) calcAKEKeys(s *big.Int) {

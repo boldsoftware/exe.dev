@@ -28,7 +28,7 @@ func (l *LiteralData) parse(r io.Reader) (err error) {
 
 	_, err = readFull(r, buf[:2])
 	if err != nil {
-		return err
+		return
 	}
 
 	l.IsBinary = buf[0] == 'b'
@@ -36,19 +36,19 @@ func (l *LiteralData) parse(r io.Reader) (err error) {
 
 	_, err = readFull(r, buf[:fileNameLen])
 	if err != nil {
-		return err
+		return
 	}
 
 	l.FileName = string(buf[:fileNameLen])
 
 	_, err = readFull(r, buf[:4])
 	if err != nil {
-		return err
+		return
 	}
 
 	l.Time = binary.BigEndian.Uint32(buf[:4])
 	l.Body = r
-	return err
+	return
 }
 
 // SerializeLiteral serializes a literal data packet to w and returns a
@@ -67,23 +67,23 @@ func SerializeLiteral(w io.WriteCloser, isBinary bool, fileName string, time uin
 
 	inner, err := serializeStreamHeader(w, packetTypeLiteralData)
 	if err != nil {
-		return plaintext, err
+		return
 	}
 
 	_, err = inner.Write(buf[:2])
 	if err != nil {
-		return plaintext, err
+		return
 	}
 	_, err = inner.Write([]byte(fileName))
 	if err != nil {
-		return plaintext, err
+		return
 	}
 	binary.BigEndian.PutUint32(buf[:], time)
 	_, err = inner.Write(buf[:])
 	if err != nil {
-		return plaintext, err
+		return
 	}
 
 	plaintext = inner
-	return plaintext, err
+	return
 }

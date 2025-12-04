@@ -87,10 +87,12 @@ type GSSAPIServer interface {
 	DeleteSecContext() error
 }
 
-// OpenSSH supports Kerberos V5 mechanism only for GSS-API authentication,
-// so we also support the krb5 mechanism only.
-// See RFC 1964 section 1.
-var krb5Mesh = asn1.ObjectIdentifier{1, 2, 840, 113554, 1, 2, 2}
+var (
+	// OpenSSH supports Kerberos V5 mechanism only for GSS-API authentication,
+	// so we also support the krb5 mechanism only.
+	// See RFC 1964 section 1.
+	krb5Mesh = asn1.ObjectIdentifier{1, 2, 840, 113554, 1, 2, 2}
+)
 
 // The GSS-API authentication method is initiated when the client sends an SSH_MSG_USERAUTH_REQUEST
 // See RFC 4462 section 3.2.
@@ -103,6 +105,13 @@ func parseGSSAPIPayload(payload []byte) (*userAuthRequestGSSAPI, error) {
 	n, rest, ok := parseUint32(payload)
 	if !ok {
 		return nil, errors.New("parse uint32 failed")
+	}
+	// Each ASN.1 encoded OID must have a minimum
+	// of 2 bytes; 64 maximum mechanisms is an
+	// arbitrary, but reasonable ceiling.
+	const maxMechs = 64
+	if n > maxMechs || int(n)*2 > len(rest) {
+		return nil, errors.New("invalid mechanism count")
 	}
 	s := &userAuthRequestGSSAPI{
 		N:    n,
@@ -120,7 +129,6 @@ func parseGSSAPIPayload(payload []byte) (*userAuthRequestGSSAPI, error) {
 		if rest, err = asn1.Unmarshal(desiredMech, &s.OIDS[i]); err != nil {
 			return nil, err
 		}
-
 	}
 	return s, nil
 }

@@ -121,5 +121,5 @@ func (params pbeParams) RawASN1() (raw asn1.RawValue) {
 	if err != nil {
 		panic(err)
 	}
-	return raw
+	return
 }

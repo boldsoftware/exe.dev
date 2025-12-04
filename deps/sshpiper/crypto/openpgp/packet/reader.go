@@ -5,9 +5,8 @@
 package packet
 
 import (
-	"io"
-
 	"golang.org/x/crypto/openpgp/errors"
+	"io"
 )
 
 // Reader reads packets from an io.Reader and allows packets to be 'unread' so
@@ -31,13 +30,13 @@ func (r *Reader) Next() (p Packet, err error) {
 	if len(r.q) > 0 {
 		p = r.q[len(r.q)-1]
 		r.q = r.q[:len(r.q)-1]
-		return p, err
+		return
 	}
 
 	for len(r.readers) > 0 {
 		p, err = Read(r.readers[len(r.readers)-1])
 		if err == nil {
-			return p, err
+			return
 		}
 		if err == io.EOF {
 			r.readers = r.readers[:len(r.readers)-1]

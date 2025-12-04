@@ -34,20 +34,18 @@ func NewUserAttributePhoto(photos ...image.Image) (uat *UserAttribute, err error
 			0x01,       // JPEG
 			0, 0, 0, 0, // 12 reserved octets, must be all zero.
 			0, 0, 0, 0,
-			0, 0, 0, 0,
-		}
+			0, 0, 0, 0}
 		if _, err = buf.Write(data); err != nil {
-			return uat, err
+			return
 		}
 		if err = jpeg.Encode(&buf, photo, nil); err != nil {
-			return uat, err
+			return
 		}
 		uat.Contents = append(uat.Contents, &OpaqueSubpacket{
 			SubType:  UserAttrImageSubpacket,
-			Contents: buf.Bytes(),
-		})
+			Contents: buf.Bytes()})
 	}
-	return uat, err
+	return
 }
 
 // NewUserAttribute creates a new user attribute packet containing the given subpackets.
@@ -59,10 +57,10 @@ func (uat *UserAttribute) parse(r io.Reader) (err error) {
 	// RFC 4880, section 5.13
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return err
+		return
 	}
 	uat.Contents, err = OpaqueSubpackets(b)
-	return err
+	return
 }
 
 // Serialize marshals the user attribute to w in the form of an OpenPGP packet, including
@@ -76,7 +74,7 @@ func (uat *UserAttribute) Serialize(w io.Writer) (err error) {
 		return err
 	}
 	_, err = w.Write(buf.Bytes())
-	return err
+	return
 }
 
 // ImageData returns zero or more byte slices, each containing
@@ -88,5 +86,5 @@ func (uat *UserAttribute) ImageData() (imageData [][]byte) {
 			imageData = append(imageData, sp.Contents[16:])
 		}
 	}
-	return imageData
+	return
 }

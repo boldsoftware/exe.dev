@@ -4,12 +4,16 @@
 
 // Package pkcs12 implements some of PKCS#12.
 //
-// This implementation is distilled from https://tools.ietf.org/html/rfc7292
-// and referenced documents. It is intended for decoding P12/PFX-stored
-// certificates and keys for use with the crypto/tls package.
+// This implementation is distilled from [RFC 7292] and referenced documents.
+// It is intended for decoding P12/PFX-stored certificates and keys for use
+// with the crypto/tls package.
 //
-// This package is frozen. If it's missing functionality you need, consider
-// an alternative like software.sslmate.com/src/go-pkcs12.
+// The pkcs12 package is [frozen] and is not accepting new features.
+// If it's missing functionality you need, consider an alternative like
+// software.sslmate.com/src/go-pkcs12.
+//
+// [RFC 7292]: https://datatracker.ietf.org/doc/html/rfc7292
+// [frozen]: https://go.dev/wiki/Frozen
 package pkcs12
 
 import (
@@ -118,6 +122,7 @@ func ToPEM(pfxData []byte, password string) ([]*pem.Block, error) {
 	}
 
 	bags, encodedPassword, err := getSafeContents(pfxData, encodedPassword)
+
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +239,7 @@ func Decode(pfxData []byte, password string) (privateKey interface{}, certificat
 
 	if len(bags) != 2 {
 		err = errors.New("pkcs12: expected exactly two safe bags in the PFX PDU")
-		return privateKey, certificate, err
+		return
 	}
 
 	for _, bag := range bags {
@@ -277,7 +282,7 @@ func Decode(pfxData []byte, password string) (privateKey interface{}, certificat
 		return nil, nil, errors.New("pkcs12: private key missing")
 	}
 
-	return privateKey, certificate, err
+	return
 }
 
 func getSafeContents(p12Data, password []byte) (bags []safeBag, updatedPassword []byte, err error) {

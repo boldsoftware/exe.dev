@@ -5,7 +5,9 @@
 package ssh
 
 import (
+	"maps"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -19,27 +21,35 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 		}
 		if k.CiphersClientServer == nil {
 			k.CiphersClientServer = []string{"cipher1"}
+
 		}
 		if k.CiphersServerClient == nil {
 			k.CiphersServerClient = []string{"cipher1"}
+
 		}
 		if k.MACsClientServer == nil {
 			k.MACsClientServer = []string{"mac1"}
+
 		}
 		if k.MACsServerClient == nil {
 			k.MACsServerClient = []string{"mac1"}
+
 		}
 		if k.CompressionClientServer == nil {
 			k.CompressionClientServer = []string{"compression1"}
+
 		}
 		if k.CompressionServerClient == nil {
 			k.CompressionServerClient = []string{"compression1"}
+
 		}
 		if k.LanguagesClientServer == nil {
 			k.LanguagesClientServer = []string{"language1"}
+
 		}
 		if k.LanguagesServerClient == nil {
 			k.LanguagesServerClient = []string{"language1"}
+
 		}
 	}
 
@@ -151,6 +161,7 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 			if c.wantErr != serverHasErr || c.wantErr != clientHasErr {
 				t.Fatalf("got client/server error (%v, %v), want hasError %v",
 					clientErr, serverErr, c.wantErr)
+
 			}
 			if c.wantErr {
 				return
@@ -163,5 +174,23 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 				t.Errorf("server: got algs %#v, want %#v", clientAlgs, &c.wantClient)
 			}
 		})
+	}
+}
+
+func TestKeyFormatAlgorithms(t *testing.T) {
+	supportedAlgos := SupportedAlgorithms()
+	insecureAlgos := InsecureAlgorithms()
+	algoritms := append(supportedAlgos.PublicKeyAuths, insecureAlgos.PublicKeyAuths...)
+	algoritms = append(algoritms, slices.Collect(maps.Keys(certKeyAlgoNames))...)
+
+	for _, algo := range algoritms {
+		keyFormat := keyFormatForAlgorithm(algo)
+		if keyFormat == "" {
+			t.Errorf("got empty key format for algorithm %q", algo)
+		}
+		if !slices.Contains(algorithmsForKeyFormat(keyFormat), algo) {
+			t.Errorf("algorithms for key format %q, does not contain %q", keyFormat, algo)
+		}
+
 	}
 }

@@ -203,6 +203,9 @@ func parseConstraints(constraints []byte) (lifetimeSecs uint32, confirmBeforeUse
 	for len(constraints) != 0 {
 		switch constraints[0] {
 		case agentConstrainLifetime:
+			if len(constraints) < 5 {
+				return 0, false, nil, io.ErrUnexpectedEOF
+			}
 			lifetimeSecs = binary.BigEndian.Uint32(constraints[1:5])
 			constraints = constraints[5:]
 		case agentConstrainConfirm:
@@ -222,7 +225,7 @@ func parseConstraints(constraints []byte) (lifetimeSecs uint32, confirmBeforeUse
 			return 0, false, nil, fmt.Errorf("unknown constraint type: %d", constraints[0])
 		}
 	}
-	return lifetimeSecs, confirmBeforeUse, extensions, err
+	return
 }
 
 func setConstraints(key *AddedKey, constraintBytes []byte) error {

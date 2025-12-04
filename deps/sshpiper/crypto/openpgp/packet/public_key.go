@@ -50,16 +50,16 @@ type ecdsaKey struct {
 func parseOID(r io.Reader) (oid []byte, err error) {
 	buf := make([]byte, maxOIDLength)
 	if _, err = readFull(r, buf[:1]); err != nil {
-		return oid, err
+		return
 	}
 	oidLen := buf[0]
 	if int(oidLen) > len(buf) {
 		err = errors.UnsupportedError("invalid oid length: " + strconv.Itoa(int(oidLen)))
-		return oid, err
+		return
 	}
 	oid = buf[:oidLen]
 	_, err = readFull(r, oid)
-	return oid, err
+	return
 }
 
 func (f *ecdsaKey) parse(r io.Reader) (err error) {
@@ -67,7 +67,7 @@ func (f *ecdsaKey) parse(r io.Reader) (err error) {
 		return err
 	}
 	f.p.bytes, f.p.bitLength, err = readMPI(r)
-	return err
+	return
 }
 
 func (f *ecdsaKey) serialize(w io.Writer) (err error) {
@@ -75,7 +75,7 @@ func (f *ecdsaKey) serialize(w io.Writer) (err error) {
 	buf[0] = byte(len(f.oid))
 	copy(buf[1:], f.oid)
 	if _, err = w.Write(buf[:len(f.oid)+1]); err != nil {
-		return err
+		return
 	}
 	return writeMPIs(w, f.p)
 }
@@ -102,10 +102,8 @@ func (f *ecdsaKey) byteLen() int {
 	return 1 + len(f.oid) + 2 + len(f.p.bytes)
 }
 
-type (
-	kdfHashFunction byte
-	kdfAlgorithm    byte
-)
+type kdfHashFunction byte
+type kdfAlgorithm byte
 
 // ecdhKdf stores key derivation function parameters
 // used for ECDH encryption. See RFC 6637, Section 9.
@@ -117,7 +115,7 @@ type ecdhKdf struct {
 func (f *ecdhKdf) parse(r io.Reader) (err error) {
 	buf := make([]byte, 1)
 	if _, err = readFull(r, buf); err != nil {
-		return err
+		return
 	}
 	kdfLen := int(buf[0])
 	if kdfLen < 3 {
@@ -125,7 +123,7 @@ func (f *ecdhKdf) parse(r io.Reader) (err error) {
 	}
 	buf = make([]byte, kdfLen)
 	if _, err = readFull(r, buf); err != nil {
-		return err
+		return
 	}
 	reserved := int(buf[0])
 	f.KdfHash = kdfHashFunction(buf[1])
@@ -133,7 +131,7 @@ func (f *ecdhKdf) parse(r io.Reader) (err error) {
 	if reserved != 0x01 {
 		return errors.UnsupportedError("Unsupported KDF reserved field: " + strconv.Itoa(reserved))
 	}
-	return err
+	return
 }
 
 func (f *ecdhKdf) serialize(w io.Writer) (err error) {
@@ -144,7 +142,7 @@ func (f *ecdhKdf) serialize(w io.Writer) (err error) {
 	buf[2] = byte(f.KdfHash)
 	buf[3] = byte(f.KdfAlgo)
 	_, err = w.Write(buf[:])
-	return err
+	return
 }
 
 func (f *ecdhKdf) byteLen() int {
@@ -262,7 +260,7 @@ func (pk *PublicKey) parse(r io.Reader) (err error) {
 	var buf [6]byte
 	_, err = readFull(r, buf[:])
 	if err != nil {
-		return err
+		return
 	}
 	if buf[0] != 4 {
 		return errors.UnsupportedError("public key version")
@@ -285,11 +283,11 @@ func (pk *PublicKey) parse(r io.Reader) (err error) {
 	case PubKeyAlgoECDH:
 		pk.ec = new(ecdsaKey)
 		if err = pk.ec.parse(r); err != nil {
-			return err
+			return
 		}
 		pk.ecdh = new(ecdhKdf)
 		if err = pk.ecdh.parse(r); err != nil {
-			return err
+			return
 		}
 		// The ECDH key is stored in an ecdsa.PublicKey for convenience.
 		pk.PublicKey, err = pk.ec.newECDSA()
@@ -297,11 +295,11 @@ func (pk *PublicKey) parse(r io.Reader) (err error) {
 		err = errors.UnsupportedError("public key type: " + strconv.Itoa(int(pk.PubKeyAlgo)))
 	}
 	if err != nil {
-		return err
+		return
 	}
 
 	pk.setFingerPrintAndKeyId()
-	return err
+	return
 }
 
 func (pk *PublicKey) setFingerPrintAndKeyId() {
@@ -318,16 +316,16 @@ func (pk *PublicKey) setFingerPrintAndKeyId() {
 func (pk *PublicKey) parseRSA(r io.Reader) (err error) {
 	pk.n.bytes, pk.n.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 	pk.e.bytes, pk.e.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 
 	if len(pk.e.bytes) > 3 {
 		err = errors.UnsupportedError("large public exponent")
-		return err
+		return
 	}
 	rsa := &rsa.PublicKey{
 		N: new(big.Int).SetBytes(pk.n.bytes),
@@ -338,7 +336,7 @@ func (pk *PublicKey) parseRSA(r io.Reader) (err error) {
 		rsa.E |= int(pk.e.bytes[i])
 	}
 	pk.PublicKey = rsa
-	return err
+	return
 }
 
 // parseDSA parses DSA public key material from the given Reader. See RFC 4880,
@@ -346,19 +344,19 @@ func (pk *PublicKey) parseRSA(r io.Reader) (err error) {
 func (pk *PublicKey) parseDSA(r io.Reader) (err error) {
 	pk.p.bytes, pk.p.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 	pk.q.bytes, pk.q.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 	pk.g.bytes, pk.g.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 	pk.y.bytes, pk.y.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 
 	dsa := new(dsa.PublicKey)
@@ -367,7 +365,7 @@ func (pk *PublicKey) parseDSA(r io.Reader) (err error) {
 	dsa.G = new(big.Int).SetBytes(pk.g.bytes)
 	dsa.Y = new(big.Int).SetBytes(pk.y.bytes)
 	pk.PublicKey = dsa
-	return err
+	return
 }
 
 // parseElGamal parses ElGamal public key material from the given Reader. See
@@ -375,15 +373,15 @@ func (pk *PublicKey) parseDSA(r io.Reader) (err error) {
 func (pk *PublicKey) parseElGamal(r io.Reader) (err error) {
 	pk.p.bytes, pk.p.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 	pk.g.bytes, pk.g.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 	pk.y.bytes, pk.y.bitLength, err = readMPI(r)
 	if err != nil {
-		return err
+		return
 	}
 
 	elgamal := new(elgamal.PublicKey)
@@ -391,7 +389,7 @@ func (pk *PublicKey) parseElGamal(r io.Reader) (err error) {
 	elgamal.G = new(big.Int).SetBytes(pk.g.bytes)
 	elgamal.Y = new(big.Int).SetBytes(pk.y.bytes)
 	pk.PublicKey = elgamal
-	return err
+	return
 }
 
 // SerializeSignaturePrefix writes the prefix for this public key to the given Writer.
@@ -456,7 +454,7 @@ func (pk *PublicKey) Serialize(w io.Writer) (err error) {
 	}
 	err = serializeHeader(w, packetType, length)
 	if err != nil {
-		return err
+		return
 	}
 	return pk.serializeWithoutHeaders(w)
 }
@@ -475,7 +473,7 @@ func (pk *PublicKey) serializeWithoutHeaders(w io.Writer) (err error) {
 
 	_, err = w.Write(buf[:])
 	if err != nil {
-		return err
+		return
 	}
 
 	switch pk.PubKeyAlgo {
@@ -489,7 +487,7 @@ func (pk *PublicKey) serializeWithoutHeaders(w io.Writer) (err error) {
 		return pk.ec.serialize(w)
 	case PubKeyAlgoECDH:
 		if err = pk.ec.serialize(w); err != nil {
-			return err
+			return
 		}
 		return pk.ecdh.serialize(w)
 	}
@@ -576,7 +574,7 @@ func (pk *PublicKey) VerifySignatureV3(signed hash.Hash, sig *SignatureV3) (err 
 		if err = rsa.VerifyPKCS1v15(rsaPublicKey, sig.Hash, hashBytes, padToKeySize(rsaPublicKey, sig.RSASignature.bytes)); err != nil {
 			return errors.SignatureError("RSA verification failure")
 		}
-		return err
+		return
 	case PubKeyAlgoDSA:
 		dsaPublicKey := pk.PublicKey.(*dsa.PublicKey)
 		// Need to truncate hashBytes to match FIPS 186-3 section 4.6.
@@ -606,7 +604,7 @@ func keySignatureHash(pk, signed signingKey, hashFunc crypto.Hash) (h hash.Hash,
 	pk.serializeWithoutHeaders(h)
 	signed.SerializeSignaturePrefix(h)
 	signed.serializeWithoutHeaders(h)
-	return h, err
+	return
 }
 
 // VerifyKeySignature returns nil iff sig is a valid signature, made by this
@@ -650,7 +648,7 @@ func keyRevocationHash(pk signingKey, hashFunc crypto.Hash) (h hash.Hash, err er
 	pk.SerializeSignaturePrefix(h)
 	pk.serializeWithoutHeaders(h)
 
-	return h, err
+	return
 }
 
 // VerifyRevocationSignature returns nil iff sig is a valid signature, made by this
@@ -684,7 +682,7 @@ func userIdSignatureHash(id string, pk *PublicKey, hashFunc crypto.Hash) (h hash
 	h.Write(buf[:])
 	h.Write([]byte(id))
 
-	return h, err
+	return
 }
 
 // VerifyUserIdSignature returns nil iff sig is a valid signature, made by this
@@ -733,10 +731,10 @@ func writeMPIs(w io.Writer, mpis ...parsedMPI) (err error) {
 	for _, mpi := range mpis {
 		err = writeMPI(w, mpi.bitLength, mpi.bytes)
 		if err != nil {
-			return err
+			return
 		}
 	}
-	return err
+	return
 }
 
 // BitLength returns the bit length for the given public key.
@@ -751,5 +749,5 @@ func (pk *PublicKey) BitLength() (bitLength uint16, err error) {
 	default:
 		err = errors.InvalidArgumentError("bad public-key algorithm")
 	}
-	return bitLength, err
+	return
 }

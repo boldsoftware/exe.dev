@@ -113,14 +113,14 @@ func SerializeSymmetricKeyEncrypted(w io.Writer, passphrase []byte, config *Conf
 	// resulting key to keyEncryptingKey and the s2k descriptor to s2kBuf.
 	err = s2k.Serialize(s2kBuf, keyEncryptingKey, config.Random(), passphrase, &s2k.Config{Hash: config.Hash(), S2KCount: config.PasswordHashIterations()})
 	if err != nil {
-		return key, err
+		return
 	}
 	s2kBytes := s2kBuf.Bytes()
 
 	packetLength := 2 /* header */ + len(s2kBytes) + 1 /* cipher type */ + keySize
 	err = serializeHeader(w, packetTypeSymmetricKeyEncrypted, packetLength)
 	if err != nil {
-		return key, err
+		return
 	}
 
 	var buf [2]byte
@@ -128,17 +128,17 @@ func SerializeSymmetricKeyEncrypted(w io.Writer, passphrase []byte, config *Conf
 	buf[1] = byte(cipherFunc)
 	_, err = w.Write(buf[:])
 	if err != nil {
-		return key, err
+		return
 	}
 	_, err = w.Write(s2kBytes)
 	if err != nil {
-		return key, err
+		return
 	}
 
 	sessionKey := make([]byte, keySize)
 	_, err = io.ReadFull(config.Random(), sessionKey)
 	if err != nil {
-		return key, err
+		return
 	}
 	iv := make([]byte, cipherFunc.blockSize())
 	c := cipher.NewCFBEncrypter(cipherFunc.new(keyEncryptingKey), iv)
@@ -147,9 +147,9 @@ func SerializeSymmetricKeyEncrypted(w io.Writer, passphrase []byte, config *Conf
 	c.XORKeyStream(encryptedCipherAndKey[1:], sessionKey)
 	_, err = w.Write(encryptedCipherAndKey)
 	if err != nil {
-		return key, err
+		return
 	}
 
 	key = sessionKey
-	return key, err
+	return
 }

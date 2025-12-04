@@ -24,8 +24,7 @@ var pubKeyV3Test = struct {
 	PubKeyAlgoRSA,
 	0xDE0F188A5DA5E3C9,
 	"DE0F188A5DA5E3C9",
-	"5DA5E3C9",
-}
+	"5DA5E3C9"}
 
 func TestPublicKeyV3Read(t *testing.T) {
 	i, test := 0, pubKeyV3Test
@@ -59,7 +58,7 @@ func TestPublicKeyV3Read(t *testing.T) {
 }
 
 func TestPublicKeyV3Serialize(t *testing.T) {
-	// for i, test := range pubKeyV3Tests {
+	//for i, test := range pubKeyV3Tests {
 	i := 0
 	packet, err := Read(v3KeyReader(t))
 	if err != nil {

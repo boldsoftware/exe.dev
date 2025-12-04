@@ -38,4 +38,5 @@ func TestVerifyMac(t *testing.T) {
 	if err != nil {
 		t.Errorf("err: %v", err)
 	}
+
 }

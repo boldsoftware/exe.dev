@@ -160,7 +160,8 @@ type userAuthRequestMsg struct {
 }
 
 // Used for debug printouts of packets.
-type userAuthSuccessMsg struct{}
+type userAuthSuccessMsg struct {
+}
 
 // See RFC 4252, section 5.1
 const msgUserAuthFailure = 51
@@ -183,10 +184,8 @@ type userAuthBannerMsg struct {
 }
 
 // See RFC 4256, section 3.2
-const (
-	msgUserAuthInfoRequest  = 60
-	msgUserAuthInfoResponse = 61
-)
+const msgUserAuthInfoRequest = 60
+const msgUserAuthInfoResponse = 61
 
 type userAuthInfoRequestMsg struct {
 	Name        string `sshtype:"60"`
@@ -207,10 +206,8 @@ type channelOpenMsg struct {
 	TypeSpecificData []byte `ssh:"rest"`
 }
 
-const (
-	msgChannelExtendedData = 95
-	msgChannelData         = 94
-)
+const msgChannelExtendedData = 95
+const msgChannelData = 94
 
 // Used for debug print outs of packets.
 type channelDataMsg struct {
@@ -609,17 +606,17 @@ var bigOne = big.NewInt(1)
 
 func parseString(in []byte) (out, rest []byte, ok bool) {
 	if len(in) < 4 {
-		return out, rest, ok
+		return
 	}
 	length := binary.BigEndian.Uint32(in)
 	in = in[4:]
 	if uint32(len(in)) < length {
-		return out, rest, ok
+		return
 	}
 	out = in[:length]
 	rest = in[length:]
 	ok = true
-	return out, rest, ok
+	return
 }
 
 var (
@@ -630,24 +627,24 @@ var (
 func parseNameList(in []byte) (out []string, rest []byte, ok bool) {
 	contents, rest, ok := parseString(in)
 	if !ok {
-		return out, rest, ok
+		return
 	}
 	if len(contents) == 0 {
 		out = emptyNameList
-		return out, rest, ok
+		return
 	}
 	parts := bytes.Split(contents, comma)
 	out = make([]string, len(parts))
 	for i, part := range parts {
 		out[i] = string(part)
 	}
-	return out, rest, ok
+	return
 }
 
 func parseInt(in []byte) (out *big.Int, rest []byte, ok bool) {
 	contents, rest, ok := parseString(in)
 	if !ok {
-		return out, rest, ok
+		return
 	}
 	out = new(big.Int)
 
@@ -665,7 +662,7 @@ func parseInt(in []byte) (out *big.Int, rest []byte, ok bool) {
 		out.SetBytes(contents)
 	}
 	ok = true
-	return out, rest, ok
+	return
 }
 
 func parseUint32(in []byte) (uint32, []byte, bool) {
@@ -795,7 +792,7 @@ func marshalString(to []byte, s []byte) []byte {
 	return to[len(s):]
 }
 
-var bigIntType = reflect.TypeOf((*big.Int)(nil))
+var bigIntType = reflect.TypeFor[*big.Int]()
 
 // Decode a packet into its corresponding message.
 func decode(packet []byte) (interface{}, error) {

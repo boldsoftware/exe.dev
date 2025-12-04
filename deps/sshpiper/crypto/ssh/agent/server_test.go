@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"fmt"
+	"io"
 	pseudorand "math/rand"
 	"reflect"
 	"strings"
@@ -216,7 +217,7 @@ func TestCertTypes(t *testing.T) {
 
 func TestParseConstraints(t *testing.T) {
 	// Test LifetimeSecs
-	msg := constrainLifetimeAgentMsg{pseudorand.Uint32()}
+	var msg = constrainLifetimeAgentMsg{pseudorand.Uint32()}
 	lifetimeSecs, _, _, err := parseConstraints(ssh.Marshal(msg))
 	if err != nil {
 		t.Fatalf("parseConstraints: %v", err)
@@ -238,7 +239,7 @@ func TestParseConstraints(t *testing.T) {
 	var data []byte
 	var expect []ConstraintExtension
 	for i := 0; i < 10; i++ {
-		ext := ConstraintExtension{
+		var ext = ConstraintExtension{
 			ExtensionName:    fmt.Sprintf("name%d", i),
 			ExtensionDetails: []byte(fmt.Sprintf("details: %d", i)),
 		}
@@ -256,6 +257,12 @@ func TestParseConstraints(t *testing.T) {
 	}
 	if !reflect.DeepEqual(expect, extensions) {
 		t.Errorf("got extension %v, want %v", extensions, expect)
+	}
+
+	// Test Malformed Constraint
+	_, _, _, err = parseConstraints([]byte{1})
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("got %v, want %v", err, io.ErrUnexpectedEOF)
 	}
 
 	// Test Unknown Constraint

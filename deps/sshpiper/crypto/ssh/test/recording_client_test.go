@@ -31,7 +31,9 @@ import (
 // when there's a human watching the test, this isn't too bad.
 const serverPort = 24222
 
-var storeUsernameOnce sync.Once
+var (
+	storeUsernameOnce sync.Once
+)
 
 type clientTest struct {
 	// name is a freeform string identifying the test and the file in which
@@ -152,7 +154,7 @@ func (test *clientTest) loadData() (flows [][]byte, err error) {
 
 func (test *clientTest) storeUsername() (err error) {
 	storeUsernameOnce.Do(func() {
-		err = os.WriteFile(test.usernameDataPath(), []byte(username()), 0o666)
+		err = os.WriteFile(test.usernameDataPath(), []byte(username()), 0666)
 	})
 	return err
 }
@@ -218,7 +220,7 @@ func (test *clientTest) run(t *testing.T, write bool) {
 
 	if write {
 		path := test.dataPath()
-		out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			t.Fatalf("Failed to create output file: %v", err)
 		}
@@ -249,7 +251,7 @@ func TestClientKeyExchanges(t *testing.T) {
 
 	var keyExchanges []string
 	for _, kex := range config.KeyExchanges {
-		// Exclude ecdh for now, to make them determistic we should use see a
+		// Exclude ecdh for now, to make them deterministic we should use see a
 		// stream of fixed bytes as the random source.
 		if !strings.HasPrefix(kex, "ecdh-") {
 			keyExchanges = append(keyExchanges, kex)

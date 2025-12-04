@@ -219,6 +219,7 @@ func roundTrip(t *testing.T, alice, bob *Conversation, message []byte, macKeyChe
 
 	for i, msg := range alicesMessage {
 		out, encrypted, _, _, err := bob.Receive(msg)
+
 		if err != nil {
 			t.Errorf("Error generated while processing test message: %s", err.Error())
 		}
@@ -257,6 +258,7 @@ func roundTrip(t *testing.T, alice, bob *Conversation, message []byte, macKeyChe
 
 	for i, msg := range bobsMessage {
 		out, encrypted, _, _, err := alice.Receive(msg)
+
 		if err != nil {
 			t.Errorf("Error generated while processing test message: %s", err.Error())
 		}
@@ -288,7 +290,7 @@ func roundTrip(t *testing.T, alice, bob *Conversation, message []byte, macKeyChe
 func TestConversation(t *testing.T) {
 	alice, bob := setupConversation(t)
 
-	testMessages := [][]byte{
+	var testMessages = [][]byte{
 		[]byte("hello"), []byte("bye"),
 	}
 
@@ -400,7 +402,7 @@ func TestAgainstLibOTR(t *testing.T) {
 	// This test requires otr.c.test to be built as /tmp/a.out.
 	// If enabled, this tests runs forever performing OTR handshakes in a
 	// loop.
-	return
+	t.Skip("This test requires otr.c.test to be built as /tmp/a.out")
 
 	alicePrivateKey, _ := hex.DecodeString(alicePrivateKeyHex)
 	var alice Conversation
@@ -427,7 +429,7 @@ func TestAgainstLibOTR(t *testing.T) {
 
 	out.Write([]byte(QueryMessage))
 	out.Write([]byte("\n"))
-	expectedText := []byte("test message")
+	var expectedText = []byte("test message")
 
 	for {
 		line, isPrefix, err := in.ReadLine()

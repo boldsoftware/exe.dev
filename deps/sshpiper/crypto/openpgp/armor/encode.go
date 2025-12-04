@@ -9,12 +9,10 @@ import (
 	"io"
 )
 
-var (
-	armorHeaderSep    = []byte(": ")
-	blockEnd          = []byte("\n=")
-	newline           = []byte("\n")
-	armorEndOfLineOut = []byte("-----\n")
-)
+var armorHeaderSep = []byte(": ")
+var blockEnd = []byte("\n=")
+var newline = []byte("\n")
+var armorEndOfLineOut = []byte("-----\n")
 
 // writeSlices writes its arguments to the given Writer.
 func writeSlices(out io.Writer, slices ...[]byte) (err error) {
@@ -24,7 +22,7 @@ func writeSlices(out io.Writer, slices ...[]byte) (err error) {
 			return err
 		}
 	}
-	return err
+	return
 }
 
 // lineBreaker breaks data across several lines, all of the same byte length
@@ -50,47 +48,47 @@ func (l *lineBreaker) Write(b []byte) (n int, err error) {
 	n = len(b)
 
 	if n == 0 {
-		return n, err
+		return
 	}
 
 	if l.used == 0 && l.haveWritten {
 		_, err = l.out.Write([]byte{'\n'})
 		if err != nil {
-			return n, err
+			return
 		}
 	}
 
 	if l.used+len(b) < l.lineLength {
 		l.used += copy(l.line[l.used:], b)
-		return n, err
+		return
 	}
 
 	l.haveWritten = true
 	_, err = l.out.Write(l.line[0:l.used])
 	if err != nil {
-		return n, err
+		return
 	}
 	excess := l.lineLength - l.used
 	l.used = 0
 
 	_, err = l.out.Write(b[0:excess])
 	if err != nil {
-		return n, err
+		return
 	}
 
 	_, err = l.Write(b[excess:])
-	return n, err
+	return
 }
 
 func (l *lineBreaker) Close() (err error) {
 	if l.used > 0 {
 		_, err = l.out.Write(l.line[0:l.used])
 		if err != nil {
-			return err
+			return
 		}
 	}
 
-	return err
+	return
 }
 
 // encoding keeps track of a running CRC24 over the data which has been written
@@ -116,7 +114,7 @@ func (e *encoding) Write(data []byte) (n int, err error) {
 func (e *encoding) Close() (err error) {
 	err = e.b64.Close()
 	if err != nil {
-		return err
+		return
 	}
 	e.breaker.Close()
 
@@ -137,19 +135,19 @@ func Encode(out io.Writer, blockType string, headers map[string]string) (w io.Wr
 	bType := []byte(blockType)
 	err = writeSlices(out, armorStart, bType, armorEndOfLineOut)
 	if err != nil {
-		return w, err
+		return
 	}
 
 	for k, v := range headers {
 		err = writeSlices(out, []byte(k), armorHeaderSep, []byte(v), newline)
 		if err != nil {
-			return w, err
+			return
 		}
 	}
 
 	_, err = out.Write(newline)
 	if err != nil {
-		return w, err
+		return
 	}
 
 	e := &encoding{
