@@ -3,11 +3,15 @@ package util
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/containerd/containerd/remotes"
 	"github.com/containerd/containerd/remotes/docker"
@@ -24,6 +28,125 @@ var (
 	registryHost  docker.RegistryHost
 )
 
+// retryTransport wraps an http.RoundTripper and retries transient errors
+// with exponential backoff up to 30 seconds total.
+type retryTransport struct {
+	base http.RoundTripper
+}
+
+func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	const maxTotalTime = 30 * time.Second
+	const initialBackoff = 100 * time.Millisecond
+
+	// Determine if we can retry this request.
+	// We can only retry if we can reset the body. For large streaming bodies
+	// (like layer pushes), we cannot buffer them, so we don't retry.
+	canRetry := req.Body == nil || req.GetBody != nil
+
+	if !canRetry {
+		// No way to replay the body, just do a single attempt
+		return t.base.RoundTrip(req)
+	}
+
+	deadline := time.Now().Add(maxTotalTime)
+	backoff := initialBackoff
+
+	for {
+		resp, err := t.base.RoundTrip(req)
+
+		// Check if we should retry
+		shouldRetry := false
+		var retryAfter time.Duration
+		if err != nil {
+			// Network errors are retryable
+			shouldRetry = true
+		} else if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			// 429 and 5xx are retryable
+			shouldRetry = true
+			retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
+			// Drain and close the body so the connection can be reused
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+
+		if !shouldRetry {
+			return resp, err
+		}
+
+		// Determine wait duration: use Retry-After if provided, otherwise exponential backoff with jitter
+		var wait time.Duration
+		if retryAfter > 0 {
+			wait = retryAfter
+		} else {
+			// Add jitter: 0.5x to 1.5x the backoff
+			wait = time.Duration(float64(backoff) * (0.5 + rand.Float64()))
+			// Exponential backoff for next iteration
+			backoff *= 2
+		}
+
+		// Check if we have time for another attempt
+		if time.Now().Add(wait).After(deadline) {
+			// No time left, return the error or response
+			if err != nil {
+				return nil, err
+			}
+			// Re-do the request to get a fresh response body
+			if req.GetBody != nil {
+				req.Body, _ = req.GetBody()
+			}
+			return t.base.RoundTrip(req)
+		}
+
+		// Check context before sleeping
+		if req.Context().Err() != nil {
+			if err != nil {
+				return nil, err
+			}
+			return nil, req.Context().Err()
+		}
+
+		slog.Debug("retrying registry request", "wait", wait, "url", req.URL.String())
+
+		select {
+		case <-time.After(wait):
+		case <-req.Context().Done():
+			if err != nil {
+				return nil, err
+			}
+			return nil, req.Context().Err()
+		}
+
+		// Reset body for next attempt
+		if req.GetBody != nil {
+			req.Body, _ = req.GetBody()
+		}
+	}
+}
+
+// parseRetryAfter parses the Retry-After header value.
+// It supports both delay-seconds (e.g., "120") and HTTP-date formats.
+// Returns 0 if the header is empty or malformed.
+func parseRetryAfter(value string) time.Duration {
+	if value == "" {
+		return 0
+	}
+
+	// Try parsing as seconds first (most common for rate limiting)
+	if seconds, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Try parsing as HTTP-date (RFC 7231)
+	if t, err := http.ParseTime(value); err == nil {
+		duration := time.Until(t)
+		if duration > 0 {
+			return duration
+		}
+	}
+
+	return 0
+}
+
 func CreateRegistryHost(imageRef reference.Named, username, password string, insecure, plainHTTP bool, dockerConfigPath string, pushOp bool) error {
 	hostname, _ := splitHostname(imageRef.String())
 	if hostname == "docker.io" {
@@ -39,14 +162,16 @@ func CreateRegistryHost(imageRef reference.Named, username, password string, ins
 		registryHost.Capabilities |= docker.HostCapabilityPush
 	}
 
-	client := http.DefaultClient
-
+	var base http.RoundTripper = http.DefaultTransport
 	if insecure {
-		client.Transport = &http.Transport{
+		base = &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
 			},
 		}
+	}
+	client := &http.Client{
+		Transport: &retryTransport{base: base},
 	}
 	registryHost.Client = client
 
