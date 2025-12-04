@@ -16,12 +16,12 @@ func parseTargetUser(raw string) (target string, username string, err error) {
 	parts := strings.SplitN(raw, "+", 2)
 	if len(parts) != 2 {
 		err = fmt.Errorf("invalid format (expected target:port+user)")
-		return target, username, err
+		return
 	}
 
 	target = parts[0]
 	username = parts[1]
-	return target, username, err
+	return
 }
 
 func main() {

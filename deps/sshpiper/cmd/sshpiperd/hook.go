@@ -23,14 +23,14 @@ func (h *hookChain) hook() ssh.PipePacketHook {
 		for _, hk := range h.hooks {
 			method, packetOut, err = hk(packetOut)
 			if err != nil {
-				return method, packetOut, err
+				return
 			}
 
 			if method == ssh.PipePacketHookReply {
-				return method, packetOut, err
+				return
 			}
 		}
 
-		return method, packetOut, err
+		return
 	}
 }
