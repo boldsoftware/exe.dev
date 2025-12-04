@@ -18,6 +18,43 @@ func (q *Queries) DeleteBoxIPShard(ctx context.Context, boxID int) error {
 	return err
 }
 
+const getBoxByUserAndShard = `-- name: GetBoxByUserAndShard :one
+SELECT b.id, b.name, b.status, b.image, b.ctrhost, b.container_id, b.created_by_user_id, b.created_at, b.updated_at, b.last_started_at, b.routes, b.ssh_server_identity_key, b.ssh_authorized_keys, b.ssh_client_private_key, b.ssh_port, b.ssh_user, b.creation_log
+FROM box_ip_shard s
+JOIN boxes b ON b.id = s.box_id
+WHERE s.user_id = ? AND s.ip_shard = ?
+`
+
+type GetBoxByUserAndShardParams struct {
+	UserID  string `db:"user_id" json:"user_id"`
+	IPShard int64  `db:"ip_shard" json:"ip_shard"`
+}
+
+func (q *Queries) GetBoxByUserAndShard(ctx context.Context, arg GetBoxByUserAndShardParams) (Box, error) {
+	row := q.queryRow(ctx, q.getBoxByUserAndShardStmt, getBoxByUserAndShard, arg.UserID, arg.IPShard)
+	var i Box
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Status,
+		&i.Image,
+		&i.Ctrhost,
+		&i.ContainerID,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastStartedAt,
+		&i.Routes,
+		&i.SSHServerIdentityKey,
+		&i.SSHAuthorizedKeys,
+		&i.SSHClientPrivateKey,
+		&i.SSHPort,
+		&i.SSHUser,
+		&i.CreationLog,
+	)
+	return i, err
+}
+
 const getBoxIPShard = `-- name: GetBoxIPShard :one
 SELECT ip_shard
 FROM box_ip_shard
@@ -26,6 +63,20 @@ WHERE box_id = ?
 
 func (q *Queries) GetBoxIPShard(ctx context.Context, boxID int) (int64, error) {
 	row := q.queryRow(ctx, q.getBoxIPShardStmt, getBoxIPShard, boxID)
+	var ip_shard int64
+	err := row.Scan(&ip_shard)
+	return ip_shard, err
+}
+
+const getIPShardByBoxName = `-- name: GetIPShardByBoxName :one
+SELECT s.ip_shard
+FROM box_ip_shard s
+JOIN boxes b ON b.id = s.box_id
+WHERE b.name = ?
+`
+
+func (q *Queries) GetIPShardByBoxName(ctx context.Context, name string) (int64, error) {
+	row := q.queryRow(ctx, q.getIPShardByBoxNameStmt, getIPShardByBoxName, name)
 	var ip_shard int64
 	err := row.Scan(&ip_shard)
 	return ip_shard, err

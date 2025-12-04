@@ -25,9 +25,17 @@ const (
 )
 
 const (
-	domainShardFormat = "s%03d.%s"
-	maxDomainShards   = 25
+	// MaxDomainShards is the largest available shard ID.
+	// Shards map to IP public IP addresses: sNNN.exe.dev, so ranging from s001.exe.dev to s025.exe.dev.
+	// MaxDomainShards must match the DB CHECK constraint.
+	// IP shards are 1-based. (The zero value is intentionally invalid.)
+	MaxDomainShards = 25
 )
+
+// ShardIsValid reports whether shard is within the valid range (0, MaxDomainShards].
+func ShardIsValid(shard int) bool {
+	return shard >= 1 && shard <= MaxDomainShards
+}
 
 var (
 	metadataEndpoint = metadataEndpointDefault
@@ -39,11 +47,15 @@ var (
 	errIMDSv1Only          = errors.New("metadata service requires IMDSv1")
 )
 
-// PublicIP describes the public IPv4 address and associated domain name mapped
-// to a private IPv4 address.
+func ShardSub(shard int) string {
+	return fmt.Sprintf("s%03d", shard)
+}
+
+// PublicIP describes a public IPv4 address, associated domain name, and shard.
 type PublicIP struct {
 	IP     netip.Addr
-	Domain string
+	Domain string // full domain, e.g. "s007.exe.cloud"
+	Shard  int    // shard number, e.g. 7
 }
 
 type ipMapping struct {
@@ -51,11 +63,11 @@ type ipMapping struct {
 	private netip.Addr
 }
 
-// IPs returns a mapping of private IPv4 addresses to their associated public IPv4
+// EC2IPs returns a mapping of private IPv4 addresses to their associated public IPv4
 // metadata on the current EC2 instance. boxDomain specifies the base domain for
 // shard records (e.g. exe.dev or exe-staging.dev). If the process is not running
 // on EC2, it returns an empty map and a nil error.
-func IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, error) {
+func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, error) {
 	if ctx == nil {
 		return nil, errors.New("publicips: context must not be nil")
 	}
@@ -132,20 +144,17 @@ func IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, error)
 		return result, nil
 	}
 
-	domains, err := resolveDomains(ctx, mappings, boxDomain)
+	byPublicIP, err := resolveDomains(ctx, mappings, boxDomain)
 	if err != nil {
 		return nil, fmt.Errorf("publicips: resolve domains: %w", err)
 	}
 
 	for _, mapping := range mappings {
-		domain, ok := domains[mapping.public]
+		info, ok := byPublicIP[mapping.public]
 		if !ok {
 			return nil, fmt.Errorf("publicips: missing domain for public IP %s", mapping.public)
 		}
-		result[mapping.private] = PublicIP{
-			IP:     mapping.public,
-			Domain: domain,
-		}
+		result[mapping.private] = info
 	}
 
 	return result, nil
@@ -270,12 +279,14 @@ func (c *metadataClient) get(ctx context.Context, path, token string, useToken b
 	return body, resp.StatusCode, nil
 }
 
-func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string) (map[netip.Addr]string, error) {
-	if len(mappings) == 0 {
-		return map[netip.Addr]string{}, nil
-	}
+func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string) (map[netip.Addr]PublicIP, error) {
 	if boxDomain == "" {
 		return nil, fmt.Errorf("box domain must not be empty")
+	}
+
+	resolved := make(map[netip.Addr]PublicIP, len(mappings))
+	if len(mappings) == 0 {
+		return resolved, nil
 	}
 
 	needed := make(map[netip.Addr]struct{}, len(mappings))
@@ -283,17 +294,17 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 		needed[mapping.public] = struct{}{}
 	}
 
-	resolved := make(map[netip.Addr]string, len(needed))
-
 	// Try shards s001-s025, then fall back to the base domain itself (shard 0).
-	for shard := 1; shard <= maxDomainShards+1; shard++ {
+	for shard := 1; shard <= MaxDomainShards+1; shard++ {
 		if len(resolved) == len(needed) {
 			break
 		}
 
-		domain := boxDomain // fallback to base domain when all shards failed, i.e. shard > maxDomainShards
-		if shard <= maxDomainShards {
-			domain = fmt.Sprintf(domainShardFormat, shard, boxDomain)
+		domain := ShardSub(shard) + "." + boxDomain
+		if shard > MaxDomainShards {
+			// fall back to base domain (shard 0)
+			shard = 0
+			domain = boxDomain
 		}
 
 		addrs, err := lookupDomainIPs(ctx, "ip4", domain)
@@ -310,7 +321,7 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 				continue
 			}
 			if _, ok := needed[addr]; ok {
-				resolved[addr] = domain
+				resolved[addr] = PublicIP{IP: addr, Domain: domain, Shard: shard}
 			}
 		}
 	}
@@ -378,4 +389,19 @@ func defaultHTTPClient() *http.Client {
 
 func defaultLookupDomainIPs(ctx context.Context, network, host string) ([]netip.Addr, error) {
 	return net.DefaultResolver.LookupNetIP(ctx, network, host)
+}
+
+// LocalhostIPs returns a map of localhost IPs (127.21.0.1 through 127.21.0.25) to
+// PublicIP info for local development. In dev, public == private (no NAT).
+func LocalhostIPs(ctx context.Context, boxHost string) (map[netip.Addr]PublicIP, error) {
+	m := make(map[netip.Addr]PublicIP, MaxDomainShards)
+	for shard := 1; shard <= MaxDomainShards; shard++ {
+		ip := netip.AddrFrom4([4]byte{127, 21, 0, byte(shard)})
+		m[ip] = PublicIP{
+			IP:     ip,
+			Domain: ShardSub(shard) + "." + boxHost,
+			Shard:  shard,
+		}
+	}
+	return m, nil
 }

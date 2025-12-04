@@ -246,17 +246,27 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	registered := userID != ""
 	username := conn.User()
-	slog.DebugContext(ctx, "User status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID)
+	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), domz.StripPort(conn.GetMeta("local_address")), "127.0.0.1")
+	slog.DebugContext(ctx, "piper public key auth user status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID, "local_address", localAddress)
 
 	// Check if this is a direct box access attempt
 	if username != "" && registered {
-		slog.InfoContext(ctx, "Checking for box", "component", "piper-plugin", "username", username, "user_id", userID, "registered", registered)
+		slog.InfoContext(ctx, "piper public key auth checking for box by name", "component", "piper-plugin", "username", username, "user_id", userID)
 		if box := p.server.FindBoxByNameForUser(ctx, userID, username); box != nil {
-			slog.InfoContext(ctx, "Found box, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
+			slog.InfoContext(ctx, "piper public key auth found box by name, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "ctrhost", box.Ctrhost, "port", box.SSHPort)
 			return p.handleBoxAccess(box, userID, conn.UniqueID())
 		} else {
 			slog.InfoContext(ctx, "No box found with name", "component", "piper-plugin", "username", username, "user_id", userID)
 		}
+	}
+
+	// IP-based box routing (like SNI but for SSH):
+	// If `ssh boxname.exe.cloud` resolves to a shard IP (127.21.0.X), then look up the box by that shard/user combo.
+	// This makes `ssh boxname.exe.cloud` work like `ssh boxname@exe.cloud`.
+	// If this fails, continue on with normal routing.
+	if box := p.server.FindBoxByIPShard(ctx, userID, localAddress); box != nil {
+		slog.InfoContext(ctx, "piper pk auth found box by IP shard, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "local_address", localAddress)
+		return p.handleBoxAccess(box, userID, conn.UniqueID())
 	}
 
 	// For all other cases (interactive shell, registration, etc.),
@@ -271,7 +281,6 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// 4. When exed sees the proxy key, it can look up the original user's key
 	// 5. Mappings expire after a few minutes to prevent memory leaks
 
-	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), domz.StripPort(conn.GetMeta("local_address")), "127.0.0.1")
 	proxyPrivateKeyPEM, proxyFingerprint, err := p.generateEphemeralProxyKey(key, localAddress)
 	if err != nil {
 		slog.DebugContext(ctx, "Failed to generate ephemeral proxy key", "component", "piper-plugin", "error", err)

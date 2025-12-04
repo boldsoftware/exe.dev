@@ -2057,10 +2057,18 @@ func usernameAt(username string) string {
 }
 
 func baseSSHArgs(username, keyFile string) []string {
+	args := sshOpts()
+	args = append(args,
+		"-p", fmt.Sprint(Env.sshPort()),
+		"-o", "IdentityFile="+keyFile,
+		usernameAt(username)+"localhost",
+	)
+	return args
+}
+
+func sshOpts() []string {
 	return []string{
 		"-F", "/dev/null",
-		"-p", fmt.Sprint(Env.sshPort()),
-		"-o", "IdentityFile=" + keyFile,
 		"-o", "IdentityAgent=none",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -2074,8 +2082,6 @@ func baseSSHArgs(username, keyFile string) []string {
 		"-o", "ConnectTimeout=5", // 5 second connection timeout
 		"-o", "ServerAliveInterval=5", // send keepalive every 5 seconds
 		"-o", "ServerAliveCountMax=2", // disconnect after 2 failed keepalives (10s total)
-
-		usernameAt(username) + "localhost",
 	}
 }
 

@@ -34,6 +34,8 @@ import (
 	"time"
 
 	"exe.dev/boxname"
+	"exe.dev/bsdns"
+	"exe.dev/bsdns/alley53"
 	"exe.dev/container"
 	docspkg "exe.dev/docs"
 	"exe.dev/domz"
@@ -70,11 +72,6 @@ const (
 const (
 	// Timeout for long-running operations like box creation and Shelley prompts
 	longOperationTimeout = 30 * time.Minute
-	// IP shards are 1-based. (The zero value is intentionally invalid.)
-	// maxIPShard is the largest available shard IDs.
-	// Shards map to IP public IP addresses: sNNN.exe.dev, so ranging from s001.exe.dev to s025.exe.dev.
-	// maxIPShard must match the DB CHECK constraint.
-	maxIPShard = 25
 )
 
 // BoxDisplayInfo represents a box with additional display information
@@ -146,7 +143,8 @@ type Server struct {
 	sshLn      *listener
 	pluginLn   *listener
 	piperdPort int // what port sshpiperd is listening on, typically 2222
-	PublicIPs  map[netip.Addr]publicips.PublicIP
+	// PublicIPs maps private (local address) IPs to public IP / domain / shard.
+	PublicIPs map[netip.Addr]publicips.PublicIP
 
 	// ready indicates that the server is fully ready and serving.
 	// ready must not be waited on prior to calling Start.
@@ -162,11 +160,17 @@ type Server struct {
 
 	certManager         *autocert.Manager
 	wildcardCertManager *route53.WildcardCertManager
-	dnsProvider         *route53.DNSProvider
-	lookupCNAMEFunc     func(context.Context, string) (string, error)       // for tests
-	lookupAFunc         func(context.Context, string) ([]netip.Addr, error) // for tests
-	boxExistsFunc       func(context.Context, string) bool                  // for tests
-	stopCobble          func()
+
+	// route53Provider answers ACME DNS challenges (only when UseRoute53)
+	route53Provider *route53.DNSProvider
+	// bsdns manages box shard DNS records (route53 or alley53)
+	bsdns bsdns.Provider
+
+	// Testing hooks
+	lookupCNAMEFunc func(context.Context, string) (string, error)
+	lookupAFunc     func(context.Context, string) ([]netip.Addr, error)
+	boxExistsFunc   func(context.Context, string) bool
+	stopCobble      func()
 
 	// Tailscale HTTPS (preloaded at startup)
 	tsCertMu sync.Mutex
@@ -557,8 +561,21 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 		log:       slog,
 	}
 
+	// Initialize DNS providers (both ACME and box shard DNS)
 	if env.UseRoute53 {
-		s.dnsProvider = route53.NewDNSProvider()
+		// Prod/staging
+		s.route53Provider = route53.NewDNSProvider()
+		s.bsdns = s.route53Provider
+	} else {
+		// Use alley53 if available. If not, fall back to a no-op provider.
+		c := alley53.NewClient("localhost:5380")
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if c.IsRunning(ctx) {
+			s.bsdns = c
+		} else {
+			s.bsdns = bsdns.Discard{}
+		}
 	}
 
 	s.setupHTTPServer()
@@ -576,33 +593,33 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	return s, nil
 }
 
-func (s *Server) initializePublicIPs() {
-	if len(s.PublicIPs) != 0 || !s.env.DiscoverPublicIPs {
-		// IPs already initialized...or not supposed to be.
-		s.logPublicIPs()
+// initShardIPs sets up the IP resolver for mapping local IPs to public IP info.
+// DiscoverPublicIPs=true: use EC2 metadata to discover private->public IP mappings (required because EC2 has a 1:1 NAT).
+// DiscoverPublicIPs=false: use 127.21.0.x where x is the shard number.
+func (s *Server) initShardIPs(ctx context.Context) {
+	defer s.logIPResolver()
+
+	if len(s.PublicIPs) != 0 {
+		// Already initialized (e.g., in tests)
 		return
 	}
 
-	ips, err := publicips.IPs(context.Background(), s.env.BoxHost)
+	discoverIPs := publicips.EC2IPs // EC2 metadata-based discovery
+	if !s.env.DiscoverPublicIPs {
+		discoverIPs = publicips.LocalhostIPs // 127.21.0.x
+		s.slog().InfoContext(ctx, "using dev IP resolver", "box_host", s.env.BoxHost)
+	}
+
+	ips, err := discoverIPs(ctx, s.env.BoxHost)
 	if err != nil {
-		s.slog().Warn("public IP discovery failed", "error", err)
+		s.slog().WarnContext(ctx, "public IP discovery failed", "error", err)
 		return
 	}
-
-	if ips == nil {
-		ips = map[netip.Addr]publicips.PublicIP{}
-	}
-
 	s.PublicIPs = ips
-	s.logPublicIPs()
 }
 
-func (s *Server) logPublicIPs() {
+func (s *Server) logIPResolver() {
 	if len(s.PublicIPs) == 0 {
-		if !s.env.DiscoverPublicIPs {
-			s.slog().Info("public IP metadata lookup disabled for this environment")
-			return
-		}
 		s.slog().Warn("no public IP assignments discovered via metadata")
 		return
 	}
@@ -1181,6 +1198,35 @@ func (s *Server) FindBoxByNameForUser(ctx context.Context, userID, boxName strin
 	return &box
 }
 
+// FindBoxByIPShard finds a box by the local IP address shard for a given user.
+// This enables `ssh boxname.exe.cloud` to work like `ssh boxname@exe.cloud`.
+func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *exedb.Box {
+	if userID == "" || localIP == "" {
+		return nil
+	}
+	host := domz.StripPort(localIP)
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return nil
+	}
+
+	info, ok := s.PublicIPs[addr]
+	if !ok {
+		return nil
+	}
+
+	box, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
+		return queries.GetBoxByUserAndShard(ctx, exedb.GetBoxByUserAndShardParams{
+			UserID:  userID,
+			IPShard: int64(info.Shard),
+		})
+	})
+	if err != nil {
+		return nil
+	}
+	return &box
+}
+
 func (s *Server) boxSSHPort() int {
 	if s.piperdPort != 22 {
 		return s.piperdPort
@@ -1268,14 +1314,12 @@ func (s *Server) preCreateBox(ctx context.Context, userID, ctrhost, name, image 
 		return 0, err
 	}
 
-	if s.env.UseRoute53 {
-		if err := s.createBoxCNAME(ctx, name, assignedShard); err != nil {
-			cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
-			if cleanupErr != nil {
-				s.slog().ErrorContext(ctx, "failed to roll back box after DNS error", "box_id", boxID, "cleanup_error", cleanupErr, "dns_error", err)
-			}
-			return 0, err
+	if err := s.createBoxShardDNSRecord(ctx, name, assignedShard); err != nil {
+		cleanupErr := s.rollbackBoxPreCreation(ctx, boxID)
+		if cleanupErr != nil {
+			s.slog().ErrorContext(ctx, "failed to roll back box after DNS error", "box_id", boxID, "cleanup_error", cleanupErr, "dns_error", err)
 		}
+		return 0, err
 	}
 
 	s.recordUserEventBestEffort(ctx, userID, userEventCreatedBox)
@@ -1290,16 +1334,16 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 		return 0, fmt.Errorf("failed to list IP shards for user %s: %w", userID, err)
 	}
 
-	used := make([]bool, maxIPShard+1)
+	used := make([]bool, publicips.MaxDomainShards+1)
 	for _, shard := range shards {
-		if shard < 1 || shard > maxIPShard {
+		if !publicips.ShardIsValid(int(shard)) {
 			continue
 		}
 		used[int(shard)] = true
 	}
 
 	var assigned int
-	for candidate := 1; candidate <= maxIPShard; candidate++ {
+	for candidate := 1; candidate <= publicips.MaxDomainShards; candidate++ {
 		if !used[candidate] {
 			assigned = candidate
 			break
@@ -1320,45 +1364,33 @@ func (s *Server) allocateIPShard(ctx context.Context, queries *exedb.Queries, us
 	return assigned, nil
 }
 
-func (s *Server) createBoxCNAME(ctx context.Context, boxName string, shard int) error {
-	if shard < 1 || shard > maxIPShard {
+func (s *Server) createBoxShardDNSRecord(ctx context.Context, boxName string, shard int) error {
+	if !publicips.ShardIsValid(shard) {
 		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
 	}
-	if s.dnsProvider == nil {
-		return fmt.Errorf("route53 DNS provider not configured")
-	}
 
-	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second) // TODO: 30s seems like a lot
 	defer cancel()
 
-	target := fmt.Sprintf("s%03d", shard)
-	_, err := s.dnsProvider.CreateCNAMERecord(dnsCtx, s.env.BoxHost, boxName, target, 5*time.Minute)
-	if err != nil {
-		return fmt.Errorf("failed to create Route53 CNAME for box %s: %w", boxName, err)
+	if err := s.bsdns.UpsertBoxRecord(dnsCtx, s.env.BoxHost, boxName, shard); err != nil {
+		return fmt.Errorf("failed to create DNS record for box %s: %w", boxName, err)
 	}
 	return nil
 }
 
-func (s *Server) deleteBoxCNAME(ctx context.Context, boxName string, shard int) error {
-	if shard < 1 || shard > maxIPShard {
+func (s *Server) deleteBoxShardDNSRecord(ctx context.Context, boxName string, shard int) error {
+	if !publicips.ShardIsValid(shard) {
 		return fmt.Errorf("invalid IP shard %d for box %s", shard, boxName)
 	}
-	if s.dnsProvider == nil {
-		return fmt.Errorf("route53 DNS provider not configured")
+	if s.bsdns == nil {
+		return nil // no DNS provider configured, skip
 	}
 
 	dnsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	// Reconstruct the record ID from the known CNAME parameters
-	target := fmt.Sprintf("s%03d.%s", shard, s.env.BoxHost)
-	recordID, err := route53.EncodeRecordID(boxName+"."+s.env.BoxHost, "CNAME", int64((5 * time.Minute).Seconds()), []string{target})
-	if err != nil {
-		return fmt.Errorf("failed to encode record ID for box %s: %w", boxName, err)
-	}
-
-	if err := s.dnsProvider.DeleteRecord(dnsCtx, s.env.BoxHost, recordID); err != nil {
-		return fmt.Errorf("failed to delete Route53 CNAME for box %s: %w", boxName, err)
+	if err := s.bsdns.DeleteBoxRecord(dnsCtx, s.env.BoxHost, boxName, shard); err != nil {
+		return fmt.Errorf("failed to delete DNS record for box %s: %w", boxName, err)
 	}
 	return nil
 }
@@ -1416,10 +1448,10 @@ func (s *Server) deleteBox(ctx context.Context, box exedb.Box) error {
 		return err
 	}
 
-	// Clean up DNS CNAME record if Route53 is enabled
-	if s.env.UseRoute53 && ipShard > 0 {
-		if err := s.deleteBoxCNAME(ctx, box.Name, int(ipShard)); err != nil {
-			s.slog().WarnContext(ctx, "failed to delete DNS CNAME record", "box", box.Name, "shard", ipShard, "error", err)
+	// Clean up DNS record
+	if ipShard > 0 {
+		if err := s.deleteBoxShardDNSRecord(ctx, box.Name, int(ipShard)); err != nil {
+			s.slog().WarnContext(ctx, "failed to delete DNS record", "box", box.Name, "shard", ipShard, "error", err)
 		}
 	}
 
@@ -1721,11 +1753,11 @@ func (s *Server) Start() error {
 		return fmt.Errorf("illegal start after stop")
 	}
 
-	s.initializePublicIPs()
-
 	// Create a cancellable context for startup
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	s.initShardIPs(ctx)
 
 	// Start HTTP server in a goroutine if configured
 	if s.httpLn.ln != nil {

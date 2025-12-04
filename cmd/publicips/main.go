@@ -33,7 +33,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	mapping, err := publicips.IPs(ctx, boxDomain)
+	mapping, err := publicips.EC2IPs(ctx, boxDomain)
 	if err != nil {
 		return err
 	}

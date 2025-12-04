@@ -7,6 +7,7 @@ replace github.com/tg123/sshpiper => ./deps/sshpiper
 replace github.com/Netflix/go-expect => ./deps/go-expect
 
 require (
+	codeberg.org/miekg/dns v0.5.26
 	github.com/Netflix/go-expect v0.0.0-20220104043353-73e0943537d2
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
 	github.com/aws/aws-sdk-go-v2 v1.39.4
@@ -30,6 +31,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gliderlabs/ssh v0.3.8
+	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689
 	github.com/google/go-containerregistry v0.20.6
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
@@ -64,7 +66,7 @@ require (
 	golang.org/x/tools v0.38.0
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.10
-	modernc.org/sqlite v1.38.2
+	modernc.org/sqlite v1.39.0
 	mvdan.cc/sh/v3 v3.12.0
 	tailscale.com v1.86.5
 )

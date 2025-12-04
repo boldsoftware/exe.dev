@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"exe.dev/domz"
+	"exe.dev/publicips"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	awsroute53 "github.com/aws/aws-sdk-go-v2/service/route53"
@@ -543,4 +544,25 @@ func acmeChallengeName(domain string) string {
 
 	// "exe.dev" -> "_acme-challenge"
 	return "_acme-challenge"
+}
+
+// boxRecordTTL is the TTL used for box DNS records.
+const boxRecordTTL = 5 * time.Minute
+
+// UpsertBoxRecord creates or updates a CNAME record for a box.
+// The shard maps to a hostname like s001, s002, etc.
+func (d *DNSProvider) UpsertBoxRecord(ctx context.Context, domain, boxName string, shard int) error {
+	target := publicips.ShardSub(shard)
+	_, err := d.CreateCNAMERecord(ctx, domain, boxName, target, boxRecordTTL)
+	return err
+}
+
+// DeleteBoxRecord removes the CNAME record for a box.
+func (d *DNSProvider) DeleteBoxRecord(ctx context.Context, domain, boxName string, shard int) error {
+	target := publicips.ShardSub(shard) + "." + domain
+	recordID, err := EncodeRecordID(boxName+"."+domain, "CNAME", int64(boxRecordTTL.Seconds()), []string{target})
+	if err != nil {
+		return fmt.Errorf("failed to encode record ID: %w", err)
+	}
+	return d.DeleteRecord(ctx, domain, recordID)
 }

@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"exe.dev/bsdns/alley53"
 	"exe.dev/vouch"
 )
 
@@ -228,6 +230,53 @@ func TestVanillaBox(t *testing.T) {
 		// 	pty.want("200")
 		// 	pty.wantPrompt()
 		// }
+	})
+
+	t.Run("shard_routing", func(t *testing.T) {
+		// shard_routing tests that `ssh boxname.exe.cloud` routes to the correct box.
+		// Skip if alley53 isn't running
+		if !alley53.NewClient("localhost:5380").IsRunning(t.Context()) {
+			t.Skip("alley53 is not running - skipping box hostname routing test")
+		}
+
+		// This is the full flow:
+		// 1. alley53 DNS resolves boxname.exe.cloud to a shard IP (e.g., 127.21.0.1)
+		// 2. SSH connects to that IP
+		// 3. sshpiper sees the local address and routes to the box based on (user + shard)
+
+		// Now test the hostname-based routing: ssh boxname.exe.cloud
+		// This goes through DNS resolution -> shard IP -> sshpiper -> box
+		boxHostname := boxName + ".exe.cloud"
+
+		// Connect via SSH to boxHostname, no username.
+		//
+		// We can't use sshToBox here:
+		//
+		// IMPORTANT: This connects directly to sshpiper (piperd) port, bypassing the
+		// test's TCP proxy. This is necessary because hostname-based routing depends
+		// on the local address sshpiper sees when accepting the connection. The TCP
+		// proxy creates a new outbound connection to sshpiper, losing the original
+		// destination IP information.
+		ptyHost := makePty(t, "ssh "+boxHostname)
+		args := sshOpts()
+		args = append(args,
+			"-p", fmt.Sprint(Env.piperd.SSHPort), // use piperd port directly (not proxy) so sshpiper sees the correct local address
+			"-o", "IdentityFile="+keyFile,
+			boxHostname,
+		)
+		sshCmd := exec.CommandContext(Env.context(t), "ssh", args...)
+		sshCmd.Env = append(os.Environ(), "SSH_AUTH_SOCK=") // disable SSH agent
+		ptyHost.attachAndStart(sshCmd)
+		ptyHost.promptRe = regexp.QuoteMeta(boxName) + ".*" + regexp.QuoteMeta("$")
+
+		// Verify we're in the right box
+		ptyHost.reject("Permission denied")
+		ptyHost.reject(exeDevPrompt) // we don't want to land in the repl!
+		ptyHost.wantPrompt()
+		ptyHost.sendLine("hostname")
+		ptyHost.want(boxName)
+		ptyHost.wantPrompt()
+		ptyHost.disconnect()
 	})
 
 	// Cleanup

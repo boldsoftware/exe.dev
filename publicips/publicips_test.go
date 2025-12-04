@@ -2,7 +2,6 @@ package publicips
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -42,7 +41,7 @@ func TestIPsNotOnAWS(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background(), testBoxDomain)
+	ips, err := EC2IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -58,8 +57,8 @@ func TestIPsWithToken(t *testing.T) {
 	privateTwo := netip.MustParseAddr("10.0.0.2")
 
 	stubDomainLookup(t, map[string][]netip.Addr{
-		fmt.Sprintf(domainShardFormat, 1, testBoxDomain): {publicOne},
-		fmt.Sprintf(domainShardFormat, 2, testBoxDomain): {publicTwo},
+		ShardSub(1) + "." + testBoxDomain: {publicOne},
+		ShardSub(2) + "." + testBoxDomain: {publicTwo},
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +84,7 @@ func TestIPsWithToken(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background(), testBoxDomain)
+	ips, err := EC2IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -93,11 +92,13 @@ func TestIPsWithToken(t *testing.T) {
 	want := map[netip.Addr]PublicIP{
 		privateOne: {
 			IP:     publicOne,
-			Domain: fmt.Sprintf(domainShardFormat, 1, testBoxDomain),
+			Domain: ShardSub(1) + "." + testBoxDomain,
+			Shard:  1,
 		},
 		privateTwo: {
 			IP:     publicTwo,
-			Domain: fmt.Sprintf(domainShardFormat, 2, testBoxDomain),
+			Domain: ShardSub(2) + "." + testBoxDomain,
+			Shard:  2,
 		},
 	}
 	if len(ips) != len(want) {
@@ -108,7 +109,7 @@ func TestIPsWithToken(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing mapping for %s", priv)
 		}
-		if got.IP != info.IP || got.Domain != info.Domain {
+		if got != info {
 			t.Fatalf("mapping mismatch for %s: got %+v want %+v", priv, got, info)
 		}
 	}
@@ -119,7 +120,7 @@ func TestIPsIMDSv1Fallback(t *testing.T) {
 	privateAddr := netip.MustParseAddr("10.0.0.42")
 
 	stubDomainLookup(t, map[string][]netip.Addr{
-		fmt.Sprintf(domainShardFormat, 3, testBoxDomain): {publicAddr},
+		ShardSub(3) + "." + testBoxDomain: {publicAddr},
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -138,26 +139,22 @@ func TestIPsIMDSv1Fallback(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background(), testBoxDomain)
+	ips, err := EC2IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
 
-	want := map[netip.Addr]PublicIP{
-		privateAddr: {
-			IP:     publicAddr,
-			Domain: fmt.Sprintf(domainShardFormat, 3, testBoxDomain),
-		},
-	}
-	if len(ips) != len(want) {
-		t.Fatalf("unexpected number of entries: got %d want %d", len(ips), len(want))
+	want := PublicIP{
+		IP:     publicAddr,
+		Domain: ShardSub(3) + "." + testBoxDomain,
+		Shard:  3,
 	}
 	got, ok := ips[privateAddr]
 	if !ok {
 		t.Fatalf("missing mapping for %s", privateAddr)
 	}
-	if got.IP != want[privateAddr].IP || got.Domain != want[privateAddr].Domain {
-		t.Fatalf("mapping mismatch for %s: got %+v want %+v", privateAddr, got, want[privateAddr])
+	if got != want {
+		t.Fatalf("mapping mismatch for %s: got %+v want %+v", privateAddr, got, want)
 	}
 }
 
@@ -187,7 +184,7 @@ func TestIPsFallbackDomain(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background(), testBoxDomain)
+	ips, err := EC2IPs(context.Background(), testBoxDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -196,11 +193,13 @@ func TestIPsFallbackDomain(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing mapping for %s", privateAddr)
 	}
-	if info.IP != publicAddr {
-		t.Fatalf("unexpected public IP: got %s want %s", info.IP, publicAddr)
+	want := PublicIP{
+		IP:     publicAddr,
+		Domain: testBoxDomain,
+		Shard:  0, // apex domain, no shard
 	}
-	if info.Domain != testBoxDomain {
-		t.Fatalf("unexpected domain: got %q want %q", info.Domain, testBoxDomain)
+	if info != want {
+		t.Fatalf("mapping mismatch: got %+v want %+v", info, want)
 	}
 }
 
@@ -211,7 +210,7 @@ func TestIPsStagingDomain(t *testing.T) {
 
 	// Staging shards should use staging domain, not hardcoded exe.dev
 	stubDomainLookup(t, map[string][]netip.Addr{
-		fmt.Sprintf(domainShardFormat, 5, stagingDomain): {publicAddr},
+		ShardSub(5) + "." + stagingDomain: {publicAddr},
 	})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +233,7 @@ func TestIPsStagingDomain(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	ips, err := IPs(context.Background(), stagingDomain)
+	ips, err := EC2IPs(context.Background(), stagingDomain)
 	if err != nil {
 		t.Fatalf("IPs returned error: %v", err)
 	}
@@ -243,12 +242,13 @@ func TestIPsStagingDomain(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing mapping for %s", privateAddr)
 	}
-	if info.IP != publicAddr {
-		t.Fatalf("unexpected public IP: got %s want %s", info.IP, publicAddr)
+	want := PublicIP{
+		IP:     publicAddr,
+		Domain: ShardSub(5) + "." + stagingDomain,
+		Shard:  5,
 	}
-	wantDomain := fmt.Sprintf(domainShardFormat, 5, stagingDomain)
-	if info.Domain != wantDomain {
-		t.Fatalf("unexpected domain: got %q want %q", info.Domain, wantDomain)
+	if info != want {
+		t.Fatalf("mapping mismatch: got %+v want %+v", info, want)
 	}
 }
 
@@ -272,7 +272,7 @@ func TestIPsMissingPrivateAddress(t *testing.T) {
 	})
 	withMetadataServer(t, handler)
 
-	_, err := IPs(context.Background(), testBoxDomain)
+	_, err := EC2IPs(context.Background(), testBoxDomain)
 	if err == nil {
 		t.Fatalf("expected error when private IP missing")
 	}
@@ -302,5 +302,61 @@ func expectHeader(t *testing.T, r *http.Request, key, want string) {
 	t.Helper()
 	if got := r.Header.Get(key); got != want {
 		t.Fatalf("header %s = %q, want %q", key, got, want)
+	}
+}
+
+func TestLocalhostIPs(t *testing.T) {
+	ips, err := LocalhostIPs(context.Background(), "exe.cloud")
+	if err != nil {
+		t.Fatalf("LocalhostIPs failed: %v", err)
+	}
+
+	// Should have exactly MaxDomainShards entries
+	if len(ips) != MaxDomainShards {
+		t.Errorf("DevIPs returned %d entries, want %d", len(ips), MaxDomainShards)
+	}
+
+	// Check specific entries
+	tests := []struct {
+		ip      string
+		wantIP  string
+		wantDom string
+		wantSh  int
+	}{
+		{"127.21.0.1", "127.21.0.1", "s001.exe.cloud", 1},
+		{"127.21.0.7", "127.21.0.7", "s007.exe.cloud", 7},
+		{"127.21.0.25", "127.21.0.25", "s025.exe.cloud", 25},
+	}
+
+	for _, tt := range tests {
+		addr := netip.MustParseAddr(tt.ip)
+		info, ok := ips[addr]
+		if !ok {
+			t.Errorf("DevIPs[%s] not found", tt.ip)
+			continue
+		}
+		if info.IP.String() != tt.wantIP {
+			t.Errorf("DevIPs[%s].IP = %s, want %s", tt.ip, info.IP, tt.wantIP)
+		}
+		if info.Domain != tt.wantDom {
+			t.Errorf("DevIPs[%s].Domain = %s, want %s", tt.ip, info.Domain, tt.wantDom)
+		}
+		if info.Shard != tt.wantSh {
+			t.Errorf("DevIPs[%s].Shard = %d, want %d", tt.ip, info.Shard, tt.wantSh)
+		}
+	}
+
+	// Should not have invalid entries
+	invalidIPs := []string{
+		"127.21.0.0",  // shard 0 invalid
+		"127.21.0.26", // shard > 25 invalid
+		"127.0.0.1",   // not 127.21.0.X
+		"10.0.0.1",    // private IP, not dev
+	}
+	for _, ip := range invalidIPs {
+		addr := netip.MustParseAddr(ip)
+		if _, ok := ips[addr]; ok {
+			t.Errorf("DevIPs should not contain %s", ip)
+		}
 	}
 }

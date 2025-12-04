@@ -15,3 +15,15 @@ VALUES (?, ?, ?);
 
 -- name: DeleteBoxIPShard :exec
 DELETE FROM box_ip_shard WHERE box_id = ?;
+
+-- name: GetIPShardByBoxName :one
+SELECT s.ip_shard
+FROM box_ip_shard s
+JOIN boxes b ON b.id = s.box_id
+WHERE b.name = ?;
+
+-- name: GetBoxByUserAndShard :one
+SELECT b.*
+FROM box_ip_shard s
+JOIN boxes b ON b.id = s.box_id
+WHERE s.user_id = ? AND s.ip_shard = ?;

@@ -99,6 +99,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getBoxByNameAndAllocStmt, err = db.PrepareContext(ctx, getBoxByNameAndAlloc); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxByNameAndAlloc: %w", err)
 	}
+	if q.getBoxByUserAndShardStmt, err = db.PrepareContext(ctx, getBoxByUserAndShard); err != nil {
+		return nil, fmt.Errorf("error preparing query GetBoxByUserAndShard: %w", err)
+	}
 	if q.getBoxDetailsForSetupStmt, err = db.PrepareContext(ctx, getBoxDetailsForSetup); err != nil {
 		return nil, fmt.Errorf("error preparing query GetBoxDetailsForSetup: %w", err)
 	}
@@ -140,6 +143,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getEmailVerificationByTokenStmt, err = db.PrepareContext(ctx, getEmailVerificationByToken); err != nil {
 		return nil, fmt.Errorf("error preparing query GetEmailVerificationByToken: %w", err)
+	}
+	if q.getIPShardByBoxNameStmt, err = db.PrepareContext(ctx, getIPShardByBoxName); err != nil {
+		return nil, fmt.Errorf("error preparing query GetIPShardByBoxName: %w", err)
 	}
 	if q.getPendingBoxSharesByBoxIDStmt, err = db.PrepareContext(ctx, getPendingBoxSharesByBoxID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingBoxSharesByBoxID: %w", err)
@@ -418,6 +424,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getBoxByNameAndAllocStmt: %w", cerr)
 		}
 	}
+	if q.getBoxByUserAndShardStmt != nil {
+		if cerr := q.getBoxByUserAndShardStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getBoxByUserAndShardStmt: %w", cerr)
+		}
+	}
 	if q.getBoxDetailsForSetupStmt != nil {
 		if cerr := q.getBoxDetailsForSetupStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getBoxDetailsForSetupStmt: %w", cerr)
@@ -486,6 +497,11 @@ func (q *Queries) Close() error {
 	if q.getEmailVerificationByTokenStmt != nil {
 		if cerr := q.getEmailVerificationByTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getEmailVerificationByTokenStmt: %w", cerr)
+		}
+	}
+	if q.getIPShardByBoxNameStmt != nil {
+		if cerr := q.getIPShardByBoxNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getIPShardByBoxNameStmt: %w", cerr)
 		}
 	}
 	if q.getPendingBoxSharesByBoxIDStmt != nil {
@@ -797,6 +813,7 @@ type Queries struct {
 	getAuthCookieInfoStmt                  *sql.Stmt
 	getAuthTokenInfoStmt                   *sql.Stmt
 	getBoxByNameAndAllocStmt               *sql.Stmt
+	getBoxByUserAndShardStmt               *sql.Stmt
 	getBoxDetailsForSetupStmt              *sql.Stmt
 	getBoxIPShardStmt                      *sql.Stmt
 	getBoxOwnerEmailByContainerIDStmt      *sql.Stmt
@@ -811,6 +828,7 @@ type Queries struct {
 	getEmailByUserIDStmt                   *sql.Stmt
 	getEmailVerificationByPartialTokenStmt *sql.Stmt
 	getEmailVerificationByTokenStmt        *sql.Stmt
+	getIPShardByBoxNameStmt                *sql.Stmt
 	getPendingBoxSharesByBoxIDStmt         *sql.Stmt
 	getPendingBoxSharesByEmailStmt         *sql.Stmt
 	getPendingSSHKeyByTokenStmt            *sql.Stmt
@@ -891,6 +909,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getAuthCookieInfoStmt:                  q.getAuthCookieInfoStmt,
 		getAuthTokenInfoStmt:                   q.getAuthTokenInfoStmt,
 		getBoxByNameAndAllocStmt:               q.getBoxByNameAndAllocStmt,
+		getBoxByUserAndShardStmt:               q.getBoxByUserAndShardStmt,
 		getBoxDetailsForSetupStmt:              q.getBoxDetailsForSetupStmt,
 		getBoxIPShardStmt:                      q.getBoxIPShardStmt,
 		getBoxOwnerEmailByContainerIDStmt:      q.getBoxOwnerEmailByContainerIDStmt,
@@ -905,6 +924,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getEmailByUserIDStmt:                   q.getEmailByUserIDStmt,
 		getEmailVerificationByPartialTokenStmt: q.getEmailVerificationByPartialTokenStmt,
 		getEmailVerificationByTokenStmt:        q.getEmailVerificationByTokenStmt,
+		getIPShardByBoxNameStmt:                q.getIPShardByBoxNameStmt,
 		getPendingBoxSharesByBoxIDStmt:         q.getPendingBoxSharesByBoxIDStmt,
 		getPendingBoxSharesByEmailStmt:         q.getPendingBoxSharesByEmailStmt,
 		getPendingSSHKeyByTokenStmt:            q.getPendingSSHKeyByTokenStmt,
