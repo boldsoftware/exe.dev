@@ -91,7 +91,7 @@ func Staging() Env {
 
 		UseRoute53:        true,
 		UseCobble:         false,
-		DiscoverPublicIPs: true, // TODO: is this right?
+		DiscoverPublicIPs: true,
 
 		FakeEmail:  false,
 		ReplDev:    false,
