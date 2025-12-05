@@ -57,13 +57,13 @@ deploy-whoami: ## Deploy whoami sqlite database to production
 	@./ops/deploy-whoami.sh
 
 ssh-exed: ## ssh to exed production server
-	@ssh ubuntu@exed-01
+	@ssh ubuntu@exed-02
 
 ssh-ci: ## ssh to exed ci server
 	@ssh root@ci.bold.dev
 
 ssh-ctr: ## ssh to ctr-host
-	@ssh ubuntu@exe-ctr-01
+	@ssh ubuntu@exe-ctr-02
 
 ssh-exed-staging: ## ssh to exed staging server
 	@ssh ubuntu@exed-staging-01
