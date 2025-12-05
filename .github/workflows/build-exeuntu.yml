@@ -1,4 +1,4 @@
-name: Build and Push Exeuntu Images
+name: Build Exeuntu
 run-name: ${{ inputs.commit_subject || github.event.head_commit.message || format('Build exeuntu ({0})', github.sha) }}
 
 on:
@@ -20,13 +20,40 @@ env:
   BASE_IMAGE_NAME: boldsoftware/exeuntu
 
 jobs:
-  build-images:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: linux-arm64-ubuntu-2404-8-core
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
 
     steps:
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Install Docker (ARM64 runner)
+        if: matrix.platform == 'linux/arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl
+          sudo install -m 0755 -d /etc/apt/keyrings
+          sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          sudo chmod a+r /etc/apt/keyrings/docker.asc
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+          sudo systemctl start docker
+          sudo chmod 666 /var/run/docker.sock
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
@@ -38,7 +65,68 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata for base image
-        id: meta-base
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./exeuntu/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=base-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=base-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata for base image
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}
@@ -47,18 +135,12 @@ jobs:
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Build and push base Docker image
-        id: build-base
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./exeuntu/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.ref == 'refs/heads/main' }}
-          tags: ${{ steps.meta-base.outputs.tags }}
-          labels: ${{ steps.meta-base.outputs.labels }}
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
