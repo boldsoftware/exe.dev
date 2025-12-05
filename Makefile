@@ -306,4 +306,15 @@ package-exelet-fs:
 	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o /tmp/exelet-fs/rovol/bin/exe-init .
 	@cd /tmp/exelet-fs && tar czvf $(ROOT_DIR)/exelet-fs-$(GOARCH).tar.gz ./
 
+package-exelet-fs:
+	@rm -rf /tmp/exelet-fs
+	@mkdir -p /tmp/exelet-fs
+	@>&2 echo " -> building exelet kernel"
+	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+	@>&2 echo " -> building exelet rovol"
+	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/rovol/ -f ./exelet/rovol/Dockerfile .
+	@>&2 echo " -> building exelet rovol"
+	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o /tmp/exelet-fs/rovol/bin/exe-init .
+	@cd /tmp/exelet-fs && tar czvf $(ROOT_DIR)/exelet-fs-$(GOARCH).tar.gz ./
+
 .DEFAULT_GOAL := help
