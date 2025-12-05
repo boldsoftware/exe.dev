@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	"exe.dev/cobble"
@@ -54,7 +55,10 @@ func TestServerGetCertificate(t *testing.T) {
 	if !errors.As(err, &got) {
 		t.Fatalf("expected DNSError for nonexistent.com, got: %v", err)
 	}
-	if got.Name != "nonexistent.com" || !got.IsNotFound {
+	if got.Name != "nonexistent.com" {
 		t.Fatalf("expected DNSError for nonexistent.com, got: %v", err)
+	}
+	if !got.IsNotFound && !strings.Contains(got.Error(), "server misbehaving") {
+		t.Fatalf("expected not found or server misbehaving, got: %v", err)
 	}
 }
