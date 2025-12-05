@@ -45,6 +45,9 @@ func runEntrypoint(imageConfig *v1.ImageConfig) (int, error) {
 				env = append(env, line)
 			}
 		}
+		if err := sc.Err(); err != nil {
+			return -1, err
+		}
 	}
 
 	if v := imageConfig.WorkingDir; v != "" {
