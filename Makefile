@@ -194,9 +194,11 @@ whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't exist
 		echo "Downloading ghuser/whoami.sqlite3 from Backblaze..."; \
 		export B2_APPLICATION_KEY_ID="004edb881590a7d0000000008"; \
 		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
+		export COLUMNS="$${COLUMNS:-80}"; \
+		export LINES="$${LINES:-24}"; \
 		b2 account authorize >/dev/null 2>&1 && \
 		b2 file download b2://bold-exe/whoami3.sqlite3.zst ghuser/whoami.sqlite3.zst \
-			|| (echo "${RED}Failed to download whoami.sqlite3.zst${NC}" && exit 1); \
+			|| { echo "${RED}Failed to download whoami.sqlite3.zst${NC}" && exit 1; }; \
 		echo "Decompressing ghuser/whoami.sqlite3.zst..."; \
 		zstd -d ghuser/whoami.sqlite3.zst -o ghuser/whoami.sqlite3 && \
 		rm ghuser/whoami.sqlite3.zst; \
@@ -216,12 +218,33 @@ whoami-clean: ## Remove ghuser/whoami.sqlite3 so it can be re-downloaded
 		exit 1; \
 	fi
 
+exelet-fs: ## Download exelet-fs from Backblaze if it doesn't exist
+	@if [ ! -e exelet/fs/kernel ] || [ ! -e exelet/fs/rovol ]; then \
+		if ! command -v b2 >/dev/null 2>&1; then \
+			echo "${RED}Error: b2 command not found${NC}"; \
+			echo "Please install the Backblaze B2 CLI (e.g. brew install b2-tools)"; \
+			exit 1; \
+		fi; \
+		echo "Downloading exelet-fs from Backblaze..."; \
+		export B2_APPLICATION_KEY_ID="004edb881590a7d0000000008"; \
+		export B2_APPLICATION_KEY="K004hvv/i5raZbvKXARk+H7sZLZ5XtQ"; \
+		export COLUMNS="$${COLUMNS:-80}"; \
+		export LINES="$${LINES:-24}"; \
+		b2 account authorize >/dev/null 2>&1 && \
+		b2 file download b2://bold-exe/exelet-fs-$(GOARCH).tar.gz .exelet-fs.tar.gz \
+			|| { echo "${RED}Failed to download exelet-fs-$(GOARCH).tar.gz ${NC}" && exit 1; }; \
+		echo "Decompressing exelet-fs..."; \
+		tar zxvf .exelet-fs.tar.gz -C exelet/fs && \
+		rm .exelet-fs.tar.gz; \
+		echo "✓ Downloaded and decompressed exelet-fs"; \
+	fi
+
 .PHONY: protos
 protos:
 	@$(DOCKER) buildx build -f ./Dockerfile.protobuf --output type=local,dest=pkg .
 
 .PHONY: exelet
-exelet: exelet-kernel exelet-rovol
+exelet: exelet-fs
 	@>&2 echo " -> building exelet ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
 	@cd ./cmd/exelet && GOOS=linux go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
@@ -261,5 +284,16 @@ exelet/fs/rovol:
 	@>&2 echo " -> building exelet rovol"
 	@mkdir -p exelet/fs/rovol
 	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/rovol -f ./exelet/rovol/Dockerfile .
+
+package-exelet-fs:
+	@rm -rf /tmp/exelet-fs
+	@mkdir -p /tmp/exelet-fs
+	@>&2 echo " -> building exelet kernel"
+	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+	@>&2 echo " -> building exelet rovol"
+	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=/tmp/exelet-fs/rovol/ -f ./exelet/rovol/Dockerfile .
+	@>&2 echo " -> building exelet rovol"
+	@cd ./cmd/exe-init && CGO_ENABLED=0 GOOS=linux go build -mod=mod -tags osusergo,netgo -ldflags "-extldflags=-static -w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o /tmp/exelet-fs/rovol/bin/exe-init .
+	@cd /tmp/exelet-fs && tar czvf $(ROOT_DIR)/exelet-fs-$(GOARCH).tar.gz ./
 
 .DEFAULT_GOAL := help
