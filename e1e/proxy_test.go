@@ -28,6 +28,7 @@ func TestHTTPProxy(t *testing.T) {
 	pty, cookies, keyFile, _ := registerForExeDev(t)
 	box := newBox(t, pty, BoxOpts{Command: "/bin/bash"})
 	pty.disconnect()
+	waitForSSH(t, box, keyFile)
 
 	// Make an index.html file to serve.
 	makeIndex := boxSSHCommand(t, box, keyFile, "echo", "alive", ">", "/home/exedev/index.html")

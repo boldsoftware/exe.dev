@@ -25,6 +25,7 @@ func TestBoxSharing(t *testing.T) {
 	ownerPTY, ownerCookies, ownerKeyFile, ownerEmail := registerForExeDevWithEmail(t, "owner@test-box-sharing.example")
 	box := newBox(t, ownerPTY, BoxOpts{Command: "/bin/bash"})
 	ownerPTY.disconnect()
+	waitForSSH(t, box, ownerKeyFile)
 
 	const boxInternalPort = 8080
 	makeIndex := boxSSHCommand(t, box, ownerKeyFile, "echo", "alive", ">", "/home/exedev/index.html")
