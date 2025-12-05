@@ -149,6 +149,8 @@ echo "==========================================="
 echo -e "${NC}"
 echo "Deployed version: $BINARY_NAME"
 echo "Timestamp: $TIMESTAMP"
+GIT_SHA=$(curl -s "https://${DOMAIN}/debug/gitsha" 2>/dev/null || echo "unavailable")
+echo "Git SHA: $GIT_SHA"
 echo ""
 echo "Admin access:"
 echo "  ssh ubuntu@$INSTANCE_NAME"
