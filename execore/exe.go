@@ -308,7 +308,10 @@ func startListener(slog *slog.Logger, typ, addr string) (*listener, error) {
 	}
 	tcpAddr := ln.Addr().(*net.TCPAddr)
 	// this log line is important for e2e tests, they parse it to get port numbers!
-	slog.Info("listening", "type", typ, "addr", tcpAddr.String(), "port", tcpAddr.Port)
+	// ...except we silence it for proxy listening ports, which number in the thousands.
+	if !strings.HasPrefix(typ, "proxy-") {
+		slog.Info("listening", "type", typ, "addr", tcpAddr.String(), "port", tcpAddr.Port)
+	}
 	return &listener{
 		origAddr: addr,
 		ln:       ln,

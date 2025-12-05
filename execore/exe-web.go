@@ -375,6 +375,19 @@ func (s *Server) setupProxyServers() {
 		s.proxyLns = append(s.proxyLns, ln)
 		// s.slog().Debug("proxy listener configured", "addr", ln.tcp.String(), "port", ln.tcp.Port)
 	}
+	// Log the ports. For small numbers of ports, list them explicitly (for e1e tests).
+	// For large numbers, show range (it's always contiguous in production).
+	if len(s.proxyLns) <= 10 {
+		ports := make([]int, len(s.proxyLns))
+		for i, ln := range s.proxyLns {
+			ports[i] = ln.tcp.Port
+		}
+		s.slog().Info("proxy listeners set up", "count", len(s.proxyLns), "ports", ports)
+	} else {
+		s.slog().Info("proxy listeners set up", "count", len(s.proxyLns),
+			"min_port", s.proxyLns[0].tcp.Port,
+			"max_port", s.proxyLns[len(s.proxyLns)-1].tcp.Port)
+	}
 }
 
 // renderTemplate is a helper method that handles template parsing and execution

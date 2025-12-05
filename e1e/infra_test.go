@@ -1541,6 +1541,7 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 		port int
 	}
 	listeningC := make(chan listen)
+	proxyPortsC := make(chan []int, 1)
 	startedC := make(chan bool)
 	go func() {
 		seenPanic := false
@@ -1601,6 +1602,21 @@ func startExed(ctrHost string, emailServerPort, piperPort int, extraProxyPorts [
 				if *flagVerbosePorts {
 					slog.Info("exed listening", "type", entry["type"], "port", entry["port"])
 				}
+			case "proxy listeners set up":
+				// Parse proxy ports from the "ports" array in the log entry
+				if portsVal, ok := entry["ports"].([]any); ok {
+					ports := make([]int, len(portsVal))
+					for i, p := range portsVal {
+						ports[i] = int(p.(float64))
+					}
+					select {
+					case proxyPortsC <- ports:
+					default:
+					}
+					if *flagVerbosePorts {
+						slog.Info("exed proxy ports", "ports", ports)
+					}
+				}
 			case "server started":
 				startedC <- true
 			}
@@ -1626,15 +1642,9 @@ ProcessLogs:
 				httpPort = ln.port
 			case "plugin":
 				piperPluginPort = ln.port
-			default:
-				// Check if it's a proxy listener (type: "proxy-XXXX")
-				if strings.HasPrefix(ln.typ, "proxy-") {
-					proxyPorts = append(proxyPorts, ln.port)
-					if *flagVerbosePorts {
-						slog.Info("captured proxy port", "type", ln.typ, "port", ln.port)
-					}
-				}
 			}
+		case proxyPorts = <-proxyPortsC:
+			// Received proxy ports from "proxy listeners set up" log message
 		case <-startedC:
 			break ProcessLogs
 		case <-time.After(timeout):
