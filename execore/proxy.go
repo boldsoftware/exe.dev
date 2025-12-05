@@ -336,9 +336,9 @@ func (s *Server) getProxyPorts() []int {
 		// Dev mode fallback: ports 8001-8008 and 9999
 		return []int{8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 9999}
 	}
-	// Production mode: all ports 2000-9999
+	// Production mode: all ports 3000-9999
 	ports := make([]int, 0, 8000)
-	for port := 2000; port <= 9999; port++ {
+	for port := 3000; port <= 9999; port++ {
 		ports = append(ports, port)
 	}
 	return ports

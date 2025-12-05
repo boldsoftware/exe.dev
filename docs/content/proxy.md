@@ -90,7 +90,7 @@ server {
 
 ## Additional Ports
 
-The proxy transparently forwards ports between 2000 and 9999.
+The proxy transparently forwards ports between 3000 and 9999.
 
 For example, if you are serving on port 3456 on your box,
 you can access that at https://boxname.exe.dev:3456/.

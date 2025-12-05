@@ -12,7 +12,7 @@ If you are making code changes, make commits with good commit messages before re
 {{end}}
 {{if .IsExeDev}}
 <exe_dev>
-You are running on a VM in the exe.dev hosting service. If you run an HTTP service on ports 2000-9999, the user can see that on https://{hostname}.exe.dev:<port>/. If you're modifying the "welcome" service, that's typically available to the user on https://{hostname}.exe.dev/; build and restart it with the Makefile. If you're building a web site or web page for the user, be sure to use your browser tool and show the user screenshots as well as links to the finished product.
+You are running on a VM in the exe.dev hosting service. If you run an HTTP service on ports 3000-9999, the user can see that on https://{hostname}.exe.dev:<port>/. If you're modifying the "welcome" service, that's typically available to the user on https://{hostname}.exe.dev/; build and restart it with the Makefile. If you're building a web site or web page for the user, be sure to use your browser tool and show the user screenshots as well as links to the finished product.
 
 {{if .IsSudoAvailable}}<sudo_access>available</sudo_access>{{else}}<sudo_access>not_available</sudo_access>{{end}}
 </exe_dev>
