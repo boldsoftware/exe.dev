@@ -146,18 +146,31 @@ ln -sf ~/$METRICS_NAME ~/metrics.latest
 # Install systemd service file
 sudo systemctl daemon-reload
 
-# Enable service (but don't start it yet as requested)
+# Enable and restart service
 sudo systemctl enable sshpiper
+echo "Restarting sshpiper service..."
+sudo systemctl restart sshpiper
+
+# Wait for service to start
+sleep 2
+
+# Check service status
+if sudo systemctl is-active --quiet sshpiper; then
+    echo "✓ Service restarted successfully"
+else
+    echo "⚠ Service may have issues, checking logs..."
+    sudo journalctl -u sshpiper -n 20 --no-pager
+fi
 
 # List all deployed versions
 echo ""
 echo "Deployed versions:"
 ls -la ~/sshpiperd.* | tail -5
 
-# Show service status
+# Show recent logs
 echo ""
-echo "Service configuration:"
-sudo systemctl status sshpiper --no-pager || true
+echo "Recent service logs:"
+sudo journalctl -u sshpiper -n 5 --no-pager -o cat
 EOF
 
 echo -e "${GREEN}✓ Service configuration completed${NC}"
@@ -170,11 +183,7 @@ echo -e "${NC}"
 echo "Deployed version: $BINARY_NAME"
 echo "Timestamp: $TIMESTAMP"
 echo ""
-echo "To start the service:"
-echo "  ssh ubuntu@$INSTANCE_NAME"
-echo "  sudo systemctl start sshpiper"
-echo ""
-echo "To view logs:"
+echo "View logs:"
 echo "  ssh ubuntu@$INSTANCE_NAME journalctl -fu sshpiper"
 echo ""
 echo "Rollback (if needed):"
