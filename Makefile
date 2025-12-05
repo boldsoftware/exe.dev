@@ -9,6 +9,7 @@ GOARCH := $(shell go env GOARCH)
 COMMIT := `git rev-parse --short HEAD`
 VERSION := $(shell date +%Y%m%d)
 REPO := exe.dev
+DOCKER := docker
 
 # Colors
 RED := \033[0;31m
@@ -168,14 +169,14 @@ container/rovol/arm64: container/rovol/Dockerfile.rovol
 	@echo "Building SSH binaries for arm64..."
 	@rm -rf ./container/rovol/arm64
 	@mkdir -p ./container/rovol/arm64
-	@docker buildx build --platform linux/arm64 -f container/rovol/Dockerfile.rovol --target out --output type=local,dest=./container/rovol/arm64 .
+	@$(DOCKER) buildx build --platform linux/arm64 -f container/rovol/Dockerfile.rovol --target out --output type=local,dest=./container/rovol/arm64 .
 	@echo "✓ Built container/rovol/arm64"
 
 container/rovol/amd64: container/rovol/Dockerfile.rovol
 	@echo "Building SSH binaries for amd64..."
 	@rm -rf ./container/rovol/amd64
 	@mkdir -p ./container/rovol/amd64
-	@docker buildx build --platform linux/amd64 -f container/rovol/Dockerfile.rovol --target out --output type=local,dest=./container/rovol/amd64 .
+	@$(DOCKER) buildx build --platform linux/amd64 -f container/rovol/Dockerfile.rovol --target out --output type=local,dest=./container/rovol/amd64 .
 	@echo "✓ Built container/rovol/amd64"
 
 whoami: ## Download ghuser/whoami.sqlite3 from Backblaze if it doesn't exist
@@ -217,7 +218,7 @@ whoami-clean: ## Remove ghuser/whoami.sqlite3 so it can be re-downloaded
 
 .PHONY: protos
 protos:
-	@docker buildx build -f ./Dockerfile.protobuf --output type=local,dest=pkg .
+	@$(DOCKER) buildx build -f ./Dockerfile.protobuf --output type=local,dest=pkg .
 
 .PHONY: exelet
 exelet: exelet-kernel exelet-rovol
@@ -251,12 +252,14 @@ exe-ssh:
 exelet-kernel: exelet/fs/kernel/kernel
 exelet/fs/kernel/kernel:
 	@>&2 echo " -> building exelet kernel"
-	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
+	@mkdir -p exelet/fs/kernel
+	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/kernel/ -f ./exelet/kernel/Dockerfile ./exelet/kernel
 
 # exelet rovol
 exelet-rovol: exelet/fs/rovol
 exelet/fs/rovol:
 	@>&2 echo " -> building exelet rovol"
-	@docker buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/rovol -f ./exelet/rovol/Dockerfile .
+	@mkdir -p exelet/fs/rovol
+	@$(DOCKER) buildx build --platform linux/$(GOARCH) $(BUILD_ARGS) --output type=local,dest=./exelet/fs/rovol -f ./exelet/rovol/Dockerfile .
 
 .DEFAULT_GOAL := help
