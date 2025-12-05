@@ -246,7 +246,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 
 	registered := userID != ""
 	username := conn.User()
-	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), domz.StripPort(conn.GetMeta("local_address")), "127.0.0.1")
+	localAddress := cmp.Or(domz.StripPort(conn.LocalAddress()), "127.0.0.1")
 	slog.DebugContext(ctx, "piper public key auth user status", "component", "piper-plugin", "registered", registered, "username", username, "user_id", userID, "local_address", localAddress)
 
 	// Check if this is a direct box access attempt
