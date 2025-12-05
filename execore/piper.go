@@ -264,6 +264,7 @@ func (p *PiperPlugin) handlePublicKeyAuth(conn libplugin.ConnMetadata, key []byt
 	// If `ssh boxname.exe.cloud` resolves to a shard IP (127.21.0.X), then look up the box by that shard/user combo.
 	// This makes `ssh boxname.exe.cloud` work like `ssh boxname@exe.cloud`.
 	// If this fails, continue on with normal routing.
+	slog.InfoContext(ctx, "piper public key auth checking for box by shard", "component", "piper-plugin", "user_id", userID, "local_address", localAddress)
 	if box := p.server.FindBoxByIPShard(ctx, userID, localAddress); box != nil {
 		slog.InfoContext(ctx, "piper pk auth found box by IP shard, routing to box", "component", "piper-plugin", "box_name", box.Name, "box_id", box.ID, "local_address", localAddress)
 		return p.handleBoxAccess(box, userID, conn.UniqueID())
