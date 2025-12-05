@@ -1,10 +1,7 @@
-.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter deploy-cadvisor check-node
+.PHONY: deploy-grafana deploy-prometheus deploy-node-exporter check-node
 
 # Hosts to deploy node-exporter to
-HOSTS := mon exed-01 exe-ctr-01 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
-
-# Hosts to deploy cadvisor to
-CADVISOR_HOSTS := exe-ctr-01 exe-ctr-staging-01
+HOSTS := mon exed-02 exe-ctr-02 ci.crocodile-vector.ts.net exed-staging-01 exe-ctr-staging-01
 
 # Grafana configuration
 GRAFANA_URL := https://grafana.crocodile-vector.ts.net/
@@ -43,7 +40,7 @@ deploy-prometheus:
 deploy-node-exporter:
 	@for host in $(HOSTS); do \
 		echo "Deploying node-exporter to $$host..."; \
-		if [ "$$host" = "exed-01" ] || [ "$$host" = "exed-staging-01" ]; then \
+		if [ "$$host" = "exed-02" ] || [ "$$host" = "exed-staging-01" ]; then \
 			port=19100; \
 		else \
 			port=9100; \
@@ -71,18 +68,3 @@ deploy-node-exporter:
 		echo ""; \
 	done
 
-# Deploy cadvisor to all hosts
-deploy-cadvisor:
-	@for host in $(CADVISOR_HOSTS); do \
-		echo "Deploying cadvisor to $$host..."; \
-		scp cadvisor.service ubuntu@$$host:/tmp/cadvisor.service; \
-		ssh ubuntu@$$host 'sudo mv /tmp/cadvisor.service /etc/systemd/system/cadvisor.service && \
-			sudo systemctl daemon-reload && \
-			sudo systemctl enable cadvisor && \
-			sudo systemctl restart cadvisor && \
-			echo "Waiting for cadvisor to start..." && \
-			sleep 3 && \
-			echo "Verifying cadvisor is running..." && \
-			curl -s http://localhost:8080/metrics | head -n 5'; \
-		echo ""; \
-	done

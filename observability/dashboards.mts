@@ -79,7 +79,262 @@ function addStageVariable(dash: DashboardBuilder) {
   );
 }
 
-// TODO: sections for sshpiper, once that's up and running.
+// exe.dev VMs Dashboard - VM-level metrics from exelet
+function makeExeDevVMsDashboard() {
+  const dash = new DashboardBuilder("exe.dev VMs");
+  dash
+    .uid("exe-dev-vms-dashboard")
+    .tags(["generated", "exe.dev"])
+    .refresh("30s")
+    .time({ from: "now-1h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "exe-dev-vms-dashboard");
+  const STAGE_FILTER = 'stage=~"$stage"';
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("README - Auto Generated Dashboard")
+      .content(
+        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
+          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
+          `To modify: edit \`observability/dashboards.mts\` then run \`make deploy-grafana\`\n\n` +
+          `Last updated: ${new Date().toISOString()}`
+      )
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
+  );
+
+  // Row 1: Overview Stats
+  dash.withRow(
+    new RowBuilder("Overview").gridPos({ x: 0, y: 3, w: 24, h: 1 })
+  );
+
+  const runningVMsPanel = new StatBuilder()
+    .title("Running VMs")
+    .gridPos({ x: 0, y: 4, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`count(exelet_vm_cpu_seconds_total{${STAGE_FILTER}})`)
+        .legendFormat("VMs")
+    )
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(runningVMsPanel);
+
+  const totalCpuPanel = new StatBuilder()
+    .title("Total CPU Usage")
+    .gridPos({ x: 6, y: 4, w: 6, h: 4 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`sum(rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[5m]))`)
+        .legendFormat("Cores")
+    )
+    .unit("short")
+    .colorMode(BigValueColorMode.Value)
+    .graphMode(BigValueGraphMode.Area)
+    .textMode(BigValueTextMode.ValueAndName)
+    .min(0);
+  dash.withPanel(totalCpuPanel);
+
+  // Row 2: CPU Usage Over Time
+  dash.withRow(
+    new RowBuilder("CPU Usage").gridPos({ x: 0, y: 8, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Total VM CPU Usage (cores)",
+    `sum(rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) =>
+        x.unit("short").min(0).gridPos({ x: 0, y: 9, w: 12, h: 8 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "CPU Usage per VM",
+    `rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval])`,
+    {
+      panelCustomization: (x) =>
+        x.unit("short").min(0).gridPos({ x: 12, y: 9, w: 12, h: 8 }),
+      queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
+    }
+  );
+
+  // Row 3: Top Consumers
+  dash.withRow(
+    new RowBuilder("Top CPU Consumers").gridPos({ x: 0, y: 17, w: 24, h: 1 })
+  );
+
+  const topCpuTable = new TableBuilder()
+    .title("Top 10 CPU Consumers (5m avg)")
+    .gridPos({ x: 0, y: 18, w: 24, h: 8 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(
+          `topk(10, rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[5m]))`
+        )
+        .instant(true)
+        .format("table")
+    );
+  dash.withPanel(topCpuTable);
+
+  return dash;
+}
+
+// gRPC Metrics Dashboard - covers both client (exed) and server (exelet) metrics
+function makeGrpcMetricsDashboard() {
+  const dash = new DashboardBuilder("gRPC Metrics");
+  dash
+    .uid("grpc-metrics-dashboard")
+    .tags(["generated", "grpc"])
+    .refresh("1m")
+    .time({ from: "now-6h", to: "now" })
+    .tooltip(DashboardCursorSync.Crosshair)
+    .timezone("browser");
+
+  addStageVariable(dash);
+
+  const addTimeseriesChart = makeAddTimeseriesChart(dash, "grpc-metrics-dashboard");
+  const STAGE_FILTER = 'stage=~"$stage"';
+
+  // README panel
+  dash.withPanel(
+    new TextPanelBuilder()
+      .title("README - Auto Generated Dashboard")
+      .content(
+        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
+          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
+          `To modify: edit \`observability/dashboards.mts\` then run \`make deploy-grafana\`\n\n` +
+          `Last updated: ${new Date().toISOString()}`
+      )
+      .mode(TextMode.Markdown)
+      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
+  );
+
+  // Row 1: Server Side (exelet)
+  dash.withRow(
+    new RowBuilder("Server Side (exelet)").gridPos({ x: 0, y: 3, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Server Request Rate by Method",
+    `sum(rate(grpc_server_handled_total{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method)`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 4, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Server Error Rate",
+    `sum(rate(grpc_server_handled_total{job="exelet",grpc_code!="OK",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method, grpc_code)`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 4, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}} ({{grpc_code}})"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Server Latency p95 by Method",
+    `histogram_quantile(0.95, sum(rate(grpc_server_handling_seconds_bucket{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (le, grpc_method))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 16, y: 4, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
+    }
+  );
+
+  // Server latency percentiles
+  addTimeseriesChart(
+    "Server Latency p50",
+    `histogram_quantile(0.5, sum(rate(grpc_server_handling_seconds_bucket{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 10, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Server Latency p99",
+    `histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 8, y: 10, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Server Messages Sent/Received",
+    `sum(rate(grpc_server_msg_sent_total{job="exelet",${STAGE_FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
+    }
+  );
+
+  // Row 2: Client Side (exed)
+  dash.withRow(
+    new RowBuilder("Client Side (exed)").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+  );
+
+  addTimeseriesChart(
+    "Client Request Rate by Method",
+    `sum(rate(grpc_client_handled_total{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method)`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 17, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Client Error Rate",
+    `sum(rate(grpc_client_handled_total{job="exed",grpc_code!="OK",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method, grpc_code)`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 8, y: 17, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}} ({{grpc_code}})"),
+    }
+  );
+
+  addTimeseriesChart(
+    "Client Latency p95 by Method",
+    `histogram_quantile(0.95, sum(rate(grpc_client_handling_seconds_bucket{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (le, grpc_method))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 16, y: 17, w: 8, h: 6 }),
+      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
+    }
+  );
+
+  // Client latency percentiles
+  addTimeseriesChart(
+    "Client Latency p50",
+    `histogram_quantile(0.5, sum(rate(grpc_client_handling_seconds_bucket{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 23, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Client Latency p99",
+    `histogram_quantile(0.99, sum(rate(grpc_client_handling_seconds_bucket{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
+    {
+      panelCustomization: (x) => x.unit("s").gridPos({ x: 8, y: 23, w: 8, h: 6 }),
+    }
+  );
+
+  addTimeseriesChart(
+    "Client Messages Sent/Received",
+    `sum(rate(grpc_client_msg_sent_total{job="exed",${STAGE_FILTER}}[$__rate_interval]))`,
+    {
+      panelCustomization: (x) => x.gridPos({ x: 16, y: 23, w: 8, h: 6 }),
+    }
+  );
+
+  return dash;
+}
+
 function makeDevExeDashboard() {
   // Declare the name and define a unique id.
   const dash = new DashboardBuilder("exe.dev Dashboard");
@@ -360,450 +615,6 @@ function makeDevExeDashboard() {
         x.min(0).gridPos({ x: 0, y: 56, w: 8, h: 6 }),
     }
   );
-
-  return dash;
-}
-
-function makeContainerMetricsDashboard() {
-  // Declare the name and define a unique id.
-  const dash = new DashboardBuilder("exe.dev Container Metrics Dashboard");
-  dash
-    .uid("exe-dev-container-metrics-dashboard")
-    .tags(["generated", "containers", "cadvisor"])
-    .time({ from: "now-6h", to: "now" })
-    .tooltip(DashboardCursorSync.Crosshair)
-    .timezone("browser");
-
-  // Helper function for adding charts.
-  const addTimeseriesChart = makeAddTimeseriesChart(
-    dash,
-    "exe-dev-container-metrics-dashboard"
-  );
-
-  // Add stage variable for filtering production vs staging
-  addStageVariable(dash);
-
-  // Variable definitions for filtering
-  dash.withVariable(
-    new QueryVariableBuilder("image")
-      .includeAll(true)
-      .query(
-        'label_values(container_last_seen{container_label_managed_by="exe"}, image)'
-      )
-      .current({ text: "All", value: "$__all" })
-      .multi(true)
-      .sort(1)
-  );
-
-  dash.withVariable(
-    new QueryVariableBuilder("instance")
-      .includeAll(true)
-      .query(
-        'label_values(container_last_seen{container_label_managed_by="exe"}, instance)'
-      )
-      .current({ text: "All", value: "$__all" })
-      .multi(true)
-      .sort(1)
-  );
-
-  dash.withVariable(
-    new QueryVariableBuilder("user_id")
-      .includeAll(true)
-      .query(
-        'label_values(container_last_seen{container_label_managed_by="exe"}, container_label_user_id)'
-      )
-      .current({ text: "All", value: "$__all" })
-      .multi(true)
-      .sort(1)
-  );
-
-  dash.withVariable(
-    new QueryVariableBuilder("team")
-      .includeAll(true)
-      .query(
-        'label_values(container_last_seen{container_label_managed_by="exe"}, container_label_team)'
-      )
-      .current({ text: "All", value: "$__all" })
-      .multi(true)
-      .sort(1)
-  );
-
-  // Filter for containers with sketch="true" label and selected variables
-  const CONTAINER_FILTER =
-    'container_label_managed_by="exe",image=~"$image",instance=~"$instance",container_label_user_id=~"$user_id",container_label_team=~"$team",stage=~"$stage"';
-
-  // README panel for auto-generated dashboard
-  dash.withPanel(
-    new TextPanelBuilder()
-      .title("⚠️ **This dashboard is automatically generated** ⚠️")
-      .content(
-        `To modify, edit \`observability/dashboards.mts\` then run \`./node_modules/.bin/tsx dashboards.mts\``
-      )
-      .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
-  );
-
-  // Row 1: Container Overview (starting at y: 4 after README)
-  dash.withRow(
-    new RowBuilder("Container Overview").gridPos({ x: 0, y: 4, w: 24, h: 1 })
-  );
-
-  // Container count
-  const containerCountPanel = new StatBuilder()
-    .title("Running Containers")
-    .gridPos({ x: 0, y: 5, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`count(container_last_seen{${CONTAINER_FILTER}})`)
-        .legendFormat("Containers")
-    )
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(containerCountPanel);
-
-  // Average container age
-  const avgContainerAgePanel = new StatBuilder()
-    .title("Average Container Age")
-    .gridPos({ x: 6, y: 5, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`avg(time() - container_start_time_seconds{${CONTAINER_FILTER}})`)
-        .legendFormat("Age")
-    )
-    .unit("s")
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(avgContainerAgePanel);
-
-  // Total CPU usage across all containers
-  const totalCpuPanel = new StatBuilder()
-    .title("Total CPU Usage")
-    .gridPos({ x: 12, y: 5, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(
-          `sum(rate(container_cpu_usage_seconds_total{${CONTAINER_FILTER}}[5m])) * 100`
-        )
-        .legendFormat("CPU %")
-    )
-    .unit("percent")
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(totalCpuPanel);
-
-  // Total memory usage across all containers
-  const totalMemoryPanel = new StatBuilder()
-    .title("Total Memory Usage")
-    .gridPos({ x: 18, y: 5, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`sum(container_memory_working_set_bytes{${CONTAINER_FILTER}})`)
-        .legendFormat("Memory")
-    )
-    .unit("bytes")
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(totalMemoryPanel);
-
-  // Row 2: CPU Metrics (starting at y: 9)
-  dash.withRow(
-    new RowBuilder("CPU Metrics").gridPos({ x: 0, y: 9, w: 24, h: 1 })
-  );
-
-  addTimeseriesChart(
-    "CPU Usage % per Container",
-    `rate(container_cpu_usage_seconds_total{${CONTAINER_FILTER}}[5m]) * 100`,
-    {
-      panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos({ x: 0, y: 10, w: 12, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "CPU Throttling per Container",
-    `rate(container_cpu_cfs_throttled_seconds_total{${CONTAINER_FILTER}}[5m])`,
-    {
-      panelCustomization: (x) =>
-        x.unit("s").min(0).gridPos({ x: 12, y: 10, w: 12, h: 6 }),
-    }
-  );
-
-  // Row 3: Memory Metrics (starting at y: 16)
-  dash.withRow(
-    new RowBuilder("Memory Metrics").gridPos({ x: 0, y: 16, w: 24, h: 1 })
-  );
-
-  addTimeseriesChart(
-    "Memory Usage per Container",
-    `container_memory_working_set_bytes{${CONTAINER_FILTER}}`,
-    {
-      panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 0, y: 17, w: 12, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "Memory Usage % per Container",
-    `(container_memory_working_set_bytes{${CONTAINER_FILTER}} / container_spec_memory_limit_bytes{${CONTAINER_FILTER}}) * 100`,
-    {
-      panelCustomization: (x) =>
-        x
-          .unit("percent")
-          .min(0)
-          .max(100)
-          .gridPos({ x: 12, y: 17, w: 12, h: 6 }),
-    }
-  );
-
-  // Row 4: Container Lifecycle (starting at y: 23)
-  dash.withRow(
-    new RowBuilder("Container Lifecycle").gridPos({ x: 0, y: 23, w: 24, h: 1 })
-  );
-
-  addTimeseriesChart(
-    "Container Age (Uptime)",
-    `time() - container_start_time_seconds{${CONTAINER_FILTER}}`,
-    {
-      panelCustomization: (x) =>
-        x.unit("s").min(0).gridPos({ x: 0, y: 24, w: 12, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "Container Restart Count",
-    `container_restart_count{${CONTAINER_FILTER}}`,
-    {
-      panelCustomization: (x) =>
-        x.min(0).gridPos({ x: 12, y: 24, w: 12, h: 6 }),
-    }
-  );
-
-  // Row 5: Network and File System (starting at y: 30)
-  dash.withRow(
-    new RowBuilder("Network & File System").gridPos({
-      x: 0,
-      y: 30,
-      w: 24,
-      h: 1,
-    })
-  );
-
-  addTimeseriesChart(
-    "Network Receive Rate",
-    `rate(container_network_receive_bytes_total{${CONTAINER_FILTER}}[5m])`,
-    {
-      panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos({ x: 0, y: 31, w: 8, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "Network Transmit Rate",
-    `rate(container_network_transmit_bytes_total{${CONTAINER_FILTER}}[5m])`,
-    {
-      panelCustomization: (x) =>
-        x.unit("Bps").min(0).gridPos({ x: 8, y: 31, w: 8, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "File System Usage",
-    `container_fs_usage_bytes{${CONTAINER_FILTER}}`,
-    {
-      panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 16, y: 31, w: 8, h: 6 }),
-    }
-  );
-
-  return dash;
-}
-
-function makeExeBoxesDashboard() {
-  const dash = new DashboardBuilder("exe.dev Boxes Dashboard");
-  dash
-    .uid("exe-dev-boxes-dashboard")
-    .tags(["generated", "exe", "boxes", "containers"])
-    .refresh("30s")
-    .time({ from: "now-1h", to: "now" })
-    .tooltip(DashboardCursorSync.Crosshair)
-    .timezone("browser");
-
-  // Add stage variable for filtering production vs staging
-  addStageVariable(dash);
-
-  const addTimeseriesChart = makeAddTimeseriesChart(
-    dash,
-    "exe-dev-boxes-dashboard"
-  );
-
-  // README panel
-  dash.withPanel(
-    new TextPanelBuilder()
-      .title("README - Auto Generated Dashboard")
-      .content(
-        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
-          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
-          `To modify this dashboard:\n` +
-          `1. Edit the code in \`observability/dashboards.mts\`\n` +
-          `2. Run \`make deploy-grafana\` to update\n\n` +
-          `Last updated: ${new Date().toISOString()}`
-      )
-      .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
-  );
-
-  // Filter for exe boxes
-  const BOX_FILTER = 'container_label_managed_by="exe",id=~"/exe/.*",stage=~"$stage"';
-
-  // Row 1: Overview Stats
-  dash.withRow(
-    new RowBuilder("Overview").gridPos({ x: 0, y: 3, w: 24, h: 1 })
-  );
-
-  const totalBoxesPanel = new StatBuilder()
-    .title("Total Running Boxes")
-    .gridPos({ x: 0, y: 4, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`count(container_last_seen{${BOX_FILTER}})`)
-        .legendFormat("Boxes")
-    )
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(totalBoxesPanel);
-
-  const totalCpuPanel = new StatBuilder()
-    .title("Total CPU Usage")
-    .gridPos({ x: 6, y: 4, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(
-          `sum(rate(container_cpu_usage_seconds_total{${BOX_FILTER}}[5m])) * 100`
-        )
-        .legendFormat("CPU %")
-    )
-    .unit("percent")
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(totalCpuPanel);
-
-  const totalMemoryPanel = new StatBuilder()
-    .title("Total Memory Usage")
-    .gridPos({ x: 12, y: 4, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(`sum(container_memory_working_set_bytes{${BOX_FILTER}})`)
-        .legendFormat("Memory")
-    )
-    .unit("bytes")
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(totalMemoryPanel);
-
-  const uniqueUsersPanel = new StatBuilder()
-    .title("Active Users")
-    .gridPos({ x: 18, y: 4, w: 6, h: 4 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(
-          `count(count by (container_label_exe_dev_login_user) (container_last_seen{${BOX_FILTER}}))`
-        )
-        .legendFormat("Users")
-    )
-    .colorMode(BigValueColorMode.Value)
-    .graphMode(BigValueGraphMode.Area)
-    .textMode(BigValueTextMode.ValueAndName)
-    .min(0);
-  dash.withPanel(uniqueUsersPanel);
-
-  // Row 2: CPU Time Series
-  dash.withRow(
-    new RowBuilder("CPU Metrics by Box").gridPos({ x: 0, y: 8, w: 24, h: 1 })
-  );
-
-  addTimeseriesChart(
-    "CPU Usage % per Box",
-    `rate(container_cpu_usage_seconds_total{${BOX_FILTER}}[5m]) * 100`,
-    {
-      panelCustomization: (x) =>
-        x.unit("percent").min(0).gridPos({ x: 0, y: 9, w: 24, h: 8 }),
-      queryCustomization: (q) =>
-        q.legendFormat("{{container_label_nerdctl_name}}"),
-    }
-  );
-
-  // Row 3: Memory Time Series
-  dash.withRow(
-    new RowBuilder("Memory Metrics by Box").gridPos({
-      x: 0,
-      y: 17,
-      w: 24,
-      h: 1,
-    })
-  );
-
-  addTimeseriesChart(
-    "Memory Usage per Box",
-    `container_memory_working_set_bytes{${BOX_FILTER}}`,
-    {
-      panelCustomization: (x) =>
-        x.unit("bytes").min(0).gridPos({ x: 0, y: 18, w: 24, h: 8 }),
-      queryCustomization: (q) =>
-        q.legendFormat("{{container_label_nerdctl_name}}"),
-    }
-  );
-
-  // Row 4: Top Usage Tables
-  dash.withRow(
-    new RowBuilder("Top Resource Consumers").gridPos({
-      x: 0,
-      y: 26,
-      w: 24,
-      h: 1,
-    })
-  );
-
-  // Top CPU Users Table
-  const topCpuTable = new TableBuilder()
-    .title("Top 20 CPU Users")
-    .gridPos({ x: 0, y: 27, w: 12, h: 8 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(
-          `topk(20, sum by (container_label_nerdctl_name) (rate(container_cpu_usage_seconds_total{${BOX_FILTER}}[5m])) * 100)`
-        )
-        .instant(true)
-        .format("table")
-    );
-  dash.withPanel(topCpuTable);
-
-  // Top Memory Users Table
-  const topMemoryTable = new TableBuilder()
-    .title("Top 20 Memory Users")
-    .gridPos({ x: 12, y: 27, w: 12, h: 8 })
-    .withTarget(
-      new DataqueryBuilder()
-        .expr(
-          `topk(20, sum by (container_label_nerdctl_name) (container_memory_working_set_bytes{${BOX_FILTER}}))`
-        )
-        .instant(true)
-        .format("table")
-    );
-  dash.withPanel(topMemoryTable);
 
   return dash;
 }
@@ -1741,8 +1552,8 @@ async function main() {
     process.exit(1);
   }
   await createDashboard(makeDevExeDashboard());
-  await createDashboard(makeContainerMetricsDashboard());
-  await createDashboard(makeExeBoxesDashboard());
+  await createDashboard(makeExeDevVMsDashboard());
+  await createDashboard(makeGrpcMetricsDashboard());
   await createDashboard(makeGrafanaDashboard());
   await createDashboard(makeMonMonDashboard());
 

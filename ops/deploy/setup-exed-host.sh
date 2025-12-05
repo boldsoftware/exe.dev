@@ -338,6 +338,35 @@ if [ $ELAPSED -ge $MAX_WAIT ]; then
     exit 1
 fi
 
+# Install and configure node_exporter for monitoring
+# Note: exed listens on most ports for proxy, so use port 19100 instead of 9100
+echo ""
+echo "=========================================="
+echo "Installing node_exporter for monitoring"
+echo "=========================================="
+
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "ubuntu@${MACHINE_NAME}" 'bash -s' <<'NODE_EXPORTER_SCRIPT'
+set -euo pipefail
+if ! dpkg -l | grep -q prometheus-node-exporter; then
+    echo "Installing prometheus-node-exporter..."
+    sudo apt-get update && sudo apt-get install -y prometheus-node-exporter
+else
+    echo "prometheus-node-exporter already installed"
+fi
+sudo mkdir -p /etc/systemd/system/prometheus-node-exporter.service.d
+cat <<EOF | sudo tee /etc/systemd/system/prometheus-node-exporter.service.d/override.conf > /dev/null
+[Service]
+ExecStart=
+ExecStart=/usr/bin/prometheus-node-exporter --web.listen-address=:19100 --collector.cgroups --collector.systemd
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable prometheus-node-exporter
+sudo systemctl restart prometheus-node-exporter
+echo "Verifying node-exporter is running..."
+curl -s http://localhost:19100/metrics | head -n 3
+NODE_EXPORTER_SCRIPT
+
 echo ""
 echo "=========================================="
 echo "Setup complete!"
