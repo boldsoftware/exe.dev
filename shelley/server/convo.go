@@ -95,13 +95,13 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	}
 
 	history, system := cm.partitionMessages(messages)
-	
+
 	// Load cwd from conversation if available
 	cwd := ""
 	if conversation.Cwd != nil {
 		cwd = *conversation.Cwd
 	}
-	
+
 	cm.mu.Lock()
 	cm.history = history
 	cm.system = system

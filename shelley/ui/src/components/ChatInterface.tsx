@@ -876,7 +876,6 @@ function ChatInterface({
                       {link.title}
                     </button>
                   ))}
-
                 </div>
               )}
             </div>
@@ -989,64 +988,82 @@ function ChatInterface({
                 {cancelling ? "Cancelling..." : "Cancel"}
               </button>
             </>
-          ) : (
-            // Idle state - show ready message, or configuration for empty conversation
-            !conversationId ? (
-              // Empty conversation - show compact model and cwd indicators (click to edit)
-              <div className="status-bar-config">
-                <span className="status-message status-ready">Ready</span>
-                <div className="status-bar-controls">
-                  {/* Model selector - click to edit */}
-                  <div
-                    className="status-field status-field-model"
-                    title="AI model to use for this conversation"
-                  >
-                    <span className="status-field-label">Model:</span>
-                    {editingModel ? (
-                      <select
-                        id="model-select-status"
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        onBlur={() => setEditingModel(false)}
-                        disabled={sending}
-                        className="status-select"
-                        autoFocus
-                      >
-                        {models.map((model) => (
-                          <option key={model.id} value={model.id} disabled={!model.ready}>
-                            {model.id} {!model.ready ? "(not ready)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <button
-                        className="status-chip"
-                        onClick={() => setEditingModel(true)}
-                        disabled={sending}
-                      >
-                        {selectedModel}
-                      </button>
-                    )}
-                  </div>
+          ) : // Idle state - show ready message, or configuration for empty conversation
+          !conversationId ? (
+            // Empty conversation - show compact model and cwd indicators (click to edit)
+            <div className="status-bar-config">
+              <span className="status-message status-ready">Ready</span>
+              <div className="status-bar-controls">
+                {/* Model selector - click to edit */}
+                <div
+                  className="status-field status-field-model"
+                  title="AI model to use for this conversation"
+                >
+                  <span className="status-field-label">Model:</span>
+                  {editingModel ? (
+                    <select
+                      id="model-select-status"
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      onBlur={() => setEditingModel(false)}
+                      disabled={sending}
+                      className="status-select"
+                      autoFocus
+                    >
+                      {models.map((model) => (
+                        <option key={model.id} value={model.id} disabled={!model.ready}>
+                          {model.id} {!model.ready ? "(not ready)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <button
+                      className="status-chip"
+                      onClick={() => setEditingModel(true)}
+                      disabled={sending}
+                    >
+                      {selectedModel}
+                    </button>
+                  )}
+                </div>
 
-                  {/* CWD indicator - click to edit */}
-                  <div
-                    className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
-                    title={cwdError || "Working directory for file operations"}
-                  >
-                    <span className="status-field-label">Dir:</span>
-                    {editingCwd ? (
-                      <input
-                        id="cwd-input-status"
-                        type="text"
-                        value={selectedCwd}
-                        onChange={(e) => {
-                          setSelectedCwd(e.target.value);
-                          setCwdError(null); // Clear error while typing
-                        }}
-                        onBlur={async () => {
+                {/* CWD indicator - click to edit */}
+                <div
+                  className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
+                  title={cwdError || "Working directory for file operations"}
+                >
+                  <span className="status-field-label">Dir:</span>
+                  {editingCwd ? (
+                    <input
+                      id="cwd-input-status"
+                      type="text"
+                      value={selectedCwd}
+                      onChange={(e) => {
+                        setSelectedCwd(e.target.value);
+                        setCwdError(null); // Clear error while typing
+                      }}
+                      onBlur={async () => {
+                        setEditingCwd(false);
+                        // Validate cwd on blur
+                        if (selectedCwd) {
+                          try {
+                            const validation = await api.validateCwd(selectedCwd);
+                            if (!validation.valid) {
+                              setCwdError(validation.error || "Invalid directory");
+                            } else {
+                              setCwdError(null);
+                            }
+                          } catch {
+                            setCwdError("Failed to validate directory");
+                          }
+                        } else {
+                          setCwdError(null);
+                        }
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === "Enter") {
                           setEditingCwd(false);
-                          // Validate cwd on blur
+                          // Validate cwd on enter
                           if (selectedCwd) {
                             try {
                               const validation = await api.validateCwd(selectedCwd);
@@ -1061,48 +1078,28 @@ function ChatInterface({
                           } else {
                             setCwdError(null);
                           }
-                        }}
-                        onKeyDown={async (e) => {
-                          if (e.key === "Enter") {
-                            setEditingCwd(false);
-                            // Validate cwd on enter
-                            if (selectedCwd) {
-                              try {
-                                const validation = await api.validateCwd(selectedCwd);
-                                if (!validation.valid) {
-                                  setCwdError(validation.error || "Invalid directory");
-                                } else {
-                                  setCwdError(null);
-                                }
-                              } catch {
-                                setCwdError("Failed to validate directory");
-                              }
-                            } else {
-                              setCwdError(null);
-                            }
-                          }
-                        }}
-                        disabled={sending}
-                        placeholder="/path/to/working/directory"
-                        className={`status-input${cwdError ? " status-input-error" : ""}`}
-                        autoFocus
-                      />
-                    ) : (
-                      <button
-                        className={`status-chip${cwdError ? " status-chip-error" : ""}`}
-                        onClick={() => setEditingCwd(true)}
-                        disabled={sending}
-                      >
-                        {selectedCwd || "(no cwd)"}
-                      </button>
-                    )}
-                  </div>
+                        }
+                      }}
+                      disabled={sending}
+                      placeholder="/path/to/working/directory"
+                      className={`status-input${cwdError ? " status-input-error" : ""}`}
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      className={`status-chip${cwdError ? " status-chip-error" : ""}`}
+                      onClick={() => setEditingCwd(true)}
+                      disabled={sending}
+                    >
+                      {selectedCwd || "(no cwd)"}
+                    </button>
+                  )}
                 </div>
               </div>
-            ) : (
-              // Active conversation - show ready message
-              <span className="status-message status-ready">Ready</span>
-            )
+            </div>
+          ) : (
+            // Active conversation - show ready message
+            <span className="status-message status-ready">Ready</span>
           )}
         </div>
       </div>
@@ -1114,8 +1111,6 @@ function ChatInterface({
         disabled={sending || loading}
         autoFocus={true}
       />
-
-
     </div>
   );
 }
