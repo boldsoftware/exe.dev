@@ -205,8 +205,8 @@ jobs:
           echo "Current HEAD: $(git rev-parse HEAD)"
           echo "Origin main: $(git rev-parse origin/main)"
 
-          # Check if exeuntu/ or shelley/ were modified BEFORE pushing
-          if git diff --name-only origin/main HEAD | grep -qE '^(exeuntu|shelley)/'; then
+          # Check if exeuntu/, shelley/, or the build workflow were modified BEFORE pushing
+          if git diff --name-only origin/main HEAD | grep -qE '^(exeuntu|shelley)/|^\.github/workflows/build-exeuntu\.yml$'; then
             echo "exeuntu_or_shelley_changed=true" >> $GITHUB_OUTPUT
           else
             echo "exeuntu_or_shelley_changed=false" >> $GITHUB_OUTPUT
