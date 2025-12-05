@@ -11,6 +11,7 @@
 //
 
 import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 import {
   DashboardBuilder,
   DashboardCursorSync,
@@ -189,6 +190,26 @@ function makeExeDevVMsDashboard() {
   return dash;
 }
 
+// Parse proto files to extract RPC method names
+function getGrpcMethodsFromProtos(): string[] {
+  const repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+  const output = execSync(`git grep "rpc.*returns" -- "*.proto"`, {
+    cwd: repoRoot,
+    encoding: "utf-8",
+  });
+
+  const methods: string[] = [];
+  for (const line of output.split("\n")) {
+    // Match: rpc MethodName(Request) returns ...
+    const match = line.match(/rpc\s+(\w+)\s*\(/);
+    if (match && !line.includes("deps/")) {
+      // Skip deps/ (sshpiper protos)
+      methods.push(match[1]);
+    }
+  }
+  return methods;
+}
+
 // gRPC Metrics Dashboard - covers both client (exed) and server (exelet) metrics
 function makeGrpcMetricsDashboard() {
   const dash = new DashboardBuilder("gRPC Metrics");
@@ -202,7 +223,6 @@ function makeGrpcMetricsDashboard() {
 
   addStageVariable(dash);
 
-  const addTimeseriesChart = makeAddTimeseriesChart(dash, "grpc-metrics-dashboard");
   const STAGE_FILTER = 'stage=~"$stage"';
 
   // README panel
@@ -214,119 +234,129 @@ function makeGrpcMetricsDashboard() {
       .gridPos({ x: 0, y: 0, w: 24, h: 2 })
   );
 
-  // Row 1: Server Side (exelet)
+  // Get RPC methods from proto files
+  const grpcMethods = getGrpcMethodsFromProtos();
+  let yPos = 2;
+
+  // ========== SERVER METRICS SECTION ==========
   dash.withRow(
-    new RowBuilder("Server Side (exelet)").gridPos({ x: 0, y: 3, w: 24, h: 1 })
+    new RowBuilder("Server Metrics").gridPos({ x: 0, y: yPos, w: 24, h: 1 })
   );
+  yPos += 1;
 
-  addTimeseriesChart(
-    "Server Request Rate by Method",
-    `sum(rate(grpc_server_handled_total{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method)`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 3, w: 8, h: 6 }),
-      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
-    }
-  );
+  // One row per gRPC method - server side
+  for (const method of grpcMethods) {
+    const methodFilter = `grpc_method="${method}",${STAGE_FILTER}`;
 
-  addTimeseriesChart(
-    "Server Error Rate",
-    `sum(rate(grpc_server_handled_total{job="exelet",grpc_code!="OK",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method, grpc_code)`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 4, w: 8, h: 6 }),
-      queryCustomization: (q) => q.legendFormat("{{grpc_method}} ({{grpc_code}})"),
-    }
-  );
+    // Request rate
+    const ratePanel = new TimeseriesBuilder()
+      .title(`${method} - Requests`)
+      .gridPos({ x: 0, y: yPos, w: 8, h: 5 })
+      .min(0)
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(rate(grpc_server_handled_total{${methodFilter}}[$__rate_interval]))`)
+          .legendFormat("req/s")
+      );
+    dash.withPanel(ratePanel);
 
-  addTimeseriesChart(
-    "Server Latency p95 by Method",
-    `histogram_quantile(0.95, sum(rate(grpc_server_handling_seconds_bucket{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (le, grpc_method))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 16, y: 4, w: 8, h: 6 }),
-      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
-    }
-  );
+    // Error rate
+    const errorPanel = new TimeseriesBuilder()
+      .title(`${method} - Errors`)
+      .gridPos({ x: 8, y: yPos, w: 8, h: 5 })
+      .min(0)
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(rate(grpc_server_handled_total{${methodFilter},grpc_code!="OK"}[$__rate_interval])) by (grpc_code)`)
+          .legendFormat("{{grpc_code}}")
+      );
+    dash.withPanel(errorPanel);
 
-  // Server latency percentiles
-  addTimeseriesChart(
-    "Server Latency p50",
-    `histogram_quantile(0.5, sum(rate(grpc_server_handling_seconds_bucket{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 10, w: 8, h: 6 }),
-    }
-  );
+    // Latency percentiles
+    const latencyPanel = new TimeseriesBuilder()
+      .title(`${method} - Latency`)
+      .unit("s")
+      .min(0)
+      .gridPos({ x: 16, y: yPos, w: 8, h: 5 })
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`histogram_quantile(0.5, sum(rate(grpc_server_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
+          .legendFormat("p50")
+      )
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`histogram_quantile(0.9, sum(rate(grpc_server_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
+          .legendFormat("p90")
+      )
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
+          .legendFormat("p99")
+      );
+    dash.withPanel(latencyPanel);
 
-  addTimeseriesChart(
-    "Server Latency p99",
-    `histogram_quantile(0.99, sum(rate(grpc_server_handling_seconds_bucket{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 8, y: 10, w: 8, h: 6 }),
-    }
-  );
+    yPos += 5;
+  }
 
-  addTimeseriesChart(
-    "Server Messages Sent/Received",
-    `sum(rate(grpc_server_msg_sent_total{job="exelet",${STAGE_FILTER}}[$__rate_interval]))`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 10, w: 8, h: 6 }),
-    }
-  );
-
-  // Row 2: Client Side (exed)
+  // ========== CLIENT METRICS SECTION ==========
   dash.withRow(
-    new RowBuilder("Client Side (exed)").gridPos({ x: 0, y: 16, w: 24, h: 1 })
+    new RowBuilder("Client Metrics").gridPos({ x: 0, y: yPos, w: 24, h: 1 })
   );
+  yPos += 1;
 
-  addTimeseriesChart(
-    "Client Request Rate by Method",
-    `sum(rate(grpc_client_handled_total{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method)`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 17, w: 8, h: 6 }),
-      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
-    }
-  );
+  // One row per gRPC method - client side
+  for (const method of grpcMethods) {
+    const methodFilter = `grpc_method="${method}",${STAGE_FILTER}`;
 
-  addTimeseriesChart(
-    "Client Error Rate",
-    `sum(rate(grpc_client_handled_total{job="exed",grpc_code!="OK",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method, grpc_code)`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 8, y: 17, w: 8, h: 6 }),
-      queryCustomization: (q) => q.legendFormat("{{grpc_method}} ({{grpc_code}})"),
-    }
-  );
+    // Request rate
+    const ratePanel = new TimeseriesBuilder()
+      .title(`${method} - Requests`)
+      .gridPos({ x: 0, y: yPos, w: 8, h: 5 })
+      .min(0)
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(rate(grpc_client_handled_total{${methodFilter}}[$__rate_interval]))`)
+          .legendFormat("req/s")
+      );
+    dash.withPanel(ratePanel);
 
-  addTimeseriesChart(
-    "Client Latency p95 by Method",
-    `histogram_quantile(0.95, sum(rate(grpc_client_handling_seconds_bucket{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (le, grpc_method))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 16, y: 17, w: 8, h: 6 }),
-      queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
-    }
-  );
+    // Error rate
+    const errorPanel = new TimeseriesBuilder()
+      .title(`${method} - Errors`)
+      .gridPos({ x: 8, y: yPos, w: 8, h: 5 })
+      .min(0)
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`sum(rate(grpc_client_handled_total{${methodFilter},grpc_code!="OK"}[$__rate_interval])) by (grpc_code)`)
+          .legendFormat("{{grpc_code}}")
+      );
+    dash.withPanel(errorPanel);
 
-  // Client latency percentiles
-  addTimeseriesChart(
-    "Client Latency p50",
-    `histogram_quantile(0.5, sum(rate(grpc_client_handling_seconds_bucket{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 23, w: 8, h: 6 }),
-    }
-  );
+    // Latency percentiles
+    const latencyPanel = new TimeseriesBuilder()
+      .title(`${method} - Latency`)
+      .unit("s")
+      .min(0)
+      .gridPos({ x: 16, y: yPos, w: 8, h: 5 })
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`histogram_quantile(0.5, sum(rate(grpc_client_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
+          .legendFormat("p50")
+      )
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`histogram_quantile(0.9, sum(rate(grpc_client_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
+          .legendFormat("p90")
+      )
+      .withTarget(
+        new DataqueryBuilder()
+          .expr(`histogram_quantile(0.99, sum(rate(grpc_client_handling_seconds_bucket{${methodFilter}}[$__rate_interval])) by (le))`)
+          .legendFormat("p99")
+      );
+    dash.withPanel(latencyPanel);
 
-  addTimeseriesChart(
-    "Client Latency p99",
-    `histogram_quantile(0.99, sum(rate(grpc_client_handling_seconds_bucket{job="exed",${STAGE_FILTER}}[$__rate_interval])) by (le))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 8, y: 23, w: 8, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "Client Messages Sent/Received",
-    `sum(rate(grpc_client_msg_sent_total{job="exed",${STAGE_FILTER}}[$__rate_interval]))`,
-    {
-      panelCustomization: (x) => x.gridPos({ x: 16, y: 23, w: 8, h: 6 }),
-    }
-  );
+    yPos += 5;
+  }
 
   return dash;
 }
