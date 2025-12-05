@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -119,11 +120,39 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 `)
 	}
 
-	ctrHost := ctrhosttest.Detect()
-	// Skip tests in CI if there is no ctr-host
-	if os.Getenv("CI") != "" && ctrHost == "" {
-		fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
-		return
+	var ctrHost string
+	var destroyVM func()
+	switch runtime.GOOS {
+	case "darwin":
+		ctrHost = ctrhosttest.Detect()
+		// Skip tests in CI if there is no ctr-host
+		if os.Getenv("CI") != "" && ctrHost == "" {
+			fmt.Printf("skipping tests in CI: no ctr-host accessible\n")
+			return
+		}
+
+	case "linux":
+		// Use $CTR_HOST if it is set,
+		// otherwise start a VM.
+		ctrHost = os.Getenv("CTR_HOST")
+		if ctrHost == "" {
+			ctrHost, destroyVM, err = startLinuxVM()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		}
+
+	default:
+		fmt.Fprintf(os.Stderr, "don't know how to set up tests on %s\n", runtime.GOOS)
+		os.Exit(1)
+	}
+
+	exit := func(status int) {
+		if destroyVM != nil {
+			destroyVM()
+		}
+		os.Exit(status)
 	}
 
 	env, err := setup(ctrHost)
@@ -134,7 +163,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 			slog.Error("cleanup failed", "error", closeErr)
 		}
 		os.Stderr.Sync()
-		os.Exit(1)
+		exit(1)
 	}
 
 	// prepare exelet client early, for faster cleanup
@@ -196,7 +225,7 @@ Flags must be added AFTER the paths, e.g., go test -v -count 1 -run TestHTTPProx
 		}
 	}
 	os.Stderr.Sync()
-	os.Exit(code)
+	exit(code)
 }
 
 var logFiles = map[string]*os.File{
@@ -2401,4 +2430,55 @@ func resolveGateway(ctrhost string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// startLinuxVM starts a VM on Linux to run the exelet.
+// It returns the ssh address for the host,
+// and a function to shut down the VM.
+func startLinuxVM() (string, func(), error) {
+	userVal, err := user.Current()
+	if err != nil {
+		return "", nil, fmt.Errorf("can't fetch current user name: %v", err)
+	}
+	name := userVal.Username + "-" + strconv.FormatInt(time.Now().Unix(), 10)
+
+	outdir, err := os.MkdirTemp("", "ci-vm-start-")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temporary directory: %v", err)
+	}
+
+	cmd := exec.Command("../ops/ci-vm-start.sh")
+	cmd.Env = append(cmd.Environ(),
+		"NAME="+name,
+		"OUTDIR="+outdir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", nil, fmt.Errorf("ops/ci-vm-start.sh failed: %v\n%s", err, out)
+	}
+
+	fileName := filepath.Join(outdir, name+".env")
+	envVars, err := os.ReadFile(fileName)
+	if err != nil {
+		return "", nil, fmt.Errorf("can't read ci-vm-start.sh environment variables: %v", err)
+	}
+
+	for _, line := range strings.Split(string(envVars), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, val, ok := strings.Cut(line, "=")
+		if !ok {
+			return "", nil, fmt.Errorf("invalid line in ci-vm-start.sh output: %q", line)
+		}
+		os.Setenv(name, val)
+	}
+
+	shutdown := func() {
+		exec.Command("../ops/ci-vm-destroy.sh", fileName).Run()
+		os.RemoveAll(outdir)
+	}
+
+	ctrHost := "ssh://" + os.Getenv("VM_USER") + "@" + os.Getenv("VM_IP")
+
+	return ctrHost, shutdown, nil
 }
