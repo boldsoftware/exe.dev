@@ -18,7 +18,7 @@ const (
 	EnvVarExeletServerAddress = "EXELET_ADDR"
 
 	// DefaultInstanceDomain is the default domain for all instances
-	DefaultInstanceDomain = "exe.dev"
+	DefaultInstanceDomain = "exe.xyz"
 )
 
 var (
