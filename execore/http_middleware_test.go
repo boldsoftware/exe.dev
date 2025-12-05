@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"exe.dev/tracing"
 )
 
 func TestLoggerMiddlewareStatusCode(t *testing.T) {
@@ -92,5 +94,61 @@ func TestLoggerMiddlewareStatusCode(t *testing.T) {
 				t.Errorf("expected response status %d, got %d", tt.expectedStatus, w.Code)
 			}
 		})
+	}
+}
+
+func TestLoggerMiddleware_AddsTraceID(t *testing.T) {
+	var capturedTraceID string
+
+	// Capture log output using our tracing handler
+	var buf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&buf, nil)
+	tracingHandler := tracing.NewHandler(jsonHandler)
+	logger := slog.New(tracingHandler)
+
+	// Create handler with middleware that logs with context
+	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTraceID = tracing.TraceIDFromContext(r.Context())
+		logger.InfoContext(r.Context(), "inner handler")
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := LoggerMiddleware(logger)(innerHandler)
+
+	// Make request
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	// Verify trace_id was set on context
+	if capturedTraceID == "" {
+		t.Error("LoggerMiddleware did not set trace_id on context")
+	}
+
+	// Verify trace_id appears in log output
+	if !bytes.Contains(buf.Bytes(), []byte(`"trace_id"`)) {
+		t.Errorf("Log output missing trace_id. Got: %s", buf.String())
+	}
+}
+
+func TestLoggerMiddleware_TraceIDIsUnique(t *testing.T) {
+	seen := make(map[string]bool)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		traceID := tracing.TraceIDFromContext(r.Context())
+		if seen[traceID] {
+			t.Errorf("LoggerMiddleware generated duplicate trace_id: %s", traceID)
+		}
+		seen[traceID] = true
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := LoggerMiddleware(logger)(innerHandler)
+
+	for i := 0; i < 100; i++ {
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
 	}
 }

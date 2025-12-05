@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/hex"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -152,5 +154,125 @@ func TestHandlerWithGroup(t *testing.T) {
 	}
 	if !strings.Contains(output, `"request":`) {
 		t.Errorf("Log output missing request group. Got: %s", output)
+	}
+}
+
+func TestContextWithTraceID(t *testing.T) {
+	ctx := context.Background()
+	traceID := "test-trace-123"
+
+	ctx = ContextWithTraceID(ctx, traceID)
+
+	got := TraceIDFromContext(ctx)
+	if got != traceID {
+		t.Errorf("TraceIDFromContext() = %q, want %q", got, traceID)
+	}
+}
+
+func TestTraceIDFromContext_Empty(t *testing.T) {
+	ctx := context.Background()
+
+	got := TraceIDFromContext(ctx)
+	if got != "" {
+		t.Errorf("TraceIDFromContext() = %q, want empty string", got)
+	}
+}
+
+func TestHTTPMiddleware_GeneratesTraceID(t *testing.T) {
+	var capturedTraceID string
+
+	handler := HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTraceID = TraceIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if capturedTraceID == "" {
+		t.Error("HTTPMiddleware did not generate a trace_id")
+	}
+
+	// Verify the trace_id is a valid hex string of correct length
+	if len(capturedTraceID) != 32 {
+		t.Errorf("Generated trace_id has wrong length: got %d, want 32", len(capturedTraceID))
+	}
+	if _, err := hex.DecodeString(capturedTraceID); err != nil {
+		t.Errorf("Generated trace_id is not valid hex: %v", err)
+	}
+}
+
+func TestHTTPMiddleware_GeneratesUniqueTraceIDs(t *testing.T) {
+	seen := make(map[string]bool)
+
+	handler := HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		traceID := TraceIDFromContext(r.Context())
+		if seen[traceID] {
+			t.Errorf("HTTPMiddleware generated duplicate trace_id: %s", traceID)
+		}
+		seen[traceID] = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < 100; i++ {
+		req := httptest.NewRequest("GET", "/test", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+	}
+}
+
+func TestHTTPMiddleware_PreservesExistingTraceID(t *testing.T) {
+	existingTraceID := "existing-trace-id-12345678"
+	var capturedTraceID string
+
+	// Outer middleware sets trace_id
+	outerMiddleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := ContextWithTraceID(r.Context(), existingTraceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+
+	handler := outerMiddleware(HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTraceID = TraceIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if capturedTraceID != existingTraceID {
+		t.Errorf("HTTPMiddleware did not preserve existing trace_id: got %q, want %q", capturedTraceID, existingTraceID)
+	}
+}
+
+func TestHTTPMiddleware_TraceIDAvailableForLogging(t *testing.T) {
+	var buf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+	handler := NewHandler(jsonHandler)
+	logger := slog.New(handler)
+
+	httpHandler := HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.DebugContext(r.Context(), "request received")
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	httpHandler.ServeHTTP(w, req)
+
+	output := buf.String()
+	if !strings.Contains(output, `"trace_id":`) {
+		t.Errorf("Log output missing trace_id. Got: %s", output)
+	}
+	if !strings.Contains(output, `"msg":"request received"`) {
+		t.Errorf("Log output missing message. Got: %s", output)
 	}
 }

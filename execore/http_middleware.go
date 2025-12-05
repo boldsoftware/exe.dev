@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	sloghttp "github.com/samber/slog-http"
+
+	"exe.dev/tracing"
 )
 
 // requestLogInfoKey is used to pass request classification info via context.
@@ -35,58 +37,66 @@ func GetRequestLogInfo(ctx context.Context) *RequestLogInfo {
 	return nil
 }
 
-// LoggerMiddleware adds request logging using slog-http. It logs one line per HTTP request.
+// LoggerMiddleware adds trace_id generation and request logging.
+// The middleware chain (in order of execution) is:
+//  1. tracing.HTTPMiddleware - generates trace_id and adds to context
+//  2. requestInfoMiddleware - sets up RequestLogInfo context and local_addr attribute
+//  3. sloghttp middleware - captures request/response and logs
+//  4. customAttrsMiddleware - adds custom attributes after handler runs
 func LoggerMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-	config := sloghttp.Config{
+	slogConfig := sloghttp.Config{
 		DefaultLevel:     slog.LevelInfo,
 		ClientErrorLevel: slog.LevelInfo,
 		ServerErrorLevel: slog.LevelInfo,
 		WithRequestID:    false,
 	}
 
-	// Wrap slog-http middleware to inject RequestLogInfo and custom attributes
 	return func(next http.Handler) http.Handler {
-		// Wrap the actual handler to capture RequestLogInfo after it runs
-		wrappedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r)
-
-			// TODO: only add these attributes on server errors?
-			// (We could use our own http.ResponseWriter wrapper to capture status code.)
-			sloghttp.AddCustomAttributes(r, slog.String("method", r.Method))
-			if host := r.Host; host != "" {
-				sloghttp.AddCustomAttributes(r, slog.String("host", host))
-			}
-			if uri := r.URL.RequestURI(); uri != "" {
-				sloghttp.AddCustomAttributes(r, slog.String("uri", uri))
-			}
-
-			// After the handler runs, add custom attributes based on RequestLogInfo
-			if info := GetRequestLogInfo(r.Context()); info != nil {
-				if info.IsProxy {
-					sloghttp.AddCustomAttributes(r, slog.Bool("proxy", true))
-				}
-				if info.IsTerminal {
-					sloghttp.AddCustomAttributes(r, slog.Bool("terminal", true))
-				}
-			}
-		})
-
-		// Apply slog-http middleware on top
-		slogMiddleware := sloghttp.NewWithConfig(logger, config)(wrappedHandler)
-
-		// Outermost wrapper adds RequestLogInfo context and local_addr
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Attach RequestLogInfo so downstream handlers can enrich the final log line.
-			ctx, _ := WithNewRequestLogInfo(r.Context())
-			r = r.WithContext(ctx)
-
-			// Add local_addr as custom attribute
-			if conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok && conn != nil {
-				sloghttp.AddCustomAttributes(r, slog.String("local_addr", conn.String()))
-			}
-
-			// Serve the request through slog-http middleware
-			slogMiddleware.ServeHTTP(w, r)
-		})
+		// Build chain from inside out: 4 -> 3 -> 2 -> 1
+		h := customAttrsMiddleware(next)
+		h = sloghttp.NewWithConfig(logger, slogConfig)(h)
+		h = requestInfoMiddleware(h)
+		h = tracing.HTTPMiddleware(h)
+		return h
 	}
+}
+
+// requestInfoMiddleware sets up RequestLogInfo context and adds local_addr attribute.
+func requestInfoMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, _ := WithNewRequestLogInfo(r.Context())
+		r = r.WithContext(ctx)
+
+		if conn, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok && conn != nil {
+			sloghttp.AddCustomAttributes(r, slog.String("local_addr", conn.String()))
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// customAttrsMiddleware adds custom log attributes after the handler runs.
+// TODO: only add these attributes on server errors?
+// (We could use our own http.ResponseWriter wrapper to capture status code.)
+func customAttrsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+
+		sloghttp.AddCustomAttributes(r, slog.String("method", r.Method))
+		if host := r.Host; host != "" {
+			sloghttp.AddCustomAttributes(r, slog.String("host", host))
+		}
+		if uri := r.URL.RequestURI(); uri != "" {
+			sloghttp.AddCustomAttributes(r, slog.String("uri", uri))
+		}
+
+		if info := GetRequestLogInfo(r.Context()); info != nil {
+			if info.IsProxy {
+				sloghttp.AddCustomAttributes(r, slog.Bool("proxy", true))
+			}
+			if info.IsTerminal {
+				sloghttp.AddCustomAttributes(r, slog.Bool("terminal", true))
+			}
+		}
+	})
 }
