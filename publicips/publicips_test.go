@@ -14,6 +14,8 @@ func stubDomainLookup(t *testing.T, responses map[string][]netip.Addr) {
 	t.Helper()
 
 	orig := lookupDomainIPs
+	origSkip := skipShardDistinctCheck
+	skipShardDistinctCheck = true
 	lookupDomainIPs = func(ctx context.Context, network, host string) ([]netip.Addr, error) {
 		if network != "ip4" {
 			t.Fatalf("unexpected network: %s", network)
@@ -25,6 +27,7 @@ func stubDomainLookup(t *testing.T, responses map[string][]netip.Addr) {
 	}
 	t.Cleanup(func() {
 		lookupDomainIPs = orig
+		skipShardDistinctCheck = origSkip
 	})
 }
 

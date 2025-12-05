@@ -615,7 +615,7 @@ func (s *Server) initShardIPs(ctx context.Context) {
 
 	ips, err := discoverIPs(ctx, s.env.BoxHost)
 	if err != nil {
-		s.slog().WarnContext(ctx, "public IP discovery failed", "error", err)
+		s.slog().ErrorContext(ctx, "public IP discovery failed", "error", err)
 		return
 	}
 	s.PublicIPs = ips

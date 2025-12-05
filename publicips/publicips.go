@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/netip"
@@ -42,6 +43,10 @@ var (
 	newHTTPClient    = defaultHTTPClient
 
 	lookupDomainIPs = defaultLookupDomainIPs
+
+	// skipShardDistinctCheck allows tests to bypass the check that all shards resolve
+	// to distinct IPs. In production, this validation ensures DNS is configured correctly.
+	skipShardDistinctCheck = false
 
 	errMetadataUnavailable = errors.New("metadata service unavailable")
 	errIMDSv1Only          = errors.New("metadata service requires IMDSv1")
@@ -295,6 +300,7 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 	}
 
 	// Try shards s001-s025, then fall back to the base domain itself (shard 0).
+	seenIPs := make(map[netip.Addr]bool) // ensure each shard (and the base domain) are distinct
 	for shard := 1; shard <= MaxDomainShards+1; shard++ {
 		if len(resolved) == len(needed) {
 			break
@@ -320,10 +326,15 @@ func resolveDomains(ctx context.Context, mappings []ipMapping, boxDomain string)
 			if !addr.IsValid() || !addr.Is4() {
 				continue
 			}
+			seenIPs[addr] = true
 			if _, ok := needed[addr]; ok {
 				resolved[addr] = PublicIP{IP: addr, Domain: domain, Shard: shard}
 			}
 		}
+	}
+
+	if !skipShardDistinctCheck && len(seenIPs) != MaxDomainShards+1 {
+		return nil, fmt.Errorf("domain %q does not resolve to %d distinct IPv4 addresses for shards s001 through s%03d and the base domain, got %v (%d) ips, want %d", boxDomain, MaxDomainShards+1, MaxDomainShards, slices.Collect(maps.Keys(seenIPs)), len(seenIPs), MaxDomainShards+1)
 	}
 
 	if len(resolved) != len(needed) {
