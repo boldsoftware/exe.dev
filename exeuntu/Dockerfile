@@ -2,13 +2,20 @@
 FROM docker.io/chromedp/headless-shell:stable AS chrome
 
 # Build generate-gateway-token and shelley as static binaries
-FROM golang:1.25.5-alpine AS go-builder
+# Use bookworm (Debian) instead of Alpine to avoid QEMU emulation issues with apk triggers
+# when cross-compiling for ARM64 on x86_64 runners
+FROM golang:1.25-bookworm AS go-builder
 ARG TARGETARCH
 ARG TARGETOS=linux
 
-# Install Node.js 22 from tarball and build tools - use alpine node package instead of tarball
-RUN apk add --no-cache make nodejs npm && \
-    node --version && npm --version
+# Install Node.js 22.x from NodeSource and build tools
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg make \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version && npm --version
 
 ENV PATH="/usr/local/bin:${PATH}"
 

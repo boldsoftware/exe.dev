@@ -57,7 +57,7 @@ jobs:
           context: .
           file: ./exeuntu/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta-base.outputs.tags }}
           labels: ${{ steps.meta-base.outputs.labels }}
           cache-from: type=gha,scope=base
