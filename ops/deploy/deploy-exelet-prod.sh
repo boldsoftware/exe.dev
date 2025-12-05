@@ -4,6 +4,9 @@
 
 set -e
 
+# staging / prod machines are intel only for now
+ARCH=amd64
+
 INSTANCE_NAME="exe-ctr-02"
 
 # Colors for output
@@ -35,43 +38,25 @@ echo ""
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BINARY_NAME="exeletd.$TIMESTAMP"
 
-echo -e "${YELLOW}Downloading binary from GitHub Actions...${NC}"
+echo -e "${YELLOW}Building binary...${NC}"
 echo "Binary name: $BINARY_NAME"
 
-# Check if gh CLI is installed
-if ! command -v gh >/dev/null 2>&1; then
-    echo -e "${RED}ERROR: GitHub CLI (gh) is not installed${NC}"
-    echo "Install with: brew install gh (macOS) or see https://cli.github.com/"
+# Clear out and fetch the proper exelet-fs
+echo -e "${YELLOW}Fetching exelet-fs content for target platform...${NC}"
+rm -rf exelet/fs/{kernel,rovol}
+make GOARCH=${ARCH} exelet-fs
+
+# Build the binary
+GOOS=linux GOARCH=${ARCH} CGO_ENABLED=0 go build -ldflags="-s -w" -o "/tmp/$BINARY_NAME" ./cmd/exelet
+
+if [ ! -f "/tmp/$BINARY_NAME" ]; then
+    echo -e "${RED}ERROR: Failed to build binary${NC}"
     exit 1
 fi
-
-# Download the latest artifact from the Build Exelet Binary workflow
-echo "Fetching latest exelet artifact from boldsoftware/exe..."
-TEMP_DIR=$(mktemp -d)
-
-if ! gh run download --repo boldsoftware/exe --name exeletd-amd64 --dir "$TEMP_DIR" 2>/dev/null; then
-    echo -e "${RED}ERROR: Failed to download artifact from GitHub Actions${NC}"
-    echo "Make sure:"
-    echo "  1. You're authenticated with gh (run: gh auth login)"
-    echo "  2. The 'Build Exelet Binary' workflow has run successfully"
-    echo "  3. You have access to the boldsoftware/exe repository"
-    rm -rf "$TEMP_DIR"
-    exit 1
-fi
-
-# Move the binary to /tmp with timestamp
-if [ ! -f "$TEMP_DIR/exeletd" ]; then
-    echo -e "${RED}ERROR: exeletd binary not found in artifact${NC}"
-    rm -rf "$TEMP_DIR"
-    exit 1
-fi
-
-mv "$TEMP_DIR/exeletd" "/tmp/$BINARY_NAME"
-rm -rf "$TEMP_DIR"
 
 # Get binary size
 BINARY_SIZE=$(ls -lh "/tmp/$BINARY_NAME" | awk '{print $5}')
-echo -e "${GREEN}✓ Binary downloaded successfully (size: $BINARY_SIZE)${NC}"
+echo -e "${GREEN}✓ Binary built successfully (size: $BINARY_SIZE)${NC}"
 echo ""
 
 # Deploy to VM
@@ -145,6 +130,11 @@ sudo journalctl -u exelet -n 5 --no-pager -o cat
 EOF
 
 echo -e "${GREEN}✓ Service configuration completed${NC}"
+
+# Clear out and fetch the proper exelet-fs
+echo -e "${YELLOW}Restoring exelet-fs content for current platform...${NC}"
+rm -rf exelet/fs/{kernel,rovol}
+make exelet-fs
 
 echo ""
 echo -e "${GREEN}==========================================="

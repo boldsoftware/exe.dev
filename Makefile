@@ -17,7 +17,7 @@ GREEN := \033[0;32m
 YELLOW := \033[1;33m
 NC := \033[0m
 
-.PHONY: help build test deploy-exed deploy-exed-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev generate whoami-clean ssh-exed-staging ssh-ctr-staging
+.PHONY: help build test deploy-exed deploy-exed-staging deploy-exelet deploy-exelet-staging deploy-whoami deploy-what deploy-qa deploy-piperd deploy-piperd-staging clean run-dev generate whoami-clean ssh-exed-staging ssh-ctr-staging
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -51,6 +51,16 @@ deploy-exed-staging: ## Deploy exed to staging
 	@echo "${YELLOW}Deploying exed to staging...${NC}"
 	@chmod +x ops/deploy/deploy-exed-staging.sh
 	@./ops/deploy/deploy-exed-staging.sh
+
+deploy-exelet: ## Deploy exelet to production
+	@echo "${YELLOW}Deploying exelet to production...${NC}"
+	@chmod +x ops/deploy/deploy-exelet-prod.sh
+	@./ops/deploy/deploy-exelet-prod.sh
+
+deploy-exelet-staging: ## Deploy exelet to staging
+	@echo "${YELLOW}Deploying exelet to staging...${NC}"
+	@chmod +x ops/deploy/deploy-exelet-staging.sh
+	@./ops/deploy/deploy-exelet-staging.sh
 
 deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
@@ -234,7 +244,7 @@ exelet-fs: ## Download exelet-fs from Backblaze if it doesn't exist
 		b2 file download b2://bold-exe/exelet-fs-$(GOARCH).tar.gz .exelet-fs.tar.gz \
 			|| { echo "${RED}Failed to download exelet-fs-$(GOARCH).tar.gz ${NC}" && exit 1; }; \
 		echo "Decompressing exelet-fs..."; \
-		tar zxvf .exelet-fs.tar.gz -C exelet/fs && \
+		tar zxf .exelet-fs.tar.gz -C exelet/fs && \
 		rm .exelet-fs.tar.gz; \
 		echo "✓ Downloaded and decompressed exelet-fs"; \
 	fi
@@ -247,7 +257,7 @@ protos:
 exelet: exelet-fs
 	@>&2 echo " -> building exelet ${COMMIT}${BUILD}"
 	@# exelet only runs in linux
-	@cd ./cmd/exelet && GOOS=linux go build -mod=mod -installsuffix cgo -ldflags "-w -X $(REPO)/version.Commit=$(COMMIT) -X $(REPO)/version.Version=$(VERSION) -X $(REPO)/version.Build=$(BUILD)" -o $(ROOT_DIR)/exeletd .
+	@GOOS=linux go build -ldflags="-s -w" -o exeletd ./cmd/exelet
 
 .PHONY: exelet-coverage
 exelet-coverage: exelet-kernel exelet-rovol
