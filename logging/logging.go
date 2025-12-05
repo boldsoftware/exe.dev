@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 	"github.com/lmittmann/tint"
 	slogmulti "github.com/samber/slog-multi"
 	slogslack "github.com/samber/slog-slack/v2"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 )
 
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
@@ -79,6 +83,15 @@ func SetupLogger(devMode string) {
 		handler = slogmulti.Fanout(handler, opt.NewSlackHandler())
 	}
 
+	// Add OTEL handler if OTEL_EXPORTER_OTLP_ENDPOINT is configured
+	otelEndpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+	if otelEndpoint != "" {
+		otelHandler := setupOTELHandler(level)
+		if otelHandler != nil {
+			handler = slogmulti.Fanout(handler, otelHandler)
+		}
+	}
+
 	// Wrap handler with tracing handler to add trace_id from context
 	handler = tracing.NewHandler(handler)
 
@@ -91,4 +104,39 @@ func SetupLogger(devMode string) {
 
 	// Set as default logger
 	slog.SetDefault(logger)
+}
+
+// setupOTELHandler creates an OTEL log handler that exports logs to the
+// configured OTLP endpoint. It uses standard OTEL environment variables:
+// - OTEL_EXPORTER_OTLP_ENDPOINT: the endpoint URL (e.g., https://api.honeycomb.io)
+// - OTEL_EXPORTER_OTLP_HEADERS: headers to include (e.g., x-honeycomb-team=<api-key>)
+// - OTEL_SERVICE_NAME: the service name to use
+//
+// Backpressure behavior: The batch processor queues up to 2,048 log records
+// by default. If the OTLP endpoint is slow or unreachable, logs are dropped
+// once the queue is full - no OOM risk. Tunable via environment variables:
+// - OTEL_BLRP_MAX_QUEUE_SIZE: max queued records (default 2048)
+// - OTEL_BLRP_SCHEDULE_DELAY: export interval (default 1s)
+// - OTEL_BLRP_MAX_EXPORT_BATCH_SIZE: records per export (default 512)
+func setupOTELHandler(level slog.Level) slog.Handler {
+	ctx := context.Background()
+
+	logExporter, err := otlploghttp.New(ctx)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to create OTEL log exporter", "error", err)
+		return nil
+	}
+
+	lp := sdklog.NewLoggerProvider(
+		sdklog.WithProcessor(
+			sdklog.NewBatchProcessor(logExporter),
+		),
+	)
+
+	scopeName := "unknown"
+	if len(os.Args) > 0 {
+		scopeName = filepath.Base(os.Args[0])
+	}
+
+	return otelslog.NewHandler(scopeName, otelslog.WithLoggerProvider(lp))
 }
