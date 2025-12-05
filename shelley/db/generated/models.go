@@ -14,6 +14,7 @@ type Conversation struct {
 	UserInitiated  bool      `json:"user_initiated"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	Cwd            *string   `json:"cwd"`
 }
 
 type Message struct {

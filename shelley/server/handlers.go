@@ -161,10 +161,17 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 		hostname = h
 	}
 
+	// Get default working directory
+	defaultCwd, err := os.Getwd()
+	if err != nil {
+		defaultCwd = "/"
+	}
+
 	initData := map[string]interface{}{
 		"models":        models,
 		"default_model": defaultModel,
 		"hostname":      hostname,
+		"default_cwd":   defaultCwd,
 	}
 	if s.terminalURL != "" {
 		initData["terminal_url"] = s.terminalURL
@@ -307,6 +314,7 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request, c
 type ChatRequest struct {
 	Message string `json:"message"`
 	Model   string `json:"model,omitempty"`
+	Cwd     string `json:"cwd,omitempty"`
 }
 
 // handleChatConversation handles POST /conversation/<id>/chat
@@ -427,8 +435,12 @@ func (s *Server) handleNewConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create new conversation
-	conversation, err := s.db.CreateConversation(ctx, nil, true)
+	// Create new conversation with optional cwd
+	var cwdPtr *string
+	if req.Cwd != "" {
+		cwdPtr = &req.Cwd
+	}
+	conversation, err := s.db.CreateConversation(ctx, nil, true, cwdPtr)
 	if err != nil {
 		s.logger.Error("Failed to create conversation", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

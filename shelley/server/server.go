@@ -178,6 +178,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/conversations", s.handleConversations)
 	mux.HandleFunc("/api/conversations/new", s.handleNewConversation)
 	mux.HandleFunc("/api/conversation/", s.handleConversation)
+	mux.HandleFunc("/api/validate-cwd", s.handleValidateCwd)
 
 	// Generic read route restricted to safe paths
 	mux.HandleFunc("/api/read", s.handleRead)
@@ -187,6 +188,55 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Serve embedded UI assets with conservative caching
 	mux.Handle("/", s.staticHandler(ui.Assets()))
+}
+
+// handleValidateCwd validates that a path exists and is a directory
+func (s *Server) handleValidateCwd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"valid": false,
+			"error": "path is required",
+		})
+		return
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		if os.IsNotExist(err) {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"valid": false,
+				"error": "directory does not exist",
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"valid": false,
+				"error": err.Error(),
+			})
+		}
+		return
+	}
+
+	if !info.IsDir() {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"valid": false,
+			"error": "path is not a directory",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"valid": true,
+	})
 }
 
 // getOrCreateConversationManager gets an existing conversation manager or creates a new one.

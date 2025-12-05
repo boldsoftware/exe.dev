@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"shelley.exe.dev/claudetool"
 	"shelley.exe.dev/llm"
 )
 
@@ -21,6 +22,7 @@ type Config struct {
 	RecordMessage MessageRecordFunc
 	Logger        *slog.Logger
 	System        []llm.SystemContent
+	WorkingDir    string // working directory for tools
 }
 
 // Loop manages a conversation turn with an LLM including tool execution and message recording.
@@ -35,6 +37,7 @@ type Loop struct {
 	mu            sync.Mutex
 	logger        *slog.Logger
 	system        []llm.SystemContent
+	workingDir    string
 }
 
 // NewLoop creates a new Loop instance with the provided configuration
@@ -52,6 +55,7 @@ func NewLoop(config Config) *Loop {
 		messageQueue:  make([]llm.Message, 0),
 		logger:        logger,
 		system:        config.System,
+		workingDir:    config.WorkingDir,
 	}
 }
 
@@ -308,9 +312,13 @@ func (l *Loop) handleToolCalls(ctx context.Context, content []llm.Content) error
 			continue
 		}
 
-		// Execute the tool
+		// Execute the tool with working directory set in context
+		toolCtx := ctx
+		if l.workingDir != "" {
+			toolCtx = claudetool.WithWorkingDir(ctx, l.workingDir)
+		}
 		startTime := time.Now()
-		result := tool.Run(ctx, c.ToolInput)
+		result := tool.Run(toolCtx, c.ToolInput)
 		endTime := time.Now()
 
 		var toolResultContent []llm.Content

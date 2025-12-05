@@ -53,6 +53,7 @@ export interface Model {
 export interface ChatRequest {
   message: string;
   model?: string;
+  cwd?: string;
 }
 // StreamResponse represents the streaming response format
 export interface StreamResponse extends Omit<StreamResponseForTS, "messages"> {
@@ -70,6 +71,7 @@ export interface Link {
 export interface InitData {
   models: Model[];
   default_model: string;
+  default_cwd?: string;
   hostname?: string;
   terminal_url?: string;
   links?: Link[];

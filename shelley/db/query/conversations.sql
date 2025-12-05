@@ -1,6 +1,6 @@
 -- name: CreateConversation :one
-INSERT INTO conversations (conversation_id, slug, user_initiated)
-VALUES (?, ?, ?)
+INSERT INTO conversations (conversation_id, slug, user_initiated, cwd)
+VALUES (?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetConversation :one

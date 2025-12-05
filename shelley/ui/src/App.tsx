@@ -86,9 +86,9 @@ function App() {
     (conv) => conv.conversation_id === currentConversationId,
   );
 
-  const handleFirstMessage = async (message: string, model: string) => {
+  const handleFirstMessage = async (message: string, model: string, cwd?: string) => {
     try {
-      const response = await api.sendMessageWithNewConversation({ message, model });
+      const response = await api.sendMessageWithNewConversation({ message, model, cwd });
       const newConversationId = response.conversation_id;
 
       // Fetch the new conversation details

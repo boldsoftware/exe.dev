@@ -334,10 +334,15 @@ func (p *PatchTool) patchParse(m json.RawMessage) (PatchInput, error) {
 func (p *PatchTool) patchRun(ctx context.Context, input *PatchInput) llm.ToolOut {
 	path := input.Path
 	if !filepath.IsAbs(input.Path) {
-		if p.Pwd == "" {
+		// Use working directory from context if available, otherwise fall back to p.Pwd
+		pwd := WorkingDir(ctx)
+		if pwd == "" {
+			pwd = p.Pwd
+		}
+		if pwd == "" {
 			return llm.ErrorfToolOut("path %q is not absolute and no working directory is set", input.Path)
 		}
-		path = filepath.Join(p.Pwd, input.Path)
+		path = filepath.Join(pwd, input.Path)
 	}
 	input.Path = path
 	if len(input.Patches) == 0 {

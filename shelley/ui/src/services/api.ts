@@ -58,6 +58,14 @@ class ApiService {
       throw new Error(`Failed to cancel conversation: ${response.statusText}`);
     }
   }
+
+  async validateCwd(path: string): Promise<{ valid: boolean; error?: string }> {
+    const response = await fetch(`${this.baseUrl}/validate-cwd?path=${encodeURIComponent(path)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to validate cwd: ${response.statusText}`);
+    }
+    return response.json();
+  }
 }
 
 export const api = new ApiService();

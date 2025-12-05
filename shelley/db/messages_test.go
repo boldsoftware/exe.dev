@@ -20,7 +20,7 @@ func TestMessageService_Create(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestMessageService_GetByID(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestMessageService_ListByConversation(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestMessageService_ListByType(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestMessageService_GetLatest(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestMessageService_Delete(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestMessageService_CountInConversation(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestMessageService_CountByType(t *testing.T) {
 	defer cancel()
 
 	// Create a test conversation
-	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true)
+	conv, err := db.CreateConversation(ctx, stringPtr("test-conversation"), true, nil)
 	if err != nil {
 		t.Fatalf("Failed to create test conversation: %v", err)
 	}

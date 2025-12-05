@@ -1836,3 +1836,163 @@ svg {
 .messages-container {
   height: 100%;
 }
+
+/* Status bar configuration controls for empty conversations */
+.status-bar-config {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.status-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Fixed-width containers for status fields to prevent jitter */
+.status-field {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.status-field-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.status-field-model {
+  width: 180px;
+}
+
+.status-field-cwd {
+  width: 260px;
+}
+
+/* Compact clickable chips for model and cwd */
+.status-chip {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.status-chip:hover:not(:disabled) {
+  background: var(--bg-secondary);
+  border-color: var(--blue-text);
+}
+
+.status-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-chip-error {
+  border-color: var(--red-text, #dc2626);
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.status-field-error {
+  position: relative;
+}
+
+.status-input-error {
+  border-color: var(--red-text, #dc2626);
+}
+
+.status-select {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--blue-text);
+  border-radius: 0.25rem;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.status-select:hover:not(:disabled) {
+  border-color: var(--blue-text);
+}
+
+.status-select:focus {
+  outline: none;
+  border-color: var(--blue-text);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.status-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-input {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--blue-text);
+  border-radius: 0.25rem;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.status-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.status-input:hover:not(:disabled) {
+  border-color: var(--blue-text);
+}
+
+.status-input:focus {
+  outline: none;
+  border-color: var(--blue-text);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.status-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive adjustments for status bar controls */
+@media (max-width: 768px) {
+  .status-bar-config {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .status-bar-controls {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .status-field-model {
+    width: 160px;
+  }
+
+  .status-field-cwd {
+    width: 200px;
+  }
+}

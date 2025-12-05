@@ -21,19 +21,20 @@ func (q *Queries) CountConversations(ctx context.Context) (int64, error) {
 }
 
 const createConversation = `-- name: CreateConversation :one
-INSERT INTO conversations (conversation_id, slug, user_initiated)
-VALUES (?, ?, ?)
-RETURNING conversation_id, slug, user_initiated, created_at, updated_at
+INSERT INTO conversations (conversation_id, slug, user_initiated, cwd)
+VALUES (?, ?, ?, ?)
+RETURNING conversation_id, slug, user_initiated, created_at, updated_at, cwd
 `
 
 type CreateConversationParams struct {
 	ConversationID string  `json:"conversation_id"`
 	Slug           *string `json:"slug"`
 	UserInitiated  bool    `json:"user_initiated"`
+	Cwd            *string `json:"cwd"`
 }
 
 func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversationParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, createConversation, arg.ConversationID, arg.Slug, arg.UserInitiated)
+	row := q.db.QueryRowContext(ctx, createConversation, arg.ConversationID, arg.Slug, arg.UserInitiated, arg.Cwd)
 	var i Conversation
 	err := row.Scan(
 		&i.ConversationID,
@@ -41,6 +42,7 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 		&i.UserInitiated,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Cwd,
 	)
 	return i, err
 }

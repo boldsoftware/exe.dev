@@ -3,7 +3,6 @@ import { Message, Conversation, StreamResponse, LLMContent } from "../types";
 import { api } from "../services/api";
 import MessageComponent from "./Message";
 import MessageInput from "./MessageInput";
-import Modal from "./Modal";
 import BashTool from "./BashTool";
 import PatchTool from "./PatchTool";
 import ScreenshotTool from "./ScreenshotTool";
@@ -220,7 +219,7 @@ interface ChatInterfaceProps {
   onNewConversation: () => void;
   currentConversation?: Conversation;
   onConversationUpdate?: (conversation: Conversation) => void;
-  onFirstMessage?: (message: string, model: string) => Promise<void>;
+  onFirstMessage?: (message: string, model: string, cwd?: string) => Promise<void>;
 }
 
 function ChatInterface({
@@ -247,7 +246,13 @@ function ChatInterface({
     const firstReady = initModels.find((m) => m.ready);
     return firstReady?.id || "claude-sonnet-4.5";
   });
-  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [selectedCwd, setSelectedCwd] = useState<string>(() => {
+    return window.__SHELLEY_INIT__?.default_cwd || "";
+  });
+  const [cwdError, setCwdError] = useState<string | null>(null);
+  const [editingModel, setEditingModel] = useState(false);
+  const [editingCwd, setEditingCwd] = useState(false);
+  // Settings modal removed - configuration moved to status bar for empty conversations
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [agentWorking, setAgentWorking] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -442,9 +447,16 @@ function ChatInterface({
       setError(null);
       setAgentWorking(true);
 
-      // If no conversation ID, this is the first message
+      // If no conversation ID, this is the first message - validate cwd first
       if (!conversationId && onFirstMessage) {
-        await onFirstMessage(message.trim(), selectedModel);
+        // Validate cwd if provided
+        if (selectedCwd) {
+          const validation = await api.validateCwd(selectedCwd);
+          if (!validation.valid) {
+            throw new Error(`Invalid working directory: ${validation.error}`);
+          }
+        }
+        await onFirstMessage(message.trim(), selectedModel, selectedCwd || undefined);
       } else if (conversationId) {
         await api.sendMessage(conversationId, {
           message: message.trim(),
@@ -453,7 +465,8 @@ function ChatInterface({
       }
     } catch (err) {
       console.error("Failed to send message:", err);
-      setError("Failed to send message. Please try again.");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setError(message);
       setAgentWorking(false);
       throw err; // Re-throw so MessageInput can preserve the text
     } finally {
@@ -791,108 +804,83 @@ function ChatInterface({
             </svg>
           </button>
 
-          {/* Overflow menu */}
-          <div ref={overflowMenuRef} style={{ position: "relative" }}>
-            <button
-              onClick={() => setShowOverflowMenu(!showOverflowMenu)}
-              className="btn-icon"
-              aria-label="More options"
-            >
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                />
-              </svg>
-            </button>
+          {/* Overflow menu - only show when there's content */}
+          {(terminalURL || links.length > 0) && (
+            <div ref={overflowMenuRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+                className="btn-icon"
+                aria-label="More options"
+              >
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                  />
+                </svg>
+              </button>
 
-            {showOverflowMenu && (
-              <div className="overflow-menu">
-                {terminalURL && (
-                  <button
-                    onClick={() => {
-                      setShowOverflowMenu(false);
-                      window.open(terminalURL, "_blank");
-                    }}
-                    className="overflow-menu-item"
-                  >
-                    <svg
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+              {showOverflowMenu && (
+                <div className="overflow-menu">
+                  {terminalURL && (
+                    <button
+                      onClick={() => {
+                        setShowOverflowMenu(false);
+                        window.open(terminalURL, "_blank");
+                      }}
+                      className="overflow-menu-item"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                    Terminal
-                  </button>
-                )}
-                {links.map((link, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      setShowOverflowMenu(false);
-                      window.open(link.url, "_blank");
-                    }}
-                    className="overflow-menu-item"
-                  >
-                    <svg
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                      <svg
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                      Terminal
+                    </button>
+                  )}
+                  {links.map((link, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        setShowOverflowMenu(false);
+                        window.open(link.url, "_blank");
+                      }}
+                      className="overflow-menu-item"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d={
-                          link.icon_svg ||
-                          "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                        }
-                      />
-                    </svg>
-                    {link.title}
-                  </button>
-                ))}
-                <button
-                  onClick={() => {
-                    setShowOverflowMenu(false);
-                    setShowConfigModal(true);
-                  }}
-                  className="overflow-menu-item"
-                >
-                  <svg
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
-                  Settings
-                </button>
-              </div>
-            )}
-          </div>
+                      <svg
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        style={{ width: "1.25rem", height: "1.25rem", marginRight: "0.75rem" }}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d={
+                            link.icon_svg ||
+                            "M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                          }
+                        />
+                      </svg>
+                      {link.title}
+                    </button>
+                  ))}
+
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1002,8 +990,119 @@ function ChatInterface({
               </button>
             </>
           ) : (
-            // Idle state - show ready message
-            <span className="status-message status-ready">Ready</span>
+            // Idle state - show ready message, or configuration for empty conversation
+            !conversationId ? (
+              // Empty conversation - show compact model and cwd indicators (click to edit)
+              <div className="status-bar-config">
+                <span className="status-message status-ready">Ready</span>
+                <div className="status-bar-controls">
+                  {/* Model selector - click to edit */}
+                  <div
+                    className="status-field status-field-model"
+                    title="AI model to use for this conversation"
+                  >
+                    <span className="status-field-label">Model:</span>
+                    {editingModel ? (
+                      <select
+                        id="model-select-status"
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        onBlur={() => setEditingModel(false)}
+                        disabled={sending}
+                        className="status-select"
+                        autoFocus
+                      >
+                        {models.map((model) => (
+                          <option key={model.id} value={model.id} disabled={!model.ready}>
+                            {model.id} {!model.ready ? "(not ready)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <button
+                        className="status-chip"
+                        onClick={() => setEditingModel(true)}
+                        disabled={sending}
+                      >
+                        {selectedModel}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* CWD indicator - click to edit */}
+                  <div
+                    className={`status-field status-field-cwd${cwdError ? " status-field-error" : ""}`}
+                    title={cwdError || "Working directory for file operations"}
+                  >
+                    <span className="status-field-label">Dir:</span>
+                    {editingCwd ? (
+                      <input
+                        id="cwd-input-status"
+                        type="text"
+                        value={selectedCwd}
+                        onChange={(e) => {
+                          setSelectedCwd(e.target.value);
+                          setCwdError(null); // Clear error while typing
+                        }}
+                        onBlur={async () => {
+                          setEditingCwd(false);
+                          // Validate cwd on blur
+                          if (selectedCwd) {
+                            try {
+                              const validation = await api.validateCwd(selectedCwd);
+                              if (!validation.valid) {
+                                setCwdError(validation.error || "Invalid directory");
+                              } else {
+                                setCwdError(null);
+                              }
+                            } catch {
+                              setCwdError("Failed to validate directory");
+                            }
+                          } else {
+                            setCwdError(null);
+                          }
+                        }}
+                        onKeyDown={async (e) => {
+                          if (e.key === "Enter") {
+                            setEditingCwd(false);
+                            // Validate cwd on enter
+                            if (selectedCwd) {
+                              try {
+                                const validation = await api.validateCwd(selectedCwd);
+                                if (!validation.valid) {
+                                  setCwdError(validation.error || "Invalid directory");
+                                } else {
+                                  setCwdError(null);
+                                }
+                              } catch {
+                                setCwdError("Failed to validate directory");
+                              }
+                            } else {
+                              setCwdError(null);
+                            }
+                          }
+                        }}
+                        disabled={sending}
+                        placeholder="/path/to/working/directory"
+                        className={`status-input${cwdError ? " status-input-error" : ""}`}
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        className={`status-chip${cwdError ? " status-chip-error" : ""}`}
+                        onClick={() => setEditingCwd(true)}
+                        disabled={sending}
+                      >
+                        {selectedCwd || "(no cwd)"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Active conversation - show ready message
+              <span className="status-message status-ready">Ready</span>
+            )
           )}
         </div>
       </div>
@@ -1016,28 +1115,7 @@ function ChatInterface({
         autoFocus={true}
       />
 
-      {/* Configuration Modal */}
-      <Modal
-        isOpen={showConfigModal}
-        onClose={() => setShowConfigModal(false)}
-        title="Configuration"
-      >
-        <div>
-          <label htmlFor="model-select">Model</label>
-          <select
-            id="model-select"
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            disabled={sending}
-          >
-            {models.map((model) => (
-              <option key={model.id} value={model.id} disabled={!model.ready}>
-                {model.id} {!model.ready ? "(not ready)" : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-      </Modal>
+
     </div>
   );
 }

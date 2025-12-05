@@ -195,7 +195,7 @@ func runPrompt(global GlobalConfig, args []string) {
 		}
 	} else {
 		// Create new conversation
-		conversation, err := database.CreateConversation(ctx, nil, true)
+		conversation, err := database.CreateConversation(ctx, nil, true, nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating conversation: %s\n", err)
 			os.Exit(1)

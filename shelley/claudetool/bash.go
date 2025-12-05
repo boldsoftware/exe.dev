@@ -202,7 +202,12 @@ const maxBashOutputLength = 131072
 
 func (b *BashTool) makeBashCommand(ctx context.Context, command string, out io.Writer) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "bash", "-c", command)
-	cmd.Dir = b.Pwd
+	// Use working directory from context if available, otherwise fall back to b.Pwd
+	if wd := WorkingDir(ctx); wd != "" {
+		cmd.Dir = wd
+	} else {
+		cmd.Dir = b.Pwd
+	}
 	cmd.Stdin = nil
 	cmd.Stdout = out
 	cmd.Stderr = out

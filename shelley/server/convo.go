@@ -37,6 +37,7 @@ type ConversationManager struct {
 
 	hydrated              bool
 	hasConversationEvents bool
+	cwd                   string // working directory for tools
 }
 
 // NewConversationManager constructs a manager with dependencies but defers hydration until needed.
@@ -94,12 +95,20 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 	}
 
 	history, system := cm.partitionMessages(messages)
+	
+	// Load cwd from conversation if available
+	cwd := ""
+	if conversation.Cwd != nil {
+		cwd = *conversation.Cwd
+	}
+	
 	cm.mu.Lock()
 	cm.history = history
 	cm.system = system
 	cm.hasConversationEvents = len(history) > 0
 	cm.lastActivity = time.Now()
 	cm.hydrated = true
+	cm.cwd = cwd
 	cm.mu.Unlock()
 
 	cm.logSystemPromptState(system, len(messages))
@@ -244,6 +253,7 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 	recordMessage := cm.recordMessage
 	tools := append([]*llm.Tool(nil), cm.tools...)
 	logger := cm.logger
+	cwd := cm.cwd
 	cm.mu.Unlock()
 
 	loopInstance := loop.NewLoop(loop.Config{
@@ -253,6 +263,7 @@ func (cm *ConversationManager) ensureLoop(service llm.Service, modelID string) e
 		RecordMessage: recordMessage,
 		Logger:        logger,
 		System:        system,
+		WorkingDir:    cwd,
 	})
 
 	processCtx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
