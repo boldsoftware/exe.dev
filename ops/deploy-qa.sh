@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-API_ENDPOINT="https://exed-01.crocodile-vector.ts.net/debug/gitsha"
+API_ENDPOINT="https://exed-02.crocodile-vector.ts.net/debug/gitsha"
 
 echo "🕸️  checking what is deployed..."
 
