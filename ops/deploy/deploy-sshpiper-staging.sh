@@ -93,7 +93,7 @@ echo -e "${GREEN}✓ Binary uploaded${NC}"
 
 # Copy systemd service file
 echo "Copying systemd service file..."
-if ! scp "ops/sshpiper.service" "$TAILSCALE_HOST:/etc/systemd/system/sshpiper.service"; then
+if ! scp "ops/deploy/sshpiper.service" "$TAILSCALE_HOST:/etc/systemd/system/sshpiper.service"; then
     echo -e "${RED}ERROR: Failed to copy service file to VM${NC}"
     exit 1
 fi
@@ -102,7 +102,7 @@ echo -e "${GREEN}✓ Service file uploaded${NC}"
 
 # Copy start script
 echo "Copying start script..."
-if ! scp "ops/start-sshpiper.sh" "$TAILSCALE_HOST:~/start-sshpiper.sh"; then
+if ! scp "ops/deploy/start-sshpiper.sh" "$TAILSCALE_HOST:~/start-sshpiper.sh"; then
     echo -e "${RED}ERROR: Failed to copy start script to VM${NC}"
     exit 1
 fi
