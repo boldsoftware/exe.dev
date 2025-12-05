@@ -34,6 +34,7 @@ func TestByID(t *testing.T) {
 		{id: "gpt-5", wantID: "gpt-5", wantNil: false},
 		{id: "claude-sonnet-4.5", wantID: "claude-sonnet-4.5", wantNil: false},
 		{id: "claude-haiku-4.5", wantID: "claude-haiku-4.5", wantNil: false},
+		{id: "claude-opus-4.5", wantID: "claude-opus-4.5", wantNil: false},
 		{id: "nonexistent", wantNil: true},
 	}
 

@@ -205,6 +205,22 @@ func All() []Model {
 			},
 		},
 		{
+			ID:              "claude-opus-4.5",
+			Provider:        ProviderAnthropic,
+			Description:     "Claude Opus 4.5",
+			RequiredEnvVars: []string{"ANTHROPIC_API_KEY"},
+			Factory: func(config *Config) (llm.Service, error) {
+				if config.AnthropicAPIKey == "" {
+					return nil, fmt.Errorf("claude-opus-4.5 requires ANTHROPIC_API_KEY")
+				}
+				svc := &ant.Service{APIKey: config.AnthropicAPIKey, Model: ant.Claude45Opus}
+				if url := config.getAnthropicURL(); url != "" {
+					svc.URL = url
+				}
+				return svc, nil
+			},
+		},
+		{
 			ID:              "predictable",
 			Provider:        ProviderBuiltIn,
 			Description:     "Deterministic test model (no API key)",
