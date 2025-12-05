@@ -294,9 +294,8 @@ func TestStandardAlpineBox(t *testing.T) {
 
 	// Attempt to create a box with a standard alpine image.
 	image := "ghcr.io/linuxcontainers/alpine:latest"
-	boxName := boxName(t)
-	pty.sendLine(fmt.Sprintf("new --name=%s --image=%s", boxName, image))
-	pty.wantPrompt()
+	boxName := newBox(t, pty, BoxOpts{Image: image})
+	waitForSSH(t, boxName, keyFile)
 
 	out, err := boxSSHCommand(t, boxName, keyFile, "cat", "/etc/os-release").CombinedOutput()
 	if err != nil {
