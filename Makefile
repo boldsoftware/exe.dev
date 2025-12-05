@@ -42,14 +42,14 @@ test: ## Run all tests
 
 deploy-exed: ## Deploy exed to production
 	@echo "${YELLOW}Deploying exed to production...${NC}"
-	@chmod +x ops/deploy-exed.sh
-	@./ops/deploy-exed.sh
+	@chmod +x ops/deploy/deploy-exed-prod.sh
+	@./ops/deploy/deploy-exed-prod.sh
 	@./scripts/discord-notify.sh "deployed $(shell git rev-parse --short HEAD)"
 
 deploy-exed-staging: ## Deploy exed to staging
 	@echo "${YELLOW}Deploying exed to staging...${NC}"
-	@chmod +x ops/deploy-exed-staging.sh
-	@./ops/deploy-exed-staging.sh
+	@chmod +x ops/deploy/deploy-exed-staging.sh
+	@./ops/deploy/deploy-exed-staging.sh
 
 deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
@@ -76,13 +76,13 @@ ssh-mon: ## ssh to monitoring (prometheus/grafana) server
 
 deploy-piperd: ## Deploy sshpiperd to production
 	@echo "${YELLOW}Deploying sshpiperd to production...${NC}"
-	@chmod +x ops/deploy-sshpiper.sh
-	@./ops/deploy-sshpiper.sh
+	@chmod +x ops/deploy/deploy-sshpiper-prod.sh
+	@./ops/deploy/deploy-sshpiper-prod.sh
 
 deploy-piperd-staging: ## Deploy sshpiperd to staging
 	@echo "${YELLOW}Deploying sshpiperd to staging...${NC}"
-	@chmod +x ops/deploy-sshpiper-staging.sh
-	@./ops/deploy-sshpiper-staging.sh
+	@chmod +x ops/deploy/deploy-sshpiper-staging.sh
+	@./ops/deploy/deploy-sshpiper-staging.sh
 
 deploy-what: ## Show commits that would deploy to production
 	@./ops/deploy-what.sh
