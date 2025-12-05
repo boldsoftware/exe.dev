@@ -102,8 +102,8 @@ func Random() string {
 		"uniform", "victor", "whiskey", "xray", "yankee", "zulu",
 
 		// WWII / older phonetics
-		"able", "baker", "dog", "easy", "fox", "george", "how", "item", "jig", "king", "love", "nan",
-		"oboe", "prep", "queen", "roger", "sugar", "tare", "uncle", "victory", "william", "xray",
+		"able", "baker", "dog", "early", "waltz", "george", "how", "item", "jig", "king", "love", "nan",
+		"oboe", "prep", "queen", "roger", "sweet", "tare", "uncle", "victory", "william", "extra",
 		"yolk", "zebra",
 
 		// Nature & elements
@@ -113,29 +113,29 @@ func Random() string {
 		// Animals
 		"lion", "tiger", "bear", "wolf", "eagle", "hawk", "falcon", "owl", "otter", "seal", "whale",
 		"shark", "orca", "salmon", "trout", "crane", "heron", "sparrow", "crow", "raven", "fox",
-		"badger", "ferret", "mole", "lynx", "cougar", "panther", "cobra", "viper", "python", "gecko",
+		"badger", "ferret", "bird", "bobcat", "cougar", "panther", "cobra", "viper", "python", "gecko",
 
 		// Colors
-		"red", "blue", "green", "yellow", "purple", "violet", "indigo", "orange", "white", "black",
+		"red", "blue", "green", "yellow", "purple", "violet", "indigo", "orange", "egg", "ruby",
 		"gray", "silver", "gold", "bronze", "scarlet", "crimson", "azure", "emerald", "jade", "amber",
 
 		// Space & science
 		"asteroid", "nebula", "quasar", "galaxy", "pulsar", "orbit", "photon", "quantum", "fusion",
-		"plasma", "nova", "eclipse", "meteor", "cosmos", "ion", "neutron", "proton", "electron",
+		"plasma", "tin", "quark", "meteor", "cosmos", "ion", "neutron", "proton", "electron",
 
 		// Tools, tech & retro computing
-		"format", "fdisk", "edit", "tree", "paint", "minesweeper", "fortune", "lynx", "telnet",
+		"format", "disk", "edit", "finder", "paint", "minesweeper", "fortune", "lynx", "telnet",
 		"gopher", "ping", "traceroute", "router", "switch", "ethernet", "socket", "kernel", "patch",
-		"compile", "linker", "loader", "buffer", "cache", "cookie", "daemon", "kernel", "driver",
+		"compile", "linker", "loader", "buffer", "cache", "cookie", "daemon", "popcorn", "driver",
 
 		// Random objects
 		"anchor", "beacon", "bridge", "compass", "harbor", "island", "lagoon", "mesa", "valley",
-		"desert", "canyon", "fjord", "reef", "delta", "dune", "grove", "peak", "ridge", "plateau",
+		"desert", "canyon", "fun", "reef", "stream", "dune", "grove", "peak", "ridge", "plateau",
 
 		// Misc “fun” filler
-		"sphinx", "obelisk", "phoenix", "griffin", "hydra", "kraken", "unicorn", "pegasus", "chimera",
-		"golem", "djinn", "troll", "sprite", "fairy", "dragon", "wyvern", "cyclops", "satyr", "nymph",
-		"centaur", "minotaur", "harpy", "basilisk", "leviathan",
+		"sphinx", "obelisk", "party", "griffin", "hydra", "kraken", "unicorn", "pegasus", "chimera",
+		"golem", "spin", "road", "alley", "sprite", "fairy", "dragon", "wyvern", "cyclops", "satyr", "noon",
+		"centaur", "minotaur", "harp", "basilisk", "leviathan",
 	}
 
 	word1 := words[mathrand.Intn(len(words))]
