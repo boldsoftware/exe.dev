@@ -66,6 +66,12 @@ const alertsToCreate: Array<{
 // Cache for the default Prometheus datasource UID
 let defaultPrometheusDatasourceUID: string | null = null;
 
+// GitHub URL for the README link
+const GITHUB_README_URL = "https://github.com/boldsoftware/exe/blob/main/observability/README.md";
+
+// Compact README content for all dashboards
+const README_CONTENT = `⚠️ Auto-generated dashboard - [edit in GitHub](${GITHUB_README_URL})`;
+
 // Helper to add the stage variable to dashboards
 function addStageVariable(dash: DashboardBuilder) {
   dash.withVariable(
@@ -98,25 +104,20 @@ function makeExeDevVMsDashboard() {
   // README panel
   dash.withPanel(
     new TextPanelBuilder()
-      .title("README - Auto Generated Dashboard")
-      .content(
-        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
-          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
-          `To modify: edit \`observability/dashboards.mts\` then run \`make deploy-grafana\`\n\n` +
-          `Last updated: ${new Date().toISOString()}`
-      )
+      .title("")
+      .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
   );
 
   // Row 1: Overview Stats
   dash.withRow(
-    new RowBuilder("Overview").gridPos({ x: 0, y: 3, w: 24, h: 1 })
+    new RowBuilder("Overview").gridPos({ x: 0, y: 2, w: 24, h: 1 })
   );
 
   const runningVMsPanel = new StatBuilder()
     .title("Running VMs")
-    .gridPos({ x: 0, y: 4, w: 6, h: 4 })
+    .gridPos({ x: 0, y: 3, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`count(exelet_vm_cpu_seconds_total{${STAGE_FILTER}})`)
@@ -130,7 +131,7 @@ function makeExeDevVMsDashboard() {
 
   const totalCpuPanel = new StatBuilder()
     .title("Total CPU Usage")
-    .gridPos({ x: 6, y: 4, w: 6, h: 4 })
+    .gridPos({ x: 6, y: 3, w: 6, h: 4 })
     .withTarget(
       new DataqueryBuilder()
         .expr(`sum(rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[5m]))`)
@@ -145,7 +146,7 @@ function makeExeDevVMsDashboard() {
 
   // Row 2: CPU Usage Over Time
   dash.withRow(
-    new RowBuilder("CPU Usage").gridPos({ x: 0, y: 8, w: 24, h: 1 })
+    new RowBuilder("CPU Usage").gridPos({ x: 0, y: 7, w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -153,7 +154,7 @@ function makeExeDevVMsDashboard() {
     `sum(rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval]))`,
     {
       panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos({ x: 0, y: 9, w: 12, h: 8 }),
+        x.unit("short").min(0).gridPos({ x: 0, y: 8, w: 12, h: 8 }),
     }
   );
 
@@ -162,19 +163,19 @@ function makeExeDevVMsDashboard() {
     `rate(exelet_vm_cpu_seconds_total{${STAGE_FILTER}}[$__rate_interval])`,
     {
       panelCustomization: (x) =>
-        x.unit("short").min(0).gridPos({ x: 12, y: 9, w: 12, h: 8 }),
+        x.unit("short").min(0).gridPos({ x: 12, y: 8, w: 12, h: 8 }),
       queryCustomization: (q) => q.legendFormat("{{vm_name}}"),
     }
   );
 
   // Row 3: Top Consumers
   dash.withRow(
-    new RowBuilder("Top CPU Consumers").gridPos({ x: 0, y: 17, w: 24, h: 1 })
+    new RowBuilder("Top CPU Consumers").gridPos({ x: 0, y: 16, w: 24, h: 1 })
   );
 
   const topCpuTable = new TableBuilder()
     .title("Top 10 CPU Consumers (5m avg)")
-    .gridPos({ x: 0, y: 18, w: 24, h: 8 })
+    .gridPos({ x: 0, y: 17, w: 24, h: 8 })
     .withTarget(
       new DataqueryBuilder()
         .expr(
@@ -207,15 +208,10 @@ function makeGrpcMetricsDashboard() {
   // README panel
   dash.withPanel(
     new TextPanelBuilder()
-      .title("README - Auto Generated Dashboard")
-      .content(
-        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
-          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
-          `To modify: edit \`observability/dashboards.mts\` then run \`make deploy-grafana\`\n\n` +
-          `Last updated: ${new Date().toISOString()}`
-      )
+      .title("")
+      .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 3 })
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
   );
 
   // Row 1: Server Side (exelet)
@@ -227,7 +223,7 @@ function makeGrpcMetricsDashboard() {
     "Server Request Rate by Method",
     `sum(rate(grpc_server_handled_total{job="exelet",${STAGE_FILTER}}[$__rate_interval])) by (grpc_method)`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 0, y: 4, w: 8, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 0, y: 3, w: 8, h: 6 }),
       queryCustomization: (q) => q.legendFormat("{{grpc_method}}"),
     }
   );
@@ -358,17 +354,10 @@ function makeDevExeDashboard() {
   // README panel for auto-generated dashboard
   dash.withPanel(
     new TextPanelBuilder()
-      .title("README - Auto Generated Dashboard")
-      .content(
-        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
-          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
-          `To modify this dashboard:\n` +
-          `1. Edit the code in \`observability/dashboards.mts\`\n` +
-          `2. Run \`./node_modules/.bin/tsx dashboards.mts\` to update\n\n` +
-          `Last updated: ${new Date().toISOString()} by ${import.meta.url}`
-      )
+      .title("")
+      .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 4 })
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
   );
 
   // Row 1: HTTP metrics overview (starting at y: 4 after README)
@@ -565,35 +554,34 @@ function makeDevExeDashboard() {
     })
   );
 
-  addTimeseriesChart(
-    "Box Creation p50",
-    `histogram_quantile(0.5, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 0, y: 49, w: 6, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "Box Creation p90",
-    `histogram_quantile(0.9, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 6, y: 49, w: 6, h: 6 }),
-    }
-  );
-
-  addTimeseriesChart(
-    "Box Creation p99",
-    `histogram_quantile(0.99, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`,
-    {
-      panelCustomization: (x) => x.unit("s").gridPos({ x: 12, y: 49, w: 6, h: 6 }),
-    }
-  );
+  // Box creation latency percentiles - all on one chart
+  const boxCreationPanel = new TimeseriesBuilder()
+    .title("Box Creation Latency")
+    .unit("s")
+    .min(0)
+    .gridPos({ x: 0, y: 49, w: 12, h: 6 })
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.5, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`)
+        .legendFormat("p50")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.9, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`)
+        .legendFormat("p90")
+    )
+    .withTarget(
+      new DataqueryBuilder()
+        .expr(`histogram_quantile(0.99, rate(box_creation_time_seconds_bucket{${STAGE_FILTER}}[$__rate_interval]))`)
+        .legendFormat("p99")
+    );
+  dash.withPanel(boxCreationPanel);
 
   addTimeseriesChart(
     "Box Creation Rate",
     `rate(box_creation_time_seconds_count{${STAGE_FILTER}}[$__rate_interval])`,
     {
-      panelCustomization: (x) => x.gridPos({ x: 18, y: 49, w: 6, h: 6 }),
+      panelCustomization: (x) => x.gridPos({ x: 12, y: 49, w: 12, h: 6 }),
     }
   );
 
@@ -637,22 +625,15 @@ function makeGrafanaDashboard() {
   // README panel for auto-generated dashboard
   dash.withPanel(
     new TextPanelBuilder()
-      .title("README - Auto Generated Dashboard")
-      .content(
-        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
-          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
-          `To modify this dashboard:\n` +
-          `1. Edit the code in \`observability/dashboards.mts\`\n` +
-          `2. Run \`make deploy-grafana\` to update\n\n` +
-          `Last updated: ${new Date().toISOString()}`
-      )
+      .title("")
+      .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 4 })
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
   );
 
   // Row 1: Request Metrics
   dash.withRow(
-    new RowBuilder("Request Metrics").gridPos({ x: 0, y: 4, w: 24, h: 1 })
+    new RowBuilder("Request Metrics").gridPos({ x: 0, y: 3, w: 24, h: 1 })
   );
 
   addTimeseriesChart(
@@ -850,23 +831,15 @@ function makeMonMonDashboard() {
   // README panel for auto-generated dashboard
   dash.withPanel(
     new TextPanelBuilder()
-      .title("README - Auto Generated Dashboard")
-      .content(
-        `⚠️ **This dashboard is automatically generated** ⚠️\n\n` +
-          `Do not edit this dashboard manually! All changes will be overwritten.\n\n` +
-          `To modify this dashboard:\n` +
-          `1. Edit the code in \`observability/dashboards.mts\`\n` +
-          `2. Run \`make deploy-grafana\` to update\n\n` +
-          `This dashboard monitors the monitoring infrastructure itself.\n\n` +
-          `Last updated: ${new Date().toISOString()}`
-      )
+      .title("")
+      .content(README_CONTENT)
       .mode(TextMode.Markdown)
-      .gridPos({ x: 0, y: 0, w: 24, h: 4 })
+      .gridPos({ x: 0, y: 0, w: 24, h: 2 })
   );
 
   // Row 1: Overview Stats
   dash.withRow(
-    new RowBuilder("Monitoring Server Overview").gridPos({ x: 0, y: 4, w: 24, h: 1 })
+    new RowBuilder("Monitoring Server Overview").gridPos({ x: 0, y: 3, w: 24, h: 1 })
   );
 
   // Mon host memory stat

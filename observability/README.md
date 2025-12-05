@@ -28,9 +28,11 @@ Doing this in typescript gives you working (mostly) types for Grafana stuff.
 
 The following dashboards are automatically generated:
 
-1. **exe.dev Dashboard** - Main application metrics (HTTP, SSH, SQLite)
-2. **exe.dev Container Metrics Dashboard** - Container resource usage and lifecycle
-3. **Grafana Self-Monitoring Dashboard** - Grafana's own performance metrics
+1. **exe.dev Dashboard** - Main application metrics (HTTP, SSH, SQLite, box creation)
+2. **exe.dev VMs** - VM-level CPU metrics from exelet
+3. **gRPC Metrics** - Client (exed) and server (exelet) gRPC metrics
+4. **Grafana Self-Monitoring Dashboard** - Grafana's own performance metrics
+5. **Mon Mon - Monitoring Infrastructure** - Prometheus and monitoring server health
 
 ## Alert Support
 
