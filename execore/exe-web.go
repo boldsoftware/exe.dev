@@ -27,6 +27,7 @@ import (
 
 	"exe.dev/boxname"
 	"exe.dev/cobble"
+	"exe.dev/dnsresolver"
 	"exe.dev/domz"
 	"exe.dev/exedb"
 	"exe.dev/llmgateway"
@@ -235,6 +236,15 @@ func (s *Server) lookupCNAME(ctx context.Context, host string) (string, error) {
 	if s.lookupCNAMEFunc != nil {
 		return s.lookupCNAMEFunc(ctx, host)
 	}
+	cname, err := dnsresolver.LookupCNAME(ctx, host)
+	if err == nil {
+		return cname, nil
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return "", err
+	}
+	s.slog().WarnContext(ctx, "lookupCNAME: fallback to net resolver", "host", host, "error", err)
 	return net.DefaultResolver.LookupCNAME(ctx, host)
 }
 
