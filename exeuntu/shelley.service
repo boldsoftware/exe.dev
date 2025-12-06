@@ -5,9 +5,8 @@ Description=Shelley-the-Agent
 Type=exec
 User=exedev
 Group=exedev
-WorkingDirectory=/home/exedev/src
-ExecStartPre=/bin/mkdir -p /home/exedev/.shelley
-ExecStart=/usr/local/bin/shelley -debug -db /home/exedev/.shelley/shelley.db -config /exe.dev/shelley.json serve -port 9999
+WorkingDirectory=/home/exedev
+ExecStart=/usr/local/bin/shelley -debug -db /home/exedev/.config/shelley/shelley.db -config /exe.dev/shelley.json serve -port 9999
 Restart=always
 RestartSec=5
 Environment=HOME=/home/exedev
