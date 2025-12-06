@@ -12,7 +12,6 @@ test*.db
 # Build outputs
 /shelley
 bin/
-templates/*.tar.gz
 
 # UI build outputs
 ui/dist/
