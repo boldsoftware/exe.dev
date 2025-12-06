@@ -672,7 +672,6 @@ func getMessageContentPreview(message llm.Message) string {
 	return content.String()
 }
 
-
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file
 func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel string) *server.LLMConfig {
 	llmCfg := &server.LLMConfig{
