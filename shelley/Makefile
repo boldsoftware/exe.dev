@@ -1,6 +1,6 @@
 # Shelley Makefile
 
-.PHONY: build build-linux-aarch64 test test-go test-e2e ui serve clean help templates
+.PHONY: build build-linux-aarch64 build-linux-x86 test test-go test-e2e ui serve clean help templates
 
 # Default target
 all: build
@@ -34,6 +34,11 @@ build-linux: ui templates
 build-linux-aarch64: ui templates
 	@echo "Building Shelley for Linux ARM64..."
 	GOOS=linux GOARCH=arm64 go build -o bin/shelley-linux-aarch64 ./cmd/shelley
+
+# Build for Linux x86_64
+build-linux-x86: ui templates
+	@echo "Building Shelley for Linux x86_64..."
+	GOOS=linux GOARCH=amd64 go build -o bin/shelley-linux-x86 ./cmd/shelley
 
 # Build UI
 ui:
@@ -90,6 +95,7 @@ help:
 	@echo ""
 	@echo "  build         Build UI, templates, and Go binary"
 	@echo "  build-linux-aarch64  Build for Linux ARM64"
+	@echo "  build-linux-x86      Build for Linux x86_64"
 	@echo "  ui            Build UI only"
 	@echo "  templates     Build template tarballs"
 	@echo "  test          Run all tests (Go + E2E)"
