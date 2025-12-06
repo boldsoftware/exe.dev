@@ -202,11 +202,7 @@ USER exedev
 # gateway, so let's just have it installed without for now.
 # COPY exeuntu/claude-settings.json /home/exedev/.claude.json
 
-WORKDIR /home/exedev/src
-
-# Configure git for exedev user
-RUN git config --global user.email "system@exe.dev" && \
-    git config --global user.name "Exe.dev System"
+WORKDIR /home/exedev
 
 # Update PATH in .bashrc to include .local/bin
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
