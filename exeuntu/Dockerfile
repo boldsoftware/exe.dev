@@ -233,7 +233,7 @@ RUN ARCH=$(uname -m) && \
         aarch64|arm64) CODEX_ARCH="aarch64-unknown-linux-musl" ;; \
         *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
     esac && \
-    CODEX_VERSION=$(curl -sL https://api.github.com/repos/openai/codex/releases/latest | grep '"tag_name":' | cut -d'"' -f4) && \
+    CODEX_VERSION=$(curl -fsSL https://api.github.com/repos/openai/codex/releases/latest | jq -r '.tag_name') && \
     curl -fsSL "https://github.com/openai/codex/releases/download/${CODEX_VERSION}/codex-${CODEX_ARCH}.tar.gz" | \
     tar -xzC /usr/local/bin && \
     mv "/usr/local/bin/codex-${CODEX_ARCH}" /usr/local/bin/codex && \

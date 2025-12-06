@@ -5,13 +5,13 @@
 # Default target
 all: build
 
-# Build templates into tarballs (only includes git-tracked files)
+# Build templates into tarballs
 templates:
 	@echo "Building template tarballs..."
 	@for dir in templates/*/; do \
 		name=$$(basename "$$dir"); \
 		echo "  Creating $$name.tar.gz..."; \
-		git ls-files "templates/$$name" | sed "s|^templates/$$name/||" | tar -czf "templates/$$name.tar.gz" -C "templates/$$name" -T -; \
+		tar -czf "templates/$$name.tar.gz" -C "templates/$$name" --exclude='.DS_Store' .; \
 	done
 
 # Build the UI and Go binary
