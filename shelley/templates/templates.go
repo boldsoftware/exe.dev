@@ -70,18 +70,18 @@ func Unpack(templateName, destDir string) error {
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
+			if err := os.MkdirAll(target, 0o755); err != nil {
 				return fmt.Errorf("mkdir %s: %w", target, err)
 			}
 		case tar.TypeReg:
 			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return fmt.Errorf("mkdir for %s: %w", target, err)
 			}
 			// Create the file
 			mode := os.FileMode(hdr.Mode)
 			if mode == 0 {
-				mode = 0644
+				mode = 0o644
 			}
 			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 			if err != nil {
@@ -99,7 +99,7 @@ func Unpack(templateName, destDir string) error {
 				return fmt.Errorf("absolute symlink not allowed: %s -> %s", hdr.Name, linkTarget)
 			}
 			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return fmt.Errorf("mkdir for symlink %s: %w", target, err)
 			}
 			if err := os.Symlink(linkTarget, target); err != nil {

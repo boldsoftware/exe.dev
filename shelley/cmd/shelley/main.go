@@ -572,7 +572,7 @@ func runUnpackTemplate(args []string) {
 	}
 
 	// Create destination directory if it doesn't exist
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating directory %q: %v\n", destDir, err)
 		os.Exit(1)
 	}
