@@ -1,8 +1,15 @@
 default: build-exeuntu
 
-build-exeuntu: ## Build the exeuntu Docker image locally
+# Build shelley for the current platform
+build-shelley:
+	@echo "Building shelley..."
+	@cd ../shelley && make build-linux
+	@cp ../shelley/bin/shelley-linux shelley
+	@echo "✓ Shelley built"
+
+build-exeuntu: build-shelley ## Build the exeuntu Docker image locally
 	@echo "Building exeuntu Docker image..."
-	@cd .. && docker build -f exeuntu/Dockerfile -t ghcr.io/boldsoftware/exeuntu:latest .
+	docker build -t ghcr.io/boldsoftware/exeuntu:latest .
 	@echo "✓ Image built locally as ghcr.io/boldsoftware/exeuntu:latest"
 
 push-local-exeuntu: build-exeuntu ## Build and push exeuntu image to local lima-exe-ctr

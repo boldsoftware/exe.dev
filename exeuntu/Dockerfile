@@ -1,29 +1,6 @@
 # Stage 1: Get Chrome/Chromium from chromedp/headless-shell
 FROM docker.io/chromedp/headless-shell:stable AS chrome
 
-# Build generate-gateway-token and shelley as static binaries
-# Use bookworm (Debian) instead of Alpine to avoid QEMU emulation issues with apk triggers
-# when cross-compiling for ARM64 on x86_64 runners
-FROM golang:1.25-bookworm AS go-builder
-ARG TARGETARCH
-ARG TARGETOS=linux
-
-# Install Node.js 22.x from NodeSource and build tools
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg make \
-    && mkdir -p /etc/apt/keyrings \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && node --version && npm --version
-
-ENV PATH="/usr/local/bin:${PATH}"
-
-# Build Shelley using its Makefile
-COPY shelley/ /src/shelley/
-WORKDIR /src/shelley/
-RUN make build
-
 FROM ubuntu:24.04
 
 # Switch from dash to bash by default.
@@ -173,9 +150,9 @@ ENV EXEUNTU=1
 # STOPSIGNAL SIGRTMIN+3
 
 
-# Copy the pre-built static binaries from the builder stage
-COPY --from=go-builder /src/shelley/bin/shelley /usr/local/bin/shelley
-RUN chmod +x /usr/local/bin/shelley
+# Copy the pre-built shelley binary (built externally for the target architecture)
+COPY shelley /usr/local/bin/shelley
+RUN chmod +x /usr/local/bin/shelley && /usr/local/bin/shelley -help
 
 # Copy the self-contained Chrome bundle from chromedp/headless-shell
 COPY --from=chrome /headless-shell /headless-shell
@@ -198,17 +175,17 @@ USER root
 RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && chown exedev:exedev /home/exedev/.hushlogin
 
 # Add custom MOTD to exedev's .bashrc (ignores .hushlogin - we handle that ourselves)
-COPY exeuntu/motd-snippet.bash /tmp/motd-snippet.bash
+COPY motd-snippet.bash /tmp/motd-snippet.bash
 RUN cat /tmp/motd-snippet.bash >> /home/exedev/.bashrc && rm /tmp/motd-snippet.bash
 
 # Create systemd service for Shelley
-COPY exeuntu/shelley.service /etc/systemd/system/shelley.service
+COPY shelley.service /etc/systemd/system/shelley.service
 RUN chmod 644 /etc/systemd/system/shelley.service && systemctl enable shelley.service
 
 # TODO(crawshaw/philip): This is called init so that exetini decides
 # this wrapper script is an init, and exec's it rather than forking it.
 # It would be better if you could indicate that via an env variable or something.
-COPY exeuntu/init-wrapper.sh /usr/local/bin/init
+COPY init-wrapper.sh /usr/local/bin/init
 
 # Install native codex; installs to /usr/local/bin
 RUN ARCH=$(uname -m) && \
