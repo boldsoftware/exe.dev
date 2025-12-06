@@ -221,6 +221,25 @@ ssh ubuntu@exed-prod-01
 
 There are other deployment options, like `make deploy-piperd`, but these are less frequently used.
 
+### Deploying exelet
+
+To deploy exelet to production or staging:
+
+```
+make deploy-exelet          # production
+make deploy-exelet-staging  # staging
+```
+
+### Building exelet-fs
+
+The exelet requires kernel and rovol filesystem images. These are stored in Backblaze and downloaded automatically by `make exelet-fs`. To build and package new images:
+
+```
+make package-exelet-fs
+```
+
+This builds the kernel, rovol, and exe-init, then packages them into `exelet-fs-$(GOARCH).tar.gz`. Upload the resulting tarball to Backblaze (`bold-exe` bucket) to update the cached images.
+
 ## Production Container Host Configuration
 
 The script `./ops/setup-host-part1.sh` sets up more exe-ctr-NN hosts.
