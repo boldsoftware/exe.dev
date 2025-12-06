@@ -415,6 +415,7 @@ func (ss *SSHServer) handleNewCommand(ctx context.Context, cc *exemenu.CommandCo
 	}
 	// Use the metadata service for the gateway
 	shelleyJSON["llm_gateway"] = "http://169.254.169.254/gateway/llm"
+	// TODO: remove key_generator once exeuntu is rebuilt without it
 	shelleyJSON["key_generator"] = "echo irrelevant"
 	shelleyJSON["links"] = []map[string]string{
 		{

@@ -19,14 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 ENV PATH="/usr/local/bin:${PATH}"
 
-# Copy the generate-gateway-token source code so we can build it
-COPY exeuntu/generate-gateway-token/ /src/generate-gateway-token/
-WORKDIR /src/generate-gateway-token/
-
-# Build static binary for the target architecture
-RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
-    go build -ldflags="-s -w" -a -installsuffix cgo -o generate-gateway-token ./cmd
-
 # Build Shelley using its Makefile
 COPY shelley/ /src/shelley/
 WORKDIR /src/shelley/
@@ -182,9 +174,6 @@ ENV EXEUNTU=1
 
 
 # Copy the pre-built static binaries from the builder stage
-COPY --from=go-builder /src/generate-gateway-token/generate-gateway-token /usr/local/bin/generate-gateway-token
-RUN chmod +x /usr/local/bin/generate-gateway-token
-
 COPY --from=go-builder /src/shelley/bin/shelley /usr/local/bin/shelley
 RUN chmod +x /usr/local/bin/shelley
 
@@ -196,11 +185,6 @@ RUN mkdir -p /home/exedev/src /home/exedev/.config/shelley && \
     chown exedev:exedev /home/exedev/src /home/exedev/.config /home/exedev/.config/shelley
 
 USER exedev
-
-# Add claude settings file
-# TODO(philip,etc.): I've not yet had Claude work with our LLM
-# gateway, so let's just have it installed without for now.
-# COPY exeuntu/claude-settings.json /home/exedev/.claude.json
 
 WORKDIR /home/exedev
 

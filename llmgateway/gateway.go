@@ -1,7 +1,6 @@
 package llmgateway
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net"
@@ -13,7 +12,6 @@ import (
 
 	"exe.dev/sqlite"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ssh"
 	"tailscale.com/net/tsaddr"
 )
 
@@ -78,17 +76,16 @@ func RegisterMetrics(registry *prometheus.Registry) {
 }
 
 // llmGateway is a proxy for API calls to various LLM services.
-// - Authenticates client requests to verify that they are coming from known box names.
+// - Authenticates client requests via X-Exedev-Box header from Tailscale IP addresses.
 // - Performs account balance checks before allowing requests to continue.
 // - Designed to work with client applications that have configurable API endpoints and auth headers.
 type llmGateway struct {
-	now             func() time.Time
-	db              *sqlite.DB
-	boxKeyAuthority boxKeyAuthority
-	apiKeys         APIKeys
-	devMode         bool      // if true, accept "dev.key" as a valid API key
-	testDebitDone   chan bool // for testing -- if non-nil, best effort send every time a debit occurs
-	log             *slog.Logger
+	now           func() time.Time
+	db            *sqlite.DB
+	apiKeys       APIKeys
+	devMode       bool      // if true, accept requests from any IP with X-Exedev-Box header
+	testDebitDone chan bool // for testing -- if non-nil, best effort send every time a debit occurs
+	log           *slog.Logger
 }
 
 type APIKeys struct {
@@ -97,19 +94,13 @@ type APIKeys struct {
 	OpenAI    string
 }
 
-type boxKeyAuthority interface {
-	// SSHIdentityKeyForBox returns the public key portion of the ssh server identity for the given boxy name.
-	SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error)
-}
-
-func NewGateway(log *slog.Logger, db *sqlite.DB, boxKeyAuthority boxKeyAuthority, apiKeys APIKeys, devMode bool) *llmGateway {
+func NewGateway(log *slog.Logger, db *sqlite.DB, apiKeys APIKeys, devMode bool) *llmGateway {
 	ret := &llmGateway{
-		now:             time.Now,
-		db:              db,
-		boxKeyAuthority: boxKeyAuthority,
-		apiKeys:         apiKeys,
-		devMode:         devMode,
-		log:             log,
+		now:     time.Now,
+		db:      db,
+		apiKeys: apiKeys,
+		devMode: devMode,
+		log:     log,
 	}
 	if apiKeys.Anthropic == "" || apiKeys.Fireworks == "" || apiKeys.OpenAI == "" {
 		log.Warn("NewGateway: not all apiKeys are set", "apiKeys", apiKeys)
@@ -126,44 +117,38 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.log.InfoContext(r.Context(), "llmGateway.ServeHTTP", "r.URL.Path", r.URL.Path)
 
 	// Authenticate request
-	// If the request has "X-Exedev-Box: <boxname>" header,
-	// AND if we're in dev mode OR the request is coming via our tailscale IP,
-	// then we can consider it authenticated. Otherwise, use bearer auth.
+	// The request must have "X-Exedev-Box: <boxname>" header,
+	// AND must be in dev mode OR coming via our tailscale IP.
 	boxName := r.Header.Get("X-Exedev-Box")
-	if boxName != "" {
-		// Check if request is from dev mode or tailscale
-		remoteAddr := r.RemoteAddr
-		host, _, err := net.SplitHostPort(remoteAddr)
-		if err != nil {
-			host = remoteAddr
-		}
-		remoteIP, err := netip.ParseAddr(host)
+	if boxName == "" {
+		m.httpError(w, r, "X-Exedev-Box header required", http.StatusUnauthorized)
+		return
+	}
 
-		allowXExedevBox := false
-		if err == nil {
-			// Allow if in dev mode or coming from tailscale IP
-			if m.devMode || tsaddr.IsTailscaleIP(remoteIP) {
-				allowXExedevBox = true
-			}
-		}
+	// Check if request is from dev mode or tailscale
+	remoteAddr := r.RemoteAddr
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	remoteIP, err := netip.ParseAddr(host)
 
-		if allowXExedevBox {
-			m.log.InfoContext(r.Context(), "authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host)
-			// Strip the header before forwarding
-			r.Header.Del("X-Exedev-Box")
-		} else {
-			// X-Exedev-Box header present but not authorized
-			m.httpError(w, r, "X-Exedev-Box header not allowed from this IP", http.StatusUnauthorized)
-			return
-		}
-	} else {
-		// Fall back to bearer token authentication
-		_, err := m.boxKeyAuth(r.Context(), r)
-		if err != nil {
-			m.httpError(w, r, "box key auth failed: "+err.Error(), http.StatusUnauthorized)
-			return
+	allowXExedevBox := false
+	if err == nil {
+		// Allow if in dev mode or coming from tailscale IP
+		if m.devMode || tsaddr.IsTailscaleIP(remoteIP) {
+			allowXExedevBox = true
 		}
 	}
+
+	if !allowXExedevBox {
+		m.httpError(w, r, "X-Exedev-Box header not allowed from this IP", http.StatusUnauthorized)
+		return
+	}
+
+	m.log.InfoContext(r.Context(), "authenticated via X-Exedev-Box header", "box", boxName, "remote_ip", host)
+	// Strip the header before forwarding
+	r.Header.Del("X-Exedev-Box")
 
 	// Handle /ready endpoint after authentication
 	// This ensures /ready validates that auth is working correctly
@@ -194,20 +179,20 @@ func (m *llmGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.URL.Path = remainder
 	var proxy *httputil.ReverseProxy
-	var err error
+	var proxyErr error
 	switch alias {
 	case "anthropic":
-		proxy, err = m.createAnthropicProxy()
+		proxy, proxyErr = m.createAnthropicProxy()
 	case "openai":
-		proxy, err = m.createOpenAIProxy()
+		proxy, proxyErr = m.createOpenAIProxy()
 	case "fireworks":
-		proxy, err = m.createFireworksProxy()
+		proxy, proxyErr = m.createFireworksProxy()
 	default:
 		m.httpError(w, r, "unrecognized origin alias", http.StatusNotFound)
 		return
 	}
-	if err != nil {
-		m.httpError(w, r, err.Error(), http.StatusInternalServerError)
+	if proxyErr != nil {
+		m.httpError(w, r, proxyErr.Error(), http.StatusInternalServerError)
 		return
 	}
 	proxy.ServeHTTP(w, r)

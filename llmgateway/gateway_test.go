@@ -16,7 +16,6 @@ import (
 	"exe.dev/sqlite"
 	"exe.dev/tslog"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/ssh"
 	_ "modernc.org/sqlite"
 )
 
@@ -80,31 +79,22 @@ func newDB(t *testing.T) *sqlite.DB {
 }
 
 // setupTestGateway creates a test gateway with mocked dependencies
-func setupTestGateway(t *testing.T) (*llmGateway, *sqlite.DB, *mockBoxKeyAuthority, *testKeyPair) {
-	keyPair := generateTestKeys(t)
-
-	mockAuth := &mockBoxKeyAuthority{
-		keys: map[string]ssh.PublicKey{
-			"test-box": keyPair.sshPublicKey,
-		},
-	}
-
+func setupTestGateway(t *testing.T) (*llmGateway, *sqlite.DB) {
 	db := newDB(t)
 
 	// Create the box.
 	setupTestBox(t, db, "test-box")
 
 	gateway := &llmGateway{
-		now:             time.Now,
-		db:              db,
-		boxKeyAuthority: mockAuth,
-		apiKeys:         APIKeys{Anthropic: "test-api-key"},
-		devMode:         false,
-		testDebitDone:   make(chan bool, 10), // Buffered for tests
-		log:             tslog.Slogger(t),
+		now:           time.Now,
+		db:            db,
+		apiKeys:       APIKeys{Anthropic: "test-api-key"},
+		devMode:       false,
+		testDebitDone: make(chan bool, 10), // Buffered for tests
+		log:           tslog.Slogger(t),
 	}
 
-	return gateway, db, mockAuth, keyPair
+	return gateway, db
 }
 
 func TestGateway_ProxyFunctionality_URLParsing(t *testing.T) {
@@ -152,7 +142,7 @@ func TestGateway_ProxyFunctionality_URLParsing(t *testing.T) {
 }
 
 func TestGateway_ProxyFunctionality_HeaderFiltering(t *testing.T) {
-	gateway, _, _, _ := setupTestGateway(t)
+	gateway, _ := setupTestGateway(t)
 
 	// Create a mock request with various headers
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages", nil)
@@ -189,101 +179,8 @@ func TestGateway_ProxyFunctionality_HeaderFiltering(t *testing.T) {
 	}
 }
 
-// For the integration tests, we'll rely on the actual HTTP errors rather than mocking
-
-// TestGateway_ServeHTTP_RequestProcessing tests the request processing logic
-// This test will make a real HTTP call (which will fail) but allows us to test
-// the request preprocessing, authentication, and billing check logic
-func TestGateway_ServeHTTP_RequestProcessing(t *testing.T) {
-	gateway, _, _, keyPair := setupTestGateway(t)
-
-	// Create authenticated request
-	token := NewBearerToken("test-box", time.Now().Add(-5*time.Minute), 3600)
-	tokenEncoded, err := token.Encode(keyPair.sshPrivateKey)
-	if err != nil {
-		t.Fatalf("Failed to encode token: %v", err)
-	}
-
-	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req.Header.Set("Authorization", "Bearer "+tokenEncoded)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "test-client")
-	req.Header.Set("X-Custom-Header", "should-be-preserved")
-	req.Header.Set("X-Api-Key", "should-be-filtered")
-
-	rr := httptest.NewRecorder()
-	gateway.ServeHTTP(rr, req)
-
-	// The request will fail (401 from Anthropic due to invalid API key) but that's expected
-	// We can still verify that the request preprocessing worked correctly
-
-	// The response should be either:
-	// 1. 401 from Anthropic API (authentication failed with real API)
-	// 2. 500 (could not reach origin server)
-	// Either is fine for this test since we're testing the preprocessing
-	if rr.Code != http.StatusUnauthorized && rr.Code != http.StatusInternalServerError {
-		// Only log, don't fail - the exact error depends on network conditions
-		t.Logf("Unexpected status code: %d, body: %s", rr.Code, rr.Body.String())
-	}
-}
-
-func TestGateway_ServeHTTP_DevKeyAuthentication(t *testing.T) {
-	gateway, _, _, _ := setupTestGateway(t)
-	gateway.devMode = true // Enable dev mode
-
-	// Test with dev.key:test-box in Authorization header
-	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req.Header.Set("Authorization", "Bearer dev.key:test-box")
-	req.Header.Set("Content-Type", "application/json")
-
-	rr := httptest.NewRecorder()
-	gateway.ServeHTTP(rr, req)
-
-	// Gateway authentication should pass - we should NOT get our gateway's auth error
-	// The request will be proxied to Anthropic which will return 401 for invalid API key
-	// But the body should be Anthropic's error, not our "box key auth failed" error
-	if rr.Code == http.StatusUnauthorized && strings.Contains(rr.Body.String(), "box key auth failed") {
-		t.Errorf("Expected gateway authentication to pass with dev.key:test-box, but got gateway auth error: %s", rr.Body.String())
-	}
-
-	// Test with dev.key:test-box in X-API-Key header
-	req2 := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req2.Header.Set("X-API-Key", "dev.key:test-box")
-	req2.Header.Set("Content-Type", "application/json")
-
-	rr2 := httptest.NewRecorder()
-	gateway.ServeHTTP(rr2, req2)
-
-	// Gateway authentication should pass - we should NOT get our gateway's auth error
-	if rr2.Code == http.StatusUnauthorized && strings.Contains(rr2.Body.String(), "box key auth failed") {
-		t.Errorf("Expected gateway authentication to pass with dev.key:test-box in X-API-Key, but got gateway auth error: %s", rr2.Body.String())
-	}
-}
-
-func TestGateway_ServeHTTP_DevKeyDisabledInProduction(t *testing.T) {
-	gateway, _, _, _ := setupTestGateway(t)
-	gateway.devMode = false // Production mode
-
-	// Test with dev.key:test-box in Authorization header
-	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req.Header.Set("Authorization", "Bearer dev.key:test-box")
-	req.Header.Set("Content-Type", "application/json")
-
-	rr := httptest.NewRecorder()
-	gateway.ServeHTTP(rr, req)
-
-	// Should return 401 (dev.key should not work in production)
-	if rr.Code != http.StatusUnauthorized {
-		t.Errorf("Expected status 401 for dev.key:test-box in production mode, got %d", rr.Code)
-	}
-}
-
 func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
-	gateway, _, _, _ := setupTestGateway(t)
+	gateway, _ := setupTestGateway(t)
 
 	// Create request without authentication
 	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
@@ -299,39 +196,13 @@ func TestGateway_ServeHTTP_AuthenticationFailure(t *testing.T) {
 	}
 
 	// Should contain auth error message
-	if !strings.Contains(rr.Body.String(), "box key auth failed") {
-		t.Errorf("Expected auth error in response, got: %s", rr.Body.String())
-	}
-}
-
-func TestGateway_ServeHTTP_UpstreamCallAttempt(t *testing.T) {
-	gateway, _, _, keyPair := setupTestGateway(t)
-
-	// Create authenticated request
-	token := NewBearerToken("test-box", time.Now().Add(-5*time.Minute), 3600)
-	tokenEncoded, err := token.Encode(keyPair.sshPrivateKey)
-	if err != nil {
-		t.Fatalf("Failed to encode token: %v", err)
-	}
-
-	req := httptest.NewRequest("POST", "/_/gateway/anthropic/v1/messages",
-		strings.NewReader(`{"model":"claude-3-haiku","messages":[{"role":"user","content":"Hello"}]}`))
-	req.Header.Set("Authorization", "Bearer "+tokenEncoded)
-	req.Header.Set("Content-Type", "application/json")
-
-	rr := httptest.NewRecorder()
-	gateway.ServeHTTP(rr, req)
-
-	// This will make a real HTTP call to Anthropic (which will fail with our test API key)
-	// but we can verify the request made it past authentication and credit checks
-	// Expected responses: 401 (API key invalid) or 500 (network error)
-	if rr.Code != http.StatusUnauthorized && rr.Code != http.StatusInternalServerError {
-		t.Logf("Got status %d, expected 401 or 500. This may indicate the request processing worked correctly.", rr.Code)
+	if !strings.Contains(rr.Body.String(), "X-Exedev-Box header required") {
+		t.Errorf("Expected X-Exedev-Box header required error in response, got: %s", rr.Body.String())
 	}
 }
 
 func TestGateway_ServeHTTP_XExedevBoxAuthenticationInDevMode(t *testing.T) {
-	gateway, _, _, _ := setupTestGateway(t)
+	gateway, _ := setupTestGateway(t)
 	gateway.devMode = true // Enable dev mode
 
 	// Test with X-Exedev-Box header in dev mode (should be accepted)
@@ -346,8 +217,8 @@ func TestGateway_ServeHTTP_XExedevBoxAuthenticationInDevMode(t *testing.T) {
 
 	// Gateway authentication should pass - we should NOT get our gateway's auth error
 	// The request will be proxied to Anthropic which will return 401 for invalid API key
-	if rr.Code == http.StatusUnauthorized && strings.Contains(rr.Body.String(), "box key auth failed") {
-		t.Errorf("Expected gateway authentication to pass with X-Exedev-Box in dev mode, but got gateway auth error: %s", rr.Body.String())
+	if rr.Code == http.StatusUnauthorized && strings.Contains(rr.Body.String(), "X-Exedev-Box header required") {
+		t.Errorf("Expected gateway authentication to pass with X-Exedev-Box in dev mode, but got auth error: %s", rr.Body.String())
 	}
 	if rr.Code == http.StatusUnauthorized && strings.Contains(rr.Body.String(), "X-Exedev-Box header not allowed") {
 		t.Errorf("Expected X-Exedev-Box to be allowed in dev mode, but got rejection: %s", rr.Body.String())
@@ -355,7 +226,7 @@ func TestGateway_ServeHTTP_XExedevBoxAuthenticationInDevMode(t *testing.T) {
 }
 
 func TestGateway_ServeHTTP_XExedevBoxAuthenticationInProduction(t *testing.T) {
-	gateway, _, _, _ := setupTestGateway(t)
+	gateway, _ := setupTestGateway(t)
 	gateway.devMode = false // Production mode
 
 	// Test with X-Exedev-Box header in production from non-tailscale IP (should be rejected)
@@ -378,7 +249,7 @@ func TestGateway_ServeHTTP_XExedevBoxAuthenticationInProduction(t *testing.T) {
 }
 
 func TestGateway_ServeHTTP_ReadyEndpoint(t *testing.T) {
-	gateway, _, _, keyPair := setupTestGateway(t)
+	gateway, _ := setupTestGateway(t)
 	gateway.devMode = true // Enable dev mode for easier testing
 
 	// Test /ready endpoint with X-Exedev-Box authentication (requires auth)
@@ -405,21 +276,27 @@ func TestGateway_ServeHTTP_ReadyEndpoint(t *testing.T) {
 	if rr2.Code != http.StatusUnauthorized {
 		t.Errorf("Expected status 401 for /ready endpoint without auth, got %d", rr2.Code)
 	}
+}
 
-	// Test /ready endpoint with bearer token authentication
-	token := NewBearerToken("test-box", time.Now().Add(-5*time.Minute), 3600)
-	tokenEncoded, err := token.Encode(keyPair.sshPrivateKey)
-	if err != nil {
-		t.Fatalf("Failed to encode token: %v", err)
+func TestGateway_ServeHTTP_UnrecognizedAlias(t *testing.T) {
+	gateway, _ := setupTestGateway(t)
+	gateway.devMode = true // Enable dev mode for easier testing
+
+	// Test with unrecognized alias
+	req := httptest.NewRequest("POST", "/_/gateway/unknown/v1/messages",
+		strings.NewReader(`{"model":"test","messages":[]}`))
+	req.Header.Set("X-Exedev-Box", "test-box")
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+
+	rr := httptest.NewRecorder()
+	gateway.ServeHTTP(rr, req)
+
+	// Should return 404 for unrecognized alias
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404 for unrecognized alias, got %d", rr.Code)
 	}
-
-	req3 := httptest.NewRequest("GET", "/_/gateway/ready", nil)
-	req3.Header.Set("Authorization", "Bearer "+tokenEncoded)
-	rr3 := httptest.NewRecorder()
-	gateway.ServeHTTP(rr3, req3)
-
-	// Should return 200 with valid bearer token
-	if rr3.Code != http.StatusOK {
-		t.Errorf("Expected status 200 for /ready endpoint with bearer token, got %d", rr3.Code)
+	if !strings.Contains(rr.Body.String(), "unrecognized origin alias") {
+		t.Errorf("Expected 'unrecognized origin alias' error, got: %s", rr.Body.String())
 	}
 }

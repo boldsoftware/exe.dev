@@ -1,7 +1,0 @@
-{
-  "apiKeyHelper": "/usr/local/bin/generate-gateway-token",
-  "env": {
-    "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": 86400000,
-    "ANTHROPIC_BASE_URL": "https://exe.dev/_/gateway/anthropic"
-  }
-}

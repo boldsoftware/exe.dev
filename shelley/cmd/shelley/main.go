@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -674,18 +672,6 @@ func getMessageContentPreview(message llm.Message) string {
 	return content.String()
 }
 
-// executeKeyGenerator runs the specified command via bash and returns the output as the API key
-func executeKeyGenerator(command string) (string, error) {
-	cmd := exec.Command("bash", "-c", command)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("executing key generator: %w\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
-	}
-	return strings.TrimSpace(stdout.String()), nil
-}
 
 // buildLLMConfig constructs LLMConfig from environment variables and optional config file
 func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel string) *server.LLMConfig {
@@ -710,7 +696,6 @@ func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel s
 
 		var cfg struct {
 			LLMGateway   string        `json:"llm_gateway"`
-			KeyGenerator string        `json:"key_generator"`
 			TerminalURL  string        `json:"terminal_url"`
 			DefaultModel string        `json:"default_model"`
 			Links        []server.Link `json:"links"`
@@ -725,19 +710,18 @@ func buildLLMConfig(logger *slog.Logger, configPath, terminalURL, defaultModel s
 			llmCfg.Gateway = gateway
 			logger.Info("Using LLM gateway", "gateway", gateway)
 
-			// If key_generator is specified, execute it to get the API key
-			if cfg.KeyGenerator != "" {
-				key, err := executeKeyGenerator(cfg.KeyGenerator)
-				if err != nil {
-					logger.Warn("Failed to execute key generator", "command", cfg.KeyGenerator, "error", err)
-				} else {
-					// Use the generated key for all providers when using gateway
-					llmCfg.AnthropicAPIKey = key
-					llmCfg.OpenAIAPIKey = key
-					llmCfg.GeminiAPIKey = key
-					llmCfg.FireworksAPIKey = key
-					logger.Debug("Using key from generator", "command", cfg.KeyGenerator)
-				}
+			// When using a gateway, default all API keys to "implicit" unless otherwise set
+			if llmCfg.AnthropicAPIKey == "" {
+				llmCfg.AnthropicAPIKey = "implicit"
+			}
+			if llmCfg.OpenAIAPIKey == "" {
+				llmCfg.OpenAIAPIKey = "implicit"
+			}
+			if llmCfg.GeminiAPIKey == "" {
+				llmCfg.GeminiAPIKey = "implicit"
+			}
+			if llmCfg.FireworksAPIKey == "" {
+				llmCfg.FireworksAPIKey = "implicit"
 			}
 		}
 

@@ -2275,26 +2275,6 @@ func (s *Server) GetBoxSSHDetails(ctx context.Context, boxID int) (*exedb.SSHDet
 	}, nil
 }
 
-// SSHIdentityKeyForBox implements boxKeyAuthority interface for llmgateway
-func (s *Server) SSHIdentityKeyForBox(ctx context.Context, name string) (ssh.PublicKey, error) {
-	key, err := withRxRes(s, ctx, func(ctx context.Context, queries *exedb.Queries) ([]byte, error) {
-		return queries.SSHKeyForBoxNamed(ctx, name)
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to find box %s: %w", name, err)
-	}
-	if len(key) == 0 {
-		return nil, fmt.Errorf("box %s has no SSH server identity key", name)
-	}
-	// Parse the private key to extract the public key
-	privateKey, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse SSH server identity key for box %s: %w", name, err)
-	}
-	// Return the public key in authorized_keys format
-	return privateKey.PublicKey(), nil
-}
-
 // selectExeletClient selects an exelet client using a simple round-robin based on user ID
 func (s *Server) selectExeletClient(userID string) (*exeletClient, string, error) {
 	if len(s.exeletAddrs) == 0 {
