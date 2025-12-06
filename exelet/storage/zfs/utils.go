@@ -52,9 +52,17 @@ func (s *ZFS) createInstanceFS(id string, size uint64, fsType string, encrypted 
 		}
 		s.log.Debug("creating zfs volume", "name", dsName)
 		volSize := align4K(size)
-		if _, err := zfs.CreateVolume(dsName, volSize, props); err != nil {
+		ds, err := zfs.CreateVolume(dsName, volSize, props)
+		if err != nil {
 			return err
 		}
+
+		// make volume sparse (thin-provisioned) by removing refreservation
+		// ZFS sets refreservation=volsize by default, making volumes thick-provisioned
+		if err := ds.SetProperty("refreservation", "none"); err != nil {
+			return fmt.Errorf("error setting refreservation for %s: %w", id, err)
+		}
+
 		// there is a race between when the volume is created and when the
 		// disk is present in /dev/zvol. add a wait until ready here to check
 

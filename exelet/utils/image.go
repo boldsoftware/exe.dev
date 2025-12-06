@@ -4,75 +4,110 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 
 	"exe.dev/deps/image"
 	"exe.dev/exelet/storage"
 	storageapi "exe.dev/pkg/api/exe/storage/v1"
 )
 
+const (
+	// baseImageSize is the fixed size for base images (10GB sparse)
+	baseImageSize = 10 * 1024 * 1024 * 1024
+	// tempImagePrefix is the prefix used for temporary image volumes during import
+	tempImagePrefix = "tmp-"
+)
+
 // LoadImage is a helper that will load the specific imageRef into the storageManager.
+// It creates a 10G sparse volume with a temporary name, fetches the image contents,
+// validates with fsck, and then renames to the final name on success.
+//
+// Note: This function uses a detached context for all operations to ensure that
+// context cancellation from any single caller (in a singleflight group) won't
+// affect the shared image loading operation. The original context is only used
+// for logging.
 func LoadImage(ctx context.Context, imageRef, platform string, imageManager *image.ImageManager, storageManager storage.StorageManager, log *slog.Logger) (string, error) {
-	imageMetadata, err := imageManager.FetchManifestForPlatform(ctx, imageRef, platform)
+	// use a detached context for all operations to prevent caller cancellation
+	// from affecting the shared image load (singleflight). this ensures that
+	// concurrent requests waiting on the same image won't be affected if one
+	// caller's context is cancelled.
+	opCtx := context.Background()
+
+	imageMetadata, err := imageManager.FetchManifestForPlatform(opCtx, imageRef, platform)
 	if err != nil {
 		return "", fmt.Errorf("error fetching image manifest: %w", err)
 	}
 	imageFSID := imageMetadata.Digest
+	tempFSID := tempImagePrefix + imageFSID
 
-	// setup image - this uses the image metadata to create an image fs that is the size of the image contents
-	imageContentSize, err := imageManager.GetImageSize(ctx, imageRef, platform)
-	if err != nil {
-		return "", fmt.Errorf("error getting image size: %w", err)
+	// check compressed image size early to fail fast if image is too large
+	// use a conservative 3x multiplier to estimate uncompressed size
+	compressedSize := image.GetManifestSize(imageMetadata.Manifest)
+	estimatedSize := compressedSize * 3
+	if estimatedSize > baseImageSize {
+		return "", fmt.Errorf("image too large: estimated uncompressed size %d bytes (compressed: %d) exceeds maximum %d bytes", estimatedSize, compressedSize, baseImageSize)
 	}
 
-	log.DebugContext(ctx, "image content", "compressedSize", imageContentSize)
+	log.DebugContext(ctx, "loading image", "image", imageRef, "digest", imageFSID, "compressedSize", compressedSize, "estimatedSize", estimatedSize)
 
-	// Check for negative size
-	if imageContentSize < 0 {
-		return "", fmt.Errorf("invalid image size: %d", imageContentSize)
-	}
-
-	// use a large multiplier to ensure we have plenty of volume space
-	// for the uncompressed image. as get the result after the unpack
-	// and adjust the final image volume size to be accurate.
-	const sizeMultiplier = 10
-	maxSafe := uint64(math.MaxUint64 / sizeMultiplier)
-	if uint64(imageContentSize) > maxSafe {
-		return "", fmt.Errorf("image too large: would exceed filesystem limits (%d bytes)", imageContentSize)
-	}
-
-	imageSize := uint64(float64(imageContentSize) * sizeMultiplier)
-	if _, err := storageManager.Create(ctx, imageFSID, &storageapi.FilesystemConfig{
-		FsType: "ext4", // TODO: support different formats?
-		Size:   imageSize,
+	// create 10G sparse volume with temporary name
+	if _, err := storageManager.Create(opCtx, tempFSID, &storageapi.FilesystemConfig{
+		FsType: "ext4",
+		Size:   baseImageSize,
 	}); err != nil {
-		return "", fmt.Errorf("error creating instance storage: %w", err)
+		return "", fmt.Errorf("error creating temporary image storage: %w", err)
 	}
 
-	// fetch / unpack image content to snapshot
-	log.DebugContext(ctx, "fetching and unpacking image", "image", imageRef)
+	// cleanup function for the temporary volume
+	cleanup := func() {
+		log.DebugContext(ctx, "cleaning up temporary image volume", "tempFSID", tempFSID)
+		if unmountErr := storageManager.Unmount(opCtx, tempFSID); unmountErr != nil {
+			log.WarnContext(ctx, "error unmounting temporary image volume during cleanup", "error", unmountErr)
+		}
+		if deleteErr := storageManager.Delete(opCtx, tempFSID); deleteErr != nil {
+			log.WarnContext(ctx, "error deleting temporary image volume during cleanup", "error", deleteErr)
+		}
+	}
+
+	// mount temporary volume
+	log.DebugContext(ctx, "mounting temporary image volume", "tempFSID", tempFSID)
+	mountConfig, err := storageManager.Mount(opCtx, tempFSID)
+	if err != nil {
+		cleanup()
+		return "", fmt.Errorf("error mounting temporary image storage: %w", err)
+	}
 
 	// fetch image contents
-	mountConfig, err := storageManager.Mount(ctx, imageFSID)
-	if err != nil {
-		return "", fmt.Errorf("error mounting image fs storage: %w", err)
-	}
-
 	log.DebugContext(ctx, "fetching image contents", "image", imageRef)
-	if _, err := imageManager.Fetch(ctx, imageRef, platform, mountConfig.Path); err != nil {
-		return "", err
+	_, fetchErr := imageManager.Fetch(opCtx, imageRef, platform, mountConfig.Path)
+
+	// unmount before checking fetch error
+	log.DebugContext(ctx, "unmounting temporary image volume", "tempFSID", tempFSID)
+	if err = storageManager.Unmount(opCtx, tempFSID); err != nil {
+		// if unmount fails, still try to cleanup
+		cleanup()
+		return "", fmt.Errorf("error unmounting temporary image storage: %w", err)
 	}
 
-	// unmount image storage
-	if err = storageManager.Unmount(ctx, imageFSID); err != nil {
-		return "", fmt.Errorf("error unmounting image fs for %s: %w", imageFSID, err)
+	// check fetch error after unmount
+	if fetchErr != nil {
+		cleanup()
+		return "", fmt.Errorf("error fetching image contents: %w", fetchErr)
 	}
 
-	// resize the final image volume if the result was
-	log.DebugContext(ctx, "shrinking image fs", "image", imageRef)
-	if err := storageManager.Shrink(ctx, imageFSID); err != nil {
-		return "", fmt.Errorf("error resizing image fs for %s: %w", imageFSID, err)
+	// run fsck to validate filesystem integrity
+	log.DebugContext(ctx, "validating image filesystem", "tempFSID", tempFSID)
+	if err := storageManager.Fsck(opCtx, tempFSID); err != nil {
+		cleanup()
+		return "", fmt.Errorf("image filesystem validation failed: %w", err)
 	}
 
+	// rename to final name
+	log.DebugContext(ctx, "renaming image volume to final name", "tempFSID", tempFSID, "imageFSID", imageFSID)
+	if err := storageManager.Rename(opCtx, tempFSID, imageFSID); err != nil {
+		cleanup()
+		return "", fmt.Errorf("error renaming image volume: %w", err)
+	}
+
+	log.DebugContext(ctx, "image loaded successfully", "image", imageRef, "imageFSID", imageFSID)
 	return imageFSID, nil
 }

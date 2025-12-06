@@ -26,6 +26,10 @@ type StorageManager interface {
 	Mount(ctx context.Context, id string) (*api.FilesystemMountConfig, error)
 	// Unmount unmounts the specified instance fs
 	Unmount(ctx context.Context, id string) error
+	// Rename renames a filesystem from oldID to newID
+	Rename(ctx context.Context, oldID, newID string) error
+	// Fsck runs filesystem check on the specified filesystem
+	Fsck(ctx context.Context, id string) error
 	// DeleteInstanceFS removes an instance fs
 	Delete(ctx context.Context, id string) error
 }

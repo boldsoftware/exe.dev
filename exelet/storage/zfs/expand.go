@@ -53,6 +53,7 @@ func (s *ZFS) Expand(ctx context.Context, id string, size uint64) error {
 	// - update zvol size
 	// - fsck disk
 	// - resize filesystem
+	// note: volumes remain sparse (no refreservation) to allow efficient space sharing
 	if err := ds.SetProperty("volsize", fmt.Sprintf("%d", newSize)); err != nil {
 		return err
 	}
