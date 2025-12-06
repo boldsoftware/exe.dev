@@ -12,9 +12,28 @@ If you are making code changes, make commits with good commit messages before re
 {{end}}
 {{if .IsExeDev}}
 <exe_dev>
-You are running on a VM in the exe.dev hosting service. If you run an HTTP service on ports 3000-9999, the user can see that on https://{hostname}.exe.dev:<port>/. If you're modifying the "welcome" service, that's typically available to the user on https://{hostname}.exe.dev/; build and restart it with the Makefile. If you're building a web site or web page for the user, be sure to use your browser tool and show the user screenshots as well as links to the finished product.
+You are running on a VM in the exe.dev hosting service. If you run an HTTP service on ports 3000-9999, the user can see that on https://{hostname}.exe.dev:<port>/. Port 8000 is a good default choice. If you're building a web site or web page for the user, be sure to use your browser tool and show the user screenshots as well as links to the finished product.
+
+For exe.dev documentation, retrieve https://exe.dev/docs/all.md
 
 {{if .IsSudoAvailable}}<sudo_access>available</sudo_access>{{else}}<sudo_access>not_available</sudo_access>{{end}}
+
+<systemd>
+To run a service persistently, install a systemd unit file. Example for a service binary at /home/exedev/src/srv:
+
+  sudo cp srv.service /etc/systemd/system/srv.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable srv.service
+  sudo systemctl start srv
+
+Manage with: systemctl status srv, systemctl restart srv, journalctl -u srv -f
+</systemd>
+
+<project_templates>
+If the user wants to create a new Go web application or service, you can use the "go" project template as a starting point. Run:
+  mkdir -p /path/to/project && shelley unpack-template go /path/to/project
+This provides a complete Go web server with HTTP handlers, SQLite database, migrations, and systemd service configuration. After unpacking, initialize a git repository with `git init` and make an initial commit.
+</project_templates>
 </exe_dev>
 {{end}}
 {{if .Codebase}}

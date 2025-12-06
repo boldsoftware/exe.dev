@@ -1,17 +1,26 @@
 # Shelley Makefile
 
-.PHONY: build build-linux-aarch64 test test-go test-e2e ui serve clean help
+.PHONY: build build-linux-aarch64 test test-go test-e2e ui serve clean help templates
 
 # Default target
 all: build
 
+# Build templates into tarballs (only includes git-tracked files)
+templates:
+	@echo "Building template tarballs..."
+	@for dir in templates/*/; do \
+		name=$$(basename "$$dir"); \
+		echo "  Creating $$name.tar.gz..."; \
+		git ls-files "templates/$$name" | sed "s|^templates/$$name/||" | tar -czf "templates/$$name.tar.gz" -C "templates/$$name" -T -; \
+	done
+
 # Build the UI and Go binary
-build: ui
+build: ui templates
 	@echo "Building Shelley..."
 	go build -o bin/shelley ./cmd/shelley
 
 # Build for Linux (auto-detect architecture)
-build-linux: ui
+build-linux: ui templates
 	@echo "Building Shelley for Linux..."
 	@ARCH=$$(uname -m); \
 	case $$ARCH in \
@@ -22,7 +31,7 @@ build-linux: ui
 	GOOS=linux GOARCH=$$GOARCH go build -o bin/shelley-linux ./cmd/shelley
 
 # Build for Linux ARM64
-build-linux-aarch64: ui
+build-linux-aarch64: ui templates
 	@echo "Building Shelley for Linux ARM64..."
 	GOOS=linux GOARCH=arm64 go build -o bin/shelley-linux-aarch64 ./cmd/shelley
 
@@ -73,14 +82,16 @@ clean:
 	rm -rf ui/test-results/
 	rm -rf ui/playwright-report/
 	rm -f *.db
+	rm -f templates/*.tar.gz
 
 # Show help
 help:
 	@echo "Shelley Build Commands:"
 	@echo ""
-	@echo "  build         Build UI and Go binary"
+	@echo "  build         Build UI, templates, and Go binary"
 	@echo "  build-linux-aarch64  Build for Linux ARM64"
 	@echo "  ui            Build UI only"
+	@echo "  templates     Build template tarballs"
 	@echo "  test          Run all tests (Go + E2E)"
 	@echo "  test-go       Run Go tests only"
 	@echo "  test-e2e      Run E2E tests (headless)"

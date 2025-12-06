@@ -1,0 +1,18 @@
+[Unit]
+Description=Go web server
+
+[Service]
+Type=simple
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev/src
+ExecStart=/home/exedev/src/srv
+Restart=always
+RestartSec=5
+Environment=HOME=/home/exedev
+Environment=USER=exedev
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

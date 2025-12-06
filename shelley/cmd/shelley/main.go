@@ -21,6 +21,7 @@ import (
 	"shelley.exe.dev/models"
 	"shelley.exe.dev/server"
 	"shelley.exe.dev/slug"
+	"shelley.exe.dev/templates"
 )
 
 type GlobalConfig struct {
@@ -64,6 +65,7 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "  list [flags]                 List conversations\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  inspect [flags] <id>          Show a conversation\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  models                        List supported models and env requirements\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  unpack-template <name> <dir>  Unpack a project template to a directory\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "\nUse '%s <command> -h' for command-specific help\n", os.Args[0])
 	}
 
@@ -88,6 +90,8 @@ func main() {
 		runInspect(global, args[1:])
 	case "models":
 		runModels(global, args[1:])
+	case "unpack-template":
+		runUnpackTemplate(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		flag.Usage()
@@ -518,6 +522,68 @@ func runModels(global GlobalConfig, args []string) {
 			fmt.Printf("  Required env: none\n")
 		}
 	}
+}
+
+// runUnpackTemplate unpacks a project template to a directory
+func runUnpackTemplate(args []string) {
+	fs := flag.NewFlagSet("unpack-template", flag.ExitOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Usage: shelley unpack-template <template-name> <directory>\n\n")
+		fmt.Fprintf(fs.Output(), "Unpacks a project template to the specified directory.\n\n")
+		fmt.Fprintf(fs.Output(), "Available templates:\n")
+		names, err := templates.List()
+		if err != nil {
+			fmt.Fprintf(fs.Output(), "  (error listing templates: %v)\n", err)
+		} else if len(names) == 0 {
+			fmt.Fprintf(fs.Output(), "  (no templates available)\n")
+		} else {
+			for _, name := range names {
+				fmt.Fprintf(fs.Output(), "  %s\n", name)
+			}
+		}
+	}
+	fs.Parse(args)
+
+	if fs.NArg() < 2 {
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	templateName := fs.Arg(0)
+	destDir := fs.Arg(1)
+
+	// Verify template exists
+	names, err := templates.List()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error listing templates: %v\n", err)
+		os.Exit(1)
+	}
+	found := false
+	for _, name := range names {
+		if name == templateName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		fmt.Fprintf(os.Stderr, "Error: template %q not found\n", templateName)
+		fmt.Fprintf(os.Stderr, "Available templates: %s\n", strings.Join(names, ", "))
+		os.Exit(1)
+	}
+
+	// Create destination directory if it doesn't exist
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating directory %q: %v\n", destDir, err)
+		os.Exit(1)
+	}
+
+	// Unpack the template
+	if err := templates.Unpack(templateName, destDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error unpacking template: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Template %q unpacked to %s\n", templateName, destDir)
 }
 
 func setupTools(ctx context.Context, llmProvider claudetool.LLMServiceProvider) ([]*llm.Tool, func()) {
