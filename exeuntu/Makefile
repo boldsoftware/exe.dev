@@ -18,7 +18,7 @@ push-exeuntu: build-exeuntu ## Build and push exeuntu image to GitHub Container 
 	@docker push ghcr.io/boldsoftware/exeuntu:latest
 	@echo "✓ Image pushed to ghcr.io/boldsoftware/exeuntu:latest"
 
-push: push-exeuntu push-exeuntu-welcome ## Build and push both images to GitHub Container Registry
+push: push-exeuntu ## Build and push image to GitHub Container Registry
 
 run: build-exeuntu
 	docker run -it \

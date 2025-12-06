@@ -1,14 +1,8 @@
 
-# Print exe.dev welcome message (only in interactive shells)
+# Print exe.dev message (only in interactive shells)
 if [[ $- == *i* ]]; then
     echo ""
     echo "You are on $(hostname -f). The disk is persistent. You have 'sudo'."
-    
-    # Check if welcomed process is running on port 8000 as exedev user
-    if lsof -u exedev -i :8000 -sTCP:LISTEN 2>/dev/null | grep -q 'welcomed'; then
-        echo "A web server is running at https://$(hostname)/ (disable with 'systemctl disable --now welcome')."
-    fi
-    
     echo ""
     echo 'For support and documentation, "ssh exe.dev" or visit https://exe.dev/'
     echo ""

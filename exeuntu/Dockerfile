@@ -204,28 +204,15 @@ USER exedev
 
 WORKDIR /home/exedev/src
 
-# Initialize git repo for the welcome example (optional)
+# Configure git for exedev user
 RUN git config --global user.email "system@exe.dev" && \
-    git config --global user.name "Exe.dev System" && \
-    git init .
-
-# Copy welcome source code and build it
-COPY --chown=exedev:exedev exeuntu/welcome/ ./
-RUN git add . && git commit -m "Initial commit"
-RUN make build
+    git config --global user.name "Exe.dev System"
 
 # Update PATH in .bashrc to include .local/bin
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/exedev/.bashrc
 
 # Switch back to root to install systemd service
 USER root
-
-# Install (in a disabled state) a welcome web server systemd service
-RUN cp /home/exedev/src/welcome.service /etc/systemd/system/welcome.service && systemctl disable welcome.service
-
-# Install polkit rule to allow exedev user to manage welcome service
-COPY exeuntu/welcome-manage.polkit /etc/polkit-1/rules.d/50-welcome-manage.rules
-RUN chmod 644 /etc/polkit-1/rules.d/50-welcome-manage.rules
 
 # Disable Ubuntu's default MOTD (the sudo hint, etc.)
 RUN rm -rf /etc/update-motd.d/* /etc/motd && touch /home/exedev/.hushlogin && chown exedev:exedev /home/exedev/.hushlogin
