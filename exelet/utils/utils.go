@@ -26,3 +26,8 @@ func Truncate(v string) string {
 	}
 	return v
 }
+
+// GetTapName returns the tap interface name for the given VM ID.
+func GetTapName(id string) string {
+	return fmt.Sprintf("tap-%s", GetID(id)[:6])
+}

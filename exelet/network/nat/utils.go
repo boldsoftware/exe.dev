@@ -7,8 +7,8 @@ import (
 	"exe.dev/exelet/utils"
 )
 
-func getTapID(v ...string) string {
-	return fmt.Sprintf("tap-%s", utils.GetID(v...)[:6])
+func getTapID(id string) string {
+	return utils.GetTapName(id)
 }
 
 func randomMAC() (string, error) {
