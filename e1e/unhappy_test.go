@@ -49,10 +49,17 @@ func TestExeDevRejectsSCP(t *testing.T) {
 	vouch.For("josh")
 	t.Parallel()
 
-	pty := makePty(t, "scp localhost")
+	// The exact error varies depending on the local scp program.
+	noGolden(t)
+
+	pty, _, keyFile, _ := registerForExeDev(t)
+	pty.disconnect()
+
+	pty = makePty(t, "scp localhost")
 
 	sshCmd := exec.CommandContext(t.Context(), "scp",
 		"-P", fmt.Sprint(Env.piperd.SSHPort),
+		"-o", "IdentityFile="+keyFile,
 		"-o", "IdentityAgent=none",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "PreferredAuthentications=publickey",
@@ -62,6 +69,7 @@ func TestExeDevRejectsSCP(t *testing.T) {
 		"-o", "KbdInteractiveAuthentication=no",
 		"-o", "ChallengeResponseAuthentication=no",
 		"-o", "IdentitiesOnly=yes",
+		"-F", "/dev/null",
 		"unhappy_test.go",
 		"localhost:foo.txt",
 	)
@@ -70,6 +78,6 @@ func TestExeDevRejectsSCP(t *testing.T) {
 	pty.attachAndStart(sshCmd)
 
 	pty.reject("subsystem request failed")
-	pty.want("scp/sftp is not supported on the exe.dev server.")
+	pty.wantRe(`scp/sftp is not supported on the exe.dev server.|command not found: "scp -t`)
 	pty.wantEOF()
 }
