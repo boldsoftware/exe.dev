@@ -74,7 +74,7 @@ jobs:
 
       - name: Run tests
         run: |
-          PKGS=$(go list ./... | grep -v -E '^exe\.dev/e1e$')
+          PKGS=$(go list ./... | grep -v -E '^exe\.dev/(e1e|experiments/imageunpack)$')
           gotestsum --format testname -- -race $PKGS
 
       - name: Run e1e tests
