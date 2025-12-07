@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"sync"
@@ -477,7 +478,7 @@ func (s *Server) Start(port string) error {
 	// Create listener to get actual port (important when port is "0")
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		s.logger.Error("Failed to create listener", "error", err)
+		s.logger.Error("Failed to create listener", "error", err, "port_info", getPortOwnerInfo(port))
 		return err
 	}
 
@@ -516,4 +517,33 @@ func (s *Server) Start(port string) error {
 
 	s.logger.Info("Server exited")
 	return nil
+}
+
+// getPortOwnerInfo tries to identify what process is using a port.
+// Returns a human-readable string with the PID and process name, or an error message.
+func getPortOwnerInfo(port string) string {
+	// Use lsof to find the process using the port
+	cmd := exec.Command("lsof", "-i", ":"+port, "-sTCP:LISTEN", "-n", "-P")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Sprintf("(unable to determine: %v)", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) < 2 {
+		return "(no process found)"
+	}
+
+	// Parse lsof output: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+	// Skip the header line
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			command := fields[0]
+			pid := fields[1]
+			return fmt.Sprintf("pid=%s process=%s", pid, command)
+		}
+	}
+
+	return "(could not parse lsof output)"
 }
