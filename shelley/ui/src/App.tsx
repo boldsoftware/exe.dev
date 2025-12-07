@@ -4,6 +4,27 @@ import ConversationDrawer from "./components/ConversationDrawer";
 import { Conversation } from "./types";
 import { api } from "./services/api";
 
+// Check if a slug is a generated ID (format: cXXXX where X is alphanumeric)
+function isGeneratedId(slug: string | null): boolean {
+  if (!slug) return true;
+  return /^c[a-z0-9]+$/i.test(slug);
+}
+
+function updatePageTitle(conversation: Conversation | undefined) {
+  const hostname = window.__SHELLEY_INIT__?.hostname;
+  const parts: string[] = [];
+
+  if (conversation?.slug && !isGeneratedId(conversation.slug)) {
+    parts.push(conversation.slug);
+  }
+  if (hostname) {
+    parts.push(hostname);
+  }
+  parts.push("Shelley Agent");
+
+  document.title = parts.join(" - ");
+}
+
 function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -15,6 +36,14 @@ function App() {
   useEffect(() => {
     loadConversations();
   }, []);
+
+  // Update page title when conversation changes
+  useEffect(() => {
+    const currentConv = conversations.find(
+      (conv) => conv.conversation_id === currentConversationId,
+    );
+    updatePageTitle(currentConv);
+  }, [currentConversationId, conversations]);
 
   const loadConversations = async () => {
     try {

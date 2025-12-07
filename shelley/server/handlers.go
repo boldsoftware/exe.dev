@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -94,6 +95,66 @@ func (s *Server) staticHandler(fs http.FileSystem) http.Handler {
 		}
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+// hashString computes a simple hash of a string
+func hashString(s string) uint32 {
+	var hash uint32
+	for _, c := range s {
+		hash = ((hash << 5) - hash) + uint32(c)
+	}
+	return hash
+}
+
+// generateFaviconSVG creates a seashell favicon with color based on hostname hash
+func generateFaviconSVG(hostname string) string {
+	hash := hashString(hostname)
+	h := hash % 360
+	s := 55
+	l := 65
+	lightL := l + 15
+	if lightL > 90 {
+		lightL = 90
+	}
+	darkL := l - 15
+	if darkL < 40 {
+		darkL = 40
+	}
+	strokeL := darkL - 15
+	if strokeL < 25 {
+		strokeL = 25
+	}
+
+	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="shellGrad" x1="0%%" y1="0%%" x2="100%%" y2="100%%">
+      <stop offset="0%%" style="stop-color:hsl(%d, %d%%, %d%%)"/>
+      <stop offset="50%%" style="stop-color:hsl(%d, %d%%, %d%%)"/>
+      <stop offset="100%%" style="stop-color:hsl(%d, %d%%, %d%%)"/>
+    </linearGradient>
+  </defs>
+  <path d="M16 4 C8 4 3 12 3 20 C3 24 6 28 16 28 C26 28 29 24 29 20 C29 12 24 4 16 4"
+        fill="url(#shellGrad)" stroke="hsl(%d, %d%%, %d%%)" stroke-width="1"/>
+  <path d="M16 6 L16 26" stroke="hsl(%d, %d%%, %d%%)" stroke-width="1" fill="none"/>
+  <path d="M16 6 L8 25" stroke="hsl(%d, %d%%, %d%%)" stroke-width="1" fill="none"/>
+  <path d="M16 6 L24 25" stroke="hsl(%d, %d%%, %d%%)" stroke-width="1" fill="none"/>
+  <path d="M16 6 L5 22" stroke="hsl(%d, %d%%, %d%%)" stroke-width="1" fill="none"/>
+  <path d="M16 6 L27 22" stroke="hsl(%d, %d%%, %d%%)" stroke-width="1" fill="none"/>
+  <path d="M16 6 L11 26" stroke="hsl(%d, %d%%, %d%%)" stroke-width="0.8" fill="none"/>
+  <path d="M16 6 L21 26" stroke="hsl(%d, %d%%, %d%%)" stroke-width="0.8" fill="none"/>
+</svg>`,
+		h, s, lightL,
+		h, s, l,
+		h, s, darkL,
+		h, s-10, strokeL,
+		h, s-20, darkL,
+		h, s-20, darkL,
+		h, s-20, darkL,
+		h, s-20, darkL,
+		h, s-20, darkL,
+		h, s-20, darkL,
+		h, s-20, darkL,
+	)
 }
 
 // serveIndexWithInit serves index.html with injected initialization data
@@ -186,9 +247,15 @@ func (s *Server) serveIndexWithInit(w http.ResponseWriter, r *http.Request, fs h
 		return
 	}
 
-	// Inject the script tag before </head>
+	// Generate favicon as data URI
+	faviconSVG := generateFaviconSVG(hostname)
+	faviconDataURI := "data:image/svg+xml," + url.PathEscape(faviconSVG)
+	faviconLink := fmt.Sprintf(`<link rel="icon" type="image/svg+xml" href="%s"/>`, faviconDataURI)
+
+	// Inject the script tag and favicon before </head>
 	initScript := fmt.Sprintf(`<script>window.__SHELLEY_INIT__=%s;</script>`, initJSON)
-	modifiedHTML := strings.Replace(string(indexHTML), "</head>", initScript+"</head>", 1)
+	injection := faviconLink + initScript
+	modifiedHTML := strings.Replace(string(indexHTML), "</head>", injection+"</head>", 1)
 
 	w.Write([]byte(modifiedHTML))
 }
