@@ -36,15 +36,15 @@ func TestReadNetStat(t *testing.T) {
 	tmpDir := t.TempDir()
 	ifaceName := "tap-test"
 	statsDir := filepath.Join(tmpDir, "class", "net", ifaceName, "statistics")
-	if err := os.MkdirAll(statsDir, 0755); err != nil {
+	if err := os.MkdirAll(statsDir, 0o755); err != nil {
 		t.Fatalf("failed to create stats dir: %v", err)
 	}
 
 	// Write test values
-	if err := os.WriteFile(filepath.Join(statsDir, "rx_bytes"), []byte("12345\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(statsDir, "rx_bytes"), []byte("12345\n"), 0o644); err != nil {
 		t.Fatalf("failed to write rx_bytes: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(statsDir, "tx_bytes"), []byte("67890\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(statsDir, "tx_bytes"), []byte("67890\n"), 0o644); err != nil {
 		t.Fatalf("failed to write tx_bytes: %v", err)
 	}
 
