@@ -21,6 +21,7 @@ import (
 	"exe.dev/execore"
 	"exe.dev/logging"
 	"exe.dev/stage"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func main() {
@@ -104,8 +105,9 @@ func run() error {
 		}
 	}
 
-	// Setup structured logging
-	logging.SetupLogger(*devMode)
+	// Create metrics registry and setup structured logging with metrics
+	metricsRegistry := prometheus.NewRegistry()
+	logging.SetupLogger(*devMode, metricsRegistry)
 	slog.Info("Starting exed server")
 
 	// Start exelet if requested
@@ -185,7 +187,7 @@ func run() error {
 		slog.Info("created temporary exe.db", "path", *dbPath)
 	}
 
-	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, exeletAddrs, *gateway, env)
+	server, err := execore.NewServer(slog.Default(), *httpAddr, *httpsAddr, *sshAddr, *pluginAddr, *dbPath, *fakeHTTPEmail, *piperdPort, *ghWhoAmIPath, exeletAddrs, *gateway, env, metricsRegistry)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

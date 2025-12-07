@@ -12,6 +12,7 @@ import (
 
 	_ "net/http/pprof"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
 
@@ -159,7 +160,8 @@ func serveAction(clix *cli.Context) error {
 	if debug {
 		os.Setenv("LOG_LEVEL", "debug")
 	}
-	logging.SetupLogger("")
+	metricsRegistry := prometheus.NewRegistry()
+	logging.SetupLogger("", metricsRegistry)
 	log := slog.Default()
 
 	maintenanceMode := clix.Bool("maintenance")
@@ -185,7 +187,9 @@ func serveAction(clix *cli.Context) error {
 		ResourceMonitorInterval:     resourceMonitorInterval,
 	}
 
-	opts := []exelet.ServerOpt{}
+	opts := []exelet.ServerOpt{
+		exelet.WithMetricsRegistry(metricsRegistry),
+	}
 	if maintenanceMode {
 		opts = append(opts, exelet.WithMaintenance())
 	}

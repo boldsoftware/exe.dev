@@ -25,7 +25,8 @@ func TestHTTPServer(t *testing.T) {
 		DataDir:       t.TempDir(),
 	}
 
-	srv, err := NewExelet(cfg, log)
+	registry := prometheus.NewRegistry()
+	srv, err := NewExelet(cfg, log, WithMetricsRegistry(registry))
 	if err != nil {
 		t.Fatalf("failed to create exelet: %v", err)
 	}
@@ -42,7 +43,8 @@ func TestHTTPServer(t *testing.T) {
 	// Since we used port 0, we need a deterministic port for testing
 	// Use a fixed high port that's unlikely to conflict
 	httpFixedAddr := "127.0.0.1:18080"
-	srv2, err := NewExelet(cfg, log)
+	registry2 := prometheus.NewRegistry()
+	srv2, err := NewExelet(cfg, log, WithMetricsRegistry(registry2))
 	if err != nil {
 		t.Fatalf("failed to create exelet: %v", err)
 	}

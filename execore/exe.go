@@ -396,8 +396,8 @@ func runMigrations(slog *slog.Logger, dbPath string) error {
 	return nil
 }
 
-// NewServer creates a new Server instance with database and container management
-func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, gateway string, env stage.Env) (*Server, error) {
+// NewServer creates a new Server instance with database and container management.
+func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPath, fakeEmailServer string, piperdPort int, ghWhoAmIPath string, exeletAddresses []string, gateway string, env stage.Env, metricsRegistry *prometheus.Registry) (*Server, error) {
 	// Run db migrations with a raw connection (not a pool).
 	if err := runMigrations(slog, dbPath); err != nil {
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
@@ -472,7 +472,6 @@ func NewServer(slog *slog.Logger, httpAddr, httpsAddr, sshAddr, pluginAddr, dbPa
 	}
 
 	// Initialize metrics
-	metricsRegistry := prometheus.NewRegistry()
 	sshMetrics := NewSSHMetrics(metricsRegistry)
 	sqlite.RegisterSQLiteMetrics(metricsRegistry)
 	llmgateway.RegisterMetrics(metricsRegistry)

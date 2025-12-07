@@ -6,6 +6,7 @@ import (
 
 	"exe.dev/stage"
 	"exe.dev/tslog"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func newTestServer(t *testing.T) *Server {
@@ -24,7 +25,8 @@ func newUnstartedServer(t testing.TB) *Server {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite3")
 	env := stage.Test()
-	s, err := NewServer(tslog.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "", 2222, "", nil, "", env)
+	registry := prometheus.NewRegistry()
+	s, err := NewServer(tslog.Slogger(t), ":0", ":0", ":0", ":0", dbPath, "", 2222, "", nil, "", env, registry)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

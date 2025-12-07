@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	collectorlogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	"google.golang.org/protobuf/proto"
@@ -73,7 +75,7 @@ func TestSetupLogger_WithOTEL(t *testing.T) {
 	os.Setenv("LOG_FORMAT", "json")
 
 	// Setup the logger
-	SetupLogger("")
+	SetupLogger("", nil)
 
 	// Log some messages
 	slog.Info("test message 1", "key1", "value1")
@@ -125,8 +127,147 @@ func TestSetupLogger_WithoutOTEL(t *testing.T) {
 	os.Setenv("LOG_FORMAT", "json")
 
 	// This should not panic or error
-	SetupLogger("dev")
+	SetupLogger("dev", nil)
 
 	// Should be able to log without issues
 	slog.Info("test without OTEL")
+}
+
+func TestLogMetrics(t *testing.T) {
+	// Create a prometheus registry for testing
+	registry := prometheus.NewRegistry()
+	metrics := NewLogMetrics(registry)
+
+	// Create a base handler that discards output
+	baseHandler := slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+
+	// Wrap with metrics handler
+	handler := NewMetricsHandler(baseHandler, metrics)
+	logger := slog.New(handler)
+
+	// Log messages at different levels
+	ctx := context.Background()
+	logger.DebugContext(ctx, "debug message")
+	logger.InfoContext(ctx, "info message 1")
+	logger.InfoContext(ctx, "info message 2")
+	logger.WarnContext(ctx, "warn message")
+	logger.ErrorContext(ctx, "error message 1")
+	logger.ErrorContext(ctx, "error message 2")
+	logger.ErrorContext(ctx, "error message 3")
+
+	// Gather metrics
+	mfs, err := registry.Gather()
+	require.NoError(t, err)
+
+	// Check counts by level
+	counts := make(map[string]float64)
+	found := false
+	for _, mf := range mfs {
+		if mf.GetName() == "logs_total" {
+			found = true
+			for _, m := range mf.GetMetric() {
+				for _, label := range m.GetLabel() {
+					if label.GetName() == "level" {
+						counts[label.GetValue()] = m.GetCounter().GetValue()
+					}
+				}
+			}
+			break
+		}
+	}
+	require.True(t, found, "logs_total metric not found")
+
+	require.Equal(t, float64(1), counts["DEBUG"], "expected 1 debug log")
+	require.Equal(t, float64(2), counts["INFO"], "expected 2 info logs")
+	require.Equal(t, float64(1), counts["WARN"], "expected 1 warn log")
+	require.Equal(t, float64(3), counts["ERROR"], "expected 3 error logs")
+}
+
+func TestLogMetricsWithAttrsAndGroup(t *testing.T) {
+	// Create a prometheus registry for testing
+	registry := prometheus.NewRegistry()
+	metrics := NewLogMetrics(registry)
+
+	// Create a base handler that discards output
+	baseHandler := slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+
+	// Wrap with metrics handler
+	handler := NewMetricsHandler(baseHandler, metrics)
+
+	// Test WithAttrs returns a MetricsHandler
+	handlerWithAttrs := handler.WithAttrs([]slog.Attr{slog.String("key", "value")})
+	require.IsType(t, &MetricsHandler{}, handlerWithAttrs)
+
+	// Test WithGroup returns a MetricsHandler
+	handlerWithGroup := handler.WithGroup("group")
+	require.IsType(t, &MetricsHandler{}, handlerWithGroup)
+
+	// Log with the derived handlers
+	logger1 := slog.New(handlerWithAttrs)
+	logger2 := slog.New(handlerWithGroup)
+
+	logger1.Info("message with attrs")
+	logger2.Info("message with group")
+
+	// Verify counts still work
+	mfs, err := registry.Gather()
+	require.NoError(t, err)
+
+	// Find INFO count
+	found := false
+	for _, mf := range mfs {
+		if mf.GetName() == "logs_total" {
+			for _, m := range mf.GetMetric() {
+				for _, label := range m.GetLabel() {
+					if label.GetName() == "level" && label.GetValue() == "INFO" {
+						found = true
+						require.Equal(t, float64(2), m.GetCounter().GetValue(), "expected 2 info logs")
+					}
+				}
+			}
+			break
+		}
+	}
+	require.True(t, found, "logs_total INFO metric not found")
+}
+
+func TestSetupLoggerWithMetrics(t *testing.T) {
+	// Create a prometheus registry for testing
+	registry := prometheus.NewRegistry()
+
+	// Save and restore environment
+	originalLogFormat := os.Getenv("LOG_FORMAT")
+	originalOTEL := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	defer func() {
+		os.Setenv("LOG_FORMAT", originalLogFormat)
+		os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", originalOTEL)
+	}()
+
+	os.Setenv("LOG_FORMAT", "json")
+	os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+
+	// Setup logger with registry
+	SetupLogger("dev", registry)
+
+	// Log some messages
+	slog.Info("test info")
+	slog.Error("test error")
+
+	// Verify metrics are collected
+	mfs, err := registry.Gather()
+	require.NoError(t, err)
+
+	found := false
+	for _, mf := range mfs {
+		if mf.GetName() == "logs_total" {
+			found = true
+			require.GreaterOrEqual(t, len(mf.GetMetric()), 1, "should have at least one level metric")
+			break
+		}
+	}
+	require.True(t, found, "logs_total metric should be registered")
 }

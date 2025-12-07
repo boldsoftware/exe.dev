@@ -1,7 +1,10 @@
 package exelet
 
+import "github.com/prometheus/client_golang/prometheus"
+
 type OptConfig struct {
-	IsMaintenance bool
+	IsMaintenance   bool
+	MetricsRegistry *prometheus.Registry
 }
 
 type ServerOpt func(cfg *OptConfig)
@@ -10,5 +13,12 @@ type ServerOpt func(cfg *OptConfig)
 func WithMaintenance() ServerOpt {
 	return func(cfg *OptConfig) {
 		cfg.IsMaintenance = true
+	}
+}
+
+// WithMetricsRegistry sets the prometheus registry to use for metrics.
+func WithMetricsRegistry(registry *prometheus.Registry) ServerOpt {
+	return func(cfg *OptConfig) {
+		cfg.MetricsRegistry = registry
 	}
 }

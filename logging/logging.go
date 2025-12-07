@@ -9,6 +9,7 @@ import (
 
 	"exe.dev/tracing"
 	"github.com/lmittmann/tint"
+	"github.com/prometheus/client_golang/prometheus"
 	slogmulti "github.com/samber/slog-multi"
 	slogslack "github.com/samber/slog-slack/v2"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -19,7 +20,8 @@ import (
 // SetupLogger configures slog based on the LOG_FORMAT environment variable.
 // LOG_FORMAT can be "json", "text", "tint", or "" (defaults: tint in dev, text in prod)
 // LOG_LEVEL can be "debug", "info", "warn", "error" (default: info)
-func SetupLogger(devMode string) {
+// If registry is non-nil, log metrics will be registered and counted.
+func SetupLogger(devMode string, registry *prometheus.Registry) {
 	logFormat := strings.ToLower(os.Getenv("LOG_FORMAT"))
 	logLevel := strings.ToLower(os.Getenv("LOG_LEVEL"))
 
@@ -94,6 +96,12 @@ func SetupLogger(devMode string) {
 
 	// Wrap handler with tracing handler to add trace_id from context
 	handler = tracing.NewHandler(handler)
+
+	// Wrap handler with metrics handler if registry is provided
+	if registry != nil {
+		metrics := NewLogMetrics(registry)
+		handler = NewMetricsHandler(handler, metrics)
+	}
 
 	// Create logger with cmd attribute from os.Args[0]
 	logger := slog.New(handler)
