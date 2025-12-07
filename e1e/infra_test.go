@@ -56,6 +56,7 @@ var (
 	flagVerboseEmail  = flag.Bool("vemail", false, "enable verbose logging from email server")
 	flagVerbosePty    = flag.Bool("vpty", false, "enable verbose logging from pty connections")
 	flagVerboseSlog   = flag.Bool("vslog", false, "enable verbose logging from slogs")
+	flagVerboseAll    = flag.Bool("vv", false, "enable ALL verbose logging (shorthand for all -v* flags)")
 	flagCinema        = flag.Bool("cinema", true, "enable ASCIIcinema recordings")
 	flagCoverProfile  = flag.String("coverage-out", "e1e.cover", "path to write merged coverage profile")
 
@@ -68,6 +69,17 @@ var (
 func TestMain(m *testing.M) {
 	vouch.For("josh")
 	flag.Parse()
+
+	// Enable all verbose flags if -vv is set
+	if *flagVerboseAll {
+		*flagVerbosePiperd = true
+		*flagVerboseExed = true
+		*flagVerboseExelet = true
+		*flagVerbosePorts = true
+		*flagVerboseEmail = true
+		*flagVerbosePty = true
+		*flagVerboseSlog = true
+	}
 
 	// Resolve coverage output path relative to repo root (parent of e1e directory)
 	// go test runs from within the package directory, so relative paths would be relative to e1e/
@@ -98,7 +110,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	if testing.Verbose() && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
+	if testing.Verbose() && !*flagVerboseAll && !*flagVerbosePiperd && !*flagVerboseExed && !*flagVerboseExelet && !*flagVerbosePorts && !*flagVerboseEmail && !*flagVerbosePty && !*flagVerboseSlog {
 		fmt.Print(`
 ════════
 -v requested, but the e1e tests generate lots of output, and they run in parallel.
@@ -106,6 +118,7 @@ Having "-v" enable extra logging is overwhelming.
 
 For debug info, use -run to scope to a single test, and add some/all of these flags:
 
+-vv       enable ALL verbose logging (shorthand for all flags below)
 -vpiperd  print sshpiperd logs
 -vexed    print exed logs
 -vexelet  print exelet logs
