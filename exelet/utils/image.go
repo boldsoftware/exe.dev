@@ -39,6 +39,12 @@ func LoadImage(ctx context.Context, imageRef, platform string, imageManager *ima
 	imageFSID := imageMetadata.Digest
 	tempFSID := tempImagePrefix + imageFSID
 
+	// check if image already exists - skip load if so
+	if _, err := storageManager.Get(opCtx, imageFSID); err == nil {
+		log.DebugContext(ctx, "image already exists, skipping load", "image", imageRef, "digest", imageFSID)
+		return imageFSID, nil
+	}
+
 	// check compressed image size early to fail fast if image is too large
 	// use a conservative 3x multiplier to estimate uncompressed size
 	compressedSize := image.GetManifestSize(imageMetadata.Manifest)
@@ -48,6 +54,13 @@ func LoadImage(ctx context.Context, imageRef, platform string, imageManager *ima
 	}
 
 	log.DebugContext(ctx, "loading image", "image", imageRef, "digest", imageFSID, "compressedSize", compressedSize, "estimatedSize", estimatedSize)
+
+	// clean up any leftover temp dataset from a previous failed load
+	if _, getErr := storageManager.Get(opCtx, tempFSID); getErr == nil {
+		log.DebugContext(ctx, "cleaning up leftover temp dataset", "tempFSID", tempFSID)
+		_ = storageManager.Unmount(opCtx, tempFSID)
+		_ = storageManager.Delete(opCtx, tempFSID)
+	}
 
 	// create 10G sparse volume with temporary name
 	if _, err := storageManager.Create(opCtx, tempFSID, &storageapi.FilesystemConfig{
