@@ -48,8 +48,10 @@ func TestLoopWithClaudeTools(t *testing.T) {
 	}
 
 	// Verify that messages were recorded
-	if len(recordedMessages) < 2 {
-		t.Errorf("expected at least 2 recorded messages, got %d", len(recordedMessages))
+	// Note: User messages are recorded by ConversationManager, not by Loop,
+	// so we only expect assistant messages to be recorded here
+	if len(recordedMessages) < 1 {
+		t.Errorf("expected at least 1 recorded message (assistant), got %d", len(recordedMessages))
 	}
 
 	// Check that usage was accumulated

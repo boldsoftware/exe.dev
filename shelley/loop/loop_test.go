@@ -399,16 +399,15 @@ func TestLoopWithKeywordTool(t *testing.T) {
 	}
 
 	// Verify we got expected messages
-	if len(messages) < 2 {
-		t.Fatalf("Expected at least 2 messages, got %d", len(messages))
+	// Note: User messages are recorded by ConversationManager, not by Loop,
+	// so we only expect the assistant response to be recorded here
+	if len(messages) < 1 {
+		t.Fatalf("Expected at least 1 message (assistant), got %d", len(messages))
 	}
 
-	// Should have user message and assistant response
-	if messages[0].Role != llm.MessageRoleUser {
-		t.Errorf("Expected first message to be user, got %s", messages[0].Role)
-	}
-	if messages[1].Role != llm.MessageRoleAssistant {
-		t.Errorf("Expected second message to be assistant, got %s", messages[1].Role)
+	// Should have assistant response
+	if messages[0].Role != llm.MessageRoleAssistant {
+		t.Errorf("Expected first recorded message to be assistant, got %s", messages[0].Role)
 	}
 }
 
@@ -464,16 +463,15 @@ func TestLoopWithActualKeywordTool(t *testing.T) {
 	}
 
 	// Verify we got expected messages
-	if len(messages) < 2 {
-		t.Fatalf("Expected at least 2 messages, got %d", len(messages))
+	// Note: User messages are recorded by ConversationManager, not by Loop,
+	// so we only expect the assistant response to be recorded here
+	if len(messages) < 1 {
+		t.Fatalf("Expected at least 1 message (assistant), got %d", len(messages))
 	}
 
-	// Should have user message and assistant response
-	if messages[0].Role != llm.MessageRoleUser {
-		t.Errorf("Expected first message to be user, got %s", messages[0].Role)
-	}
-	if messages[1].Role != llm.MessageRoleAssistant {
-		t.Errorf("Expected second message to be assistant, got %s", messages[1].Role)
+	// Should have assistant response
+	if messages[0].Role != llm.MessageRoleAssistant {
+		t.Errorf("Expected first recorded message to be assistant, got %s", messages[0].Role)
 	}
 
 	t.Log("Keyword tool test passed - no nil pointer dereference occurred")

@@ -75,7 +75,6 @@ func ExampleLoop() {
 	fmt.Printf("Total usage: %s\n", usage.String())
 
 	// Output:
-	// Recorded user message with 1 content items
 	// Recorded assistant message with 1 content items
 	// Total usage: in: 3, out: 3
 }

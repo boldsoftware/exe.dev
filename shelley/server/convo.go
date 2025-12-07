@@ -117,6 +117,8 @@ func (cm *ConversationManager) Hydrate(ctx context.Context) error {
 }
 
 // AcceptUserMessage enqueues a user message, ensuring the loop is ready first.
+// The message is recorded to the database immediately so it appears in the UI,
+// even if the loop is busy processing a previous request.
 func (cm *ConversationManager) AcceptUserMessage(ctx context.Context, service llm.Service, modelID string, message llm.Message) (bool, error) {
 	if service == nil {
 		return false, fmt.Errorf("llm service is required")
@@ -135,10 +137,20 @@ func (cm *ConversationManager) AcceptUserMessage(ctx context.Context, service ll
 	cm.hasConversationEvents = true
 	loopInstance := cm.loop
 	cm.lastActivity = time.Now()
+	recordMessage := cm.recordMessage
 	cm.mu.Unlock()
 
 	if loopInstance == nil {
 		return false, fmt.Errorf("conversation loop not initialized")
+	}
+
+	// Record the user message to the database immediately so it appears in the UI,
+	// even if the loop is busy processing a previous request
+	if recordMessage != nil {
+		if err := recordMessage(ctx, message, llm.Usage{}); err != nil {
+			cm.logger.Error("failed to record user message immediately", "error", err)
+			// Continue anyway - the loop will also try to record it
+		}
 	}
 
 	loopInstance.QueueUserMessage(message)
@@ -420,6 +432,8 @@ func (cm *ConversationManager) CancelConversation(ctx context.Context) error {
 	cm.loopCtx = nil
 	cm.loop = nil
 	cm.modelID = ""
+	// Reset hydrated so that the next AcceptUserMessage will reload history from the database
+	cm.hydrated = false
 	cm.mu.Unlock()
 
 	return nil

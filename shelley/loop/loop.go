@@ -113,15 +113,9 @@ func (l *Loop) Go(ctx context.Context) error {
 		l.mu.Lock()
 		hasQueuedMessages := len(l.messageQueue) > 0
 		if hasQueuedMessages {
-			// Add queued messages to history
+			// Add queued messages to history (they are already recorded to DB by ConversationManager)
 			for _, msg := range l.messageQueue {
 				l.history = append(l.history, msg)
-				// Record user messages
-				if msg.Role == llm.MessageRoleUser {
-					if err := l.recordMessage(ctx, msg, llm.Usage{}); err != nil {
-						l.logger.Error("failed to record user message", "error", err)
-					}
-				}
 			}
 			l.messageQueue = l.messageQueue[:0] // Clear queue
 		}
@@ -158,14 +152,9 @@ func (l *Loop) ProcessOneTurn(ctx context.Context) error {
 	// Process any queued messages first
 	l.mu.Lock()
 	if len(l.messageQueue) > 0 {
-		// Add queued messages to history and record user messages for parity with Go()
+		// Add queued messages to history (they are already recorded to DB by ConversationManager)
 		for _, msg := range l.messageQueue {
 			l.history = append(l.history, msg)
-			if msg.Role == llm.MessageRoleUser {
-				if err := l.recordMessage(ctx, msg, llm.Usage{}); err != nil {
-					l.logger.Error("failed to record user message", "error", err)
-				}
-			}
 		}
 		l.messageQueue = nil
 	}
