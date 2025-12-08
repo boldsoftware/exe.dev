@@ -77,9 +77,16 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	instanceID := req.ID
 
-	// Check if instance already exists
-	if _, err := s.getInstance(ctx, instanceID); err == nil {
-		return status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+	// Check if instance already exists (but allow CREATING state to be resumed via singleflight)
+	if existingInstance, err := s.getInstance(ctx, instanceID); err == nil {
+		// Instance exists - but if it's in CREATING state, allow singleflight to handle it
+		// (this handles the case where exelet crashed during creation)
+		if existingInstance.State != api.VMState_CREATING {
+			return status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+		}
+		// CREATING state: fall through to singleflight which will either:
+		// - Join an in-flight creation, or
+		// - Start a fresh creation (cleaning up the stale state)
 	} else if !errors.Is(err, api.ErrNotFound) {
 		return status.Errorf(codes.Internal, "error checking instance existence: %s", err)
 	}
@@ -117,8 +124,21 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	instanceID := req.ID
 
 	// Re-check existence inside singleflight (in case concurrent request created it before we entered)
-	if _, err := s.getInstance(ctx, instanceID); err == nil {
-		return nil, status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+	if existingInstance, err := s.getInstance(ctx, instanceID); err == nil {
+		if existingInstance.State == api.VMState_CREATING {
+			// Stale CREATING state from a previous crashed creation - clean up and start fresh
+			s.log.WarnContext(ctx, "found stale CREATING instance, cleaning up", "id", instanceID)
+			instanceDir := s.getInstanceDir(instanceID)
+			if rmErr := os.RemoveAll(instanceDir); rmErr != nil {
+				s.log.ErrorContext(ctx, "failed to clean up stale instance directory", "id", instanceID, "error", rmErr)
+			}
+			// Also clean up network interface if it exists (pass empty IP since we don't know it)
+			if delErr := s.context.NetworkManager.DeleteInterface(ctx, instanceID, ""); delErr != nil {
+				s.log.DebugContext(ctx, "no network interface to clean up for stale instance", "id", instanceID)
+			}
+		} else {
+			return nil, status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+		}
 	} else if !errors.Is(err, api.ErrNotFound) {
 		return nil, status.Errorf(codes.Internal, "error checking instance existence: %s", err)
 	}
@@ -165,6 +185,21 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 	rb.instanceDir = instanceDir
 	rb.instanceDirCreated = true
+
+	// Persist instance config early with CREATING state so GetInstance can find it during creation
+	created := time.Now().UnixNano()
+	earlyInstance := &api.Instance{
+		ID:        instanceID,
+		Name:      req.Name,
+		Image:     req.Image,
+		State:     api.VMState_CREATING,
+		Node:      s.config.Name,
+		CreatedAt: created,
+		UpdatedAt: created,
+	}
+	if err := s.saveInstanceConfig(earlyInstance); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
 
 	// networking
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
@@ -607,16 +642,14 @@ func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceReq
 	}
 
 	// return instance info
-	created := time.Now().UnixNano()
-
 	i := &api.Instance{
 		ID:           instanceID,
 		Name:         req.Name,
 		Image:        req.Image,
 		VMConfig:     vmCfg,
 		Node:         s.config.Name,
-		CreatedAt:    created,
-		UpdatedAt:    created,
+		CreatedAt:    created, // preserve original creation time from early save
+		UpdatedAt:    time.Now().UnixNano(),
 		State:        api.VMState_STARTING,
 		SSHPort:      int32(sshPort), // SSH proxy port
 		ExposedPorts: exposedPorts,

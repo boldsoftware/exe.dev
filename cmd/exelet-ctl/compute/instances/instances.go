@@ -8,6 +8,7 @@ var Command = &cli.Command{
 	Subcommands: []*cli.Command{
 		createInstanceCommand,
 		listInstancesCommand,
+		getInstanceCommand,
 		instanceLogsCommand,
 		startInstanceCommand,
 		stopInstanceCommand,

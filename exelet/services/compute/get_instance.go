@@ -37,7 +37,13 @@ func (s *Service) getInstance(ctx context.Context, id string) (*api.Instance, er
 		return nil, err
 	}
 
-	// check state
+	// If instance is in CREATING state, return as-is without querying VMM
+	// (the VM doesn't exist yet during creation)
+	if i.State == api.VMState_CREATING {
+		return i, nil
+	}
+
+	// check state from VMM
 	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
 	if err != nil {
 		return nil, err

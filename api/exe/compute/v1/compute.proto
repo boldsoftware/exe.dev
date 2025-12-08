@@ -186,6 +186,7 @@ enum VMState {
   DELETED = 7;
   UPDATING = 8;
   ERROR = 9;
+  CREATING = 10;
 }
 
 message DirectoryShare {
