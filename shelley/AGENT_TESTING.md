@@ -58,15 +58,6 @@ Test these commands manually:
 ```bash
 # List available models
 ./bin/shelley models
-
-# Create a conversation
-./bin/shelley --model predictable prompt "Hello, can you help me?"
-
-# List conversations
-./bin/shelley list
-
-# Inspect a specific conversation
-./bin/shelley inspect <conversation-id>
 ```
 
 ### E2E Tests (Automated)
@@ -132,9 +123,6 @@ headless eval 'document.querySelector("[role=\"alert\"]")?.innerText || "no erro
 - [ ] **Tool execution - patch** - Send `patch: test.txt`, verify patch tool appears
 - [ ] **Conversation persistence** - Multiple messages in same conversation work
 - [ ] **Enter key sends** - Press Enter in textarea to send message
-- [ ] **CLI prompt command** - Creates conversation and shows response
-- [ ] **CLI list command** - Shows conversations with IDs and slugs
-- [ ] **CLI inspect command** - Shows full conversation history
 - [ ] **Model selector** - Shows available models in UI
 - [ ] **Working directory** - Shows current directory path
 - [ ] **Accessibility labels** - Input has `aria-label="Message input"`, button has `aria-label="Send message"`

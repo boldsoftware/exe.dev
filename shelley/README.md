@@ -27,60 +27,30 @@ shelley serve --port 9000
 Flags:
 - `--port <port>`: Port to listen on (default: 9000)
 
-#### `prompt` - Run Single Conversation
+#### `models` - List Supported Models
 
-Runs a single conversation turn with the AI agent.
+Lists all supported models and their required environment variables.
 
 ```bash
-# Start a new conversation
-shelley --model predictable prompt "Hello, can you help me with Python?"
-
-# Continue an existing conversation
-shelley --model predictable prompt --continue <conversation-id> "What about error handling?"
+shelley models
 ```
 
-Flags:
-- `--continue <id>`: Continue existing conversation with given ID
-- `--timeout <duration>`: Timeout for LLM request (default: 30s)
+#### `unpack-template` - Unpack Project Template
 
-#### `list` - List Conversations
-
-Lists existing conversations.
+Unpacks a project template to a directory.
 
 ```bash
-shelley list
-shelley list --limit 10 --offset 20
-```
-
-Flags:
-- `--limit <n>`: Maximum number of conversations to list (default: 20)
-- `--offset <n>`: Number of conversations to skip (default: 0)
-
-#### `inspect` - Show Conversation Details
-
-Shows detailed information about a specific conversation including all messages.
-
-```bash
-shelley inspect <conversation-id>
+shelley unpack-template <template-name> <directory>
 ```
 
 ### Examples
 
 ```bash
-# Start a conversation with predictable responses for testing
-shelley --model predictable prompt "Write a Python function to calculate fibonacci numbers"
-
-# List all conversations
-shelley list
-
-# Get details about a specific conversation
-shelley inspect 12345678-abcd-1234-5678-123456789012
-
-# Continue working on that conversation
-shelley --model predictable prompt --continue 12345678-abcd-1234-5678-123456789012 "Add error handling to the function"
-
 # Start the web server
 shelley serve --port 8080
+
+# List supported models
+shelley models
 
 ## Models and API Keys
 
