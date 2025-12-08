@@ -19,6 +19,12 @@
       },
     }
   </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      var form = document.getElementById('verify-form');
+      if (form) form.submit();
+    });
+  </script>
 </head>
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
@@ -30,7 +36,7 @@
       <p class="p-4 pt-2 text-2xl font-semibold tracking-widest">{{.PairingCode}}</p>
     </div>
     {{end}}
-    <form method="POST" action="/verify-email">
+    <form id="verify-form" method="POST" action="/verify-email">
       {{if .RedirectURL}}
       <input type="hidden" name="redirect" value="{{.RedirectURL}}">
       {{end}}
