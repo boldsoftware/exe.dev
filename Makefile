@@ -62,6 +62,10 @@ deploy-exelet-staging: ## Deploy exelet to staging
 	@chmod +x ops/deploy/deploy-exelet-staging.sh
 	@./ops/deploy/deploy-exelet-staging.sh
 
+deploy-staging: deploy-exed-staging deploy-exelet-staging # deploy all of staging
+
+deploy-prod: deploy-exed deploy-exelet # deploy all of prod
+
 deploy-whoami: ## Deploy whoami sqlite database to production
 	@echo "${YELLOW}Deploying whoami database to production...${NC}"
 	@chmod +x ops/deploy-whoami.sh

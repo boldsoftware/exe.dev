@@ -201,7 +201,15 @@ This is expected in local development.
 
 ## Production Deployment
 
-### Regular deployment
+### To deploy production (exed and exelet)
+
+Run: 
+
+```
+make deploy-prod
+```
+
+### Deploying exed
 
 Run:
 
