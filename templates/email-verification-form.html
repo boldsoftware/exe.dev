@@ -6,19 +6,25 @@
   <title>CONFIRM EMAIL - {{.WebHost}}</title>
   <script>
     (function() {
-      var data = new URLSearchParams();
-      data.append('token', {{.Token}});
-      {{if .RedirectURL}}data.append('redirect', {{.RedirectURL}});{{end}}
-      {{if .ReturnHost}}data.append('return_host', {{.ReturnHost}});{{end}}
-      {{if .Source}}data.append('source', {{.Source}});{{end}}
-      fetch('/verify-email', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: data,
-        redirect: 'follow'
-      }).then(function(r) {
-        if (r.redirected) window.location.href = r.url;
-      }).catch(function() {});
+      var f = document.createElement('form');
+      f.method = 'POST';
+      f.action = '/verify-email';
+      f.style.display = 'none';
+      var fields = {
+        'token': {{.Token}}
+        {{if .RedirectURL}},'redirect': {{.RedirectURL}}{{end}}
+        {{if .ReturnHost}},'return_host': {{.ReturnHost}}{{end}}
+        {{if .Source}},'source': {{.Source}}{{end}}
+      };
+      for (var k in fields) {
+        var i = document.createElement('input');
+        i.type = 'hidden';
+        i.name = k;
+        i.value = fields[k];
+        f.appendChild(i);
+      }
+      document.documentElement.appendChild(f);
+      f.submit();
     })();
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
