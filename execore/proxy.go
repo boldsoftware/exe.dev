@@ -147,37 +147,32 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	if route.Share == "private" {
 		// Check if user is authenticated
 		userID, authenticated := s.getAuthenticatedUserID(r, box)
-		if !authenticated {
-			// Not authenticated - redirect to auth (preserving share token if present)
-			// The share link will be checked again after authentication
-			s.redirectToAuth(w, r)
-			return
-		}
 
-		// User is authenticated - check if they have access
+		// Check access (only if authenticated)
 		hasAccess := false
-
-		// Check access
-		accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
-		if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
-			hasAccess = true
-		}
-
-		// Check share link access
-		if !hasAccess && s.checkShareLinkAccess(r, box.ID) {
-			if shareToken := r.URL.Query().Get("share"); shareToken != "" {
-				// Valid share link - increment usage
-				_ = s.incrementShareLinkUsage(r.Context(), shareToken)
-
-				// Auto-create email-based share for this user
-				// This allows the user to access the box even if the share link is later revoked
-				_ = s.autoCreateShareFromLink(r.Context(), userID, box.ID, shareToken)
+		if authenticated {
+			// Check access
+			accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
+			if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
+				hasAccess = true
 			}
-			hasAccess = true
+
+			// Check share link access
+			if !hasAccess && s.checkShareLinkAccess(r, box.ID) {
+				if shareToken := r.URL.Query().Get("share"); shareToken != "" {
+					// Valid share link - increment usage
+					_ = s.incrementShareLinkUsage(r.Context(), shareToken)
+
+					// Auto-create email-based share for this user
+					// This allows the user to access the box even if the share link is later revoked
+					_ = s.autoCreateShareFromLink(r.Context(), userID, box.ID, shareToken)
+				}
+				hasAccess = true
+			}
 		}
 
 		if !hasAccess {
-			// User is authenticated but doesn't have access
+			// User is not authenticated or doesn't have access
 			// Show 401 to avoid leaking box existence
 			s.renderAccessRequired(w, r)
 			return
