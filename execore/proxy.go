@@ -121,8 +121,13 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return queries.BoxNamed(ctx, boxName)
 	})
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		_ = s.renderTemplate(w, "404.html", nil)
+		if errors.Is(err, sql.ErrNoRows) {
+			w.WriteHeader(http.StatusNotFound)
+			_ = s.renderTemplate(w, "404.html", nil)
+		} else {
+			s.slog().ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
