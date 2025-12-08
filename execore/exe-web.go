@@ -1011,12 +1011,32 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If this is a proxy auth flow (return_host is set), show 401 page
+	// instead of the generic "Request a link" form
+	returnHost := r.URL.Query().Get("return_host")
+	if returnHost != "" {
+		data := struct {
+			Email       string
+			AuthURL     string
+			RedirectURL string
+			ReturnHost  string
+		}{
+			Email:       "",
+			AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
+			RedirectURL: r.URL.Query().Get("redirect"),
+			ReturnHost:  returnHost,
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		s.renderTemplate(w, "401.html", data)
+		return
+	}
+
 	// Show authentication form with query parameters
 	data := authFormData{
 		Env:         s.env,
 		SSHCommand:  s.replSSHConnectionCommand(),
 		RedirectURL: r.URL.Query().Get("redirect"),
-		ReturnHost:  r.URL.Query().Get("return_host"),
+		ReturnHost:  returnHost,
 	}
 	s.renderTemplate(w, "auth-form.html", data)
 }
