@@ -19,6 +19,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -1217,7 +1218,7 @@ func (s *Server) FindBoxByIPShard(ctx context.Context, userID, localIP string) *
 
 	info, ok := s.PublicIPs[addr]
 	if !ok {
-		s.slog().InfoContext(ctx, "FindBoxByIPShard found no info for addr", "user_id", userID, "localIP", localIP, "addr", addr)
+		s.slog().InfoContext(ctx, "FindBoxByIPShard found no info for addr", "user_id", userID, "localIP", localIP, "addr", addr, "available", slices.Collect(maps.Keys(s.PublicIPs)))
 		return nil
 	}
 
