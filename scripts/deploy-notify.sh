@@ -66,35 +66,35 @@ deploy_notify_fail() {
 # When called directly (not sourced), execute command
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "$1" in
-        start)
-            if [ -z "$2" ]; then
-                echo "Usage: $0 start <service>" >&2
-                exit 0
-            fi
-            deploy_notify_start "$2"
-            ;;
-        complete)
-            if [ -z "$2" ]; then
-                echo "Usage: $0 complete <ts>" >&2
-                exit 0
-            fi
-            deploy_notify_complete "$2"
-            ;;
-        fail)
-            if [ -z "$2" ]; then
-                echo "Usage: $0 fail <ts>" >&2
-                exit 0
-            fi
-            deploy_notify_fail "$2"
-            ;;
-        *)
-            echo "Usage: $0 {start|complete|fail} <args>" >&2
-            echo "" >&2
-            echo "Commands:" >&2
-            echo "  start <service>  - Post deployment start message, prints ts to stdout" >&2
-            echo "  complete <ts>    - Add checkmark emoji to message" >&2
-            echo "  fail <ts>        - Add X emoji to message" >&2
+    start)
+        if [ -z "$2" ]; then
+            echo "Usage: $0 start <service>" >&2
             exit 0
-            ;;
+        fi
+        deploy_notify_start "$2"
+        ;;
+    complete)
+        if [ -z "$2" ]; then
+            echo "Usage: $0 complete <ts>" >&2
+            exit 0
+        fi
+        deploy_notify_complete "$2"
+        ;;
+    fail)
+        if [ -z "$2" ]; then
+            echo "Usage: $0 fail <ts>" >&2
+            exit 0
+        fi
+        deploy_notify_fail "$2"
+        ;;
+    *)
+        echo "Usage: $0 {start|complete|fail} <args>" >&2
+        echo "" >&2
+        echo "Commands:" >&2
+        echo "  start <service>  - Post deployment start message, prints ts to stdout" >&2
+        echo "  complete <ts>    - Add checkmark emoji to message" >&2
+        echo "  fail <ts>        - Add X emoji to message" >&2
+        exit 0
+        ;;
     esac
 fi
