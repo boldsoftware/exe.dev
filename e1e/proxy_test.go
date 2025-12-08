@@ -97,14 +97,14 @@ chmod +x /home/exedev/cgi-bin/headers
 
 		// TODO: do the auth dance to test private routes too.
 
-		t.Run("private_401", func(t *testing.T) {
+		t.Run("private_redirect", func(t *testing.T) {
 			resp, err := doProxyRequest(t, box, httpPort)
 			if err != nil {
 				t.Fatalf("failed to make proxy request: %v", err)
 			}
 			resp.Body.Close()
-			if resp.StatusCode != http.StatusUnauthorized {
-				t.Errorf("expected 401 for private route without auth, got status %d", resp.StatusCode)
+			if resp.StatusCode != http.StatusTemporaryRedirect {
+				t.Errorf("expected redirect for private route, got status %d", resp.StatusCode)
 			}
 		})
 
@@ -266,8 +266,8 @@ chmod +x /home/exedev/cgi-bin/headers
 			t.Fatalf("failed to make proxy request without auth: %v", err)
 		}
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected 401 for private route, got status %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected redirect for private route, got status %d", resp.StatusCode)
 		}
 
 		type proxyTokenOutput struct {
@@ -288,8 +288,8 @@ chmod +x /home/exedev/cgi-bin/headers
 			t.Fatalf("failed to make proxy request with invalid basic auth: %v", err)
 		}
 		invalidResp.Body.Close()
-		if invalidResp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected HTTP 401 for invalid basic auth, got %d", invalidResp.StatusCode)
+		if invalidResp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected HTTP 307 for invalid basic auth, got %d", invalidResp.StatusCode)
 		}
 
 		req = makeProxyRequest(t, box, httpPort)
@@ -317,8 +317,8 @@ chmod +x /home/exedev/cgi-bin/headers
 			t.Fatalf("failed to make proxy request with invalid header auth: %v", err)
 		}
 		invalidHeaderResp.Body.Close()
-		if invalidHeaderResp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected HTTP 401 for invalid header basic auth, got %d", invalidHeaderResp.StatusCode)
+		if invalidHeaderResp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected HTTP 307 for invalid header basic auth, got %d", invalidHeaderResp.StatusCode)
 		}
 
 		req = makeProxyRequest(t, box, httpPort)
@@ -328,8 +328,8 @@ chmod +x /home/exedev/cgi-bin/headers
 			t.Fatalf("failed to make proxy request with invalid bearer auth: %v", err)
 		}
 		invalidBearerResp.Body.Close()
-		if invalidBearerResp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("expected HTTP 401 for invalid bearer auth, got %d", invalidBearerResp.StatusCode)
+		if invalidBearerResp.StatusCode != http.StatusTemporaryRedirect {
+			t.Fatalf("expected HTTP 307 for invalid bearer auth, got %d", invalidBearerResp.StatusCode)
 		}
 
 		req = makeProxyRequest(t, box, httpPort)
@@ -509,11 +509,13 @@ chmod +x /home/exedev/cgi-bin/headers
 	t.Run("alternate_ports", func(t *testing.T) {
 		serveHTTP(t, Env.exed.ExtraPorts[0])
 
+		expectedRedirect := fmt.Sprintf("http://%s.exe.cloud:%d/__exe.dev/login?redirect=http%%3A%%2F%%2F%s.exe.cloud%%3A%d%%2F%%3Ffoo%%3D1", box, Env.exed.ExtraPorts[0], box, Env.exed.ExtraPorts[0])
 		proxyAssert(t, box, proxyExpectation{
-			name:     "altport without auth returns 401",
-			httpPort: Env.exed.ExtraPorts[0],
-			cookies:  nil,
-			httpCode: http.StatusUnauthorized,
+			name:             "altport without auth redirects",
+			httpPort:         Env.exed.ExtraPorts[0],
+			cookies:          nil,
+			httpCode:         http.StatusTemporaryRedirect,
+			redirectLocation: expectedRedirect,
 		})
 		proxyAssert(t, box, proxyExpectation{
 			name:     "altport with auth succeeds",

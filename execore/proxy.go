@@ -145,34 +145,39 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Apply authentication based on route share setting
 	if route.Share == "private" {
-		// Check if user is authenticated
+		// Check if user is authenticated on this subdomain
 		userID, authenticated := s.getAuthenticatedUserID(r, box)
+		if !authenticated {
+			// Not authenticated on subdomain - redirect to main domain auth
+			// This will check if they have exe-auth cookie and handle accordingly
+			s.redirectToAuth(w, r)
+			return
+		}
 
-		// Check access (only if authenticated)
+		// User is authenticated - check if they have access
 		hasAccess := false
-		if authenticated {
-			// Check access
-			accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
-			if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
-				hasAccess = true
-			}
 
-			// Check share link access
-			if !hasAccess && s.checkShareLinkAccess(r, box.ID) {
-				if shareToken := r.URL.Query().Get("share"); shareToken != "" {
-					// Valid share link - increment usage
-					_ = s.incrementShareLinkUsage(r.Context(), shareToken)
+		// Check access
+		accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
+		if err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare) {
+			hasAccess = true
+		}
 
-					// Auto-create email-based share for this user
-					// This allows the user to access the box even if the share link is later revoked
-					_ = s.autoCreateShareFromLink(r.Context(), userID, box.ID, shareToken)
-				}
-				hasAccess = true
+		// Check share link access
+		if !hasAccess && s.checkShareLinkAccess(r, box.ID) {
+			if shareToken := r.URL.Query().Get("share"); shareToken != "" {
+				// Valid share link - increment usage
+				_ = s.incrementShareLinkUsage(r.Context(), shareToken)
+
+				// Auto-create email-based share for this user
+				// This allows the user to access the box even if the share link is later revoked
+				_ = s.autoCreateShareFromLink(r.Context(), userID, box.ID, shareToken)
 			}
+			hasAccess = true
 		}
 
 		if !hasAccess {
-			// User is not authenticated or doesn't have access
+			// User is authenticated but doesn't have access
 			// Show 401 to avoid leaking box existence
 			s.renderAccessRequired(w, r)
 			return

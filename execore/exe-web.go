@@ -1311,49 +1311,43 @@ func (s *Server) handleAuthConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var isOwner bool
+	// Check if user has access (owner or email share)
 	accessType, err := s.hasUserAccessToBox(r.Context(), magicSecret.UserID, &box)
-	if err == nil && (accessType == BoxAccessOwner) {
-		isOwner = true
-	}
+	hasAccess := err == nil && (accessType == BoxAccessOwner || accessType == BoxAccessEmailShare)
 
-	// If user owns the box, skip confirmation and redirect directly
-	if isOwner {
+	if hasAccess {
+		// User has access - skip confirmation and redirect directly
 		magicURL := fmt.Sprintf("%s://%s/__exe.dev/auth?secret=%s&redirect=%s",
 			getScheme(r), returnHost, secret, url.QueryEscape(magicSecret.RedirectURL))
 		http.Redirect(w, r, magicURL, http.StatusTemporaryRedirect)
 		return
 	}
 
-	// Get user email from database
-	userEmail, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+	// User doesn't have access - show 401 page
+	// Clean up the magic secret since we're not going to use it
+	s.magicSecretsMu.Lock()
+	delete(s.magicSecrets, secret)
+	s.magicSecretsMu.Unlock()
+
+	// Get user email from database for the 401 page
+	userEmail, _ := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
 		return queries.GetEmailByUserID(ctx, magicSecret.UserID)
 	})
-	if err != nil {
-		http.Error(w, "User not found", http.StatusInternalServerError)
-		return
-	}
-
-	// Prepare template data
-	currentURL := r.URL.String()
-	confirmURL := strings.ReplaceAll(currentURL, "action=", "unused=") + "&action=confirm"
-	cancelURL := strings.ReplaceAll(currentURL, "action=", "unused=") + "&action=cancel"
 
 	data := struct {
-		stage.Env
-		SiteDomain string
-		ConfirmURL string
-		CancelURL  string
-		UserEmail  string
+		Email       string
+		AuthURL     string
+		RedirectURL string
+		ReturnHost  string
 	}{
-		Env:        s.env,
-		SiteDomain: hostname,
-		ConfirmURL: confirmURL,
-		CancelURL:  cancelURL,
-		UserEmail:  userEmail,
+		Email:       userEmail,
+		AuthURL:     fmt.Sprintf("%s://%s/auth", getScheme(r), r.Host),
+		RedirectURL: magicSecret.RedirectURL,
+		ReturnHost:  returnHost,
 	}
 
-	s.renderTemplate(w, "login-confirmation.html", data)
+	w.WriteHeader(http.StatusUnauthorized)
+	s.renderTemplate(w, "401.html", data)
 }
 
 // Helper functions for authentication and reverse proxy
