@@ -60,7 +60,7 @@ func TestVanillaBox(t *testing.T) {
 	t.Run("scp", func(t *testing.T) {
 		// Make sure SCP works too.
 		// We need some file to copy up. Use the private key. Why not. It's a file.
-		cmd := exec.CommandContext(t.Context(),
+		cmd := exec.CommandContext(Env.context(t),
 			"scp",
 			"-F", "/dev/null",
 			"-P", fmt.Sprint(Env.sshPort()),
@@ -235,7 +235,7 @@ func TestVanillaBox(t *testing.T) {
 	t.Run("shard_routing", func(t *testing.T) {
 		// shard_routing tests that `ssh boxname.exe.cloud` routes to the correct box.
 		// Skip if alley53 isn't running
-		if !alley53.NewClient("localhost:5380").IsRunning(t.Context()) {
+		if !alley53.NewClient("localhost:5380").IsRunning(Env.context(t)) {
 			t.Skip("alley53 is not running - skipping box hostname routing test")
 		}
 
