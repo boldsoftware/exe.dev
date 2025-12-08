@@ -76,6 +76,12 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		modprobe@.service \
 		systemd-modules-load.service \
 		systemd-journal-flush.service \
+		systemd-udevd.service \
+		systemd-udevd-control.service \
+		systemd-udevd-kernel.service \
+		systemd-udev-trigger.service \
+		systemd-udev-settle.service \
+		systemd-hwdb-update.service \
 		ldconfig.service \
 		unattended-upgrades.service \
 		systemd-logind.service \
