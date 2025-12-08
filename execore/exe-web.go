@@ -440,19 +440,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch path {
 	case "/":
-		// If authenticated, show user dashboard; otherwise redirect to /soon
+		// If authenticated, show user dashboard; otherwise redirect to /welcome
 		if userID, err := s.validateAuthCookie(r); err == nil {
 			s.handleUserDashboard(w, r, userID)
 			return
 		}
-		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
-		return
-	case "/soon":
-		s.serveStaticFile(w, r, "soon.html")
+		http.Redirect(w, r, "/welcome", http.StatusTemporaryRedirect)
 		return
 	case "/blog":
-		// Temporary redirect for blog to the coming soon page
-		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
+		// Temp redirect to home page, blog is coming soon.
+		http.Redirect(w, r, "/welcome", http.StatusTemporaryRedirect)
 		return
 	case "/welcome":
 		// Serve responsive page (desktop welcome, mobile new box form)
