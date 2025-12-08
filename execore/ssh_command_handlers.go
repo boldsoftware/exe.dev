@@ -737,46 +737,40 @@ done:
 	if ss.server != nil && ss.server.sshMetrics != nil {
 		ss.server.sshMetrics.boxCreationDur.Observe(totalTime.Seconds())
 	}
-	sshCommand := ss.server.boxSSHConnectionCommand(boxName)
-	boxProxyAddr := ss.server.boxProxyAddress(boxName)
 	if showSpinner {
 		// Clear the progress line and show formatted completion message
 		cc.Write("\r\033[K")
 	}
+	details := newBoxDetails{
+		BoxName:    boxName,
+		SSHCommand: ss.server.boxSSHConnectionCommand(boxName),
+		SSHServer:  ss.server.env.BoxHost,
+		SSHPort:    ss.server.boxSSHPort(),
+		SSHUser:    boxName,
+		ProxyAddr:  ss.server.boxProxyAddress(boxName),
+		ProxyPort:  proxyPort,
+	}
 	// TODO(philip): We should allow Shelley to run on all images, but injecting it,
 	// but, until that's done (https://github.com/boldsoftware/exe/issues/7), let's only
 	// show the URL sometimes.
-	shelleyUrl := ""
 	// The strings.Contains check here is a miserable hack for e1e's TestNewWithPrompt. I am full of shame.
 	if image == "exeuntu" && (command == "auto" || strings.Contains(command, "/usr/local/bin/shelley")) {
-		shelleyUrl = ss.server.shelleyURL(boxName)
+		details.ShelleyURL = ss.server.shelleyURL(boxName)
 	}
 
 	if cc.WantJSON() {
-		out := map[string]any{
-			"box_name":    boxName,
-			"ssh_command": sshCommand,
-			"ssh_server":  ss.server.env.BoxHost,
-			"ssh_port":    ss.server.boxSSHPort(),
-			"ssh_user":    boxName,
-			"https_url":   boxProxyAddr,
-			"proxy_port":  proxyPort,
-		}
-		if shelleyUrl != "" {
-			out["shelley_url"] = shelleyUrl
-		}
-		cc.WriteJSON(out)
+		cc.WriteJSON(details)
 		return nil
 	}
 	var services [][3]string // [description, parenthetical, call to action]
-	if shelleyUrl != "" {
+	if details.ShelleyURL != "" {
 		services = append(services,
-			[3]string{"Coding agent", "", shelleyUrl},
+			[3]string{"Coding agent", "", details.ShelleyURL},
 		)
 	}
 	services = append(services,
-		[3]string{"App", fmt.Sprintf("HTTPS proxy → :%d", proxyPort), boxProxyAddr},
-		[3]string{"SSH", "", sshCommand}, // show SSH last, to make it most prominent
+		[3]string{"App", fmt.Sprintf("HTTPS proxy → :%d", details.ProxyPort), details.ProxyAddr},
+		[3]string{"SSH", "", details.SSHCommand}, // show SSH last, to make it most prominent
 	)
 	if cc.IsInteractive() {
 		cc.Write("Ready in %.1fs!\r\n\r\n", totalTime.Seconds())
@@ -806,9 +800,9 @@ done:
 		// Get the box and SSH details for Shelley integration
 		var box *exedb.Box
 		if cc.PublicKey != "" {
-			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, boxName)
+			box, err = ss.server.getBoxForUser(ctx, cc.PublicKey, details.BoxName)
 		} else {
-			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, boxName)
+			box, err = ss.server.getBoxForUserByUserID(ctx, cc.User.ID, details.BoxName)
 		}
 		if err != nil {
 			return fmt.Errorf("failed to get box for Shelley: %w", err)
@@ -824,7 +818,7 @@ done:
 			prompt = shelleyPreamble + prompt
 		}
 
-		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, prompt, shelleyUrl, model); err != nil {
+		if err := ss.runShelleyPrompt(ctx, cc, box, sshSigner, prompt, details.ShelleyURL, model); err != nil {
 			// We write out the error but don't fail.
 			cc.WriteError("Error running Shelley prompt: %v", err)
 			url := ss.server.shelleyURL(box.Name)
@@ -834,6 +828,17 @@ done:
 	}
 
 	return nil
+}
+
+type newBoxDetails struct {
+	BoxName    string `json:"box_name"`
+	SSHCommand string `json:"ssh_command"`
+	SSHServer  string `json:"ssh_server"`
+	SSHPort    int    `json:"ssh_port"`
+	SSHUser    string `json:"ssh_user"`
+	ProxyAddr  string `json:"https_url"`
+	ProxyPort  int    `json:"proxy_port"`
+	ShelleyURL string `json:"shelley_url,omitempty"`
 }
 
 func (ss *SSHServer) handleDeleteCommand(ctx context.Context, cc *exemenu.CommandContext) error {
