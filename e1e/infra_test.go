@@ -330,6 +330,7 @@ type exedInstance struct {
 
 type piperdInstance struct {
 	Cmd     *exec.Cmd
+	Ctx     context.Context // cancelled when Cmd exits
 	SSHPort int
 }
 
@@ -578,12 +579,16 @@ func (t *testEnv) canonicalizeString(s string) string {
 }
 
 func (e *testEnv) context(t *testing.T) context.Context {
-	// Merge t.Context() and e.exed.Ctx.
+	// Merge t.Context() with exed, exelet, and piperd contexts.
 	c, cancel := context.WithCancelCause(t.Context())
 	go func() {
 		select {
 		case <-e.exed.Ctx.Done():
 			cancel(context.Cause(e.exed.Ctx))
+		case <-e.exelet.Ctx.Done():
+			cancel(context.Cause(e.exelet.Ctx))
+		case <-e.piperd.Ctx.Done():
+			cancel(context.Cause(e.piperd.Ctx))
 		case <-c.Done():
 		}
 	}()
@@ -630,7 +635,7 @@ func (e *testEnv) Close(exeletClient *client.Client) error {
 	}
 	if e.piperd.Cmd != nil && e.piperd.Cmd.Process != nil {
 		e.piperd.Cmd.Process.Kill()
-		e.piperd.Cmd.Wait()
+		<-e.piperd.Ctx.Done()
 	}
 	// Cleanup exelet (remote or local)
 	// We need to gracefully stop exelet first so it writes coverage data
@@ -1125,8 +1130,15 @@ func startPiperd(ei exedInstance) (*piperdInstance, error) {
 		}
 	}
 
+	cmdCtx, cancel := context.WithCancel(context.Background())
+	go func() {
+		piperdCmd.Wait()
+		cancel()
+	}()
+
 	instance := &piperdInstance{
 		Cmd:     piperdCmd,
+		Ctx:     cmdCtx,
 		SSHPort: sshPort,
 	}
 
@@ -1328,6 +1340,10 @@ func startExelet(ctrHost, exedURL string, exeletSlogErrC chan string) (*exeletIn
 	}
 
 	exeletCtx, exeletCancel := context.WithCancel(context.Background())
+	go func() {
+		exeletCmd.Wait()
+		exeletCancel()
+	}()
 
 	// Parse output to find addresses (similar to exed startup)
 	var teeMu sync.Mutex
