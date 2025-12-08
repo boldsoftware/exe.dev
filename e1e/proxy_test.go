@@ -193,11 +193,11 @@ chmod +x /home/exedev/cgi-bin/headers
 			if err != nil {
 				t.Fatalf("failed to read proxy response body: %v", err)
 			}
-			if resp.StatusCode != http.StatusBadGateway {
-				t.Fatalf("expected HTTP 502 for unreachable route, got %d (body: %s)", resp.StatusCode, body)
+			if resp.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("expected HTTP 503 for unreachable route, got %d (body: %s)", resp.StatusCode, body)
 			}
-			if !strings.Contains(string(body), "Bad Gateway") {
-				t.Fatalf("expected response body to contain 'Bad Gateway', got %s", body)
+			if !strings.Contains(string(body), "Service Unavailable") {
+				t.Fatalf("expected response body to contain 'Service Unavailable', got %s", body)
 			}
 
 			missingBox := fmt.Sprintf("%s-missing", box)
@@ -213,8 +213,8 @@ chmod +x /home/exedev/cgi-bin/headers
 			if resp.StatusCode != http.StatusNotFound {
 				t.Fatalf("expected HTTP 404 for missing box, got %d (body: %s)", resp.StatusCode, body)
 			}
-			if !strings.Contains(string(body), "Box not found") {
-				t.Fatalf("expected response body to contain 'Box not found', got %s", body)
+			if !strings.Contains(string(body), "Not Found") {
+				t.Fatalf("expected response body to contain 'Not Found', got %s", body)
 			}
 		})
 	})
