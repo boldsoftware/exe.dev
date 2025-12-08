@@ -87,6 +87,7 @@ class SlackClient:
         channel_id: str,
         text: str,
         *,
+        blocks: t.Optional[t.List[t.Dict[str, t.Any]]] = None,
         mrkdwn: t.Optional[bool] = None,
         thread_ts: t.Optional[str] = None,
     ) -> str:
@@ -95,6 +96,8 @@ class SlackClient:
             "channel": channel_id,
             "text": text,
         }
+        if blocks is not None:
+            payload["blocks"] = blocks
         if mrkdwn is not None:
             payload["mrkdwn"] = mrkdwn
         if thread_ts is not None:
@@ -109,6 +112,17 @@ class SlackClient:
                 "channel": channel_id,
                 "ts": ts,
                 "text": text,
+            },
+        )
+
+    def add_reaction(self, channel_id: str, ts: str, emoji: str) -> None:
+        """Add an emoji reaction to a message. Emoji should be without colons (e.g., 'white_check_mark')."""
+        self.api(
+            "reactions.add",
+            {
+                "channel": channel_id,
+                "timestamp": ts,
+                "name": emoji,
             },
         )
 

@@ -4,6 +4,18 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Slack notification (best-effort)
+DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start sshpiper)
+cleanup_notify() {
+    if [ $? -ne 0 ] && [ -n "$DEPLOY_TS" ]; then
+        "$REPO_ROOT/scripts/deploy-notify.sh" fail "$DEPLOY_TS"
+    fi
+}
+trap cleanup_notify EXIT
+
 INSTANCE_NAME="exed-02"
 
 # Colors for output
@@ -191,6 +203,9 @@ echo "  ssh ubuntu@$INSTANCE_NAME"
 echo "  ls -la ~/sshpiperd.*  # list all versions"
 echo "  sudo ln -sf ~/sshpiperd.TIMESTAMP ~/sshpiperd.latest"
 echo "  sudo systemctl restart sshpiper"
+
+# Mark deployment as successful
+"$REPO_ROOT/scripts/deploy-notify.sh" complete "$DEPLOY_TS"
 
 rm -f "/tmp/$BINARY_NAME"
 rm -f "/tmp/$METRICS_NAME"

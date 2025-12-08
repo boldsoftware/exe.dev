@@ -4,6 +4,18 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Slack notification (best-effort)
+DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start exed)
+cleanup_notify() {
+    if [ $? -ne 0 ] && [ -n "$DEPLOY_TS" ]; then
+        "$REPO_ROOT/scripts/deploy-notify.sh" fail "$DEPLOY_TS"
+    fi
+}
+trap cleanup_notify EXIT
+
 INSTANCE_NAME="exed-02"
 DOMAIN="exe.dev"
 
@@ -163,5 +175,8 @@ echo "  ssh ubuntu@$INSTANCE_NAME"
 echo "  ls -la ~/exed.*  # list all versions"
 echo "  sudo ln -sf ~/exed.TIMESTAMP ~/exed.latest"
 echo "  sudo systemctl restart exed"
+
+# Mark deployment as successful
+"$REPO_ROOT/scripts/deploy-notify.sh" complete "$DEPLOY_TS"
 
 rm -f "/tmp/$BINARY_NAME"

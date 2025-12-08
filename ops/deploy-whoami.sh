@@ -3,6 +3,18 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Slack notification (best-effort)
+DEPLOY_TS=$("$REPO_ROOT/scripts/deploy-notify.sh" start whoami-db)
+cleanup_notify() {
+    if [ $? -ne 0 ] && [ -n "$DEPLOY_TS" ]; then
+        "$REPO_ROOT/scripts/deploy-notify.sh" fail "$DEPLOY_TS"
+    fi
+}
+trap cleanup_notify EXIT
+
 INSTANCE_NAME="${INSTANCE_NAME:-exed-01}"
 REMOTE_USER="${REMOTE_USER:-ubuntu}"
 TAILSCALE_HOST="${REMOTE_USER}@${INSTANCE_NAME}"
@@ -93,3 +105,6 @@ chmod 0640 "\${REMOTE_DB}" || true
 ls -lh "\${REMOTE_DB}"
 echo "Updated symlink: \$(readlink -f "\${REMOTE_PREFIX}.latest")"
 REMOTE
+
+# Mark deployment as successful
+"$REPO_ROOT/scripts/deploy-notify.sh" complete "$DEPLOY_TS"
