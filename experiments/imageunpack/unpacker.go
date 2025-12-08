@@ -62,7 +62,7 @@ func NewUnpacker(cfg *Config, log *slog.Logger) *Unpacker {
 
 // Unpack downloads and unpacks an image to the destination directory.
 // It returns the image digest and other metadata.
-func (u *Unpacker) Unpack(ctx context.Context, imageRef string, destDir string) (*Result, error) {
+func (u *Unpacker) Unpack(ctx context.Context, imageRef, destDir string) (*Result, error) {
 	platform := Platform()
 	return u.UnpackWithPlatform(ctx, imageRef, platform, destDir)
 }
@@ -269,8 +269,8 @@ func (u *Unpacker) fetchManifest(ctx context.Context, url, token string) ([]byte
 }
 
 func (u *Unpacker) unpackIndex(ctx context.Context, registryURL, repoPath, token string,
-	idx ocispec.Index, platform, destDir string, result *Result) (*Result, error) {
-
+	idx ocispec.Index, platform, destDir string, result *Result,
+) (*Result, error) {
 	u.log.DebugContext(ctx, "processing multi-platform index", "manifests", len(idx.Manifests))
 
 	for _, manifest := range idx.Manifests {
@@ -306,8 +306,8 @@ func (u *Unpacker) unpackIndex(ctx context.Context, registryURL, repoPath, token
 }
 
 func (u *Unpacker) unpackManifest(ctx context.Context, registryURL, repoPath, token string,
-	man ocispec.Manifest, destDir string, result *Result) (*Result, error) {
-
+	man ocispec.Manifest, destDir string, result *Result,
+) (*Result, error) {
 	u.log.InfoContext(ctx, "unpacking manifest", "layers", len(man.Layers))
 
 	// Download all layers using a global worker pool
@@ -377,8 +377,8 @@ type chunkJob struct {
 
 // downloadAllLayers downloads all layers using a global worker pool
 func (u *Unpacker) downloadAllLayers(ctx context.Context, registryURL, repoPath, token string,
-	layers []ocispec.Descriptor) (map[string][]byte, error) {
-
+	layers []ocispec.Descriptor,
+) (map[string][]byte, error) {
 	// Create buffers for all layers
 	layerBuffers := make(map[string][]byte)
 	for _, layer := range layers {
@@ -597,5 +597,5 @@ func parseAuthHeader(header string) (realm, service, scope string) {
 			scope = strings.Trim(strings.TrimPrefix(part, "scope="), "\"")
 		}
 	}
-	return
+	return realm, service, scope
 }

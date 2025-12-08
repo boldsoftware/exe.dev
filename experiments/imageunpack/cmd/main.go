@@ -115,7 +115,7 @@ func main() {
 		}
 
 		// Create destination directory
-		if err := os.MkdirAll(destDir, 0755); err != nil {
+		if err := os.MkdirAll(destDir, 0o755); err != nil {
 			return fmt.Errorf("create destination directory: %w", err)
 		}
 
