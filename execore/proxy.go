@@ -244,8 +244,9 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Non-owner: return a terse 502
-		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		// Non-owner: render 503 page
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = s.renderTemplate(w, "503.html", nil)
 		return
 	}
 }
