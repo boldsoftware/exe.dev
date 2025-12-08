@@ -746,8 +746,8 @@ function Message({ message }: MessageProps) {
     }) || [];
 
   // Don't filter out messages that contain operation status like "[Operation cancelled]"
-  const hasOperationStatus = llmMessage?.Content?.some((c) =>
-    c.Type === 2 && c.Text?.includes("[Operation")
+  const hasOperationStatus = llmMessage?.Content?.some(
+    (c) => c.Type === 2 && c.Text?.includes("[Operation"),
   );
 
   if (meaningfulContent.length === 0 && !hasOperationStatus) {
@@ -755,8 +755,10 @@ function Message({ message }: MessageProps) {
   }
 
   // If we have operation status but no meaningful content, render the status
-  const contentToRender = meaningfulContent.length > 0 ? meaningfulContent :
-    llmMessage?.Content?.filter((c) => c.Type === 2 && c.Text?.includes("[Operation")) || [];
+  const contentToRender =
+    meaningfulContent.length > 0
+      ? meaningfulContent
+      : llmMessage?.Content?.filter((c) => c.Type === 2 && c.Text?.includes("[Operation")) || [];
 
   return (
     <>
