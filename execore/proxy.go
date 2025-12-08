@@ -121,7 +121,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		return queries.BoxNamed(ctx, boxName)
 	})
 	if err != nil {
-		http.Error(w, "Box not found", http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		_ = s.renderTemplate(w, "404.html", nil)
 		return
 	}
 
@@ -173,7 +174,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 		if !hasAccess {
 			// User is authenticated but doesn't have access
 			// Don't leak box existence
-			http.Error(w, "Box not found", http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound)
+			_ = s.renderTemplate(w, "404.html", nil)
 			return
 		}
 	}
