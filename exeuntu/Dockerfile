@@ -40,7 +40,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirror://mirrors.ubuntu.c
 		fonts-noto-color-emoji fonts-symbola \
 		docker.io docker-buildx docker-compose-v2 \
 		imagemagick ffmpeg \
-		&& apt-get remove -y pollinate && \
+		&& apt-get remove -y pollinate ubuntu-fan && \
 	# Allow non-root users to use ping without sudo by granting CAP_NET_RAW
 	setcap cap_net_raw=+ep /usr/bin/ping && \
 	fc-cache -f -v && \
@@ -82,6 +82,7 @@ RUN rm /etc/systemd/system/multi-user.target.wants/console-setup.service \
 		systemd-udev-trigger.service \
 		systemd-udev-settle.service \
 		systemd-hwdb-update.service \
+		ubuntu-fan.service \
 		ldconfig.service \
 		unattended-upgrades.service \
 		systemd-logind.service \
