@@ -71,17 +71,8 @@ func (s *Service) startInstance(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	// update network interface
+	// update network interface (ip= boot arg is derived from this at runtime)
 	vmCfg.NetworkInterface = networkInterface
-
-	netConf, err := s.getNetConf(vmCfg.Name, networkInterface)
-	if err != nil {
-		return err
-	}
-
-	// update boot args to configure new ip
-	bootArgs := getBootArgs(netConf)
-	vmCfg.Args = bootArgs
 
 	// update config
 	if err := vmm.Update(ctx, vmCfg); err != nil {

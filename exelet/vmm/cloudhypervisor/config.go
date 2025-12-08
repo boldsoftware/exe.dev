@@ -3,6 +3,7 @@ package cloudhypervisor
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -16,10 +17,22 @@ type virtiofsInstance struct {
 	socketPath string
 }
 
-// toVmConfig convirts a exe VMConfig into a native CloudHypervisor client VmConfig
+// toVmConfig converts a exe VMConfig into a native CloudHypervisor client VmConfig
 func (v *VMM) toVmConfig(cfg *api.VMConfig, virtiofsInstances []*virtiofsInstance) (*client.VmConfig, error) {
 	kernelPath := cfg.KernelPath
-	args := strings.Join(cfg.Args, " ")
+	// Build cmdline: base args + network config derived from NetworkInterface
+	// Filter out any stored ip= args (legacy instances or custom boot args) since
+	// network config is always derived from NetworkInterface at runtime
+	var filteredArgs []string
+	for _, arg := range cfg.Args {
+		if !strings.HasPrefix(arg, "ip=") {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+	args := strings.Join(filteredArgs, " ")
+	if netConf := getNetConf(cfg.Name, cfg.NetworkInterface); netConf != "" {
+		args = args + " " + netConf
+	}
 	memory := cfg.Memory
 	// align memory
 	hugePagesSize, err := defaultHugepageSize()
@@ -112,4 +125,47 @@ func defaultHugepageSize() (int, error) {
 func alignMemory(sizeBytes, hugepageSizeBytes uint64) uint64 {
 	pageSize := hugepageSizeBytes * 1024
 	return (sizeBytes / pageSize) * pageSize
+}
+
+// getNetConf generates the kernel ip= boot argument from the network interface config.
+// Format: ip=<client-ip>:<srv-ip>:<gw-ip>:<netmask>:<host>:<device>:<autoconf>:<dns0-ip>:<dns1-ip>:<ntp0-ip>
+func getNetConf(hostname string, iface *api.NetworkInterface) string {
+	if iface == nil || iface.IP == nil || iface.IP.IPV4 == "" {
+		return ""
+	}
+
+	ipSubnet := iface.IP.IPV4
+	gw := iface.IP.GatewayV4
+	iIP, ipnet, err := net.ParseCIDR(ipSubnet)
+	if err != nil {
+		return ""
+	}
+	netmask := net.IP(ipnet.Mask).String()
+	ip := iIP.String()
+
+	device := iface.DeviceName
+	primaryNS := "1.1.1.1"
+	backupNS := "8.8.8.8"
+	switch len(iface.Nameservers) {
+	case 0:
+	case 1:
+		primaryNS = iface.Nameservers[0]
+	default:
+		primaryNS = iface.Nameservers[0]
+		backupNS = iface.Nameservers[1]
+	}
+	ntpServer := iface.NTPServer
+
+	return fmt.Sprintf("ip=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s",
+		ip,
+		gw,
+		gw,
+		netmask,
+		hostname,
+		device,
+		"none",
+		primaryNS,
+		backupNS,
+		ntpServer,
+	)
 }

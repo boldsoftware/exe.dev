@@ -143,11 +143,6 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		return status.Error(codes.Internal, "unable to get gateway IP for network interface")
 	}
 
-	netConf, err := s.getNetConf(req.Name, networkInterface)
-	if err != nil {
-		return status.Error(codes.Internal, err.Error())
-	}
-
 	// create instance fs
 	if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
 		ID:      instanceID,
@@ -477,8 +472,8 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}); err != nil {
 		return status.Error(codes.Internal, err.Error())
 	}
-	// boot args
-	bootArgs := getBootArgs(netConf)
+	// boot args (network config is derived from NetworkInterface at runtime)
+	bootArgs := getBootArgs()
 	// TODO: handle duplicates (e.g. init= etc.)
 	bootArgs = append(bootArgs, req.BootArgs...)
 
@@ -613,51 +608,4 @@ func (s *Service) updateCreateStatus(stream api.ComputeService_CreateInstanceSer
 		return err
 	}
 	return nil
-}
-
-func (s *Service) getNetConf(hostname string, i *api.NetworkInterface) (string, error) {
-	// ip=<client-ip>:<srv-ip>:<gw-ip>:<netmask>:<host>:<device>:<autoconf>:<dns0-ip>:<dns1-ip>:<ntp0-ip>
-	if i == nil {
-		return "", nil
-	}
-	ip := ""
-	gw := ""
-	netmask := ""
-	conf := "dhcp"
-	if v := i.IP; v != nil && v.IPV4 != "" {
-		ipSubnet := i.IP.IPV4
-		gw = i.IP.GatewayV4
-		iIP, ipnet, err := net.ParseCIDR(ipSubnet)
-		if err != nil {
-			return "", fmt.Errorf("invalid IP Address: %w", err)
-		}
-		netmask = net.IP(ipnet.Mask).String()
-		ip = iIP.String()
-		conf = "none"
-	}
-
-	device := i.DeviceName
-	primaryNS := "1.1.1.1"
-	backupNS := "8.8.8.8"
-	switch len(i.Nameservers) {
-	case 0:
-	case 1:
-		primaryNS = i.Nameservers[0]
-	default:
-		primaryNS = i.Nameservers[0]
-		backupNS = i.Nameservers[1]
-	}
-	ntpServer := i.NTPServer
-	return fmt.Sprintf("ip=%s:%s:%s:%s:%s:%s:%s:%s:%s:%s",
-		ip,
-		gw,
-		gw,
-		netmask,
-		hostname,
-		device,
-		conf,
-		primaryNS,
-		backupNS,
-		ntpServer,
-	), nil
 }

@@ -60,13 +60,12 @@ func (s *Service) loadInstanceConfig(id string) (*api.Instance, error) {
 	return &i, nil
 }
 
-func getBootArgs(netConf string) []string {
+func getBootArgs() []string {
 	return []string{
 		"console=hvc0",
 		"root=/dev/vda",
 		"init=/exe.dev/bin/exe-init",
 		//"init=/bin/sh", // debug
-		netConf,
 		"rw",
 		// increase RCU stall warning threshold from 21s to 60s
 		"rcupdate.rcu_cpu_stall_timeout=60",
