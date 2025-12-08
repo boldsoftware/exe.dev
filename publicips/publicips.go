@@ -81,9 +81,6 @@ func EC2IPs(ctx context.Context, boxDomain string) (map[netip.Addr]PublicIP, err
 		return nil, errors.New("publicips: box domain must not be empty")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
 	client := newMetadataClient()
 
 	token, err := client.fetchToken(ctx)

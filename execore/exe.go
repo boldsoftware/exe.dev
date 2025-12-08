@@ -606,6 +606,9 @@ func (s *Server) initShardIPs(ctx context.Context) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	discoverIPs := publicips.EC2IPs // EC2 metadata-based discovery
 	if !s.env.DiscoverPublicIPs {
 		discoverIPs = publicips.LocalhostIPs // 127.21.0.x
