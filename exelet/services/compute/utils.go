@@ -68,6 +68,10 @@ func getBootArgs(netConf string) []string {
 		//"init=/bin/sh", // debug
 		netConf,
 		"rw",
+		// increase RCU stall warning threshold from 21s to 60s
+		"rcupdate.rcu_cpu_stall_timeout=60",
+		// offload RCU callbacks to kthreads, reducing stalls from vCPU scheduling delays
+		"rcu_nocbs=all",
 	}
 }
 
