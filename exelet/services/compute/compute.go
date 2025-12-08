@@ -28,6 +28,7 @@ type Service struct {
 	portAllocator       *PortAllocator
 	proxyManager        *sshproxy.Manager
 	imageLoadGroup      singleflight.Group[string, string]
+	instanceCreateGroup singleflight.Group[string, *api.Instance]
 	instanceDeleteGroup singleflight.Group[string, *api.DeleteInstanceResponse]
 }
 

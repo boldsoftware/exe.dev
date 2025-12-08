@@ -1,6 +1,7 @@
 package compute
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -76,6 +77,52 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 	instanceID := req.ID
 
+	// Check if instance already exists
+	if _, err := s.getInstance(ctx, instanceID); err == nil {
+		return status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+	} else if !errors.Is(err, api.ErrNotFound) {
+		return status.Errorf(codes.Internal, "error checking instance existence: %s", err)
+	}
+
+	// Use singleflight to ensure only one creation per instance ID
+	instance, err, shared := s.instanceCreateGroup.Do(instanceID, func() (*api.Instance, error) {
+		return s.createInstance(ctx, req, stream)
+	})
+	if err != nil {
+		return err
+	}
+
+	// If this was a shared result (deduplicated request), send the final status and instance
+	if shared {
+		if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
+			ID:    instanceID,
+			State: api.CreateInstanceStatus_COMPLETE,
+		}); err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+		if err := stream.Send(&api.CreateInstanceResponse{
+			Type: &api.CreateInstanceResponse_Instance{
+				Instance: instance,
+			},
+		}); err != nil {
+			return status.Error(codes.Internal, err.Error())
+		}
+	}
+
+	return nil
+}
+
+// createInstance performs the actual instance creation logic
+func (s *Service) createInstance(ctx context.Context, req *api.CreateInstanceRequest, stream api.ComputeService_CreateInstanceServer) (instance *api.Instance, err error) {
+	instanceID := req.ID
+
+	// Re-check existence inside singleflight (in case concurrent request created it before we entered)
+	if _, err := s.getInstance(ctx, instanceID); err == nil {
+		return nil, status.Errorf(codes.AlreadyExists, "instance %s already exists", instanceID)
+	} else if !errors.Is(err, api.ErrNotFound) {
+		return nil, status.Errorf(codes.Internal, "error checking instance existence: %s", err)
+	}
+
 	// Setup rollback to cleanup resources on error
 	rb := &createInstanceRollback{
 		ctx:            ctx,
@@ -108,13 +155,13 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		ID:    req.ID,
 		State: api.CreateInstanceStatus_INIT,
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	instanceDir := s.getInstanceDir(instanceID)
 	s.log.DebugContext(ctx, "instance dir", "id", instanceID, "path", instanceDir)
 	if err := os.MkdirAll(instanceDir, 0o770); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.instanceDir = instanceDir
 	rb.instanceDirCreated = true
@@ -125,12 +172,12 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		State:   api.CreateInstanceStatus_NETWORK,
 		Message: "configuring networking",
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	s.log.DebugContext(ctx, "creating network interface", "id", instanceID)
 	networkInterface, err := s.context.NetworkManager.CreateInterface(ctx, instanceID)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.networkCreated = true
 
@@ -140,7 +187,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		gatewayIP = ip.GatewayV4
 	}
 	if gatewayIP == "" {
-		return status.Error(codes.Internal, "unable to get gateway IP for network interface")
+		return nil, status.Error(codes.Internal, "unable to get gateway IP for network interface")
 	}
 
 	// create instance fs
@@ -149,7 +196,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		State:   api.CreateInstanceStatus_INIT,
 		Message: "configuring storage",
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	// linux only supported for now
 	platform := fmt.Sprintf("linux/%s", runtime.GOARCH)
@@ -157,7 +204,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 
 	imageMetadata, err := s.context.ImageManager.FetchManifestForPlatform(ctx, req.Image, platform)
 	if err != nil {
-		return status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
+		return nil, status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
 	}
 	s.log.DebugContext(ctx, "loaded image manifest", "image", req.Image, "digest", imageMetadata.Digest)
 
@@ -170,7 +217,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	// if not found provision image
 	if _, err := s.context.StorageManager.Get(ctx, imageFSID); err != nil {
 		if !errors.Is(err, storageapi.ErrNotFound) {
-			return status.Errorf(codes.Internal, "error getting storage filesystem for %s: %s", req.Image, err)
+			return nil, status.Errorf(codes.Internal, "error getting storage filesystem for %s: %s", req.Image, err)
 		}
 
 		if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
@@ -178,7 +225,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			State:   api.CreateInstanceStatus_PULLING,
 			Message: fmt.Sprintf("fetching %s", req.Image),
 		}); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 
 		// use singleflight to ensure only one image loads at a time
@@ -186,7 +233,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			return utils.LoadImage(ctx, req.Image, platform, s.context.ImageManager, s.context.StorageManager, s.log)
 		})
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		// update to ensure latest ID
 		imageFSID = imageID
@@ -197,25 +244,25 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 
 	// clone
 	if err = s.context.StorageManager.Clone(ctx, imageFSID, instanceID); err != nil {
-		return status.Errorf(codes.Internal, "error cloning instance storage for image %s: %s", req.Image, err)
+		return nil, status.Errorf(codes.Internal, "error cloning instance storage for image %s: %s", req.Image, err)
 	}
 	rb.instanceCloned = true
 
 	// resize
 	if err = s.context.StorageManager.Expand(ctx, instanceID, req.Disk); err != nil {
-		return status.Errorf(codes.Internal, "error resizing instance filesystem storage: %s", err)
+		return nil, status.Errorf(codes.Internal, "error resizing instance filesystem storage: %s", err)
 	}
 
 	// get instance fs
 	instanceFS, err := s.context.StorageManager.Get(ctx, instanceID)
 	if err != nil {
-		return status.Errorf(codes.Internal, "error getting cloned instance fs: %s", err)
+		return nil, status.Errorf(codes.Internal, "error getting cloned instance fs: %s", err)
 	}
 
 	// mount
 	mountConfig, err := s.context.StorageManager.Mount(ctx, instanceID)
 	if err != nil {
-		return status.Errorf(codes.Internal, "error mounting instance filesystem: %s", err)
+		return nil, status.Errorf(codes.Internal, "error mounting instance filesystem: %s", err)
 	}
 	rb.instanceMounted = true
 	mountpoint := mountConfig.Path
@@ -226,35 +273,35 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		State:   api.CreateInstanceStatus_PULLING,
 		Message: "configuring kernel",
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	// fetch kernel image
 	if req.KernelImage != "" {
 		s.log.DebugContext(ctx, "fetching kernel image", "image", req.KernelImage, "path", instanceDir)
 		if _, err := s.context.ImageManager.Fetch(ctx, req.KernelImage, platform, instanceDir); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 	} else { // use embedded
 		s.log.DebugContext(ctx, "using default kernel image from exelet")
 		kernel, err := exeletfs.Kernel()
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		kernelFilePath := filepath.Join(instanceDir, kernelName)
 		s.log.DebugContext(ctx, "instance kernel path", "path", kernelFilePath)
 		if err := os.MkdirAll(filepath.Dir(kernelFilePath), 0o775); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		kernelFile, err := os.Create(kernelFilePath)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		if _, err := io.Copy(kernelFile, kernel); err != nil {
 			kernelFile.Close()
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		if err := kernelFile.Close(); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
 
@@ -264,11 +311,11 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		State:   api.CreateInstanceStatus_CONFIG,
 		Message: "configuring init",
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	// inject rovol
 	if err := exeletfs.CopyRovol(filepath.Join(mountpoint, "/exe.dev")); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// configs
@@ -279,10 +326,10 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		case *api.Config_File:
 			mode := os.FileMode(int(cfg.Mode))
 			if err := os.WriteFile(targetPath, v.File.Data, mode); err != nil {
-				return status.Error(codes.Internal, err.Error())
+				return nil, status.Error(codes.Internal, err.Error())
 			}
 		default:
-			return status.Errorf(codes.InvalidArgument, "config type %T not supported", v)
+			return nil, status.Errorf(codes.InvalidArgument, "config type %T not supported", v)
 		}
 	}
 
@@ -293,7 +340,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			State:   api.CreateInstanceStatus_CONFIG,
 			Message: fmt.Sprintf("configuring volume %s", vol.Source),
 		}); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		s.log.DebugContext(ctx, "configuring volume", "source", vol.Source)
 		// TODO: handle other types (e.g. zfs snapshots)
@@ -302,7 +349,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			volumeTarget := filepath.Join(mountpoint, filepath.Clean(vol.Mountpoint))
 			s.log.DebugContext(ctx, "fetching image for volume", "image", vol.Source, "path", volumeTarget)
 			if err := os.MkdirAll(volumeTarget, 0o755); err != nil {
-				return status.Errorf(codes.Internal, "error creating volume mountpoint: %s", err)
+				return nil, status.Errorf(codes.Internal, "error creating volume mountpoint: %s", err)
 			}
 			// fetch
 			if err := s.updateCreateStatus(stream, &api.CreateInstanceStatus{
@@ -310,13 +357,13 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 				State:   api.CreateInstanceStatus_PULLING,
 				Message: fmt.Sprintf("pulling volume image %s", vol.Source),
 			}); err != nil {
-				return status.Error(codes.Internal, err.Error())
+				return nil, status.Error(codes.Internal, err.Error())
 			}
 			if _, err := s.context.ImageManager.Fetch(ctx, vol.Source, platform, volumeTarget); err != nil {
-				return status.Error(codes.Internal, err.Error())
+				return nil, status.Error(codes.Internal, err.Error())
 			}
 		default:
-			return status.Error(codes.InvalidArgument, "only image volumes are currently supported")
+			return nil, status.Error(codes.InvalidArgument, "only image volumes are currently supported")
 		}
 	}
 
@@ -324,17 +371,17 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	s.log.DebugContext(ctx, "configuring hostname", "id", instanceID)
 	hostnamePath := filepath.Join(mountpoint, config.HostnamePath)
 	if err := os.MkdirAll(filepath.Dir(hostnamePath), 0o755); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	if err := os.WriteFile(hostnamePath, fmt.Appendf([]byte{}, "%s.%s", req.Name, config.DefaultInstanceDomain), 0o644); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// set /etc/hosts
 	s.log.DebugContext(ctx, "configuring hosts", "id", instanceID)
 	hostsPath := filepath.Join(mountpoint, config.HostsPath)
 	if err := os.MkdirAll(filepath.Dir(hostsPath), 0o755); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	hostsContents := `# managed by exe.dev
 127.0.0.1 localhost
@@ -344,19 +391,19 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	if v := networkInterface.IP; v != nil {
 		nIP, _, err := net.ParseCIDR(v.IPV4)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		ip = nIP.String()
 	}
 	if err := os.WriteFile(hostsPath, fmt.Appendf([]byte{}, hostsContents, ip, req.Name, fmt.Sprintf("%s.%s", req.Name, config.DefaultInstanceDomain)), 0o644); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// set /etc/resolv.conf
 	s.log.DebugContext(ctx, "configuring resolv.conf", "id", instanceID)
 	resolvConfPath := filepath.Join(mountpoint, config.ResolvConfPath)
 	if err := os.MkdirAll(filepath.Dir(resolvConfPath), 0o755); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	nameservers := []string{config.DefaultNameserver}
 	if len(networkInterface.Nameservers) > 0 {
@@ -366,36 +413,36 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	_ = os.RemoveAll(resolvConfPath)
 	nsF, err := os.Create(resolvConfPath)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	for _, ns := range nameservers {
 		if _, err := nsF.Write([]byte("nameserver " + ns + "\n")); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
 	if err := nsF.Close(); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// set instance env
 	s.log.DebugContext(ctx, "configuring instance environment", "id", instanceID)
 	envConfPath := filepath.Join(mountpoint, config.EnvConfigPath)
 	if err := os.MkdirAll(filepath.Dir(envConfPath), 0o755); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	_ = os.RemoveAll(envConfPath)
 
 	envF, err := os.Create(envConfPath)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	for _, envVar := range req.Env {
 		if _, err := envF.Write([]byte(envVar + "\n")); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
 	if err := envF.Close(); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// Also write environment variables to /etc/profile.d/ so they're available to user sessions
@@ -447,21 +494,21 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	if imageConfig != nil {
 		imageConfPath := filepath.Join(mountpoint, config.ImageConfigPath)
 		if err := os.MkdirAll(filepath.Dir(imageConfPath), 0o755); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		imageConfData, err := json.Marshal(imageConfig.Config)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 		if err := os.WriteFile(imageConfPath, imageConfData, 0o644); err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
 
 	// unmount
 	s.log.DebugContext(ctx, "unmounting instance storage", "id", instanceID)
 	if err := s.context.StorageManager.Unmount(ctx, instanceID); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.instanceMounted = false
 
@@ -470,7 +517,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		State:   api.CreateInstanceStatus_BOOT,
 		Message: "booting instance",
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	// boot args (network config is derived from NetworkInterface at runtime)
 	bootArgs := getBootArgs()
@@ -491,31 +538,31 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	if err := vmCfg.Validate(); err != nil {
-		return status.Error(codes.FailedPrecondition, err.Error())
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 
 	s.log.DebugContext(ctx, "vm config", "config", vmCfg)
 
 	vmm, err := vmm.NewVMM(s.config.RuntimeAddress, s.context.NetworkManager, s.log)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	if err := vmm.Create(ctx, vmCfg); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.vmCreated = true
 
 	// start vm
 	if err := vmm.Start(ctx, vmCfg.ID); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	rb.vmStarted = true
 
 	// allocate a port for SSH proxy
 	sshPort, err := s.portAllocator.Allocate()
 	if err != nil {
-		return status.Errorf(codes.ResourceExhausted, "failed to allocate SSH port: %s", err)
+		return nil, status.Errorf(codes.ResourceExhausted, "failed to allocate SSH port: %s", err)
 	}
 	rb.allocatedPort = sshPort
 
@@ -525,20 +572,20 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		ipAddr, _, err := net.ParseCIDR(networkInterface.IP.IPV4)
 		if err != nil {
 			s.portAllocator.Release(sshPort)
-			return status.Errorf(codes.Internal, "failed to parse VM IP: %s", err)
+			return nil, status.Errorf(codes.Internal, "failed to parse VM IP: %s", err)
 		}
 		vmIP = ipAddr.String()
 		rb.networkIP = networkInterface.IP.IPV4
 	} else {
 		s.portAllocator.Release(sshPort)
-		return status.Error(codes.Internal, "no IP address assigned to VM")
+		return nil, status.Error(codes.Internal, "no IP address assigned to VM")
 	}
 
 	// create and start SSH proxy using socat
 	s.log.DebugContext(ctx, "starting SSH proxy", "instance", instanceID, "port", sshPort, "target", fmt.Sprintf("%s:22", vmIP))
 	if err := s.proxyManager.CreateProxy(instanceID, vmIP, sshPort, instanceDir); err != nil {
 		s.portAllocator.Release(sshPort)
-		return status.Errorf(codes.Internal, "failed to start SSH proxy: %s", err)
+		return nil, status.Errorf(codes.Internal, "failed to start SSH proxy: %s", err)
 	}
 	rb.proxyCreated = true
 
@@ -576,7 +623,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	}
 
 	if err := s.saveInstanceConfig(i); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// complete
@@ -584,7 +631,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 		ID:    instanceID,
 		State: api.CreateInstanceStatus_COMPLETE,
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// send instance
@@ -593,10 +640,10 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 			Instance: i,
 		},
 	}); err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return nil
+	return i, nil
 }
 
 func (s *Service) updateCreateStatus(stream api.ComputeService_CreateInstanceServer, status *api.CreateInstanceStatus) error {
