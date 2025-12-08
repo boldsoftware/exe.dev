@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Access Denied</title>
+  <title>exe.dev</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,21 +15,24 @@
           fontFamily: {
             mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
           },
+          keyframes: {
+            cursor: {
+              '0%, 49%': { opacity: '1' },
+              '50%, 100%': { opacity: '0' },
+            },
+          },
+          animation: {
+            cursor: 'cursor 1s infinite',
+          },
         },
       },
     }
   </script>
-  <meta name="robots" content="noindex">
-  <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Cache-Control" content="no-store">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
 </head>
 <body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
   <main class="w-full max-w-2xl">
-    <h1 class="text-4xl font-semibold mb-6">Unauthorized</h1>
-    <p class="text-zinc-500 mb-8">You don't have access to <strong>{{.BoxName}}</strong>.</p>
-    <a href="{{.DashboardURL}}" class="text-blue-600 hover:underline">Return to your boxes</a>
+    <p class="text-6xl font-semibold tracking-widest">{{.SSHCommand}} <span class="animate-cursor select-none">_</span></p>
+    <p class="text-zinc-500 mt-8">(run this in your terminal)</p>
   </main>
 </body>
 </html>

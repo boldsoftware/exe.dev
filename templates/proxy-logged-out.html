@@ -1,42 +1,30 @@
 <!doctype html>
-<html>
-  <head>
-    <title>Logged Out - {{.WebHost}}</title>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="/static/exe.css" />
-    <style>
-      .auth-page {
-        padding: 100px 40px;
-      }
-      .auth-page main {
-        max-width: 500px;
-      }
-      .auth-box {
-        text-align: center;
-      }
-      .auth-box a {
-        color: #0ea5e9;
-        text-decoration: none;
-      }
-      .auth-box a:hover {
-        text-decoration: underline;
-      }
-      @media (max-width: 600px) {
-        .auth-page {
-          padding: 48px 24px;
-        }
-      }
-    </style>
-  </head>
-  <body class="auth-page gray">
-    <main>
-      <div class="auth-box simple">
-        <img src="/static/exy.png" alt="exy the fish" class="exy" />
-      <h1>Logged Out</h1>
-      <p>You have been logged out successfully.</p>
-      <p><a href="/">Return to {{.WebHost}}</a></p>
-      </div>
-    </main>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logged Out - {{.WebHost}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <h1 class="text-4xl font-semibold mb-6">Logged out</h1>
+    <p class="text-zinc-500 mb-8">You have been logged out successfully.</p>
+    <a href="/" class="text-blue-600 hover:underline">Return to {{.WebHost}}</a>
+  </main>
+</body>
 </html>

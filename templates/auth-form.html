@@ -1,126 +1,46 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{.WebHost}} - Authentication Required</title>
-    <link rel="stylesheet" href="/static/exe.css" />
-    <style>
-      .auth-box h1 {
-        text-align: center;
-      }
-      .vm-details {
-        background: rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 24px;
-        text-align: center;
-      }
-      .vm-details-label {
-        font-size: 13px;
-        color: #666;
-        margin-bottom: 8px;
-      }
-      .vm-hostname {
-        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-          "Liberation Mono", monospace;
-        font-size: 18px;
-        color: #000;
-        margin-bottom: 8px;
-        font-weight: 600;
-      }
-      .vm-description {
-        font-size: 14px;
-        color: #666;
-        font-style: italic;
-      }
-      .auth-box.with-vm input[type="email"] {
-        font-size: 18px;
-        padding: 16px;
-        border: 2px solid rgba(0, 0, 0, 0.15);
-      }
-      .auth-box.with-vm input[type="email"]:focus {
-        border-color: #000;
-        box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
-      }
-      .back-link {
-        text-align: center;
-        margin-top: 20px;
-        font-size: 14px;
-      }
-      .back-link a {
-        color: #666;
-        text-decoration: none;
-      }
-      .back-link a:hover {
-        text-decoration: underline;
-      }
-    </style>
-  </head>
-  <body class="auth-page">
-    <main>
-      <div class="auth-box{{if .BoxName}} with-vm{{end}}">
-        <img src="/static/exy.png" alt="exy the fish" class="exy" />
-        <h1>Sign in</h1>
-        <p class="subtitle">
-          New to {{.WebHost}}? We'll create your account automatically.
-        </p>
-
-        {{if .BoxName}}
-        <div class="vm-details">
-          <div class="vm-details-label">
-            After you sign up, we will create
-          </div>
-          <div class="vm-hostname">{{.BoxName}}.{{.BoxHost}}</div>
-          {{if .Prompt}}
-          <div class="vm-description">{{.Prompt}}</div>
-          {{end}}
-        </div>
-        {{end}}
-
-        <form
-          method="POST"
-          action="{{if .BoxName}}/m/email-auth{{else}}/auth{{end}}"
-        >
-          {{if .RedirectURL}}
-          <input type="hidden" name="redirect" value="{{.RedirectURL}}" />
-          {{end}} {{if .ReturnHost}}
-          <input type="hidden" name="return_host" value="{{.ReturnHost}}" />
-          {{end}} {{if .BoxName}}
-          <input type="hidden" name="hostname" value="{{.BoxName}}" />
-          {{end}} {{if .Prompt}}
-          <input type="hidden" name="prompt" value="{{.Prompt}}" />
-          {{end}}
-          <div class="form-group">
-            <input
-              type="email"
-              id="email"
-              name="email"
-              required
-              placeholder="you@example.com"
-              autocomplete="email"
-              autocorrect="on"
-              autocapitalize="none"
-              spellcheck="false"
-              autofocus
-            />
-          </div>
-
-          <button type="submit">Send sign-in link</button>
-        </form>
-
-        {{if .BoxName}}
-        <div class="back-link">
-          <a href="/m">← Back to VM creation</a>
-        </div>
-        {{else}}
-        <div class="alt-method">
-          <p>Or authenticate via SSH:</p>
-          <div class="ssh-command">{{.SSHCommand}}</div>
-        </div>
-        {{end}}
-      </div>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.WebHost}} - Sign in</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <h1 class="text-4xl font-semibold mb-6">Request a link</h1>
+    <form method="POST" action="{{if .BoxName}}/m/email-auth{{else}}/auth{{end}}">
+      {{if .RedirectURL}}
+      <input type="hidden" name="redirect" value="{{.RedirectURL}}">
+      {{end}}
+      {{if .ReturnHost}}
+      <input type="hidden" name="return_host" value="{{.ReturnHost}}">
+      {{end}}
+      {{if .BoxName}}
+      <input type="hidden" name="hostname" value="{{.BoxName}}">
+      {{end}}
+      {{if .Prompt}}
+      <input type="hidden" name="prompt" value="{{.Prompt}}">
+      {{end}}
+      <input type="email" name="email" placeholder="you@example.com" required autofocus
+        autocomplete="email" autocorrect="on" autocapitalize="none" spellcheck="false"
+        class="w-full text-xl border-b-2 border-zinc-300 py-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400">
+      <p class="text-zinc-400 text-sm mt-4">Press enter</p>
+    </form>
+  </main>
+</body>
 </html>

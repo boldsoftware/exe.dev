@@ -1,55 +1,32 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <title>Email Verified - {{.WebHost}}</title>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="/static/exe.css" />
-    <style>
-      .auth-box {
-        text-align: center;
-      }
-      .code-box {
-        background: rgba(0, 0, 0, 0.08);
-        letter-spacing: 0.12em;
-      }
-      .cta-button {
-        display: inline-block;
-        margin-top: 24px;
-        padding: 12px 24px;
-        border-radius: 999px;
-        background: #000;
-        color: #fff;
-        border: 1px solid #000;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        text-decoration: none;
-        transition: background 0.2s ease;
-      }
-      .cta-button:hover {
-        background: #222;
-        text-decoration: none;
-      }
-    </style>
-  </head>
-  <body class="auth-page">
-    <main>
-      <div class="auth-box">
-        <img src="/static/exy.png" alt="exy the fish" class="exy" />
-        <h1>Email Verified</h1>
-        {{if eq .Source "exemenu"}}
-        <p>You can close this tab and return to your terminal.</p>
-        {{else if eq .Source ""}}
-        <p>Your email has been verified. You're all set!</p>
-        <a class="cta-button" href="/">Go to {{.WebHost}}</a>
-        {{else}}
-        <p>You can now return to your SSH session.</p>
-        <p>If you don't have one, connect with:</p>
-        <div class="code-box">{{.SSHCommand}}</div>
-        <a class="cta-button" href="/">Return to {{.WebHost}}</a>
-        {{end}}
-      </div>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Email Verified - {{.WebHost}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <p class="text-zinc-500 mb-4">{{.Email}}</p>
+    <p class="text-6xl font-semibold tracking-widest">VERIFIED</p>
+    {{if eq .Source "exemenu"}}
+    <p class="text-zinc-500 mt-8">(return to your terminal, promptly)</p>
+    {{end}}
+  </main>
+</body>
 </html>

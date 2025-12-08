@@ -449,23 +449,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch path {
 	case "/":
-		// If authenticated, show user dashboard; otherwise redirect to /welcome
+		// If authenticated, show user dashboard; otherwise show index page
 		if userID, err := s.validateAuthCookie(r); err == nil {
 			s.handleUserDashboard(w, r, userID)
 			return
 		}
-		http.Redirect(w, r, "/welcome", http.StatusTemporaryRedirect)
-		return
-	case "/blog":
-		// Temp redirect to home page, blog is coming soon.
-		http.Redirect(w, r, "/welcome", http.StatusTemporaryRedirect)
-		return
-	case "/welcome":
-		// Serve responsive page (desktop welcome, mobile new box form)
 		hostnameSuggestion := boxname.Random()
-		// Check if user is logged in
-		_, err := s.validateAuthCookie(r)
-		isLoggedIn := err == nil
 		data := struct {
 			stage.Env
 			SSHCommand         string
@@ -476,17 +465,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Env:                s.env,
 			SSHCommand:         s.replSSHConnectionCommand(),
 			HostnameSuggestion: hostnameSuggestion,
-			IsLoggedIn:         isLoggedIn,
+			IsLoggedIn:         false,
 			ActivePage:         "",
 		}
-		if err := s.renderTemplate(w, "welcome.html", data); err != nil {
-			s.log.ErrorContext(r.Context(), "failed to render welcome page", "error", err)
+		if err := s.renderTemplate(w, "index.html", data); err != nil {
+			s.log.ErrorContext(r.Context(), "failed to render index page", "error", err)
 			return
 		}
 		return
-	case "/alpha", "/beta":
-		// Redirect aliases to the canonical welcome page
-		http.Redirect(w, r, "/welcome", http.StatusTemporaryRedirect)
+	case "/soon":
+		s.serveStaticFile(w, r, "soon.html")
+		return
+	case "/blog":
+		// Temporary redirect for blog to the coming soon page
+		http.Redirect(w, r, "/soon", http.StatusTemporaryRedirect)
 		return
 	case "/~", "/~/":
 		// User dashboard - require authentication
@@ -878,11 +870,15 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		source = r.FormValue("source")
 	}
 
+	// Track the verified email for the success page
+	var verifiedEmail string
+
 	// First check if this is an SSH session token (in-memory)
 	verification := s.lookUpEmailVerification(token)
 
 	if verification != nil {
 		// This is an SSH session email verification
+		verifiedEmail = verification.Email
 		user, err := s.createUserWithSSHKey(r.Context(), verification.Email, verification.PublicKey)
 		if err != nil {
 			s.slog().ErrorContext(r.Context(), "failed to create user with SSH key during email verification", "error", err, "token", token)
@@ -912,6 +908,14 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 			s.slog().InfoContext(r.Context(), "invalid email verification token during verification", "error", err, "token", token, "remote_addr", r.RemoteAddr)
 			http.Error(w, "Invalid or expired verification token", http.StatusNotFound)
 			return
+		}
+
+		// Look up the user to get their email for the success page
+		user, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.User, error) {
+			return queries.GetUserWithDetails(ctx, userID)
+		})
+		if err == nil {
+			verifiedEmail = user.Email
 		}
 
 		// Create HTTP auth cookie for this user
@@ -948,10 +952,12 @@ func (s *Server) handleEmailVerificationHTTP(w http.ResponseWriter, r *http.Requ
 		stage.Env
 		SSHCommand string
 		Source     string
+		Email      string
 	}{
 		Env:        s.env,
 		SSHCommand: s.replSSHConnectionCommand(),
 		Source:     source,
+		Email:      verifiedEmail,
 	}
 	s.renderTemplate(w, "email-verified.html", data)
 }
@@ -1634,40 +1640,11 @@ func (s *Server) redirectAfterAuth(w http.ResponseWriter, r *http.Request, userI
 				return
 			}
 
-			// Check if user has access to the box before creating magic secret
-			box, err := withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (exedb.Box, error) {
-				return queries.BoxNamed(ctx, boxName)
-			})
-			if err != nil {
-				s.slog().InfoContext(r.Context(), "redirectAfterAuth box not found", "box_name", boxName, "error", err)
-				http.Error(w, "box not found", http.StatusNotFound)
-				return
-			}
-
-			accessType, err := s.hasUserAccessToBox(r.Context(), userID, &box)
-			if err != nil {
-				s.slog().ErrorContext(r.Context(), "redirectAfterAuth failed to check access", "error", err)
-				http.Error(w, "internal server error", http.StatusInternalServerError)
-				return
-			}
-			if accessType == BoxAccessNone {
-				// Check if there's a valid share link token in the redirect URL
-				hasShareLinkAccess := false
-				if parsedRedirect, err := url.Parse(redirectURL); err == nil {
-					if shareToken := parsedRedirect.Query().Get("share"); shareToken != "" {
-						if valid, err := s.validateShareLinkForBox(r.Context(), shareToken, box.ID); err == nil && valid {
-							hasShareLinkAccess = true
-							s.slog().DebugContext(r.Context(), "redirectAfterAuth: valid share link found", "box_name", boxName, "user_id", userID)
-						}
-					}
-				}
-				if !hasShareLinkAccess {
-					s.slog().InfoContext(r.Context(), "redirectAfterAuth access denied", "box_name", boxName, "user_id", userID)
-					// Return 404 to not leak box existence
-					http.Error(w, "box not found", http.StatusNotFound)
-					return
-				}
-			}
+			// Note: Access is NOT checked here. The confirmation page (/auth/confirm)
+			// and ultimately the proxy handler will check access when serving content.
+			// Checking access here would prevent the redirect flow from completing,
+			// leaving users stuck on the main domain with cookies set there instead
+			// of on the box subdomain.
 
 			// Create magic secret for the proxy subdomain
 			secret, err := s.createMagicSecret(userID, boxName, redirectURL)

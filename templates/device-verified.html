@@ -1,31 +1,29 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-    <title>Device Verified - {{.WebHost}}</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="/static/exe.css" />
-    <style>
-        .auth-page main {
-            max-width: 400px;
-        }
-        .auth-box {
-            text-align: center;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Device Verified - {{.WebHost}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
 </head>
-<body class="auth-page gradient">
-    <main>
-      <div class="auth-box simple">
-        <div class="success">✓</div>
-        <h1>Device Verified!</h1>
-        <p>Your new device has been successfully authorized.</p>
-        <p>You can now reconnect to {{.ReplHost}} from your terminal:</p>
-        <div class="command">{{.SSHCommand}}</div>
-        <p style="font-size: 14px; color: #718096; margin-top: 30px;">
-            Public Key: {{.PublicKey}}
-        </p>
-      </div>
-    </main>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <p class="text-6xl font-semibold tracking-widest mb-6">KEY AUTHORIZED</p>
+    <p class="text-zinc-500">(return to your terminal promptly)</p>
+  </main>
 </body>
 </html>

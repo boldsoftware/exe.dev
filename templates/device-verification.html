@@ -1,44 +1,43 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <title>Confirm Device - {{.WebHost}}</title>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="/static/exe.css" />
-  </head>
-  <body class="auth-page">
-    <main>
-      <div class="auth-box">
-        <img src="/static/exy.png" alt="exy the fish" class="exy" />
-        <h1>Authorize New SSH Key</h1>
-        <p>
-          A new ssh key has requested access to
-          <em>{{.Email}}</em>'s <strong>{{.WebHost}}</strong> account.
-        </p>
-
-        <div class="info-box">
-          <strong>Account:</strong> {{.Email}}<br>
-          <strong>Public Key:</strong>
-          <div class="public-key">{{.PublicKey}}</div>
-        </div>
-
-        <p>If you did not initiate this request, please close this page.</p>
-
-        {{if .PairingCode}}
-        <div class="code-box">
-          <span class="code-label">Terminal Pairing Code</span>
-          <span class="code-value">{{.PairingCode}}</span>
-        </div>
-        <p class="code-note">
-          This should match the code shown in your terminal.
-        </p>
-        {{end}}
-
-        <form method="POST" action="/verify-device">
-          <input type="hidden" name="token" value="{{.Token}}" />
-          <button type="submit" class="button">Authorize Device</button>
-        </form>
-      </div>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Confirm Device - {{.WebHost}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <p class="text-zinc-500 text-lg mb-3">{{.Email}}</p>
+    <h1 class="text-3xl font-semibold mb-6">Authorize SSH key</h1>
+    <div class="bg-zinc-100 rounded mb-6 inline-block">
+      <p class="text-xs text-zinc-400 pt-3 px-4">SSH KEY</p>
+      <pre class="p-4 pt-2 text-sm whitespace-pre-wrap break-words"><code>{{.PublicKey}}</code></pre>
+    </div>
+    {{if .PairingCode}}
+    <div class="bg-zinc-100 rounded mb-6 inline-block">
+      <p class="text-xs text-zinc-400 pt-3 px-4">PAIRING CODE</p>
+      <p class="p-4 pt-2 text-2xl font-semibold tracking-widest">{{.PairingCode}}</p>
+    </div>
+    {{end}}
+    <form method="POST" action="/verify-device">
+      <input type="hidden" name="token" value="{{.Token}}">
+      <button type="submit" class="bg-zinc-900 text-white px-6 py-3 text-sm hover:bg-black transition-colors rounded">Authorize</button>
+    </form>
+  </main>
+</body>
 </html>

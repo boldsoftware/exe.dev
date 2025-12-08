@@ -1,0 +1,31 @@
+
+
+●
+● ssh localhost
+●
+
+~~~ EXE.DEV ~~~
+
+Welcome to localhost
+
+    Claim your virtual machines
+    (after we verify your email)
+
+Email: TestHomePageAfterSSHEmailVerification@example.com
+
+Check your email
+(quickly)
+
+    Code: 933678 [DEV-ONLY http://localhost:EXED_HTTP_PORT/verify-email?token=MMNJUWTUMY72Z&s=exemenu]
+
+Done.
+
+
+
+Welcome to EXE.DEV!
+
+- new to create your first box
+- help to see a list of commands
+
+localhost> exit
+Goodbye!

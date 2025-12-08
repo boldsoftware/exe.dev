@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -133,6 +134,110 @@ func TestEmailVerificationRequiresPOST(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("Invalid token should return 404: got status %d", w.Code)
+	}
+}
+
+// TestHomePageShowsDashboardAfterEmailVerification tests that after completing
+// email verification, browsing to "/" shows the dashboard (not the landing page).
+func TestHomePageShowsDashboardAfterEmailVerification(t *testing.T) {
+	server := newTestServer(t)
+
+	// Create a test user
+	email := "test-home@example.com"
+	publicKey := "ssh-rsa dummy-test-key test-home@example.com"
+	user, err := server.createUser(t.Context(), publicKey, email)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Create an email verification token
+	token := "test-home-token-" + time.Now().Format("20060102150405")
+	expires := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	verificationCode := "112233"
+	err = server.db.Tx(t.Context(), func(ctx context.Context, tx *sqlite.Tx) error {
+		_, err := tx.Exec(`
+			INSERT INTO email_verifications (token, email, user_id, expires_at, verification_code)
+			VALUES (?, ?, ?, ?, ?)`,
+			token, email, user.UserID, expires, verificationCode)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Failed to create verification token: %v", err)
+	}
+
+	// Use httptest.Server to have real HTTP behavior with cookies
+	testServer := httptest.NewServer(server)
+	defer testServer.Close()
+
+	// Create HTTP client with cookie jar
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	// POST to verify email
+	form := url.Values{}
+	form.Add("token", token)
+	resp, err := client.PostForm(testServer.URL+"/verify-email", form)
+	if err != nil {
+		t.Fatalf("POST /verify-email failed: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /verify-email returned status %d, want 200", resp.StatusCode)
+	}
+
+	// Now browse to "/" with a NEW client (without cookies) - should show landing page
+	noJarClient := &http.Client{}
+	resp, err = noJarClient.Get(testServer.URL + "/")
+	if err != nil {
+		t.Fatalf("GET / failed: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "ssh") || !strings.Contains(bodyStr, "run this in your terminal") {
+		t.Fatalf("GET / without cookies should show landing page, got:\n%s", bodyStr)
+	}
+
+	// Now browse to "/" with cookies - should show dashboard, not landing page
+	resp, err = client.Get(testServer.URL + "/")
+	if err != nil {
+		t.Fatalf("GET / failed: %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET / returned status %d, want 200", resp.StatusCode)
+	}
+
+	// Check that we see the dashboard, not the landing page
+	bodyStr = string(body)
+	if strings.Contains(bodyStr, "ssh exe.dev") || strings.Contains(bodyStr, "run this in your terminal") {
+		t.Fatalf("GET / after email verification shows landing page instead of dashboard:\n%s", bodyStr)
+	}
+}
+
+// TestBaseDomainNormalizesLocalhost tests that baseDomain normalizes 127.0.0.1 to localhost
+// so cookies work consistently regardless of whether users access via localhost or 127.0.0.1.
+func TestBaseDomainNormalizesLocalhost(t *testing.T) {
+	server := newTestServer(t)
+
+	testCases := []struct {
+		host     string
+		expected string
+	}{
+		{"localhost:8080", "localhost"},
+		{"127.0.0.1:8080", "localhost"},
+		{"localhost", "localhost"},
+		{"127.0.0.1", "localhost"},
+	}
+
+	for _, tc := range testCases {
+		got := server.baseDomain(tc.host)
+		if got != tc.expected {
+			t.Errorf("baseDomain(%q) = %q, want %q", tc.host, got, tc.expected)
+		}
 	}
 }
 

@@ -1,238 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Service unavailable</title>
-  <style>
-    :root {
-      color-scheme: light dark;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      margin: 40px auto;
-      max-width: 760px;
-      color: #1f2326;
-      line-height: 1.55;
-    }
-    main {
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-    h1 {
-      font-size: 1.7rem;
-      margin: 0 0 0.25rem;
-    }
-    h2 {
-      font-size: 1rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #5f6368;
-      margin: 0 0 0.5rem;
-    }
-    p { margin: 0; }
-    a { color: inherit; text-decoration: underline; }
-    .eyebrow {
-      font-size: 0.85rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: #5f6368;
-      margin-bottom: 0.4rem;
-    }
-    .steps {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-    .step {
-      border: 1px solid #d8dadd;
-      border-radius: 12px;
-      padding: 1.1rem 1.2rem;
-      background: #f8fafc;
-      width: 100%;
-    }
-    .step h3 {
-      margin: 0 0 0.4rem;
-      font-size: 1.05rem;
-    }
-    .step p + p {
-      margin-top: 0.45rem;
-    }
-    code {
-      display: inline-block;
-      background: #e6ebf2;
-      padding: 0.25rem 0.4rem;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    }
-    .code-line {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-top: 0.4rem;
-    }
-    .code-line code {
-      flex: 1;
-      overflow-x: auto;
-      white-space: nowrap;
-    }
-    .copy-btn {
-      flex-shrink: 0;
-      padding: 6px 8px;
-      border: 1px solid #d8dadd;
-      background: #fff;
-      color: #666;
-      border-radius: 4px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-    }
-    .copy-btn:hover {
-      background: #f0f2f5;
-      border-color: #c0c4cc;
-    }
-    .copy-btn.copied {
-      background: #22c55e;
-      border-color: #22c55e;
-      color: white;
-    }
-    .copy-btn svg {
-      width: 14px;
-      height: 14px;
-    }
-    .toast {
-      position: fixed;
-      background: #333;
-      color: white;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 13px;
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-      z-index: 1000;
-    }
-    .toast.show {
-      opacity: 1;
-    }
-    .muted {
-      color: #6c727f;
-      font-size: 0.9rem;
-    }
-    @media (prefers-color-scheme: dark) {
-      body { background: #0b0c0f; color: #dfe3ea; }
-      .eyebrow, h2, .muted { color: #9ca3af; }
-      .step {
-        border-color: #2b323c;
-        background: #14161c;
-      }
-      code { background: #1d2028; }
-      .copy-btn {
-        background: #1d2028;
-        border-color: #2b323c;
-        color: #9ca3af;
-      }
-      .copy-btn:hover {
-        background: #252830;
-        border-color: #3b424c;
-      }
-    }
-  </style>
-  <meta name="robots" content="noindex">
-  <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Cache-Control" content="no-store" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta name="format-detection" content="telephone=no">
-</head>
-<body>
-  <main>
-    <header>
-      {{if .IsShelleyPort}}
-      <p class="eyebrow">Shelley Agent</p>
-      <h1>Shelley isn't running on {{.BoxName}}</h1>
-      <p>The Shelley coding agent isn't currently running on this box.</p>
-      {{else}}
-      <p class="eyebrow">Port {{.Port}}</p>
-      <h1>Nothing is listening on {{.BoxName}}:{{.Port}}</h1>
-      <p>{{.WebHost}}'s proxy can't reach <strong>{{.BoxName}}</strong> on port <code>{{.Port}}</code>.</p>
-      {{end}}
-    </header>
-
-    <section aria-label="Next steps">
-      <h2>What next?</h2>
-      <div class="steps">
-        {{if .ShowWelcomeStep}}
-        <div class="step">
-          <h3>Spin up our demo server</h3>
-          <div class="code-line">
-            <code>{{.SSHCommand}} sudo systemctl start welcome</code>
-            <button class="copy-btn" onclick="copyCmd(this)" title="Copy command">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-            </button>
-          </div>
-        </div>
-        {{end}}
-        <div class="step">
-          <h3>SSH in and start your own server</h3>
-          <div class="code-line">
-            <code>{{.SSHCommand}}</code>
-            <button class="copy-btn" onclick="copyCmd(this)" title="Copy command">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="step">
-          <h3>Use the web terminal to start your server</h3>
-          <p><a href="{{.TerminalURL}}">{{.TerminalURL}}</a></p>
-        </div>
-      </div>
-    </section>
-  </main>
-  <div id="toast" class="toast"></div>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script>
-    async function copyCmd(btn) {
-      const code = btn.parentElement.querySelector('code');
-      const text = code.textContent;
-      try {
-        await navigator.clipboard.writeText(text);
-        btn.classList.add('copied');
-        showToast('Copied to clipboard', btn);
-        setTimeout(() => btn.classList.remove('copied'), 1000);
-      } catch (err) {
-        // Fallback for older browsers
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.cssText = 'position:fixed;opacity:0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        btn.classList.add('copied');
-        showToast('Copied to clipboard', btn);
-        setTimeout(() => btn.classList.remove('copied'), 1000);
-      }
-    }
-    function showToast(msg, btn) {
-      const toast = document.getElementById('toast');
-      toast.textContent = msg;
-      const r = btn.getBoundingClientRect();
-      toast.style.left = r.left + r.width/2 + 'px';
-      toast.style.top = r.bottom + 8 + 'px';
-      toast.style.transform = 'translateX(-50%)';
-      toast.classList.add('show');
-      setTimeout(() => toast.classList.remove('show'), 1500);
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
     }
   </script>
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    {{if .IsShelleyPort}}
+    <p class="text-xs text-zinc-400 mb-3">SHELLEY AGENT</p>
+    <h1 class="text-4xl font-semibold mb-6">Shelley isn't running on {{.BoxName}}</h1>
+    <p class="text-zinc-500 mb-8">The Shelley coding agent isn't currently running on this box.</p>
+    {{else}}
+    <h1 class="text-4xl font-semibold mb-6">Port {{.Port}} unbound.</h1>
+    <div class="bg-zinc-100 rounded p-4">
+      <code class="text-sm">ssh exe.xyz help share port</code>
+    </div>
+    {{end}}
+  </main>
 </body>
 </html>

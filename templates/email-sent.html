@@ -1,105 +1,33 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <title>Check Your Email - {{.WebHost}}</title>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="/static/exe.css" />
-    <style>
-      .auth-box {
-        text-align: center;
-      }
-      .highlight {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 8px 16px;
-        border-radius: 999px;
-        background: rgba(0, 0, 0, 0.08);
-        color: #000;
-        font-weight: 600;
-        margin-top: 8px;
-      }
-      .dev-box {
-        background: rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 8px;
-        padding: 20px;
-        text-align: left;
-        margin-top: 24px;
-      }
-      .dev-box h2 {
-        font-size: 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        color: #222;
-        margin: 0 0 12px 0;
-      }
-      .dev-box p {
-        margin: 0 0 12px 0;
-        color: #4a4a4a;
-        font-size: 14px;
-      }
-      .dev-box .code-box {
-        background: rgba(0, 0, 0, 0.08);
-        border-radius: 8px;
-        padding: 12px;
-        font-family:
-          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 13px;
-        color: #000;
-        word-break: break-word;
-        display: block;
-        text-decoration: none;
-      }
-      .dev-box .code-box:hover {
-        text-decoration: none;
-        background: rgba(0, 0, 0, 0.12);
-      }
-      .retry {
-        margin-top: 24px;
-        font-size: 14px;
-      }
-      .cta-button {
-        display: inline-block;
-        margin-top: 24px;
-        padding: 12px 24px;
-        border-radius: 999px;
-        background: #000;
-        color: #fff;
-        border: 1px solid #000;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        text-decoration: none;
-        transition: background 0.2s ease;
-      }
-      .cta-button:hover {
-        background: #222;
-        text-decoration: none;
-      }
-    </style>
-  </head>
-  <body class="auth-page">
-    <main>
-      <div class="auth-box">
-        <img src="/static/exy.png" alt="exy the fish" class="exy" />
-        <h1>Check Your Email</h1>
-        <p>We sent a sign-in link to:</p>
-        <div class="highlight">{{.Email}}</div>
-        {{if .DevURL}}
-        <div class="dev-box">
-          <h2>Development Shortcut</h2>
-          <p>Use this link while testing locally:</p>
-          <a class="code-box" href="{{.DevURL}}">{{.DevURL}}</a>
-        </div>
-        {{end}}
-        <p class="retry">
-          The link expires in 24 hours. Didn't receive it?
-          <a href="{{if .QueryString}}/auth?{{.QueryString}}{{else}}/m{{end}}">Try again</a>
-        </p>
-        <a class="cta-button" href="/">Return to {{.WebHost}}</a>
-      </div>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Check Your Email - {{.WebHost}}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+</head>
+<body class="font-mono text-zinc-900 bg-white min-h-screen flex items-center justify-center p-12">
+  <main class="w-full max-w-2xl">
+    <h1 class="text-4xl font-semibold mb-6">Check your email</h1>
+    <p class="text-zinc-500">(quickly)</p>
+    {{if .DevURL}}
+    <p class="mt-8 text-zinc-400 text-sm">(dev mode)</p>
+    <a href="{{.DevURL}}" class="text-blue-600 hover:underline break-all">{{.DevURL}}</a>
+    {{end}}
+  </main>
+</body>
 </html>
