@@ -1,6 +1,7 @@
 package sshproxy
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -43,11 +45,23 @@ func NewSSHProxy(instanceID string, port int, targetIP, instanceDir string, log 
 	}
 }
 
-// Start spawns a detached socat process for SSH forwarding
+// Start spawns a detached socat process for SSH forwarding.
+// If a process is already listening on the port, it adopts that process instead of spawning a duplicate.
 func (p *SSHProxy) Start() error {
 	// Check if socat is available
 	if _, err := exec.LookPath("socat"); err != nil {
 		return fmt.Errorf("socat not found in PATH: %w", err)
+	}
+
+	// Check if there's already a process listening on this port.
+	// This prevents duplicate socat processes when exelet restarts and the old socat is still running.
+	if existingPID, err := findListeningPID(p.Port); err == nil && existingPID > 0 {
+		p.PID = existingPID
+		p.log.Info("adopted existing proxy process", "instance", p.InstanceID, "port", p.Port, "pid", existingPID)
+		if err := p.SaveToDisk(); err != nil {
+			return fmt.Errorf("failed to save proxy metadata after adopting: %w", err)
+		}
+		return nil
 	}
 
 	// Build socat command
@@ -222,4 +236,140 @@ func (p *SSHProxy) LoadFromDisk() error {
 // GetPort returns the port number as a string (for compatibility with API)
 func (p *SSHProxy) GetPort() string {
 	return strconv.Itoa(p.Port)
+}
+
+// findListeningPID finds the PID of a process listening on the given TCP port.
+// It reads /proc/net/tcp to find the socket inode, then scans /proc/*/fd/ to find which process owns it.
+// Returns 0 if no process is listening on the port.
+func findListeningPID(port int) (int, error) {
+	// Find the socket inode for the listening port
+	inode, err := findListeningInode(port)
+	if err != nil {
+		return 0, err
+	}
+	if inode == 0 {
+		return 0, nil // No process listening on this port
+	}
+
+	// Find which process owns this inode
+	pid, err := findProcessByInode(inode)
+	if err != nil {
+		return 0, err
+	}
+
+	return pid, nil
+}
+
+// findListeningInode reads /proc/net/tcp and /proc/net/tcp6 to find a socket listening on the given port.
+// Returns the inode number of the socket, or 0 if not found.
+func findListeningInode(port int) (uint64, error) {
+	// Try both IPv4 and IPv6
+	for _, path := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
+		inode, err := findListeningInodeInFile(path, port)
+		if err != nil {
+			continue // File might not exist (e.g., IPv6 disabled)
+		}
+		if inode > 0 {
+			return inode, nil
+		}
+	}
+	return 0, nil
+}
+
+// findListeningInodeInFile parses a /proc/net/tcp or /proc/net/tcp6 file to find a listening socket.
+// Format: sl local_address rem_address st tx_queue:rx_queue tr:tm->when retrnsmt uid timeout inode ...
+// State 0A = LISTEN
+func findListeningInodeInFile(path string, port int) (uint64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	// Port in hex, uppercase
+	portHex := fmt.Sprintf("%04X", port)
+
+	scanner := bufio.NewScanner(file)
+	scanner.Scan() // Skip header line
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 10 {
+			continue
+		}
+
+		// local_address is field 1, format: IP:PORT (both in hex)
+		localAddr := fields[1]
+		parts := strings.Split(localAddr, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		localPort := parts[1]
+
+		// State is field 3, 0A = LISTEN
+		state := fields[3]
+
+		// Check if this is a listening socket on our port
+		if localPort == portHex && state == "0A" {
+			// Inode is field 9
+			inode, err := strconv.ParseUint(fields[9], 10, 64)
+			if err != nil {
+				continue
+			}
+			return inode, nil
+		}
+	}
+
+	return 0, scanner.Err()
+}
+
+// findProcessByInode scans /proc/*/fd/* to find which process owns the given socket inode.
+func findProcessByInode(targetInode uint64) (int, error) {
+	procDir, err := os.Open("/proc")
+	if err != nil {
+		return 0, err
+	}
+	defer procDir.Close()
+
+	entries, err := procDir.Readdirnames(-1)
+	if err != nil {
+		return 0, err
+	}
+
+	socketLink := fmt.Sprintf("socket:[%d]", targetInode)
+
+	for _, entry := range entries {
+		// Check if this is a numeric directory (PID)
+		pid, err := strconv.Atoi(entry)
+		if err != nil {
+			continue
+		}
+
+		// Scan fd directory
+		fdPath := fmt.Sprintf("/proc/%d/fd", pid)
+		fdDir, err := os.Open(fdPath)
+		if err != nil {
+			continue // Permission denied or process exited
+		}
+
+		fds, err := fdDir.Readdirnames(-1)
+		fdDir.Close()
+		if err != nil {
+			continue
+		}
+
+		for _, fd := range fds {
+			linkPath := filepath.Join(fdPath, fd)
+			link, err := os.Readlink(linkPath)
+			if err != nil {
+				continue
+			}
+			if link == socketLink {
+				return pid, nil
+			}
+		}
+	}
+
+	return 0, nil
 }
