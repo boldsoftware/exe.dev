@@ -29,17 +29,18 @@
   <main class="w-full max-w-2xl">
     <h1 class="text-4xl font-semibold mb-6">Access required.</h1>
     {{if .Email}}
-    <p class="text-zinc-500 mb-6">{{.Email}}</p>
-    {{end}}
+    <p class="text-zinc-500 mb-4">You are logged in as: {{.Email}}</p>
+    <p class="text-zinc-500 mb-6">(If you believe you should have access, please contact the owner of this virtual machine.)</p>
+    {{else}}
     <form method="POST" action="{{.AuthURL}}">
       <input type="hidden" name="redirect" value="{{.RedirectURL}}">
       <input type="hidden" name="return_host" value="{{.ReturnHost}}">
       <input type="email" name="email" placeholder="you@example.com" required autofocus
-        {{if .Email}}value="{{.Email}}"{{end}}
         autocomplete="email" autocorrect="on" autocapitalize="none" spellcheck="false"
         class="w-full text-xl border-b-2 border-zinc-300 py-3 bg-transparent focus:outline-none focus:border-zinc-900 placeholder:text-zinc-400">
       <p class="text-zinc-400 text-sm mt-4">Press enter to request access</p>
     </form>
+    {{end}}
   </main>
 </body>
 </html>
