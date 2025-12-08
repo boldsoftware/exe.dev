@@ -24,7 +24,7 @@ func (s *Server) resolveCustomDomainBoxName(ctx context.Context, host string) (s
 	if err == nil {
 		cname = domz.Canonicalize(cname)
 		if cname != host {
-			return s.boxNameFromCNAME(host, cname)
+			return s.boxNameFromCNAME(ctx, host, cname)
 		}
 		// If the canonical name matches the queried host, treat it as an apex domain.
 		return s.resolveApexDomainBoxName(ctx, host)
@@ -67,7 +67,7 @@ func (s *Server) resolveApexDomainBoxName(ctx context.Context, host string) (str
 		return "", fmt.Errorf("CNAME lookup failed for %s: %w", wwwHost, err)
 	}
 	cname = domz.Canonicalize(cname)
-	return s.boxNameFromCNAME(wwwHost, cname)
+	return s.boxNameFromCNAME(ctx, wwwHost, cname)
 }
 
 func (s *Server) apexPointsToPublicIP(ips []netip.Addr) bool {
@@ -81,18 +81,18 @@ func (s *Server) apexPointsToPublicIP(ips []netip.Addr) bool {
 	return false
 }
 
-func (s *Server) boxNameFromCNAME(queryHost, cname string) (string, error) {
+func (s *Server) boxNameFromCNAME(ctx context.Context, queryHost, cname string) (string, error) {
 	name, ok := domz.CutBase(cname, s.env.BoxHost)
 	if !ok {
-		s.slog().Warn("resolveCustomDomain: CNAME does not point to main domain", "host", queryHost, "cname", cname, "mainDomain", s.env.BoxHost)
+		s.slog().WarnContext(ctx, "resolveCustomDomain: CNAME does not point to main domain", "host", queryHost, "cname", cname, "mainDomain", s.env.BoxHost)
 		return "", fmt.Errorf("CNAME does not point to %s: %s -> %s", s.env.BoxHost, queryHost, cname)
 	}
 	if name == "" {
-		s.slog().Warn("resolveCustomDomain: empty box name from CNAME", "host", queryHost, "cname", cname)
+		s.slog().WarnContext(ctx, "resolveCustomDomain: empty box name from CNAME", "host", queryHost, "cname", cname)
 		return "", fmt.Errorf("CNAME does not include box name for %s: %s", queryHost, cname)
 	}
 	if strings.Contains(name, ".") {
-		s.slog().Warn("resolveCustomDomain: nested box name from CNAME", "host", queryHost, "cname", cname, "boxName", name)
+		s.slog().WarnContext(ctx, "resolveCustomDomain: nested box name from CNAME", "host", queryHost, "cname", cname, "boxName", name)
 		return "", fmt.Errorf("CNAME must use single-label box name for %s: %s", queryHost, cname)
 	}
 	return name, nil

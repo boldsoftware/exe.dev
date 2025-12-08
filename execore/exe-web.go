@@ -34,6 +34,7 @@ import (
 	"exe.dev/route53"
 	"exe.dev/sqlite"
 	"exe.dev/stage"
+	"exe.dev/tracing"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/acme"
@@ -153,6 +154,14 @@ func (s *Server) setupHTTPSServer() {
 			GetCertificate: s.getCertificate,
 			NextProtos:     []string{"h2", "http/1.1", acme.ALPNProto},
 		},
+		// ConnContext adds a trace_id to the connection context, which becomes
+		// the parent context for all requests on this connection. This ensures
+		// the same trace_id is used for TLS handshake logging and subsequent
+		// HTTP request logging.
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			traceID := tracing.GenerateTraceID()
+			return tracing.ContextWithTraceID(ctx, traceID)
+		},
 	}
 
 	// Discover Tailscale DNS name early; certificate retrieval can happen lazily in getCertificate
@@ -256,6 +265,8 @@ func (s *Server) lookupA(ctx context.Context, host string) ([]netip.Addr, error)
 }
 
 // validateHostForTLSCert checks if the given host is valid for TLS certificate issuance.
+// The trace_id is added by ConnContext in httpsServer, so it's available in the context
+// during TLS handshakes.
 func (s *Server) validateHostForTLSCert(ctx context.Context, host string) error {
 	host = domz.Canonicalize(host)
 	if domz.FirstMatch(host, s.env.BoxHost, s.env.WebHost) != "" {
