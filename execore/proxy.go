@@ -578,14 +578,14 @@ func (s *Server) createSSHTunnelTransport(sshHost string, box *exedb.Box, sshKey
 				HostKeyCallback: box.CreateHostKeyCallback(),
 				Timeout:         30 * time.Second,
 			}
-			retries := []time.Duration{
-				100 * time.Millisecond, 200 * time.Millisecond,
+			// Use a tight deadline to quickly detect unbound ports
+			ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+			defer cancel()
+			conn, err := s.sshPool.DialContext(ctx, network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg)
+			if err != nil {
+				return nil, fmt.Errorf("SSH dial failed: %w", err)
 			}
-			conn, errs := s.sshPool.DialWithRetries(ctx, network, addr, sshHost, *box.SSHUser, int(*box.SSHPort), sshKey, cfg, retries)
-			if conn != nil {
-				return conn, nil
-			}
-			return nil, fmt.Errorf("SSH dial failed after retries: %w", errors.Join(errs...))
+			return conn, nil
 		},
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          100,
