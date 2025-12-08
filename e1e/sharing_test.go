@@ -84,7 +84,7 @@ func TestBoxSharing(t *testing.T) {
 			name:     "guest cannot access private box",
 			httpPort: httpPort,
 			cookies:  guestCookies,
-			httpCode: http.StatusNotFound, // Should get 404 to not leak box existence
+			httpCode: http.StatusUnauthorized, // Should get 401 to not leak box existence
 		})
 
 		out, err := runExeDevSSHCommand(t, ownerKeyFile, "share", "add", box, guestEmail, "--message=Welcome")
@@ -188,7 +188,7 @@ func TestBoxSharing(t *testing.T) {
 			name:     "guest cannot access after revoked",
 			httpPort: httpPort,
 			cookies:  guestCookies,
-			httpCode: http.StatusNotFound,
+			httpCode: http.StatusUnauthorized,
 		})
 
 		guestPTY.disconnect()
@@ -340,7 +340,7 @@ func proxyAssertWithQuery(t *testing.T, box string, exp proxyExpectation, query 
 			return
 		}
 		// If we got the expected status code during the auth dance, we're done
-		// (e.g., 404 when access is denied)
+		// (e.g., 401 when access is denied)
 		if resp.StatusCode == exp.httpCode {
 			// Auth dance failed with expected status - this is success
 			return

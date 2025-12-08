@@ -122,8 +122,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			w.WriteHeader(http.StatusNotFound)
-			_ = s.renderTemplate(w, "404.html", nil)
+			// Box doesn't exist - show 401 to avoid leaking existence
+			s.renderAccessRequired(w, r)
 		} else {
 			s.slog().ErrorContext(r.Context(), "Failed to look up box", "error", err, "box_name", boxName)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -178,9 +178,8 @@ func (s *Server) handleProxyRequest(w http.ResponseWriter, r *http.Request) {
 
 		if !hasAccess {
 			// User is authenticated but doesn't have access
-			// Don't leak box existence
-			w.WriteHeader(http.StatusNotFound)
-			_ = s.renderTemplate(w, "404.html", nil)
+			// Show 401 to avoid leaking box existence
+			s.renderAccessRequired(w, r)
 			return
 		}
 	}
@@ -375,6 +374,39 @@ func makeAuthURL(typ string, r *http.Request, q url.Values) string {
 		typ,
 		q.Encode(),
 	)
+}
+
+// renderAccessRequired renders the 401.html page for unauthorized access
+// This is shown when a box doesn't exist OR when user doesn't have access
+// to avoid leaking box existence information.
+func (s *Server) renderAccessRequired(w http.ResponseWriter, r *http.Request) {
+	// Build redirect URL (current request URL)
+	redirectURL := *r.URL
+	redirectURL.Scheme = getScheme(r)
+	redirectURL.Host = cmp.Or(redirectURL.Host, r.Host)
+
+	// Try to get the user's email if they're logged in via proxy cookie
+	var email string
+	if userID, err := s.validateProxyAuthCookie(r); err == nil {
+		email, _ = withRxRes(s, r.Context(), func(ctx context.Context, queries *exedb.Queries) (string, error) {
+			return queries.GetEmailByUserID(ctx, userID)
+		})
+	}
+
+	data := struct {
+		Email       string
+		AuthURL     string
+		RedirectURL string
+		ReturnHost  string
+	}{
+		Email:       email,
+		AuthURL:     fmt.Sprintf("%s/auth", s.webBaseURL(r)),
+		RedirectURL: redirectURL.String(),
+		ReturnHost:  r.Host,
+	}
+
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = s.renderTemplate(w, "401.html", data)
 }
 
 // redirectToAuth redirects the user to the /__exe.dev/login URL

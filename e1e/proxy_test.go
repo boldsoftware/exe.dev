@@ -210,11 +210,11 @@ chmod +x /home/exedev/cgi-bin/headers
 			if err != nil {
 				t.Fatalf("failed to read missing box response body: %v", err)
 			}
-			if resp.StatusCode != http.StatusNotFound {
-				t.Fatalf("expected HTTP 404 for missing box, got %d (body: %s)", resp.StatusCode, body)
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Fatalf("expected HTTP 401 for missing box, got %d (body: %s)", resp.StatusCode, body)
 			}
-			if !strings.Contains(string(body), "Not Found") {
-				t.Fatalf("expected response body to contain 'Not Found', got %s", body)
+			if !strings.Contains(string(body), "Access required") {
+				t.Fatalf("expected response body to contain 'Access required', got %s", body)
 			}
 		})
 	})
@@ -990,7 +990,7 @@ func proxyAssert(t *testing.T, boxName string, exp proxyExpectation) {
 			return
 		}
 		// If we got the expected status code during the auth dance, we're done
-		// (e.g., 404 when access is denied)
+		// (e.g., 401 when access is denied)
 		if resp.StatusCode == exp.httpCode {
 			// Auth dance failed with expected status - this is success
 			return
