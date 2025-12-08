@@ -193,28 +193,17 @@ jobs:
         if: always()
         uses: astral-sh/setup-uv@v3
 
-      - name: Post to Slack
-        if: always()
+      - name: Post failure to Slack #oops
+        if: steps.run-e2e.outcome == 'failure'
         env:
           EXE_SLACK_BOT_TOKEN: ${{ secrets.EXE_SLACK_BOT_TOKEN }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          TEST_RESULT: ${{ steps.report.outputs.result }}
           REPORT_URL: ${{ steps.report.outputs.report_url }}
-          JOB_STATUS: ${{ steps.run-e2e.outcome }}
         run: |
           set -euo pipefail
 
-          # Determine emoji and status text based on TEST_RESULT (from result.txt)
-          if [ "$TEST_RESULT" = "SUCCESS" ]; then
-            EMOJI="✅"
-            STATUS="passed"
-          else
-            EMOJI="❌"
-            STATUS="failed"
-          fi
-
-          # Build a concise message
-          MSG="$EMOJI *E2E AI Test $STATUS*"
+          # Build failure message
+          MSG="❌ *E2E AI Test failed*"
           MSG="$MSG\n• <$RUN_URL|CI Logs>"
           if [ -n "$REPORT_URL" ]; then
             MSG="$MSG\n• <$REPORT_URL|Test Report>"
