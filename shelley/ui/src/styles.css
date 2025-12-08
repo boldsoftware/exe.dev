@@ -894,6 +894,12 @@ button {
   flex-shrink: 0;
 }
 
+.bash-tool-cancelled {
+  color: var(--error-text);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
 .bash-tool-toggle {
   background: none;
   border: none;

@@ -152,7 +152,7 @@ test.describe('Shelley Conversation Tests', () => {
     );
     
     // Verify tool usage appears in the UI with coalesced tool call
-    await expect(page.locator('[data-testid="tool-call-completed"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="tool-call-completed"]').first()).toBeVisible({ timeout: 10000 });
     // Check that the tool name "bash" is visible
     await expect(page.locator('text=bash').first()).toBeVisible();
   });

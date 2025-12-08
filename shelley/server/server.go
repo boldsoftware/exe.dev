@@ -117,6 +117,12 @@ func agentWorking(messages []APIMessage) bool {
 	}
 
 	last := messages[len(messages)-1]
+
+	// If the last message is an error, agent is not working
+	if last.Type == string(db.MessageTypeError) {
+		return false
+	}
+
 	if last.Type == string(db.MessageTypeAgent) {
 		if last.EndOfTurn == nil {
 			return true

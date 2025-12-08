@@ -745,9 +745,18 @@ function Message({ message }: MessageProps) {
       ); // 3 = thinking, 4 = redacted_thinking, 5 = tool_use, 6 = tool_result, 2 = text
     }) || [];
 
-  if (meaningfulContent.length === 0) {
+  // Don't filter out messages that contain operation status like "[Operation cancelled]"
+  const hasOperationStatus = llmMessage?.Content?.some((c) =>
+    c.Type === 2 && c.Text?.includes("[Operation")
+  );
+
+  if (meaningfulContent.length === 0 && !hasOperationStatus) {
     return null;
   }
+
+  // If we have operation status but no meaningful content, render the status
+  const contentToRender = meaningfulContent.length > 0 ? meaningfulContent :
+    llmMessage?.Content?.filter((c) => c.Type === 2 && c.Text?.includes("[Operation")) || [];
 
   return (
     <>
@@ -764,7 +773,7 @@ function Message({ message }: MessageProps) {
       >
         {/* Message content */}
         <div className="message-content" data-testid="message-content">
-          {meaningfulContent.map((content, index) => (
+          {contentToRender.map((content, index) => (
             <div key={index}>{renderContent(content)}</div>
           ))}
         </div>

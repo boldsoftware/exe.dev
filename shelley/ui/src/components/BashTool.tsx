@@ -30,6 +30,10 @@ function BashTool({ toolInput, isRunning, toolResult, hasError, executionTime }:
   const output =
     toolResult && toolResult.length > 0 && toolResult[0].Text ? toolResult[0].Text : "";
 
+  // Check if this was a cancelled operation
+  const isCancelled =
+    hasError && output.toLowerCase().includes("cancel");
+
   // Truncate command for display
   const truncateCommand = (cmd: string, maxLen: number = 300) => {
     if (cmd.length <= maxLen) return cmd;
@@ -48,7 +52,8 @@ function BashTool({ toolInput, isRunning, toolResult, hasError, executionTime }:
         <div className="bash-tool-summary">
           <span className={`bash-tool-emoji ${isRunning ? "running" : ""}`}>🛠️</span>
           <span className="bash-tool-command">{displayCommand}</span>
-          {isComplete && hasError && <span className="bash-tool-error">✗</span>}
+          {isComplete && isCancelled && <span className="bash-tool-cancelled">✗ cancelled</span>}
+          {isComplete && hasError && !isCancelled && <span className="bash-tool-error">✗</span>}
           {isComplete && !hasError && <span className="bash-tool-success">✓</span>}
         </div>
         <button

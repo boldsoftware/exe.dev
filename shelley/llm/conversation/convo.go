@@ -225,8 +225,14 @@ func (c *Convo) messageRequest(msg llm.Message) *llm.Request {
 		}
 	}
 
+	// Also validate the new message being sent - don't add it if empty
+	messagesToSend := nonEmptyMessages
+	if len(msg.Content) > 0 {
+		messagesToSend = append(messagesToSend, msg)
+	}
+
 	mr := &llm.Request{
-		Messages: append(nonEmptyMessages, msg), // not yet committed to keeping msg
+		Messages: messagesToSend,
 		System:   system,
 		Tools:    c.Tools,
 	}
