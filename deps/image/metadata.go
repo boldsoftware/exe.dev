@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/distribution/reference"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
 	"exe.dev/deps/image/types"
@@ -55,6 +56,8 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 		return nil, err
 	}
 
+	// Set up registry auth first - this must happen before cache lookup to ensure
+	// credentials are valid for this repository (prevents cross-repo cache attacks)
 	err = util.CreateRegistryHost(imageRef, i.config.Username, i.config.Password, i.config.Insecure,
 		i.config.UseHTTP, "", false)
 	if err != nil {
@@ -62,6 +65,19 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 	}
 
 	resolver := util.GetResolver()
+
+	// Get the repository name (without tag/digest) for cache key
+	repository := imageRef.Name()
+
+	// For digest-based references, check cache after auth setup
+	// Cache is keyed by repository+digest to prevent cross-repo data leaks
+	if digested, ok := imageRef.(reference.Digested); ok {
+		digestStr := digested.Digest().String()
+		if cached, cacheErr := i.metadataCache.Get(repository, digestStr); cacheErr == nil {
+			i.log.DebugContext(ctx, "using cached metadata for digest reference", "repository", repository, "digest", digestStr)
+			return cached, nil
+		}
+	}
 
 	// Resolve to get the descriptor
 	name, desc, err := resolver.Resolve(ctx, imageRef.String())
@@ -187,6 +203,9 @@ func (i *ImageManager) FetchMetadata(ctx context.Context, ref string) (*types.Im
 		return nil, fmt.Errorf("unsupported media type: %s", desc.MediaType)
 	}
 
+	// Cache metadata by repository and digest for future lookups
+	_ = i.metadataCache.Put(repository, metadata.Digest, metadata)
+
 	return metadata, nil
 }
 
@@ -275,14 +294,19 @@ func (i *ImageManager) FetchManifestForPlatform(ctx context.Context, ref, platfo
 					conf = &c
 				}
 
-				return &types.ImageMetadata{
+				platformMetadata := &types.ImageMetadata{
 					Digest:      desc.Digest.String(),
 					MediaType:   desc.MediaType,
 					Size:        desc.Size,
 					ContentSize: contentSize,
 					Manifest:    &manifest,
 					Config:      conf,
-				}, nil
+				}
+
+				// Cache platform-specific metadata by repository and digest
+				_ = i.metadataCache.Put(imageRef.Name(), platformMetadata.Digest, platformMetadata)
+
+				return platformMetadata, nil
 			}
 		}
 	}

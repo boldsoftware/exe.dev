@@ -164,7 +164,7 @@ func (s *Service) CreateInstance(req *api.CreateInstanceRequest, stream api.Comp
 	if err != nil {
 		return status.Errorf(codes.Internal, "error fetching image manifest: %s", err)
 	}
-	s.log.DebugContext(ctx, "fetched image manifest", "image", req.Image, "digest", imageMetadata.Digest)
+	s.log.DebugContext(ctx, "loaded image manifest", "image", req.Image, "digest", imageMetadata.Digest)
 
 	// config
 	imageConfig := imageMetadata.Config
